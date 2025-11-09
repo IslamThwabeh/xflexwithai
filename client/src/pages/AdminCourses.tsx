@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { trpc } from "@/lib/trpc";
+import { FileUpload } from "@/components/FileUpload";
 import { Plus, Edit, Trash2, Eye, EyeOff } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -65,11 +66,14 @@ export default function AdminCourses() {
     },
   });
 
+  const uploadImage = trpc.upload.image.useMutation();
+
   const [formData, setFormData] = useState({
     titleEn: "",
     titleAr: "",
     descriptionEn: "",
     descriptionAr: "",
+    thumbnail: "",
     price: 0,
     level: "beginner" as "beginner" | "intermediate" | "advanced",
     isPublished: false,
@@ -81,6 +85,7 @@ export default function AdminCourses() {
       titleAr: "",
       descriptionEn: "",
       descriptionAr: "",
+      thumbnail: "",
       price: 0,
       level: "beginner",
       isPublished: false,
@@ -94,6 +99,7 @@ export default function AdminCourses() {
       titleAr: course.titleAr,
       descriptionEn: course.descriptionEn,
       descriptionAr: course.descriptionAr,
+      thumbnail: course.thumbnail || "",
       price: course.price,
       level: course.level,
       isPublished: course.isPublished,
@@ -235,6 +241,40 @@ export default function AdminCourses() {
                   />
                 </div>
               </div>
+
+              <FileUpload
+                accept="image/*"
+                maxSize={5}
+                label="Course Thumbnail"
+                preview="image"
+                currentUrl={formData.thumbnail}
+                onUrlChange={(url) => setFormData({ ...formData, thumbnail: url })}
+                onUpload={async (file) => {
+                  const reader = new FileReader();
+                  return new Promise((resolve, reject) => {
+                    reader.onload = async () => {
+                      const base64 = reader.result?.toString().split(',')[1];
+                      if (!base64) {
+                        reject(new Error('Failed to read file'));
+                        return;
+                      }
+                      
+                      try {
+                        const result = await uploadImage.mutateAsync({
+                          fileName: file.name,
+                          fileData: base64,
+                          contentType: file.type,
+                        });
+                        resolve(result.url);
+                      } catch (error) {
+                        reject(error);
+                      }
+                    };
+                    reader.onerror = reject;
+                    reader.readAsDataURL(file);
+                  });
+                }}
+              />
 
               <div className="grid gap-4 md:grid-cols-3">
                 <div className="space-y-2">

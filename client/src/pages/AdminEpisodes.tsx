@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { trpc } from "@/lib/trpc";
+import { FileUpload } from "@/components/FileUpload";
 import { Plus, Edit, Trash2, Video, ArrowLeft, MoveUp, MoveDown } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -70,6 +71,8 @@ export default function AdminEpisodes() {
       toast.error(`Failed to delete episode: ${error.message}`);
     },
   });
+
+  const uploadVideo = trpc.upload.video.useMutation();
 
   const [formData, setFormData] = useState({
     titleEn: "",
@@ -292,18 +295,42 @@ export default function AdminEpisodes() {
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="videoUrl">Video URL</Label>
-                <Input
-                  id="videoUrl"
-                  value={formData.videoUrl}
-                  onChange={(e) => setFormData({ ...formData, videoUrl: e.target.value })}
-                  placeholder="https://example.com/video.mp4 or YouTube URL"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Paste a direct video URL or YouTube/Vimeo link
-                </p>
-              </div>
+              <FileUpload
+                accept="video/*"
+                maxSize={500}
+                label="Episode Video"
+                preview="video"
+                currentUrl={formData.videoUrl}
+                onUrlChange={(url) => setFormData({ ...formData, videoUrl: url })}
+                onUpload={async (file) => {
+                  const reader = new FileReader();
+                  return new Promise((resolve, reject) => {
+                    reader.onload = async () => {
+                      const base64 = reader.result?.toString().split(',')[1];
+                      if (!base64) {
+                        reject(new Error('Failed to read file'));
+                        return;
+                      }
+                      
+                      try {
+                        const result = await uploadVideo.mutateAsync({
+                          fileName: file.name,
+                          fileData: base64,
+                          contentType: file.type,
+                        });
+                        resolve(result.url);
+                      } catch (error) {
+                        reject(error);
+                      }
+                    };
+                    reader.onerror = reject;
+                    reader.readAsDataURL(file);
+                  });
+                }}
+              />
+              <p className="text-xs text-muted-foreground">
+                Upload a video file (max 500MB) or paste a YouTube/Vimeo URL in the input above
+              </p>
 
               <div className="grid gap-4 md:grid-cols-3">
                 <div className="space-y-2">

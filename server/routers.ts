@@ -314,21 +314,60 @@ export const appRouter = router({
 
   // File upload helper
   upload: router({
-    // Generate upload URL for files
-    getUploadUrl: adminProcedure
+    image: protectedProcedure
       .input(z.object({
-        filename: z.string(),
+        fileName: z.string(),
+        fileData: z.string(), // base64 encoded
         contentType: z.string(),
       }))
       .mutation(async ({ input }) => {
-        // Generate a unique key for the file
-        const timestamp = Date.now();
-        const fileKey = `uploads/${timestamp}-${input.filename}`;
+        logger.info('[Upload] Uploading image', { fileName: input.fileName });
         
-        return {
-          fileKey,
-          uploadUrl: `/api/upload/${fileKey}`, // This would need to be implemented
-        };
+        try {
+          // Generate unique file key
+          const randomSuffix = Math.random().toString(36).substring(7);
+          const fileKey = `courses/images/${Date.now()}-${randomSuffix}-${input.fileName}`;
+          
+          // Convert base64 to buffer
+          const buffer = Buffer.from(input.fileData, 'base64');
+          
+          // Upload to S3
+          const result = await storagePut(fileKey, buffer, input.contentType);
+          
+          logger.info('[Upload] Image uploaded successfully', { url: result.url });
+          return { url: result.url, key: result.key };
+        } catch (error) {
+          logger.error('[Upload] Image upload failed', { error });
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to upload image' });
+        }
+      }),
+    
+    video: protectedProcedure
+      .input(z.object({
+        fileName: z.string(),
+        fileData: z.string(), // base64 encoded
+        contentType: z.string(),
+      }))
+      .mutation(async ({ input }) => {
+        logger.info('[Upload] Uploading video', { fileName: input.fileName });
+        
+        try {
+          // Generate unique file key
+          const randomSuffix = Math.random().toString(36).substring(7);
+          const fileKey = `courses/videos/${Date.now()}-${randomSuffix}-${input.fileName}`;
+          
+          // Convert base64 to buffer
+          const buffer = Buffer.from(input.fileData, 'base64');
+          
+          // Upload to S3
+          const result = await storagePut(fileKey, buffer, input.contentType);
+          
+          logger.info('[Upload] Video uploaded successfully', { url: result.url });
+          return { url: result.url, key: result.key };
+        } catch (error) {
+          logger.error('[Upload] Video upload failed', { error });
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to upload video' });
+        }
       }),
   }),
 });

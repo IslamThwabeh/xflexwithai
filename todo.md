@@ -88,3 +88,13 @@
 - [x] Document database setup on Railway
 - [x] Create post-deployment checklist
 - [ ] Test deployment process (ready for user to deploy)
+
+
+## Admin Interface Enhancements (New Request)
+- [x] Review existing course and episode management interfaces
+- [x] Implement thumbnail upload functionality for courses (direct file upload to S3)
+- [x] Implement video upload functionality for episodes (direct file upload to S3)
+- [x] Add file upload progress indicators
+- [x] Add image/video preview after upload
+- [ ] Add drag-and-drop file upload support (future enhancement)
+- [ ] Test complete admin workflow with file uploads
