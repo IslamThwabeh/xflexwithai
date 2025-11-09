@@ -58,3 +58,13 @@
 - [x] Show next episode recommendations
 - [x] Update progress percentage automatically
 - [ ] Add course completion certificates (future)
+
+
+## Logging System (New Request)
+- [x] Create logging utility with environment-based control
+- [x] Add logging to all tRPC procedures (courses, episodes, enrollments, users)
+- [x] Add logging to database operations
+- [x] Add logging to authentication flow
+- [x] Add logging to error handlers
+- [x] Add request/response logging for debugging
+- [x] Document how to enable/disable logging via environment variables

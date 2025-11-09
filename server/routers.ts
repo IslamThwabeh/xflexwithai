@@ -4,6 +4,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+import { logger } from "./_core/logger";
 import * as db from "./db";
 import { storagePut } from "./storage";
 
@@ -84,8 +85,10 @@ export const appRouter = router({
         level: z.enum(["beginner", "intermediate", "advanced"]).default("beginner"),
         duration: z.number().optional(),
       }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
+        logger.procedure('courses.create', { title: input.titleEn }, ctx.admin?.id);
         const courseId = await db.createCourse(input);
+        logger.info('Course created successfully', { courseId });
         return { id: courseId };
       }),
 
@@ -104,17 +107,21 @@ export const appRouter = router({
         level: z.enum(["beginner", "intermediate", "advanced"]).optional(),
         duration: z.number().optional(),
       }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
+        logger.procedure('courses.update', { id: input.id }, ctx.admin?.id);
         const { id, ...updates } = input;
         await db.updateCourse(id, updates);
+        logger.info('Course updated successfully', { id });
         return { success: true };
       }),
 
     // Admin: Delete course
     delete: adminProcedure
       .input(z.object({ id: z.number() }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
+        logger.procedure('courses.delete', input, ctx.admin?.id);
         await db.deleteCourse(input.id);
+        logger.info('Course deleted successfully', input);
         return { success: true };
       }),
   }),
@@ -194,6 +201,7 @@ export const appRouter = router({
 
     // User: Get my enrollments
     myEnrollments: protectedProcedure.query(async ({ ctx }) => {
+      logger.procedure('enrollments.myEnrollments', undefined, ctx.user.id);
       return await db.getEnrollmentsByUserId(ctx.user.id);
     }),
 
@@ -205,9 +213,11 @@ export const appRouter = router({
         paymentCurrency: z.string().default("USD"),
       }))
       .mutation(async ({ ctx, input }) => {
+        logger.procedure('enrollments.enroll', input, ctx.user.id);
         // Check if already enrolled
         const existing = await db.getEnrollmentByCourseAndUser(input.courseId, ctx.user.id);
         if (existing) {
+          logger.warn('User already enrolled in course', { userId: ctx.user.id, courseId: input.courseId });
           throw new TRPCError({ code: 'BAD_REQUEST', message: 'Already enrolled in this course' });
         }
 
@@ -220,6 +230,7 @@ export const appRouter = router({
           isSubscriptionActive: true,
         });
 
+        logger.info('User enrolled in course successfully', { enrollmentId, userId: ctx.user.id, courseId: input.courseId });
         return { id: enrollmentId };
       }),
 
@@ -255,8 +266,10 @@ export const appRouter = router({
         episodeId: z.number(),
       }))
       .mutation(async ({ ctx, input }) => {
+        logger.procedure('enrollments.markEpisodeComplete', input, ctx.user.id);
         const enrollment = await db.getEnrollmentByCourseAndUser(input.courseId, ctx.user.id);
         if (!enrollment) {
+          logger.error('Enrollment not found for episode completion', { userId: ctx.user.id, courseId: input.courseId });
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Enrollment not found' });
         }
         // Get total episodes for this course
@@ -270,6 +283,13 @@ export const appRouter = router({
           progressPercentage,
           lastAccessed: new Date(),
           completedAt: completedEpisodes >= totalEpisodes ? new Date() : null,
+        });
+        logger.info('Episode marked as complete', { 
+          userId: ctx.user.id, 
+          episodeId: input.episodeId, 
+          courseId: input.courseId,
+          progress: progressPercentage,
+          completed: completedEpisodes >= totalEpisodes
         });
         return { success: true };
       }),
