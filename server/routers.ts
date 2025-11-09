@@ -377,7 +377,7 @@ export const appRouter = router({
     getSubscription: protectedProcedure.query(async ({ ctx }) => {
       logger.info('[LexAI] Getting subscription', { userId: ctx.user.id });
       const subscription = await db.getActiveLexaiSubscription(ctx.user.id);
-      return subscription;
+      return subscription || null;
     }),
 
     // Create new subscription
