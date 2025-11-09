@@ -238,6 +238,41 @@ export const appRouter = router({
         });
         return { success: true };
       }),
+    // Get enrollment for a specific course
+    getEnrollment: protectedProcedure
+      .input(z.object({ courseId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        const enrollment = await db.getEnrollmentByCourseAndUser(input.courseId, ctx.user.id);
+        if (!enrollment) {
+          return null;
+        }
+        return enrollment;
+      }),
+    // Mark episode as complete
+    markEpisodeComplete: protectedProcedure
+      .input(z.object({
+        courseId: z.number(),
+        episodeId: z.number(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const enrollment = await db.getEnrollmentByCourseAndUser(input.courseId, ctx.user.id);
+        if (!enrollment) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Enrollment not found' });
+        }
+        // Get total episodes for this course
+        const episodes = await db.getEpisodesByCourseId(input.courseId);
+        const totalEpisodes = episodes.length;
+        const completedEpisodes = enrollment.completedEpisodes + 1;
+        const progressPercentage = Math.round((completedEpisodes / totalEpisodes) * 100);
+        
+        await db.updateEnrollment(enrollment.id, {
+          completedEpisodes,
+          progressPercentage,
+          lastAccessed: new Date(),
+          completedAt: completedEpisodes >= totalEpisodes ? new Date() : null,
+        });
+        return { success: true };
+      }),
   }),
 
   // User management (admin only)

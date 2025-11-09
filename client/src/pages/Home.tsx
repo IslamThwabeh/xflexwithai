@@ -37,7 +37,7 @@ export default function Home() {
                       <Button variant="ghost">Admin Panel</Button>
                     </Link>
                   )}
-                  <Link href="/my-courses">
+                  <Link href="/dashboard">
                     <Button variant="ghost">My Courses</Button>
                   </Link>
                   <div className="flex items-center gap-2">

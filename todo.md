@@ -46,3 +46,15 @@
 - [ ] Create final checkpoint
 - [ ] Provide GitHub push instructions
 - [ ] Document deployment steps
+
+
+## User Dashboard Feature (New Request)
+- [x] Create user dashboard page showing enrolled courses
+- [x] Display course progress with visual progress bars
+- [x] Add "Continue Learning" buttons for each course
+- [x] Build course detail/watch page for users
+- [x] Implement video player for episodes
+- [x] Add episode completion tracking
+- [x] Show next episode recommendations
+- [x] Update progress percentage automatically
+- [ ] Add course completion certificates (future)
