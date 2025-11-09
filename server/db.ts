@@ -1,11 +1,16 @@
-import { eq } from "drizzle-orm";
+import { eq, desc, and, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users } from "../drizzle/schema";
+import { 
+  InsertUser, users, 
+  courses, Course, InsertCourse,
+  episodes, Episode, InsertEpisode,
+  enrollments, Enrollment, InsertEnrollment,
+  episodeProgress, EpisodeProgress, InsertEpisodeProgress
+} from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
-// Lazily create the drizzle instance so local tooling can run without a DB.
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
@@ -17,6 +22,10 @@ export async function getDb() {
   }
   return _db;
 }
+
+// ============================================================================
+// User Management
+// ============================================================================
 
 export async function upsertUser(user: InsertUser): Promise<void> {
   if (!user.openId) {
@@ -35,7 +44,7 @@ export async function upsertUser(user: InsertUser): Promise<void> {
     };
     const updateSet: Record<string, unknown> = {};
 
-    const textFields = ["name", "email", "loginMethod"] as const;
+    const textFields = ["name", "email", "loginMethod", "phone"] as const;
     type TextField = (typeof textFields)[number];
 
     const assignNullable = (field: TextField) => {
@@ -85,8 +94,231 @@ export async function getUserByOpenId(openId: string) {
   }
 
   const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
-
   return result.length > 0 ? result[0] : undefined;
 }
 
-// TODO: add feature queries here as your schema grows.
+export async function getAllUsers() {
+  const db = await getDb();
+  if (!db) return [];
+  return await db.select().from(users).orderBy(desc(users.createdAt));
+}
+
+export async function getUserById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(users).where(eq(users.id, id)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+// ============================================================================
+// Course Management
+// ============================================================================
+
+export async function getAllCourses() {
+  const db = await getDb();
+  if (!db) return [];
+  return await db.select().from(courses).orderBy(desc(courses.createdAt));
+}
+
+export async function getPublishedCourses() {
+  const db = await getDb();
+  if (!db) return [];
+  return await db.select().from(courses)
+    .where(eq(courses.isPublished, true))
+    .orderBy(desc(courses.createdAt));
+}
+
+export async function getCourseById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(courses).where(eq(courses.id, id)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+export async function createCourse(course: InsertCourse) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(courses).values(course);
+  return Number((result as any).insertId);
+}
+
+export async function updateCourse(id: number, course: Partial<InsertCourse>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(courses).set(course).where(eq(courses.id, id));
+}
+
+export async function deleteCourse(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  // Delete related episodes first
+  await db.delete(episodes).where(eq(episodes.courseId, id));
+  // Delete related enrollments
+  await db.delete(enrollments).where(eq(enrollments.courseId, id));
+  // Delete the course
+  await db.delete(courses).where(eq(courses.id, id));
+}
+
+// ============================================================================
+// Episode Management
+// ============================================================================
+
+export async function getEpisodesByCourseId(courseId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return await db.select().from(episodes)
+    .where(eq(episodes.courseId, courseId))
+    .orderBy(episodes.order);
+}
+
+export async function getEpisodeById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(episodes).where(eq(episodes.id, id)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+export async function createEpisode(episode: InsertEpisode) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(episodes).values(episode);
+  return Number((result as any).insertId);
+}
+
+export async function updateEpisode(id: number, episode: Partial<InsertEpisode>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(episodes).set(episode).where(eq(episodes.id, id));
+}
+
+export async function deleteEpisode(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  // Delete related progress records
+  await db.delete(episodeProgress).where(eq(episodeProgress.episodeId, id));
+  // Delete the episode
+  await db.delete(episodes).where(eq(episodes.id, id));
+}
+
+// ============================================================================
+// Enrollment Management
+// ============================================================================
+
+export async function getAllEnrollments() {
+  const db = await getDb();
+  if (!db) return [];
+  return await db.select({
+    enrollment: enrollments,
+    user: users,
+    course: courses,
+  })
+  .from(enrollments)
+  .leftJoin(users, eq(enrollments.userId, users.id))
+  .leftJoin(courses, eq(enrollments.courseId, courses.id))
+  .orderBy(desc(enrollments.enrolledAt));
+}
+
+export async function getEnrollmentsByUserId(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return await db.select({
+    enrollment: enrollments,
+    course: courses,
+  })
+  .from(enrollments)
+  .leftJoin(courses, eq(enrollments.courseId, courses.id))
+  .where(eq(enrollments.userId, userId))
+  .orderBy(desc(enrollments.enrolledAt));
+}
+
+export async function getEnrollmentByCourseAndUser(courseId: number, userId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(enrollments)
+    .where(and(
+      eq(enrollments.courseId, courseId),
+      eq(enrollments.userId, userId)
+    ))
+    .limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+export async function createEnrollment(enrollment: InsertEnrollment) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(enrollments).values(enrollment);
+  return Number((result as any).insertId);
+}
+
+export async function updateEnrollment(id: number, enrollment: Partial<InsertEnrollment>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(enrollments).set(enrollment).where(eq(enrollments.id, id));
+}
+
+// ============================================================================
+// Episode Progress Management
+// ============================================================================
+
+export async function getEpisodeProgress(userId: number, episodeId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(episodeProgress)
+    .where(and(
+      eq(episodeProgress.userId, userId),
+      eq(episodeProgress.episodeId, episodeId)
+    ))
+    .limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+export async function upsertEpisodeProgress(progress: InsertEpisodeProgress) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  await db.insert(episodeProgress).values(progress).onDuplicateKeyUpdate({
+    set: {
+      watchedDuration: progress.watchedDuration,
+      isCompleted: progress.isCompleted,
+      lastWatchedAt: new Date(),
+    },
+  });
+}
+
+export async function getCourseProgressByUser(userId: number, courseId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return await db.select().from(episodeProgress)
+    .where(and(
+      eq(episodeProgress.userId, userId),
+      eq(episodeProgress.courseId, courseId)
+    ));
+}
+
+// ============================================================================
+// Dashboard Statistics
+// ============================================================================
+
+export async function getDashboardStats() {
+  const db = await getDb();
+  if (!db) return {
+    totalUsers: 0,
+    totalCourses: 0,
+    totalEnrollments: 0,
+    activeEnrollments: 0,
+  };
+
+  const [totalUsersResult] = await db.select({ count: sql<number>`count(*)` }).from(users);
+  const [totalCoursesResult] = await db.select({ count: sql<number>`count(*)` }).from(courses);
+  const [totalEnrollmentsResult] = await db.select({ count: sql<number>`count(*)` }).from(enrollments);
+  const [activeEnrollmentsResult] = await db.select({ count: sql<number>`count(*)` })
+    .from(enrollments)
+    .where(eq(enrollments.isSubscriptionActive, true));
+
+  return {
+    totalUsers: Number(totalUsersResult.count),
+    totalCourses: Number(totalCoursesResult.count),
+    totalEnrollments: Number(totalEnrollmentsResult.count),
+    activeEnrollments: Number(activeEnrollmentsResult.count),
+  };
+}
