@@ -6,7 +6,9 @@ import {
   courses, Course, InsertCourse,
   episodes, Episode, InsertEpisode,
   enrollments, Enrollment, InsertEnrollment,
-  episodeProgress, EpisodeProgress, InsertEpisodeProgress
+  episodeProgress, EpisodeProgress, InsertEpisodeProgress,
+  lexaiSubscriptions, LexaiSubscription, InsertLexaiSubscription,
+  lexaiMessages, LexaiMessage, InsertLexaiMessage
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { logger } from './_core/logger';
@@ -390,5 +392,156 @@ export async function getDashboardStats() {
     totalCourses: Number(totalCoursesResult.count),
     totalEnrollments: Number(totalEnrollmentsResult.count),
     activeEnrollments: Number(activeEnrollmentsResult.count),
+  };
+}
+
+
+// ============================================================================
+// LexAI Subscription Management
+// ============================================================================
+
+export async function createLexaiSubscription(data: InsertLexaiSubscription) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  logger.db('Creating LexAI subscription', { userId: data.userId });
+  
+  const result = await db.insert(lexaiSubscriptions).values(data);
+  return result;
+}
+
+export async function getLexaiSubscriptionByUserId(userId: number): Promise<LexaiSubscription | undefined> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const result = await db
+    .select()
+    .from(lexaiSubscriptions)
+    .where(eq(lexaiSubscriptions.userId, userId))
+    .orderBy(desc(lexaiSubscriptions.createdAt))
+    .limit(1);
+  
+  return result[0];
+}
+
+export async function getActiveLexaiSubscription(userId: number): Promise<LexaiSubscription | undefined> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const result = await db
+    .select()
+    .from(lexaiSubscriptions)
+    .where(
+      and(
+        eq(lexaiSubscriptions.userId, userId),
+        eq(lexaiSubscriptions.isActive, true)
+      )
+    )
+    .orderBy(desc(lexaiSubscriptions.createdAt))
+    .limit(1);
+  
+  return result[0];
+}
+
+export async function updateLexaiSubscription(id: number, data: Partial<LexaiSubscription>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  logger.db('Updating LexAI subscription', { id });
+  
+  await db
+    .update(lexaiSubscriptions)
+    .set(data)
+    .where(eq(lexaiSubscriptions.id, id));
+}
+
+export async function incrementLexaiMessageCount(subscriptionId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  await db
+    .update(lexaiSubscriptions)
+    .set({
+      messagesUsed: sql`${lexaiSubscriptions.messagesUsed} + 1`
+    })
+    .where(eq(lexaiSubscriptions.id, subscriptionId));
+}
+
+// ============================================================================
+// LexAI Messages Management
+// ============================================================================
+
+export async function createLexaiMessage(data: InsertLexaiMessage) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  logger.db('Creating LexAI message', { userId: data.userId, role: data.role });
+  
+  const result = await db.insert(lexaiMessages).values(data);
+  return result;
+}
+
+export async function getLexaiMessagesByUser(userId: number, limit: number = 50): Promise<LexaiMessage[]> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const result = await db
+    .select()
+    .from(lexaiMessages)
+    .where(eq(lexaiMessages.userId, userId))
+    .orderBy(desc(lexaiMessages.createdAt))
+    .limit(limit);
+  
+  return result.reverse(); // Return in chronological order
+}
+
+export async function getLexaiMessagesBySubscription(subscriptionId: number): Promise<LexaiMessage[]> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const result = await db
+    .select()
+    .from(lexaiMessages)
+    .where(eq(lexaiMessages.subscriptionId, subscriptionId))
+    .orderBy(desc(lexaiMessages.createdAt));
+  
+  return result.reverse();
+}
+
+export async function updateLexaiMessage(id: number, data: Partial<LexaiMessage>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  await db
+    .update(lexaiMessages)
+    .set(data)
+    .where(eq(lexaiMessages.id, id));
+}
+
+// ============================================================================
+// LexAI Statistics
+// ============================================================================
+
+export async function getLexaiStats() {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const [totalSubs] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(lexaiSubscriptions);
+  
+  const [activeSubs] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(lexaiSubscriptions)
+    .where(eq(lexaiSubscriptions.isActive, true));
+  
+  const [totalMessages] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(lexaiMessages);
+  
+  return {
+    totalSubscriptions: Number(totalSubs?.count || 0),
+    activeSubscriptions: Number(activeSubs?.count || 0),
+    totalMessages: Number(totalMessages?.count || 0),
   };
 }

@@ -163,3 +163,77 @@ export const episodeProgressRelations = relations(episodeProgress, ({ one }) => 
     references: [courses.id],
   }),
 }));
+
+/**
+ * LexAI Subscriptions table - tracks monthly subscriptions for AI currency analysis
+ */
+export const lexaiSubscriptions = mysqlTable("lexaiSubscriptions", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  isActive: boolean("isActive").default(true).notNull(),
+  startDate: timestamp("startDate").defaultNow().notNull(),
+  endDate: timestamp("endDate").notNull(),
+  autoRenew: boolean("autoRenew").default(true).notNull(),
+  
+  // Payment info
+  paymentStatus: mysqlEnum("paymentStatus", ["pending", "completed", "failed", "refunded"]).default("pending").notNull(),
+  paymentAmount: int("paymentAmount").notNull(), // Monthly price in cents
+  paymentCurrency: varchar("paymentCurrency", { length: 3 }).default("USD").notNull(),
+  
+  // Usage tracking
+  messagesUsed: int("messagesUsed").default(0).notNull(),
+  messagesLimit: int("messagesLimit").default(100).notNull(), // Monthly message limit
+  
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type LexaiSubscription = typeof lexaiSubscriptions.$inferSelect;
+export type InsertLexaiSubscription = typeof lexaiSubscriptions.$inferInsert;
+
+/**
+ * LexAI Messages table - stores chat conversation history
+ */
+export const lexaiMessages = mysqlTable("lexaiMessages", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  subscriptionId: int("subscriptionId").notNull(),
+  
+  // Message content
+  role: mysqlEnum("role", ["user", "assistant", "system"]).notNull(),
+  content: text("content").notNull(),
+  imageUrl: text("imageUrl"), // For chart images uploaded by user
+  
+  // Analysis metadata (for assistant messages)
+  analysisType: varchar("analysisType", { length: 50 }), // e.g., "chart_analysis", "signal", "recommendation"
+  confidence: int("confidence"), // Confidence level 0-100
+  
+  // API tracking
+  apiRequestId: varchar("apiRequestId", { length: 255 }), // External API request ID
+  apiStatus: mysqlEnum("apiStatus", ["pending", "success", "failed"]).default("pending"),
+  
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type LexaiMessage = typeof lexaiMessages.$inferSelect;
+export type InsertLexaiMessage = typeof lexaiMessages.$inferInsert;
+
+// LexAI Relations
+export const lexaiSubscriptionsRelations = relations(lexaiSubscriptions, ({ one, many }) => ({
+  user: one(users, {
+    fields: [lexaiSubscriptions.userId],
+    references: [users.id],
+  }),
+  messages: many(lexaiMessages),
+}));
+
+export const lexaiMessagesRelations = relations(lexaiMessages, ({ one }) => ({
+  user: one(users, {
+    fields: [lexaiMessages.userId],
+    references: [users.id],
+  }),
+  subscription: one(lexaiSubscriptions, {
+    fields: [lexaiMessages.subscriptionId],
+    references: [lexaiSubscriptions.id],
+  }),
+}));

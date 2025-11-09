@@ -12,6 +12,7 @@ import AdminEpisodes from "./pages/AdminEpisodes";
 import AdminUsers from "./pages/AdminUsers";
 import MyDashboard from "./pages/MyDashboard";
 import CourseWatch from "./pages/CourseWatch";
+import LexAI from "./pages/LexAI";
 import AdminRoute from "./components/AdminRoute";
 
 function Router() {
@@ -40,7 +41,8 @@ function Router() {
         </AdminRoute>
       </Route>
       <Route path={"/dashboard"} component={MyDashboard} />
-      <Route path={"/course/:courseId"} component={CourseWatch} />
+            <Route path={"/course/:id"} component={CourseWatch} />
+      <Route path={"/lexai"} component={LexAI} />
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
     </Switch>

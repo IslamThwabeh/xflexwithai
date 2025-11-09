@@ -37,9 +37,17 @@ export default function Home() {
                       <Button variant="ghost">Admin Panel</Button>
                     </Link>
                   )}
-                  <Link href="/dashboard">
-                    <Button variant="ghost">My Courses</Button>
-                  </Link>
+            <Link href="/dashboard">
+              <Button variant="ghost">My Courses</Button>
+            </Link>
+            <Link href="/lexai">
+              <Button variant="ghost" className="flex items-center gap-2">
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                LexAI
+              </Button>
+            </Link>
                   <div className="flex items-center gap-2">
                     <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white font-semibold">
                       {user?.name?.charAt(0).toUpperCase() || "U"}

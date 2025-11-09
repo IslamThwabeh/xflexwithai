@@ -370,6 +370,104 @@ export const appRouter = router({
         }
       }),
   }),
+
+  // LexAI - AI Currency Analysis Chat
+  lexai: router({
+    // Get active subscription for current user
+    getSubscription: protectedProcedure.query(async ({ ctx }) => {
+      logger.info('[LexAI] Getting subscription', { userId: ctx.user.id });
+      const subscription = await db.getActiveLexaiSubscription(ctx.user.id);
+      return subscription;
+    }),
+
+    // Create new subscription
+    createSubscription: protectedProcedure
+      .input(z.object({
+        paymentAmount: z.number(),
+        durationMonths: z.number().default(1),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        logger.info('[LexAI] Creating subscription', { userId: ctx.user.id });
+        
+        const endDate = new Date();
+        endDate.setMonth(endDate.getMonth() + input.durationMonths);
+        
+        await db.createLexaiSubscription({
+          userId: ctx.user.id,
+          isActive: true,
+          startDate: new Date(),
+          endDate,
+          paymentStatus: 'completed',
+          paymentAmount: input.paymentAmount,
+          messagesUsed: 0,
+          messagesLimit: 100,
+        });
+        
+        return { success: true };
+      }),
+
+    // Get chat messages
+    getMessages: protectedProcedure.query(async ({ ctx }) => {
+      logger.info('[LexAI] Getting messages', { userId: ctx.user.id });
+      const messages = await db.getLexaiMessagesByUser(ctx.user.id, 100);
+      return messages;
+    }),
+
+    // Send message (user message)
+    sendMessage: protectedProcedure
+      .input(z.object({
+        content: z.string(),
+        imageUrl: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        logger.info('[LexAI] Sending message', { userId: ctx.user.id });
+        
+        // Check active subscription
+        const subscription = await db.getActiveLexaiSubscription(ctx.user.id);
+        if (!subscription) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'No active LexAI subscription' });
+        }
+        
+        // Check message limit
+        if (subscription.messagesUsed >= subscription.messagesLimit) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Monthly message limit reached' });
+        }
+        
+        // Create user message
+        await db.createLexaiMessage({
+          userId: ctx.user.id,
+          subscriptionId: subscription.id,
+          role: 'user',
+          content: input.content,
+          imageUrl: input.imageUrl,
+        });
+        
+        // Increment message count
+        await db.incrementLexaiMessageCount(subscription.id);
+        
+        // TODO: Call external analysis API here
+        // For now, return a placeholder response
+        const aiResponse = "Analysis will be provided here. The flow will be configured later via external API.";
+        
+        // Create AI response message
+        await db.createLexaiMessage({
+          userId: ctx.user.id,
+          subscriptionId: subscription.id,
+          role: 'assistant',
+          content: aiResponse,
+          apiStatus: 'success',
+        });
+        
+        return { success: true };
+      }),
+
+    // Get subscription stats (admin)
+    getStats: adminProcedure.query(async () => {
+      logger.info('[LexAI] Getting stats');
+      const stats = await db.getLexaiStats();
+      return stats;
+    }),
+  }),
 });
 
 export type AppRouter = typeof appRouter;

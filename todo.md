@@ -98,3 +98,16 @@
 - [x] Add image/video preview after upload
 - [ ] Add drag-and-drop file upload support (future enhancement)
 - [ ] Test complete admin workflow with file uploads
+
+
+## LexAI Chat Feature (New Request)
+- [x] Design database schema for LexAI subscriptions and messages
+- [x] Create LexAI subscription table with monthly billing
+- [x] Create chat messages table with user/AI messages
+- [x] Implement subscription management backend procedures
+- [x] Build LexAI chat interface with message history
+- [x] Add image upload support for chart analysis
+- [x] Integrate with external analysis API (user will configure flow later)
+- [x] Add subscription status check before allowing chat access
+- [ ] Create subscription purchase/renewal flow
+- [ ] Test complete LexAI workflow
