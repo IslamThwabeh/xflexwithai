@@ -26,3 +26,17 @@
 - [ ] Test public user flow
 - [ ] Create initial checkpoint
 - [ ] Deploy to production
+
+
+## Bug Fixes & Improvements
+- [x] Remove "Admin Panel" link from public homepage (only show for logged-in admins)
+- [x] Fix user display name showing "Meqdad Thwabeh" instead of actual logged-in user
+- [x] Create separate admin login page
+- [x] Separate admin users from regular users in statistics (admins don't count as users)
+- [ ] Update sidebar navigation for future LexAI subscription feature
+
+## Future Features (LexAI)
+- [ ] Design LexAI subscription model (monthly)
+- [ ] Implement LexAI chat interface for currency analysis
+- [ ] Integrate OpenAI API for LexAI conversations
+- [ ] Add LexAI subscription management to user dashboard

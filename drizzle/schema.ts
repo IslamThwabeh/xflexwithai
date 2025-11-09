@@ -10,7 +10,6 @@ export const users = mysqlTable("users", {
   name: text("name"),
   email: varchar("email", { length: 320 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
-  role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
   phone: varchar("phone", { length: 20 }),
   emailVerified: boolean("emailVerified").default(false).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -20,6 +19,24 @@ export const users = mysqlTable("users", {
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
+
+/**
+ * Admins table - separate from regular users
+ * Admins manage the platform but are not counted as students/users
+ */
+export const admins = mysqlTable("admins", {
+  id: int("id").autoincrement().primaryKey(),
+  openId: varchar("openId", { length: 64 }).notNull().unique(),
+  name: text("name"),
+  email: varchar("email", { length: 320 }),
+  loginMethod: varchar("loginMethod", { length: 64 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
+});
+
+export type Admin = typeof admins.$inferSelect;
+export type InsertAdmin = typeof admins.$inferInsert;
 
 /**
  * Courses table - stores trading course information

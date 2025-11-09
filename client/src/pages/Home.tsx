@@ -9,6 +9,9 @@ import { Link } from "wouter";
 export default function Home() {
   const { user, isAuthenticated } = useAuth();
   const { data: courses, isLoading } = trpc.courses.list.useQuery();
+  const { data: adminCheck } = trpc.auth.isAdmin.useQuery(undefined, {
+    enabled: isAuthenticated,
+  });
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -22,7 +25,7 @@ export default function Home() {
           <nav className="flex items-center gap-4">
             {isAuthenticated ? (
               <>
-                {user?.role === 'admin' && (
+                {adminCheck?.isAdmin && (
                   <Link href="/admin">
                     <Button variant="ghost">Admin Panel</Button>
                   </Link>

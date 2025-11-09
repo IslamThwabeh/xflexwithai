@@ -2,6 +2,7 @@ import { eq, desc, and, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { 
   InsertUser, users, 
+  InsertAdmin, admins,
   courses, Course, InsertCourse,
   episodes, Episode, InsertEpisode,
   enrollments, Enrollment, InsertEnrollment,
@@ -24,7 +25,7 @@ export async function getDb() {
 }
 
 // ============================================================================
-// User Management
+// User Management (Regular Users/Students)
 // ============================================================================
 
 export async function upsertUser(user: InsertUser): Promise<void> {
@@ -60,13 +61,6 @@ export async function upsertUser(user: InsertUser): Promise<void> {
     if (user.lastSignedIn !== undefined) {
       values.lastSignedIn = user.lastSignedIn;
       updateSet.lastSignedIn = user.lastSignedIn;
-    }
-    if (user.role !== undefined) {
-      values.role = user.role;
-      updateSet.role = user.role;
-    } else if (user.openId === ENV.ownerOpenId) {
-      values.role = 'admin';
-      updateSet.role = 'admin';
     }
 
     if (!values.lastSignedIn) {
@@ -108,6 +102,79 @@ export async function getUserById(id: number) {
   if (!db) return undefined;
   const result = await db.select().from(users).where(eq(users.id, id)).limit(1);
   return result.length > 0 ? result[0] : undefined;
+}
+
+// ============================================================================
+// Admin Management (Platform Administrators)
+// ============================================================================
+
+export async function upsertAdmin(admin: InsertAdmin): Promise<void> {
+  if (!admin.openId) {
+    throw new Error("Admin openId is required for upsert");
+  }
+
+  const db = await getDb();
+  if (!db) {
+    console.warn("[Database] Cannot upsert admin: database not available");
+    return;
+  }
+
+  try {
+    const values: InsertAdmin = {
+      openId: admin.openId,
+    };
+    const updateSet: Record<string, unknown> = {};
+
+    const textFields = ["name", "email", "loginMethod"] as const;
+    type TextField = (typeof textFields)[number];
+
+    const assignNullable = (field: TextField) => {
+      const value = admin[field];
+      if (value === undefined) return;
+      const normalized = value ?? null;
+      values[field] = normalized;
+      updateSet[field] = normalized;
+    };
+
+    textFields.forEach(assignNullable);
+
+    if (admin.lastSignedIn !== undefined) {
+      values.lastSignedIn = admin.lastSignedIn;
+      updateSet.lastSignedIn = admin.lastSignedIn;
+    }
+
+    if (!values.lastSignedIn) {
+      values.lastSignedIn = new Date();
+    }
+
+    if (Object.keys(updateSet).length === 0) {
+      updateSet.lastSignedIn = new Date();
+    }
+
+    await db.insert(admins).values(values).onDuplicateKeyUpdate({
+      set: updateSet,
+    });
+  } catch (error) {
+    console.error("[Database] Failed to upsert admin:", error);
+    throw error;
+  }
+}
+
+export async function getAdminByOpenId(openId: string) {
+  const db = await getDb();
+  if (!db) {
+    console.warn("[Database] Cannot get admin: database not available");
+    return undefined;
+  }
+
+  const result = await db.select().from(admins).where(eq(admins.openId, openId)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+export async function getAllAdmins() {
+  const db = await getDb();
+  if (!db) return [];
+  return await db.select().from(admins).orderBy(desc(admins.createdAt));
 }
 
 // ============================================================================
@@ -308,6 +375,7 @@ export async function getDashboardStats() {
     activeEnrollments: 0,
   };
 
+  // Count only regular users, not admins
   const [totalUsersResult] = await db.select({ count: sql<number>`count(*)` }).from(users);
   const [totalCoursesResult] = await db.select({ count: sql<number>`count(*)` }).from(courses);
   const [totalEnrollmentsResult] = await db.select({ count: sql<number>`count(*)` }).from(enrollments);

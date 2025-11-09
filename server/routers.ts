@@ -7,12 +7,13 @@ import { z } from "zod";
 import * as db from "./db";
 import { storagePut } from "./storage";
 
-// Admin-only procedure
-const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
-  if (ctx.user.role !== 'admin') {
+// Admin-only procedure - checks if user is in admins table
+const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
+  const admin = await db.getAdminByOpenId(ctx.user.openId);
+  if (!admin) {
     throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
   }
-  return next({ ctx });
+  return next({ ctx: { ...ctx, admin } });
 });
 
 export const appRouter = router({
@@ -20,6 +21,13 @@ export const appRouter = router({
   
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
+    
+    // Check if current user is an admin
+    isAdmin: protectedProcedure.query(async ({ ctx }) => {
+      const admin = await db.getAdminByOpenId(ctx.user.openId);
+      return { isAdmin: !!admin, admin };
+    }),
+    
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
