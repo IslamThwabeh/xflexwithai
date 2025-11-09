@@ -1,42 +1,48 @@
-# XFlex Trading Academy - Project TODO
+# XFlex Trading Academy - Fresh Start TODO
 
-## Database & Backend
-- [x] Design and implement database schema (courses, episodes, enrollments)
-- [x] Create backend procedures for course management
-- [x] Create backend procedures for user enrollment management
-- [ ] Implement file upload for course videos and thumbnails
+## Phase 1: Homepage with Registration-First Design
+- [x] Design hero section with prominent registration CTA
+- [x] Add login/signup buttons in header
+- [x] Create attractive hero banner with value proposition
+- [x] Add "Start Learning" and "Browse Courses" CTAs
+- [x] Implement course showcase section
+- [x] Add features/benefits section
+- [x] Create footer with newsletter signup
 
-## Admin Panel
-- [x] Create admin dashboard with statistics
-- [x] Build course management interface (list, create, edit, delete)
-- [ ] Build episode management interface (list, create, edit, delete)
-- [ ] Build user management interface (list, view details)
-- [ ] Build enrollment management interface (list, view details)
-- [ ] Implement video upload functionality with progress
+## Phase 2: Admin Panel - Course Management
+- [x] Build admin dashboard with statistics
+- [x] Create course management interface (list, create, edit, delete)
+- [x] Add course form with bilingual support (English/Arabic)
+- [ ] Implement course thumbnail upload
+- [x] Add course status toggle (published/draft)
+- [ ] Show course statistics (enrollments, revenue)
 
-## Public Frontend
-- [x] Design and build homepage with course listings
-- [ ] Create course detail pages
-- [ ] Create episode viewing pages
-- [ ] Implement user enrollment flow
-- [x] Add bilingual support (Arabic/English)
+## Phase 3: Admin Panel - Episode Management
+- [x] Create episode management interface per course
+- [x] Add episode form with bilingual support
+- [x] Implement video upload functionality
+- [x] Add episode ordering/reordering
+- [x] Mark episodes as free/premium
+- [ ] Show episode watch statistics
 
-## Testing & Deployment
-- [ ] Test all admin functions
-- [ ] Test public user flow
-- [ ] Create initial checkpoint
-- [ ] Deploy to production
+## Phase 4: Admin Panel - User & Subscription Management
+- [x] Create user list interface
+- [x] Show user details and enrollment history
+- [x] Add subscription management interface
+- [x] Implement subscription status controls (active/inactive)
+- [x] Add payment tracking
+- [x] Show revenue analytics
 
+## Phase 5: Database Schema
+- [ ] Design courses table
+- [ ] Design episodes table
+- [ ] Design enrollments table
+- [ ] Design subscriptions table (for LexAI future feature)
+- [ ] Add reviews/ratings table
+- [ ] Create indexes for performance
 
-## Bug Fixes & Improvements
-- [x] Remove "Admin Panel" link from public homepage (only show for logged-in admins)
-- [x] Fix user display name showing "Meqdad Thwabeh" instead of actual logged-in user
-- [x] Create separate admin login page
-- [x] Separate admin users from regular users in statistics (admins don't count as users)
-- [ ] Update sidebar navigation for future LexAI subscription feature
-
-## Future Features (LexAI)
-- [ ] Design LexAI subscription model (monthly)
-- [ ] Implement LexAI chat interface for currency analysis
-- [ ] Integrate OpenAI API for LexAI conversations
-- [ ] Add LexAI subscription management to user dashboard
+## Phase 6: Deployment
+- [ ] Test all features locally
+- [ ] Create final checkpoint
+- [ ] Provide GitHub push instructions
+- [ ] Document deployment steps

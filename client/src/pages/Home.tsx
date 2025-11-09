@@ -1,9 +1,10 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { APP_TITLE, getLoginUrl } from "@/const";
 import { trpc } from "@/lib/trpc";
-import { BookOpen, GraduationCap, TrendingUp, LogIn } from "lucide-react";
+import { BookOpen, GraduationCap, TrendingUp, Users, Video, Award, ArrowRight, Star } from "lucide-react";
 import { Link } from "wouter";
 
 export default function Home() {
@@ -14,109 +15,213 @@ export default function Home() {
   });
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col bg-gradient-to-br from-blue-50 via-white to-purple-50">
       {/* Header */}
-      <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container flex h-16 items-center justify-between">
-          <div className="flex items-center gap-2">
-            <GraduationCap className="h-6 w-6" />
-            <span className="text-xl font-bold">{APP_TITLE}</span>
-          </div>
-          <nav className="flex items-center gap-4">
-            {isAuthenticated ? (
-              <>
-                {adminCheck?.isAdmin && (
-                  <Link href="/admin">
-                    <Button variant="ghost">Admin Panel</Button>
+      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
+        <div className="container mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
+            <Link href="/">
+              <div className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity">
+                <GraduationCap className="h-8 w-8 text-blue-600" />
+                <span className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                  {APP_TITLE}
+                </span>
+              </div>
+            </Link>
+            
+            <nav className="flex items-center gap-4">
+              {isAuthenticated ? (
+                <>
+                  {adminCheck?.isAdmin && (
+                    <Link href="/admin">
+                      <Button variant="ghost">Admin Panel</Button>
+                    </Link>
+                  )}
+                  <Link href="/my-courses">
+                    <Button variant="ghost">My Courses</Button>
                   </Link>
-                )}
-                <Link href="/my-courses">
-                  <Button variant="ghost">My Courses</Button>
-                </Link>
-                <span className="text-sm text-muted-foreground">{user?.name}</span>
-              </>
-            ) : (
-              <a href={getLoginUrl()}>
-                <Button>
-                  <LogIn className="mr-2 h-4 w-4" />
-                  Login
-                </Button>
-              </a>
-            )}
-          </nav>
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white font-semibold">
+                      {user?.name?.charAt(0).toUpperCase() || "U"}
+                    </div>
+                    <span className="text-sm font-medium">{user?.name}</span>
+                  </div>
+                </>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <a href={getLoginUrl()}>
+                    <Button variant="ghost">Login</Button>
+                  </a>
+                  <a href={getLoginUrl()}>
+                    <Button className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700">
+                      Start Learning Free
+                    </Button>
+                  </a>
+                </div>
+              )}
+            </nav>
+          </div>
         </div>
       </header>
 
-      {/* Hero Section */}
-      <section className="bg-gradient-to-b from-blue-50 to-background py-20">
-        <div className="container">
-          <div className="max-w-3xl mx-auto text-center space-y-6">
-            <h1 className="text-5xl font-bold tracking-tight">
-              Master Trading with XFlex Academy
-            </h1>
-            <p className="text-xl text-muted-foreground">
-              Learn from industry experts and take your trading skills to the next level with our comprehensive courses
-            </p>
-            <div className="flex gap-4 justify-center">
-              <a href="#courses">
-                <Button size="lg">
-                  <BookOpen className="mr-2 h-5 w-5" />
-                  Browse Courses
-                </Button>
-              </a>
-              {!isAuthenticated && (
+      {/* Hero Section - Registration First */}
+      <section className="relative overflow-hidden bg-gradient-to-br from-blue-600 via-purple-600 to-indigo-700 text-white">
+        <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4xIj48cGF0aCBkPSJNMzYgMzRjMC0yLjIxLTEuNzktNC00LTRzLTQgMS43OS00IDQgMS43OSA0IDQgNCA0LTEuNzkgNC00em0wLTEwYzAtMi4yMS0xLjc5LTQtNC00cy00IDEuNzktNCA0IDEuNzkgNCA0IDQgNC0xLjc5IDQtNHptMC0xMGMwLTIuMjEtMS43OS00LTQtNHMtNCAxLjc5LTQgNCAxLjc5IDQgNCA0IDQtMS43OSA0LTR6TTEyIDM0YzAtMi4yMS0xLjc5LTQtNC00cy00IDEuNzktNCA0IDEuNzkgNCA0IDQgNC0xLjc5IDQtNHptMC0xMGMwLTIuMjEtMS43OS00LTQtNHMtNCAxLjc5LTQgNCAxLjc5IDQgNCA0IDQtMS43OSA0LTR6bTAtMTBjMC0yLjIxLTEuNzktNC00LTRzLTQgMS43OS00IDQgMS43OSA0IDQgNCA0LTEuNzkgNC00ek0yNCAzNGMwLTIuMjEtMS43OS00LTQtNHMtNCAxLjc5LTQgNCAxLjc5IDQgNCA0IDQtMS43OSA0LTR6bTAtMTBjMC0yLjIxLTEuNzktNC00LTRzLTQgMS43OS00IDQgMS43OSA0IDQgNCA0LTEuNzkgNC00em0wLTEwYzAtMi4yMS0xLjc5LTQtNC00cy00IDEuNzktNCA0IDEuNzkgNCA0IDQgNC0xLjc5IDQtNHoiLz48L2c+PC9nPjwvc3ZnPg==')] opacity-20"></div>
+        
+        <div className="container mx-auto px-4 py-20 relative">
+          <div className="grid md:grid-cols-2 gap-12 items-center">
+            {/* Left: Value Proposition */}
+            <div className="space-y-6">
+              <h1 className="text-5xl md:text-6xl font-bold leading-tight">
+                Master Trading with
+                <span className="block bg-gradient-to-r from-yellow-300 to-orange-300 bg-clip-text text-transparent">
+                  Expert Guidance
+                </span>
+              </h1>
+              <p className="text-xl text-blue-100 leading-relaxed">
+                Learn from industry experts and take your trading skills to the next level with our comprehensive courses. Start your journey to financial freedom today.
+              </p>
+              
+              <div className="flex flex-wrap gap-4 pt-4">
                 <a href={getLoginUrl()}>
-                  <Button size="lg" variant="outline">
-                    Get Started
+                  <Button size="lg" className="bg-white text-blue-600 hover:bg-blue-50 font-semibold px-8 py-6 text-lg">
+                    <BookOpen className="mr-2 h-5 w-5" />
+                    Browse Courses
                   </Button>
                 </a>
-              )}
+                <a href={getLoginUrl()}>
+                  <Button size="lg" variant="outline" className="border-2 border-white text-white hover:bg-white/10 font-semibold px-8 py-6 text-lg">
+                    Start Free Trial
+                    <ArrowRight className="ml-2 h-5 w-5" />
+                  </Button>
+                </a>
+              </div>
+
+              {/* Stats */}
+              <div className="grid grid-cols-3 gap-6 pt-8">
+                <div>
+                  <div className="text-3xl font-bold">10K+</div>
+                  <div className="text-blue-200 text-sm">Active Students</div>
+                </div>
+                <div>
+                  <div className="text-3xl font-bold">50+</div>
+                  <div className="text-blue-200 text-sm">Expert Courses</div>
+                </div>
+                <div>
+                  <div className="text-3xl font-bold">4.9</div>
+                  <div className="text-blue-200 text-sm flex items-center gap-1">
+                    <Star className="h-4 w-4 fill-yellow-300 text-yellow-300" />
+                    Rating
+                  </div>
+                </div>
+              </div>
             </div>
+
+            {/* Right: Quick Registration Card */}
+            <Card className="shadow-2xl border-0">
+              <CardHeader className="text-center pb-4">
+                <CardTitle className="text-2xl">Get Started Today</CardTitle>
+                <CardDescription>
+                  Join thousands of successful traders
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-3">
+                  <Input 
+                    placeholder="Enter your email" 
+                    type="email"
+                    className="h-12"
+                    disabled
+                  />
+                  <Input 
+                    placeholder="Choose a password" 
+                    type="password"
+                    className="h-12"
+                    disabled
+                  />
+                </div>
+                
+                <a href={getLoginUrl()} className="block">
+                  <Button className="w-full h-12 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-lg font-semibold">
+                    Create Free Account
+                  </Button>
+                </a>
+
+                <div className="text-center text-sm text-muted-foreground">
+                  Already have an account?{" "}
+                  <a href={getLoginUrl()} className="text-blue-600 hover:underline font-medium">
+                    Sign in
+                  </a>
+                </div>
+
+                <div className="pt-4 border-t">
+                  <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                    <Award className="h-4 w-4 text-green-600" />
+                    <span>30-day money-back guarantee</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         </div>
       </section>
 
-      {/* Features */}
-      <section className="py-16 bg-background">
-        <div className="container">
-          <div className="grid gap-8 md:grid-cols-3">
-            <div className="text-center space-y-4">
-              <div className="mx-auto w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
-                <BookOpen className="h-6 w-6 text-blue-600" />
-              </div>
-              <h3 className="text-xl font-semibold">Expert-Led Courses</h3>
-              <p className="text-muted-foreground">
-                Learn from experienced traders with proven track records
-              </p>
-            </div>
-            <div className="text-center space-y-4">
-              <div className="mx-auto w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
-                <TrendingUp className="h-6 w-6 text-green-600" />
-              </div>
-              <h3 className="text-xl font-semibold">Practical Strategies</h3>
-              <p className="text-muted-foreground">
-                Apply real-world trading strategies that work in today's markets
-              </p>
-            </div>
-            <div className="text-center space-y-4">
-              <div className="mx-auto w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center">
-                <GraduationCap className="h-6 w-6 text-purple-600" />
-              </div>
-              <h3 className="text-xl font-semibold">Lifetime Access</h3>
-              <p className="text-muted-foreground">
-                Get unlimited access to course materials and future updates
-              </p>
-            </div>
+      {/* Features Section */}
+      <section className="py-20 bg-white">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl font-bold mb-4">Why Choose XFlex Academy?</h2>
+            <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
+              Everything you need to become a successful trader in one place
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-8">
+            <Card className="border-2 hover:border-blue-500 transition-all hover:shadow-lg">
+              <CardHeader>
+                <div className="w-14 h-14 rounded-full bg-blue-100 flex items-center justify-center mb-4">
+                  <Video className="h-7 w-7 text-blue-600" />
+                </div>
+                <CardTitle>Expert-Led Courses</CardTitle>
+                <CardDescription>
+                  Learn from experienced traders with proven track records in the markets
+                </CardDescription>
+              </CardHeader>
+            </Card>
+
+            <Card className="border-2 hover:border-purple-500 transition-all hover:shadow-lg">
+              <CardHeader>
+                <div className="w-14 h-14 rounded-full bg-purple-100 flex items-center justify-center mb-4">
+                  <TrendingUp className="h-7 w-7 text-purple-600" />
+                </div>
+                <CardTitle>Practical Strategies</CardTitle>
+                <CardDescription>
+                  Apply real-world trading strategies that work in today's markets
+                </CardDescription>
+              </CardHeader>
+            </Card>
+
+            <Card className="border-2 hover:border-green-500 transition-all hover:shadow-lg">
+              <CardHeader>
+                <div className="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center mb-4">
+                  <Users className="h-7 w-7 text-green-600" />
+                </div>
+                <CardTitle>Lifetime Access</CardTitle>
+                <CardDescription>
+                  Get unlimited access to course materials and future updates
+                </CardDescription>
+              </CardHeader>
+            </Card>
           </div>
         </div>
       </section>
 
-      {/* Courses Section */}
-      <section id="courses" className="py-16 bg-muted/50">
-        <div className="container">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold mb-4">Available Courses</h2>
-            <p className="text-muted-foreground">
+      {/* Available Courses Section */}
+      <section className="py-20 bg-gradient-to-br from-gray-50 to-blue-50">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl font-bold mb-4">Available Courses</h2>
+            <p className="text-xl text-muted-foreground">
               Choose from our selection of trading courses designed for all skill levels
             </p>
           </div>
@@ -125,44 +230,115 @@ export default function Home() {
             <div className="text-center py-12">
               <p className="text-muted-foreground">Loading courses...</p>
             </div>
-          ) : !courses || courses.length === 0 ? (
-            <div className="text-center py-12">
-              <p className="text-muted-foreground">No courses available yet. Check back soon!</p>
-            </div>
-          ) : (
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          ) : courses && courses.length > 0 ? (
+            <div className="grid md:grid-cols-3 gap-8">
               {courses.map((course) => (
-                <Card key={course.id} className="flex flex-col">
+                <Card key={course.id} className="hover:shadow-xl transition-all border-2 hover:border-blue-500">
+                  <div className="aspect-video bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center">
+                    <BookOpen className="h-16 w-16 text-white opacity-50" />
+                  </div>
                   <CardHeader>
-                    <CardTitle>{course.titleEn}</CardTitle>
-                    <CardDescription className="line-clamp-2">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-semibold px-3 py-1 rounded-full bg-blue-100 text-blue-700">
+                        {course.level}
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
+                        <span className="text-sm font-semibold">4.8</span>
+                      </div>
+                    </div>
+                    <CardTitle className="line-clamp-2">{course.titleEn}</CardTitle>
+                    <CardDescription className="line-clamp-3">
                       {course.descriptionEn}
                     </CardDescription>
                   </CardHeader>
-                  <CardContent className="flex-1">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="capitalize text-muted-foreground">{course.level}</span>
-                      <span className="font-semibold text-lg">
-                        ${(course.price / 100).toFixed(2)}
-                      </span>
+                  <CardContent>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-2xl font-bold text-blue-600">
+                          ${course.price}
+                        </div>
+                        <div className="text-xs text-muted-foreground">One-time payment</div>
+                      </div>
+                      <Button className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700">
+                        Enroll Now
+                      </Button>
                     </div>
                   </CardContent>
-                  <CardFooter>
-                    <Link href={`/course/${course.id}`} className="w-full">
-                      <Button className="w-full">View Course</Button>
-                    </Link>
-                  </CardFooter>
                 </Card>
               ))}
             </div>
+          ) : (
+            <Card className="max-w-md mx-auto text-center py-12">
+              <CardContent>
+                <BookOpen className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
+                <p className="text-muted-foreground mb-4">
+                  No courses available yet. Check back soon!
+                </p>
+                {adminCheck?.isAdmin && (
+                  <Link href="/admin/courses">
+                    <Button>Add Your First Course</Button>
+                  </Link>
+                )}
+              </CardContent>
+            </Card>
           )}
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="border-t py-8 mt-auto">
-        <div className="container text-center text-sm text-muted-foreground">
-          <p>&copy; {new Date().getFullYear()} {APP_TITLE}. All rights reserved.</p>
+      <footer className="bg-gray-900 text-white py-12">
+        <div className="container mx-auto px-4">
+          <div className="grid md:grid-cols-4 gap-8">
+            <div>
+              <div className="flex items-center gap-2 mb-4">
+                <GraduationCap className="h-6 w-6" />
+                <span className="text-xl font-bold">{APP_TITLE}</span>
+              </div>
+              <p className="text-gray-400 text-sm">
+                Empowering traders worldwide with expert knowledge and practical skills.
+              </p>
+            </div>
+
+            <div>
+              <h3 className="font-semibold mb-4">Quick Links</h3>
+              <ul className="space-y-2 text-sm text-gray-400">
+                <li><a href="#" className="hover:text-white transition-colors">About Us</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">Courses</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">Pricing</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">Contact</a></li>
+              </ul>
+            </div>
+
+            <div>
+              <h3 className="font-semibold mb-4">Support</h3>
+              <ul className="space-y-2 text-sm text-gray-400">
+                <li><a href="#" className="hover:text-white transition-colors">Help Center</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">Terms of Service</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">Privacy Policy</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">FAQ</a></li>
+              </ul>
+            </div>
+
+            <div>
+              <h3 className="font-semibold mb-4">Newsletter</h3>
+              <p className="text-sm text-gray-400 mb-4">
+                Subscribe to get trading tips and course updates
+              </p>
+              <div className="flex gap-2">
+                <Input 
+                  placeholder="Your email" 
+                  className="bg-gray-800 border-gray-700 text-white"
+                  disabled
+                />
+                <Button variant="secondary">Subscribe</Button>
+              </div>
+            </div>
+          </div>
+
+          <div className="border-t border-gray-800 mt-12 pt-8 text-center text-sm text-gray-400">
+            © 2025 {APP_TITLE}. All rights reserved.
+          </div>
         </div>
       </footer>
     </div>

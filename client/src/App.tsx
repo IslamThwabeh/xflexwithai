@@ -8,6 +8,8 @@ import Home from "./pages/Home";
 import AdminLogin from "./pages/AdminLogin";
 import AdminDashboard from "./pages/AdminDashboard";
 import AdminCourses from "./pages/AdminCourses";
+import AdminEpisodes from "./pages/AdminEpisodes";
+import AdminUsers from "./pages/AdminUsers";
 import AdminRoute from "./components/AdminRoute";
 
 function Router() {
@@ -23,6 +25,16 @@ function Router() {
       <Route path={"/admin/courses"}>
         <AdminRoute>
           <AdminCourses />
+        </AdminRoute>
+      </Route>
+      <Route path={"/admin/courses/:courseId/episodes"}>
+        <AdminRoute>
+          <AdminEpisodes />
+        </AdminRoute>
+      </Route>
+      <Route path={"/admin/users"}>
+        <AdminRoute>
+          <AdminUsers />
         </AdminRoute>
       </Route>
       <Route path={"/404"} component={NotFound} />
