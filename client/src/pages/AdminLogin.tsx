@@ -2,8 +2,11 @@ import { LoginForm } from "@/components/LoginForm";
 import { APP_TITLE } from "@/const";
 import { Link } from "wouter";
 import { GraduationCap } from "lucide-react";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 export default function AdminLogin() {
+  const { t } = useLanguage();
+  
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800 p-4">
       <div className="mb-8 text-center">
@@ -16,7 +19,7 @@ export default function AdminLogin() {
           </div>
         </Link>
         <p className="text-slate-300">
-          Admin Portal
+          {t('auth.login.adminTitle')}
         </p>
       </div>
 
@@ -25,7 +28,7 @@ export default function AdminLogin() {
       <div className="mt-6">
         <Link href="/">
           <button className="text-slate-400 hover:text-white transition-colors">
-            ← Back to Home
+            {t('auth.page.backToHome')}
           </button>
         </Link>
       </div>

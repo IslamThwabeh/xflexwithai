@@ -6,8 +6,10 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2 } from "lucide-react";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 export function RegisterForm({ onSuccess }: { onSuccess?: () => void }) {
+  const { t } = useLanguage();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -31,17 +33,17 @@ export function RegisterForm({ onSuccess }: { onSuccess?: () => void }) {
 
     // Validation
     if (!name || !email || !password) {
-      setError("All fields are required");
+      setError(t('auth.register.allFieldsRequired'));
       return;
     }
 
     if (password !== confirmPassword) {
-      setError("Passwords do not match");
+      setError(t('auth.register.passwordMismatch'));
       return;
     }
 
     if (password.length < 8) {
-      setError("Password must be at least 8 characters");
+      setError(t('auth.register.passwordTooShort'));
       return;
     }
 
@@ -51,8 +53,8 @@ export function RegisterForm({ onSuccess }: { onSuccess?: () => void }) {
   return (
     <Card className="w-full max-w-md">
       <CardHeader>
-        <CardTitle>Create Account</CardTitle>
-        <CardDescription>Sign up to start learning trading</CardDescription>
+        <CardTitle>{t('auth.register.title')}</CardTitle>
+        <CardDescription>{t('auth.register.description')}</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -63,52 +65,52 @@ export function RegisterForm({ onSuccess }: { onSuccess?: () => void }) {
           )}
 
           <div className="space-y-2">
-            <Label htmlFor="name">Full Name</Label>
+            <Label htmlFor="name">{t('auth.register.fullName')}</Label>
             <Input
               id="name"
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="John Doe"
+              placeholder={t('auth.register.namePlaceholder')}
               required
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="email">{t('auth.register.email')}</Label>
             <Input
               id="email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="john@example.com"
+              placeholder={t('auth.register.emailPlaceholder')}
               required
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
+            <Label htmlFor="password">{t('auth.register.password')}</Label>
             <Input
               id="password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
+              placeholder={t('auth.register.passwordPlaceholder')}
               required
             />
             <p className="text-sm text-muted-foreground">
-              At least 8 characters with 1 uppercase, 1 lowercase, and 1 number
+              {t('auth.register.passwordHint')}
             </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="confirmPassword">Confirm Password</Label>
+            <Label htmlFor="confirmPassword">{t('auth.register.confirmPassword')}</Label>
             <Input
               id="confirmPassword"
               type="password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="••••••••"
+              placeholder={t('auth.register.passwordPlaceholder')}
               required
             />
           </div>
@@ -121,10 +123,10 @@ export function RegisterForm({ onSuccess }: { onSuccess?: () => void }) {
             {registerMutation.isPending ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Creating Account...
+                {t('auth.register.submitting')}
               </>
             ) : (
-              "Create Account"
+              t('auth.register.submit')
             )}
           </Button>
         </form>

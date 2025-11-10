@@ -184,3 +184,14 @@
 - [x] Test RTL display and punctuation positioning
 - [x] Verify language switcher works correctly
 - [x] Set default language to Arabic
+
+
+## Translate Authentication Pages (Login & Registration)
+- [x] Add Arabic translation keys for auth pages to LanguageContext
+- [x] Update LoginForm component to use translations
+- [x] Update RegisterForm component to use translations
+- [x] Update Auth page to use translations
+- [x] Update AdminLogin page to use translations
+- [x] Test login form in Arabic and English
+- [x] Test registration form in Arabic and English
+- [x] Verify form validation messages in Arabic

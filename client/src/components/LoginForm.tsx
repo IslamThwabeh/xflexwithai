@@ -6,8 +6,10 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2 } from "lucide-react";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 export function LoginForm({ onSuccess, isAdmin = false }: { onSuccess?: () => void; isAdmin?: boolean }) {
+  const { t } = useLanguage();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -39,7 +41,7 @@ export function LoginForm({ onSuccess, isAdmin = false }: { onSuccess?: () => vo
     setError("");
 
     if (!email || !password) {
-      setError("All fields are required");
+      setError(t('auth.login.allFieldsRequired'));
       return;
     }
 
@@ -55,9 +57,9 @@ export function LoginForm({ onSuccess, isAdmin = false }: { onSuccess?: () => vo
   return (
     <Card className="w-full max-w-md">
       <CardHeader>
-        <CardTitle>{isAdmin ? "Admin Login" : "Welcome Back"}</CardTitle>
+        <CardTitle>{isAdmin ? t('auth.login.adminTitle') : t('auth.login.title')}</CardTitle>
         <CardDescription>
-          {isAdmin ? "Sign in to access the admin panel" : "Sign in to continue learning"}
+          {isAdmin ? t('auth.login.adminDescription') : t('auth.login.description')}
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -69,25 +71,25 @@ export function LoginForm({ onSuccess, isAdmin = false }: { onSuccess?: () => vo
           )}
 
           <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="email">{t('auth.login.email')}</Label>
             <Input
               id="email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="john@example.com"
+              placeholder={t('auth.login.emailPlaceholder')}
               required
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
+            <Label htmlFor="password">{t('auth.login.password')}</Label>
             <Input
               id="password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
+              placeholder={t('auth.login.passwordPlaceholder')}
               required
             />
           </div>
@@ -100,10 +102,10 @@ export function LoginForm({ onSuccess, isAdmin = false }: { onSuccess?: () => vo
             {isPending ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Signing In...
+                {t('auth.login.submitting')}
               </>
             ) : (
-              "Sign In"
+              t('auth.login.submit')
             )}
           </Button>
         </form>

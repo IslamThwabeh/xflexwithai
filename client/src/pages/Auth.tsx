@@ -4,8 +4,10 @@ import { RegisterForm } from "@/components/RegisterForm";
 import { Button } from "@/components/ui/button";
 import { APP_TITLE } from "@/const";
 import { Link } from "wouter";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 export default function Auth() {
+  const { t } = useLanguage();
   const [showLogin, setShowLogin] = useState(true);
 
   return (
@@ -17,7 +19,7 @@ export default function Auth() {
           </h1>
         </Link>
         <p className="text-gray-600 dark:text-gray-300 mt-2">
-          Master the art of trading
+          {t('auth.page.tagline')}
         </p>
       </div>
 
@@ -31,11 +33,11 @@ export default function Auth() {
         >
           {showLogin ? (
             <>
-              Don't have an account? <span className="font-semibold ml-1">Sign up</span>
+              {t('auth.page.switchToRegister')} <span className="font-semibold ml-1">{t('auth.page.signUp')}</span>
             </>
           ) : (
             <>
-              Already have an account? <span className="font-semibold ml-1">Sign in</span>
+              {t('auth.page.switchToLogin')} <span className="font-semibold ml-1">{t('auth.page.signIn')}</span>
             </>
           )}
         </Button>
@@ -44,7 +46,7 @@ export default function Auth() {
       <div className="mt-4">
         <Link href="/">
           <Button variant="ghost" className="text-gray-600 dark:text-gray-300">
-            ← Back to Home
+            {t('auth.page.backToHome')}
           </Button>
         </Link>
       </div>
