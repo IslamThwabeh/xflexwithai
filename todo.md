@@ -125,3 +125,16 @@
 - [x] Verify all environment variables are documented
 - [ ] Test GitHub push workflow (user action required)
 - [x] Provide Railway deployment instructions
+
+
+## Language Switcher Feature (New Request)
+- [x] Create language context and provider
+- [x] Add language switcher component to header/navigation
+- [x] Implement RTL (Right-to-Left) support for Arabic
+- [x] Create translation files for English and Arabic
+- [x] Translate homepage content (hero section and navigation)
+- [ ] Translate course pages content
+- [ ] Translate admin panel content
+- [ ] Translate LexAI chat content
+- [x] Store language preference in localStorage (implemented in LanguageContext)
+- [x] Test language switching on homepage (working with عربي button visible)

@@ -6,9 +6,12 @@ import { APP_TITLE, getLoginUrl } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { BookOpen, GraduationCap, TrendingUp, Users, Video, Award, ArrowRight, Star } from "lucide-react";
 import { Link } from "wouter";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 export default function Home() {
   const { user, isAuthenticated } = useAuth();
+  const { t } = useLanguage();
   const { data: courses, isLoading } = trpc.courses.list.useQuery();
   const { data: adminCheck } = trpc.auth.isAdmin.useQuery(undefined, {
     enabled: isAuthenticated,
@@ -30,22 +33,23 @@ export default function Home() {
             </Link>
             
             <nav className="flex items-center gap-4">
+              <LanguageSwitcher />
               {isAuthenticated ? (
                 <>
                   {adminCheck?.isAdmin && (
                     <Link href="/admin">
-                      <Button variant="ghost">Admin Panel</Button>
+                      <Button variant="ghost">{t('nav.adminPanel')}</Button>
                     </Link>
                   )}
             <Link href="/dashboard">
-              <Button variant="ghost">My Courses</Button>
+              <Button variant="ghost">{t('nav.myCourses')}</Button>
             </Link>
             <Link href="/lexai">
               <Button variant="ghost" className="flex items-center gap-2">
                 <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
-                LexAI
+                {t('nav.lexai')}
               </Button>
             </Link>
                   <div className="flex items-center gap-2">
@@ -58,7 +62,7 @@ export default function Home() {
               ) : (
                 <div className="flex items-center gap-3">
                   <a href={getLoginUrl()}>
-                    <Button variant="ghost">Login</Button>
+                    <Button variant="ghost">{t('nav.login')}</Button>
                   </a>
                   <a href={getLoginUrl()}>
                     <Button className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700">
@@ -81,25 +85,25 @@ export default function Home() {
             {/* Left: Value Proposition */}
             <div className="space-y-6">
               <h1 className="text-5xl md:text-6xl font-bold leading-tight">
-                Master Trading with
+                {t('home.hero.title')}
                 <span className="block bg-gradient-to-r from-yellow-300 to-orange-300 bg-clip-text text-transparent">
-                  Expert Guidance
+                  {t('home.hero.subtitle')}
                 </span>
               </h1>
               <p className="text-xl text-blue-100 leading-relaxed">
-                Learn from industry experts and take your trading skills to the next level with our comprehensive courses. Start your journey to financial freedom today.
+                {t('home.hero.description')}
               </p>
               
               <div className="flex flex-wrap gap-4 pt-4">
                 <a href={getLoginUrl()}>
                   <Button size="lg" className="bg-white text-blue-600 hover:bg-blue-50 font-semibold px-8 py-6 text-lg">
                     <BookOpen className="mr-2 h-5 w-5" />
-                    Browse Courses
+                    {t('home.hero.browseCourses')}
                   </Button>
                 </a>
                 <a href={getLoginUrl()}>
                   <Button size="lg" variant="outline" className="border-2 border-white text-white hover:bg-white/10 font-semibold px-8 py-6 text-lg">
-                    Start Free Trial
+                    {t('home.hero.startTrial')}
                     <ArrowRight className="ml-2 h-5 w-5" />
                   </Button>
                 </a>
@@ -109,17 +113,17 @@ export default function Home() {
               <div className="grid grid-cols-3 gap-6 pt-8">
                 <div>
                   <div className="text-3xl font-bold">10K+</div>
-                  <div className="text-blue-200 text-sm">Active Students</div>
+                  <div className="text-blue-200 text-sm">{t('home.hero.activeStudents')}</div>
                 </div>
                 <div>
                   <div className="text-3xl font-bold">50+</div>
-                  <div className="text-blue-200 text-sm">Expert Courses</div>
+                  <div className="text-blue-200 text-sm">{t('home.hero.expertCourses')}</div>
                 </div>
                 <div>
                   <div className="text-3xl font-bold">4.9</div>
                   <div className="text-blue-200 text-sm flex items-center gap-1">
                     <Star className="h-4 w-4 fill-yellow-300 text-yellow-300" />
-                    Rating
+                    {t('home.hero.rating')}
                   </div>
                 </div>
               </div>
