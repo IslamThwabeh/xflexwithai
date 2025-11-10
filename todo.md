@@ -138,3 +138,13 @@
 - [ ] Translate LexAI chat content
 - [x] Store language preference in localStorage (implemented in LanguageContext)
 - [x] Test language switching on homepage (working with عربي button visible)
+
+
+## Fresh Deployment to Railway (New Request)
+- [ ] Clean local directory at /c/Users/islamt/website-xflexwithai
+- [ ] Download all project files from Manus
+- [ ] Initialize Git repository
+- [ ] Push to GitHub repository
+- [ ] Deploy to Railway
+- [ ] Configure environment variables on Railway
+- [ ] Test deployed application
