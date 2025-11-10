@@ -167,3 +167,10 @@
 - [ ] Test complete registration and login flow (ready for user testing)
 - [ ] Add password reset functionality (future)
 - [ ] Add email verification (future)
+
+
+## Remove OAuth Initialization Code (Bug Fix - Railway Deployment)
+- [x] Find and remove OAuth initialization from server/_core files
+- [x] Remove OAUTH_SERVER_URL requirement from environment
+- [x] Test server starts without OAuth errors
+- [x] Verify authentication still works without OAuth code
