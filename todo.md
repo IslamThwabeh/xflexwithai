@@ -148,3 +148,22 @@
 - [ ] Deploy to Railway
 - [ ] Configure environment variables on Railway
 - [ ] Test deployed application
+
+
+## Independent Authentication System (Completed!)
+- [x] Remove Manus OAuth dependency completely
+- [x] Update database schema to add password hash field to users and admins tables
+- [x] Implement password hashing with bcrypt
+- [x] Create registration backend procedure (email + password)
+- [x] Create login backend procedure with JWT token generation (separate for users and admins)
+- [x] Create session management with secure HTTP-only cookies
+- [x] Build registration form UI component
+- [x] Build login form UI component  
+- [x] Create Auth page with login/register toggle
+- [x] Update homepage to use /auth route instead of Manus OAuth
+- [x] Update AdminLogin page to use new LoginForm component
+- [x] Remove all Manus OAuth references from codebase (getLoginUrl removed)
+- [x] Update authentication context to use JWT from PostgreSQL
+- [ ] Test complete registration and login flow (ready for user testing)
+- [ ] Add password reset functionality (future)
+- [ ] Add email verification (future)

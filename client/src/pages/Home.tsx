@@ -2,7 +2,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { APP_TITLE, getLoginUrl } from "@/const";
+import { APP_TITLE, LOGIN_URL } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { BookOpen, GraduationCap, TrendingUp, Users, Video, Award, ArrowRight, Star } from "lucide-react";
 import { Link } from "wouter";
@@ -61,14 +61,14 @@ export default function Home() {
                 </>
               ) : (
                 <div className="flex items-center gap-3">
-                  <a href={getLoginUrl()}>
+                  <Link href="/auth">
                     <Button variant="ghost">{t('nav.login')}</Button>
-                  </a>
-                  <a href={getLoginUrl()}>
+                  </Link>
+                  <Link href="/auth">
                     <Button className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700">
                       Start Learning Free
                     </Button>
-                  </a>
+                  </Link>
                 </div>
               )}
             </nav>
@@ -95,18 +95,18 @@ export default function Home() {
               </p>
               
               <div className="flex flex-wrap gap-4 pt-4">
-                <a href={getLoginUrl()}>
+                <Link href="/auth">
                   <Button size="lg" className="bg-white text-blue-600 hover:bg-blue-50 font-semibold px-8 py-6 text-lg">
                     <BookOpen className="mr-2 h-5 w-5" />
                     {t('home.hero.browseCourses')}
                   </Button>
-                </a>
-                <a href={getLoginUrl()}>
+                </Link>
+                <Link href="/auth">
                   <Button size="lg" variant="outline" className="border-2 border-white text-white hover:bg-white/10 font-semibold px-8 py-6 text-lg">
                     {t('home.hero.startTrial')}
                     <ArrowRight className="ml-2 h-5 w-5" />
                   </Button>
-                </a>
+                </Link>
               </div>
 
               {/* Stats */}
@@ -153,17 +153,17 @@ export default function Home() {
                   />
                 </div>
                 
-                <a href={getLoginUrl()} className="block">
+                <Link href={LOGIN_URL} className="block">
                   <Button className="w-full h-12 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-lg font-semibold">
                     Create Free Account
                   </Button>
-                </a>
+                </Link>
 
                 <div className="text-center text-sm text-muted-foreground">
                   Already have an account?{" "}
-                  <a href={getLoginUrl()} className="text-blue-600 hover:underline font-medium">
+                  <Link href={LOGIN_URL} className="text-blue-600 hover:underline font-medium">
                     Sign in
-                  </a>
+                  </Link>
                 </div>
 
                 <div className="pt-4 border-t">

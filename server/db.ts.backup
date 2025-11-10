@@ -215,9 +215,35 @@ export async function getAdminByOpenId(openId: string) {
   return undefined;
 }
 
-/**
- * Get all admins
- */
+// Placeholder for old upsert function - remove after migration
+export async function upsertAdmin_DEPRECATED(admin: InsertAdmin): Promise<void> {
+  const db = await getDb();
+  if (!db) {
+    console.warn("[Database] Cannot upsert admin: database not available");
+    return;
+  }
+
+  try {
+    const values: any = {};
+      set: updateSet,
+    });
+  } catch (error) {
+    console.error("[Database] Failed to upsert admin:", error);
+    throw error;
+  }
+}
+
+export async function getAdminByOpenId(openId: string) {
+  const db = await getDb();
+  if (!db) {
+    console.warn("[Database] Cannot get admin: database not available");
+    return undefined;
+  }
+
+  const result = await db.select().from(admins).where(eq(admins.openId, openId)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
 export async function getAllAdmins() {
   const db = await getDb();
   if (!db) return [];

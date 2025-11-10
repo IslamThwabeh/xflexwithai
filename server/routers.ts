@@ -7,10 +7,15 @@ import { z } from "zod";
 import { logger } from "./_core/logger";
 import * as db from "./db";
 import { storagePut } from "./storage";
+import { hashPassword, verifyPassword, generateToken, isValidEmail, isValidPassword } from "./_core/auth";
 
 // Admin-only procedure - checks if user is in admins table
 const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
-  const admin = await db.getAdminByOpenId(ctx.user.openId);
+  if (!ctx.user || !ctx.user.email) {
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+  }
+  
+  const admin = await db.getAdminByEmail(ctx.user.email);
   if (!admin) {
     throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
   }
@@ -25,9 +30,145 @@ export const appRouter = router({
     
     // Check if current user is an admin
     isAdmin: protectedProcedure.query(async ({ ctx }) => {
-      const admin = await db.getAdminByOpenId(ctx.user.openId);
+      if (!ctx.user) return { isAdmin: false, admin: null };
+      const admin = await db.getAdminByEmail(ctx.user.email);
       return { isAdmin: !!admin, admin };
     }),
+    
+    // User registration
+    register: publicProcedure
+      .input(z.object({
+        email: z.string().email(),
+        password: z.string().min(8),
+        name: z.string().min(2),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        logger.info('[AUTH] Registration attempt', { email: input.email });
+        
+        // Validate email format
+        if (!isValidEmail(input.email)) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid email format' });
+        }
+        
+        // Validate password strength
+        if (!isValidPassword(input.password)) {
+          throw new TRPCError({ 
+            code: 'BAD_REQUEST', 
+            message: 'Password must be at least 8 characters with 1 uppercase, 1 lowercase, and 1 number' 
+          });
+        }
+        
+        // Check if user already exists
+        const existingUser = await db.getUserByEmail(input.email);
+        if (existingUser) {
+          throw new TRPCError({ code: 'CONFLICT', message: 'Email already registered' });
+        }
+        
+        // Hash password
+        const passwordHash = await hashPassword(input.password);
+        
+        // Create user
+        const userId = await db.createUser({
+          email: input.email,
+          passwordHash,
+          name: input.name,
+        });
+        
+        // Generate JWT token
+        const token = generateToken({
+          userId,
+          email: input.email,
+          type: 'user',
+        });
+        
+        // Set cookie
+        const cookieOptions = getSessionCookieOptions(ctx.req);
+        ctx.res.cookie(COOKIE_NAME, token, cookieOptions);
+        
+        logger.info('[AUTH] User registered successfully', { userId, email: input.email });
+        
+        return { success: true, userId };
+      }),
+    
+    // User login
+    login: publicProcedure
+      .input(z.object({
+        email: z.string().email(),
+        password: z.string(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        logger.info('[AUTH] Login attempt', { email: input.email });
+        
+        // Find user
+        const user = await db.getUserByEmail(input.email);
+        if (!user) {
+          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Invalid email or password' });
+        }
+        
+        // Verify password
+        const isValid = await verifyPassword(input.password, user.passwordHash);
+        if (!isValid) {
+          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Invalid email or password' });
+        }
+        
+        // Update last signed in
+        await db.updateUserLastSignIn(user.id);
+        
+        // Generate JWT token
+        const token = generateToken({
+          userId: user.id,
+          email: user.email,
+          type: 'user',
+        });
+        
+        // Set cookie
+        const cookieOptions = getSessionCookieOptions(ctx.req);
+        ctx.res.cookie(COOKIE_NAME, token, cookieOptions);
+        
+        logger.info('[AUTH] User logged in successfully', { userId: user.id, email: user.email });
+        
+        return { success: true, user: { id: user.id, email: user.email, name: user.name } };
+      }),
+    
+    // Admin login (separate from user login)
+    adminLogin: publicProcedure
+      .input(z.object({
+        email: z.string().email(),
+        password: z.string(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        logger.info('[AUTH] Admin login attempt', { email: input.email });
+        
+        // Find admin
+        const admin = await db.getAdminByEmail(input.email);
+        if (!admin) {
+          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Invalid email or password' });
+        }
+        
+        // Verify password
+        const isValid = await verifyPassword(input.password, admin.passwordHash);
+        if (!isValid) {
+          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Invalid email or password' });
+        }
+        
+        // Update last signed in
+        await db.updateAdminLastSignIn(admin.id);
+        
+        // Generate JWT token
+        const token = generateToken({
+          userId: admin.id,
+          email: admin.email,
+          type: 'admin',
+        });
+        
+        // Set cookie
+        const cookieOptions = getSessionCookieOptions(ctx.req);
+        ctx.res.cookie(COOKIE_NAME, token, cookieOptions);
+        
+        logger.info('[AUTH] Admin logged in successfully', { adminId: admin.id, email: admin.email });
+        
+        return { success: true, admin: { id: admin.id, email: admin.email, name: admin.name } };
+      }),
     
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);

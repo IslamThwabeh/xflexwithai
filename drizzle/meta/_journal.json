@@ -29,6 +29,13 @@
       "when": 1762716073404,
       "tag": "0003_naive_famine",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1762760272248,
+      "tag": "0004_sudden_thena",
+      "breakpoints": true
     }
   ]
 }

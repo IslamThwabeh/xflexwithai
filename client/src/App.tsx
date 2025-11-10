@@ -13,12 +13,14 @@ import AdminUsers from "./pages/AdminUsers";
 import MyDashboard from "./pages/MyDashboard";
 import CourseWatch from "./pages/CourseWatch";
 import LexAI from "./pages/LexAI";
+import Auth from "./pages/Auth";
 import AdminRoute from "./components/AdminRoute";
 
 function Router() {
   return (
     <Switch>
       <Route path={"/"} component={Home} />
+      <Route path={"/auth"} component={Auth} />
       <Route path={"/admin/login"} component={AdminLogin} />
       <Route path={"/admin"}>
         <AdminRoute>
