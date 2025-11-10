@@ -182,9 +182,9 @@ export default function Home() {
       <section className="py-20 bg-white">
         <div className="container mx-auto px-4">
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold mb-4">Why Choose XFlex Academy?</h2>
+            <h2 className="text-4xl font-bold mb-4">{t('home.why.title')}</h2>
             <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-              Everything you need to become a successful trader in one place
+              {t('home.why.subtitle')}
             </p>
           </div>
 
@@ -194,9 +194,9 @@ export default function Home() {
                 <div className="w-14 h-14 rounded-full bg-blue-100 flex items-center justify-center mb-4">
                   <Video className="h-7 w-7 text-blue-600" />
                 </div>
-                <CardTitle>Expert-Led Courses</CardTitle>
+                <CardTitle>{t('home.why.expertCourses')}</CardTitle>
                 <CardDescription>
-                  Learn from experienced traders with proven track records in the markets
+                  {t('home.why.expertDesc')}
                 </CardDescription>
               </CardHeader>
             </Card>
@@ -206,9 +206,9 @@ export default function Home() {
                 <div className="w-14 h-14 rounded-full bg-purple-100 flex items-center justify-center mb-4">
                   <TrendingUp className="h-7 w-7 text-purple-600" />
                 </div>
-                <CardTitle>Practical Strategies</CardTitle>
+                <CardTitle>{t('home.why.practicalStrategies')}</CardTitle>
                 <CardDescription>
-                  Apply real-world trading strategies that work in today's markets
+                  {t('home.why.practicalDesc')}
                 </CardDescription>
               </CardHeader>
             </Card>
@@ -218,9 +218,9 @@ export default function Home() {
                 <div className="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center mb-4">
                   <Users className="h-7 w-7 text-green-600" />
                 </div>
-                <CardTitle>Lifetime Access</CardTitle>
+                <CardTitle>{t('home.why.lifetimeAccess')}</CardTitle>
                 <CardDescription>
-                  Get unlimited access to course materials and future updates
+                  {t('home.why.lifetimeDesc')}
                 </CardDescription>
               </CardHeader>
             </Card>
@@ -232,15 +232,15 @@ export default function Home() {
       <section className="py-20 bg-gradient-to-br from-gray-50 to-blue-50">
         <div className="container mx-auto px-4">
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold mb-4">Available Courses</h2>
+            <h2 className="text-4xl font-bold mb-4">{t('home.courses.title')}</h2>
             <p className="text-xl text-muted-foreground">
-              Choose from our selection of trading courses designed for all skill levels
+              {t('home.courses.subtitle')}
             </p>
           </div>
 
           {isLoading ? (
             <div className="text-center py-12">
-              <p className="text-muted-foreground">Loading courses...</p>
+              <p className="text-muted-foreground">{t('common.loading')}</p>
             </div>
           ) : courses && courses.length > 0 ? (
             <div className="grid md:grid-cols-3 gap-8">
@@ -285,7 +285,7 @@ export default function Home() {
               <CardContent>
                 <BookOpen className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
                 <p className="text-muted-foreground mb-4">
-                  No courses available yet. Check back soon!
+                  {t('home.courses.noCourses')}
                 </p>
                 {adminCheck?.isAdmin && (
                   <Link href="/admin/courses">
@@ -308,48 +308,48 @@ export default function Home() {
                 <span className="text-xl font-bold">{APP_TITLE}</span>
               </div>
               <p className="text-gray-400 text-sm">
-                Empowering traders worldwide with expert knowledge and practical skills.
+                {t('home.footer.tagline')}
               </p>
             </div>
 
             <div>
-              <h3 className="font-semibold mb-4">Quick Links</h3>
+              <h3 className="font-semibold mb-4">{t('home.footer.quickLinks')}</h3>
               <ul className="space-y-2 text-sm text-gray-400">
-                <li><a href="#" className="hover:text-white transition-colors">About Us</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">Courses</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">Pricing</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">Contact</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">{t('home.footer.aboutUs')}</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">{t('home.footer.courses')}</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">{t('home.footer.pricing')}</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">{t('home.footer.contact')}</a></li>
               </ul>
             </div>
 
             <div>
-              <h3 className="font-semibold mb-4">Support</h3>
+              <h3 className="font-semibold mb-4">{t('home.footer.support')}</h3>
               <ul className="space-y-2 text-sm text-gray-400">
-                <li><a href="#" className="hover:text-white transition-colors">Help Center</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">Terms of Service</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">Privacy Policy</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">FAQ</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">{t('home.footer.helpCenter')}</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">{t('home.footer.terms')}</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">{t('home.footer.privacy')}</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">{t('home.footer.faq')}</a></li>
               </ul>
             </div>
 
             <div>
-              <h3 className="font-semibold mb-4">Newsletter</h3>
+              <h3 className="font-semibold mb-4">{t('home.footer.newsletter')}</h3>
               <p className="text-sm text-gray-400 mb-4">
-                Subscribe to get trading tips and course updates
+                {t('home.footer.newsletterDesc')}
               </p>
               <div className="flex gap-2">
                 <Input 
-                  placeholder="Your email" 
+                  placeholder={t('home.footer.emailPlaceholder')} 
                   className="bg-gray-800 border-gray-700 text-white"
                   disabled
                 />
-                <Button variant="secondary">Subscribe</Button>
+                <Button variant="secondary">{t('home.footer.subscribe')}</Button>
               </div>
             </div>
           </div>
 
           <div className="border-t border-gray-800 mt-12 pt-8 text-center text-sm text-gray-400">
-            © 2025 {APP_TITLE}. All rights reserved.
+            © 2025 {APP_TITLE}. {t('home.footer.rights')}
           </div>
         </div>
       </footer>

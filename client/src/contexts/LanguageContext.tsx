@@ -225,9 +225,9 @@ const translations = {
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
   const [language, setLanguageState] = useState<Language>(() => {
-    // Get language from localStorage or default to English
+    // Get language from localStorage or default to Arabic
     const saved = localStorage.getItem('language');
-    return (saved === 'ar' || saved === 'en') ? saved : 'en';
+    return (saved === 'ar' || saved === 'en') ? saved : 'ar';
   });
 
   useEffect(() => {
