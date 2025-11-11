@@ -74,7 +74,9 @@ export function LoginForm({ onSuccess, isAdmin = false }: { onSuccess?: () => vo
             <Label htmlFor="email">{t('auth.login.email')}</Label>
             <Input
               id="email"
+              name="email"
               type="email"
+              autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder={t('auth.login.emailPlaceholder')}
@@ -86,7 +88,9 @@ export function LoginForm({ onSuccess, isAdmin = false }: { onSuccess?: () => vo
             <Label htmlFor="password">{t('auth.login.password')}</Label>
             <Input
               id="password"
+              name="password"
               type="password"
+              autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder={t('auth.login.passwordPlaceholder')}
@@ -113,3 +117,4 @@ export function LoginForm({ onSuccess, isAdmin = false }: { onSuccess?: () => vo
     </Card>
   );
 }
+

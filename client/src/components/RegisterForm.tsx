@@ -68,7 +68,9 @@ export function RegisterForm({ onSuccess }: { onSuccess?: () => void }) {
             <Label htmlFor="name">{t('auth.register.fullName')}</Label>
             <Input
               id="name"
+              name="name"
               type="text"
+              autoComplete="name"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder={t('auth.register.namePlaceholder')}
@@ -80,7 +82,9 @@ export function RegisterForm({ onSuccess }: { onSuccess?: () => void }) {
             <Label htmlFor="email">{t('auth.register.email')}</Label>
             <Input
               id="email"
+              name="email"
               type="email"
+              autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder={t('auth.register.emailPlaceholder')}
@@ -92,7 +96,9 @@ export function RegisterForm({ onSuccess }: { onSuccess?: () => void }) {
             <Label htmlFor="password">{t('auth.register.password')}</Label>
             <Input
               id="password"
+              name="password"
               type="password"
+              autoComplete="new-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder={t('auth.register.passwordPlaceholder')}
@@ -107,7 +113,9 @@ export function RegisterForm({ onSuccess }: { onSuccess?: () => void }) {
             <Label htmlFor="confirmPassword">{t('auth.register.confirmPassword')}</Label>
             <Input
               id="confirmPassword"
+              name="confirmPassword"
               type="password"
+              autoComplete="new-password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               placeholder={t('auth.register.passwordPlaceholder')}
@@ -134,3 +142,4 @@ export function RegisterForm({ onSuccess }: { onSuccess?: () => void }) {
     </Card>
   );
 }
+
