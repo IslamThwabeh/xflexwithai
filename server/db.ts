@@ -90,6 +90,57 @@ export async function getUserById(id: number) {
 }
 
 /**
+ * Upsert user (insert or update based on email)
+ */
+export async function upsertUser(user: { email: string; passwordHash?: string; name?: string; phone?: string }): Promise<number> {
+  const db = await getDb();
+  if (!db) {
+    throw new Error("Database not available");
+  }
+
+  try {
+    logger.db('Upserting user', { email: user.email });
+    
+    // Check if user exists
+    const existingUser = await getUserByEmail(user.email);
+    
+    if (existingUser) {
+      // Update existing user
+      const updateData: any = {
+        lastSignedIn: new Date(),
+        updatedAt: new Date(),
+      };
+      
+      if (user.name !== undefined) updateData.name = user.name;
+      if (user.phone !== undefined) updateData.phone = user.phone;
+      if (user.passwordHash !== undefined) updateData.passwordHash = user.passwordHash;
+      
+      await db.update(users)
+        .set(updateData)
+        .where(eq(users.email, user.email));
+      
+      logger.db('User updated successfully', { userId: existingUser.id, email: user.email });
+      return existingUser.id;
+    } else {
+      // Insert new user
+      const result = await db.insert(users).values({
+        email: user.email,
+        passwordHash: user.passwordHash || '',
+        name: user.name || null,
+        phone: user.phone || null,
+      }).returning({ id: users.id });
+      
+      const userId = result[0].id;
+      logger.db('User created successfully', { userId, email: user.email });
+      return userId;
+    }
+  } catch (error) {
+    logger.error('Failed to upsert user', { error: error instanceof Error ? error.message : 'Unknown error' });
+    throw error;
+  }
+}
+
+/**
  * Update user last sign in timestamp
  */
 export async function updateUserLastSignIn(userId: number): Promise<void> {

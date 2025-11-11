@@ -1,8 +1,33 @@
-CREATE TYPE "public"."apiStatus" AS ENUM('pending', 'success', 'failed');--> statement-breakpoint
-CREATE TYPE "public"."level" AS ENUM('beginner', 'intermediate', 'advanced');--> statement-breakpoint
-CREATE TYPE "public"."paymentStatus" AS ENUM('pending', 'completed', 'failed', 'refunded');--> statement-breakpoint
-CREATE TYPE "public"."role" AS ENUM('user', 'assistant', 'system');--> statement-breakpoint
-CREATE TABLE "admins" (
+-- Create ENUM types with IF NOT EXISTS logic
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'apiStatus') THEN
+        CREATE TYPE "public"."apiStatus" AS ENUM('pending', 'success', 'failed');
+    END IF;
+END$$;
+--> statement-breakpoint
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'level') THEN
+        CREATE TYPE "public"."level" AS ENUM('beginner', 'intermediate', 'advanced');
+    END IF;
+END$$;
+--> statement-breakpoint
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'paymentStatus') THEN
+        CREATE TYPE "public"."paymentStatus" AS ENUM('pending', 'completed', 'failed', 'refunded');
+    END IF;
+END$$;
+--> statement-breakpoint
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'role') THEN
+        CREATE TYPE "public"."role" AS ENUM('user', 'assistant', 'system');
+    END IF;
+END$$;
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "admins" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"email" varchar(320) NOT NULL,
 	"passwordHash" varchar(255) NOT NULL,
@@ -13,7 +38,7 @@ CREATE TABLE "admins" (
 	CONSTRAINT "admins_email_unique" UNIQUE("email")
 );
 --> statement-breakpoint
-CREATE TABLE "courses" (
+CREATE TABLE IF NOT EXISTS "courses" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"titleEn" varchar(255) NOT NULL,
 	"titleAr" varchar(255) NOT NULL,
@@ -29,7 +54,7 @@ CREATE TABLE "courses" (
 	"updatedAt" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "enrollments" (
+CREATE TABLE IF NOT EXISTS "enrollments" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"userId" integer NOT NULL,
 	"courseId" integer NOT NULL,
@@ -46,7 +71,7 @@ CREATE TABLE "enrollments" (
 	"subscriptionEndDate" timestamp
 );
 --> statement-breakpoint
-CREATE TABLE "episodeProgress" (
+CREATE TABLE IF NOT EXISTS "episodeProgress" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"userId" integer NOT NULL,
 	"episodeId" integer NOT NULL,
@@ -56,7 +81,7 @@ CREATE TABLE "episodeProgress" (
 	"lastWatchedAt" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "episodes" (
+CREATE TABLE IF NOT EXISTS "episodes" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"courseId" integer NOT NULL,
 	"titleEn" varchar(255) NOT NULL,
@@ -71,7 +96,7 @@ CREATE TABLE "episodes" (
 	"updatedAt" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "lexaiMessages" (
+CREATE TABLE IF NOT EXISTS "lexaiMessages" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"userId" integer NOT NULL,
 	"subscriptionId" integer NOT NULL,
@@ -85,7 +110,7 @@ CREATE TABLE "lexaiMessages" (
 	"createdAt" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "lexaiSubscriptions" (
+CREATE TABLE IF NOT EXISTS "lexaiSubscriptions" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"userId" integer NOT NULL,
 	"isActive" boolean DEFAULT true NOT NULL,
@@ -101,7 +126,7 @@ CREATE TABLE "lexaiSubscriptions" (
 	"updatedAt" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "users" (
+CREATE TABLE IF NOT EXISTS "users" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"email" varchar(320) NOT NULL,
 	"passwordHash" varchar(255) NOT NULL,
