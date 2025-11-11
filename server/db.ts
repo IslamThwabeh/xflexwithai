@@ -1,5 +1,6 @@
 import { eq, desc, and, sql } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/mysql2";
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
 import { 
   InsertUser, users, 
   InsertAdmin, admins,
@@ -14,15 +15,18 @@ import { ENV } from './_core/env';
 import { logger } from './_core/logger';
 
 let _db: ReturnType<typeof drizzle> | null = null;
+let _client: ReturnType<typeof postgres> | null = null;
 
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
-      _db = drizzle(process.env.DATABASE_URL);
+      _client = postgres(process.env.DATABASE_URL);
+      _db = drizzle(_client);
       logger.db('Database connection established');
     } catch (error) {
       logger.error('Database connection failed', { error: error instanceof Error ? error.message : 'Unknown error' });
       _db = null;
+      _client = null;
     }
   }
   return _db;
@@ -47,8 +51,8 @@ export async function createUser(user: { email: string; passwordHash: string; na
       email: user.email,
       passwordHash: user.passwordHash,
       name: user.name || null,
-    });
-    const userId = Number(result[0].insertId);
+    }).returning({ id: users.id });
+    const userId = result[0].id;
     logger.db('User created successfully', { userId, email: user.email });
     return userId;
   } catch (error) {
@@ -145,8 +149,8 @@ export async function createAdmin(admin: { email: string; passwordHash: string; 
       email: admin.email,
       passwordHash: admin.passwordHash,
       name: admin.name || null,
-    });
-    const adminId = Number(result[0].insertId);
+    }).returning({ id: admins.id });
+    const adminId = result[0].id;
     logger.db('Admin created successfully', { adminId, email: admin.email });
     return adminId;
   } catch (error) {
@@ -252,8 +256,8 @@ export async function getCourseById(id: number) {
 export async function createCourse(course: InsertCourse) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(courses).values(course);
-  return Number((result as any).insertId);
+  const result = await db.insert(courses).values(course).returning({ id: courses.id });
+  return result[0].id;
 }
 
 export async function updateCourse(id: number, course: Partial<InsertCourse>) {
@@ -295,8 +299,8 @@ export async function getEpisodeById(id: number) {
 export async function createEpisode(episode: InsertEpisode) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(episodes).values(episode);
-  return Number((result as any).insertId);
+  const result = await db.insert(episodes).values(episode).returning({ id: episodes.id });
+  return result[0].id;
 }
 
 export async function updateEpisode(id: number, episode: Partial<InsertEpisode>) {
@@ -360,8 +364,8 @@ export async function getEnrollmentByCourseAndUser(courseId: number, userId: num
 export async function createEnrollment(enrollment: InsertEnrollment) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(enrollments).values(enrollment);
-  return Number((result as any).insertId);
+  const result = await db.insert(enrollments).values(enrollment).returning({ id: enrollments.id });
+  return result[0].id;
 }
 
 export async function updateEnrollment(id: number, enrollment: Partial<InsertEnrollment>) {
