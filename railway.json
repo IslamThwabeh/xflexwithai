@@ -1,0 +1,9 @@
+{
+  "build": {
+    "builder": "NIXPACKS"
+  },
+  "deploy": {
+    "startCommand": "pnpm run build && pnpm run db:push && pnpm run start",
+    "restartPolicyType": "ON_FAILURE"
+  }
+}
