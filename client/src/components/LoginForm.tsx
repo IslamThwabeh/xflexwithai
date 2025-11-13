@@ -27,8 +27,8 @@ export function LoginForm({ onSuccess, isAdmin = false }: { onSuccess?: () => vo
 
   const adminLoginMutation = trpc.auth.adminLogin.useMutation({
     onSuccess: () => {
-      // Reload page to refresh auth state
-      window.location.href = "/admin/dashboard";
+      // Reload page to refresh auth state and redirect
+      window.location.reload();
       onSuccess?.();
     },
     onError: (error) => {

@@ -1,11 +1,35 @@
 import { LoginForm } from "@/components/LoginForm";
 import { APP_TITLE } from "@/const";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { GraduationCap } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useAuth } from "@/_core/hooks/useAuth";
+import { trpc } from "@/lib/trpc";
+import { useEffect } from "react";
 
 export default function AdminLogin() {
   const { t } = useLanguage();
+  const { isAuthenticated, loading } = useAuth();
+  const [, setLocation] = useLocation();
+  const { data: adminCheck, isLoading: checkingAdmin } = trpc.auth.isAdmin.useQuery(undefined, {
+    enabled: isAuthenticated,
+  });
+
+  // Redirect to dashboard if already authenticated as admin
+  useEffect(() => {
+    if (!loading && !checkingAdmin && isAuthenticated && adminCheck?.isAdmin) {
+      setLocation("/admin/dashboard");
+    }
+  }, [isAuthenticated, adminCheck, loading, checkingAdmin, setLocation]);
+
+  // Show loading while checking auth
+  if (loading || checkingAdmin) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800">
+        <p className="text-white">Loading...</p>
+      </div>
+    );
+  }
   
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800 p-4">
