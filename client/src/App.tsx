@@ -27,6 +27,11 @@ function Router() {
           <AdminDashboard />
         </AdminRoute>
       </Route>
+      <Route path={"/admin/dashboard"}>
+        <AdminRoute>
+          <AdminDashboard />
+        </AdminRoute>
+      </Route>
       <Route path={"/admin/courses"}>
         <AdminRoute>
           <AdminCourses />
@@ -65,3 +70,4 @@ function App() {
 }
 
 export default App;
+
