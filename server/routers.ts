@@ -137,35 +137,79 @@ export const appRouter = router({
         password: z.string(),
       }))
       .mutation(async ({ input, ctx }) => {
-        logger.info('[AUTH] Admin login attempt', { email: input.email });
+        logger.info('🔐 [ADMIN LOGIN] Login attempt started', { 
+          email: input.email,
+          timestamp: new Date().toISOString(),
+        });
         
         // Find admin
+        logger.info('🔍 [ADMIN LOGIN] Looking up admin by email', { email: input.email });
         const admin = await db.getAdminByEmail(input.email);
+        
         if (!admin) {
+          logger.error('❌ [ADMIN LOGIN] Admin not found', { email: input.email });
           throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Invalid email or password' });
         }
+        
+        logger.info('✅ [ADMIN LOGIN] Admin found in database', { 
+          adminId: admin.id,
+          email: admin.email,
+          name: admin.name,
+        });
         
         // Verify password
+        logger.info('🔍 [ADMIN LOGIN] Verifying password');
         const isValid = await verifyPassword(input.password, admin.passwordHash);
+        
         if (!isValid) {
+          logger.error('❌ [ADMIN LOGIN] Password verification failed', { 
+            email: input.email,
+            adminId: admin.id,
+          });
           throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Invalid email or password' });
         }
         
+        logger.info('✅ [ADMIN LOGIN] Password verified successfully');
+        
         // Update last signed in
+        logger.info('🔍 [ADMIN LOGIN] Updating last sign-in timestamp');
         await db.updateAdminLastSignIn(admin.id);
+        logger.info('✅ [ADMIN LOGIN] Last sign-in updated');
         
         // Generate JWT token
+        logger.info('🔍 [ADMIN LOGIN] Generating JWT token', {
+          userId: admin.id,
+          email: admin.email,
+          type: 'admin',
+        });
         const token = generateToken({
           userId: admin.id,
           email: admin.email,
           type: 'admin',
         });
+        logger.info('✅ [ADMIN LOGIN] JWT token generated', {
+          tokenLength: token.length,
+          tokenPreview: token.substring(0, 20) + '...',
+        });
         
         // Set cookie
+        logger.info('🔍 [ADMIN LOGIN] Setting cookie', {
+          cookieName: COOKIE_NAME,
+        });
         const cookieOptions = getSessionCookieOptions(ctx.req);
-        ctx.res.cookie(COOKIE_NAME, token, cookieOptions);
+        logger.info('🔍 [ADMIN LOGIN] Cookie options', {
+          ...cookieOptions,
+          domain: cookieOptions.domain || 'not set',
+        });
         
-        logger.info('[AUTH] Admin logged in successfully', { adminId: admin.id, email: admin.email });
+        ctx.res.cookie(COOKIE_NAME, token, cookieOptions);
+        logger.info('✅ [ADMIN LOGIN] Cookie set successfully');
+        
+        logger.info('🎉 [ADMIN LOGIN] Admin logged in successfully', { 
+          adminId: admin.id, 
+          email: admin.email,
+          timestamp: new Date().toISOString(),
+        });
         
         return { success: true, admin: { id: admin.id, email: admin.email, name: admin.name } };
       }),
