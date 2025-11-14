@@ -8,6 +8,13 @@
       "when": 1762893167360,
       "tag": "0000_hot_triton",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1763144701082,
+      "tag": "0001_illegal_echo",
+      "breakpoints": true
     }
   ]
 }
