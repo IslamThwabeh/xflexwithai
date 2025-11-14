@@ -68,7 +68,9 @@ CREATE TABLE IF NOT EXISTS "enrollments" (
 	"paymentCurrency" varchar(3) DEFAULT 'USD',
 	"isSubscriptionActive" boolean DEFAULT true NOT NULL,
 	"subscriptionStartDate" timestamp,
-	"subscriptionEndDate" timestamp
+	"subscriptionEndDate" timestamp,
+	"registrationKeyId" integer,
+	"activatedViaKey" boolean DEFAULT false NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "episodeProgress" (
@@ -126,6 +128,20 @@ CREATE TABLE IF NOT EXISTS "lexaiSubscriptions" (
 	"updatedAt" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "registrationKeys" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"keyCode" varchar(255) NOT NULL,
+	"email" varchar(320),
+	"courseId" integer NOT NULL,
+	"activatedAt" timestamp,
+	"createdAt" timestamp DEFAULT now() NOT NULL,
+	"createdBy" integer NOT NULL,
+	"isActive" boolean DEFAULT true NOT NULL,
+	"notes" text,
+	"expiresAt" timestamp,
+	CONSTRAINT "registrationKeys_keyCode_unique" UNIQUE("keyCode")
+);
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "users" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"email" varchar(320) NOT NULL,
@@ -138,3 +154,17 @@ CREATE TABLE IF NOT EXISTS "users" (
 	"lastSignedIn" timestamp DEFAULT now() NOT NULL,
 	CONSTRAINT "users_email_unique" UNIQUE("email")
 );
+--> statement-breakpoint
+-- Add columns to enrollments if they don't exist
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                   WHERE table_name = 'enrollments' AND column_name = 'registrationKeyId') THEN
+        ALTER TABLE "enrollments" ADD COLUMN "registrationKeyId" integer;
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                   WHERE table_name = 'enrollments' AND column_name = 'activatedViaKey') THEN
+        ALTER TABLE "enrollments" ADD COLUMN "activatedViaKey" boolean DEFAULT false NOT NULL;
+    END IF;
+END$$;
