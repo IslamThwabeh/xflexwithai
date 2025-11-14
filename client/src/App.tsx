@@ -10,8 +10,11 @@ import AdminDashboard from "./pages/AdminDashboard";
 import AdminCourses from "./pages/AdminCourses";
 import AdminEpisodes from "./pages/AdminEpisodes";
 import AdminUsers from "./pages/AdminUsers";
+import AdminKeys from "./pages/AdminKeys";
 import MyDashboard from "./pages/MyDashboard";
 import CourseWatch from "./pages/CourseWatch";
+import CoursePlayer from "./pages/CoursePlayer";
+import ActivateKey from "./pages/ActivateKey";
 import LexAI from "./pages/LexAI";
 import Auth from "./pages/Auth";
 import AdminRoute from "./components/AdminRoute";
@@ -47,7 +50,13 @@ function Router() {
           <AdminUsers />
         </AdminRoute>
       </Route>
+      <Route path={"/admin/keys"}>
+        <AdminRoute>
+          <AdminKeys />
+        </AdminRoute>
+      </Route>
       <Route path={"/dashboard"} component={MyDashboard} />
+      <Route path={"/activate-key"} component={ActivateKey} />
             <Route path={"/course/:id"} component={CourseWatch} />
       <Route path={"/lexai"} component={LexAI} />
       <Route path={"/404"} component={NotFound} />
