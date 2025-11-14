@@ -109,10 +109,34 @@ export const enrollments = pgTable("enrollments", {
   isSubscriptionActive: boolean("isSubscriptionActive").default(true).notNull(),
   subscriptionStartDate: timestamp("subscriptionStartDate"),
   subscriptionEndDate: timestamp("subscriptionEndDate"),
+  
+  // Registration key tracking
+  registrationKeyId: integer("registrationKeyId"),
+  activatedViaKey: boolean("activatedViaKey").default(false).notNull(),
 });
 
 export type Enrollment = typeof enrollments.$inferSelect;
 export type InsertEnrollment = typeof enrollments.$inferInsert;
+
+/**
+ * Registration Keys table - stores activation keys for course access control
+ * Keys are email-locked on first activation to prevent sharing
+ */
+export const registrationKeys = pgTable("registrationKeys", {
+  id: serial("id").primaryKey(),
+  keyCode: varchar("keyCode", { length: 255 }).notNull().unique(),
+  email: varchar("email", { length: 320 }), // NULL until activated, then locked
+  courseId: integer("courseId").notNull(),
+  activatedAt: timestamp("activatedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  createdBy: integer("createdBy").notNull(), // admin_id who created the key
+  isActive: boolean("isActive").default(true).notNull(),
+  notes: text("notes"), // Admin notes about this key
+  expiresAt: timestamp("expiresAt"), // NULL = lifetime access
+});
+
+export type RegistrationKey = typeof registrationKeys.$inferSelect;
+export type InsertRegistrationKey = typeof registrationKeys.$inferInsert;
 
 /**
  * Episode Progress table - tracks which episodes users have watched
@@ -153,6 +177,22 @@ export const enrollmentsRelations = relations(enrollments, ({ one }) => ({
     fields: [enrollments.courseId],
     references: [courses.id],
   }),
+  registrationKey: one(registrationKeys, {
+    fields: [enrollments.registrationKeyId],
+    references: [registrationKeys.id],
+  }),
+}));
+
+export const registrationKeysRelations = relations(registrationKeys, ({ one, many }) => ({
+  course: one(courses, {
+    fields: [registrationKeys.courseId],
+    references: [courses.id],
+  }),
+  admin: one(admins, {
+    fields: [registrationKeys.createdBy],
+    references: [admins.id],
+  }),
+  enrollments: many(enrollments),
 }));
 
 export const episodeProgressRelations = relations(episodeProgress, ({ one }) => ({

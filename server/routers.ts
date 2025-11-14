@@ -653,6 +653,170 @@ export const appRouter = router({
       return stats;
     }),
   }),
+  
+  // ============================================================================
+  // Registration Keys Management
+  // ============================================================================
+  registrationKeys: router({
+    // Generate a single key (admin only)
+    generateKey: adminProcedure
+      .input(z.object({
+        courseId: z.number(),
+        notes: z.string().optional(),
+        expiresAt: z.date().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        logger.info('[KEYS] Generating single key', { courseId: input.courseId, adminId: ctx.admin.id });
+        
+        const key = await db.createRegistrationKey({
+          courseId: input.courseId,
+          createdBy: ctx.admin.id,
+          notes: input.notes,
+          expiresAt: input.expiresAt,
+        });
+        
+        return { success: true, key };
+      }),
+    
+    // Generate bulk keys (admin only)
+    generateBulkKeys: adminProcedure
+      .input(z.object({
+        courseId: z.number(),
+        quantity: z.number().min(1).max(1000),
+        notes: z.string().optional(),
+        expiresAt: z.date().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        logger.info('[KEYS] Generating bulk keys', { 
+          courseId: input.courseId, 
+          quantity: input.quantity,
+          adminId: ctx.admin.id 
+        });
+        
+        const keys = await db.createBulkRegistrationKeys({
+          courseId: input.courseId,
+          createdBy: ctx.admin.id,
+          quantity: input.quantity,
+          notes: input.notes,
+          expiresAt: input.expiresAt,
+        });
+        
+        return { success: true, keys, count: keys.length };
+      }),
+    
+    // Get all keys (admin only)
+    getAllKeys: adminProcedure.query(async () => {
+      logger.info('[KEYS] Getting all keys');
+      const keys = await db.getAllRegistrationKeys();
+      return keys;
+    }),
+    
+    // Get keys by course (admin only)
+    getKeysByCourse: adminProcedure
+      .input(z.object({ courseId: z.number() }))
+      .query(async ({ input }) => {
+        logger.info('[KEYS] Getting keys by course', { courseId: input.courseId });
+        const keys = await db.getRegistrationKeysByCourse(input.courseId);
+        return keys;
+      }),
+    
+    // Get unused keys (admin only)
+    getUnusedKeys: adminProcedure.query(async () => {
+      logger.info('[KEYS] Getting unused keys');
+      const keys = await db.getUnusedKeys();
+      return keys;
+    }),
+    
+    // Get activated keys (admin only)
+    getActivatedKeys: adminProcedure.query(async () => {
+      logger.info('[KEYS] Getting activated keys');
+      const keys = await db.getActivatedKeys();
+      return keys;
+    }),
+    
+    // Search keys by email (admin only)
+    searchByEmail: adminProcedure
+      .input(z.object({ email: z.string().email() }))
+      .query(async ({ input }) => {
+        logger.info('[KEYS] Searching keys by email', { email: input.email });
+        const keys = await db.searchKeysByEmail(input.email);
+        return keys;
+      }),
+    
+    // Deactivate a key (admin only)
+    deactivateKey: adminProcedure
+      .input(z.object({ keyId: z.number() }))
+      .mutation(async ({ input }) => {
+        logger.info('[KEYS] Deactivating key', { keyId: input.keyId });
+        const key = await db.deactivateRegistrationKey(input.keyId);
+        return { success: true, key };
+      }),
+    
+    // Get key statistics (admin only)
+    getStatistics: adminProcedure.query(async () => {
+      logger.info('[KEYS] Getting statistics');
+      const stats = await db.getKeyStatistics();
+      return stats;
+    }),
+    
+    // Activate a key (public - for users)
+    activateKey: publicProcedure
+      .input(z.object({
+        keyCode: z.string(),
+        email: z.string().email(),
+      }))
+      .mutation(async ({ input }) => {
+        logger.info('[KEYS] Activating key', { keyCode: input.keyCode, email: input.email });
+        
+        const result = await db.activateRegistrationKey(input.keyCode, input.email);
+        
+        if (!result.success) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: result.message });
+        }
+        
+        // If activation successful and key has a course, create enrollment
+        if (result.key && result.key.courseId) {
+          // Check if user exists
+          const user = await db.getUserByEmail(input.email);
+          
+          if (user) {
+            // Check if enrollment already exists
+            const existingEnrollment = await db.getEnrollmentByUserAndCourse(user.id, result.key.courseId);
+            
+            if (!existingEnrollment) {
+              // Create enrollment
+              await db.createEnrollment({
+                userId: user.id,
+                courseId: result.key.courseId,
+                paymentStatus: 'completed',
+                isSubscriptionActive: true,
+                registrationKeyId: result.key.id,
+                activatedViaKey: true,
+              });
+              
+              logger.info('[KEYS] Enrollment created', { 
+                userId: user.id, 
+                courseId: result.key.courseId,
+                keyId: result.key.id 
+              });
+            }
+          }
+        }
+        
+        return result;
+      }),
+    
+    // Check if user has valid key for course (public)
+    checkAccess: publicProcedure
+      .input(z.object({
+        email: z.string().email(),
+        courseId: z.number(),
+      }))
+      .query(async ({ input }) => {
+        const hasAccess = await db.userHasValidKeyForCourse(input.email, input.courseId);
+        return { hasAccess };
+      }),
+  }),
 });
 
 export type AppRouter = typeof appRouter;

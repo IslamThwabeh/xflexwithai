@@ -9,7 +9,8 @@ import {
   enrollments, Enrollment, InsertEnrollment,
   episodeProgress, EpisodeProgress, InsertEpisodeProgress,
   lexaiSubscriptions, LexaiSubscription, InsertLexaiSubscription,
-  lexaiMessages, LexaiMessage, InsertLexaiMessage
+  lexaiMessages, LexaiMessage, InsertLexaiMessage,
+  registrationKeys, RegistrationKey, InsertRegistrationKey
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { logger } from './_core/logger';
@@ -412,6 +413,11 @@ export async function getEnrollmentByCourseAndUser(courseId: number, userId: num
   return result.length > 0 ? result[0] : undefined;
 }
 
+// Alias for consistency
+export async function getEnrollmentByUserAndCourse(userId: number, courseId: number) {
+  return getEnrollmentByCourseAndUser(courseId, userId);
+}
+
 export async function createEnrollment(enrollment: InsertEnrollment) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -644,5 +650,294 @@ export async function getLexaiStats() {
     totalSubscriptions: Number(totalSubs?.count || 0),
     activeSubscriptions: Number(activeSubs?.count || 0),
     totalMessages: Number(totalMessages?.count || 0),
+  };
+}
+
+
+// ============================================================================
+// Registration Keys Management
+// ============================================================================
+
+import { nanoid } from "nanoid";
+import { isNull } from "drizzle-orm";
+
+/**
+ * Generate a unique registration key code
+ */
+export function generateKeyCode(): string {
+  // Format: XFLEX-XXXXX-XXXXX-XXXXX
+  const part1 = nanoid(5).toUpperCase();
+  const part2 = nanoid(5).toUpperCase();
+  const part3 = nanoid(5).toUpperCase();
+  return `XFLEX-${part1}-${part2}-${part3}`;
+}
+
+/**
+ * Create a single registration key
+ */
+export async function createRegistrationKey(data: {
+  courseId: number;
+  createdBy: number;
+  notes?: string;
+  expiresAt?: Date;
+}): Promise<RegistrationKey> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const keyCode = generateKeyCode();
+  
+  logger.db('Creating registration key', { courseId: data.courseId, keyCode });
+  
+  const [key] = await db.insert(registrationKeys).values({
+    keyCode,
+    courseId: data.courseId,
+    createdBy: data.createdBy,
+    notes: data.notes,
+    expiresAt: data.expiresAt,
+  }).returning();
+  
+  return key;
+}
+
+/**
+ * Create multiple registration keys (bulk generation)
+ */
+export async function createBulkRegistrationKeys(data: {
+  courseId: number;
+  createdBy: number;
+  quantity: number;
+  notes?: string;
+  expiresAt?: Date;
+}): Promise<RegistrationKey[]> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const keys: InsertRegistrationKey[] = [];
+  
+  for (let i = 0; i < data.quantity; i++) {
+    keys.push({
+      keyCode: generateKeyCode(),
+      courseId: data.courseId,
+      createdBy: data.createdBy,
+      notes: data.notes,
+      expiresAt: data.expiresAt,
+    });
+  }
+  
+  logger.db('Creating bulk registration keys', { courseId: data.courseId, quantity: data.quantity });
+  
+  const createdKeys = await db.insert(registrationKeys).values(keys).returning();
+  return createdKeys;
+}
+
+/**
+ * Get registration key by code
+ */
+export async function getRegistrationKeyByCode(keyCode: string): Promise<RegistrationKey | undefined> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const [key] = await db
+    .select()
+    .from(registrationKeys)
+    .where(eq(registrationKeys.keyCode, keyCode))
+    .limit(1);
+  
+  return key;
+}
+
+/**
+ * Activate a registration key with user email
+ */
+export async function activateRegistrationKey(
+  keyCode: string,
+  email: string
+): Promise<{ success: boolean; message: string; key?: RegistrationKey }> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const key = await getRegistrationKeyByCode(keyCode);
+  
+  if (!key) {
+    return { success: false, message: "Invalid registration key" };
+  }
+  
+  if (!key.isActive) {
+    return { success: false, message: "This key has been deactivated" };
+  }
+  
+  if (key.expiresAt && new Date() > key.expiresAt) {
+    return { success: false, message: "This key has expired" };
+  }
+  
+  if (key.email) {
+    if (key.email === email) {
+      return { success: true, message: "Key already activated with this email", key };
+    } else {
+      return { success: false, message: "This key is already activated with a different email" };
+    }
+  }
+  
+  // Activate the key by locking it to this email
+  logger.db('Activating registration key', { keyCode, email });
+  
+  const [updatedKey] = await db
+    .update(registrationKeys)
+    .set({
+      email,
+      activatedAt: new Date(),
+    })
+    .where(eq(registrationKeys.id, key.id))
+    .returning();
+  
+  return { success: true, message: "Key activated successfully", key: updatedKey };
+}
+
+/**
+ * Check if user has valid key for a course
+ */
+export async function userHasValidKeyForCourse(
+  email: string,
+  courseId: number
+): Promise<boolean> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const [key] = await db
+    .select()
+    .from(registrationKeys)
+    .where(
+      and(
+        eq(registrationKeys.email, email),
+        eq(registrationKeys.courseId, courseId),
+        eq(registrationKeys.isActive, true)
+      )
+    )
+    .limit(1);
+  
+  if (!key) return false;
+  
+  // Check expiration
+  if (key.expiresAt && new Date() > key.expiresAt) {
+    return false;
+  }
+  
+  return true;
+}
+
+/**
+ * Get all registration keys (for admin)
+ */
+export async function getAllRegistrationKeys(): Promise<RegistrationKey[]> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  return await db
+    .select()
+    .from(registrationKeys)
+    .orderBy(desc(registrationKeys.createdAt));
+}
+
+/**
+ * Get registration keys by course
+ */
+export async function getRegistrationKeysByCourse(courseId: number): Promise<RegistrationKey[]> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  return await db
+    .select()
+    .from(registrationKeys)
+    .where(eq(registrationKeys.courseId, courseId))
+    .orderBy(desc(registrationKeys.createdAt));
+}
+
+/**
+ * Get unused (not activated) keys
+ */
+export async function getUnusedKeys(): Promise<RegistrationKey[]> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  return await db
+    .select()
+    .from(registrationKeys)
+    .where(
+      and(
+        isNull(registrationKeys.email),
+        eq(registrationKeys.isActive, true)
+      )
+    )
+    .orderBy(desc(registrationKeys.createdAt));
+}
+
+/**
+ * Get activated keys
+ */
+export async function getActivatedKeys(): Promise<RegistrationKey[]> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  return await db
+    .select()
+    .from(registrationKeys)
+    .where(eq(registrationKeys.isActive, true))
+    .orderBy(desc(registrationKeys.activatedAt));
+}
+
+/**
+ * Deactivate a registration key
+ */
+export async function deactivateRegistrationKey(keyId: number): Promise<RegistrationKey> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  logger.db('Deactivating registration key', { keyId });
+  
+  const [key] = await db
+    .update(registrationKeys)
+    .set({ isActive: false })
+    .where(eq(registrationKeys.id, keyId))
+    .returning();
+  
+  return key;
+}
+
+/**
+ * Search keys by email
+ */
+export async function searchKeysByEmail(email: string): Promise<RegistrationKey[]> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  return await db
+    .select()
+    .from(registrationKeys)
+    .where(eq(registrationKeys.email, email))
+    .orderBy(desc(registrationKeys.createdAt));
+}
+
+/**
+ * Get key statistics
+ */
+export async function getKeyStatistics() {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const allKeys = await getAllRegistrationKeys();
+  
+  const total = allKeys.length;
+  const activated = allKeys.filter(k => k.email !== null).length;
+  const unused = allKeys.filter(k => k.email === null && k.isActive).length;
+  const deactivated = allKeys.filter(k => !k.isActive).length;
+  const expired = allKeys.filter(k => k.expiresAt && new Date() > k.expiresAt).length;
+  
+  return {
+    total,
+    activated,
+    unused,
+    deactivated,
+    expired,
+    activationRate: total > 0 ? ((activated / total) * 100).toFixed(2) : "0.00",
   };
 }
