@@ -245,6 +245,11 @@ export const appRouter = router({
       return await db.getAllCourses();
     }),
 
+    // Alias for getAllCourses (used by AdminKeys page)
+    getAllCourses: adminProcedure.query(async () => {
+      return await db.getAllCourses();
+    }),
+
     // Public: Get course by ID
     getById: publicProcedure
       .input(z.object({ id: z.number() }))
