@@ -18,18 +18,59 @@ import {
   SidebarProvider,
   SidebarTrigger,
   useSidebar,
+  SidebarGroup,
+  SidebarGroupLabel,
+  SidebarGroupContent,
 } from "@/components/ui/sidebar";
 import { APP_LOGO, APP_TITLE, getLoginUrl } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
-import { LayoutDashboard, LogOut, PanelLeft, Users } from "lucide-react";
+import { 
+  LayoutDashboard, 
+  LogOut, 
+  PanelLeft, 
+  Users, 
+  BookOpen, 
+  Key, 
+  GraduationCap,
+  Settings,
+  BarChart3,
+  Video
+} from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 import { Button } from "./ui/button";
 
-const menuItems = [
-  { icon: LayoutDashboard, label: "Page 1", path: "/" },
-  { icon: Users, label: "Page 2", path: "/some-path" },
+// Organized menu items with sections
+const menuSections = [
+  {
+    label: "Overview",
+    items: [
+      { icon: LayoutDashboard, label: "Dashboard", path: "/admin/dashboard" },
+    ]
+  },
+  {
+    label: "Content Management",
+    items: [
+      { icon: BookOpen, label: "Courses", path: "/admin/courses" },
+      { icon: Video, label: "All Episodes", path: "/admin/episodes" },
+    ]
+  },
+  {
+    label: "User Management",
+    items: [
+      { icon: Users, label: "Users", path: "/admin/users" },
+      { icon: GraduationCap, label: "Enrollments", path: "/admin/enrollments" },
+      { icon: Key, label: "Registration Keys", path: "/admin/keys" },
+    ]
+  },
+  {
+    label: "Analytics & Settings",
+    items: [
+      { icon: BarChart3, label: "Analytics", path: "/admin/analytics" },
+      { icon: Settings, label: "Settings", path: "/admin/settings" },
+    ]
+  }
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
@@ -121,8 +162,12 @@ function DashboardLayoutContent({
   const isCollapsed = state === "collapsed";
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
-  const activeMenuItem = menuItems.find(item => item.path === location);
   const isMobile = useIsMobile();
+
+  // Find active menu item across all sections
+  const activeMenuItem = menuSections
+    .flatMap(section => section.items)
+    .find(item => item.path === location);
 
   useEffect(() => {
     if (isCollapsed) {
@@ -208,26 +253,39 @@ function DashboardLayoutContent({
           </SidebarHeader>
 
           <SidebarContent className="gap-0">
-            <SidebarMenu className="px-2 py-1">
-              {menuItems.map(item => {
-                const isActive = location === item.path;
-                return (
-                  <SidebarMenuItem key={item.path}>
-                    <SidebarMenuButton
-                      isActive={isActive}
-                      onClick={() => setLocation(item.path)}
-                      tooltip={item.label}
-                      className={`h-10 transition-all font-normal`}
-                    >
-                      <item.icon
-                        className={`h-4 w-4 ${isActive ? "text-primary" : ""}`}
-                      />
-                      <span>{item.label}</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
-            </SidebarMenu>
+            {menuSections.map((section, sectionIndex) => (
+              <SidebarGroup key={sectionIndex}>
+                {!isCollapsed && (
+                  <SidebarGroupLabel className="text-xs font-semibold text-muted-foreground px-2 py-2">
+                    {section.label}
+                  </SidebarGroupLabel>
+                )}
+                <SidebarGroupContent>
+                  <SidebarMenu className="px-2 py-1">
+                    {section.items.map(item => {
+                      const isActive = location === item.path;
+                      return (
+                        <SidebarMenuItem key={item.path}>
+                          <SidebarMenuButton
+                            isActive={isActive}
+                            onClick={() => setLocation(item.path)}
+                            tooltip={item.label}
+                            className={`h-10 transition-all font-normal ${
+                              isActive ? "bg-primary/10 text-primary font-medium" : ""
+                            }`}
+                          >
+                            <item.icon
+                              className={`h-4 w-4 ${isActive ? "text-primary" : ""}`}
+                            />
+                            <span>{item.label}</span>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      );
+                    })}
+                  </SidebarMenu>
+                </SidebarGroupContent>
+              </SidebarGroup>
+            ))}
           </SidebarContent>
 
           <SidebarFooter className="p-3">
