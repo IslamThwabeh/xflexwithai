@@ -21,9 +21,10 @@ import {
 } from "@/components/ui/select";
 import { trpc } from "@/lib/trpc";
 import { FileUpload } from "@/components/FileUpload";
-import { Plus, Edit, Trash2, Eye, EyeOff } from "lucide-react";
+import { Plus, Edit, Trash2, Eye, EyeOff, Video } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { Link } from "wouter";
 
 export default function AdminCourses() {
   const utils = trpc.useUtils();
@@ -171,14 +172,22 @@ export default function AdminCourses() {
                     <span className="font-medium">${(course.price / 100).toFixed(2)}</span>
                     <span className="capitalize text-muted-foreground">{course.level}</span>
                   </div>
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm" onClick={() => handleEdit(course)} className="flex-1">
-                      <Edit className="mr-1 h-3 w-3" />
-                      Edit
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => handleDelete(course.id)} className="text-red-600 hover:text-red-700">
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
+                  <div className="flex flex-col gap-2">
+                    <Link href={`/admin/courses/${course.id}/episodes`}>
+                      <Button variant="default" size="sm" className="w-full">
+                        <Video className="mr-1 h-3 w-3" />
+                        Manage Episodes
+                      </Button>
+                    </Link>
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" onClick={() => handleEdit(course)} className="flex-1">
+                        <Edit className="mr-1 h-3 w-3" />
+                        Edit
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => handleDelete(course.id)} className="text-red-600 hover:text-red-700">
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
                   </div>
                 </CardContent>
               </Card>

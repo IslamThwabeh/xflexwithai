@@ -14,8 +14,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { trpc } from "@/lib/trpc";
+import { formatDuration } from "@/lib/formatDuration";
 import { FileUpload } from "@/components/FileUpload";
-import { Plus, Edit, Trash2, Video, ArrowLeft, MoveUp, MoveDown } from "lucide-react";
+import { Plus, Edit, Trash2, Video, ArrowLeft, MoveUp, MoveDown, Play } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useRoute, Link } from "wouter";
@@ -36,6 +37,7 @@ export default function AdminEpisodes() {
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingEpisode, setEditingEpisode] = useState<any>(null);
+  const [previewingEpisode, setPreviewingEpisode] = useState<any>(null);
 
   const createMutation = trpc.episodes.create.useMutation({
     onSuccess: () => {
@@ -211,7 +213,7 @@ export default function AdminEpisodes() {
                           )}
                           <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
                             {episode.duration && (
-                              <span>{episode.duration} minutes</span>
+                              <span>{formatDuration(episode.duration)}</span>
                             )}
                             {episode.videoUrl && (
                               <span className="flex items-center gap-1">
@@ -223,6 +225,11 @@ export default function AdminEpisodes() {
                         </div>
                       </div>
                       <div className="flex gap-2">
+                        {episode.videoUrl && (
+                          <Button variant="outline" size="sm" onClick={() => setPreviewingEpisode(episode)}>
+                            <Play className="h-3 w-3" />
+                          </Button>
+                        )}
                         <Button variant="outline" size="sm" onClick={() => handleEdit(episode)}>
                           <Edit className="h-3 w-3" />
                         </Button>
@@ -232,6 +239,28 @@ export default function AdminEpisodes() {
                       </div>
                     </div>
                   </CardHeader>
+                  {previewingEpisode?.id === episode.id && episode.videoUrl && (
+                    <CardContent>
+                      <div className="aspect-video bg-black rounded-lg overflow-hidden">
+                        <video
+                          src={episode.videoUrl}
+                          controls
+                          autoPlay
+                          className="w-full h-full"
+                        >
+                          Your browser does not support the video tag.
+                        </video>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setPreviewingEpisode(null)}
+                        className="mt-2"
+                      >
+                        Close Preview
+                      </Button>
+                    </CardContent>
+                  )}
                 </Card>
               ))}
           </div>
