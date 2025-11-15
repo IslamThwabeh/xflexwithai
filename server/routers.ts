@@ -8,6 +8,7 @@ import { logger } from "./_core/logger";
 import * as db from "./db";
 import { storagePut } from "./storage";
 import { hashPassword, verifyPassword, generateToken, isValidEmail, isValidPassword } from "./_core/auth";
+import flexaiRoutes from './routes/flexai';
 
 // Admin-only procedure - checks if user is in admins table
 const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
@@ -825,3 +826,5 @@ export const appRouter = router({
 });
 
 export type AppRouter = typeof appRouter;
+
+app.use('/api/flexai', flexaiRoutes);

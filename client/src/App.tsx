@@ -18,6 +18,9 @@ import ActivateKey from "./pages/ActivateKey";
 import LexAI from "./pages/LexAI";
 import Auth from "./pages/Auth";
 import AdminRoute from "./components/AdminRoute";
+import AdminAnalytics from "./pages/AdminAnalytics";
+import AdminSettings from "./pages/AdminSettings";
+import AdminEnrollments from "./pages/AdminEnrollments";
 
 function Router() {
   return (
@@ -54,10 +57,25 @@ function Router() {
         <AdminRoute>
           <AdminKeys />
         </AdminRoute>
-      </Route>
+        </Route>
+        <Route path={"/admin/analytics"}>
+        <AdminRoute>
+          <AdminAnalytics />
+        </AdminRoute>
+        </Route>
+        <Route path={"/admin/settings"}>
+        <AdminRoute>
+          <AdminSettings />
+        </AdminRoute>
+        </Route>
+        <Route path={"/admin/enrollments"}>
+        <AdminRoute>
+          <AdminEnrollments />
+        </AdminRoute>
+        </Route>
       <Route path={"/dashboard"} component={MyDashboard} />
       <Route path={"/activate-key"} component={ActivateKey} />
-            <Route path={"/course/:id"} component={CourseWatch} />
+      <Route path={"/course/:id"} component={CourseWatch} />
       <Route path={"/lexai"} component={LexAI} />
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />

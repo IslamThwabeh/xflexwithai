@@ -34,7 +34,8 @@ import {
   GraduationCap,
   Settings,
   BarChart3,
-  Video
+  Bot,
+  Sparkles
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -53,7 +54,6 @@ const menuSections = [
     label: "Content Management",
     items: [
       { icon: BookOpen, label: "Courses", path: "/admin/courses" },
-      { icon: Video, label: "All Episodes", path: "/admin/episodes" },
     ]
   },
   {
@@ -62,6 +62,13 @@ const menuSections = [
       { icon: Users, label: "Users", path: "/admin/users" },
       { icon: GraduationCap, label: "Enrollments", path: "/admin/enrollments" },
       { icon: Key, label: "Registration Keys", path: "/admin/keys" },
+    ]
+  },
+  {
+    label: "FlexAI Bot",
+    items: [
+      { icon: Bot, label: "Bot Configuration", path: "/admin/flexai/config" },
+      { icon: Sparkles, label: "Subscriptions", path: "/admin/flexai/subscriptions" },
     ]
   },
   {
