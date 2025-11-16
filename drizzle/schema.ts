@@ -1,4 +1,4 @@
-import { serial, pgTable, text, timestamp, varchar, boolean, integer, pgEnum } from "drizzle-orm/pg-core";
+import { serial, pgTable, text, timestamp, varchar, boolean, integer, pgEnum, bigint, jsonb } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 
 /**
@@ -14,6 +14,9 @@ export const users = pgTable("users", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
+  // FlexAI: Add Telegram support
+  telegram_user_id: bigint("telegram_user_id", { mode: "bigint" }).unique(),
+  user_type: varchar("user_type", { length: 20 }).default("web"),
 });
 
 export type User = typeof users.$inferSelect;
@@ -281,5 +284,71 @@ export const lexaiMessagesRelations = relations(lexaiMessages, ({ one }) => ({
   subscription: one(lexaiSubscriptions, {
     fields: [lexaiMessages.subscriptionId],
     references: [lexaiSubscriptions.id],
+  }),
+}));
+
+// ============================================================================
+// FlexAI Tables (for web + Telegram unified bot)
+// ============================================================================
+
+/**
+ * FlexAI Subscriptions table - tracks 30-day subscriptions for AI chart analysis
+ * Supports both web users and Telegram users
+ */
+export const flexaiSubscriptions = pgTable("flexaiSubscriptions", {
+  id: serial("id").primaryKey(),
+  userId: integer("userId").notNull(),
+  registrationKeyId: integer("registrationKeyId"),
+  status: varchar("status", { length: 20 }).default("active"),
+  activatedAt: timestamp("activatedAt").defaultNow(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  createdAt: timestamp("createdAt").defaultNow(),
+  updatedAt: timestamp("updatedAt").defaultNow(),
+});
+
+export type FlexaiSubscription = typeof flexaiSubscriptions.$inferSelect;
+export type InsertFlexaiSubscription = typeof flexaiSubscriptions.$inferInsert;
+
+/**
+ * FlexAI Messages table - stores chart analysis conversation history
+ * Supports both web and Telegram users
+ */
+export const flexaiMessages = pgTable("flexaiMessages", {
+  id: serial("id").primaryKey(),
+  userId: integer("userId").notNull(),
+  subscriptionId: integer("subscriptionId"),
+  role: varchar("role", { length: 20 }).notNull(), // 'user', 'assistant', 'system'
+  content: text("content").notNull(),
+  imageUrl: text("imageUrl"),
+  analysisResult: jsonb("analysisResult"),
+  analysisType: varchar("analysisType", { length: 50 }),
+  timeframe: varchar("timeframe", { length: 10 }),
+  createdAt: timestamp("createdAt").defaultNow(),
+});
+
+export type FlexaiMessage = typeof flexaiMessages.$inferSelect;
+export type InsertFlexaiMessage = typeof flexaiMessages.$inferInsert;
+
+// FlexAI Relations
+export const flexaiSubscriptionsRelations = relations(flexaiSubscriptions, ({ one, many }) => ({
+  user: one(users, {
+    fields: [flexaiSubscriptions.userId],
+    references: [users.id],
+  }),
+  registrationKey: one(registrationKeys, {
+    fields: [flexaiSubscriptions.registrationKeyId],
+    references: [registrationKeys.id],
+  }),
+  messages: many(flexaiMessages),
+}));
+
+export const flexaiMessagesRelations = relations(flexaiMessages, ({ one }) => ({
+  user: one(users, {
+    fields: [flexaiMessages.userId],
+    references: [users.id],
+  }),
+  subscription: one(flexaiSubscriptions, {
+    fields: [flexaiMessages.subscriptionId],
+    references: [flexaiSubscriptions.id],
   }),
 }));

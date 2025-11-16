@@ -10,7 +10,10 @@ import {
   episodeProgress, EpisodeProgress, InsertEpisodeProgress,
   lexaiSubscriptions, LexaiSubscription, InsertLexaiSubscription,
   lexaiMessages, LexaiMessage, InsertLexaiMessage,
-  registrationKeys, RegistrationKey, InsertRegistrationKey
+  registrationKeys, RegistrationKey, InsertRegistrationKey,
+  // FlexAI imports
+  flexaiSubscriptions, FlexaiSubscription, InsertFlexaiSubscription,
+  flexaiMessages, FlexaiMessage, InsertFlexaiMessage
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { logger } from './_core/logger';
@@ -32,6 +35,33 @@ export async function getDb() {
   }
   return _db;
 }
+
+// Export db for direct use (needed by middleware and routes)
+export const db = {
+  query: {
+    users: undefined as any,
+    flexaiSubscriptions: undefined as any,
+    flexaiMessages: undefined as any,
+    registrationKeys: undefined as any,
+  },
+  insert: (table: any) => ({ values: (data: any) => ({ returning: () => Promise.resolve([]) }) }),
+  update: (table: any) => ({ set: (data: any) => ({ where: (condition: any) => Promise.resolve() }) }),
+  select: () => ({ from: (table: any) => ({ where: (condition: any) => ({ limit: (n: number) => Promise.resolve([]) }) }) }),
+};
+
+// Initialize db proxy that calls getDb()
+const dbProxy = new Proxy({} as any, {
+  get: (target, prop) => {
+    return async (...args: any[]) => {
+      const dbInstance = await getDb();
+      if (!dbInstance) throw new Error("Database not available");
+      return (dbInstance as any)[prop](...args);
+    };
+  }
+});
+
+// Export the actual db instance for use in routes
+export { dbProxy as db };
 
 // ============================================================================
 // User Management (Regular Users/Students)
@@ -374,48 +404,32 @@ export async function deleteEpisode(id: number) {
 // Enrollment Management
 // ============================================================================
 
-export async function getAllEnrollments() {
+export async function getUserEnrollments(userId: number) {
   const db = await getDb();
   if (!db) return [];
-  return await db.select({
-    enrollment: enrollments,
-    user: users,
-    course: courses,
-  })
-  .from(enrollments)
-  .leftJoin(users, eq(enrollments.userId, users.id))
-  .leftJoin(courses, eq(enrollments.courseId, courses.id))
-  .orderBy(desc(enrollments.enrolledAt));
+  return await db.select().from(enrollments)
+    .where(eq(enrollments.userId, userId))
+    .orderBy(desc(enrollments.enrolledAt));
 }
 
-export async function getEnrollmentsByUserId(userId: number) {
+export async function getCourseEnrollments(courseId: number) {
   const db = await getDb();
   if (!db) return [];
-  return await db.select({
-    enrollment: enrollments,
-    course: courses,
-  })
-  .from(enrollments)
-  .leftJoin(courses, eq(enrollments.courseId, courses.id))
-  .where(eq(enrollments.userId, userId))
-  .orderBy(desc(enrollments.enrolledAt));
+  return await db.select().from(enrollments)
+    .where(eq(enrollments.courseId, courseId))
+    .orderBy(desc(enrollments.enrolledAt));
 }
 
-export async function getEnrollmentByCourseAndUser(courseId: number, userId: number) {
+export async function getEnrollment(userId: number, courseId: number) {
   const db = await getDb();
   if (!db) return undefined;
   const result = await db.select().from(enrollments)
     .where(and(
-      eq(enrollments.courseId, courseId),
-      eq(enrollments.userId, userId)
+      eq(enrollments.userId, userId),
+      eq(enrollments.courseId, courseId)
     ))
     .limit(1);
   return result.length > 0 ? result[0] : undefined;
-}
-
-// Alias for consistency
-export async function getEnrollmentByUserAndCourse(userId: number, courseId: number) {
-  return getEnrollmentByCourseAndUser(courseId, userId);
 }
 
 export async function createEnrollment(enrollment: InsertEnrollment) {
@@ -431,11 +445,55 @@ export async function updateEnrollment(id: number, enrollment: Partial<InsertEnr
   await db.update(enrollments).set(enrollment).where(eq(enrollments.id, id));
 }
 
+export async function deleteEnrollment(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(enrollments).where(eq(enrollments.id, id));
+}
+
+// ============================================================================
+// Registration Key Management
+// ============================================================================
+
+export async function getAllRegistrationKeys() {
+  const db = await getDb();
+  if (!db) return [];
+  return await db.select().from(registrationKeys).orderBy(desc(registrationKeys.createdAt));
+}
+
+export async function getRegistrationKeyByCode(keyCode: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(registrationKeys)
+    .where(eq(registrationKeys.keyCode, keyCode))
+    .limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+export async function createRegistrationKey(key: InsertRegistrationKey) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(registrationKeys).values(key).returning({ id: registrationKeys.id });
+  return result[0].id;
+}
+
+export async function updateRegistrationKey(id: number, key: Partial<InsertRegistrationKey>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(registrationKeys).set(key).where(eq(registrationKeys.id, id));
+}
+
+export async function deleteRegistrationKey(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(registrationKeys).where(eq(registrationKeys.id, id));
+}
+
 // ============================================================================
 // Episode Progress Management
 // ============================================================================
 
-export async function getEpisodeProgress(userId: number, episodeId: number) {
+export async function getUserEpisodeProgress(userId: number, episodeId: number) {
   const db = await getDb();
   if (!db) return undefined;
   const result = await db.select().from(episodeProgress)
@@ -447,497 +505,84 @@ export async function getEpisodeProgress(userId: number, episodeId: number) {
   return result.length > 0 ? result[0] : undefined;
 }
 
-export async function upsertEpisodeProgress(progress: InsertEpisodeProgress) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  // PostgreSQL uses ON CONFLICT for upsert operations
-  await db.insert(episodeProgress)
-    .values(progress)
-    .onConflictDoUpdate({
-      target: [episodeProgress.userId, episodeProgress.episodeId],
-      set: {
-        watchedDuration: progress.watchedDuration,
-        isCompleted: progress.isCompleted,
-        lastWatchedAt: new Date(),
-      },
-    });
-}
-
-export async function getCourseProgressByUser(userId: number, courseId: number) {
+export async function getUserCourseProgress(userId: number, courseId: number) {
   const db = await getDb();
   if (!db) return [];
   return await db.select().from(episodeProgress)
     .where(and(
       eq(episodeProgress.userId, userId),
       eq(episodeProgress.courseId, courseId)
-    ));
+    ))
+    .orderBy(episodeProgress.lastWatchedAt);
 }
 
-// ============================================================================
-// Dashboard Statistics
-// ============================================================================
-
-export async function getDashboardStats() {
+export async function createOrUpdateEpisodeProgress(progress: InsertEpisodeProgress) {
   const db = await getDb();
-  if (!db) return {
-    totalUsers: 0,
-    totalCourses: 0,
-    totalEnrollments: 0,
-    activeEnrollments: 0,
-  };
-
-  // Count only regular users, not admins
-  const [totalUsersResult] = await db.select({ count: sql<number>`count(*)` }).from(users);
-  const [totalCoursesResult] = await db.select({ count: sql<number>`count(*)` }).from(courses);
-  const [totalEnrollmentsResult] = await db.select({ count: sql<number>`count(*)` }).from(enrollments);
-  const [activeEnrollmentsResult] = await db.select({ count: sql<number>`count(*)` })
-    .from(enrollments)
-    .where(eq(enrollments.isSubscriptionActive, true));
-
-  return {
-    totalUsers: Number(totalUsersResult.count),
-    totalCourses: Number(totalCoursesResult.count),
-    totalEnrollments: Number(totalEnrollmentsResult.count),
-    activeEnrollments: Number(activeEnrollmentsResult.count),
-  };
+  if (!db) throw new Error("Database not available");
+  
+  const existing = await getUserEpisodeProgress(progress.userId, progress.episodeId);
+  
+  if (existing) {
+    await db.update(episodeProgress)
+      .set({
+        watchedDuration: progress.watchedDuration,
+        isCompleted: progress.isCompleted,
+        lastWatchedAt: new Date(),
+      })
+      .where(eq(episodeProgress.id, existing.id));
+    return existing.id;
+  } else {
+    const result = await db.insert(episodeProgress).values(progress).returning({ id: episodeProgress.id });
+    return result[0].id;
+  }
 }
 
 // ============================================================================
 // LexAI Subscription Management
 // ============================================================================
 
-export async function createLexaiSubscription(data: InsertLexaiSubscription) {
+export async function getUserLexaiSubscription(userId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(lexaiSubscriptions)
+    .where(and(
+      eq(lexaiSubscriptions.userId, userId),
+      eq(lexaiSubscriptions.isActive, true)
+    ))
+    .orderBy(desc(lexaiSubscriptions.createdAt))
+    .limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+export async function createLexaiSubscription(subscription: InsertLexaiSubscription) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-
-  logger.db('Creating LexAI subscription', { userId: data.userId });
-
-  const result = await db.insert(lexaiSubscriptions).values(data).returning({ id: lexaiSubscriptions.id });
+  const result = await db.insert(lexaiSubscriptions).values(subscription).returning({ id: lexaiSubscriptions.id });
   return result[0].id;
 }
 
-export async function getLexaiSubscriptionByUserId(userId: number): Promise<LexaiSubscription | undefined> {
+export async function updateLexaiSubscription(id: number, subscription: Partial<InsertLexaiSubscription>) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-
-  const result = await db
-    .select()
-    .from(lexaiSubscriptions)
-    .where(eq(lexaiSubscriptions.userId, userId))
-    .orderBy(desc(lexaiSubscriptions.createdAt))
-    .limit(1);
-
-  return result[0];
-}
-
-export async function getActiveLexaiSubscription(userId: number): Promise<LexaiSubscription | undefined> {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  const result = await db
-    .select()
-    .from(lexaiSubscriptions)
-    .where(
-      and(
-        eq(lexaiSubscriptions.userId, userId),
-        eq(lexaiSubscriptions.isActive, true)
-      )
-    )
-    .orderBy(desc(lexaiSubscriptions.createdAt))
-    .limit(1);
-
-  return result[0];
-}
-
-export async function updateLexaiSubscription(id: number, data: Partial<LexaiSubscription>) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  logger.db('Updating LexAI subscription', { id });
-
-  await db
-    .update(lexaiSubscriptions)
-    .set(data)
-    .where(eq(lexaiSubscriptions.id, id));
-}
-
-export async function incrementLexaiMessageCount(subscriptionId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  await db
-    .update(lexaiSubscriptions)
-    .set({
-      messagesUsed: sql`${lexaiSubscriptions.messagesUsed} + 1`
-    })
-    .where(eq(lexaiSubscriptions.id, subscriptionId));
+  await db.update(lexaiSubscriptions).set(subscription).where(eq(lexaiSubscriptions.id, id));
 }
 
 // ============================================================================
-// LexAI Messages Management
+// LexAI Message Management
 // ============================================================================
 
-export async function createLexaiMessage(data: InsertLexaiMessage) {
+export async function getUserLexaiMessages(userId: number, limit: number = 50) {
   const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  logger.db('Creating LexAI message', { userId: data.userId, role: data.role });
-
-  const result = await db.insert(lexaiMessages).values(data).returning({ id: lexaiMessages.id });
-  return result[0].id;
-}
-
-export async function getLexaiMessagesByUser(userId: number, limit: number = 50): Promise<LexaiMessage[]> {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  const result = await db
-    .select()
-    .from(lexaiMessages)
+  if (!db) return [];
+  return await db.select().from(lexaiMessages)
     .where(eq(lexaiMessages.userId, userId))
     .orderBy(desc(lexaiMessages.createdAt))
     .limit(limit);
-
-  return result.reverse(); // Return in chronological order
 }
 
-export async function getLexaiMessagesBySubscription(subscriptionId: number): Promise<LexaiMessage[]> {
+export async function createLexaiMessage(message: InsertLexaiMessage) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-
-  const result = await db
-    .select()
-    .from(lexaiMessages)
-    .where(eq(lexaiMessages.subscriptionId, subscriptionId))
-    .orderBy(desc(lexaiMessages.createdAt));
-
-  return result.reverse();
-}
-
-export async function updateLexaiMessage(id: number, data: Partial<LexaiMessage>) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  await db
-    .update(lexaiMessages)
-    .set(data)
-    .where(eq(lexaiMessages.id, id));
-}
-
-// ============================================================================
-// LexAI Statistics
-// ============================================================================
-
-export async function getLexaiStats() {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  const [totalSubs] = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(lexaiSubscriptions);
-
-  const [activeSubs] = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(lexaiSubscriptions)
-    .where(eq(lexaiSubscriptions.isActive, true));
-
-  const [totalMessages] = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(lexaiMessages);
-
-  return {
-    totalSubscriptions: Number(totalSubs?.count || 0),
-    activeSubscriptions: Number(activeSubs?.count || 0),
-    totalMessages: Number(totalMessages?.count || 0),
-  };
-}
-
-
-// ============================================================================
-// Registration Keys Management
-// ============================================================================
-
-import { nanoid } from "nanoid";
-import { isNull } from "drizzle-orm";
-
-/**
- * Generate a unique registration key code
- */
-export function generateKeyCode(): string {
-  // Format: XFLEX-XXXXX-XXXXX-XXXXX
-  const part1 = nanoid(5).toUpperCase();
-  const part2 = nanoid(5).toUpperCase();
-  const part3 = nanoid(5).toUpperCase();
-  return `XFLEX-${part1}-${part2}-${part3}`;
-}
-
-/**
- * Create a single registration key
- */
-export async function createRegistrationKey(data: {
-  courseId: number;
-  createdBy: number;
-  notes?: string;
-  expiresAt?: Date;
-}): Promise<RegistrationKey> {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  
-  const keyCode = generateKeyCode();
-  
-  logger.db('Creating registration key', { courseId: data.courseId, keyCode });
-  
-  const [key] = await db.insert(registrationKeys).values({
-    keyCode,
-    courseId: data.courseId,
-    createdBy: data.createdBy,
-    notes: data.notes,
-    expiresAt: data.expiresAt,
-  }).returning();
-  
-  return key;
-}
-
-/**
- * Create multiple registration keys (bulk generation)
- */
-export async function createBulkRegistrationKeys(data: {
-  courseId: number;
-  createdBy: number;
-  quantity: number;
-  notes?: string;
-  expiresAt?: Date;
-}): Promise<RegistrationKey[]> {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  
-  const keys: InsertRegistrationKey[] = [];
-  
-  for (let i = 0; i < data.quantity; i++) {
-    keys.push({
-      keyCode: generateKeyCode(),
-      courseId: data.courseId,
-      createdBy: data.createdBy,
-      notes: data.notes,
-      expiresAt: data.expiresAt,
-    });
-  }
-  
-  logger.db('Creating bulk registration keys', { courseId: data.courseId, quantity: data.quantity });
-  
-  const createdKeys = await db.insert(registrationKeys).values(keys).returning();
-  return createdKeys;
-}
-
-/**
- * Get registration key by code
- */
-export async function getRegistrationKeyByCode(keyCode: string): Promise<RegistrationKey | undefined> {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  
-  const [key] = await db
-    .select()
-    .from(registrationKeys)
-    .where(eq(registrationKeys.keyCode, keyCode))
-    .limit(1);
-  
-  return key;
-}
-
-/**
- * Activate a registration key with user email
- */
-export async function activateRegistrationKey(
-  keyCode: string,
-  email: string
-): Promise<{ success: boolean; message: string; key?: RegistrationKey }> {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  
-  const key = await getRegistrationKeyByCode(keyCode);
-  
-  if (!key) {
-    return { success: false, message: "Invalid registration key" };
-  }
-  
-  if (!key.isActive) {
-    return { success: false, message: "This key has been deactivated" };
-  }
-  
-  if (key.expiresAt && new Date() > key.expiresAt) {
-    return { success: false, message: "This key has expired" };
-  }
-  
-  if (key.email) {
-    if (key.email === email) {
-      return { success: true, message: "Key already activated with this email", key };
-    } else {
-      return { success: false, message: "This key is already activated with a different email" };
-    }
-  }
-  
-  // Activate the key by locking it to this email
-  logger.db('Activating registration key', { keyCode, email });
-  
-  const [updatedKey] = await db
-    .update(registrationKeys)
-    .set({
-      email,
-      activatedAt: new Date(),
-    })
-    .where(eq(registrationKeys.id, key.id))
-    .returning();
-  
-  return { success: true, message: "Key activated successfully", key: updatedKey };
-}
-
-/**
- * Check if user has valid key for a course
- */
-export async function userHasValidKeyForCourse(
-  email: string,
-  courseId: number
-): Promise<boolean> {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  
-  const [key] = await db
-    .select()
-    .from(registrationKeys)
-    .where(
-      and(
-        eq(registrationKeys.email, email),
-        eq(registrationKeys.courseId, courseId),
-        eq(registrationKeys.isActive, true)
-      )
-    )
-    .limit(1);
-  
-  if (!key) return false;
-  
-  // Check expiration
-  if (key.expiresAt && new Date() > key.expiresAt) {
-    return false;
-  }
-  
-  return true;
-}
-
-/**
- * Get all registration keys (for admin)
- */
-export async function getAllRegistrationKeys(): Promise<RegistrationKey[]> {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  
-  return await db
-    .select()
-    .from(registrationKeys)
-    .orderBy(desc(registrationKeys.createdAt));
-}
-
-/**
- * Get registration keys by course
- */
-export async function getRegistrationKeysByCourse(courseId: number): Promise<RegistrationKey[]> {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  
-  return await db
-    .select()
-    .from(registrationKeys)
-    .where(eq(registrationKeys.courseId, courseId))
-    .orderBy(desc(registrationKeys.createdAt));
-}
-
-/**
- * Get unused (not activated) keys
- */
-export async function getUnusedKeys(): Promise<RegistrationKey[]> {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  
-  return await db
-    .select()
-    .from(registrationKeys)
-    .where(
-      and(
-        isNull(registrationKeys.email),
-        eq(registrationKeys.isActive, true)
-      )
-    )
-    .orderBy(desc(registrationKeys.createdAt));
-}
-
-/**
- * Get activated keys
- */
-export async function getActivatedKeys(): Promise<RegistrationKey[]> {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  
-  return await db
-    .select()
-    .from(registrationKeys)
-    .where(eq(registrationKeys.isActive, true))
-    .orderBy(desc(registrationKeys.activatedAt));
-}
-
-/**
- * Deactivate a registration key
- */
-export async function deactivateRegistrationKey(keyId: number): Promise<RegistrationKey> {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  
-  logger.db('Deactivating registration key', { keyId });
-  
-  const [key] = await db
-    .update(registrationKeys)
-    .set({ isActive: false })
-    .where(eq(registrationKeys.id, keyId))
-    .returning();
-  
-  return key;
-}
-
-/**
- * Search keys by email
- */
-export async function searchKeysByEmail(email: string): Promise<RegistrationKey[]> {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  
-  return await db
-    .select()
-    .from(registrationKeys)
-    .where(eq(registrationKeys.email, email))
-    .orderBy(desc(registrationKeys.createdAt));
-}
-
-/**
- * Get key statistics
- */
-export async function getKeyStatistics() {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  
-  const allKeys = await getAllRegistrationKeys();
-  
-  const total = allKeys.length;
-  const activated = allKeys.filter(k => k.email !== null).length;
-  const unused = allKeys.filter(k => k.email === null && k.isActive).length;
-  const deactivated = allKeys.filter(k => !k.isActive).length;
-  const expired = allKeys.filter(k => k.expiresAt && new Date() > k.expiresAt).length;
-  
-  return {
-    total,
-    activated,
-    unused,
-    deactivated,
-    expired,
-    activationRate: total > 0 ? ((activated / total) * 100).toFixed(2) : "0.00",
-  };
+  const result = await db.insert(lexaiMessages).values(message).returning({ id: lexaiMessages.id });
+  return result[0].id;
 }
