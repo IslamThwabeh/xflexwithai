@@ -1,7 +1,7 @@
 // server/routes/flexai.ts
 import { Router } from 'express';
 import { unifiedAuth, AuthenticatedRequest } from '../middleware/unified-auth';
-import { db } from '../db';
+import * as dbFunctions from '../db';
 import { 
   registrationKeys, 
   flexaiSubscriptions, 
@@ -28,6 +28,8 @@ router.post('/redeem-key', unifiedAuth, async (req: AuthenticatedRequest, res) =
         error: 'Registration key is required' 
       });
     }
+    
+    const db = await dbFunctions.db();
     
     // Find registration key
     const registrationKey = await db.query.registrationKeys.findFirst({
@@ -99,170 +101,155 @@ router.post('/redeem-key', unifiedAuth, async (req: AuthenticatedRequest, res) =
 
 /**
  * GET /api/flexai/subscription
- * Get current subscription status
+ * Get current user's FlexAI subscription status
  */
 router.get('/subscription', unifiedAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user!.id;
+    const db = await dbFunctions.db();
     
     const subscription = await db.query.flexaiSubscriptions.findFirst({
       where: and(
         eq(flexaiSubscriptions.userId, userId),
         eq(flexaiSubscriptions.status, 'active')
       ),
-      orderBy: [desc(flexaiSubscriptions.createdAt)]
+      orderBy: [desc(flexaiSubscriptions.activatedAt)]
     });
     
     if (!subscription) {
-      return res.json({ active: false });
+      return res.json({ 
+        hasSubscription: false,
+        message: 'No active subscription found'
+      });
     }
     
     // Check if expired
-    const now = new Date();
-    if (new Date(subscription.expiresAt) < now) {
-      // Mark as expired
+    if (new Date() > new Date(subscription.expiresAt)) {
       await db.update(flexaiSubscriptions)
         .set({ status: 'expired' })
         .where(eq(flexaiSubscriptions.id, subscription.id));
       
-      return res.json({ active: false, expired: true });
+      return res.json({ 
+        hasSubscription: false,
+        message: 'Subscription has expired'
+      });
     }
     
     return res.json({ 
-      active: true, 
+      hasSubscription: true,
       subscription: {
         id: subscription.id,
         expiresAt: subscription.expiresAt,
-        status: subscription.status
+        status: subscription.status,
+        activatedAt: subscription.activatedAt
       }
     });
-  } catch (error) {
-    console.error('Subscription check error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    
+  } catch (error: any) {
+    console.error('Get subscription error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to get subscription status'
+    });
   }
 });
 
 /**
  * POST /api/flexai/analyze
- * Analyze trading chart image
- * Supports both web and Telegram formats
+ * Analyze a trading chart image
+ * Supports both web uploads and Telegram image URLs
  */
 router.post('/analyze', unifiedAuth, async (req: AuthenticatedRequest, res) => {
   try {
+    const { image_url, timeframe, last_message } = req.body;
     const userId = req.user!.id;
-    
-    // Support both naming conventions (web and Telegram)
-    const imageUrl = req.body.imageUrl || req.body.image_url;
-    const analysisType = req.body.analysisType || req.body.action_type || 'first_analysis';
-    const timeframe = req.body.timeframe || 'M15';
-    const userAnalysis = req.body.userAnalysis || req.body.user_analysis;
-    
-    if (!imageUrl) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'صورة غير صالحة' // Arabic for Telegram compatibility
-      });
-    }
+    const db = await dbFunctions.db();
     
     // Check subscription
     const subscription = await db.query.flexaiSubscriptions.findFirst({
       where: and(
         eq(flexaiSubscriptions.userId, userId),
         eq(flexaiSubscriptions.status, 'active')
-      ),
-      orderBy: [desc(flexaiSubscriptions.createdAt)]
+      )
     });
     
-    if (!subscription) {
-      return res.status(403).json({ 
-        success: false,
-        code: 'not_registered',
-        message: 'Your account is not registered. Please activate FlexAI subscription.'
-      });
-    }
-    
-    // Check expiry
-    if (new Date(subscription.expiresAt) < new Date()) {
-      // Mark as expired
-      await db.update(flexaiSubscriptions)
-        .set({ status: 'expired' })
-        .where(eq(flexaiSubscriptions.id, subscription.id));
+    if (!subscription || new Date() > new Date(subscription.expiresAt)) {
+      // Update status if expired
+      if (subscription) {
+        await db.update(flexaiSubscriptions)
+          .set({ status: 'expired' })
+          .where(eq(flexaiSubscriptions.id, subscription.id));
+      }
       
       return res.status(403).json({ 
         success: false,
-        code: 'expired',
-        message: 'Your subscription has expired. Please renew.'
+        error: 'Active subscription required. Please redeem a registration key first.'
       });
     }
     
-    // Perform analysis
-    const analysis = await OpenAIService.analyzeChart(
-      imageUrl,
-      analysisType as any,
-      timeframe,
-      userAnalysis
-    );
+    // Use image_url from SendPulse or last_message
+    const imageUrl = image_url || last_message;
+    
+    if (!imageUrl) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Image URL is required'
+      });
+    }
     
     // Save user message
     await db.insert(flexaiMessages).values({
       userId,
       subscriptionId: subscription.id,
       role: 'user',
-      content: `Chart analysis request - ${analysisType}`,
+      content: `Analyze chart (${timeframe || 'unknown timeframe'})`,
       imageUrl,
-      analysisType,
-      timeframe
+      timeframe: timeframe || null
     });
+    
+    // Get OpenAI analysis
+    const openaiService = new OpenAIService(process.env.OPENAI_API_KEY!);
+    const analysis = await openaiService.analyzeChart(imageUrl, timeframe);
     
     // Save assistant response
     await db.insert(flexaiMessages).values({
       userId,
       subscriptionId: subscription.id,
       role: 'assistant',
-      content: analysis,
-      analysisResult: {
-        analysisType,
-        timeframe,
-        timestamp: new Date().toISOString()
-      },
-      analysisType,
-      timeframe
+      content: analysis.text,
+      analysisResult: analysis,
+      analysisType: 'chart_analysis',
+      timeframe: timeframe || null
     });
-    
-    // Determine next action
-    const nextAction = analysisType === 'first_analysis' ? 'second_analysis' :
-                      analysisType === 'second_analysis' ? 'user_analysis' : undefined;
-    
-    const nextPrompt = analysisType === 'first_analysis' ? 'الآن أرسل صورة الإطار الزمني الثاني (H4)' :
-                      analysisType === 'second_analysis' ? 'يمكنك الآن إرسال تحليلك الشخصي للمراجعة' : undefined;
     
     // Return format compatible with both web and Telegram
     return res.json({ 
       success: true,
-      message: `✅ تم تحليل ${timeframe} بنجاح`,
-      analysis,
-      next_action: nextAction,
-      next_prompt: nextPrompt
+      analysis: analysis.text,
+      // Telegram-compatible fields
+      message: analysis.text,
+      timeframe: timeframe || 'unknown',
+      recommendation: analysis.recommendation || 'See analysis above'
     });
     
   } catch (error: any) {
     console.error('Analysis error:', error);
     res.status(500).json({ 
-      success: false,
-      message: 'خدمة الذكاء الاصطناعي غير متوفرة',
-      analysis: error.message
+      success: false, 
+      error: error.message || 'Failed to analyze chart'
     });
   }
 });
 
 /**
  * GET /api/flexai/history
- * Get chat history
+ * Get conversation history
  */
 router.get('/history', unifiedAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user!.id;
     const limit = parseInt(req.query.limit as string) || 50;
+    const db = await dbFunctions.db();
     
     const history = await db.query.flexaiMessages.findMany({
       where: eq(flexaiMessages.userId, userId),
@@ -270,21 +257,18 @@ router.get('/history', unifiedAuth, async (req: AuthenticatedRequest, res) => {
       limit
     });
     
-    res.json({ history });
-  } catch (error) {
-    console.error('History error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    return res.json({ 
+      success: true,
+      messages: history.reverse() // Oldest first
+    });
+    
+  } catch (error: any) {
+    console.error('Get history error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to get conversation history'
+    });
   }
-});
-
-/**
- * GET /api/flexai
- * Health check
- */
-router.get('/', (req, res) => {
-  const openaiAvailable = !!process.env.OPENAI_API_KEY;
-  const status = openaiAvailable ? "✅" : "❌";
-  res.send(`FlexAI API is running ${status} - OpenAI: ${openaiAvailable ? 'Available' : 'Not configured'}`);
 });
 
 export default router;

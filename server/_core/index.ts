@@ -38,6 +38,14 @@ async function startServer() {
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
+  
+  // FlexAI routes (must be before tRPC)
+  try {
+    const flexaiRoutes = await import('../routes/flexai');
+    app.use('/api/flexai', flexaiRoutes.default);
+  } catch (error) {
+    console.error('Failed to load FlexAI routes:', error);
+  }
   // OAuth callback under /api/oauth/callback
   registerOAuthRoutes(app);
   // tRPC API

@@ -567,3 +567,44 @@ export async function createLexaiMessage(message: InsertLexaiMessage) {
   const result = await db.insert(lexaiMessages).values(message).returning({ id: lexaiMessages.id });
   return result[0].id;
 }
+
+// ============================================================================
+// Additional Helper Functions (for backward compatibility)
+// ============================================================================
+
+/**
+ * Get all enrollments (admin function)
+ */
+export async function getAllEnrollments() {
+  const db = await getDb();
+  if (!db) return [];
+  return await db.select().from(enrollments).orderBy(desc(enrollments.enrolledAt));
+}
+
+/**
+ * Get enrollments by user ID (alias for getUserEnrollments)
+ */
+export async function getEnrollmentsByUserId(userId: number) {
+  return getUserEnrollments(userId);
+}
+
+/**
+ * Get enrollment by course and user (alias for getEnrollment with swapped params)
+ */
+export async function getEnrollmentByCourseAndUser(courseId: number, userId: number) {
+  return getEnrollment(userId, courseId);
+}
+
+/**
+ * Get active LexAI subscription for user (alias for getUserLexaiSubscription)
+ */
+export async function getActiveLexaiSubscription(userId: number) {
+  return getUserLexaiSubscription(userId);
+}
+
+/**
+ * Get LexAI messages by user (alias for getUserLexaiMessages)
+ */
+export async function getLexaiMessagesByUser(userId: number, limit: number = 50) {
+  return getUserLexaiMessages(userId, limit);
+}
