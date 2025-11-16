@@ -36,32 +36,13 @@ export async function getDb() {
   return _db;
 }
 
-// Export db for direct use (needed by middleware and routes)
-export const db = {
-  query: {
-    users: undefined as any,
-    flexaiSubscriptions: undefined as any,
-    flexaiMessages: undefined as any,
-    registrationKeys: undefined as any,
-  },
-  insert: (table: any) => ({ values: (data: any) => ({ returning: () => Promise.resolve([]) }) }),
-  update: (table: any) => ({ set: (data: any) => ({ where: (condition: any) => Promise.resolve() }) }),
-  select: () => ({ from: (table: any) => ({ where: (condition: any) => ({ limit: (n: number) => Promise.resolve([]) }) }) }),
-};
-
-// Initialize db proxy that calls getDb()
-const dbProxy = new Proxy({} as any, {
-  get: (target, prop) => {
-    return async (...args: any[]) => {
-      const dbInstance = await getDb();
-      if (!dbInstance) throw new Error("Database not available");
-      return (dbInstance as any)[prop](...args);
-    };
-  }
-});
-
-// Export the actual db instance for use in routes
-export { dbProxy as db };
+// Export db instance that calls getDb() internally
+// This allows middleware and routes to import { db } directly
+export async function db() {
+  const dbInstance = await getDb();
+  if (!dbInstance) throw new Error("Database not available");
+  return dbInstance;
+}
 
 // ============================================================================
 // User Management (Regular Users/Students)
