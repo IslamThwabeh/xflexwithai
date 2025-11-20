@@ -8,6 +8,8 @@ import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
+import quizRoutes from "../routes/quiz.routes";
+import adminQuizRoutes from "../routes/admin-quiz.routes";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -56,6 +58,8 @@ async function startServer() {
       createContext,
     })
   );
+  app.use("/api/quiz", quizRoutes);
+  app.use("/api/admin/quiz", adminQuizRoutes);
   // development mode uses Vite, production mode uses static files
   if (process.env.NODE_ENV === "development") {
     await setupVite(app, server);

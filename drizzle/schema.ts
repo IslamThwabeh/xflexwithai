@@ -352,3 +352,177 @@ export const flexaiMessagesRelations = relations(flexaiMessages, ({ one }) => ({
     references: [flexaiSubscriptions.id],
   }),
 }));
+
+// ============================================
+// Quiz System Tables - Add to drizzle/schema.ts
+// ============================================
+
+import { pgTable, serial, integer, text, varchar, boolean, timestamp, decimal, bigint, pgEnum, unique } from "drizzle-orm/pg-core";
+import { relations } from "drizzle-orm";
+
+/**
+ * Quizzes table - one quiz per course level
+ */
+export const quizzes = pgTable("quizzes", {
+  id: serial("id").primaryKey(),
+  level: integer("level").notNull().unique(),
+  title: text("title").notNull(),
+  description: text("description"),
+  passingScore: integer("passing_score").notNull().default(50),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type Quiz = typeof quizzes.$inferSelect;
+export type InsertQuiz = typeof quizzes.$inferInsert;
+
+/**
+ * Quiz questions table
+ */
+export const quizQuestions = pgTable("quiz_questions", {
+  id: serial("id").primaryKey(),
+  quizId: integer("quiz_id").notNull().references(() => quizzes.id, { onDelete: "cascade" }),
+  questionText: text("question_text").notNull(),
+  orderNum: integer("order_num").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueQuizOrder: unique("unique_quiz_order").on(table.quizId, table.orderNum),
+}));
+
+export type QuizQuestion = typeof quizQuestions.$inferSelect;
+export type InsertQuizQuestion = typeof quizQuestions.$inferInsert;
+
+/**
+ * Quiz options table
+ */
+export const quizOptions = pgTable("quiz_options", {
+  id: serial("id").primaryKey(),
+  questionId: integer("question_id").notNull().references(() => quizQuestions.id, { onDelete: "cascade" }),
+  optionId: varchar("option_id", { length: 1 }).notNull(), // 'a', 'b', 'c', 'd'
+  optionText: text("option_text").notNull(),
+  isCorrect: boolean("is_correct").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueQuestionOption: unique("unique_question_option").on(table.questionId, table.optionId),
+}));
+
+export type QuizOption = typeof quizOptions.$inferSelect;
+export type InsertQuizOption = typeof quizOptions.$inferInsert;
+
+/**
+ * Quiz attempts table - records each quiz attempt
+ */
+export const quizAttempts = pgTable("quiz_attempts", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  quizId: integer("quiz_id").notNull().references(() => quizzes.id, { onDelete: "cascade" }),
+  score: integer("score").notNull(),
+  totalQuestions: integer("total_questions").notNull(),
+  percentage: decimal("percentage", { precision: 5, scale: 2 }).notNull(),
+  passed: boolean("passed").notNull(),
+  startedAt: timestamp("started_at").defaultNow().notNull(),
+  completedAt: timestamp("completed_at").defaultNow().notNull(),
+  timeTakenSeconds: integer("time_taken_seconds"),
+});
+
+export type QuizAttempt = typeof quizAttempts.$inferSelect;
+export type InsertQuizAttempt = typeof quizAttempts.$inferInsert;
+
+/**
+ * Quiz answers table - records individual answers
+ */
+export const quizAnswers = pgTable("quiz_answers", {
+  id: serial("id").primaryKey(),
+  attemptId: integer("attempt_id").notNull().references(() => quizAttempts.id, { onDelete: "cascade" }),
+  questionId: integer("question_id").notNull().references(() => quizQuestions.id, { onDelete: "cascade" }),
+  selectedOptionId: varchar("selected_option_id", { length: 1 }).notNull(),
+  isCorrect: boolean("is_correct").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type QuizAnswer = typeof quizAnswers.$inferSelect;
+export type InsertQuizAnswer = typeof quizAnswers.$inferInsert;
+
+/**
+ * User quiz progress table - tracks unlock status and best scores
+ */
+export const userQuizProgress = pgTable("user_quiz_progress", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  quizId: integer("quiz_id").notNull().references(() => quizzes.id, { onDelete: "cascade" }),
+  isUnlocked: boolean("is_unlocked").notNull().default(false),
+  isCompleted: boolean("is_completed").notNull().default(false),
+  bestScore: integer("best_score").default(0),
+  bestPercentage: decimal("best_percentage", { precision: 5, scale: 2 }).default("0"),
+  attemptsCount: integer("attempts_count").default(0),
+  lastAttemptAt: timestamp("last_attempt_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueUserQuiz: unique("unique_user_quiz").on(table.userId, table.quizId),
+}));
+
+export type UserQuizProgress = typeof userQuizProgress.$inferSelect;
+export type InsertUserQuizProgress = typeof userQuizProgress.$inferInsert;
+
+// ============================================
+// Relations
+// ============================================
+
+export const quizzesRelations = relations(quizzes, ({ many }) => ({
+  questions: many(quizQuestions),
+  attempts: many(quizAttempts),
+  progress: many(userQuizProgress),
+}));
+
+export const quizQuestionsRelations = relations(quizQuestions, ({ one, many }) => ({
+  quiz: one(quizzes, {
+    fields: [quizQuestions.quizId],
+    references: [quizzes.id],
+  }),
+  options: many(quizOptions),
+  answers: many(quizAnswers),
+}));
+
+export const quizOptionsRelations = relations(quizOptions, ({ one }) => ({
+  question: one(quizQuestions, {
+    fields: [quizOptions.questionId],
+    references: [quizQuestions.id],
+  }),
+}));
+
+export const quizAttemptsRelations = relations(quizAttempts, ({ one, many }) => ({
+  user: one(users, {
+    fields: [quizAttempts.userId],
+    references: [users.id],
+  }),
+  quiz: one(quizzes, {
+    fields: [quizAttempts.quizId],
+    references: [quizzes.id],
+  }),
+  answers: many(quizAnswers),
+}));
+
+export const quizAnswersRelations = relations(quizAnswers, ({ one }) => ({
+  attempt: one(quizAttempts, {
+    fields: [quizAnswers.attemptId],
+    references: [quizAttempts.id],
+  }),
+  question: one(quizQuestions, {
+    fields: [quizAnswers.questionId],
+    references: [quizQuestions.id],
+  }),
+}));
+
+export const userQuizProgressRelations = relations(userQuizProgress, ({ one }) => ({
+  user: one(users, {
+    fields: [userQuizProgress.userId],
+    references: [users.id],
+  }),
+  quiz: one(quizzes, {
+    fields: [userQuizProgress.quizId],
+    references: [quizzes.id],
+  }),
+}));
+
