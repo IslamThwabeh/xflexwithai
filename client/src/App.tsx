@@ -24,6 +24,9 @@ import AdminEnrollments from "./pages/AdminEnrollments";
 import QuizLevels from "./pages/QuizLevels";
 import TakeQuiz from "./pages/TakeQuiz";
 import QuizHistory from "./pages/QuizHistory";
+import AdminQuizDashboard from "./pages/AdminQuizDashboard";
+import AdminQuizUsers from "./pages/AdminQuizUsers";
+import AdminQuizQuestions from "./pages/AdminQuizQuestions";
 
 function Router() {
   return (
@@ -83,6 +86,9 @@ function Router() {
       <Route path="/quiz" component={QuizLevels} />
       <Route path="/quiz/:level" component={TakeQuiz} />
       <Route path="/quiz/:level/history" component={QuizHistory} />
+      <Route path="/admin/quiz" component={AdminQuizDashboard} />
+      <Route path="/admin/quiz/users" component={AdminQuizUsers} />
+      <Route path="/admin/quiz/questions" component={AdminQuizQuestions} />
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
     </Switch>

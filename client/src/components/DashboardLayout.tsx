@@ -42,6 +42,17 @@ import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 import { Button } from "./ui/button";
 
+import { BookOpen } from "lucide-react";
+
+{user?.isAdmin && (
+  <Link href="/admin/quiz">
+    <a className="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-100">
+      <BookOpen className="w-5 h-5" />
+      <span>Quiz Management</span>
+    </a>
+  </Link>
+)}
+
 // Organized menu items with sections
 const menuSections = [
   {

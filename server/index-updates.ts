@@ -3,6 +3,8 @@
 
 // Import FlexAI routes
 import flexaiRoutes from './routes/flexai';
+import adminQuizRoutes from "./routes/admin-quiz-stats";
+
 
 // ... your existing imports and setup ...
 
@@ -27,3 +29,4 @@ app.use('/api/flexai', flexaiRoutes);  // <-- ADD THIS
 
 // ... rest of your server setup ...
 */
+app.use("/api/admin/quiz", requireAdmin, adminQuizRoutes);
