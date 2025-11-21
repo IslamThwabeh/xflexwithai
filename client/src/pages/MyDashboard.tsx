@@ -79,6 +79,14 @@ export default function MyDashboard() {
                   Home
                 </Button>
               </Link>
+			  
+			    <Link href="/quiz">
+					<Button variant="ghost">
+					<BookOpen className="mr-2 h-4 w-4" />
+					الاختبارات
+				</Button>
+				</Link>
+  
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white font-semibold">
                   {user?.name?.charAt(0).toUpperCase() || "U"}

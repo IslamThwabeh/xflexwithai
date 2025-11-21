@@ -21,6 +21,9 @@ import AdminRoute from "./components/AdminRoute";
 import AdminAnalytics from "./pages/AdminAnalytics";
 import AdminSettings from "./pages/AdminSettings";
 import AdminEnrollments from "./pages/AdminEnrollments";
+import QuizLevels from "./pages/QuizLevels";
+import TakeQuiz from "./pages/TakeQuiz";
+import QuizHistory from "./pages/QuizHistory";
 
 function Router() {
   return (
@@ -77,6 +80,9 @@ function Router() {
       <Route path={"/activate-key"} component={ActivateKey} />
       <Route path={"/course/:id"} component={CourseWatch} />
       <Route path={"/lexai"} component={LexAI} />
+      <Route path="/quiz" component={QuizLevels} />
+      <Route path="/quiz/:level" component={TakeQuiz} />
+      <Route path="/quiz/:level/history" component={QuizHistory} />
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
     </Switch>
