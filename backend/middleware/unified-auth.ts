@@ -1,7 +1,7 @@
 // server/middleware/unified-auth.ts
 import { Request, Response, NextFunction } from 'express';
 import { db } from '../db';
-import { users } from '../../drizzle/schema';
+import { users } from '../database/schema-sqlite.ts';
 import { eq } from 'drizzle-orm';
 
 export interface AuthenticatedRequest extends Request {

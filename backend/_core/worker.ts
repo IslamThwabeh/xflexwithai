@@ -5,20 +5,21 @@ import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
-import { serveStatic, setupVite } from "./vite";
+import { serveStatic } from "./vite";
 import quizRoutes from "../routes/quiz.routes";
 import adminQuizRoutes from "../routes/admin-quiz.routes";
 import type { D1Database } from "@cloudflare/workers-types";
 
+declare const KVNamespace: any;
+declare const R2Bucket: any;
+
 /**
- * Cloudflare Workers handler
- * This is the entry point for Cloudflare Workers Pages Functions
+ * Cloudflare Workers environment
  */
 export interface Env {
   DB: D1Database;
   VIDEOS_BUCKET: R2Bucket;
   KV_CACHE: KVNamespace;
-  // Add your environment variables here
   JWT_SECRET: string;
   OAUTH_SERVER_URL: string;
   VITE_OAUTH_PORTAL_URL: string;
@@ -31,14 +32,20 @@ export interface Env {
   BUILT_IN_FORGE_API_KEY: string;
   VITE_FRONTEND_FORGE_API_URL: string;
   VITE_FRONTEND_FORGE_API_KEY: string;
+  ENVIRONMENT: "production" | "staging" | "development";
 }
 
 /**
- * For Node.js/Express development
+ * Create Express app with routes
  */
-function startExpressServer() {
+function createApp(env: Env) {
   const app = express();
-  const port = parseInt(process.env.PORT || "3000");
+
+  // Inject environment into context
+  app.use((req, res, next) => {
+    (req as any).env = env;
+    next();
+  });
 
   // Configure cookie parser
   app.use(cookieParser());
@@ -125,13 +132,25 @@ export function createWorkerHandler() {
 }
 
 /**
- * Start Express server in development
+ * Main Cloudflare Workers fetch handler
  */
-if (require.main === module && process.env.NODE_ENV !== "production") {
-  startExpressServer().catch(console.error);
-}
-
-/**
- * Export handler for testing
- */
-export { createWorkerHandler };
+export default {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    try {
+      const app = createApp(env);
+      
+      return new Promise((resolve, reject) => {
+        // For now, return a simple response
+        resolve(
+          new Response("Cloudflare Workers deployment in progress. Please check again soon.", {
+            status: 200,
+            headers: { "Content-Type": "text/plain" },
+          })
+        );
+      });
+    } catch (error) {
+      console.error("Worker error:", error);
+      return new Response("Internal Server Error", { status: 500 });
+    }
+  },
+};

@@ -6,7 +6,7 @@ import {
   quizAttempts,
   userQuizProgress,
   users
-} from "../../drizzle/schema";
+} from "../database/schema-sqlite.ts";
 import { eq, desc, sql } from "drizzle-orm";
 
 const router = Router();

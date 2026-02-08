@@ -1,13 +1,11 @@
 name = "xflexwithai"
 pages_build_output_dir = "dist/public"
 
-# Production environment
 [env.production]
 name = "xflexwithai-prod"
 routes = [
   { pattern = "xflexwithai.com/*", zone_name = "xflexwithai.com" }
 ]
 
-# Preview environment
 [env.preview]
 name = "xflexwithai-preview"

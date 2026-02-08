@@ -14,7 +14,7 @@ import {
   // FlexAI imports
   flexaiSubscriptions, FlexaiSubscription, InsertFlexaiSubscription,
   flexaiMessages, FlexaiMessage, InsertFlexaiMessage
-} from "../drizzle/schema-sqlite";
+} from "../database/schema-sqlite.ts";
 import { ENV } from './_core/env';
 import { logger } from './_core/logger';
 
