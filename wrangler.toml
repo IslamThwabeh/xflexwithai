@@ -1,0 +1,90 @@
+name = "xflexwithai"
+main = "dist/index.js"
+compatibility_date = "2024-12-16"
+
+# D1 Database Binding
+[[d1_databases]]
+binding = "DB"
+database_name = "xflexwithai-db"
+database_id = "cf374361-2caa-4597-a38d-5cecced7827d"
+
+# R2 Bucket Binding for Videos
+[[r2_buckets]]
+binding = "VIDEOS_BUCKET"
+bucket_name = "xflexwithai-videos"
+preview_bucket_name = "xflexwithai-videos"
+
+# KV Namespace for session/cache storage
+[[kv_namespaces]]
+binding = "KV_CACHE"
+id = "YOUR_KV_NAMESPACE_ID"
+preview_id = "YOUR_KV_NAMESPACE_ID"
+
+# Build configuration
+[build]
+command = "npm run build"
+
+# Environment variables
+[env.production]
+name = "xflexwithai-prod"
+routes = [
+  { pattern = "api.xflexwithai.com/*", zone_name = "xflexwithai.com" }
+]
+vars = { ENVIRONMENT = "production" }
+
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "xflexwithai-db"
+database_id = "cf374361-2caa-4597-a38d-5cecced7827d"
+
+[[env.production.r2_buckets]]
+binding = "VIDEOS_BUCKET"
+bucket_name = "xflexwithai-videos"
+
+[[env.production.kv_namespaces]]
+binding = "KV_CACHE"
+id = "YOUR_KV_NAMESPACE_ID"
+
+[env.staging]
+name = "xflexwithai-staging"
+routes = [
+  { pattern = "staging.xflexwithai.com/*", zone_name = "xflexwithai.com" }
+]
+vars = { ENVIRONMENT = "staging" }
+
+[[env.staging.d1_databases]]
+binding = "DB"
+database_name = "xflexwithai-db"
+database_id = "cf374361-2caa-4597-a38d-5cecced7827d"
+
+[[env.staging.r2_buckets]]
+binding = "VIDEOS_BUCKET"
+bucket_name = "xflexwithai-videos"
+
+[[env.staging.kv_namespaces]]
+binding = "KV_CACHE"
+id = "YOUR_KV_NAMESPACE_ID"
+
+[env.development]
+vars = { ENVIRONMENT = "development" }
+
+[[env.development.d1_databases]]
+binding = "DB"
+database_name = "xflexwithai-db"
+database_id = "cf374361-2caa-4597-a38d-5cecced7827d"
+
+[[env.development.r2_buckets]]
+binding = "VIDEOS_BUCKET"
+bucket_name = "xflexwithai-videos"
+
+[[env.development.kv_namespaces]]
+binding = "KV_CACHE"
+id = "YOUR_KV_NAMESPACE_ID"
+
+# Limits
+[limits]
+cpu_ms = 30000
+
+# Observability
+[observability]
+enabled = true

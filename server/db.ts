@@ -1,6 +1,6 @@
 import { eq, desc, and, sql } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/postgres-js";
-import postgres from "postgres";
+import { drizzle } from "drizzle-orm/d1";
+import type { D1Database } from "@cloudflare/workers-types";
 import {
   InsertUser, users,
   InsertAdmin, admins,
@@ -14,32 +14,40 @@ import {
   // FlexAI imports
   flexaiSubscriptions, FlexaiSubscription, InsertFlexaiSubscription,
   flexaiMessages, FlexaiMessage, InsertFlexaiMessage
-} from "../drizzle/schema";
+} from "../drizzle/schema-sqlite";
 import { ENV } from './_core/env';
 import { logger } from './_core/logger';
 
 let _db: ReturnType<typeof drizzle> | null = null;
-let _client: ReturnType<typeof postgres> | null = null;
 
-export async function getDb() {
-  if (!_db && process.env.DATABASE_URL) {
+/**
+ * For Cloudflare Workers with D1, the database is passed via environment
+ * For local development, it can use a file-based SQLite
+ */
+export async function getDb(env?: { DB: D1Database }) {
+  if (!_db) {
     try {
-      _client = postgres(process.env.DATABASE_URL);
-      _db = drizzle(_client);
-      logger.db('Database connection established');
+      if (env?.DB) {
+        // Cloudflare Workers D1 environment
+        _db = drizzle(env.DB);
+        logger.db('D1 Database connection established (Cloudflare Workers)');
+      } else if (process.env.NODE_ENV === 'development') {
+        // Local development fallback - would need better-sqlite3 setup
+        logger.warn('Database not configured. Running in development mode without database.');
+      } else {
+        throw new Error("Database not available: D1 environment not provided");
+      }
     } catch (error) {
       logger.error('Database connection failed', { error: error instanceof Error ? error.message : 'Unknown error' });
       _db = null;
-      _client = null;
     }
   }
   return _db;
 }
 
 // Export db instance that calls getDb() internally
-// This allows middleware and routes to import { db } directly
-export async function db() {
-  const dbInstance = await getDb();
+export async function db(env?: { DB: D1Database }) {
+  const dbInstance = await getDb(env);
   if (!dbInstance) throw new Error("Database not available");
   return dbInstance;
 }

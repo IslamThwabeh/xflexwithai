@@ -101,6 +101,9 @@ jspm_packages/
 tmp/
 temp/
 
+# Wrangler local state
+.wrangler/
+
 # Database
 *.db
 *.sqlite

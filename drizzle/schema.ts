@@ -1,4 +1,4 @@
-import { serial, pgTable, text, timestamp, varchar, boolean, integer, pgEnum, bigint, jsonb } from "drizzle-orm/pg-core";
+import { int, sqliteTable, text, integer, varchar, boolean, real } from "drizzle-orm/sqlite-core";
 import { relations } from "drizzle-orm";
 
 /**
