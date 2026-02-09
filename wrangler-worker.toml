@@ -14,16 +14,13 @@ database_id = "cf374361-2caa-4597-a38d-5cecced7827d"
 binding = "VIDEOS_BUCKET"
 bucket_name = "xflexwithai-videos"
 
-# Note: KV Namespace will be configured via Cloudflare Dashboard
-# Add in dashboard after deployment if needed for caching
-
 # Environment variables
 [env.production]
 name = "xflexwithai-api-production"
 
 [env.production.vars]
 ENVIRONMENT = "production"
-VITE_APP_TITLE = "XFlex with AI"
+VITE_APP_TITLE = "XFlex Trading Academy"
 VITE_APP_LOGO = "https://xflexwithai.com/logo.png"
 
 [env.staging]
@@ -31,11 +28,11 @@ name = "xflexwithai-api-staging"
 
 [env.staging.vars]
 ENVIRONMENT = "staging"
-VITE_APP_TITLE = "XFlex with AI (Staging)"
+VITE_APP_TITLE = "XFlex Trading Academy (Staging)"
 
 [env.development]
 name = "xflexwithai-api-dev"
 
 [env.development.vars]
 ENVIRONMENT = "development"
-VITE_APP_TITLE = "XFlex with AI (Dev)"
+VITE_APP_TITLE = "XFlex Trading Academy (Dev)"

@@ -2,7 +2,6 @@ import "dotenv/config";
 import express from "express";
 import cookieParser from "cookie-parser";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
-import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic } from "./vite";
@@ -19,19 +18,10 @@ declare const R2Bucket: any;
 export interface Env {
   DB: D1Database;
   VIDEOS_BUCKET: R2Bucket;
-  KV_CACHE: KVNamespace;
+  KV_CACHE?: KVNamespace;
   JWT_SECRET: string;
-  OAUTH_SERVER_URL: string;
-  VITE_OAUTH_PORTAL_URL: string;
-  VITE_APP_ID: string;
-  OWNER_OPEN_ID: string;
-  OWNER_NAME: string;
   VITE_APP_TITLE: string;
   VITE_APP_LOGO: string;
-  BUILT_IN_FORGE_API_URL: string;
-  BUILT_IN_FORGE_API_KEY: string;
-  VITE_FRONTEND_FORGE_API_URL: string;
-  VITE_FRONTEND_FORGE_API_KEY: string;
   ENVIRONMENT: "production" | "staging" | "development";
 }
 
@@ -61,9 +51,6 @@ function createApp(env: Env) {
   } catch (error) {
     console.error("Failed to load FlexAI routes:", error);
   }
-
-  // OAuth callback
-  registerOAuthRoutes(app);
 
   // tRPC API
   app.use(
@@ -109,9 +96,6 @@ export function createWorkerHandler() {
   } catch (error) {
     console.error("Failed to load FlexAI routes:", error);
   }
-
-  // OAuth callback
-  registerOAuthRoutes(app);
 
   // tRPC API
   app.use(

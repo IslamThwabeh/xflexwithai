@@ -72,19 +72,12 @@
 ## What You Need to Do to Deploy
 
 ### Phase 1: Set Environment Secrets (Required)
-These are the minimum secrets needed for the API to function:
+Only one secret is required for the API to function:
 
 ```bash
-# 1. Generate and set JWT secret (for authentication)
+# Set JWT secret (for authentication)
 wrangler secret put JWT_SECRET --env production
 # Paste a strong random value (e.g., from: node -e "console.log(require('crypto').randomBytes(32).toString('base64'))")
-
-# 2. Set OAuth credentials (get from Manus team)
-wrangler secret put OAUTH_SERVER_URL --env production
-wrangler secret put VITE_OAUTH_PORTAL_URL --env production
-wrangler secret put VITE_APP_ID --env production
-wrangler secret put OWNER_OPEN_ID --env production
-wrangler secret put OWNER_NAME --env production
 ```
 
 ### Phase 2: Deploy Worker
@@ -133,13 +126,6 @@ Update frontend configuration to use the new API:
 | Variable | Purpose | Required | Source |
 |----------|---------|----------|--------|
 | JWT_SECRET | Auth token signing | ✅ Yes | Generate locally |
-| OAUTH_SERVER_URL | OAuth server | ✅ Yes | Manus team |
-| VITE_OAUTH_PORTAL_URL | OAuth portal | ✅ Yes | Manus team |
-| VITE_APP_ID | App identifier | ✅ Yes | Manus team |
-| OWNER_OPEN_ID | Owner identity | ✅ Yes | Manus team |
-| OWNER_NAME | Owner display name | ✅ Yes | Manus team |
-| BUILT_IN_FORGE_API_URL | Forge API endpoint | ⏳ Optional | If using Forge |
-| BUILT_IN_FORGE_API_KEY | Forge API key | ⏳ Optional | If using Forge |
 
 ## Verified Working
 
@@ -153,9 +139,9 @@ Update frontend configuration to use the new API:
 
 ## Next Steps Summary
 
-1. **Gather OAuth credentials** from Manus team (OAUTH_SERVER_URL, VITE_OAUTH_PORTAL_URL, VITE_APP_ID, OWNER_OPEN_ID, OWNER_NAME)
-2. **Set secrets** using `wrangler secret put` commands
-3. **Deploy** with `npm run deploy:worker`
+1. **Generate JWT_SECRET** with: `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`
+2. **Set secret** with: `wrangler secret put JWT_SECRET --env production`
+3. **Deploy** with: `npm run deploy:worker`
 4. **Add DNS CNAME** record for `api` subdomain
 5. **Test** endpoints at `https://api.xflexwithai.com/health`
 6. **Update frontend** API URL to point to new backend
@@ -180,4 +166,4 @@ Update frontend configuration to use the new API:
 ---
 
 **Status:** Backend ready for production deployment 🚀  
-**Timeline:** Deployment can happen as soon as OAuth credentials are available
+**Timeline:** Deployment ready immediately
