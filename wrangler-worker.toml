@@ -3,17 +3,6 @@ main = "dist/worker.js"
 compatibility_date = "2025-02-09"
 compatibility_flags = ["nodejs_compat"]
 
-# D1 Database binding
-[[d1_databases]]
-binding = "DB"
-database_name = "xflexwithai-db"
-database_id = "cf374361-2caa-4597-a38d-5cecced7827d"
-
-# R2 Storage binding
-[[r2_buckets]]
-binding = "VIDEOS_BUCKET"
-bucket_name = "xflexwithai-videos"
-
 # Environment variables
 [env.production]
 name = "xflexwithai-api-production"
@@ -23,12 +12,32 @@ ENVIRONMENT = "production"
 VITE_APP_TITLE = "XFlex Trading Academy"
 VITE_APP_LOGO = "https://xflexwithai.com/logo.png"
 
+# D1 Database binding (production)
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "xflexwithai-db"
+database_id = "cf374361-2caa-4597-a38d-5cecced7827d"
+
+# R2 Storage binding (production)
+[[env.production.r2_buckets]]
+binding = "VIDEOS_BUCKET"
+bucket_name = "xflexwithai-videos"
+
 [env.staging]
 name = "xflexwithai-api-staging"
 
 [env.staging.vars]
 ENVIRONMENT = "staging"
 VITE_APP_TITLE = "XFlex Trading Academy (Staging)"
+
+[[env.staging.d1_databases]]
+binding = "DB"
+database_name = "xflexwithai-db"
+database_id = "cf374361-2caa-4597-a38d-5cecced7827d"
+
+[[env.staging.r2_buckets]]
+binding = "VIDEOS_BUCKET"
+bucket_name = "xflexwithai-videos"
 
 [env.development]
 name = "xflexwithai-api-dev"
