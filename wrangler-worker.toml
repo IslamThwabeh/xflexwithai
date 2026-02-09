@@ -1,0 +1,41 @@
+name = "xflexwithai-api"
+main = "dist/worker.js"
+compatibility_date = "2025-02-09"
+compatibility_flags = ["nodejs_compat"]
+
+# D1 Database binding
+[[d1_databases]]
+binding = "DB"
+database_name = "xflexwithai-db"
+database_id = "cf374361-2caa-4597-a38d-5cecced7827d"
+
+# R2 Storage binding
+[[r2_buckets]]
+binding = "VIDEOS_BUCKET"
+bucket_name = "xflexwithai-videos"
+
+# Note: KV Namespace will be configured via Cloudflare Dashboard
+# Add in dashboard after deployment if needed for caching
+
+# Environment variables
+[env.production]
+name = "xflexwithai-api-production"
+
+[env.production.vars]
+ENVIRONMENT = "production"
+VITE_APP_TITLE = "XFlex with AI"
+VITE_APP_LOGO = "https://xflexwithai.com/logo.png"
+
+[env.staging]
+name = "xflexwithai-api-staging"
+
+[env.staging.vars]
+ENVIRONMENT = "staging"
+VITE_APP_TITLE = "XFlex with AI (Staging)"
+
+[env.development]
+name = "xflexwithai-api-dev"
+
+[env.development.vars]
+ENVIRONMENT = "development"
+VITE_APP_TITLE = "XFlex with AI (Dev)"
