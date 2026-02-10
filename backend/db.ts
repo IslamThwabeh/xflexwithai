@@ -190,6 +190,121 @@ export async function getAllUsers() {
   return await db.select().from(users).orderBy(desc(users.createdAt));
 }
 
+/**
+ * Update user (name, phone, etc.)
+ */
+export async function updateUser(userId: number, updates: { name?: string; phone?: string }): Promise<void> {
+  const db = await getDb();
+  if (!db) {
+    logger.warn('Cannot update user: database not available');
+    return;
+  }
+
+  try {
+    await db.update(users)
+      .set({
+        ...(updates.name !== undefined && { name: updates.name || null }),
+        ...(updates.phone !== undefined && { phone: updates.phone || null }),
+      })
+      .where(eq(users.id, userId));
+    logger.db('User updated successfully', { userId });
+  } catch (error) {
+    logger.error('Failed to update user', { error: error instanceof Error ? error.message : 'Unknown error' });
+    throw error;
+  }
+}
+
+/**
+ * Update user password
+ */
+export async function updateUserPassword(userId: number, passwordHash: string): Promise<void> {
+  const db = await getDb();
+  if (!db) {
+    logger.warn('Cannot update user password: database not available');
+    return;
+  }
+
+  try {
+    await db.update(users)
+      .set({ passwordHash })
+      .where(eq(users.id, userId));
+    logger.db('User password updated successfully', { userId });
+  } catch (error) {
+    logger.error('Failed to update user password', { error: error instanceof Error ? error.message : 'Unknown error' });
+    throw error;
+  }
+}
+
+/**
+ * Get enrollments by user ID
+ */
+export async function getEnrollmentsByUserId(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  try {
+    const result = await db.select({
+      id: enrollments.id,
+      userId: enrollments.userId,
+      courseId: enrollments.courseId,
+      courseName: courses.title,
+      progressPercentage: enrollments.progressPercentage,
+      completedEpisodes: enrollments.completedEpisodes,
+      totalEpisodes: sql`(SELECT COUNT(*) FROM ${episodes} WHERE ${eq(episodes.courseId, courses.id)})`,
+      enrolledAt: enrollments.enrolledAt,
+      completedAt: enrollments.completedAt,
+    })
+      .from(enrollments)
+      .innerJoin(courses, eq(enrollments.courseId, courses.id))
+      .where(eq(enrollments.userId, userId))
+      .orderBy(desc(enrollments.enrolledAt));
+    
+    return result;
+  } catch (error) {
+    logger.error('Failed to get user enrollments', { userId, error: error instanceof Error ? error.message : 'Unknown error' });
+    return [];
+  }
+}
+
+/**
+ * Get user statistics
+ */
+export async function getUserStatistics(userId: number) {
+  const db = await getDb();
+  if (!db) return {
+    enrolledCoursesCount: 0,
+    completedCoursesCount: 0,
+    quizzesPassed: 0,
+  };
+
+  try {
+    // Get enrolled courses count
+    const enrollmentsList = await db.select()
+      .from(enrollments)
+      .where(eq(enrollments.userId, userId));
+    const enrolledCoursesCount = enrollmentsList.length;
+
+    // Get completed courses count
+    const completedCount = enrollmentsList.filter(e => e.completedAt !== null).length;
+
+    // Get quizzes passed (simplified - count unique quiz levels passed)
+    const quizzesPassed = enrollmentsList.filter(e => e.progressPercentage >= 100).length;
+
+    return {
+      enrolledCoursesCount,
+      completedCoursesCount: completedCount,
+      quizzesPassed,
+    };
+  } catch (error) {
+    logger.error('Failed to get user statistics', { userId, error: error instanceof Error ? error.message : 'Unknown error' });
+    return {
+      enrolledCoursesCount: 0,
+      completedCoursesCount: 0,
+      quizzesPassed: 0,
+    };
+  }
+}
+
 // Legacy function - kept for backward compatibility but should not be used
 export async function getUserByOpenId(openId: string) {
   const db = await getDb();
@@ -587,13 +702,6 @@ export async function getAllEnrollments() {
   const db = await getDb();
   if (!db) return [];
   return await db.select().from(enrollments).orderBy(desc(enrollments.enrolledAt));
-}
-
-/**
- * Get enrollments by user ID (alias for getUserEnrollments)
- */
-export async function getEnrollmentsByUserId(userId: number) {
-  return getUserEnrollments(userId);
 }
 
 /**

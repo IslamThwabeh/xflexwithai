@@ -214,6 +214,42 @@ export const appRouter = router({
         
         return { success: true, admin: { id: admin.id, email: admin.email, name: admin.name } };
       }),
+
+    // Change password (authenticated users only)
+    changePassword: protectedProcedure
+      .input(z.object({
+        currentPassword: z.string(),
+        newPassword: z.string().min(8),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        logger.info('[AUTH] Change password attempt', { userId: ctx.user?.id });
+        
+        if (!ctx.user) {
+          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Not authenticated' });
+        }
+
+        // Get user
+        const user = await db.getUserById(ctx.user.id);
+        if (!user) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'User not found' });
+        }
+
+        // Verify current password
+        const isValid = await verifyPassword(input.currentPassword, user.passwordHash);
+        if (!isValid) {
+          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Current password is incorrect' });
+        }
+
+        // Hash new password
+        const hashedPassword = await hashPassword(input.newPassword);
+
+        // Update user password
+        await db.updateUserPassword(ctx.user.id, hashedPassword);
+        
+        logger.info('[AUTH] Password changed successfully', { userId: ctx.user.id });
+        
+        return { success: true };
+      }),
     
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
@@ -231,6 +267,84 @@ export const appRouter = router({
     recentEnrollments: adminProcedure.query(async () => {
       const enrollments = await db.getAllEnrollments();
       return enrollments.slice(0, 5);
+    }),
+  }),
+
+  // User management
+  users: router({
+    // Admin: List all users
+    list: adminProcedure.query(async () => {
+      return await db.getAllUsers();
+    }),
+
+    // Admin: Get user by ID
+    getById: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input }) => {
+        const user = await db.getUserById(input.id);
+        if (!user) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'User not found' });
+        }
+        return user;
+      }),
+
+    // User: Update own profile
+    updateProfile: protectedProcedure
+      .input(z.object({
+        name: z.string().min(2).optional(),
+        phone: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.user) {
+          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Not authenticated' });
+        }
+
+        logger.info('[USER] Updating profile', { userId: ctx.user.id });
+
+        await db.updateUser(ctx.user.id, {
+          name: input.name,
+          phone: input.phone,
+        });
+
+        logger.info('[USER] Profile updated successfully', { userId: ctx.user.id });
+        
+        return { success: true };
+      }),
+
+    // User: Get own enrollments
+    getUserEnrollments: protectedProcedure.query(async ({ ctx }) => {
+      if (!ctx.user) {
+        throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Not authenticated' });
+      }
+
+      logger.info('[USER] Getting enrollments', { userId: ctx.user.id });
+      
+      const enrollments = await db.getEnrollmentsByUserId(ctx.user.id);
+      
+      return enrollments.map((enrollment: any) => ({
+        id: enrollment.id,
+        userId: enrollment.userId,
+        courseId: enrollment.courseId,
+        courseName: enrollment.courseName || 'Unknown Course',
+        progressPercentage: enrollment.progressPercentage,
+        completedEpisodes: enrollment.completedEpisodes,
+        totalEpisodes: enrollment.totalEpisodes || 0,
+        enrolledAt: enrollment.enrolledAt,
+        completedAt: enrollment.completedAt,
+      }));
+    }),
+
+    // User: Get own statistics
+    getUserStats: protectedProcedure.query(async ({ ctx }) => {
+      if (!ctx.user) {
+        throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Not authenticated' });
+      }
+
+      logger.info('[USER] Getting statistics', { userId: ctx.user.id });
+      
+      const stats = await db.getUserStatistics(ctx.user.id);
+      
+      return stats;
     }),
   }),
 
@@ -483,23 +597,6 @@ export const appRouter = router({
           completed: completedEpisodes >= totalEpisodes
         });
         return { success: true };
-      }),
-  }),
-
-  // User management (admin only)
-  users: router({
-    list: adminProcedure.query(async () => {
-      return await db.getAllUsers();
-    }),
-
-    getById: adminProcedure
-      .input(z.object({ id: z.number() }))
-      .query(async ({ input }) => {
-        const user = await db.getUserById(input.id);
-        if (!user) {
-          throw new TRPCError({ code: 'NOT_FOUND', message: 'User not found' });
-        }
-        return user;
       }),
   }),
 
