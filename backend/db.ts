@@ -556,13 +556,103 @@ export async function deleteEnrollment(id: number) {
 }
 
 // ============================================================================
+// Dashboard Statistics
+// ============================================================================
+
+export async function getDashboardStats() {
+  const db = await getDb();
+  if (!db) {
+    return {
+      totalUsers: 0,
+      totalCourses: 0,
+      totalEnrollments: 0,
+      activeEnrollments: 0,
+    };
+  }
+
+  const [totalUsersResult] = await db.select({ count: sql<number>`count(*)` }).from(users);
+  const [totalCoursesResult] = await db.select({ count: sql<number>`count(*)` }).from(courses);
+  const [totalEnrollmentsResult] = await db.select({ count: sql<number>`count(*)` }).from(enrollments);
+  const [activeEnrollmentsResult] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(enrollments)
+    .where(eq(enrollments.isSubscriptionActive, true));
+
+  return {
+    totalUsers: Number(totalUsersResult?.count ?? 0),
+    totalCourses: Number(totalCoursesResult?.count ?? 0),
+    totalEnrollments: Number(totalEnrollmentsResult?.count ?? 0),
+    activeEnrollments: Number(activeEnrollmentsResult?.count ?? 0),
+  };
+}
+
+// ============================================================================
 // Registration Key Management
 // ============================================================================
+
+const REGISTRATION_KEY_PREFIX = "XFLEX";
+const REGISTRATION_KEY_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+function generateRegistrationKeyCode(groupLength: number = 5, groups: number = 3): string {
+  const totalLength = groupLength * groups;
+  const bytes = new Uint8Array(totalLength);
+  const cryptoObj = globalThis.crypto;
+
+  if (cryptoObj?.getRandomValues) {
+    cryptoObj.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < totalLength; i += 1) {
+      bytes[i] = Math.floor(Math.random() * 256);
+    }
+  }
+
+  let raw = "";
+  for (let i = 0; i < totalLength; i += 1) {
+    raw += REGISTRATION_KEY_ALPHABET[bytes[i] % REGISTRATION_KEY_ALPHABET.length];
+  }
+
+  const parts = [] as string[];
+  for (let i = 0; i < raw.length; i += groupLength) {
+    parts.push(raw.slice(i, i + groupLength));
+  }
+
+  return `${REGISTRATION_KEY_PREFIX}-${parts.join("-")}`;
+}
 
 export async function getAllRegistrationKeys() {
   const db = await getDb();
   if (!db) return [];
   return await db.select().from(registrationKeys).orderBy(desc(registrationKeys.createdAt));
+}
+
+export async function getRegistrationKeysByCourse(courseId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return await db
+    .select()
+    .from(registrationKeys)
+    .where(eq(registrationKeys.courseId, courseId))
+    .orderBy(desc(registrationKeys.createdAt));
+}
+
+export async function getUnusedKeys() {
+  const db = await getDb();
+  if (!db) return [];
+  return await db
+    .select()
+    .from(registrationKeys)
+    .where(and(eq(registrationKeys.isActive, true), sql`${registrationKeys.activatedAt} is null`))
+    .orderBy(desc(registrationKeys.createdAt));
+}
+
+export async function getActivatedKeys() {
+  const db = await getDb();
+  if (!db) return [];
+  return await db
+    .select()
+    .from(registrationKeys)
+    .where(and(eq(registrationKeys.isActive, true), sql`${registrationKeys.activatedAt} is not null`))
+    .orderBy(desc(registrationKeys.activatedAt));
 }
 
 export async function getRegistrationKeyByCode(keyCode: string) {
@@ -574,17 +664,184 @@ export async function getRegistrationKeyByCode(keyCode: string) {
   return result.length > 0 ? result[0] : undefined;
 }
 
-export async function createRegistrationKey(key: InsertRegistrationKey) {
+export async function createRegistrationKey(
+  key: Omit<InsertRegistrationKey, "keyCode"> & { keyCode?: string }
+) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(registrationKeys).values(key).returning({ id: registrationKeys.id });
+  const keyCode = key.keyCode ?? generateRegistrationKeyCode();
+  const values: InsertRegistrationKey = {
+    ...key,
+    keyCode,
+    expiresAt: key.expiresAt ? new Date(key.expiresAt).toISOString() : key.expiresAt,
+  } as InsertRegistrationKey;
+  const result = await db.insert(registrationKeys).values(values).returning({ id: registrationKeys.id });
   return result[0].id;
+}
+
+export async function createBulkRegistrationKeys(input: {
+  courseId: number;
+  createdBy: number;
+  quantity: number;
+  notes?: string;
+  expiresAt?: Date;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const values: InsertRegistrationKey[] = Array.from({ length: input.quantity }, () => ({
+    keyCode: generateRegistrationKeyCode(),
+    courseId: input.courseId,
+    createdBy: input.createdBy,
+    notes: input.notes ?? null,
+    expiresAt: input.expiresAt ? input.expiresAt.toISOString() : null,
+  }));
+
+  await db.insert(registrationKeys).values(values);
+  return values;
 }
 
 export async function updateRegistrationKey(id: number, key: Partial<InsertRegistrationKey>) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db.update(registrationKeys).set(key).where(eq(registrationKeys.id, id));
+}
+
+export async function deactivateRegistrationKey(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db
+    .update(registrationKeys)
+    .set({ isActive: false })
+    .where(eq(registrationKeys.id, id));
+
+  const [updated] = await db.select().from(registrationKeys).where(eq(registrationKeys.id, id)).limit(1);
+  return updated;
+}
+
+export async function searchKeysByEmail(email: string) {
+  const db = await getDb();
+  if (!db) return [];
+  return await db
+    .select()
+    .from(registrationKeys)
+    .where(eq(registrationKeys.email, email))
+    .orderBy(desc(registrationKeys.createdAt));
+}
+
+export async function getKeyStatistics() {
+  const db = await getDb();
+  if (!db) {
+    return {
+      total: 0,
+      activated: 0,
+      unused: 0,
+      deactivated: 0,
+      activationRate: 0,
+    };
+  }
+
+  const [totalResult] = await db.select({ count: sql<number>`count(*)` }).from(registrationKeys);
+  const [activatedResult] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(registrationKeys)
+    .where(sql`${registrationKeys.activatedAt} is not null`);
+  const [unusedResult] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(registrationKeys)
+    .where(and(eq(registrationKeys.isActive, true), sql`${registrationKeys.activatedAt} is null`));
+  const [deactivatedResult] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(registrationKeys)
+    .where(eq(registrationKeys.isActive, false));
+
+  const total = Number(totalResult?.count ?? 0);
+  const activated = Number(activatedResult?.count ?? 0);
+  const activationRate = total > 0 ? Math.round((activated / total) * 100) : 0;
+
+  return {
+    total,
+    activated,
+    unused: Number(unusedResult?.count ?? 0),
+    deactivated: Number(deactivatedResult?.count ?? 0),
+    activationRate,
+  };
+}
+
+export async function activateRegistrationKey(keyCode: string, email: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const [key] = await db
+    .select()
+    .from(registrationKeys)
+    .where(eq(registrationKeys.keyCode, keyCode))
+    .limit(1);
+
+  if (!key) {
+    return { success: false, message: "Invalid registration key" };
+  }
+
+  if (!key.isActive) {
+    return { success: false, message: "This registration key is deactivated" };
+  }
+
+  if (key.activatedAt) {
+    return { success: false, message: "This registration key has already been activated" };
+  }
+
+  if (key.email && key.email !== email) {
+    return { success: false, message: "This registration key is assigned to another email" };
+  }
+
+  if (key.expiresAt) {
+    const expiresAt = new Date(key.expiresAt);
+    if (!Number.isNaN(expiresAt.getTime()) && expiresAt.getTime() < Date.now()) {
+      return { success: false, message: "This registration key has expired" };
+    }
+  }
+
+  await db
+    .update(registrationKeys)
+    .set({
+      email,
+      activatedAt: new Date().toISOString(),
+      isActive: true,
+    })
+    .where(eq(registrationKeys.id, key.id));
+
+  const [updated] = await db
+    .select()
+    .from(registrationKeys)
+    .where(eq(registrationKeys.id, key.id))
+    .limit(1);
+
+  return {
+    success: true,
+    message: "Key activated successfully",
+    key: updated ?? key,
+  };
+}
+
+export async function userHasValidKeyForCourse(email: string, courseId: number) {
+  const db = await getDb();
+  if (!db) return false;
+
+  const keys = await db
+    .select()
+    .from(registrationKeys)
+    .where(and(eq(registrationKeys.courseId, courseId), eq(registrationKeys.email, email)));
+
+  if (keys.length === 0) return false;
+
+  const now = Date.now();
+  return keys.some((key) => {
+    if (!key.isActive || !key.activatedAt) return false;
+    if (!key.expiresAt) return true;
+    const expiresAt = new Date(key.expiresAt).getTime();
+    return Number.isNaN(expiresAt) ? true : expiresAt >= now;
+  });
 }
 
 export async function deleteRegistrationKey(id: number) {
@@ -671,6 +928,15 @@ export async function updateLexaiSubscription(id: number, subscription: Partial<
   await db.update(lexaiSubscriptions).set(subscription).where(eq(lexaiSubscriptions.id, id));
 }
 
+export async function incrementLexaiMessageCount(subscriptionId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(lexaiSubscriptions)
+    .set({ messagesUsed: sql`${lexaiSubscriptions.messagesUsed} + 1` })
+    .where(eq(lexaiSubscriptions.id, subscriptionId));
+}
+
 // ============================================================================
 // LexAI Message Management
 // ============================================================================
@@ -691,6 +957,28 @@ export async function createLexaiMessage(message: InsertLexaiMessage) {
   return result[0].id;
 }
 
+export async function getLexaiStats() {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const [totalSubs] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(lexaiSubscriptions);
+  const [activeSubs] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(lexaiSubscriptions)
+    .where(eq(lexaiSubscriptions.isActive, true));
+  const [totalMessages] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(lexaiMessages);
+
+  return {
+    totalSubscriptions: Number(totalSubs?.count ?? 0),
+    activeSubscriptions: Number(activeSubs?.count ?? 0),
+    totalMessages: Number(totalMessages?.count ?? 0),
+  };
+}
+
 // ============================================================================
 // Additional Helper Functions (for backward compatibility)
 // ============================================================================
@@ -708,6 +996,13 @@ export async function getAllEnrollments() {
  * Get enrollment by course and user (alias for getEnrollment with swapped params)
  */
 export async function getEnrollmentByCourseAndUser(courseId: number, userId: number) {
+  return getEnrollment(userId, courseId);
+}
+
+/**
+ * Alias to match legacy call sites that pass (userId, courseId).
+ */
+export async function getEnrollmentByUserAndCourse(userId: number, courseId: number) {
   return getEnrollment(userId, courseId);
 }
 
