@@ -34,9 +34,9 @@ import AdminQuizQuestions from "./pages/AdminQuizQuestions";
 function Router() {
   return (
     <Switch>
-      <Route path={"/"} component={Home} />
       <Route path={"/auth"} component={Auth} />
-      <Route path={"/admin/login"} component={AdminLogin} />      <Route path={"/dashboard"}>
+      <Route path={"/admin/login"} component={AdminLogin} />
+      <Route path={"/dashboard"}>
         <ProtectedRoute>
           <Dashboard />
         </ProtectedRoute>
@@ -45,7 +45,8 @@ function Router() {
         <ProtectedRoute>
           <Profile />
         </ProtectedRoute>
-      </Route>      <Route path={"/admin"}>
+      </Route>
+      <Route path={"/admin"}>
         <AdminRoute>
           <AdminDashboard />
         </AdminRoute>
@@ -74,31 +75,44 @@ function Router() {
         <AdminRoute>
           <AdminKeys />
         </AdminRoute>
-        </Route>
-        <Route path={"/admin/analytics"}>
+      </Route>
+      <Route path={"/admin/analytics"}>
         <AdminRoute>
           <AdminAnalytics />
         </AdminRoute>
-        </Route>
-        <Route path={"/admin/settings"}>
+      </Route>
+      <Route path={"/admin/settings"}>
         <AdminRoute>
           <AdminSettings />
         </AdminRoute>
-        </Route>
-        <Route path={"/admin/enrollments"}>
+      </Route>
+      <Route path={"/admin/enrollments"}>
         <AdminRoute>
           <AdminEnrollments />
         </AdminRoute>
-        </Route>
+      </Route>
       <Route path={"/activate-key"} component={ActivateKey} />
       <Route path={"/course/:id"} component={CourseWatch} />
       <Route path={"/lexai"} component={LexAI} />
       <Route path="/quiz" component={QuizLevels} />
       <Route path="/quiz/:level" component={TakeQuiz} />
       <Route path="/quiz/:level/history" component={QuizHistory} />
-      <Route path="/admin/quiz" component={AdminQuizDashboard} />
-      <Route path="/admin/quiz/users" component={AdminQuizUsers} />
-      <Route path="/admin/quiz/questions" component={AdminQuizQuestions} />
+      <Route path="/admin/quiz">
+        <AdminRoute>
+          <AdminQuizDashboard />
+        </AdminRoute>
+      </Route>
+      <Route path="/admin/quiz/users">
+        <AdminRoute>
+          <AdminQuizUsers />
+        </AdminRoute>
+      </Route>
+      <Route path="/admin/quiz/questions">
+        <AdminRoute>
+          <AdminQuizQuestions />
+        </AdminRoute>
+      </Route>
+      <Route path={"/"} component={Home} />
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
     </Switch>
