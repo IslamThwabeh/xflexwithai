@@ -150,12 +150,18 @@ export default function LexAI() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to bottom when new messages arrive
+  // Auto-scroll to bottom when messages load or change
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [messages]);
+    const scrollToBottom = () => {
+      if (scrollRef.current) {
+        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      }
+    };
+    // Scroll immediately and after a short delay to ensure DOM is rendered
+    scrollToBottom();
+    const timer = setTimeout(scrollToBottom, 100);
+    return () => clearTimeout(timer);
+  }, [messages, messagesLoading]);
 
   const sortedMessages = useMemo(() => {
     return (messages ?? []).slice().sort((a, b) => {
@@ -513,18 +519,22 @@ export default function LexAI() {
           >
             {messagesLoading ? (
               <p className="text-center text-muted-foreground">{copy.loadingMessages}</p>
-            ) : !messages || messages.length === 0 ? (
-              <div className="h-full flex items-center justify-center">
-                <div className="text-center max-w-md">
-                  <Sparkles className="h-12 w-12 text-purple-500 mx-auto mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">{copy.startAnalysis}</h3>
-                  <p className="text-sm text-muted-foreground">
-                    {copy.startAnalysisDesc}
-                  </p>
-                </div>
-              </div>
             ) : (
               <div className="space-y-3 md:space-y-4">
+                {/* Welcome message when no history */}
+                {(!messages || messages.length === 0) && (
+                  <div className="flex justify-center py-6">
+                    <div className="text-center max-w-md">
+                      <Sparkles className="h-10 w-10 text-purple-500 mx-auto mb-3" />
+                      <h3 className="text-base font-semibold mb-1">{copy.startAnalysis}</h3>
+                      <p className="text-sm text-muted-foreground">
+                        {copy.startAnalysisDesc}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Chat messages */}
                 {sortedMessages.map((message) => {
                   const rtl = isArabicText(message.content);
                   return (
@@ -566,15 +576,16 @@ export default function LexAI() {
                   );
                 })}
 
-                {/* Flow selection bubble inside chat */}
-                <div className="flex justify-center">
-                  <div className="max-w-[90%] md:max-w-[70%] rounded-2xl border border-slate-200 bg-white/90 backdrop-blur px-3 py-3 md:px-4 md:py-3 shadow-sm" dir="rtl">
-                    <p className="text-xs md:text-sm text-muted-foreground text-right mb-3">
+                {/* Flow selection bubble - always visible at bottom of chat */}
+                <div className="flex justify-center pt-2">
+                  <div className="w-full max-w-[95%] md:max-w-[80%] rounded-2xl border border-slate-200 bg-white/95 backdrop-blur px-3 py-3 md:px-4 md:py-3 shadow-sm" dir="rtl">
+                    <p className="text-xs md:text-sm text-muted-foreground text-right mb-2">
                       {copy.flowGreeting}
                     </p>
-                    <div className="flex flex-wrap gap-2 justify-end">
+                    <div className="flex flex-col gap-2">
                       <Button
                         size="sm"
+                        className="w-full justify-center"
                         variant={guidedFlow === "specialized_m15" || guidedFlow === "specialized_h4" ? "default" : "outline"}
                         onClick={() => {
                           resetInputs();
@@ -585,6 +596,7 @@ export default function LexAI() {
                       </Button>
                       <Button
                         size="sm"
+                        className="w-full justify-center"
                         variant={guidedFlow === "single" ? "default" : "outline"}
                         onClick={() => {
                           resetInputs();
@@ -595,6 +607,7 @@ export default function LexAI() {
                       </Button>
                       <Button
                         size="sm"
+                        className="w-full justify-center"
                         variant={guidedFlow === "feedback_image" ? "default" : "outline"}
                         onClick={() => {
                           resetInputs();
@@ -605,6 +618,7 @@ export default function LexAI() {
                       </Button>
                       <Button
                         size="sm"
+                        className="w-full justify-center"
                         variant="outline"
                         onClick={restartFlow}
                       >
