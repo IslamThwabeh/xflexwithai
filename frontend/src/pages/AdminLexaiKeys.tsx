@@ -105,6 +105,15 @@ export default function AdminLexaiKeys() {
     toast.success("Copied to clipboard!");
   };
 
+  const formatDateSafely = (value: unknown) => {
+    if (!value) return "-";
+    const text = String(value);
+    if (text.toUpperCase() === "CURRENT_TIMESTAMP") return "-";
+    const date = new Date(text);
+    if (Number.isNaN(date.getTime())) return "-";
+    return date.toLocaleString();
+  };
+
   const exportKeysToCSV = () => {
     if (!allKeys || allKeys.length === 0) {
       toast.error("No keys to export");
@@ -117,8 +126,8 @@ export default function AdminLexaiKeys() {
         key.keyCode,
         key.email || "Not activated",
         key.isActive ? "Active" : "Deactivated",
-        new Date(key.createdAt).toLocaleString(),
-        key.activatedAt ? new Date(key.activatedAt).toLocaleString() : "N/A",
+        formatDateSafely(key.createdAt),
+        key.activatedAt ? formatDateSafely(key.activatedAt) : "N/A",
         key.notes || "",
       ]),
     ]
@@ -142,7 +151,7 @@ export default function AdminLexaiKeys() {
     : allKeys;
 
   return (
-    <div className="container mx-auto p-4 md:p-6 space-y-6">
+    <div className="container mx-auto p-4 md:p-6 space-y-6" dir="ltr">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold">LexAI Keys</h1>
@@ -292,6 +301,7 @@ export default function AdminLexaiKeys() {
                   <TableHead>Email</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Created</TableHead>
+                  <TableHead>Used</TableHead>
                   <TableHead>Notes</TableHead>
                   <TableHead></TableHead>
                 </TableRow>
@@ -317,8 +327,9 @@ export default function AdminLexaiKeys() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        {new Date(key.createdAt).toLocaleDateString()}
+                        {formatDateSafely(key.createdAt)}
                       </TableCell>
+                      <TableCell>{formatDateSafely(key.activatedAt)}</TableCell>
                       <TableCell>{key.notes || "-"}</TableCell>
                       <TableCell className="flex items-center gap-2">
                         <Button

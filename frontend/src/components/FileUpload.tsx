@@ -154,7 +154,7 @@ export function FileUpload({
               <img
                 src={uploadedUrl}
                 alt="Preview"
-                className="w-full h-48 object-cover"
+                className="w-full max-h-64 object-contain bg-black/5"
               />
             </div>
           )}

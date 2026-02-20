@@ -39,9 +39,17 @@ const ensureLexaiAccess = async (ctx: { user: { id: number; email?: string | nul
     throw new TRPCError({ code: "FORBIDDEN", message: "No active LexAI subscription" });
   }
 
+  if (String(subscription.paymentStatus ?? "").toLowerCase() !== "key") {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "LexAI requires an activated registration key",
+    });
+  }
+
   if (subscription.endDate) {
     const endDate = new Date(subscription.endDate);
-    if (!Number.isNaN(endDate.getTime()) && endDate.getTime() < Date.now()) {
+    const shouldEnforceExpiry = Number(subscription.messagesUsed ?? 0) > 0;
+    if (shouldEnforceExpiry && !Number.isNaN(endDate.getTime()) && endDate.getTime() < Date.now()) {
       await db.updateLexaiSubscription(subscription.id, { isActive: false });
       throw new TRPCError({ code: "FORBIDDEN", message: "LexAI subscription expired" });
     }
@@ -710,7 +718,8 @@ export const appRouter = router({
 
       if (subscription.endDate) {
         const endDate = new Date(subscription.endDate);
-        if (!Number.isNaN(endDate.getTime()) && endDate.getTime() < Date.now()) {
+        const shouldEnforceExpiry = Number(subscription.messagesUsed ?? 0) > 0;
+        if (shouldEnforceExpiry && !Number.isNaN(endDate.getTime()) && endDate.getTime() < Date.now()) {
           await db.updateLexaiSubscription(subscription.id, { isActive: false });
           return null;
         }
@@ -731,11 +740,17 @@ export const appRouter = router({
           const endDate = new Date(existing.endDate);
           if (!Number.isNaN(endDate.getTime()) && endDate.getTime() < Date.now()) {
             await db.updateLexaiSubscription(existing.id, { isActive: false });
+          } else if (String(existing.paymentStatus ?? "").toLowerCase() === "key") {
+            return { success: true };
           } else {
-            throw new TRPCError({ code: "BAD_REQUEST", message: "Active subscription already exists" });
+            await db.updateLexaiSubscription(existing.id, { isActive: false });
           }
         } else if (existing) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "Active subscription already exists" });
+          if (String(existing.paymentStatus ?? "").toLowerCase() === "key") {
+            return { success: true };
+          } else {
+            await db.updateLexaiSubscription(existing.id, { isActive: false });
+          }
         }
 
         if (!ctx.user.email) {
@@ -750,19 +765,102 @@ export const appRouter = router({
         const endDate = new Date();
         endDate.setDate(endDate.getDate() + 30);
 
-        await db.createLexaiSubscription({
-          userId: ctx.user.id,
-          isActive: true,
-          startDate: new Date().toISOString(),
-          endDate: endDate.toISOString(),
-          paymentStatus: "key",
-          paymentAmount: 0,
-          paymentCurrency: "USD",
-          messagesUsed: 0,
-          messagesLimit: 100,
-        });
+        const current = await db.getActiveLexaiSubscription(ctx.user.id);
+        if (current) {
+          await db.updateLexaiSubscription(current.id, {
+            isActive: true,
+            startDate: new Date().toISOString(),
+            endDate: endDate.toISOString(),
+            paymentStatus: "key",
+            paymentAmount: 0,
+            paymentCurrency: "USD",
+            messagesUsed: 0,
+            messagesLimit: 100,
+          });
+        } else {
+          await db.createLexaiSubscription({
+            userId: ctx.user.id,
+            isActive: true,
+            startDate: new Date().toISOString(),
+            endDate: endDate.toISOString(),
+            paymentStatus: "key",
+            paymentAmount: 0,
+            paymentCurrency: "USD",
+            messagesUsed: 0,
+            messagesLimit: 100,
+          });
+        }
 
         return { success: true };
+      }),
+
+    verifyAssignedKeyByEmail: protectedProcedure
+      .input(z.object({
+        email: z.string().email(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        if (!ctx.user.email) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "User email is required" });
+        }
+
+        const accountEmail = ctx.user.email.trim().toLowerCase();
+        const requestedEmail = input.email.trim().toLowerCase();
+
+        if (requestedEmail !== accountEmail) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Please enter the same email as your account" });
+        }
+
+        const key = await db.getAssignedLexaiKeyByEmail(requestedEmail);
+        if (!key || !key.activatedAt) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "No active assigned LexAI key found for this email" });
+        }
+
+        const activatedAt = new Date(key.activatedAt);
+        if (Number.isNaN(activatedAt.getTime())) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid key activation date" });
+        }
+
+        const keyExpiry = new Date(activatedAt);
+        keyExpiry.setDate(keyExpiry.getDate() + 30);
+
+        if (key.expiresAt) {
+          const absoluteExpiry = new Date(key.expiresAt);
+          if (!Number.isNaN(absoluteExpiry.getTime()) && absoluteExpiry.getTime() < keyExpiry.getTime()) {
+            keyExpiry.setTime(absoluteExpiry.getTime());
+          }
+        }
+
+        if (keyExpiry.getTime() < Date.now()) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Assigned key has expired" });
+        }
+
+        const existing = await db.getActiveLexaiSubscription(ctx.user.id);
+        if (existing) {
+          await db.updateLexaiSubscription(existing.id, {
+            isActive: true,
+            startDate: new Date().toISOString(),
+            endDate: keyExpiry.toISOString(),
+            paymentStatus: "key",
+            paymentAmount: 0,
+            paymentCurrency: "USD",
+            messagesUsed: 0,
+            messagesLimit: 100,
+          });
+        } else {
+          await db.createLexaiSubscription({
+            userId: ctx.user.id,
+            isActive: true,
+            startDate: new Date().toISOString(),
+            endDate: keyExpiry.toISOString(),
+            paymentStatus: "key",
+            paymentAmount: 0,
+            paymentCurrency: "USD",
+            messagesUsed: 0,
+            messagesLimit: 100,
+          });
+        }
+
+        return { success: true, expiresAt: keyExpiry.toISOString() };
       }),
 
     // Create new subscription
@@ -772,24 +870,16 @@ export const appRouter = router({
         durationMonths: z.number().default(1),
       }))
       .mutation(async ({ ctx, input }) => {
-        logger.info('[LexAI] Creating subscription', { userId: ctx.user.id });
-        
-        const endDate = new Date();
-        endDate.setMonth(endDate.getMonth() + input.durationMonths);
-        const endDateIso = endDate.toISOString();
-        
-        await db.createLexaiSubscription({
+        logger.warn('[LexAI] Blocked direct subscription creation', {
           userId: ctx.user.id,
-          isActive: true,
-          startDate: new Date().toISOString(),
-          endDate: endDateIso,
-          paymentStatus: 'completed',
           paymentAmount: input.paymentAmount,
-          messagesUsed: 0,
-          messagesLimit: 100,
+          durationMonths: input.durationMonths,
         });
-        
-        return { success: true };
+
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Subscription creation is disabled. Please activate a registration key.",
+        });
       }),
 
     // Get chat messages
@@ -797,6 +887,12 @@ export const appRouter = router({
       logger.info('[LexAI] Getting messages', { userId: ctx.user.id });
       const messages = await db.getLexaiMessagesByUser(ctx.user.id, 100);
       return messages;
+    }),
+
+    clearHistory: protectedProcedure.mutation(async ({ ctx }) => {
+      logger.info('[LexAI] Clearing chat history', { userId: ctx.user.id });
+      await db.deleteLexaiMessagesByUser(ctx.user.id);
+      return { success: true };
     }),
 
     uploadImage: protectedProcedure
@@ -828,7 +924,7 @@ export const appRouter = router({
         const { subscription } = await ensureLexaiAccess(ctx);
         const analysis = await analyzeLexai({
           flow: "m15",
-          language: input.language,
+          language: "ar",
           timeframe: "M15",
           imageUrl: input.imageUrl,
         });
@@ -872,7 +968,7 @@ export const appRouter = router({
 
         const analysis = await analyzeLexai({
           flow: "h4",
-          language: input.language,
+          language: "ar",
           timeframe: "H4",
           imageUrl: input.imageUrl,
           previousAnalysis: previous.content,
@@ -912,7 +1008,7 @@ export const appRouter = router({
         const { subscription } = await ensureLexaiAccess(ctx);
         const analysis = await analyzeLexai({
           flow: "single",
-          language: input.language,
+          language: "ar",
           timeframe: input.timeframe || "M15",
           imageUrl: input.imageUrl,
         });
@@ -950,7 +1046,7 @@ export const appRouter = router({
         const { subscription } = await ensureLexaiAccess(ctx);
         const analysis = await analyzeLexai({
           flow: "feedback",
-          language: input.language,
+          language: "ar",
           userAnalysis: input.userAnalysis,
         });
 
@@ -987,7 +1083,7 @@ export const appRouter = router({
         const { subscription } = await ensureLexaiAccess(ctx);
         const analysis = await analyzeLexai({
           flow: "feedback_with_image",
-          language: input.language,
+          language: "ar",
           userAnalysis: input.userAnalysis,
           imageUrl: input.imageUrl,
         });

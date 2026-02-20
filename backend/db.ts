@@ -673,6 +673,7 @@ export async function createRegistrationKey(
   const values: InsertRegistrationKey = {
     ...key,
     keyCode,
+    createdAt: new Date().toISOString(),
     expiresAt: key.expiresAt ? new Date(key.expiresAt).toISOString() : null,
   } as InsertRegistrationKey;
   const result = await db.insert(registrationKeys).values(values).returning({ id: registrationKeys.id });
@@ -693,6 +694,7 @@ export async function createBulkRegistrationKeys(input: {
     keyCode: generateRegistrationKeyCode(),
     courseId: input.courseId,
     createdBy: input.createdBy,
+    createdAt: new Date().toISOString(),
     notes: input.notes ?? null,
     expiresAt: input.expiresAt ? new Date(input.expiresAt).toISOString() : null,
   }));
@@ -904,11 +906,21 @@ export async function activateLexaiKey(keyCode: string, email: string) {
     return { success: false, message: "This LexAI key is deactivated" };
   }
 
+  const normalizedEmail = email.trim().toLowerCase();
+
   if (key.activatedAt) {
+    const keyEmail = (key.email ?? "").trim().toLowerCase();
+    if (keyEmail === normalizedEmail) {
+      return {
+        success: true,
+        message: "LexAI key already activated for this email",
+        key,
+      };
+    }
     return { success: false, message: "This LexAI key has already been activated" };
   }
 
-  if (key.email && key.email !== email) {
+  if (key.email && key.email.trim().toLowerCase() !== normalizedEmail) {
     return { success: false, message: "This LexAI key is assigned to another email" };
   }
 
@@ -922,7 +934,7 @@ export async function activateLexaiKey(keyCode: string, email: string) {
   await db
     .update(registrationKeys)
     .set({
-      email,
+      email: normalizedEmail,
       activatedAt: new Date().toISOString(),
       isActive: true,
     })
@@ -939,6 +951,21 @@ export async function activateLexaiKey(keyCode: string, email: string) {
     message: "LexAI key activated successfully",
     key: updated ?? key,
   };
+}
+
+export async function getAssignedLexaiKeyByEmail(email: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+
+  const normalizedEmail = email.trim().toLowerCase();
+  const keys = await db
+    .select()
+    .from(registrationKeys)
+    .where(and(eq(registrationKeys.courseId, 0), eq(registrationKeys.email, normalizedEmail), eq(registrationKeys.isActive, true)))
+    .orderBy(desc(registrationKeys.activatedAt), desc(registrationKeys.createdAt))
+    .limit(1);
+
+  return keys[0];
 }
 
 export async function userHasValidKeyForCourse(email: string, courseId: number) {
@@ -1048,6 +1075,30 @@ export async function updateLexaiSubscription(id: number, subscription: Partial<
 export async function incrementLexaiMessageCount(subscriptionId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
+
+  const [subscription] = await db
+    .select()
+    .from(lexaiSubscriptions)
+    .where(eq(lexaiSubscriptions.id, subscriptionId))
+    .limit(1);
+
+  if (subscription) {
+    const isKeySubscription = String(subscription.paymentStatus ?? "").toLowerCase() === "key";
+    if (isKeySubscription && Number(subscription.messagesUsed ?? 0) === 0) {
+      const startDate = new Date();
+      const endDate = new Date(startDate);
+      endDate.setDate(endDate.getDate() + 30);
+
+      await db
+        .update(lexaiSubscriptions)
+        .set({
+          startDate: startDate.toISOString(),
+          endDate: endDate.toISOString(),
+        })
+        .where(eq(lexaiSubscriptions.id, subscriptionId));
+    }
+  }
+
   await db
     .update(lexaiSubscriptions)
     .set({ messagesUsed: sql`${lexaiSubscriptions.messagesUsed} + 1` })
@@ -1070,8 +1121,20 @@ export async function getUserLexaiMessages(userId: number, limit: number = 50) {
 export async function createLexaiMessage(message: InsertLexaiMessage) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(lexaiMessages).values(message).returning({ id: lexaiMessages.id });
+  const result = await db
+    .insert(lexaiMessages)
+    .values({
+      ...message,
+      createdAt: new Date().toISOString(),
+    } as InsertLexaiMessage)
+    .returning({ id: lexaiMessages.id });
   return result[0].id;
+}
+
+export async function deleteLexaiMessagesByUser(userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(lexaiMessages).where(eq(lexaiMessages.userId, userId));
 }
 
 export async function getLexaiStats() {
