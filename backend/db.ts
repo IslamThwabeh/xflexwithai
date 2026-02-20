@@ -172,7 +172,7 @@ export async function updateUserLastSignIn(userId: number): Promise<void> {
 
   try {
     await db.update(users)
-      .set({ lastSignedIn: new Date() })
+      .set({ lastSignedIn: new Date().toISOString() })
       .where(eq(users.id, userId));
     logger.db('User last sign in updated', { userId });
   } catch (error) {
@@ -385,7 +385,7 @@ export async function updateAdminLastSignIn(adminId: number): Promise<void> {
 
   try {
     await db.update(admins)
-      .set({ lastSignedIn: new Date() })
+      .set({ lastSignedIn: new Date().toISOString() })
       .where(eq(admins.id, adminId));
     logger.db('Admin last sign in updated', { adminId });
   } catch (error) {
