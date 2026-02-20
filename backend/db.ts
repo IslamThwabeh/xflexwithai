@@ -1166,12 +1166,10 @@ export async function syncUserEntitlementsFromKeys(userId: number, email: string
       if (current) {
         await updateLexaiSubscription(current.id, {
           isActive: true,
-          startDate: new Date().toISOString(),
           endDate: endDate.toISOString(),
           paymentStatus: "key",
           paymentAmount: 0,
           paymentCurrency: "USD",
-          messagesUsed: 0,
           messagesLimit: 100,
         });
       } else {
