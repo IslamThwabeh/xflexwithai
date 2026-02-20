@@ -33,7 +33,7 @@ export async function createWorkerContext(
     if (!token) {
       logger.warn("[AUTH] No JWT token found in cookies");
     } else {
-      const decoded = verifyToken(token);
+      const decoded = await verifyToken(token);
 
       if (!decoded) {
         logger.error("[AUTH] Token verification failed");

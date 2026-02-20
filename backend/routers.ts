@@ -1,4 +1,4 @@
-import { COOKIE_NAME } from "@shared/const";
+import { COOKIE_NAME } from "../shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
@@ -76,7 +76,7 @@ export const appRouter = router({
         });
         
         // Generate JWT token
-        const token = generateToken({
+        const token = await generateToken({
           userId,
           email: input.email,
           type: 'user',
@@ -116,7 +116,7 @@ export const appRouter = router({
         await db.updateUserLastSignIn(user.id);
         
         // Generate JWT token
-        const token = generateToken({
+        const token = await generateToken({
           userId: user.id,
           email: user.email,
           type: 'user',
@@ -183,7 +183,7 @@ export const appRouter = router({
           email: admin.email,
           type: 'admin',
         });
-        const token = generateToken({
+        const token = await generateToken({
           userId: admin.id,
           email: admin.email,
           type: 'admin',

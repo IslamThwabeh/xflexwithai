@@ -51,7 +51,7 @@ export async function createContext(
       });
 
       // Verify and decode JWT
-      const decoded = verifyToken(token);
+      const decoded = await verifyToken(token);
       
       if (!decoded) {
         logger.error('❌ [AUTH DEBUG] Token verification failed', {

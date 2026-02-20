@@ -1,9 +1,10 @@
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
-import { ENV } from './env';
+import bcrypt from "bcryptjs";
+import { SignJWT, jwtVerify } from "jose";
+import { ENV } from "./env";
 
 const SALT_ROUNDS = 10;
-const JWT_EXPIRES_IN = '7d'; // 7 days
+const JWT_EXPIRES_IN = "7d"; // 7 days
+const JWT_SECRET = new TextEncoder().encode(ENV.jwtSecret);
 
 export interface JWTPayload {
   userId: number;
@@ -28,18 +29,20 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
 /**
  * Generate a JWT token for a user or admin
  */
-export function generateToken(payload: JWTPayload): string {
-  return jwt.sign(payload, ENV.jwtSecret, {
-    expiresIn: JWT_EXPIRES_IN,
-  });
+export async function generateToken(payload: JWTPayload): Promise<string> {
+  return new SignJWT(payload)
+    .setProtectedHeader({ alg: "HS256" })
+    .setExpirationTime(JWT_EXPIRES_IN)
+    .sign(JWT_SECRET);
 }
 
 /**
  * Verify and decode a JWT token
  */
-export function verifyToken(token: string): JWTPayload | null {
+export async function verifyToken(token: string): Promise<JWTPayload | null> {
   try {
-    return jwt.verify(token, ENV.jwtSecret) as JWTPayload;
+    const { payload } = await jwtVerify(token, JWT_SECRET);
+    return payload as JWTPayload;
   } catch (error) {
     return null;
   }
