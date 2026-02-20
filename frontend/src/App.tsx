@@ -5,13 +5,13 @@ import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
+import MyDashboard from "./pages/MyDashboard";
 import AdminLogin from "./pages/AdminLogin";
 import AdminDashboard from "./pages/AdminDashboard";
 import AdminCourses from "./pages/AdminCourses";
 import AdminEpisodes from "./pages/AdminEpisodes";
 import AdminUsers from "./pages/AdminUsers";
 import AdminKeys from "./pages/AdminKeys";
-import MyDashboard from "./pages/MyDashboard";
 import CourseWatch from "./pages/CourseWatch";
 import CoursePlayer from "./pages/CoursePlayer";
 import ActivateKey from "./pages/ActivateKey";
@@ -41,6 +41,11 @@ function Router() {
       <Route path={"/dashboard"}>
         <ProtectedRoute>
           <Dashboard />
+        </ProtectedRoute>
+      </Route>
+      <Route path={"/courses"}>
+        <ProtectedRoute>
+          <MyDashboard />
         </ProtectedRoute>
       </Route>
       <Route path={"/profile"}>
