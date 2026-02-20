@@ -5,16 +5,45 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { APP_TITLE, getLoginUrl } from "@/const";
 import { trpc } from "@/lib/trpc";
-import { BookOpen, GraduationCap, Play, CheckCircle2, Clock, ArrowLeft } from "lucide-react";
+import { BookOpen, GraduationCap, Play, CheckCircle2, Clock, ArrowLeft, Sparkles } from "lucide-react";
 import { Link } from "wouter";
 import { format } from "date-fns";
+import { useEffect, useRef } from "react";
 
 export default function MyDashboard() {
   const { user, isAuthenticated, loading } = useAuth();
+  const utils = trpc.useUtils();
+  const didSyncRef = useRef(false);
+
+  const syncEntitlements = trpc.users.syncEntitlements.useMutation();
+
   const { data: enrollments, isLoading: enrollmentsLoading } = trpc.enrollments.myEnrollments.useQuery(
     undefined,
     { enabled: isAuthenticated }
   );
+
+  const { data: lexaiSubscription } = trpc.lexai.getSubscription.useQuery(undefined, {
+    enabled: isAuthenticated,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    if (!user?.email) return;
+    if (didSyncRef.current) return;
+
+    didSyncRef.current = true;
+    syncEntitlements
+      .mutateAsync()
+      .then(async () => {
+        await utils.enrollments.myEnrollments.invalidate();
+        await utils.lexai.getSubscription.invalidate();
+      })
+      .catch(() => {
+        // best-effort
+      });
+  }, [isAuthenticated, syncEntitlements, user?.email, utils.enrollments.myEnrollments, utils.lexai.getSubscription]);
 
   if (loading || enrollmentsLoading) {
     return (
@@ -86,6 +115,13 @@ export default function MyDashboard() {
 					الاختبارات
 				</Button>
 				</Link>
+
+        <Link href="/lexai">
+          <Button variant="ghost">
+            <Sparkles className="mr-2 h-4 w-4" />
+            LexAI
+          </Button>
+        </Link>
   
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white font-semibold">
@@ -157,6 +193,24 @@ export default function MyDashboard() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Access Summary */}
+          <Card>
+            <CardHeader>
+              <CardTitle>My Access</CardTitle>
+              <CardDescription>
+                Your course access and LexAI status are linked to your email.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex items-center justify-between gap-4">
+              <div className="text-sm text-muted-foreground">
+                LexAI: {lexaiSubscription ? 'Active' : 'Not active'}
+              </div>
+              <Link href="/lexai">
+                <Button variant="outline">Open LexAI</Button>
+              </Link>
+            </CardContent>
+          </Card>
 
           {/* Enrolled Courses */}
           <div>

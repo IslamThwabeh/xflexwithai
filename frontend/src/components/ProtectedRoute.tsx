@@ -1,4 +1,5 @@
 import { useAuth } from "@/_core/hooks/useAuth";
+import { trpc } from "@/lib/trpc";
 import { useEffect } from "react";
 import { useLocation } from "wouter";
 
@@ -13,14 +14,24 @@ interface ProtectedRouteProps {
 export default function ProtectedRoute({ children }: ProtectedRouteProps) {
   const { isAuthenticated, loading } = useAuth();
   const [, setLocation] = useLocation();
+  const { data: adminCheck, isLoading: checkingAdmin } = trpc.auth.isAdmin.useQuery(undefined, {
+    enabled: isAuthenticated,
+  });
 
   useEffect(() => {
-    if (!loading && !isAuthenticated) {
-      setLocation("/auth");
-    }
-  }, [isAuthenticated, loading, setLocation]);
+    if (loading || checkingAdmin) return;
 
-  if (loading) {
+    if (!isAuthenticated) {
+      setLocation("/auth");
+      return;
+    }
+
+    if (adminCheck?.isAdmin) {
+      setLocation("/admin/dashboard");
+    }
+  }, [adminCheck?.isAdmin, checkingAdmin, isAuthenticated, loading, setLocation]);
+
+  if (loading || (isAuthenticated && checkingAdmin)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
         <div className="text-center">
@@ -32,6 +43,10 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
   }
 
   if (!isAuthenticated) {
+    return null;
+  }
+
+  if (adminCheck?.isAdmin) {
     return null;
   }
 

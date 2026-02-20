@@ -405,6 +405,16 @@ export const appRouter = router({
       
       return stats;
     }),
+
+    // User: Sync entitlements from any assigned keys (courses + LexAI)
+    syncEntitlements: protectedProcedure.mutation(async ({ ctx }) => {
+      if (!ctx.user?.email) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'User email is required' });
+      }
+
+      await db.syncUserEntitlementsFromKeys(ctx.user.id, ctx.user.email);
+      return { success: true };
+    }),
   }),
 
   // Course management
