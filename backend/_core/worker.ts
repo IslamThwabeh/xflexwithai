@@ -93,6 +93,7 @@ export default {
           req: request,
           router: appRouter,
           allowBatching: true,
+          allowMethodOverride: true,
           createContext: async () => createWorkerContext({ req: request, env }),
           responseMeta({ ctx }) {
             const headers = new Headers();
