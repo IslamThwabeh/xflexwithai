@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { Lock, CheckCircle, Circle, Trophy, Clock } from "lucide-react";
+import { apiFetch } from "@/lib/apiBase";
 
 interface LevelProgress {
   level: number;
@@ -24,7 +25,7 @@ export default function QuizLevels() {
 
   const fetchProgress = async () => {
     try {
-      const response = await fetch("/api/quiz/progress");
+      const response = await apiFetch("/api/quiz/progress");
       if (!response.ok) {
         throw new Error("Failed to fetch progress");
       }

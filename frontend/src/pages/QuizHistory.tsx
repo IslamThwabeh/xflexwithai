@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useRoute, Link } from "wouter";
 import { ArrowRight, CheckCircle, XCircle, Calendar, Trophy } from "lucide-react";
+import { apiFetch } from "@/lib/apiBase";
 
 interface QuizAttempt {
   id: number;
@@ -23,7 +24,7 @@ export default function QuizHistory() {
 
   const fetchHistory = async () => {
     try {
-      const response = await fetch(`/api/quiz/history/${level}`);
+      const response = await apiFetch(`/api/quiz/history/${level}`);
       if (!response.ok) {
         throw new Error("فشل في تحميل السجل");
       }

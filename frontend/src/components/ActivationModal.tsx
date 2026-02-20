@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { X, Loader2, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { withApiBase } from '@/lib/apiBase';
 
 interface ActivationModalProps {
   type: 'course' | 'flexai';
@@ -30,17 +31,24 @@ export function ActivationModal({ type, onClose, onSuccess }: ActivationModalPro
         ? '/api/flexai/redeem-key'
         : '/api/courses/redeem-key'; // You'll need to create this endpoint for courses
       
-      const response = await fetch(endpoint, {
+      const response = await fetch(withApiBase(endpoint), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ key })
       });
       
-      const data = await response.json();
+      const raw = await response.text();
+      const data = raw ? (() => {
+        try {
+          return JSON.parse(raw);
+        } catch {
+          return null;
+        }
+      })() : null;
       
       if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Activation failed');
+        throw new Error(data?.error || data?.message || raw || 'Activation failed');
       }
       
       setSuccess(true);

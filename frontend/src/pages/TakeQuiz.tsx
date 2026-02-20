@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useRoute, useLocation } from "wouter";
 import { ArrowRight, ArrowLeft, CheckCircle, XCircle, Trophy, RotateCcw } from "lucide-react";
+import { apiFetch } from "@/lib/apiBase";
 
 interface QuizQuestion {
   id: number;
@@ -57,7 +58,7 @@ export default function TakeQuiz() {
 
   const fetchQuiz = async () => {
     try {
-      const response = await fetch(`/api/quiz/level/${level}`);
+      const response = await apiFetch(`/api/quiz/level/${level}`);
       if (!response.ok) {
         if (response.status === 403) {
           throw new Error("هذا المستوى مقفل. أكمل المستوى السابق أولاً");
@@ -101,7 +102,7 @@ export default function TakeQuiz() {
 
     setSubmitting(true);
     try {
-      const response = await fetch("/api/quiz/submit", {
+      const response = await apiFetch("/api/quiz/submit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

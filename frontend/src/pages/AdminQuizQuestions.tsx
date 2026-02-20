@@ -5,6 +5,7 @@ import {
   AlertCircle, CheckCircle, Plus, Trash2 
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
+import { apiFetch } from "@/lib/apiBase";
 
 interface Option {
   id: number;
@@ -44,7 +45,7 @@ export default function AdminQuizQuestions() {
 
   const fetchQuestions = async () => {
     try {
-      const response = await fetch("/api/admin/quiz/questions");
+      const response = await apiFetch("/api/admin/quiz/questions");
       if (!response.ok) {
         throw new Error("Failed to fetch questions");
       }
@@ -120,7 +121,7 @@ export default function AdminQuizQuestions() {
 
     setSaving(true);
     try {
-      const response = await fetch(`/api/admin/quiz/questions/${editForm.id}`, {
+      const response = await apiFetch(`/api/admin/quiz/questions/${editForm.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

@@ -5,6 +5,7 @@ import {
   AlertCircle, BookOpen, Award, Activity 
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
+import { apiFetch } from "@/lib/apiBase";
 
 interface QuizStats {
   totalAttempts: number;
@@ -47,7 +48,7 @@ export default function AdminQuizDashboard() {
 
   const fetchStats = async () => {
     try {
-      const response = await fetch("/api/admin/quiz/stats");
+      const response = await apiFetch("/api/admin/quiz/stats");
       if (!response.ok) {
         throw new Error("Failed to fetch statistics");
       }

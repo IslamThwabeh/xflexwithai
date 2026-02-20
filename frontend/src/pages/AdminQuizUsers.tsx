@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { Search, User, Trophy, Lock, Unlock, RefreshCw, Eye } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
+import { apiFetch } from "@/lib/apiBase";
 
 interface UserProgress {
   userId: number;
@@ -41,7 +42,7 @@ export default function AdminQuizUsers() {
 
   const fetchUsers = async () => {
     try {
-      const response = await fetch("/api/admin/quiz/users");
+      const response = await apiFetch("/api/admin/quiz/users");
       if (!response.ok) {
         throw new Error("Failed to fetch users");
       }
@@ -62,7 +63,7 @@ export default function AdminQuizUsers() {
 
     setResetting(userId);
     try {
-      const response = await fetch("/api/admin/quiz/reset-user-progress", {
+      const response = await apiFetch("/api/admin/quiz/reset-user-progress", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId }),
