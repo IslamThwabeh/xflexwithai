@@ -23,6 +23,7 @@ export default {
       const url = new URL(request.url);
       const pathname = url.pathname;
       const origin = request.headers.get("origin") || "";
+      (globalThis as { ENV?: Env }).ENV = env;
       const allowedOrigins = new Set([
         "https://xflexwithai.com",
         "https://www.xflexwithai.com",
