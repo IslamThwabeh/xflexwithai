@@ -92,6 +92,7 @@ export default {
           endpoint: "/api/trpc",
           req: request,
           router: appRouter,
+          allowBatching: true,
           createContext: async () => createWorkerContext({ req: request, env }),
           responseMeta({ ctx }) {
             const headers = new Headers();
