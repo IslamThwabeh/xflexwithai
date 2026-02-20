@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { X, Loader2, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { withApiBase } from '@/lib/apiBase';
+import { trpc } from '@/lib/trpc';
 
 interface ActivationModalProps {
   type: 'course' | 'flexai';
@@ -16,6 +16,9 @@ export function ActivationModal({ type, onClose, onSuccess }: ActivationModalPro
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+
+  const redeemLexaiKey = trpc.lexai.redeemKey.useMutation();
+  const redeemCourseKey = trpc.registrationKeys.redeemKey.useMutation();
   
   const handleActivate = async () => {
     if (!key.trim()) {
@@ -27,28 +30,10 @@ export function ActivationModal({ type, onClose, onSuccess }: ActivationModalPro
     setError('');
     
     try {
-      const endpoint = type === 'flexai' 
-        ? '/api/flexai/redeem-key'
-        : '/api/courses/redeem-key'; // You'll need to create this endpoint for courses
-      
-      const response = await fetch(withApiBase(endpoint), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ key })
-      });
-      
-      const raw = await response.text();
-      const data = raw ? (() => {
-        try {
-          return JSON.parse(raw);
-        } catch {
-          return null;
-        }
-      })() : null;
-      
-      if (!response.ok || !data.success) {
-        throw new Error(data?.error || data?.message || raw || 'Activation failed');
+      if (type === 'flexai') {
+        await redeemLexaiKey.mutateAsync({ keyCode: key.trim() });
+      } else {
+        await redeemCourseKey.mutateAsync({ keyCode: key.trim() });
       }
       
       setSuccess(true);

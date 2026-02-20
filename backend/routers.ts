@@ -1355,6 +1355,54 @@ export const appRouter = router({
         
         return result;
       }),
+
+    // Redeem a course key for the currently logged-in user
+    // (Worker production only supports tRPC, not REST /api/courses/* routes)
+    redeemKey: protectedProcedure
+      .input(z.object({ keyCode: z.string().min(5) }))
+      .mutation(async ({ ctx, input }) => {
+        if (!ctx.user.email) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'User email is required' });
+        }
+
+        logger.info('[KEYS] Redeeming key', { keyCode: input.keyCode, userId: ctx.user.id });
+
+        const existingKey = await db.getRegistrationKeyByCode(input.keyCode);
+        if (existingKey && existingKey.courseId === 0) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'This key is for LexAI. Please activate it from the LexAI page.',
+          });
+        }
+
+        const result = await db.activateRegistrationKey(input.keyCode, ctx.user.email);
+
+        if (!result.success) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: result.message });
+        }
+
+        if (result.key?.courseId) {
+          const existingEnrollment = await db.getEnrollmentByUserAndCourse(ctx.user.id, result.key.courseId);
+          if (!existingEnrollment) {
+            await db.createEnrollment({
+              userId: ctx.user.id,
+              courseId: result.key.courseId,
+              paymentStatus: 'completed',
+              isSubscriptionActive: true,
+              registrationKeyId: result.key.id,
+              activatedViaKey: true,
+            });
+
+            logger.info('[KEYS] Enrollment created via redeemKey', {
+              userId: ctx.user.id,
+              courseId: result.key.courseId,
+              keyId: result.key.id,
+            });
+          }
+        }
+
+        return { success: true };
+      }),
     
     // Check if user has valid key for course (public)
     checkAccess: publicProcedure
