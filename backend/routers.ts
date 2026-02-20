@@ -131,6 +131,13 @@ export const appRouter = router({
         // Set cookie
         const cookieOptions = getSessionCookieOptions(ctx.req);
         ctx.setCookie(COOKIE_NAME, token, cookieOptions);
+
+        // Sync entitlements from any keys already assigned to this email
+        try {
+          await db.syncUserEntitlementsFromKeys(userId, input.email);
+        } catch (e) {
+          logger.warn('[AUTH] Failed syncing entitlements after register', { email: input.email });
+        }
         
         logger.info('[AUTH] User registered successfully', { userId, email: input.email });
         
@@ -171,6 +178,13 @@ export const appRouter = router({
         // Set cookie
         const cookieOptions = getSessionCookieOptions(ctx.req);
         ctx.setCookie(COOKIE_NAME, token, cookieOptions);
+
+        // Sync entitlements from any keys already assigned to this email
+        try {
+          await db.syncUserEntitlementsFromKeys(user.id, input.email);
+        } catch (e) {
+          logger.warn('[AUTH] Failed syncing entitlements after login', { email: input.email, userId: user.id });
+        }
         
         logger.info('[AUTH] User logged in successfully', { userId: user.id, email: user.email });
         
@@ -835,6 +849,14 @@ export const appRouter = router({
         return { success: true };
       }),
 
+    // Public: Verify if an email already has a valid assigned LexAI key
+    hasAssignedKeyByEmail: publicProcedure
+      .input(z.object({ email: z.string().email() }))
+      .query(async ({ input }) => {
+        const hasKey = await db.hasValidLexaiKeyByEmail(input.email);
+        return { hasKey };
+      }),
+
     verifyAssignedKeyByEmail: protectedProcedure
       .input(z.object({
         email: z.string().email(),
@@ -1334,6 +1356,15 @@ export const appRouter = router({
           keyType: key.courseId === 0 ? 'lexai' : 'course',
           courseId: key.courseId,
         } as const;
+      }),
+
+    // Public: Verify if an email already has at least one valid course key
+    getCourseAccessByEmail: publicProcedure
+      .input(z.object({ email: z.string().email() }))
+      .query(async ({ input }) => {
+        const keys = await db.getValidCourseKeysByEmail(input.email);
+        const courseIds = Array.from(new Set(keys.map(k => Number(k.courseId)).filter(Boolean)));
+        return { hasAccess: courseIds.length > 0, courseIds };
       }),
     
     // Activate a key (public - for users)

@@ -12,6 +12,7 @@ interface ActivationModalProps {
 }
 
 export function ActivationModal({ type, onClose, onSuccess }: ActivationModalProps) {
+  const [method, setMethod] = useState<'key' | 'email'>('key');
   const [key, setKey] = useState('');
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
@@ -22,6 +23,16 @@ export function ActivationModal({ type, onClose, onSuccess }: ActivationModalPro
 
   const keyInfo = trpc.registrationKeys.getKeyInfo.useQuery(
     { keyCode: key.trim() },
+    { enabled: false, retry: false }
+  );
+
+  const lexaiEmailCheck = trpc.lexai.hasAssignedKeyByEmail.useQuery(
+    { email: email.trim() },
+    { enabled: false, retry: false }
+  );
+
+  const courseEmailCheck = trpc.registrationKeys.getCourseAccessByEmail.useQuery(
+    { email: email.trim() },
     { enabled: false, retry: false }
   );
 
@@ -90,6 +101,39 @@ export function ActivationModal({ type, onClose, onSuccess }: ActivationModalPro
       setLoading(false);
     }
   };
+
+  const handleVerifyEmail = async () => {
+    if (!email.trim()) {
+      setError('Please enter your email address');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
+    try {
+      if (type === 'flexai') {
+        const result = await lexaiEmailCheck.refetch();
+        if (!result.data?.hasKey) {
+          throw new Error('No active LexAI key found for this email');
+        }
+      } else {
+        const result = await courseEmailCheck.refetch();
+        if (!result.data?.hasAccess) {
+          throw new Error('No active course key found for this email');
+        }
+      }
+
+      setSuccess(true);
+      setTimeout(() => {
+        onSuccess();
+      }, 1500);
+    } catch (err: any) {
+      setError(err.message || 'Failed to verify email. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
   
   const title = type === 'flexai' ? 'Activate FlexAI' : 'Activate Course Access';
   const description = type === 'flexai'
@@ -120,24 +164,57 @@ export function ActivationModal({ type, onClose, onSuccess }: ActivationModalPro
         ) : (
           <>
             <p className="text-gray-600 mb-6">{description}</p>
+
+            <div className="flex items-center justify-between mb-4">
+              <Button
+                type="button"
+                variant={method === 'key' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => {
+                  setMethod('key');
+                  setError('');
+                  setSuccess(false);
+                  setStep('key');
+                }}
+                disabled={loading}
+              >
+                I have a key
+              </Button>
+              <Button
+                type="button"
+                variant={method === 'email' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => {
+                  setMethod('email');
+                  setError('');
+                  setSuccess(false);
+                  setStep('key');
+                }}
+                disabled={loading}
+              >
+                Already registered
+              </Button>
+            </div>
             
             <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-2">
-                  Activation Key
-                </label>
-                <Input
-                  type="text"
-                  placeholder="Enter your key (e.g., ABC123)"
-                  value={key}
-                  onChange={(e) => setKey(e.target.value.toUpperCase())}
-                  onKeyPress={(e) => e.key === 'Enter' && step === 'key' && handleValidateKey()}
-                  disabled={loading}
-                  className="uppercase"
-                />
-              </div>
+              {method === 'key' && (
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    Activation Key
+                  </label>
+                  <Input
+                    type="text"
+                    placeholder="Enter your key (e.g., ABC123)"
+                    value={key}
+                    onChange={(e) => setKey(e.target.value.toUpperCase())}
+                    onKeyPress={(e) => e.key === 'Enter' && step === 'key' && handleValidateKey()}
+                    disabled={loading}
+                    className="uppercase"
+                  />
+                </div>
+              )}
 
-              {step === 'email' && (
+              {(method === 'email' || step === 'email') && (
                 <div>
                   <label className="block text-sm font-medium mb-2">
                     Email Address
@@ -147,12 +224,16 @@ export function ActivationModal({ type, onClose, onSuccess }: ActivationModalPro
                     placeholder="Enter your email (e.g., name@example.com)"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleRedeem()}
+                    onKeyPress={(e) =>
+                      e.key === 'Enter' && (method === 'email' ? handleVerifyEmail() : handleRedeem())
+                    }
                     disabled={loading}
                     dir="ltr"
                   />
                   <p className="text-xs text-gray-500 mt-2">
-                    We’ll assign this key to your email for future access.
+                    {method === 'email'
+                      ? 'We’ll look up your access using your email address.'
+                      : 'We’ll assign this key to your email for future access.'}
                   </p>
                 </div>
               )}
@@ -173,17 +254,23 @@ export function ActivationModal({ type, onClose, onSuccess }: ActivationModalPro
                   Cancel
                 </Button>
                 <Button
-                  onClick={step === 'key' ? handleValidateKey : handleRedeem}
+                  onClick={
+                    method === 'email'
+                      ? handleVerifyEmail
+                      : step === 'key'
+                        ? handleValidateKey
+                        : handleRedeem
+                  }
                   disabled={loading}
                   className="flex-1"
                 >
                   {loading ? (
                     <>
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      {step === 'key' ? 'Checking...' : 'Activating...'}
+                      {method === 'email' ? 'Checking...' : step === 'key' ? 'Checking...' : 'Activating...'}
                     </>
                   ) : (
-                    step === 'key' ? 'Continue' : 'Activate'
+                    method === 'email' ? 'Continue' : step === 'key' ? 'Continue' : 'Activate'
                   )}
                 </Button>
               </div>

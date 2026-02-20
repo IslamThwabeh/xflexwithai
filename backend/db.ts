@@ -1,4 +1,4 @@
-import { eq, desc, and, sql, ne } from "drizzle-orm";
+import { eq, desc, and, or, sql, ne } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import type { D1Database } from "@cloudflare/workers-types";
 import {
@@ -1060,10 +1060,16 @@ export async function userHasValidKeyForCourse(email: string, courseId: number) 
   const db = await getDb();
   if (!db) return false;
 
+  const normalizedEmail = email.trim().toLowerCase();
   const keys = await db
     .select()
     .from(registrationKeys)
-    .where(and(eq(registrationKeys.courseId, courseId), eq(registrationKeys.email, email)));
+    .where(
+      and(
+        eq(registrationKeys.courseId, courseId),
+        sql`lower(${registrationKeys.email}) = ${normalizedEmail}`
+      )
+    );
 
   if (keys.length === 0) return false;
 
@@ -1074,6 +1080,115 @@ export async function userHasValidKeyForCourse(email: string, courseId: number) 
     const expiresAt = new Date(key.expiresAt).getTime();
     return Number.isNaN(expiresAt) ? true : expiresAt >= now;
   });
+}
+
+export async function getValidCourseKeysByEmail(email: string) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const normalizedEmail = email.trim().toLowerCase();
+  const nowIso = new Date().toISOString();
+
+  const keys = await db
+    .select()
+    .from(registrationKeys)
+    .where(
+      and(
+        sql`lower(${registrationKeys.email}) = ${normalizedEmail}`,
+        sql`${registrationKeys.activatedAt} is not null`,
+        eq(registrationKeys.isActive, true),
+        sql`${registrationKeys.courseId} > 0`,
+        or(sql`${registrationKeys.expiresAt} is null`, sql`${registrationKeys.expiresAt} >= ${nowIso}`)
+      )
+    );
+
+  return keys;
+}
+
+function computeLexaiKeyEndDate(key: any) {
+  if (!key?.activatedAt) return null;
+  const activatedAt = new Date(key.activatedAt);
+  if (Number.isNaN(activatedAt.getTime())) return null;
+
+  const keyExpiry = new Date(activatedAt);
+  keyExpiry.setDate(keyExpiry.getDate() + 30);
+
+  if (key.expiresAt) {
+    const absoluteExpiry = new Date(key.expiresAt);
+    if (!Number.isNaN(absoluteExpiry.getTime()) && absoluteExpiry.getTime() < keyExpiry.getTime()) {
+      keyExpiry.setTime(absoluteExpiry.getTime());
+    }
+  }
+
+  return keyExpiry;
+}
+
+export async function hasValidLexaiKeyByEmail(email: string) {
+  const key = await getAssignedLexaiKeyByEmail(email);
+  if (!key) return false;
+  if (!key.isActive || !key.activatedAt) return false;
+  const endDate = computeLexaiKeyEndDate(key);
+  if (!endDate) return false;
+  return endDate.getTime() >= Date.now();
+}
+
+export async function syncUserEntitlementsFromKeys(userId: number, email: string) {
+  const db = await getDb();
+  if (!db) return;
+
+  const normalizedEmail = email.trim().toLowerCase();
+
+  // Course keys -> ensure enrollments
+  const courseKeys = await getValidCourseKeysByEmail(normalizedEmail);
+  for (const key of courseKeys) {
+    const courseId = Number(key.courseId);
+    if (!courseId) continue;
+
+    const existingEnrollment = await getEnrollmentByUserAndCourse(userId, courseId);
+    if (existingEnrollment) continue;
+
+    await createEnrollment({
+      userId,
+      courseId,
+      paymentStatus: "completed",
+      isSubscriptionActive: true,
+      registrationKeyId: key.id,
+      activatedViaKey: true,
+    });
+  }
+
+  // LexAI key -> ensure active subscription
+  const lexaiKey = await getAssignedLexaiKeyByEmail(normalizedEmail);
+  if (lexaiKey?.isActive && lexaiKey.activatedAt) {
+    const endDate = computeLexaiKeyEndDate(lexaiKey);
+    if (endDate && endDate.getTime() >= Date.now()) {
+      const current = await getActiveLexaiSubscription(userId);
+      if (current) {
+        await updateLexaiSubscription(current.id, {
+          isActive: true,
+          startDate: new Date().toISOString(),
+          endDate: endDate.toISOString(),
+          paymentStatus: "key",
+          paymentAmount: 0,
+          paymentCurrency: "USD",
+          messagesUsed: 0,
+          messagesLimit: 100,
+        });
+      } else {
+        await createLexaiSubscription({
+          userId,
+          isActive: true,
+          startDate: new Date().toISOString(),
+          endDate: endDate.toISOString(),
+          paymentStatus: "key",
+          paymentAmount: 0,
+          paymentCurrency: "USD",
+          messagesUsed: 0,
+          messagesLimit: 100,
+        });
+      }
+    }
+  }
 }
 
 export async function deleteRegistrationKey(id: number) {
