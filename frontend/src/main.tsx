@@ -40,7 +40,15 @@ queryClient.getMutationCache().subscribe(event => {
 
 const resolveTrpcUrl = () => {
   const rawUrl = import.meta.env.VITE_API_URL?.trim();
-  if (!rawUrl) return "/api/trpc";
+  if (!rawUrl) {
+    if (typeof window !== "undefined") {
+      const host = window.location.hostname;
+      if (host === "xflexwithai.com" || host.endsWith(".xflexwithai.com")) {
+        return "https://api.xflexwithai.com/api/trpc";
+      }
+    }
+    return "/api/trpc";
+  }
 
   if (rawUrl.includes("/trpc")) return rawUrl;
 
