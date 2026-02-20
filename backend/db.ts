@@ -882,6 +882,65 @@ export async function activateRegistrationKey(keyCode: string, email: string) {
   };
 }
 
+export async function activateLexaiKey(keyCode: string, email: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const [key] = await db
+    .select()
+    .from(registrationKeys)
+    .where(eq(registrationKeys.keyCode, keyCode))
+    .limit(1);
+
+  if (!key) {
+    return { success: false, message: "Invalid LexAI key" };
+  }
+
+  if (key.courseId !== 0) {
+    return { success: false, message: "This key is not for LexAI" };
+  }
+
+  if (!key.isActive) {
+    return { success: false, message: "This LexAI key is deactivated" };
+  }
+
+  if (key.activatedAt) {
+    return { success: false, message: "This LexAI key has already been activated" };
+  }
+
+  if (key.email && key.email !== email) {
+    return { success: false, message: "This LexAI key is assigned to another email" };
+  }
+
+  if (key.expiresAt) {
+    const expiresAt = new Date(key.expiresAt);
+    if (!Number.isNaN(expiresAt.getTime()) && expiresAt.getTime() < Date.now()) {
+      return { success: false, message: "This LexAI key has expired" };
+    }
+  }
+
+  await db
+    .update(registrationKeys)
+    .set({
+      email,
+      activatedAt: new Date().toISOString(),
+      isActive: true,
+    })
+    .where(eq(registrationKeys.id, key.id));
+
+  const [updated] = await db
+    .select()
+    .from(registrationKeys)
+    .where(eq(registrationKeys.id, key.id))
+    .limit(1);
+
+  return {
+    success: true,
+    message: "LexAI key activated successfully",
+    key: updated ?? key,
+  };
+}
+
 export async function userHasValidKeyForCourse(email: string, courseId: number) {
   const db = await getDb();
   if (!db) return false;

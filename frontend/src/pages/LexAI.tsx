@@ -30,6 +30,7 @@ export default function LexAI() {
   const analyzeSingle = trpc.lexai.analyzeSingle.useMutation();
   const analyzeFeedback = trpc.lexai.analyzeFeedback.useMutation();
   const analyzeFeedbackWithImage = trpc.lexai.analyzeFeedbackWithImage.useMutation();
+  const redeemKey = trpc.lexai.redeemKey.useMutation();
 
   const [flow, setFlow] = useState<
     "m15" | "h4" | "single" | "feedback" | "feedback_image"
@@ -37,6 +38,7 @@ export default function LexAI() {
   const [imageUrl, setImageUrl] = useState("");
   const [timeframe, setTimeframe] = useState("M15");
   const [userAnalysis, setUserAnalysis] = useState("");
+  const [activationKey, setActivationKey] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when new messages arrive
@@ -65,6 +67,20 @@ export default function LexAI() {
     analyzeSingle.isPending ||
     analyzeFeedback.isPending ||
     analyzeFeedbackWithImage.isPending;
+
+  const formatMessageDate = (value: string | number | Date | null | undefined) => {
+    if (!value) return "";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    return format(date, "MMM d, h:mm a");
+  };
+
+  const formatRenewalDate = (value: string | number | Date | null | undefined) => {
+    if (!value) return "";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    return format(date, "MMM d, yyyy");
+  };
 
   const handleUpload = async (file: File) => {
     const base64 = await new Promise<string>((resolve, reject) => {
@@ -121,6 +137,22 @@ export default function LexAI() {
       resetInputs();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Request failed");
+    }
+  };
+
+  const handleRedeemKey = async () => {
+    if (!activationKey.trim()) {
+      toast.error("Please enter a key");
+      return;
+    }
+
+    try {
+      await redeemKey.mutateAsync({ keyCode: activationKey.trim() });
+      toast.success("LexAI key activated");
+      setActivationKey("");
+      await utils.lexai.getSubscription.invalidate();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Key activation failed");
     }
   };
 
@@ -201,9 +233,22 @@ export default function LexAI() {
                   <p className="text-sm text-muted-foreground">100 analyses per month</p>
                 </div>
               </div>
-              <Button className="w-full" size="lg">
-                Subscribe to LexAI
-              </Button>
+              <div className="space-y-3">
+                <Input
+                  placeholder="Enter LexAI key"
+                  value={activationKey}
+                  onChange={(event) => setActivationKey(event.target.value)}
+                  disabled={redeemKey.isPending}
+                />
+                <Button
+                  className="w-full"
+                  size="lg"
+                  onClick={handleRedeemKey}
+                  disabled={redeemKey.isPending}
+                >
+                  {redeemKey.isPending ? "Activating..." : "Activate Key"}
+                </Button>
+              </div>
               <p className="text-xs text-center text-muted-foreground mt-3">
                 Cancel anytime. No commitment required.
               </p>
@@ -312,7 +357,7 @@ export default function LexAI() {
                           message.role === "user" ? "text-purple-100" : "text-muted-foreground"
                         }`}
                       >
-                        {format(new Date(message.createdAt), "MMM d, h:mm a")}
+                        {formatMessageDate(message.createdAt)}
                       </p>
                     </div>
                   </div>
@@ -328,7 +373,9 @@ export default function LexAI() {
                 <AlertCircle className="h-5 w-5 text-yellow-600 mt-0.5" />
                 <div className="text-sm">
                   <p className="font-medium text-yellow-900">Monthly limit reached</p>
-                  <p className="text-yellow-700">Your subscription will renew on {format(new Date(subscription.endDate), "MMM d, yyyy")}</p>
+                  <p className="text-yellow-700">
+                    Your subscription will renew on {formatRenewalDate(subscription?.endDate)}
+                  </p>
                 </div>
               </div>
             )}

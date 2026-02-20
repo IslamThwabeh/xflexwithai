@@ -35,23 +35,6 @@ const ensureLexaiAccess = async (ctx: { user: { id: number; email?: string | nul
   const admin = ctx.user.email ? await db.getAdminByEmail(ctx.user.email) : null;
   let subscription = await db.getActiveLexaiSubscription(ctx.user.id);
 
-  if (admin && !subscription) {
-    const endDate = new Date();
-    endDate.setFullYear(endDate.getFullYear() + 1);
-    await db.createLexaiSubscription({
-      userId: ctx.user.id,
-      isActive: true,
-      startDate: new Date().toISOString(),
-      endDate: endDate.toISOString(),
-      paymentStatus: "admin",
-      paymentAmount: 0,
-      paymentCurrency: "USD",
-      messagesUsed: 0,
-      messagesLimit: 1000,
-    });
-    subscription = await db.getActiveLexaiSubscription(ctx.user.id);
-  }
-
   if (!subscription) {
     throw new TRPCError({ code: "FORBIDDEN", message: "No active LexAI subscription" });
   }
@@ -735,6 +718,52 @@ export const appRouter = router({
 
       return subscription;
     }),
+
+    redeemKey: protectedProcedure
+      .input(z.object({
+        keyCode: z.string().min(5),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        logger.info('[LexAI] Redeeming key', { userId: ctx.user.id });
+
+        const existing = await db.getActiveLexaiSubscription(ctx.user.id);
+        if (existing?.endDate) {
+          const endDate = new Date(existing.endDate);
+          if (!Number.isNaN(endDate.getTime()) && endDate.getTime() < Date.now()) {
+            await db.updateLexaiSubscription(existing.id, { isActive: false });
+          } else {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Active subscription already exists" });
+          }
+        } else if (existing) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Active subscription already exists" });
+        }
+
+        if (!ctx.user.email) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "User email is required" });
+        }
+
+        const activation = await db.activateLexaiKey(input.keyCode, ctx.user.email);
+        if (!activation.success) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: activation.message });
+        }
+
+        const endDate = new Date();
+        endDate.setDate(endDate.getDate() + 30);
+
+        await db.createLexaiSubscription({
+          userId: ctx.user.id,
+          isActive: true,
+          startDate: new Date().toISOString(),
+          endDate: endDate.toISOString(),
+          paymentStatus: "key",
+          paymentAmount: 0,
+          paymentCurrency: "USD",
+          messagesUsed: 0,
+          messagesLimit: 100,
+        });
+
+        return { success: true };
+      }),
 
     // Create new subscription
     createSubscription: protectedProcedure
