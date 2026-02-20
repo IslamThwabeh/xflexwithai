@@ -1,17 +1,16 @@
-import type { D1Database } from "@cloudflare/workers-types";
+import type { D1Database, ExecutionContext, KVNamespace, R2Bucket } from "@cloudflare/workers-types";
 import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import { appRouter } from "../routers";
 import { createWorkerContext } from "./context-worker";
 import * as db from "../db";
-
-declare const KVNamespace: any;
-declare const R2Bucket: any;
 
 export interface Env {
   DB: D1Database;
   VIDEOS_BUCKET: R2Bucket;
   KV_CACHE?: KVNamespace;
   JWT_SECRET: string;
+  OPENAI_API_KEY: string;
+  R2_PUBLIC_URL?: string;
   VITE_APP_TITLE: string;
   VITE_APP_LOGO: string;
   ENVIRONMENT: "production" | "staging" | "development";
@@ -99,9 +98,9 @@ export default {
             const headers = new Headers();
             const cookieHeaders = (ctx as any)?.cookieHeaders as string[] | undefined;
 
-            for (const [key, value] of corsHeaders.entries()) {
+            corsHeaders.forEach((value, key) => {
               headers.set(key, value);
-            }
+            });
 
             if (cookieHeaders?.length) {
               for (const cookie of cookieHeaders) {

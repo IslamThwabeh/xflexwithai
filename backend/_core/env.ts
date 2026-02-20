@@ -13,6 +13,9 @@ export const ENV = {
   get appId() {
     return getEnvVar("VITE_APP_ID", "xflex-trading-academy");
   },
+  get openaiApiKey() {
+    return getEnvVar("OPENAI_API_KEY", "");
+  },
   get cookieSecret() {
     return getEnvVar("JWT_SECRET", "");
   },
@@ -28,7 +31,7 @@ export const ENV = {
 
   // Cloudflare specific
   get r2BucketUrl() {
-    return getEnvVar("R2_PUBLIC_URL", "");
+    return getEnvVar("R2_PUBLIC_URL", "https://videos.xflexwithai.com");
   },
   get r2BucketName() {
     return getEnvVar("R2_BUCKET_NAME", "xflexwithai-videos");

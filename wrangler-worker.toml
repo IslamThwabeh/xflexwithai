@@ -11,6 +11,7 @@ name = "xflexwithai-api-production"
 ENVIRONMENT = "production"
 VITE_APP_TITLE = "XFlex Trading Academy"
 VITE_APP_LOGO = "https://xflexwithai.com/logo.png"
+R2_PUBLIC_URL = "https://videos.xflexwithai.com"
 
 # D1 Database binding (production)
 [[env.production.d1_databases]]

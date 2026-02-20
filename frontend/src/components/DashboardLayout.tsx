@@ -34,7 +34,6 @@ import {
   GraduationCap,
   Settings,
   BarChart3,
-  Bot,
   Sparkles
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
@@ -42,14 +41,20 @@ import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 import { Button } from "./ui/button";
 
-import { BookOpen } from "lucide-react";
-
 // Organized menu items with sections
 const menuSections = [
   {
     label: "Overview",
     items: [
       { icon: LayoutDashboard, label: "Dashboard", path: "/admin/dashboard" },
+    ]
+  },
+  {
+    label: "LexAI",
+    items: [
+      { icon: Sparkles, label: "LexAI Chat", path: "/lexai" },
+      { icon: Users, label: "Subscriptions", path: "/admin/lexai/subscriptions" },
+      { icon: Key, label: "LexAI Keys", path: "/admin/lexai/keys" },
     ]
   },
   {
@@ -63,14 +68,7 @@ const menuSections = [
     items: [
       { icon: Users, label: "Users", path: "/admin/users" },
       { icon: GraduationCap, label: "Enrollments", path: "/admin/enrollments" },
-      { icon: Key, label: "Registration Keys", path: "/admin/keys" },
-    ]
-  },
-  {
-    label: "FlexAI Bot",
-    items: [
-      { icon: Bot, label: "Bot Configuration", path: "/admin/flexai/config" },
-      { icon: Sparkles, label: "Subscriptions", path: "/admin/flexai/subscriptions" },
+      { icon: Key, label: "Course Keys", path: "/admin/keys" },
     ]
   },
   {

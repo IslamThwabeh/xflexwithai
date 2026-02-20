@@ -769,6 +769,64 @@ export async function getKeyStatistics() {
   };
 }
 
+export async function getLexaiKeys() {
+  const db = await getDb();
+  if (!db) return [];
+  return await db
+    .select()
+    .from(registrationKeys)
+    .where(eq(registrationKeys.courseId, 0))
+    .orderBy(desc(registrationKeys.createdAt));
+}
+
+export async function getLexaiKeyStatistics() {
+  const db = await getDb();
+  if (!db) {
+    return {
+      total: 0,
+      activated: 0,
+      unused: 0,
+      deactivated: 0,
+      activationRate: 0,
+    };
+  }
+
+  const [totalResult] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(registrationKeys)
+    .where(eq(registrationKeys.courseId, 0));
+  const [activatedResult] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(registrationKeys)
+    .where(and(eq(registrationKeys.courseId, 0), sql`${registrationKeys.activatedAt} is not null`));
+  const [unusedResult] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(registrationKeys)
+    .where(
+      and(
+        eq(registrationKeys.courseId, 0),
+        eq(registrationKeys.isActive, true),
+        sql`${registrationKeys.activatedAt} is null`
+      )
+    );
+  const [deactivatedResult] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(registrationKeys)
+    .where(and(eq(registrationKeys.courseId, 0), eq(registrationKeys.isActive, false)));
+
+  const total = Number(totalResult?.count ?? 0);
+  const activated = Number(activatedResult?.count ?? 0);
+  const activationRate = total > 0 ? Math.round((activated / total) * 100) : 0;
+
+  return {
+    total,
+    activated,
+    unused: Number(unusedResult?.count ?? 0),
+    deactivated: Number(deactivatedResult?.count ?? 0),
+    activationRate,
+  };
+}
+
 export async function activateRegistrationKey(keyCode: string, email: string) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -1018,4 +1076,30 @@ export async function getActiveLexaiSubscription(userId: number) {
  */
 export async function getLexaiMessagesByUser(userId: number, limit: number = 50) {
   return getUserLexaiMessages(userId, limit);
+}
+
+export async function getLexaiSubscriptionsWithUsers() {
+  const db = await getDb();
+  if (!db) return [];
+
+  return await db
+    .select({
+      id: lexaiSubscriptions.id,
+      userId: lexaiSubscriptions.userId,
+      isActive: lexaiSubscriptions.isActive,
+      startDate: lexaiSubscriptions.startDate,
+      endDate: lexaiSubscriptions.endDate,
+      paymentStatus: lexaiSubscriptions.paymentStatus,
+      paymentAmount: lexaiSubscriptions.paymentAmount,
+      paymentCurrency: lexaiSubscriptions.paymentCurrency,
+      messagesUsed: lexaiSubscriptions.messagesUsed,
+      messagesLimit: lexaiSubscriptions.messagesLimit,
+      createdAt: lexaiSubscriptions.createdAt,
+      updatedAt: lexaiSubscriptions.updatedAt,
+      userEmail: users.email,
+      userName: users.name,
+    })
+    .from(lexaiSubscriptions)
+    .leftJoin(users, eq(lexaiSubscriptions.userId, users.id))
+    .orderBy(desc(lexaiSubscriptions.createdAt));
 }

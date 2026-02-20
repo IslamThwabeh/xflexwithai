@@ -7,6 +7,8 @@ import { z } from "zod";
 import { logger } from "./_core/logger";
 import * as db from "./db";
 import { storagePut } from "./storage";
+import { storagePutR2 } from "./storage-r2";
+import { analyzeLexai } from "./_core/lexai";
 import { hashPassword, verifyPassword, generateToken, isValidEmail, isValidPassword } from "./_core/auth";
 // FlexAI routes are registered in server/_core/index.ts
 
@@ -22,6 +24,59 @@ const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   }
   return next({ ctx: { ...ctx, admin } });
 });
+
+const getWorkerEnv = () => (globalThis as { ENV?: { VIDEOS_BUCKET?: any } }).ENV;
+
+const ensureLexaiAccess = async (ctx: { user: { id: number; email?: string | null } | null }) => {
+  if (!ctx.user) {
+    throw new TRPCError({ code: "UNAUTHORIZED", message: "Not authenticated" });
+  }
+
+  const admin = ctx.user.email ? await db.getAdminByEmail(ctx.user.email) : null;
+  let subscription = await db.getActiveLexaiSubscription(ctx.user.id);
+
+  if (admin && !subscription) {
+    const endDate = new Date();
+    endDate.setFullYear(endDate.getFullYear() + 1);
+    await db.createLexaiSubscription({
+      userId: ctx.user.id,
+      isActive: true,
+      startDate: new Date().toISOString(),
+      endDate: endDate.toISOString(),
+      paymentStatus: "admin",
+      paymentAmount: 0,
+      paymentCurrency: "USD",
+      messagesUsed: 0,
+      messagesLimit: 1000,
+    });
+    subscription = await db.getActiveLexaiSubscription(ctx.user.id);
+  }
+
+  if (!subscription) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "No active LexAI subscription" });
+  }
+
+  if (subscription.endDate) {
+    const endDate = new Date(subscription.endDate);
+    if (!Number.isNaN(endDate.getTime()) && endDate.getTime() < Date.now()) {
+      await db.updateLexaiSubscription(subscription.id, { isActive: false });
+      throw new TRPCError({ code: "FORBIDDEN", message: "LexAI subscription expired" });
+    }
+  }
+
+  if (!admin && subscription.messagesUsed >= subscription.messagesLimit) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Monthly message limit reached" });
+  }
+
+  return { subscription, isAdmin: !!admin };
+};
+
+const getLatestLexaiAnalysis = async (userId: number, analysisType: string) => {
+  const messages = await db.getLexaiMessagesByUser(userId, 50);
+  return messages.find(
+    message => message.role === "assistant" && message.analysisType === analysisType
+  );
+};
 
 export const appRouter = router({
   system: systemRouter,
@@ -665,7 +720,20 @@ export const appRouter = router({
     getSubscription: protectedProcedure.query(async ({ ctx }) => {
       logger.info('[LexAI] Getting subscription', { userId: ctx.user.id });
       const subscription = await db.getActiveLexaiSubscription(ctx.user.id);
-      return subscription || null;
+
+      if (!subscription) {
+        return null;
+      }
+
+      if (subscription.endDate) {
+        const endDate = new Date(subscription.endDate);
+        if (!Number.isNaN(endDate.getTime()) && endDate.getTime() < Date.now()) {
+          await db.updateLexaiSubscription(subscription.id, { isActive: false });
+          return null;
+        }
+      }
+
+      return subscription;
     }),
 
     // Create new subscription
@@ -702,52 +770,221 @@ export const appRouter = router({
       return messages;
     }),
 
-    // Send message (user message)
-    sendMessage: protectedProcedure
+    uploadImage: protectedProcedure
       .input(z.object({
-        content: z.string(),
-        imageUrl: z.string().optional(),
+        fileName: z.string(),
+        fileData: z.string(),
+        contentType: z.string(),
       }))
       .mutation(async ({ ctx, input }) => {
-        logger.info('[LexAI] Sending message', { userId: ctx.user.id });
-        
-        // Check active subscription
-        const subscription = await db.getActiveLexaiSubscription(ctx.user.id);
-        if (!subscription) {
-          throw new TRPCError({ code: 'FORBIDDEN', message: 'No active LexAI subscription' });
+        const env = getWorkerEnv();
+        if (!env?.VIDEOS_BUCKET) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "R2 bucket not configured" });
         }
-        
-        // Check message limit
-        if (subscription.messagesUsed >= subscription.messagesLimit) {
-          throw new TRPCError({ code: 'FORBIDDEN', message: 'Monthly message limit reached' });
-        }
-        
-        // Create user message
-        await db.createLexaiMessage({
-          userId: ctx.user.id,
-          subscriptionId: subscription.id,
-          role: 'user',
-          content: input.content,
+
+        const randomSuffix = Math.random().toString(36).substring(2, 10);
+        const key = `lexai/${ctx.user.id}/${Date.now()}-${randomSuffix}-${input.fileName}`;
+        const buffer = Buffer.from(input.fileData, "base64");
+        const result = await storagePutR2(env.VIDEOS_BUCKET, key, buffer, input.contentType);
+
+        return { url: result.url, key: result.key };
+      }),
+
+    analyzeM15: protectedProcedure
+      .input(z.object({
+        imageUrl: z.string().url(),
+        language: z.enum(["ar", "en"]).default("ar"),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { subscription } = await ensureLexaiAccess(ctx);
+        const analysis = await analyzeLexai({
+          flow: "m15",
+          language: input.language,
+          timeframe: "M15",
           imageUrl: input.imageUrl,
         });
-        
-        // Increment message count
-        await db.incrementLexaiMessageCount(subscription.id);
-        
-        // TODO: Call external analysis API here
-        // For now, return a placeholder response
-        const aiResponse = "Analysis will be provided here. The flow will be configured later via external API.";
-        
-        // Create AI response message
+
         await db.createLexaiMessage({
           userId: ctx.user.id,
           subscriptionId: subscription.id,
-          role: 'assistant',
-          content: aiResponse,
-          apiStatus: 'success',
+          role: "user",
+          content: "M15",
+          imageUrl: input.imageUrl,
+          analysisType: "m15",
         });
-        
-        return { success: true };
+
+        await db.createLexaiMessage({
+          userId: ctx.user.id,
+          subscriptionId: subscription.id,
+          role: "assistant",
+          content: analysis.text,
+          apiStatus: "success",
+          apiRequestId: analysis.id,
+          analysisType: "m15",
+        });
+
+        await db.incrementLexaiMessageCount(subscription.id);
+
+        return { success: true, analysis: analysis.text };
+      }),
+
+    analyzeH4: protectedProcedure
+      .input(z.object({
+        imageUrl: z.string().url(),
+        language: z.enum(["ar", "en"]).default("ar"),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { subscription } = await ensureLexaiAccess(ctx);
+        const previous = await getLatestLexaiAnalysis(ctx.user.id, "m15");
+
+        if (!previous) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "M15 analysis required before H4" });
+        }
+
+        const analysis = await analyzeLexai({
+          flow: "h4",
+          language: input.language,
+          timeframe: "H4",
+          imageUrl: input.imageUrl,
+          previousAnalysis: previous.content,
+        });
+
+        await db.createLexaiMessage({
+          userId: ctx.user.id,
+          subscriptionId: subscription.id,
+          role: "user",
+          content: "H4",
+          imageUrl: input.imageUrl,
+          analysisType: "h4",
+        });
+
+        await db.createLexaiMessage({
+          userId: ctx.user.id,
+          subscriptionId: subscription.id,
+          role: "assistant",
+          content: analysis.text,
+          apiStatus: "success",
+          apiRequestId: analysis.id,
+          analysisType: "h4",
+        });
+
+        await db.incrementLexaiMessageCount(subscription.id);
+
+        return { success: true, analysis: analysis.text };
+      }),
+
+    analyzeSingle: protectedProcedure
+      .input(z.object({
+        imageUrl: z.string().url(),
+        language: z.enum(["ar", "en"]).default("ar"),
+        timeframe: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { subscription } = await ensureLexaiAccess(ctx);
+        const analysis = await analyzeLexai({
+          flow: "single",
+          language: input.language,
+          timeframe: input.timeframe || "M15",
+          imageUrl: input.imageUrl,
+        });
+
+        await db.createLexaiMessage({
+          userId: ctx.user.id,
+          subscriptionId: subscription.id,
+          role: "user",
+          content: input.timeframe || "M15",
+          imageUrl: input.imageUrl,
+          analysisType: "single",
+        });
+
+        await db.createLexaiMessage({
+          userId: ctx.user.id,
+          subscriptionId: subscription.id,
+          role: "assistant",
+          content: analysis.text,
+          apiStatus: "success",
+          apiRequestId: analysis.id,
+          analysisType: "single",
+        });
+
+        await db.incrementLexaiMessageCount(subscription.id);
+
+        return { success: true, analysis: analysis.text };
+      }),
+
+    analyzeFeedback: protectedProcedure
+      .input(z.object({
+        userAnalysis: z.string().min(5),
+        language: z.enum(["ar", "en"]).default("ar"),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { subscription } = await ensureLexaiAccess(ctx);
+        const analysis = await analyzeLexai({
+          flow: "feedback",
+          language: input.language,
+          userAnalysis: input.userAnalysis,
+        });
+
+        await db.createLexaiMessage({
+          userId: ctx.user.id,
+          subscriptionId: subscription.id,
+          role: "user",
+          content: input.userAnalysis,
+          analysisType: "feedback",
+        });
+
+        await db.createLexaiMessage({
+          userId: ctx.user.id,
+          subscriptionId: subscription.id,
+          role: "assistant",
+          content: analysis.text,
+          apiStatus: "success",
+          apiRequestId: analysis.id,
+          analysisType: "feedback",
+        });
+
+        await db.incrementLexaiMessageCount(subscription.id);
+
+        return { success: true, analysis: analysis.text };
+      }),
+
+    analyzeFeedbackWithImage: protectedProcedure
+      .input(z.object({
+        userAnalysis: z.string().min(5),
+        imageUrl: z.string().url(),
+        language: z.enum(["ar", "en"]).default("ar"),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { subscription } = await ensureLexaiAccess(ctx);
+        const analysis = await analyzeLexai({
+          flow: "feedback_with_image",
+          language: input.language,
+          userAnalysis: input.userAnalysis,
+          imageUrl: input.imageUrl,
+        });
+
+        await db.createLexaiMessage({
+          userId: ctx.user.id,
+          subscriptionId: subscription.id,
+          role: "user",
+          content: input.userAnalysis,
+          imageUrl: input.imageUrl,
+          analysisType: "feedback_with_image",
+        });
+
+        await db.createLexaiMessage({
+          userId: ctx.user.id,
+          subscriptionId: subscription.id,
+          role: "assistant",
+          content: analysis.text,
+          apiStatus: "success",
+          apiRequestId: analysis.id,
+          analysisType: "feedback_with_image",
+        });
+
+        await db.incrementLexaiMessageCount(subscription.id);
+
+        return { success: true, analysis: analysis.text };
       }),
 
     // Get subscription stats (admin)
@@ -755,6 +992,58 @@ export const appRouter = router({
       logger.info('[LexAI] Getting stats');
       const stats = await db.getLexaiStats();
       return stats;
+    }),
+  }),
+
+  lexaiAdmin: router({
+    subscriptions: adminProcedure.query(async () => {
+      logger.info('[LexAI] Getting subscriptions (admin)');
+      return await db.getLexaiSubscriptionsWithUsers();
+    }),
+    keys: router({
+      list: adminProcedure.query(async () => {
+        logger.info('[LexAI] Getting keys (admin)');
+        return await db.getLexaiKeys();
+      }),
+      stats: adminProcedure.query(async () => {
+        logger.info('[LexAI] Getting key stats (admin)');
+        return await db.getLexaiKeyStatistics();
+      }),
+      generateKey: adminProcedure
+        .input(z.object({
+          notes: z.string().optional(),
+        }))
+        .mutation(async ({ input, ctx }) => {
+          logger.info('[LexAI] Generating key (admin)', { adminId: ctx.admin.id });
+          const key = await db.createRegistrationKey({
+            courseId: 0,
+            createdBy: ctx.admin.id,
+            notes: input.notes,
+          });
+          return { success: true, key };
+        }),
+      generateBulkKeys: adminProcedure
+        .input(z.object({
+          quantity: z.number().min(1).max(1000),
+          notes: z.string().optional(),
+        }))
+        .mutation(async ({ input, ctx }) => {
+          logger.info('[LexAI] Generating bulk keys (admin)', { adminId: ctx.admin.id, quantity: input.quantity });
+          const keys = await db.createBulkRegistrationKeys({
+            courseId: 0,
+            createdBy: ctx.admin.id,
+            quantity: input.quantity,
+            notes: input.notes,
+          });
+          return { success: true, keys, count: keys.length };
+        }),
+      deactivateKey: adminProcedure
+        .input(z.object({ keyId: z.number() }))
+        .mutation(async ({ input }) => {
+          logger.info('[LexAI] Deactivating key (admin)', { keyId: input.keyId });
+          const key = await db.deactivateRegistrationKey(input.keyId);
+          return { success: true, key };
+        }),
     }),
   }),
   

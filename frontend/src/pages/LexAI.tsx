@@ -3,38 +3,40 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Textarea } from "@/components/ui/textarea";
 import { FileUpload } from "@/components/FileUpload";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { trpc } from "@/lib/trpc";
-import { Send, Sparkles, Image as ImageIcon, AlertCircle, Crown } from "lucide-react";
-import { useState, useRef, useEffect } from "react";
+import { Sparkles, AlertCircle, Crown, CheckCircle2 } from "lucide-react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { toast } from "sonner";
 import { Link } from "wouter";
 import { format } from "date-fns";
 
 export default function LexAI() {
   const { user, loading: authLoading } = useAuth();
+  const { language } = useLanguage();
   const utils = trpc.useUtils();
-  
+
   const { data: subscription, isLoading: subLoading } = trpc.lexai.getSubscription.useQuery();
   const { data: messages, isLoading: messagesLoading } = trpc.lexai.getMessages.useQuery();
-  
-  const sendMessage = trpc.lexai.sendMessage.useMutation({
-    onSuccess: () => {
-      utils.lexai.getMessages.invalidate();
-      utils.lexai.getSubscription.invalidate();
-      setMessageText("");
-      setImageUrl("");
-    },
-    onError: (error) => {
-      toast.error(error.message);
-    },
+  const { data: adminCheck, isLoading: adminLoading } = trpc.auth.isAdmin.useQuery(undefined, {
+    enabled: !!user,
   });
 
-  const uploadImage = trpc.upload.image.useMutation();
+  const uploadImage = trpc.lexai.uploadImage.useMutation();
+  const analyzeM15 = trpc.lexai.analyzeM15.useMutation();
+  const analyzeH4 = trpc.lexai.analyzeH4.useMutation();
+  const analyzeSingle = trpc.lexai.analyzeSingle.useMutation();
+  const analyzeFeedback = trpc.lexai.analyzeFeedback.useMutation();
+  const analyzeFeedbackWithImage = trpc.lexai.analyzeFeedbackWithImage.useMutation();
 
-  const [messageText, setMessageText] = useState("");
+  const [flow, setFlow] = useState<
+    "m15" | "h4" | "single" | "feedback" | "feedback_image"
+  >("m15");
   const [imageUrl, setImageUrl] = useState("");
-  const [showImageUpload, setShowImageUpload] = useState(false);
+  const [timeframe, setTimeframe] = useState("M15");
+  const [userAnalysis, setUserAnalysis] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when new messages arrive
@@ -44,26 +46,85 @@ export default function LexAI() {
     }
   }, [messages]);
 
-  const handleSendMessage = async () => {
-    if (!messageText.trim() && !imageUrl) {
-      toast.error("Please enter a message or upload an image");
-      return;
-    }
-
-    await sendMessage.mutateAsync({
-      content: messageText || "Please analyze this chart",
-      imageUrl: imageUrl || undefined,
+  const sortedMessages = useMemo(() => {
+    return (messages ?? []).slice().sort((a, b) => {
+      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
     });
+  }, [messages]);
+
+  const hasM15 = sortedMessages.some(
+    message => message.role === "assistant" && message.analysisType === "m15"
+  );
+
+  const isAdmin = !!adminCheck?.isAdmin;
+
+  const isBusy =
+    uploadImage.isPending ||
+    analyzeM15.isPending ||
+    analyzeH4.isPending ||
+    analyzeSingle.isPending ||
+    analyzeFeedback.isPending ||
+    analyzeFeedbackWithImage.isPending;
+
+  const handleUpload = async (file: File) => {
+    const base64 = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result?.toString() ?? "";
+        const parts = result.split(",");
+        resolve(parts.length > 1 ? parts[1] : result);
+      };
+      reader.onerror = () => reject(new Error("Failed to read file"));
+      reader.readAsDataURL(file);
+    });
+
+    const result = await uploadImage.mutateAsync({
+      fileName: file.name,
+      fileData: base64,
+      contentType: file.type || "image/jpeg",
+    });
+
+    return result.url;
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage();
+  const resetInputs = () => {
+    setImageUrl("");
+    setUserAnalysis("");
+  };
+
+  const handleAnalyze = async () => {
+    try {
+      if ((flow === "m15" || flow === "h4" || flow === "single" || flow === "feedback_image") && !imageUrl) {
+        toast.error("Please upload an image first");
+        return;
+      }
+
+      if ((flow === "feedback" || flow === "feedback_image") && userAnalysis.trim().length < 5) {
+        toast.error("Please enter your analysis");
+        return;
+      }
+
+      if (flow === "m15") {
+        await analyzeM15.mutateAsync({ imageUrl, language });
+      } else if (flow === "h4") {
+        await analyzeH4.mutateAsync({ imageUrl, language });
+      } else if (flow === "single") {
+        await analyzeSingle.mutateAsync({ imageUrl, language, timeframe });
+      } else if (flow === "feedback") {
+        await analyzeFeedback.mutateAsync({ userAnalysis, language });
+      } else {
+        await analyzeFeedbackWithImage.mutateAsync({ userAnalysis, imageUrl, language });
+      }
+
+      await utils.lexai.getMessages.invalidate();
+      await utils.lexai.getSubscription.invalidate();
+      resetInputs();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Request failed");
     }
   };
 
-  if (authLoading || subLoading) {
+  if (authLoading || subLoading || adminLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <p>Loading...</p>
@@ -89,7 +150,7 @@ export default function LexAI() {
     );
   }
 
-  if (!subscription || !subscription.isActive) {
+  if (!isAdmin && !adminLoading && (!subscription || !subscription.isActive)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 to-blue-50">
         <Card className="max-w-2xl">
@@ -153,8 +214,10 @@ export default function LexAI() {
     );
   }
 
-  const messagesRemaining = subscription.messagesLimit - subscription.messagesUsed;
-  const usagePercentage = (subscription.messagesUsed / subscription.messagesLimit) * 100;
+  const messagesRemaining = subscription ? subscription.messagesLimit - subscription.messagesUsed : 0;
+  const usagePercentage = subscription
+    ? (subscription.messagesUsed / subscription.messagesLimit) * 100
+    : 0;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50">
@@ -169,7 +232,9 @@ export default function LexAI() {
               <div>
                 <h1 className="text-2xl font-bold">LexAI Currency Analysis</h1>
                 <p className="text-sm text-muted-foreground">
-                  {messagesRemaining} analyses remaining this month
+                  {isAdmin
+                    ? "Admin preview mode"
+                    : `${messagesRemaining} analyses remaining this month`}
                 </p>
               </div>
             </div>
@@ -182,7 +247,11 @@ export default function LexAI() {
           <div className="mt-4">
             <div className="flex items-center justify-between text-sm mb-2">
               <span className="text-muted-foreground">Monthly Usage</span>
-              <span className="font-medium">{subscription.messagesUsed} / {subscription.messagesLimit}</span>
+              <span className="font-medium">
+                {subscription
+                  ? `${subscription.messagesUsed} / ${subscription.messagesLimit}`
+                  : "Admin"}
+              </span>
             </div>
             <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
               <div 
@@ -194,7 +263,7 @@ export default function LexAI() {
         </div>
 
         {/* Chat Interface */}
-        <Card className="h-[600px] flex flex-col">
+        <Card className="h-[680px] flex flex-col">
           <CardHeader className="border-b">
             <CardTitle className="text-lg">Chat with LexAI</CardTitle>
             <CardDescription>
@@ -218,7 +287,7 @@ export default function LexAI() {
               </div>
             ) : (
               <div className="space-y-4">
-                {messages.map((message) => (
+                {sortedMessages.map((message) => (
                   <div
                     key={message.id}
                     className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
@@ -254,7 +323,7 @@ export default function LexAI() {
 
           {/* Input Area */}
           <CardContent className="border-t p-4">
-            {messagesRemaining <= 0 && (
+            {!isAdmin && messagesRemaining <= 0 && (
               <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg flex items-start gap-2">
                 <AlertCircle className="h-5 w-5 text-yellow-600 mt-0.5" />
                 <div className="text-sm">
@@ -264,8 +333,59 @@ export default function LexAI() {
               </div>
             )}
 
-            {showImageUpload && (
-              <div className="mb-4">
+            <div className="space-y-4">
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant={flow === "m15" ? "default" : "outline"}
+                  onClick={() => setFlow("m15")}
+                >
+                  M15 Analysis
+                </Button>
+                <Button
+                  size="sm"
+                  variant={flow === "h4" ? "default" : "outline"}
+                  onClick={() => setFlow("h4")}
+                  disabled={!hasM15}
+                >
+                  H4 Analysis
+                </Button>
+                <Button
+                  size="sm"
+                  variant={flow === "single" ? "default" : "outline"}
+                  onClick={() => setFlow("single")}
+                >
+                  Single Image
+                </Button>
+                <Button
+                  size="sm"
+                  variant={flow === "feedback" ? "default" : "outline"}
+                  onClick={() => setFlow("feedback")}
+                >
+                  Feedback Only
+                </Button>
+                <Button
+                  size="sm"
+                  variant={flow === "feedback_image" ? "default" : "outline"}
+                  onClick={() => setFlow("feedback_image")}
+                >
+                  Feedback + Image
+                </Button>
+              </div>
+
+              {flow === "single" && (
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-muted-foreground">Timeframe</span>
+                  <Input
+                    value={timeframe}
+                    onChange={(e) => setTimeframe(e.target.value)}
+                    className="max-w-[120px]"
+                    placeholder="M15"
+                  />
+                </div>
+              )}
+
+              {(flow === "m15" || flow === "h4" || flow === "single" || flow === "feedback_image") && (
                 <FileUpload
                   accept="image/*"
                   maxSize={5}
@@ -273,64 +393,41 @@ export default function LexAI() {
                   preview="image"
                   currentUrl={imageUrl}
                   onUrlChange={setImageUrl}
-                  onUpload={async (file) => {
-                    const reader = new FileReader();
-                    return new Promise((resolve, reject) => {
-                      reader.onload = async () => {
-                        const base64 = reader.result?.toString().split(',')[1];
-                        if (!base64) {
-                          reject(new Error('Failed to read file'));
-                          return;
-                        }
-                        
-                        try {
-                          const result = await uploadImage.mutateAsync({
-                            fileName: file.name,
-                            fileData: base64,
-                            contentType: file.type,
-                          });
-                          resolve(result.url);
-                        } catch (error) {
-                          reject(error);
-                        }
-                      };
-                      reader.onerror = reject;
-                      reader.readAsDataURL(file);
-                    });
-                  }}
+                  onUpload={handleUpload}
                 />
-              </div>
-            )}
+              )}
 
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => setShowImageUpload(!showImageUpload)}
-                disabled={messagesRemaining <= 0}
-              >
-                <ImageIcon className="h-4 w-4" />
-              </Button>
-              <Input
-                placeholder="Describe your analysis needs..."
-                value={messageText}
-                onChange={(e) => setMessageText(e.target.value)}
-                onKeyPress={handleKeyPress}
-                disabled={sendMessage.isPending || messagesRemaining <= 0}
-              />
-              <Button
-                onClick={handleSendMessage}
-                disabled={sendMessage.isPending || messagesRemaining <= 0 || (!messageText.trim() && !imageUrl)}
-              >
-                {sendMessage.isPending ? (
-                  "Sending..."
-                ) : (
-                  <>
-                    <Send className="h-4 w-4 mr-2" />
-                    Send
-                  </>
-                )}
-              </Button>
+              {(flow === "feedback" || flow === "feedback_image") && (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Your Analysis</label>
+                  <Textarea
+                    value={userAnalysis}
+                    onChange={(e) => setUserAnalysis(e.target.value)}
+                    rows={4}
+                    placeholder="Write your technical analysis here..."
+                  />
+                </div>
+              )}
+
+              {flow === "h4" && !hasM15 && (
+                <div className="text-sm text-muted-foreground flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4" />
+                  Complete an M15 analysis before requesting H4.
+                </div>
+              )}
+
+              <div className="flex items-center justify-between">
+                <div className="text-xs text-muted-foreground flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4" />
+                  Responses are capped at 1024 characters.
+                </div>
+                <Button
+                  onClick={handleAnalyze}
+                  disabled={isBusy || (!isAdmin && messagesRemaining <= 0)}
+                >
+                  {isBusy ? "Analyzing..." : "Run Analysis"}
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>
