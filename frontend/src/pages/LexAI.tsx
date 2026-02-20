@@ -528,43 +528,91 @@ export default function LexAI() {
                 {sortedMessages.map((message) => {
                   const rtl = isArabicText(message.content);
                   return (
-                  <div
-                    key={message.id}
-                    className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
-                  >
                     <div
-                      className={`max-w-[82%] rounded-2xl px-3 py-2.5 md:px-4 md:py-3 shadow ${
-                        message.role === "user"
-                          ? "bg-gradient-to-br from-purple-500 to-blue-500 text-white"
-                          : "bg-white border border-slate-200"
-                      }`}
+                      key={message.id}
+                      className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
                     >
-                      {message.imageUrl && (
-                        <img
-                          src={message.imageUrl}
-                          alt="Chart"
-                          className="rounded mb-2 w-full max-w-[360px] max-h-[420px] object-contain bg-black/5"
-                        />
-                      )}
                       <div
-                        dir={rtl ? "rtl" : "ltr"}
-                        className={`whitespace-pre-wrap leading-relaxed text-[0.9rem] md:text-[0.95rem] ${
-                          rtl ? "text-right" : "text-left"
+                        className={`max-w-[82%] rounded-2xl px-3 py-2.5 md:px-4 md:py-3 shadow ${
+                          message.role === "user"
+                            ? "bg-gradient-to-br from-purple-500 to-blue-500 text-white"
+                            : "bg-white border border-slate-200"
                         }`}
                       >
-                        {message.content}
+                        {message.imageUrl && (
+                          <img
+                            src={message.imageUrl}
+                            alt="Chart"
+                            className="rounded mb-2 w-full max-w-[360px] max-h-[420px] object-contain bg-black/5"
+                          />
+                        )}
+                        <div
+                          dir={rtl ? "rtl" : "ltr"}
+                          className={`whitespace-pre-wrap leading-relaxed text-[0.9rem] md:text-[0.95rem] ${
+                            rtl ? "text-right" : "text-left"
+                          }`}
+                        >
+                          {message.content}
+                        </div>
+                        <p
+                          className={`text-xs mt-2 ${
+                            message.role === "user" ? "text-purple-100" : "text-muted-foreground"
+                          }`}
+                        >
+                          {formatMessageDate(message.createdAt)}
+                        </p>
                       </div>
-                      <p
-                        className={`text-xs mt-2 ${
-                          message.role === "user" ? "text-purple-100" : "text-muted-foreground"
-                        }`}
-                      >
-                        {formatMessageDate(message.createdAt)}
-                      </p>
                     </div>
-                  </div>
                   );
                 })}
+
+                {/* Flow selection bubble inside chat */}
+                <div className="flex justify-center">
+                  <div className="max-w-[90%] md:max-w-[70%] rounded-2xl border border-slate-200 bg-white/90 backdrop-blur px-3 py-3 md:px-4 md:py-3 shadow-sm" dir="rtl">
+                    <p className="text-xs md:text-sm text-muted-foreground text-right mb-3">
+                      {copy.flowGreeting}
+                    </p>
+                    <div className="flex flex-wrap gap-2 justify-end">
+                      <Button
+                        size="sm"
+                        variant={guidedFlow === "specialized_m15" || guidedFlow === "specialized_h4" ? "default" : "outline"}
+                        onClick={() => {
+                          resetInputs();
+                          setGuidedFlow("specialized_m15");
+                        }}
+                      >
+                        {copy.flowSpecialized}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={guidedFlow === "single" ? "default" : "outline"}
+                        onClick={() => {
+                          resetInputs();
+                          setGuidedFlow("single");
+                        }}
+                      >
+                        {copy.flowSingle}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={guidedFlow === "feedback_image" ? "default" : "outline"}
+                        onClick={() => {
+                          resetInputs();
+                          setGuidedFlow("feedback_image");
+                        }}
+                      >
+                        {copy.flowWithFeedback}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={restartFlow}
+                      >
+                        {copy.flowRestart}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -583,16 +631,6 @@ export default function LexAI() {
             )}
 
             <div className="space-y-4" dir="rtl">
-              <div className="space-y-3">
-                <p className="text-sm text-muted-foreground text-right">{copy.flowGreeting}</p>
-                <div className="flex flex-wrap gap-2 justify-end">
-                  <Button size="sm" variant={guidedFlow === "specialized_m15" || guidedFlow === "specialized_h4" ? "default" : "outline"} onClick={() => { resetInputs(); setGuidedFlow("specialized_m15"); }}>{copy.flowSpecialized}</Button>
-                  <Button size="sm" variant={guidedFlow === "single" ? "default" : "outline"} onClick={() => { resetInputs(); setGuidedFlow("single"); }}>{copy.flowSingle}</Button>
-                  <Button size="sm" variant={guidedFlow === "feedback_image" ? "default" : "outline"} onClick={() => { resetInputs(); setGuidedFlow("feedback_image"); }}>{copy.flowWithFeedback}</Button>
-                  <Button size="sm" variant="outline" onClick={restartFlow}>{copy.flowRestart}</Button>
-                </div>
-              </div>
-
               {guidedFlow === "specialized_m15" && <div className="text-sm text-muted-foreground text-right">{copy.uploadM15First}</div>}
               {guidedFlow === "specialized_h4" && <div className="text-sm text-muted-foreground text-right">{copy.uploadH4Second}</div>}
 
