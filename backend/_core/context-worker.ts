@@ -1,6 +1,6 @@
 import * as cookie from "cookie";
 import type { D1Database } from "@cloudflare/workers-types";
-import { COOKIE_NAME } from "@shared/const";
+import { COOKIE_NAME } from "../../shared/const";
 import { verifyToken } from "./auth";
 import { logger } from "./logger";
 import * as db from "../db";
