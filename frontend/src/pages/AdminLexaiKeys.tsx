@@ -1,4 +1,5 @@
 import { useState } from "react";
+import DashboardLayout from "@/components/DashboardLayout";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -151,7 +152,8 @@ export default function AdminLexaiKeys() {
     : allKeys;
 
   return (
-    <div className="container mx-auto p-4 md:p-6 space-y-6" dir="ltr">
+    <DashboardLayout>
+      <div className="container mx-auto p-4 md:p-6 space-y-6" dir="ltr">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold">LexAI Keys</h1>
@@ -356,6 +358,7 @@ export default function AdminLexaiKeys() {
           )}
         </CardContent>
       </Card>
-    </div>
+      </div>
+    </DashboardLayout>
   );
 }

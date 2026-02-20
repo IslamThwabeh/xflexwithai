@@ -34,12 +34,12 @@ interface Episode {
   id: number;
   titleEn: string;
   titleAr: string;
-  descriptionEn?: string;
-  descriptionAr?: string;
-  videoUrl: string;
-  duration: number;
+  descriptionEn?: string | null;
+  descriptionAr?: string | null;
+  videoUrl?: string | null;
+  duration?: number | null;
   order: number;
-  level: string; // Course level (المرحلة الأولى, etc.)
+  level?: string; // Optional grouping label (if present in data)
   isCompleted?: boolean;
   progress?: number;
 }
@@ -54,10 +54,10 @@ export default function CoursePlayer() {
   const [isMobile, setIsMobile] = useState(false);
 
   // Queries
-  const { data: course } = trpc.courses.getCourseById.useQuery({ id: courseId });
-  const { data: episodes } = trpc.episodes.getEpisodesByCourse.useQuery({ courseId });
-  const { data: enrollment } = trpc.enrollments.getEnrollmentByUserAndCourse.useQuery(
-    { userId: user?.id || 0, courseId },
+  const { data: course } = trpc.courses.getById.useQuery({ id: courseId });
+  const { data: episodes } = trpc.episodes.listByCourse.useQuery({ courseId });
+  const { data: enrollment } = trpc.enrollments.getEnrollment.useQuery(
+    { courseId },
     { enabled: !!user }
   );
   const { data: hasAccess } = trpc.registrationKeys.checkAccess.useQuery(
@@ -82,14 +82,15 @@ export default function CoursePlayer() {
   }, []);
 
   // Group episodes by level
-  const episodesByLevel = episodes?.reduce((acc, episode) => {
-    const level = episode.level || "Other";
+  const episodesList = (episodes ?? []) as Episode[];
+  const episodesByLevel = episodesList.reduce<Record<string, Episode[]>>((acc, episode) => {
+    const level = (episode as any).level || "Other";
     if (!acc[level]) {
       acc[level] = [];
     }
     acc[level].push(episode);
     return acc;
-  }, {} as Record<string, Episode[]>);
+  }, {});
 
   // Set first episode as current if none selected
   useEffect(() => {
@@ -108,7 +109,6 @@ export default function CoursePlayer() {
   const handleVideoProgress = (episodeId: number, progress: number) => {
     if (user) {
       updateProgress.mutate({
-        userId: user.id,
         episodeId,
         courseId,
         watchedDuration: progress,
@@ -119,7 +119,7 @@ export default function CoursePlayer() {
 
   const goToNextEpisode = () => {
     if (!episodes || !currentEpisode) return;
-    const currentIndex = episodes.findIndex((e) => e.id === currentEpisode.id);
+    const currentIndex = episodesList.findIndex((episode) => episode.id === currentEpisode.id);
     if (currentIndex < episodes.length - 1) {
       setCurrentEpisode(episodes[currentIndex + 1]);
     }
@@ -127,7 +127,7 @@ export default function CoursePlayer() {
 
   const goToPreviousEpisode = () => {
     if (!episodes || !currentEpisode) return;
-    const currentIndex = episodes.findIndex((e) => e.id === currentEpisode.id);
+    const currentIndex = episodesList.findIndex((episode) => episode.id === currentEpisode.id);
     if (currentIndex > 0) {
       setCurrentEpisode(episodes[currentIndex - 1]);
     }
@@ -253,7 +253,7 @@ export default function CoursePlayer() {
                                 {episode.titleAr}
                               </p>
                               <p className="text-xs text-muted-foreground">
-                                {Math.floor(episode.duration / 60)} min
+                                {Math.floor((episode.duration ?? 0) / 60)} min
                               </p>
                             </div>
                           </div>
@@ -277,7 +277,7 @@ export default function CoursePlayer() {
                   key={currentEpisode.id}
                   controls
                   className="w-full h-full"
-                  src={currentEpisode.videoUrl}
+                  src={currentEpisode.videoUrl ?? undefined}
                   onTimeUpdate={(e) => {
                     const video = e.currentTarget;
                     const progress = video.currentTime / video.duration;

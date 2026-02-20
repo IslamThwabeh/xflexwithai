@@ -1,5 +1,6 @@
 import bcrypt from "bcryptjs";
 import { SignJWT, jwtVerify } from "jose";
+import type { JWTPayload as JoseJWTPayload } from "jose";
 import { ENV } from "./env";
 
 const SALT_ROUNDS = 10;
@@ -12,11 +13,11 @@ const getJwtSecretKey = () => {
   return new TextEncoder().encode(secret);
 };
 
-export interface JWTPayload {
+export type JWTPayload = JoseJWTPayload & {
   userId: number;
   email: string;
-  type: 'user' | 'admin';
-}
+  type: "user" | "admin";
+};
 
 /**
  * Hash a password using bcrypt
@@ -48,7 +49,7 @@ export async function generateToken(payload: JWTPayload): Promise<string> {
 export async function verifyToken(token: string): Promise<JWTPayload | null> {
   try {
     const { payload } = await jwtVerify(token, getJwtSecretKey());
-    return payload as JWTPayload;
+    return payload as unknown as JWTPayload;
   } catch (error) {
     return null;
   }

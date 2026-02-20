@@ -36,4 +36,12 @@ export const ENV = {
   get r2BucketName() {
     return getEnvVar("R2_BUCKET_NAME", "xflexwithai-videos");
   },
+
+  // Optional Forge API fallback (legacy storage proxy)
+  get forgeApiUrl() {
+    return getEnvVar("BUILT_IN_FORGE_API_URL", "");
+  },
+  get forgeApiKey() {
+    return getEnvVar("BUILT_IN_FORGE_API_KEY", "");
+  },
 };

@@ -1,9 +1,11 @@
 // client/src/pages/AdminAnalytics.tsx
+import DashboardLayout from "@/components/DashboardLayout";
 import { BarChart3, TrendingUp, Users, DollarSign } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 export default function AdminAnalytics() {
   return (
+    <DashboardLayout>
     <div className="container mx-auto p-6">
       <div className="mb-8">
         <h1 className="text-3xl font-bold mb-2">Analytics Dashboard</h1>
@@ -99,5 +101,6 @@ export default function AdminAnalytics() {
         </Card>
       </div>
     </div>
+    </DashboardLayout>
   );
 }

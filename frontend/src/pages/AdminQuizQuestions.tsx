@@ -4,6 +4,7 @@ import {
   BookOpen, Edit2, Save, X, ChevronDown, ChevronUp, 
   AlertCircle, CheckCircle, Plus, Trash2 
 } from "lucide-react";
+import DashboardLayout from "@/components/DashboardLayout";
 
 interface Option {
   id: number;
@@ -154,28 +155,33 @@ export default function AdminQuizQuestions() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading questions...</p>
+      <DashboardLayout>
+        <div className="bg-gray-50 flex items-center justify-center py-12">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+            <p className="mt-4 text-gray-600">Loading questions...</p>
+          </div>
         </div>
-      </div>
+      </DashboardLayout>
     );
   }
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md">
-          <p className="text-red-800 text-center">{error}</p>
+      <DashboardLayout>
+        <div className="bg-gray-50 flex items-center justify-center py-12">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md">
+            <p className="text-red-800 text-center">{error}</p>
+          </div>
         </div>
-      </div>
+      </DashboardLayout>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="container mx-auto px-4 max-w-6xl">
+    <DashboardLayout>
+      <div className="bg-gray-50 py-8">
+        <div className="container mx-auto px-4 max-w-6xl">
         {/* Header */}
         <div className="mb-8">
           <div className="flex items-center justify-between">
@@ -371,7 +377,8 @@ export default function AdminQuizQuestions() {
             </div>
           ))}
         </div>
+        </div>
       </div>
-    </div>
+    </DashboardLayout>
   );
 }

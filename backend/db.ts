@@ -1,4 +1,4 @@
-import { eq, desc, and, sql } from "drizzle-orm";
+import { eq, desc, and, sql, ne } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import type { D1Database } from "@cloudflare/workers-types";
 import {
@@ -247,7 +247,7 @@ export async function getEnrollmentsByUserId(userId: number) {
       id: enrollments.id,
       userId: enrollments.userId,
       courseId: enrollments.courseId,
-      courseName: courses.title,
+      courseName: courses.titleEn,
       progressPercentage: enrollments.progressPercentage,
       completedEpisodes: enrollments.completedEpisodes,
       totalEpisodes: sql`(SELECT COUNT(*) FROM ${episodes} WHERE ${eq(episodes.courseId, courses.id)})`,
@@ -463,6 +463,69 @@ export async function deleteCourse(id: number) {
   await db.delete(courses).where(eq(courses.id, id));
 }
 
+export async function getCourseByTitleEn(titleEn: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(courses).where(eq(courses.titleEn, titleEn)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+export async function deleteEpisodesByCourseId(courseId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(episodes).where(eq(episodes.courseId, courseId));
+}
+
+export async function seedCourseWithEpisodes(params: {
+  matchTitleEn: string;
+  course: Omit<InsertCourse, 'duration'> & { duration?: number | null };
+  episodes: Array<Omit<InsertEpisode, 'courseId'>>;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const totalDurationSeconds = params.episodes.reduce((sum, ep) => sum + Number(ep.duration ?? 0), 0);
+  const durationMinutes = Math.ceil(totalDurationSeconds / 60);
+
+  const existing = await getCourseByTitleEn(params.matchTitleEn);
+  let courseId: number;
+  if (existing) {
+    courseId = existing.id;
+    await db.update(courses)
+      .set({
+        ...params.course,
+        duration: durationMinutes,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(courses.id, courseId));
+  } else {
+    const result = await db.insert(courses)
+      .values({
+        ...params.course,
+        duration: durationMinutes,
+      })
+      .returning({ id: courses.id });
+    courseId = result[0].id;
+  }
+
+  await deleteEpisodesByCourseId(courseId);
+
+  // Cloudflare D1 can have lower SQLite variable limits than vanilla SQLite.
+  // Insert in chunks to avoid "too many SQL variables" failures.
+  const chunkSize = 8;
+  for (let i = 0; i < params.episodes.length; i += chunkSize) {
+    const chunk = params.episodes.slice(i, i + chunkSize);
+    await db.insert(episodes).values(
+      chunk.map((ep) => ({
+        ...ep,
+        courseId,
+      }))
+    );
+  }
+
+  return { courseId, episodesInserted: params.episodes.length, durationMinutes };
+}
+
 // ============================================================================
 // Episode Management
 // ============================================================================
@@ -622,7 +685,11 @@ function generateRegistrationKeyCode(groupLength: number = 5, groups: number = 3
 export async function getAllRegistrationKeys() {
   const db = await getDb();
   if (!db) return [];
-  return await db.select().from(registrationKeys).orderBy(desc(registrationKeys.createdAt));
+  return await db
+    .select()
+    .from(registrationKeys)
+    .where(ne(registrationKeys.courseId, 0))
+    .orderBy(desc(registrationKeys.createdAt));
 }
 
 export async function getRegistrationKeysByCourse(courseId: number) {
@@ -641,7 +708,13 @@ export async function getUnusedKeys() {
   return await db
     .select()
     .from(registrationKeys)
-    .where(and(eq(registrationKeys.isActive, true), sql`${registrationKeys.activatedAt} is null`))
+    .where(
+      and(
+        ne(registrationKeys.courseId, 0),
+        eq(registrationKeys.isActive, true),
+        sql`${registrationKeys.activatedAt} is null`
+      )
+    )
     .orderBy(desc(registrationKeys.createdAt));
 }
 
@@ -651,7 +724,13 @@ export async function getActivatedKeys() {
   return await db
     .select()
     .from(registrationKeys)
-    .where(and(eq(registrationKeys.isActive, true), sql`${registrationKeys.activatedAt} is not null`))
+    .where(
+      and(
+        ne(registrationKeys.courseId, 0),
+        eq(registrationKeys.isActive, true),
+        sql`${registrationKeys.activatedAt} is not null`
+      )
+    )
     .orderBy(desc(registrationKeys.activatedAt));
 }
 
@@ -728,7 +807,7 @@ export async function searchKeysByEmail(email: string) {
   return await db
     .select()
     .from(registrationKeys)
-    .where(eq(registrationKeys.email, email))
+    .where(and(ne(registrationKeys.courseId, 0), eq(registrationKeys.email, email)))
     .orderBy(desc(registrationKeys.createdAt));
 }
 
@@ -744,19 +823,28 @@ export async function getKeyStatistics() {
     };
   }
 
-  const [totalResult] = await db.select({ count: sql<number>`count(*)` }).from(registrationKeys);
+  const [totalResult] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(registrationKeys)
+    .where(ne(registrationKeys.courseId, 0));
   const [activatedResult] = await db
     .select({ count: sql<number>`count(*)` })
     .from(registrationKeys)
-    .where(sql`${registrationKeys.activatedAt} is not null`);
+    .where(and(ne(registrationKeys.courseId, 0), sql`${registrationKeys.activatedAt} is not null`));
   const [unusedResult] = await db
     .select({ count: sql<number>`count(*)` })
     .from(registrationKeys)
-    .where(and(eq(registrationKeys.isActive, true), sql`${registrationKeys.activatedAt} is null`));
+    .where(
+      and(
+        ne(registrationKeys.courseId, 0),
+        eq(registrationKeys.isActive, true),
+        sql`${registrationKeys.activatedAt} is null`
+      )
+    );
   const [deactivatedResult] = await db
     .select({ count: sql<number>`count(*)` })
     .from(registrationKeys)
-    .where(eq(registrationKeys.isActive, false));
+    .where(and(ne(registrationKeys.courseId, 0), eq(registrationKeys.isActive, false)));
 
   const total = Number(totalResult?.count ?? 0);
   const activated = Number(activatedResult?.count ?? 0);
@@ -1032,7 +1120,7 @@ export async function createOrUpdateEpisodeProgress(progress: InsertEpisodeProgr
       .set({
         watchedDuration: progress.watchedDuration,
         isCompleted: progress.isCompleted,
-        lastWatchedAt: new Date(),
+        lastWatchedAt: new Date().toISOString(),
       })
       .where(eq(episodeProgress.id, existing.id));
     return existing.id;
@@ -1170,6 +1258,28 @@ export async function getAllEnrollments() {
   const db = await getDb();
   if (!db) return [];
   return await db.select().from(enrollments).orderBy(desc(enrollments.enrolledAt));
+}
+
+export async function getAllEnrollmentsWithDetails(limit?: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const query = db
+    .select({
+      enrollment: enrollments,
+      user: users,
+      course: courses,
+    })
+    .from(enrollments)
+    .leftJoin(users, eq(enrollments.userId, users.id))
+    .leftJoin(courses, eq(enrollments.courseId, courses.id))
+    .orderBy(desc(enrollments.enrolledAt));
+
+  if (typeof limit === "number") {
+    return await query.limit(limit);
+  }
+
+  return await query;
 }
 
 /**

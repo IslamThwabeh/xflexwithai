@@ -4,6 +4,7 @@ import {
   BarChart3, Users, CheckCircle, XCircle, TrendingUp, 
   AlertCircle, BookOpen, Award, Activity 
 } from "lucide-react";
+import DashboardLayout from "@/components/DashboardLayout";
 
 interface QuizStats {
   totalAttempts: number;
@@ -61,28 +62,33 @@ export default function AdminQuizDashboard() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading statistics...</p>
+      <DashboardLayout>
+        <div className="bg-gray-50 flex items-center justify-center py-12">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+            <p className="mt-4 text-gray-600">Loading statistics...</p>
+          </div>
         </div>
-      </div>
+      </DashboardLayout>
     );
   }
 
   if (error || !stats) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md">
-          <p className="text-red-800 text-center">{error || "Failed to load data"}</p>
+      <DashboardLayout>
+        <div className="bg-gray-50 flex items-center justify-center py-12">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md">
+            <p className="text-red-800 text-center">{error || "Failed to load data"}</p>
+          </div>
         </div>
-      </div>
+      </DashboardLayout>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="container mx-auto px-4 max-w-7xl">
+    <DashboardLayout>
+      <div className="bg-gray-50 py-8">
+        <div className="container mx-auto px-4 max-w-7xl">
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold mb-2">Quiz Management Dashboard</h1>
@@ -296,7 +302,8 @@ export default function AdminQuizDashboard() {
             </div>
           </div>
         </div>
+        </div>
       </div>
-    </div>
+    </DashboardLayout>
   );
 }

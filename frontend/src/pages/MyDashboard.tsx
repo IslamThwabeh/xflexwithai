@@ -51,10 +51,10 @@ export default function MyDashboard() {
   }
 
   const totalCourses = enrollments?.length || 0;
-  const completedCourses = enrollments?.filter(e => e.enrollment.completedAt !== null).length || 0;
+  const completedCourses = enrollments?.filter(e => e.completedAt !== null).length || 0;
   const inProgressCourses = totalCourses - completedCourses;
   const averageProgress = totalCourses > 0
-    ? enrollments!.reduce((sum, e) => sum + (e.enrollment.progressPercentage || 0), 0) / totalCourses
+    ? enrollments!.reduce((sum, e) => sum + (e.progressPercentage || 0), 0) / totalCourses
     : 0;
 
   return (
@@ -178,25 +178,13 @@ export default function MyDashboard() {
             ) : (
               <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {enrollments.map((enrollment) => {
-                  const course = enrollment.course;
-                  if (!course) return null;
-
-                  const progress = enrollment.enrollment.progressPercentage || 0;
-                  const isCompleted = enrollment.enrollment.completedAt !== null;
-                  const lastAccessed = enrollment.enrollment.lastAccessed;
+                  const progress = enrollment.progressPercentage || 0;
+                  const isCompleted = enrollment.completedAt !== null;
 
                   return (
-                    <Card key={enrollment.enrollment.id} className="hover:shadow-lg transition-shadow">
+                    <Card key={enrollment.id} className="hover:shadow-lg transition-shadow">
                       <div className="aspect-video bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center relative">
-                        {course.thumbnailUrl ? (
-                          <img 
-                            src={course.thumbnailUrl} 
-                            alt={course.titleEn}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <BookOpen className="h-16 w-16 text-white opacity-50" />
-                        )}
+                        <BookOpen className="h-16 w-16 text-white opacity-50" />
                         {isCompleted && (
                           <div className="absolute top-2 right-2">
                             <Badge className="bg-green-500">
@@ -208,17 +196,12 @@ export default function MyDashboard() {
                       </div>
                       <CardHeader>
                         <div className="flex items-center justify-between mb-2">
-                          <span className="text-xs font-semibold px-2 py-1 rounded bg-blue-100 text-blue-700">
-                            {course.level}
-                          </span>
                           <span className="text-xs text-muted-foreground">
-                            {format(new Date(lastAccessed), "MMM d, yyyy")}
+                            {format(new Date(enrollment.enrolledAt), "MMM d, yyyy")}
                           </span>
                         </div>
-                        <CardTitle className="line-clamp-2">{course.titleEn}</CardTitle>
-                        <CardDescription className="line-clamp-2">
-                          {course.descriptionEn}
-                        </CardDescription>
+                        <CardTitle className="line-clamp-2">{enrollment.courseName}</CardTitle>
+                        <CardDescription className="line-clamp-2">Course</CardDescription>
                       </CardHeader>
                       <CardContent>
                         <div className="space-y-4">
@@ -234,12 +217,12 @@ export default function MyDashboard() {
                           {/* Episode Count */}
                           <div className="flex items-center justify-between text-sm text-muted-foreground">
                             <span>
-                              {enrollment.enrollment.completedEpisodes} episodes completed
+                              {enrollment.completedEpisodes} episodes completed
                             </span>
                           </div>
 
                           {/* Continue Button */}
-                          <Link href={`/course/${course.id}`}>
+                          <Link href={`/course/${enrollment.courseId}`}>
                             <Button className="w-full" variant={isCompleted ? "outline" : "default"}>
                               {isCompleted ? (
                                 <>

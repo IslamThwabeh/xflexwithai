@@ -1,9 +1,11 @@
 // client/src/pages/AdminEnrollments.tsx
+import DashboardLayout from "@/components/DashboardLayout";
 import { GraduationCap, Users, BookOpen, TrendingUp } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 export default function AdminEnrollments() {
   return (
+    <DashboardLayout>
     <div className="container mx-auto p-6">
       <div className="mb-8">
         <h1 className="text-3xl font-bold mb-2">Enrollments</h1>
@@ -116,5 +118,6 @@ export default function AdminEnrollments() {
         </Card>
       </div>
     </div>
+    </DashboardLayout>
   );
 }

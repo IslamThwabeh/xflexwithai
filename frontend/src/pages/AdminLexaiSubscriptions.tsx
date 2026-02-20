@@ -1,3 +1,4 @@
+import DashboardLayout from "@/components/DashboardLayout";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -15,7 +16,8 @@ export default function AdminLexaiSubscriptions() {
   const { data: subscriptions, isLoading } = trpc.lexaiAdmin.subscriptions.useQuery();
 
   return (
-    <div className="container mx-auto p-4 md:p-6 space-y-6">
+    <DashboardLayout>
+      <div className="container mx-auto p-4 md:p-6 space-y-6">
       <div>
         <h1 className="text-3xl font-bold">LexAI Subscriptions</h1>
         <p className="text-muted-foreground">Monitor active and expired LexAI plans</p>
@@ -70,6 +72,7 @@ export default function AdminLexaiSubscriptions() {
           )}
         </CardContent>
       </Card>
-    </div>
+      </div>
+    </DashboardLayout>
   );
 }

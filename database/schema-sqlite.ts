@@ -10,7 +10,7 @@ export const users = sqliteTable("users", {
   passwordHash: text("passwordHash", { length: 255 }).notNull(),
   name: text("name"),
   phone: text("phone", { length: 20 }),
-  emailVerified: integer("emailVerified", { mode: 'boolean' }).default(0).notNull(),
+  emailVerified: integer("emailVerified", { mode: 'boolean' }).default(false).notNull(),
   createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
   updatedAt: text("updatedAt").default("CURRENT_TIMESTAMP").notNull(),
   lastSignedIn: text("lastSignedIn").default("CURRENT_TIMESTAMP").notNull(),
@@ -49,7 +49,7 @@ export const courses = sqliteTable("courses", {
   thumbnailUrl: text("thumbnailUrl"),
   price: integer("price").default(0).notNull(),
   currency: text("currency", { length: 3 }).default("USD").notNull(),
-  isPublished: integer("isPublished", { mode: 'boolean' }).default(0).notNull(),
+  isPublished: integer("isPublished", { mode: 'boolean' }).default(false).notNull(),
   level: text("level", { length: 20 }).default("beginner").notNull(), // 'beginner' | 'intermediate' | 'advanced'
   duration: integer("duration"),
   createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
@@ -72,7 +72,7 @@ export const episodes = sqliteTable("episodes", {
   videoUrl: text("videoUrl"),
   duration: integer("duration"),
   order: integer("order").notNull(),
-  isFree: integer("isFree", { mode: 'boolean' }).default(0).notNull(),
+  isFree: integer("isFree", { mode: 'boolean' }).default(false).notNull(),
   createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
   updatedAt: text("updatedAt").default("CURRENT_TIMESTAMP").notNull(),
 });
@@ -95,11 +95,11 @@ export const enrollments = sqliteTable("enrollments", {
   paymentStatus: text("paymentStatus", { length: 20 }).default("pending").notNull(), // 'pending' | 'completed' | 'failed' | 'refunded'
   paymentAmount: integer("paymentAmount"),
   paymentCurrency: text("paymentCurrency", { length: 3 }).default("USD"),
-  isSubscriptionActive: integer("isSubscriptionActive", { mode: 'boolean' }).default(1).notNull(),
+  isSubscriptionActive: integer("isSubscriptionActive", { mode: 'boolean' }).default(true).notNull(),
   subscriptionStartDate: text("subscriptionStartDate"),
   subscriptionEndDate: text("subscriptionEndDate"),
   registrationKeyId: integer("registrationKeyId"),
-  activatedViaKey: integer("activatedViaKey", { mode: 'boolean' }).default(0).notNull(),
+  activatedViaKey: integer("activatedViaKey", { mode: 'boolean' }).default(false).notNull(),
 });
 
 export type Enrollment = typeof enrollments.$inferSelect;
@@ -116,7 +116,7 @@ export const registrationKeys = sqliteTable("registrationKeys", {
   activatedAt: text("activatedAt"),
   createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
   createdBy: integer("createdBy").notNull(),
-  isActive: integer("isActive", { mode: 'boolean' }).default(1).notNull(),
+  isActive: integer("isActive", { mode: 'boolean' }).default(true).notNull(),
   notes: text("notes"),
   expiresAt: text("expiresAt"),
 });
@@ -133,7 +133,7 @@ export const episodeProgress = sqliteTable("episodeProgress", {
   episodeId: integer("episodeId").notNull(),
   courseId: integer("courseId").notNull(),
   watchedDuration: integer("watchedDuration").default(0).notNull(),
-  isCompleted: integer("isCompleted", { mode: 'boolean' }).default(0).notNull(),
+  isCompleted: integer("isCompleted", { mode: 'boolean' }).default(false).notNull(),
   lastWatchedAt: text("lastWatchedAt").default("CURRENT_TIMESTAMP").notNull(),
 });
 
@@ -146,10 +146,10 @@ export type InsertEpisodeProgress = typeof episodeProgress.$inferInsert;
 export const lexaiSubscriptions = sqliteTable("lexaiSubscriptions", {
   id: int("id").primaryKey({ autoIncrement: true }),
   userId: integer("userId").notNull(),
-  isActive: integer("isActive", { mode: 'boolean' }).default(1).notNull(),
+  isActive: integer("isActive", { mode: 'boolean' }).default(true).notNull(),
   startDate: text("startDate").default("CURRENT_TIMESTAMP").notNull(),
   endDate: text("endDate").notNull(),
-  autoRenew: integer("autoRenew", { mode: 'boolean' }).default(1).notNull(),
+  autoRenew: integer("autoRenew", { mode: 'boolean' }).default(true).notNull(),
   paymentStatus: text("paymentStatus", { length: 20 }).default("pending").notNull(),
   paymentAmount: integer("paymentAmount").notNull(),
   paymentCurrency: text("paymentCurrency", { length: 3 }).default("USD").notNull(),
@@ -257,7 +257,7 @@ export const quizOptions = sqliteTable("quiz_options", {
   questionId: integer("question_id").notNull(),
   optionId: text("option_id", { length: 1 }).notNull(),
   optionText: text("option_text").notNull(),
-  isCorrect: integer("is_correct", { mode: 'boolean' }).notNull().default(0),
+  isCorrect: integer("is_correct", { mode: 'boolean' }).notNull().default(false),
   createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
 });
 
@@ -305,8 +305,8 @@ export const userQuizProgress = sqliteTable("user_quiz_progress", {
   id: int("id").primaryKey({ autoIncrement: true }),
   userId: integer("user_id").notNull(),
   quizId: integer("quiz_id").notNull(),
-  isUnlocked: integer("is_unlocked", { mode: 'boolean' }).notNull().default(0),
-  isCompleted: integer("is_completed", { mode: 'boolean' }).notNull().default(0),
+  isUnlocked: integer("is_unlocked", { mode: 'boolean' }).notNull().default(false),
+  isCompleted: integer("is_completed", { mode: 'boolean' }).notNull().default(false),
   bestScore: integer("best_score").default(0),
   bestPercentage: text("best_percentage").default("0"), // Store as text instead of decimal
   attemptsCount: integer("attempts_count").default(0),

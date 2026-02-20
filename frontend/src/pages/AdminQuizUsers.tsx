@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { Search, User, Trophy, Lock, Unlock, RefreshCw, Eye } from "lucide-react";
+import DashboardLayout from "@/components/DashboardLayout";
 
 interface UserProgress {
   userId: number;
@@ -83,28 +84,33 @@ export default function AdminQuizUsers() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading users...</p>
+      <DashboardLayout>
+        <div className="bg-gray-50 flex items-center justify-center py-12">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+            <p className="mt-4 text-gray-600">Loading users...</p>
+          </div>
         </div>
-      </div>
+      </DashboardLayout>
     );
   }
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md">
-          <p className="text-red-800 text-center">{error}</p>
+      <DashboardLayout>
+        <div className="bg-gray-50 flex items-center justify-center py-12">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md">
+            <p className="text-red-800 text-center">{error}</p>
+          </div>
         </div>
-      </div>
+      </DashboardLayout>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="container mx-auto px-4 max-w-7xl">
+    <DashboardLayout>
+      <div className="bg-gray-50 py-8">
+        <div className="container mx-auto px-4 max-w-7xl">
         {/* Header */}
         <div className="mb-8">
           <div className="flex items-center justify-between">
@@ -265,7 +271,8 @@ export default function AdminQuizUsers() {
             </div>
           )}
         </div>
+        </div>
       </div>
-    </div>
+    </DashboardLayout>
   );
 }

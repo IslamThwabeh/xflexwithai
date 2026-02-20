@@ -74,7 +74,7 @@ export default function AdminCourses() {
     titleAr: "",
     descriptionEn: "",
     descriptionAr: "",
-    thumbnail: "",
+    thumbnailUrl: "",
     price: 0,
     level: "beginner" as "beginner" | "intermediate" | "advanced",
     isPublished: false,
@@ -86,7 +86,7 @@ export default function AdminCourses() {
       titleAr: "",
       descriptionEn: "",
       descriptionAr: "",
-      thumbnail: "",
+      thumbnailUrl: "",
       price: 0,
       level: "beginner",
       isPublished: false,
@@ -100,7 +100,7 @@ export default function AdminCourses() {
       titleAr: course.titleAr,
       descriptionEn: course.descriptionEn,
       descriptionAr: course.descriptionAr,
-      thumbnail: course.thumbnail || "",
+      thumbnailUrl: course.thumbnailUrl || "",
       price: course.price,
       level: course.level,
       isPublished: course.isPublished,
@@ -256,8 +256,8 @@ export default function AdminCourses() {
                 maxSize={5}
                 label="Course Thumbnail"
                 preview="image"
-                currentUrl={formData.thumbnail}
-                onUrlChange={(url) => setFormData({ ...formData, thumbnail: url })}
+                currentUrl={formData.thumbnailUrl}
+                onUrlChange={(url) => setFormData({ ...formData, thumbnailUrl: url })}
                 onUpload={async (file) => {
                   const reader = new FileReader();
                   return new Promise((resolve, reject) => {

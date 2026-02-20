@@ -14,10 +14,13 @@ export default function Dashboard() {
   const [, setLocation] = useLocation();
 
   // Fetch user enrollments
-  const { data: enrollments = [], isLoading: enrollmentsLoading } = trpc.courses.getUserEnrollments.useQuery();
+  const { data: enrollments = [], isLoading: enrollmentsLoading } = trpc.users.getUserEnrollments.useQuery();
 
   // Fetch user statistics
-  const { data: stats } = trpc.courses.getUserStats.useQuery();
+  const { data: stats } = trpc.users.getUserStats.useQuery();
+
+  const displayName = user?.name || user?.email || "Student";
+  const welcomeTitle = t("dashboard.title").replace("{name}", displayName);
 
   const handleLogout = async () => {
     await logout();
@@ -32,7 +35,7 @@ export default function Dashboard() {
           <div className="flex justify-between items-start mb-8">
             <div>
               <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-                {t("dashboard.title", { name: user?.name || user?.email || "Student" })}
+                {welcomeTitle}
               </h1>
               <p className="text-gray-600 dark:text-gray-300 mt-1">
                 {format(new Date(), "EEEE, MMMM d, yyyy")}

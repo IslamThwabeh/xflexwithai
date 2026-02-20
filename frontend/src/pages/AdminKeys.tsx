@@ -1,4 +1,5 @@
 import { useState } from "react";
+import DashboardLayout from "@/components/DashboardLayout";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -170,7 +171,8 @@ export default function AdminKeys() {
     : allKeys;
 
   return (
-    <div className="container mx-auto p-4 md:p-6 space-y-6">
+    <DashboardLayout>
+      <div className="container mx-auto p-4 md:p-6 space-y-6">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
@@ -471,6 +473,7 @@ export default function AdminKeys() {
           </div>
         </CardContent>
       </Card>
-    </div>
+      </div>
+    </DashboardLayout>
   );
 }

@@ -311,8 +311,7 @@ export const appRouter = router({
     }),
     
     recentEnrollments: adminProcedure.query(async () => {
-      const enrollments = await db.getAllEnrollments();
-      return enrollments.slice(0, 5);
+      return await db.getAllEnrollmentsWithDetails(5);
     }),
   }),
 
@@ -547,7 +546,7 @@ export const appRouter = router({
   enrollments: router({
     // Admin: Get all enrollments
     listAll: adminProcedure.query(async () => {
-      return await db.getAllEnrollments();
+      return await db.getAllEnrollmentsWithDetails();
     }),
 
     // User: Get my enrollments
@@ -642,6 +641,31 @@ export const appRouter = router({
           progress: progressPercentage,
           completed: completedEpisodes >= totalEpisodes
         });
+        return { success: true };
+      }),
+  }),
+
+  // Episode progress tracking (per user)
+  episodeProgress: router({
+    updateProgress: protectedProcedure
+      .input(
+        z.object({
+          episodeId: z.number(),
+          courseId: z.number(),
+          watchedDuration: z.number().min(0),
+          isCompleted: z.boolean().optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        await db.createOrUpdateEpisodeProgress({
+          userId: ctx.user.id,
+          episodeId: input.episodeId,
+          courseId: input.courseId,
+          watchedDuration: Math.floor(input.watchedDuration),
+          isCompleted: input.isCompleted ?? false,
+          lastWatchedAt: new Date().toISOString(),
+        });
+
         return { success: true };
       }),
   }),
@@ -1285,6 +1309,14 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         logger.info('[KEYS] Activating key', { keyCode: input.keyCode, email: input.email });
+
+        const existingKey = await db.getRegistrationKeyByCode(input.keyCode);
+        if (existingKey && existingKey.courseId === 0) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'This key is for LexAI. Please activate it from the LexAI page.',
+          });
+        }
         
         const result = await db.activateRegistrationKey(input.keyCode, input.email);
         

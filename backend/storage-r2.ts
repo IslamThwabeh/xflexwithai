@@ -6,7 +6,11 @@
 import { ENV } from './_core/env';
 
 interface R2Bucket {
-  put(key: string, body: ArrayBuffer | ReadableStream<Uint8Array> | string, options?: any): Promise<R2Object>;
+  put(
+    key: string,
+    body: ArrayBuffer | ArrayBufferView | ReadableStream<Uint8Array> | string,
+    options?: any
+  ): Promise<R2Object>;
   get(key: string): Promise<R2Object | null>;
   delete(key: string): Promise<void>;
 }

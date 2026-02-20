@@ -1,5 +1,5 @@
 import type { CreateExpressContextOptions } from "@trpc/server/adapters/express";
-import type { User } from "../../drizzle/schema";
+import type { User } from "../../database/schema-sqlite";
 import { logger } from "./logger";
 import { verifyToken } from "./auth";
 import { COOKIE_NAME } from "../../shared/const";

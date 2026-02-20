@@ -32,8 +32,6 @@ import {
   BookOpen, 
   Key, 
   GraduationCap,
-  Settings,
-  BarChart3,
   Sparkles
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
@@ -50,6 +48,13 @@ const menuSections = [
     ]
   },
   {
+    label: "Content Management",
+    items: [
+      { icon: BookOpen, label: "Courses", path: "/admin/courses" },
+      { icon: Key, label: "Course Keys", path: "/admin/keys" },
+    ]
+  },
+  {
     label: "LexAI",
     items: [
       { icon: Sparkles, label: "LexAI Chat", path: "/lexai" },
@@ -58,24 +63,10 @@ const menuSections = [
     ]
   },
   {
-    label: "Content Management",
-    items: [
-      { icon: BookOpen, label: "Courses", path: "/admin/courses" },
-    ]
-  },
-  {
     label: "User Management",
     items: [
       { icon: Users, label: "Users", path: "/admin/users" },
       { icon: GraduationCap, label: "Enrollments", path: "/admin/enrollments" },
-      { icon: Key, label: "Course Keys", path: "/admin/keys" },
-    ]
-  },
-  {
-    label: "Analytics & Settings",
-    items: [
-      { icon: BarChart3, label: "Analytics", path: "/admin/analytics" },
-      { icon: Settings, label: "Settings", path: "/admin/settings" },
     ]
   }
 ];
@@ -213,13 +204,12 @@ function DashboardLayoutContent({
   }, [isResizing, setSidebarWidth]);
 
   return (
-    <>
-      <div className="relative" ref={sidebarRef}>
-        <Sidebar
-          collapsible="icon"
-          className="border-r-0"
-          disableTransition={isResizing}
-        >
+    <div className="relative flex w-full" ref={sidebarRef} dir="ltr">
+      <Sidebar
+        collapsible="icon"
+        className="border-r-0"
+        disableTransition={isResizing}
+      >
           <SidebarHeader className="h-16 justify-center">
             <div className="flex items-center gap-3 pl-2 group-data-[collapsible=icon]:px-0 transition-all w-full">
               {isCollapsed ? (
@@ -325,16 +315,16 @@ function DashboardLayoutContent({
               </DropdownMenuContent>
             </DropdownMenu>
           </SidebarFooter>
-        </Sidebar>
-        <div
-          className={`absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-primary/20 transition-colors ${isCollapsed ? "hidden" : ""}`}
-          onMouseDown={() => {
-            if (isCollapsed) return;
-            setIsResizing(true);
-          }}
-          style={{ zIndex: 50 }}
-        />
-      </div>
+      </Sidebar>
+
+      <div
+        className={`absolute top-0 h-full cursor-col-resize hover:bg-primary/20 transition-colors ${isCollapsed ? "hidden" : ""}`}
+        onMouseDown={() => {
+          if (isCollapsed) return;
+          setIsResizing(true);
+        }}
+        style={{ zIndex: 50, left: "var(--sidebar-width)", width: "4px" }}
+      />
 
       <SidebarInset>
         {isMobile && (
@@ -353,6 +343,6 @@ function DashboardLayoutContent({
         )}
         <main className="flex-1 p-4">{children}</main>
       </SidebarInset>
-    </>
+    </div>
   );
 }
