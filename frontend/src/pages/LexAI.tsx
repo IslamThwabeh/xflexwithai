@@ -120,6 +120,7 @@ export default function LexAI() {
     restartDone: isArabic ? "تمت إعادة ضبط الجلسة" : "Session reset",
     runM15: isArabic ? "تحليل M15" : "Analyze M15",
     runH4: isArabic ? "تحليل H4" : "Analyze H4",
+    cancelFlow: isArabic ? "إلغاء" : "Cancel",
   };
 
   const { data: subscription, isLoading: subLoading } = trpc.lexai.getSubscription.useQuery();
@@ -633,7 +634,8 @@ export default function LexAI() {
             )}
           </div>
 
-          {/* Bottom input area - scrollable on mobile if content is tall */}
+          {/* Bottom input area - only show when a flow is selected */}
+          {guidedFlow !== "menu" && (
           <div className="border-t bg-white shrink-0">
             {!isAdmin && messagesRemaining <= 0 && (
               <div className="mx-3 mt-3 p-2 bg-yellow-50 border border-yellow-200 rounded-lg flex items-start gap-2">
@@ -681,16 +683,30 @@ export default function LexAI() {
                 <span className="hidden md:inline">{copy.cappedNotice}</span>
               </div>
               <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" onClick={() => setShowDeleteDialog(true)} disabled={clearHistory.isPending || !!messagesLoading}>
-                  <Trash2 className="h-4 w-4" />
-                  <span className="hidden md:inline ml-1">{copy.deleteHistory}</span>
+                <Button variant="ghost" size="sm" onClick={() => { resetInputs(); setGuidedFlow("menu"); }}>
+                  {copy.cancelFlow}
                 </Button>
-                <Button size="sm" onClick={handleAnalyze} disabled={isBusy || guidedFlow === "menu" || (!isAdmin && messagesRemaining <= 0)}>
+                <Button size="sm" onClick={handleAnalyze} disabled={isBusy || (!isAdmin && messagesRemaining <= 0)}>
                   {isBusy ? copy.analyzing : guidedFlow === "specialized_m15" ? copy.runM15 : guidedFlow === "specialized_h4" ? copy.runH4 : copy.runAnalysis}
                 </Button>
               </div>
             </div>
           </div>
+          )}
+
+          {/* Minimal footer when in menu state */}
+          {guidedFlow === "menu" && (
+          <div className="border-t bg-slate-50/80 p-3 flex items-center justify-between">
+            <div className="text-xs text-muted-foreground flex items-center gap-1">
+              <CheckCircle2 className="h-3 w-3" />
+              <span className="hidden md:inline">{copy.cappedNotice}</span>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => setShowDeleteDialog(true)} disabled={clearHistory.isPending || !!messagesLoading}>
+              <Trash2 className="h-4 w-4" />
+              <span className="hidden md:inline ml-1">{copy.deleteHistory}</span>
+            </Button>
+          </div>
+          )}
 
           <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
             <AlertDialogContent dir="rtl">
