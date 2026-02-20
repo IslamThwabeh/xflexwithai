@@ -475,36 +475,38 @@ export default function LexAI() {
   const messagesRemaining = subscription ? subscription.messagesLimit - subscription.messagesUsed : 0;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50">
-      <div className="container max-w-5xl py-6 px-2 md:px-0">
-        {/* Header */}
-        <div className="mb-5 md:mb-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-blue-500 rounded-2xl flex items-center justify-center shadow-md">
-                <Sparkles className="h-6 w-6 text-white" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold tracking-tight">{copy.title}</h1>
-                <p className="text-xs md:text-sm text-muted-foreground">
-                  {copy.chatDesc}
-                </p>
-              </div>
+    <div className="min-h-screen md:min-h-0 h-screen md:h-auto bg-gradient-to-br from-purple-50 to-blue-50 flex flex-col">
+      {/* Compact header on mobile */}
+      <div className="container max-w-5xl py-2 md:py-6 px-2 md:px-0 shrink-0">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 md:gap-3">
+            <div className="w-10 h-10 md:w-12 md:h-12 bg-gradient-to-br from-purple-500 to-blue-500 rounded-xl md:rounded-2xl flex items-center justify-center shadow-md">
+              <Sparkles className="h-5 w-5 md:h-6 md:w-6 text-white" />
             </div>
-            <Link href="/">
-              <Button variant="outline">{copy.backHome}</Button>
-            </Link>
+            <div>
+              <h1 className="text-lg md:text-2xl font-bold tracking-tight">{copy.title}</h1>
+              <p className="text-xs text-muted-foreground hidden md:block">
+                {copy.chatDesc}
+              </p>
+              <p className="text-xs text-muted-foreground md:hidden">
+                {remainingDays} {copy.daysSuffix}
+              </p>
+            </div>
           </div>
-
-          {/* Remaining days (single compact line) */}
-          <div className="mt-2 text-sm text-right text-muted-foreground">
-            <span>{copy.remainingDays}: </span>
-            <span className="font-semibold text-slate-900">{remainingDays} {copy.daysSuffix}</span>
-          </div>
+          <Link href="/">
+            <Button variant="outline" size="sm" className="md:size-default">{copy.backHome}</Button>
+          </Link>
         </div>
 
-        {/* Chat Interface */}
-        <Card className="flex flex-col h-[70vh] md:h-[680px] max-w-3xl mx-auto shadow-lg rounded-3xl overflow-hidden">
+        {/* Remaining days - desktop only */}
+        <div className="mt-2 text-sm text-right text-muted-foreground hidden md:block">
+          <span>{copy.remainingDays}: </span>
+          <span className="font-semibold text-slate-900">{remainingDays} {copy.daysSuffix}</span>
+        </div>
+      </div>
+
+      {/* Chat Interface - fills remaining space on mobile */}
+      <Card className="flex flex-col flex-1 md:flex-none md:h-[680px] max-w-3xl w-full mx-auto shadow-lg md:rounded-3xl rounded-t-3xl rounded-b-none md:rounded-b-3xl overflow-hidden md:mb-6">
           <CardHeader className="border-b">
             <CardTitle className="text-lg">{copy.chatTitle}</CardTitle>
             <CardDescription>
@@ -631,11 +633,12 @@ export default function LexAI() {
             )}
           </div>
 
-          <CardContent className="border-t p-4">
+          {/* Bottom input area - scrollable on mobile if content is tall */}
+          <div className="border-t bg-white shrink-0">
             {!isAdmin && messagesRemaining <= 0 && (
-              <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg flex items-start gap-2">
-                <AlertCircle className="h-5 w-5 text-yellow-600 mt-0.5" />
-                <div className="text-sm">
+              <div className="mx-3 mt-3 p-2 bg-yellow-50 border border-yellow-200 rounded-lg flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 text-yellow-600 mt-0.5" />
+                <div className="text-xs">
                   <p className="font-medium text-yellow-900">{copy.monthlyLimitReached}</p>
                   <p className="text-yellow-700">
                     {copy.renewOn} {formatRenewalDate(subscription?.endDate)}
@@ -644,14 +647,14 @@ export default function LexAI() {
               </div>
             )}
 
-            <div className="space-y-4" dir="rtl">
-              {guidedFlow === "specialized_m15" && <div className="text-sm text-muted-foreground text-right">{copy.uploadM15First}</div>}
-              {guidedFlow === "specialized_h4" && <div className="text-sm text-muted-foreground text-right">{copy.uploadH4Second}</div>}
+            <div className="p-3 space-y-3 max-h-[40vh] overflow-y-auto" dir="rtl">
+              {guidedFlow === "specialized_m15" && <div className="text-xs text-muted-foreground text-right">{copy.uploadM15First}</div>}
+              {guidedFlow === "specialized_h4" && <div className="text-xs text-muted-foreground text-right">{copy.uploadH4Second}</div>}
 
               {guidedFlow === "single" && (
-                <div className="flex items-center gap-3 justify-end">
-                  <Input value={timeframe} onChange={(e) => setTimeframe(e.target.value)} className="max-w-[120px]" placeholder="M15" />
-                  <span className="text-sm text-muted-foreground">{copy.timeframe}</span>
+                <div className="flex items-center gap-2 justify-end">
+                  <Input value={timeframe} onChange={(e) => setTimeframe(e.target.value)} className="max-w-[100px] h-8 text-sm" placeholder="M15" />
+                  <span className="text-xs text-muted-foreground">{copy.timeframe}</span>
                 </div>
               )}
 
@@ -664,29 +667,30 @@ export default function LexAI() {
               )}
 
               {guidedFlow === "feedback_image" && (
-                <div className="space-y-2">
-                  <label className="text-sm font-medium block text-right">{copy.yourAnalysis}</label>
-                  <Textarea value={userAnalysis} onChange={(e) => setUserAnalysis(e.target.value)} rows={4} placeholder={copy.analysisPlaceholder} className="text-right" dir="rtl" />
+                <div className="space-y-1">
+                  <label className="text-xs font-medium block text-right">{copy.yourAnalysis}</label>
+                  <Textarea value={userAnalysis} onChange={(e) => setUserAnalysis(e.target.value)} rows={3} placeholder={copy.analysisPlaceholder} className="text-right text-sm" dir="rtl" />
                 </div>
               )}
+            </div>
 
-              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <div className="text-xs text-muted-foreground flex items-center gap-2 order-2 md:order-1">
-                  <CheckCircle2 className="h-4 w-4" />
-                  {copy.cappedNotice}
-                </div>
-                <div className="flex items-center gap-2 justify-end order-1 md:order-2">
-                  <Button variant="outline" onClick={() => setShowDeleteDialog(true)} disabled={clearHistory.isPending || !!messagesLoading}>
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    {copy.deleteHistory}
-                  </Button>
-                  <Button onClick={handleAnalyze} disabled={isBusy || guidedFlow === "menu" || (!isAdmin && messagesRemaining <= 0)}>
-                    {isBusy ? copy.analyzing : guidedFlow === "specialized_m15" ? copy.runM15 : guidedFlow === "specialized_h4" ? copy.runH4 : copy.runAnalysis}
-                  </Button>
-                </div>
+            {/* Action buttons - always visible at bottom */}
+            <div className="p-3 pt-0 flex items-center justify-between gap-2 border-t bg-slate-50/80">
+              <div className="text-xs text-muted-foreground flex items-center gap-1">
+                <CheckCircle2 className="h-3 w-3" />
+                <span className="hidden md:inline">{copy.cappedNotice}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => setShowDeleteDialog(true)} disabled={clearHistory.isPending || !!messagesLoading}>
+                  <Trash2 className="h-4 w-4" />
+                  <span className="hidden md:inline ml-1">{copy.deleteHistory}</span>
+                </Button>
+                <Button size="sm" onClick={handleAnalyze} disabled={isBusy || guidedFlow === "menu" || (!isAdmin && messagesRemaining <= 0)}>
+                  {isBusy ? copy.analyzing : guidedFlow === "specialized_m15" ? copy.runM15 : guidedFlow === "specialized_h4" ? copy.runH4 : copy.runAnalysis}
+                </Button>
               </div>
             </div>
-          </CardContent>
+          </div>
 
           <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
             <AlertDialogContent dir="rtl">
@@ -707,7 +711,6 @@ export default function LexAI() {
           </AlertDialog>
 
         </Card>
-      </div>
     </div>
   );
 }
