@@ -5,10 +5,21 @@ import { verifyToken } from "./auth";
 import { COOKIE_NAME } from "@shared/const";
 import * as db from "../db";
 
+export type RequestLike = {
+  headers: Headers | Record<string, string | string[] | undefined>;
+  protocol?: string;
+  url?: string;
+  hostname?: string;
+  path?: string;
+  method?: string;
+  cookies?: Record<string, string>;
+};
+
 export type TrpcContext = {
-  req: CreateExpressContextOptions["req"];
-  res: CreateExpressContextOptions["res"];
+  req: RequestLike;
   user: User | null;
+  setCookie: (name: string, value: string, options?: any) => void;
+  clearCookie: (name: string, options?: any) => void;
 };
 
 export async function createContext(
@@ -137,7 +148,8 @@ export async function createContext(
 
   return {
     req: opts.req,
-    res: opts.res,
     user,
+    setCookie: (name, value, options) => opts.res.cookie(name, value, options),
+    clearCookie: (name, options) => opts.res.clearCookie(name, options),
   };
 }

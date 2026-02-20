@@ -84,7 +84,7 @@ export const appRouter = router({
         
         // Set cookie
         const cookieOptions = getSessionCookieOptions(ctx.req);
-        ctx.res.cookie(COOKIE_NAME, token, cookieOptions);
+        ctx.setCookie(COOKIE_NAME, token, cookieOptions);
         
         logger.info('[AUTH] User registered successfully', { userId, email: input.email });
         
@@ -124,7 +124,7 @@ export const appRouter = router({
         
         // Set cookie
         const cookieOptions = getSessionCookieOptions(ctx.req);
-        ctx.res.cookie(COOKIE_NAME, token, cookieOptions);
+        ctx.setCookie(COOKIE_NAME, token, cookieOptions);
         
         logger.info('[AUTH] User logged in successfully', { userId: user.id, email: user.email });
         
@@ -203,7 +203,7 @@ export const appRouter = router({
           domain: cookieOptions.domain || 'not set',
         });
         
-        ctx.res.cookie(COOKIE_NAME, token, cookieOptions);
+        ctx.setCookie(COOKIE_NAME, token, cookieOptions);
         logger.info('✅ [ADMIN LOGIN] Cookie set successfully');
         
         logger.info('🎉 [ADMIN LOGIN] Admin logged in successfully', { 
@@ -253,7 +253,7 @@ export const appRouter = router({
     
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
-      ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
+      ctx.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
       return { success: true } as const;
     }),
   }),

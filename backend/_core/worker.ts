@@ -1,9 +1,8 @@
-/**
- * Cloudflare Workers Handler
- * Minimal implementation for now - full backend will use Express with Node.js
- */
-
 import type { D1Database } from "@cloudflare/workers-types";
+import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
+import { appRouter } from "../routers";
+import { createWorkerContext } from "./context-worker";
+import * as db from "../db";
 
 declare const KVNamespace: any;
 declare const R2Bucket: any;
@@ -18,14 +17,25 @@ export interface Env {
   ENVIRONMENT: "production" | "staging" | "development";
 }
 
-/**
- * Main Cloudflare Workers fetch handler
- */
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     try {
       const url = new URL(request.url);
       const pathname = url.pathname;
+      const origin = request.headers.get("origin") || "";
+      const allowedOrigins = new Set([
+        "https://xflexwithai.com",
+        "https://www.xflexwithai.com",
+      ]);
+
+      const corsHeaders = new Headers();
+      if (allowedOrigins.has(origin)) {
+        corsHeaders.set("Access-Control-Allow-Origin", origin);
+        corsHeaders.set("Access-Control-Allow-Credentials", "true");
+        corsHeaders.set("Vary", "Origin");
+      }
+
+      await db.getDb({ DB: env.DB });
       
       // Health check endpoint
       if (pathname === "/health") {
@@ -64,17 +74,49 @@ export default {
         }
       }
       
-      // API placeholder
+      if (pathname.startsWith("/api/trpc")) {
+        if (request.method === "OPTIONS") {
+          corsHeaders.set(
+            "Access-Control-Allow-Headers",
+            request.headers.get("access-control-request-headers") || "content-type"
+          );
+          corsHeaders.set(
+            "Access-Control-Allow-Methods",
+            request.headers.get("access-control-request-method") || "POST, GET, OPTIONS"
+          );
+          return new Response(null, { status: 204, headers: corsHeaders });
+        }
+
+        return fetchRequestHandler({
+          endpoint: "/api/trpc",
+          req: request,
+          router: appRouter,
+          createContext: async () => createWorkerContext({ req: request, env }),
+          responseMeta({ ctx }) {
+            const headers = new Headers();
+            const cookieHeaders = (ctx as any)?.cookieHeaders as string[] | undefined;
+
+            for (const [key, value] of corsHeaders.entries()) {
+              headers.set(key, value);
+            }
+
+            if (cookieHeaders?.length) {
+              for (const cookie of cookieHeaders) {
+                headers.append("Set-Cookie", cookie);
+              }
+            }
+
+            return { headers };
+          },
+        });
+      }
+
       if (pathname.startsWith("/api")) {
-        return new Response(JSON.stringify({ 
-          status: "coming_soon", 
-          message: "Backend API is being deployed. Please check again soon.",
-          availableEndpoints: [
-            "/health",
-            "/api/test/db"
-          ]
+        return new Response(JSON.stringify({
+          status: "not_found",
+          message: "Endpoint not implemented in worker",
         }), {
-          status: 200,
+          status: 404,
           headers: { "Content-Type": "application/json" },
         });
       }
