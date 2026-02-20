@@ -3,14 +3,34 @@
  * Supports both Node.js and Cloudflare Workers
  */
 
+const getWorkerEnv = () =>
+  (globalThis as { ENV?: Record<string, string> }).ENV ?? {};
+
+const getEnvVar = (name: string, fallback = "") =>
+  process.env[name] ?? getWorkerEnv()[name] ?? fallback;
+
 export const ENV = {
-  appId: process.env.VITE_APP_ID ?? globalThis.ENV?.VITE_APP_ID ?? "xflex-trading-academy",
-  cookieSecret: process.env.JWT_SECRET ?? globalThis.ENV?.JWT_SECRET ?? "",
-  jwtSecret: process.env.JWT_SECRET ?? globalThis.ENV?.JWT_SECRET ?? "",
-  databaseUrl: process.env.DATABASE_URL ?? "",
-  isProduction: process.env.NODE_ENV === "production",
-  
+  get appId() {
+    return getEnvVar("VITE_APP_ID", "xflex-trading-academy");
+  },
+  get cookieSecret() {
+    return getEnvVar("JWT_SECRET", "");
+  },
+  get jwtSecret() {
+    return getEnvVar("JWT_SECRET", "");
+  },
+  get databaseUrl() {
+    return getEnvVar("DATABASE_URL", "");
+  },
+  get isProduction() {
+    return process.env.NODE_ENV === "production";
+  },
+
   // Cloudflare specific
-  r2BucketUrl: process.env.R2_PUBLIC_URL ?? globalThis.ENV?.R2_PUBLIC_URL ?? "",
-  r2BucketName: process.env.R2_BUCKET_NAME ?? globalThis.ENV?.R2_BUCKET_NAME ?? "xflexwithai-videos",
+  get r2BucketUrl() {
+    return getEnvVar("R2_PUBLIC_URL", "");
+  },
+  get r2BucketName() {
+    return getEnvVar("R2_BUCKET_NAME", "xflexwithai-videos");
+  },
 };

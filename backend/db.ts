@@ -665,7 +665,7 @@ export async function getRegistrationKeyByCode(keyCode: string) {
 }
 
 export async function createRegistrationKey(
-  key: Omit<InsertRegistrationKey, "keyCode"> & { keyCode?: string }
+  key: Omit<InsertRegistrationKey, "keyCode" | "expiresAt"> & { keyCode?: string; expiresAt?: string | Date | null }
 ) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -673,7 +673,7 @@ export async function createRegistrationKey(
   const values: InsertRegistrationKey = {
     ...key,
     keyCode,
-    expiresAt: key.expiresAt ? new Date(key.expiresAt).toISOString() : key.expiresAt,
+    expiresAt: key.expiresAt ? new Date(key.expiresAt).toISOString() : null,
   } as InsertRegistrationKey;
   const result = await db.insert(registrationKeys).values(values).returning({ id: registrationKeys.id });
   return result[0].id;
@@ -684,7 +684,7 @@ export async function createBulkRegistrationKeys(input: {
   createdBy: number;
   quantity: number;
   notes?: string;
-  expiresAt?: Date;
+  expiresAt?: string | Date | null;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -694,7 +694,7 @@ export async function createBulkRegistrationKeys(input: {
     courseId: input.courseId,
     createdBy: input.createdBy,
     notes: input.notes ?? null,
-    expiresAt: input.expiresAt ? input.expiresAt.toISOString() : null,
+    expiresAt: input.expiresAt ? new Date(input.expiresAt).toISOString() : null,
   }));
 
   await db.insert(registrationKeys).values(values);

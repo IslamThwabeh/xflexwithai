@@ -550,7 +550,7 @@ export const appRouter = router({
         await db.updateEnrollment(input.enrollmentId, {
           progressPercentage: input.progressPercentage,
           completedEpisodes: input.completedEpisodes,
-          lastAccessed: new Date(),
+          lastAccessed: new Date().toISOString(),
         });
         return { success: true };
       }),
@@ -586,8 +586,8 @@ export const appRouter = router({
         await db.updateEnrollment(enrollment.id, {
           completedEpisodes,
           progressPercentage,
-          lastAccessed: new Date(),
-          completedAt: completedEpisodes >= totalEpisodes ? new Date() : null,
+          lastAccessed: new Date().toISOString(),
+          completedAt: completedEpisodes >= totalEpisodes ? new Date().toISOString() : null,
         });
         logger.info('Episode marked as complete', { 
           userId: ctx.user.id, 
@@ -679,12 +679,13 @@ export const appRouter = router({
         
         const endDate = new Date();
         endDate.setMonth(endDate.getMonth() + input.durationMonths);
+        const endDateIso = endDate.toISOString();
         
         await db.createLexaiSubscription({
           userId: ctx.user.id,
           isActive: true,
-          startDate: new Date(),
-          endDate,
+          startDate: new Date().toISOString(),
+          endDate: endDateIso,
           paymentStatus: 'completed',
           paymentAmount: input.paymentAmount,
           messagesUsed: 0,

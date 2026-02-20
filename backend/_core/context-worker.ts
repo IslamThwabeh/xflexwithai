@@ -1,4 +1,4 @@
-import * as cookie from "cookie";
+import { parse, serialize } from "cookie";
 import type { D1Database } from "@cloudflare/workers-types";
 import { COOKIE_NAME } from "../../shared/const";
 import { verifyToken } from "./auth";
@@ -19,15 +19,15 @@ export async function createWorkerContext(
   let user: any = null;
 
   const setCookie: TrpcContext["setCookie"] = (name, value, options = {}) => {
-    cookieHeaders.push(cookie.serialize(name, value, options));
+    cookieHeaders.push(serialize(name, value, options));
   };
 
   const clearCookie: TrpcContext["clearCookie"] = (name, options = {}) => {
-    cookieHeaders.push(cookie.serialize(name, "", { ...options, maxAge: 0 }));
+    cookieHeaders.push(serialize(name, "", { ...options, maxAge: 0 }));
   };
 
   try {
-    const cookies = cookie.parse(req.headers.get("cookie") || "");
+    const cookies = parse(req.headers.get("cookie") || "");
     const token = cookies[COOKIE_NAME];
 
     if (!token) {
