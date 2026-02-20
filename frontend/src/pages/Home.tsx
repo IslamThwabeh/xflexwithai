@@ -114,7 +114,7 @@ export default function Home() {
           onClose={() => setShowFlexAIActivation(false)}
           onSuccess={() => {
             setShowFlexAIActivation(false);
-            window.location.href = '/flexai';
+              window.location.href = '/lexai';
           }}
         />
       )}

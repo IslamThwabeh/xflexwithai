@@ -818,6 +818,23 @@ export const appRouter = router({
         return { success: true };
       }),
 
+    // Public: Redeem a LexAI key by email (no login required)
+    redeemKeyByEmail: publicProcedure
+      .input(z.object({
+        keyCode: z.string().min(5),
+        email: z.string().email(),
+      }))
+      .mutation(async ({ input }) => {
+        logger.info('[LexAI] Redeeming key by email', { email: input.email });
+
+        const activation = await db.activateLexaiKey(input.keyCode, input.email);
+        if (!activation.success) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: activation.message });
+        }
+
+        return { success: true };
+      }),
+
     verifyAssignedKeyByEmail: protectedProcedure
       .input(z.object({
         email: z.string().email(),
@@ -1300,6 +1317,24 @@ export const appRouter = router({
       const stats = await db.getKeyStatistics();
       return stats;
     }),
+
+    // Public: Get minimal key info (to guide UX and enforce correct activation path)
+    getKeyInfo: publicProcedure
+      .input(z.object({ keyCode: z.string().min(5) }))
+      .query(async ({ input }) => {
+        const key = await db.getRegistrationKeyByCode(input.keyCode);
+        if (!key) {
+          return { exists: false } as const;
+        }
+
+        return {
+          exists: true,
+          isActive: !!key.isActive,
+          activatedAt: key.activatedAt ?? null,
+          keyType: key.courseId === 0 ? 'lexai' : 'course',
+          courseId: key.courseId,
+        } as const;
+      }),
     
     // Activate a key (public - for users)
     activateKey: publicProcedure

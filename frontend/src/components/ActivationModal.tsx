@@ -13,34 +13,77 @@ interface ActivationModalProps {
 
 export function ActivationModal({ type, onClose, onSuccess }: ActivationModalProps) {
   const [key, setKey] = useState('');
+  const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
 
-  const redeemLexaiKey = trpc.lexai.redeemKey.useMutation();
-  const redeemCourseKey = trpc.registrationKeys.redeemKey.useMutation();
+  const [step, setStep] = useState<'key' | 'email'>('key');
+
+  const keyInfo = trpc.registrationKeys.getKeyInfo.useQuery(
+    { keyCode: key.trim() },
+    { enabled: false, retry: false }
+  );
+
+  const activateCourseKey = trpc.registrationKeys.activateKey.useMutation();
+  const redeemLexaiByEmail = trpc.lexai.redeemKeyByEmail.useMutation();
   
-  const handleActivate = async () => {
+  const handleValidateKey = async () => {
     if (!key.trim()) {
       setError('Please enter an activation key');
       return;
     }
-    
+
     setLoading(true);
     setError('');
-    
+
+    try {
+      const result = await keyInfo.refetch();
+      const info = result.data;
+      if (!info || !('exists' in info) || !info.exists) {
+        throw new Error('Invalid activation key');
+      }
+
+      if (!info.isActive) {
+        throw new Error('This key is deactivated');
+      }
+
+      if (type === 'flexai' && info.keyType !== 'lexai') {
+        throw new Error('This key is for courses. Please activate it from the course activation.');
+      }
+
+      if (type === 'course' && info.keyType !== 'course') {
+        throw new Error('This key is for LexAI. Please activate it from the LexAI activation.');
+      }
+
+      setStep('email');
+    } catch (err: any) {
+      setError(err.message || 'Failed to verify key. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRedeem = async () => {
+    if (!email.trim()) {
+      setError('Please enter your email address');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
     try {
       if (type === 'flexai') {
-        await redeemLexaiKey.mutateAsync({ keyCode: key.trim() });
+        await redeemLexaiByEmail.mutateAsync({ keyCode: key.trim(), email: email.trim() });
       } else {
-        await redeemCourseKey.mutateAsync({ keyCode: key.trim() });
+        await activateCourseKey.mutateAsync({ keyCode: key.trim(), email: email.trim() });
       }
-      
+
       setSuccess(true);
       setTimeout(() => {
         onSuccess();
       }, 1500);
-      
     } catch (err: any) {
       setError(err.message || 'Failed to activate. Please try again.');
     } finally {
@@ -88,11 +131,31 @@ export function ActivationModal({ type, onClose, onSuccess }: ActivationModalPro
                   placeholder="Enter your key (e.g., ABC123)"
                   value={key}
                   onChange={(e) => setKey(e.target.value.toUpperCase())}
-                  onKeyPress={(e) => e.key === 'Enter' && handleActivate()}
+                  onKeyPress={(e) => e.key === 'Enter' && step === 'key' && handleValidateKey()}
                   disabled={loading}
                   className="uppercase"
                 />
               </div>
+
+              {step === 'email' && (
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    Email Address
+                  </label>
+                  <Input
+                    type="email"
+                    placeholder="Enter your email (e.g., name@example.com)"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && handleRedeem()}
+                    disabled={loading}
+                    dir="ltr"
+                  />
+                  <p className="text-xs text-gray-500 mt-2">
+                    We’ll assign this key to your email for future access.
+                  </p>
+                </div>
+              )}
               
               {error && (
                 <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
@@ -110,17 +173,17 @@ export function ActivationModal({ type, onClose, onSuccess }: ActivationModalPro
                   Cancel
                 </Button>
                 <Button
-                  onClick={handleActivate}
+                  onClick={step === 'key' ? handleValidateKey : handleRedeem}
                   disabled={loading}
                   className="flex-1"
                 >
                   {loading ? (
                     <>
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Activating...
+                      {step === 'key' ? 'Checking...' : 'Activating...'}
                     </>
                   ) : (
-                    'Activate'
+                    step === 'key' ? 'Continue' : 'Activate'
                   )}
                 </Button>
               </div>
