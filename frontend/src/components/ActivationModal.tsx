@@ -26,16 +26,6 @@ export function ActivationModal({ type, onClose, onSuccess }: ActivationModalPro
     { enabled: false, retry: false }
   );
 
-  const lexaiEmailCheck = trpc.lexai.hasAssignedKeyByEmail.useQuery(
-    { email: email.trim() },
-    { enabled: false, retry: false }
-  );
-
-  const courseEmailCheck = trpc.registrationKeys.getCourseAccessByEmail.useQuery(
-    { email: email.trim() },
-    { enabled: false, retry: false }
-  );
-
   const activateCourseKey = trpc.registrationKeys.activateKey.useMutation();
   const redeemLexaiByEmail = trpc.lexai.redeemKeyByEmail.useMutation();
   
@@ -85,6 +75,12 @@ export function ActivationModal({ type, onClose, onSuccess }: ActivationModalPro
     setError('');
 
     try {
+      if (typeof window !== 'undefined') {
+        try {
+          window.localStorage.setItem('xflex_last_email', email.trim());
+        } catch {}
+      }
+
       if (type === 'flexai') {
         await redeemLexaiByEmail.mutateAsync({ keyCode: key.trim(), email: email.trim() });
       } else {
@@ -112,16 +108,12 @@ export function ActivationModal({ type, onClose, onSuccess }: ActivationModalPro
     setError('');
 
     try {
-      if (type === 'flexai') {
-        const result = await lexaiEmailCheck.refetch();
-        if (!result.data?.hasKey) {
-          throw new Error('No active LexAI key found for this email');
-        }
-      } else {
-        const result = await courseEmailCheck.refetch();
-        if (!result.data?.hasAccess) {
-          throw new Error('No active course key found for this email');
-        }
+      // Security: don't reveal whether an email has access.
+      // We'll verify ownership via OTP login on the /auth page and then show entitlements.
+      if (typeof window !== 'undefined') {
+        try {
+          window.localStorage.setItem('xflex_last_email', email.trim());
+        } catch {}
       }
 
       setSuccess(true);

@@ -22,6 +22,27 @@ export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 
 /**
+ * Email OTPs for passwordless sign-in.
+ * Store only hashed codes + salt.
+ */
+export const authEmailOtps = sqliteTable("authEmailOtps", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  email: text("email", { length: 320 }).notNull(),
+  purpose: text("purpose", { length: 20 }).default("login").notNull(),
+  codeHash: text("codeHash", { length: 128 }).notNull(),
+  salt: text("salt", { length: 64 }).notNull(),
+  ipHash: text("ipHash", { length: 128 }),
+  userAgentHash: text("userAgentHash", { length: 128 }),
+  sentAtMs: integer("sentAtMs").notNull(),
+  expiresAtMs: integer("expiresAtMs").notNull(),
+  attempts: integer("attempts").default(0).notNull(),
+  createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
+});
+
+export type AuthEmailOtp = typeof authEmailOtps.$inferSelect;
+export type InsertAuthEmailOtp = typeof authEmailOtps.$inferInsert;
+
+/**
  * Admins table - separate from regular users
  */
 export const admins = sqliteTable("admins", {

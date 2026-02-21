@@ -44,4 +44,19 @@ export const ENV = {
   get forgeApiKey() {
     return getEnvVar("BUILT_IN_FORGE_API_KEY", "");
   },
+
+  // Email / OTP auth
+  get emailProvider() {
+    // "auto" | "mailchannels" | "resend"
+    return getEnvVar("EMAIL_PROVIDER", "auto");
+  },
+  get emailFrom() {
+    return getEnvVar("EMAIL_FROM", "");
+  },
+  get emailFromName() {
+    return getEnvVar("EMAIL_FROM_NAME", "");
+  },
+  get resendApiKey() {
+    return getEnvVar("RESEND_API_KEY", "");
+  },
 };

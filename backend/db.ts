@@ -11,6 +11,7 @@ import {
   lexaiSubscriptions, LexaiSubscription, InsertLexaiSubscription,
   lexaiMessages, LexaiMessage, InsertLexaiMessage,
   registrationKeys, RegistrationKey, InsertRegistrationKey,
+  authEmailOtps, AuthEmailOtp, InsertAuthEmailOtp,
   // FlexAI imports
   flexaiSubscriptions, FlexaiSubscription, InsertFlexaiSubscription,
   flexaiMessages, FlexaiMessage, InsertFlexaiMessage
@@ -179,6 +180,135 @@ export async function updateUserLastSignIn(userId: number): Promise<void> {
     logger.error('Failed to update user last sign in', { error: error instanceof Error ? error.message : 'Unknown error' });
     throw error;
   }
+}
+
+/**
+ * Mark user's email as verified (used for OTP / magic-link auth).
+ */
+export async function setUserEmailVerified(userId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+
+  await db
+    .update(users)
+    .set({ emailVerified: true, updatedAt: new Date().toISOString() })
+    .where(eq(users.id, userId));
+}
+
+// ============================================================================
+// Passwordless Email OTP Login
+// ============================================================================
+
+export type OtpPurpose = "login";
+
+export async function deleteExpiredEmailOtps(nowMs: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(authEmailOtps).where(sql`${authEmailOtps.expiresAtMs} < ${nowMs}`);
+}
+
+export async function createEmailOtp(input: {
+  email: string;
+  purpose?: OtpPurpose;
+  codeHash: string;
+  salt: string;
+  sentAtMs: number;
+  expiresAtMs: number;
+  ipHash?: string | null;
+  userAgentHash?: string | null;
+}): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const purpose: OtpPurpose = input.purpose ?? "login";
+
+  const result = await db
+    .insert(authEmailOtps)
+    .values({
+      email: input.email,
+      purpose,
+      codeHash: input.codeHash,
+      salt: input.salt,
+      sentAtMs: input.sentAtMs,
+      expiresAtMs: input.expiresAtMs,
+      attempts: 0,
+      ipHash: input.ipHash ?? null,
+      userAgentHash: input.userAgentHash ?? null,
+    } satisfies InsertAuthEmailOtp)
+    .returning({ id: authEmailOtps.id });
+
+  return result[0]?.id ?? 0;
+}
+
+export async function getLatestEmailOtp(email: string, purpose: OtpPurpose = "login"): Promise<AuthEmailOtp | null> {
+  const db = await getDb();
+  if (!db) return null;
+
+  const result = await db
+    .select()
+    .from(authEmailOtps)
+    .where(and(eq(authEmailOtps.email, email), eq(authEmailOtps.purpose, purpose)))
+    .orderBy(desc(authEmailOtps.sentAtMs))
+    .limit(1);
+
+  return result[0] ?? null;
+}
+
+export async function incrementEmailOtpAttempts(id: number): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+
+  const otp = await db
+    .select({ attempts: authEmailOtps.attempts })
+    .from(authEmailOtps)
+    .where(eq(authEmailOtps.id, id))
+    .limit(1);
+
+  const nextAttempts = (otp[0]?.attempts ?? 0) + 1;
+
+  await db
+    .update(authEmailOtps)
+    .set({ attempts: nextAttempts })
+    .where(eq(authEmailOtps.id, id));
+
+  return nextAttempts;
+}
+
+export async function deleteEmailOtpsForEmail(email: string, purpose: OtpPurpose = "login"): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(authEmailOtps).where(and(eq(authEmailOtps.email, email), eq(authEmailOtps.purpose, purpose)));
+}
+
+export async function countEmailOtpsSentSince(input: {
+  email?: string;
+  ipHash?: string;
+  sinceMs: number;
+  purpose?: OtpPurpose;
+}): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+
+  const purpose: OtpPurpose = input.purpose ?? "login";
+  const whereParts = [sql`${authEmailOtps.sentAtMs} >= ${input.sinceMs}`];
+
+  if (input.email) {
+    whereParts.push(sql`${authEmailOtps.email} = ${input.email}`);
+    whereParts.push(sql`${authEmailOtps.purpose} = ${purpose}`);
+  }
+
+  if (input.ipHash) {
+    whereParts.push(sql`${authEmailOtps.ipHash} = ${input.ipHash}`);
+  }
+
+  const whereExpr = whereParts.reduce((acc, cur) => (acc ? sql`${acc} AND ${cur}` : cur), null as any);
+
+  const result = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(authEmailOtps)
+    .where(whereExpr);
+
+  return Number(result[0]?.count ?? 0);
 }
 
 /**

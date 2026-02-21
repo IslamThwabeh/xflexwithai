@@ -10,7 +10,22 @@ import { storagePut } from "./storage";
 import { storagePutR2 } from "./storage-r2";
 import { analyzeLexai } from "./_core/lexai";
 import { hashPassword, verifyPassword, generateToken, isValidEmail, isValidPassword } from "./_core/auth";
+import { sendLoginCodeEmail } from "./_core/email";
+import { generateNumericCode, generateSaltBase64, normalizeEmail, sha256Base64 } from "./_core/otp";
 // FlexAI routes are registered in server/_core/index.ts
+
+const getReqHeader = (req: any, name: string) => {
+  const headers = req?.headers;
+  if (!headers) return "";
+  if (typeof headers.get === "function") {
+    return headers.get(name) ?? "";
+  }
+  const key = String(name || "").toLowerCase();
+  const value = headers[key] ?? headers[name];
+  if (Array.isArray(value)) return value.join(",");
+  if (typeof value === "string") return value;
+  return "";
+};
 
 // Admin-only procedure - checks if user is in admins table
 const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
@@ -154,6 +169,204 @@ export const appRouter = router({
         logger.info('[AUTH] User registered successfully', { userId, email: input.email });
         
         return { success: true, userId };
+      }),
+
+    /**
+     * Passwordless sign-in: request a one-time code by email.
+     * Always returns success to avoid email enumeration.
+     */
+    requestLoginCode: publicProcedure
+      .input(
+        z.object({
+          email: z.string(),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        const email = normalizeEmail(input.email || "");
+        if (!isValidEmail(email)) {
+          return { success: true };
+        }
+
+        // Do not allow OTP for admins (admin uses dedicated password login)
+        const admin = await db.getAdminByEmail(email);
+        if (admin) {
+          return { success: true };
+        }
+
+        const nowMs = Date.now();
+        await db.deleteExpiredEmailOtps(nowMs);
+
+        const ip =
+          getReqHeader(ctx.req, "cf-connecting-ip") ||
+          (getReqHeader(ctx.req, "x-forwarded-for") || "").split(",")[0].trim() ||
+          "";
+        const userAgent = getReqHeader(ctx.req, "user-agent") || "";
+
+        const ipHash = ip ? await sha256Base64(`ip:${ip}`) : null;
+        const userAgentHash = userAgent ? await sha256Base64(`ua:${userAgent}`) : null;
+
+        // Rate limits (best-effort)
+        const perMinuteEmail = await db.countEmailOtpsSentSince({
+          email,
+          sinceMs: nowMs - 60_000,
+          purpose: "login",
+        });
+        if (perMinuteEmail > 0) {
+          return { success: true };
+        }
+
+        const perHourEmail = await db.countEmailOtpsSentSince({
+          email,
+          sinceMs: nowMs - 60 * 60_000,
+          purpose: "login",
+        });
+        if (perHourEmail >= 5) {
+          return { success: true };
+        }
+
+        const perHourIp = ipHash
+          ? await db.countEmailOtpsSentSince({
+              ipHash,
+              sinceMs: nowMs - 60 * 60_000,
+            })
+          : 0;
+        if (perHourIp >= 20) {
+          return { success: true };
+        }
+
+        // Only send codes to existing users OR emails that already have access (assigned keys).
+        const existingUser = await db.getUserByEmail(email);
+        const hasLexaiKey = await db.hasValidLexaiKeyByEmail(email);
+        const courseKeys = await db.getValidCourseKeysByEmail(email);
+        const hasCourseKey = courseKeys.length > 0;
+
+        if (!existingUser && !hasLexaiKey && !hasCourseKey) {
+          return { success: true };
+        }
+
+        const code = generateNumericCode(6);
+        const salt = generateSaltBase64(16);
+        const codeHash = await sha256Base64(`${salt}:${code}`);
+        const expiresMinutes = 10;
+        const expiresAtMs = nowMs + expiresMinutes * 60_000;
+
+        await db.createEmailOtp({
+          email,
+          purpose: "login",
+          codeHash,
+          salt,
+          sentAtMs: nowMs,
+          expiresAtMs,
+          ipHash,
+          userAgentHash,
+        });
+
+        try {
+          await sendLoginCodeEmail({ to: email, code, expiresMinutes });
+        } catch (e) {
+          logger.error("[AUTH] Failed sending login code", {
+            email,
+            error: e instanceof Error ? e.message : "Unknown error",
+          });
+          // Don't leak delivery failures to the client.
+        }
+
+        return { success: true };
+      }),
+
+    /**
+     * Passwordless sign-in: verify a one-time code and create a user session.
+     */
+    verifyLoginCode: publicProcedure
+      .input(
+        z.object({
+          email: z.string(),
+          code: z.string(),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        const email = normalizeEmail(input.email || "");
+        const code = (input.code || "").trim();
+
+        if (!isValidEmail(email) || !/^\d{6}$/.test(code)) {
+          throw new TRPCError({ code: "UNAUTHORIZED", message: "Invalid code" });
+        }
+
+        const admin = await db.getAdminByEmail(email);
+        if (admin) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Please sign in through the admin login page.",
+          });
+        }
+
+        const nowMs = Date.now();
+        await db.deleteExpiredEmailOtps(nowMs);
+        const otp = await db.getLatestEmailOtp(email, "login");
+
+        if (!otp || Number(otp.expiresAtMs) < nowMs) {
+          throw new TRPCError({ code: "UNAUTHORIZED", message: "Invalid code" });
+        }
+
+        const computedHash = await sha256Base64(`${otp.salt}:${code}`);
+        if (computedHash !== otp.codeHash) {
+          const attempts = await db.incrementEmailOtpAttempts(otp.id);
+          if (attempts >= 10) {
+            await db.deleteEmailOtpsForEmail(email, "login");
+          }
+          throw new TRPCError({ code: "UNAUTHORIZED", message: "Invalid code" });
+        }
+
+        await db.deleteEmailOtpsForEmail(email, "login");
+
+        let user = await db.getUserByEmail(email);
+        if (!user) {
+          const hasLexaiKey = await db.hasValidLexaiKeyByEmail(email);
+          const courseKeys = await db.getValidCourseKeysByEmail(email);
+          const hasCourseKey = courseKeys.length > 0;
+
+          if (!hasLexaiKey && !hasCourseKey) {
+            throw new TRPCError({
+              code: "FORBIDDEN",
+              message: "No access found for this email. Please activate a registration key.",
+            });
+          }
+
+          const randomPassword = `${generateSaltBase64(24)}${generateSaltBase64(24)}`;
+          const passwordHash = await hashPassword(randomPassword);
+          const displayName = email.split("@")[0] || "User";
+
+          const userId = await db.createUser({
+            email,
+            passwordHash,
+            name: displayName,
+          });
+          user = await db.getUserById(userId);
+        }
+
+        if (!user) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to sign in" });
+        }
+
+        await db.updateUserLastSignIn(user.id);
+        await db.setUserEmailVerified(user.id);
+
+        const token = await generateToken({
+          userId: user.id,
+          email,
+          type: "user",
+        });
+
+        const cookieOptions = getSessionCookieOptions(ctx.req);
+        ctx.setCookie(COOKIE_NAME, token, cookieOptions);
+
+        try {
+          await db.syncUserEntitlementsFromKeys(user.id, email);
+        } catch (e) {
+          logger.warn("[AUTH] Failed syncing entitlements after OTP login", { userId: user.id, email });
+        }
+
+        return { success: true };
       }),
     
     // User login

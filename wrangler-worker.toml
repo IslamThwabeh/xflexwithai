@@ -12,6 +12,9 @@ ENVIRONMENT = "production"
 VITE_APP_TITLE = "XFlex Trading Academy"
 VITE_APP_LOGO = "https://xflexwithai.com/logo.png"
 R2_PUBLIC_URL = "https://videos.xflexwithai.com"
+EMAIL_PROVIDER = "auto"
+EMAIL_FROM = "support@xflexacademy.com"
+EMAIL_FROM_NAME = "XFlex Academy"
 
 # D1 Database binding (production)
 [[env.production.d1_databases]]
@@ -30,6 +33,9 @@ name = "xflexwithai-api-staging"
 [env.staging.vars]
 ENVIRONMENT = "staging"
 VITE_APP_TITLE = "XFlex Trading Academy (Staging)"
+EMAIL_PROVIDER = "auto"
+EMAIL_FROM = "support@xflexacademy.com"
+EMAIL_FROM_NAME = "XFlex Academy"
 
 [[env.staging.d1_databases]]
 binding = "DB"

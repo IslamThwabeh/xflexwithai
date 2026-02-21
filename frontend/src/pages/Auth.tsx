@@ -2,6 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { LoginForm } from "@/components/LoginForm";
 import { RegisterForm } from "@/components/RegisterForm";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { APP_TITLE } from "@/const";
 import { Link } from "wouter";
 import { useLocation } from "wouter";
@@ -12,6 +16,12 @@ import { trpc } from "@/lib/trpc";
 export default function Auth() {
   const { t } = useLanguage();
   const [showLogin, setShowLogin] = useState(true);
+  const [loginMethod, setLoginMethod] = useState<"code" | "password">("code");
+  const [otpStep, setOtpStep] = useState<"request" | "verify">("request");
+  const [otpEmail, setOtpEmail] = useState("");
+  const [otpCode, setOtpCode] = useState("");
+  const [otpMessage, setOtpMessage] = useState<string | null>(null);
+  const [otpError, setOtpError] = useState<string | null>(null);
   const { isAuthenticated, loading } = useAuth();
   const [location, setLocation] = useLocation();
 
@@ -23,6 +33,22 @@ export default function Auth() {
     if (next.startsWith("/admin")) return null;
     return next;
   }, [location]);
+
+  const prefillEmail = useMemo(() => {
+    if (typeof window === "undefined") return "";
+    const fromQuery = new URLSearchParams(window.location.search).get("email") || "";
+    if (fromQuery.trim()) return fromQuery.trim();
+    try {
+      return window.localStorage.getItem("xflex_last_email") || "";
+    } catch {
+      return "";
+    }
+  }, [location]);
+
+  useEffect(() => {
+    if (!prefillEmail) return;
+    setOtpEmail(prev => (prev ? prev : prefillEmail));
+  }, [prefillEmail]);
 
   const { data: adminCheck, isLoading: checkingAdmin } = trpc.auth.isAdmin.useQuery(undefined, {
     enabled: isAuthenticated,
@@ -42,6 +68,54 @@ export default function Auth() {
     setLocation(nextPath ?? "/courses");
   }, [adminCheck?.isAdmin, checkingAdmin, isAuthenticated, loading, nextPath, setLocation]);
 
+  const requestLoginCode = trpc.auth.requestLoginCode.useMutation();
+  const verifyLoginCode = trpc.auth.verifyLoginCode.useMutation();
+
+  const handleSendCode = async () => {
+    setOtpError(null);
+    setOtpMessage(null);
+    const email = otpEmail.trim();
+    if (!email) {
+      setOtpError("Please enter your email address");
+      return;
+    }
+
+    try {
+      try {
+        window.localStorage.setItem("xflex_last_email", email);
+      } catch {}
+
+      await requestLoginCode.mutateAsync({ email });
+      setOtpStep("verify");
+      setOtpMessage("If your email is eligible, we sent a 6-digit code. Please check your inbox.");
+    } catch (e: any) {
+      setOtpError(e?.message || "Failed to send code. Please try again.");
+    }
+  };
+
+  const handleVerifyCode = async () => {
+    setOtpError(null);
+    setOtpMessage(null);
+    const email = otpEmail.trim();
+    const code = otpCode.trim();
+
+    if (!email) {
+      setOtpError("Please enter your email address");
+      return;
+    }
+    if (!code) {
+      setOtpError("Please enter the 6-digit code");
+      return;
+    }
+
+    try {
+      await verifyLoginCode.mutateAsync({ email, code });
+      window.location.href = nextPath ?? "/courses";
+    } catch (e: any) {
+      setOtpError(e?.message || "Invalid code. Please try again.");
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800 p-4">
       <div className="mb-8 text-center">
@@ -55,7 +129,123 @@ export default function Auth() {
         </p>
       </div>
 
-      {showLogin ? <LoginForm /> : <RegisterForm />}
+      {showLogin ? (
+        <div className="w-full flex flex-col items-center">
+          <div className="flex gap-2 mb-4">
+            <Button
+              type="button"
+              size="sm"
+              variant={loginMethod === "code" ? "default" : "outline"}
+              onClick={() => {
+                setLoginMethod("code");
+                setOtpError(null);
+                setOtpMessage(null);
+              }}
+            >
+              Sign in with code
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={loginMethod === "password" ? "default" : "outline"}
+              onClick={() => {
+                setLoginMethod("password");
+                setOtpError(null);
+                setOtpMessage(null);
+              }}
+            >
+              Sign in with password
+            </Button>
+          </div>
+
+          {loginMethod === "code" ? (
+            <Card className="w-full max-w-md">
+              <CardHeader>
+                <CardTitle>Sign in</CardTitle>
+                <CardDescription>We’ll email you a one-time login code.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {otpError && (
+                    <Alert variant="destructive">
+                      <AlertDescription>{otpError}</AlertDescription>
+                    </Alert>
+                  )}
+
+                  {otpMessage && (
+                    <Alert>
+                      <AlertDescription>{otpMessage}</AlertDescription>
+                    </Alert>
+                  )}
+
+                  <div className="space-y-2">
+                    <Label htmlFor="otpEmail">Email</Label>
+                    <Input
+                      id="otpEmail"
+                      name="otpEmail"
+                      type="email"
+                      autoComplete="email"
+                      value={otpEmail}
+                      onChange={e => setOtpEmail(e.target.value)}
+                      placeholder="name@example.com"
+                      dir="ltr"
+                    />
+                  </div>
+
+                  {otpStep === "verify" && (
+                    <div className="space-y-2">
+                      <Label htmlFor="otpCode">6-digit code</Label>
+                      <Input
+                        id="otpCode"
+                        name="otpCode"
+                        inputMode="numeric"
+                        value={otpCode}
+                        onChange={e => setOtpCode(e.target.value)}
+                        placeholder="123456"
+                        dir="ltr"
+                      />
+                    </div>
+                  )}
+
+                  <div className="flex gap-2">
+                    {otpStep === "request" ? (
+                      <Button
+                        className="flex-1"
+                        onClick={handleSendCode}
+                        disabled={requestLoginCode.isPending}
+                      >
+                        {requestLoginCode.isPending ? "Sending..." : "Send code"}
+                      </Button>
+                    ) : (
+                      <>
+                        <Button
+                          variant="outline"
+                          className="flex-1"
+                          onClick={handleSendCode}
+                          disabled={requestLoginCode.isPending}
+                        >
+                          Resend
+                        </Button>
+                        <Button
+                          className="flex-1"
+                          onClick={handleVerifyCode}
+                          disabled={verifyLoginCode.isPending}
+                        >
+                          {verifyLoginCode.isPending ? "Verifying..." : "Verify"}
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <LoginForm />
+          )}
+        </div>
+      ) : (
+        <RegisterForm />
+      )}
 
       <div className="mt-6 text-center">
         <Button

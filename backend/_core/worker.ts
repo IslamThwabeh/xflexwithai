@@ -14,6 +14,12 @@ export interface Env {
   VITE_APP_TITLE: string;
   VITE_APP_LOGO: string;
   ENVIRONMENT: "production" | "staging" | "development";
+
+  // Email / OTP
+  EMAIL_PROVIDER?: string;
+  EMAIL_FROM?: string;
+  EMAIL_FROM_NAME?: string;
+  RESEND_API_KEY?: string;
 }
 
 export default {
