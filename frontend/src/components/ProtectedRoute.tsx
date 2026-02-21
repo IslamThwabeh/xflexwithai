@@ -22,7 +22,12 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
     if (loading || checkingAdmin) return;
 
     if (!isAuthenticated) {
-      setLocation("/auth");
+      const next =
+        typeof window !== "undefined"
+          ? `${window.location.pathname}${window.location.search}`
+          : "/";
+
+      setLocation(`/auth?next=${encodeURIComponent(next)}`);
       return;
     }
 

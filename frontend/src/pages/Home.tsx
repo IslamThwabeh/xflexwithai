@@ -103,7 +103,7 @@ export default function Home() {
           onClose={() => setShowCourseActivation(false)}
           onSuccess={() => {
             setShowCourseActivation(false);
-            window.location.href = '/courses';
+            window.location.href = '/auth?next=/courses';
           }}
         />
       )}
@@ -114,7 +114,7 @@ export default function Home() {
           onClose={() => setShowFlexAIActivation(false)}
           onSuccess={() => {
             setShowFlexAIActivation(false);
-              window.location.href = '/lexai';
+            window.location.href = '/auth?next=/lexai';
           }}
         />
       )}
