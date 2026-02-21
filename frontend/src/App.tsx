@@ -110,7 +110,11 @@ function Router() {
       </Route>
       <Route path={"/activate-key"} component={ActivateKey} />
       <Route path={"/course/:id"} component={CourseWatch} />
-      <Route path={"/lexai"} component={LexAI} />
+      <Route path={"/lexai"}>
+        <ProtectedRoute>
+          <LexAI />
+        </ProtectedRoute>
+      </Route>
       <Route path="/quiz" component={QuizLevels} />
       <Route path="/quiz/:level" component={TakeQuiz} />
       <Route path="/quiz/:level/history" component={QuizHistory} />

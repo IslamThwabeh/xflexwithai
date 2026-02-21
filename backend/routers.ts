@@ -27,6 +27,18 @@ const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
 
 const getWorkerEnv = () => (globalThis as { ENV?: { VIDEOS_BUCKET?: any } }).ENV;
 
+const userOnlyProcedure = protectedProcedure.use(async ({ ctx, next }) => {
+  if (!ctx.user?.email) {
+    throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Not authenticated' });
+  }
+
+  const admin = await db.getAdminByEmail(ctx.user.email);
+  if (admin) {
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'Please sign in with a user account to use this feature.' });
+  }
+
+  return next();
+});
 const ensureLexaiAccess = async (ctx: { user: { id: number; email?: string | null } | null }) => {
   if (!ctx.user) {
     throw new TRPCError({ code: "UNAUTHORIZED", message: "Not authenticated" });
@@ -756,7 +768,7 @@ export const appRouter = router({
   // LexAI - AI Currency Analysis Chat
   lexai: router({
     // Get active subscription for current user
-    getSubscription: protectedProcedure.query(async ({ ctx }) => {
+    getSubscription: userOnlyProcedure.query(async ({ ctx }) => {
       logger.info('[LexAI] Getting subscription', { userId: ctx.user.id });
       const subscription = await db.getActiveLexaiSubscription(ctx.user.id);
 
@@ -776,7 +788,7 @@ export const appRouter = router({
       return subscription;
     }),
 
-    redeemKey: protectedProcedure
+    redeemKey: userOnlyProcedure
       .input(z.object({
         keyCode: z.string().min(5),
       }))
@@ -867,7 +879,7 @@ export const appRouter = router({
         return { hasKey };
       }),
 
-    verifyAssignedKeyByEmail: protectedProcedure
+    verifyAssignedKeyByEmail: userOnlyProcedure
       .input(z.object({
         email: z.string().email(),
       }))
@@ -937,7 +949,7 @@ export const appRouter = router({
       }),
 
     // Create new subscription
-    createSubscription: protectedProcedure
+    createSubscription: userOnlyProcedure
       .input(z.object({
         paymentAmount: z.number(),
         durationMonths: z.number().default(1),
@@ -956,19 +968,19 @@ export const appRouter = router({
       }),
 
     // Get chat messages
-    getMessages: protectedProcedure.query(async ({ ctx }) => {
+    getMessages: userOnlyProcedure.query(async ({ ctx }) => {
       logger.info('[LexAI] Getting messages', { userId: ctx.user.id });
       const messages = await db.getLexaiMessagesByUser(ctx.user.id, 100);
       return messages;
     }),
 
-    clearHistory: protectedProcedure.mutation(async ({ ctx }) => {
+    clearHistory: userOnlyProcedure.mutation(async ({ ctx }) => {
       logger.info('[LexAI] Clearing chat history', { userId: ctx.user.id });
       await db.deleteLexaiMessagesByUser(ctx.user.id);
       return { success: true };
     }),
 
-    uploadImage: protectedProcedure
+    uploadImage: userOnlyProcedure
       .input(z.object({
         fileName: z.string(),
         fileData: z.string(),
@@ -988,7 +1000,7 @@ export const appRouter = router({
         return { url: result.url, key: result.key };
       }),
 
-    analyzeM15: protectedProcedure
+    analyzeM15: userOnlyProcedure
       .input(z.object({
         imageUrl: z.string().url(),
         language: z.enum(["ar", "en"]).default("ar"),
@@ -1026,7 +1038,7 @@ export const appRouter = router({
         return { success: true, analysis: analysis.text };
       }),
 
-    analyzeH4: protectedProcedure
+    analyzeH4: userOnlyProcedure
       .input(z.object({
         imageUrl: z.string().url(),
         language: z.enum(["ar", "en"]).default("ar"),
@@ -1071,7 +1083,7 @@ export const appRouter = router({
         return { success: true, analysis: analysis.text };
       }),
 
-    analyzeSingle: protectedProcedure
+    analyzeSingle: userOnlyProcedure
       .input(z.object({
         imageUrl: z.string().url(),
         language: z.enum(["ar", "en"]).default("ar"),
@@ -1110,7 +1122,7 @@ export const appRouter = router({
         return { success: true, analysis: analysis.text };
       }),
 
-    analyzeFeedback: protectedProcedure
+    analyzeFeedback: userOnlyProcedure
       .input(z.object({
         userAnalysis: z.string().min(5),
         language: z.enum(["ar", "en"]).default("ar"),
@@ -1146,7 +1158,7 @@ export const appRouter = router({
         return { success: true, analysis: analysis.text };
       }),
 
-    analyzeFeedbackWithImage: protectedProcedure
+    analyzeFeedbackWithImage: userOnlyProcedure
       .input(z.object({
         userAnalysis: z.string().min(5),
         imageUrl: z.string().url(),
