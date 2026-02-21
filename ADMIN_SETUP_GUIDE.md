@@ -85,7 +85,45 @@ VALUES (
 ✅ userQuizProgress - User quiz progress
 ✅ flexaiSubscriptions - FlexAI subscriptions
 ✅ flexaiMessages - FlexAI chat history
+✅ authEmailOtps - One-time email login codes
 ```
+
+---
+
+## ✉️ Passwordless Email Login (OTP)
+
+The app supports "email-first" sign-in using a **6‑digit one-time code**.
+
+Important notes:
+- This is **not** "email = login" (which is insecure). The user must prove inbox ownership.
+- The mailbox password at https://privateemail.com is **not used** by the Worker.
+- Cloudflare Workers generally cannot use raw SMTP reliably; use an **HTTP email provider**.
+
+### Worker variables
+These are already configured in [wrangler-worker.toml](wrangler-worker.toml):
+- `EMAIL_FROM=support@xflexacademy.com`
+- `EMAIL_FROM_NAME=XFlex Academy`
+- `EMAIL_PROVIDER=auto` (tries Resend if configured, otherwise MailChannels)
+
+### Option A (recommended): Resend (reliable delivery)
+1. Create a Resend account and verify your sending domain `xflexacademy.com`.
+2. Add the API key as a Wrangler secret:
+
+```bash
+wrangler secret put RESEND_API_KEY --env production
+wrangler secret put RESEND_API_KEY --env staging
+```
+
+3. Deploy the Worker:
+
+```bash
+pnpm -w deploy:worker
+```
+
+### Option B: MailChannels (no API key)
+If you do not set `RESEND_API_KEY`, the Worker will fall back to MailChannels.
+
+To make MailChannels deliver reliably, you typically need to configure your domain DNS (SPF/DKIM) to authorize the sending service. If emails are not arriving, switch to Resend.
 
 ---
 
