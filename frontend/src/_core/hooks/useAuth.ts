@@ -62,23 +62,27 @@ export function useAuth(options?: UseAuthOptions) {
   // Prevent cross-account data leakage via cached queries (e.g., LexAI messages)
   // when switching between accounts without a full page reload (OTP flow).
   useEffect(() => {
-    const identity = state.user ? `${state.user.id}:${state.user.email ?? ""}` : "anon";
+    // Use `null` for unauthenticated so we can distinguish initial load/login/logout
+    // from true cross-account switching.
+    const identity = state.user
+      ? `${state.user.id}:${state.user.email ?? ""}`
+      : null;
 
-    if (lastIdentityRef.current === null) {
-      lastIdentityRef.current = identity;
-      return;
-    }
+    const prevIdentity = lastIdentityRef.current;
+    lastIdentityRef.current = identity;
 
-    if (lastIdentityRef.current !== identity) {
-      lastIdentityRef.current = identity;
+    // Only clear caches when switching BETWEEN two authenticated identities.
+    // Do not clear on initial load (null -> user) or during logout/expiry (user -> null),
+    // as that can cause a refetch loop and make pages appear to constantly reload.
+    if (!prevIdentity || !identity) return;
+    if (prevIdentity === identity) return;
 
-      // Clear query + mutation caches so UI refetches for the new identity.
-      // This is intentionally broad to avoid missing any user-scoped caches.
-      queryClient.clear();
+    // Clear query + mutation caches so UI refetches for the new identity.
+    // This is intentionally broad to avoid missing any user-scoped caches.
+    queryClient.clear();
 
-      // Ensure auth state is revalidated.
-      utils.auth.me.invalidate().catch(() => {});
-    }
+    // Ensure auth state is revalidated.
+    utils.auth.me.invalidate().catch(() => {});
   }, [queryClient, state.user, utils.auth.me]);
 
   useEffect(() => {
