@@ -41,7 +41,11 @@ export async function createWorkerContext(
         const admin = await db.getAdminById(decoded.userId);
         if (admin) {
           user = {
-            id: admin.id,
+            // IMPORTANT: admins and users are stored in separate tables that can share the same
+            // numeric IDs. To prevent cross-account data collisions in user-scoped tables
+            // (e.g. LexAI messages keyed by userId), map admin IDs into a separate namespace.
+            // Admin id=1 becomes user.id=-1 in the request context.
+            id: -Number(admin.id),
             email: admin.email,
             name: admin.name,
             phone: null,
