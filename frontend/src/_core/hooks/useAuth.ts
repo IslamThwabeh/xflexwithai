@@ -1,7 +1,8 @@
 import { LOGIN_URL } from "@/const";
 import { trpc } from "@/lib/trpc";
+import { useQueryClient } from "@tanstack/react-query";
 import { TRPCClientError } from "@trpc/client";
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 
 type UseAuthOptions = {
   redirectOnUnauthenticated?: boolean;
@@ -12,6 +13,8 @@ export function useAuth(options?: UseAuthOptions) {
   const { redirectOnUnauthenticated = false, redirectPath = LOGIN_URL } =
     options ?? {};
   const utils = trpc.useUtils();
+  const queryClient = useQueryClient();
+  const lastIdentityRef = useRef<string | null>(null);
 
   const meQuery = trpc.auth.me.useQuery(undefined, {
     retry: false,
@@ -55,6 +58,28 @@ export function useAuth(options?: UseAuthOptions) {
     logoutMutation.error,
     logoutMutation.isPending,
   ]);
+
+  // Prevent cross-account data leakage via cached queries (e.g., LexAI messages)
+  // when switching between accounts without a full page reload (OTP flow).
+  useEffect(() => {
+    const identity = state.user ? `${state.user.id}:${state.user.email ?? ""}` : "anon";
+
+    if (lastIdentityRef.current === null) {
+      lastIdentityRef.current = identity;
+      return;
+    }
+
+    if (lastIdentityRef.current !== identity) {
+      lastIdentityRef.current = identity;
+
+      // Clear query + mutation caches so UI refetches for the new identity.
+      // This is intentionally broad to avoid missing any user-scoped caches.
+      queryClient.clear();
+
+      // Ensure auth state is revalidated.
+      utils.auth.me.invalidate().catch(() => {});
+    }
+  }, [queryClient, state.user, utils.auth.me]);
 
   useEffect(() => {
     if (!redirectOnUnauthenticated) return;
