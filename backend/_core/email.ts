@@ -17,13 +17,18 @@ async function sendViaZeptoMail(input: SendEmailInput) {
   if (!apiUrl) throw new Error("ZEPTOMAIL_API_URL is not configured");
   if (!from) throw new Error("EMAIL_FROM is not configured");
 
+  const rawToken = String(token || "").trim();
+  const authHeader = /^zoho-enczapikey\b/i.test(rawToken)
+    ? rawToken
+    : `Zoho-enczapikey ${rawToken}`;
+
   const res = await fetch(apiUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Accept: "application/json",
       // ZeptoMail uses this auth scheme for API tokens.
-      Authorization: `Zoho-enczapikey ${token}`,
+      Authorization: authHeader,
     },
     body: JSON.stringify({
       from: { address: from, name: fromName },
