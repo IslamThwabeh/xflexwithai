@@ -47,25 +47,44 @@ function isSecureRequest(req: CookieRequest) {
 export function getSessionCookieOptions(
   req: CookieRequest
 ): Pick<CookieOptions, "domain" | "httpOnly" | "path" | "sameSite" | "secure"> {
-  // const hostname = req.hostname;
-  // const shouldSetDomain =
-  //   hostname &&
-  //   !LOCAL_HOSTS.has(hostname) &&
-  //   !isIpAddress(hostname) &&
-  //   hostname !== "127.0.0.1" &&
-  //   hostname !== "::1";
+  const secure = isSecureRequest(req);
 
-  // const domain =
-  //   shouldSetDomain && !hostname.startsWith(".")
-  //     ? `.${hostname}`
-  //     : shouldSetDomain
-  //       ? hostname
-  //       : undefined;
+  // Derive the hostname from the request (Worker uses req.url, Express uses req.hostname).
+  let hostname: string | undefined;
+  if (req.hostname) {
+    hostname = req.hostname;
+  } else if (req.url) {
+    try {
+      hostname = new URL(req.url).hostname;
+    } catch {
+      // malformed URL – leave undefined
+    }
+  }
+
+  // For production domains, set the cookie on the apex so it's shared across subdomains
+  // (e.g., xflexacademy.com ↔ api.xflexacademy.com).
+  let domain: string | undefined;
+  if (hostname) {
+    if (
+      hostname === "xflexacademy.com" ||
+      hostname.endsWith(".xflexacademy.com")
+    ) {
+      domain = ".xflexacademy.com";
+    } else if (
+      hostname === "xflexwithai.com" ||
+      hostname.endsWith(".xflexwithai.com")
+    ) {
+      domain = ".xflexwithai.com";
+    }
+    // For localhost / 127.0.0.1 / IPs, leave domain undefined (browser default).
+  }
 
   return {
+    domain,
     httpOnly: true,
     path: "/",
+    // "lax" is fine for same-site (eTLD+1) subdomains; use "none" only for true cross-site.
     sameSite: "lax",
-    secure: isSecureRequest(req),
+    secure,
   };
 }
