@@ -1,17 +1,17 @@
-name = "xflexwithai-api"
+name = "xflexacademy-api"
 main = "dist/worker.js"
 compatibility_date = "2025-02-09"
 compatibility_flags = ["nodejs_compat"]
 
 # Environment variables
 [env.production]
-name = "xflexwithai-api-production"
+name = "xflexacademy-api-production"
 
 [env.production.vars]
 ENVIRONMENT = "production"
 VITE_APP_TITLE = "XFlex Trading Academy"
-VITE_APP_LOGO = "https://xflexwithai.com/logo.png"
-R2_PUBLIC_URL = "https://videos.xflexwithai.com"
+VITE_APP_LOGO = "https://xflexacademy.com/logo.png"
+R2_PUBLIC_URL = "https://videos.xflexacademy.com"
 EMAIL_PROVIDER = "auto"
 EMAIL_FROM = "support@xflexacademy.com"
 EMAIL_FROM_NAME = "XFlex Academy"
@@ -28,7 +28,7 @@ binding = "VIDEOS_BUCKET"
 bucket_name = "xflexwithai-videos"
 
 [env.staging]
-name = "xflexwithai-api-staging"
+name = "xflexacademy-api-staging"
 
 [env.staging.vars]
 ENVIRONMENT = "staging"
@@ -47,7 +47,7 @@ binding = "VIDEOS_BUCKET"
 bucket_name = "xflexwithai-videos"
 
 [env.development]
-name = "xflexwithai-api-dev"
+name = "xflexacademy-api-dev"
 
 [env.development.vars]
 ENVIRONMENT = "development"

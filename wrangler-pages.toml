@@ -1,11 +1,12 @@
-name = "xflexwithai"
+name = "xflexacademy"
 pages_build_output_dir = "dist/public"
 
 [env.production]
-name = "xflexwithai-prod"
+name = "xflexacademy-prod"
 routes = [
-  { pattern = "xflexwithai.com/*", zone_name = "xflexwithai.com" }
+  { pattern = "xflexacademy.com/*", zone_name = "xflexacademy.com" },
+  { pattern = "www.xflexacademy.com/*", zone_name = "xflexacademy.com" }
 ]
 
 [env.preview]
-name = "xflexwithai-preview"
+name = "xflexacademy-preview"

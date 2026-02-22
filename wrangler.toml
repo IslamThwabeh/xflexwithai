@@ -1,10 +1,10 @@
-name = "xflexwithai"
+name = "xflexacademy"
 pages_build_output_dir = "dist/public"
 
 # Production environment
 [env.production]
-name = "xflexwithai-prod"
+name = "xflexacademy-prod"
 
 # Preview environment
 [env.preview]
-name = "xflexwithai-preview"
+name = "xflexacademy-preview"

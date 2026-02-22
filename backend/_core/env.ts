@@ -31,7 +31,7 @@ export const ENV = {
 
   // Cloudflare specific
   get r2BucketUrl() {
-    return getEnvVar("R2_PUBLIC_URL", "https://videos.xflexwithai.com");
+    return getEnvVar("R2_PUBLIC_URL", "https://videos.xflexacademy.com");
   },
   get r2BucketName() {
     return getEnvVar("R2_BUCKET_NAME", "xflexwithai-videos");
@@ -47,7 +47,7 @@ export const ENV = {
 
   // Email / OTP auth
   get emailProvider() {
-    // "auto" | "mailchannels" | "resend"
+    // "auto" | "mailchannels" | "resend" | "zeptomail"
     return getEnvVar("EMAIL_PROVIDER", "auto");
   },
   get emailFrom() {
@@ -58,5 +58,13 @@ export const ENV = {
   },
   get resendApiKey() {
     return getEnvVar("RESEND_API_KEY", "");
+  },
+
+  // ZeptoMail
+  get zeptoMailToken() {
+    return getEnvVar("ZEPTOMAIL_TOKEN", "");
+  },
+  get zeptoMailApiUrl() {
+    return getEnvVar("ZEPTOMAIL_API_URL", "https://api.zeptomail.com/v1.1/email");
   },
 };

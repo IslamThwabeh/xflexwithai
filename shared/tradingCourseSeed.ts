@@ -5,6 +5,10 @@ export type TradingCourseSeedEpisode = {
   order: number;
 };
 
+const VIDEO_BASE_URL = "https://videos.xflexacademy.com";
+const normalizeSeedVideoUrl = (url: string) =>
+  url.replace(/^https?:\/\/videos\.xflexwithai\.com/i, VIDEO_BASE_URL);
+
 export const TRADING_COURSE_SEED = {
   course: {
     titleEn: "Trading Course",
@@ -19,7 +23,8 @@ export const TRADING_COURSE_SEED = {
     isPublished: true,
     level: "beginner" as const,
   },
-  episodes: [
+  episodes: (
+    [
     {
       titleAr: "محتويات الكورس",
       videoUrl:
@@ -293,7 +298,11 @@ export const TRADING_COURSE_SEED = {
       duration: 159,
       order: 39,
     },
-  ] satisfies TradingCourseSeedEpisode[],
+    ] satisfies TradingCourseSeedEpisode[]
+  ).map((ep) => ({
+    ...ep,
+    videoUrl: normalizeSeedVideoUrl(ep.videoUrl),
+  })),
 };
 
 export function getTradingCourseTotalDurationSeconds() {

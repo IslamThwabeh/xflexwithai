@@ -4,8 +4,13 @@ export const resolveApiBaseUrl = () => {
   if (!rawUrl) {
     if (typeof window !== "undefined") {
       const host = window.location.hostname;
-      if (host === "xflexwithai.com" || host.endsWith(".xflexwithai.com")) {
-        return "https://api.xflexwithai.com";
+      if (
+        host === "xflexacademy.com" ||
+        host.endsWith(".xflexacademy.com") ||
+        host === "xflexwithai.com" ||
+        host.endsWith(".xflexwithai.com")
+      ) {
+        return "https://api.xflexacademy.com";
       }
     }
     return "";

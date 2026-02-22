@@ -20,6 +20,8 @@ export interface Env {
   EMAIL_FROM?: string;
   EMAIL_FROM_NAME?: string;
   RESEND_API_KEY?: string;
+  ZEPTOMAIL_TOKEN?: string;
+  ZEPTOMAIL_API_URL?: string;
 }
 
 export default {
@@ -30,6 +32,8 @@ export default {
       const origin = request.headers.get("origin") || "";
       (globalThis as { ENV?: Env }).ENV = env;
       const allowedOrigins = new Set([
+        "https://xflexacademy.com",
+        "https://www.xflexacademy.com",
         "https://xflexwithai.com",
         "https://www.xflexwithai.com",
       ]);

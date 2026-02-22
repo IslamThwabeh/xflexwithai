@@ -21,12 +21,12 @@ Usage:
 
 Parameters:
   - password: Admin password (min 8 chars recommended)
-  - email: (optional) Admin email, default: admin@xflexwithai.com
+  - email: (optional) Admin email, default: admin@xflexacademy.com
   - name: (optional) Admin name, default: Admin
   
 Examples:
   npx tsx scripts/create-admin.ts MySecurePass@2024
-  npx tsx scripts/create-admin.ts MySecurePass@2024 admin2@xflexwithai.com "Admin Two"
+  npx tsx scripts/create-admin.ts MySecurePass@2024 admin2@xflexacademy.com "Admin Two"
 
 Output:
   SQL INSERT statement with bcrypt hashed password ready for Cloudflare D1
@@ -35,7 +35,7 @@ Output:
   }
 
   const password = args[0];
-  const email = args[1] || "admin@xflexwithai.com";
+  const email = args[1] || "admin@xflexacademy.com";
   const name = args[2] || "Admin";
 
   try {
@@ -71,7 +71,7 @@ VALUES (
     console.log("  3. Open SQL Console");
     console.log("  4. Paste the SQL above");
     console.log("  5. Click Execute");
-    console.log("  6. Login at: https://xflexwithai.com/admin/login");
+    console.log("  6. Login at: https://xflexacademy.com/admin/login");
     
     console.log("\n⚠️  Security Reminder:");
     console.log("  - Change this password after first login");

@@ -660,19 +660,50 @@ export async function seedCourseWithEpisodes(params: {
 // Episode Management
 // ============================================================================
 
+function normalizeVideoUrl(url: string | null | undefined) {
+  if (!url) return url;
+
+  const targetBase = (ENV.r2BucketUrl || "").replace(/\/$/, "");
+  if (!targetBase) return url;
+
+  const legacyBases = [
+    "https://videos.xflexwithai.com",
+    "http://videos.xflexwithai.com",
+  ];
+
+  for (const legacyBase of legacyBases) {
+    if (url.startsWith(legacyBase)) {
+      return `${targetBase}${url.slice(legacyBase.length)}`;
+    }
+  }
+
+  return url;
+}
+
 export async function getEpisodesByCourseId(courseId: number) {
   const db = await getDb();
   if (!db) return [];
-  return await db.select().from(episodes)
+  const rows = await db.select().from(episodes)
     .where(eq(episodes.courseId, courseId))
     .orderBy(episodes.order);
+
+  return rows.map((row) => ({
+    ...row,
+    videoUrl: normalizeVideoUrl(row.videoUrl),
+  }));
 }
 
 export async function getEpisodeById(id: number) {
   const db = await getDb();
   if (!db) return undefined;
   const result = await db.select().from(episodes).where(eq(episodes.id, id)).limit(1);
-  return result.length > 0 ? result[0] : undefined;
+  if (result.length === 0) return undefined;
+
+  const row = result[0];
+  return {
+    ...row,
+    videoUrl: normalizeVideoUrl(row.videoUrl),
+  };
 }
 
 export async function createEpisode(episode: InsertEpisode) {

@@ -17,7 +17,7 @@ You need at least ONE admin user to lock in. Run this SQL in your D1:
 -- Create admin user (run in D1 console)
 INSERT INTO admins (email, passwordHash, name, createdAt, updatedAt, lastSignedIn)
 VALUES (
-  'admin@xflexwithai.com',
+  'admin@xflexacademy.com',
   '$2a$10$YOUR_BCRYPT_HASH_HERE',
   'Admin',
   datetime('now'),
@@ -55,7 +55,7 @@ VALUES (
 ```
 
 ### Step 3: Access Admin Panel
-1. Go to: https://xflexwithai.com/admin/login
+1. Go to: https://xflexacademy.com/admin/login
 2. Login with admin credentials
 3. Access:
    - `/admin/courses` - Manage courses
@@ -139,7 +139,7 @@ To make MailChannels deliver reliably, you typically need to configure your doma
 ```sql
 -- First, create an admin (we'll provide a pre-hashed password)
 INSERT INTO admins (email, passwordHash, name)
-VALUES ('admin@xflexwithai.com', '...', 'Admin');
+VALUES ('admin@xflexacademy.com', '...', 'Admin');
 ```
 
 **Option B: Via TypeScript Script (Create script)**
@@ -153,13 +153,13 @@ async function main() {
   const hash = await hashPassword(password);
   
   const adminId = await createAdmin({
-    email: "admin@xflexwithai.com",
+    email: "admin@xflexacademy.com",
     passwordHash: hash,
     name: "Admin",
   });
   
   console.log(`✅ Admin created with ID: ${adminId}`);
-  console.log(`Email: admin@xflexwithai.com`);
+  console.log(`Email: admin@xflexacademy.com`);
   console.log(`Password: ${password}`);
 }
 
@@ -209,7 +209,7 @@ seed().catch(console.error);
 ## 🎥 Admin Panel Features Overview
 
 ### `/admin/login` - Admin Login
-- Email: admin@xflexwithai.com
+- Email: admin@xflexacademy.com
 - Password: (set during creation)
 
 ### `/admin/dashboard` - Main Dashboard

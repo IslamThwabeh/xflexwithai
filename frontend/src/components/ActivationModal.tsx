@@ -224,7 +224,7 @@ export function ActivationModal({ type, onClose, onSuccess }: ActivationModalPro
                   />
                   <p className="text-xs text-gray-500 mt-2">
                     {method === 'email'
-                      ? 'We’ll look up your access using your email address.'
+                      ? 'We’ll send you a one-time login code to verify your email.'
                       : 'We’ll assign this key to your email for future access.'}
                   </p>
                 </div>

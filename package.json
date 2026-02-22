@@ -16,7 +16,7 @@
     "test": "vitest run",
     "db:push": "drizzle-kit push --config database/drizzle.config.ts",
     "db:generate": "drizzle-kit generate --config database/drizzle.config.ts",
-    "deploy:pages": "wrangler pages deploy dist/public --project-name xflexwithai --branch main",
+    "deploy:pages": "wrangler pages deploy dist/public --project-name xflexacademy --branch main",
     "deploy:worker": "npm run build:worker && wrangler deploy dist/worker.js --config wrangler-worker.toml --env production",
     "deploy:worker:staging": "npm run build:worker && wrangler deploy dist/worker.js --config wrangler-worker.toml --env staging"
   },

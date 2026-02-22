@@ -43,8 +43,13 @@ const resolveTrpcUrl = () => {
   if (!rawUrl) {
     if (typeof window !== "undefined") {
       const host = window.location.hostname;
-      if (host === "xflexwithai.com" || host.endsWith(".xflexwithai.com")) {
-        return "https://api.xflexwithai.com/api/trpc";
+      if (
+        host === "xflexacademy.com" ||
+        host.endsWith(".xflexacademy.com") ||
+        host === "xflexwithai.com" ||
+        host.endsWith(".xflexwithai.com")
+      ) {
+        return "https://api.xflexacademy.com/api/trpc";
       }
     }
     return "/api/trpc";

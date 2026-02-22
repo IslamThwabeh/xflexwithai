@@ -7,6 +7,38 @@ type SendEmailInput = {
   text: string;
 };
 
+async function sendViaZeptoMail(input: SendEmailInput) {
+  const token = ENV.zeptoMailToken;
+  const apiUrl = ENV.zeptoMailApiUrl;
+  const from = ENV.emailFrom;
+  const fromName = ENV.emailFromName || "XFlex Academy";
+
+  if (!token) throw new Error("ZEPTOMAIL_TOKEN is not configured");
+  if (!apiUrl) throw new Error("ZEPTOMAIL_API_URL is not configured");
+  if (!from) throw new Error("EMAIL_FROM is not configured");
+
+  const res = await fetch(apiUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      // ZeptoMail uses this auth scheme for API tokens.
+      Authorization: `Zoho-enczapikey ${token}`,
+    },
+    body: JSON.stringify({
+      from: { address: from, name: fromName },
+      to: [{ email_address: { address: input.to } }],
+      subject: input.subject,
+      textbody: input.text,
+      htmlbody: input.text.replace(/\n/g, "<br/>"),
+    }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`ZeptoMail failed (${res.status}): ${body}`);
+  }
+}
+
 async function sendViaResend(input: SendEmailInput) {
   const apiKey = ENV.resendApiKey;
   const from = ENV.emailFrom;
@@ -64,12 +96,22 @@ export async function sendEmail(input: SendEmailInput) {
       return;
     }
 
+    if (provider === "zeptomail") {
+      await sendViaZeptoMail(input);
+      return;
+    }
+
     if (provider === "mailchannels") {
       await sendViaMailChannels(input);
       return;
     }
 
     // Auto: prefer Resend if configured, else MailChannels.
+    if (ENV.zeptoMailToken) {
+      await sendViaZeptoMail(input);
+      return;
+    }
+
     if (ENV.resendApiKey) {
       await sendViaResend(input);
       return;

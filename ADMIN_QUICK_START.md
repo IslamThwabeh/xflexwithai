@@ -8,7 +8,7 @@ Copy this INSERT statement and run it in **Cloudflare D1 Dashboard**:
 ```sql
 INSERT INTO admins (email, passwordHash, name, createdAt, updatedAt, lastSignedIn)
 VALUES (
-  'admin@xflexwithai.com',
+   'admin@xflexacademy.com',
   '$2a$10$E9sey.JDMyGlTVq04R8W7Ok./mDe9N1JSF3ZLLK8j.QP7JlBR3d.W',
   'Admin',
   datetime('now'),
@@ -18,7 +18,7 @@ VALUES (
 ```
 
 **Login Credentials:**
-- **Email:** `admin@xflexwithai.com`
+- **Email:** `admin@xflexacademy.com`
 - **Password:** `Admin@123456`
 
 ⚠️ Change this password after first login!
@@ -38,7 +38,7 @@ Copy ALL the INSERT statements from above (courses + episodes) and run in D1.
 
 ### Step 3: Access Admin Panel
 
-1. Go to: **https://xflexwithai.com/admin/login**
+1. Go to: **https://xflexacademy.com/admin/login**
 2. Enter credentials from Step 1
 3. You're in! 🎉
 

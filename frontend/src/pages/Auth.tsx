@@ -87,7 +87,9 @@ export default function Auth() {
 
       await requestLoginCode.mutateAsync({ email });
       setOtpStep("verify");
-      setOtpMessage("If your email is eligible, we sent a 6-digit code. Please check your inbox.");
+      setOtpMessage(
+        "If your email is eligible, we sent a 6-digit code. Please check your inbox and spam folder. If you don’t receive a code, activate a registration key or contact support."
+      );
     } catch (e: any) {
       setOtpError(e?.message || "Failed to send code. Please try again.");
     }
@@ -162,7 +164,9 @@ export default function Auth() {
             <Card className="w-full max-w-md">
               <CardHeader>
                 <CardTitle>Sign in</CardTitle>
-                <CardDescription>We’ll email you a one-time login code.</CardDescription>
+                <CardDescription>
+                  We’ll email you a one-time login code. If you don’t receive it, check your spam folder or activate a registration key.
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
