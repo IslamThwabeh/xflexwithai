@@ -22,6 +22,7 @@ export default function Auth() {
   const [otpCode, setOtpCode] = useState("");
   const [otpMessage, setOtpMessage] = useState<string | null>(null);
   const [otpError, setOtpError] = useState<string | null>(null);
+  const [resendCooldownSec, setResendCooldownSec] = useState(0);
   const { isAuthenticated, loading } = useAuth();
   const [location, setLocation] = useLocation();
 
@@ -71,6 +72,14 @@ export default function Auth() {
   const requestLoginCode = trpc.auth.requestLoginCode.useMutation();
   const verifyLoginCode = trpc.auth.verifyLoginCode.useMutation();
 
+  useEffect(() => {
+    if (resendCooldownSec <= 0) return;
+    const id = window.setInterval(() => {
+      setResendCooldownSec(prev => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [resendCooldownSec]);
+
   const handleSendCode = async () => {
     setOtpError(null);
     setOtpMessage(null);
@@ -87,6 +96,7 @@ export default function Auth() {
 
       await requestLoginCode.mutateAsync({ email });
       setOtpStep("verify");
+      setResendCooldownSec(30);
       setOtpMessage(
         "If your email is eligible, we sent a 6-digit code. Please check your inbox and spam folder. If you don’t receive a code, activate a registration key or contact support."
       );
@@ -216,9 +226,13 @@ export default function Auth() {
                       <Button
                         className="flex-1"
                         onClick={handleSendCode}
-                        disabled={requestLoginCode.isPending}
+                        disabled={requestLoginCode.isPending || resendCooldownSec > 0}
                       >
-                        {requestLoginCode.isPending ? "Sending..." : "Send code"}
+                        {requestLoginCode.isPending
+                          ? "Sending..."
+                          : resendCooldownSec > 0
+                            ? `Send code (${resendCooldownSec}s)`
+                            : "Send code"}
                       </Button>
                     ) : (
                       <>
@@ -226,9 +240,9 @@ export default function Auth() {
                           variant="outline"
                           className="flex-1"
                           onClick={handleSendCode}
-                          disabled={requestLoginCode.isPending}
+                          disabled={requestLoginCode.isPending || resendCooldownSec > 0}
                         >
-                          Resend
+                          {resendCooldownSec > 0 ? `Resend (${resendCooldownSec}s)` : "Resend"}
                         </Button>
                         <Button
                           className="flex-1"

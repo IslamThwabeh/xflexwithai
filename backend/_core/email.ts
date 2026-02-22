@@ -21,6 +21,7 @@ async function sendViaZeptoMail(input: SendEmailInput) {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      Accept: "application/json",
       // ZeptoMail uses this auth scheme for API tokens.
       Authorization: `Zoho-enczapikey ${token}`,
     },
@@ -35,7 +36,9 @@ async function sendViaZeptoMail(input: SendEmailInput) {
 
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    throw new Error(`ZeptoMail failed (${res.status}): ${body}`);
+    const trimmed = (body || "").trim();
+    const suffix = trimmed ? `: ${trimmed}` : "";
+    throw new Error(`ZeptoMail failed (${res.status}${res.statusText ? ` ${res.statusText}` : ""})${suffix}`);
   }
 }
 
@@ -106,18 +109,36 @@ export async function sendEmail(input: SendEmailInput) {
       return;
     }
 
-    // Auto: prefer Resend if configured, else MailChannels.
+    // Auto: attempt ZeptoMail if configured, then Resend, then MailChannels.
+    // If a provider fails, try the next one so OTP delivery doesn't break.
+    const errors: string[] = [];
+
     if (ENV.zeptoMailToken) {
-      await sendViaZeptoMail(input);
-      return;
+      try {
+        await sendViaZeptoMail(input);
+        return;
+      } catch (e) {
+        errors.push(e instanceof Error ? e.message : String(e));
+      }
     }
 
     if (ENV.resendApiKey) {
-      await sendViaResend(input);
-      return;
+      try {
+        await sendViaResend(input);
+        return;
+      } catch (e) {
+        errors.push(e instanceof Error ? e.message : String(e));
+      }
     }
 
-    await sendViaMailChannels(input);
+    try {
+      await sendViaMailChannels(input);
+      return;
+    } catch (e) {
+      errors.push(e instanceof Error ? e.message : String(e));
+    }
+
+    throw new Error(errors.join(" | ") || "Failed to send email");
   } catch (error) {
     logger.error("[EMAIL] Failed to send email", {
       to: input.to,

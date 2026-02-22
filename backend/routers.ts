@@ -206,12 +206,12 @@ export const appRouter = router({
         const userAgentHash = userAgent ? await sha256Base64(`ua:${userAgent}`) : null;
 
         // Rate limits (best-effort)
-        const perMinuteEmail = await db.countEmailOtpsSentSince({
+        const per30SecEmail = await db.countEmailOtpsSentSince({
           email,
-          sinceMs: nowMs - 60_000,
+          sinceMs: nowMs - 30_000,
           purpose: "login",
         });
-        if (perMinuteEmail > 0) {
+        if (per30SecEmail > 0) {
           return { success: true };
         }
 
