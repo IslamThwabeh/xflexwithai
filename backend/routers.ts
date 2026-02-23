@@ -1423,6 +1423,38 @@ export const appRouter = router({
       logger.info('[LexAI] Getting subscriptions (admin)');
       return await db.getLexaiSubscriptionsWithUsers();
     }),
+    
+    // Get all users with LexAI conversations (for admin moderation)
+    conversationUsers: adminProcedure.query(async () => {
+      logger.info('[LexAI] Getting conversation users (admin)');
+      return await db.getLexaiConversationUsers();
+    }),
+    
+    // Get all messages (for admin moderation)
+    allMessages: adminProcedure
+      .input(z.object({ limit: z.number().min(1).max(1000).optional() }).optional())
+      .query(async ({ input }) => {
+        logger.info('[LexAI] Getting all messages (admin)');
+        return await db.getAllLexaiMessagesWithUsers(input?.limit ?? 500);
+      }),
+    
+    // Get messages for a specific user (for admin moderation)
+    userMessages: adminProcedure
+      .input(z.object({ userId: z.number(), limit: z.number().min(1).max(500).optional() }))
+      .query(async ({ input }) => {
+        logger.info('[LexAI] Getting user messages (admin)', { userId: input.userId });
+        return await db.getLexaiMessagesByUser(input.userId, input.limit ?? 100);
+      }),
+    
+    // Delete a specific user's chat history (for admin moderation)
+    deleteUserMessages: adminProcedure
+      .input(z.object({ userId: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        logger.info('[LexAI] Deleting user messages (admin)', { userId: input.userId, adminId: ctx.admin.id });
+        await db.deleteLexaiMessagesByUser(input.userId);
+        return { success: true };
+      }),
+    
     keys: router({
       list: adminProcedure.query(async () => {
         logger.info('[LexAI] Getting keys (admin)');

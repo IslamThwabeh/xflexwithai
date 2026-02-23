@@ -1,4 +1,5 @@
 import type { CookieOptions } from "express";
+import { ONE_YEAR_MS } from "../../shared/const";
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
 
@@ -46,7 +47,7 @@ function isSecureRequest(req: CookieRequest) {
 
 export function getSessionCookieOptions(
   req: CookieRequest
-): Pick<CookieOptions, "domain" | "httpOnly" | "path" | "sameSite" | "secure"> {
+): Pick<CookieOptions, "domain" | "httpOnly" | "maxAge" | "path" | "sameSite" | "secure"> {
   const secure = isSecureRequest(req);
 
   // Derive the hostname from the request (Worker uses req.url, Express uses req.hostname).
@@ -69,12 +70,12 @@ export function getSessionCookieOptions(
       hostname === "xflexacademy.com" ||
       hostname.endsWith(".xflexacademy.com")
     ) {
-      domain = ".xflexacademy.com";
+      domain = "xflexacademy.com";
     } else if (
       hostname === "xflexwithai.com" ||
       hostname.endsWith(".xflexwithai.com")
     ) {
-      domain = ".xflexwithai.com";
+      domain = "xflexwithai.com";
     }
     // For localhost / 127.0.0.1 / IPs, leave domain undefined (browser default).
   }
@@ -82,6 +83,7 @@ export function getSessionCookieOptions(
   return {
     domain,
     httpOnly: true,
+    maxAge: ONE_YEAR_MS / 1000, // maxAge is in seconds
     path: "/",
     // "lax" is fine for same-site (eTLD+1) subdomains; use "none" only for true cross-site.
     sameSite: "lax",

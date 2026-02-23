@@ -32,6 +32,7 @@ import AdminQuizUsers from "./pages/AdminQuizUsers";
 import AdminQuizQuestions from "./pages/AdminQuizQuestions";
 import AdminLexaiSubscriptions from "./pages/AdminLexaiSubscriptions";
 import AdminLexaiKeys from "./pages/AdminLexaiKeys";
+import AdminLexaiConversations from "./pages/AdminLexaiConversations";
 
 function Router() {
   return (
@@ -106,6 +107,11 @@ function Router() {
       <Route path={"/admin/lexai/keys"}>
         <AdminRoute>
           <AdminLexaiKeys />
+        </AdminRoute>
+      </Route>
+      <Route path={"/admin/lexai/conversations"}>
+        <AdminRoute>
+          <AdminLexaiConversations />
         </AdminRoute>
       </Route>
       <Route path={"/activate-key"} component={ActivateKey} />

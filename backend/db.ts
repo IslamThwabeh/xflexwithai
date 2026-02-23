@@ -1499,6 +1499,53 @@ export async function deleteLexaiMessagesByUser(userId: number) {
   await db.delete(lexaiMessages).where(eq(lexaiMessages.userId, userId));
 }
 
+/**
+ * Get all LexAI messages with user info (for admin moderation)
+ */
+export async function getAllLexaiMessagesWithUsers(limit: number = 500) {
+  const db = await getDb();
+  if (!db) return [];
+
+  return await db
+    .select({
+      id: lexaiMessages.id,
+      userId: lexaiMessages.userId,
+      subscriptionId: lexaiMessages.subscriptionId,
+      role: lexaiMessages.role,
+      content: lexaiMessages.content,
+      analysisType: lexaiMessages.analysisType,
+      imageUrl: lexaiMessages.imageUrl,
+      createdAt: lexaiMessages.createdAt,
+      userEmail: users.email,
+      userName: users.name,
+    })
+    .from(lexaiMessages)
+    .leftJoin(users, eq(lexaiMessages.userId, users.id))
+    .orderBy(desc(lexaiMessages.createdAt))
+    .limit(limit);
+}
+
+/**
+ * Get users who have LexAI conversations (for admin listing)
+ */
+export async function getLexaiConversationUsers() {
+  const db = await getDb();
+  if (!db) return [];
+
+  return await db
+    .select({
+      userId: lexaiMessages.userId,
+      userEmail: users.email,
+      userName: users.name,
+      messageCount: sql<number>`count(*)`,
+      lastMessageAt: sql<string>`max(${lexaiMessages.createdAt})`,
+    })
+    .from(lexaiMessages)
+    .leftJoin(users, eq(lexaiMessages.userId, users.id))
+    .groupBy(lexaiMessages.userId, users.email, users.name)
+    .orderBy(desc(sql`max(${lexaiMessages.createdAt})`));
+}
+
 export async function getLexaiStats() {
   const db = await getDb();
   if (!db) throw new Error("Database not available");

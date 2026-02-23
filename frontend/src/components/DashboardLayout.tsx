@@ -32,7 +32,8 @@ import {
   BookOpen, 
   Key, 
   GraduationCap,
-  Sparkles
+  Sparkles,
+  MessageSquare
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -57,7 +58,7 @@ const menuSections = [
   {
     label: "LexAI",
     items: [
-      { icon: Sparkles, label: "LexAI Chat", path: "/lexai" },
+      { icon: MessageSquare, label: "Conversations", path: "/admin/lexai/conversations" },
       { icon: Users, label: "Subscriptions", path: "/admin/lexai/subscriptions" },
       { icon: Key, label: "LexAI Keys", path: "/admin/lexai/keys" },
     ]
