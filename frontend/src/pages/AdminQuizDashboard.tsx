@@ -293,7 +293,7 @@ export default function AdminQuizDashboard() {
                           {activity.score}%
                         </p>
                         <p className="text-xs text-gray-500">
-                          {new Date(activity.completedAt).toLocaleDateString()}
+                          {activity.completedAt ? new Date(activity.completedAt).toLocaleDateString() : 'N/A'}
                         </p>
                       </div>
                     </div>

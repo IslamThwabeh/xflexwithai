@@ -160,13 +160,13 @@ export default function QuizHistory() {
                           )}
                         </div>
                         <p className="text-sm text-gray-600 mt-1">
-                          {new Date(attempt.completedAt).toLocaleString('ar-SA', {
+                          {attempt.completedAt ? new Date(attempt.completedAt).toLocaleString('ar-SA', {
                             year: 'numeric',
                             month: 'long',
                             day: 'numeric',
                             hour: '2-digit',
                             minute: '2-digit'
-                          })}
+                          }) : 'N/A'}
                         </p>
                       </div>
                     </div>

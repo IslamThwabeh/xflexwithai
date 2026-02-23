@@ -251,7 +251,7 @@ export default function MyDashboard() {
                       <CardHeader>
                         <div className="flex items-center justify-between mb-2">
                           <span className="text-xs text-muted-foreground">
-                            {format(new Date(enrollment.enrolledAt), "MMM d, yyyy")}
+                            {enrollment.enrolledAt ? format(new Date(enrollment.enrolledAt), "MMM d, yyyy") : "N/A"}
                           </span>
                         </div>
                         <CardTitle className="line-clamp-2">{enrollment.courseName}</CardTitle>

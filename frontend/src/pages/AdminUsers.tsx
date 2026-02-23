@@ -109,8 +109,8 @@ export default function AdminUsers() {
                       <TableCell className="font-medium">{user.name || "N/A"}</TableCell>
                       <TableCell>{user.email || "N/A"}</TableCell>
                       <TableCell>{user.phone || "N/A"}</TableCell>
-                      <TableCell>{format(new Date(user.createdAt), "MMM d, yyyy")}</TableCell>
-                      <TableCell>{format(new Date(user.lastSignedIn), "MMM d, yyyy")}</TableCell>
+                      <TableCell>{user.createdAt ? format(new Date(user.createdAt), "MMM d, yyyy") : "N/A"}</TableCell>
+                      <TableCell>{user.lastSignedIn ? format(new Date(user.lastSignedIn), "MMM d, yyyy") : "N/A"}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -176,7 +176,7 @@ export default function AdminUsers() {
                           {enrollment.enrollment.isSubscriptionActive ? "Active" : "Inactive"}
                         </Badge>
                       </TableCell>
-                      <TableCell>{format(new Date(enrollment.enrollment.enrolledAt), "MMM d, yyyy")}</TableCell>
+                      <TableCell>{enrollment.enrollment.enrolledAt ? format(new Date(enrollment.enrollment.enrolledAt), "MMM d, yyyy") : "N/A"}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

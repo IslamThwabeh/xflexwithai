@@ -445,7 +445,7 @@ export default function AdminKeys() {
                         )}
                       </TableCell>
                       <TableCell>
-                        {new Date(key.createdAt).toLocaleDateString()}
+                        {key.createdAt ? new Date(key.createdAt).toLocaleDateString() : 'N/A'}
                       </TableCell>
                       <TableCell>
                         {key.activatedAt
