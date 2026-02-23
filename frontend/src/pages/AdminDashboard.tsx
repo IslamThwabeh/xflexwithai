@@ -141,7 +141,7 @@ export default function AdminDashboard() {
                     <div className="text-right">
                       <p className="text-sm font-medium">{item.enrollment.paymentStatus}</p>
                       <p className="text-xs text-muted-foreground">
-                        {formatDistanceToNow(new Date(item.enrollment.enrolledAt), { addSuffix: true })}
+                        {item.enrollment.enrolledAt ? formatDistanceToNow(new Date(item.enrollment.enrolledAt), { addSuffix: true }) : "N/A"}
                       </p>
                     </div>
                   </div>
