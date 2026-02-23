@@ -15,8 +15,13 @@ import {
   ChevronRight 
 } from "lucide-react";
 import { Link, useRoute } from "wouter";
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+
+type EpisodeQuizAnswer = {
+  questionId: number;
+  optionId: string;
+};
 
 export default function CourseWatch() {
   const [, params] = useRoute("/course/:courseId");
@@ -40,25 +45,114 @@ export default function CourseWatch() {
     { enabled: !!courseId && isAuthenticated }
   );
 
+  const { data: courseEpisodeProgress = [] } = trpc.episodeProgress.getCourse.useQuery(
+    { courseId: courseId! },
+    { enabled: !!courseId && isAuthenticated }
+  );
+
   const markCompleteMutation = trpc.enrollments.markEpisodeComplete.useMutation({
     onSuccess: () => {
       toast.success("Episode marked as complete!");
       utils.enrollments.getEnrollment.invalidate();
       utils.enrollments.myEnrollments.invalidate();
+      utils.episodeProgress.getCourse.invalidate();
+    },
+    onError: (error) => {
+      toast.error(error.message || "Unable to mark episode complete");
     },
   });
 
+  const updateEpisodeProgressMutation = trpc.episodeProgress.updateProgress.useMutation();
+
   const [selectedEpisode, setSelectedEpisode] = useState<any>(null);
+  const [quizAnswers, setQuizAnswers] = useState<Record<number, string>>({});
+  const [quizResult, setQuizResult] = useState<{
+    score: number;
+    passed: boolean;
+    correctCount: number;
+    totalQuestions: number;
+    passingScore: number;
+  } | null>(null);
+  const lastSyncedSecondRef = useRef<number>(0);
 
   const isLoading = courseLoading || episodesLoading;
 
+  const { data: episodeQuiz, isLoading: loadingEpisodeQuiz } = trpc.episodeQuiz.getForEpisode.useQuery(
+    { courseId: courseId!, episodeId: selectedEpisode?.id ?? 0 },
+    { enabled: !!courseId && !!selectedEpisode }
+  );
+
+  const submitEpisodeQuizMutation = trpc.episodeQuiz.submitForEpisode.useMutation({
+    onSuccess: (result) => {
+      setQuizResult({
+        score: result.score,
+        passed: result.passed,
+        correctCount: result.correctCount,
+        totalQuestions: result.totalQuestions,
+        passingScore: result.passingScore,
+      });
+
+      if (result.passed) {
+        toast.success(`Quiz passed (${result.score}%)`);
+      } else {
+        toast.error(`Quiz not passed (${result.score}%). Required: ${result.passingScore}%`);
+      }
+
+      utils.episodeQuiz.getForEpisode.invalidate();
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to submit quiz");
+    },
+  });
+
   // Auto-select first episode or last accessed
-  useState(() => {
+  useEffect(() => {
     if (episodes && episodes.length > 0 && !selectedEpisode) {
       const sortedEpisodes = [...episodes].sort((a, b) => a.order - b.order);
       setSelectedEpisode(sortedEpisodes[0]);
     }
-  });
+  }, [episodes, selectedEpisode]);
+
+  useEffect(() => {
+    setQuizAnswers({});
+    setQuizResult(null);
+    lastSyncedSecondRef.current = 0;
+  }, [selectedEpisode?.id]);
+
+  const selectedEpisodeProgress = useMemo(() => {
+    if (!selectedEpisode) return undefined;
+    return courseEpisodeProgress.find((progress) => progress.episodeId === selectedEpisode.id);
+  }, [courseEpisodeProgress, selectedEpisode]);
+
+  const watchedSeconds = selectedEpisodeProgress?.watchedDuration || 0;
+  const requiredWatchSeconds = selectedEpisode?.duration && selectedEpisode.duration > 0
+    ? Math.max(60, Math.floor(selectedEpisode.duration * 60 * 0.7))
+    : 60;
+  const hasWatchRequirementMet = watchedSeconds >= requiredWatchSeconds;
+
+  const quizRequired = !!episodeQuiz?.required;
+  const quizPassed = !!episodeQuiz?.passed;
+  const canMarkComplete = selectedEpisode?.order <= 1
+    ? hasWatchRequirementMet
+    : hasWatchRequirementMet && (!quizRequired || quizPassed);
+
+  const handleVideoProgress = (currentTime: number) => {
+    if (!selectedEpisode || !courseId) return;
+    const second = Math.floor(currentTime || 0);
+    if (second <= 0) return;
+
+    if (second - lastSyncedSecondRef.current < 10) {
+      return;
+    }
+
+    lastSyncedSecondRef.current = second;
+    updateEpisodeProgressMutation.mutate({
+      episodeId: selectedEpisode.id,
+      courseId,
+      watchedDuration: second,
+      isCompleted: false,
+    });
+  };
 
   const handleEpisodeComplete = () => {
     if (!selectedEpisode || !courseId) return;
@@ -76,6 +170,33 @@ export default function CourseWatch() {
       setSelectedEpisode(sortedEpisodes[currentIndex + 1]);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
+  };
+
+  const handleQuizAnswerSelect = (questionId: number, optionId: string) => {
+    setQuizAnswers((prev) => ({ ...prev, [questionId]: optionId }));
+  };
+
+  const handleSubmitEpisodeQuiz = () => {
+    if (!selectedEpisode || !courseId || !episodeQuiz?.quiz) return;
+
+    const unanswered = episodeQuiz.quiz.questions.filter(
+      (question) => !quizAnswers[question.id]
+    );
+    if (unanswered.length > 0) {
+      toast.error(`Please answer all questions (${unanswered.length} left)`);
+      return;
+    }
+
+    const answers: EpisodeQuizAnswer[] = episodeQuiz.quiz.questions.map((question) => ({
+      questionId: question.id,
+      optionId: quizAnswers[question.id],
+    }));
+
+    submitEpisodeQuizMutation.mutate({
+      courseId,
+      episodeId: selectedEpisode.id,
+      answers,
+    });
   };
 
   if (isLoading) {
@@ -210,6 +331,16 @@ export default function CourseWatch() {
                         src={selectedEpisode.videoUrl}
                         controls
                         className="w-full h-full"
+                        onTimeUpdate={(event) => handleVideoProgress(event.currentTarget.currentTime)}
+                        onEnded={(event) => {
+                          if (!selectedEpisode || !courseId) return;
+                          updateEpisodeProgressMutation.mutate({
+                            episodeId: selectedEpisode.id,
+                            courseId,
+                            watchedDuration: Math.max(requiredWatchSeconds, Math.floor(event.currentTarget.duration || 0)),
+                            isCompleted: false,
+                          });
+                        }}
                       />
                     )}
                   </div>
@@ -241,7 +372,7 @@ export default function CourseWatch() {
               </CardHeader>
               <CardContent>
                 <div className="flex gap-3">
-                  <Button onClick={handleEpisodeComplete} disabled={markCompleteMutation.isPending}>
+                  <Button onClick={handleEpisodeComplete} disabled={markCompleteMutation.isPending || !canMarkComplete}>
                     <CheckCircle2 className="mr-2 h-4 w-4" />
                     Mark as Complete
                   </Button>
@@ -250,8 +381,83 @@ export default function CourseWatch() {
                     <ChevronRight className="ml-2 h-4 w-4" />
                   </Button>
                 </div>
+                <p className="text-xs text-muted-foreground mt-3">
+                  Watch progress: {Math.min(watchedSeconds, requiredWatchSeconds)}s / {requiredWatchSeconds}s required
+                </p>
               </CardContent>
             </Card>
+
+            {/* Episode Quiz */}
+            {selectedEpisode && selectedEpisode.order > 1 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Episode Quiz</CardTitle>
+                  <CardDescription>
+                    Pass at least 50% to unlock completion for this episode.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {loadingEpisodeQuiz ? (
+                    <p className="text-sm text-muted-foreground">Loading quiz...</p>
+                  ) : !episodeQuiz?.quiz ? (
+                    <p className="text-sm text-muted-foreground">
+                      Quiz is not configured for this episode yet.
+                    </p>
+                  ) : episodeQuiz.passed ? (
+                    <div className="rounded border border-green-200 bg-green-50 p-3 text-sm text-green-700">
+                      Quiz passed. You can now mark this episode as complete.
+                    </div>
+                  ) : (
+                    <>
+                      {episodeQuiz.quiz.questions.map((question, questionIndex) => (
+                        <div key={question.id} className="rounded border p-4">
+                          <p className="font-medium mb-3">
+                            {questionIndex + 1}. {question.questionText}
+                          </p>
+                          <div className="space-y-2">
+                            {question.options.map((option) => (
+                              <button
+                                key={option.id}
+                                type="button"
+                                onClick={() => handleQuizAnswerSelect(question.id, option.optionId)}
+                                className={`w-full text-left rounded border px-3 py-2 text-sm transition-colors ${
+                                  quizAnswers[question.id] === option.optionId
+                                    ? "border-blue-600 bg-blue-50"
+                                    : "border-gray-200 hover:bg-gray-50"
+                                }`}
+                              >
+                                <span className="font-medium mr-2">{option.optionId.toUpperCase()}.</span>
+                                {option.text}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+
+                      <Button
+                        onClick={handleSubmitEpisodeQuiz}
+                        disabled={submitEpisodeQuizMutation.isPending}
+                      >
+                        Submit Quiz
+                      </Button>
+
+                      {quizResult && (
+                        <div
+                          className={`rounded border p-3 text-sm ${
+                            quizResult.passed
+                              ? "border-green-200 bg-green-50 text-green-700"
+                              : "border-orange-200 bg-orange-50 text-orange-700"
+                          }`}
+                        >
+                          Score: {quizResult.score}% ({quizResult.correctCount}/{quizResult.totalQuestions})
+                          {!quizResult.passed && ` - Required: ${quizResult.passingScore}%`}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+            )}
 
             {/* Course Description */}
             <Card>
@@ -297,7 +503,7 @@ export default function CourseWatch() {
                 <div className="divide-y">
                   {sortedEpisodes.map((episode) => {
                     const isSelected = selectedEpisode?.id === episode.id;
-                    const isCompleted = false; // TODO: Track completed episodes
+                    const isCompleted = !!courseEpisodeProgress.find((progress) => progress.episodeId === episode.id)?.isCompleted;
                     
                     return (
                       <button

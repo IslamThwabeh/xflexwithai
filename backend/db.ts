@@ -1,4 +1,4 @@
-import { eq, desc, and, or, sql, ne } from "drizzle-orm";
+import { eq, desc, and, or, sql, ne, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import type { D1Database } from "@cloudflare/workers-types";
 import {
@@ -12,6 +12,12 @@ import {
   lexaiMessages, LexaiMessage, InsertLexaiMessage,
   registrationKeys, RegistrationKey, InsertRegistrationKey,
   authEmailOtps, AuthEmailOtp, InsertAuthEmailOtp,
+  quizzes, Quiz,
+  quizQuestions, QuizQuestion,
+  quizOptions, QuizOption,
+  quizAttempts,
+  quizAnswers,
+  userQuizProgress,
   // FlexAI imports
   flexaiSubscriptions, FlexaiSubscription, InsertFlexaiSubscription,
   flexaiMessages, FlexaiMessage, InsertFlexaiMessage
@@ -1390,10 +1396,12 @@ export async function createOrUpdateEpisodeProgress(progress: InsertEpisodeProgr
   const existing = await getUserEpisodeProgress(progress.userId, progress.episodeId);
   
   if (existing) {
+    const nextWatchedDuration = Math.max(existing.watchedDuration || 0, progress.watchedDuration || 0);
+    const nextCompleted = Boolean(existing.isCompleted) || Boolean(progress.isCompleted);
     await db.update(episodeProgress)
       .set({
-        watchedDuration: progress.watchedDuration,
-        isCompleted: progress.isCompleted,
+        watchedDuration: nextWatchedDuration,
+        isCompleted: nextCompleted,
         lastWatchedAt: new Date().toISOString(),
       })
       .where(eq(episodeProgress.id, existing.id));
@@ -1402,6 +1410,194 @@ export async function createOrUpdateEpisodeProgress(progress: InsertEpisodeProgr
     const result = await db.insert(episodeProgress).values(progress).returning({ id: episodeProgress.id });
     return result[0].id;
   }
+}
+
+// ============================================================================
+// Episode Quiz Management
+// ============================================================================
+
+export async function getQuizByLevel(level: number): Promise<Quiz | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+
+  const result = await db.select().from(quizzes)
+    .where(eq(quizzes.level, level))
+    .limit(1);
+  return result[0];
+}
+
+export async function getQuizForLevelWithQuestions(level: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+
+  const quiz = await getQuizByLevel(level);
+  if (!quiz) return undefined;
+
+  const questions = await db.select().from(quizQuestions)
+    .where(eq(quizQuestions.quizId, quiz.id))
+    .orderBy(quizQuestions.orderNum);
+
+  const questionIds = questions.map((q) => q.id);
+  const options = questionIds.length > 0
+    ? await db.select().from(quizOptions).where(inArray(quizOptions.questionId, questionIds))
+    : [];
+
+  const questionsWithOptions = questions.map((question) => ({
+    id: question.id,
+    questionText: question.questionText,
+    orderNum: question.orderNum,
+    options: options
+      .filter((option) => option.questionId === question.id)
+      .map((option) => ({
+        id: option.id,
+        optionId: option.optionId,
+        text: option.optionText,
+      })),
+  }));
+
+  return {
+    id: quiz.id,
+    level: quiz.level,
+    title: quiz.title,
+    description: quiz.description,
+    passingScore: quiz.passingScore,
+    questions: questionsWithOptions,
+  };
+}
+
+export async function hasUserPassedQuizLevel(userId: number, level: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+
+  const quiz = await getQuizByLevel(level);
+  if (!quiz) return false;
+
+  const progress = await db.select().from(userQuizProgress)
+    .where(and(
+      eq(userQuizProgress.userId, userId),
+      eq(userQuizProgress.quizId, quiz.id)
+    ))
+    .limit(1);
+
+  if (!progress.length) return false;
+  const record = progress[0];
+  const bestScore = Number(record.bestScore || 0);
+  return Boolean(record.isCompleted) || bestScore >= Number(quiz.passingScore || 50);
+}
+
+export async function submitEpisodeQuizAttempt(
+  userId: number,
+  level: number,
+  answers: { questionId: number; optionId: string }[]
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const quiz = await getQuizByLevel(level);
+  if (!quiz) {
+    throw new Error(`Quiz not configured for level ${level}`);
+  }
+
+  const questions = await db.select().from(quizQuestions)
+    .where(eq(quizQuestions.quizId, quiz.id));
+
+  if (!questions.length) {
+    throw new Error("Quiz has no questions configured");
+  }
+
+  const questionIds = questions.map((q) => q.id);
+  const allOptions = await db.select().from(quizOptions)
+    .where(inArray(quizOptions.questionId, questionIds));
+
+  const answerByQuestion = new Map<number, string>();
+  for (const answer of answers) {
+    answerByQuestion.set(answer.questionId, answer.optionId);
+  }
+
+  const detailedResults = questions.map((question) => {
+    const correctOption = allOptions.find(
+      (option) => option.questionId === question.id && option.isCorrect
+    );
+    const selectedOptionId = answerByQuestion.get(question.id) || "";
+    const isCorrect = !!correctOption && correctOption.optionId === selectedOptionId;
+
+    return {
+      questionId: question.id,
+      selectedOptionId,
+      correctOptionId: correctOption?.optionId || "",
+      isCorrect,
+    };
+  });
+
+  const correctCount = detailedResults.filter((result) => result.isCorrect).length;
+  const totalQuestions = questions.length;
+  const score = Math.round((correctCount / totalQuestions) * 100);
+  const passed = score >= Number(quiz.passingScore || 50);
+
+  const [attempt] = await db.insert(quizAttempts).values({
+    userId,
+    quizId: quiz.id,
+    score,
+    totalQuestions,
+    percentage: String(score),
+    passed,
+    completedAt: new Date().toISOString(),
+  }).returning({ id: quizAttempts.id });
+
+  await db.insert(quizAnswers).values(
+    detailedResults.map((result) => ({
+      attemptId: attempt.id,
+      questionId: result.questionId,
+      selectedOptionId: result.selectedOptionId || "",
+      isCorrect: result.isCorrect,
+    }))
+  );
+
+  const progress = await db.select().from(userQuizProgress)
+    .where(and(
+      eq(userQuizProgress.userId, userId),
+      eq(userQuizProgress.quizId, quiz.id)
+    ))
+    .limit(1);
+
+  if (progress.length) {
+    const existing = progress[0];
+    const nextBestScore = Math.max(Number(existing.bestScore || 0), score);
+    const nextAttempts = Number(existing.attemptsCount || 0) + 1;
+    await db.update(userQuizProgress)
+      .set({
+        isUnlocked: true,
+        isCompleted: Boolean(existing.isCompleted) || passed,
+        bestScore: nextBestScore,
+        bestPercentage: String(nextBestScore),
+        attemptsCount: nextAttempts,
+        lastAttemptAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(userQuizProgress.id, existing.id));
+  } else {
+    await db.insert(userQuizProgress).values({
+      userId,
+      quizId: quiz.id,
+      isUnlocked: true,
+      isCompleted: passed,
+      bestScore: score,
+      bestPercentage: String(score),
+      attemptsCount: 1,
+      lastAttemptAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
+  return {
+    attemptId: attempt.id,
+    score,
+    passed,
+    correctCount,
+    totalQuestions,
+    passingScore: Number(quiz.passingScore || 50),
+    detailedResults,
+  };
 }
 
 // ============================================================================

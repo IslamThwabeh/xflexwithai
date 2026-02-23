@@ -871,10 +871,66 @@ export const appRouter = router({
           logger.error('Enrollment not found for episode completion', { userId: ctx.user.id, courseId: input.courseId });
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Enrollment not found' });
         }
-        // Get total episodes for this course
+        // Validate episode belongs to the course
         const episodes = await db.getEpisodesByCourseId(input.courseId);
+        const episode = episodes.find((ep) => ep.id === input.episodeId);
+        if (!episode) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Episode not found in this course' });
+        }
+
+        const existingEpisodeProgress = await db.getUserEpisodeProgress(ctx.user.id, input.episodeId);
+        if (existingEpisodeProgress?.isCompleted) {
+          return { success: true, alreadyCompleted: true };
+        }
+
+        // Enforce a minimum watch duration (70% of episode duration, minimum 60s)
+        const requiredWatchSeconds = episode.duration && episode.duration > 0
+          ? Math.max(60, Math.floor(episode.duration * 60 * 0.7))
+          : 60;
+        const watchedDuration = Number(existingEpisodeProgress?.watchedDuration || 0);
+        if (watchedDuration < requiredWatchSeconds) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: `Watch more of this episode before marking complete (${Math.ceil(requiredWatchSeconds / 60)} min required).`,
+          });
+        }
+
+        // Intro episode (order = 1) is exempt from quiz gating
+        if (episode.order > 1) {
+          const quizLevel = episode.order - 1;
+          const quiz = await db.getQuizByLevel(quizLevel);
+          if (!quiz) {
+            throw new TRPCError({
+              code: 'FORBIDDEN',
+              message: 'Quiz is not configured for this episode yet.',
+            });
+          }
+
+          const hasPassedQuiz = await db.hasUserPassedQuizLevel(ctx.user.id, quizLevel);
+          if (!hasPassedQuiz) {
+            throw new TRPCError({
+              code: 'FORBIDDEN',
+              message: `Pass the episode quiz (${quiz.passingScore}% required) before continuing.`,
+            });
+          }
+        }
+
+        await db.createOrUpdateEpisodeProgress({
+          userId: ctx.user.id,
+          episodeId: input.episodeId,
+          courseId: input.courseId,
+          watchedDuration: Math.max(watchedDuration, requiredWatchSeconds),
+          isCompleted: true,
+          lastWatchedAt: new Date().toISOString(),
+        });
+
+        // Compute progress from completed per-episode records
         const totalEpisodes = episodes.length;
-        const completedEpisodes = enrollment.completedEpisodes + 1;
+        const courseProgress = await db.getUserCourseProgress(ctx.user.id, input.courseId);
+        const completedEpisodeIds = new Set(
+          courseProgress.filter((progress) => progress.isCompleted).map((progress) => progress.episodeId)
+        );
+        const completedEpisodes = episodes.filter((ep) => completedEpisodeIds.has(ep.id)).length;
         const progressPercentage = Math.round((completedEpisodes / totalEpisodes) * 100);
         
         await db.updateEnrollment(enrollment.id, {
@@ -891,6 +947,83 @@ export const appRouter = router({
           completed: completedEpisodes >= totalEpisodes
         });
         return { success: true };
+      }),
+  }),
+
+  episodeQuiz: router({
+    getForEpisode: protectedProcedure
+      .input(z.object({
+        courseId: z.number(),
+        episodeId: z.number(),
+      }))
+      .query(async ({ ctx, input }) => {
+        const episodes = await db.getEpisodesByCourseId(input.courseId);
+        const episode = episodes.find((ep) => ep.id === input.episodeId);
+
+        if (!episode) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Episode not found' });
+        }
+
+        if (episode.order <= 1) {
+          return { required: false, passed: true, introEpisode: true, quiz: null };
+        }
+
+        const quizLevel = episode.order - 1;
+        const quiz = await db.getQuizForLevelWithQuestions(quizLevel);
+
+        if (!quiz) {
+          return { required: true, passed: false, introEpisode: false, quiz: null };
+        }
+
+        const passed = await db.hasUserPassedQuizLevel(ctx.user.id, quizLevel);
+
+        return {
+          required: true,
+          passed,
+          introEpisode: false,
+          quiz,
+        };
+      }),
+
+    submitForEpisode: protectedProcedure
+      .input(z.object({
+        courseId: z.number(),
+        episodeId: z.number(),
+        answers: z.array(z.object({
+          questionId: z.number(),
+          optionId: z.string().min(1),
+        })).min(1),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const episodes = await db.getEpisodesByCourseId(input.courseId);
+        const episode = episodes.find((ep) => ep.id === input.episodeId);
+
+        if (!episode) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Episode not found' });
+        }
+
+        if (episode.order <= 1) {
+          return {
+            score: 100,
+            passed: true,
+            correctCount: 0,
+            totalQuestions: 0,
+            passingScore: 50,
+            detailedResults: [],
+            introEpisode: true,
+          };
+        }
+
+        const quizLevel = episode.order - 1;
+        const quiz = await db.getQuizByLevel(quizLevel);
+        if (!quiz) {
+          throw new TRPCError({
+            code: 'NOT_FOUND',
+            message: 'Quiz is not configured for this episode.',
+          });
+        }
+
+        return await db.submitEpisodeQuizAttempt(ctx.user.id, quizLevel, input.answers);
       }),
   }),
 
@@ -916,6 +1049,12 @@ export const appRouter = router({
         });
 
         return { success: true };
+      }),
+
+    getCourse: protectedProcedure
+      .input(z.object({ courseId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        return await db.getUserCourseProgress(ctx.user.id, input.courseId);
       }),
   }),
 
