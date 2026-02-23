@@ -14,6 +14,17 @@ import { trpc } from "@/lib/trpc";
 import { Users, BookOpen, Calendar, DollarSign } from "lucide-react";
 import { format } from "date-fns";
 
+function formatSafeDate(
+  value: string | number | Date | null | undefined,
+  pattern: string,
+  fallback = "N/A"
+) {
+  if (!value) return fallback;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return fallback;
+  return format(date, pattern);
+}
+
 export default function AdminUsers() {
   const { data: users, isLoading: usersLoading } = trpc.users.list.useQuery();
   const { data: enrollments, isLoading: enrollmentsLoading } = trpc.enrollments.listAll.useQuery();
@@ -109,8 +120,8 @@ export default function AdminUsers() {
                       <TableCell className="font-medium">{user.name || "N/A"}</TableCell>
                       <TableCell>{user.email || "N/A"}</TableCell>
                       <TableCell>{user.phone || "N/A"}</TableCell>
-                      <TableCell>{user.createdAt ? format(new Date(user.createdAt), "MMM d, yyyy") : "N/A"}</TableCell>
-                      <TableCell>{user.lastSignedIn ? format(new Date(user.lastSignedIn), "MMM d, yyyy") : "N/A"}</TableCell>
+                      <TableCell>{formatSafeDate(user.createdAt, "MMM d, yyyy")}</TableCell>
+                      <TableCell>{formatSafeDate(user.lastSignedIn, "MMM d, yyyy")}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -176,7 +187,7 @@ export default function AdminUsers() {
                           {enrollment.enrollment.isSubscriptionActive ? "Active" : "Inactive"}
                         </Badge>
                       </TableCell>
-                      <TableCell>{enrollment.enrollment.enrolledAt ? format(new Date(enrollment.enrollment.enrolledAt), "MMM d, yyyy") : "N/A"}</TableCell>
+                      <TableCell>{formatSafeDate(enrollment.enrollment.enrolledAt, "MMM d, yyyy")}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

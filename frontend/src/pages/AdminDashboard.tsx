@@ -6,6 +6,13 @@ import { Button } from "@/components/ui/button";
 import { useLocation } from "wouter";
 import { formatDistanceToNow } from "date-fns";
 
+function formatSafeDistanceToNow(value: string | number | Date | null | undefined) {
+  if (!value) return "N/A";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "N/A";
+  return formatDistanceToNow(date, { addSuffix: true });
+}
+
 export default function AdminDashboard() {
   const [, setLocation] = useLocation();
   const { data: stats, isLoading: statsLoading } = trpc.dashboard.stats.useQuery();
@@ -141,7 +148,7 @@ export default function AdminDashboard() {
                     <div className="text-right">
                       <p className="text-sm font-medium">{item.enrollment.paymentStatus}</p>
                       <p className="text-xs text-muted-foreground">
-                        {item.enrollment.enrolledAt ? formatDistanceToNow(new Date(item.enrollment.enrolledAt), { addSuffix: true }) : "N/A"}
+                        {formatSafeDistanceToNow(item.enrollment.enrolledAt)}
                       </p>
                     </div>
                   </div>

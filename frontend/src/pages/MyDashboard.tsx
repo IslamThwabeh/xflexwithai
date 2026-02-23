@@ -10,6 +10,17 @@ import { Link } from "wouter";
 import { format } from "date-fns";
 import { useEffect, useRef } from "react";
 
+function formatSafeDate(
+  value: string | number | Date | null | undefined,
+  pattern: string,
+  fallback = "N/A"
+) {
+  if (!value) return fallback;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return fallback;
+  return format(date, pattern);
+}
+
 export default function MyDashboard() {
   const { user, isAuthenticated, loading } = useAuth();
   const utils = trpc.useUtils();
@@ -251,7 +262,7 @@ export default function MyDashboard() {
                       <CardHeader>
                         <div className="flex items-center justify-between mb-2">
                           <span className="text-xs text-muted-foreground">
-                            {enrollment.enrolledAt ? format(new Date(enrollment.enrolledAt), "MMM d, yyyy") : "N/A"}
+                            {formatSafeDate(enrollment.enrolledAt, "MMM d, yyyy")}
                           </span>
                         </div>
                         <CardTitle className="line-clamp-2">{enrollment.courseName}</CardTitle>

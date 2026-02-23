@@ -20,6 +20,17 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
+function formatSafeDate(
+  value: string | number | Date | null | undefined,
+  pattern: string,
+  fallback = "Unknown"
+) {
+  if (!value) return fallback;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return fallback;
+  return format(date, pattern);
+}
+
 export default function AdminLexaiConversations() {
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const utils = trpc.useUtils();
@@ -144,7 +155,7 @@ export default function AdminLexaiConversations() {
                             )}
                           </div>
                           <span className="text-xs text-muted-foreground">
-                            {message.createdAt ? format(new Date(message.createdAt), "MMM d, yyyy HH:mm:ss") : "Unknown date"}
+                            {formatSafeDate(message.createdAt, "MMM d, yyyy HH:mm:ss", "Unknown date")}
                           </span>
                         </div>
                         
@@ -230,7 +241,7 @@ export default function AdminLexaiConversations() {
                       <div className="text-right">
                         <p className="text-sm font-medium">{Number(user.messageCount)} messages</p>
                         <p className="text-xs text-muted-foreground">
-                          Last: {user.lastMessageAt ? format(new Date(user.lastMessageAt), "MMM d, HH:mm") : "Unknown"}
+                          Last: {formatSafeDate(user.lastMessageAt, "MMM d, HH:mm")}
                         </p>
                       </div>
                       <MessageSquare className="h-5 w-5 text-muted-foreground" />

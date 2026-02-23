@@ -12,6 +12,17 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 
+function formatSafeDate(
+  value: string | number | Date | null | undefined,
+  pattern: string,
+  fallback = "-"
+) {
+  if (!value) return fallback;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return fallback;
+  return format(date, pattern);
+}
+
 export default function AdminLexaiSubscriptions() {
   const { data: subscriptions, isLoading } = trpc.lexaiAdmin.subscriptions.useQuery();
 
@@ -46,7 +57,8 @@ export default function AdminLexaiSubscriptions() {
               <TableBody>
                 {subscriptions.map((sub) => {
                   const endDate = sub.endDate ? new Date(sub.endDate) : null;
-                  const isExpired = endDate ? endDate.getTime() < Date.now() : false;
+                  const isValidEndDate = endDate ? !Number.isNaN(endDate.getTime()) : false;
+                  const isExpired = isValidEndDate && endDate ? endDate.getTime() < Date.now() : false;
                   const statusLabel = sub.isActive && !isExpired ? "Active" : "Expired";
 
                   return (
@@ -62,7 +74,7 @@ export default function AdminLexaiSubscriptions() {
                         {sub.messagesUsed} / {sub.messagesLimit}
                       </TableCell>
                       <TableCell>
-                        {endDate ? format(endDate, "MMM d, yyyy") : "-"}
+                        {formatSafeDate(sub.endDate, "MMM d, yyyy")}
                       </TableCell>
                     </TableRow>
                   );
