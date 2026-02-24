@@ -96,6 +96,39 @@ const getLatestLexaiAnalysis = async (userId: number, analysisType: string) => {
   );
 };
 
+const ensureEpisodeUnlockedForUser = async (userId: number, courseId: number, episodeId: number) => {
+  const episodes = await db.getEpisodesByCourseId(courseId);
+  const sortedEpisodes = [...episodes].sort((a, b) => a.order - b.order);
+  const episode = sortedEpisodes.find((ep) => ep.id === episodeId);
+
+  if (!episode) {
+    throw new TRPCError({ code: 'NOT_FOUND', message: 'Episode not found in this course' });
+  }
+
+  if (episode.order <= 1) {
+    return { episode, episodes: sortedEpisodes };
+  }
+
+  const previousEpisode = sortedEpisodes.find((ep) => ep.order === episode.order - 1);
+  if (!previousEpisode) {
+    return { episode, episodes: sortedEpisodes };
+  }
+
+  const courseProgress = await db.getUserCourseProgress(userId, courseId);
+  const completedEpisodeIds = new Set(
+    courseProgress.filter((progress) => progress.isCompleted).map((progress) => progress.episodeId)
+  );
+
+  if (!completedEpisodeIds.has(previousEpisode.id)) {
+    throw new TRPCError({
+      code: 'FORBIDDEN',
+      message: 'Complete the previous episode first.',
+    });
+  }
+
+  return { episode, episodes: sortedEpisodes };
+};
+
 export const appRouter = router({
   system: systemRouter,
   
@@ -871,12 +904,11 @@ export const appRouter = router({
           logger.error('Enrollment not found for episode completion', { userId: ctx.user.id, courseId: input.courseId });
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Enrollment not found' });
         }
-        // Validate episode belongs to the course
-        const episodes = await db.getEpisodesByCourseId(input.courseId);
-        const episode = episodes.find((ep) => ep.id === input.episodeId);
-        if (!episode) {
-          throw new TRPCError({ code: 'NOT_FOUND', message: 'Episode not found in this course' });
-        }
+        const { episode, episodes } = await ensureEpisodeUnlockedForUser(
+          ctx.user.id,
+          input.courseId,
+          input.episodeId
+        );
 
         const existingEpisodeProgress = await db.getUserEpisodeProgress(ctx.user.id, input.episodeId);
         if (existingEpisodeProgress?.isCompleted) {
@@ -957,12 +989,11 @@ export const appRouter = router({
         episodeId: z.number(),
       }))
       .query(async ({ ctx, input }) => {
-        const episodes = await db.getEpisodesByCourseId(input.courseId);
-        const episode = episodes.find((ep) => ep.id === input.episodeId);
-
-        if (!episode) {
-          throw new TRPCError({ code: 'NOT_FOUND', message: 'Episode not found' });
-        }
+        const { episode } = await ensureEpisodeUnlockedForUser(
+          ctx.user.id,
+          input.courseId,
+          input.episodeId
+        );
 
         if (episode.order <= 1) {
           return { required: false, passed: true, introEpisode: true, quiz: null };
@@ -995,12 +1026,11 @@ export const appRouter = router({
         })).min(1),
       }))
       .mutation(async ({ ctx, input }) => {
-        const episodes = await db.getEpisodesByCourseId(input.courseId);
-        const episode = episodes.find((ep) => ep.id === input.episodeId);
-
-        if (!episode) {
-          throw new TRPCError({ code: 'NOT_FOUND', message: 'Episode not found' });
-        }
+        const { episode } = await ensureEpisodeUnlockedForUser(
+          ctx.user.id,
+          input.courseId,
+          input.episodeId
+        );
 
         if (episode.order <= 1) {
           return {
@@ -1039,6 +1069,8 @@ export const appRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
+        await ensureEpisodeUnlockedForUser(ctx.user.id, input.courseId, input.episodeId);
+
         await db.createOrUpdateEpisodeProgress({
           userId: ctx.user.id,
           episodeId: input.episodeId,

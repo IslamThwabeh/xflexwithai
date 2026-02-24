@@ -39,6 +39,7 @@ export default function CourseWatch() {
     { courseId: courseId! },
     { enabled: !!courseId }
   );
+  const sortedEpisodes = useMemo(() => (episodes ? [...episodes].sort((a, b) => a.order - b.order) : []), [episodes]);
 
   const { data: enrollment } = trpc.enrollments.getEnrollment.useQuery(
     { courseId: courseId! },
@@ -107,11 +108,10 @@ export default function CourseWatch() {
 
   // Auto-select first episode or last accessed
   useEffect(() => {
-    if (episodes && episodes.length > 0 && !selectedEpisode) {
-      const sortedEpisodes = [...episodes].sort((a, b) => a.order - b.order);
+    if (sortedEpisodes.length > 0 && !selectedEpisode) {
       setSelectedEpisode(sortedEpisodes[0]);
     }
-  }, [episodes, selectedEpisode]);
+  }, [sortedEpisodes, selectedEpisode]);
 
   useEffect(() => {
     setQuizAnswers({});
@@ -125,6 +125,26 @@ export default function CourseWatch() {
   }, [courseEpisodeProgress, selectedEpisode]);
 
   const watchedSeconds = selectedEpisodeProgress?.watchedDuration || 0;
+  const completedEpisodeIds = useMemo(
+    () => new Set(courseEpisodeProgress.filter((progress) => progress.isCompleted).map((progress) => progress.episodeId)),
+    [courseEpisodeProgress]
+  );
+
+  const isEpisodeUnlocked = (episode: any) => {
+    if (!episode) return false;
+    if (episode.order <= 1) return true;
+    const previousEpisode = sortedEpisodes.find((item) => item.order === episode.order - 1);
+    if (!previousEpisode) return false;
+    return completedEpisodeIds.has(previousEpisode.id);
+  };
+
+  const currentEpisodeIndex = selectedEpisode
+    ? sortedEpisodes.findIndex((episode) => episode.id === selectedEpisode.id)
+    : -1;
+  const nextEpisode = currentEpisodeIndex >= 0 && currentEpisodeIndex < sortedEpisodes.length - 1
+    ? sortedEpisodes[currentEpisodeIndex + 1]
+    : null;
+  const canGoToNextEpisode = !!nextEpisode && isEpisodeUnlocked(nextEpisode);
   const requiredWatchSeconds = selectedEpisode?.duration && selectedEpisode.duration > 0
     ? Math.max(60, Math.floor(selectedEpisode.duration * 60 * 0.7))
     : 60;
@@ -163,13 +183,14 @@ export default function CourseWatch() {
   };
 
   const handleNextEpisode = () => {
-    if (!episodes || !selectedEpisode) return;
-    const sortedEpisodes = [...episodes].sort((a, b) => a.order - b.order);
-    const currentIndex = sortedEpisodes.findIndex(e => e.id === selectedEpisode.id);
-    if (currentIndex < sortedEpisodes.length - 1) {
-      setSelectedEpisode(sortedEpisodes[currentIndex + 1]);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (!selectedEpisode || !nextEpisode) return;
+    if (!isEpisodeUnlocked(nextEpisode)) {
+      toast.error("Complete the current episode first to unlock the next one.");
+      return;
     }
+
+    setSelectedEpisode(nextEpisode);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleQuizAnswerSelect = (questionId: number, optionId: string) => {
@@ -279,7 +300,6 @@ export default function CourseWatch() {
     );
   }
 
-  const sortedEpisodes = episodes ? [...episodes].sort((a, b) => a.order - b.order) : [];
   const progress = enrollment.progressPercentage || 0;
 
   return (
@@ -376,7 +396,7 @@ export default function CourseWatch() {
                     <CheckCircle2 className="mr-2 h-4 w-4" />
                     Mark as Complete
                   </Button>
-                  <Button variant="outline" onClick={handleNextEpisode}>
+                  <Button variant="outline" onClick={handleNextEpisode} disabled={!canGoToNextEpisode}>
                     Next Episode
                     <ChevronRight className="ml-2 h-4 w-4" />
                   </Button>
@@ -504,12 +524,22 @@ export default function CourseWatch() {
                   {sortedEpisodes.map((episode) => {
                     const isSelected = selectedEpisode?.id === episode.id;
                     const isCompleted = !!courseEpisodeProgress.find((progress) => progress.episodeId === episode.id)?.isCompleted;
+                    const isUnlocked = isEpisodeUnlocked(episode);
                     
                     return (
                       <button
                         key={episode.id}
-                        onClick={() => setSelectedEpisode(episode)}
-                        className={`w-full text-left p-4 hover:bg-gray-50 transition-colors ${
+                        onClick={() => {
+                          if (!isUnlocked) {
+                            toast.error("Complete previous episodes to unlock this one.");
+                            return;
+                          }
+                          setSelectedEpisode(episode);
+                        }}
+                        disabled={!isUnlocked}
+                        className={`w-full text-left p-4 transition-colors ${
+                          isUnlocked ? 'hover:bg-gray-50' : 'opacity-60 cursor-not-allowed bg-gray-50'
+                        } ${
                           isSelected ? 'bg-blue-50 border-l-4 border-blue-600' : ''
                         }`}
                       >
@@ -536,6 +566,9 @@ export default function CourseWatch() {
                           </div>
                           {isSelected && (
                             <Play className="h-4 w-4 text-blue-600 flex-shrink-0" />
+                          )}
+                          {!isUnlocked && (
+                            <Lock className="h-4 w-4 text-gray-400 flex-shrink-0" />
                           )}
                         </div>
                       </button>
