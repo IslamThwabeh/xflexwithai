@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Copy, Flame, Heart, Rocket, ThumbsUp, Frown, Bell, TrendingUp, BarChart3 } from "lucide-react";
+import ClientLayout from "@/components/ClientLayout";
 
 const reactionIcons = {
   like: <ThumbsUp className="h-4 w-4" />,
@@ -127,7 +128,8 @@ export default function Recommendations() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50" dir="rtl">
+    <ClientLayout>
+    <div className="min-h-[calc(100vh-64px)] bg-gray-50">
       <div className="container mx-auto px-4 py-8 space-y-6">
         <div>
           <h1 className="text-3xl font-bold">قروب التوصيات</h1>
@@ -261,5 +263,6 @@ export default function Recommendations() {
         )}
       </div>
     </div>
+    </ClientLayout>
   );
 }

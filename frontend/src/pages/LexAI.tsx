@@ -21,11 +21,12 @@ import { useState, useRef, useEffect, useMemo } from "react";
 import { toast } from "sonner";
 import { Link } from "wouter";
 import { format } from "date-fns";
+import ClientLayout from "@/components/ClientLayout";
 
 export default function LexAI() {
   const { user, loading: authLoading } = useAuth();
   const { language } = useLanguage();
-  const isArabic = true;
+  const isArabic = language === 'ar';
   const utils = trpc.useUtils();
 
   const copy = {
@@ -378,7 +379,8 @@ export default function LexAI() {
 
   if (!hasKeyActivatedSubscription) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 to-blue-50">
+      <ClientLayout>
+      <div className="min-h-[calc(100vh-64px)] flex items-center justify-center bg-gradient-to-br from-purple-50 to-blue-50">
         <Card className="max-w-2xl">
           <CardHeader className="text-center">
             <div className="mx-auto w-16 h-16 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center mb-4">
@@ -470,15 +472,17 @@ export default function LexAI() {
           </CardContent>
         </Card>
       </div>
+      </ClientLayout>
     );
   }
 
   const messagesRemaining = subscription ? subscription.messagesLimit - subscription.messagesUsed : 0;
 
   return (
-    <div className="min-h-screen md:min-h-0 h-screen md:h-auto bg-gradient-to-br from-purple-50 to-blue-50 flex flex-col">
-      {/* Compact header on mobile */}
-      <div className="container max-w-5xl py-2 md:py-6 px-2 md:px-0 shrink-0">
+    <ClientLayout>
+    <div className="min-h-[calc(100vh-64px)] md:min-h-0 bg-gradient-to-br from-purple-50 to-blue-50 flex flex-col">
+      {/* Sub-header with title and stats */}
+      <div className="container max-w-5xl py-2 md:py-4 px-2 md:px-0 shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 md:gap-3">
             <div className="w-10 h-10 md:w-12 md:h-12 bg-gradient-to-br from-purple-500 to-blue-500 rounded-xl md:rounded-2xl flex items-center justify-center shadow-md">
@@ -494,9 +498,6 @@ export default function LexAI() {
               </p>
             </div>
           </div>
-          <Link href="/">
-            <Button variant="outline" size="sm" className="md:size-default">{copy.backHome}</Button>
-          </Link>
         </div>
 
         {/* Remaining days - desktop only */}
@@ -728,5 +729,6 @@ export default function LexAI() {
 
         </Card>
     </div>
+    </ClientLayout>
   );
 }

@@ -3,13 +3,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { APP_TITLE, getLoginUrl } from "@/const";
+import { getLoginUrl } from "@/const";
 import { trpc } from "@/lib/trpc";
-import { BookOpen, GraduationCap, Play, CheckCircle2, Clock, Sparkles, MessageSquare, Globe, LogOut } from "lucide-react";
+import { BookOpen, GraduationCap, Play, CheckCircle2, Clock } from "lucide-react";
 import { Link } from "wouter";
 import { format } from "date-fns";
 import { useEffect, useRef } from "react";
 import { useLanguage } from "@/contexts/LanguageContext";
+import ClientLayout from "@/components/ClientLayout";
 
 function formatSafeDate(
   value: string | number | Date | null | undefined,
@@ -23,8 +24,8 @@ function formatSafeDate(
 }
 
 export default function MyDashboard() {
-  const { user, isAuthenticated, loading, logout } = useAuth();
-  const { t, language, setLanguage, isRTL } = useLanguage();
+  const { user, isAuthenticated, loading } = useAuth();
+  const { t, isRTL } = useLanguage();
   const utils = trpc.useUtils();
   const didSyncRef = useRef(false);
 
@@ -102,71 +103,9 @@ export default function MyDashboard() {
     ? enrollments!.reduce((sum, e) => sum + (e.progressPercentage || 0), 0) / totalCourses
     : 0;
 
-  const handleLogout = async () => {
-    await logout();
-    window.location.href = '/';
-  };
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50" dir={isRTL ? 'rtl' : 'ltr'}>
-      {/* Header */}
-      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <Link href="/courses">
-              <div className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity">
-                <GraduationCap className="h-8 w-8 text-blue-600" />
-                <span className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                  {APP_TITLE}
-                </span>
-              </div>
-            </Link>
-            
-            <nav className="flex items-center gap-3">
-              {lexaiSubscription && (
-                <Link href="/lexai">
-                  <Button variant="ghost" size="sm">
-                    <Sparkles className="h-4 w-4" />
-                    {t('dashboard.nav.lexai')}
-                  </Button>
-                </Link>
-              )}
-
-              {recommendationsAccess?.hasSubscription && (
-                <Link href="/recommendations">
-                  <Button variant="ghost" size="sm">
-                    <MessageSquare className="h-4 w-4" />
-                    {t('dashboard.nav.rec')}
-                  </Button>
-                </Link>
-              )}
-
-              {/* Language Toggle */}
-              <button
-                onClick={() => setLanguage(language === 'ar' ? 'en' : 'ar')}
-                className="flex items-center gap-1 px-2 py-1.5 rounded-full text-xs font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition"
-              >
-                <Globe className="w-3.5 h-3.5" />
-                {language === 'ar' ? 'EN' : 'عربي'}
-              </button>
-  
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white font-semibold">
-                  {user?.name?.charAt(0).toUpperCase() || "U"}
-                </div>
-                <span className="text-sm font-medium hidden sm:inline">{user?.name}</span>
-              </div>
-
-              {/* Logout */}
-              <Button variant="ghost" size="sm" onClick={handleLogout} className="text-gray-500 hover:text-red-600">
-                <LogOut className="h-4 w-4" />
-              </Button>
-            </nav>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content */}
+    <ClientLayout>
+      <div className="bg-gradient-to-br from-blue-50 via-white to-purple-50 min-h-[calc(100vh-64px)]">
       <main className="container mx-auto px-4 py-8">
         <div className="space-y-8">
           {/* Welcome Section */}
@@ -353,6 +292,7 @@ export default function MyDashboard() {
           </div>
         </div>
       </main>
-    </div>
+      </div>
+    </ClientLayout>
   );
 }

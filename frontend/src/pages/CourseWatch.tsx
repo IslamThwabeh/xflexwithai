@@ -11,12 +11,12 @@ import {
   Play, 
   CheckCircle2, 
   Lock, 
-  ArrowLeft,
   ChevronRight 
 } from "lucide-react";
 import { Link, useRoute } from "wouter";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import ClientLayout from "@/components/ClientLayout";
 
 type EpisodeQuizAnswer = {
   questionId: number;
@@ -303,33 +303,17 @@ export default function CourseWatch() {
   const progress = enrollment.progressPercentage || 0;
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="border-b bg-white sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <Link href="/dashboard">
-              <Button variant="ghost" size="sm">
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Back to Dashboard
-              </Button>
-            </Link>
-            
-            <div className="flex items-center gap-4">
-              <div className="text-sm">
-                <span className="text-muted-foreground">Progress: </span>
-                <span className="font-semibold">{progress}%</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white font-semibold text-sm">
-                  {user?.name?.charAt(0).toUpperCase() || "U"}
-                </div>
-              </div>
-            </div>
+    <ClientLayout
+      subHeader={
+        <div className="border-t bg-white/60 px-4 py-2">
+          <div className="container mx-auto flex items-center justify-between text-sm">
+            <span className="font-medium truncate">{course.titleAr || course.titleEn}</span>
+            <span className="text-muted-foreground">Progress: <span className="font-semibold text-foreground">{progress}%</span></span>
           </div>
         </div>
-      </header>
-
+      }
+    >
+    <div className="min-h-[calc(100vh-100px)] bg-gray-50">
       <div className="container mx-auto px-4 py-8">
         <div className="grid lg:grid-cols-3 gap-8">
           {/* Main Content - Video Player */}
@@ -581,5 +565,6 @@ export default function CourseWatch() {
         </div>
       </div>
     </div>
+    </ClientLayout>
   );
 }
