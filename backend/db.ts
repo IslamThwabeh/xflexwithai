@@ -1875,6 +1875,30 @@ export async function hasUserPassedQuizLevel(userId: number, level: number): Pro
   return Boolean(record.isCompleted) || bestScore >= Number(quiz.passingScore || 50);
 }
 
+export async function getQuizAttemptsByUser(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const attempts = await db
+    .select({
+      attemptId: quizAttempts.id,
+      quizId: quizAttempts.quizId,
+      score: quizAttempts.score,
+      totalQuestions: quizAttempts.totalQuestions,
+      percentage: quizAttempts.percentage,
+      passed: quizAttempts.passed,
+      completedAt: quizAttempts.completedAt,
+      quizTitle: quizzes.title,
+      quizLevel: quizzes.level,
+    })
+    .from(quizAttempts)
+    .leftJoin(quizzes, eq(quizAttempts.quizId, quizzes.id))
+    .where(eq(quizAttempts.userId, userId))
+    .orderBy(desc(quizAttempts.completedAt));
+
+  return attempts;
+}
+
 export async function submitEpisodeQuizAttempt(
   userId: number,
   level: number,

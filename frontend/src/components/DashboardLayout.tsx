@@ -35,7 +35,8 @@ import {
   Sparkles,
   MessageSquare,
   Shield,
-  Headphones
+  Headphones,
+  ClipboardList
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -82,6 +83,7 @@ const menuSections = [
     label: "Support",
     items: [
       { icon: Headphones, label: "Support Chat", path: "/admin/support" },
+      { icon: ClipboardList, label: "Support Dashboard", path: "/support-panel" },
       { icon: Shield, label: "Roles", path: "/admin/roles" },
     ]
   }

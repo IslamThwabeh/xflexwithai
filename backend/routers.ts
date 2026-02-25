@@ -2297,7 +2297,7 @@ export const appRouter = router({
     assign: adminProcedure
       .input(z.object({
         userId: z.number(),
-        role: z.enum(['analyst', 'support', 'key_manager']),
+        role: z.enum(['analyst', 'support', 'key_manager', 'view_progress', 'view_recommendations', 'view_subscriptions', 'view_quizzes', 'client_lookup']),
       }))
       .mutation(async ({ ctx, input }) => {
         // Verify user exists
@@ -2317,7 +2317,7 @@ export const appRouter = router({
     remove: adminProcedure
       .input(z.object({
         userId: z.number(),
-        role: z.enum(['analyst', 'support', 'key_manager']),
+        role: z.enum(['analyst', 'support', 'key_manager', 'view_progress', 'view_recommendations', 'view_subscriptions', 'view_quizzes', 'client_lookup']),
       }))
       .mutation(async ({ input }) => {
         await db.removeRole(input.userId, input.role);
@@ -2341,6 +2341,112 @@ export const appRouter = router({
     myRoles: protectedProcedure.query(async ({ ctx }) => {
       if (!ctx.user) return [];
       return db.getUserRoles(ctx.user.id);
+    }),
+  }),
+
+  // =========================================================================
+  // Support Dashboard – permission-gated client data for support staff
+  // =========================================================================
+  supportDashboard: router({
+    // Search clients by email or name (requires 'client_lookup' or 'support' role, or admin)
+    searchClients: supportStaffProcedure
+      .input(z.object({ query: z.string().min(1).max(200) }))
+      .query(async ({ ctx, input }) => {
+        if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        const isAdmin = !!(ctx.user.email && await db.getAdminByEmail(ctx.user.email));
+        if (!isAdmin) {
+          const canSearch = await db.hasAnyRole(ctx.user.id, ['client_lookup', 'support']);
+          if (!canSearch) throw new TRPCError({ code: 'FORBIDDEN', message: 'Client lookup permission required' });
+        }
+        const allUsers = await db.getAllUsers();
+        const q = input.query.toLowerCase();
+        return (allUsers ?? []).filter((u: any) =>
+          u.email?.toLowerCase().includes(q) ||
+          u.name?.toLowerCase().includes(q) ||
+          u.phone?.includes(q)
+        ).slice(0, 50).map((u: any) => ({
+          id: u.id, email: u.email, name: u.name, phone: u.phone, createdAt: u.createdAt,
+        }));
+      }),
+
+    // Get client course progress & enrollments (requires 'view_progress' or admin)
+    clientProgress: supportStaffProcedure
+      .input(z.object({ userId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        const isAdmin = !!(ctx.user.email && await db.getAdminByEmail(ctx.user.email));
+        if (!isAdmin) {
+          const canView = await db.hasAnyRole(ctx.user.id, ['view_progress']);
+          if (!canView) throw new TRPCError({ code: 'FORBIDDEN', message: 'View progress permission required' });
+        }
+        const enrollmentsList = await db.getEnrollmentsByUserId(input.userId);
+        // For each enrollment, get episode-level progress
+        const result = [];
+        for (const enr of enrollmentsList) {
+          const epProgress = await db.getUserCourseProgress(input.userId, enr.courseId);
+          result.push({ ...enr, episodeProgress: epProgress });
+        }
+        return result;
+      }),
+
+    // Get client subscriptions & keys (requires 'view_subscriptions' or admin)
+    clientSubscriptions: supportStaffProcedure
+      .input(z.object({ userId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        const isAdmin = !!(ctx.user.email && await db.getAdminByEmail(ctx.user.email));
+        if (!isAdmin) {
+          const canView = await db.hasAnyRole(ctx.user.id, ['view_subscriptions']);
+          if (!canView) throw new TRPCError({ code: 'FORBIDDEN', message: 'View subscriptions permission required' });
+        }
+        const lexai = await db.getActiveLexaiSubscription(input.userId);
+        const recommendation = await db.getActiveRecommendationSubscription(input.userId);
+        const enrollmentsList = await db.getEnrollmentsByUserId(input.userId);
+        return {
+          lexai: lexai ?? null,
+          recommendation: recommendation ?? null,
+          enrollments: enrollmentsList,
+        };
+      }),
+
+    // Get client quiz progress (requires 'view_quizzes' or admin)
+    clientQuizProgress: supportStaffProcedure
+      .input(z.object({ userId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        const isAdmin = !!(ctx.user.email && await db.getAdminByEmail(ctx.user.email));
+        if (!isAdmin) {
+          const canView = await db.hasAnyRole(ctx.user.id, ['view_quizzes']);
+          if (!canView) throw new TRPCError({ code: 'FORBIDDEN', message: 'View quizzes permission required' });
+        }
+        // Get all quiz attempts for this user
+        return db.getQuizAttemptsByUser(input.userId);
+      }),
+
+    // Get recommendation feed (requires 'view_recommendations' or admin)
+    recommendationFeed: supportStaffProcedure
+      .query(async ({ ctx }) => {
+        if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        const isAdmin = !!(ctx.user.email && await db.getAdminByEmail(ctx.user.email));
+        if (!isAdmin) {
+          const canView = await db.hasAnyRole(ctx.user.id, ['view_recommendations']);
+          if (!canView) throw new TRPCError({ code: 'FORBIDDEN', message: 'View recommendations permission required' });
+        }
+        return db.getRecommendationMessagesFeed(0, 100);
+      }),
+
+    // Get my support permissions
+    myPermissions: supportStaffProcedure.query(async ({ ctx }) => {
+      if (!ctx.user) return { isAdmin: false, permissions: [] as string[] };
+      const isAdmin = !!(ctx.user.email && await db.getAdminByEmail(ctx.user.email));
+      if (isAdmin) {
+        return {
+          isAdmin: true,
+          permissions: ['support', 'client_lookup', 'view_progress', 'view_recommendations', 'view_subscriptions', 'view_quizzes', 'key_manager'],
+        };
+      }
+      const roles = await db.getUserRoles(ctx.user.id);
+      return { isAdmin: false, permissions: roles.map(r => r.role) };
     }),
   }),
 });

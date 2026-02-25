@@ -22,10 +22,15 @@ import { Shield, UserPlus, Trash2, Search } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
-const ROLE_LABELS: Record<string, { en: string; color: string }> = {
-  analyst: { en: "Analyst", color: "bg-purple-100 text-purple-800" },
-  support: { en: "Support", color: "bg-blue-100 text-blue-800" },
-  key_manager: { en: "Key Manager", color: "bg-amber-100 text-amber-800" },
+const ROLE_LABELS: Record<string, { en: string; color: string; group: string }> = {
+  analyst: { en: "Analyst", color: "bg-purple-100 text-purple-800", group: "Core Roles" },
+  support: { en: "Support", color: "bg-blue-100 text-blue-800", group: "Core Roles" },
+  key_manager: { en: "Key Manager", color: "bg-amber-100 text-amber-800", group: "Core Roles" },
+  view_progress: { en: "View Progress", color: "bg-green-100 text-green-800", group: "Support Permissions" },
+  view_recommendations: { en: "View Recommendations", color: "bg-pink-100 text-pink-800", group: "Support Permissions" },
+  view_subscriptions: { en: "View Subscriptions", color: "bg-cyan-100 text-cyan-800", group: "Support Permissions" },
+  view_quizzes: { en: "View Quizzes", color: "bg-orange-100 text-orange-800", group: "Support Permissions" },
+  client_lookup: { en: "Client Lookup", color: "bg-indigo-100 text-indigo-800", group: "Support Permissions" },
 };
 
 export default function AdminRoles() {
@@ -81,7 +86,7 @@ export default function AdminRoles() {
     }
     assignMutation.mutate({
       userId: id,
-      role: selectedRole as "analyst" | "support" | "key_manager",
+      role: selectedRole as "analyst" | "support" | "key_manager" | "view_progress" | "view_recommendations" | "view_subscriptions" | "view_quizzes" | "client_lookup",
     });
   };
 
@@ -100,7 +105,7 @@ export default function AdminRoles() {
               <Shield className="h-8 w-8" /> Role Management
             </h1>
             <p className="text-muted-foreground">
-              Assign and manage user roles: Analyst, Support, Key Manager
+              Assign and manage user roles: Analyst, Support, Key Manager, and support permissions
             </p>
           </div>
 
@@ -122,11 +127,20 @@ export default function AdminRoles() {
                     onChange={(e) => setSelectedRole(e.target.value)}
                     className="w-full border rounded-md px-3 py-2 text-sm"
                   >
-                    {Object.entries(ROLE_LABELS).map(([key, val]) => (
-                      <option key={key} value={key}>
-                        {val.en}
-                      </option>
-                    ))}
+                    <optgroup label="Core Roles">
+                      {Object.entries(ROLE_LABELS).filter(([, v]) => v.group === "Core Roles").map(([key, val]) => (
+                        <option key={key} value={key}>
+                          {val.en}
+                        </option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Support Permissions">
+                      {Object.entries(ROLE_LABELS).filter(([, v]) => v.group === "Support Permissions").map(([key, val]) => (
+                        <option key={key} value={key}>
+                          {val.en}
+                        </option>
+                      ))}
+                    </optgroup>
                   </select>
                 </div>
                 <div>
@@ -157,22 +171,40 @@ export default function AdminRoles() {
         </div>
 
         {/* Role summary cards */}
-        <div className="grid gap-4 md:grid-cols-3">
-          {roleCounts.map(({ role, count }) => (
-            <Card key={role}>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-lg">
-                  {ROLE_LABELS[role].en}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-3xl font-bold">{count}</p>
-                <p className="text-sm text-muted-foreground">
-                  {count === 1 ? "user" : "users"} with this role
-                </p>
-              </CardContent>
-            </Card>
-          ))}
+        <div>
+          <h2 className="text-lg font-semibold mb-3">Core Roles</h2>
+          <div className="grid gap-4 md:grid-cols-3 mb-6">
+            {roleCounts.filter(({ role }) => ROLE_LABELS[role]?.group === "Core Roles").map(({ role, count }) => (
+              <Card key={role}>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-lg">
+                    {ROLE_LABELS[role].en}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-3xl font-bold">{count}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {count === 1 ? "user" : "users"} with this role
+                  </p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+          <h2 className="text-lg font-semibold mb-3">Support Permissions</h2>
+          <div className="grid gap-4 md:grid-cols-5">
+            {roleCounts.filter(({ role }) => ROLE_LABELS[role]?.group === "Support Permissions").map(({ role, count }) => (
+              <Card key={role}>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm">
+                    {ROLE_LABELS[role].en}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-2xl font-bold">{count}</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         </div>
 
         {/* Role assignments table */}
@@ -236,7 +268,7 @@ export default function AdminRoles() {
                           onClick={() =>
                             removeMutation.mutate({
                               userId: r.userId,
-                              role: r.role as "analyst" | "support" | "key_manager",
+                              role: r.role as "analyst" | "support" | "key_manager" | "view_progress" | "view_recommendations" | "view_subscriptions" | "view_quizzes" | "client_lookup",
                             })
                           }
                           disabled={removeMutation.isPending}
