@@ -24,13 +24,9 @@ import Dashboard from "./pages/Dashboard";
 import Profile from "./pages/Profile";
 import AdminAnalytics from "./pages/AdminAnalytics";
 import AdminSettings from "./pages/AdminSettings";
-import AdminEnrollments from "./pages/AdminEnrollments";
 import QuizLevels from "./pages/QuizLevels";
 import TakeQuiz from "./pages/TakeQuiz";
 import QuizHistory from "./pages/QuizHistory";
-import AdminQuizDashboard from "./pages/AdminQuizDashboard";
-import AdminQuizUsers from "./pages/AdminQuizUsers";
-import AdminQuizQuestions from "./pages/AdminQuizQuestions";
 import AdminLexaiSubscriptions from "./pages/AdminLexaiSubscriptions";
 import AdminLexaiKeys from "./pages/AdminLexaiKeys";
 import AdminLexaiConversations from "./pages/AdminLexaiConversations";
@@ -102,11 +98,6 @@ function Router() {
           <AdminSettings />
         </AdminRoute>
       </Route>
-      <Route path={"/admin/enrollments"}>
-        <AdminRoute>
-          <AdminEnrollments />
-        </AdminRoute>
-      </Route>
       <Route path={"/admin/lexai/subscriptions"}>
         <AdminRoute>
           <AdminLexaiSubscriptions />
@@ -167,21 +158,6 @@ function Router() {
       <Route path="/quiz" component={QuizLevels} />
       <Route path="/quiz/:level" component={TakeQuiz} />
       <Route path="/quiz/:level/history" component={QuizHistory} />
-      <Route path="/admin/quiz">
-        <AdminRoute>
-          <AdminQuizDashboard />
-        </AdminRoute>
-      </Route>
-      <Route path="/admin/quiz/users">
-        <AdminRoute>
-          <AdminQuizUsers />
-        </AdminRoute>
-      </Route>
-      <Route path="/admin/quiz/questions">
-        <AdminRoute>
-          <AdminQuizQuestions />
-        </AdminRoute>
-      </Route>
       <Route path={"/"} component={Home} />
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />

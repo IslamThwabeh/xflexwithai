@@ -32,17 +32,12 @@ import {
   Users, 
   BookOpen, 
   Key, 
-  GraduationCap,
   MessageSquare,
   Shield,
   Headphones,
   ClipboardList,
   Briefcase,
-  BarChart3,
-  Settings,
   Globe,
-  HelpCircle,
-  FileQuestion,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -68,14 +63,6 @@ const menuSectionsDef: MenuSection[] = [
     ]
   },
   {
-    labelKey: "admin.sidebar.quizzes",
-    items: [
-      { icon: GraduationCap, labelKey: "admin.sidebar.quizDashboard", path: "/admin/quiz" },
-      { icon: Users, labelKey: "admin.sidebar.quizUsers", path: "/admin/quiz/users" },
-      { icon: FileQuestion, labelKey: "admin.sidebar.quizQuestions", path: "/admin/quiz/questions" },
-    ]
-  },
-  {
     labelKey: "admin.sidebar.lexai",
     items: [
       { icon: MessageSquare, labelKey: "admin.sidebar.conversations", path: "/admin/lexai/conversations" },
@@ -87,7 +74,6 @@ const menuSectionsDef: MenuSection[] = [
     labelKey: "admin.sidebar.users",
     items: [
       { icon: Users, labelKey: "admin.sidebar.usersList", path: "/admin/users" },
-      { icon: BookOpen, labelKey: "admin.sidebar.enrollments", path: "/admin/enrollments" },
     ]
   },
   {
