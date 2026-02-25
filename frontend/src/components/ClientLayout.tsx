@@ -11,6 +11,7 @@ import {
   Globe,
   LogOut,
   LayoutDashboard,
+  Headphones,
 } from "lucide-react";
 
 interface ClientLayoutProps {
@@ -47,6 +48,12 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
       label: t("dashboard.nav.rec"),
       icon: <MessageSquare className="h-4 w-4" />,
       match: "/recommendations",
+    },
+    {
+      href: "/support",
+      label: t("dashboard.nav.support"),
+      icon: <Headphones className="h-4 w-4" />,
+      match: "/support",
     },
   ];
 

@@ -23,7 +23,11 @@ import {
   userQuizProgress,
   // FlexAI imports
   flexaiSubscriptions, FlexaiSubscription, InsertFlexaiSubscription,
-  flexaiMessages, FlexaiMessage, InsertFlexaiMessage
+  flexaiMessages, FlexaiMessage, InsertFlexaiMessage,
+  // RBAC & Support Chat imports
+  userRoles, UserRole, InsertUserRole,
+  supportConversations, SupportConversation, InsertSupportConversation,
+  supportMessages, SupportMessage, InsertSupportMessage
 } from "../database/schema-sqlite.ts";
 import { ENV } from './_core/env';
 import { logger } from './_core/logger';
@@ -2237,4 +2241,260 @@ export async function getLexaiSubscriptionsWithUsers() {
     .from(lexaiSubscriptions)
     .leftJoin(users, eq(lexaiSubscriptions.userId, users.id))
     .orderBy(desc(lexaiSubscriptions.createdAt));
+}
+
+// ============================================================================
+// User Roles (RBAC)
+// ============================================================================
+
+export async function getUserRoles(userId: number): Promise<UserRole[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(userRoles).where(eq(userRoles.userId, userId));
+}
+
+export async function hasRole(userId: number, role: string): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  const rows = await db.select().from(userRoles)
+    .where(and(eq(userRoles.userId, userId), eq(userRoles.role, role)))
+    .limit(1);
+  return rows.length > 0;
+}
+
+export async function hasAnyRole(userId: number, roles: string[]): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  const rows = await db.select().from(userRoles)
+    .where(and(eq(userRoles.userId, userId), inArray(userRoles.role, roles)))
+    .limit(1);
+  return rows.length > 0;
+}
+
+export async function assignRole(userId: number, role: string, assignedBy?: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  // INSERT OR IGNORE for unique constraint
+  await db.insert(userRoles).values({ userId, role, assignedBy }).onConflictDoNothing();
+}
+
+export async function removeRole(userId: number, role: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(userRoles).where(
+    and(eq(userRoles.userId, userId), eq(userRoles.role, role))
+  );
+}
+
+export async function getUsersWithRole(role: string) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      roleId: userRoles.id,
+      userId: userRoles.userId,
+      role: userRoles.role,
+      assignedAt: userRoles.assignedAt,
+      userName: users.name,
+      userEmail: users.email,
+    })
+    .from(userRoles)
+    .leftJoin(users, eq(userRoles.userId, users.id))
+    .where(eq(userRoles.role, role))
+    .orderBy(desc(userRoles.assignedAt));
+}
+
+export async function getAllRoleAssignments() {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      roleId: userRoles.id,
+      userId: userRoles.userId,
+      role: userRoles.role,
+      assignedAt: userRoles.assignedAt,
+      userName: users.name,
+      userEmail: users.email,
+    })
+    .from(userRoles)
+    .leftJoin(users, eq(userRoles.userId, users.id))
+    .orderBy(desc(userRoles.assignedAt));
+}
+
+// ============================================================================
+// Support Chat
+// ============================================================================
+
+export async function getOrCreateSupportConversation(userId: number): Promise<SupportConversation> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // Try to find existing open conversation
+  const [existing] = await db.select().from(supportConversations)
+    .where(and(eq(supportConversations.userId, userId), eq(supportConversations.status, "open")))
+    .limit(1);
+
+  if (existing) return existing;
+
+  // Create new conversation
+  const [created] = await db.insert(supportConversations)
+    .values({ userId, status: "open" })
+    .returning();
+  return created;
+}
+
+export async function getSupportConversation(conversationId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const [conv] = await db.select().from(supportConversations)
+    .where(eq(supportConversations.id, conversationId)).limit(1);
+  return conv ?? null;
+}
+
+export async function getSupportConversationByUser(userId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const [conv] = await db.select().from(supportConversations)
+    .where(and(eq(supportConversations.userId, userId), eq(supportConversations.status, "open")))
+    .limit(1);
+  return conv ?? null;
+}
+
+export async function createSupportMessage(msg: {
+  conversationId: number;
+  senderId: number;
+  senderType: string;
+  content: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const [message] = await db.insert(supportMessages).values(msg).returning();
+
+  // Update conversation updatedAt
+  await db.update(supportConversations)
+    .set({ updatedAt: new Date().toISOString() })
+    .where(eq(supportConversations.id, msg.conversationId));
+
+  return message;
+}
+
+export async function getSupportMessages(conversationId: number, limit: number = 200) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(supportMessages)
+    .where(eq(supportMessages.conversationId, conversationId))
+    .orderBy(supportMessages.createdAt)
+    .limit(limit);
+}
+
+export async function getAllSupportConversations() {
+  const db = await getDb();
+  if (!db) return [];
+
+  const conversations = await db
+    .select({
+      id: supportConversations.id,
+      userId: supportConversations.userId,
+      status: supportConversations.status,
+      assignedTo: supportConversations.assignedTo,
+      createdAt: supportConversations.createdAt,
+      updatedAt: supportConversations.updatedAt,
+      closedAt: supportConversations.closedAt,
+      userName: users.name,
+      userEmail: users.email,
+    })
+    .from(supportConversations)
+    .leftJoin(users, eq(supportConversations.userId, users.id))
+    .orderBy(desc(supportConversations.updatedAt));
+
+  // Get last message + unread count for each conversation
+  const result = [];
+  for (const conv of conversations) {
+    const msgs = await db.select().from(supportMessages)
+      .where(eq(supportMessages.conversationId, conv.id))
+      .orderBy(desc(supportMessages.createdAt))
+      .limit(1);
+
+    const [unreadRow] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(supportMessages)
+      .where(
+        and(
+          eq(supportMessages.conversationId, conv.id),
+          eq(supportMessages.senderType, "client"),
+          eq(supportMessages.isRead, false)
+        )
+      );
+
+    result.push({
+      ...conv,
+      lastMessage: msgs[0] ?? null,
+      unreadCount: unreadRow?.count ?? 0,
+    });
+  }
+
+  return result;
+}
+
+export async function markSupportMessagesRead(conversationId: number, readerType: 'support' | 'admin') {
+  const db = await getDb();
+  if (!db) return;
+
+  // Mark client messages as read when support/admin reads
+  await db.update(supportMessages)
+    .set({ isRead: true })
+    .where(
+      and(
+        eq(supportMessages.conversationId, conversationId),
+        eq(supportMessages.senderType, "client"),
+        eq(supportMessages.isRead, false)
+      )
+    );
+}
+
+export async function markClientMessagesRead(conversationId: number) {
+  const db = await getDb();
+  if (!db) return;
+
+  // Mark support/admin messages as read when client reads
+  await db.update(supportMessages)
+    .set({ isRead: true })
+    .where(
+      and(
+        eq(supportMessages.conversationId, conversationId),
+        ne(supportMessages.senderType, "client"),
+        eq(supportMessages.isRead, false)
+      )
+    );
+}
+
+export async function closeSupportConversation(conversationId: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(supportConversations)
+    .set({ status: "closed", closedAt: new Date().toISOString(), updatedAt: new Date().toISOString() })
+    .where(eq(supportConversations.id, conversationId));
+}
+
+export async function getUnreadSupportCount(userId: number): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+
+  // Get user's conversation
+  const conv = await getSupportConversationByUser(userId);
+  if (!conv) return 0;
+
+  const [row] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(supportMessages)
+    .where(
+      and(
+        eq(supportMessages.conversationId, conv.id),
+        ne(supportMessages.senderType, "client"),
+        eq(supportMessages.isRead, false)
+      )
+    );
+
+  return row?.count ?? 0;
 }

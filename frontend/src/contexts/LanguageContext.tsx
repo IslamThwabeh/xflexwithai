@@ -154,6 +154,7 @@ const translations = {
     'dashboard.nav.quizzes': 'Quizzes',
     'dashboard.nav.lexai': 'LexAI',
     'dashboard.nav.rec': 'Recommendations Group',
+    'dashboard.nav.support': 'Support',
     'dashboard.quickActions.browseMore': 'Discover More',
     'dashboard.quickActions.discoverNewCourses': 'Explore more trading courses and expand your knowledge',
     'dashboard.quickActions.browseCourses': 'Browse All Courses',
@@ -269,6 +270,15 @@ const translations = {
     'common.edit': 'Edit',
     'common.create': 'Create',
     'common.back': 'Back',
+
+    // Support Chat
+    'support.title': 'Support Chat',
+    'support.subtitle': 'We\'re here to help',
+    'support.empty': 'No messages yet',
+    'support.emptyHint': 'Send a message to start a conversation with our support team',
+    'support.placeholder': 'Type your message...',
+    'support.agent': 'Support',
+    'support.admin': 'Admin',
 
     // Recommendations Page
     'rec.title': 'Recommendations Group',
@@ -495,6 +505,7 @@ const translations = {
     'dashboard.nav.quizzes': 'الاختبارات',
     'dashboard.nav.lexai': 'LexAI',
     'dashboard.nav.rec': 'قروب التوصيات',
+    'dashboard.nav.support': 'الدعم',
     'dashboard.quickActions.browseMore': 'استكشف المزيد',
     'dashboard.quickActions.discoverNewCourses': 'استكشف المزيد من دورات التداول وكسّع معلوماتك',
     'dashboard.quickActions.browseCourses': 'استعرض جميع الدورات',
@@ -610,6 +621,15 @@ const translations = {
     'common.edit': 'تعديل',
     'common.create': 'إنشاء',
     'common.back': 'رجوع',
+
+    // Support Chat
+    'support.title': 'الدعم الفني',
+    'support.subtitle': 'نحن هنا لمساعدتك',
+    'support.empty': 'لا توجد رسائل بعد',
+    'support.emptyHint': 'أرسل رسالة لبدء محادثة مع فريق الدعم',
+    'support.placeholder': 'اكتب رسالتك...',
+    'support.agent': 'الدعم',
+    'support.admin': 'المدير',
 
     // Recommendations Page
     'rec.title': 'قروب التوصيات',

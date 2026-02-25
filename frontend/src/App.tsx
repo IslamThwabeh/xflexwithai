@@ -36,6 +36,9 @@ import AdminLexaiKeys from "./pages/AdminLexaiKeys";
 import AdminLexaiConversations from "./pages/AdminLexaiConversations";
 import Recommendations from "./pages/Recommendations";
 import AdminRecommendations from "./pages/AdminRecommendations";
+import SupportChat from "./pages/SupportChat";
+import AdminSupport from "./pages/AdminSupport";
+import AdminRoles from "./pages/AdminRoles";
 
 function Router() {
   return (
@@ -122,6 +125,16 @@ function Router() {
           <AdminRecommendations />
         </AdminRoute>
       </Route>
+      <Route path={"/admin/support"}>
+        <AdminRoute>
+          <AdminSupport />
+        </AdminRoute>
+      </Route>
+      <Route path={"/admin/roles"}>
+        <AdminRoute>
+          <AdminRoles />
+        </AdminRoute>
+      </Route>
       <Route path={"/activate-key"} component={ActivateKey} />
       <Route path={"/course/:id"} component={CourseWatch} />
       <Route path={"/lexai"}>
@@ -132,6 +145,11 @@ function Router() {
       <Route path={"/recommendations"}>
         <ProtectedRoute>
           <Recommendations />
+        </ProtectedRoute>
+      </Route>
+      <Route path={"/support"}>
+        <ProtectedRoute>
+          <SupportChat />
         </ProtectedRoute>
       </Route>
       <Route path="/quiz" component={QuizLevels} />

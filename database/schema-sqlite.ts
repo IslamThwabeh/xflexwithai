@@ -400,6 +400,65 @@ export type UserQuizProgress = typeof userQuizProgress.$inferSelect;
 export type InsertUserQuizProgress = typeof userQuizProgress.$inferInsert;
 
 // ============================================================================
+// User Roles – RBAC for admin-assigned roles
+// ============================================================================
+
+/**
+ * Stores role assignments for users.
+ * Roles: 'analyst' (handles recommendations), 'support' (handles support chats),
+ *        'key_manager' (generates registration keys – a special support member)
+ * Admin is NOT stored here; admin access is via the separate admins table.
+ */
+export const userRoles = sqliteTable("userRoles", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  userId: integer("userId").notNull(),
+  role: text("role", { length: 30 }).notNull(), // 'analyst' | 'support' | 'key_manager'
+  assignedAt: text("assignedAt").default("CURRENT_TIMESTAMP").notNull(),
+  assignedBy: integer("assignedBy"), // admin id who assigned
+}, (table) => ({
+  uniqueUserRole: unique("unique_user_role").on(table.userId, table.role),
+}));
+
+export type UserRole = typeof userRoles.$inferSelect;
+export type InsertUserRole = typeof userRoles.$inferInsert;
+
+// ============================================================================
+// Support Chat – private 1-on-1 client↔support conversations
+// ============================================================================
+
+/**
+ * Each client has at most one open conversation at a time.
+ */
+export const supportConversations = sqliteTable("supportConversations", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  userId: integer("userId").notNull(),
+  status: text("status", { length: 20 }).default("open").notNull(), // 'open' | 'closed'
+  assignedTo: integer("assignedTo"), // support user id handling this conversation
+  createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
+  updatedAt: text("updatedAt").default("CURRENT_TIMESTAMP").notNull(),
+  closedAt: text("closedAt"),
+});
+
+export type SupportConversation = typeof supportConversations.$inferSelect;
+export type InsertSupportConversation = typeof supportConversations.$inferInsert;
+
+/**
+ * Messages in a support conversation.
+ */
+export const supportMessages = sqliteTable("supportMessages", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  conversationId: integer("conversationId").notNull(),
+  senderId: integer("senderId").notNull(),
+  senderType: text("senderType", { length: 20 }).notNull(), // 'client' | 'support' | 'admin'
+  content: text("content").notNull(),
+  isRead: integer("isRead", { mode: 'boolean' }).default(false).notNull(),
+  createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
+});
+
+export type SupportMessage = typeof supportMessages.$inferSelect;
+export type InsertSupportMessage = typeof supportMessages.$inferInsert;
+
+// ============================================================================
 // Relations
 // ============================================================================
 
@@ -583,5 +642,27 @@ export const userQuizProgressRelations = relations(userQuizProgress, ({ one }) =
   quiz: one(quizzes, {
     fields: [userQuizProgress.quizId],
     references: [quizzes.id],
+  }),
+}));
+
+export const userRolesRelations = relations(userRoles, ({ one }) => ({
+  user: one(users, {
+    fields: [userRoles.userId],
+    references: [users.id],
+  }),
+}));
+
+export const supportConversationsRelations = relations(supportConversations, ({ one, many }) => ({
+  user: one(users, {
+    fields: [supportConversations.userId],
+    references: [users.id],
+  }),
+  messages: many(supportMessages),
+}));
+
+export const supportMessagesRelations = relations(supportMessages, ({ one }) => ({
+  conversation: one(supportConversations, {
+    fields: [supportMessages.conversationId],
+    references: [supportConversations.id],
   }),
 }));

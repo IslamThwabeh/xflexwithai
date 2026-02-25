@@ -55,6 +55,34 @@ const userOnlyProcedure = protectedProcedure.use(async ({ ctx, next }) => {
 
   return next();
 });
+
+// Support/Admin staff procedure – checks if user has 'support' or 'key_manager' role, or is admin
+const supportStaffProcedure = protectedProcedure.use(async ({ ctx, next }) => {
+  if (!ctx.user?.email) {
+    throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Not authenticated' });
+  }
+  const admin = await db.getAdminByEmail(ctx.user.email);
+  if (admin) return next({ ctx: { ...ctx, admin, staffRole: 'admin' as const } });
+  const isSupport = await db.hasAnyRole(ctx.user.id, ['support', 'key_manager']);
+  if (!isSupport) {
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'Support staff access required' });
+  }
+  return next({ ctx: { ...ctx, admin: null, staffRole: 'support' as const } });
+});
+
+// Admin-or-role procedure factory
+const adminOrRoleProcedure = (roles: string[]) => protectedProcedure.use(async ({ ctx, next }) => {
+  if (!ctx.user?.email) {
+    throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Not authenticated' });
+  }
+  const admin = await db.getAdminByEmail(ctx.user.email);
+  if (admin) return next({ ctx: { ...ctx, admin } });
+  const has = await db.hasAnyRole(ctx.user.id, roles);
+  if (!has) {
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'Access denied' });
+  }
+  return next({ ctx: { ...ctx, admin: null } });
+});
 const ensureLexaiAccess = async (ctx: { user: { id: number; email?: string | null } | null }) => {
   if (!ctx.user) {
     throw new TRPCError({ code: "UNAUTHORIZED", message: "Not authenticated" });
@@ -2166,6 +2194,155 @@ export const appRouter = router({
       });
       return { success: true };
     }),
+
+  // =========================================================================
+  // Support Chat – real-time 1-on-1 client↔support messaging
+  // =========================================================================
+  supportChat: router({
+    // Client: get or create their conversation & messages
+    myConversation: protectedProcedure.query(async ({ ctx }) => {
+      if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+      const conv = await db.getOrCreateSupportConversation(ctx.user.id);
+      const messages = await db.getSupportMessages(conv.id);
+      // Mark support/admin replies as read
+      await db.markClientMessagesRead(conv.id);
+      return { conversation: conv, messages };
+    }),
+
+    // Client: send a message
+    send: protectedProcedure
+      .input(z.object({ content: z.string().min(1).max(5000) }))
+      .mutation(async ({ ctx, input }) => {
+        if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        const conv = await db.getOrCreateSupportConversation(ctx.user.id);
+        const msg = await db.createSupportMessage({
+          conversationId: conv.id,
+          senderId: ctx.user.id,
+          senderType: 'client',
+          content: input.content,
+        });
+        return msg;
+      }),
+
+    // Client: unread count badge
+    unreadCount: protectedProcedure.query(async ({ ctx }) => {
+      if (!ctx.user) return { count: 0 };
+      const count = await db.getUnreadSupportCount(ctx.user.id);
+      return { count };
+    }),
+
+    // Support/Admin: list all conversations with last message & unread counts
+    listAll: supportStaffProcedure.query(async () => {
+      return db.getAllSupportConversations();
+    }),
+
+    // Support/Admin: get messages of a specific conversation
+    getMessages: supportStaffProcedure
+      .input(z.object({ conversationId: z.number() }))
+      .query(async ({ input }) => {
+        const conv = await db.getSupportConversation(input.conversationId);
+        if (!conv) throw new TRPCError({ code: 'NOT_FOUND', message: 'Conversation not found' });
+        await db.markSupportMessagesRead(input.conversationId, 'support');
+        const messages = await db.getSupportMessages(input.conversationId);
+        return { conversation: conv, messages };
+      }),
+
+    // Support/Admin: reply to a conversation
+    reply: supportStaffProcedure
+      .input(z.object({
+        conversationId: z.number(),
+        content: z.string().min(1).max(5000),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        const conv = await db.getSupportConversation(input.conversationId);
+        if (!conv) throw new TRPCError({ code: 'NOT_FOUND', message: 'Conversation not found' });
+
+        const isAdmin = ctx.user.email ? !!(await db.getAdminByEmail(ctx.user.email)) : false;
+        const msg = await db.createSupportMessage({
+          conversationId: input.conversationId,
+          senderId: ctx.user.id,
+          senderType: isAdmin ? 'admin' : 'support',
+          content: input.content,
+        });
+        return msg;
+      }),
+
+    // Support/Admin: close a conversation
+    close: supportStaffProcedure
+      .input(z.object({ conversationId: z.number() }))
+      .mutation(async ({ input }) => {
+        await db.closeSupportConversation(input.conversationId);
+        return { success: true };
+      }),
+  }),
+
+  // =========================================================================
+  // Role Management (admin only)
+  // =========================================================================
+  roles: router({
+    // List all role assignments
+    list: adminProcedure.query(async () => {
+      return db.getAllRoleAssignments();
+    }),
+
+    // List users with a specific role
+    byRole: adminProcedure
+      .input(z.object({ role: z.string() }))
+      .query(async ({ input }) => {
+        return db.getUsersWithRole(input.role);
+      }),
+
+    // Assign a role to a user
+    assign: adminProcedure
+      .input(z.object({
+        userId: z.number(),
+        role: z.enum(['analyst', 'support', 'key_manager']),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        // Verify user exists
+        const user = await db.getUserById(input.userId);
+        if (!user) throw new TRPCError({ code: 'NOT_FOUND', message: 'User not found' });
+        await db.assignRole(input.userId, input.role, (ctx as any).admin?.id);
+
+        // Keep canPublishRecommendations in sync for backward compat
+        if (input.role === 'analyst') {
+          await db.setRecommendationPublisher(input.userId, true);
+        }
+
+        return { success: true };
+      }),
+
+    // Remove a role from a user
+    remove: adminProcedure
+      .input(z.object({
+        userId: z.number(),
+        role: z.enum(['analyst', 'support', 'key_manager']),
+      }))
+      .mutation(async ({ input }) => {
+        await db.removeRole(input.userId, input.role);
+
+        // Keep canPublishRecommendations in sync for backward compat
+        if (input.role === 'analyst') {
+          await db.setRecommendationPublisher(input.userId, false);
+        }
+
+        return { success: true };
+      }),
+
+    // Get roles for a specific user
+    forUser: adminProcedure
+      .input(z.object({ userId: z.number() }))
+      .query(async ({ input }) => {
+        return db.getUserRoles(input.userId);
+      }),
+
+    // Client: get my own roles (for UI gating)
+    myRoles: protectedProcedure.query(async ({ ctx }) => {
+      if (!ctx.user) return [];
+      return db.getUserRoles(ctx.user.id);
+    }),
+  }),
 });
 
 export type AppRouter = typeof appRouter;

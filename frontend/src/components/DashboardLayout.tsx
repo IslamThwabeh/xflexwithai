@@ -33,7 +33,9 @@ import {
   Key, 
   GraduationCap,
   Sparkles,
-  MessageSquare
+  MessageSquare,
+  Shield,
+  Headphones
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -74,6 +76,13 @@ const menuSections = [
     label: "Recommendations",
     items: [
       { icon: MessageSquare, label: "Group Management", path: "/admin/recommendations" },
+    ]
+  },
+  {
+    label: "Support",
+    items: [
+      { icon: Headphones, label: "Support Chat", path: "/admin/support" },
+      { icon: Shield, label: "Roles", path: "/admin/roles" },
     ]
   }
 ];
