@@ -5,7 +5,7 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { APP_TITLE, getLoginUrl } from "@/const";
 import { trpc } from "@/lib/trpc";
-import { BookOpen, GraduationCap, Play, CheckCircle2, Clock, ArrowLeft, ArrowRight, Sparkles, MessageSquare, Globe } from "lucide-react";
+import { BookOpen, GraduationCap, Play, CheckCircle2, Clock, Sparkles, MessageSquare, Globe, LogOut } from "lucide-react";
 import { Link } from "wouter";
 import { format } from "date-fns";
 import { useEffect, useRef } from "react";
@@ -23,7 +23,7 @@ function formatSafeDate(
 }
 
 export default function MyDashboard() {
-  const { user, isAuthenticated, loading } = useAuth();
+  const { user, isAuthenticated, loading, logout } = useAuth();
   const { t, language, setLanguage, isRTL } = useLanguage();
   const utils = trpc.useUtils();
   const didSyncRef = useRef(false);
@@ -102,7 +102,10 @@ export default function MyDashboard() {
     ? enrollments!.reduce((sum, e) => sum + (e.progressPercentage || 0), 0) / totalCourses
     : 0;
 
-  const BackArrow = isRTL ? ArrowRight : ArrowLeft;
+  const handleLogout = async () => {
+    await logout();
+    window.location.href = '/';
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50" dir={isRTL ? 'rtl' : 'ltr'}>
@@ -110,7 +113,7 @@ export default function MyDashboard() {
       <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
-            <Link href="/">
+            <Link href="/courses">
               <div className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity">
                 <GraduationCap className="h-8 w-8 text-blue-600" />
                 <span className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
@@ -120,20 +123,6 @@ export default function MyDashboard() {
             </Link>
             
             <nav className="flex items-center gap-3">
-              <Link href="/">
-                <Button variant="ghost" size="sm">
-                  <BackArrow className="h-4 w-4" />
-                  {t('dashboard.nav.home')}
-                </Button>
-              </Link>
-			  
-              <Link href="/quiz">
-                <Button variant="ghost" size="sm">
-                  <BookOpen className="h-4 w-4" />
-                  {t('dashboard.nav.quizzes')}
-                </Button>
-              </Link>
-
               {lexaiSubscription && (
                 <Link href="/lexai">
                   <Button variant="ghost" size="sm">
@@ -167,6 +156,11 @@ export default function MyDashboard() {
                 </div>
                 <span className="text-sm font-medium hidden sm:inline">{user?.name}</span>
               </div>
+
+              {/* Logout */}
+              <Button variant="ghost" size="sm" onClick={handleLogout} className="text-gray-500 hover:text-red-600">
+                <LogOut className="h-4 w-4" />
+              </Button>
             </nav>
           </div>
         </div>
