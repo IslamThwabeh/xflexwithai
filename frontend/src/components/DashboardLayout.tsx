@@ -286,16 +286,16 @@ function DashboardLayoutContent({
             </div>
           </SidebarHeader>
 
-          <SidebarContent className="gap-0">
+          <SidebarContent>
             {menuSectionsDef.map((section, sectionIndex) => (
-              <SidebarGroup key={sectionIndex}>
+              <SidebarGroup key={sectionIndex} className="shrink-0 py-1">
                 {!isCollapsed && (
-                  <SidebarGroupLabel className="text-xs font-semibold text-muted-foreground px-2 py-2">
+                  <SidebarGroupLabel className="h-auto text-[11px] uppercase tracking-wider font-semibold text-muted-foreground/70 px-3 pb-1">
                     {t(section.labelKey)}
                   </SidebarGroupLabel>
                 )}
                 <SidebarGroupContent>
-                  <SidebarMenu className="px-2 py-1">
+                  <SidebarMenu>
                     {section.items.map(item => {
                       const isActive = location === item.path;
                       const label = t(item.labelKey);
@@ -305,7 +305,7 @@ function DashboardLayoutContent({
                             isActive={isActive}
                             onClick={() => setLocation(item.path)}
                             tooltip={label}
-                            className={`h-10 transition-all font-normal ${
+                            className={`transition-all font-normal ${
                               isActive ? "bg-primary/10 text-primary font-medium" : ""
                             }`}
                           >
