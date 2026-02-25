@@ -56,16 +56,19 @@ const userOnlyProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   return next();
 });
 
-// Support/Admin staff procedure – checks if user has 'support' or 'key_manager' role, or is admin
+// Staff procedure – checks if user has any staff role (support, analyst, permissions), or is admin
 const supportStaffProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   if (!ctx.user?.email) {
     throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Not authenticated' });
   }
   const admin = await db.getAdminByEmail(ctx.user.email);
   if (admin) return next({ ctx: { ...ctx, admin, staffRole: 'admin' as const } });
-  const isSupport = await db.hasAnyRole(ctx.user.id, ['support', 'key_manager']);
-  if (!isSupport) {
-    throw new TRPCError({ code: 'FORBIDDEN', message: 'Support staff access required' });
+  const isStaff = await db.hasAnyRole(ctx.user.id, [
+    'support', 'key_manager', 'analyst',
+    'client_lookup', 'view_progress', 'view_recommendations', 'view_subscriptions', 'view_quizzes',
+  ]);
+  if (!isStaff) {
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'Staff access required' });
   }
   return next({ ctx: { ...ctx, admin: null, staffRole: 'support' as const } });
 });
@@ -2435,18 +2438,25 @@ export const appRouter = router({
         return db.getRecommendationMessagesFeed(0, 100);
       }),
 
-    // Get my support permissions
+    // Get my staff permissions (support + analyst)
     myPermissions: supportStaffProcedure.query(async ({ ctx }) => {
-      if (!ctx.user) return { isAdmin: false, permissions: [] as string[] };
+      if (!ctx.user) return { isAdmin: false, isAnalyst: false, permissions: [] as string[] };
       const isAdmin = !!(ctx.user.email && await db.getAdminByEmail(ctx.user.email));
       if (isAdmin) {
         return {
           isAdmin: true,
-          permissions: ['support', 'client_lookup', 'view_progress', 'view_recommendations', 'view_subscriptions', 'view_quizzes', 'key_manager'],
+          isAnalyst: true,
+          permissions: ['support', 'analyst', 'client_lookup', 'view_progress', 'view_recommendations', 'view_subscriptions', 'view_quizzes', 'key_manager'],
         };
       }
       const roles = await db.getUserRoles(ctx.user.id);
-      return { isAdmin: false, permissions: roles.map(r => r.role) };
+      const roleNames = roles.map(r => r.role);
+      const access = await db.getUserRecommendationsAccess(ctx.user.id);
+      return {
+        isAdmin: false,
+        isAnalyst: access.canPublish || roleNames.includes('analyst'),
+        permissions: roleNames,
+      };
     }),
   }),
 });

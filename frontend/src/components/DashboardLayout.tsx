@@ -36,7 +36,8 @@ import {
   MessageSquare,
   Shield,
   Headphones,
-  ClipboardList
+  ClipboardList,
+  Briefcase
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -84,6 +85,7 @@ const menuSections = [
     items: [
       { icon: Headphones, label: "Support Chat", path: "/admin/support" },
       { icon: ClipboardList, label: "Support Dashboard", path: "/support-panel" },
+      { icon: Briefcase, label: "Staff Portal", path: "/staff" },
       { icon: Shield, label: "Roles", path: "/admin/roles" },
     ]
   }
