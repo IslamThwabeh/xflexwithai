@@ -1,4 +1,5 @@
 import DashboardLayout from "@/components/DashboardLayout";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -76,6 +77,8 @@ export default function AdminEpisodes() {
 
   const uploadVideo = trpc.upload.video.useMutation();
 
+  const { t } = useLanguage();
+
   const [formData, setFormData] = useState({
     titleEn: "",
     titleAr: "",
@@ -127,7 +130,7 @@ export default function AdminEpisodes() {
   };
 
   const handleDelete = (id: number) => {
-    if (confirm("Are you sure you want to delete this episode?")) {
+    if (confirm(t('admin.episodes.deleteConfirm'))) {
       deleteMutation.mutate({ id });
     }
   };
@@ -136,11 +139,11 @@ export default function AdminEpisodes() {
     return (
       <DashboardLayout>
         <div className="text-center py-12">
-          <p className="text-muted-foreground">Invalid course ID</p>
+          <p className="text-muted-foreground">{t('admin.episodes.invalidCourse')}</p>
           <Link href="/admin/courses">
             <Button className="mt-4">
               <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to Courses
+              {t('admin.episodes.backToCourses')}
             </Button>
           </Link>
         </div>
@@ -155,32 +158,32 @@ export default function AdminEpisodes() {
           <Link href="/admin/courses">
             <Button variant="outline" size="sm">
               <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to Courses
+              {t('admin.episodes.backToCourses')}
             </Button>
           </Link>
           <div className="flex-1">
             <h1 className="text-3xl font-bold">{course?.titleEn || "Loading..."}</h1>
-            <p className="text-muted-foreground">Manage course episodes</p>
+            <p className="text-muted-foreground">{t('admin.episodes.subtitle')}</p>
           </div>
           <Button onClick={() => { resetForm(); setEditingEpisode(null); setIsDialogOpen(true); }}>
             <Plus className="mr-2 h-4 w-4" />
-            Add Episode
+            {t('admin.episodes.addEpisode')}
           </Button>
         </div>
 
         {isLoading ? (
-          <p>Loading episodes...</p>
+          <p>{t('admin.loading')}</p>
         ) : !episodes || episodes.length === 0 ? (
           <Card>
             <CardContent className="py-10 text-center">
               <Video className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
-              <h3 className="text-lg font-semibold mb-2">No episodes yet</h3>
+              <h3 className="text-lg font-semibold mb-2">{t('admin.episodes.noEpisodes')}</h3>
               <p className="text-muted-foreground mb-4">
-                Create your first episode to start building your course content
+                {t('admin.episodes.createFirstDesc')}
               </p>
               <Button onClick={() => { resetForm(); setEditingEpisode(null); setIsDialogOpen(true); }}>
                 <Plus className="mr-2 h-4 w-4" />
-                Create First Episode
+                {t('admin.episodes.createFirst')}
               </Button>
             </CardContent>
           </Card>
@@ -201,7 +204,7 @@ export default function AdminEpisodes() {
                             <CardTitle className="text-lg">{episode.titleEn}</CardTitle>
                             {episode.isFree && (
                               <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full font-semibold">
-                                FREE
+                                {t('admin.episodes.free')}
                               </span>
                             )}
                           </div>
@@ -218,7 +221,7 @@ export default function AdminEpisodes() {
                             {episode.videoUrl && (
                               <span className="flex items-center gap-1">
                                 <Video className="h-3 w-3" />
-                                Video available
+                                {t('admin.episodes.videoAvailable')}
                               </span>
                             )}
                           </div>
@@ -257,7 +260,7 @@ export default function AdminEpisodes() {
                         onClick={() => setPreviewingEpisode(null)}
                         className="mt-2"
                       >
-                        Close Preview
+                        {t('admin.episodes.closePreview')}
                       </Button>
                     </CardContent>
                   )}
@@ -270,15 +273,15 @@ export default function AdminEpisodes() {
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>{editingEpisode ? "Edit Episode" : "Create New Episode"}</DialogTitle>
+              <DialogTitle>{editingEpisode ? t('admin.episodes.editEpisode') : t('admin.episodes.createEpisode')}</DialogTitle>
               <DialogDescription>
-                Fill in the episode details in both English and Arabic
+                {t('admin.episodes.fillBoth')}
               </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="titleEn">Title (English)</Label>
+                  <Label htmlFor="titleEn">{t('admin.episodes.titleEn')}</Label>
                   <Input
                     id="titleEn"
                     value={formData.titleEn}
@@ -288,7 +291,7 @@ export default function AdminEpisodes() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="titleAr">Title (Arabic)</Label>
+                  <Label htmlFor="titleAr">{t('admin.episodes.titleAr')}</Label>
                   <Input
                     id="titleAr"
                     value={formData.titleAr}
@@ -302,7 +305,7 @@ export default function AdminEpisodes() {
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="descriptionEn">Description (English)</Label>
+                  <Label htmlFor="descriptionEn">{t('admin.episodes.descEn')}</Label>
                   <Textarea
                     id="descriptionEn"
                     value={formData.descriptionEn}
@@ -312,7 +315,7 @@ export default function AdminEpisodes() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="descriptionAr">Description (Arabic)</Label>
+                  <Label htmlFor="descriptionAr">{t('admin.episodes.descAr')}</Label>
                   <Textarea
                     id="descriptionAr"
                     value={formData.descriptionAr}
@@ -363,7 +366,7 @@ export default function AdminEpisodes() {
 
               <div className="grid gap-4 md:grid-cols-3">
                 <div className="space-y-2">
-                  <Label htmlFor="duration">Duration (minutes)</Label>
+                  <Label htmlFor="duration">{t('admin.episodes.duration')}</Label>
                   <Input
                     id="duration"
                     type="number"
@@ -373,7 +376,7 @@ export default function AdminEpisodes() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="order">Episode Order</Label>
+                  <Label htmlFor="order">{t('admin.episodes.order')}</Label>
                   <Input
                     id="order"
                     type="number"
@@ -384,7 +387,7 @@ export default function AdminEpisodes() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="isFree">Access Type</Label>
+                  <Label htmlFor="isFree">{t('admin.episodes.accessType')}</Label>
                   <div className="flex items-center space-x-2 h-10">
                     <Switch
                       id="isFree"
@@ -392,7 +395,7 @@ export default function AdminEpisodes() {
                       onCheckedChange={(checked) => setFormData({ ...formData, isFree: checked })}
                     />
                     <Label htmlFor="isFree" className="cursor-pointer">
-                      {formData.isFree ? "Free Preview" : "Premium"}
+                      {formData.isFree ? t('admin.episodes.freePreview') : t('admin.episodes.premium')}
                     </Label>
                   </div>
                 </div>
@@ -400,10 +403,10 @@ export default function AdminEpisodes() {
 
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
-                  Cancel
+                  {t('admin.episodes.cancel')}
                 </Button>
                 <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
-                  {createMutation.isPending || updateMutation.isPending ? "Saving..." : (editingEpisode ? "Update" : "Create")}
+                  {createMutation.isPending || updateMutation.isPending ? t('admin.episodes.saving') : (editingEpisode ? t('admin.episodes.update') : t('admin.episodes.create'))}
                 </Button>
               </DialogFooter>
             </form>

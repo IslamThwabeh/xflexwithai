@@ -5,6 +5,7 @@ import {
   AlertCircle, BookOpen, Award, Activity 
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { apiFetch } from "@/lib/apiBase";
 
 interface QuizStats {
@@ -41,6 +42,7 @@ export default function AdminQuizDashboard() {
   const [stats, setStats] = useState<QuizStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const { t } = useLanguage();
 
   useEffect(() => {
     fetchStats();
@@ -67,7 +69,7 @@ export default function AdminQuizDashboard() {
         <div className="bg-gray-50 flex items-center justify-center py-12">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-            <p className="mt-4 text-gray-600">Loading statistics...</p>
+            <p className="mt-4 text-gray-600">{t('admin.quiz.loadingStats')}</p>
           </div>
         </div>
       </DashboardLayout>
@@ -79,7 +81,7 @@ export default function AdminQuizDashboard() {
       <DashboardLayout>
         <div className="bg-gray-50 flex items-center justify-center py-12">
           <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md">
-            <p className="text-red-800 text-center">{error || "Failed to load data"}</p>
+            <p className="text-red-800 text-center">{error || t('admin.quiz.failedToLoad')}</p>
           </div>
         </div>
       </DashboardLayout>
@@ -92,8 +94,8 @@ export default function AdminQuizDashboard() {
         <div className="container mx-auto px-4 max-w-7xl">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">Quiz Management Dashboard</h1>
-          <p className="text-gray-600">Monitor quiz performance and student progress</p>
+          <h1 className="text-3xl font-bold mb-2">{t('admin.quiz.dashboard')}</h1>
+          <p className="text-gray-600">{t('admin.quiz.dashSubtitle')}</p>
         </div>
 
         {/* Quick Actions */}
@@ -101,24 +103,24 @@ export default function AdminQuizDashboard() {
           <Link href="/admin/quiz/users">
             <button className="w-full bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition text-left">
               <Users className="w-8 h-8 text-blue-600 mb-2" />
-              <h3 className="font-semibold text-lg">User Progress</h3>
-              <p className="text-sm text-gray-600">View all students</p>
+              <h3 className="font-semibold text-lg">{t('admin.quiz.userProgress')}</h3>
+              <p className="text-sm text-gray-600">{t('admin.quiz.viewStudents')}</p>
             </button>
           </Link>
 
           <Link href="/admin/quiz/questions">
             <button className="w-full bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition text-left">
               <BookOpen className="w-8 h-8 text-purple-600 mb-2" />
-              <h3 className="font-semibold text-lg">Manage Questions</h3>
-              <p className="text-sm text-gray-600">Edit quiz content</p>
+              <h3 className="font-semibold text-lg">{t('admin.quiz.manageQuestions')}</h3>
+              <p className="text-sm text-gray-600">{t('admin.quiz.editContent')}</p>
             </button>
           </Link>
 
           <Link href="/admin/quiz/analytics">
             <button className="w-full bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition text-left">
               <BarChart3 className="w-8 h-8 text-green-600 mb-2" />
-              <h3 className="font-semibold text-lg">Analytics</h3>
-              <p className="text-sm text-gray-600">Detailed reports</p>
+              <h3 className="font-semibold text-lg">{t('admin.quiz.analytics')}</h3>
+              <p className="text-sm text-gray-600">{t('admin.quiz.detailedReports')}</p>
             </button>
           </Link>
         </div>
@@ -127,7 +129,7 @@ export default function AdminQuizDashboard() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <div className="bg-white rounded-lg shadow-md p-6">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-gray-600">Total Attempts</span>
+              <span className="text-gray-600">{t('admin.quiz.totalAttempts')}</span>
               <Activity className="w-5 h-5 text-blue-500" />
             </div>
             <div className="text-3xl font-bold text-blue-600">{stats.totalAttempts}</div>
@@ -135,7 +137,7 @@ export default function AdminQuizDashboard() {
 
           <div className="bg-white rounded-lg shadow-md p-6">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-gray-600">Active Users</span>
+              <span className="text-gray-600">{t('admin.quiz.activeUsers')}</span>
               <Users className="w-5 h-5 text-purple-500" />
             </div>
             <div className="text-3xl font-bold text-purple-600">{stats.totalUsers}</div>
@@ -143,7 +145,7 @@ export default function AdminQuizDashboard() {
 
           <div className="bg-white rounded-lg shadow-md p-6">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-gray-600">Average Score</span>
+              <span className="text-gray-600">{t('admin.quiz.avgScore')}</span>
               <Award className="w-5 h-5 text-yellow-500" />
             </div>
             <div className="text-3xl font-bold text-yellow-600">{stats.averageScore}%</div>
@@ -151,7 +153,7 @@ export default function AdminQuizDashboard() {
 
           <div className="bg-white rounded-lg shadow-md p-6">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-gray-600">Pass Rate</span>
+              <span className="text-gray-600">{t('admin.quiz.passRate')}</span>
               <TrendingUp className="w-5 h-5 text-green-500" />
             </div>
             <div className="text-3xl font-bold text-green-600">{stats.passRate}%</div>
@@ -161,25 +163,25 @@ export default function AdminQuizDashboard() {
         {/* Level Performance */}
         <div className="bg-white rounded-lg shadow-md mb-8">
           <div className="p-6 border-b">
-            <h2 className="text-xl font-bold">Performance by Level</h2>
+            <h2 className="text-xl font-bold">{t('admin.quiz.performByLevel')}</h2>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Level</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Title</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Attempts</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Avg Score</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Pass Rate</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Completion</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('admin.quiz.level')}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('admin.quiz.title')}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('admin.quiz.attempts')}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('admin.quiz.avgScoreLabel')}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('admin.quiz.passRateLabel')}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('admin.quiz.completion')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {stats.levelStats.map((level) => (
                   <tr key={level.level} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="font-medium">Level {level.level}</span>
+                      <span className="font-medium">{t('admin.quiz.level')} {level.level}</span>
                     </td>
                     <td className="px-6 py-4">
                       <span className="text-gray-900">{level.title}</span>
@@ -229,30 +231,30 @@ export default function AdminQuizDashboard() {
             <div className="p-6 border-b">
               <div className="flex items-center gap-2">
                 <AlertCircle className="w-5 h-5 text-orange-500" />
-                <h2 className="text-xl font-bold">Difficult Questions</h2>
+                <h2 className="text-xl font-bold">{t('admin.quiz.difficultQs')}</h2>
               </div>
-              <p className="text-sm text-gray-600 mt-1">Questions with lowest correct rate</p>
+              <p className="text-sm text-gray-600 mt-1">{t('admin.quiz.lowestCorrectRate')}</p>
             </div>
             <div className="p-6">
               {stats.difficultQuestions.length === 0 ? (
-                <p className="text-gray-500 text-center py-4">No data yet</p>
+                <p className="text-gray-500 text-center py-4">{t('admin.quiz.noData')}</p>
               ) : (
                 <div className="space-y-4">
                   {stats.difficultQuestions.map((q) => (
                     <div key={q.questionId} className="border rounded-lg p-4">
                       <div className="flex items-start justify-between mb-2">
-                        <span className="text-sm font-medium text-gray-500">Level {q.level}</span>
+                        <span className="text-sm font-medium text-gray-500">{t('admin.quiz.level')} {q.level}</span>
                         <span className={`text-sm font-bold ${
                           q.correctRate >= 50 ? "text-yellow-600" : "text-red-600"
                         }`}>
-                          {q.correctRate}% correct
+                          {q.correctRate}% {t('admin.quiz.correctPct')}
                         </span>
                       </div>
                       <p className="text-gray-900 mb-2">{q.questionText}</p>
                       <div className="flex items-center gap-4 text-sm text-gray-600">
-                        <span>{q.totalAttempts} attempts</span>
+                        <span>{q.totalAttempts} {t('admin.quiz.attempts')}</span>
                         <Link href={`/admin/quiz/questions/${q.questionId}`}>
-                          <button className="text-blue-600 hover:underline">Edit Question</button>
+                          <button className="text-blue-600 hover:underline">{t('admin.quiz.editQuestion')}</button>
                         </Link>
                       </div>
                     </div>
@@ -265,12 +267,12 @@ export default function AdminQuizDashboard() {
           {/* Recent Activity */}
           <div className="bg-white rounded-lg shadow-md">
             <div className="p-6 border-b">
-              <h2 className="text-xl font-bold">Recent Activity</h2>
-              <p className="text-sm text-gray-600 mt-1">Latest quiz attempts</p>
+              <h2 className="text-xl font-bold">{t('admin.quiz.recentActivity')}</h2>
+              <p className="text-sm text-gray-600 mt-1">{t('admin.quiz.latestAttempts')}</p>
             </div>
             <div className="p-6">
               {stats.recentActivity.length === 0 ? (
-                <p className="text-gray-500 text-center py-4">No activity yet</p>
+                <p className="text-gray-500 text-center py-4">{t('admin.quiz.noActivity')}</p>
               ) : (
                 <div className="space-y-3">
                   {stats.recentActivity.map((activity, idx) => (
@@ -283,7 +285,7 @@ export default function AdminQuizDashboard() {
                         )}
                         <div>
                           <p className="font-medium">{activity.username}</p>
-                          <p className="text-sm text-gray-600">Level {activity.level}</p>
+                          <p className="text-sm text-gray-600">{t('admin.quiz.level')} {activity.level}</p>
                         </div>
                       </div>
                       <div className="text-right">

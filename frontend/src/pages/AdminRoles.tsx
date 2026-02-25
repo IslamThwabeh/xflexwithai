@@ -1,4 +1,5 @@
 import DashboardLayout from "@/components/DashboardLayout";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -38,6 +39,8 @@ export default function AdminRoles() {
   const [selectedRole, setSelectedRole] = useState<string>("analyst");
   const [showAssign, setShowAssign] = useState(false);
   const [assignUserId, setAssignUserId] = useState("");
+
+  const { t } = useLanguage();
 
   const { data: roleAssignments, isLoading, refetch } = trpc.roles.list.useQuery();
   const { data: allUsers } = trpc.users.list.useQuery();
@@ -102,39 +105,39 @@ export default function AdminRoles() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold flex items-center gap-2">
-              <Shield className="h-8 w-8" /> Role Management
+              <Shield className="h-8 w-8" /> {t('admin.roles.title')}
             </h1>
             <p className="text-muted-foreground">
-              Assign and manage user roles: Analyst, Support, Key Manager, and support permissions
+              {t('admin.roles.subtitle')}
             </p>
           </div>
 
           <Dialog open={showAssign} onOpenChange={setShowAssign}>
             <DialogTrigger asChild>
               <Button>
-                <UserPlus className="h-4 w-4 mr-2" /> Assign Role
+                <UserPlus className="h-4 w-4 mr-2" /> {t('admin.roles.assignRole')}
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Assign Role to User</DialogTitle>
+                <DialogTitle>{t('admin.roles.assignToUser')}</DialogTitle>
               </DialogHeader>
               <div className="space-y-4 pt-2">
                 <div>
-                  <label className="text-sm font-medium mb-1 block">Role</label>
+                  <label className="text-sm font-medium mb-1 block">{t('admin.roles.selectRole')}</label>
                   <select
                     value={selectedRole}
                     onChange={(e) => setSelectedRole(e.target.value)}
                     className="w-full border rounded-md px-3 py-2 text-sm"
                   >
-                    <optgroup label="Core Roles">
+                    <optgroup label={t('admin.roles.coreRoles')}>
                       {Object.entries(ROLE_LABELS).filter(([, v]) => v.group === "Core Roles").map(([key, val]) => (
                         <option key={key} value={key}>
                           {val.en}
                         </option>
                       ))}
                     </optgroup>
-                    <optgroup label="Support Permissions">
+                    <optgroup label={t('admin.roles.supportPerms')}>
                       {Object.entries(ROLE_LABELS).filter(([, v]) => v.group === "Support Permissions").map(([key, val]) => (
                         <option key={key} value={key}>
                           {val.en}
@@ -144,13 +147,13 @@ export default function AdminRoles() {
                   </select>
                 </div>
                 <div>
-                  <label className="text-sm font-medium mb-1 block">User</label>
+                  <label className="text-sm font-medium mb-1 block">{t('admin.roles.selectUser')}</label>
                   <select
                     value={assignUserId}
                     onChange={(e) => setAssignUserId(e.target.value)}
                     className="w-full border rounded-md px-3 py-2 text-sm"
                   >
-                    <option value="">Select a user...</option>
+                    <option value="">{t('admin.roles.selectUser')}</option>
                     {availableUsers.map((u) => (
                       <option key={u.id} value={u.id}>
                         {u.name || u.email} ({u.email})
@@ -163,7 +166,7 @@ export default function AdminRoles() {
                   disabled={assignMutation.isPending || !assignUserId}
                   className="w-full"
                 >
-                  {assignMutation.isPending ? "Assigning..." : "Assign Role"}
+                  {assignMutation.isPending ? t('admin.roles.assigning') : t('admin.roles.assignRole')}
                 </Button>
               </div>
             </DialogContent>
@@ -172,7 +175,7 @@ export default function AdminRoles() {
 
         {/* Role summary cards */}
         <div>
-          <h2 className="text-lg font-semibold mb-3">Core Roles</h2>
+          <h2 className="text-lg font-semibold mb-3">{t('admin.roles.coreRoles')}</h2>
           <div className="grid gap-4 md:grid-cols-3 mb-6">
             {roleCounts.filter(({ role }) => ROLE_LABELS[role]?.group === "Core Roles").map(({ role, count }) => (
               <Card key={role}>
@@ -184,13 +187,13 @@ export default function AdminRoles() {
                 <CardContent>
                   <p className="text-3xl font-bold">{count}</p>
                   <p className="text-sm text-muted-foreground">
-                    {count === 1 ? "user" : "users"} with this role
+                    {t('admin.roles.usersWithRole')}
                   </p>
                 </CardContent>
               </Card>
             ))}
           </div>
-          <h2 className="text-lg font-semibold mb-3">Support Permissions</h2>
+          <h2 className="text-lg font-semibold mb-3">{t('admin.roles.supportPerms')}</h2>
           <div className="grid gap-4 md:grid-cols-5">
             {roleCounts.filter(({ role }) => ROLE_LABELS[role]?.group === "Support Permissions").map(({ role, count }) => (
               <Card key={role}>
@@ -211,12 +214,12 @@ export default function AdminRoles() {
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
-              <CardTitle>All Role Assignments</CardTitle>
+              <CardTitle>{t('admin.roles.allAssignments')}</CardTitle>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <input
                   type="text"
-                  placeholder="Search..."
+                  placeholder={t('admin.roles.search')}
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   className="pl-9 pr-3 py-2 border rounded-md text-sm w-64"
@@ -226,20 +229,20 @@ export default function AdminRoles() {
           </CardHeader>
           <CardContent>
             {isLoading ? (
-              <p className="text-center text-muted-foreground py-8">Loading...</p>
+              <p className="text-center text-muted-foreground py-8">{t('admin.loading')}</p>
             ) : filteredAssignments.length === 0 ? (
               <p className="text-center text-muted-foreground py-8">
-                No role assignments found
+                {t('admin.roles.noAssignments')}
               </p>
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>User</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Role</TableHead>
-                    <TableHead>Assigned</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <TableHead>{t('admin.roles.user')}</TableHead>
+                    <TableHead>{t('admin.roles.email')}</TableHead>
+                    <TableHead>{t('admin.roles.role')}</TableHead>
+                    <TableHead>{t('admin.roles.assignedAt')}</TableHead>
+                    <TableHead className="text-right">{t('admin.roles.actions')}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>

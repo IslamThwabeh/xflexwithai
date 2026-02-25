@@ -8,6 +8,7 @@ import { useState } from "react";
 import { format } from "date-fns";
 import { MessageSquare, User, ArrowLeft, Trash2, RefreshCw, ImageIcon } from "lucide-react";
 import { toast } from "sonner";
+import { useLanguage } from "@/contexts/LanguageContext";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,6 +35,7 @@ function formatSafeDate(
 export default function AdminLexaiConversations() {
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const utils = trpc.useUtils();
+  const { t } = useLanguage();
 
   // Get all users with conversations
   const { data: conversationUsers, isLoading: loadingUsers } = trpc.lexaiAdmin.conversationUsers.useQuery();
@@ -72,7 +74,7 @@ export default function AdminLexaiConversations() {
             <div className="flex items-center gap-4">
               <Button variant="ghost" size="sm" onClick={() => setSelectedUserId(null)}>
                 <ArrowLeft className="h-4 w-4 mr-2" />
-                Back to Users
+                {t('admin.lexai.backToUsers')}
               </Button>
               <div>
                 <h1 className="text-2xl font-bold">{selectedUser.userName || "Unknown User"}</h1>
@@ -86,30 +88,29 @@ export default function AdminLexaiConversations() {
                 onClick={() => utils.lexaiAdmin.userMessages.invalidate()}
               >
                 <RefreshCw className="h-4 w-4 mr-2" />
-                Refresh
+                {t('admin.lexai.refresh')}
               </Button>
               <AlertDialog>
                 <AlertDialogTrigger asChild>
                   <Button variant="destructive" size="sm">
                     <Trash2 className="h-4 w-4 mr-2" />
-                    Delete All Messages
+                    {t('admin.lexai.deleteAll')}
                   </Button>
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                   <AlertDialogHeader>
-                    <AlertDialogTitle>Delete Chat History</AlertDialogTitle>
+                    <AlertDialogTitle>{t('admin.lexai.deleteHistory')}</AlertDialogTitle>
                     <AlertDialogDescription>
-                      This will permanently delete all LexAI chat messages for {selectedUser.userName || selectedUser.userEmail}. 
-                      This action cannot be undone.
+                      {t('admin.lexai.deleteConfirm')} {selectedUser.userName || selectedUser.userEmail}
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogCancel>{t('admin.lexai.cancelDelete')}</AlertDialogCancel>
                     <AlertDialogAction
                       onClick={() => handleDeleteUserMessages(selectedUserId)}
                       className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                     >
-                      Delete All
+                      {t('admin.lexai.confirmDelete')}
                     </AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>
@@ -122,17 +123,17 @@ export default function AdminLexaiConversations() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <MessageSquare className="h-5 w-5" />
-                Conversation History
+                {t('admin.lexai.convoHistory')}
               </CardTitle>
               <CardDescription>
-                {userMessages?.length ?? 0} messages
+                {userMessages?.length ?? 0} {t('admin.lexai.messagesCount')}
               </CardDescription>
             </CardHeader>
             <CardContent>
               {loadingMessages ? (
-                <div className="text-center py-8 text-muted-foreground">Loading messages...</div>
+                <div className="text-center py-8 text-muted-foreground">{t('admin.lexai.loadingMessages')}</div>
               ) : !userMessages || userMessages.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">No messages found</div>
+                <div className="text-center py-8 text-muted-foreground">{t('admin.lexai.noMessages')}</div>
               ) : (
                 <ScrollArea className="h-[600px] pr-4">
                   <div className="space-y-4">
@@ -191,8 +192,8 @@ export default function AdminLexaiConversations() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold">LexAI Conversations</h1>
-            <p className="text-muted-foreground">Monitor and moderate user conversations</p>
+            <h1 className="text-3xl font-bold">{t('admin.lexai.conversations')}</h1>
+            <p className="text-muted-foreground">{t('admin.lexai.convoSubtitle')}</p>
           </div>
           <Button
             variant="outline"
@@ -200,7 +201,7 @@ export default function AdminLexaiConversations() {
             onClick={() => utils.lexaiAdmin.conversationUsers.invalidate()}
           >
             <RefreshCw className="h-4 w-4 mr-2" />
-            Refresh
+            {t('admin.lexai.refresh')}
           </Button>
         </div>
 
@@ -209,17 +210,17 @@ export default function AdminLexaiConversations() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <User className="h-5 w-5" />
-              Users with Conversations
+              {t('admin.lexai.usersWithConvo')}
             </CardTitle>
             <CardDescription>
-              Click on a user to view their chat history
+              {t('admin.lexai.clickToView')}
             </CardDescription>
           </CardHeader>
           <CardContent>
             {loadingUsers ? (
-              <div className="text-center py-8 text-muted-foreground">Loading users...</div>
+              <div className="text-center py-8 text-muted-foreground">{t('admin.loading')}</div>
             ) : !conversationUsers || conversationUsers.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">No conversations yet</div>
+              <div className="text-center py-8 text-muted-foreground">{t('admin.lexai.noConvos')}</div>
             ) : (
               <div className="space-y-2">
                 {conversationUsers.map((user) => (
@@ -239,9 +240,9 @@ export default function AdminLexaiConversations() {
                     </div>
                     <div className="flex items-center gap-4">
                       <div className="text-right">
-                        <p className="text-sm font-medium">{Number(user.messageCount)} messages</p>
+                        <p className="text-sm font-medium">{Number(user.messageCount)} {t('admin.lexai.messagesCount')}</p>
                         <p className="text-xs text-muted-foreground">
-                          Last: {formatSafeDate(user.lastMessageAt, "MMM d, HH:mm")}
+                          {t('admin.lexai.lastMessage')} {formatSafeDate(user.lastMessageAt, "MMM d, HH:mm")}
                         </p>
                       </div>
                       <MessageSquare className="h-5 w-5 text-muted-foreground" />

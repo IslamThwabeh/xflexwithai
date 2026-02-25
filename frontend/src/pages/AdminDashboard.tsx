@@ -1,6 +1,7 @@
 import DashboardLayout from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { trpc } from "@/lib/trpc";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { Users, BookOpen, GraduationCap, TrendingUp, Key, Library } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useLocation } from "wouter";
@@ -15,6 +16,7 @@ function formatSafeDistanceToNow(value: string | number | Date | null | undefine
 
 export default function AdminDashboard() {
   const [, setLocation] = useLocation();
+  const { t } = useLanguage();
   const { data: stats, isLoading: statsLoading } = trpc.dashboard.stats.useQuery();
   const { data: recentEnrollments, isLoading: enrollmentsLoading } = trpc.dashboard.recentEnrollments.useQuery();
 
@@ -22,53 +24,53 @@ export default function AdminDashboard() {
     <DashboardLayout>
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold">Dashboard</h1>
-          <p className="text-muted-foreground">Welcome to XFlex Trading Academy Admin Panel</p>
+          <h1 className="text-3xl font-bold">{t('admin.dashboard')}</h1>
+          <p className="text-muted-foreground">{t('admin.dashboard.welcome')}</p>
         </div>
 
         {/* Quick Actions */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={() => setLocation("/admin/keys")}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-lg font-semibold">Registration Keys</CardTitle>
+              <CardTitle className="text-lg font-semibold">{t('admin.dashboard.keys')}</CardTitle>
               <Key className="h-6 w-6 text-primary" />
             </CardHeader>
             <CardContent>
               <p className="text-sm text-muted-foreground mb-4">
-                Generate and manage course registration keys
+                {t('admin.dashboard.keysDesc')}
               </p>
               <Button className="w-full" variant="default">
-                Manage Keys
+                {t('admin.dashboard.manageKeys')}
               </Button>
             </CardContent>
           </Card>
 
           <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={() => setLocation("/admin/courses")}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-lg font-semibold">Courses</CardTitle>
+              <CardTitle className="text-lg font-semibold">{t('admin.dashboard.courses')}</CardTitle>
               <Library className="h-6 w-6 text-primary" />
             </CardHeader>
             <CardContent>
               <p className="text-sm text-muted-foreground mb-4">
-                View and manage all courses and episodes
+                {t('admin.dashboard.coursesDesc')}
               </p>
               <Button className="w-full" variant="default">
-                View Courses
+                {t('admin.dashboard.viewCourses')}
               </Button>
             </CardContent>
           </Card>
 
           <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={() => setLocation("/admin/users")}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-lg font-semibold">Users</CardTitle>
+              <CardTitle className="text-lg font-semibold">{t('admin.dashboard.users')}</CardTitle>
               <Users className="h-6 w-6 text-primary" />
             </CardHeader>
             <CardContent>
               <p className="text-sm text-muted-foreground mb-4">
-                Manage users and enrollments
+                {t('admin.dashboard.usersDesc')}
               </p>
               <Button className="w-full" variant="default">
-                View Users
+                {t('admin.dashboard.viewUsers')}
               </Button>
             </CardContent>
           </Card>
@@ -78,7 +80,7 @@ export default function AdminDashboard() {
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Users</CardTitle>
+              <CardTitle className="text-sm font-medium">{t('admin.totalUsers')}</CardTitle>
               <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
@@ -90,7 +92,7 @@ export default function AdminDashboard() {
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Courses</CardTitle>
+              <CardTitle className="text-sm font-medium">{t('admin.totalCourses')}</CardTitle>
               <BookOpen className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
@@ -102,7 +104,7 @@ export default function AdminDashboard() {
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Enrollments</CardTitle>
+              <CardTitle className="text-sm font-medium">{t('admin.totalEnrollments')}</CardTitle>
               <GraduationCap className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
@@ -114,7 +116,7 @@ export default function AdminDashboard() {
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Active Subscriptions</CardTitle>
+              <CardTitle className="text-sm font-medium">{t('admin.dashboard.activeSubs')}</CardTitle>
               <TrendingUp className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
@@ -128,13 +130,13 @@ export default function AdminDashboard() {
         {/* Recent Enrollments */}
         <Card>
           <CardHeader>
-            <CardTitle>Recent Enrollments</CardTitle>
+            <CardTitle>{t('admin.dashboard.recentEnrollments')}</CardTitle>
           </CardHeader>
           <CardContent>
             {enrollmentsLoading ? (
-              <p className="text-muted-foreground">Loading...</p>
+              <p className="text-muted-foreground">{t('admin.loading')}</p>
             ) : !recentEnrollments || recentEnrollments.length === 0 ? (
-              <p className="text-muted-foreground">No enrollments yet</p>
+              <p className="text-muted-foreground">{t('admin.dashboard.noEnrollments')}</p>
             ) : (
               <div className="space-y-4">
                 {recentEnrollments.map((item) => (

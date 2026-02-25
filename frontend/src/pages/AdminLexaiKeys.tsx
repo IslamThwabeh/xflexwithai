@@ -39,6 +39,7 @@ import {
   CheckCircle2,
   Clock,
 } from "lucide-react";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 export default function AdminLexaiKeys() {
   const [quantity, setQuantity] = useState("1");
@@ -46,6 +47,7 @@ export default function AdminLexaiKeys() {
   const [searchEmail, setSearchEmail] = useState("");
   const [showGenerateDialog, setShowGenerateDialog] = useState(false);
   const [showBulkDialog, setShowBulkDialog] = useState(false);
+  const { t } = useLanguage();
 
   const { data: allKeys, refetch: refetchKeys } = trpc.lexaiAdmin.keys.list.useQuery();
   const { data: stats, refetch: refetchStats } = trpc.lexaiAdmin.keys.stats.useQuery();
@@ -156,29 +158,29 @@ export default function AdminLexaiKeys() {
       <div className="container mx-auto p-4 md:p-6 space-y-6" dir="ltr">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold">LexAI Keys</h1>
-          <p className="text-muted-foreground">Generate manual keys for LexAI access</p>
+          <h1 className="text-3xl font-bold">{t('admin.lexai.keys')}</h1>
+          <p className="text-muted-foreground">{t('admin.lexai.keysSubtitle')}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Dialog open={showGenerateDialog} onOpenChange={setShowGenerateDialog}>
             <DialogTrigger asChild>
               <Button>
                 <Plus className="mr-2 h-4 w-4" />
-                Generate Key
+                {t('admin.lexai.generateKey')}
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Generate Single Key</DialogTitle>
-                <DialogDescription>Create a new LexAI access key</DialogDescription>
+                <DialogTitle>{t('admin.lexai.generateSingle')}</DialogTitle>
+                <DialogDescription>{t('admin.lexai.createKeyDesc')}</DialogDescription>
               </DialogHeader>
               <div className="space-y-4">
                 <div>
-                  <Label>Notes (Optional)</Label>
+                  <Label>{t('admin.lexai.notesLabel')}</Label>
                   <Textarea
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
-                    placeholder="Add notes about this key..."
+                    placeholder={t('admin.lexai.notesPlaceholder')}
                   />
                 </div>
                 <Button
@@ -186,7 +188,7 @@ export default function AdminLexaiKeys() {
                   disabled={generateKey.isPending}
                   className="w-full"
                 >
-                  {generateKey.isPending ? "Generating..." : "Generate Key"}
+                  {generateKey.isPending ? t('admin.lexai.generating') : t('admin.lexai.generateKey')}
                 </Button>
               </div>
             </DialogContent>
@@ -196,17 +198,17 @@ export default function AdminLexaiKeys() {
             <DialogTrigger asChild>
               <Button variant="outline">
                 <Key className="mr-2 h-4 w-4" />
-                Bulk Generate
+                {t('admin.lexai.bulkGenerate')}
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Generate Bulk Keys</DialogTitle>
-                <DialogDescription>Create multiple LexAI keys at once (max 1000)</DialogDescription>
+                <DialogTitle>{t('admin.lexai.bulkTitle')}</DialogTitle>
+                <DialogDescription>{t('admin.lexai.bulkDesc')}</DialogDescription>
               </DialogHeader>
               <div className="space-y-4">
                 <div>
-                  <Label>Quantity</Label>
+                  <Label>{t('admin.lexai.quantity')}</Label>
                   <Input
                     value={quantity}
                     onChange={(e) => setQuantity(e.target.value)}
@@ -217,11 +219,11 @@ export default function AdminLexaiKeys() {
                   />
                 </div>
                 <div>
-                  <Label>Notes (Optional)</Label>
+                  <Label>{t('admin.lexai.notesLabel')}</Label>
                   <Textarea
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
-                    placeholder="Add notes about these keys..."
+                    placeholder={t('admin.lexai.notesPlaceholder')}
                   />
                 </div>
                 <Button
@@ -229,7 +231,7 @@ export default function AdminLexaiKeys() {
                   disabled={generateBulkKeys.isPending}
                   className="w-full"
                 >
-                  {generateBulkKeys.isPending ? "Generating..." : "Generate Keys"}
+                  {generateBulkKeys.isPending ? t('admin.lexai.generating') : t('admin.lexai.generateKeys')}
                 </Button>
               </div>
             </DialogContent>
@@ -237,7 +239,7 @@ export default function AdminLexaiKeys() {
 
           <Button variant="outline" onClick={exportKeysToCSV}>
             <Download className="mr-2 h-4 w-4" />
-            Export
+            {t('admin.lexai.exportCsv')}
           </Button>
         </div>
       </div>
@@ -246,7 +248,7 @@ export default function AdminLexaiKeys() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm">Total Keys</CardTitle>
+              <CardTitle className="text-sm">{t('admin.lexai.totalKeys')}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{stats.total}</div>
@@ -254,7 +256,7 @@ export default function AdminLexaiKeys() {
           </Card>
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm">Activated</CardTitle>
+              <CardTitle className="text-sm">{t('admin.lexai.activated')}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{stats.activated}</div>
@@ -262,7 +264,7 @@ export default function AdminLexaiKeys() {
           </Card>
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm">Unused</CardTitle>
+              <CardTitle className="text-sm">{t('admin.lexai.unusedKeys')}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{stats.unused}</div>
@@ -270,7 +272,7 @@ export default function AdminLexaiKeys() {
           </Card>
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm">Deactivated</CardTitle>
+              <CardTitle className="text-sm">{t('admin.lexai.deactivatedKeys')}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{stats.deactivated}</div>
@@ -281,30 +283,30 @@ export default function AdminLexaiKeys() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Keys</CardTitle>
-          <CardDescription>Manage LexAI keys for users</CardDescription>
+          <CardTitle>{t('admin.lexai.keys')}</CardTitle>
+          <CardDescription>{t('admin.lexai.keysSubtitle')}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex items-center gap-2 mb-4">
             <Input
-              placeholder="Search by email..."
+              placeholder={t('admin.keys.searchByEmail')}
               value={searchEmail}
               onChange={(e) => setSearchEmail(e.target.value)}
               className="max-w-sm"
             />
           </div>
           {!filteredKeys || filteredKeys.length === 0 ? (
-            <p className="text-muted-foreground">No keys found</p>
+            <p className="text-muted-foreground">{t('admin.lexai.noKeys')}</p>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Key</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead>Used</TableHead>
-                  <TableHead>Notes</TableHead>
+                  <TableHead>{t('admin.lexai.key')}</TableHead>
+                  <TableHead>{t('admin.lexai.email')}</TableHead>
+                  <TableHead>{t('admin.lexai.status')}</TableHead>
+                  <TableHead>{t('admin.lexai.created')}</TableHead>
+                  <TableHead>{t('admin.lexai.used')}</TableHead>
+                  <TableHead>{t('admin.lexai.notes')}</TableHead>
                   <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
@@ -325,7 +327,7 @@ export default function AdminLexaiKeys() {
                       <TableCell>{key.email || "-"}</TableCell>
                       <TableCell>
                         <Badge variant={statusLabel === "Available" ? "default" : "secondary"}>
-                          {statusLabel}
+                          {statusLabel === "Available" ? t('admin.lexai.available') : statusLabel === "Used" ? t('admin.lexai.used') : t('admin.lexai.deactivated')}
                         </Badge>
                       </TableCell>
                       <TableCell>

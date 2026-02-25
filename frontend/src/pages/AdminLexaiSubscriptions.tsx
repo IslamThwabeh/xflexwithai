@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 function formatSafeDate(
   value: string | number | Date | null | undefined,
@@ -25,33 +26,34 @@ function formatSafeDate(
 
 export default function AdminLexaiSubscriptions() {
   const { data: subscriptions, isLoading } = trpc.lexaiAdmin.subscriptions.useQuery();
+  const { t } = useLanguage();
 
   return (
     <DashboardLayout>
       <div className="container mx-auto p-4 md:p-6 space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">LexAI Subscriptions</h1>
-        <p className="text-muted-foreground">Monitor active and expired LexAI plans</p>
+        <h1 className="text-3xl font-bold">{t('admin.lexai.subscriptions')}</h1>
+        <p className="text-muted-foreground">{t('admin.lexai.subsSubtitle')}</p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Subscriptions</CardTitle>
+          <CardTitle>{t('admin.lexai.subscriptions')}</CardTitle>
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <p className="text-muted-foreground">Loading...</p>
+            <p className="text-muted-foreground">{t('admin.loading')}</p>
           ) : !subscriptions || subscriptions.length === 0 ? (
-            <p className="text-muted-foreground">No subscriptions found</p>
+            <p className="text-muted-foreground">{t('admin.lexai.noSubs')}</p>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>User</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Messages</TableHead>
-                  <TableHead>Ends</TableHead>
+                  <TableHead>{t('admin.lexai.user')}</TableHead>
+                  <TableHead>{t('admin.lexai.email')}</TableHead>
+                  <TableHead>{t('admin.lexai.status')}</TableHead>
+                  <TableHead>{t('admin.lexai.messages')}</TableHead>
+                  <TableHead>{t('admin.lexai.ends')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -59,15 +61,15 @@ export default function AdminLexaiSubscriptions() {
                   const endDate = sub.endDate ? new Date(sub.endDate) : null;
                   const isValidEndDate = endDate ? !Number.isNaN(endDate.getTime()) : false;
                   const isExpired = isValidEndDate && endDate ? endDate.getTime() < Date.now() : false;
-                  const statusLabel = sub.isActive && !isExpired ? "Active" : "Expired";
+                  const isActiveStatus = sub.isActive && !isExpired;
 
                   return (
                     <TableRow key={sub.id}>
                       <TableCell>{sub.userName || "Unknown"}</TableCell>
                       <TableCell>{sub.userEmail || "-"}</TableCell>
                       <TableCell>
-                        <Badge variant={statusLabel === "Active" ? "default" : "secondary"}>
-                          {statusLabel}
+                        <Badge variant={isActiveStatus ? "default" : "secondary"}>
+                          {isActiveStatus ? t('admin.lexai.active') : t('admin.lexai.expired')}
                         </Badge>
                       </TableCell>
                       <TableCell>

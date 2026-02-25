@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +13,7 @@ import { Copy, Key, UserCog } from "lucide-react";
 export default function AdminRecommendations() {
   const [quantity, setQuantity] = useState("1");
   const [search, setSearch] = useState("");
+  const { t, isRTL } = useLanguage();
 
   const utils = trpc.useUtils();
 
@@ -70,38 +72,38 @@ export default function AdminRecommendations() {
 
   return (
     <DashboardLayout>
-      <div className="container mx-auto p-4 md:p-6 space-y-6" dir="rtl">
+      <div className="container mx-auto p-4 md:p-6 space-y-6" dir={isRTL ? "rtl" : "ltr"}>
         <div>
-          <h1 className="text-3xl font-bold">إدارة قروب التوصيات</h1>
-          <p className="text-muted-foreground">تحديد المحلل المسؤول + مفاتيح الاشتراك الشهرية (30 يوم)</p>
+          <h1 className="text-3xl font-bold">{t('admin.rec.title')}</h1>
+          <p className="text-muted-foreground">{t('admin.rec.subtitle')}</p>
         </div>
 
         <div className="grid gap-4 md:grid-cols-4">
           <Card>
-            <CardHeader><CardTitle className="text-sm">إجمالي المفاتيح</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-sm">{t('admin.rec.totalKeys')}</CardTitle></CardHeader>
             <CardContent><div className="text-2xl font-bold">{stats?.total ?? 0}</div></CardContent>
           </Card>
           <Card>
-            <CardHeader><CardTitle className="text-sm">مفعلة</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-sm">{t('admin.rec.activated')}</CardTitle></CardHeader>
             <CardContent><div className="text-2xl font-bold">{stats?.activated ?? 0}</div></CardContent>
           </Card>
           <Card>
-            <CardHeader><CardTitle className="text-sm">غير مستخدمة</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-sm">{t('admin.rec.unused')}</CardTitle></CardHeader>
             <CardContent><div className="text-2xl font-bold">{stats?.unused ?? 0}</div></CardContent>
           </Card>
           <Card>
-            <CardHeader><CardTitle className="text-sm">معطلة</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-sm">{t('admin.rec.disabled')}</CardTitle></CardHeader>
             <CardContent><div className="text-2xl font-bold">{stats?.deactivated ?? 0}</div></CardContent>
           </Card>
         </div>
 
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><UserCog className="h-5 w-5" /> تعيين المحلل</CardTitle>
-            <CardDescription>يمكن تغيير المحلل في أي وقت من هنا</CardDescription>
+            <CardTitle className="flex items-center gap-2"><UserCog className="h-5 w-5" /> {t('admin.rec.assignAnalyst')}</CardTitle>
+            <CardDescription>{t('admin.rec.subtitle')}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            <Input placeholder="بحث بالاسم أو البريد" value={search} onChange={(e) => setSearch(e.target.value)} />
+            <Input placeholder={t('admin.rec.searchUser')} value={search} onChange={(e) => setSearch(e.target.value)} />
             <div className="space-y-2">
               {filteredUsers.slice(0, 100).map((user: any) => {
                 const isAnalyst = analystIds.has(user.id);
@@ -115,7 +117,7 @@ export default function AdminRecommendations() {
                       variant={isAnalyst ? "destructive" : "default"}
                       onClick={() => setAnalystMutation.mutate({ userId: user.id, enabled: !isAnalyst })}
                     >
-                      {isAnalyst ? "إزالة صلاحية المحلل" : "تعيين كمحلل"}
+                      {isAnalyst ? t('admin.rec.removeAnalyst') : t('admin.rec.setAnalyst')}
                     </Button>
                   </div>
                 );
@@ -126,12 +128,12 @@ export default function AdminRecommendations() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Key className="h-5 w-5" /> مفاتيح قروب التوصيات</CardTitle>
-            <CardDescription>كل مفتاح يفعّل اشتراكًا لمدة 30 يوم</CardDescription>
+            <CardTitle className="flex items-center gap-2"><Key className="h-5 w-5" /> {t('admin.rec.recKeys')}</CardTitle>
+            <CardDescription>{t('admin.rec.subtitle')}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex gap-2 flex-wrap">
-              <Button onClick={() => generateKeyMutation.mutate({})}>إنشاء مفتاح واحد</Button>
+              <Button onClick={() => generateKeyMutation.mutate({})}>{t('admin.rec.generateSingle')}</Button>
               <Input
                 value={quantity}
                 onChange={(e) => setQuantity(e.target.value)}
@@ -151,29 +153,29 @@ export default function AdminRecommendations() {
                   generateBulkMutation.mutate({ quantity: parsed });
                 }}
               >
-                إنشاء دفعة
+                {t('admin.rec.bulkGenerate')}
               </Button>
             </div>
 
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>المفتاح</TableHead>
-                  <TableHead>البريد</TableHead>
-                  <TableHead>الحالة</TableHead>
-                  <TableHead>تاريخ التفعيل</TableHead>
+                  <TableHead>{t('admin.rec.keyCode')}</TableHead>
+                  <TableHead>{t('admin.rec.assignedTo')}</TableHead>
+                  <TableHead>{t('admin.rec.status')}</TableHead>
+                  <TableHead>{t('admin.rec.activatedDate')}</TableHead>
                   <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {keys.map((key: any) => {
-                  const status = !key.isActive ? "معطل" : key.activatedAt ? "مستخدم" : "متاح";
+                  const status = !key.isActive ? t('admin.rec.deactivated') : key.activatedAt ? t('admin.rec.used') : t('admin.rec.available');
                   return (
                     <TableRow key={key.id}>
                       <TableCell className="font-mono text-xs">{key.keyCode}</TableCell>
                       <TableCell>{key.email || "-"}</TableCell>
                       <TableCell>
-                        <Badge variant={status === "متاح" ? "default" : "secondary"}>{status}</Badge>
+                        <Badge variant={status === t('admin.rec.available') ? "default" : "secondary"}>{status}</Badge>
                       </TableCell>
                       <TableCell>{key.activatedAt ? new Date(key.activatedAt).toLocaleString("ar-SA") : "-"}</TableCell>
                       <TableCell className="flex items-center gap-2">
@@ -186,7 +188,7 @@ export default function AdminRecommendations() {
                           disabled={!key.isActive}
                           onClick={() => deactivateMutation.mutate({ keyId: key.id })}
                         >
-                          تعطيل
+                          {t('admin.rec.disable')}
                         </Button>
                       </TableCell>
                     </TableRow>

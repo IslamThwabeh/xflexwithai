@@ -1,4 +1,5 @@
 import DashboardLayout from "@/components/DashboardLayout";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -64,6 +65,8 @@ export default function AdminSupport() {
     scrollToBottom();
   }, [selectedData?.messages]);
 
+  const { t } = useLanguage();
+
   const handleSendReply = () => {
     const trimmed = reply.trim();
     if (!trimmed || !selectedConvId) return;
@@ -85,10 +88,10 @@ export default function AdminSupport() {
       <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold flex items-center gap-2">
-            <Headphones className="h-8 w-8" /> Support Chat
+            <Headphones className="h-8 w-8" /> {t('admin.support.title')}
           </h1>
           <p className="text-muted-foreground">
-            View and respond to client support conversations
+            {t('admin.support.subtitle')}
           </p>
         </div>
 
@@ -97,7 +100,7 @@ export default function AdminSupport() {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm text-muted-foreground">
-                Open Conversations
+                {t('admin.support.openConvos')}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -107,7 +110,7 @@ export default function AdminSupport() {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm text-muted-foreground">
-                Unread Messages
+                {t('admin.support.unread')}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -117,7 +120,7 @@ export default function AdminSupport() {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm text-muted-foreground">
-                Total Conversations
+                {t('admin.support.totalConvos')}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -130,14 +133,14 @@ export default function AdminSupport() {
           {/* Conversation list */}
           <Card className="lg:col-span-1">
             <CardHeader className="pb-3">
-              <CardTitle className="text-lg">Conversations</CardTitle>
+              <CardTitle className="text-lg">{t('admin.support.convos')}</CardTitle>
             </CardHeader>
             <CardContent className="p-0">
               {loadingConvs ? (
-                <p className="text-center text-muted-foreground py-8">Loading...</p>
+                <p className="text-center text-muted-foreground py-8">{t('admin.loading')}</p>
               ) : (conversations ?? []).length === 0 ? (
                 <p className="text-center text-muted-foreground py-8">
-                  No conversations yet
+                  {t('admin.support.noConvos')}
                 </p>
               ) : (
                 <div className="divide-y max-h-[600px] overflow-y-auto">
@@ -166,11 +169,11 @@ export default function AdminSupport() {
                         <div className="flex items-center gap-2">
                           {conv.status === "open" ? (
                             <Badge variant="default" className="bg-green-100 text-green-800 text-xs">
-                              Open
+                              {t('admin.support.open')}
                             </Badge>
                           ) : (
                             <Badge variant="secondary" className="text-xs">
-                              Closed
+                              {t('admin.support.closed')}
                             </Badge>
                           )}
                           {(conv.unreadCount ?? 0) > 0 && (
@@ -203,7 +206,7 @@ export default function AdminSupport() {
               <div className="flex-1 flex items-center justify-center text-muted-foreground">
                 <div className="text-center">
                   <MessageCircle className="h-12 w-12 mx-auto mb-3 opacity-40" />
-                  <p>Select a conversation to view messages</p>
+                  <p>{t('admin.support.selectConvo')}</p>
                 </div>
               </div>
             ) : (
@@ -241,7 +244,7 @@ export default function AdminSupport() {
                         onClick={() => closeMutation.mutate({ conversationId: selectedConvId })}
                         disabled={closeMutation.isPending}
                       >
-                        <XCircle className="h-4 w-4 mr-1" /> Close
+                        <XCircle className="h-4 w-4 mr-1" /> {t('admin.support.close')}
                       </Button>
                     )}
                   </div>
@@ -274,7 +277,7 @@ export default function AdminSupport() {
                                   isClient ? "text-blue-600" : "text-blue-200"
                                 }`}
                               >
-                                {msg.senderType === "admin" ? "Admin" : "Support"}
+                                {msg.senderType === "admin" ? t('admin.support.admin') : t('admin.support.support')}
                               </p>
                             )}
                             <p className="text-sm whitespace-pre-wrap break-words">
@@ -306,7 +309,7 @@ export default function AdminSupport() {
                         value={reply}
                         onChange={(e) => setReply(e.target.value)}
                         onKeyDown={handleKeyDown}
-                        placeholder="Type your reply..."
+                        placeholder={t('admin.support.replyPlaceholder')}
                         rows={1}
                         className="flex-1 resize-none border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 max-h-32"
                         style={{ minHeight: "42px" }}

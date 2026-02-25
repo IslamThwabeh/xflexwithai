@@ -5,6 +5,7 @@ import {
   AlertCircle, CheckCircle, Plus, Trash2 
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { apiFetch } from "@/lib/apiBase";
 
 interface Option {
@@ -38,6 +39,7 @@ export default function AdminQuizQuestions() {
   const [editForm, setEditForm] = useState<Question | null>(null);
   const [saving, setSaving] = useState(false);
   const [expandedLevel, setExpandedLevel] = useState<number | null>(1);
+  const { t } = useLanguage();
 
   useEffect(() => {
     fetchQuestions();
@@ -160,7 +162,7 @@ export default function AdminQuizQuestions() {
         <div className="bg-gray-50 flex items-center justify-center py-12">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-            <p className="mt-4 text-gray-600">Loading questions...</p>
+            <p className="mt-4 text-gray-600">{t('admin.quiz.loadingQuestions')}</p>
           </div>
         </div>
       </DashboardLayout>
@@ -187,12 +189,12 @@ export default function AdminQuizQuestions() {
         <div className="mb-8">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold mb-2">Question Management</h1>
-              <p className="text-gray-600">Edit quiz questions and answers</p>
+              <h1 className="text-3xl font-bold mb-2">{t('admin.quiz.questionsTitle')}</h1>
+              <p className="text-gray-600">{t('admin.quiz.questionsSubtitle')}</p>
             </div>
             <Link href="/admin/quiz">
               <button className="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700">
-                Back to Dashboard
+                {t('admin.quiz.backToDash')}
               </button>
             </Link>
           </div>
@@ -202,11 +204,11 @@ export default function AdminQuizQuestions() {
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-8 flex items-start gap-3">
           <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5" />
           <div className="text-sm text-blue-800">
-            <p className="font-medium mb-1">Editing Guidelines:</p>
+            <p className="font-medium mb-1">{t('admin.quiz.editGuidelines')}</p>
             <ul className="list-disc list-inside space-y-1">
-              <li>Each question must have at least one correct answer</li>
-              <li>All option fields must be filled</li>
-              <li>Changes are saved immediately to the database</li>
+              <li>{t('admin.quiz.guideline1')}</li>
+              <li>{t('admin.quiz.guideline2')}</li>
+              <li>{t('admin.quiz.guideline3')}</li>
               <li>Question performance stats help identify problematic questions</li>
             </ul>
           </div>
@@ -224,13 +226,13 @@ export default function AdminQuizQuestions() {
                 <div className="flex items-center gap-4">
                   <BookOpen className="w-6 h-6 text-blue-600" />
                   <div className="text-left">
-                    <h2 className="text-xl font-bold">Level {quiz.level}</h2>
+                    <h2 className="text-xl font-bold">{t('admin.quiz.level')} {quiz.level}</h2>
                     <p className="text-gray-600">{quiz.title}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-4">
                   <span className="text-sm text-gray-600">
-                    {quiz.questions.length} questions
+                    {quiz.questions.length} {t('admin.quiz.questions')}
                   </span>
                   {expandedLevel === quiz.level ? (
                     <ChevronUp className="w-5 h-5 text-gray-400" />
@@ -250,7 +252,7 @@ export default function AdminQuizQuestions() {
                         <div className="space-y-4">
                           <div>
                             <label className="block text-sm font-medium text-gray-700 mb-2">
-                              Question Text
+                              {t('admin.quiz.questionText')}
                             </label>
                             <textarea
                               value={editForm.questionText}
@@ -262,7 +264,7 @@ export default function AdminQuizQuestions() {
 
                           <div>
                             <label className="block text-sm font-medium text-gray-700 mb-2">
-                              Answer Options (check correct answers)
+                              {t('admin.quiz.answerOptions')}
                             </label>
                             <div className="space-y-3">
                               {editForm.options.map((option, optIdx) => (
@@ -299,7 +301,7 @@ export default function AdminQuizQuestions() {
                               className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
                             >
                               <Save className="w-4 h-4" />
-                              {saving ? "Saving..." : "Save Changes"}
+                              {saving ? t('admin.quiz.saving') : t('admin.quiz.saveChanges')}
                             </button>
                             <button
                               onClick={cancelEdit}
@@ -307,7 +309,7 @@ export default function AdminQuizQuestions() {
                               className="flex items-center gap-2 bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 disabled:opacity-50"
                             >
                               <X className="w-4 h-4" />
-                              Cancel
+                              {t('admin.quiz.cancelEdit')}
                             </button>
                           </div>
                         </div>
@@ -330,7 +332,7 @@ export default function AdminQuizQuestions() {
                                         : "bg-red-100 text-red-800"
                                     }`}
                                   >
-                                    {question.correctRate}% correct rate
+                                    {question.correctRate}% {t('admin.quiz.correctRate')}
                                   </span>
                                 )}
                               </div>
@@ -360,13 +362,13 @@ export default function AdminQuizQuestions() {
                               className="ml-4 flex items-center gap-2 text-blue-600 hover:text-blue-800 px-3 py-2 rounded-lg hover:bg-blue-50"
                             >
                               <Edit2 className="w-4 h-4" />
-                              Edit
+                              {t('admin.courses.edit')}
                             </button>
                           </div>
 
                           {question.totalAttempts !== undefined && question.totalAttempts > 0 && (
                             <div className="text-sm text-gray-600 mt-2">
-                              Attempted {question.totalAttempts} times
+                              {t('admin.quiz.attempted')} {question.totalAttempts} {t('admin.quiz.times')}
                             </div>
                           )}
                         </div>

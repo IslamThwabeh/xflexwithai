@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/sidebar";
 import { APP_LOGO, APP_TITLE, getLoginUrl } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { 
   LayoutDashboard, 
   LogOut, 
@@ -32,63 +33,78 @@ import {
   BookOpen, 
   Key, 
   GraduationCap,
-  Sparkles,
   MessageSquare,
   Shield,
   Headphones,
   ClipboardList,
-  Briefcase
+  Briefcase,
+  BarChart3,
+  Settings,
+  Globe,
+  HelpCircle,
+  FileQuestion,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 import { Button } from "./ui/button";
 
-// Organized menu items with sections
-const menuSections = [
+// Menu sections use i18n keys – resolved at render time
+type MenuItem = { icon: any; labelKey: string; path: string };
+type MenuSection = { labelKey: string; items: MenuItem[] };
+
+const menuSectionsDef: MenuSection[] = [
   {
-    label: "Overview",
+    labelKey: "admin.sidebar.overview",
     items: [
-      { icon: LayoutDashboard, label: "Dashboard", path: "/admin/dashboard" },
+      { icon: LayoutDashboard, labelKey: "admin.sidebar.dashboard", path: "/admin/dashboard" },
     ]
   },
   {
-    label: "Content Management",
+    labelKey: "admin.sidebar.content",
     items: [
-      { icon: BookOpen, label: "Courses", path: "/admin/courses" },
-      { icon: Key, label: "Course Keys", path: "/admin/keys" },
+      { icon: BookOpen, labelKey: "admin.sidebar.courses", path: "/admin/courses" },
+      { icon: Key, labelKey: "admin.sidebar.courseKeys", path: "/admin/keys" },
     ]
   },
   {
-    label: "LexAI",
+    labelKey: "admin.sidebar.quizzes",
     items: [
-      { icon: MessageSquare, label: "Conversations", path: "/admin/lexai/conversations" },
-      { icon: Users, label: "Subscriptions", path: "/admin/lexai/subscriptions" },
-      { icon: Key, label: "LexAI Keys", path: "/admin/lexai/keys" },
+      { icon: GraduationCap, labelKey: "admin.sidebar.quizDashboard", path: "/admin/quiz" },
+      { icon: Users, labelKey: "admin.sidebar.quizUsers", path: "/admin/quiz/users" },
+      { icon: FileQuestion, labelKey: "admin.sidebar.quizQuestions", path: "/admin/quiz/questions" },
     ]
   },
   {
-    label: "User Management",
+    labelKey: "admin.sidebar.lexai",
     items: [
-      { icon: Users, label: "Users", path: "/admin/users" },
-      { icon: GraduationCap, label: "Enrollments", path: "/admin/enrollments" },
+      { icon: MessageSquare, labelKey: "admin.sidebar.conversations", path: "/admin/lexai/conversations" },
+      { icon: Users, labelKey: "admin.sidebar.subscriptions", path: "/admin/lexai/subscriptions" },
+      { icon: Key, labelKey: "admin.sidebar.lexaiKeys", path: "/admin/lexai/keys" },
     ]
   },
   {
-    label: "Recommendations",
+    labelKey: "admin.sidebar.users",
     items: [
-      { icon: MessageSquare, label: "Group Management", path: "/admin/recommendations" },
+      { icon: Users, labelKey: "admin.sidebar.usersList", path: "/admin/users" },
+      { icon: BookOpen, labelKey: "admin.sidebar.enrollments", path: "/admin/enrollments" },
     ]
   },
   {
-    label: "Support",
+    labelKey: "admin.sidebar.recommendations",
     items: [
-      { icon: Headphones, label: "Support Chat", path: "/admin/support" },
-      { icon: ClipboardList, label: "Support Dashboard", path: "/support-panel" },
-      { icon: Briefcase, label: "Staff Portal", path: "/staff" },
-      { icon: Shield, label: "Roles", path: "/admin/roles" },
+      { icon: MessageSquare, labelKey: "admin.sidebar.groupMgmt", path: "/admin/recommendations" },
     ]
-  }
+  },
+  {
+    labelKey: "admin.sidebar.support",
+    items: [
+      { icon: Headphones, labelKey: "admin.sidebar.supportChat", path: "/admin/support" },
+      { icon: ClipboardList, labelKey: "admin.sidebar.supportDash", path: "/support-panel" },
+      { icon: Briefcase, labelKey: "admin.sidebar.staffPortal", path: "/staff" },
+      { icon: Shield, labelKey: "admin.sidebar.roles", path: "/admin/roles" },
+    ]
+  },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
@@ -176,6 +192,7 @@ function DashboardLayoutContent({
 }: DashboardLayoutContentProps) {
   const { user, logout } = useAuth();
   const [location, setLocation] = useLocation();
+  const { t, language, setLanguage, isRTL } = useLanguage();
   const { state, toggleSidebar } = useSidebar();
   const isCollapsed = state === "collapsed";
   const [isResizing, setIsResizing] = useState(false);
@@ -183,7 +200,7 @@ function DashboardLayoutContent({
   const isMobile = useIsMobile();
 
   // Find active menu item across all sections
-  const activeMenuItem = menuSections
+  const activeMenuItem = menuSectionsDef
     .flatMap(section => section.items)
     .find(item => item.path === location);
 
@@ -270,23 +287,24 @@ function DashboardLayoutContent({
           </SidebarHeader>
 
           <SidebarContent className="gap-0">
-            {menuSections.map((section, sectionIndex) => (
+            {menuSectionsDef.map((section, sectionIndex) => (
               <SidebarGroup key={sectionIndex}>
                 {!isCollapsed && (
                   <SidebarGroupLabel className="text-xs font-semibold text-muted-foreground px-2 py-2">
-                    {section.label}
+                    {t(section.labelKey)}
                   </SidebarGroupLabel>
                 )}
                 <SidebarGroupContent>
                   <SidebarMenu className="px-2 py-1">
                     {section.items.map(item => {
                       const isActive = location === item.path;
+                      const label = t(item.labelKey);
                       return (
                         <SidebarMenuItem key={item.path}>
                           <SidebarMenuButton
                             isActive={isActive}
                             onClick={() => setLocation(item.path)}
-                            tooltip={item.label}
+                            tooltip={label}
                             className={`h-10 transition-all font-normal ${
                               isActive ? "bg-primary/10 text-primary font-medium" : ""
                             }`}
@@ -294,7 +312,7 @@ function DashboardLayoutContent({
                             <item.icon
                               className={`h-4 w-4 ${isActive ? "text-primary" : ""}`}
                             />
-                            <span>{item.label}</span>
+                            <span>{label}</span>
                           </SidebarMenuButton>
                         </SidebarMenuItem>
                       );
@@ -305,7 +323,27 @@ function DashboardLayoutContent({
             ))}
           </SidebarContent>
 
-          <SidebarFooter className="p-3">
+          <SidebarFooter className="p-3 space-y-2">
+            {/* Language Switcher */}
+            {!isCollapsed && (
+              <button
+                onClick={() => setLanguage(language === "ar" ? "en" : "ar")}
+                className="flex items-center gap-2 w-full rounded-lg px-2 py-2 text-sm text-muted-foreground hover:bg-accent/50 transition-colors"
+              >
+                <Globe className="h-4 w-4" />
+                <span>{language === "ar" ? "English" : "عربي"}</span>
+              </button>
+            )}
+            {isCollapsed && (
+              <button
+                onClick={() => setLanguage(language === "ar" ? "en" : "ar")}
+                className="flex items-center justify-center w-full rounded-lg py-2 text-sm text-muted-foreground hover:bg-accent/50 transition-colors"
+                title={language === "ar" ? "English" : "عربي"}
+              >
+                <Globe className="h-4 w-4" />
+              </button>
+            )}
+
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button className="flex items-center gap-3 rounded-lg px-1 py-1 hover:bg-accent/50 transition-colors w-full text-left group-data-[collapsible=icon]:justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
@@ -330,7 +368,7 @@ function DashboardLayoutContent({
                   className="cursor-pointer text-destructive focus:text-destructive"
                 >
                   <LogOut className="mr-2 h-4 w-4" />
-                  <span>Sign out</span>
+                  <span>{t('admin.sidebar.signOut')}</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -354,14 +392,14 @@ function DashboardLayoutContent({
               <div className="flex items-center gap-3">
                 <div className="flex flex-col gap-1">
                   <span className="tracking-tight text-foreground">
-                    {activeMenuItem?.label ?? APP_TITLE}
+                    {activeMenuItem ? t(activeMenuItem.labelKey) : APP_TITLE}
                   </span>
                 </div>
               </div>
             </div>
           </div>
         )}
-        <main className="flex-1 p-4">{children}</main>
+        <main className="flex-1 p-4" dir={isRTL ? "rtl" : "ltr"}>{children}</main>
       </SidebarInset>
     </div>
   );

@@ -1,16 +1,18 @@
 // client/src/pages/AdminEnrollments.tsx
 import DashboardLayout from "@/components/DashboardLayout";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { GraduationCap, Users, BookOpen, TrendingUp } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 export default function AdminEnrollments() {
+  const { t } = useLanguage();
   return (
     <DashboardLayout>
     <div className="container mx-auto p-6">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-2">Enrollments</h1>
+        <h1 className="text-3xl font-bold mb-2">{t('admin.enrollments.title')}</h1>
         <p className="text-gray-600">
-          Track student enrollments and course progress
+          {t('admin.enrollments.trackDesc')}
         </p>
       </div>
 
@@ -19,32 +21,32 @@ export default function AdminEnrollments() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <GraduationCap className="w-6 h-6 text-green-600" />
-            Enrollment Tracking - Coming Soon
+            {t('admin.enrollments.comingSoon')}
           </CardTitle>
           <CardDescription>
-            Student progress tracking features are being developed
+            {t('admin.enrollments.devDesc')}
           </CardDescription>
         </CardHeader>
         <CardContent>
           <p className="text-gray-700 mb-4">
-            The enrollment tracking system is currently under development. Soon you'll be able to:
+            {t('admin.enrollments.underDev')}
           </p>
           <ul className="space-y-2">
             <li className="flex items-center gap-2">
               <Users className="w-4 h-4 text-blue-600" />
-              <span>View all student enrollments</span>
+              <span>{t('admin.enrollments.viewAll')}</span>
             </li>
             <li className="flex items-center gap-2">
               <BookOpen className="w-4 h-4 text-purple-600" />
-              <span>Track course progress and completion</span>
+              <span>{t('admin.enrollments.trackProgress')}</span>
             </li>
             <li className="flex items-center gap-2">
               <TrendingUp className="w-4 h-4 text-green-600" />
-              <span>Monitor student engagement metrics</span>
+              <span>{t('admin.enrollments.monitorEngagement')}</span>
             </li>
             <li className="flex items-center gap-2">
               <GraduationCap className="w-4 h-4 text-yellow-600" />
-              <span>Generate completion certificates</span>
+              <span>{t('admin.enrollments.certificates')}</span>
             </li>
           </ul>
         </CardContent>
@@ -53,28 +55,27 @@ export default function AdminEnrollments() {
       {/* Info Box */}
       <Card className="mb-8">
         <CardHeader>
-          <CardTitle>What are Enrollments?</CardTitle>
+          <CardTitle>{t('admin.enrollments.what')}</CardTitle>
           <CardDescription>
-            Understanding the enrollment system
+            {t('admin.enrollments.whatDesc')}
           </CardDescription>
         </CardHeader>
         <CardContent>
           <p className="text-gray-700 mb-4">
-            <strong>Enrollments</strong> track which students are taking which courses and their progress through the material.
+            {t('admin.enrollments.whatText')}
           </p>
           <div className="bg-gray-50 p-4 rounded-lg">
-            <h3 className="font-semibold mb-2">Key Features (When Implemented):</h3>
+            <h3 className="font-semibold mb-2">{t('admin.enrollments.keyFeatures')}</h3>
             <ul className="space-y-1 text-sm text-gray-600">
-              <li>• Track which users have access to which courses</li>
-              <li>• Monitor video watch progress</li>
-              <li>• See completion rates per course</li>
-              <li>• Identify struggling students who need help</li>
-              <li>• Generate reports on student performance</li>
+              <li>• {t('admin.enrollments.feature1')}</li>
+              <li>• {t('admin.enrollments.feature2')}</li>
+              <li>• {t('admin.enrollments.feature3')}</li>
+              <li>• {t('admin.enrollments.feature4')}</li>
+              <li>• {t('admin.enrollments.feature5')}</li>
             </ul>
           </div>
           <p className="text-gray-600 mt-4 text-sm">
-            <strong>Note:</strong> Currently, course access is managed through registration keys. 
-            The enrollment tracking system will provide deeper insights into student progress.
+            {t('admin.enrollments.note')}
           </p>
         </CardContent>
       </Card>
@@ -84,36 +85,36 @@ export default function AdminEnrollments() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-600">
-              Total Enrollments
+              {t('admin.enrollments.total')}
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">Coming Soon</div>
-            <p className="text-xs text-gray-500 mt-1">Student enrollments</p>
+            <div className="text-2xl font-bold">{t('admin.comingSoon')}</div>
+            <p className="text-xs text-gray-500 mt-1">{t('admin.enrollments.studentEnrollments')}</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-600">
-              Active Students
+              {t('admin.enrollments.activeStudents')}
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">Coming Soon</div>
-            <p className="text-xs text-gray-500 mt-1">Currently learning</p>
+            <div className="text-2xl font-bold">{t('admin.comingSoon')}</div>
+            <p className="text-xs text-gray-500 mt-1">{t('admin.enrollments.currentlyLearning')}</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-600">
-              Completion Rate
+              {t('admin.enrollments.completionRate')}
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">Coming Soon</div>
-            <p className="text-xs text-gray-500 mt-1">Average completion</p>
+            <div className="text-2xl font-bold">{t('admin.comingSoon')}</div>
+            <p className="text-xs text-gray-500 mt-1">{t('admin.enrollments.averageCompletion')}</p>
           </CardContent>
         </Card>
       </div>

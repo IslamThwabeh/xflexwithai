@@ -1,5 +1,6 @@
 import { useState } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -100,6 +101,8 @@ export default function AdminKeys() {
     },
   });
 
+  const { t } = useLanguage();
+
   const handleGenerateSingle = () => {
     if (!selectedCourse) {
       toast.error("Please select a course");
@@ -176,9 +179,9 @@ export default function AdminKeys() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Registration Keys</h1>
+          <h1 className="text-3xl font-bold">{t('admin.keys.title')}</h1>
           <p className="text-muted-foreground">
-            Manage course access keys for students
+            {t('admin.keys.manageCourseAccess')}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -186,25 +189,25 @@ export default function AdminKeys() {
             <DialogTrigger asChild>
               <Button>
                 <Plus className="mr-2 h-4 w-4" />
-                Generate Key
+                {t('admin.keys.generateKey')}
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Generate Single Key</DialogTitle>
+                <DialogTitle>{t('admin.keys.generateSingle')}</DialogTitle>
                 <DialogDescription>
-                  Create a new registration key for a course
+                  {t('admin.keys.createKeyDesc')}
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4">
                 <div>
-                  <Label>Course</Label>
+                  <Label>{t('admin.keys.course')}</Label>
                   <Select
                     value={selectedCourse?.toString()}
                     onValueChange={(value) => setSelectedCourse(parseInt(value))}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Select a course" />
+                      <SelectValue placeholder={t('admin.keys.selectCourse')} />
                     </SelectTrigger>
                     <SelectContent>
                       {courses?.map((course) => (
@@ -216,7 +219,7 @@ export default function AdminKeys() {
                   </Select>
                 </div>
                 <div>
-                  <Label>Notes (Optional)</Label>
+                  <Label>{t('admin.keys.notes')}</Label>
                   <Textarea
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
@@ -228,7 +231,7 @@ export default function AdminKeys() {
                   disabled={generateKey.isPending}
                   className="w-full"
                 >
-                  {generateKey.isPending ? "Generating..." : "Generate Key"}
+                  {generateKey.isPending ? t('admin.keys.generating') : t('admin.keys.generateKey')}
                 </Button>
               </div>
             </DialogContent>
@@ -238,25 +241,25 @@ export default function AdminKeys() {
             <DialogTrigger asChild>
               <Button variant="outline">
                 <Key className="mr-2 h-4 w-4" />
-                Bulk Generate
+                {t('admin.keys.bulkGenerate')}
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Generate Bulk Keys</DialogTitle>
+                <DialogTitle>{t('admin.keys.bulkTitle')}</DialogTitle>
                 <DialogDescription>
-                  Create multiple registration keys at once (max 1000)
+                  {t('admin.keys.bulkDesc')}
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4">
                 <div>
-                  <Label>Course</Label>
+                  <Label>{t('admin.keys.course')}</Label>
                   <Select
                     value={selectedCourse?.toString()}
                     onValueChange={(value) => setSelectedCourse(parseInt(value))}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Select a course" />
+                      <SelectValue placeholder={t('admin.keys.selectCourse')} />
                     </SelectTrigger>
                     <SelectContent>
                       {courses?.map((course) => (
@@ -268,7 +271,7 @@ export default function AdminKeys() {
                   </Select>
                 </div>
                 <div>
-                  <Label>Quantity</Label>
+                  <Label>{t('admin.keys.quantity')}</Label>
                   <Input
                     type="number"
                     min="1"
@@ -279,7 +282,7 @@ export default function AdminKeys() {
                   />
                 </div>
                 <div>
-                  <Label>Notes (Optional)</Label>
+                  <Label>{t('admin.keys.notes')}</Label>
                   <Textarea
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
@@ -292,8 +295,8 @@ export default function AdminKeys() {
                   className="w-full"
                 >
                   {generateBulkKeys.isPending
-                    ? "Generating..."
-                    : `Generate ${quantity} Keys`}
+                    ? t('admin.keys.generating')
+                    : `${t('admin.keys.generateKey')} (${quantity})`}
                 </Button>
               </div>
             </DialogContent>
@@ -301,7 +304,7 @@ export default function AdminKeys() {
 
           <Button variant="outline" onClick={exportKeysToCSV}>
             <Download className="mr-2 h-4 w-4" />
-            Export CSV
+            {t('admin.keys.exportCsv')}
           </Button>
         </div>
       </div>
@@ -311,7 +314,7 @@ export default function AdminKeys() {
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Total Keys</CardTitle>
+              <CardTitle className="text-sm font-medium">{t('admin.keys.totalKeys')}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{stats.total}</div>
@@ -319,7 +322,7 @@ export default function AdminKeys() {
           </Card>
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Activated</CardTitle>
+              <CardTitle className="text-sm font-medium">{t('admin.keys.activated')}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-green-600">
@@ -329,7 +332,7 @@ export default function AdminKeys() {
           </Card>
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Unused</CardTitle>
+              <CardTitle className="text-sm font-medium">{t('admin.keys.unused')}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-blue-600">
@@ -339,7 +342,7 @@ export default function AdminKeys() {
           </Card>
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Deactivated</CardTitle>
+              <CardTitle className="text-sm font-medium">{t('admin.keys.deactivated')}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-red-600">
@@ -350,7 +353,7 @@ export default function AdminKeys() {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium">
-                Activation Rate
+                {t('admin.keys.activationRate')}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -363,14 +366,14 @@ export default function AdminKeys() {
       {/* Search */}
       <Card>
         <CardHeader>
-          <CardTitle>Search Keys</CardTitle>
+          <CardTitle>{t('admin.keys.searchKeys')}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex gap-2">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search by email..."
+                placeholder={t('admin.keys.searchByEmail')}
                 value={searchEmail}
                 onChange={(e) => setSearchEmail(e.target.value)}
                 className="pl-9"
@@ -383,20 +386,20 @@ export default function AdminKeys() {
       {/* Keys Table */}
       <Card>
         <CardHeader>
-          <CardTitle>All Keys ({filteredKeys?.length || 0})</CardTitle>
+          <CardTitle>{t('admin.keys.allKeys')} ({filteredKeys?.length || 0})</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Key Code</TableHead>
-                  <TableHead>Course</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead>Activated</TableHead>
-                  <TableHead>Actions</TableHead>
+                  <TableHead>{t('admin.keys.keyCode')}</TableHead>
+                  <TableHead>{t('admin.keys.course')}</TableHead>
+                  <TableHead>{t('admin.keys.email')}</TableHead>
+                  <TableHead>{t('admin.keys.statusLabel')}</TableHead>
+                  <TableHead>{t('admin.keys.created')}</TableHead>
+                  <TableHead>{t('admin.keys.activatedDate')}</TableHead>
+                  <TableHead>{t('admin.keys.actions')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -420,7 +423,7 @@ export default function AdminKeys() {
                       <TableCell>
                         {key.email || (
                           <span className="text-muted-foreground">
-                            Not activated
+                            {t('admin.keys.notActivated')}
                           </span>
                         )}
                       </TableCell>
@@ -429,18 +432,18 @@ export default function AdminKeys() {
                           key.email ? (
                             <Badge variant="default">
                               <CheckCircle2 className="mr-1 h-3 w-3" />
-                              Activated
+                              {t('admin.keys.activated')}
                             </Badge>
                           ) : (
                             <Badge variant="secondary">
                               <Clock className="mr-1 h-3 w-3" />
-                              Unused
+                              {t('admin.keys.unused')}
                             </Badge>
                           )
                         ) : (
                           <Badge variant="destructive">
                             <XCircle className="mr-1 h-3 w-3" />
-                            Deactivated
+                              {t('admin.keys.deactivated')}
                           </Badge>
                         )}
                       </TableCell>
@@ -461,7 +464,7 @@ export default function AdminKeys() {
                               deactivateKey.mutate({ keyId: key.id })
                             }
                           >
-                            Deactivate
+                            {t('admin.keys.deactivate')}
                           </Button>
                         )}
                       </TableCell>

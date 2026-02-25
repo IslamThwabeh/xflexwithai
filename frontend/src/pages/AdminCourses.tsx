@@ -1,4 +1,5 @@
 import DashboardLayout from "@/components/DashboardLayout";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -69,6 +70,8 @@ export default function AdminCourses() {
 
   const uploadImage = trpc.upload.image.useMutation();
 
+  const { t } = useLanguage();
+
   const [formData, setFormData] = useState({
     titleEn: "",
     titleAr: "",
@@ -118,7 +121,7 @@ export default function AdminCourses() {
   };
 
   const handleDelete = (id: number) => {
-    if (confirm("Are you sure you want to delete this course? This will also delete all episodes and enrollments.")) {
+    if (confirm(t('admin.courses.deleteConfirm'))) {
       deleteMutation.mutate({ id });
     }
   };
@@ -128,21 +131,21 @@ export default function AdminCourses() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold">Courses</h1>
-            <p className="text-muted-foreground">Manage your trading courses</p>
+            <h1 className="text-3xl font-bold">{t('admin.courses')}</h1>
+            <p className="text-muted-foreground">{t('admin.courses.subtitle')}</p>
           </div>
           <Button onClick={() => { resetForm(); setEditingCourse(null); setIsDialogOpen(true); }}>
             <Plus className="mr-2 h-4 w-4" />
-            Add Course
+            {t('admin.courses.addCourse')}
           </Button>
         </div>
 
         {isLoading ? (
-          <p>Loading courses...</p>
+          <p>{t('admin.loading')}</p>
         ) : !courses || courses.length === 0 ? (
           <Card>
             <CardContent className="py-10 text-center">
-              <p className="text-muted-foreground">No courses yet. Create your first course to get started!</p>
+              <p className="text-muted-foreground">{t('admin.courses.noCourses')} {t('admin.courses.noCoursesCta')}</p>
             </CardContent>
           </Card>
         ) : (
@@ -176,13 +179,13 @@ export default function AdminCourses() {
                     <Link href={`/admin/courses/${course.id}/episodes`}>
                       <Button variant="default" size="sm" className="w-full">
                         <Video className="mr-1 h-3 w-3" />
-                        Manage Episodes
+                        {t('admin.courses.manageEpisodes')}
                       </Button>
                     </Link>
                     <div className="flex gap-2">
                       <Button variant="outline" size="sm" onClick={() => handleEdit(course)} className="flex-1">
                         <Edit className="mr-1 h-3 w-3" />
-                        Edit
+                        {t('admin.courses.edit')}
                       </Button>
                       <Button variant="outline" size="sm" onClick={() => handleDelete(course.id)} className="text-red-600 hover:text-red-700">
                         <Trash2 className="h-3 w-3" />
@@ -199,15 +202,15 @@ export default function AdminCourses() {
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>{editingCourse ? "Edit Course" : "Create New Course"}</DialogTitle>
+              <DialogTitle>{editingCourse ? t('admin.courses.editCourse') : t('admin.courses.createCourse')}</DialogTitle>
               <DialogDescription>
-                Fill in the course details in both English and Arabic
+                {t('admin.courses.fillBoth')}
               </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="titleEn">Title (English)</Label>
+                  <Label htmlFor="titleEn">{t('admin.courses.titleEn')}</Label>
                   <Input
                     id="titleEn"
                     value={formData.titleEn}
@@ -216,7 +219,7 @@ export default function AdminCourses() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="titleAr">Title (Arabic)</Label>
+                  <Label htmlFor="titleAr">{t('admin.courses.titleAr')}</Label>
                   <Input
                     id="titleAr"
                     value={formData.titleAr}
@@ -229,7 +232,7 @@ export default function AdminCourses() {
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="descriptionEn">Description (English)</Label>
+                  <Label htmlFor="descriptionEn">{t('admin.courses.descEn')}</Label>
                   <Textarea
                     id="descriptionEn"
                     value={formData.descriptionEn}
@@ -239,7 +242,7 @@ export default function AdminCourses() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="descriptionAr">Description (Arabic)</Label>
+                  <Label htmlFor="descriptionAr">{t('admin.courses.descAr')}</Label>
                   <Textarea
                     id="descriptionAr"
                     value={formData.descriptionAr}
@@ -254,7 +257,7 @@ export default function AdminCourses() {
               <FileUpload
                 accept="image/*"
                 maxSize={5}
-                label="Course Thumbnail"
+                label={t('admin.courses.thumbnail.label')}
                 preview="image"
                 currentUrl={formData.thumbnailUrl}
                 onUrlChange={(url) => setFormData({ ...formData, thumbnailUrl: url })}
@@ -287,7 +290,7 @@ export default function AdminCourses() {
 
               <div className="grid gap-4 md:grid-cols-3">
                 <div className="space-y-2">
-                  <Label htmlFor="price">Price (USD)</Label>
+                  <Label htmlFor="price">{t('admin.courses.price')}</Label>
                   <Input
                     id="price"
                     type="number"
@@ -298,27 +301,27 @@ export default function AdminCourses() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="level">Level</Label>
+                  <Label htmlFor="level">{t('admin.courses.level')}</Label>
                   <Select value={formData.level} onValueChange={(value: any) => setFormData({ ...formData, level: value })}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="beginner">Beginner</SelectItem>
-                      <SelectItem value="intermediate">Intermediate</SelectItem>
-                      <SelectItem value="advanced">Advanced</SelectItem>
+                      <SelectItem value="beginner">{t('admin.courses.beginner')}</SelectItem>
+                      <SelectItem value="intermediate">{t('admin.courses.intermediate')}</SelectItem>
+                      <SelectItem value="advanced">{t('admin.courses.advanced')}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="isPublished">Status</Label>
+                  <Label htmlFor="isPublished">{t('admin.courses.status')}</Label>
                   <Select value={formData.isPublished ? "published" : "draft"} onValueChange={(value) => setFormData({ ...formData, isPublished: value === "published" })}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="draft">Draft</SelectItem>
-                      <SelectItem value="published">Published</SelectItem>
+                      <SelectItem value="draft">{t('admin.courses.draft')}</SelectItem>
+                      <SelectItem value="published">{t('admin.courses.published')}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -326,10 +329,10 @@ export default function AdminCourses() {
 
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
-                  Cancel
+                  {t('admin.courses.cancel')}
                 </Button>
                 <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
-                  {createMutation.isPending || updateMutation.isPending ? "Saving..." : (editingCourse ? "Update" : "Create")}
+                  {createMutation.isPending || updateMutation.isPending ? t('admin.courses.saving') : (editingCourse ? t('admin.courses.update') : t('admin.courses.create'))}
                 </Button>
               </DialogFooter>
             </form>

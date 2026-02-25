@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { Search, User, Trophy, Lock, Unlock, RefreshCw, Eye } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { apiFetch } from "@/lib/apiBase";
 
 interface UserProgress {
@@ -22,6 +23,7 @@ export default function AdminQuizUsers() {
   const [error, setError] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [resetting, setResetting] = useState<number | null>(null);
+  const { t } = useLanguage();
 
   useEffect(() => {
     fetchUsers();
@@ -89,7 +91,7 @@ export default function AdminQuizUsers() {
         <div className="bg-gray-50 flex items-center justify-center py-12">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-            <p className="mt-4 text-gray-600">Loading users...</p>
+            <p className="mt-4 text-gray-600">{t('admin.quiz.loadingUsers')}</p>
           </div>
         </div>
       </DashboardLayout>
@@ -116,12 +118,12 @@ export default function AdminQuizUsers() {
         <div className="mb-8">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold mb-2">User Progress Monitoring</h1>
-              <p className="text-gray-600">Track student quiz performance</p>
+              <h1 className="text-3xl font-bold mb-2">{t('admin.quiz.usersTitle')}</h1>
+              <p className="text-gray-600">{t('admin.quiz.usersSubtitle')}</p>
             </div>
             <Link href="/admin/quiz">
               <button className="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700">
-                Back to Dashboard
+                {t('admin.quiz.backToDash')}
               </button>
             </Link>
           </div>
@@ -133,7 +135,7 @@ export default function AdminQuizUsers() {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
             <input
               type="text"
-              placeholder="Search by username or email..."
+              placeholder={t('admin.quiz.searchUsers')}
               className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -144,19 +146,19 @@ export default function AdminQuizUsers() {
         {/* Stats Summary */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div className="bg-white rounded-lg shadow-md p-6">
-            <div className="text-gray-600 mb-2">Total Users</div>
+            <div className="text-gray-600 mb-2">{t('admin.quiz.totalUsers')}</div>
             <div className="text-3xl font-bold text-blue-600">{users.length}</div>
           </div>
 
           <div className="bg-white rounded-lg shadow-md p-6">
-            <div className="text-gray-600 mb-2">Active Users</div>
+            <div className="text-gray-600 mb-2">{t('admin.quiz.activeUsers')}</div>
             <div className="text-3xl font-bold text-green-600">
               {users.filter((u) => u.totalAttempts > 0).length}
             </div>
           </div>
 
           <div className="bg-white rounded-lg shadow-md p-6">
-            <div className="text-gray-600 mb-2">Completed All Levels</div>
+            <div className="text-gray-600 mb-2">{t('admin.quiz.completedAll')}</div>
             <div className="text-3xl font-bold text-purple-600">
               {users.filter((u) => u.completedLevels === 8).length}
             </div>
@@ -166,25 +168,25 @@ export default function AdminQuizUsers() {
         {/* Users Table */}
         <div className="bg-white rounded-lg shadow-md overflow-hidden">
           <div className="p-6 border-b">
-            <h2 className="text-xl font-bold">All Users ({filteredUsers.length})</h2>
+            <h2 className="text-xl font-bold">{t('admin.quiz.allUsers')} ({filteredUsers.length})</h2>
           </div>
 
           {filteredUsers.length === 0 ? (
             <div className="p-12 text-center text-gray-500">
-              {searchTerm ? "No users found matching your search" : "No users yet"}
+              {searchTerm ? t('admin.quiz.noUsersFound') : t('admin.quiz.noUsers')}
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">User</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Attempts</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Completed</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Unlocked</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Best Scores</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Last Activity</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('admin.quiz.user')}</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('admin.quiz.attempts')}</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('admin.quiz.completed')}</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('admin.quiz.unlocked')}</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('admin.quiz.bestScores')}</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('admin.quiz.lastActivity')}</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('admin.roles.actions')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
