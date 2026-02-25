@@ -5,10 +5,11 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { APP_TITLE, getLoginUrl } from "@/const";
 import { trpc } from "@/lib/trpc";
-import { BookOpen, GraduationCap, Play, CheckCircle2, Clock, ArrowLeft, Sparkles, MessageSquare } from "lucide-react";
+import { BookOpen, GraduationCap, Play, CheckCircle2, Clock, ArrowLeft, ArrowRight, Sparkles, MessageSquare, Globe } from "lucide-react";
 import { Link } from "wouter";
 import { format } from "date-fns";
 import { useEffect, useRef } from "react";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 function formatSafeDate(
   value: string | number | Date | null | undefined,
@@ -23,6 +24,7 @@ function formatSafeDate(
 
 export default function MyDashboard() {
   const { user, isAuthenticated, loading } = useAuth();
+  const { t, language, setLanguage, isRTL } = useLanguage();
   const utils = trpc.useUtils();
   const didSyncRef = useRef(false);
 
@@ -65,10 +67,10 @@ export default function MyDashboard() {
 
   if (loading || enrollmentsLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center" dir={isRTL ? 'rtl' : 'ltr'}>
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Loading your dashboard...</p>
+          <p className="text-muted-foreground">{t('dashboard.loading')}</p>
         </div>
       </div>
     );
@@ -76,20 +78,16 @@ export default function MyDashboard() {
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-purple-50">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-purple-50" dir={isRTL ? 'rtl' : 'ltr'}>
         <Card className="max-w-md">
           <CardHeader className="text-center">
             <GraduationCap className="h-16 w-16 mx-auto text-blue-600 mb-4" />
-            <CardTitle className="text-2xl">Welcome to {APP_TITLE}</CardTitle>
-            <CardDescription>
-              Please sign in to access your learning dashboard
-            </CardDescription>
+            <CardTitle className="text-2xl">{t('dashboard.signInTitle')}</CardTitle>
+            <CardDescription>{t('dashboard.signInDesc')}</CardDescription>
           </CardHeader>
           <CardContent>
             <a href={getLoginUrl()} className="block">
-              <Button className="w-full" size="lg">
-                Sign In to Continue
-              </Button>
+              <Button className="w-full" size="lg">{t('dashboard.signInBtn')}</Button>
             </a>
           </CardContent>
         </Card>
@@ -104,8 +102,10 @@ export default function MyDashboard() {
     ? enrollments!.reduce((sum, e) => sum + (e.progressPercentage || 0), 0) / totalCourses
     : 0;
 
+  const BackArrow = isRTL ? ArrowRight : ArrowLeft;
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50" dir={isRTL ? 'rtl' : 'ltr'}>
       {/* Header */}
       <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4">
@@ -119,43 +119,53 @@ export default function MyDashboard() {
               </div>
             </Link>
             
-            <nav className="flex items-center gap-4">
+            <nav className="flex items-center gap-3">
               <Link href="/">
-                <Button variant="ghost">
-                  <ArrowLeft className="mr-2 h-4 w-4" />
-                  Home
+                <Button variant="ghost" size="sm">
+                  <BackArrow className="h-4 w-4" />
+                  {t('dashboard.nav.home')}
                 </Button>
               </Link>
 			  
-			    <Link href="/quiz">
-					<Button variant="ghost">
-					<BookOpen className="mr-2 h-4 w-4" />
-					الاختبارات
-				</Button>
-				</Link>
-        {lexaiSubscription && (
-          <Link href="/lexai">
-            <Button variant="ghost">
-              <Sparkles className="mr-2 h-4 w-4" />
-              LexAI
-            </Button>
-          </Link>
-        )}
+              <Link href="/quiz">
+                <Button variant="ghost" size="sm">
+                  <BookOpen className="h-4 w-4" />
+                  {t('dashboard.nav.quizzes')}
+                </Button>
+              </Link>
 
-        {recommendationsAccess?.hasSubscription && (
-          <Link href="/recommendations">
-            <Button variant="ghost">
-              <MessageSquare className="mr-2 h-4 w-4" />
-              قروب التوصيات
-            </Button>
-          </Link>
-        )}
+              {lexaiSubscription && (
+                <Link href="/lexai">
+                  <Button variant="ghost" size="sm">
+                    <Sparkles className="h-4 w-4" />
+                    {t('dashboard.nav.lexai')}
+                  </Button>
+                </Link>
+              )}
+
+              {recommendationsAccess?.hasSubscription && (
+                <Link href="/recommendations">
+                  <Button variant="ghost" size="sm">
+                    <MessageSquare className="h-4 w-4" />
+                    {t('dashboard.nav.rec')}
+                  </Button>
+                </Link>
+              )}
+
+              {/* Language Toggle */}
+              <button
+                onClick={() => setLanguage(language === 'ar' ? 'en' : 'ar')}
+                className="flex items-center gap-1 px-2 py-1.5 rounded-full text-xs font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition"
+              >
+                <Globe className="w-3.5 h-3.5" />
+                {language === 'ar' ? 'EN' : 'عربي'}
+              </button>
   
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white font-semibold">
                   {user?.name?.charAt(0).toUpperCase() || "U"}
                 </div>
-                <span className="text-sm font-medium">{user?.name}</span>
+                <span className="text-sm font-medium hidden sm:inline">{user?.name}</span>
               </div>
             </nav>
           </div>
@@ -168,10 +178,10 @@ export default function MyDashboard() {
           {/* Welcome Section */}
           <div>
             <h1 className="text-4xl font-bold mb-2">
-              Welcome back, {user?.name?.split(' ')[0] || 'Student'}! 👋
+              {t('dashboard.title').replace('{name}', user?.name?.split(' ')[0] || '')} 👋
             </h1>
             <p className="text-xl text-muted-foreground">
-              Continue your learning journey
+              {t('dashboard.subtitle')}
             </p>
           </div>
 
@@ -179,45 +189,45 @@ export default function MyDashboard() {
           <div className="grid gap-4 md:grid-cols-4">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total Courses</CardTitle>
+                <CardTitle className="text-sm font-medium">{t('dashboard.stats.totalCourses')}</CardTitle>
                 <BookOpen className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{totalCourses}</div>
-                <p className="text-xs text-muted-foreground">Enrolled courses</p>
+                <p className="text-xs text-muted-foreground">{t('dashboard.stats.enrolledLabel')}</p>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">In Progress</CardTitle>
+                <CardTitle className="text-sm font-medium">{t('dashboard.stats.inProgress')}</CardTitle>
                 <Clock className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{inProgressCourses}</div>
-                <p className="text-xs text-muted-foreground">Active learning</p>
+                <p className="text-xs text-muted-foreground">{t('dashboard.stats.activeLearning')}</p>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Completed</CardTitle>
+                <CardTitle className="text-sm font-medium">{t('dashboard.stats.completedCourses')}</CardTitle>
                 <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{completedCourses}</div>
-                <p className="text-xs text-muted-foreground">Finished courses</p>
+                <p className="text-xs text-muted-foreground">{t('dashboard.stats.finished')}</p>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Avg. Progress</CardTitle>
+                <CardTitle className="text-sm font-medium">{t('dashboard.stats.avgProgress')}</CardTitle>
                 <GraduationCap className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{Math.round(averageProgress)}%</div>
-                <p className="text-xs text-muted-foreground">Overall completion</p>
+                <p className="text-xs text-muted-foreground">{t('dashboard.stats.overallCompletion')}</p>
               </CardContent>
             </Card>
           </div>
@@ -225,40 +235,38 @@ export default function MyDashboard() {
           {/* Access Summary */}
           <Card>
             <CardHeader>
-              <CardTitle>My Access</CardTitle>
-              <CardDescription>
-                Your course access and LexAI status are linked to your email.
-              </CardDescription>
+              <CardTitle>{t('dashboard.myAccess')}</CardTitle>
+              <CardDescription>{t('dashboard.myAccessDesc')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="text-sm text-muted-foreground">
-                Course: {totalCourses > 0 ? 'Active' : 'Not active'}
+                {t('dashboard.courseAccess')}: {totalCourses > 0 ? t('dashboard.active') : t('dashboard.notActive')}
               </div>
               <div className="text-sm text-muted-foreground">
-                LexAI: {lexaiSubscription ? 'Active' : 'Not active'}
+                {t('dashboard.lexaiAccess')}: {lexaiSubscription ? t('dashboard.active') : t('dashboard.notActive')}
               </div>
               <div className="text-sm text-muted-foreground">
-                Recommendations: {recommendationsAccess?.hasSubscription ? 'Active' : 'Not active'}
+                {t('dashboard.recAccess')}: {recommendationsAccess?.hasSubscription ? t('dashboard.active') : t('dashboard.notActive')}
               </div>
               <div className="flex flex-wrap gap-2">
                 {totalCourses > 0 && (
                   <Link href="/courses">
-                    <Button variant="outline">Open Courses</Button>
+                    <Button variant="outline">{t('dashboard.openCourses')}</Button>
                   </Link>
                 )}
                 {lexaiSubscription && (
                   <Link href="/lexai">
-                    <Button variant="outline">Open LexAI</Button>
+                    <Button variant="outline">{t('dashboard.openLexai')}</Button>
                   </Link>
                 )}
                 {recommendationsAccess?.hasSubscription && (
                   <Link href="/recommendations">
-                    <Button variant="outline">Open Recommendations</Button>
+                    <Button variant="outline">{t('dashboard.openRec')}</Button>
                   </Link>
                 )}
                 {!recommendationsAccess?.hasSubscription && (
                   <Link href="/recommendations">
-                    <Button variant="outline">Activate Recommendations</Button>
+                    <Button variant="outline">{t('dashboard.activateRec')}</Button>
                   </Link>
                 )}
               </div>
@@ -267,18 +275,16 @@ export default function MyDashboard() {
 
           {/* Enrolled Courses */}
           <div>
-            <h2 className="text-2xl font-bold mb-4">My Courses</h2>
+            <h2 className="text-2xl font-bold mb-4">{t('dashboard.enrolledCourses.title')}</h2>
             
             {!enrollments || enrollments.length === 0 ? (
               <Card>
                 <CardContent className="py-12 text-center">
                   <BookOpen className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">No courses yet</h3>
-                  <p className="text-muted-foreground mb-4">
-                    Start learning by enrolling in a course
-                  </p>
+                  <h3 className="text-lg font-semibold mb-2">{t('dashboard.noCoursesTitle')}</h3>
+                  <p className="text-muted-foreground mb-4">{t('dashboard.noCoursesDesc')}</p>
                   <Link href="/">
-                    <Button>Browse Courses</Button>
+                    <Button>{t('dashboard.browseCourses')}</Button>
                   </Link>
                 </CardContent>
               </Card>
@@ -293,10 +299,10 @@ export default function MyDashboard() {
                       <div className="aspect-video bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center relative">
                         <BookOpen className="h-16 w-16 text-white opacity-50" />
                         {isCompleted && (
-                          <div className="absolute top-2 right-2">
+                          <div className="absolute top-2 end-2">
                             <Badge className="bg-green-500">
-                              <CheckCircle2 className="h-3 w-3 mr-1" />
-                              Completed
+                              <CheckCircle2 className="h-3 w-3 me-1" />
+                              {t('dashboard.completed')}
                             </Badge>
                           </div>
                         )}
@@ -308,14 +314,13 @@ export default function MyDashboard() {
                           </span>
                         </div>
                         <CardTitle className="line-clamp-2">{enrollment.courseName}</CardTitle>
-                        <CardDescription className="line-clamp-2">Course</CardDescription>
                       </CardHeader>
                       <CardContent>
                         <div className="space-y-4">
                           {/* Progress Bar */}
                           <div className="space-y-2">
                             <div className="flex items-center justify-between text-sm">
-                              <span className="text-muted-foreground">Progress</span>
+                              <span className="text-muted-foreground">{t('dashboard.progress')}</span>
                               <span className="font-semibold">{progress}%</span>
                             </div>
                             <Progress value={progress} className="h-2" />
@@ -324,7 +329,7 @@ export default function MyDashboard() {
                           {/* Episode Count */}
                           <div className="flex items-center justify-between text-sm text-muted-foreground">
                             <span>
-                              {enrollment.completedEpisodes} episodes completed
+                              {enrollment.completedEpisodes} {t('dashboard.episodesCompleted')}
                             </span>
                           </div>
 
@@ -333,13 +338,13 @@ export default function MyDashboard() {
                             <Button className="w-full" variant={isCompleted ? "outline" : "default"}>
                               {isCompleted ? (
                                 <>
-                                  <CheckCircle2 className="mr-2 h-4 w-4" />
-                                  Review Course
+                                  <CheckCircle2 className="h-4 w-4" />
+                                  {t('dashboard.review')}
                                 </>
                               ) : (
                                 <>
-                                  <Play className="mr-2 h-4 w-4" />
-                                  Continue Learning
+                                  <Play className="h-4 w-4" />
+                                  {t('dashboard.continue')}
                                 </>
                               )}
                             </Button>
