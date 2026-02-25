@@ -17,6 +17,7 @@ import { Link, useRoute } from "wouter";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import ClientLayout from "@/components/ClientLayout";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 type EpisodeQuizAnswer = {
   questionId: number;
@@ -28,6 +29,7 @@ export default function CourseWatch() {
   const courseId = params?.courseId ? parseInt(params.courseId) : null;
 
   const { user, isAuthenticated } = useAuth();
+  const { t, language } = useLanguage();
   const utils = trpc.useUtils();
 
   const { data: course, isLoading: courseLoading } = trpc.courses.getById.useQuery(
@@ -53,13 +55,13 @@ export default function CourseWatch() {
 
   const markCompleteMutation = trpc.enrollments.markEpisodeComplete.useMutation({
     onSuccess: () => {
-      toast.success("Episode marked as complete!");
+      toast.success(t('course.toastCompleted'));
       utils.enrollments.getEnrollment.invalidate();
       utils.enrollments.myEnrollments.invalidate();
       utils.episodeProgress.getCourse.invalidate();
     },
     onError: (error) => {
-      toast.error(error.message || "Unable to mark episode complete");
+      toast.error(error.message || t('course.toastCompleteFail'));
     },
   });
 
@@ -94,15 +96,15 @@ export default function CourseWatch() {
       });
 
       if (result.passed) {
-        toast.success(`Quiz passed (${result.score}%)`);
+        toast.success(`${t('course.score')}: ${result.score}%`);
       } else {
-        toast.error(`Quiz not passed (${result.score}%). Required: ${result.passingScore}%`);
+        toast.error(`${t('course.score')}: ${result.score}% — ${t('course.requiredScore')}: ${result.passingScore}%`);
       }
 
       utils.episodeQuiz.getForEpisode.invalidate();
     },
     onError: (error) => {
-      toast.error(error.message || "Failed to submit quiz");
+      toast.error(error.message || t('course.toastCompleteFail'));
     },
   });
 
@@ -185,7 +187,7 @@ export default function CourseWatch() {
   const handleNextEpisode = () => {
     if (!selectedEpisode || !nextEpisode) return;
     if (!isEpisodeUnlocked(nextEpisode)) {
-      toast.error("Complete the current episode first to unlock the next one.");
+      toast.error(t('course.toastUnlockPrev'));
       return;
     }
 
@@ -204,7 +206,7 @@ export default function CourseWatch() {
       (question) => !quizAnswers[question.id]
     );
     if (unanswered.length > 0) {
-      toast.error(`Please answer all questions (${unanswered.length} left)`);
+      toast.error(`${t('course.toastAnswerAll')} (${unanswered.length})`);
       return;
     }
 
@@ -225,7 +227,7 @@ export default function CourseWatch() {
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Loading course...</p>
+          <p className="text-muted-foreground">{t('course.loading')}</p>
         </div>
       </div>
     );
@@ -237,9 +239,9 @@ export default function CourseWatch() {
         <Card className="max-w-md">
           <CardContent className="py-12 text-center">
             <BookOpen className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold mb-2">Course not found</h3>
+            <h3 className="text-lg font-semibold mb-2">{t('course.notFound')}</h3>
             <Link href="/">
-              <Button>Back to Home</Button>
+              <Button>{t('course.backHome')}</Button>
             </Link>
           </CardContent>
         </Card>
@@ -253,15 +255,15 @@ export default function CourseWatch() {
         <Card className="max-w-md">
           <CardHeader className="text-center">
             <Lock className="h-16 w-16 mx-auto text-blue-600 mb-4" />
-            <CardTitle className="text-2xl">Sign in required</CardTitle>
+            <CardTitle className="text-2xl">{t('course.signInRequired')}</CardTitle>
             <CardDescription>
-              Please sign in to access this course
+              {t('course.signInToAccess')}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <a href={getLoginUrl()} className="block">
               <Button className="w-full" size="lg">
-                Sign In to Continue
+                {t('course.signInBtn')}
               </Button>
             </a>
           </CardContent>
@@ -276,22 +278,22 @@ export default function CourseWatch() {
         <Card className="max-w-md">
           <CardHeader className="text-center">
             <Lock className="h-16 w-16 mx-auto text-blue-600 mb-4" />
-            <CardTitle className="text-2xl">Enrollment required</CardTitle>
+            <CardTitle className="text-2xl">{t('course.enrollRequired')}</CardTitle>
             <CardDescription>
-              You need to enroll in this course to access the content
+              {t('course.enrollDesc')}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="text-center">
               <p className="text-2xl font-bold text-blue-600">${course.price}</p>
-              <p className="text-sm text-muted-foreground">One-time payment</p>
+              <p className="text-sm text-muted-foreground">{t('course.oneTimePayment')}</p>
             </div>
             <Button className="w-full" size="lg">
-              Enroll Now
+              {t('course.enrollNow')}
             </Button>
             <Link href="/">
               <Button variant="outline" className="w-full">
-                Back to Home
+                {t('course.backHome')}
               </Button>
             </Link>
           </CardContent>
@@ -307,8 +309,8 @@ export default function CourseWatch() {
       subHeader={
         <div className="border-t bg-white/60 px-4 py-2">
           <div className="container mx-auto flex items-center justify-between text-sm">
-            <span className="font-medium truncate">{course.titleAr || course.titleEn}</span>
-            <span className="text-muted-foreground">Progress: <span className="font-semibold text-foreground">{progress}%</span></span>
+            <span className="font-medium truncate">{language === 'ar' ? (course.titleAr || course.titleEn) : (course.titleEn || course.titleAr)}</span>
+            <span className="text-muted-foreground">{t('course.progress')}: <span className="font-semibold text-foreground">{progress}%</span></span>
           </div>
         </div>
       }
@@ -362,14 +364,14 @@ export default function CourseWatch() {
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-2">
-                      <Badge variant="outline">Episode {selectedEpisode?.order}</Badge>
+                      <Badge variant="outline">{t('course.episode')} {selectedEpisode?.order}</Badge>
                       {selectedEpisode?.isFree && (
-                        <Badge className="bg-green-500">FREE</Badge>
+                        <Badge className="bg-green-500">{t('course.free')}</Badge>
                       )}
                     </div>
-                    <CardTitle className="text-2xl">{selectedEpisode?.titleEn}</CardTitle>
+                    <CardTitle className="text-2xl">{language === 'ar' ? (selectedEpisode?.titleAr || selectedEpisode?.titleEn) : (selectedEpisode?.titleEn || selectedEpisode?.titleAr)}</CardTitle>
                     <CardDescription className="mt-2">
-                      {selectedEpisode?.descriptionEn}
+                      {language === 'ar' ? (selectedEpisode?.descriptionAr || selectedEpisode?.descriptionEn) : (selectedEpisode?.descriptionEn || selectedEpisode?.descriptionAr)}
                     </CardDescription>
                   </div>
                 </div>
@@ -377,16 +379,16 @@ export default function CourseWatch() {
               <CardContent>
                 <div className="flex gap-3">
                   <Button onClick={handleEpisodeComplete} disabled={markCompleteMutation.isPending || !canMarkComplete}>
-                    <CheckCircle2 className="mr-2 h-4 w-4" />
-                    Mark as Complete
+                    <CheckCircle2 className="h-4 w-4 me-2" />
+                    {t('course.markComplete')}
                   </Button>
                   <Button variant="outline" onClick={handleNextEpisode} disabled={!canGoToNextEpisode}>
-                    Next Episode
-                    <ChevronRight className="ml-2 h-4 w-4" />
+                    {t('course.nextEpisode')}
+                    <ChevronRight className="h-4 w-4 ms-2" />
                   </Button>
                 </div>
                 <p className="text-xs text-muted-foreground mt-3">
-                  Watch progress: {Math.min(watchedSeconds, requiredWatchSeconds)}s / {requiredWatchSeconds}s required
+                  {t('course.watchProgress')}: {Math.min(watchedSeconds, requiredWatchSeconds)}s / {requiredWatchSeconds}s {t('course.required')}
                 </p>
               </CardContent>
             </Card>
@@ -395,21 +397,21 @@ export default function CourseWatch() {
             {selectedEpisode && selectedEpisode.order > 1 && (
               <Card>
                 <CardHeader>
-                  <CardTitle>Episode Quiz</CardTitle>
+                  <CardTitle>{t('course.episodeQuiz')}</CardTitle>
                   <CardDescription>
-                    Pass at least 50% to unlock completion for this episode.
+                    {t('course.quizDesc')}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {loadingEpisodeQuiz ? (
-                    <p className="text-sm text-muted-foreground">Loading quiz...</p>
+                    <p className="text-sm text-muted-foreground">{t('course.loadingQuiz')}</p>
                   ) : !episodeQuiz?.quiz ? (
                     <p className="text-sm text-muted-foreground">
-                      Quiz is not configured for this episode yet.
+                      {t('course.noQuiz')}
                     </p>
                   ) : episodeQuiz.passed ? (
                     <div className="rounded border border-green-200 bg-green-50 p-3 text-sm text-green-700">
-                      Quiz passed. You can now mark this episode as complete.
+                      {t('course.quizPassed')}
                     </div>
                   ) : (
                     <>
@@ -442,7 +444,7 @@ export default function CourseWatch() {
                         onClick={handleSubmitEpisodeQuiz}
                         disabled={submitEpisodeQuizMutation.isPending}
                       >
-                        Submit Quiz
+                        {t('course.submitQuiz')}
                       </Button>
 
                       {quizResult && (
@@ -453,8 +455,8 @@ export default function CourseWatch() {
                               : "border-orange-200 bg-orange-50 text-orange-700"
                           }`}
                         >
-                          Score: {quizResult.score}% ({quizResult.correctCount}/{quizResult.totalQuestions})
-                          {!quizResult.passed && ` - Required: ${quizResult.passingScore}%`}
+                          {t('course.score')}: {quizResult.score}% ({quizResult.correctCount}/{quizResult.totalQuestions})
+                          {!quizResult.passed && ` - ${t('course.requiredScore')}: ${quizResult.passingScore}%`}
                         </div>
                       )}
                     </>
@@ -466,17 +468,17 @@ export default function CourseWatch() {
             {/* Course Description */}
             <Card>
               <CardHeader>
-                <CardTitle>About this course</CardTitle>
+                <CardTitle>{t('course.aboutCourse')}</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-muted-foreground">{course.descriptionEn}</p>
+                <p className="text-muted-foreground">{language === 'ar' ? (course.descriptionAr || course.descriptionEn) : (course.descriptionEn || course.descriptionAr)}</p>
                 <div className="mt-4 flex items-center gap-4 text-sm">
                   <div>
-                    <span className="text-muted-foreground">Level: </span>
+                    <span className="text-muted-foreground">{t('course.level')}: </span>
                     <span className="font-semibold capitalize">{course.level}</span>
                   </div>
                   <div>
-                    <span className="text-muted-foreground">Episodes: </span>
+                    <span className="text-muted-foreground">{t('course.episodes')}: </span>
                     <span className="font-semibold">{sortedEpisodes.length}</span>
                   </div>
                 </div>
@@ -488,20 +490,20 @@ export default function CourseWatch() {
           <div className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>Course Progress</CardTitle>
+                <CardTitle>{t('course.courseProgress')}</CardTitle>
                 <CardDescription>
-                  {enrollment.completedEpisodes} of {sortedEpisodes.length} episodes completed
+                  {enrollment.completedEpisodes} {t('course.ofEpisodes')} {sortedEpisodes.length} {t('course.episodesCompleted')}
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <Progress value={progress} className="h-2" />
-                <p className="text-sm text-muted-foreground mt-2">{progress}% complete</p>
+                <p className="text-sm text-muted-foreground mt-2">{progress}% {t('course.percentComplete')}</p>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader>
-                <CardTitle>Episodes</CardTitle>
+                <CardTitle>{t('course.episodes')}</CardTitle>
               </CardHeader>
               <CardContent className="p-0">
                 <div className="divide-y">
@@ -515,7 +517,7 @@ export default function CourseWatch() {
                         key={episode.id}
                         onClick={() => {
                           if (!isUnlocked) {
-                            toast.error("Complete previous episodes to unlock this one.");
+                            toast.error(t('course.toastUnlockPrev'));
                             return;
                           }
                           setSelectedEpisode(episode);
@@ -539,13 +541,13 @@ export default function CourseWatch() {
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1">
-                              <h4 className="font-medium text-sm line-clamp-2">{episode.titleEn}</h4>
+                              <h4 className="font-medium text-sm line-clamp-2">{language === 'ar' ? (episode.titleAr || episode.titleEn) : (episode.titleEn || episode.titleAr)}</h4>
                               {episode.isFree && (
-                                <Badge variant="outline" className="text-xs">FREE</Badge>
+                                <Badge variant="outline" className="text-xs">{t('course.free')}</Badge>
                               )}
                             </div>
                             {episode.duration && (
-                              <p className="text-xs text-muted-foreground">{episode.duration} min</p>
+                              <p className="text-xs text-muted-foreground">{episode.duration} {t('course.min')}</p>
                             )}
                           </div>
                           {isSelected && (
