@@ -11,6 +11,9 @@ import {
   lexaiSubscriptions, LexaiSubscription, InsertLexaiSubscription,
   lexaiMessages, LexaiMessage, InsertLexaiMessage,
   registrationKeys, RegistrationKey, InsertRegistrationKey,
+  recommendationSubscriptions, RecommendationSubscription, InsertRecommendationSubscription,
+  recommendationMessages, RecommendationMessage, InsertRecommendationMessage,
+  recommendationReactions, RecommendationReaction, InsertRecommendationReaction,
   authEmailOtps, AuthEmailOtp, InsertAuthEmailOtp,
   quizzes, Quiz,
   quizQuestions, QuizQuestion,
@@ -855,7 +858,7 @@ export async function getAllRegistrationKeys() {
   return await db
     .select()
     .from(registrationKeys)
-    .where(ne(registrationKeys.courseId, 0))
+    .where(sql`${registrationKeys.courseId} > 0`)
     .orderBy(desc(registrationKeys.createdAt));
 }
 
@@ -877,7 +880,7 @@ export async function getUnusedKeys() {
     .from(registrationKeys)
     .where(
       and(
-        ne(registrationKeys.courseId, 0),
+        sql`${registrationKeys.courseId} > 0`,
         eq(registrationKeys.isActive, true),
         sql`${registrationKeys.activatedAt} is null`
       )
@@ -893,7 +896,7 @@ export async function getActivatedKeys() {
     .from(registrationKeys)
     .where(
       and(
-        ne(registrationKeys.courseId, 0),
+        sql`${registrationKeys.courseId} > 0`,
         eq(registrationKeys.isActive, true),
         sql`${registrationKeys.activatedAt} is not null`
       )
@@ -974,7 +977,7 @@ export async function searchKeysByEmail(email: string) {
   return await db
     .select()
     .from(registrationKeys)
-    .where(and(ne(registrationKeys.courseId, 0), eq(registrationKeys.email, email)))
+    .where(and(sql`${registrationKeys.courseId} > 0`, eq(registrationKeys.email, email)))
     .orderBy(desc(registrationKeys.createdAt));
 }
 
@@ -993,17 +996,17 @@ export async function getKeyStatistics() {
   const [totalResult] = await db
     .select({ count: sql<number>`count(*)` })
     .from(registrationKeys)
-    .where(ne(registrationKeys.courseId, 0));
+    .where(sql`${registrationKeys.courseId} > 0`);
   const [activatedResult] = await db
     .select({ count: sql<number>`count(*)` })
     .from(registrationKeys)
-    .where(and(ne(registrationKeys.courseId, 0), sql`${registrationKeys.activatedAt} is not null`));
+    .where(and(sql`${registrationKeys.courseId} > 0`, sql`${registrationKeys.activatedAt} is not null`));
   const [unusedResult] = await db
     .select({ count: sql<number>`count(*)` })
     .from(registrationKeys)
     .where(
       and(
-        ne(registrationKeys.courseId, 0),
+        sql`${registrationKeys.courseId} > 0`,
         eq(registrationKeys.isActive, true),
         sql`${registrationKeys.activatedAt} is null`
       )
@@ -1011,7 +1014,7 @@ export async function getKeyStatistics() {
   const [deactivatedResult] = await db
     .select({ count: sql<number>`count(*)` })
     .from(registrationKeys)
-    .where(and(ne(registrationKeys.courseId, 0), eq(registrationKeys.isActive, false)));
+    .where(and(sql`${registrationKeys.courseId} > 0`, eq(registrationKeys.isActive, false)));
 
   const total = Number(totalResult?.count ?? 0);
   const activated = Number(activatedResult?.count ?? 0);
@@ -1084,6 +1087,355 @@ export async function getLexaiKeyStatistics() {
   };
 }
 
+export async function getRecommendationKeys() {
+  const db = await getDb();
+  if (!db) return [];
+  return await db
+    .select()
+    .from(registrationKeys)
+    .where(eq(registrationKeys.courseId, -1))
+    .orderBy(desc(registrationKeys.createdAt));
+}
+
+export async function getRecommendationKeyStatistics() {
+  const db = await getDb();
+  if (!db) {
+    return {
+      total: 0,
+      activated: 0,
+      unused: 0,
+      deactivated: 0,
+      activationRate: 0,
+    };
+  }
+
+  const [totalResult] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(registrationKeys)
+    .where(eq(registrationKeys.courseId, -1));
+  const [activatedResult] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(registrationKeys)
+    .where(and(eq(registrationKeys.courseId, -1), sql`${registrationKeys.activatedAt} is not null`));
+  const [unusedResult] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(registrationKeys)
+    .where(
+      and(
+        eq(registrationKeys.courseId, -1),
+        eq(registrationKeys.isActive, true),
+        sql`${registrationKeys.activatedAt} is null`
+      )
+    );
+  const [deactivatedResult] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(registrationKeys)
+    .where(and(eq(registrationKeys.courseId, -1), eq(registrationKeys.isActive, false)));
+
+  const total = Number(totalResult?.count ?? 0);
+  const activated = Number(activatedResult?.count ?? 0);
+  const activationRate = total > 0 ? Math.round((activated / total) * 100) : 0;
+
+  return {
+    total,
+    activated,
+    unused: Number(unusedResult?.count ?? 0),
+    deactivated: Number(deactivatedResult?.count ?? 0),
+    activationRate,
+  };
+}
+
+function computeRecommendationKeyEndDate(key: RegistrationKey) {
+  if (!key?.activatedAt) return null;
+  const activatedAt = new Date(key.activatedAt);
+  if (Number.isNaN(activatedAt.getTime())) return null;
+
+  const keyExpiry = new Date(activatedAt);
+  keyExpiry.setDate(keyExpiry.getDate() + 30);
+
+  if (key.expiresAt) {
+    const absoluteExpiry = new Date(key.expiresAt);
+    if (!Number.isNaN(absoluteExpiry.getTime()) && absoluteExpiry.getTime() < keyExpiry.getTime()) {
+      keyExpiry.setTime(absoluteExpiry.getTime());
+    }
+  }
+
+  return keyExpiry;
+}
+
+export async function getAssignedRecommendationKeyByEmail(email: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+
+  const normalizedEmail = email.trim().toLowerCase();
+  const keys = await db
+    .select()
+    .from(registrationKeys)
+    .where(and(eq(registrationKeys.courseId, -1), eq(registrationKeys.email, normalizedEmail), eq(registrationKeys.isActive, true)))
+    .orderBy(desc(registrationKeys.activatedAt), desc(registrationKeys.createdAt))
+    .limit(1);
+
+  return keys[0];
+}
+
+export async function hasValidRecommendationKeyByEmail(email: string) {
+  const key = await getAssignedRecommendationKeyByEmail(email);
+  if (!key) return false;
+  if (!key.isActive || !key.activatedAt) return false;
+  const endDate = computeRecommendationKeyEndDate(key);
+  if (!endDate) return false;
+  return endDate.getTime() >= Date.now();
+}
+
+export async function activateRecommendationKey(keyCode: string, email: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const [key] = await db
+    .select()
+    .from(registrationKeys)
+    .where(eq(registrationKeys.keyCode, keyCode))
+    .limit(1);
+
+  if (!key) {
+    return { success: false, message: "Invalid recommendation key" };
+  }
+
+  if (key.courseId !== -1) {
+    return { success: false, message: "This key is not for recommendation group" };
+  }
+
+  if (!key.isActive) {
+    return { success: false, message: "This recommendation key is deactivated" };
+  }
+
+  const normalizedEmail = email.trim().toLowerCase();
+
+  if (key.activatedAt) {
+    const keyEmail = (key.email ?? "").trim().toLowerCase();
+    if (keyEmail === normalizedEmail) {
+      return {
+        success: true,
+        message: "Recommendation key already activated for this email",
+        key,
+      };
+    }
+    return { success: false, message: "This recommendation key has already been activated" };
+  }
+
+  if (key.email && key.email.trim().toLowerCase() !== normalizedEmail) {
+    return { success: false, message: "This recommendation key is assigned to another email" };
+  }
+
+  if (key.expiresAt) {
+    const expiresAt = new Date(key.expiresAt);
+    if (!Number.isNaN(expiresAt.getTime()) && expiresAt.getTime() < Date.now()) {
+      return { success: false, message: "This recommendation key has expired" };
+    }
+  }
+
+  await db
+    .update(registrationKeys)
+    .set({
+      email: normalizedEmail,
+      activatedAt: new Date().toISOString(),
+      isActive: true,
+    })
+    .where(eq(registrationKeys.id, key.id));
+
+  const [updated] = await db
+    .select()
+    .from(registrationKeys)
+    .where(eq(registrationKeys.id, key.id))
+    .limit(1);
+
+  return {
+    success: true,
+    message: "Recommendation key activated successfully",
+    key: updated ?? key,
+  };
+}
+
+export async function getActiveRecommendationSubscription(userId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+
+  const nowIso = new Date().toISOString();
+  const rows = await db
+    .select()
+    .from(recommendationSubscriptions)
+    .where(
+      and(
+        eq(recommendationSubscriptions.userId, userId),
+        eq(recommendationSubscriptions.isActive, true),
+        sql`${recommendationSubscriptions.endDate} >= ${nowIso}`
+      )
+    )
+    .orderBy(desc(recommendationSubscriptions.endDate))
+    .limit(1);
+
+  return rows[0];
+}
+
+export async function createRecommendationSubscription(subscription: InsertRecommendationSubscription) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(recommendationSubscriptions).values(subscription).returning({ id: recommendationSubscriptions.id });
+  return result[0].id;
+}
+
+export async function updateRecommendationSubscription(id: number, updates: Partial<InsertRecommendationSubscription>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(recommendationSubscriptions).set({ ...updates, updatedAt: new Date().toISOString() }).where(eq(recommendationSubscriptions.id, id));
+}
+
+export async function setRecommendationPublisher(userId: number, enabled: boolean) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(users).set({ canPublishRecommendations: enabled }).where(eq(users.id, userId));
+}
+
+export async function getRecommendationPublishers() {
+  const db = await getDb();
+  if (!db) return [];
+  return await db
+    .select({ id: users.id, email: users.email, name: users.name })
+    .from(users)
+    .where(eq(users.canPublishRecommendations, true))
+    .orderBy(users.name, users.email);
+}
+
+export async function getUserRecommendationsAccess(userId: number) {
+  const db = await getDb();
+  if (!db) return { canPublish: false, hasSubscription: false, subscription: null as RecommendationSubscription | null };
+
+  const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  const subscription = await getActiveRecommendationSubscription(userId);
+
+  return {
+    canPublish: Boolean(user?.canPublishRecommendations),
+    hasSubscription: !!subscription,
+    subscription: subscription ?? null,
+  };
+}
+
+export async function getRecommendationSubscriberEmails() {
+  const db = await getDb();
+  if (!db) return [];
+
+  const nowIso = new Date().toISOString();
+  const activeSubscriptions = await db
+    .select({ userId: recommendationSubscriptions.userId })
+    .from(recommendationSubscriptions)
+    .where(
+      and(
+        eq(recommendationSubscriptions.isActive, true),
+        sql`${recommendationSubscriptions.endDate} >= ${nowIso}`
+      )
+    );
+
+  const userIds = activeSubscriptions.map((item) => item.userId);
+  if (!userIds.length) return [];
+
+  const rows = await db
+    .select({ email: users.email })
+    .from(users)
+    .where(inArray(users.id, userIds));
+
+  return Array.from(new Set(rows.map((row) => row.email).filter(Boolean)));
+}
+
+export async function createRecommendationMessage(message: InsertRecommendationMessage) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(recommendationMessages).values(message).returning({ id: recommendationMessages.id });
+  return result[0].id;
+}
+
+export async function getRecommendationMessagesFeed(userId: number, limit: number = 200) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const messages = await db
+    .select()
+    .from(recommendationMessages)
+    .orderBy(desc(recommendationMessages.createdAt))
+    .limit(limit);
+
+  const messageIds = messages.map((message) => message.id);
+  const authorIds = Array.from(new Set(messages.map((message) => message.userId)));
+
+  const authors = authorIds.length
+    ? await db
+        .select({ id: users.id, name: users.name, email: users.email, canPublishRecommendations: users.canPublishRecommendations })
+        .from(users)
+        .where(inArray(users.id, authorIds))
+    : [];
+
+  const reactions = messageIds.length
+    ? await db
+        .select()
+        .from(recommendationReactions)
+        .where(inArray(recommendationReactions.messageId, messageIds))
+    : [];
+
+  return messages.map((message) => {
+    const author = authors.find((item) => item.id === message.userId);
+    const messageReactions = reactions.filter((reaction) => reaction.messageId === message.id);
+    const reactionCounts = {
+      like: messageReactions.filter((reaction) => reaction.reaction === "like").length,
+      love: messageReactions.filter((reaction) => reaction.reaction === "love").length,
+      sad: messageReactions.filter((reaction) => reaction.reaction === "sad").length,
+      fire: messageReactions.filter((reaction) => reaction.reaction === "fire").length,
+      rocket: messageReactions.filter((reaction) => reaction.reaction === "rocket").length,
+    };
+
+    const myReaction = messageReactions.find((reaction) => reaction.userId === userId)?.reaction ?? null;
+
+    return {
+      ...message,
+      authorName: author?.name || author?.email || "Unknown",
+      authorEmail: author?.email || null,
+      isAnalyst: !!author?.canPublishRecommendations,
+      reactions: reactionCounts,
+      myReaction,
+    };
+  });
+}
+
+export async function setRecommendationReaction(messageId: number, userId: number, reaction: string | null) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const existing = await db
+    .select()
+    .from(recommendationReactions)
+    .where(and(eq(recommendationReactions.messageId, messageId), eq(recommendationReactions.userId, userId)))
+    .limit(1);
+
+  if (!reaction) {
+    if (existing.length) {
+      await db.delete(recommendationReactions).where(eq(recommendationReactions.id, existing[0].id));
+    }
+    return;
+  }
+
+  if (existing.length) {
+    await db.update(recommendationReactions)
+      .set({ reaction, createdAt: new Date().toISOString() })
+      .where(eq(recommendationReactions.id, existing[0].id));
+    return;
+  }
+
+  await db.insert(recommendationReactions).values({
+    messageId,
+    userId,
+    reaction,
+    createdAt: new Date().toISOString(),
+  });
+}
+
 export async function activateRegistrationKey(keyCode: string, email: string) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -1096,6 +1448,10 @@ export async function activateRegistrationKey(keyCode: string, email: string) {
 
   if (!key) {
     return { success: false, message: "Invalid registration key" };
+  }
+
+  if (Number(key.courseId) <= 0) {
+    return { success: false, message: "This key is not a course key" };
   }
 
   if (!key.isActive) {
@@ -1350,6 +1706,36 @@ export async function syncUserEntitlementsFromKeys(userId: number, email: string
           paymentCurrency: "USD",
           messagesUsed: 0,
           messagesLimit: 100,
+        });
+      }
+    }
+  }
+
+  // Recommendation key -> ensure active recommendation subscription
+  const recommendationKey = await getAssignedRecommendationKeyByEmail(normalizedEmail);
+  if (recommendationKey?.isActive && recommendationKey.activatedAt) {
+    const endDate = computeRecommendationKeyEndDate(recommendationKey);
+    if (endDate && endDate.getTime() >= Date.now()) {
+      const current = await getActiveRecommendationSubscription(userId);
+      if (current) {
+        await updateRecommendationSubscription(current.id, {
+          isActive: true,
+          endDate: endDate.toISOString(),
+          paymentStatus: "key",
+          paymentAmount: 100,
+          paymentCurrency: "USD",
+          registrationKeyId: recommendationKey.id,
+        });
+      } else {
+        await createRecommendationSubscription({
+          userId,
+          isActive: true,
+          startDate: new Date().toISOString(),
+          endDate: endDate.toISOString(),
+          paymentStatus: "key",
+          paymentAmount: 100,
+          paymentCurrency: "USD",
+          registrationKeyId: recommendationKey.id,
         });
       }
     }

@@ -69,6 +69,12 @@ const menuSections = [
       { icon: Users, label: "Users", path: "/admin/users" },
       { icon: GraduationCap, label: "Enrollments", path: "/admin/enrollments" },
     ]
+  },
+  {
+    label: "Recommendations",
+    items: [
+      { icon: MessageSquare, label: "Group Management", path: "/admin/recommendations" },
+    ]
   }
 ];
 

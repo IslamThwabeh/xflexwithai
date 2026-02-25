@@ -10,7 +10,7 @@ import { storagePut } from "./storage";
 import { storagePutR2 } from "./storage-r2";
 import { analyzeLexai } from "./_core/lexai";
 import { hashPassword, verifyPassword, generateToken, isValidEmail, isValidPassword } from "./_core/auth";
-import { sendLoginCodeEmail } from "./_core/email";
+import { sendEmail, sendLoginCodeEmail } from "./_core/email";
 import { generateNumericCode, generateSaltBase64, normalizeEmail, sha256Base64 } from "./_core/otp";
 // FlexAI routes are registered in server/_core/index.ts
 
@@ -94,6 +94,72 @@ const getLatestLexaiAnalysis = async (userId: number, analysisType: string) => {
   return messages.find(
     message => message.role === "assistant" && message.analysisType === analysisType
   );
+};
+
+const RECOMMENDATION_REACTIONS = ["like", "love", "sad", "fire", "rocket"] as const;
+
+const buildRecommendationPlainText = (payload: {
+  type: "alert" | "recommendation" | "result";
+  content: string;
+  symbol?: string;
+  side?: string;
+  entryPrice?: string;
+  stopLoss?: string;
+  takeProfit1?: string;
+  takeProfit2?: string;
+  riskPercent?: string;
+}) => {
+  const lines: string[] = [];
+  const title = payload.type === "alert"
+    ? "تنبيه توصية"
+    : payload.type === "result"
+      ? "نتيجة توصية"
+      : "توصية جديدة";
+
+  lines.push(`XFlex - ${title}`);
+  lines.push("------------------------------");
+  if (payload.symbol) lines.push(`الزوج/الأصل: ${payload.symbol}`);
+  if (payload.side) lines.push(`الاتجاه: ${payload.side}`);
+  if (payload.entryPrice) lines.push(`الدخول: ${payload.entryPrice}`);
+  if (payload.stopLoss) lines.push(`وقف الخسارة: ${payload.stopLoss}`);
+  if (payload.takeProfit1) lines.push(`هدف 1: ${payload.takeProfit1}`);
+  if (payload.takeProfit2) lines.push(`هدف 2: ${payload.takeProfit2}`);
+  if (payload.riskPercent) lines.push(`نسبة المخاطرة: ${payload.riskPercent}`);
+  lines.push("");
+  lines.push(payload.content);
+  lines.push("");
+  lines.push("تابع القروب الآن للتنفيذ السريع.");
+
+  return lines.join("\n");
+};
+
+const ensureRecommendationReadAccess = async (ctx: { user: { id: number; email?: string | null } | null }) => {
+  if (!ctx.user) {
+    throw new TRPCError({ code: "UNAUTHORIZED", message: "Not authenticated" });
+  }
+
+  const access = await db.getUserRecommendationsAccess(ctx.user.id);
+  const isAdmin = !!(ctx.user.email && await db.getAdminByEmail(ctx.user.email));
+
+  if (!access.hasSubscription && !access.canPublish && !isAdmin) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Recommendation group requires an active key.",
+    });
+  }
+
+  return { ...access, isAdmin };
+};
+
+const ensureRecommendationPublishAccess = async (ctx: { user: { id: number; email?: string | null } | null }) => {
+  const access = await ensureRecommendationReadAccess(ctx);
+  if (!access.canPublish && !access.isAdmin) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Only analysts can publish recommendations.",
+    });
+  }
+  return access;
 };
 
 const ensureEpisodeUnlockedForUser = async (userId: number, courseId: number, episodeId: number) => {
@@ -1589,6 +1655,158 @@ export const appRouter = router({
     }),
   }),
 
+  recommendations: router({
+    me: protectedProcedure.query(async ({ ctx }) => {
+      const access = await db.getUserRecommendationsAccess(ctx.user.id);
+      return {
+        canPublish: access.canPublish,
+        hasSubscription: access.hasSubscription,
+        subscription: access.subscription,
+      };
+    }),
+
+    feed: protectedProcedure
+      .input(z.object({ limit: z.number().min(20).max(500).optional() }).optional())
+      .query(async ({ ctx, input }) => {
+        await ensureRecommendationReadAccess(ctx);
+        return await db.getRecommendationMessagesFeed(ctx.user.id, input?.limit ?? 200);
+      }),
+
+    postMessage: protectedProcedure
+      .input(
+        z.object({
+          type: z.enum(["alert", "recommendation", "result"]),
+          content: z.string().min(3).max(4000),
+          symbol: z.string().max(30).optional(),
+          side: z.string().max(10).optional(),
+          entryPrice: z.string().max(50).optional(),
+          stopLoss: z.string().max(50).optional(),
+          takeProfit1: z.string().max(50).optional(),
+          takeProfit2: z.string().max(50).optional(),
+          riskPercent: z.string().max(20).optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        await ensureRecommendationPublishAccess(ctx);
+
+        const messageId = await db.createRecommendationMessage({
+          userId: ctx.user.id,
+          type: input.type,
+          content: input.content,
+          symbol: input.symbol,
+          side: input.side,
+          entryPrice: input.entryPrice,
+          stopLoss: input.stopLoss,
+          takeProfit1: input.takeProfit1,
+          takeProfit2: input.takeProfit2,
+          riskPercent: input.riskPercent,
+          createdAt: new Date().toISOString(),
+        });
+
+        if (input.type === "alert" || input.type === "recommendation") {
+          const recipients = await db.getRecommendationSubscriberEmails();
+          if (recipients.length) {
+            const subject = input.type === "alert"
+              ? "تنبيه: توصية جديدة خلال دقيقة - XFlex"
+              : "توصية جديدة في قروب التوصيات - XFlex";
+            const text = buildRecommendationPlainText(input);
+
+            await Promise.allSettled(
+              recipients.map((to) =>
+                sendEmail({
+                  to,
+                  subject,
+                  text,
+                })
+              )
+            );
+          }
+        }
+
+        return { success: true, messageId };
+      }),
+
+    react: protectedProcedure
+      .input(
+        z.object({
+          messageId: z.number(),
+          reaction: z.enum(RECOMMENDATION_REACTIONS).nullable(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        await ensureRecommendationReadAccess(ctx);
+        await db.setRecommendationReaction(input.messageId, ctx.user.id, input.reaction);
+        return { success: true };
+      }),
+
+    activateKey: publicProcedure
+      .input(z.object({ keyCode: z.string().min(5), email: z.string().email() }))
+      .mutation(async ({ input }) => {
+        const result = await db.activateRecommendationKey(input.keyCode, input.email);
+        if (!result.success) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: result.message });
+        }
+
+        const user = await db.getUserByEmail(input.email);
+        if (user) {
+          await db.syncUserEntitlementsFromKeys(user.id, input.email);
+        }
+
+        return result;
+      }),
+  }),
+
+  recommendationAdmin: router({
+    listAnalysts: adminProcedure.query(async () => {
+      return await db.getRecommendationPublishers();
+    }),
+
+    setAnalyst: adminProcedure
+      .input(z.object({ userId: z.number(), enabled: z.boolean() }))
+      .mutation(async ({ input }) => {
+        await db.setRecommendationPublisher(input.userId, input.enabled);
+        return { success: true };
+      }),
+
+    keys: router({
+      list: adminProcedure.query(async () => {
+        return await db.getRecommendationKeys();
+      }),
+      stats: adminProcedure.query(async () => {
+        return await db.getRecommendationKeyStatistics();
+      }),
+      generateKey: adminProcedure
+        .input(z.object({ notes: z.string().optional(), expiresAt: z.date().optional() }))
+        .mutation(async ({ input, ctx }) => {
+          const key = await db.createRegistrationKey({
+            courseId: -1,
+            createdBy: ctx.admin.id,
+            notes: input.notes,
+            expiresAt: input.expiresAt,
+          });
+          return { success: true, key };
+        }),
+      generateBulkKeys: adminProcedure
+        .input(z.object({ quantity: z.number().min(1).max(1000), notes: z.string().optional(), expiresAt: z.date().optional() }))
+        .mutation(async ({ input, ctx }) => {
+          const keys = await db.createBulkRegistrationKeys({
+            courseId: -1,
+            createdBy: ctx.admin.id,
+            quantity: input.quantity,
+            notes: input.notes,
+            expiresAt: input.expiresAt,
+          });
+          return { success: true, keys, count: keys.length };
+        }),
+      deactivateKey: adminProcedure
+        .input(z.object({ keyId: z.number() }))
+        .mutation(async ({ input }) => {
+          const key = await db.deactivateRegistrationKey(input.keyId);
+          return { success: true, key };
+        }),
+    }),
+  }),
+
   lexaiAdmin: router({
     subscriptions: adminProcedure.query(async () => {
       logger.info('[LexAI] Getting subscriptions (admin)');
@@ -1791,7 +2009,7 @@ export const appRouter = router({
           exists: true,
           isActive: !!key.isActive,
           activatedAt: key.activatedAt ?? null,
-          keyType: key.courseId === 0 ? 'lexai' : 'course',
+          keyType: key.courseId === 0 ? 'lexai' : key.courseId === -1 ? 'recommendation' : 'course',
           courseId: key.courseId,
         } as const;
       }),
@@ -1819,6 +2037,12 @@ export const appRouter = router({
           throw new TRPCError({
             code: 'BAD_REQUEST',
             message: 'This key is for LexAI. Please activate it from the LexAI page.',
+          });
+        }
+        if (existingKey && existingKey.courseId === -1) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'This key is for recommendations. Please activate it from the recommendations page.',
           });
         }
         
@@ -1876,6 +2100,12 @@ export const appRouter = router({
           throw new TRPCError({
             code: 'BAD_REQUEST',
             message: 'This key is for LexAI. Please activate it from the LexAI page.',
+          });
+        }
+        if (existingKey && existingKey.courseId === -1) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'This key is for recommendations. Please activate it from the recommendations page.',
           });
         }
 

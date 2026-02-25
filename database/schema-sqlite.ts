@@ -10,6 +10,7 @@ export const users = sqliteTable("users", {
   passwordHash: text("passwordHash", { length: 255 }).notNull(),
   name: text("name"),
   phone: text("phone", { length: 20 }),
+  canPublishRecommendations: integer("canPublishRecommendations", { mode: 'boolean' }).default(false).notNull(),
   emailVerified: integer("emailVerified", { mode: 'boolean' }).default(false).notNull(),
   createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
   updatedAt: text("updatedAt").default("CURRENT_TIMESTAMP").notNull(),
@@ -240,6 +241,63 @@ export type FlexaiMessage = typeof flexaiMessages.$inferSelect;
 export type InsertFlexaiMessage = typeof flexaiMessages.$inferInsert;
 
 /**
+ * Recommendation group subscriptions
+ */
+export const recommendationSubscriptions = sqliteTable("recommendationSubscriptions", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  userId: integer("userId").notNull(),
+  registrationKeyId: integer("registrationKeyId"),
+  isActive: integer("isActive", { mode: 'boolean' }).default(true).notNull(),
+  startDate: text("startDate").default("CURRENT_TIMESTAMP").notNull(),
+  endDate: text("endDate").notNull(),
+  paymentStatus: text("paymentStatus", { length: 20 }).default("key").notNull(),
+  paymentAmount: integer("paymentAmount").default(100).notNull(),
+  paymentCurrency: text("paymentCurrency", { length: 3 }).default("USD").notNull(),
+  createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
+  updatedAt: text("updatedAt").default("CURRENT_TIMESTAMP").notNull(),
+});
+
+export type RecommendationSubscription = typeof recommendationSubscriptions.$inferSelect;
+export type InsertRecommendationSubscription = typeof recommendationSubscriptions.$inferInsert;
+
+/**
+ * Recommendation group messages
+ */
+export const recommendationMessages = sqliteTable("recommendationMessages", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  userId: integer("userId").notNull(),
+  type: text("type", { length: 20 }).default("recommendation").notNull(), // 'alert' | 'recommendation' | 'result'
+  content: text("content").notNull(),
+  symbol: text("symbol", { length: 30 }),
+  side: text("side", { length: 10 }), // buy/sell
+  entryPrice: text("entryPrice", { length: 50 }),
+  stopLoss: text("stopLoss", { length: 50 }),
+  takeProfit1: text("takeProfit1", { length: 50 }),
+  takeProfit2: text("takeProfit2", { length: 50 }),
+  riskPercent: text("riskPercent", { length: 20 }),
+  createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
+});
+
+export type RecommendationMessage = typeof recommendationMessages.$inferSelect;
+export type InsertRecommendationMessage = typeof recommendationMessages.$inferInsert;
+
+/**
+ * Recommendation message reactions
+ */
+export const recommendationReactions = sqliteTable("recommendationReactions", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  messageId: integer("messageId").notNull(),
+  userId: integer("userId").notNull(),
+  reaction: text("reaction", { length: 20 }).notNull(), // like | love | sad | fire | rocket
+  createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
+}, (table) => ({
+  uniqueMessageReactionByUser: unique("unique_message_reaction_by_user").on(table.messageId, table.userId),
+}));
+
+export type RecommendationReaction = typeof recommendationReactions.$inferSelect;
+export type InsertRecommendationReaction = typeof recommendationReactions.$inferInsert;
+
+/**
  * Quizzes table
  */
 export const quizzes = sqliteTable("quizzes", {
@@ -439,6 +497,36 @@ export const flexaiMessagesRelations = relations(flexaiMessages, ({ one }) => ({
   subscription: one(flexaiSubscriptions, {
     fields: [flexaiMessages.subscriptionId],
     references: [flexaiSubscriptions.id],
+  }),
+}));
+
+export const recommendationSubscriptionsRelations = relations(recommendationSubscriptions, ({ one }) => ({
+  user: one(users, {
+    fields: [recommendationSubscriptions.userId],
+    references: [users.id],
+  }),
+  registrationKey: one(registrationKeys, {
+    fields: [recommendationSubscriptions.registrationKeyId],
+    references: [registrationKeys.id],
+  }),
+}));
+
+export const recommendationMessagesRelations = relations(recommendationMessages, ({ one, many }) => ({
+  user: one(users, {
+    fields: [recommendationMessages.userId],
+    references: [users.id],
+  }),
+  reactions: many(recommendationReactions),
+}));
+
+export const recommendationReactionsRelations = relations(recommendationReactions, ({ one }) => ({
+  message: one(recommendationMessages, {
+    fields: [recommendationReactions.messageId],
+    references: [recommendationMessages.id],
+  }),
+  user: one(users, {
+    fields: [recommendationReactions.userId],
+    references: [users.id],
   }),
 }));
 

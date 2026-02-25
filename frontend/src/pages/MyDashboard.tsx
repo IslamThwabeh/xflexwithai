@@ -5,7 +5,7 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { APP_TITLE, getLoginUrl } from "@/const";
 import { trpc } from "@/lib/trpc";
-import { BookOpen, GraduationCap, Play, CheckCircle2, Clock, ArrowLeft, Sparkles } from "lucide-react";
+import { BookOpen, GraduationCap, Play, CheckCircle2, Clock, ArrowLeft, Sparkles, MessageSquare } from "lucide-react";
 import { Link } from "wouter";
 import { format } from "date-fns";
 import { useEffect, useRef } from "react";
@@ -39,6 +39,12 @@ export default function MyDashboard() {
     refetchOnWindowFocus: false,
   });
 
+  const { data: recommendationsAccess } = trpc.recommendations.me.useQuery(undefined, {
+    enabled: isAuthenticated,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+
   useEffect(() => {
     if (!isAuthenticated) return;
     if (!user?.email) return;
@@ -50,11 +56,12 @@ export default function MyDashboard() {
       .then(async () => {
         await utils.enrollments.myEnrollments.invalidate();
         await utils.lexai.getSubscription.invalidate();
+        await utils.recommendations.me.invalidate();
       })
       .catch(() => {
         // best-effort
       });
-  }, [isAuthenticated, syncEntitlements, user?.email, utils.enrollments.myEnrollments, utils.lexai.getSubscription]);
+  }, [isAuthenticated, syncEntitlements, user?.email, utils.enrollments.myEnrollments, utils.lexai.getSubscription, utils.recommendations.me]);
 
   if (loading || enrollmentsLoading) {
     return (
@@ -126,13 +133,23 @@ export default function MyDashboard() {
 					الاختبارات
 				</Button>
 				</Link>
+        {lexaiSubscription && (
+          <Link href="/lexai">
+            <Button variant="ghost">
+              <Sparkles className="mr-2 h-4 w-4" />
+              LexAI
+            </Button>
+          </Link>
+        )}
 
-        <Link href="/lexai">
-          <Button variant="ghost">
-            <Sparkles className="mr-2 h-4 w-4" />
-            LexAI
-          </Button>
-        </Link>
+        {recommendationsAccess?.hasSubscription && (
+          <Link href="/recommendations">
+            <Button variant="ghost">
+              <MessageSquare className="mr-2 h-4 w-4" />
+              قروب التوصيات
+            </Button>
+          </Link>
+        )}
   
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white font-semibold">
@@ -213,13 +230,38 @@ export default function MyDashboard() {
                 Your course access and LexAI status are linked to your email.
               </CardDescription>
             </CardHeader>
-            <CardContent className="flex items-center justify-between gap-4">
+            <CardContent className="space-y-3">
+              <div className="text-sm text-muted-foreground">
+                Course: {totalCourses > 0 ? 'Active' : 'Not active'}
+              </div>
               <div className="text-sm text-muted-foreground">
                 LexAI: {lexaiSubscription ? 'Active' : 'Not active'}
               </div>
-              <Link href="/lexai">
-                <Button variant="outline">Open LexAI</Button>
-              </Link>
+              <div className="text-sm text-muted-foreground">
+                Recommendations: {recommendationsAccess?.hasSubscription ? 'Active' : 'Not active'}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {totalCourses > 0 && (
+                  <Link href="/courses">
+                    <Button variant="outline">Open Courses</Button>
+                  </Link>
+                )}
+                {lexaiSubscription && (
+                  <Link href="/lexai">
+                    <Button variant="outline">Open LexAI</Button>
+                  </Link>
+                )}
+                {recommendationsAccess?.hasSubscription && (
+                  <Link href="/recommendations">
+                    <Button variant="outline">Open Recommendations</Button>
+                  </Link>
+                )}
+                {!recommendationsAccess?.hasSubscription && (
+                  <Link href="/recommendations">
+                    <Button variant="outline">Activate Recommendations</Button>
+                  </Link>
+                )}
+              </div>
             </CardContent>
           </Card>
 
