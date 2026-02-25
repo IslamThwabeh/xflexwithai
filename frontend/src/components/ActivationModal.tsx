@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { trpc } from '@/lib/trpc';
 
 interface ActivationModalProps {
-  type: 'course' | 'flexai';
+  type: 'course' | 'flexai' | 'recommendation';
   onClose: () => void;
   onSuccess: () => void;
 }
@@ -28,6 +28,7 @@ export function ActivationModal({ type, onClose, onSuccess }: ActivationModalPro
 
   const activateCourseKey = trpc.registrationKeys.activateKey.useMutation();
   const redeemLexaiByEmail = trpc.lexai.redeemKeyByEmail.useMutation();
+  const activateRecommendationKey = trpc.recommendations.activateKey.useMutation();
   
   const handleValidateKey = async () => {
     if (!key.trim()) {
@@ -50,11 +51,15 @@ export function ActivationModal({ type, onClose, onSuccess }: ActivationModalPro
       }
 
       if (type === 'flexai' && info.keyType !== 'lexai') {
-        throw new Error('This key is for courses. Please activate it from the course activation.');
+        throw new Error('This key is not for LexAI.');
       }
 
       if (type === 'course' && info.keyType !== 'course') {
-        throw new Error('This key is for LexAI. Please activate it from the LexAI activation.');
+        throw new Error('This key is not for courses.');
+      }
+
+      if (type === 'recommendation' && info.keyType !== 'recommendation') {
+        throw new Error('This key is not for the Recommendations Group.');
       }
 
       setStep('email');
@@ -83,6 +88,8 @@ export function ActivationModal({ type, onClose, onSuccess }: ActivationModalPro
 
       if (type === 'flexai') {
         await redeemLexaiByEmail.mutateAsync({ keyCode: key.trim(), email: email.trim() });
+      } else if (type === 'recommendation') {
+        await activateRecommendationKey.mutateAsync({ keyCode: key.trim(), email: email.trim() });
       } else {
         await activateCourseKey.mutateAsync({ keyCode: key.trim(), email: email.trim() });
       }
@@ -127,9 +134,15 @@ export function ActivationModal({ type, onClose, onSuccess }: ActivationModalPro
     }
   };
   
-  const title = type === 'flexai' ? 'Activate FlexAI' : 'Activate Course Access';
+  const title = type === 'flexai'
+    ? 'Activate LexAI'
+    : type === 'recommendation'
+    ? 'Activate Recommendations Group'
+    : 'Activate Course Access';
   const description = type === 'flexai'
-    ? 'Enter your FlexAI registration key to activate 30 days of AI-powered chart analysis.'
+    ? 'Enter your LexAI registration key to activate 30 days of AI-powered chart analysis.'
+    : type === 'recommendation'
+    ? 'Enter your Recommendations Group key to join live trading signals for 30 days.'
     : 'Enter your course registration key to access all trading courses.';
   
   return (

@@ -53,21 +53,56 @@ const translations = {
     'home.courses.subtitle': 'Choose from our selection of trading courses designed for all skill levels',
     'home.courses.noCourses': 'No courses available yet. Check back soon!',
     
+    // Services Section
+    'home.services.title': 'Our Services',
+    'home.services.subtitle': 'Everything you need to succeed in Forex trading',
+    
+    // Course Card
+    'home.service.course.title': 'Trading Courses',
+    'home.service.course.desc': 'Learn Forex trading from basics to advanced strategies with comprehensive video courses.',
+    'home.service.course.f1': 'Complete Trading Course',
+    'home.service.course.f2': 'Price Action Strategies',
+    'home.service.course.f3': 'Risk Management',
+    'home.service.course.f4': 'Technical Analysis',
+    'home.service.course.cta': 'Activate Course Access',
+    'home.service.course.price': 'One-Time Payment',
+    
+    // Recommendations Card
+    'home.service.rec.title': 'Recommendations Group',
+    'home.service.rec.desc': 'Live trading signals from expert analysts with real-time alerts and email notifications.',
+    'home.service.rec.f1': 'Live Trading Signals',
+    'home.service.rec.f2': 'Expert Analyst Posts',
+    'home.service.rec.f3': 'Email Alerts on New Signals',
+    'home.service.rec.f4': 'Interactive Reactions',
+    'home.service.rec.cta': 'Subscribe Now',
+    'home.service.rec.price': '$100 / month',
+    
+    // LexAI Card
+    'home.service.lexai.title': 'LexAI Assistant',
+    'home.service.lexai.desc': 'Get AI-powered chart analysis and trading recommendations powered by advanced AI.',
+    'home.service.lexai.f1': 'Multi-timeframe Analysis',
+    'home.service.lexai.f2': 'Support & Resistance Levels',
+    'home.service.lexai.f3': 'Entry & Exit Points',
+    'home.service.lexai.f4': 'Risk Management Tips',
+    'home.service.lexai.cta': 'Activate LexAI (30 Days)',
+    'home.service.lexai.price': '$30 / month',
+    
+    // Already Registered
+    'home.alreadyRegistered': 'Already Registered?',
+    'home.loginHere': 'Login Here',
+    
+    // Contact Support
+    'home.contact.title': 'Contact Support',
+    'home.contact.subtitle': 'Have a question? Send us a message and we\'ll get back to you.',
+    'home.contact.email': 'Your Email',
+    'home.contact.emailPlaceholder': 'email@example.com',
+    'home.contact.message': 'Your Message',
+    'home.contact.messagePlaceholder': 'How can we help you?',
+    'home.contact.send': 'Send Message',
+    'home.contact.sending': 'Sending...',
+    'home.contact.sent': 'Message sent! We\'ll get back to you soon.',
+    
     'home.footer.tagline': 'Empowering traders worldwide with expert knowledge and practical skills',
-    'home.footer.quickLinks': 'Quick Links',
-    'home.footer.aboutUs': 'About Us',
-    'home.footer.courses': 'Courses',
-    'home.footer.pricing': 'Pricing',
-    'home.footer.contact': 'Contact',
-    'home.footer.support': 'Support',
-    'home.footer.helpCenter': 'Help Center',
-    'home.footer.terms': 'Terms of Service',
-    'home.footer.privacy': 'Privacy Policy',
-    'home.footer.faq': 'FAQ',
-    'home.footer.newsletter': 'Newsletter',
-    'home.footer.newsletterDesc': 'Subscribe to get trading tips and course updates',
-    'home.footer.emailPlaceholder': 'Your email',
-    'home.footer.subscribe': 'Subscribe',
     'home.footer.rights': 'All rights reserved.',
     
     // Dashboard
@@ -245,21 +280,56 @@ const translations = {
     'home.courses.subtitle': 'اختر من مجموعتنا من دورات التداول المصممة لجميع مستويات المهارة',
     'home.courses.noCourses': 'لا توجد دورات متاحة حتى الآن. تحقق مرة أخرى قريبًا!',
     
+    // Services Section
+    'home.services.title': 'خدماتنا',
+    'home.services.subtitle': 'كل ما تحتاجه للنجاح في تداول الفوركس',
+    
+    // Course Card
+    'home.service.course.title': 'دورات التداول',
+    'home.service.course.desc': 'تعلم تداول الفوركس من الأساسيات إلى الاستراتيجيات المتقدمة عبر دورات فيديو شاملة.',
+    'home.service.course.f1': 'دورة تداول كاملة',
+    'home.service.course.f2': 'استراتيجيات حركة السعر',
+    'home.service.course.f3': 'إدارة المخاطر',
+    'home.service.course.f4': 'التحليل الفني',
+    'home.service.course.cta': 'تفعيل الوصول للدورة',
+    'home.service.course.price': 'دفعة واحدة',
+    
+    // Recommendations Card
+    'home.service.rec.title': 'قروب التوصيات',
+    'home.service.rec.desc': 'توصيات تداول حية من محللين خبراء مع تنبيهات فورية وإشعارات بالبريد الإلكتروني.',
+    'home.service.rec.f1': 'توصيات تداول حية',
+    'home.service.rec.f2': 'منشورات محللين خبراء',
+    'home.service.rec.f3': 'تنبيهات بريد إلكتروني فورية',
+    'home.service.rec.f4': 'تفاعلات مباشرة',
+    'home.service.rec.cta': 'اشترك الآن',
+    'home.service.rec.price': '$100 / شهرياً',
+    
+    // LexAI Card
+    'home.service.lexai.title': 'مساعد LexAI',
+    'home.service.lexai.desc': 'احصل على تحليل الرسوم البيانية وتوصيات التداول بالذكاء الاصطناعي المتقدم.',
+    'home.service.lexai.f1': 'تحليل متعدد الأطر الزمنية',
+    'home.service.lexai.f2': 'مستويات الدعم والمقاومة',
+    'home.service.lexai.f3': 'نقاط الدخول والخروج',
+    'home.service.lexai.f4': 'نصائح إدارة المخاطر',
+    'home.service.lexai.cta': 'تفعيل LexAI (30 يوم)',
+    'home.service.lexai.price': '$30 / شهرياً',
+    
+    // Already Registered
+    'home.alreadyRegistered': 'مسجل مسبقاً؟',
+    'home.loginHere': 'سجل الدخول هنا',
+    
+    // Contact Support
+    'home.contact.title': 'تواصل مع الدعم',
+    'home.contact.subtitle': 'هل لديك سؤال؟ أرسل لنا رسالة وسنعود إليك قريباً.',
+    'home.contact.email': 'بريدك الإلكتروني',
+    'home.contact.emailPlaceholder': 'email@example.com',
+    'home.contact.message': 'رسالتك',
+    'home.contact.messagePlaceholder': 'كيف يمكننا مساعدتك؟',
+    'home.contact.send': 'إرسال الرسالة',
+    'home.contact.sending': 'جاري الإرسال...',
+    'home.contact.sent': 'تم إرسال الرسالة! سنعود إليك قريباً.',
+    
     'home.footer.tagline': 'تمكين المتداولين في جميع أنحاء العالم بالمعرفة والمهارات العملية',
-    'home.footer.quickLinks': 'روابط سريعة',
-    'home.footer.aboutUs': 'من نحن',
-    'home.footer.courses': 'الدورات',
-    'home.footer.pricing': 'الأسعار',
-    'home.footer.contact': 'اتصل بنا',
-    'home.footer.support': 'الدعم',
-    'home.footer.helpCenter': 'مركز المساعدة',
-    'home.footer.terms': 'شروط الخدمة',
-    'home.footer.privacy': 'سياسة الخصوصية',
-    'home.footer.faq': 'الأسئلة الشائعة',
-    'home.footer.newsletter': 'النشرة الإخبارية',
-    'home.footer.newsletterDesc': 'اشترك للحصول على نصائح التداول وتحديثات الدورة',
-    'home.footer.emailPlaceholder': 'بريدك الإلكتروني',
-    'home.footer.subscribe': 'اشترك',
     'home.footer.rights': 'جميع الحقوق محفوظة.',
     
     // Dashboard

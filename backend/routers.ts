@@ -11,6 +11,7 @@ import { storagePutR2 } from "./storage-r2";
 import { analyzeLexai } from "./_core/lexai";
 import { hashPassword, verifyPassword, generateToken, isValidEmail, isValidPassword } from "./_core/auth";
 import { sendEmail, sendLoginCodeEmail } from "./_core/email";
+import { ENV } from "./_core/env";
 import { generateNumericCode, generateSaltBase64, normalizeEmail, sha256Base64 } from "./_core/otp";
 // FlexAI routes are registered in server/_core/index.ts
 
@@ -2149,6 +2150,22 @@ export const appRouter = router({
         return { hasAccess };
       }),
   }),
+
+  // Contact Support (public, sends email to admin)
+  contactSupport: publicProcedure
+    .input(z.object({
+      email: z.string().email(),
+      message: z.string().min(5).max(2000),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const adminEmail = ENV.emailFrom || 'support@xflexacademy.com';
+      await sendEmail({
+        to: adminEmail,
+        subject: `[XFlex Support] New message from ${input.email}`,
+        text: `New support message from: ${input.email}\n\n${input.message}\n\n---\nReply directly to ${input.email}`,
+      });
+      return { success: true };
+    }),
 });
 
 export type AppRouter = typeof appRouter;
