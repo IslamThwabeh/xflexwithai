@@ -35,7 +35,6 @@ import AdminRecommendations from "./pages/AdminRecommendations";
 import SupportChat from "./pages/SupportChat";
 import AdminSupport from "./pages/AdminSupport";
 import AdminRoles from "./pages/AdminRoles";
-import StaffPortal from "./pages/StaffPortal";
 
 function Router() {
   return (
@@ -142,11 +141,6 @@ function Router() {
       <Route path={"/support"}>
         <ProtectedRoute>
           <SupportChat />
-        </ProtectedRoute>
-      </Route>
-      <Route path={"/staff"}>
-        <ProtectedRoute>
-          <StaffPortal />
         </ProtectedRoute>
       </Route>
       <Route path="/quiz" component={QuizLevels} />
