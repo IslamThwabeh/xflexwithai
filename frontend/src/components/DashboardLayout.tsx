@@ -35,7 +35,6 @@ import {
   MessageSquare,
   Shield,
   Headphones,
-  ClipboardList,
   Briefcase,
   Globe,
 } from "lucide-react";
@@ -86,7 +85,6 @@ const menuSectionsDef: MenuSection[] = [
     labelKey: "admin.sidebar.support",
     items: [
       { icon: Headphones, labelKey: "admin.sidebar.supportChat", path: "/admin/support" },
-      { icon: ClipboardList, labelKey: "admin.sidebar.supportDash", path: "/support-panel" },
       { icon: Briefcase, labelKey: "admin.sidebar.staffPortal", path: "/staff" },
       { icon: Shield, labelKey: "admin.sidebar.roles", path: "/admin/roles" },
     ]

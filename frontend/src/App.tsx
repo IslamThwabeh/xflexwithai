@@ -35,7 +35,6 @@ import AdminRecommendations from "./pages/AdminRecommendations";
 import SupportChat from "./pages/SupportChat";
 import AdminSupport from "./pages/AdminSupport";
 import AdminRoles from "./pages/AdminRoles";
-import SupportDashboard from "./pages/SupportDashboard";
 import StaffPortal from "./pages/StaffPortal";
 
 function Router() {
@@ -143,11 +142,6 @@ function Router() {
       <Route path={"/support"}>
         <ProtectedRoute>
           <SupportChat />
-        </ProtectedRoute>
-      </Route>
-      <Route path={"/support-panel"}>
-        <ProtectedRoute>
-          <SupportDashboard />
         </ProtectedRoute>
       </Route>
       <Route path={"/staff"}>
