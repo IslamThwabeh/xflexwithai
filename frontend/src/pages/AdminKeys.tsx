@@ -53,6 +53,7 @@ export default function AdminKeys() {
   const [selectedCourse, setSelectedCourse] = useState<number | null>(null);
   const [quantity, setQuantity] = useState("1");
   const [notes, setNotes] = useState("");
+  const [price, setPrice] = useState("0");
   const [searchEmail, setSearchEmail] = useState("");
   const [showGenerateDialog, setShowGenerateDialog] = useState(false);
   const [showBulkDialog, setShowBulkDialog] = useState(false);
@@ -68,6 +69,7 @@ export default function AdminKeys() {
       toast.success("Registration key generated successfully!");
       setShowGenerateDialog(false);
       setNotes("");
+      setPrice("0");
       refetchKeys();
       refetchStats();
     },
@@ -82,6 +84,7 @@ export default function AdminKeys() {
       setShowBulkDialog(false);
       setQuantity("1");
       setNotes("");
+      setPrice("0");
       refetchKeys();
       refetchStats();
     },
@@ -108,9 +111,11 @@ export default function AdminKeys() {
       toast.error("Please select a course");
       return;
     }
+    const priceValue = parseFloat(price) || 0;
     generateKey.mutate({
       courseId: selectedCourse,
       notes: notes || undefined,
+      price: priceValue,
     });
   };
 
@@ -124,10 +129,12 @@ export default function AdminKeys() {
       toast.error("Quantity must be between 1 and 1000");
       return;
     }
+    const priceValue = parseFloat(price) || 0;
     generateBulkKeys.mutate({
       courseId: selectedCourse,
       quantity: qty,
       notes: notes || undefined,
+      price: priceValue,
     });
   };
 
@@ -226,6 +233,17 @@ export default function AdminKeys() {
                     placeholder="Add notes about this key..."
                   />
                 </div>
+                <div>
+                  <Label>{t('admin.keys.price')}</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={price}
+                    onChange={(e) => setPrice(e.target.value)}
+                    placeholder="0.00"
+                  />
+                </div>
                 <Button
                   onClick={handleGenerateSingle}
                   disabled={generateKey.isPending}
@@ -287,6 +305,17 @@ export default function AdminKeys() {
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
                     placeholder="Add notes about these keys..."
+                  />
+                </div>
+                <div>
+                  <Label>{t('admin.keys.price')}</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={price}
+                    onChange={(e) => setPrice(e.target.value)}
+                    placeholder="0.00"
                   />
                 </div>
                 <Button

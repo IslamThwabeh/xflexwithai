@@ -938,6 +938,8 @@ export async function createBulkRegistrationKeys(input: {
   createdBy: number;
   quantity: number;
   notes?: string;
+  price?: number;
+  currency?: string;
   expiresAt?: string | Date | null;
 }) {
   const db = await getDb();
@@ -949,6 +951,8 @@ export async function createBulkRegistrationKeys(input: {
     createdBy: input.createdBy,
     createdAt: new Date().toISOString(),
     notes: input.notes ?? null,
+    price: input.price ?? 0,
+    currency: input.currency ?? "USD",
     expiresAt: input.expiresAt ? new Date(input.expiresAt).toISOString() : null,
   }));
 

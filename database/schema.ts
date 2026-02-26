@@ -135,6 +135,8 @@ export const registrationKeys = pgTable("registrationKeys", {
   createdBy: integer("createdBy").notNull(), // admin_id who created the key
   isActive: boolean("isActive").default(true).notNull(),
   notes: text("notes"), // Admin notes about this key
+  price: integer("price").default(0).notNull(), // Price in dollars
+  currency: varchar("currency", { length: 3 }).default("USD").notNull(),
   expiresAt: timestamp("expiresAt"), // NULL = lifetime access
 });
 

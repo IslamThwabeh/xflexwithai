@@ -140,6 +140,8 @@ export const registrationKeys = sqliteTable("registrationKeys", {
   createdBy: integer("createdBy").notNull(),
   isActive: integer("isActive", { mode: 'boolean' }).default(true).notNull(),
   notes: text("notes"),
+  price: integer("price").default(0).notNull(),
+  currency: text("currency", { length: 3 }).default("USD").notNull(),
   expiresAt: text("expiresAt"),
 });
 

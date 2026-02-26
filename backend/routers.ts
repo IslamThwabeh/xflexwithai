@@ -1932,6 +1932,7 @@ export const appRouter = router({
       .input(z.object({
         courseId: z.number(),
         notes: z.string().optional(),
+        price: z.number().min(0).optional(),
         expiresAt: z.date().optional(),
       }))
       .mutation(async ({ input, ctx }) => {
@@ -1941,6 +1942,8 @@ export const appRouter = router({
           courseId: input.courseId,
           createdBy: ctx.admin.id,
           notes: input.notes,
+          price: input.price ?? 0,
+          currency: "USD",
           expiresAt: input.expiresAt,
         });
         
@@ -1953,6 +1956,7 @@ export const appRouter = router({
         courseId: z.number(),
         quantity: z.number().min(1).max(1000),
         notes: z.string().optional(),
+        price: z.number().min(0).optional(),
         expiresAt: z.date().optional(),
       }))
       .mutation(async ({ input, ctx }) => {
@@ -1967,6 +1971,8 @@ export const appRouter = router({
           createdBy: ctx.admin.id,
           quantity: input.quantity,
           notes: input.notes,
+          price: input.price ?? 0,
+          currency: "USD",
           expiresAt: input.expiresAt,
         });
         
@@ -2099,6 +2105,8 @@ export const appRouter = router({
                 userId: user.id,
                 courseId: result.key.courseId,
                 paymentStatus: 'completed',
+                paymentAmount: result.key.price ?? 0,
+                paymentCurrency: result.key.currency ?? 'USD',
                 isSubscriptionActive: true,
                 registrationKeyId: result.key.id,
                 activatedViaKey: true,
@@ -2154,6 +2162,8 @@ export const appRouter = router({
               userId: ctx.user.id,
               courseId: result.key.courseId,
               paymentStatus: 'completed',
+              paymentAmount: result.key.price ?? 0,
+              paymentCurrency: result.key.currency ?? 'USD',
               isSubscriptionActive: true,
               registrationKeyId: result.key.id,
               activatedViaKey: true,
