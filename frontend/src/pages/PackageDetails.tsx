@@ -1,5 +1,5 @@
 import { useParams, Link } from 'wouter';
-import { CheckCircle, ChevronRight, ArrowLeft, X, Star, BookOpen, Phone, Globe } from 'lucide-react';
+import { CheckCircle, ChevronRight, ArrowLeft, X, Star, BookOpen, ShoppingCart, Globe } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -165,12 +165,7 @@ export default function PackageDetails() {
                 </p>
               </div>
 
-              <a
-                href="https://wa.me/972597596030"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block"
-              >
+              <Link href={`/checkout/${pkg.slug}`}>
                 <Button
                   size="lg"
                   className={`w-full font-bold ${
@@ -179,15 +174,15 @@ export default function PackageDetails() {
                       : 'bg-gray-900 hover:bg-gray-800 text-white'
                   }`}
                 >
-                  <Phone className="w-4 h-4" />
+                  <ShoppingCart className="w-4 h-4" />
                   {t('home.packages.choosePlan')}
                 </Button>
-              </a>
+              </Link>
 
               <p className={`text-center text-xs mt-3 ${isComprehensive ? 'text-blue-200' : 'text-gray-400'}`}>
                 {language === 'ar' 
-                  ? 'تواصل معنا عبر واتساب لإتمام عملية الشراء'
-                  : 'Contact us via WhatsApp to complete your purchase'}
+                  ? 'ضريبة القيمة المضافة 16% ستُضاف عند الدفع'
+                  : 'VAT 16% will be applied at checkout'}
               </p>
             </div>
           </div>

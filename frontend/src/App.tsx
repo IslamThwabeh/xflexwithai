@@ -41,6 +41,14 @@ import AdminPackages from "./pages/AdminPackages";
 import AdminEvents from "./pages/AdminEvents";
 import AdminArticles from "./pages/AdminArticles";
 import AdminOrders from "./pages/AdminOrders";
+import Events from "./pages/Events";
+import Articles from "./pages/Articles";
+import ArticleDetail from "./pages/ArticleDetail";
+import MyOrders from "./pages/MyOrders";
+import OrderDetail from "./pages/OrderDetail";
+import MySubscriptions from "./pages/MySubscriptions";
+import Checkout from "./pages/Checkout";
+import FreeContent from "./pages/FreeContent";
 
 function Router() {
   return (
@@ -171,7 +179,27 @@ function Router() {
       <Route path="/quiz/:level" component={TakeQuiz} />
       <Route path="/quiz/:level/history" component={QuizHistory} />
       <Route path="/packages/:slug" component={PackageDetails} />
+      <Route path="/checkout/:slug" component={Checkout} />
       <Route path="/about" component={About} />
+      <Route path="/events" component={Events} />
+      <Route path="/articles" component={Articles} />
+      <Route path="/articles/:slug" component={ArticleDetail} />
+      <Route path="/free-content" component={FreeContent} />
+      <Route path="/orders">
+        <ProtectedRoute>
+          <MyOrders />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/orders/:id">
+        <ProtectedRoute>
+          <OrderDetail />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/subscriptions">
+        <ProtectedRoute>
+          <MySubscriptions />
+        </ProtectedRoute>
+      </Route>
       <Route path={"/"} component={Home} />
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />

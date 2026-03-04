@@ -780,6 +780,11 @@ export const appRouter = router({
       return await db.getPublishedCourses();
     }),
 
+    // Public: Get free courses (price = 0)
+    free: publicProcedure.query(async () => {
+      return await db.getFreeCourses();
+    }),
+
     // Admin: Get all courses (including unpublished)
     listAll: adminProcedure.query(async () => {
       return await db.getAllCourses();
@@ -814,6 +819,11 @@ export const appRouter = router({
         isPublished: z.boolean().default(false),
         level: z.enum(["beginner", "intermediate", "advanced"]).default("beginner"),
         duration: z.number().optional(),
+        stageNumber: z.number().default(0),
+        introVideoUrl: z.string().optional(),
+        hasPdf: z.boolean().default(false),
+        hasIntroVideo: z.boolean().default(false),
+        pdfUrl: z.string().optional(),
       }))
       .mutation(async ({ input, ctx }) => {
         logger.procedure('courses.create', { title: input.titleEn }, ctx.admin?.id);
@@ -836,6 +846,11 @@ export const appRouter = router({
         isPublished: z.boolean().optional(),
         level: z.enum(["beginner", "intermediate", "advanced"]).optional(),
         duration: z.number().optional(),
+        stageNumber: z.number().optional(),
+        introVideoUrl: z.string().optional(),
+        hasPdf: z.boolean().optional(),
+        hasIntroVideo: z.boolean().optional(),
+        pdfUrl: z.string().optional(),
       }))
       .mutation(async ({ input, ctx }) => {
         logger.procedure('courses.update', { id: input.id }, ctx.admin?.id);

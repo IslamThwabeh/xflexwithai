@@ -81,6 +81,11 @@ export default function AdminCourses() {
     price: 0,
     level: "beginner" as "beginner" | "intermediate" | "advanced",
     isPublished: false,
+    stageNumber: 0,
+    introVideoUrl: "",
+    hasPdf: false,
+    hasIntroVideo: false,
+    pdfUrl: "",
   });
 
   const resetForm = () => {
@@ -93,6 +98,11 @@ export default function AdminCourses() {
       price: 0,
       level: "beginner",
       isPublished: false,
+      stageNumber: 0,
+      introVideoUrl: "",
+      hasPdf: false,
+      hasIntroVideo: false,
+      pdfUrl: "",
     });
   };
 
@@ -107,6 +117,11 @@ export default function AdminCourses() {
       price: course.price,
       level: course.level,
       isPublished: course.isPublished,
+      stageNumber: course.stageNumber || 0,
+      introVideoUrl: course.introVideoUrl || "",
+      hasPdf: !!course.hasPdf,
+      hasIntroVideo: !!course.hasIntroVideo,
+      pdfUrl: course.pdfUrl || "",
     });
     setIsDialogOpen(true);
   };
@@ -174,6 +189,11 @@ export default function AdminCourses() {
                   <div className="flex items-center justify-between text-sm mb-4">
                     <span className="font-medium">${(course.price / 100).toFixed(2)}</span>
                     <span className="capitalize text-muted-foreground">{course.level}</span>
+                    {course.stageNumber > 0 && (
+                      <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                        Stage {course.stageNumber}
+                      </span>
+                    )}
                   </div>
                   <div className="flex flex-col gap-2">
                     <Link href={`/admin/courses/${course.id}/episodes`}>
@@ -324,6 +344,59 @@ export default function AdminCourses() {
                       <SelectItem value="published">{t('admin.courses.published')}</SelectItem>
                     </SelectContent>
                   </Select>
+                </div>
+              </div>
+
+              {/* Stage & Media fields */}
+              <div className="border-t pt-4 mt-4">
+                <h3 className="font-medium text-sm text-muted-foreground mb-3">Stage & Media</h3>
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="space-y-2">
+                    <Label>Stage Number (0 = none)</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      max="20"
+                      value={formData.stageNumber}
+                      onChange={(e) => setFormData({ ...formData, stageNumber: parseInt(e.target.value) || 0 })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Intro Video URL</Label>
+                    <Input
+                      value={formData.introVideoUrl}
+                      onChange={(e) => setFormData({ ...formData, introVideoUrl: e.target.value })}
+                      placeholder="https://..."
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>PDF URL</Label>
+                    <Input
+                      value={formData.pdfUrl}
+                      onChange={(e) => setFormData({ ...formData, pdfUrl: e.target.value })}
+                      placeholder="https://..."
+                    />
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-4 mt-3">
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.hasIntroVideo}
+                      onChange={(e) => setFormData({ ...formData, hasIntroVideo: e.target.checked })}
+                      className="rounded border-gray-300"
+                    />
+                    Has Intro Video
+                  </label>
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.hasPdf}
+                      onChange={(e) => setFormData({ ...formData, hasPdf: e.target.checked })}
+                      className="rounded border-gray-300"
+                    />
+                    Has PDF
+                  </label>
                 </div>
               </div>
 

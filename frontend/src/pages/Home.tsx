@@ -242,13 +242,14 @@ export default function Home() {
                 </ul>
               </div>
 
-              <Button
-                size="lg"
-                className="w-full mt-6 bg-gray-900 hover:bg-gray-800 text-white"
-                onClick={() => scrollToSection('contact')}
-              >
-                {t('home.packages.choosePlan')}
-              </Button>
+              <Link href="/packages/basic">
+                <Button
+                  size="lg"
+                  className="w-full mt-6 bg-gray-900 hover:bg-gray-800 text-white"
+                >
+                  {t('home.packages.choosePlan')}
+                </Button>
+              </Link>
             </div>
 
             {/* Comprehensive Package */}
@@ -290,13 +291,14 @@ export default function Home() {
                 </ul>
               </div>
 
-              <Button
-                size="lg"
-                className="w-full mt-6 bg-white text-blue-700 hover:bg-blue-50 font-bold"
-                onClick={() => scrollToSection('contact')}
-              >
-                {t('home.packages.choosePlan')}
-              </Button>
+              <Link href="/packages/comprehensive">
+                <Button
+                  size="lg"
+                  className="w-full mt-6 bg-white text-blue-700 hover:bg-blue-50 font-bold"
+                >
+                  {t('home.packages.choosePlan')}
+                </Button>
+              </Link>
             </div>
           </div>
         </div>
@@ -462,6 +464,14 @@ export default function Home() {
                 </div>
               ))}
             </div>
+
+            {events.length > 3 && (
+              <div className="text-center mt-8">
+                <Link href="/events">
+                  <Button variant="outline">{language === 'ar' ? 'عرض جميع الفعاليات' : 'View All Events'}</Button>
+                </Link>
+              </div>
+            )}
           </div>
         </section>
       )}
@@ -511,6 +521,14 @@ export default function Home() {
                 </div>
               ))}
             </div>
+
+            {articles.length > 3 && (
+              <div className="text-center mt-8">
+                <Link href="/articles">
+                  <Button variant="outline">{language === 'ar' ? 'عرض جميع المقالات' : 'View All Articles'}</Button>
+                </Link>
+              </div>
+            )}
           </div>
         </section>
       )}
@@ -532,7 +550,7 @@ export default function Home() {
               <BookOpen className="w-10 h-10 text-blue-600 mx-auto mb-4" />
               <h3 className="text-lg font-bold text-gray-900 mb-2">{t('home.free.courses')}</h3>
               <p className="text-sm text-gray-600 mb-4">{t('home.free.coursesDesc')}</p>
-              <Link href="/auth">
+              <Link href="/free-content">
                 <Button variant="outline" size="sm" className="border-blue-200 text-blue-600 hover:bg-blue-100">
                   {t('home.free.browseCourses')}
                 </Button>
@@ -542,10 +560,11 @@ export default function Home() {
               <Newspaper className="w-10 h-10 text-indigo-600 mx-auto mb-4" />
               <h3 className="text-lg font-bold text-gray-900 mb-2">{t('home.free.articles')}</h3>
               <p className="text-sm text-gray-600 mb-4">{t('home.free.articlesDesc')}</p>
-              <Button variant="outline" size="sm" className="border-indigo-200 text-indigo-600 hover:bg-indigo-100"
-                onClick={() => scrollToSection('articles')}>
-                {t('home.free.browseArticles')}
-              </Button>
+              <Link href="/articles">
+                <Button variant="outline" size="sm" className="border-indigo-200 text-indigo-600 hover:bg-indigo-100">
+                  {t('home.free.browseArticles')}
+                </Button>
+              </Link>
             </div>
           </div>
         </div>

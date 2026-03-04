@@ -584,6 +584,14 @@ export async function getPublishedCourses() {
     .orderBy(desc(courses.createdAt));
 }
 
+export async function getFreeCourses() {
+  const db = await getDb();
+  if (!db) return [];
+  return await db.select().from(courses)
+    .where(and(eq(courses.isPublished, true), eq(courses.price, 0)))
+    .orderBy(courses.stageNumber, desc(courses.createdAt));
+}
+
 export async function getCourseById(id: number) {
   const db = await getDb();
   if (!db) return undefined;

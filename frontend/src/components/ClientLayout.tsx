@@ -12,6 +12,8 @@ import {
   LogOut,
   LayoutDashboard,
   Headphones,
+  ShoppingBag,
+  Package,
 } from "lucide-react";
 
 interface ClientLayoutProps {
@@ -54,6 +56,18 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
       label: t("dashboard.nav.support"),
       icon: <Headphones className="h-4 w-4" />,
       match: "/support",
+    },
+    {
+      href: "/orders",
+      label: t("dashboard.nav.orders"),
+      icon: <ShoppingBag className="h-4 w-4" />,
+      match: "/orders",
+    },
+    {
+      href: "/subscriptions",
+      label: t("dashboard.nav.subscriptions"),
+      icon: <Package className="h-4 w-4" />,
+      match: "/subscriptions",
     },
   ];
 

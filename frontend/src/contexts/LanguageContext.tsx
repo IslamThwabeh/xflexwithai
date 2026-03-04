@@ -202,6 +202,46 @@ const translations = {
     // WhatsApp
     'home.whatsapp': 'Chat on WhatsApp',
     
+    // Events page
+    'events.pageTitle': 'Events & Activities',
+    'events.pageSubtitle': 'Live sessions, competitions, offers, and webinars',
+    'events.noEvents': 'No events scheduled',
+    'events.learnMore': 'Learn More',
+
+    // Articles page
+    'articles.pageTitle': 'Articles & Insights',
+    'articles.pageSubtitle': 'Educational content and market analysis',
+    'articles.noArticles': 'No articles published yet',
+    'articles.notFound': 'Article not found',
+    'articles.backToList': 'All Articles',
+
+    // My Orders
+    'myOrders.title': 'My Orders',
+    'myOrders.noOrders': 'You have no orders yet',
+    'myOrders.browsePkgs': 'Browse Packages',
+    'myOrders.notFound': 'Order not found',
+    'myOrders.backToOrders': 'Back to Orders',
+
+    // My Subscriptions
+    'mySubscriptions.title': 'My Subscriptions',
+    'mySubscriptions.activePkg': 'Active Package',
+    'mySubscriptions.noSubs': 'You have no subscriptions yet',
+    'mySubscriptions.browsePkgs': 'Browse Packages',
+
+    // Checkout
+    'checkout.title': 'Checkout',
+    'checkout.paymentMethod': 'Payment Method',
+    'checkout.summary': 'Order Summary',
+
+    // Free Content
+    'freeContent.pageTitle': 'Free Content',
+    'freeContent.pageSubtitle': 'Start learning for free — no subscription needed',
+    'freeContent.noCourses': 'No free courses available yet',
+    'freeContent.comingSoon': 'Free content is being prepared — check back soon!',
+    'freeContent.wantMore': 'Want the Full Experience?',
+    'freeContent.upgradeMsg': 'Unlock all courses, LexAI analysis, recommendations, and more with our premium packages.',
+    'freeContent.viewPackages': 'View Packages',
+
     // Dashboard
     'dashboard.title': 'Welcome back, {name}!',
     'dashboard.subtitle': 'Continue your learning journey',
@@ -252,6 +292,8 @@ const translations = {
     'dashboard.nav.lexai': 'LexAI',
     'dashboard.nav.rec': 'Recommendations Group',
     'dashboard.nav.support': 'Support',
+    'dashboard.nav.orders': 'My Orders',
+    'dashboard.nav.subscriptions': 'My Subscriptions',
     'dashboard.quickActions.browseMore': 'Discover More',
     'dashboard.quickActions.discoverNewCourses': 'Explore more trading courses and expand your knowledge',
     'dashboard.quickActions.browseCourses': 'Browse All Courses',
@@ -1134,6 +1176,46 @@ const translations = {
     // WhatsApp
     'home.whatsapp': 'تواصل عبر واتساب',
     
+    // Events page
+    'events.pageTitle': 'الفعاليات والأنشطة',
+    'events.pageSubtitle': 'جلسات مباشرة، مسابقات، عروض، وندوات',
+    'events.noEvents': 'لا توجد فعاليات مجدولة',
+    'events.learnMore': 'المزيد',
+
+    // Articles page
+    'articles.pageTitle': 'المقالات والتحليلات',
+    'articles.pageSubtitle': 'محتوى تعليمي وتحليلات السوق',
+    'articles.noArticles': 'لا توجد مقالات منشورة بعد',
+    'articles.notFound': 'المقالة غير موجودة',
+    'articles.backToList': 'جميع المقالات',
+
+    // My Orders
+    'myOrders.title': 'طلباتي',
+    'myOrders.noOrders': 'لا توجد طلبات بعد',
+    'myOrders.browsePkgs': 'تصفح الباقات',
+    'myOrders.notFound': 'الطلب غير موجود',
+    'myOrders.backToOrders': 'العودة للطلبات',
+
+    // My Subscriptions
+    'mySubscriptions.title': 'اشتراكاتي',
+    'mySubscriptions.activePkg': 'الباقة النشطة',
+    'mySubscriptions.noSubs': 'لا توجد اشتراكات بعد',
+    'mySubscriptions.browsePkgs': 'تصفح الباقات',
+
+    // Checkout
+    'checkout.title': 'إتمام الطلب',
+    'checkout.paymentMethod': 'طريقة الدفع',
+    'checkout.summary': 'ملخص الطلب',
+
+    // Free Content
+    'freeContent.pageTitle': 'المحتوى المجاني',
+    'freeContent.pageSubtitle': 'ابدأ التعلم مجاناً — بدون اشتراك',
+    'freeContent.noCourses': 'لا توجد دورات مجانية متاحة بعد',
+    'freeContent.comingSoon': 'يتم تحضير المحتوى المجاني — تابعنا قريباً!',
+    'freeContent.wantMore': 'تريد التجربة الكاملة؟',
+    'freeContent.upgradeMsg': 'افتح جميع الدورات، تحليلات LexAI، التوصيات، والمزيد مع باقاتنا المميزة.',
+    'freeContent.viewPackages': 'عرض الباقات',
+
     // Dashboard
     'dashboard.title': 'مرحبًا بك مجددًا، {name}!',
     'dashboard.subtitle': 'تابع رحلتك التعليمية',
@@ -1184,6 +1266,8 @@ const translations = {
     'dashboard.nav.lexai': 'LexAI',
     'dashboard.nav.rec': 'قروب التوصيات',
     'dashboard.nav.support': 'الدعم',
+    'dashboard.nav.orders': 'طلباتي',
+    'dashboard.nav.subscriptions': 'اشتراكاتي',
     'dashboard.quickActions.browseMore': 'استكشف المزيد',
     'dashboard.quickActions.discoverNewCourses': 'استكشف المزيد من دورات التداول وكسّع معلوماتك',
     'dashboard.quickActions.browseCourses': 'استعرض جميع الدورات',
