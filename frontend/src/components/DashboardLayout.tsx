@@ -36,6 +36,10 @@ import {
   Shield,
   Headphones,
   Globe,
+  Package,
+  ShoppingCart,
+  CalendarDays,
+  FileText,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -58,6 +62,10 @@ const menuSectionsDef: MenuSection[] = [
     items: [
       { icon: BookOpen, labelKey: "admin.sidebar.courses", path: "/admin/courses" },
       { icon: Key, labelKey: "admin.sidebar.courseKeys", path: "/admin/keys" },
+      { icon: Package, labelKey: "admin.sidebar.packages", path: "/admin/packages" },
+      { icon: ShoppingCart, labelKey: "admin.sidebar.orders", path: "/admin/orders" },
+      { icon: CalendarDays, labelKey: "admin.sidebar.events", path: "/admin/events" },
+      { icon: FileText, labelKey: "admin.sidebar.articles", path: "/admin/articles" },
     ]
   },
   {

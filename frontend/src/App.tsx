@@ -35,6 +35,12 @@ import AdminRecommendations from "./pages/AdminRecommendations";
 import SupportChat from "./pages/SupportChat";
 import AdminSupport from "./pages/AdminSupport";
 import AdminRoles from "./pages/AdminRoles";
+import PackageDetails from "./pages/PackageDetails";
+import About from "./pages/About";
+import AdminPackages from "./pages/AdminPackages";
+import AdminEvents from "./pages/AdminEvents";
+import AdminArticles from "./pages/AdminArticles";
+import AdminOrders from "./pages/AdminOrders";
 
 function Router() {
   return (
@@ -125,8 +131,26 @@ function Router() {
         <AdminRoute>
           <AdminRoles />
         </AdminRoute>
+      </Route>      <Route path={"/admin/packages"}>
+        <AdminRoute>
+          <AdminPackages />
+        </AdminRoute>
       </Route>
-      <Route path={"/activate-key"} component={ActivateKey} />
+      <Route path={"/admin/orders"}>
+        <AdminRoute>
+          <AdminOrders />
+        </AdminRoute>
+      </Route>
+      <Route path={"/admin/events"}>
+        <AdminRoute>
+          <AdminEvents />
+        </AdminRoute>
+      </Route>
+      <Route path={"/admin/articles"}>
+        <AdminRoute>
+          <AdminArticles />
+        </AdminRoute>
+      </Route>      <Route path={"/activate-key"} component={ActivateKey} />
       <Route path={"/course/:id"} component={CourseWatch} />
       <Route path={"/lexai"}>
         <ProtectedRoute>
@@ -146,6 +170,8 @@ function Router() {
       <Route path="/quiz" component={QuizLevels} />
       <Route path="/quiz/:level" component={TakeQuiz} />
       <Route path="/quiz/:level/history" component={QuizHistory} />
+      <Route path="/packages/:slug" component={PackageDetails} />
+      <Route path="/about" component={About} />
       <Route path={"/"} component={Home} />
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
