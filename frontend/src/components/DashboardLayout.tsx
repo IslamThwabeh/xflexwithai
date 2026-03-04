@@ -40,6 +40,7 @@ import {
   ShoppingCart,
   CalendarDays,
   FileText,
+  ClipboardCheck,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -61,6 +62,7 @@ const menuSectionsDef: MenuSection[] = [
     labelKey: "admin.sidebar.content",
     items: [
       { icon: BookOpen, labelKey: "admin.sidebar.courses", path: "/admin/courses" },
+      { icon: ClipboardCheck, labelKey: "admin.sidebar.quizzes", path: "/admin/quizzes" },
       { icon: Key, labelKey: "admin.sidebar.courseKeys", path: "/admin/keys" },
       { icon: Package, labelKey: "admin.sidebar.packages", path: "/admin/packages" },
       { icon: ShoppingCart, labelKey: "admin.sidebar.orders", path: "/admin/orders" },

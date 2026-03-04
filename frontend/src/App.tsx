@@ -49,6 +49,7 @@ import OrderDetail from "./pages/OrderDetail";
 import MySubscriptions from "./pages/MySubscriptions";
 import Checkout from "./pages/Checkout";
 import FreeContent from "./pages/FreeContent";
+import AdminQuizzes from "./pages/AdminQuizzes";
 
 function Router() {
   return (
@@ -88,6 +89,11 @@ function Router() {
       <Route path={"/admin/courses/:courseId/episodes"}>
         <AdminRoute>
           <AdminEpisodes />
+        </AdminRoute>
+      </Route>
+      <Route path={"/admin/quizzes"}>
+        <AdminRoute>
+          <AdminQuizzes />
         </AdminRoute>
       </Route>
       <Route path={"/admin/users"}>

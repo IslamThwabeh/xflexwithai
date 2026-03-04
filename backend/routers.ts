@@ -2863,6 +2863,124 @@ export const appRouter = router({
   }),
 
   // =============================================
+  // ADMIN QUIZ MANAGEMENT
+  // =============================================
+  adminQuiz: router({
+    // List all quizzes (admin)
+    list: adminProcedure.query(async () => {
+      return db.getAllQuizzes();
+    }),
+
+    // Get quiz with questions + options
+    getById: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input }) => {
+        return db.getQuizWithQuestionsAndOptions(input.id);
+      }),
+
+    // Get quiz stats
+    stats: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input }) => {
+        return db.getQuizStats(input.id);
+      }),
+
+    // Create quiz
+    create: adminProcedure
+      .input(z.object({
+        level: z.number().min(1),
+        title: z.string().min(1),
+        description: z.string().optional(),
+        passingScore: z.number().min(1).max(100).default(50),
+      }))
+      .mutation(async ({ input }) => {
+        return db.createQuiz(input);
+      }),
+
+    // Update quiz
+    update: adminProcedure
+      .input(z.object({
+        id: z.number(),
+        title: z.string().optional(),
+        description: z.string().optional(),
+        passingScore: z.number().min(1).max(100).optional(),
+        level: z.number().min(1).optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, ...data } = input;
+        return db.updateQuiz(id, data);
+      }),
+
+    // Delete quiz
+    delete: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        return db.deleteQuiz(input.id);
+      }),
+
+    // Create question
+    createQuestion: adminProcedure
+      .input(z.object({
+        quizId: z.number(),
+        questionText: z.string().min(1),
+        orderNum: z.number().min(1),
+      }))
+      .mutation(async ({ input }) => {
+        return db.createQuizQuestion(input);
+      }),
+
+    // Update question
+    updateQuestion: adminProcedure
+      .input(z.object({
+        id: z.number(),
+        questionText: z.string().optional(),
+        orderNum: z.number().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, ...data } = input;
+        return db.updateQuizQuestion(id, data);
+      }),
+
+    // Delete question
+    deleteQuestion: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        return db.deleteQuizQuestion(input.id);
+      }),
+
+    // Create option
+    createOption: adminProcedure
+      .input(z.object({
+        questionId: z.number(),
+        optionId: z.string().length(1),
+        optionText: z.string().min(1),
+        isCorrect: z.boolean().default(false),
+      }))
+      .mutation(async ({ input }) => {
+        return db.createQuizOption(input);
+      }),
+
+    // Update option
+    updateOption: adminProcedure
+      .input(z.object({
+        id: z.number(),
+        optionText: z.string().optional(),
+        isCorrect: z.boolean().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, ...data } = input;
+        return db.updateQuizOption(id, data);
+      }),
+
+    // Delete option
+    deleteOption: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        return db.deleteQuizOption(input.id);
+      }),
+  }),
+
+  // =============================================
   // ARTICLES (public + admin)
   // =============================================
   articles: router({

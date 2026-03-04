@@ -1824,6 +1824,160 @@ export async function createOrUpdateEpisodeProgress(progress: InsertEpisodeProgr
 }
 
 // ============================================================================
+// Admin Quiz Management (CRUD)
+// ============================================================================
+
+export async function getAllQuizzes(): Promise<Quiz[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(quizzes).orderBy(quizzes.level);
+}
+
+export async function getQuizWithQuestionsAndOptions(quizId: number) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const [quiz] = await db.select().from(quizzes).where(eq(quizzes.id, quizId)).limit(1);
+  if (!quiz) return null;
+
+  const questions = await db.select().from(quizQuestions)
+    .where(eq(quizQuestions.quizId, quizId))
+    .orderBy(quizQuestions.orderNum);
+
+  const questionIds = questions.map(q => q.id);
+  const options = questionIds.length > 0
+    ? await db.select().from(quizOptions).where(inArray(quizOptions.questionId, questionIds))
+    : [];
+
+  return {
+    ...quiz,
+    questions: questions.map(q => ({
+      ...q,
+      options: options.filter(o => o.questionId === q.id).sort((a, b) => a.optionId.localeCompare(b.optionId)),
+    })),
+  };
+}
+
+export async function createQuiz(input: { level: number; title: string; description?: string; passingScore?: number }): Promise<Quiz | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const now = new Date().toISOString();
+  const [quiz] = await db.insert(quizzes).values({
+    level: input.level,
+    title: input.title,
+    description: input.description ?? null,
+    passingScore: input.passingScore ?? 50,
+    createdAt: now,
+    updatedAt: now,
+  }).returning();
+  return quiz ?? null;
+}
+
+export async function updateQuiz(id: number, input: { title?: string; description?: string; passingScore?: number; level?: number }): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(quizzes).set({
+    ...input,
+    updatedAt: new Date().toISOString(),
+  }).where(eq(quizzes.id, id));
+}
+
+export async function deleteQuiz(id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  // Get questions for this quiz to delete their options
+  const questions = await db.select().from(quizQuestions).where(eq(quizQuestions.quizId, id));
+  const questionIds = questions.map(q => q.id);
+  if (questionIds.length > 0) {
+    await db.delete(quizOptions).where(inArray(quizOptions.questionId, questionIds));
+  }
+  await db.delete(quizQuestions).where(eq(quizQuestions.quizId, id));
+  // Delete attempts and progress for this quiz
+  await db.delete(quizAnswers).where(
+    inArray(quizAnswers.attemptId,
+      db.select({ id: quizAttempts.id }).from(quizAttempts).where(eq(quizAttempts.quizId, id))
+    )
+  );
+  await db.delete(quizAttempts).where(eq(quizAttempts.quizId, id));
+  await db.delete(userQuizProgress).where(eq(userQuizProgress.quizId, id));
+  await db.delete(quizzes).where(eq(quizzes.id, id));
+}
+
+export async function createQuizQuestion(input: { quizId: number; questionText: string; orderNum: number }): Promise<QuizQuestion | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const now = new Date().toISOString();
+  const [question] = await db.insert(quizQuestions).values({
+    quizId: input.quizId,
+    questionText: input.questionText,
+    orderNum: input.orderNum,
+    createdAt: now,
+    updatedAt: now,
+  }).returning();
+  return question ?? null;
+}
+
+export async function updateQuizQuestion(id: number, input: { questionText?: string; orderNum?: number }): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(quizQuestions).set({
+    ...input,
+    updatedAt: new Date().toISOString(),
+  }).where(eq(quizQuestions.id, id));
+}
+
+export async function deleteQuizQuestion(id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(quizOptions).where(eq(quizOptions.questionId, id));
+  await db.delete(quizQuestions).where(eq(quizQuestions.id, id));
+}
+
+export async function createQuizOption(input: { questionId: number; optionId: string; optionText: string; isCorrect: boolean }): Promise<QuizOption | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const [option] = await db.insert(quizOptions).values({
+    questionId: input.questionId,
+    optionId: input.optionId,
+    optionText: input.optionText,
+    isCorrect: input.isCorrect,
+    createdAt: new Date().toISOString(),
+  }).returning();
+  return option ?? null;
+}
+
+export async function updateQuizOption(id: number, input: { optionText?: string; isCorrect?: boolean }): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(quizOptions).set(input).where(eq(quizOptions.id, id));
+}
+
+export async function deleteQuizOption(id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(quizOptions).where(eq(quizOptions.id, id));
+}
+
+export async function getQuizStats(quizId: number) {
+  const db = await getDb();
+  if (!db) return { totalAttempts: 0, passRate: 0, avgScore: 0 };
+
+  const [stats] = await db.select({
+    totalAttempts: sql<number>`count(*)`,
+    passedCount: sql<number>`sum(case when ${quizAttempts.passed} = 1 then 1 else 0 end)`,
+    avgScore: sql<number>`avg(${quizAttempts.score})`,
+  }).from(quizAttempts).where(eq(quizAttempts.quizId, quizId));
+
+  const total = Number(stats?.totalAttempts ?? 0);
+  const passed = Number(stats?.passedCount ?? 0);
+  return {
+    totalAttempts: total,
+    passRate: total > 0 ? Math.round((passed / total) * 100) : 0,
+    avgScore: Math.round(Number(stats?.avgScore ?? 0)),
+  };
+}
+
+// ============================================================================
 // Episode Quiz Management
 // ============================================================================
 

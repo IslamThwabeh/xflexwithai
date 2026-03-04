@@ -350,6 +350,14 @@ const translations = {
     'admin.sidebar.settings': 'Settings',
     'admin.sidebar.signOut': 'Sign Out',
 
+    // Admin Quiz Management
+    'admin.quizzes.title': 'Quiz Management',
+    'admin.quizzes.newQuiz': 'New Quiz',
+    'admin.quizzes.level': 'Level',
+    'admin.quizzes.passingScore': 'Passing Score (%)',
+    'admin.quizzes.quizTitle': 'Quiz Title',
+    'admin.quizzes.description': 'Description',
+
     // Admin Dashboard
     'admin.dashboard': 'Dashboard',
     'admin.dashboard.welcome': 'Welcome to Admin Panel',
@@ -1323,6 +1331,14 @@ const translations = {
     'admin.sidebar.analytics': 'التحليلات',
     'admin.sidebar.settings': 'الإعدادات',
     'admin.sidebar.signOut': 'تسجيل الخروج',
+
+    // Admin Quiz Management
+    'admin.quizzes.title': 'إدارة الاختبارات',
+    'admin.quizzes.newQuiz': 'اختبار جديد',
+    'admin.quizzes.level': 'المستوى',
+    'admin.quizzes.passingScore': 'نسبة النجاح (%)',
+    'admin.quizzes.quizTitle': 'عنوان الاختبار',
+    'admin.quizzes.description': 'الوصف',
 
     // Admin Dashboard
     'admin.dashboard': 'لوحة التحكم',
