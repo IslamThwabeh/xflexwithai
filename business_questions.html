@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>أسئلة تطوير موقع XFlex Academy</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+    background: #f0f2f5;
+    color: #1a1a2e;
+    direction: rtl;
+    text-align: right;
+    padding: 20px;
+    line-height: 1.8;
+  }
+  .container {
+    max-width: 800px;
+    margin: 0 auto;
+    background: #fff;
+    border-radius: 16px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+    overflow: hidden;
+  }
+  .header {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    color: #fff;
+    padding: 40px 30px;
+    text-align: center;
+  }
+  .header h1 { font-size: 28px; margin-bottom: 8px; }
+  .header p { font-size: 15px; opacity: 0.85; }
+  .section {
+    border-bottom: 2px solid #f0f2f5;
+    padding: 30px;
+  }
+  .section:last-child { border-bottom: none; }
+  .section-title {
+    font-size: 20px;
+    font-weight: bold;
+    color: #0f3460;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 3px solid #e94560;
+    display: inline-block;
+  }
+  .section-num {
+    display: inline-block;
+    background: #e94560;
+    color: #fff;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    text-align: center;
+    line-height: 32px;
+    font-size: 14px;
+    font-weight: bold;
+    margin-left: 10px;
+    vertical-align: middle;
+  }
+  .question-group {
+    background: #f8f9fb;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 16px;
+    border: 1px solid #e8eaf0;
+  }
+  .question-group:hover {
+    border-color: #0f3460;
+    box-shadow: 0 2px 8px rgba(15,52,96,0.08);
+  }
+  .q-label {
+    font-weight: bold;
+    font-size: 15px;
+    color: #16213e;
+    margin-bottom: 10px;
+    display: block;
+  }
+  .q-hint {
+    font-size: 13px;
+    color: #888;
+    margin-bottom: 8px;
+  }
+  input[type="text"], input[type="email"], input[type="number"], textarea {
+    width: 100%;
+    padding: 10px 14px;
+    border: 2px solid #dde1e7;
+    border-radius: 8px;
+    font-size: 15px;
+    font-family: inherit;
+    direction: rtl;
+    text-align: right;
+    transition: border-color 0.2s;
+    background: #fff;
+  }
+  input[type="text"]:focus, input[type="email"]:focus, input[type="number"]:focus, textarea:focus {
+    outline: none;
+    border-color: #0f3460;
+    box-shadow: 0 0 0 3px rgba(15,52,96,0.1);
+  }
+  textarea { min-height: 80px; resize: vertical; }
+  .checkbox-group, .radio-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 8px;
+  }
+  .checkbox-item, .radio-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #fff;
+    border: 2px solid #dde1e7;
+    border-radius: 8px;
+    padding: 8px 16px;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 14px;
+    user-select: none;
+  }
+  .checkbox-item:hover, .radio-item:hover {
+    border-color: #0f3460;
+    background: #f0f4ff;
+  }
+  .checkbox-item input:checked + span,
+  .radio-item input:checked + span {
+    color: #0f3460;
+    font-weight: bold;
+  }
+  .checkbox-item:has(input:checked),
+  .radio-item:has(input:checked) {
+    border-color: #0f3460;
+    background: #e8f0ff;
+  }
+  input[type="checkbox"], input[type="radio"] {
+    width: 18px;
+    height: 18px;
+    accent-color: #0f3460;
+    cursor: pointer;
+  }
+  .sub-question {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px dashed #dde1e7;
+  }
+  .course-card {
+    background: #fff;
+    border: 2px solid #e8eaf0;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 12px;
+  }
+  .course-card h4 {
+    color: #e94560;
+    margin-bottom: 12px;
+    font-size: 16px;
+  }
+  .course-fields {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .course-fields label {
+    font-size: 13px;
+    color: #555;
+    display: block;
+    margin-bottom: 4px;
+  }
+  .print-btn {
+    display: block;
+    margin: 30px auto;
+    background: #0f3460;
+    color: #fff;
+    border: none;
+    padding: 14px 40px;
+    font-size: 16px;
+    font-family: inherit;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .print-btn:hover { background: #e94560; }
+  @media print {
+    body { background: #fff; padding: 0; }
+    .container { box-shadow: none; }
+    .print-btn { display: none; }
+    .question-group { break-inside: avoid; }
+  }
+  .social-row {
+    display: grid;
+    grid-template-columns: 120px 1fr;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .social-row span { font-weight: bold; font-size: 14px; }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <h1>📋 أسئلة تطوير موقع XFlex Academy</h1>
+    <p>يرجى تعبئة جميع الحقول المطلوبة لبدء التطوير - جميع الإجابات سرية</p>
+  </div>
+
+  <!-- 1. الباقات والأسعار -->
+  <div class="section">
+    <div><span class="section-num">١</span><span class="section-title">الباقات والأسعار</span></div>
+
+    <div class="question-group">
+      <span class="q-label">الباقة الأساسية</span>
+
+      <div class="sub-question">
+        <span class="q-label">ما هي الكورسات / المراحل المشمولة في الباقة الأساسية؟</span>
+        <textarea placeholder="اكتب هنا الكورسات أو المراحل المشمولة..."></textarea>
+      </div>
+
+      <div class="sub-question">
+        <span class="q-label">هل تشمل الباقة الأساسية الخدمات التالية؟</span>
+        <div class="checkbox-group">
+          <label class="checkbox-item"><input type="checkbox"><span>خدمة LexAI</span></label>
+          <label class="checkbox-item"><input type="checkbox"><span>خدمة التوصيات</span></label>
+          <label class="checkbox-item"><input type="checkbox"><span>الدعم الفني</span></label>
+          <label class="checkbox-item"><input type="checkbox"><span>ملفات PDF قابلة للطباعة</span></label>
+        </div>
+      </div>
+
+      <div class="sub-question">
+        <span class="q-label">سعر الباقة الأساسية:</span>
+        <input type="text" placeholder="مثال: 100 دولار">
+      </div>
+
+      <div class="sub-question">
+        <span class="q-label">مدة الاشتراك في الباقة الأساسية:</span>
+        <div class="radio-group">
+          <label class="radio-item"><input type="radio" name="basic_duration"><span>شهر</span></label>
+          <label class="radio-item"><input type="radio" name="basic_duration"><span>3 أشهر</span></label>
+          <label class="radio-item"><input type="radio" name="basic_duration"><span>6 أشهر</span></label>
+          <label class="radio-item"><input type="radio" name="basic_duration"><span>سنة</span></label>
+          <label class="radio-item"><input type="radio" name="basic_duration"><span>مدى الحياة</span></label>
+        </div>
+      </div>
+    </div>
+
+    <div class="question-group">
+      <span class="q-label">الباقة الشاملة</span>
+
+      <div class="sub-question">
+        <span class="q-label">ما هي الكورسات / المراحل المشمولة في الباقة الشاملة؟</span>
+        <textarea placeholder="اكتب هنا الكورسات أو المراحل المشمولة..."></textarea>
+      </div>
+
+      <div class="sub-question">
+        <span class="q-label">هل تشمل الباقة الشاملة الخدمات التالية؟</span>
+        <div class="checkbox-group">
+          <label class="checkbox-item"><input type="checkbox"><span>خدمة LexAI</span></label>
+          <label class="checkbox-item"><input type="checkbox"><span>خدمة التوصيات</span></label>
+          <label class="checkbox-item"><input type="checkbox"><span>الدعم الفني</span></label>
+          <label class="checkbox-item"><input type="checkbox"><span>ملفات PDF قابلة للطباعة</span></label>
+        </div>
+      </div>
+
+      <div class="sub-question">
+        <span class="q-label">سعر الباقة الشاملة:</span>
+        <input type="text" placeholder="مثال: 250 دولار">
+      </div>
+
+      <div class="sub-question">
+        <span class="q-label">مدة الاشتراك في الباقة الشاملة:</span>
+        <div class="radio-group">
+          <label class="radio-item"><input type="radio" name="full_duration"><span>شهر</span></label>
+          <label class="radio-item"><input type="radio" name="full_duration"><span>3 أشهر</span></label>
+          <label class="radio-item"><input type="radio" name="full_duration"><span>6 أشهر</span></label>
+          <label class="radio-item"><input type="radio" name="full_duration"><span>سنة</span></label>
+          <label class="radio-item"><input type="radio" name="full_duration"><span>مدى الحياة</span></label>
+        </div>
+      </div>
+    </div>
+
+    <div class="question-group">
+      <span class="q-label">نسبة الخصم عند شراء الباقة مقارنة بشراء الكورسات منفردة:</span>
+      <input type="text" placeholder="مثال: 30% خصم">
+    </div>
+  </div>
+
+  <!-- 2. طرق الدفع -->
+  <div class="section">
+    <div><span class="section-num">٢</span><span class="section-title">طرق الدفع</span></div>
+
+    <div class="question-group">
+      <span class="q-label">ما هو مزود الدفع الإلكتروني الذي تريد استخدامه؟</span>
+      <p class="q-hint">اختر واحداً أو أكثر</p>
+      <div class="checkbox-group">
+        <label class="checkbox-item"><input type="checkbox"><span>Stripe</span></label>
+        <label class="checkbox-item"><input type="checkbox"><span>PayPal</span></label>
+        <label class="checkbox-item"><input type="checkbox"><span>Tap</span></label>
+        <label class="checkbox-item"><input type="checkbox"><span>HyperPay</span></label>
+        <label class="checkbox-item"><input type="checkbox"><span>Moyasar</span></label>
+      </div>
+      <div class="sub-question">
+        <span class="q-label">مزود آخر (اكتب هنا):</span>
+        <input type="text" placeholder="اسم مزود الدفع...">
+      </div>
+    </div>
+
+    <div class="question-group">
+      <span class="q-label">هل لديك حساب تاجر مع أي مزود دفع؟</span>
+      <div class="radio-group">
+        <label class="radio-item"><input type="radio" name="merchant"><span>نعم</span></label>
+        <label class="radio-item"><input type="radio" name="merchant"><span>لا</span></label>
+      </div>
+      <div class="sub-question">
+        <span class="q-label">إذا نعم، مع أي مزود؟</span>
+        <input type="text" placeholder="اسم المزود...">
+      </div>
+    </div>
+
+    <div class="question-group">
+      <span class="q-label">طرق الدفع التي تريد عرضها في الموقع:</span>
+      <div class="checkbox-group">
+        <label class="checkbox-item"><input type="checkbox"><span>Visa</span></label>
+        <label class="checkbox-item"><input type="checkbox"><span>Mastercard</span></label>
+        <label class="checkbox-item"><input type="checkbox"><span>Apple Pay</span></label>
+        <label class="checkbox-item"><input type="checkbox"><span>Google Pay</span></label>
+        <label class="checkbox-item"><input type="checkbox"><span>PayPal</span></label>
+        <label class="checkbox-item"><input type="checkbox"><span>Mada</span></label>
+        <label class="checkbox-item"><input type="checkbox"><span>STC Pay</span></label>
+      </div>
+      <div class="sub-question">
+        <span class="q-label">طريقة أخرى:</span>
+        <input type="text" placeholder="اكتب هنا...">
+      </div>
+    </div>
+
+    <div class="question-group">
+      <span class="q-label">الحوالة البنكية عبر الوكيل - كيف تتم العملية؟</span>
+      <div class="radio-group">
+        <label class="radio-item"><input type="radio" name="bank_flow"><span>العميل يحوّل ثم يرسل صورة الإيصال</span></label>
+        <label class="radio-item"><input type="radio" name="bank_flow"><span>عبر وكيل يتواصل معه العميل</span></label>
+      </div>
+      <div class="sub-question">
+        <span class="q-label">طريقة أخرى (اشرح):</span>
+        <input type="text" placeholder="اشرح الآلية...">
+      </div>
+    </div>
+
+    <div class="question-group">
+      <span class="q-label">من يتحقق من الدفع ويفعّل الاشتراك؟</span>
+      <div class="radio-group">
+        <label class="radio-item"><input type="radio" name="verify"><span>أنا يدوياً</span></label>
+        <label class="radio-item"><input type="radio" name="verify"><span>موظف مختص</span></label>
+        <label class="radio-item"><input type="radio" name="verify"><span>نظام آلي</span></label>
+      </div>
+    </div>
+
+    <div class="question-group">
+      <span class="q-label">بيانات الحساب البنكي للتحويل:</span>
+      <textarea placeholder="اسم البنك - رقم الحساب / IBAN - اسم صاحب الحساب..."></textarea>
+    </div>
+  </div>
+
+  <!-- 3. الضرائب -->
+  <div class="section">
+    <div><span class="section-num">٣</span><span class="section-title">الضرائب</span></div>
+
+    <div class="question-group">
+      <span class="q-label">هل هناك ضريبة قيمة مضافة (VAT)؟</span>
+      <div class="radio-group">
+        <label class="radio-item"><input type="radio" name="vat"><span>نعم</span></label>
+        <label class="radio-item"><input type="radio" name="vat"><span>لا</span></label>
+      </div>
+      <div class="sub-question">
+        <span class="q-label">إذا نعم، كم نسبتها؟</span>
+        <input type="text" placeholder="مثال: 15%">
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. الإشعارات -->
+  <div class="section">
+    <div><span class="section-num">٤</span><span class="section-title">الإشعارات</span></div>
+
+    <div class="question-group">
+      <span class="q-label">إشعارات البريد الإلكتروني</span>
+
+      <div class="sub-question">
+        <span class="q-label">هل لديك حساب مع خدمة إرسال إيميلات؟</span>
+        <div class="radio-group">
+          <label class="radio-item"><input type="radio" name="email_svc"><span>نعم</span></label>
+          <label class="radio-item"><input type="radio" name="email_svc"><span>لا</span></label>
+        </div>
+      </div>
+
+      <div class="sub-question">
+        <span class="q-label">إذا نعم، أي خدمة؟</span>
+        <div class="checkbox-group">
+          <label class="checkbox-item"><input type="checkbox"><span>SendGrid</span></label>
+          <label class="checkbox-item"><input type="checkbox"><span>Mailgun</span></label>
+          <label class="checkbox-item"><input type="checkbox"><span>AWS SES</span></label>
+        </div>
+        <div class="sub-question">
+          <span class="q-label">خدمة أخرى:</span>
+          <input type="text" placeholder="اكتب هنا...">
+        </div>
+      </div>
+
+      <div class="sub-question">
+        <span class="q-label">الإيميل الذي سترسل منه الإشعارات:</span>
+        <input type="email" placeholder="مثال: noreply@xflexacademy.com" dir="ltr" style="text-align:left">
+      </div>
+    </div>
+
+    <div class="question-group">
+      <span class="q-label">إشعارات واتساب</span>
+
+      <div class="sub-question">
+        <span class="q-label">هل لديك WhatsApp Business API؟</span>
+        <div class="radio-group">
+          <label class="radio-item"><input type="radio" name="whatsapp_api"><span>نعم</span></label>
+          <label class="radio-item"><input type="radio" name="whatsapp_api"><span>لا</span></label>
+        </div>
+      </div>
+
+      <div class="sub-question">
+        <span class="q-label">رقم الواتساب الذي سيتم الإرسال منه:</span>
+        <input type="text" placeholder="مثال: +966XXXXXXXXX" dir="ltr" style="text-align:left">
+      </div>
+
+      <div class="sub-question">
+        <span class="q-label">هل تريد استخدام خدمة وسيطة لإرسال رسائل واتساب؟</span>
+        <div class="checkbox-group">
+          <label class="checkbox-item"><input type="checkbox"><span>Twilio</span></label>
+          <label class="checkbox-item"><input type="checkbox"><span>MessageBird</span></label>
+          <label class="checkbox-item"><input type="checkbox"><span>واتساب مباشر (يدوي)</span></label>
+        </div>
+        <div class="sub-question">
+          <span class="q-label">خدمة أخرى:</span>
+          <input type="text" placeholder="اكتب هنا...">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. المحتوى المطلوب -->
+  <div class="section">
+    <div><span class="section-num">٥</span><span class="section-title">المحتوى المطلوب</span></div>
+
+    <div class="question-group">
+      <span class="q-label">الشروط والأحكام:</span>
+      <p class="q-hint">اكتب النص الكامل أو أرفقه لاحقاً</p>
+      <textarea placeholder="اكتب نص الشروط والأحكام هنا..." style="min-height:120px"></textarea>
+    </div>
+
+    <div class="question-group">
+      <span class="q-label">سياسة الاسترجاع والاشتراك:</span>
+      <textarea placeholder="اكتب نص سياسة الاسترجاع هنا..." style="min-height:120px"></textarea>
+    </div>
+
+    <div class="question-group">
+      <span class="q-label">الأسئلة الشائعة (FAQ):</span>
+      <p class="q-hint">اكتب كل سؤال مع جوابه</p>
+      <textarea placeholder="السؤال 1: &#10;الجواب: &#10;&#10;السؤال 2: &#10;الجواب: &#10;" style="min-height:150px"></textarea>
+    </div>
+
+    <div class="question-group">
+      <span class="q-label">عن الأكاديمية:</span>
+      <textarea placeholder="نبذة عن أكاديمية XFlex..." style="min-height:100px"></textarea>
+    </div>
+  </div>
+
+  <!-- 6. صفحة الهبوط -->
+  <div class="section">
+    <div><span class="section-num">٦</span><span class="section-title">صفحة الهبوط (الصفحة الرئيسية)</span></div>
+
+    <div class="question-group">
+      <span class="q-label">هل لديك صورة / بانر جاهز للصفحة الرئيسية؟</span>
+      <div class="radio-group">
+        <label class="radio-item"><input type="radio" name="hero_img"><span>نعم (سأرسلها لاحقاً)</span></label>
+        <label class="radio-item"><input type="radio" name="hero_img"><span>لا، أريد تصميم واحدة</span></label>
+      </div>
+    </div>
+
+    <div class="question-group">
+      <span class="q-label">العنوان / النص الذي يظهر على الصورة الرئيسية:</span>
+      <input type="text" placeholder="مثال: أتقن التداول مع أكاديمية XFlex">
+    </div>
+
+    <div class="question-group">
+      <span class="q-label">هل لديك فيديوهات تعريفية جاهزة؟</span>
+      <div class="radio-group">
+        <label class="radio-item"><input type="radio" name="intro_vids"><span>نعم</span></label>
+        <label class="radio-item"><input type="radio" name="intro_vids"><span>لا</span></label>
+      </div>
+    </div>
+
+    <div class="question-group">
+      <span class="q-label">هل لديك صور / شهادات نتائج الطلاب؟</span>
+      <div class="radio-group">
+        <label class="radio-item"><input type="radio" name="results"><span>نعم (سأرسلها لاحقاً)</span></label>
+        <label class="radio-item"><input type="radio" name="results"><span>لا</span></label>
+      </div>
+    </div>
+
+    <div class="question-group">
+      <span class="q-label">المواد المجانية المتاحة:</span>
+      <div class="checkbox-group">
+        <label class="checkbox-item"><input type="checkbox"><span>فيديوهات مجانية</span></label>
+        <label class="checkbox-item"><input type="checkbox"><span>ملفات PDF</span></label>
+        <label class="checkbox-item"><input type="checkbox"><span>مقالات</span></label>
+      </div>
+      <div class="sub-question">
+        <span class="q-label">تفاصيل إضافية:</span>
+        <input type="text" placeholder="اشرح أكثر عن المواد المجانية...">
+      </div>
+    </div>
+
+    <div class="question-group">
+      <span class="q-label">المقالات / المدونة:</span>
+      <div class="radio-group">
+        <label class="radio-item"><input type="radio" name="blog"><span>سأكتب مقالات يدوياً</span></label>
+        <label class="radio-item"><input type="radio" name="blog"><span>أريد قسم مدونة كامل بلوحة تحكم</span></label>
+        <label class="radio-item"><input type="radio" name="blog"><span>لا أحتاج مقالات حالياً</span></label>
+      </div>
+    </div>
+
+    <div class="question-group">
+      <span class="q-label">أحداث الشهر - ما نوع الأحداث؟</span>
+      <div class="checkbox-group">
+        <label class="checkbox-item"><input type="checkbox"><span>ويبنارات (بث مباشر تعليمي)</span></label>
+        <label class="checkbox-item"><input type="checkbox"><span>بث مباشر</span></label>
+        <label class="checkbox-item"><input type="checkbox"><span>مسابقات</span></label>
+        <label class="checkbox-item"><input type="checkbox"><span>عروض وخصومات</span></label>
+      </div>
+      <div class="sub-question">
+        <span class="q-label">من يدير إضافة الأحداث؟</span>
+        <div class="radio-group">
+          <label class="radio-item"><input type="radio" name="events_mgr"><span>أنا (من لوحة التحكم)</span></label>
+          <label class="radio-item"><input type="radio" name="events_mgr"><span>موظف مختص</span></label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 7. روابط التواصل الاجتماعي -->
+  <div class="section">
+    <div><span class="section-num">٧</span><span class="section-title">روابط التواصل الاجتماعي</span></div>
+
+    <div class="question-group">
+      <div class="social-row"><span>Instagram:</span><input type="text" placeholder="رابط الانستغرام..." dir="ltr" style="text-align:left"></div>
+      <div class="social-row"><span>Twitter / X:</span><input type="text" placeholder="رابط تويتر..." dir="ltr" style="text-align:left"></div>
+      <div class="social-row"><span>Facebook:</span><input type="text" placeholder="رابط فيسبوك..." dir="ltr" style="text-align:left"></div>
+      <div class="social-row"><span>YouTube:</span><input type="text" placeholder="رابط يوتيوب..." dir="ltr" style="text-align:left"></div>
+      <div class="social-row"><span>TikTok:</span><input type="text" placeholder="رابط تيك توك..." dir="ltr" style="text-align:left"></div>
+      <div class="social-row"><span>Telegram:</span><input type="text" placeholder="رابط تيليغرام..." dir="ltr" style="text-align:left"></div>
+      <div class="social-row"><span>LinkedIn:</span><input type="text" placeholder="رابط لينكد إن..." dir="ltr" style="text-align:left"></div>
+    </div>
+  </div>
+
+  <!-- 8. معلومات التواصل -->
+  <div class="section">
+    <div><span class="section-num">٨</span><span class="section-title">معلومات التواصل والدعم</span></div>
+
+    <div class="question-group">
+      <span class="q-label">رقم الدعم الفني (واتساب):</span>
+      <input type="text" placeholder="مثال: +966XXXXXXXXX" dir="ltr" style="text-align:left">
+    </div>
+
+    <div class="question-group">
+      <span class="q-label">إيميل الدعم الفني:</span>
+      <input type="email" placeholder="مثال: support@xflexacademy.com" dir="ltr" style="text-align:left">
+    </div>
+
+    <div class="question-group">
+      <span class="q-label">هل تريد نموذج "تواصل معنا" يرسل لإيميل معين؟</span>
+      <div class="radio-group">
+        <label class="radio-item"><input type="radio" name="contact_form"><span>نعم</span></label>
+        <label class="radio-item"><input type="radio" name="contact_form"><span>لا</span></label>
+      </div>
+      <div class="sub-question">
+        <span class="q-label">إذا نعم، الإيميل المستقبل:</span>
+        <input type="email" placeholder="info@xflexacademy.com" dir="ltr" style="text-align:left">
+      </div>
+    </div>
+  </div>
+
+  <!-- 9. ميزة الإهداء -->
+  <div class="section">
+    <div><span class="section-num">٩</span><span class="section-title">ميزة إهداء الباقة</span></div>
+
+    <div class="question-group">
+      <span class="q-label">هل المشتري يدخل إيميل الشخص المُهدى إليه؟</span>
+      <div class="radio-group">
+        <label class="radio-item"><input type="radio" name="gift_email"><span>نعم</span></label>
+        <label class="radio-item"><input type="radio" name="gift_email"><span>لا</span></label>
+      </div>
+    </div>
+
+    <div class="question-group">
+      <span class="q-label">هل يصل للمُهدى إليه كود تفعيل؟</span>
+      <div class="radio-group">
+        <label class="radio-item"><input type="radio" name="gift_code"><span>نعم</span></label>
+        <label class="radio-item"><input type="radio" name="gift_code"><span>لا</span></label>
+      </div>
+    </div>
+
+    <div class="question-group">
+      <span class="q-label">هل يمكن للمشتري إرفاق رسالة شخصية مع الهدية؟</span>
+      <div class="radio-group">
+        <label class="radio-item"><input type="radio" name="gift_msg"><span>نعم</span></label>
+        <label class="radio-item"><input type="radio" name="gift_msg"><span>لا</span></label>
+      </div>
+    </div>
+  </div>
+
+  <!-- 10. صلاحيات الموظفين -->
+  <div class="section">
+    <div><span class="section-num">١٠</span><span class="section-title">صلاحيات الموظفين والمدربين</span></div>
+
+    <div class="question-group">
+      <span class="q-label">ما هي صلاحيات الموظف؟</span>
+      <div class="checkbox-group">
+        <label class="checkbox-item"><input type="checkbox"><span>رؤية المستخدمين</span></label>
+        <label class="checkbox-item"><input type="checkbox"><span>إدارة الدعم الفني</span></label>
+        <label class="checkbox-item"><input type="checkbox"><span>تفعيل اشتراكات يدوياً</span></label>
+        <label class="checkbox-item"><input type="checkbox"><span>إضافة محتوى</span></label>
+        <label class="checkbox-item"><input type="checkbox"><span>إدارة الأحداث</span></label>
+      </div>
+      <div class="sub-question">
+        <span class="q-label">صلاحيات أخرى:</span>
+        <input type="text" placeholder="اكتب هنا...">
+      </div>
+    </div>
+
+    <div class="question-group">
+      <span class="q-label">هل للمدرب صلاحية رفع محتوى؟</span>
+      <div class="radio-group">
+        <label class="radio-item"><input type="radio" name="trainer_upload"><span>نعم</span></label>
+        <label class="radio-item"><input type="radio" name="trainer_upload"><span>لا</span></label>
+      </div>
+    </div>
+
+    <div class="question-group">
+      <span class="q-label">هل المدرب يرى إحصائيات طلابه فقط أم جميع الطلاب؟</span>
+      <div class="radio-group">
+        <label class="radio-item"><input type="radio" name="trainer_stats"><span>طلابه فقط</span></label>
+        <label class="radio-item"><input type="radio" name="trainer_stats"><span>جميع الطلاب</span></label>
+      </div>
+    </div>
+
+    <div class="question-group">
+      <span class="q-label">ملاحظات إضافية عن صلاحيات المدربين:</span>
+      <textarea placeholder="اكتب أي تفاصيل إضافية..."></textarea>
+    </div>
+  </div>
+
+  <!-- 11. تفاصيل المراحل الثمانية -->
+  <div class="section">
+    <div><span class="section-num">١١</span><span class="section-title">تفاصيل الكورسات (المراحل الثمانية)</span></div>
+    <p class="q-hint" style="margin-bottom:16px">يرجى تعبئة تفاصيل كل مرحلة من المراحل التعليمية</p>
+
+    <div class="course-card">
+      <h4>المرحلة ١</h4>
+      <div class="course-fields">
+        <div><label>اسم المرحلة:</label><input type="text" placeholder="مثال: أساسيات التداول"></div>
+        <div><label>عدد الفيديوهات:</label><input type="number" placeholder="مثال: 5"></div>
+        <div><label>المدة بالساعات:</label><input type="text" placeholder="مثال: ساعتين"></div>
+        <div><label>السعر منفرداً:</label><input type="text" placeholder="مثال: 30 دولار"></div>
+      </div>
+      <div style="margin-top:10px"><label style="font-size:13px;color:#555">وصف قصير عن المرحلة:</label><input type="text" placeholder="اشرح محتوى هذه المرحلة باختصار..." style="margin-top:4px"></div>
+      <div style="margin-top:10px">
+        <div class="checkbox-group">
+          <label class="checkbox-item"><input type="checkbox"><span>فيها ملف PDF قابل للطباعة</span></label>
+          <label class="checkbox-item"><input type="checkbox"><span>فيها فيديو تعريفي قصير</span></label>
+        </div>
+      </div>
+    </div>
+
+    <div class="course-card">
+      <h4>المرحلة ٢</h4>
+      <div class="course-fields">
+        <div><label>اسم المرحلة:</label><input type="text" placeholder="اسم المرحلة..."></div>
+        <div><label>عدد الفيديوهات:</label><input type="number" placeholder="العدد"></div>
+        <div><label>المدة بالساعات:</label><input type="text" placeholder="المدة"></div>
+        <div><label>السعر منفرداً:</label><input type="text" placeholder="السعر"></div>
+      </div>
+      <div style="margin-top:10px"><label style="font-size:13px;color:#555">وصف قصير:</label><input type="text" placeholder="وصف..." style="margin-top:4px"></div>
+      <div style="margin-top:10px"><div class="checkbox-group"><label class="checkbox-item"><input type="checkbox"><span>فيها ملف PDF</span></label><label class="checkbox-item"><input type="checkbox"><span>فيها فيديو تعريفي</span></label></div></div>
+    </div>
+
+    <div class="course-card">
+      <h4>المرحلة ٣</h4>
+      <div class="course-fields">
+        <div><label>اسم المرحلة:</label><input type="text" placeholder="اسم المرحلة..."></div>
+        <div><label>عدد الفيديوهات:</label><input type="number" placeholder="العدد"></div>
+        <div><label>المدة بالساعات:</label><input type="text" placeholder="المدة"></div>
+        <div><label>السعر منفرداً:</label><input type="text" placeholder="السعر"></div>
+      </div>
+      <div style="margin-top:10px"><label style="font-size:13px;color:#555">وصف قصير:</label><input type="text" placeholder="وصف..." style="margin-top:4px"></div>
+      <div style="margin-top:10px"><div class="checkbox-group"><label class="checkbox-item"><input type="checkbox"><span>فيها ملف PDF</span></label><label class="checkbox-item"><input type="checkbox"><span>فيها فيديو تعريفي</span></label></div></div>
+    </div>
+
+    <div class="course-card">
+      <h4>المرحلة ٤</h4>
+      <div class="course-fields">
+        <div><label>اسم المرحلة:</label><input type="text" placeholder="اسم المرحلة..."></div>
+        <div><label>عدد الفيديوهات:</label><input type="number" placeholder="العدد"></div>
+        <div><label>المدة بالساعات:</label><input type="text" placeholder="المدة"></div>
+        <div><label>السعر منفرداً:</label><input type="text" placeholder="السعر"></div>
+      </div>
+      <div style="margin-top:10px"><label style="font-size:13px;color:#555">وصف قصير:</label><input type="text" placeholder="وصف..." style="margin-top:4px"></div>
+      <div style="margin-top:10px"><div class="checkbox-group"><label class="checkbox-item"><input type="checkbox"><span>فيها ملف PDF</span></label><label class="checkbox-item"><input type="checkbox"><span>فيها فيديو تعريفي</span></label></div></div>
+    </div>
+
+    <div class="course-card">
+      <h4>المرحلة ٥</h4>
+      <div class="course-fields">
+        <div><label>اسم المرحلة:</label><input type="text" placeholder="اسم المرحلة..."></div>
+        <div><label>عدد الفيديوهات:</label><input type="number" placeholder="العدد"></div>
+        <div><label>المدة بالساعات:</label><input type="text" placeholder="المدة"></div>
+        <div><label>السعر منفرداً:</label><input type="text" placeholder="السعر"></div>
+      </div>
+      <div style="margin-top:10px"><label style="font-size:13px;color:#555">وصف قصير:</label><input type="text" placeholder="وصف..." style="margin-top:4px"></div>
+      <div style="margin-top:10px"><div class="checkbox-group"><label class="checkbox-item"><input type="checkbox"><span>فيها ملف PDF</span></label><label class="checkbox-item"><input type="checkbox"><span>فيها فيديو تعريفي</span></label></div></div>
+    </div>
+
+    <div class="course-card">
+      <h4>المرحلة ٦</h4>
+      <div class="course-fields">
+        <div><label>اسم المرحلة:</label><input type="text" placeholder="اسم المرحلة..."></div>
+        <div><label>عدد الفيديوهات:</label><input type="number" placeholder="العدد"></div>
+        <div><label>المدة بالساعات:</label><input type="text" placeholder="المدة"></div>
+        <div><label>السعر منفرداً:</label><input type="text" placeholder="السعر"></div>
+      </div>
+      <div style="margin-top:10px"><label style="font-size:13px;color:#555">وصف قصير:</label><input type="text" placeholder="وصف..." style="margin-top:4px"></div>
+      <div style="margin-top:10px"><div class="checkbox-group"><label class="checkbox-item"><input type="checkbox"><span>فيها ملف PDF</span></label><label class="checkbox-item"><input type="checkbox"><span>فيها فيديو تعريفي</span></label></div></div>
+    </div>
+
+    <div class="course-card">
+      <h4>المرحلة ٧</h4>
+      <div class="course-fields">
+        <div><label>اسم المرحلة:</label><input type="text" placeholder="اسم المرحلة..."></div>
+        <div><label>عدد الفيديوهات:</label><input type="number" placeholder="العدد"></div>
+        <div><label>المدة بالساعات:</label><input type="text" placeholder="المدة"></div>
+        <div><label>السعر منفرداً:</label><input type="text" placeholder="السعر"></div>
+      </div>
+      <div style="margin-top:10px"><label style="font-size:13px;color:#555">وصف قصير:</label><input type="text" placeholder="وصف..." style="margin-top:4px"></div>
+      <div style="margin-top:10px"><div class="checkbox-group"><label class="checkbox-item"><input type="checkbox"><span>فيها ملف PDF</span></label><label class="checkbox-item"><input type="checkbox"><span>فيها فيديو تعريفي</span></label></div></div>
+    </div>
+
+    <div class="course-card">
+      <h4>المرحلة ٨</h4>
+      <div class="course-fields">
+        <div><label>اسم المرحلة:</label><input type="text" placeholder="اسم المرحلة..."></div>
+        <div><label>عدد الفيديوهات:</label><input type="number" placeholder="العدد"></div>
+        <div><label>المدة بالساعات:</label><input type="text" placeholder="المدة"></div>
+        <div><label>السعر منفرداً:</label><input type="text" placeholder="السعر"></div>
+      </div>
+      <div style="margin-top:10px"><label style="font-size:13px;color:#555">وصف قصير:</label><input type="text" placeholder="وصف..." style="margin-top:4px"></div>
+      <div style="margin-top:10px"><div class="checkbox-group"><label class="checkbox-item"><input type="checkbox"><span>فيها ملف PDF</span></label><label class="checkbox-item"><input type="checkbox"><span>فيها فيديو تعريفي</span></label></div></div>
+    </div>
+  </div>
+
+  <!-- 12. العملة -->
+  <div class="section">
+    <div><span class="section-num">١٢</span><span class="section-title">العملة</span></div>
+
+    <div class="question-group">
+      <span class="q-label">ما هي العملة الرئيسية للأسعار؟</span>
+      <div class="radio-group">
+        <label class="radio-item"><input type="radio" name="currency"><span>دولار أمريكي (USD)</span></label>
+        <label class="radio-item"><input type="radio" name="currency"><span>ريال سعودي (SAR)</span></label>
+        <label class="radio-item"><input type="radio" name="currency"><span>دينار أردني (JOD)</span></label>
+        <label class="radio-item"><input type="radio" name="currency"><span>درهم إماراتي (AED)</span></label>
+      </div>
+      <div class="sub-question">
+        <span class="q-label">عملة أخرى:</span>
+        <input type="text" placeholder="اكتب العملة...">
+      </div>
+    </div>
+
+    <div class="question-group">
+      <span class="q-label">هل تريد دعم عملات متعددة؟</span>
+      <div class="radio-group">
+        <label class="radio-item"><input type="radio" name="multi_currency"><span>نعم</span></label>
+        <label class="radio-item"><input type="radio" name="multi_currency"><span>لا، عملة واحدة تكفي</span></label>
+      </div>
+    </div>
+  </div>
+
+  <!-- Print / Save Button -->
+  <div style="padding: 30px; text-align: center; background: #f8f9fb;">
+    <p style="color:#888; font-size:14px; margin-bottom:15px;">بعد التعبئة: احفظ كـ HTML (يحفظ جميع الإجابات) أو اطبع كـ PDF</p>
+    <button class="print-btn" onclick="saveAsHTML()" style="background:#e94560;">💾 حفظ كملف HTML (مع جميع الإجابات)</button>
+    <button class="print-btn" onclick="window.print()">🖨️ طباعة / حفظ PDF</button>
+  </div>
+
+<script>
+function saveAsHTML() {
+  document.querySelectorAll('input[type="text"], input[type="email"], input[type="number"]').forEach(el => {
+    el.setAttribute('value', el.value);
+  });
+  document.querySelectorAll('textarea').forEach(el => {
+    el.textContent = el.value;
+  });
+  document.querySelectorAll('input[type="radio"], input[type="checkbox"]').forEach(el => {
+    if (el.checked) el.setAttribute('checked', 'checked');
+    else el.removeAttribute('checked');
+  });
+
+  const html = '<!DOCTYPE html>' + document.documentElement.outerHTML;
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'business_answers_' + new Date().toISOString().slice(0,10) + '.html';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+</script>
+
+</div>
+
+</body>
+</html>

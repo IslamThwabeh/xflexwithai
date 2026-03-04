@@ -1,0 +1,15 @@
+CREATE TABLE IF NOT EXISTS events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  titleEn TEXT NOT NULL,
+  titleAr TEXT NOT NULL,
+  descriptionEn TEXT,
+  descriptionAr TEXT,
+  eventType TEXT NOT NULL DEFAULT 'live',
+  eventDate TEXT NOT NULL,
+  eventEndDate TEXT,
+  imageUrl TEXT,
+  linkUrl TEXT,
+  isPublished INTEGER NOT NULL DEFAULT 0,
+  createdAt TEXT DEFAULT CURRENT_TIMESTAMP NOT NULL,
+  updatedAt TEXT DEFAULT CURRENT_TIMESTAMP NOT NULL
+);

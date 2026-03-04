@@ -1,0 +1,16 @@
+CREATE TABLE IF NOT EXISTS articles (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  slug TEXT NOT NULL UNIQUE,
+  titleEn TEXT NOT NULL,
+  titleAr TEXT NOT NULL,
+  contentEn TEXT,
+  contentAr TEXT,
+  excerptEn TEXT,
+  excerptAr TEXT,
+  thumbnailUrl TEXT,
+  authorId INTEGER,
+  isPublished INTEGER NOT NULL DEFAULT 0,
+  publishedAt TEXT,
+  createdAt TEXT DEFAULT CURRENT_TIMESTAMP NOT NULL,
+  updatedAt TEXT DEFAULT CURRENT_TIMESTAMP NOT NULL
+);

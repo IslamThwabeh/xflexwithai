@@ -1,0 +1,7 @@
+CREATE TABLE IF NOT EXISTS packageCourses (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  packageId INTEGER NOT NULL,
+  courseId INTEGER NOT NULL,
+  displayOrder INTEGER NOT NULL DEFAULT 0,
+  UNIQUE(packageId, courseId)
+);

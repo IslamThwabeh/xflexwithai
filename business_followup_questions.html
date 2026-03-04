@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>أسئلة متابعة - XFlex Academy</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+    background: #f0f2f5;
+    color: #1a1a2e;
+    direction: rtl;
+    text-align: right;
+    padding: 20px;
+    line-height: 1.8;
+  }
+  .container {
+    max-width: 800px;
+    margin: 0 auto;
+    background: #fff;
+    border-radius: 16px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+    overflow: hidden;
+  }
+  .header {
+    background: linear-gradient(135deg, #e94560 0%, #c73450 100%);
+    color: #fff;
+    padding: 35px 30px;
+    text-align: center;
+  }
+  .header h1 { font-size: 24px; margin-bottom: 8px; }
+  .header p { font-size: 14px; opacity: 0.9; }
+  .section {
+    border-bottom: 2px solid #f0f2f5;
+    padding: 25px 30px;
+  }
+  .section:last-child { border-bottom: none; }
+  .section-title {
+    font-size: 18px;
+    font-weight: bold;
+    color: #0f3460;
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 3px solid #e94560;
+    display: inline-block;
+  }
+  .section-num {
+    display: inline-block;
+    background: #e94560;
+    color: #fff;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    text-align: center;
+    line-height: 28px;
+    font-size: 13px;
+    font-weight: bold;
+    margin-left: 8px;
+    vertical-align: middle;
+  }
+  .question-group {
+    background: #f8f9fb;
+    border-radius: 12px;
+    padding: 18px;
+    margin-bottom: 14px;
+    border: 1px solid #e8eaf0;
+    border-right: 4px solid #e94560;
+  }
+  .question-group:hover {
+    border-color: #0f3460;
+    border-right-color: #0f3460;
+    box-shadow: 0 2px 8px rgba(15,52,96,0.08);
+  }
+  .q-label {
+    font-weight: bold;
+    font-size: 15px;
+    color: #16213e;
+    margin-bottom: 8px;
+    display: block;
+  }
+  .q-context {
+    font-size: 13px;
+    color: #e94560;
+    background: #fff5f7;
+    border: 1px solid #fdd;
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin-bottom: 10px;
+    line-height: 1.6;
+  }
+  .q-context strong { color: #c73450; }
+  input[type="text"], input[type="email"], input[type="number"], textarea {
+    width: 100%;
+    padding: 10px 14px;
+    border: 2px solid #dde1e7;
+    border-radius: 8px;
+    font-size: 15px;
+    font-family: inherit;
+    direction: rtl;
+    text-align: right;
+    transition: border-color 0.2s;
+    background: #fff;
+  }
+  input:focus, textarea:focus {
+    outline: none;
+    border-color: #0f3460;
+    box-shadow: 0 0 0 3px rgba(15,52,96,0.1);
+  }
+  textarea { min-height: 80px; resize: vertical; }
+  .radio-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 8px;
+  }
+  .radio-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #fff;
+    border: 2px solid #dde1e7;
+    border-radius: 8px;
+    padding: 8px 16px;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 14px;
+    user-select: none;
+  }
+  .radio-item:hover {
+    border-color: #0f3460;
+    background: #f0f4ff;
+  }
+  .radio-item:has(input:checked) {
+    border-color: #0f3460;
+    background: #e8f0ff;
+  }
+  .radio-item input:checked + span {
+    color: #0f3460;
+    font-weight: bold;
+  }
+  input[type="radio"] {
+    width: 18px;
+    height: 18px;
+    accent-color: #0f3460;
+    cursor: pointer;
+  }
+  .sub-question {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px dashed #dde1e7;
+  }
+  .print-btn {
+    display: block;
+    margin: 25px auto;
+    background: #0f3460;
+    color: #fff;
+    border: none;
+    padding: 14px 40px;
+    font-size: 16px;
+    font-family: inherit;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .print-btn:hover { background: #e94560; }
+  @media print {
+    body { background: #fff; padding: 0; }
+    .container { box-shadow: none; }
+    .print-btn { display: none; }
+    .question-group { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <div class="header">
+    <h1>⚠️ أسئلة متابعة - XFlex Academy</h1>
+    <p>شكراً لتعبئة النموذج الأول! فيه بعض النقاط تحتاج توضيح قبل ما نبدأ التطوير</p>
+    <p style="margin-top:8px; font-size:13px; opacity:0.8;">١٣ سؤال فقط — معظمها بسيطة وسريعة</p>
+  </div>
+
+  <!-- 1 -->
+  <div class="section">
+    <div><span class="section-num">١</span><span class="section-title">سعر تجديد الباقة الشاملة</span></div>
+    <div class="question-group">
+      <div class="q-context">
+        <strong>إجابتك السابقة:</strong> "$500 تدفع لمرة واحدة عند الاشتراك ثم يوجد تجديد اشتراك للتوصيات وللليكس بقيمة $100 على..."
+        <br>الجملة مقطوعة — نحتاج نعرف فترة التجديد
+      </div>
+      <span class="q-label">الـ $100 تجديد كل كم؟</span>
+      <div class="radio-group">
+        <label class="radio-item"><input type="radio" name="renewal"><span>شهرياً ($100/شهر)</span></label>
+        <label class="radio-item"><input type="radio" name="renewal"><span>كل 3 أشهر</span></label>
+        <label class="radio-item"><input type="radio" name="renewal"><span>كل 6 أشهر</span></label>
+        <label class="radio-item"><input type="radio" name="renewal"><span>سنوياً</span></label>
+      </div>
+      <div class="sub-question">
+        <span class="q-label">إذا مختلف، وضّح:</span>
+        <input type="text" placeholder="مثلاً: $50 شهري للتوصيات + $50 شهري لليكس...">
+      </div>
+    </div>
+  </div>
+
+  <!-- 2 -->
+  <div class="section">
+    <div><span class="section-num">٢</span><span class="section-title">إيميل الإشعارات</span></div>
+    <div class="question-group">
+      <div class="q-context">
+        <strong>إجابتك السابقة:</strong> "http://xflexacademy.com/"
+        <br>هذا رابط موقع وليس إيميل — نحتاج عنوان إيميل يرسل منه الإشعارات
+      </div>
+      <span class="q-label">ما هو الإيميل الذي سترسل منه الإشعارات للمشتركين؟</span>
+      <input type="email" placeholder="مثال: noreply@xflexacademy.com أو info@xflexacademy.com" dir="ltr" style="text-align:left">
+    </div>
+  </div>
+
+  <!-- 3 -->
+  <div class="section">
+    <div><span class="section-num">٣</span><span class="section-title">إيميل الدعم الفني</span></div>
+    <div class="question-group">
+      <div class="q-context">
+        <strong>إجابتك السابقة:</strong> "xflexacademy.com"
+        <br>هذا اسم الموقع فقط — نحتاج عنوان إيميل كامل
+      </div>
+      <span class="q-label">ما هو إيميل الدعم الفني الكامل؟</span>
+      <input type="email" placeholder="مثال: support@xflexacademy.com" dir="ltr" style="text-align:left">
+    </div>
+  </div>
+
+  <!-- 4 -->
+  <div class="section">
+    <div><span class="section-num">٤</span><span class="section-title">الإيميل المستقبل لنموذج "تواصل معنا"</span></div>
+    <div class="question-group">
+      <div class="q-context">
+        <strong>إجابتك السابقة:</strong> "أهلاً بك، يسعدنا اهتمامك بالانضمام إلى XFlex Academy 🌟 إذا كنت تبحث عن تعلّم التداول بأ..."
+        <br>يبدو أنك لصقت رسالة ترحيبية بدل الإيميل — نحتاج عنوان إيميل فقط
+      </div>
+      <span class="q-label">الإيميل الذي تصله رسائل "تواصل معنا" من الموقع:</span>
+      <input type="email" placeholder="مثال: info@xflexacademy.com" dir="ltr" style="text-align:left">
+    </div>
+  </div>
+
+  <!-- 5 -->
+  <div class="section">
+    <div><span class="section-num">٥</span><span class="section-title">الشروط والأحكام - النص الكامل</span></div>
+    <div class="question-group">
+      <div class="q-context">
+        <strong>إجابتك السابقة:</strong> ظهرت أجزاء مقطوعة فقط — "أي نزاع يتم حله ودياً..." + "الموافقة: باستخدامك لأي من خدمات..."
+        <br>نحتاج النص الكامل بدون قطع
+      </div>
+      <span class="q-label">الرجاء لصق النص الكامل للشروط والأحكام هنا:</span>
+      <textarea placeholder="الصق النص الكامل هنا... أو أرسله كملف PDF/Word منفصل" style="min-height:150px"></textarea>
+      <div class="sub-question">
+        <span class="q-label">أو هل تفضل إرسال الملف بشكل منفصل؟</span>
+        <div class="radio-group">
+          <label class="radio-item"><input type="radio" name="terms_file"><span>سألصقه هنا أعلاه</span></label>
+          <label class="radio-item"><input type="radio" name="terms_file"><span>سأرسله كملف منفصل (PDF أو Word)</span></label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 6 -->
+  <div class="section">
+    <div><span class="section-num">٦</span><span class="section-title">سياسة الاسترجاع والاشتراك - النص الكامل</span></div>
+    <div class="question-group">
+      <div class="q-context">
+        <strong>إجابتك السابقة:</strong> ظهرت أجزاء مقطوعة — "أنه فهم مضمونها وآثارها القانونية..." + "القانون الناظم..."
+      </div>
+      <span class="q-label">الرجاء لصق النص الكامل لسياسة الاسترجاع هنا:</span>
+      <textarea placeholder="الصق النص الكامل... أو أرسله كملف منفصل" style="min-height:150px"></textarea>
+      <div class="sub-question">
+        <div class="radio-group">
+          <label class="radio-item"><input type="radio" name="refund_file"><span>سألصقه هنا أعلاه</span></label>
+          <label class="radio-item"><input type="radio" name="refund_file"><span>سأرسله كملف منفصل</span></label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 7 -->
+  <div class="section">
+    <div><span class="section-num">٧</span><span class="section-title">الأسئلة الشائعة (FAQ)</span></div>
+    <div class="question-group">
+      <div class="q-context">
+        <strong>إجابتك السابقة:</strong> "تعليم واسعي غير وسمي - أدوات تحليل ذكية - تركيز على إدارة المخاطر - لا نبيع أحلام بل مهارة - لمن هذه الأكاديمية"
+        <br>هذه نقاط تسويقية وليست أسئلة وأجوبة — نحتاج أسئلة يسألها الطلاب مع إجاباتها
+      </div>
+      <span class="q-label">اكتب 5-10 أسئلة شائعة مع أجوبتها بهذا الشكل:</span>
+      <textarea placeholder="س: ما هي مدة الاشتراك؟&#10;ج: الاشتراك مدى الحياة للبرنامج التعليمي&#10;&#10;س: هل أستطيع الإلغاء؟&#10;ج: نعم، يمكنك إلغاء تجديد التوصيات في أي وقت&#10;&#10;س: هل فيه شهادة؟&#10;ج: ..." style="min-height:200px"></textarea>
+    </div>
+  </div>
+
+  <!-- 8 -->
+  <div class="section">
+    <div><span class="section-num">٨</span><span class="section-title">روابط سوشال ميديا ناقصة</span></div>
+    <div class="question-group">
+      <div class="q-context">
+        الروابط التالية لم تُعبّأ — إذا ما عندك حساب على المنصة، اكتب "لا يوجد"
+      </div>
+      <div style="display:grid; grid-template-columns:100px 1fr; align-items:center; gap:10px; margin-bottom:10px;">
+        <span style="font-weight:bold">Twitter / X:</span>
+        <input type="text" placeholder="رابط تويتر أو 'لا يوجد'" dir="ltr" style="text-align:left">
+      </div>
+      <div style="display:grid; grid-template-columns:100px 1fr; align-items:center; gap:10px; margin-bottom:10px;">
+        <span style="font-weight:bold">YouTube:</span>
+        <input type="text" placeholder="رابط يوتيوب أو 'لا يوجد'" dir="ltr" style="text-align:left">
+      </div>
+      <div style="display:grid; grid-template-columns:100px 1fr; align-items:center; gap:10px; margin-bottom:10px;">
+        <span style="font-weight:bold">TikTok:</span>
+        <input type="text" placeholder="رابط تيك توك أو 'لا يوجد'" dir="ltr" style="text-align:left">
+      </div>
+      <div style="display:grid; grid-template-columns:100px 1fr; align-items:center; gap:10px;">
+        <span style="font-weight:bold">LinkedIn:</span>
+        <input type="text" placeholder="رابط لينكد إن أو 'لا يوجد'" dir="ltr" style="text-align:left">
+      </div>
+    </div>
+  </div>
+
+  <!-- 9 -->
+  <div class="section">
+    <div><span class="section-num">٩</span><span class="section-title">المرحلة 3 - غير جاهزة</span></div>
+    <div class="question-group">
+      <div class="q-context">
+        <strong>إجابتك السابقة:</strong> "غير جاهزة للآن" — بدون اسم أو تفاصيل
+      </div>
+      <span class="q-label">ما اسم المرحلة 3 (حتى لو غير جاهزة)؟</span>
+      <input type="text" placeholder="مثال: سيكولوجية التوصيات...">
+      <div class="sub-question">
+        <span class="q-label">كيف نتعامل معها في الموقع؟</span>
+        <div class="radio-group">
+          <label class="radio-item"><input type="radio" name="stage3"><span>نخفيها تماماً من الموقع حتى تجهز</span></label>
+          <label class="radio-item"><input type="radio" name="stage3"><span>نعرضها مع شارة "قريباً"</span></label>
+          <label class="radio-item"><input type="radio" name="stage3"><span>ستجهز قريباً وسأرسل التفاصيل</span></label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 10 -->
+  <div class="section">
+    <div><span class="section-num">١٠</span><span class="section-title">المرحلة 6 - عدد الفيديوهات</span></div>
+    <div class="question-group">
+      <div class="q-context">
+        <strong>المرحلة 6:</strong> كيفية إدارة التوصيات — حقل عدد الفيديوهات كتبت فيه "العدد" بدون رقم
+      </div>
+      <span class="q-label">كم عدد فيديوهات المرحلة 6 (كيفية إدارة التوصيات)؟</span>
+      <input type="number" placeholder="مثال: 3">
+    </div>
+  </div>
+
+  <!-- 11 -->
+  <div class="section">
+    <div><span class="section-num">١١</span><span class="section-title">سعر المرحلة 2 (التحليل الفني)</span></div>
+    <div class="question-group">
+      <div class="q-context">
+        <strong>ملاحظة:</strong> سعر المرحلة 2 (التحليل الفني) = <strong>$300</strong> وهو أعلى بكثير من باقي المراحل ($10-$30). هل هذا صحيح أم خطأ كتابي؟
+      </div>
+      <span class="q-label">سعر المرحلة 2 (التحليل الفني):</span>
+      <div class="radio-group">
+        <label class="radio-item"><input type="radio" name="stage2_price"><span>نعم، $300 صحيح</span></label>
+        <label class="radio-item"><input type="radio" name="stage2_price"><span>لا، خطأ — السعر الصحيح هو:</span></label>
+      </div>
+      <div class="sub-question">
+        <input type="text" placeholder="السعر الصحيح إذا مختلف...">
+      </div>
+    </div>
+  </div>
+
+  <!-- 12 -->
+  <div class="section">
+    <div><span class="section-num">١٢</span><span class="section-title">بيع الكورسات منفردة</span></div>
+    <div class="question-group">
+      <div class="q-context">
+        <strong>ملاحظة:</strong> ذكرت أن الكورسات <strong>لا تباع منفردة</strong> (فقط عبر الباقات)، لكنك وضعت سعر لكل مرحلة منفردة ($30, $300, $15, الخ)
+      </div>
+      <span class="q-label">ما الغرض من أسعار المراحل المنفردة؟</span>
+      <div class="radio-group">
+        <label class="radio-item"><input type="radio" name="individual"><span>للعرض فقط — ليُظهر قيمة الباقة مقارنة بالشراء المنفرد</span></label>
+        <label class="radio-item"><input type="radio" name="individual"><span>يمكن شراء كورسات منفردة أيضاً (بالإضافة للباقات)</span></label>
+        <label class="radio-item"><input type="radio" name="individual"><span>لا نعرضها نهائياً — فقط سعر الباقة</span></label>
+      </div>
+    </div>
+  </div>
+
+  <!-- 13 -->
+  <div class="section">
+    <div><span class="section-num">١٣</span><span class="section-title">ريفلكت (Reflect) كمزود دفع</span></div>
+    <div class="question-group">
+      <div class="q-context">
+        ذكرت "ريفلكت" كطريقة دفع إضافية — نحتاج نعرف أكثر عنها للتكامل
+      </div>
+      <span class="q-label">ما هو ريفلكت بالضبط؟</span>
+      <input type="text" placeholder="الرابط أو الاسم الرسمي للخدمة...">
+      <div class="sub-question">
+        <span class="q-label">هل لديك حساب تاجر فيه؟</span>
+        <div class="radio-group">
+          <label class="radio-item"><input type="radio" name="reflect"><span>نعم</span></label>
+          <label class="radio-item"><input type="radio" name="reflect"><span>لا</span></label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Save -->
+  <div style="padding: 25px; text-align: center; background: #f8f9fb;">
+    <p style="color:#888; font-size:13px; margin-bottom:12px;">بعد التعبئة: احفظ كـ HTML (يحفظ جميع الإجابات) أو اطبع كـ PDF</p>
+    <button class="print-btn" onclick="saveAsHTML()" style="background:#e94560;">💾 حفظ كملف HTML (مع جميع الإجابات)</button>
+    <button class="print-btn" onclick="window.print()">🖨️ طباعة / حفظ PDF</button>
+  </div>
+
+<script>
+function saveAsHTML() {
+  // Bake current form values into the HTML so they persist when reopened
+  document.querySelectorAll('input[type="text"], input[type="email"], input[type="number"]').forEach(el => {
+    el.setAttribute('value', el.value);
+  });
+  document.querySelectorAll('textarea').forEach(el => {
+    el.textContent = el.value;
+  });
+  document.querySelectorAll('input[type="radio"], input[type="checkbox"]').forEach(el => {
+    if (el.checked) el.setAttribute('checked', 'checked');
+    else el.removeAttribute('checked');
+  });
+
+  const html = '<!DOCTYPE html>' + document.documentElement.outerHTML;
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'followup_answers_' + new Date().toISOString().slice(0,10) + '.html';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+</script>
+
+</div>
+
+</body>
+</html>

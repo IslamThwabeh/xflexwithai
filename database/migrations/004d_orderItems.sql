@@ -1,0 +1,9 @@
+CREATE TABLE IF NOT EXISTS orderItems (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  orderId INTEGER NOT NULL,
+  itemType TEXT NOT NULL DEFAULT 'package',
+  packageId INTEGER,
+  courseId INTEGER,
+  priceAtPurchase INTEGER NOT NULL DEFAULT 0,
+  currency TEXT NOT NULL DEFAULT 'USD'
+);

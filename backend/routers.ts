@@ -2469,6 +2469,463 @@ export const appRouter = router({
       };
     }),
   }),
+
+  // =============================================
+  // PACKAGES (public + admin)
+  // =============================================
+  packages: router({
+    // Public: list published packages
+    list: publicProcedure.query(async () => {
+      return db.getAllPackages(true);
+    }),
+
+    // Public: get single package by slug
+    bySlug: publicProcedure
+      .input(z.object({ slug: z.string() }))
+      .query(async ({ input }) => {
+        const pkg = await db.getPackageBySlug(input.slug);
+        if (!pkg) throw new TRPCError({ code: 'NOT_FOUND', message: 'Package not found' });
+        return pkg;
+      }),
+
+    // Public: get single package by id
+    byId: publicProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input }) => {
+        const pkg = await db.getPackageById(input.id);
+        if (!pkg) throw new TRPCError({ code: 'NOT_FOUND', message: 'Package not found' });
+        return pkg;
+      }),
+
+    // Public: get courses in a package
+    courses: publicProcedure
+      .input(z.object({ packageId: z.number() }))
+      .query(async ({ input }) => {
+        return db.getPackageCourses(input.packageId);
+      }),
+
+    // Admin: list all packages (including unpublished)
+    adminList: adminProcedure.query(async () => {
+      return db.getAllPackages(false);
+    }),
+
+    // Admin: create package
+    create: adminProcedure
+      .input(z.object({
+        slug: z.string().min(1),
+        nameEn: z.string().min(1),
+        nameAr: z.string().min(1),
+        descriptionEn: z.string().optional(),
+        descriptionAr: z.string().optional(),
+        price: z.number().min(0),
+        currency: z.string().default('USD'),
+        renewalPrice: z.number().optional(),
+        renewalPeriodDays: z.number().optional(),
+        renewalDescription: z.string().optional(),
+        includesLexai: z.number().min(0).max(1).default(0),
+        includesRecommendations: z.number().min(0).max(1).default(0),
+        includesSupport: z.number().min(0).max(1).default(0),
+        includesPdf: z.number().min(0).max(1).default(0),
+        durationDays: z.number().optional(),
+        isLifetime: z.number().min(0).max(1).default(1),
+        isPublished: z.number().min(0).max(1).default(0),
+        displayOrder: z.number().default(0),
+        thumbnailUrl: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        return db.createPackage(input);
+      }),
+
+    // Admin: update package
+    update: adminProcedure
+      .input(z.object({
+        id: z.number(),
+        slug: z.string().optional(),
+        nameEn: z.string().optional(),
+        nameAr: z.string().optional(),
+        descriptionEn: z.string().optional(),
+        descriptionAr: z.string().optional(),
+        price: z.number().optional(),
+        currency: z.string().optional(),
+        renewalPrice: z.number().optional(),
+        renewalPeriodDays: z.number().optional(),
+        renewalDescription: z.string().optional(),
+        includesLexai: z.number().optional(),
+        includesRecommendations: z.number().optional(),
+        includesSupport: z.number().optional(),
+        includesPdf: z.number().optional(),
+        durationDays: z.number().optional(),
+        isLifetime: z.number().optional(),
+        isPublished: z.number().optional(),
+        displayOrder: z.number().optional(),
+        thumbnailUrl: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, ...data } = input;
+        return db.updatePackage(id, data);
+      }),
+
+    // Admin: delete package
+    delete: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        return db.deletePackage(input.id);
+      }),
+
+    // Admin: set courses for a package
+    setCourses: adminProcedure
+      .input(z.object({
+        packageId: z.number(),
+        courseIds: z.array(z.number()),
+      }))
+      .mutation(async ({ input }) => {
+        await db.setPackageCourses(input.packageId, input.courseIds);
+        return { success: true };
+      }),
+  }),
+
+  // =============================================
+  // ORDERS
+  // =============================================
+  orders: router({
+    // User: create order (checkout)
+    create: protectedProcedure
+      .input(z.object({
+        items: z.array(z.object({
+          itemType: z.enum(['package']),
+          packageId: z.number().optional(),
+          courseId: z.number().optional(),
+        })),
+        paymentMethod: z.enum(['paypal', 'bank_transfer']),
+        isGift: z.boolean().default(false),
+        giftEmail: z.string().optional(),
+        giftMessage: z.string().optional(),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        // Calculate totals
+        let subtotal = 0;
+        const resolvedItems: Array<{ itemType: string; packageId?: number; courseId?: number; price: number }> = [];
+
+        for (const item of input.items) {
+          if (item.itemType === 'package' && item.packageId) {
+            const pkg = await db.getPackageById(item.packageId);
+            if (!pkg) throw new TRPCError({ code: 'NOT_FOUND', message: `Package ${item.packageId} not found` });
+            subtotal += pkg.price;
+            resolvedItems.push({ itemType: 'package', packageId: item.packageId, price: pkg.price });
+          }
+        }
+
+        const vatRate = 16;
+        const vatAmount = Math.round(subtotal * vatRate / 100);
+        const totalAmount = subtotal + vatAmount;
+
+        // Create order
+        const order = await db.createOrder({
+          userId: ctx.user.id,
+          status: 'pending',
+          subtotal,
+          discountAmount: 0,
+          vatRate,
+          vatAmount,
+          totalAmount,
+          currency: 'USD',
+          paymentMethod: input.paymentMethod,
+          isGift: input.isGift ? 1 : 0,
+          giftEmail: input.giftEmail || null,
+          giftMessage: input.giftMessage || null,
+          notes: input.notes || null,
+        });
+
+        if (!order) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create order' });
+
+        // Add order items
+        for (const item of resolvedItems) {
+          await db.addOrderItem({
+            orderId: order.id,
+            itemType: item.itemType,
+            packageId: item.packageId || null,
+            courseId: item.courseId || null,
+            priceAtPurchase: item.price,
+            currency: 'USD',
+          });
+        }
+
+        return order;
+      }),
+
+    // User: get my orders
+    myOrders: protectedProcedure.query(async ({ ctx }) => {
+      if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+      return db.getUserOrders(ctx.user.id);
+    }),
+
+    // User: get order details
+    byId: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input, ctx }) => {
+        if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        const order = await db.getOrderById(input.id);
+        if (!order) throw new TRPCError({ code: 'NOT_FOUND' });
+        // Only allow order owner or admin to see the order
+        if (order.userId !== ctx.user.id) {
+          const admin = ctx.user.email ? await db.getAdminByEmail(ctx.user.email) : null;
+          if (!admin) throw new TRPCError({ code: 'FORBIDDEN' });
+        }
+        const items = await db.getOrderItems(input.id);
+        return { ...order, items };
+      }),
+
+    // User: upload payment proof (bank transfer)
+    uploadProof: protectedProcedure
+      .input(z.object({
+        orderId: z.number(),
+        paymentProofUrl: z.string(),
+        paymentReference: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        const order = await db.getOrderById(input.orderId);
+        if (!order) throw new TRPCError({ code: 'NOT_FOUND' });
+        if (order.userId !== ctx.user.id) throw new TRPCError({ code: 'FORBIDDEN' });
+        return db.updateOrderStatus(input.orderId, 'awaiting_confirmation', {
+          paymentProofUrl: input.paymentProofUrl,
+          paymentReference: input.paymentReference,
+        });
+      }),
+
+    // Admin: list all orders
+    adminList: adminProcedure
+      .input(z.object({
+        status: z.string().optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        return db.getAllOrders(input?.status);
+      }),
+
+    // Admin: update order status (approve/reject bank transfer, mark as paid from PayPal)
+    adminUpdateStatus: adminProcedure
+      .input(z.object({
+        orderId: z.number(),
+        status: z.enum(['pending', 'awaiting_confirmation', 'paid', 'completed', 'cancelled', 'refunded']),
+        paymentReference: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const order = await db.getOrderById(input.orderId);
+        if (!order) throw new TRPCError({ code: 'NOT_FOUND' });
+
+        const updated = await db.updateOrderStatus(input.orderId, input.status, {
+          paymentReference: input.paymentReference,
+        });
+
+        // If status changed to 'completed', activate package subscriptions
+        if (input.status === 'completed' && updated) {
+          const items = await db.getOrderItems(input.orderId);
+          for (const item of items) {
+            if (item.itemType === 'package' && item.packageId) {
+              const targetUserId = order.isGift && order.giftEmail
+                ? (await db.getUserByEmail(order.giftEmail))?.id
+                : order.userId;
+
+              if (targetUserId) {
+                await db.createPackageSubscription({
+                  userId: targetUserId,
+                  packageId: item.packageId,
+                  orderId: order.id,
+                  isActive: 1,
+                  autoRenew: 0,
+                });
+
+                // Also enroll in all package courses
+                const packageCourses = await db.getPackageCourses(item.packageId);
+                for (const pc of packageCourses) {
+                  try {
+                    await db.createEnrollment(targetUserId, pc.courseId);
+                  } catch (e) {
+                    // ignore duplicate enrollment
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        return updated;
+      }),
+  }),
+
+  // =============================================
+  // PACKAGE SUBSCRIPTIONS
+  // =============================================
+  subscriptions: router({
+    // User: get my active subscriptions
+    mySubscriptions: protectedProcedure.query(async ({ ctx }) => {
+      if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+      return db.getUserPackageSubscriptions(ctx.user.id);
+    }),
+
+    // User: get active package (most recent active)
+    myActivePackage: protectedProcedure.query(async ({ ctx }) => {
+      if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+      return db.getUserActivePackage(ctx.user.id);
+    }),
+
+    // Admin: list all subscriptions
+    adminList: adminProcedure.query(async () => {
+      return db.getAllPackageSubscriptions();
+    }),
+  }),
+
+  // =============================================
+  // EVENTS (public + admin)
+  // =============================================
+  events: router({
+    // Public: list published events
+    list: publicProcedure.query(async () => {
+      return db.getAllEvents(true);
+    }),
+
+    // Public: get single event
+    byId: publicProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input }) => {
+        const event = await db.getEventById(input.id);
+        if (!event) throw new TRPCError({ code: 'NOT_FOUND', message: 'Event not found' });
+        return event;
+      }),
+
+    // Admin: list all events
+    adminList: adminProcedure.query(async () => {
+      return db.getAllEvents(false);
+    }),
+
+    // Admin: create event
+    create: adminProcedure
+      .input(z.object({
+        titleEn: z.string().min(1),
+        titleAr: z.string().min(1),
+        descriptionEn: z.string().optional(),
+        descriptionAr: z.string().optional(),
+        eventType: z.enum(['live', 'competition', 'discount', 'webinar']).default('live'),
+        eventDate: z.string(),
+        eventEndDate: z.string().optional(),
+        imageUrl: z.string().optional(),
+        linkUrl: z.string().optional(),
+        isPublished: z.number().min(0).max(1).default(0),
+      }))
+      .mutation(async ({ input }) => {
+        return db.createEvent(input);
+      }),
+
+    // Admin: update event
+    update: adminProcedure
+      .input(z.object({
+        id: z.number(),
+        titleEn: z.string().optional(),
+        titleAr: z.string().optional(),
+        descriptionEn: z.string().optional(),
+        descriptionAr: z.string().optional(),
+        eventType: z.string().optional(),
+        eventDate: z.string().optional(),
+        eventEndDate: z.string().optional(),
+        imageUrl: z.string().optional(),
+        linkUrl: z.string().optional(),
+        isPublished: z.number().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, ...data } = input;
+        return db.updateEvent(id, data);
+      }),
+
+    // Admin: delete event
+    delete: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        return db.deleteEvent(input.id);
+      }),
+  }),
+
+  // =============================================
+  // ARTICLES (public + admin)
+  // =============================================
+  articles: router({
+    // Public: list published articles
+    list: publicProcedure.query(async () => {
+      return db.getAllArticles(true);
+    }),
+
+    // Public: get article by slug
+    bySlug: publicProcedure
+      .input(z.object({ slug: z.string() }))
+      .query(async ({ input }) => {
+        const article = await db.getArticleBySlug(input.slug);
+        if (!article) throw new TRPCError({ code: 'NOT_FOUND', message: 'Article not found' });
+        return article;
+      }),
+
+    // Public: get article by id
+    byId: publicProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input }) => {
+        const article = await db.getArticleById(input.id);
+        if (!article) throw new TRPCError({ code: 'NOT_FOUND', message: 'Article not found' });
+        return article;
+      }),
+
+    // Admin: list all articles
+    adminList: adminProcedure.query(async () => {
+      return db.getAllArticles(false);
+    }),
+
+    // Admin: create article
+    create: adminProcedure
+      .input(z.object({
+        slug: z.string().min(1),
+        titleEn: z.string().min(1),
+        titleAr: z.string().min(1),
+        contentEn: z.string().optional(),
+        contentAr: z.string().optional(),
+        excerptEn: z.string().optional(),
+        excerptAr: z.string().optional(),
+        thumbnailUrl: z.string().optional(),
+        authorId: z.number().optional(),
+        isPublished: z.number().min(0).max(1).default(0),
+        publishedAt: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        return db.createArticle(input);
+      }),
+
+    // Admin: update article
+    update: adminProcedure
+      .input(z.object({
+        id: z.number(),
+        slug: z.string().optional(),
+        titleEn: z.string().optional(),
+        titleAr: z.string().optional(),
+        contentEn: z.string().optional(),
+        contentAr: z.string().optional(),
+        excerptEn: z.string().optional(),
+        excerptAr: z.string().optional(),
+        thumbnailUrl: z.string().optional(),
+        authorId: z.number().optional(),
+        isPublished: z.number().optional(),
+        publishedAt: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, ...data } = input;
+        return db.updateArticle(id, data);
+      }),
+
+    // Admin: delete article
+    delete: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        return db.deleteArticle(input.id);
+      }),
+  }),
 });
 
 export type AppRouter = typeof appRouter;

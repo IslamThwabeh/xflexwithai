@@ -74,6 +74,11 @@ export const courses = sqliteTable("courses", {
   isPublished: integer("isPublished", { mode: 'boolean' }).default(false).notNull(),
   level: text("level", { length: 20 }).default("beginner").notNull(), // 'beginner' | 'intermediate' | 'advanced'
   duration: integer("duration"),
+  stageNumber: integer("stageNumber").default(0), // Stage order (1-8 for the 8 stages)
+  introVideoUrl: text("introVideoUrl"), // Short intro video for non-subscribers
+  hasPdf: integer("hasPdf", { mode: 'boolean' }).default(false),
+  hasIntroVideo: integer("hasIntroVideo", { mode: 'boolean' }).default(false),
+  pdfUrl: text("pdfUrl"),
   createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
   updatedAt: text("updatedAt").default("CURRENT_TIMESTAMP").notNull(),
 });
@@ -461,6 +466,160 @@ export type SupportMessage = typeof supportMessages.$inferSelect;
 export type InsertSupportMessage = typeof supportMessages.$inferInsert;
 
 // ============================================================================
+// Packages – subscription bundles (Basic / Comprehensive)
+// ============================================================================
+
+export const packages = sqliteTable("packages", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  slug: text("slug", { length: 50 }).notNull().unique(),
+  nameEn: text("nameEn", { length: 255 }).notNull(),
+  nameAr: text("nameAr", { length: 255 }).notNull(),
+  descriptionEn: text("descriptionEn"),
+  descriptionAr: text("descriptionAr"),
+  price: integer("price").notNull().default(0), // in cents (e.g. 20000 = $200)
+  currency: text("currency", { length: 3 }).default("USD").notNull(),
+  renewalPrice: integer("renewalPrice").default(0), // optional monthly renewal in cents
+  renewalPeriodDays: integer("renewalPeriodDays").default(0),
+  renewalDescription: text("renewalDescription"),
+  includesLexai: integer("includesLexai", { mode: 'boolean' }).default(false).notNull(),
+  includesRecommendations: integer("includesRecommendations", { mode: 'boolean' }).default(false).notNull(),
+  includesSupport: integer("includesSupport", { mode: 'boolean' }).default(false).notNull(),
+  includesPdf: integer("includesPdf", { mode: 'boolean' }).default(false).notNull(),
+  durationDays: integer("durationDays").default(0),
+  isLifetime: integer("isLifetime", { mode: 'boolean' }).default(true).notNull(),
+  isPublished: integer("isPublished", { mode: 'boolean' }).default(false).notNull(),
+  displayOrder: integer("displayOrder").default(0).notNull(),
+  thumbnailUrl: text("thumbnailUrl"),
+  createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
+  updatedAt: text("updatedAt").default("CURRENT_TIMESTAMP").notNull(),
+});
+
+export type Package = typeof packages.$inferSelect;
+export type InsertPackage = typeof packages.$inferInsert;
+
+export const packageCourses = sqliteTable("packageCourses", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  packageId: integer("packageId").notNull(),
+  courseId: integer("courseId").notNull(),
+  displayOrder: integer("displayOrder").default(0).notNull(),
+}, (table) => ({
+  uniquePackageCourse: unique("unique_package_course").on(table.packageId, table.courseId),
+}));
+
+export type PackageCourse = typeof packageCourses.$inferSelect;
+export type InsertPackageCourse = typeof packageCourses.$inferInsert;
+
+// ============================================================================
+// Orders – shopping cart checkout
+// ============================================================================
+
+export const orders = sqliteTable("orders", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  userId: integer("userId").notNull(),
+  status: text("status", { length: 20 }).default("pending").notNull(), // 'pending' | 'paid' | 'failed' | 'refunded'
+  subtotal: integer("subtotal").default(0).notNull(), // in cents
+  discountAmount: integer("discountAmount").default(0).notNull(),
+  vatRate: integer("vatRate").default(16).notNull(), // 16 = 16%
+  vatAmount: integer("vatAmount").default(0).notNull(),
+  totalAmount: integer("totalAmount").default(0).notNull(),
+  currency: text("currency", { length: 3 }).default("USD").notNull(),
+  paymentMethod: text("paymentMethod", { length: 30 }), // 'paypal' | 'bank_transfer' | 'visa'
+  paymentReference: text("paymentReference"), // external payment ID
+  paymentProofUrl: text("paymentProofUrl"), // receipt upload for bank transfers
+  isGift: integer("isGift", { mode: 'boolean' }).default(false).notNull(),
+  giftEmail: text("giftEmail", { length: 320 }),
+  giftMessage: text("giftMessage"),
+  notes: text("notes"),
+  createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
+  updatedAt: text("updatedAt").default("CURRENT_TIMESTAMP").notNull(),
+  completedAt: text("completedAt"),
+});
+
+export type Order = typeof orders.$inferSelect;
+export type InsertOrder = typeof orders.$inferInsert;
+
+export const orderItems = sqliteTable("orderItems", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  orderId: integer("orderId").notNull(),
+  itemType: text("itemType", { length: 20 }).default("package").notNull(), // 'package' | 'course'
+  packageId: integer("packageId"),
+  courseId: integer("courseId"),
+  priceAtPurchase: integer("priceAtPurchase").default(0).notNull(),
+  currency: text("currency", { length: 3 }).default("USD").notNull(),
+});
+
+export type OrderItem = typeof orderItems.$inferSelect;
+export type InsertOrderItem = typeof orderItems.$inferInsert;
+
+// ============================================================================
+// Package Subscriptions – user owns a package
+// ============================================================================
+
+export const packageSubscriptions = sqliteTable("packageSubscriptions", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  userId: integer("userId").notNull(),
+  packageId: integer("packageId").notNull(),
+  orderId: integer("orderId"),
+  isActive: integer("isActive", { mode: 'boolean' }).default(true).notNull(),
+  startDate: text("startDate").default("CURRENT_TIMESTAMP").notNull(),
+  endDate: text("endDate"),
+  renewalDueDate: text("renewalDueDate"),
+  autoRenew: integer("autoRenew", { mode: 'boolean' }).default(false).notNull(),
+  createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
+  updatedAt: text("updatedAt").default("CURRENT_TIMESTAMP").notNull(),
+});
+
+export type PackageSubscription = typeof packageSubscriptions.$inferSelect;
+export type InsertPackageSubscription = typeof packageSubscriptions.$inferInsert;
+
+// ============================================================================
+// Events – monthly events (live streams, competitions, offers)
+// ============================================================================
+
+export const events = sqliteTable("events", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  titleEn: text("titleEn", { length: 255 }).notNull(),
+  titleAr: text("titleAr", { length: 255 }).notNull(),
+  descriptionEn: text("descriptionEn"),
+  descriptionAr: text("descriptionAr"),
+  eventType: text("eventType", { length: 20 }).default("live").notNull(), // 'live' | 'competition' | 'offer' | 'webinar'
+  eventDate: text("eventDate").notNull(),
+  eventEndDate: text("eventEndDate"),
+  imageUrl: text("imageUrl"),
+  linkUrl: text("linkUrl"),
+  isPublished: integer("isPublished", { mode: 'boolean' }).default(false).notNull(),
+  createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
+  updatedAt: text("updatedAt").default("CURRENT_TIMESTAMP").notNull(),
+});
+
+export type Event = typeof events.$inferSelect;
+export type InsertEvent = typeof events.$inferInsert;
+
+// ============================================================================
+// Articles – blog posts
+// ============================================================================
+
+export const articles = sqliteTable("articles", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  slug: text("slug", { length: 255 }).notNull().unique(),
+  titleEn: text("titleEn", { length: 255 }).notNull(),
+  titleAr: text("titleAr", { length: 255 }).notNull(),
+  contentEn: text("contentEn"),
+  contentAr: text("contentAr"),
+  excerptEn: text("excerptEn"),
+  excerptAr: text("excerptAr"),
+  thumbnailUrl: text("thumbnailUrl"),
+  authorId: integer("authorId"),
+  isPublished: integer("isPublished", { mode: 'boolean' }).default(false).notNull(),
+  publishedAt: text("publishedAt"),
+  createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
+  updatedAt: text("updatedAt").default("CURRENT_TIMESTAMP").notNull(),
+});
+
+export type Article = typeof articles.$inferSelect;
+export type InsertArticle = typeof articles.$inferInsert;
+
+// ============================================================================
 // Relations
 // ============================================================================
 
@@ -666,5 +825,72 @@ export const supportMessagesRelations = relations(supportMessages, ({ one }) => 
   conversation: one(supportConversations, {
     fields: [supportMessages.conversationId],
     references: [supportConversations.id],
+  }),
+}));
+
+// ============================================================================
+// Package system relations
+// ============================================================================
+
+export const packagesRelations = relations(packages, ({ many }) => ({
+  packageCourses: many(packageCourses),
+  subscriptions: many(packageSubscriptions),
+}));
+
+export const packageCoursesRelations = relations(packageCourses, ({ one }) => ({
+  package: one(packages, {
+    fields: [packageCourses.packageId],
+    references: [packages.id],
+  }),
+  course: one(courses, {
+    fields: [packageCourses.courseId],
+    references: [courses.id],
+  }),
+}));
+
+export const ordersRelations = relations(orders, ({ one, many }) => ({
+  user: one(users, {
+    fields: [orders.userId],
+    references: [users.id],
+  }),
+  items: many(orderItems),
+}));
+
+export const orderItemsRelations = relations(orderItems, ({ one }) => ({
+  order: one(orders, {
+    fields: [orderItems.orderId],
+    references: [orders.id],
+  }),
+  package: one(packages, {
+    fields: [orderItems.packageId],
+    references: [packages.id],
+  }),
+  course: one(courses, {
+    fields: [orderItems.courseId],
+    references: [courses.id],
+  }),
+}));
+
+export const packageSubscriptionsRelations = relations(packageSubscriptions, ({ one }) => ({
+  user: one(users, {
+    fields: [packageSubscriptions.userId],
+    references: [users.id],
+  }),
+  package: one(packages, {
+    fields: [packageSubscriptions.packageId],
+    references: [packages.id],
+  }),
+  order: one(orders, {
+    fields: [packageSubscriptions.orderId],
+    references: [orders.id],
+  }),
+}));
+
+export const eventsRelations = relations(events, () => ({}));
+
+export const articlesRelations = relations(articles, ({ one }) => ({
+  author: one(admins, {
+    fields: [articles.authorId],
+    references: [admins.id],
   }),
 }));

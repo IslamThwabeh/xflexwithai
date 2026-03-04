@@ -27,7 +27,16 @@ import {
   // RBAC & Support Chat imports
   userRoles, UserRole, InsertUserRole,
   supportConversations, SupportConversation, InsertSupportConversation,
-  supportMessages, SupportMessage, InsertSupportMessage
+  supportMessages, SupportMessage, InsertSupportMessage,
+  // Package system imports
+  packages, Package, InsertPackage,
+  packageCourses, PackageCourse, InsertPackageCourse,
+  orders, Order, InsertOrder,
+  orderItems, OrderItem, InsertOrderItem,
+  packageSubscriptions, PackageSubscription, InsertPackageSubscription,
+  // Events & Articles imports
+  events, Event, InsertEvent,
+  articles, Article, InsertArticle
 } from "../database/schema-sqlite.ts";
 import { ENV } from './_core/env';
 import { logger } from './_core/logger';
@@ -2525,4 +2534,249 @@ export async function getUnreadSupportCount(userId: number): Promise<number> {
     );
 
   return row?.count ?? 0;
+}
+
+// ============================================================================
+// Package System
+// ============================================================================
+
+export async function getAllPackages(publishedOnly = false): Promise<Package[]> {
+  const db = await getDb();
+  if (!db) return [];
+  if (publishedOnly) {
+    return db.select().from(packages).where(eq(packages.isPublished, true)).orderBy(packages.displayOrder);
+  }
+  return db.select().from(packages).orderBy(packages.displayOrder);
+}
+
+export async function getPackageById(id: number): Promise<Package | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const [pkg] = await db.select().from(packages).where(eq(packages.id, id)).limit(1);
+  return pkg ?? null;
+}
+
+export async function getPackageBySlug(slug: string): Promise<Package | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const [pkg] = await db.select().from(packages).where(eq(packages.slug, slug)).limit(1);
+  return pkg ?? null;
+}
+
+export async function createPackage(input: Omit<InsertPackage, 'id'>): Promise<Package | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const [pkg] = await db.insert(packages).values(input).returning();
+  return pkg ?? null;
+}
+
+export async function updatePackage(id: number, input: Partial<InsertPackage>): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(packages).set({ ...input, updatedAt: new Date().toISOString() }).where(eq(packages.id, id));
+}
+
+export async function deletePackage(id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(packageCourses).where(eq(packageCourses.packageId, id));
+  await db.delete(packages).where(eq(packages.id, id));
+}
+
+export async function getPackageCourses(packageId: number): Promise<(PackageCourse & { course: Course | null })[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db.select().from(packageCourses)
+    .where(eq(packageCourses.packageId, packageId))
+    .orderBy(packageCourses.displayOrder);
+
+  const result: (PackageCourse & { course: Course | null })[] = [];
+  for (const row of rows) {
+    const [course] = await db.select().from(courses).where(eq(courses.id, row.courseId)).limit(1);
+    result.push({ ...row, course: course ?? null });
+  }
+  return result;
+}
+
+export async function setPackageCourses(packageId: number, courseIds: number[]): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(packageCourses).where(eq(packageCourses.packageId, packageId));
+  for (let i = 0; i < courseIds.length; i++) {
+    await db.insert(packageCourses).values({ packageId, courseId: courseIds[i], displayOrder: i + 1 });
+  }
+}
+
+// ============================================================================
+// Orders
+// ============================================================================
+
+export async function createOrder(input: Omit<InsertOrder, 'id'>): Promise<Order | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const [order] = await db.insert(orders).values(input).returning();
+  return order ?? null;
+}
+
+export async function getOrderById(id: number): Promise<Order | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const [order] = await db.select().from(orders).where(eq(orders.id, id)).limit(1);
+  return order ?? null;
+}
+
+export async function getUserOrders(userId: number): Promise<Order[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(orders).where(eq(orders.userId, userId)).orderBy(desc(orders.createdAt));
+}
+
+export async function getAllOrders(): Promise<Order[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(orders).orderBy(desc(orders.createdAt));
+}
+
+export async function updateOrderStatus(id: number, status: string, paymentRef?: string): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  const updates: any = { status, updatedAt: new Date().toISOString() };
+  if (paymentRef) updates.paymentReference = paymentRef;
+  if (status === 'paid') updates.completedAt = new Date().toISOString();
+  await db.update(orders).set(updates).where(eq(orders.id, id));
+}
+
+export async function addOrderItem(input: Omit<InsertOrderItem, 'id'>): Promise<OrderItem | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const [item] = await db.insert(orderItems).values(input).returning();
+  return item ?? null;
+}
+
+export async function getOrderItems(orderId: number): Promise<OrderItem[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(orderItems).where(eq(orderItems.orderId, orderId));
+}
+
+// ============================================================================
+// Package Subscriptions
+// ============================================================================
+
+export async function createPackageSubscription(input: Omit<InsertPackageSubscription, 'id'>): Promise<PackageSubscription | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const [sub] = await db.insert(packageSubscriptions).values(input).returning();
+  return sub ?? null;
+}
+
+export async function getUserPackageSubscriptions(userId: number): Promise<PackageSubscription[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(packageSubscriptions)
+    .where(and(eq(packageSubscriptions.userId, userId), eq(packageSubscriptions.isActive, true)));
+}
+
+export async function getUserActivePackage(userId: number): Promise<(PackageSubscription & { package: Package | null }) | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const subs = await db.select().from(packageSubscriptions)
+    .where(and(eq(packageSubscriptions.userId, userId), eq(packageSubscriptions.isActive, true)))
+    .orderBy(desc(packageSubscriptions.createdAt))
+    .limit(1);
+  if (subs.length === 0) return null;
+  const sub = subs[0];
+  const pkg = await getPackageById(sub.packageId);
+  return { ...sub, package: pkg };
+}
+
+export async function getAllPackageSubscriptions(): Promise<PackageSubscription[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(packageSubscriptions).orderBy(desc(packageSubscriptions.createdAt));
+}
+
+// ============================================================================
+// Events
+// ============================================================================
+
+export async function getAllEvents(publishedOnly = false): Promise<Event[]> {
+  const db = await getDb();
+  if (!db) return [];
+  if (publishedOnly) {
+    return db.select().from(events).where(eq(events.isPublished, true)).orderBy(desc(events.eventDate));
+  }
+  return db.select().from(events).orderBy(desc(events.eventDate));
+}
+
+export async function getEventById(id: number): Promise<Event | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const [event] = await db.select().from(events).where(eq(events.id, id)).limit(1);
+  return event ?? null;
+}
+
+export async function createEvent(input: Omit<InsertEvent, 'id'>): Promise<Event | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const [event] = await db.insert(events).values(input).returning();
+  return event ?? null;
+}
+
+export async function updateEvent(id: number, input: Partial<InsertEvent>): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(events).set({ ...input, updatedAt: new Date().toISOString() }).where(eq(events.id, id));
+}
+
+export async function deleteEvent(id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(events).where(eq(events.id, id));
+}
+
+// ============================================================================
+// Articles
+// ============================================================================
+
+export async function getAllArticles(publishedOnly = false): Promise<Article[]> {
+  const db = await getDb();
+  if (!db) return [];
+  if (publishedOnly) {
+    return db.select().from(articles).where(eq(articles.isPublished, true)).orderBy(desc(articles.publishedAt));
+  }
+  return db.select().from(articles).orderBy(desc(articles.createdAt));
+}
+
+export async function getArticleById(id: number): Promise<Article | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const [article] = await db.select().from(articles).where(eq(articles.id, id)).limit(1);
+  return article ?? null;
+}
+
+export async function getArticleBySlug(slug: string): Promise<Article | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const [article] = await db.select().from(articles).where(eq(articles.slug, slug)).limit(1);
+  return article ?? null;
+}
+
+export async function createArticle(input: Omit<InsertArticle, 'id'>): Promise<Article | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const [article] = await db.insert(articles).values(input).returning();
+  return article ?? null;
+}
+
+export async function updateArticle(id: number, input: Partial<InsertArticle>): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(articles).set({ ...input, updatedAt: new Date().toISOString() }).where(eq(articles.id, id));
+}
+
+export async function deleteArticle(id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(articles).where(eq(articles.id, id));
 }

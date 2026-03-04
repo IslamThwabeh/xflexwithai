@@ -1,0 +1,21 @@
+CREATE TABLE IF NOT EXISTS orders (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  userId INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  subtotal INTEGER NOT NULL DEFAULT 0,
+  discountAmount INTEGER NOT NULL DEFAULT 0,
+  vatRate INTEGER NOT NULL DEFAULT 16,
+  vatAmount INTEGER NOT NULL DEFAULT 0,
+  totalAmount INTEGER NOT NULL DEFAULT 0,
+  currency TEXT NOT NULL DEFAULT 'USD',
+  paymentMethod TEXT,
+  paymentReference TEXT,
+  paymentProofUrl TEXT,
+  isGift INTEGER NOT NULL DEFAULT 0,
+  giftEmail TEXT,
+  giftMessage TEXT,
+  notes TEXT,
+  createdAt TEXT DEFAULT CURRENT_TIMESTAMP NOT NULL,
+  updatedAt TEXT DEFAULT CURRENT_TIMESTAMP NOT NULL,
+  completedAt TEXT
+);
