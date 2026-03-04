@@ -104,6 +104,103 @@ const translations = {
     
     'home.footer.tagline': 'Empowering traders worldwide with expert knowledge and practical skills',
     'home.footer.rights': 'All rights reserved.',
+    'home.footer.socialFollow': 'Follow Us',
+    'home.footer.quickLinks': 'Quick Links',
+    'home.footer.home': 'Home',
+    'home.footer.packages': 'Packages',
+    'home.footer.freeContent': 'Free Content',
+    'home.footer.aboutUs': 'About Us',
+    'home.footer.contact': 'Contact',
+    
+    // New Landing Page
+    'home.heroTagline': 'The experience you won\'t regret',
+    'home.heroSubtext': 'Learn Forex trading from scratch with a comprehensive educational program built by professionals. From the basics to your own trading plan.',
+    'home.heroCta': 'Browse Packages',
+    'home.heroCtaLogin': 'Login',
+    'home.heroCtaFree': 'Try Free Content',
+    
+    // Packages Section
+    'home.packages.title': 'Choose Your Package',
+    'home.packages.subtitle': 'Two packages designed to meet every level — start learning today',
+    'home.packages.basic': 'Basic Package',
+    'home.packages.comprehensive': 'Comprehensive Package',
+    'home.packages.price': 'One-time payment',
+    'home.packages.lifetime': 'Lifetime Access',
+    'home.packages.renewal': 'Optional Monthly Renewal',
+    'home.packages.perMonth': '/month',
+    'home.packages.includes': 'Includes',
+    'home.packages.courses': 'All Trading Courses (8 Stages)',
+    'home.packages.pdf': 'Printable PDF Materials',
+    'home.packages.introVideos': 'Intro Videos for Each Stage',
+    'home.packages.support': 'Technical Support',
+    'home.packages.recommendations': 'Trading Recommendations',
+    'home.packages.lexai': 'LexAI Smart Analysis',
+    'home.packages.choosePlan': 'Choose This Package',
+    'home.packages.mostPopular': 'Most Popular',
+    
+    // Stages Section
+    'home.stages.title': 'What You\'ll Learn',
+    'home.stages.subtitle': '8 comprehensive stages from basics to building your own trading plan',
+    'home.stage1': 'Trading Basics',
+    'home.stage1.desc': '14 videos — 1 hour 50 min',
+    'home.stage2': 'Technical Analysis',
+    'home.stage2.desc': '16 videos — 2 hours 30 min',
+    'home.stage3': 'Advanced Analysis',
+    'home.stage3.desc': 'Coming Soon',
+    'home.stage4': 'Fundamental Analysis',
+    'home.stage4.desc': '5 videos — 1 hour',
+    'home.stage5': 'Capital Management',
+    'home.stage5.desc': '1 video — 20 min',
+    'home.stage6': 'Managing Recommendations',
+    'home.stage6.desc': 'Video lessons — 15 min',
+    'home.stage7': 'Psychological Factors',
+    'home.stage7.desc': '1 video — 15 min',
+    'home.stage8': 'Trading Plan',
+    'home.stage8.desc': '1 video — 5 min',
+    'home.stages.everyStage': 'Every stage includes a PDF file and an introductory video',
+    
+    // Why XFlex
+    'home.why.aiPowered': 'AI-Powered Analysis',
+    'home.why.aiDesc': 'LexAI provides smart chart analysis and entry/exit points',
+    'home.why.liveSignals': 'Live Signals',
+    'home.why.liveDesc': 'Trading recommendations from expert analysts in real-time',
+    'home.why.community': 'Active Community',
+    'home.why.communityDesc': 'Join a community of traders sharing knowledge and success',
+    
+    // Free Content
+    'home.free.title': 'Free Content',
+    'home.free.subtitle': 'Start learning for free with our open courses and educational articles',
+    'home.free.courses': 'Free Courses',
+    'home.free.coursesDesc': 'Access introductory trading courses at no cost',
+    'home.free.articles': 'Educational Articles',
+    'home.free.articlesDesc': 'Read expert insights on market trends and trading strategies',
+    'home.free.browseArticles': 'Browse Articles',
+    'home.free.browseCourses': 'View Free Courses',
+    
+    // Events
+    'home.events.title': 'Upcoming Events',
+    'home.events.subtitle': 'Live sessions, competitions, and special offers',
+    'home.events.noEvents': 'No upcoming events at the moment',
+    'home.events.live': 'Live Session',
+    'home.events.competition': 'Competition',
+    'home.events.discount': 'Special Offer',
+    'home.events.webinar': 'Webinar',
+    'home.events.viewAll': 'View All Events',
+    
+    // Articles
+    'home.articles.title': 'Latest Articles',
+    'home.articles.subtitle': 'Educational content and market insights',
+    'home.articles.noArticles': 'No articles published yet',
+    'home.articles.readMore': 'Read More',
+    'home.articles.viewAll': 'View All Articles',
+    
+    // About Section  
+    'home.about.title': 'About XFlex Academy',
+    'home.about.text': 'XFlex Trading Academy was founded by Rawan, a Palestinian with a Master\'s degree in Accounting from Birzeit University. The academy is dedicated to providing comprehensive Forex trading education with a focus on practical, real-world application.',
+    'home.about.learnMore': 'Learn More About Us',
+    
+    // WhatsApp
+    'home.whatsapp': 'Chat on WhatsApp',
     
     // Dashboard
     'dashboard.title': 'Welcome back, {name}!',
@@ -935,6 +1032,103 @@ const translations = {
     
     'home.footer.tagline': 'تمكين المتداولين في جميع أنحاء العالم بالمعرفة والمهارات العملية',
     'home.footer.rights': 'جميع الحقوق محفوظة.',
+    'home.footer.socialFollow': 'تابعنا',
+    'home.footer.quickLinks': 'روابط سريعة',
+    'home.footer.home': 'الرئيسية',
+    'home.footer.packages': 'الباقات',
+    'home.footer.freeContent': 'محتوى مجاني',
+    'home.footer.aboutUs': 'عن الأكاديمية',
+    'home.footer.contact': 'تواصل معنا',
+    
+    // New Landing Page
+    'home.heroTagline': 'التجربة الي مارح تندم عليها',
+    'home.heroSubtext': 'تعلم تداول الفوركس من الصفر مع برنامج تعليمي شامل مبني على يد متخصصين. من الأساسيات حتى خطة التداول الخاصة بك.',
+    'home.heroCta': 'تصفح الباقات',
+    'home.heroCtaLogin': 'تسجيل الدخول',
+    'home.heroCtaFree': 'جرب المحتوى المجاني',
+    
+    // Packages Section
+    'home.packages.title': 'اختر باقتك',
+    'home.packages.subtitle': 'باقتان مصممتان لتلبية كل مستوى — ابدأ التعلم اليوم',
+    'home.packages.basic': 'الباقة الأساسية',
+    'home.packages.comprehensive': 'الباقة الشاملة',
+    'home.packages.price': 'دفعة واحدة',
+    'home.packages.lifetime': 'وصول مدى الحياة',
+    'home.packages.renewal': 'تجديد شهري اختياري',
+    'home.packages.perMonth': '/شهرياً',
+    'home.packages.includes': 'تشمل',
+    'home.packages.courses': 'جميع الدورات التعليمية (8 مراحل)',
+    'home.packages.pdf': 'ملفات PDF قابلة للطباعة',
+    'home.packages.introVideos': 'فيديو تعريفي لكل مرحلة',
+    'home.packages.support': 'الدعم الفني',
+    'home.packages.recommendations': 'توصيات التداول',
+    'home.packages.lexai': 'تحليل LexAI الذكي',
+    'home.packages.choosePlan': 'اختر هذه الباقة',
+    'home.packages.mostPopular': 'الأكثر شعبية',
+    
+    // Stages Section
+    'home.stages.title': 'ماذا ستتعلم',
+    'home.stages.subtitle': '8 مراحل شاملة من الأساسيات حتى بناء خطة التداول الخاصة بك',
+    'home.stage1': 'أساسيات التداول',
+    'home.stage1.desc': '14 فيديو — ساعة و50 دقيقة',
+    'home.stage2': 'التحليل الفني',
+    'home.stage2.desc': '16 فيديو — ساعتان و30 دقيقة',
+    'home.stage3': 'التحليل المتقدم',
+    'home.stage3.desc': 'قريباً',
+    'home.stage4': 'التحليل الأساسي',
+    'home.stage4.desc': '5 فيديوهات — ساعة واحدة',
+    'home.stage5': 'إدارة رأس المال',
+    'home.stage5.desc': 'فيديو واحد — 20 دقيقة',
+    'home.stage6': 'كيفية إدارة التوصيات',
+    'home.stage6.desc': 'دروس فيديو — 15 دقيقة',
+    'home.stage7': 'العوامل النفسية',
+    'home.stage7.desc': 'فيديو واحد — 15 دقيقة',
+    'home.stage8': 'خطة التداول',
+    'home.stage8.desc': 'فيديو واحد — 5 دقائق',
+    'home.stages.everyStage': 'كل مرحلة تتضمن ملف PDF وفيديو تعريفي',
+    
+    // Why XFlex
+    'home.why.aiPowered': 'تحليل بالذكاء الاصطناعي',
+    'home.why.aiDesc': 'LexAI يقدم تحليل ذكي للرسوم البيانية ونقاط دخول وخروج',
+    'home.why.liveSignals': 'توصيات حية',
+    'home.why.liveDesc': 'توصيات تداول من محللين خبراء في الوقت الفعلي',
+    'home.why.community': 'مجتمع نشط',
+    'home.why.communityDesc': 'انضم لمجتمع من المتداولين يتشاركون المعرفة والنجاح',
+    
+    // Free Content
+    'home.free.title': 'محتوى مجاني',
+    'home.free.subtitle': 'ابدأ التعلم مجاناً مع دوراتنا المفتوحة والمقالات التعليمية',
+    'home.free.courses': 'دورات مجانية',
+    'home.free.coursesDesc': 'الوصول لدورات تداول تمهيدية بدون أي تكلفة',
+    'home.free.articles': 'مقالات تعليمية',
+    'home.free.articlesDesc': 'اقرأ تحليلات خبراء حول اتجاهات السوق واستراتيجيات التداول',
+    'home.free.browseArticles': 'تصفح المقالات',
+    'home.free.browseCourses': 'عرض الدورات المجانية',
+    
+    // Events
+    'home.events.title': 'الأحداث القادمة',
+    'home.events.subtitle': 'بث مباشر ومسابقات وعروض خاصة',
+    'home.events.noEvents': 'لا توجد أحداث قادمة حالياً',
+    'home.events.live': 'بث مباشر',
+    'home.events.competition': 'مسابقة',
+    'home.events.discount': 'عرض خاص',
+    'home.events.webinar': 'ندوة عبر الإنترنت',
+    'home.events.viewAll': 'عرض كل الأحداث',
+    
+    // Articles
+    'home.articles.title': 'أحدث المقالات',
+    'home.articles.subtitle': 'محتوى تعليمي ورؤى عن السوق',
+    'home.articles.noArticles': 'لم يتم نشر مقالات بعد',
+    'home.articles.readMore': 'اقرأ المزيد',
+    'home.articles.viewAll': 'عرض كل المقالات',
+    
+    // About Section
+    'home.about.title': 'عن أكاديمية XFlex',
+    'home.about.text': 'تأسست أكاديمية XFlex للتداول على يد روان، فلسطينية حاصلة على ماجستير في المحاسبة من جامعة بيرزيت. الأكاديمية مخصصة لتقديم تعليم شامل لتداول الفوركس مع التركيز على التطبيق العملي.',
+    'home.about.learnMore': 'تعرف علينا أكثر',
+    
+    // WhatsApp
+    'home.whatsapp': 'تواصل عبر واتساب',
     
     // Dashboard
     'dashboard.title': 'مرحبًا بك مجددًا، {name}!',
