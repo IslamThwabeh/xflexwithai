@@ -98,10 +98,10 @@ export default function SupportChat() {
                         isOwn ? "text-blue-200" : "text-gray-400"
                       }`}
                     >
-                      {new Date(msg.createdAt).toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
+                      {(() => {
+                        const d = new Date(msg.createdAt);
+                        return isNaN(d.getTime()) ? '' : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                      })()}
                     </p>
                   </div>
                 </div>

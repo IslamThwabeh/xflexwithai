@@ -2568,11 +2568,12 @@ export async function createSupportMessage(msg: {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
-  const [message] = await db.insert(supportMessages).values(msg).returning();
+  const now = new Date().toISOString();
+  const [message] = await db.insert(supportMessages).values({ ...msg, createdAt: now }).returning();
 
   // Update conversation updatedAt
   await db.update(supportConversations)
-    .set({ updatedAt: new Date().toISOString() })
+    .set({ updatedAt: now })
     .where(eq(supportConversations.id, msg.conversationId));
 
   return message;

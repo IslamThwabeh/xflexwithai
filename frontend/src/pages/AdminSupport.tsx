@@ -288,10 +288,10 @@ export default function AdminSupport() {
                                 isClient ? "text-gray-400" : "text-blue-200"
                               }`}
                             >
-                              {new Date(msg.createdAt).toLocaleTimeString([], {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
+                              {(() => {
+                                const d = new Date(msg.createdAt);
+                                return isNaN(d.getTime()) ? '' : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                              })()}
                             </p>
                           </div>
                         </div>
