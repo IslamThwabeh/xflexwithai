@@ -164,7 +164,7 @@ export default function Home() {
                 {t('home.heroCta')}
                 <ChevronRight className="w-4 h-4 ms-1" />
               </Button>
-              <Link href="/auth">
+              <Link href="/free-content">
                 <Button
                   size="lg"
                   variant="outline"
