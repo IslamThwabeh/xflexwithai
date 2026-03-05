@@ -247,6 +247,9 @@ export const appRouter = router({
         email: z.string().email(),
         password: z.string().min(8),
         name: z.string().min(2),
+        phone: z.string().min(5).optional(),
+        city: z.string().min(1).optional(),
+        country: z.string().min(1).optional(),
       }))
       .mutation(async ({ input, ctx }) => {
         logger.info('[AUTH] Registration attempt', { email: input.email });
@@ -278,6 +281,9 @@ export const appRouter = router({
           email: input.email,
           passwordHash,
           name: input.name,
+          phone: input.phone,
+          city: input.city,
+          country: input.country,
         });
         
         // Generate JWT token
@@ -3224,6 +3230,21 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         return db.deleteArticle(input.id);
       }),
+  }),
+
+  // ============================================================================
+  // Admin Reports
+  // ============================================================================
+  reports: router({
+    subscribers: adminProcedure.query(async () => {
+      return db.getSubscribersReport();
+    }),
+    revenue: adminProcedure.query(async () => {
+      return db.getRevenueReport();
+    }),
+    expirations: adminProcedure.query(async () => {
+      return db.getSubscriptionExpiryReport();
+    }),
   }),
 });
 

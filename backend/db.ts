@@ -85,7 +85,7 @@ export async function db(env?: { DB: D1Database }) {
 /**
  * Create a new user
  */
-export async function createUser(user: { email: string; passwordHash: string; name?: string }): Promise<number> {
+export async function createUser(user: { email: string; passwordHash: string; name?: string; phone?: string; city?: string; country?: string }): Promise<number> {
   const db = await getDb();
   if (!db) {
     throw new Error("Database not available");
@@ -97,6 +97,9 @@ export async function createUser(user: { email: string; passwordHash: string; na
       email: user.email,
       passwordHash: user.passwordHash,
       name: user.name || null,
+      phone: user.phone || null,
+      city: user.city || null,
+      country: user.country || null,
     }).returning({ id: users.id });
     const userId = result[0].id;
     logger.db('User created successfully', { userId, email: user.email });
@@ -3063,3 +3066,237 @@ export async function deleteTestimonial(id: number): Promise<void> {
   await db.delete(testimonials).where(eq(testimonials.id, id));
 }
 
+
+// ============================================================================
+// Admin Reports
+// ============================================================================
+
+/**
+ * Get subscribers report — all users with enriched data
+ */
+export async function getSubscribersReport(): Promise<any[]> {
+  const db = await getDb();
+  if (!db) return [];
+  
+  // Get all users
+  const allUsers = await db.select({
+    id: users.id,
+    name: users.name,
+    email: users.email,
+    phone: users.phone,
+    city: users.city,
+    country: users.country,
+    createdAt: users.createdAt,
+    emailVerified: users.emailVerified,
+  }).from(users).orderBy(desc(users.createdAt));
+
+  // Get all orders
+  const allOrders = await db.select().from(orders);
+  // Get all package subscriptions
+  const allPkgSubs = await db.select().from(packageSubscriptions);
+  // Get all packages
+  const allPackages = await db.select().from(packages);
+  // Get all orderItems
+  const allItems = await db.select().from(orderItems);
+
+  const pkgMap = new Map(allPackages.map(p => [p.id, p]));
+
+  return allUsers.map(u => {
+    const userOrders = allOrders.filter(o => o.userId === u.id);
+    const completedOrders = userOrders.filter(o => o.status === 'completed' || o.status === 'paid');
+    const totalSpent = completedOrders.reduce((s, o) => s + (o.totalAmount || 0), 0);
+    const userSubs = allPkgSubs.filter(s => s.userId === u.id);
+    const activeSubs = userSubs.filter(s => s.isActive);
+    const activePackageNames = activeSubs
+      .map(s => {
+        const pkg = pkgMap.get(s.packageId);
+        return pkg ? pkg.nameEn : null;
+      })
+      .filter(Boolean);
+    // Count renewals (multiple orders = renewals)
+    const renewalCount = completedOrders.length > 1 ? completedOrders.length - 1 : 0;
+
+    return {
+      ...u,
+      totalOrders: userOrders.length,
+      completedOrders: completedOrders.length,
+      totalSpent,
+      activePackages: activePackageNames,
+      subscriptionCount: userSubs.length,
+      renewalCount,
+    };
+  });
+}
+
+/**
+ * Get monthly revenue report
+ */
+export async function getRevenueReport(): Promise<{
+  monthlyRevenue: { month: string; revenue: number; orderCount: number }[];
+  packageRevenue: { packageId: number; packageName: string; revenue: number; orderCount: number }[];
+  paymentMethodBreakdown: { method: string; revenue: number; count: number }[];
+  recentOrders: any[];
+}> {
+  const db = await getDb();
+  if (!db) return { monthlyRevenue: [], packageRevenue: [], paymentMethodBreakdown: [], recentOrders: [] };
+
+  const allOrders = await db.select().from(orders).orderBy(desc(orders.createdAt));
+  const allItems = await db.select().from(orderItems);
+  const allPackages = await db.select().from(packages);
+  const allUsers = await db.select({ id: users.id, name: users.name, email: users.email }).from(users);
+
+  const pkgMap = new Map(allPackages.map(p => [p.id, p]));
+  const userMap = new Map(allUsers.map(u => [u.id, u]));
+
+  const completedOrders = allOrders.filter(o => o.status === 'completed' || o.status === 'paid');
+
+  // Monthly revenue
+  const monthMap = new Map<string, { revenue: number; orderCount: number }>();
+  for (const o of completedOrders) {
+    const date = o.completedAt || o.createdAt;
+    const month = date ? date.substring(0, 7) : 'unknown';
+    const existing = monthMap.get(month) || { revenue: 0, orderCount: 0 };
+    existing.revenue += o.totalAmount || 0;
+    existing.orderCount += 1;
+    monthMap.set(month, existing);
+  }
+  const monthlyRevenue = Array.from(monthMap.entries())
+    .map(([month, data]) => ({ month, ...data }))
+    .sort((a, b) => b.month.localeCompare(a.month));
+
+  // Revenue by package
+  const pkgRevMap = new Map<number, { revenue: number; orderCount: number }>();
+  for (const o of completedOrders) {
+    const items = allItems.filter(i => i.orderId === o.id);
+    for (const item of items) {
+      if (item.packageId) {
+        const existing = pkgRevMap.get(item.packageId) || { revenue: 0, orderCount: 0 };
+        existing.revenue += item.priceAtPurchase || 0;
+        existing.orderCount += 1;
+        pkgRevMap.set(item.packageId, existing);
+      }
+    }
+  }
+  const packageRevenue = Array.from(pkgRevMap.entries())
+    .map(([packageId, data]) => ({
+      packageId,
+      packageName: pkgMap.get(packageId)?.nameEn || `Package #${packageId}`,
+      ...data,
+    }));
+
+  // Payment method breakdown
+  const methodMap = new Map<string, { revenue: number; count: number }>();
+  for (const o of completedOrders) {
+    const method = o.paymentMethod || 'unknown';
+    const existing = methodMap.get(method) || { revenue: 0, count: 0 };
+    existing.revenue += o.totalAmount || 0;
+    existing.count += 1;
+    methodMap.set(method, existing);
+  }
+  const paymentMethodBreakdown = Array.from(methodMap.entries())
+    .map(([method, data]) => ({ method, ...data }));
+
+  // Recent orders with user info
+  const recentOrders = allOrders.slice(0, 50).map(o => {
+    const user = userMap.get(o.userId);
+    const items = allItems.filter(i => i.orderId === o.id);
+    const packageNames = items
+      .filter(i => i.packageId)
+      .map(i => pkgMap.get(i.packageId!)?.nameEn || 'Unknown')
+      .join(', ');
+    return {
+      ...o,
+      userName: user?.name || 'Unknown',
+      userEmail: user?.email || 'Unknown',
+      packageNames,
+    };
+  });
+
+  return { monthlyRevenue, packageRevenue, paymentMethodBreakdown, recentOrders };
+}
+
+/**
+ * Get subscription expiry report
+ */
+export async function getSubscriptionExpiryReport(): Promise<any[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  const allUsers = await db.select({ id: users.id, name: users.name, email: users.email, phone: users.phone }).from(users);
+  const userMap = new Map(allUsers.map(u => [u.id, u]));
+
+  const allPackages = await db.select().from(packages);
+  const pkgMap = new Map(allPackages.map(p => [p.id, p]));
+
+  const results: any[] = [];
+
+  // Package subscriptions
+  const pkgSubs = await db.select().from(packageSubscriptions)
+    .where(eq(packageSubscriptions.isActive, true));
+  for (const sub of pkgSubs) {
+    const user = userMap.get(sub.userId);
+    const pkg = pkgMap.get(sub.packageId);
+    results.push({
+      type: 'package',
+      userId: sub.userId,
+      userName: user?.name || 'Unknown',
+      userEmail: user?.email || 'Unknown',
+      userPhone: user?.phone || '',
+      subscriptionName: pkg?.nameEn || `Package #${sub.packageId}`,
+      startDate: sub.startDate,
+      endDate: sub.endDate || 'Lifetime',
+      renewalDueDate: sub.renewalDueDate,
+      isActive: sub.isActive,
+      createdAt: sub.createdAt,
+    });
+  }
+
+  // LexAI subscriptions
+  const lexSubs = await db.select().from(lexaiSubscriptions)
+    .where(eq(lexaiSubscriptions.isActive, true));
+  for (const sub of lexSubs) {
+    const user = userMap.get(sub.userId);
+    results.push({
+      type: 'lexai',
+      userId: sub.userId,
+      userName: user?.name || 'Unknown',
+      userEmail: user?.email || 'Unknown',
+      userPhone: user?.phone || '',
+      subscriptionName: 'Lex AI',
+      startDate: sub.startDate,
+      endDate: sub.endDate,
+      renewalDueDate: null,
+      isActive: sub.isActive,
+      createdAt: sub.createdAt,
+    });
+  }
+
+  // Recommendation subscriptions
+  const recSubs = await db.select().from(recommendationSubscriptions)
+    .where(eq(recommendationSubscriptions.isActive, true));
+  for (const sub of recSubs) {
+    const user = userMap.get(sub.userId);
+    results.push({
+      type: 'recommendations',
+      userId: sub.userId,
+      userName: user?.name || 'Unknown',
+      userEmail: user?.email || 'Unknown',
+      userPhone: user?.phone || '',
+      subscriptionName: 'Recommendations',
+      startDate: sub.startDate,
+      endDate: sub.endDate,
+      renewalDueDate: null,
+      isActive: sub.isActive,
+      createdAt: sub.createdAt,
+    });
+  }
+
+  // Sort by endDate ascending (soonest to expire first)
+  results.sort((a, b) => {
+    if (a.endDate === 'Lifetime') return 1;
+    if (b.endDate === 'Lifetime') return -1;
+    return (a.endDate || '').localeCompare(b.endDate || '');
+  });
+
+  return results;
+}

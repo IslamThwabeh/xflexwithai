@@ -12,16 +12,16 @@ import { Badge } from '@/components/ui/badge';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { trpc } from '@/lib/trpc';
 
-// Stage data with icons
+// Stage data with icons and individual prices (display only — to show package value)
 const stageData = [
-  { num: 1, icon: BookOpen, color: 'from-blue-500 to-blue-600' },
-  { num: 2, icon: BarChart3, color: 'from-indigo-500 to-indigo-600' },
-  { num: 3, icon: TrendingUp, color: 'from-violet-500 to-violet-600' },
-  { num: 4, icon: Lightbulb, color: 'from-amber-500 to-amber-600' },
-  { num: 5, icon: Shield, color: 'from-emerald-500 to-emerald-600' },
-  { num: 6, icon: Signal, color: 'from-cyan-500 to-cyan-600' },
-  { num: 7, icon: Brain, color: 'from-rose-500 to-rose-600' },
-  { num: 8, icon: FileText, color: 'from-teal-500 to-teal-600' },
+  { num: 1, icon: BookOpen, color: 'from-blue-500 to-blue-600', price: 150 },
+  { num: 2, icon: BarChart3, color: 'from-indigo-500 to-indigo-600', price: 300 },
+  { num: 3, icon: TrendingUp, color: 'from-violet-500 to-violet-600', price: 0, comingSoon: true },
+  { num: 4, icon: Lightbulb, color: 'from-amber-500 to-amber-600', price: 100 },
+  { num: 5, icon: Shield, color: 'from-emerald-500 to-emerald-600', price: 50 },
+  { num: 6, icon: Signal, color: 'from-cyan-500 to-cyan-600', price: 50 },
+  { num: 7, icon: Brain, color: 'from-rose-500 to-rose-600', price: 50 },
+  { num: 8, icon: FileText, color: 'from-teal-500 to-teal-600', price: 30 },
 ];
 
 export default function Home() {
@@ -323,9 +323,14 @@ export default function Home() {
               return (
                 <div
                   key={stage.num}
-                  className="group relative bg-white rounded-xl border border-gray-200 p-5 hover:shadow-lg hover:border-blue-200 transition-all"
+                  className={`group relative bg-white rounded-xl border ${stage.comingSoon ? 'border-violet-200 bg-violet-50/30' : 'border-gray-200'} p-5 hover:shadow-lg hover:border-blue-200 transition-all`}
                 >
-                  <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${stage.color} flex items-center justify-center mb-4 shadow-sm`}>
+                  {stage.comingSoon && (
+                    <span className="absolute -top-2.5 ltr:right-3 rtl:left-3 bg-gradient-to-r from-violet-500 to-purple-600 text-white text-[10px] font-bold px-2.5 py-0.5 rounded-full shadow-sm">
+                      {language === 'ar' ? 'قريباً' : 'Coming Soon'}
+                    </span>
+                  )}
+                  <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${stage.color} flex items-center justify-center mb-4 shadow-sm ${stage.comingSoon ? 'opacity-60' : ''}`}>
                     <Icon className="w-6 h-6 text-white" />
                   </div>
                   <div className="flex items-center gap-2 mb-1">
@@ -339,21 +344,36 @@ export default function Home() {
                   <p className="text-xs text-gray-500">
                     {t(`home.stage${stage.num}.desc`)}
                   </p>
-                  <div className="flex items-center gap-1.5 mt-3 text-xs text-gray-400">
-                    <Play className="w-3 h-3" />
-                    <span>
-                      {language === 'ar' ? 'فيديو + PDF' : 'Video + PDF'}
-                    </span>
-                  </div>
+                  {stage.price > 0 && (
+                    <p className="text-sm font-bold text-gray-400 line-through mt-2">
+                      ${stage.price}
+                    </p>
+                  )}
+                  {!stage.comingSoon && (
+                    <div className="flex items-center gap-1.5 mt-3 text-xs text-gray-400">
+                      <Play className="w-3 h-3" />
+                      <span>
+                        {language === 'ar' ? 'فيديو + PDF' : 'Video + PDF'}
+                      </span>
+                    </div>
+                  )}
                 </div>
               );
             })}
           </div>
 
-          <p className="text-center text-sm text-gray-500 mt-8 flex items-center justify-center gap-2">
-            <FileText className="w-4 h-4 text-blue-500" />
-            {t('home.stages.everyStage')}
-          </p>
+          {/* Individual value vs package deal */}
+          <div className="text-center mt-8 space-y-2">
+            <p className="text-sm text-gray-500 flex items-center justify-center gap-2">
+              <FileText className="w-4 h-4 text-blue-500" />
+              {t('home.stages.everyStage')}
+            </p>
+            <p className="text-sm text-gray-500">
+              <span className="line-through text-gray-400">{language === 'ar' ? 'القيمة الفردية: $730' : 'Individual value: $730'}</span>
+              {' '}
+              <span className="font-bold text-green-600">{language === 'ar' ? 'سعر الباقة الشاملة: $500 فقط!' : 'Comprehensive Package: Only $500!'}</span>
+            </p>
+          </div>
         </div>
       </section>
 
@@ -728,7 +748,9 @@ export default function Home() {
                 <li><button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="hover:text-white transition">{t('home.footer.home')}</button></li>
                 <li><button onClick={() => scrollToSection('packages')} className="hover:text-white transition">{t('home.footer.packages')}</button></li>
                 <li><Link href="/contact"><span className="hover:text-white transition cursor-pointer">{language === 'ar' ? 'تواصل معنا' : 'Contact Us'}</span></Link></li>
-                <li><Link href="/terms"><span className="hover:text-white transition cursor-pointer">{language === 'ar' ? 'شروط الخدمة' : 'Terms of Service'}</span></Link></li>
+                <li><Link href="/faq"><span className="hover:text-white transition cursor-pointer">{language === 'ar' ? 'الأسئلة الشائعة' : 'FAQ'}</span></Link></li>
+                <li><Link href="/terms"><span className="hover:text-white transition cursor-pointer">{language === 'ar' ? 'الشروط والأحكام' : 'Terms & Conditions'}</span></Link></li>
+                <li><Link href="/refund-policy"><span className="hover:text-white transition cursor-pointer">{language === 'ar' ? 'سياسة الاسترجاع' : 'Refund Policy'}</span></Link></li>
                 <li><Link href="/privacy"><span className="hover:text-white transition cursor-pointer">{language === 'ar' ? 'سياسة الخصوصية' : 'Privacy Policy'}</span></Link></li>
                 <li><Link href="/auth"><span className="hover:text-white transition cursor-pointer">{t('home.heroCtaLogin')}</span></Link></li>
               </ul>

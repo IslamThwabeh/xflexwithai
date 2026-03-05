@@ -12,6 +12,9 @@ export function RegisterForm({ onSuccess }: { onSuccess?: () => void }) {
   const { t } = useLanguage();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [city, setCity] = useState("");
+  const [country, setCountry] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
@@ -32,7 +35,7 @@ export function RegisterForm({ onSuccess }: { onSuccess?: () => void }) {
     setError("");
 
     // Validation
-    if (!name || !email || !password) {
+    if (!name || !email || !password || !phone || !city || !country) {
       setError(t('auth.register.allFieldsRequired'));
       return;
     }
@@ -47,7 +50,7 @@ export function RegisterForm({ onSuccess }: { onSuccess?: () => void }) {
       return;
     }
 
-    registerMutation.mutate({ name, email, password });
+    registerMutation.mutate({ name, email, password, phone, city, country });
   };
 
   return (
@@ -90,6 +93,48 @@ export function RegisterForm({ onSuccess }: { onSuccess?: () => void }) {
               placeholder={t('auth.register.emailPlaceholder')}
               required
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="phone">{t('auth.register.phone')}</Label>
+            <Input
+              id="phone"
+              name="phone"
+              type="tel"
+              autoComplete="tel"
+              dir="ltr"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder={t('auth.register.phonePlaceholder')}
+              required
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label htmlFor="city">{t('auth.register.city')}</Label>
+              <Input
+                id="city"
+                name="city"
+                type="text"
+                value={city}
+                onChange={(e) => setCity(e.target.value)}
+                placeholder={t('auth.register.cityPlaceholder')}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="country">{t('auth.register.country')}</Label>
+              <Input
+                id="country"
+                name="country"
+                type="text"
+                value={country}
+                onChange={(e) => setCountry(e.target.value)}
+                placeholder={t('auth.register.countryPlaceholder')}
+                required
+              />
+            </div>
           </div>
 
           <div className="space-y-2">

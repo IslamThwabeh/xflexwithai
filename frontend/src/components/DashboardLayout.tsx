@@ -43,6 +43,9 @@ import {
   ClipboardCheck,
   Tag,
   MessageSquareQuote,
+  BarChart3,
+  Clock,
+  DollarSign,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -99,6 +102,14 @@ const menuSectionsDef: MenuSection[] = [
     items: [
       { icon: Headphones, labelKey: "admin.sidebar.supportChat", path: "/admin/support" },
       { icon: Shield, labelKey: "admin.sidebar.roles", path: "/admin/roles" },
+    ]
+  },
+  {
+    labelKey: "admin.sidebar.reports",
+    items: [
+      { icon: Users, labelKey: "admin.sidebar.subscribers", path: "/admin/reports/subscribers" },
+      { icon: DollarSign, labelKey: "admin.sidebar.revenue", path: "/admin/reports/revenue" },
+      { icon: Clock, labelKey: "admin.sidebar.expiry", path: "/admin/reports/expiry" },
     ]
   },
 ];

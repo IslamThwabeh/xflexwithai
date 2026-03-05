@@ -38,6 +38,9 @@ const AdminOrders = lazy(() => import("./pages/AdminOrders"));
 const AdminQuizzes = lazy(() => import("./pages/AdminQuizzes"));
 const AdminCoupons = lazy(() => import("./pages/AdminCoupons"));
 const AdminTestimonials = lazy(() => import("./pages/AdminTestimonials"));
+const AdminSubscribersReport = lazy(() => import("./pages/AdminSubscribersReport"));
+const AdminRevenueReport = lazy(() => import("./pages/AdminRevenueReport"));
+const AdminExpiryReport = lazy(() => import("./pages/AdminExpiryReport"));
 
 // Lazy-loaded user pages
 const MyDashboard = lazy(() => import("./pages/MyDashboard"));
@@ -67,6 +70,8 @@ const FreeContent = lazy(() => import("./pages/FreeContent"));
 const Contact = lazy(() => import("./pages/Contact"));
 const TermsOfService = lazy(() => import("./pages/TermsOfService"));
 const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
+const RefundPolicy = lazy(() => import("./pages/RefundPolicy"));
+const FAQ = lazy(() => import("./pages/FAQ"));
 
 // Minimal fallback spinner
 function PageLoader() {
@@ -200,8 +205,23 @@ function Router() {
       <Route path={"/admin/testimonials"}>
         <AdminRoute>
           <AdminTestimonials />
+        </AdminRoute>      </Route>
+      <Route path={"/admin/reports/subscribers"}>
+        <AdminRoute>
+          <AdminSubscribersReport />
         </AdminRoute>
-      </Route>      <Route path={"/activate-key"} component={ActivateKey} />
+      </Route>
+      <Route path={"/admin/reports/revenue"}>
+        <AdminRoute>
+          <AdminRevenueReport />
+        </AdminRoute>
+      </Route>
+      <Route path={"/admin/reports/expiry"}>
+        <AdminRoute>
+          <AdminExpiryReport />
+        </AdminRoute>
+      </Route>
+      <Route path={"/activate-key"} component={ActivateKey} />
       <Route path={"/course/:id"} component={CourseWatch} />
       <Route path={"/lexai"}>
         <ProtectedRoute>
@@ -231,6 +251,8 @@ function Router() {
       <Route path="/contact" component={Contact} />
       <Route path="/terms" component={TermsOfService} />
       <Route path="/privacy" component={PrivacyPolicy} />
+      <Route path="/refund-policy" component={RefundPolicy} />
+      <Route path="/faq" component={FAQ} />
       <Route path="/orders">
         <ProtectedRoute>
           <MyOrders />

@@ -10,6 +10,8 @@ export const users = sqliteTable("users", {
   passwordHash: text("passwordHash", { length: 255 }).notNull(),
   name: text("name"),
   phone: text("phone", { length: 20 }),
+  city: text("city", { length: 100 }),
+  country: text("country", { length: 100 }),
   canPublishRecommendations: integer("canPublishRecommendations", { mode: 'boolean' }).default(false).notNull(),
   emailVerified: integer("emailVerified", { mode: 'boolean' }).default(false).notNull(),
   createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
