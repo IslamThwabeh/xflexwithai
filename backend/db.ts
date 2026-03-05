@@ -1785,12 +1785,317 @@ export async function syncUserEntitlementsFromKeys(userId: number, email: string
       }
     }
   }
+
+  // Package keys -> ensure all package entitlements
+  const packageKeys = await getActivatedPackageKeysByEmail(normalizedEmail);
+  for (const key of packageKeys) {
+    if (!key.packageId) continue;
+    await fulfillPackageEntitlements(userId, key.packageId, key.id);
+  }
+}
+
+/** Get all activated package keys for a given email (used by sync) */
+async function getActivatedPackageKeysByEmail(email: string) {
+  const db = await getDb();
+  if (!db) return [];
+  return await db
+    .select()
+    .from(registrationKeys)
+    .where(
+      and(
+        sql`${registrationKeys.packageId} IS NOT NULL`,
+        sql`lower(${registrationKeys.email}) = ${email}`,
+        sql`${registrationKeys.activatedAt} is not null`,
+        eq(registrationKeys.isActive, true),
+        or(
+          sql`${registrationKeys.expiresAt} is null`,
+          sql`${registrationKeys.expiresAt} >= ${new Date().toISOString()}`
+        )
+      )
+    );
 }
 
 export async function deleteRegistrationKey(id: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db.delete(registrationKeys).where(eq(registrationKeys.id, id));
+}
+
+// ============================================================================
+// Package Key Management (consolidated key system)
+// ============================================================================
+
+export async function getAllPackageKeys() {
+  const db = await getDb();
+  if (!db) return [];
+  return await db
+    .select()
+    .from(registrationKeys)
+    .where(sql`${registrationKeys.packageId} IS NOT NULL`)
+    .orderBy(desc(registrationKeys.createdAt));
+}
+
+export async function getPackageKeyStatistics() {
+  const db = await getDb();
+  if (!db) return { total: 0, activated: 0, unused: 0, deactivated: 0, activationRate: 0 };
+
+  const filter = sql`${registrationKeys.packageId} IS NOT NULL`;
+
+  const [totalResult] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(registrationKeys)
+    .where(filter);
+  const [activatedResult] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(registrationKeys)
+    .where(and(filter, sql`${registrationKeys.activatedAt} is not null`));
+  const [unusedResult] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(registrationKeys)
+    .where(and(filter, eq(registrationKeys.isActive, true), sql`${registrationKeys.activatedAt} is null`));
+  const [deactivatedResult] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(registrationKeys)
+    .where(and(filter, eq(registrationKeys.isActive, false)));
+
+  const total = Number(totalResult?.count ?? 0);
+  const activated = Number(activatedResult?.count ?? 0);
+  return {
+    total,
+    activated,
+    unused: Number(unusedResult?.count ?? 0),
+    deactivated: Number(deactivatedResult?.count ?? 0),
+    activationRate: total > 0 ? Math.round((activated / total) * 100) : 0,
+  };
+}
+
+export async function createPackageKey(input: {
+  packageId: number;
+  createdBy: number;
+  email?: string | null;
+  notes?: string;
+  price?: number;
+  currency?: string;
+  expiresAt?: string | Date | null;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const keyCode = generateRegistrationKeyCode();
+  const values: InsertRegistrationKey = {
+    keyCode,
+    courseId: 0, // not used for package keys
+    packageId: input.packageId,
+    createdBy: input.createdBy,
+    email: input.email ?? null,
+    notes: input.notes ?? null,
+    price: input.price ?? 0,
+    currency: input.currency ?? "USD",
+    createdAt: new Date().toISOString(),
+    expiresAt: input.expiresAt ? new Date(input.expiresAt).toISOString() : null,
+  };
+  const result = await db.insert(registrationKeys).values(values).returning({ id: registrationKeys.id });
+  return { id: result[0].id, keyCode };
+}
+
+export async function createBulkPackageKeys(input: {
+  packageId: number;
+  createdBy: number;
+  quantity: number;
+  notes?: string;
+  price?: number;
+  currency?: string;
+  expiresAt?: string | Date | null;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const values: InsertRegistrationKey[] = Array.from({ length: input.quantity }, () => ({
+    keyCode: generateRegistrationKeyCode(),
+    courseId: 0,
+    packageId: input.packageId,
+    createdBy: input.createdBy,
+    createdAt: new Date().toISOString(),
+    notes: input.notes ?? null,
+    price: input.price ?? 0,
+    currency: input.currency ?? "USD",
+    expiresAt: input.expiresAt ? new Date(input.expiresAt).toISOString() : null,
+  }));
+
+  await db.insert(registrationKeys).values(values);
+  return values;
+}
+
+/**
+ * Activate a package key: validate, mark as activated, and grant all package entitlements.
+ * This grants: course enrollments + LexAI subscription + Recommendation subscription
+ * based on the package's includesLexai / includesRecommendations flags.
+ */
+export async function activatePackageKey(keyCode: string, email: string, userId?: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const normalizedEmail = email.trim().toLowerCase();
+
+  // 1. Validate key
+  const [key] = await db
+    .select()
+    .from(registrationKeys)
+    .where(eq(registrationKeys.keyCode, keyCode))
+    .limit(1);
+
+  if (!key) return { success: false, message: "Invalid activation key" };
+  if (!key.packageId) return { success: false, message: "This is not a package key" };
+  if (!key.isActive) return { success: false, message: "This key has been deactivated" };
+
+  if (key.activatedAt) {
+    const keyEmail = (key.email ?? "").trim().toLowerCase();
+    if (keyEmail === normalizedEmail) {
+      return { success: true, message: "Key already activated for this email", key, alreadyActivated: true };
+    }
+    return { success: false, message: "This key has already been activated" };
+  }
+
+  if (key.email && key.email.trim().toLowerCase() !== normalizedEmail) {
+    return { success: false, message: "This key is assigned to another email" };
+  }
+
+  if (key.expiresAt) {
+    const expiresAt = new Date(key.expiresAt);
+    if (!Number.isNaN(expiresAt.getTime()) && expiresAt.getTime() < Date.now()) {
+      return { success: false, message: "This key has expired" };
+    }
+  }
+
+  // 2. Mark key as activated
+  await db
+    .update(registrationKeys)
+    .set({ email: normalizedEmail, activatedAt: new Date().toISOString(), isActive: true })
+    .where(eq(registrationKeys.id, key.id));
+
+  // 3. Fetch the package to know what entitlements to grant
+  const pkg = await getPackageById(key.packageId);
+  if (!pkg) return { success: false, message: "Package not found" };
+
+  // 4. Resolve the user ID
+  let resolvedUserId = userId;
+  if (!resolvedUserId) {
+    const user = await getUserByEmail(normalizedEmail);
+    resolvedUserId = user?.id;
+  }
+
+  if (resolvedUserId) {
+    await fulfillPackageEntitlements(resolvedUserId, key.packageId, key.id);
+  }
+
+  const [updated] = await db.select().from(registrationKeys).where(eq(registrationKeys.id, key.id)).limit(1);
+  return {
+    success: true,
+    message: `Package "${pkg.nameEn || pkg.nameAr}" activated successfully`,
+    key: updated ?? key,
+    packageName: pkg.nameEn || pkg.nameAr,
+  };
+}
+
+/**
+ * Grant all entitlements for a package: enrollments, LexAI, recommendations.
+ * Used by both key activation and order completion.
+ */
+export async function fulfillPackageEntitlements(
+  userId: number,
+  packageId: number,
+  registrationKeyId?: number,
+) {
+  const pkg = await getPackageById(packageId);
+  if (!pkg) return;
+
+  // Create package subscription
+  await createPackageSubscription({
+    userId,
+    packageId,
+    orderId: 0, // no order for key-based activation
+    isActive: 1,
+    autoRenew: 0,
+  });
+
+  // Enroll in all package courses
+  const pkgCourses = await getPackageCourses(packageId);
+  for (const pc of pkgCourses) {
+    try {
+      const existing = await getEnrollmentByUserAndCourse(userId, pc.courseId);
+      if (!existing) {
+        await createEnrollment({
+          userId,
+          courseId: pc.courseId,
+          paymentStatus: "completed",
+          isSubscriptionActive: true,
+          registrationKeyId: registrationKeyId ?? null,
+          activatedViaKey: !!registrationKeyId,
+        });
+      }
+    } catch (e) {
+      // ignore duplicate enrollment
+    }
+  }
+
+  // If package includes LexAI, grant subscription
+  if (pkg.includesLexai) {
+    const now = new Date();
+    // Comprehensive package: LexAI is included for 30 days (renewable)
+    const endDate = new Date(now);
+    endDate.setDate(endDate.getDate() + (pkg.renewalPeriodDays || 30));
+
+    const current = await getActiveLexaiSubscription(userId);
+    if (current) {
+      await updateLexaiSubscription(current.id, {
+        isActive: true,
+        endDate: endDate.toISOString(),
+        paymentStatus: "completed",
+        paymentAmount: 0,
+        paymentCurrency: "USD",
+        messagesLimit: 100,
+      });
+    } else {
+      await createLexaiSubscription({
+        userId,
+        isActive: true,
+        startDate: now.toISOString(),
+        endDate: endDate.toISOString(),
+        paymentStatus: "completed",
+        paymentAmount: 0,
+        paymentCurrency: "USD",
+        messagesUsed: 0,
+        messagesLimit: 100,
+      });
+    }
+  }
+
+  // If package includes recommendations, grant subscription
+  if (pkg.includesRecommendations) {
+    const now = new Date();
+    const endDate = new Date(now);
+    endDate.setDate(endDate.getDate() + (pkg.renewalPeriodDays || 30));
+
+    const current = await getActiveRecommendationSubscription(userId);
+    if (current) {
+      await updateRecommendationSubscription(current.id, {
+        isActive: true,
+        endDate: endDate.toISOString(),
+        paymentStatus: "completed",
+        paymentAmount: 0,
+        paymentCurrency: "USD",
+      });
+    } else {
+      await createRecommendationSubscription({
+        userId,
+        isActive: true,
+        startDate: now.toISOString(),
+        endDate: endDate.toISOString(),
+        paymentStatus: "completed",
+        paymentAmount: 0,
+        paymentCurrency: "USD",
+      });
+    }
+  }
 }
 
 // ============================================================================

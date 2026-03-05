@@ -68,7 +68,7 @@ const menuSectionsDef: MenuSection[] = [
     items: [
       { icon: BookOpen, labelKey: "admin.sidebar.courses", path: "/admin/courses" },
       { icon: ClipboardCheck, labelKey: "admin.sidebar.quizzes", path: "/admin/quizzes" },
-      { icon: Key, labelKey: "admin.sidebar.courseKeys", path: "/admin/keys" },
+      { icon: Key, labelKey: "admin.sidebar.activationKeys", path: "/admin/package-keys" },
       { icon: Package, labelKey: "admin.sidebar.packages", path: "/admin/packages" },
       { icon: ShoppingCart, labelKey: "admin.sidebar.orders", path: "/admin/orders" },
       { icon: CalendarDays, labelKey: "admin.sidebar.events", path: "/admin/events" },
@@ -82,7 +82,6 @@ const menuSectionsDef: MenuSection[] = [
     items: [
       { icon: MessageSquare, labelKey: "admin.sidebar.conversations", path: "/admin/lexai/conversations" },
       { icon: Users, labelKey: "admin.sidebar.subscriptions", path: "/admin/lexai/subscriptions" },
-      { icon: Key, labelKey: "admin.sidebar.lexaiKeys", path: "/admin/lexai/keys" },
     ]
   },
   {

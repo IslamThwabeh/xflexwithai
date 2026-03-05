@@ -41,6 +41,7 @@ const AdminTestimonials = lazy(() => import("./pages/AdminTestimonials"));
 const AdminSubscribersReport = lazy(() => import("./pages/AdminSubscribersReport"));
 const AdminRevenueReport = lazy(() => import("./pages/AdminRevenueReport"));
 const AdminExpiryReport = lazy(() => import("./pages/AdminExpiryReport"));
+const AdminPackageKeys = lazy(() => import("./pages/AdminPackageKeys"));
 
 // Lazy-loaded user pages
 const MyDashboard = lazy(() => import("./pages/MyDashboard"));
@@ -136,6 +137,11 @@ function Router() {
       <Route path={"/admin/keys"}>
         <AdminRoute>
           <AdminKeys />
+        </AdminRoute>
+      </Route>
+      <Route path={"/admin/package-keys"}>
+        <AdminRoute>
+          <AdminPackageKeys />
         </AdminRoute>
       </Route>
       <Route path={"/admin/analytics"}>

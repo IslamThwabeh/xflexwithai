@@ -99,10 +99,12 @@ const ensureLexaiAccess = async (ctx: { user: { id: number; email?: string | nul
     throw new TRPCError({ code: "FORBIDDEN", message: "No active LexAI subscription" });
   }
 
-  if (String(subscription.paymentStatus ?? "").toLowerCase() !== "key") {
+  // Accept both "key" (legacy key activation) and "completed" (package activation / order)
+  const validStatuses = ["key", "completed"];
+  if (!validStatuses.includes(String(subscription.paymentStatus ?? "").toLowerCase())) {
     throw new TRPCError({
       code: "FORBIDDEN",
-      message: "LexAI requires an activated registration key",
+      message: "LexAI requires an active subscription",
     });
   }
 
@@ -2790,23 +2792,8 @@ export const appRouter = router({
                 : order.userId;
 
               if (targetUserId) {
-                await db.createPackageSubscription({
-                  userId: targetUserId,
-                  packageId: item.packageId,
-                  orderId: order.id,
-                  isActive: 1,
-                  autoRenew: 0,
-                });
-
-                // Also enroll in all package courses
-                const packageCourses = await db.getPackageCourses(item.packageId);
-                for (const pc of packageCourses) {
-                  try {
-                    await db.createEnrollment(targetUserId, pc.courseId);
-                  } catch (e) {
-                    // ignore duplicate enrollment
-                  }
-                }
+                // Use fulfillPackageEntitlements which grants courses + LexAI + Recommendations
+                await db.fulfillPackageEntitlements(targetUserId, item.packageId);
               }
             }
           }
@@ -3229,6 +3216,104 @@ export const appRouter = router({
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {
         return db.deleteArticle(input.id);
+      }),
+  }),
+
+  // ============================================================================
+  // Package Keys (consolidated key system — admin + key_manager role)
+  // ============================================================================
+  packageKeys: router({
+    list: adminOrRoleProcedure(['key_manager']).query(async () => {
+      const keys = await db.getAllPackageKeys();
+      // Enrich with package info
+      const allPackages = await db.getAllPackages();
+      const pkgMap = new Map(allPackages.map(p => [p.id, p]));
+      return keys.map(k => ({
+        ...k,
+        packageName: k.packageId ? (pkgMap.get(k.packageId)?.nameEn || pkgMap.get(k.packageId)?.nameAr || 'Unknown') : null,
+        packageNameAr: k.packageId ? (pkgMap.get(k.packageId)?.nameAr || null) : null,
+      }));
+    }),
+
+    stats: adminOrRoleProcedure(['key_manager']).query(async () => {
+      return db.getPackageKeyStatistics();
+    }),
+
+    generateKey: adminOrRoleProcedure(['key_manager'])
+      .input(z.object({
+        packageId: z.number(),
+        email: z.string().email().optional(),
+        notes: z.string().optional(),
+        price: z.number().optional(),
+        currency: z.string().optional(),
+        expiresAt: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const admin = ctx.admin ?? ctx.user;
+        const result = await db.createPackageKey({
+          packageId: input.packageId,
+          createdBy: admin?.id ?? 0,
+          email: input.email,
+          notes: input.notes,
+          price: input.price,
+          currency: input.currency,
+          expiresAt: input.expiresAt,
+        });
+        return result;
+      }),
+
+    generateBulkKeys: adminOrRoleProcedure(['key_manager'])
+      .input(z.object({
+        packageId: z.number(),
+        quantity: z.number().min(1).max(100),
+        notes: z.string().optional(),
+        price: z.number().optional(),
+        currency: z.string().optional(),
+        expiresAt: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const admin = ctx.admin ?? ctx.user;
+        const keys = await db.createBulkPackageKeys({
+          packageId: input.packageId,
+          createdBy: admin?.id ?? 0,
+          quantity: input.quantity,
+          notes: input.notes,
+          price: input.price,
+          currency: input.currency,
+          expiresAt: input.expiresAt,
+        });
+        return { count: keys.length };
+      }),
+
+    deactivateKey: adminOrRoleProcedure(['key_manager'])
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        return db.deactivateRegistrationKey(input.id);
+      }),
+
+    // Public: get key info (used by activation page)
+    getKeyInfo: publicProcedure
+      .input(z.object({ keyCode: z.string() }))
+      .query(async ({ input }) => {
+        const key = await db.getRegistrationKeyByCode(input.keyCode);
+        if (!key) return { exists: false, keyType: null };
+        return {
+          exists: true,
+          isActive: key.isActive,
+          activatedAt: key.activatedAt,
+          keyType: key.packageId ? 'package' as const : (key.courseId > 0 ? 'course' as const : key.courseId === 0 ? 'lexai' as const : 'recommendation' as const),
+          packageId: key.packageId,
+        };
+      }),
+
+    // Public: activate a package key (requires email; will resolve user)
+    activateKey: publicProcedure
+      .input(z.object({
+        keyCode: z.string().min(1),
+        email: z.string().email(),
+      }))
+      .mutation(async ({ input }) => {
+        return db.activatePackageKey(input.keyCode, input.email);
       }),
   }),
 

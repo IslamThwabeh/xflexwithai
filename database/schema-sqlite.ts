@@ -135,13 +135,16 @@ export type Enrollment = typeof enrollments.$inferSelect;
 export type InsertEnrollment = typeof enrollments.$inferInsert;
 
 /**
- * Registration Keys table - stores activation keys for course access control
+ * Registration Keys table - stores activation keys for package/course access control
+ * Legacy: courseId > 0 = course key, 0 = lexai, -1 = recommendation
+ * New: packageId != null = package key (grants full package entitlements)
  */
 export const registrationKeys = sqliteTable("registrationKeys", {
   id: int("id").primaryKey({ autoIncrement: true }),
   keyCode: text("keyCode", { length: 255 }).notNull().unique(),
   email: text("email", { length: 320 }),
   courseId: integer("courseId").notNull(),
+  packageId: integer("packageId"), // NEW: links to packages.id — when set, this is a package key
   activatedAt: text("activatedAt"),
   createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
   createdBy: integer("createdBy").notNull(),
