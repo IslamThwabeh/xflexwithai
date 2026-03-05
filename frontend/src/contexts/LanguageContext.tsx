@@ -349,6 +349,8 @@ const translations = {
     'admin.sidebar.analytics': 'Analytics',
     'admin.sidebar.settings': 'Settings',
     'admin.sidebar.signOut': 'Sign Out',
+    'admin.sidebar.coupons': 'Coupons',
+    'admin.sidebar.testimonials': 'Testimonials',
 
     // Admin Quiz Management
     'admin.quizzes.title': 'Quiz Management',
@@ -1331,6 +1333,8 @@ const translations = {
     'admin.sidebar.analytics': 'التحليلات',
     'admin.sidebar.settings': 'الإعدادات',
     'admin.sidebar.signOut': 'تسجيل الخروج',
+    'admin.sidebar.coupons': 'الكوبونات',
+    'admin.sidebar.testimonials': 'الشهادات',
 
     // Admin Quiz Management
     'admin.quizzes.title': 'إدارة الاختبارات',

@@ -36,7 +36,10 @@ import {
   packageSubscriptions, PackageSubscription, InsertPackageSubscription,
   // Events & Articles imports
   events, Event, InsertEvent,
-  articles, Article, InsertArticle
+  articles, Article, InsertArticle,
+  // Coupons & Testimonials
+  coupons, Coupon, InsertCoupon,
+  testimonials, Testimonial, InsertTestimonial
 } from "../database/schema-sqlite.ts";
 import { ENV } from './_core/env';
 import { logger } from './_core/logger';
@@ -821,6 +824,10 @@ export async function getDashboardStats() {
       totalCourses: 0,
       totalEnrollments: 0,
       activeEnrollments: 0,
+      totalOrders: 0,
+      pendingOrders: 0,
+      completedOrders: 0,
+      totalRevenue: 0,
     };
   }
 
@@ -832,11 +839,21 @@ export async function getDashboardStats() {
     .from(enrollments)
     .where(eq(enrollments.isSubscriptionActive, true));
 
+  // Order stats
+  const [totalOrdersResult] = await db.select({ count: sql<number>`count(*)` }).from(orders);
+  const [pendingOrdersResult] = await db.select({ count: sql<number>`count(*)` }).from(orders).where(eq(orders.status, 'pending'));
+  const [completedOrdersResult] = await db.select({ count: sql<number>`count(*)` }).from(orders).where(eq(orders.status, 'completed'));
+  const [revenueResult] = await db.select({ total: sql<number>`COALESCE(SUM(${orders.totalAmount}), 0)` }).from(orders).where(eq(orders.status, 'completed'));
+
   return {
     totalUsers: Number(totalUsersResult?.count ?? 0),
     totalCourses: Number(totalCoursesResult?.count ?? 0),
     totalEnrollments: Number(totalEnrollmentsResult?.count ?? 0),
     activeEnrollments: Number(activeEnrollmentsResult?.count ?? 0),
+    totalOrders: Number(totalOrdersResult?.count ?? 0),
+    pendingOrders: Number(pendingOrdersResult?.count ?? 0),
+    completedOrders: Number(completedOrdersResult?.count ?? 0),
+    totalRevenue: Number(revenueResult?.total ?? 0),
   };
 }
 
@@ -2943,3 +2960,106 @@ export async function deleteArticle(id: number): Promise<void> {
   if (!db) return;
   await db.delete(articles).where(eq(articles.id, id));
 }
+
+// ============================================================================
+// Coupons / Discount Codes
+// ============================================================================
+
+export async function getAllCoupons(): Promise<Coupon[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(coupons).orderBy(desc(coupons.createdAt));
+}
+
+export async function getCouponByCode(code: string): Promise<Coupon | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const [coupon] = await db.select().from(coupons)
+    .where(eq(coupons.code, code.toUpperCase().trim()))
+    .limit(1);
+  return coupon ?? null;
+}
+
+export async function getCouponById(id: number): Promise<Coupon | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const [coupon] = await db.select().from(coupons).where(eq(coupons.id, id)).limit(1);
+  return coupon ?? null;
+}
+
+export async function createCoupon(input: Omit<InsertCoupon, 'id'>): Promise<Coupon | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const now = new Date().toISOString();
+  const [coupon] = await db.insert(coupons).values({ ...input, code: input.code.toUpperCase().trim(), createdAt: now, updatedAt: now }).returning();
+  return coupon ?? null;
+}
+
+export async function updateCoupon(id: number, input: Partial<InsertCoupon>): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(coupons).set({ ...input, updatedAt: new Date().toISOString() }).where(eq(coupons.id, id));
+}
+
+export async function deleteCoupon(id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(coupons).where(eq(coupons.id, id));
+}
+
+export async function incrementCouponUsage(id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(coupons).set({ usedCount: sql`${coupons.usedCount} + 1`, updatedAt: new Date().toISOString() }).where(eq(coupons.id, id));
+}
+
+export function validateCoupon(coupon: Coupon, subtotal: number, packageId?: number): { valid: boolean; error?: string } {
+  if (!coupon.isActive) return { valid: false, error: 'Coupon is inactive' };
+  if (coupon.maxUses && coupon.usedCount >= coupon.maxUses) return { valid: false, error: 'Coupon usage limit reached' };
+  if (coupon.minOrderAmount && subtotal < coupon.minOrderAmount) return { valid: false, error: 'Order total below minimum' };
+  if (coupon.validFrom && new Date() < new Date(coupon.validFrom)) return { valid: false, error: 'Coupon not yet active' };
+  if (coupon.validUntil && new Date() > new Date(coupon.validUntil)) return { valid: false, error: 'Coupon expired' };
+  if (coupon.packageId && packageId && coupon.packageId !== packageId) return { valid: false, error: 'Coupon not valid for this package' };
+  return { valid: true };
+}
+
+export function calculateDiscount(coupon: Coupon, subtotal: number): number {
+  if (coupon.discountType === 'percentage') {
+    return Math.round(subtotal * coupon.discountValue / 100);
+  }
+  // fixed amount (in cents)
+  return Math.min(coupon.discountValue, subtotal);
+}
+
+// ============================================================================
+// Testimonials
+// ============================================================================
+
+export async function getAllTestimonials(publishedOnly = false): Promise<Testimonial[]> {
+  const db = await getDb();
+  if (!db) return [];
+  if (publishedOnly) {
+    return db.select().from(testimonials).where(eq(testimonials.isPublished, true)).orderBy(testimonials.displayOrder);
+  }
+  return db.select().from(testimonials).orderBy(testimonials.displayOrder);
+}
+
+export async function createTestimonial(input: Omit<InsertTestimonial, 'id'>): Promise<Testimonial | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const [t] = await db.insert(testimonials).values({ ...input, createdAt: new Date().toISOString() }).returning();
+  return t ?? null;
+}
+
+export async function updateTestimonial(id: number, input: Partial<InsertTestimonial>): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(testimonials).set(input).where(eq(testimonials.id, id));
+}
+
+export async function deleteTestimonial(id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(testimonials).where(eq(testimonials.id, id));
+}
+

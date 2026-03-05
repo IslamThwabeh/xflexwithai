@@ -4,7 +4,7 @@ import {
   BookOpen, Bot, Signal, Globe, LogIn, Send, CheckCircle, Loader2,
   ChevronRight, Star, GraduationCap, BarChart3, Brain, Lightbulb,
   TrendingUp, Shield, FileText, Play, Calendar, Newspaper,
-  Instagram, Facebook, Phone, ArrowUp, X, MessageCircle
+  Instagram, Facebook, Phone, ArrowUp, X, MessageCircle, Quote
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -40,6 +40,7 @@ export default function Home() {
   // Fetch published events and articles
   const { data: events } = trpc.events.list.useQuery();
   const { data: articles } = trpc.articles.list.useQuery();
+  const { data: testimonials } = trpc.testimonials.list.useQuery();
 
   const handleContactSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -570,6 +571,53 @@ export default function Home() {
         </div>
       </section>
 
+      {/* ======== TESTIMONIALS SECTION ======== */}
+      {testimonials && testimonials.length > 0 && (
+        <section className="py-20 bg-white">
+          <div className="container mx-auto px-4">
+            <div className="text-center mb-14">
+              <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-3">
+                {language === 'ar' ? 'ماذا يقول طلابنا' : 'What Our Students Say'}
+              </h2>
+              <p className="text-gray-500 text-lg">
+                {language === 'ar' ? 'آراء حقيقية من متداولين استفادوا من الأكاديمية' : 'Real feedback from traders who benefited from the academy'}
+              </p>
+            </div>
+
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto">
+              {testimonials.slice(0, 6).map((t) => (
+                <div key={t.id} className="bg-gray-50 rounded-2xl p-6 relative">
+                  <Quote className="w-8 h-8 text-blue-100 absolute top-4 end-4" />
+                  <div className="flex gap-0.5 mb-3">
+                    {[1, 2, 3, 4, 5].map((n) => (
+                      <Star key={n} className={`w-4 h-4 ${n <= t.rating ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'}`} />
+                    ))}
+                  </div>
+                  <p className="text-sm text-gray-700 leading-relaxed mb-4">
+                    "{isRTL ? t.textAr : t.textEn}"
+                  </p>
+                  <div className="flex items-center gap-3 border-t border-gray-200 pt-3">
+                    {t.avatarUrl ? (
+                      <img src={t.avatarUrl} alt="" className="w-9 h-9 rounded-full object-cover" />
+                    ) : (
+                      <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-xs">
+                        {(isRTL ? t.nameAr : t.nameEn).charAt(0)}
+                      </div>
+                    )}
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">{isRTL ? t.nameAr : t.nameEn}</p>
+                      {(t.titleAr || t.titleEn) && (
+                        <p className="text-xs text-gray-500">{isRTL ? t.titleAr : t.titleEn}</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* ======== ABOUT SECTION ======== */}
       <section className="py-20 bg-gradient-to-b from-gray-50 to-white">
         <div className="container mx-auto px-4 max-w-3xl text-center">
@@ -679,6 +727,9 @@ export default function Home() {
               <ul className="space-y-2 text-sm">
                 <li><button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="hover:text-white transition">{t('home.footer.home')}</button></li>
                 <li><button onClick={() => scrollToSection('packages')} className="hover:text-white transition">{t('home.footer.packages')}</button></li>
+                <li><Link href="/contact"><span className="hover:text-white transition cursor-pointer">{language === 'ar' ? 'تواصل معنا' : 'Contact Us'}</span></Link></li>
+                <li><Link href="/terms"><span className="hover:text-white transition cursor-pointer">{language === 'ar' ? 'شروط الخدمة' : 'Terms of Service'}</span></Link></li>
+                <li><Link href="/privacy"><span className="hover:text-white transition cursor-pointer">{language === 'ar' ? 'سياسة الخصوصية' : 'Privacy Policy'}</span></Link></li>
                 <li><Link href="/auth"><span className="hover:text-white transition cursor-pointer">{t('home.heroCtaLogin')}</span></Link></li>
               </ul>
             </div>

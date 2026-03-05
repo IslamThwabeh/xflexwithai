@@ -41,6 +41,8 @@ import {
   CalendarDays,
   FileText,
   ClipboardCheck,
+  Tag,
+  MessageSquareQuote,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -68,6 +70,8 @@ const menuSectionsDef: MenuSection[] = [
       { icon: ShoppingCart, labelKey: "admin.sidebar.orders", path: "/admin/orders" },
       { icon: CalendarDays, labelKey: "admin.sidebar.events", path: "/admin/events" },
       { icon: FileText, labelKey: "admin.sidebar.articles", path: "/admin/articles" },
+      { icon: Tag, labelKey: "admin.sidebar.coupons", path: "/admin/coupons" },
+      { icon: MessageSquareQuote, labelKey: "admin.sidebar.testimonials", path: "/admin/testimonials" },
     ]
   },
   {

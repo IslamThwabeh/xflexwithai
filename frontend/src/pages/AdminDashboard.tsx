@@ -2,7 +2,7 @@ import DashboardLayout from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { trpc } from "@/lib/trpc";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { Users, BookOpen, GraduationCap, TrendingUp, Key, Library } from "lucide-react";
+import { Users, BookOpen, GraduationCap, TrendingUp, Key, Library, ShoppingCart, DollarSign, Clock, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useLocation } from "wouter";
 import { formatDistanceToNow } from "date-fns";
@@ -16,7 +16,8 @@ function formatSafeDistanceToNow(value: string | number | Date | null | undefine
 
 export default function AdminDashboard() {
   const [, setLocation] = useLocation();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const isRtl = language === 'ar';
   const { data: stats, isLoading: statsLoading } = trpc.dashboard.stats.useQuery();
   const { data: recentEnrollments, isLoading: enrollmentsLoading } = trpc.dashboard.recentEnrollments.useQuery();
 
@@ -76,7 +77,7 @@ export default function AdminDashboard() {
           </Card>
         </div>
 
-        {/* Statistics Cards */}
+        {/* Statistics Cards - Row 1: Core */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -122,6 +123,57 @@ export default function AdminDashboard() {
             <CardContent>
               <div className="text-2xl font-bold">
                 {statsLoading ? "..." : stats?.activeEnrollments || 0}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Statistics Cards - Row 2: Orders & Revenue */}
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">{isRtl ? 'إجمالي الطلبات' : 'Total Orders'}</CardTitle>
+              <ShoppingCart className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {statsLoading ? "..." : stats?.totalOrders || 0}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">{isRtl ? 'طلبات معلقة' : 'Pending Orders'}</CardTitle>
+              <Clock className="h-4 w-4 text-amber-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-amber-600">
+                {statsLoading ? "..." : stats?.pendingOrders || 0}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">{isRtl ? 'طلبات مكتملة' : 'Completed Orders'}</CardTitle>
+              <CheckCircle2 className="h-4 w-4 text-green-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-600">
+                {statsLoading ? "..." : stats?.completedOrders || 0}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-green-50 to-emerald-50 border-green-200">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-green-800">{t('admin.totalRevenue')}</CardTitle>
+              <DollarSign className="h-4 w-4 text-green-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-700">
+                ${statsLoading ? "..." : ((stats?.totalRevenue || 0) / 100).toFixed(2)}
               </div>
             </CardContent>
           </Card>

@@ -894,3 +894,48 @@ export const articlesRelations = relations(articles, ({ one }) => ({
     references: [admins.id],
   }),
 }));
+
+// ============================================================================
+// Coupons / Discount Codes
+// ============================================================================
+
+export const coupons = sqliteTable("coupons", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  code: text("code", { length: 50 }).notNull().unique(),
+  discountType: text("discount_type", { length: 20 }).notNull(), // 'percentage' | 'fixed'
+  discountValue: integer("discount_value").notNull(), // percentage (0-100) or fixed amount in cents
+  maxUses: integer("max_uses"), // null = unlimited
+  usedCount: integer("used_count").notNull().default(0),
+  minOrderAmount: integer("min_order_amount"), // in cents, null = no minimum
+  validFrom: text("valid_from"),
+  validUntil: text("valid_until"),
+  isActive: integer("is_active", { mode: 'boolean' }).notNull().default(true),
+  packageId: integer("package_id"), // null = applies to all packages
+  createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
+  updatedAt: text("updated_at").default("CURRENT_TIMESTAMP").notNull(),
+});
+
+export type Coupon = typeof coupons.$inferSelect;
+export type InsertCoupon = typeof coupons.$inferInsert;
+
+// ============================================================================
+// Testimonials
+// ============================================================================
+
+export const testimonials = sqliteTable("testimonials", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  nameEn: text("name_en").notNull(),
+  nameAr: text("name_ar").notNull(),
+  titleEn: text("title_en"), // e.g. "Forex Trader"
+  titleAr: text("title_ar"),
+  textEn: text("text_en").notNull(),
+  textAr: text("text_ar").notNull(),
+  avatarUrl: text("avatar_url"),
+  rating: integer("rating").notNull().default(5), // 1-5 stars
+  displayOrder: integer("display_order").notNull().default(0),
+  isPublished: integer("is_published", { mode: 'boolean' }).notNull().default(true),
+  createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
+});
+
+export type Testimonial = typeof testimonials.$inferSelect;
+export type InsertTestimonial = typeof testimonials.$inferInsert;

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useParams, useLocation } from 'wouter';
-import { ArrowLeft, CreditCard, Building2, ShieldCheck, Gift, Loader2 } from 'lucide-react';
+import { ArrowLeft, CreditCard, Building2, ShieldCheck, Gift, Loader2, Tag, X, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -21,6 +21,17 @@ export default function Checkout() {
   const [giftEmail, setGiftEmail] = useState('');
   const [giftMessage, setGiftMessage] = useState('');
   const [notes, setNotes] = useState('');
+
+  // Coupon state
+  const [couponCode, setCouponCode] = useState('');
+  const [appliedCoupon, setAppliedCoupon] = useState<{ couponId: number; code: string; discount: number; discountType: string; discountValue: number } | null>(null);
+  const [couponError, setCouponError] = useState('');
+  const [couponLoading, setCouponLoading] = useState(false);
+
+  const validateCoupon = trpc.coupons.validate.useQuery(
+    { code: couponCode.trim(), subtotal: pkg?.price || 0, packageId: pkg?.id },
+    { enabled: false }
+  );
 
   const createOrder = trpc.orders.create.useMutation({
     onSuccess: (data) => {
@@ -48,9 +59,35 @@ export default function Checkout() {
   }
 
   const price = pkg.price / 100;
+  const discountAmount = appliedCoupon ? appliedCoupon.discount / 100 : 0;
+  const afterDiscount = price - discountAmount;
   const vatRate = 16;
-  const vat = price * (vatRate / 100);
-  const total = price + vat;
+  const vat = afterDiscount * (vatRate / 100);
+  const total = afterDiscount + vat;
+
+  const handleApplyCoupon = async () => {
+    if (!couponCode.trim()) return;
+    setCouponError('');
+    setCouponLoading(true);
+    try {
+      const result = await validateCoupon.refetch();
+      if (result.data) {
+        setAppliedCoupon(result.data);
+        toast.success(isRtl ? 'تم تطبيق الكوبون!' : 'Coupon applied!');
+      }
+    } catch (err: any) {
+      setCouponError(err.message || (isRtl ? 'كوبون غير صالح' : 'Invalid coupon'));
+      setAppliedCoupon(null);
+    } finally {
+      setCouponLoading(false);
+    }
+  };
+
+  const removeCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponCode('');
+    setCouponError('');
+  };
 
   const handleSubmit = () => {
     createOrder.mutate({
@@ -60,6 +97,7 @@ export default function Checkout() {
       giftEmail: isGift ? giftEmail : undefined,
       giftMessage: isGift ? giftMessage : undefined,
       notes: notes || undefined,
+      couponCode: appliedCoupon?.code || undefined,
     });
   };
 
@@ -138,6 +176,42 @@ export default function Checkout() {
               )}
             </div>
 
+            {/* Coupon Code */}
+            <div className="bg-white border rounded-2xl p-6">
+              <div className="flex items-center gap-2 mb-3">
+                <Tag className="w-5 h-5 text-blue-500" />
+                <span className="font-medium">{isRtl ? 'كوبون خصم' : 'Discount Code'}</span>
+              </div>
+              {appliedCoupon ? (
+                <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-xl p-3">
+                  <div className="flex items-center gap-2 text-green-700">
+                    <CheckCircle className="w-4 h-4" />
+                    <span className="font-medium text-sm">{appliedCoupon.code}</span>
+                    <span className="text-xs">
+                      ({appliedCoupon.discountType === 'percentage' ? `${appliedCoupon.discountValue}%` : `$${(appliedCoupon.discountValue / 100).toFixed(2)}`} {isRtl ? 'خصم' : 'off'})
+                    </span>
+                  </div>
+                  <button onClick={removeCoupon} className="text-gray-400 hover:text-red-500"><X className="w-4 h-4" /></button>
+                </div>
+              ) : (
+                <div>
+                  <div className="flex gap-2">
+                    <Input
+                      value={couponCode}
+                      onChange={(e) => { setCouponCode(e.target.value.toUpperCase()); setCouponError(''); }}
+                      placeholder={isRtl ? 'أدخل كود الخصم' : 'Enter coupon code'}
+                      dir="ltr"
+                      className="flex-1"
+                    />
+                    <Button onClick={handleApplyCoupon} disabled={couponLoading || !couponCode.trim()} variant="outline">
+                      {couponLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : (isRtl ? 'تطبيق' : 'Apply')}
+                    </Button>
+                  </div>
+                  {couponError && <p className="text-xs text-red-500 mt-1">{couponError}</p>}
+                </div>
+              )}
+            </div>
+
             {/* Notes */}
             <div className="bg-white border rounded-2xl p-6">
               <Label>{isRtl ? 'ملاحظات (اختياري)' : 'Notes (optional)'}</Label>
@@ -165,6 +239,12 @@ export default function Checkout() {
                   <span className="text-gray-500">{isRtl ? 'السعر' : 'Price'}</span>
                   <span>${price.toFixed(2)}</span>
                 </div>
+                {appliedCoupon && (
+                  <div className="flex justify-between text-green-600">
+                    <span>{isRtl ? 'خصم' : 'Discount'}</span>
+                    <span>-${discountAmount.toFixed(2)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span className="text-gray-500">VAT ({vatRate}%)</span>
                   <span>${vat.toFixed(2)}</span>
@@ -192,7 +272,8 @@ export default function Checkout() {
               </Button>
 
               <p className="text-xs text-gray-400 text-center mt-3">
-                {isRtl ? 'بالضغط على إتمام الطلب، أنت توافق على شروط الخدمة' : 'By placing your order, you agree to our Terms of Service'}
+                {isRtl ? 'بالضغط على إتمام الطلب، أنت توافق على ' : 'By placing your order, you agree to our '}
+                <Link href="/terms"><span className="underline cursor-pointer">{isRtl ? 'شروط الخدمة' : 'Terms of Service'}</span></Link>
               </p>
             </div>
           </div>

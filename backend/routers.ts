@@ -11,6 +11,7 @@ import { storagePutR2 } from "./storage-r2";
 import { analyzeLexai } from "./_core/lexai";
 import { hashPassword, verifyPassword, generateToken, isValidEmail, isValidPassword } from "./_core/auth";
 import { sendEmail, sendLoginCodeEmail } from "./_core/email";
+import { sendOrderConfirmationEmail, sendPaymentReceivedEmail, sendAdminNewOrderNotification } from "./_core/orderEmails";
 import { ENV } from "./_core/env";
 import { generateNumericCode, generateSaltBase64, normalizeEmail, sha256Base64 } from "./_core/otp";
 // FlexAI routes are registered in server/_core/index.ts
@@ -2616,6 +2617,7 @@ export const appRouter = router({
         giftEmail: z.string().optional(),
         giftMessage: z.string().optional(),
         notes: z.string().optional(),
+        couponCode: z.string().optional(),
       }))
       .mutation(async ({ input, ctx }) => {
         if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
@@ -2633,16 +2635,31 @@ export const appRouter = router({
           }
         }
 
+        // Apply coupon discount
+        let discountAmount = 0;
+        let couponId: number | null = null;
+        if (input.couponCode) {
+          const coupon = await db.getCouponByCode(input.couponCode);
+          if (coupon) {
+            const packageId = resolvedItems[0]?.packageId;
+            const validation = db.validateCoupon(coupon, subtotal, packageId);
+            if (validation.valid) {
+              discountAmount = db.calculateDiscount(coupon, subtotal);
+              couponId = coupon.id;
+            }
+          }
+        }
+
         const vatRate = 16;
-        const vatAmount = Math.round(subtotal * vatRate / 100);
-        const totalAmount = subtotal + vatAmount;
+        const vatAmount = Math.round((subtotal - discountAmount) * vatRate / 100);
+        const totalAmount = subtotal - discountAmount + vatAmount;
 
         // Create order
         const order = await db.createOrder({
           userId: ctx.user.id,
           status: 'pending',
           subtotal,
-          discountAmount: 0,
+          discountAmount,
           vatRate,
           vatAmount,
           totalAmount,
@@ -2656,7 +2673,13 @@ export const appRouter = router({
 
         if (!order) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create order' });
 
+        // Increment coupon usage
+        if (couponId) {
+          db.incrementCouponUsage(couponId).catch(() => {});
+        }
+
         // Add order items
+        let packageName = 'Package';
         for (const item of resolvedItems) {
           await db.addOrderItem({
             orderId: order.id,
@@ -2666,7 +2689,20 @@ export const appRouter = router({
             priceAtPurchase: item.price,
             currency: 'USD',
           });
+          if (item.packageId) {
+            const pkg = await db.getPackageById(item.packageId);
+            if (pkg) packageName = pkg.titleEn || pkg.titleAr || 'Package';
+          }
         }
+
+        // Send email notifications (non-blocking)
+        const totalUsd = totalAmount / 100;
+        sendOrderConfirmationEmail(ctx.user.email, {
+          orderId: order.id, packageName, totalUsd, paymentMethod: input.paymentMethod,
+        }).catch(() => {});
+        sendAdminNewOrderNotification({
+          orderId: order.id, userEmail: ctx.user.email, packageName, totalUsd, paymentMethod: input.paymentMethod,
+        }).catch(() => {});
 
         return order;
       }),
@@ -2738,8 +2774,11 @@ export const appRouter = router({
         // If status changed to 'completed', activate package subscriptions
         if (input.status === 'completed' && updated) {
           const items = await db.getOrderItems(input.orderId);
+          let packageName = 'Package';
           for (const item of items) {
             if (item.itemType === 'package' && item.packageId) {
+              const pkg = await db.getPackageById(item.packageId);
+              if (pkg) packageName = pkg.titleEn || pkg.titleAr || 'Package';
               const targetUserId = order.isGift && order.giftEmail
                 ? (await db.getUserByEmail(order.giftEmail))?.id
                 : order.userId;
@@ -2764,6 +2803,12 @@ export const appRouter = router({
                 }
               }
             }
+          }
+
+          // Send subscription activated email (non-blocking)
+          const userEmail = order.isGift && order.giftEmail ? order.giftEmail : (await db.getUserById(order.userId))?.email;
+          if (userEmail) {
+            sendPaymentReceivedEmail(userEmail, { orderId: order.id, packageName }).catch(() => {});
           }
         }
 
@@ -2983,6 +3028,127 @@ export const appRouter = router({
   // =============================================
   // ARTICLES (public + admin)
   // =============================================
+  // ====== Coupons / Discount Codes ======
+  coupons: router({
+    // Public: validate a coupon code
+    validate: publicProcedure
+      .input(z.object({ code: z.string().min(1), subtotal: z.number(), packageId: z.number().optional() }))
+      .query(async ({ input }) => {
+        const coupon = await db.getCouponByCode(input.code);
+        if (!coupon) throw new TRPCError({ code: 'NOT_FOUND', message: 'Coupon not found' });
+        const result = db.validateCoupon(coupon, input.subtotal, input.packageId);
+        if (!result.valid) throw new TRPCError({ code: 'BAD_REQUEST', message: result.error || 'Invalid coupon' });
+        const discount = db.calculateDiscount(coupon, input.subtotal);
+        return { couponId: coupon.id, code: coupon.code, discountType: coupon.discountType, discountValue: coupon.discountValue, discount };
+      }),
+
+    // Admin: list all coupons
+    adminList: adminProcedure.query(async () => {
+      return db.getAllCoupons();
+    }),
+
+    // Admin: create coupon
+    create: adminProcedure
+      .input(z.object({
+        code: z.string().min(1),
+        discountType: z.enum(['percentage', 'fixed']),
+        discountValue: z.number().min(1),
+        maxUses: z.number().optional(),
+        minOrderAmount: z.number().optional(),
+        validFrom: z.string().optional(),
+        validUntil: z.string().optional(),
+        isActive: z.boolean().default(true),
+        packageId: z.number().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        return db.createCoupon({ ...input, usedCount: 0 });
+      }),
+
+    // Admin: update coupon
+    update: adminProcedure
+      .input(z.object({
+        id: z.number(),
+        code: z.string().optional(),
+        discountType: z.enum(['percentage', 'fixed']).optional(),
+        discountValue: z.number().optional(),
+        maxUses: z.number().nullable().optional(),
+        minOrderAmount: z.number().nullable().optional(),
+        validFrom: z.string().nullable().optional(),
+        validUntil: z.string().nullable().optional(),
+        isActive: z.boolean().optional(),
+        packageId: z.number().nullable().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, ...data } = input;
+        return db.updateCoupon(id, data);
+      }),
+
+    // Admin: delete coupon
+    delete: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        return db.deleteCoupon(input.id);
+      }),
+  }),
+
+  // ====== Testimonials ======
+  testimonials: router({
+    // Public: published testimonials
+    list: publicProcedure.query(async () => {
+      return db.getAllTestimonials(true);
+    }),
+
+    // Admin: all testimonials
+    adminList: adminProcedure.query(async () => {
+      return db.getAllTestimonials(false);
+    }),
+
+    // Admin: create testimonial
+    create: adminProcedure
+      .input(z.object({
+        nameEn: z.string().min(1),
+        nameAr: z.string().min(1),
+        titleEn: z.string().optional(),
+        titleAr: z.string().optional(),
+        textEn: z.string().min(1),
+        textAr: z.string().min(1),
+        avatarUrl: z.string().optional(),
+        rating: z.number().min(1).max(5).default(5),
+        displayOrder: z.number().default(0),
+        isPublished: z.boolean().default(true),
+      }))
+      .mutation(async ({ input }) => {
+        return db.createTestimonial(input);
+      }),
+
+    // Admin: update testimonial
+    update: adminProcedure
+      .input(z.object({
+        id: z.number(),
+        nameEn: z.string().optional(),
+        nameAr: z.string().optional(),
+        titleEn: z.string().optional(),
+        titleAr: z.string().optional(),
+        textEn: z.string().optional(),
+        textAr: z.string().optional(),
+        avatarUrl: z.string().optional(),
+        rating: z.number().min(1).max(5).optional(),
+        displayOrder: z.number().optional(),
+        isPublished: z.boolean().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, ...data } = input;
+        return db.updateTestimonial(id, data);
+      }),
+
+    // Admin: delete testimonial
+    delete: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        return db.deleteTestimonial(input.id);
+      }),
+  }),
+
   articles: router({
     // Public: list published articles
     list: publicProcedure.query(async () => {

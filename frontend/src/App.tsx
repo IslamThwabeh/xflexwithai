@@ -5,54 +5,81 @@ import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { LanguageProvider } from "./contexts/LanguageContext";
+import { lazy, Suspense } from "react";
 import Home from "./pages/Home";
-import MyDashboard from "./pages/MyDashboard";
-import AdminLogin from "./pages/AdminLogin";
-import AdminDashboard from "./pages/AdminDashboard";
-import AdminCourses from "./pages/AdminCourses";
-import AdminEpisodes from "./pages/AdminEpisodes";
-import AdminUsers from "./pages/AdminUsers";
-import AdminKeys from "./pages/AdminKeys";
-import CourseWatch from "./pages/CourseWatch";
-import CoursePlayer from "./pages/CoursePlayer";
-import ActivateKey from "./pages/ActivateKey";
-import LexAI from "./pages/LexAI";
 import Auth from "./pages/Auth";
 import AdminRoute from "./components/AdminRoute";
 import ProtectedRoute from "./components/ProtectedRoute";
-import Dashboard from "./pages/Dashboard";
-import Profile from "./pages/Profile";
-import AdminAnalytics from "./pages/AdminAnalytics";
-import AdminSettings from "./pages/AdminSettings";
-import QuizLevels from "./pages/QuizLevels";
-import TakeQuiz from "./pages/TakeQuiz";
-import QuizHistory from "./pages/QuizHistory";
-import AdminLexaiSubscriptions from "./pages/AdminLexaiSubscriptions";
-import AdminLexaiKeys from "./pages/AdminLexaiKeys";
-import AdminLexaiConversations from "./pages/AdminLexaiConversations";
-import Recommendations from "./pages/Recommendations";
-import AdminRecommendations from "./pages/AdminRecommendations";
-import SupportChat from "./pages/SupportChat";
-import AdminSupport from "./pages/AdminSupport";
-import AdminRoles from "./pages/AdminRoles";
-import PackageDetails from "./pages/PackageDetails";
-import About from "./pages/About";
-import AdminPackages from "./pages/AdminPackages";
-import AdminEvents from "./pages/AdminEvents";
-import AdminArticles from "./pages/AdminArticles";
-import AdminOrders from "./pages/AdminOrders";
-import Events from "./pages/Events";
-import Articles from "./pages/Articles";
-import ArticleDetail from "./pages/ArticleDetail";
-import MyOrders from "./pages/MyOrders";
-import OrderDetail from "./pages/OrderDetail";
-import MySubscriptions from "./pages/MySubscriptions";
-import Checkout from "./pages/Checkout";
-import FreeContent from "./pages/FreeContent";
-import AdminQuizzes from "./pages/AdminQuizzes";
+import WhatsAppFloat from "./components/WhatsAppFloat";
+import { AdminTableSkeleton, DetailPageSkeleton, TextPageSkeleton, PageWithCardsSkeleton } from "./components/PageSkeletons";
+
+// Eagerly loaded (critical path)
+// Home, Auth are loaded above
+
+// Lazy-loaded admin pages
+const AdminLogin = lazy(() => import("./pages/AdminLogin"));
+const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
+const AdminCourses = lazy(() => import("./pages/AdminCourses"));
+const AdminEpisodes = lazy(() => import("./pages/AdminEpisodes"));
+const AdminUsers = lazy(() => import("./pages/AdminUsers"));
+const AdminKeys = lazy(() => import("./pages/AdminKeys"));
+const AdminAnalytics = lazy(() => import("./pages/AdminAnalytics"));
+const AdminSettings = lazy(() => import("./pages/AdminSettings"));
+const AdminLexaiSubscriptions = lazy(() => import("./pages/AdminLexaiSubscriptions"));
+const AdminLexaiKeys = lazy(() => import("./pages/AdminLexaiKeys"));
+const AdminLexaiConversations = lazy(() => import("./pages/AdminLexaiConversations"));
+const AdminRecommendations = lazy(() => import("./pages/AdminRecommendations"));
+const AdminSupport = lazy(() => import("./pages/AdminSupport"));
+const AdminRoles = lazy(() => import("./pages/AdminRoles"));
+const AdminPackages = lazy(() => import("./pages/AdminPackages"));
+const AdminEvents = lazy(() => import("./pages/AdminEvents"));
+const AdminArticles = lazy(() => import("./pages/AdminArticles"));
+const AdminOrders = lazy(() => import("./pages/AdminOrders"));
+const AdminQuizzes = lazy(() => import("./pages/AdminQuizzes"));
+const AdminCoupons = lazy(() => import("./pages/AdminCoupons"));
+const AdminTestimonials = lazy(() => import("./pages/AdminTestimonials"));
+
+// Lazy-loaded user pages
+const MyDashboard = lazy(() => import("./pages/MyDashboard"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const Profile = lazy(() => import("./pages/Profile"));
+const CourseWatch = lazy(() => import("./pages/CourseWatch"));
+const CoursePlayer = lazy(() => import("./pages/CoursePlayer"));
+const ActivateKey = lazy(() => import("./pages/ActivateKey"));
+const LexAI = lazy(() => import("./pages/LexAI"));
+const Recommendations = lazy(() => import("./pages/Recommendations"));
+const SupportChat = lazy(() => import("./pages/SupportChat"));
+const QuizLevels = lazy(() => import("./pages/QuizLevels"));
+const TakeQuiz = lazy(() => import("./pages/TakeQuiz"));
+const QuizHistory = lazy(() => import("./pages/QuizHistory"));
+const MyOrders = lazy(() => import("./pages/MyOrders"));
+const OrderDetail = lazy(() => import("./pages/OrderDetail"));
+const MySubscriptions = lazy(() => import("./pages/MySubscriptions"));
+
+// Lazy-loaded public pages
+const PackageDetails = lazy(() => import("./pages/PackageDetails"));
+const About = lazy(() => import("./pages/About"));
+const Events = lazy(() => import("./pages/Events"));
+const Articles = lazy(() => import("./pages/Articles"));
+const ArticleDetail = lazy(() => import("./pages/ArticleDetail"));
+const Checkout = lazy(() => import("./pages/Checkout"));
+const FreeContent = lazy(() => import("./pages/FreeContent"));
+const Contact = lazy(() => import("./pages/Contact"));
+const TermsOfService = lazy(() => import("./pages/TermsOfService"));
+const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
+
+// Minimal fallback spinner
+function PageLoader() {
+  return (
+    <div className="min-h-screen flex items-center justify-center">
+      <div className="w-8 h-8 border-4 border-blue-400 border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+}
 
 function Router() {
   return (
+    <Suspense fallback={<PageLoader />}>
     <Switch>
       <Route path={"/auth"} component={Auth} />
       <Route path={"/admin/login"} component={AdminLogin} />
@@ -164,6 +191,16 @@ function Router() {
         <AdminRoute>
           <AdminArticles />
         </AdminRoute>
+      </Route>
+      <Route path={"/admin/coupons"}>
+        <AdminRoute>
+          <AdminCoupons />
+        </AdminRoute>
+      </Route>
+      <Route path={"/admin/testimonials"}>
+        <AdminRoute>
+          <AdminTestimonials />
+        </AdminRoute>
       </Route>      <Route path={"/activate-key"} component={ActivateKey} />
       <Route path={"/course/:id"} component={CourseWatch} />
       <Route path={"/lexai"}>
@@ -191,6 +228,9 @@ function Router() {
       <Route path="/articles" component={Articles} />
       <Route path="/articles/:slug" component={ArticleDetail} />
       <Route path="/free-content" component={FreeContent} />
+      <Route path="/contact" component={Contact} />
+      <Route path="/terms" component={TermsOfService} />
+      <Route path="/privacy" component={PrivacyPolicy} />
       <Route path="/orders">
         <ProtectedRoute>
           <MyOrders />
@@ -210,6 +250,7 @@ function Router() {
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
     </Switch>
+    </Suspense>
   );
 }
 
@@ -221,6 +262,7 @@ function App() {
           <TooltipProvider>
             <Toaster />
             <Router />
+            <WhatsAppFloat />
           </TooltipProvider>
         </ThemeProvider>
       </LanguageProvider>
