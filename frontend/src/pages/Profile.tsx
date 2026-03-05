@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "@/_core/hooks/useAuth";
-import DashboardLayout from "@/components/DashboardLayout";
+import ClientLayout from "@/components/ClientLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -99,12 +99,12 @@ export default function Profile() {
   };
 
   return (
-    <DashboardLayout>
+    <ClientLayout>
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {/* Header */}
           <div className="mb-8">
-            <Link href="/dashboard">
+            <Link href="/courses">
               <Button variant="ghost" className="mb-4">
                 ← {t("profile.backToDashboard")}
               </Button>
@@ -353,6 +353,6 @@ export default function Profile() {
           </Card>
         </div>
       </div>
-    </DashboardLayout>
+    </ClientLayout>
   );
 }

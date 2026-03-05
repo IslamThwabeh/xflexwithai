@@ -1,6 +1,18 @@
 import { Link } from "wouter";
 import { Lock, CheckCircle, Circle, Trophy, Clock } from "lucide-react";
 import { trpc } from "@/lib/trpc";
+import ClientLayout from "@/components/ClientLayout";
+
+type LevelProgress = {
+  level: number;
+  title: string;
+  description: string;
+  isPassed: boolean;
+  isUnlocked: boolean;
+  bestScore: number;
+  lastAttemptAt: string | null;
+  passingScore: number;
+};
 
 export default function QuizLevels() {
   const { data: progress = [], isLoading: loading, error: queryError, refetch } = trpc.userQuiz.progress.useQuery();
@@ -33,17 +45,20 @@ export default function QuizLevels() {
 
   if (loading) {
     return (
+      <ClientLayout>
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
           <p className="mt-4 text-gray-600">جاري التحميل...</p>
         </div>
       </div>
+      </ClientLayout>
     );
   }
 
   if (error) {
     return (
+      <ClientLayout>
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md">
           <p className="text-red-800 text-center">{error}</p>
@@ -55,6 +70,7 @@ export default function QuizLevels() {
           </button>
         </div>
       </div>
+      </ClientLayout>
     );
   }
 
@@ -63,6 +79,7 @@ export default function QuizLevels() {
   const overallProgress = (completedLevels / totalLevels) * 100;
 
   return (
+    <ClientLayout>
     <div className="min-h-screen bg-gray-50" dir="rtl">
       {/* Header */}
       <div className="bg-gradient-to-r from-blue-600 to-blue-800 text-white py-8">
@@ -194,5 +211,6 @@ export default function QuizLevels() {
         )}
       </div>
     </div>
+    </ClientLayout>
   );
 }

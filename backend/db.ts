@@ -1007,11 +1007,14 @@ export async function deactivateRegistrationKey(id: number, reason?: string) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
+  // Fetch key details BEFORE deactivating so we can cascade
+  const [keyRow] = await db.select().from(registrationKeys).where(eq(registrationKeys.id, id)).limit(1);
+  if (!keyRow) throw new Error("Registration key not found");
+
   const setObj: Record<string, any> = { isActive: false };
   // Append reason to notes if provided
   if (reason) {
-    const [existing] = await db.select({ notes: registrationKeys.notes }).from(registrationKeys).where(eq(registrationKeys.id, id)).limit(1);
-    const prev = existing?.notes || '';
+    const prev = keyRow.notes || '';
     setObj.notes = prev ? `${prev}\n[Deactivated: ${reason}]` : `[Deactivated: ${reason}]`;
   }
 
@@ -1019,6 +1022,59 @@ export async function deactivateRegistrationKey(id: number, reason?: string) {
     .update(registrationKeys)
     .set(setObj)
     .where(eq(registrationKeys.id, id));
+
+  // ── CASCADE: revoke entitlements granted by this key ──
+  if (keyRow.email) {
+    const user = await getUserByEmail(keyRow.email);
+    if (user) {
+      const courseId = keyRow.courseId;
+
+      if (courseId > 0) {
+        // Course key → deactivate the enrollment linked to this key
+        const enrollment = await getEnrollmentByUserAndCourse(user.id, courseId);
+        if (enrollment && (enrollment as any).activatedViaKey) {
+          await db.update(enrollments).set({ isSubscriptionActive: false }).where(eq(enrollments.id, enrollment.id));
+        }
+      } else if (courseId === 0) {
+        // LexAI key → deactivate LexAI subscription
+        const lexaiSub = await getActiveLexaiSubscription(user.id);
+        if (lexaiSub && (lexaiSub.paymentStatus === "key" || lexaiSub.paymentStatus === "completed")) {
+          await updateLexaiSubscription(lexaiSub.id, { isActive: false });
+        }
+      } else if (courseId === -1) {
+        // Recommendation key → deactivate recommendation subscription
+        const recSub = await getActiveRecommendationSubscription(user.id);
+        if (recSub && (recSub.paymentStatus === "key" || recSub.paymentStatus === "completed")) {
+          await updateRecommendationSubscription(recSub.id, { isActive: false });
+        }
+      }
+
+      // Package key → deactivate package subscription + all its entitlements
+      if (keyRow.packageId) {
+        const pkgSubs = await getUserPackageSubscriptions(user.id);
+        for (const sub of pkgSubs) {
+          if (sub.packageId === keyRow.packageId) {
+            await db.update(packageSubscriptions).set({ isActive: false }).where(eq(packageSubscriptions.id, sub.id));
+          }
+        }
+        // Also deactivate enrollments created by this key
+        await db.update(enrollments)
+          .set({ isSubscriptionActive: false })
+          .where(and(eq(enrollments.userId, user.id), eq(enrollments.registrationKeyId, id)));
+
+        // Deactivate LexAI if package included it
+        const pkg = await getPackageById(keyRow.packageId);
+        if (pkg?.includesLexai) {
+          const lexaiSub = await getActiveLexaiSubscription(user.id);
+          if (lexaiSub) await updateLexaiSubscription(lexaiSub.id, { isActive: false });
+        }
+        if (pkg?.includesRecommendations) {
+          const recSub = await getActiveRecommendationSubscription(user.id);
+          if (recSub) await updateRecommendationSubscription(recSub.id, { isActive: false });
+        }
+      }
+    }
+  }
 
   const [updated] = await db.select().from(registrationKeys).where(eq(registrationKeys.id, id)).limit(1);
   return updated;

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useRoute, useLocation } from "wouter";
 import { ArrowRight, ArrowLeft, CheckCircle, XCircle, Trophy, RotateCcw } from "lucide-react";
 import { trpc } from "@/lib/trpc";
+import ClientLayout from "@/components/ClientLayout";
 
 interface QuizResult {
   attemptId: number;
@@ -88,17 +89,20 @@ export default function TakeQuiz() {
 
   if (loading) {
     return (
+      <ClientLayout>
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
           <p className="mt-4 text-gray-600">جاري تحميل الاختبار...</p>
         </div>
       </div>
+      </ClientLayout>
     );
   }
 
   if (error) {
     return (
+      <ClientLayout>
       <div className="min-h-screen bg-gray-50 flex items-center justify-center" dir="rtl">
         <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md">
           <p className="text-red-800 text-center mb-4">{error}</p>
@@ -110,6 +114,7 @@ export default function TakeQuiz() {
           </button>
         </div>
       </div>
+      </ClientLayout>
     );
   }
 
@@ -118,6 +123,7 @@ export default function TakeQuiz() {
   // Show results if quiz is submitted
   if (result) {
     return (
+      <ClientLayout>
       <div className="min-h-screen bg-gray-50 py-8" dir="rtl">
         <div className="container mx-auto px-4 max-w-3xl">
           {/* Results Header */}
@@ -229,6 +235,7 @@ export default function TakeQuiz() {
           </div>
         </div>
       </div>
+      </ClientLayout>
     );
   }
 
@@ -238,6 +245,7 @@ export default function TakeQuiz() {
   const allAnswered = quiz.questions.every(q => answers[q.id]);
 
   return (
+    <ClientLayout>
     <div className="min-h-screen bg-gray-50" dir="rtl">
       {/* Header */}
       <div className="bg-white border-b sticky top-0 z-10">
@@ -349,5 +357,6 @@ export default function TakeQuiz() {
         </div>
       </div>
     </div>
+    </ClientLayout>
   );
 }
