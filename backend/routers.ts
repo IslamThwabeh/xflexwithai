@@ -3362,9 +3362,15 @@ export const appRouter = router({
       }),
 
     deactivateKey: adminOrRoleProcedure(['key_manager'])
+      .input(z.object({ id: z.number(), reason: z.string().optional() }))
+      .mutation(async ({ input }) => {
+        return db.deactivateRegistrationKey(input.id, input.reason);
+      }),
+
+    reactivateKey: adminOrRoleProcedure(['key_manager'])
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {
-        return db.deactivateRegistrationKey(input.id);
+        return db.reactivateRegistrationKey(input.id);
       }),
 
     // Public: get key info (used by activation page)

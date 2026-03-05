@@ -25,6 +25,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -53,6 +54,7 @@ import {
   Trophy,
   TrendingUp,
   User,
+  RotateCcw,
 } from "lucide-react";
 
 export default function AdminPackageKeys() {
@@ -69,6 +71,8 @@ export default function AdminPackageKeys() {
   const [isUpgrade, setIsUpgrade] = useState(false);
   const [referredBy, setReferredBy] = useState("");
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [deactivateDialogKey, setDeactivateDialogKey] = useState<{ id: number; keyCode: string } | null>(null);
+  const [deactivateReason, setDeactivateReason] = useState("");
 
   // Data queries
   const keysQuery = trpc.packageKeys.list.useQuery();
@@ -102,6 +106,17 @@ export default function AdminPackageKeys() {
   const deactivateKey = trpc.packageKeys.deactivateKey.useMutation({
     onSuccess: () => {
       toast.success(language === 'ar' ? 'تم إلغاء تفعيل المفتاح' : 'Key deactivated');
+      keysQuery.refetch();
+      statsQuery.refetch();
+      setDeactivateDialogKey(null);
+      setDeactivateReason("");
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const reactivateKey = trpc.packageKeys.reactivateKey.useMutation({
+    onSuccess: () => {
+      toast.success(language === 'ar' ? 'تم إعادة تفعيل المفتاح' : 'Key reactivated');
       keysQuery.refetch();
       statsQuery.refetch();
     },
@@ -562,13 +577,20 @@ export default function AdminPackageKeys() {
                               variant="ghost"
                               size="sm"
                               className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                              onClick={() => {
-                                if (confirm(language === 'ar' ? 'هل أنت متأكد من إلغاء تفعيل هذا المفتاح؟' : 'Deactivate this key?')) {
-                                  deactivateKey.mutate({ id: key.id });
-                                }
-                              }}
+                              onClick={() => setDeactivateDialogKey({ id: key.id, keyCode: key.keyCode })}
                             >
                               <XCircle className="w-4 h-4" />
+                            </Button>
+                          )}
+                          {!key.isActive && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                              onClick={() => reactivateKey.mutate({ id: key.id })}
+                              disabled={reactivateKey.isPending}
+                            >
+                              <RotateCcw className="w-4 h-4" />
                             </Button>
                           )}
                         </TableCell>
@@ -729,6 +751,49 @@ export default function AdminPackageKeys() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Deactivation Confirmation Dialog */}
+      <Dialog open={!!deactivateDialogKey} onOpenChange={(open) => { if (!open) { setDeactivateDialogKey(null); setDeactivateReason(""); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{language === 'ar' ? 'تأكيد إلغاء التفعيل' : 'Confirm Deactivation'}</DialogTitle>
+            <DialogDescription>
+              {language === 'ar'
+                ? `هل أنت متأكد من إلغاء تفعيل المفتاح ${deactivateDialogKey?.keyCode}؟`
+                : `Are you sure you want to deactivate key ${deactivateDialogKey?.keyCode}?`}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>{language === 'ar' ? 'سبب الإلغاء (اختياري)' : 'Reason (optional)'}</Label>
+              <Textarea
+                value={deactivateReason}
+                onChange={(e) => setDeactivateReason(e.target.value)}
+                placeholder={language === 'ar' ? 'أدخل السبب...' : 'Enter reason...'}
+                rows={2}
+              />
+            </div>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => { setDeactivateDialogKey(null); setDeactivateReason(""); }}>
+              {language === 'ar' ? 'إلغاء' : 'Cancel'}
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={deactivateKey.isPending}
+              onClick={() => {
+                if (deactivateDialogKey) {
+                  deactivateKey.mutate({ id: deactivateDialogKey.id, reason: deactivateReason.trim() || undefined });
+                }
+              }}
+            >
+              {deactivateKey.isPending
+                ? (language === 'ar' ? 'جارٍ...' : 'Deactivating...')
+                : (language === 'ar' ? 'تأكيد الإلغاء' : 'Deactivate')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }

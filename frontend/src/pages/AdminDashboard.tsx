@@ -31,7 +31,7 @@ export default function AdminDashboard() {
 
         {/* Quick Actions */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={() => setLocation("/admin/keys")}>
+          <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={() => setLocation("/admin/package-keys")}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-lg font-semibold">{t('admin.dashboard.keys')}</CardTitle>
               <Key className="h-6 w-6 text-primary" />

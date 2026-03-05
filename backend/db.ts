@@ -1003,13 +1003,34 @@ export async function updateRegistrationKey(id: number, key: Partial<InsertRegis
   await db.update(registrationKeys).set(key).where(eq(registrationKeys.id, id));
 }
 
-export async function deactivateRegistrationKey(id: number) {
+export async function deactivateRegistrationKey(id: number, reason?: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const setObj: Record<string, any> = { isActive: false };
+  // Append reason to notes if provided
+  if (reason) {
+    const [existing] = await db.select({ notes: registrationKeys.notes }).from(registrationKeys).where(eq(registrationKeys.id, id)).limit(1);
+    const prev = existing?.notes || '';
+    setObj.notes = prev ? `${prev}\n[Deactivated: ${reason}]` : `[Deactivated: ${reason}]`;
+  }
+
+  await db
+    .update(registrationKeys)
+    .set(setObj)
+    .where(eq(registrationKeys.id, id));
+
+  const [updated] = await db.select().from(registrationKeys).where(eq(registrationKeys.id, id)).limit(1);
+  return updated;
+}
+
+export async function reactivateRegistrationKey(id: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
   await db
     .update(registrationKeys)
-    .set({ isActive: false })
+    .set({ isActive: true })
     .where(eq(registrationKeys.id, id));
 
   const [updated] = await db.select().from(registrationKeys).where(eq(registrationKeys.id, id)).limit(1);
@@ -1848,7 +1869,7 @@ export async function getPackageKeyStatistics() {
   const [activatedResult] = await db
     .select({ count: sql<number>`count(*)` })
     .from(registrationKeys)
-    .where(and(filter, sql`${registrationKeys.activatedAt} is not null`));
+    .where(and(filter, sql`${registrationKeys.activatedAt} is not null`, eq(registrationKeys.isActive, true)));
   const [unusedResult] = await db
     .select({ count: sql<number>`count(*)` })
     .from(registrationKeys)
