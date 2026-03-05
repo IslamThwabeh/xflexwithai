@@ -1023,55 +1023,32 @@ export async function deactivateRegistrationKey(id: number, reason?: string) {
     .set(setObj)
     .where(eq(registrationKeys.id, id));
 
-  // ── CASCADE: revoke entitlements granted by this key ──
-  if (keyRow.email) {
+  // ── CASCADE: revoke entitlements granted by this package key ──
+  if (keyRow.email && keyRow.packageId) {
     const user = await getUserByEmail(keyRow.email);
     if (user) {
-      const courseId = keyRow.courseId;
-
-      if (courseId > 0) {
-        // Course key → deactivate the enrollment linked to this key
-        const enrollment = await getEnrollmentByUserAndCourse(user.id, courseId);
-        if (enrollment && (enrollment as any).activatedViaKey) {
-          await db.update(enrollments).set({ isSubscriptionActive: false }).where(eq(enrollments.id, enrollment.id));
-        }
-      } else if (courseId === 0) {
-        // LexAI key → deactivate LexAI subscription
-        const lexaiSub = await getActiveLexaiSubscription(user.id);
-        if (lexaiSub && (lexaiSub.paymentStatus === "key" || lexaiSub.paymentStatus === "completed")) {
-          await updateLexaiSubscription(lexaiSub.id, { isActive: false });
-        }
-      } else if (courseId === -1) {
-        // Recommendation key → deactivate recommendation subscription
-        const recSub = await getActiveRecommendationSubscription(user.id);
-        if (recSub && (recSub.paymentStatus === "key" || recSub.paymentStatus === "completed")) {
-          await updateRecommendationSubscription(recSub.id, { isActive: false });
+      // Deactivate the package subscription
+      const pkgSubs = await getUserPackageSubscriptions(user.id);
+      for (const sub of pkgSubs) {
+        if (sub.packageId === keyRow.packageId) {
+          await db.update(packageSubscriptions).set({ isActive: false }).where(eq(packageSubscriptions.id, sub.id));
         }
       }
 
-      // Package key → deactivate package subscription + all its entitlements
-      if (keyRow.packageId) {
-        const pkgSubs = await getUserPackageSubscriptions(user.id);
-        for (const sub of pkgSubs) {
-          if (sub.packageId === keyRow.packageId) {
-            await db.update(packageSubscriptions).set({ isActive: false }).where(eq(packageSubscriptions.id, sub.id));
-          }
-        }
-        // Also deactivate enrollments created by this key
-        await db.update(enrollments)
-          .set({ isSubscriptionActive: false })
-          .where(and(eq(enrollments.userId, user.id), eq(enrollments.registrationKeyId, id)));
+      // Deactivate all enrollments created by this key
+      await db.update(enrollments)
+        .set({ isSubscriptionActive: false })
+        .where(and(eq(enrollments.userId, user.id), eq(enrollments.registrationKeyId, id)));
 
-        // Deactivate LexAI if package included it
-        const pkg = await getPackageById(keyRow.packageId);
-        if (pkg?.includesLexai) {
-          const lexaiSub = await getActiveLexaiSubscription(user.id);
-          if (lexaiSub) await updateLexaiSubscription(lexaiSub.id, { isActive: false });
-        }
-        if (pkg?.includesRecommendations) {
-          const recSub = await getActiveRecommendationSubscription(user.id);
-          if (recSub) await updateRecommendationSubscription(recSub.id, { isActive: false });
-        }
+      // Deactivate LexAI / Recommendations if the package included them
+      const pkg = await getPackageById(keyRow.packageId);
+      if (pkg?.includesLexai) {
+        const lexaiSub = await getActiveLexaiSubscription(user.id);
+        if (lexaiSub) await updateLexaiSubscription(lexaiSub.id, { isActive: false });
+      }
+      if (pkg?.includesRecommendations) {
+        const recSub = await getActiveRecommendationSubscription(user.id);
+        if (recSub) await updateRecommendationSubscription(recSub.id, { isActive: false });
       }
     }
   }
@@ -1783,87 +1760,7 @@ export async function syncUserEntitlementsFromKeys(userId: number, email: string
 
   const normalizedEmail = email.trim().toLowerCase();
 
-  // Course keys -> ensure enrollments
-  const courseKeys = await getValidCourseKeysByEmail(normalizedEmail);
-  for (const key of courseKeys) {
-    const courseId = Number(key.courseId);
-    if (!courseId) continue;
-
-    const existingEnrollment = await getEnrollmentByUserAndCourse(userId, courseId);
-    if (existingEnrollment) continue;
-
-    await createEnrollment({
-      userId,
-      courseId,
-      paymentStatus: "completed",
-      isSubscriptionActive: true,
-      registrationKeyId: key.id,
-      activatedViaKey: true,
-    });
-  }
-
-  // LexAI key -> ensure active subscription
-  const lexaiKey = await getAssignedLexaiKeyByEmail(normalizedEmail);
-  if (lexaiKey?.isActive && lexaiKey.activatedAt) {
-    const endDate = computeLexaiKeyEndDate(lexaiKey);
-    if (endDate && endDate.getTime() >= Date.now()) {
-      const current = await getActiveLexaiSubscription(userId);
-      if (current) {
-        await updateLexaiSubscription(current.id, {
-          isActive: true,
-          endDate: endDate.toISOString(),
-          paymentStatus: "key",
-          paymentAmount: 0,
-          paymentCurrency: "USD",
-          messagesLimit: 100,
-        });
-      } else {
-        await createLexaiSubscription({
-          userId,
-          isActive: true,
-          startDate: new Date().toISOString(),
-          endDate: endDate.toISOString(),
-          paymentStatus: "key",
-          paymentAmount: 0,
-          paymentCurrency: "USD",
-          messagesUsed: 0,
-          messagesLimit: 100,
-        });
-      }
-    }
-  }
-
-  // Recommendation key -> ensure active recommendation subscription
-  const recommendationKey = await getAssignedRecommendationKeyByEmail(normalizedEmail);
-  if (recommendationKey?.isActive && recommendationKey.activatedAt) {
-    const endDate = computeRecommendationKeyEndDate(recommendationKey);
-    if (endDate && endDate.getTime() >= Date.now()) {
-      const current = await getActiveRecommendationSubscription(userId);
-      if (current) {
-        await updateRecommendationSubscription(current.id, {
-          isActive: true,
-          endDate: endDate.toISOString(),
-          paymentStatus: "key",
-          paymentAmount: 100,
-          paymentCurrency: "USD",
-          registrationKeyId: recommendationKey.id,
-        });
-      } else {
-        await createRecommendationSubscription({
-          userId,
-          isActive: true,
-          startDate: new Date().toISOString(),
-          endDate: endDate.toISOString(),
-          paymentStatus: "key",
-          paymentAmount: 100,
-          paymentCurrency: "USD",
-          registrationKeyId: recommendationKey.id,
-        });
-      }
-    }
-  }
-
-  // Package keys -> ensure all package entitlements
+  // Package keys -> ensure all package entitlements (courses, LexAI, recommendations, etc.)
   const packageKeys = await getActivatedPackageKeysByEmail(normalizedEmail);
   for (const key of packageKeys) {
     if (!key.packageId) continue;

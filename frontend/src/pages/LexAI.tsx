@@ -172,11 +172,7 @@ export default function LexAI() {
   }, [messages]);
 
   const isAdmin = !!adminCheck?.isAdmin;
-  const hasKeyActivatedSubscription = !!(
-    subscription &&
-    subscription.isActive &&
-    String(subscription.paymentStatus ?? "").toLowerCase() === "key"
-  );
+  const hasActiveSubscription = !!(subscription && subscription.isActive);
 
   const isBusy =
     uploadImage.isPending ||
@@ -213,12 +209,12 @@ export default function LexAI() {
   };
 
   useEffect(() => {
-    if (!hasKeyActivatedSubscription) return;
+    if (!hasActiveSubscription) return;
     const timer = setTimeout(() => {
       window.scrollTo({ top: document.body.scrollHeight, behavior: "auto" });
     }, 150);
     return () => clearTimeout(timer);
-  }, [hasKeyActivatedSubscription, messagesLoading]);
+  }, [hasActiveSubscription, messagesLoading]);
 
   const handleUpload = async (file: File) => {
     const base64 = await new Promise<string>((resolve, reject) => {
@@ -248,7 +244,7 @@ export default function LexAI() {
   };
 
   const restartFlow = () => {
-    if (!hasKeyActivatedSubscription) {
+    if (!hasActiveSubscription) {
       toast.error(copy.keyRequired);
       return;
     }
@@ -377,7 +373,7 @@ export default function LexAI() {
     );
   }
 
-  if (!hasKeyActivatedSubscription) {
+  if (!hasActiveSubscription) {
     return (
       <ClientLayout>
       <div className="min-h-[calc(100vh-64px)] flex items-center justify-center bg-gradient-to-br from-purple-50 to-blue-50">
