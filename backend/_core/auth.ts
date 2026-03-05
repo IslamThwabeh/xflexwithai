@@ -3,8 +3,9 @@ import { SignJWT, jwtVerify } from "jose";
 import type { JWTPayload as JoseJWTPayload } from "jose";
 import { ENV } from "./env";
 
+import { JWT_EXPIRY_USER, JWT_EXPIRY_ADMIN } from "../../shared/const";
+
 const SALT_ROUNDS = 10;
-const JWT_EXPIRES_IN = "7d"; // 7 days
 const getJwtSecretKey = () => {
   const secret = ENV.jwtSecret;
   if (!secret) {
@@ -37,9 +38,11 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
  * Generate a JWT token for a user or admin
  */
 export async function generateToken(payload: JWTPayload): Promise<string> {
+  const expiry = payload.type === "admin" ? JWT_EXPIRY_ADMIN : JWT_EXPIRY_USER;
   return new SignJWT(payload)
     .setProtectedHeader({ alg: "HS256" })
-    .setExpirationTime(JWT_EXPIRES_IN)
+    .setIssuedAt()
+    .setExpirationTime(expiry)
     .sign(getJwtSecretKey());
 }
 

@@ -5,7 +5,8 @@ import { GraduationCap } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import { toast } from "sonner";
 
 export default function AdminLogin() {
   const { t } = useLanguage();
@@ -14,6 +15,20 @@ export default function AdminLogin() {
   const { data: adminCheck, isLoading: checkingAdmin } = trpc.auth.isAdmin.useQuery(undefined, {
     enabled: isAuthenticated,
   });
+
+  // Show toast when redirected due to idle timeout
+  const idleToastShown = useRef(false);
+  useEffect(() => {
+    if (idleToastShown.current) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("reason") === "idle") {
+      idleToastShown.current = true;
+      toast.warning("Session expired due to inactivity. Please log in again.");
+      params.delete("reason");
+      const clean = params.toString();
+      window.history.replaceState({}, "", window.location.pathname + (clean ? `?${clean}` : ""));
+    }
+  }, []);
 
   // Redirect to dashboard if already authenticated as admin
   useEffect(() => {

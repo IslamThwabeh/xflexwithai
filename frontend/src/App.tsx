@@ -11,6 +11,7 @@ import Auth from "./pages/Auth";
 import AdminRoute from "./components/AdminRoute";
 import ProtectedRoute from "./components/ProtectedRoute";
 import WhatsAppFloat from "./components/WhatsAppFloat";
+import SessionGuard from "./components/SessionGuard";
 import { AdminTableSkeleton, DetailPageSkeleton, TextPageSkeleton, PageWithCardsSkeleton } from "./components/PageSkeletons";
 
 // Eagerly loaded (critical path)
@@ -282,6 +283,7 @@ function App() {
         <ThemeProvider defaultTheme="light">
           <TooltipProvider>
             <Toaster />
+            <SessionGuard />
             <Router />
             <WhatsAppFloat />
           </TooltipProvider>

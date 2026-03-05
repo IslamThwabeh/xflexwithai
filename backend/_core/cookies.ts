@@ -1,5 +1,5 @@
 import type { CookieOptions } from "express";
-import { ONE_YEAR_MS } from "../../shared/const";
+import { COOKIE_MAX_AGE_USER, COOKIE_MAX_AGE_ADMIN } from "../../shared/const";
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
 
@@ -46,7 +46,8 @@ function isSecureRequest(req: CookieRequest) {
 }
 
 export function getSessionCookieOptions(
-  req: CookieRequest
+  req: CookieRequest,
+  role: "admin" | "user" = "user"
 ): Pick<CookieOptions, "domain" | "httpOnly" | "maxAge" | "path" | "sameSite" | "secure"> {
   const secure = isSecureRequest(req);
 
@@ -80,10 +81,12 @@ export function getSessionCookieOptions(
     // For localhost / 127.0.0.1 / IPs, leave domain undefined (browser default).
   }
 
+  const maxAge = role === "admin" ? COOKIE_MAX_AGE_ADMIN : COOKIE_MAX_AGE_USER;
+
   return {
     domain,
     httpOnly: true,
-    maxAge: ONE_YEAR_MS / 1000, // maxAge is in seconds
+    maxAge,
     path: "/",
     // "lax" is fine for same-site (eTLD+1) subdomains; use "none" only for true cross-site.
     sameSite: "lax",

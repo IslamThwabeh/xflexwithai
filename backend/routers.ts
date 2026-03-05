@@ -296,7 +296,7 @@ export const appRouter = router({
         });
         
         // Set cookie
-        const cookieOptions = getSessionCookieOptions(ctx.req);
+        const cookieOptions = getSessionCookieOptions(ctx.req, 'user');
         ctx.setCookie(COOKIE_NAME, token, cookieOptions);
 
         // Sync entitlements from any keys already assigned to this email
@@ -497,7 +497,7 @@ export const appRouter = router({
           type: "user",
         });
 
-        const cookieOptions = getSessionCookieOptions(ctx.req);
+        const cookieOptions = getSessionCookieOptions(ctx.req, 'user');
         ctx.setCookie(COOKIE_NAME, token, cookieOptions);
 
         try {
@@ -541,7 +541,7 @@ export const appRouter = router({
         });
         
         // Set cookie
-        const cookieOptions = getSessionCookieOptions(ctx.req);
+        const cookieOptions = getSessionCookieOptions(ctx.req, 'user');
         ctx.setCookie(COOKIE_NAME, token, cookieOptions);
 
         // Sync entitlements from any keys already assigned to this email
@@ -622,7 +622,7 @@ export const appRouter = router({
         logger.info('🔍 [ADMIN LOGIN] Setting cookie', {
           cookieName: COOKIE_NAME,
         });
-        const cookieOptions = getSessionCookieOptions(ctx.req);
+        const cookieOptions = getSessionCookieOptions(ctx.req, 'admin');
         logger.info('🔍 [ADMIN LOGIN] Cookie options', {
           ...cookieOptions,
           domain: cookieOptions.domain || 'not set',
@@ -677,7 +677,8 @@ export const appRouter = router({
       }),
     
     logout: publicProcedure.mutation(({ ctx }) => {
-      const cookieOptions = getSessionCookieOptions(ctx.req);
+      // Clear with both role maxAge values – the important thing is maxAge: -1 which deletes the cookie
+      const cookieOptions = getSessionCookieOptions(ctx.req, 'user');
       ctx.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
       return { success: true } as const;
     }),
