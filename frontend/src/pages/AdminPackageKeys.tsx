@@ -49,6 +49,10 @@ import {
   Copy,
   Package,
   Layers,
+  ArrowUpCircle,
+  Trophy,
+  TrendingUp,
+  User,
 } from "lucide-react";
 
 export default function AdminPackageKeys() {
@@ -62,11 +66,15 @@ export default function AdminPackageKeys() {
   const [filterPackage, setFilterPackage] = useState<string>("all");
   const [showGenerateDialog, setShowGenerateDialog] = useState(false);
   const [showBulkDialog, setShowBulkDialog] = useState(false);
+  const [isUpgrade, setIsUpgrade] = useState(false);
+  const [referredBy, setReferredBy] = useState("");
+  const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7));
 
   // Data queries
   const keysQuery = trpc.packageKeys.list.useQuery();
   const statsQuery = trpc.packageKeys.stats.useQuery();
   const packagesQuery = trpc.packages.list.useQuery();
+  const upgradeStatsQuery = trpc.packageKeys.upgradeStats.useQuery({ month: selectedMonth });
 
   // Mutations
   const generateKey = trpc.packageKeys.generateKey.useMutation({
@@ -106,6 +114,8 @@ export default function AdminPackageKeys() {
     setNotes("");
     setPrice("0");
     setAssignEmail("");
+    setIsUpgrade(false);
+    setReferredBy("");
   };
 
   const handleGenerateKey = () => {
@@ -118,6 +128,8 @@ export default function AdminPackageKeys() {
       email: assignEmail || undefined,
       notes: notes || undefined,
       price: parseInt(price) || undefined,
+      isUpgrade: isUpgrade || undefined,
+      referredBy: referredBy.trim() || undefined,
     });
   };
 
@@ -131,6 +143,8 @@ export default function AdminPackageKeys() {
       quantity: parseInt(quantity) || 1,
       notes: notes || undefined,
       price: parseInt(price) || undefined,
+      isUpgrade: isUpgrade || undefined,
+      referredBy: referredBy.trim() || undefined,
     });
   };
 
@@ -142,12 +156,14 @@ export default function AdminPackageKeys() {
   const exportCSV = () => {
     const keys = filteredKeys;
     if (!keys.length) return;
-    const headers = ['Key Code', 'Package', 'Email', 'Status', 'Created', 'Activated', 'Notes'];
+    const headers = ['Key Code', 'Package', 'Email', 'Status', 'Upgrade', 'Referred By', 'Created', 'Activated', 'Notes'];
     const rows = keys.map(k => [
       k.keyCode,
       (k as any).packageName || '',
       k.email || '',
       k.activatedAt ? 'Activated' : k.isActive ? 'Unused' : 'Deactivated',
+      (k as any).isUpgrade ? 'Yes' : 'No',
+      (k as any).referredBy || '',
       k.createdAt ? new Date(k.createdAt).toLocaleDateString() : '',
       k.activatedAt ? new Date(k.activatedAt).toLocaleDateString() : '',
       k.notes || '',
@@ -261,6 +277,33 @@ export default function AdminPackageKeys() {
                       placeholder={language === 'ar' ? 'ملاحظات اختيارية...' : 'Optional notes...'}
                     />
                   </div>
+                  {/* Upgrade toggle */}
+                  <div className="flex items-center gap-3 p-3 bg-amber-50 dark:bg-amber-950/30 rounded-lg border border-amber-200 dark:border-amber-800">
+                    <input
+                      type="checkbox"
+                      id="isUpgrade"
+                      checked={isUpgrade}
+                      onChange={(e) => setIsUpgrade(e.target.checked)}
+                      className="w-4 h-4 accent-amber-600"
+                    />
+                    <Label htmlFor="isUpgrade" className="flex items-center gap-2 cursor-pointer text-sm">
+                      <ArrowUpCircle className="w-4 h-4 text-amber-600" />
+                      {language === 'ar' ? 'هذا ترقية (من الأساسية إلى الشاملة)' : 'This is an upgrade (Basic → Comprehensive)'}
+                    </Label>
+                  </div>
+                  {isUpgrade && (
+                    <div className="space-y-2">
+                      <Label>{language === 'ar' ? 'اسم العضو المُحوِّل' : 'Referred by (team member)'}</Label>
+                      <Input
+                        value={referredBy}
+                        onChange={(e) => setReferredBy(e.target.value)}
+                        placeholder={language === 'ar' ? 'اسم عضو الفريق الذي أقنعه...' : 'Name of team member who convinced them...'}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        {language === 'ar' ? 'اتركه فارغاً إذا قرر العميل بنفسه' : 'Leave empty if the client decided on their own'}
+                      </p>
+                    </div>
+                  )}
                   <Button onClick={handleGenerateKey} disabled={generateKey.isPending} className="w-full">
                     {generateKey.isPending 
                       ? (language === 'ar' ? 'جاري الإنشاء...' : 'Generating...') 
@@ -306,6 +349,30 @@ export default function AdminPackageKeys() {
                       placeholder={language === 'ar' ? 'ملاحظات اختيارية...' : 'Optional notes...'}
                     />
                   </div>
+                  {/* Upgrade toggle for bulk */}
+                  <div className="flex items-center gap-3 p-3 bg-amber-50 dark:bg-amber-950/30 rounded-lg border border-amber-200 dark:border-amber-800">
+                    <input
+                      type="checkbox"
+                      id="isUpgradeBulk"
+                      checked={isUpgrade}
+                      onChange={(e) => setIsUpgrade(e.target.checked)}
+                      className="w-4 h-4 accent-amber-600"
+                    />
+                    <Label htmlFor="isUpgradeBulk" className="flex items-center gap-2 cursor-pointer text-sm">
+                      <ArrowUpCircle className="w-4 h-4 text-amber-600" />
+                      {language === 'ar' ? 'مفاتيح ترقية' : 'Upgrade keys'}
+                    </Label>
+                  </div>
+                  {isUpgrade && (
+                    <div className="space-y-2">
+                      <Label>{language === 'ar' ? 'اسم العضو المُحوِّل' : 'Referred by'}</Label>
+                      <Input
+                        value={referredBy}
+                        onChange={(e) => setReferredBy(e.target.value)}
+                        placeholder={language === 'ar' ? 'اسم عضو الفريق...' : 'Team member name...'}
+                      />
+                    </div>
+                  )}
                   <Button onClick={handleGenerateBulk} disabled={generateBulk.isPending} className="w-full">
                     {generateBulk.isPending 
                       ? (language === 'ar' ? 'جاري الإنشاء...' : 'Generating...') 
@@ -404,6 +471,7 @@ export default function AdminPackageKeys() {
                     <TableHead>{language === 'ar' ? 'الباقة' : 'Package'}</TableHead>
                     <TableHead>{language === 'ar' ? 'البريد' : 'Email'}</TableHead>
                     <TableHead>{language === 'ar' ? 'الحالة' : 'Status'}</TableHead>
+                    <TableHead>{language === 'ar' ? 'ترقية' : 'Upgrade'}</TableHead>
                     <TableHead>{language === 'ar' ? 'تاريخ الإنشاء' : 'Created'}</TableHead>
                     <TableHead>{language === 'ar' ? 'تاريخ التفعيل' : 'Activated'}</TableHead>
                     <TableHead>{language === 'ar' ? 'ملاحظات' : 'Notes'}</TableHead>
@@ -464,6 +532,16 @@ export default function AdminPackageKeys() {
                             </Badge>
                           )}
                         </TableCell>
+                        <TableCell>
+                          {(key as any).isUpgrade ? (
+                            <Badge className="gap-1 bg-amber-100 text-amber-800 hover:bg-amber-100">
+                              <ArrowUpCircle className="w-3 h-3" />
+                              {language === 'ar' ? 'ترقية' : 'Upgrade'}
+                            </Badge>
+                          ) : (
+                            <span className="text-xs text-gray-400">—</span>
+                          )}
+                        </TableCell>
                         <TableCell className="text-xs text-gray-500">
                           {key.createdAt ? new Date(key.createdAt).toLocaleDateString() : '—'}
                         </TableCell>
@@ -472,6 +550,11 @@ export default function AdminPackageKeys() {
                         </TableCell>
                         <TableCell className="text-xs text-gray-500 max-w-[150px] truncate">
                           {key.notes || '—'}
+                          {(key as any).referredBy && (
+                            <span className="block text-amber-600 mt-0.5">
+                              {language === 'ar' ? 'بواسطة: ' : 'By: '}{(key as any).referredBy}
+                            </span>
+                          )}
                         </TableCell>
                         <TableCell>
                           {key.isActive && !key.activatedAt && (
@@ -495,6 +578,154 @@ export default function AdminPackageKeys() {
                 </TableBody>
               </Table>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Upgrade Leaderboard */}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Trophy className="w-5 h-5 text-amber-500" />
+                  {language === 'ar' ? 'لوحة قيادة الترقيات' : 'Upgrade Leaderboard'}
+                </CardTitle>
+                <CardDescription>
+                  {language === 'ar' 
+                    ? 'تتبع الترقيات من الباقة الأساسية إلى الشاملة' 
+                    : 'Track upgrades from Basic to Comprehensive package'}
+                </CardDescription>
+              </div>
+              <div className="flex items-center gap-2">
+                <Label className="text-xs whitespace-nowrap">{language === 'ar' ? 'الشهر:' : 'Month:'}</Label>
+                <Input
+                  type="month"
+                  value={selectedMonth}
+                  onChange={(e) => setSelectedMonth(e.target.value)}
+                  className="w-[160px] text-sm"
+                  dir="ltr"
+                />
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {upgradeStatsQuery.data ? (
+              <div className="space-y-4">
+                {/* Upgrade summary cards */}
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  <div className="flex items-center gap-3 p-3 bg-amber-50 dark:bg-amber-950/30 rounded-lg">
+                    <ArrowUpCircle className="w-8 h-8 text-amber-500" />
+                    <div>
+                      <p className="text-2xl font-bold text-amber-600">{upgradeStatsQuery.data.monthlyUpgrades}</p>
+                      <p className="text-xs text-gray-500">{language === 'ar' ? 'ترقيات هذا الشهر' : 'This Month'}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg">
+                    <TrendingUp className="w-8 h-8 text-blue-500" />
+                    <div>
+                      <p className="text-2xl font-bold text-blue-600">{upgradeStatsQuery.data.totalUpgrades}</p>
+                      <p className="text-xs text-gray-500">{language === 'ar' ? 'إجمالي الترقيات' : 'All-time'}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 p-3 bg-green-50 dark:bg-green-950/30 rounded-lg">
+                    <Trophy className="w-8 h-8 text-green-500" />
+                    <div>
+                      <p className="text-2xl font-bold text-green-600">
+                        {upgradeStatsQuery.data.leaderboard.length > 0 
+                          ? upgradeStatsQuery.data.leaderboard[0].referredBy 
+                          : (language === 'ar' ? '—' : '—')}
+                      </p>
+                      <p className="text-xs text-gray-500">{language === 'ar' ? 'الأفضل هذا الشهر' : 'Top This Month'}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Monthly leaderboard table */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Monthly */}
+                  <div>
+                    <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                      <Trophy className="w-4 h-4 text-amber-500" />
+                      {language === 'ar' ? `ترتيب شهر ${selectedMonth}` : `${selectedMonth} Rankings`}
+                    </h4>
+                    {upgradeStatsQuery.data.leaderboard.length === 0 ? (
+                      <p className="text-sm text-gray-400 py-4 text-center">
+                        {language === 'ar' ? 'لا توجد ترقيات بإحالات هذا الشهر' : 'No referred upgrades this month'}
+                      </p>
+                    ) : (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="w-[50px]">#</TableHead>
+                            <TableHead>{language === 'ar' ? 'العضو' : 'Member'}</TableHead>
+                            <TableHead className="text-center">{language === 'ar' ? 'الترقيات' : 'Upgrades'}</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {upgradeStatsQuery.data.leaderboard.map((entry, index) => (
+                            <TableRow key={entry.referredBy}>
+                              <TableCell>
+                                {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}`}
+                              </TableCell>
+                              <TableCell className="font-medium flex items-center gap-2">
+                                <User className="w-4 h-4 text-gray-400" />
+                                {entry.referredBy}
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <Badge variant="secondary">{entry.count}</Badge>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    )}
+                  </div>
+
+                  {/* All-time */}
+                  <div>
+                    <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                      <TrendingUp className="w-4 h-4 text-blue-500" />
+                      {language === 'ar' ? 'الترتيب العام' : 'All-Time Rankings'}
+                    </h4>
+                    {(upgradeStatsQuery.data.allTimeLeaderboard?.length ?? 0) === 0 ? (
+                      <p className="text-sm text-gray-400 py-4 text-center">
+                        {language === 'ar' ? 'لا توجد ترقيات بإحالات بعد' : 'No referred upgrades yet'}
+                      </p>
+                    ) : (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="w-[50px]">#</TableHead>
+                            <TableHead>{language === 'ar' ? 'العضو' : 'Member'}</TableHead>
+                            <TableHead className="text-center">{language === 'ar' ? 'الترقيات' : 'Upgrades'}</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {upgradeStatsQuery.data.allTimeLeaderboard?.map((entry, index) => (
+                            <TableRow key={entry.referredBy}>
+                              <TableCell>
+                                {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}`}
+                              </TableCell>
+                              <TableCell className="font-medium flex items-center gap-2">
+                                <User className="w-4 h-4 text-gray-400" />
+                                {entry.referredBy}
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <Badge variant="secondary">{entry.count}</Badge>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-400 text-center py-4">
+                {language === 'ar' ? 'جاري التحميل...' : 'Loading...'}
+              </p>
+            )}
           </CardContent>
         </Card>
       </div>

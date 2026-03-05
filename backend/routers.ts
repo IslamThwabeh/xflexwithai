@@ -3232,6 +3232,8 @@ export const appRouter = router({
         ...k,
         packageName: k.packageId ? (pkgMap.get(k.packageId)?.nameEn || pkgMap.get(k.packageId)?.nameAr || 'Unknown') : null,
         packageNameAr: k.packageId ? (pkgMap.get(k.packageId)?.nameAr || null) : null,
+        isUpgrade: k.isUpgrade ?? false,
+        referredBy: k.referredBy ?? null,
       }));
     }),
 
@@ -3247,6 +3249,8 @@ export const appRouter = router({
         price: z.number().optional(),
         currency: z.string().optional(),
         expiresAt: z.string().optional(),
+        isUpgrade: z.boolean().optional(),
+        referredBy: z.string().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
         const admin = ctx.admin ?? ctx.user;
@@ -3258,6 +3262,8 @@ export const appRouter = router({
           price: input.price,
           currency: input.currency,
           expiresAt: input.expiresAt,
+          isUpgrade: input.isUpgrade,
+          referredBy: input.referredBy,
         });
         return result;
       }),
@@ -3270,6 +3276,8 @@ export const appRouter = router({
         price: z.number().optional(),
         currency: z.string().optional(),
         expiresAt: z.string().optional(),
+        isUpgrade: z.boolean().optional(),
+        referredBy: z.string().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
         const admin = ctx.admin ?? ctx.user;
@@ -3281,6 +3289,8 @@ export const appRouter = router({
           price: input.price,
           currency: input.currency,
           expiresAt: input.expiresAt,
+          isUpgrade: input.isUpgrade,
+          referredBy: input.referredBy,
         });
         return { count: keys.length };
       }),
@@ -3314,6 +3324,13 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         return db.activatePackageKey(input.keyCode, input.email);
+      }),
+
+    // Upgrade leaderboard: monthly stats by referrer
+    upgradeStats: adminOrRoleProcedure(['key_manager'])
+      .input(z.object({ month: z.string().optional() }).optional())
+      .query(async ({ input }) => {
+        return db.getUpgradeStatistics(input?.month);
       }),
   }),
 

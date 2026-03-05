@@ -145,6 +145,8 @@ export const registrationKeys = sqliteTable("registrationKeys", {
   email: text("email", { length: 320 }),
   courseId: integer("courseId").notNull(),
   packageId: integer("packageId"), // NEW: links to packages.id — when set, this is a package key
+  isUpgrade: integer("isUpgrade", { mode: 'boolean' }).default(false), // true if this key is an upgrade from Basic→Comprehensive
+  referredBy: text("referredBy"), // team member who convinced the user to upgrade
   activatedAt: text("activatedAt"),
   createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
   createdBy: integer("createdBy").notNull(),

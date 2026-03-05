@@ -11,7 +11,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Key, CheckCircle2, AlertCircle, Package } from "lucide-react";
+import { Key, CheckCircle2, AlertCircle, Package, ArrowUpCircle, Sparkles } from "lucide-react";
 import { useLocation } from "wouter";
 import { useLanguage } from "@/contexts/LanguageContext";
 
@@ -22,15 +22,17 @@ export default function ActivateKey() {
   const [email, setEmail] = useState("");
   const [isActivated, setIsActivated] = useState(false);
   const [activatedPackage, setActivatedPackage] = useState<string | null>(null);
+  const [isUpgradeActivation, setIsUpgradeActivation] = useState(false);
 
   // Try package key activation first, fall back to legacy course key
   const activatePackageKey = trpc.packageKeys.activateKey.useMutation({
     onSuccess: (data: any) => {
       if (data.success) {
         setIsActivated(true);
-        setActivatedPackage(data.packageName || null);
+        setActivatedPackage(language === 'ar' ? (data.packageNameAr || data.packageName) : data.packageName || null);
+        setIsUpgradeActivation(data.isUpgrade ?? false);
         toast.success(data.message);
-        setTimeout(() => setLocation("/dashboard"), 3000);
+        setTimeout(() => setLocation("/dashboard"), 4000);
       } else {
         toast.error(data.message);
       }
@@ -156,7 +158,58 @@ export default function ActivateKey() {
                 </ul>
               </div>
             </>
+          ) : isUpgradeActivation ? (
+            /* ==============================================
+               UPGRADE CONGRATULATIONS SCREEN
+               ============================================== */
+            <div className="text-center space-y-5 py-6">
+              <div className="mx-auto h-20 w-20 rounded-full bg-gradient-to-br from-amber-100 to-yellow-200 flex items-center justify-center shadow-lg shadow-amber-200/50 animate-bounce">
+                <ArrowUpCircle className="h-10 w-10 text-amber-600" />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-2xl font-bold bg-gradient-to-r from-amber-600 to-yellow-500 bg-clip-text text-transparent">
+                  {language === 'ar' ? 'مبروك على الترقية! 🎉' : 'Congratulations on Your Upgrade! 🎉'}
+                </h3>
+                {activatedPackage && (
+                  <div className="flex items-center justify-center gap-2 text-gray-600">
+                    <Package className="w-4 h-4" />
+                    <span className="font-semibold">{activatedPackage}</span>
+                  </div>
+                )}
+              </div>
+              <div className="bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-950/30 dark:to-yellow-950/30 rounded-xl p-5 text-start space-y-3 border border-amber-200 dark:border-amber-800">
+                <p className="text-sm font-medium text-amber-800 dark:text-amber-300 flex items-center gap-2">
+                  <Sparkles className="w-4 h-4" />
+                  {language === 'ar' ? 'يمكنك الآن الاستفادة من جميع الميزات:' : 'You now have access to all features:'}
+                </p>
+                <ul className="text-sm text-gray-600 dark:text-gray-400 space-y-2">
+                  <li className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
+                    {language === 'ar' ? 'جميع دورات التداول والمراحل' : 'All trading courses & stages'}
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
+                    {language === 'ar' ? 'مساعد LexAI الذكي للتداول' : 'LexAI Smart Trading Assistant'}
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
+                    {language === 'ar' ? 'توصيات التداول الحية' : 'Live Trading Recommendations'}
+                  </li>
+                </ul>
+              </div>
+              <p className="text-sm text-amber-600 dark:text-amber-400 font-medium">
+                {language === 'ar' 
+                  ? 'نتمنى لك تداولاً ناجحاً ومربحاً! 📈'
+                  : 'Wishing you successful and profitable trading! 📈'}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {language === 'ar' ? 'جاري تحويلك إلى لوحة التحكم...' : 'Redirecting you to your dashboard...'}
+              </p>
+            </div>
           ) : (
+            /* ==============================================
+               NORMAL ACTIVATION SUCCESS SCREEN
+               ============================================== */
             <div className="text-center space-y-4 py-8">
               <div className="mx-auto h-16 w-16 rounded-full bg-green-100 flex items-center justify-center">
                 <CheckCircle2 className="h-8 w-8 text-green-600" />

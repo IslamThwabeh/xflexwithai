@@ -1877,6 +1877,8 @@ export async function createPackageKey(input: {
   price?: number;
   currency?: string;
   expiresAt?: string | Date | null;
+  isUpgrade?: boolean;
+  referredBy?: string;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -1892,6 +1894,8 @@ export async function createPackageKey(input: {
     currency: input.currency ?? "USD",
     createdAt: new Date().toISOString(),
     expiresAt: input.expiresAt ? new Date(input.expiresAt).toISOString() : null,
+    isUpgrade: input.isUpgrade ?? false,
+    referredBy: input.referredBy ?? null,
   };
   const result = await db.insert(registrationKeys).values(values).returning({ id: registrationKeys.id });
   return { id: result[0].id, keyCode };
@@ -1905,6 +1909,8 @@ export async function createBulkPackageKeys(input: {
   price?: number;
   currency?: string;
   expiresAt?: string | Date | null;
+  isUpgrade?: boolean;
+  referredBy?: string;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -1919,6 +1925,8 @@ export async function createBulkPackageKeys(input: {
     price: input.price ?? 0,
     currency: input.currency ?? "USD",
     expiresAt: input.expiresAt ? new Date(input.expiresAt).toISOString() : null,
+    isUpgrade: input.isUpgrade ?? false,
+    referredBy: input.referredBy ?? null,
   }));
 
   await db.insert(registrationKeys).values(values);
@@ -1993,6 +2001,8 @@ export async function activatePackageKey(keyCode: string, email: string, userId?
     message: `Package "${pkg.nameEn || pkg.nameAr}" activated successfully`,
     key: updated ?? key,
     packageName: pkg.nameEn || pkg.nameAr,
+    packageNameAr: pkg.nameAr || pkg.nameEn,
+    isUpgrade: key.isUpgrade ?? false,
   };
 }
 
@@ -2096,6 +2106,80 @@ export async function fulfillPackageEntitlements(
       });
     }
   }
+}
+
+/**
+ * Get upgrade statistics: total upgrades, monthly breakdown by referrer (leaderboard).
+ */
+export async function getUpgradeStatistics(month?: string) {
+  const db = await getDb();
+  if (!db) return { totalUpgrades: 0, monthlyUpgrades: 0, leaderboard: [] as { referredBy: string; count: number }[] };
+
+  const upgradeFilter = and(
+    sql`${registrationKeys.packageId} IS NOT NULL`,
+    eq(registrationKeys.isUpgrade, true),
+    sql`${registrationKeys.activatedAt} IS NOT NULL`,
+  );
+
+  // Total all-time upgrades
+  const [totalResult] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(registrationKeys)
+    .where(upgradeFilter);
+
+  // Current month filter (YYYY-MM)
+  const targetMonth = month || new Date().toISOString().slice(0, 7);
+  const monthFilter = and(
+    upgradeFilter,
+    sql`substr(${registrationKeys.activatedAt}, 1, 7) = ${targetMonth}`,
+  );
+
+  const [monthResult] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(registrationKeys)
+    .where(monthFilter);
+
+  // Leaderboard: upgrades per referrer for the target month
+  const leaderboardRows = await db
+    .select({
+      referredBy: registrationKeys.referredBy,
+      count: sql<number>`count(*)`,
+    })
+    .from(registrationKeys)
+    .where(and(
+      monthFilter,
+      sql`${registrationKeys.referredBy} IS NOT NULL AND ${registrationKeys.referredBy} != ''`,
+    ))
+    .groupBy(registrationKeys.referredBy)
+    .orderBy(sql`count(*) DESC`);
+
+  // Also get all-time leaderboard
+  const allTimeLeaderboard = await db
+    .select({
+      referredBy: registrationKeys.referredBy,
+      count: sql<number>`count(*)`,
+    })
+    .from(registrationKeys)
+    .where(and(
+      upgradeFilter,
+      sql`${registrationKeys.referredBy} IS NOT NULL AND ${registrationKeys.referredBy} != ''`,
+    ))
+    .groupBy(registrationKeys.referredBy)
+    .orderBy(sql`count(*) DESC`);
+
+  return {
+    totalUpgrades: Number(totalResult?.count ?? 0),
+    monthlyUpgrades: Number(monthResult?.count ?? 0),
+    targetMonth,
+    leaderboard: leaderboardRows.map(r => ({
+      referredBy: r.referredBy || 'Unknown',
+      count: Number(r.count),
+    })),
+    allTimeLeaderboard: allTimeLeaderboard.map(r => ({
+      referredBy: r.referredBy || 'Unknown',
+      count: Number(r.count),
+    })),
+  };
 }
 
 // ============================================================================
