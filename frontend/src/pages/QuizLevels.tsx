@@ -1,42 +1,10 @@
-import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { Lock, CheckCircle, Circle, Trophy, Clock } from "lucide-react";
-import { apiFetch } from "@/lib/apiBase";
-
-interface LevelProgress {
-  level: number;
-  title: string;
-  description: string;
-  passingScore: number;
-  isUnlocked: boolean;
-  isPassed: boolean;
-  bestScore: number;
-  lastAttemptAt: string | null;
-}
+import { trpc } from "@/lib/trpc";
 
 export default function QuizLevels() {
-  const [progress, setProgress] = useState<LevelProgress[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    fetchProgress();
-  }, []);
-
-  const fetchProgress = async () => {
-    try {
-      const response = await apiFetch("/api/quiz/progress");
-      if (!response.ok) {
-        throw new Error("Failed to fetch progress");
-      }
-      const data = await response.json();
-      setProgress(data);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { data: progress = [], isLoading: loading, error: queryError, refetch } = trpc.userQuiz.progress.useQuery();
+  const error = queryError?.message ?? "";
 
   const getLevelStatus = (level: LevelProgress) => {
     if (level.isPassed) {
@@ -80,7 +48,7 @@ export default function QuizLevels() {
         <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md">
           <p className="text-red-800 text-center">{error}</p>
           <button
-            onClick={fetchProgress}
+            onClick={() => refetch()}
             className="mt-4 w-full bg-red-600 text-white py-2 rounded-lg hover:bg-red-700"
           >
             إعادة المحاولة

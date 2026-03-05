@@ -1,27 +1,7 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRoute, useLocation } from "wouter";
 import { ArrowRight, ArrowLeft, CheckCircle, XCircle, Trophy, RotateCcw } from "lucide-react";
-import { apiFetch } from "@/lib/apiBase";
-
-interface QuizQuestion {
-  id: number;
-  questionText: string;
-  orderNum: number;
-  options: {
-    id: number;
-    optionId: string;
-    text: string;
-  }[];
-}
-
-interface Quiz {
-  id: number;
-  level: number;
-  title: string;
-  description: string;
-  passingScore: number;
-  questions: QuizQuestion[];
-}
+import { trpc } from "@/lib/trpc";
 
 interface QuizResult {
   attemptId: number;
@@ -43,36 +23,14 @@ export default function TakeQuiz() {
   const [, setLocation] = useLocation();
   const level = parseInt(params?.level || "1");
 
-  const [quiz, setQuiz] = useState<Quiz | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  
+  const { data: quiz, isLoading: loading, error: queryError } = trpc.userQuiz.getLevel.useQuery({ level });
+  const submitMutation = trpc.userQuiz.submit.useMutation();
+
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<QuizResult | null>(null);
-
-  useEffect(() => {
-    fetchQuiz();
-  }, [level]);
-
-  const fetchQuiz = async () => {
-    try {
-      const response = await apiFetch(`/api/quiz/level/${level}`);
-      if (!response.ok) {
-        if (response.status === 403) {
-          throw new Error("هذا المستوى مقفل. أكمل المستوى السابق أولاً");
-        }
-        throw new Error("فشل في تحميل الاختبار");
-      }
-      const data = await response.json();
-      setQuiz(data);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const error = queryError?.message ?? "";
 
   const handleAnswerSelect = (questionId: number, optionId: string) => {
     setAnswers(prev => ({ ...prev, [questionId]: optionId }));
@@ -102,24 +60,15 @@ export default function TakeQuiz() {
 
     setSubmitting(true);
     try {
-      const response = await apiFetch("/api/quiz/submit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          quizId: quiz.id,
-          answers: Object.entries(answers).map(([questionId, optionId]) => ({
-            questionId: parseInt(questionId),
-            optionId
-          }))
-        })
+      const data = await submitMutation.mutateAsync({
+        quizId: quiz.id,
+        level: quiz.level,
+        answers: Object.entries(answers).map(([questionId, optionId]) => ({
+          questionId: parseInt(questionId),
+          optionId
+        }))
       });
-
-      if (!response.ok) {
-        throw new Error("فشل في إرسال الإجابات");
-      }
-
-      const data = await response.json();
-      setResult(data);
+      setResult(data as QuizResult);
     } catch (err: any) {
       alert(err.message);
     } finally {

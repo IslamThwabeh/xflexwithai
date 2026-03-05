@@ -2599,6 +2599,74 @@ export async function submitEpisodeQuizAttempt(
 }
 
 // ============================================================================
+// User Quiz Progress (standalone /quiz page)
+// ============================================================================
+
+/**
+ * Get a user's progress across all quiz levels.
+ * Level 1 is always unlocked; other levels unlock when the previous is passed.
+ */
+export async function getUserQuizProgress(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const allQuizzes = await db.select().from(quizzes).orderBy(quizzes.level);
+  if (!allQuizzes.length) return [];
+
+  const progress = await db
+    .select()
+    .from(userQuizProgress)
+    .where(eq(userQuizProgress.userId, userId));
+
+  return allQuizzes.map((quiz) => {
+    const up = progress.find((p) => p.quizId === quiz.id);
+    return {
+      level: quiz.level,
+      title: quiz.title,
+      description: quiz.description,
+      passingScore: Number(quiz.passingScore || 50),
+      isUnlocked: up ? Boolean(up.isUnlocked) : quiz.level === 1,
+      isPassed: up ? Boolean(up.isCompleted) : false,
+      bestScore: Number(up?.bestScore ?? 0),
+      lastAttemptAt: up?.lastAttemptAt ?? null,
+    };
+  });
+}
+
+/**
+ * Check whether a user can access a specific quiz level.
+ */
+export async function canAccessQuizLevel(userId: number, level: number): Promise<boolean> {
+  if (level === 1) return true;
+
+  const db = await getDb();
+  if (!db) return false;
+
+  // Find the previous-level quiz
+  const prevQuiz = await getQuizByLevel(level - 1);
+  if (!prevQuiz) return false;
+
+  return hasUserPassedQuizLevel(userId, level - 1);
+}
+
+/**
+ * Get attempt history for a user on a specific quiz level.
+ */
+export async function getQuizHistoryForLevel(userId: number, level: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const quiz = await getQuizByLevel(level);
+  if (!quiz) return [];
+
+  return db
+    .select()
+    .from(quizAttempts)
+    .where(and(eq(quizAttempts.userId, userId), eq(quizAttempts.quizId, quiz.id)))
+    .orderBy(desc(quizAttempts.completedAt));
+}
+
+// ============================================================================
 // LexAI Subscription Management
 // ============================================================================
 

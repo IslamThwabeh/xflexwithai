@@ -1179,6 +1179,65 @@ export const appRouter = router({
       }),
   }),
 
+  // =============================================
+  // USER QUIZ (standalone /quiz page)
+  // =============================================
+  userQuiz: router({
+    // Get progress for all levels (used by /quiz page)
+    progress: protectedProcedure.query(async ({ ctx }) => {
+      return db.getUserQuizProgress(ctx.user.id);
+    }),
+
+    // Get quiz questions for a specific level
+    getLevel: protectedProcedure
+      .input(z.object({ level: z.number().min(1).max(20) }))
+      .query(async ({ ctx, input }) => {
+        const canAccess = await db.canAccessQuizLevel(ctx.user.id, input.level);
+        if (!canAccess) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: 'هذا المستوى مقفل. أكمل المستوى السابق أولاً',
+          });
+        }
+        const quiz = await db.getQuizForLevelWithQuestions(input.level);
+        if (!quiz) {
+          throw new TRPCError({
+            code: 'NOT_FOUND',
+            message: 'Quiz not found for this level.',
+          });
+        }
+        return quiz;
+      }),
+
+    // Submit quiz answers
+    submit: protectedProcedure
+      .input(z.object({
+        quizId: z.number(),
+        level: z.number().min(1),
+        answers: z.array(z.object({
+          questionId: z.number(),
+          optionId: z.string().min(1),
+        })).min(1),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const quiz = await db.getQuizByLevel(input.level);
+        if (!quiz || quiz.id !== input.quizId) {
+          throw new TRPCError({
+            code: 'NOT_FOUND',
+            message: 'Quiz not found.',
+          });
+        }
+        return db.submitEpisodeQuizAttempt(ctx.user.id, input.level, input.answers);
+      }),
+
+    // Get attempt history for a level
+    history: protectedProcedure
+      .input(z.object({ level: z.number().min(1).max(20) }))
+      .query(async ({ ctx, input }) => {
+        return db.getQuizHistoryForLevel(ctx.user.id, input.level);
+      }),
+  }),
+
   // Episode progress tracking (per user)
   episodeProgress: router({
     updateProgress: protectedProcedure
