@@ -1,0 +1,1785 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>XFlex Academy — QA Testing Checklist | نموذج فحص الجودة</title>
+  <style>
+    :root {
+      --blue: #2563eb;
+      --blue-light: #eff6ff;
+      --green: #16a34a;
+      --green-light: #f0fdf4;
+      --red: #dc2626;
+      --red-light: #fef2f2;
+      --amber: #d97706;
+      --amber-light: #fffbeb;
+      --gray: #6b7280;
+      --gray-light: #f9fafb;
+      --border: #e5e7eb;
+      --shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #f3f4f6;
+      color: #1f2937;
+      line-height: 1.6;
+      padding: 16px;
+    }
+    .container {
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+
+    /* Header */
+    .header {
+      background: linear-gradient(135deg, #1e3a8a, #2563eb);
+      color: white;
+      padding: 32px;
+      border-radius: 16px;
+      margin-bottom: 24px;
+      text-align: center;
+    }
+    .header h1 { font-size: 28px; margin-bottom: 8px; }
+    .header p { opacity: 0.9; font-size: 15px; }
+    .header .version { 
+      display: inline-block;
+      background: rgba(255,255,255,0.2);
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 13px;
+      margin-top: 12px;
+    }
+
+    /* Tester info */
+    .tester-info {
+      background: white;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 24px;
+      box-shadow: var(--shadow);
+      border-right: 4px solid var(--blue);
+    }
+    .tester-info h2 { font-size: 18px; margin-bottom: 16px; color: var(--blue); }
+    .info-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    @media (max-width: 600px) {
+      .info-grid { grid-template-columns: 1fr; }
+    }
+    .info-field label { display: block; font-size: 13px; color: var(--gray); margin-bottom: 4px; }
+    .info-field input, .info-field select {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 14px;
+      background: var(--gray-light);
+    }
+
+    /* Summary */
+    .summary-bar {
+      background: white;
+      border-radius: 12px;
+      padding: 16px 24px;
+      margin-bottom: 24px;
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      align-items: center;
+      justify-content: center;
+      position: sticky;
+      top: 8px;
+      z-index: 100;
+      border: 2px solid var(--blue);
+    }
+    .summary-item {
+      text-align: center;
+      padding: 4px 16px;
+    }
+    .summary-item .num { font-size: 24px; font-weight: bold; }
+    .summary-item .lbl { font-size: 11px; color: var(--gray); }
+    .summary-item.total .num { color: var(--blue); }
+    .summary-item.pass .num { color: var(--green); }
+    .summary-item.fail .num { color: var(--red); }
+    .summary-item.skip .num { color: var(--amber); }
+    .summary-item.pending .num { color: var(--gray); }
+
+    /* Section */
+    .section {
+      background: white;
+      border-radius: 12px;
+      margin-bottom: 20px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .section-header {
+      padding: 16px 24px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      user-select: none;
+      transition: background 0.2s;
+    }
+    .section-header:hover { background: var(--gray-light); }
+    .section-header h2 { font-size: 17px; display: flex; align-items: center; gap: 8px; }
+    .section-header .badge {
+      font-size: 12px;
+      padding: 2px 10px;
+      border-radius: 12px;
+      background: var(--blue-light);
+      color: var(--blue);
+      font-weight: 600;
+    }
+    .section-header .arrow {
+      transition: transform 0.3s;
+      font-size: 18px;
+      color: var(--gray);
+    }
+    .section.collapsed .section-header .arrow { transform: rotate(-90deg); }
+    .section.collapsed .section-body { display: none; }
+    .section-body { padding: 0 24px 16px; }
+
+    /* Test item */
+    .test-item {
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border);
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: start;
+    }
+    .test-item:last-child { border-bottom: none; }
+    .test-desc h4 { font-size: 14px; margin-bottom: 2px; }
+    .test-desc p { font-size: 12px; color: var(--gray); }
+    .test-desc .url {
+      font-size: 11px;
+      color: var(--blue);
+      background: var(--blue-light);
+      padding: 2px 8px;
+      border-radius: 4px;
+      display: inline-block;
+      margin-top: 4px;
+      direction: ltr;
+      unicode-bidi: plaintext;
+    }
+    .test-actions {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    .status-btn {
+      padding: 6px 14px;
+      border: 2px solid var(--border);
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      background: white;
+      transition: all 0.2s;
+    }
+    .status-btn:hover { transform: scale(1.05); }
+    .status-btn.pass-btn { color: var(--green); }
+    .status-btn.pass-btn.active { background: var(--green); color: white; border-color: var(--green); }
+    .status-btn.fail-btn { color: var(--red); }
+    .status-btn.fail-btn.active { background: var(--red); color: white; border-color: var(--red); }
+    .status-btn.skip-btn { color: var(--amber); }
+    .status-btn.skip-btn.active { background: var(--amber); color: white; border-color: var(--amber); }
+
+    /* Notes */
+    .notes-toggle {
+      font-size: 11px;
+      color: var(--blue);
+      cursor: pointer;
+      border: none;
+      background: none;
+      text-decoration: underline;
+      margin-top: 4px;
+      display: inline-block;
+    }
+    .notes-area {
+      display: none;
+      margin-top: 8px;
+      grid-column: 1 / -1;
+    }
+    .notes-area.show { display: block; }
+    .notes-area textarea {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 13px;
+      resize: vertical;
+      min-height: 60px;
+      font-family: inherit;
+    }
+
+    /* Export bar */
+    .export-bar {
+      background: white;
+      border-radius: 12px;
+      padding: 24px;
+      margin-top: 24px;
+      box-shadow: var(--shadow);
+      text-align: center;
+    }
+    .export-bar h3 { margin-bottom: 12px; }
+    .export-bar .btn-group { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+    .btn {
+      padding: 10px 24px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+    .btn-primary { background: var(--blue); color: white; }
+    .btn-green { background: var(--green); color: white; }
+    .btn-amber { background: var(--amber); color: white; }
+
+    /* Print styles */
+    @media print {
+      body { background: white; padding: 0; }
+      .summary-bar { position: static; border: 1px solid #ccc; }
+      .export-bar { display: none; }
+      .section { break-inside: avoid; }
+      .status-btn.active { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+
+    /* Credential box */
+    .credentials {
+      background: var(--amber-light);
+      border: 2px solid var(--amber);
+      border-radius: 12px;
+      padding: 20px 24px;
+      margin-bottom: 24px;
+    }
+    .credentials h3 { color: var(--amber); margin-bottom: 12px; font-size: 16px; }
+    .cred-item {
+      background: white;
+      border-radius: 8px;
+      padding: 10px 14px;
+      margin-bottom: 8px;
+      font-size: 13px;
+      direction: ltr;
+      text-align: left;
+    }
+    .cred-item strong { color: #1e3a8a; }
+    .cred-item code {
+      background: #f1f5f9;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <!-- Header -->
+  <div class="header">
+    <h1>🔍 XFlex Academy — نموذج فحص الجودة</h1>
+    <p>QA Testing Checklist for the Business Owner & Team</p>
+    <div class="version">Version 1.0 — March 2026</div>
+  </div>
+
+  <!-- Tester Info -->
+  <div class="tester-info">
+    <h2>📋 معلومات الفاحص / Tester Information</h2>
+    <div class="info-grid">
+      <div class="info-field">
+        <label>اسم الفاحص / Tester Name</label>
+        <input type="text" id="testerName" placeholder="Your name...">
+      </div>
+      <div class="info-field">
+        <label>التاريخ / Date</label>
+        <input type="date" id="testDate" value="">
+      </div>
+      <div class="info-field">
+        <label>الجهاز / Device</label>
+        <select id="testDevice">
+          <option value="">-- اختر / Select --</option>
+          <option value="Desktop - Windows">Desktop — Windows</option>
+          <option value="Desktop - Mac">Desktop — Mac</option>
+          <option value="Mobile - iPhone">Mobile — iPhone</option>
+          <option value="Mobile - Android">Mobile — Android</option>
+          <option value="Tablet - iPad">Tablet — iPad</option>
+          <option value="Tablet - Android">Tablet — Android</option>
+        </select>
+      </div>
+      <div class="info-field">
+        <label>المتصفح / Browser</label>
+        <select id="testBrowser">
+          <option value="">-- اختر / Select --</option>
+          <option value="Chrome">Chrome</option>
+          <option value="Safari">Safari</option>
+          <option value="Firefox">Firefox</option>
+          <option value="Edge">Edge</option>
+          <option value="Samsung Browser">Samsung Browser</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Test Credentials -->
+  <div class="credentials">
+    <h3>🔑 حسابات الاختبار / Test Accounts</h3>
+    <div class="cred-item">
+      <strong>Admin Login:</strong> <code>https://xflexacademy.com/admin/login</code>
+      <br>Email: <code>admin@xflexacademy.com</code> / Password: provided separately
+    </div>
+    <div class="cred-item">
+      <strong>User Registration:</strong> <code>https://xflexacademy.com/auth</code>
+      <br>Register a new account with your real email to test OTP login flow
+    </div>
+    <div class="cred-item">
+      <strong>Site URL:</strong> <code>https://xflexacademy.com</code>
+    </div>
+  </div>
+
+  <!-- Sticky Summary Bar -->
+  <div class="summary-bar" id="summaryBar">
+    <div class="summary-item total">
+      <div class="num" id="totalCount">0</div>
+      <div class="lbl">الإجمالي / Total</div>
+    </div>
+    <div class="summary-item pass">
+      <div class="num" id="passCount">0</div>
+      <div class="lbl">✅ ناجح / Pass</div>
+    </div>
+    <div class="summary-item fail">
+      <div class="num" id="failCount">0</div>
+      <div class="lbl">❌ فشل / Fail</div>
+    </div>
+    <div class="summary-item skip">
+      <div class="num" id="skipCount">0</div>
+      <div class="lbl">⚠️ تخطي / Skip</div>
+    </div>
+    <div class="summary-item pending">
+      <div class="num" id="pendingCount">0</div>
+      <div class="lbl">⏳ متبقي / Pending</div>
+    </div>
+  </div>
+
+  <!-- ========================================================= -->
+  <!-- SECTION 1: Landing Page / الصفحة الرئيسية -->
+  <!-- ========================================================= -->
+  <div class="section" id="sec-landing">
+    <div class="section-header" onclick="toggleSection('sec-landing')">
+      <h2>🏠 الصفحة الرئيسية / Landing Page <span class="badge">9 tests</span></h2>
+      <span class="arrow">▼</span>
+    </div>
+    <div class="section-body">
+      <div class="test-item" data-id="L01">
+        <div class="test-desc">
+          <h4>L01 — الصفحة تُحمّل بشكل صحيح / Page loads correctly</h4>
+          <p>الصفحة تعرض جميع الأقسام: البطل، المميزات، الباقات، الشهادات، FAQ</p>
+          <span class="url">https://xflexacademy.com/</span>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('L01','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('L01','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('L01','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('L01')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-L01"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="L02">
+        <div class="test-desc">
+          <h4>L02 — المحتوى بالعربي افتراضياً / Default Arabic content</h4>
+          <p>الصفحة تعرض جميع النصوص بالعربية عند أول زيارة</p>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('L02','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('L02','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('L02','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('L02')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-L02"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="L03">
+        <div class="test-desc">
+          <h4>L03 — تبديل اللغة / Language switcher works</h4>
+          <p>اضغط على زر تغيير اللغة → يتحول المحتوى من العربية إلى الإنجليزية والعكس</p>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('L03','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('L03','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('L03','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('L03')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-L03"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="L04">
+        <div class="test-desc">
+          <h4>L04 — عرض الباقتين / Both packages displayed</h4>
+          <p>تُعرض الباقة الأساسية والباقة الشاملة بأسعارهما ومميزاتهما</p>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('L04','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('L04','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('L04','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('L04')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-L04"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="L05">
+        <div class="test-desc">
+          <h4>L05 — الشهادات / Testimonials section</h4>
+          <p>قسم آراء المتداولين يعرض شهادات حقيقية</p>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('L05','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('L05','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('L05','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('L05')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-L05"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="L06">
+        <div class="test-desc">
+          <h4>L06 — الأسئلة الشائعة / FAQ section</h4>
+          <p>قسم FAQ يعمل — الأسئلة تفتح وتغلق عند الضغط (18 سؤال)</p>
+          <span class="url">https://xflexacademy.com/faq</span>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('L06','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('L06','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('L06','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('L06')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-L06"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="L07">
+        <div class="test-desc">
+          <h4>L07 — زر واتساب / WhatsApp floating button</h4>
+          <p>يظهر زر واتساب عائم في الزاوية ويفتح رابط محادثة عند الضغط</p>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('L07','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('L07','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('L07','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('L07')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-L07"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="L08">
+        <div class="test-desc">
+          <h4>L08 — التنقل السفلي / Footer navigation</h4>
+          <p>روابط الشروط، الخصوصية، الاسترداد، التواصل تعمل في أسفل الصفحة</p>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('L08','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('L08','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('L08','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('L08')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-L08"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="L09">
+        <div class="test-desc">
+          <h4>L09 — التوافق مع الموبايل / Mobile responsiveness</h4>
+          <p>افتح الصفحة من الجوال — كل شيء يظهر بشكل سليم ومتجاوب</p>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('L09','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('L09','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('L09','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('L09')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-L09"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================= -->
+  <!-- SECTION 2: Auth & Registration -->
+  <!-- ========================================================= -->
+  <div class="section" id="sec-auth">
+    <div class="section-header" onclick="toggleSection('sec-auth')">
+      <h2>🔐 التسجيل والدخول / Auth & Registration <span class="badge">7 tests</span></h2>
+      <span class="arrow">▼</span>
+    </div>
+    <div class="section-body">
+      <div class="test-item" data-id="A01">
+        <div class="test-desc">
+          <h4>A01 — صفحة التسجيل / Registration page loads</h4>
+          <p>صفحة التسجيل تعرض حقول: الاسم، الإيميل، الهاتف، المدينة، البلد</p>
+          <span class="url">https://xflexacademy.com/auth</span>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('A01','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('A01','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('A01','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('A01')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-A01"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="A02">
+        <div class="test-desc">
+          <h4>A02 — إنشاء حساب جديد / Create new account</h4>
+          <p>سجل حساب جديد ببريد حقيقي → تصلك رسالة OTP</p>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('A02','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('A02','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('A02','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('A02')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-A02"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="A03">
+        <div class="test-desc">
+          <h4>A03 — التحقق بالبريد OTP / Email OTP verification</h4>
+          <p>بعد التسجيل يُرسل رمز تحقق → أدخله → تدخل لوحة التحكم</p>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('A03','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('A03','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('A03','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('A03')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-A03"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="A04">
+        <div class="test-desc">
+          <h4>A04 — تسجيل دخول مستخدم مسجل / Login existing user</h4>
+          <p>سجل دخول بإيميل مسجل مسبقاً → يصلك رمز OTP → تدخل بنجاح</p>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('A04','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('A04','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('A04','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('A04')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-A04"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="A05">
+        <div class="test-desc">
+          <h4>A05 — حماية الصفحات / Protected routes</h4>
+          <p>بدون تسجيل دخول → زيارة /dashboard أو /courses يحوّلك لصفحة التسجيل</p>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('A05','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('A05','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('A05','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('A05')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-A05"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="A06">
+        <div class="test-desc">
+          <h4>A06 — تسجيل الخروج / Logout</h4>
+          <p>اضغط تسجيل خروج → يرجعك للصفحة الرئيسية ولا تستطيع دخول لوحة التحكم</p>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('A06','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('A06','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('A06','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('A06')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-A06"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="A07">
+        <div class="test-desc">
+          <h4>A07 — الملف الشخصي / Profile page</h4>
+          <p>صفحة الملف الشخصي تعرض بيانات المستخدم: الاسم، الإيميل، الهاتف، المدينة</p>
+          <span class="url">https://xflexacademy.com/profile</span>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('A07','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('A07','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('A07','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('A07')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-A07"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================= -->
+  <!-- SECTION 3: Packages & Checkout -->
+  <!-- ========================================================= -->
+  <div class="section" id="sec-packages">
+    <div class="section-header" onclick="toggleSection('sec-packages')">
+      <h2>📦 الباقات والشراء / Packages & Checkout <span class="badge">8 tests</span></h2>
+      <span class="arrow">▼</span>
+    </div>
+    <div class="section-body">
+      <div class="test-item" data-id="P01">
+        <div class="test-desc">
+          <h4>P01 — صفحة الباقة الأساسية / Basic package page</h4>
+          <p>تعرض التفاصيل: السعر، المميزات، الدورات المشمولة</p>
+          <span class="url">https://xflexacademy.com/packages/basic</span>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('P01','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('P01','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('P01','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('P01')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-P01"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="P02">
+        <div class="test-desc">
+          <h4>P02 — صفحة الباقة الشاملة / Comprehensive package page</h4>
+          <p>تعرض كل الميزات: الدورات + LexAI + التوصيات</p>
+          <span class="url">https://xflexacademy.com/packages/comprehensive</span>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('P02','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('P02','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('P02','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('P02')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-P02"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="P03">
+        <div class="test-desc">
+          <h4>P03 — صفحة الدفع / Checkout page</h4>
+          <p>صفحة الدفع تعرض ملخص الطلب، السعر، الضريبة (16% VAT)، الإجمالي</p>
+          <span class="url">https://xflexacademy.com/checkout/basic</span>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('P03','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('P03','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('P03','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('P03')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-P03"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="P04">
+        <div class="test-desc">
+          <h4>P04 — كوبون الخصم / Coupon/Discount code</h4>
+          <p>أدخل كوبون خصم → يتم تخفيض السعر بشكل صحيح</p>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('P04','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('P04','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('P04','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('P04')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-P04"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="P05">
+        <div class="test-desc">
+          <h4>P05 — طريقة الدفع PayPal / PayPal payment option</h4>
+          <p>خيار PayPal يظهر ويفتح نافذة الدفع (لا تكمل الدفع فعلياً)</p>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('P05','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('P05','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('P05','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('P05')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-P05"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="P06">
+        <div class="test-desc">
+          <h4>P06 — طريقة الدفع تحويل بنكي / Bank transfer option</h4>
+          <p>خيار التحويل البنكي يعرض تفاصيل الحساب والتعليمات</p>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('P06','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('P06','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('P06','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('P06')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-P06"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="P07">
+        <div class="test-desc">
+          <h4>P07 — صفحة الطلبات / Orders page</h4>
+          <p>بعد إنشاء طلب → يظهر في صفحة "طلباتي" مع الحالة الصحيحة</p>
+          <span class="url">https://xflexacademy.com/orders</span>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('P07','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('P07','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('P07','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('P07')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-P07"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="P08">
+        <div class="test-desc">
+          <h4>P08 — الاشتراكات / My Subscriptions page</h4>
+          <p>صفحة اشتراكاتي تعرض الباقات المفعلة وتواريخ الانتهاء</p>
+          <span class="url">https://xflexacademy.com/subscriptions</span>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('P08','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('P08','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('P08','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('P08')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-P08"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================= -->
+  <!-- SECTION 4: Courses & Content -->
+  <!-- ========================================================= -->
+  <div class="section" id="sec-courses">
+    <div class="section-header" onclick="toggleSection('sec-courses')">
+      <h2>📚 الدورات والمحتوى / Courses & Content <span class="badge">8 tests</span></h2>
+      <span class="arrow">▼</span>
+    </div>
+    <div class="section-body">
+      <div class="test-item" data-id="C01">
+        <div class="test-desc">
+          <h4>C01 — لوحة التحكم / User dashboard</h4>
+          <p>لوحة التحكم تعرض: الدورات المسجلة، التقدم، روابط سريعة</p>
+          <span class="url">https://xflexacademy.com/dashboard</span>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('C01','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('C01','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('C01','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('C01')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-C01"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="C02">
+        <div class="test-desc">
+          <h4>C02 — قائمة الدورات / Courses list page</h4>
+          <p>صفحة الدورات تعرض جميع المراحل (8 مراحل) مع حالة كل مرحلة</p>
+          <span class="url">https://xflexacademy.com/courses</span>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('C02','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('C02','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('C02','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('C02')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-C02"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="C03">
+        <div class="test-desc">
+          <h4>C03 — مرحلة 3 (التحليل الفني) / Stage 3 "Coming Soon"</h4>
+          <p>المرحلة 3 تظهر كـ "قريباً" مع رسالة مناسبة (لا يوجد محتوى بعد)</p>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('C03','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('C03','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('C03','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('C03')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-C03"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="C04">
+        <div class="test-desc">
+          <h4>C04 — مشاهدة حلقة / Watch an episode</h4>
+          <p>اختر دورة → اختر حلقة → الفيديو يعمل بشكل سليم (بدون تسجيل مسبق → ممنوع)</p>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('C04','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('C04','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('C04','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('C04')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-C04"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="C05">
+        <div class="test-desc">
+          <h4>C05 — قفل الحلقات / Episode locking</h4>
+          <p>الحلقات مقفلة حتى إكمال السابقة (لا يمكن تخطي الحلقات)</p>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('C05','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('C05','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('C05','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('C05')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-C05"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="C06">
+        <div class="test-desc">
+          <h4>C06 — تتبع التقدم / Progress tracking</h4>
+          <p>بعد مشاهدة حلقة → شريط التقدم يتحدث ونسبة الإكمال تتغير</p>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('C06','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('C06','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('C06','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('C06')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-C06"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="C07">
+        <div class="test-desc">
+          <h4>C07 — المحتوى المجاني / Free content page</h4>
+          <p>صفحة المحتوى المجاني تعرض الفيديوهات التعريفية المتاحة للجميع</p>
+          <span class="url">https://xflexacademy.com/free-content</span>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('C07','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('C07','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('C07','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('C07')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-C07"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="C08">
+        <div class="test-desc">
+          <h4>C08 — تفعيل مفتاح الباقة / Activate package key</h4>
+          <p>صفحة تفعيل المفتاح تعمل — أدخل مفتاح + إيميل (اطلب مفتاح تجريبي من المطور)</p>
+          <span class="url">https://xflexacademy.com/activate-key</span>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('C08','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('C08','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('C08','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('C08')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-C08"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================= -->
+  <!-- SECTION 5: Quiz System -->
+  <!-- ========================================================= -->
+  <div class="section" id="sec-quiz">
+    <div class="section-header" onclick="toggleSection('sec-quiz')">
+      <h2>📝 نظام الاختبارات / Quiz System <span class="badge">5 tests</span></h2>
+      <span class="arrow">▼</span>
+    </div>
+    <div class="section-body">
+      <div class="test-item" data-id="Q01">
+        <div class="test-desc">
+          <h4>Q01 — صفحة مستويات الاختبار / Quiz levels page</h4>
+          <p>صفحة الاختبارات تعرض المستويات المتاحة</p>
+          <span class="url">https://xflexacademy.com/quiz</span>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('Q01','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('Q01','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('Q01','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('Q01')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-Q01"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="Q02">
+        <div class="test-desc">
+          <h4>Q02 — إجراء اختبار / Take a quiz</h4>
+          <p>ابدأ اختبار → أجب عن الأسئلة → تظهر النتيجة في النهاية</p>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('Q02','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('Q02','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('Q02','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('Q02')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-Q02"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="Q03">
+        <div class="test-desc">
+          <h4>Q03 — سجل الاختبارات / Quiz history</h4>
+          <p>بعد إكمال اختبار → يظهر في سجل الاختبارات</p>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('Q03','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('Q03','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('Q03','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('Q03')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-Q03"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="Q04">
+        <div class="test-desc">
+          <h4>Q04 — بوابة الاختبار / Quiz gating</h4>
+          <p>يجب اجتياز الاختبار قبل الانتقال للمرحلة التالية (إذا مفعّل)</p>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('Q04','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('Q04','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('Q04','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('Q04')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-Q04"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="Q05">
+        <div class="test-desc">
+          <h4>Q05 — أسئلة عربي وإنجليزي / Quiz bilingual content</h4>
+          <p>الأسئلة تظهر باللغة المختارة (عربي/إنجليزي)</p>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('Q05','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('Q05','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('Q05','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('Q05')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-Q05"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================= -->
+  <!-- SECTION 6: LexAI -->
+  <!-- ========================================================= -->
+  <div class="section" id="sec-lexai">
+    <div class="section-header" onclick="toggleSection('sec-lexai')">
+      <h2>🤖 LexAI — مساعد التداول الذكي <span class="badge">4 tests</span></h2>
+      <span class="arrow">▼</span>
+    </div>
+    <div class="section-body">
+      <div class="test-item" data-id="X01">
+        <div class="test-desc">
+          <h4>X01 — صفحة LexAI / LexAI page loads</h4>
+          <p>صفحة LexAI تُحمّل بواجهة المحادثة (يتطلب اشتراك شامل)</p>
+          <span class="url">https://xflexacademy.com/lexai</span>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('X01','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('X01','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('X01','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('X01')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-X01"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="X02">
+        <div class="test-desc">
+          <h4>X02 — إرسال رسالة / Send a message</h4>
+          <p>أرسل سؤال عن التداول → LexAI يرد بإجابة مفيدة</p>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('X02','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('X02','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('X02','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('X02')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-X02"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="X03">
+        <div class="test-desc">
+          <h4>X03 — رفض بدون اشتراك / Access denied without subscription</h4>
+          <p>مستخدم بدون اشتراك شامل → لا يمكنه استخدام LexAI ويرى رسالة مناسبة</p>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('X03','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('X03','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('X03','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('X03')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-X03"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="X04">
+        <div class="test-desc">
+          <h4>X04 — سجل المحادثات / Conversation saved</h4>
+          <p>أرسل رسائل → أغلق وارجع → المحادثة محفوظة</p>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('X04','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('X04','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('X04','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('X04')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-X04"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================= -->
+  <!-- SECTION 7: Recommendations -->
+  <!-- ========================================================= -->
+  <div class="section" id="sec-recs">
+    <div class="section-header" onclick="toggleSection('sec-recs')">
+      <h2>📊 التوصيات / Recommendations <span class="badge">3 tests</span></h2>
+      <span class="arrow">▼</span>
+    </div>
+    <div class="section-body">
+      <div class="test-item" data-id="R01">
+        <div class="test-desc">
+          <h4>R01 — صفحة التوصيات / Recommendations page</h4>
+          <p>الصفحة تُحمّل وتعرض التوصيات المتاحة (يتطلب اشتراك شامل)</p>
+          <span class="url">https://xflexacademy.com/recommendations</span>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('R01','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('R01','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('R01','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('R01')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-R01"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="R02">
+        <div class="test-desc">
+          <h4>R02 — رفض بدون اشتراك / Denied without comprehensive</h4>
+          <p>المستخدم بالباقة الأساسية لا يمكنه عرض التوصيات</p>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('R02','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('R02','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('R02','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('R02')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-R02"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="R03">
+        <div class="test-desc">
+          <h4>R03 — إشعار توصية جديدة / New recommendation notification</h4>
+          <p>عند نشر توصية جديدة → تظهر للمشتركين المؤهلين</p>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('R03','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('R03','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('R03','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('R03')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-R03"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================= -->
+  <!-- SECTION 8: Support & Contact -->
+  <!-- ========================================================= -->
+  <div class="section" id="sec-support">
+    <div class="section-header" onclick="toggleSection('sec-support')">
+      <h2>💬 الدعم والتواصل / Support & Contact <span class="badge">4 tests</span></h2>
+      <span class="arrow">▼</span>
+    </div>
+    <div class="section-body">
+      <div class="test-item" data-id="S01">
+        <div class="test-desc">
+          <h4>S01 — محادثة الدعم / Support chat</h4>
+          <p>افتح محادثة الدعم → أرسل رسالة → يتلقاها فريق الدعم</p>
+          <span class="url">https://xflexacademy.com/support</span>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('S01','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('S01','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('S01','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('S01')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-S01"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="S02">
+        <div class="test-desc">
+          <h4>S02 — نموذج التواصل / Contact form</h4>
+          <p>أرسل رسالة من نموذج التواصل → تظهر رسالة نجاح</p>
+          <span class="url">https://xflexacademy.com/contact</span>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('S02','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('S02','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('S02','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('S02')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-S02"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="S03">
+        <div class="test-desc">
+          <h4>S03 — صفحة من نحن / About page</h4>
+          <p>صفحة "من نحن" تعرض معلومات عن الأكاديمية</p>
+          <span class="url">https://xflexacademy.com/about</span>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('S03','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('S03','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('S03','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('S03')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-S03"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="S04">
+        <div class="test-desc">
+          <h4>S04 — الأحداث والمقالات / Events & Articles</h4>
+          <p>صفحة الأحداث والمقالات تعمل — حتى لو فارغة حالياً</p>
+          <span class="url">https://xflexacademy.com/events — https://xflexacademy.com/articles</span>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('S04','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('S04','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('S04','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('S04')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-S04"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================= -->
+  <!-- SECTION 9: Legal Pages -->
+  <!-- ========================================================= -->
+  <div class="section" id="sec-legal">
+    <div class="section-header" onclick="toggleSection('sec-legal')">
+      <h2>📜 الصفحات القانونية / Legal Pages <span class="badge">4 tests</span></h2>
+      <span class="arrow">▼</span>
+    </div>
+    <div class="section-body">
+      <div class="test-item" data-id="LG01">
+        <div class="test-desc">
+          <h4>LG01 — شروط الاستخدام / Terms of Service</h4>
+          <p>الصفحة تعرض 14 بنداً كاملاً بالعربية والإنجليزية</p>
+          <span class="url">https://xflexacademy.com/terms</span>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('LG01','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('LG01','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('LG01','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('LG01')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-LG01"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="LG02">
+        <div class="test-desc">
+          <h4>LG02 — سياسة الخصوصية / Privacy Policy</h4>
+          <p>الصفحة تعرض سياسة الخصوصية كاملة ثنائية اللغة</p>
+          <span class="url">https://xflexacademy.com/privacy</span>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('LG02','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('LG02','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('LG02','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('LG02')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-LG02"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="LG03">
+        <div class="test-desc">
+          <h4>LG03 — سياسة الاسترداد / Refund Policy</h4>
+          <p>الصفحة تعرض 9 بنود سياسة الاسترداد ثنائية اللغة</p>
+          <span class="url">https://xflexacademy.com/refund-policy</span>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('LG03','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('LG03','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('LG03','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('LG03')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-LG03"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="LG04">
+        <div class="test-desc">
+          <h4>LG04 — محتوى قانوني مراجع / Legal content review</h4>
+          <p>راجع المحتوى القانوني — هل هو دقيق ومناسب للأعمال؟ (ملاحظات أي تعديل مطلوب)</p>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('LG04','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('LG04','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('LG04','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('LG04')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-LG04"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================= -->
+  <!-- SECTION 10: Admin Panel -->
+  <!-- ========================================================= -->
+  <div class="section" id="sec-admin">
+    <div class="section-header" onclick="toggleSection('sec-admin')">
+      <h2>⚙️ لوحة الإدارة / Admin Panel <span class="badge">16 tests</span></h2>
+      <span class="arrow">▼</span>
+    </div>
+    <div class="section-body">
+      <div class="test-item" data-id="AD01">
+        <div class="test-desc">
+          <h4>AD01 — تسجيل دخول الإدارة / Admin login</h4>
+          <p>تسجيل الدخول بحساب الأدمن يعمل ويحول إلى لوحة التحكم</p>
+          <span class="url">https://xflexacademy.com/admin/login</span>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('AD01','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('AD01','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('AD01','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('AD01')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-AD01"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="AD02">
+        <div class="test-desc">
+          <h4>AD02 — لوحة القيادة / Admin dashboard overview</h4>
+          <p>تعرض إحصائيات: المستخدمين، الطلبات، الإيرادات</p>
+          <span class="url">https://xflexacademy.com/admin/dashboard</span>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('AD02','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('AD02','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('AD02','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('AD02')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-AD02"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="AD03">
+        <div class="test-desc">
+          <h4>AD03 — إدارة الدورات / Manage courses</h4>
+          <p>عرض وتعديل الدورات والمراحل والحلقات</p>
+          <span class="url">https://xflexacademy.com/admin/courses</span>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('AD03','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('AD03','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('AD03','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('AD03')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-AD03"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="AD04">
+        <div class="test-desc">
+          <h4>AD04 — إدارة الاختبارات / Manage quizzes</h4>
+          <p>عرض وتعديل الاختبارات والأسئلة</p>
+          <span class="url">https://xflexacademy.com/admin/quizzes</span>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('AD04','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('AD04','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('AD04','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('AD04')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-AD04"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="AD05">
+        <div class="test-desc">
+          <h4>AD05 — مفاتيح التفعيل / Activation keys management</h4>
+          <p>إنشاء مفتاح جديد، إنشاء دفعة، تعطيل مفتاح، تصدير CSV، فلترة بالباقة</p>
+          <span class="url">https://xflexacademy.com/admin/package-keys</span>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('AD05','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('AD05','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('AD05','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('AD05')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-AD05"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="AD06">
+        <div class="test-desc">
+          <h4>AD06 — مفتاح ترقية / Upgrade key generation</h4>
+          <p>إنشاء مفتاح مع تفعيل "ترقية" + اسم العضو المحوّل → يظهر في لوحة الترقيات</p>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('AD06','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('AD06','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('AD06','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('AD06')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-AD06"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="AD07">
+        <div class="test-desc">
+          <h4>AD07 — لوحة قيادة الترقيات / Upgrade leaderboard</h4>
+          <p>عرض ترقيات الشهر الحالي، الترتيب حسب العضو، الترتيب العام</p>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('AD07','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('AD07','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('AD07','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('AD07')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-AD07"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="AD08">
+        <div class="test-desc">
+          <h4>AD08 — إدارة الباقات / Manage packages</h4>
+          <p>عرض وتعديل الباقات (الأساسية والشاملة) وأسعارها</p>
+          <span class="url">https://xflexacademy.com/admin/packages</span>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('AD08','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('AD08','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('AD08','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('AD08')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-AD08"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="AD09">
+        <div class="test-desc">
+          <h4>AD09 — إدارة الطلبات / Manage orders</h4>
+          <p>عرض الطلبات، تغيير الحالة (معلق → مكتمل)، البحث والفلترة</p>
+          <span class="url">https://xflexacademy.com/admin/orders</span>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('AD09','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('AD09','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('AD09','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('AD09')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-AD09"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="AD10">
+        <div class="test-desc">
+          <h4>AD10 — إدارة المستخدمين / Manage users</h4>
+          <p>عرض قائمة المستخدمين، البحث، عرض التفاصيل</p>
+          <span class="url">https://xflexacademy.com/admin/users</span>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('AD10','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('AD10','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('AD10','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('AD10')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-AD10"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="AD11">
+        <div class="test-desc">
+          <h4>AD11 — إدارة الأدوار / Role management</h4>
+          <p>تعيين أدوار للمستخدمين: key_manager, support, analyst, etc.</p>
+          <span class="url">https://xflexacademy.com/admin/roles</span>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('AD11','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('AD11','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('AD11','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('AD11')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-AD11"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="AD12">
+        <div class="test-desc">
+          <h4>AD12 — محادثات الدعم / Admin support chat</h4>
+          <p>عرض محادثات الدعم، الرد على المستخدمين</p>
+          <span class="url">https://xflexacademy.com/admin/support</span>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('AD12','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('AD12','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('AD12','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('AD12')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-AD12"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="AD13">
+        <div class="test-desc">
+          <h4>AD13 — إدارة الشهادات و الكوبونات / Testimonials & Coupons</h4>
+          <p>إضافة/تعديل شهادات وكوبونات خصم</p>
+          <span class="url">https://xflexacademy.com/admin/testimonials — /admin/coupons</span>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('AD13','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('AD13','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('AD13','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('AD13')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-AD13"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="AD14">
+        <div class="test-desc">
+          <h4>AD14 — تقرير المشتركين / Subscribers report</h4>
+          <p>تقرير يعرض عدد المشتركين حسب الباقة</p>
+          <span class="url">https://xflexacademy.com/admin/reports/subscribers</span>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('AD14','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('AD14','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('AD14','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('AD14')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-AD14"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="AD15">
+        <div class="test-desc">
+          <h4>AD15 — تقرير الإيرادات / Revenue report</h4>
+          <p>تقرير الإيرادات يعرض المبالغ حسب الباقة والطريقة</p>
+          <span class="url">https://xflexacademy.com/admin/reports/revenue</span>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('AD15','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('AD15','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('AD15','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('AD15')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-AD15"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="AD16">
+        <div class="test-desc">
+          <h4>AD16 — تقرير انتهاء الاشتراكات / Expiry report</h4>
+          <p>عرض الاشتراكات المنتهية أو القريبة من الانتهاء</p>
+          <span class="url">https://xflexacademy.com/admin/reports/expiry</span>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('AD16','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('AD16','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('AD16','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('AD16')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-AD16"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================= -->
+  <!-- SECTION 11: Content Review -->
+  <!-- ========================================================= -->
+  <div class="section" id="sec-content">
+    <div class="section-header" onclick="toggleSection('sec-content')">
+      <h2>✍️ مراجعة المحتوى / Content Review <span class="badge">6 tests</span></h2>
+      <span class="arrow">▼</span>
+    </div>
+    <div class="section-body">
+      <div class="test-item" data-id="CR01">
+        <div class="test-desc">
+          <h4>CR01 — نصوص الصفحة الرئيسية / Homepage text accuracy</h4>
+          <p>هل جميع النصوص على الصفحة الرئيسية دقيقة ومعبّرة عن العلامة التجارية؟</p>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('CR01','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('CR01','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('CR01','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('CR01')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-CR01"><textarea placeholder="اكتب أي نص يحتاج تعديل... / Write any text that needs changing..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="CR02">
+        <div class="test-desc">
+          <h4>CR02 — أسعار الباقات / Package prices correct</h4>
+          <p>هل أسعار الباقتين (الأساسية والشاملة) صحيحة؟ هل الضريبة 16% صحيحة؟</p>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('CR02','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('CR02','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('CR02','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('CR02')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-CR02"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="CR03">
+        <div class="test-desc">
+          <h4>CR03 — وصف الدورات / Course descriptions</h4>
+          <p>هل عناوين وأوصاف المراحل والحلقات دقيقة؟</p>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('CR03','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('CR03','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('CR03','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('CR03')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-CR03"><textarea placeholder="اكتب أي تعديل مطلوب... / Write any needed changes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="CR04">
+        <div class="test-desc">
+          <h4>CR04 — أسئلة FAQ / FAQ content accuracy</h4>
+          <p>هل الـ 18 سؤال في صفحة الأسئلة الشائعة دقيقة ومحدّثة؟</p>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('CR04','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('CR04','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('CR04','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('CR04')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-CR04"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="CR05">
+        <div class="test-desc">
+          <h4>CR05 — أسئلة الاختبارات / Quiz questions accuracy</h4>
+          <p>هل أسئلة الاختبارات صحيحة تعليمياً؟ هل الإجابات الصحيحة فعلاً صحيحة؟</p>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('CR05','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('CR05','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('CR05','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('CR05')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-CR05"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+
+      <div class="test-item" data-id="CR06">
+        <div class="test-desc">
+          <h4>CR06 — رقم واتساب / WhatsApp number correct</h4>
+          <p>هل رقم الواتساب في الزر العائم صحيح ويفتح المحادثة الصحيحة؟</p>
+        </div>
+        <div class="test-actions">
+          <button class="status-btn pass-btn" onclick="setStatus('CR06','pass')">✅ ناجح</button>
+          <button class="status-btn fail-btn" onclick="setStatus('CR06','fail')">❌ فشل</button>
+          <button class="status-btn skip-btn" onclick="setStatus('CR06','skip')">⚠️ تخطي</button>
+        </div>
+        <button class="notes-toggle" onclick="toggleNotes('CR06')">+ إضافة ملاحظات / Add notes</button>
+        <div class="notes-area" id="notes-CR06"><textarea placeholder="ملاحظات... / Notes..."></textarea></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================= -->
+  <!-- SECTION 12: General Notes -->
+  <!-- ========================================================= -->
+  <div class="section" id="sec-general">
+    <div class="section-header" onclick="toggleSection('sec-general')">
+      <h2>📝 ملاحظات عامة / General Notes <span class="badge">open</span></h2>
+      <span class="arrow">▼</span>
+    </div>
+    <div class="section-body">
+      <div style="padding: 8px 0;">
+        <label style="font-size: 14px; font-weight: 600; display: block; margin-bottom: 8px;">
+          أي ملاحظات إضافية أو مشاكل لم تُغطى أعلاه:
+          <br><span style="color: var(--gray); font-weight: normal;">Any additional notes or issues not covered above:</span>
+        </label>
+        <textarea id="generalNotes" style="width: 100%; min-height: 120px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; font-family: inherit; resize: vertical;" placeholder="اكتب ملاحظاتك هنا... / Write your notes here..."></textarea>
+      </div>
+    </div>
+  </div>
+
+  <!-- Export Bar -->
+  <div class="export-bar">
+    <h3>📤 حفظ ومشاركة النتائج / Save & Share Results</h3>
+    <p style="font-size: 13px; color: var(--gray); margin-bottom: 16px;">
+      احفظ النتائج كملف HTML لمشاركته مع فريق التطوير
+      <br>Save the results as an HTML file to share with the development team
+    </p>
+    <div class="btn-group">
+      <button class="btn btn-primary" onclick="saveAsHTML()">💾 حفظ كملف HTML / Save as HTML</button>
+      <button class="btn btn-green" onclick="copyTextSummary()">📋 نسخ الملخص / Copy Summary</button>
+      <button class="btn btn-amber" onclick="resetAll()">🔄 إعادة تعيين / Reset All</button>
+    </div>
+  </div>
+
+  <div style="text-align: center; padding: 24px; color: var(--gray); font-size: 12px;">
+    XFlex Trading Academy — QA Testing Checklist v1.0 — March 2026
+  </div>
+</div>
+
+<script>
+  // Set today's date
+  document.getElementById('testDate').value = new Date().toISOString().split('T')[0];
+
+  // State management
+  const state = {};
+
+  function setStatus(id, status) {
+    state[id] = status;
+    // Update button styles
+    const item = document.querySelector(`[data-id="${id}"]`);
+    if (!item) return;
+    item.querySelectorAll('.status-btn').forEach(btn => btn.classList.remove('active'));
+    if (status === 'pass') item.querySelector('.pass-btn').classList.add('active');
+    else if (status === 'fail') item.querySelector('.fail-btn').classList.add('active');
+    else if (status === 'skip') item.querySelector('.skip-btn').classList.add('active');
+    
+    // Auto-show notes on fail
+    if (status === 'fail') {
+      const notes = document.getElementById(`notes-${id}`);
+      if (notes) notes.classList.add('show');
+    }
+
+    updateSummary();
+    saveToLocalStorage();
+  }
+
+  function toggleNotes(id) {
+    const notes = document.getElementById(`notes-${id}`);
+    if (notes) notes.classList.toggle('show');
+  }
+
+  function toggleSection(id) {
+    document.getElementById(id).classList.toggle('collapsed');
+  }
+
+  function updateSummary() {
+    const allItems = document.querySelectorAll('.test-item[data-id]');
+    const total = allItems.length;
+    let pass = 0, fail = 0, skip = 0;
+    for (const [, v] of Object.entries(state)) {
+      if (v === 'pass') pass++;
+      else if (v === 'fail') fail++;
+      else if (v === 'skip') skip++;
+    }
+    document.getElementById('totalCount').textContent = total;
+    document.getElementById('passCount').textContent = pass;
+    document.getElementById('failCount').textContent = fail;
+    document.getElementById('skipCount').textContent = skip;
+    document.getElementById('pendingCount').textContent = total - pass - fail - skip;
+  }
+
+  function saveToLocalStorage() {
+    const data = {
+      state,
+      testerName: document.getElementById('testerName').value,
+      testDate: document.getElementById('testDate').value,
+      testDevice: document.getElementById('testDevice').value,
+      testBrowser: document.getElementById('testBrowser').value,
+      generalNotes: document.getElementById('generalNotes').value,
+      notes: {},
+    };
+    document.querySelectorAll('.notes-area textarea').forEach(ta => {
+      const id = ta.closest('.notes-area').id.replace('notes-', '');
+      if (ta.value.trim()) data.notes[id] = ta.value;
+    });
+    localStorage.setItem('xflex-qa-data', JSON.stringify(data));
+  }
+
+  function loadFromLocalStorage() {
+    try {
+      const raw = localStorage.getItem('xflex-qa-data');
+      if (!raw) return;
+      const data = JSON.parse(raw);
+      if (data.testerName) document.getElementById('testerName').value = data.testerName;
+      if (data.testDate) document.getElementById('testDate').value = data.testDate;
+      if (data.testDevice) document.getElementById('testDevice').value = data.testDevice;
+      if (data.testBrowser) document.getElementById('testBrowser').value = data.testBrowser;
+      if (data.generalNotes) document.getElementById('generalNotes').value = data.generalNotes;
+      if (data.state) {
+        for (const [id, status] of Object.entries(data.state)) {
+          setStatus(id, status);
+        }
+      }
+      if (data.notes) {
+        for (const [id, text] of Object.entries(data.notes)) {
+          const ta = document.querySelector(`#notes-${id} textarea`);
+          if (ta) {
+            ta.value = text;
+            document.getElementById(`notes-${id}`).classList.add('show');
+          }
+        }
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  function saveAsHTML() {
+    saveToLocalStorage();
+    const html = document.documentElement.outerHTML;
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const tester = document.getElementById('testerName').value || 'QA';
+    const date = document.getElementById('testDate').value || new Date().toISOString().slice(0,10);
+    a.href = url;
+    a.download = `XFlex_QA_${tester}_${date}.html`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function copyTextSummary() {
+    const allItems = document.querySelectorAll('.test-item[data-id]');
+    const tester = document.getElementById('testerName').value || '—';
+    const date = document.getElementById('testDate').value || '—';
+    const device = document.getElementById('testDevice').value || '—';
+    const browser = document.getElementById('testBrowser').value || '—';
+    
+    let text = `🔍 XFlex Academy QA Report\n`;
+    text += `Tester: ${tester} | Date: ${date} | Device: ${device} | Browser: ${browser}\n`;
+    text += `${'='.repeat(60)}\n\n`;
+    
+    let pass = 0, fail = 0, skip = 0, pending = 0;
+    const failedItems = [];
+    
+    allItems.forEach(item => {
+      const id = item.dataset.id;
+      const title = item.querySelector('h4')?.textContent || id;
+      const s = state[id];
+      if (s === 'pass') pass++;
+      else if (s === 'fail') {
+        fail++;
+        const note = document.querySelector(`#notes-${id} textarea`)?.value || '';
+        failedItems.push({ id, title, note });
+      }
+      else if (s === 'skip') skip++;
+      else pending++;
+    });
+
+    text += `SUMMARY: ✅ ${pass} Pass | ❌ ${fail} Fail | ⚠️ ${skip} Skip | ⏳ ${pending} Pending\n`;
+    text += `Total: ${allItems.length} tests\n\n`;
+
+    if (failedItems.length > 0) {
+      text += `❌ FAILED ITEMS:\n${'-'.repeat(40)}\n`;
+      failedItems.forEach(f => {
+        text += `• ${f.title}\n`;
+        if (f.note) text += `  Notes: ${f.note}\n`;
+      });
+      text += '\n';
+    }
+
+    const generalNotes = document.getElementById('generalNotes').value;
+    if (generalNotes) {
+      text += `📝 General Notes:\n${generalNotes}\n`;
+    }
+
+    navigator.clipboard.writeText(text).then(() => {
+      alert('✅ تم نسخ الملخص! / Summary copied to clipboard!');
+    });
+  }
+
+  function resetAll() {
+    if (!confirm('هل أنت متأكد من إعادة التعيين؟ سيتم مسح جميع النتائج.\nReset all results? This cannot be undone.')) return;
+    for (const id in state) delete state[id];
+    document.querySelectorAll('.status-btn').forEach(btn => btn.classList.remove('active'));
+    document.querySelectorAll('.notes-area textarea').forEach(ta => ta.value = '');
+    document.querySelectorAll('.notes-area').forEach(n => n.classList.remove('show'));
+    document.getElementById('generalNotes').value = '';
+    localStorage.removeItem('xflex-qa-data');
+    updateSummary();
+  }
+
+  // Auto-save on any input change
+  document.addEventListener('input', () => setTimeout(saveToLocalStorage, 500));
+  
+  // Initialize
+  updateSummary();
+  loadFromLocalStorage();
+</script>
+
+</body>
+</html>

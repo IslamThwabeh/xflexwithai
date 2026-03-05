@@ -23,10 +23,7 @@ const AdminCourses = lazy(() => import("./pages/AdminCourses"));
 const AdminEpisodes = lazy(() => import("./pages/AdminEpisodes"));
 const AdminUsers = lazy(() => import("./pages/AdminUsers"));
 const AdminKeys = lazy(() => import("./pages/AdminKeys"));
-const AdminAnalytics = lazy(() => import("./pages/AdminAnalytics"));
-const AdminSettings = lazy(() => import("./pages/AdminSettings"));
 const AdminLexaiSubscriptions = lazy(() => import("./pages/AdminLexaiSubscriptions"));
-const AdminLexaiKeys = lazy(() => import("./pages/AdminLexaiKeys"));
 const AdminLexaiConversations = lazy(() => import("./pages/AdminLexaiConversations"));
 const AdminRecommendations = lazy(() => import("./pages/AdminRecommendations"));
 const AdminSupport = lazy(() => import("./pages/AdminSupport"));
@@ -48,7 +45,6 @@ const MyDashboard = lazy(() => import("./pages/MyDashboard"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Profile = lazy(() => import("./pages/Profile"));
 const CourseWatch = lazy(() => import("./pages/CourseWatch"));
-const CoursePlayer = lazy(() => import("./pages/CoursePlayer"));
 const ActivateKey = lazy(() => import("./pages/ActivateKey"));
 const LexAI = lazy(() => import("./pages/LexAI"));
 const Recommendations = lazy(() => import("./pages/Recommendations"));
@@ -144,24 +140,9 @@ function Router() {
           <AdminPackageKeys />
         </AdminRoute>
       </Route>
-      <Route path={"/admin/analytics"}>
-        <AdminRoute>
-          <AdminAnalytics />
-        </AdminRoute>
-      </Route>
-      <Route path={"/admin/settings"}>
-        <AdminRoute>
-          <AdminSettings />
-        </AdminRoute>
-      </Route>
       <Route path={"/admin/lexai/subscriptions"}>
         <AdminRoute>
           <AdminLexaiSubscriptions />
-        </AdminRoute>
-      </Route>
-      <Route path={"/admin/lexai/keys"}>
-        <AdminRoute>
-          <AdminLexaiKeys />
         </AdminRoute>
       </Route>
       <Route path={"/admin/lexai/conversations"}>

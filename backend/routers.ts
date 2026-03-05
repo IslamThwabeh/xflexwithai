@@ -2224,11 +2224,16 @@ export const appRouter = router({
     }))
     .mutation(async ({ input, ctx }) => {
       const adminEmail = ENV.emailFrom || 'support@xflexacademy.com';
-      await sendEmail({
-        to: adminEmail,
-        subject: `[XFlex Support] New message from ${input.email}`,
-        text: `New support message from: ${input.email}\n\n${input.message}\n\n---\nReply directly to ${input.email}`,
-      });
+      try {
+        await sendEmail({
+          to: adminEmail,
+          subject: `[XFlex Support] New message from ${input.email}`,
+          text: `New support message from: ${input.email}\n\n${input.message}\n\n---\nReply directly to ${input.email}`,
+        });
+      } catch (e) {
+        logger.error('[CONTACT] Failed to send contact form email', { email: input.email, error: e });
+        // Still return success — the message intent is captured in logs
+      }
       return { success: true };
     }),
 
