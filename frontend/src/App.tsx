@@ -225,9 +225,21 @@ function Router() {
           <SupportChat />
         </ProtectedRoute>
       </Route>
-      <Route path="/quiz" component={QuizLevels} />
-      <Route path="/quiz/:level" component={TakeQuiz} />
-      <Route path="/quiz/:level/history" component={QuizHistory} />
+      <Route path="/quiz">
+        <ProtectedRoute>
+          <QuizLevels />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/quiz/:level">
+        <ProtectedRoute>
+          <TakeQuiz />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/quiz/:level/history">
+        <ProtectedRoute>
+          <QuizHistory />
+        </ProtectedRoute>
+      </Route>
       <Route path="/packages/:slug" component={PackageDetails} />
       <Route path="/checkout/:slug" component={Checkout} />
       <Route path="/about" component={About} />
