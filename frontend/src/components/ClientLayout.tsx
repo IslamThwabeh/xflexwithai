@@ -14,6 +14,8 @@ import {
   Headphones,
   ShoppingBag,
   Package,
+  ClipboardCheck,
+  User,
 } from "lucide-react";
 
 interface ClientLayoutProps {
@@ -58,6 +60,12 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
       match: "/support",
     },
     {
+      href: "/quiz",
+      label: t("dashboard.nav.quizzes"),
+      icon: <ClipboardCheck className="h-4 w-4" />,
+      match: "/quiz",
+    },
+    {
       href: "/orders",
       label: t("dashboard.nav.orders"),
       icon: <ShoppingBag className="h-4 w-4" />,
@@ -68,6 +76,12 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
       label: t("dashboard.nav.subscriptions"),
       icon: <Package className="h-4 w-4" />,
       match: "/subscriptions",
+    },
+    {
+      href: "/profile",
+      label: t("dashboard.nav.profile") || (language === "ar" ? "الملف الشخصي" : "Profile"),
+      icon: <User className="h-4 w-4" />,
+      match: "/profile",
     },
   ];
 

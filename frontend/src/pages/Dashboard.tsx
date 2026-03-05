@@ -198,7 +198,7 @@ export default function Dashboard() {
                 <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
                   {t("dashboard.quickActions.getAIHelp")}
                 </p>
-                <Link href="/flexai">
+                <Link href="/lexai">
                   <Button className="w-full variant-outline">{t("dashboard.quickActions.openChat")}</Button>
                 </Link>
               </CardContent>

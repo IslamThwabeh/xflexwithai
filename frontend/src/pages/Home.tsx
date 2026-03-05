@@ -4,7 +4,8 @@ import {
   BookOpen, Bot, Signal, Globe, LogIn, Send, CheckCircle, Loader2,
   ChevronRight, Star, GraduationCap, BarChart3, Brain, Lightbulb,
   TrendingUp, Shield, FileText, Play, Calendar, Newspaper,
-  Instagram, Facebook, Phone, ArrowUp, X, MessageCircle, Quote
+  Instagram, Facebook, Phone, ArrowUp, X, MessageCircle, Quote,
+  HelpCircle, Menu, KeyRound
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -27,6 +28,7 @@ const stageData = [
 export default function Home() {
   const { t, language, setLanguage, isRTL } = useLanguage();
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Contact support form
   const [contactEmail, setContactEmail] = useState('');
@@ -111,6 +113,8 @@ export default function Home() {
             <button onClick={() => scrollToSection('stages')} className="hover:text-blue-600 transition">{t('home.stages.title')}</button>
             <button onClick={() => scrollToSection('events')} className="hover:text-blue-600 transition">{t('home.events.title')}</button>
             <button onClick={() => scrollToSection('articles')} className="hover:text-blue-600 transition">{t('home.articles.title')}</button>
+            <Link href="/free-content"><span className="hover:text-blue-600 transition cursor-pointer">{t('home.footer.freeContent')}</span></Link>
+            <Link href="/faq"><span className="hover:text-blue-600 transition cursor-pointer">{language === 'ar' ? 'الأسئلة الشائعة' : 'FAQ'}</span></Link>
             <button onClick={() => scrollToSection('contact')} className="hover:text-blue-600 transition">{t('home.footer.contact')}</button>
           </nav>
 
@@ -128,8 +132,29 @@ export default function Home() {
                 {t('home.heroCtaLogin')}
               </Button>
             </Link>
+            {/* Mobile Hamburger */}
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="md:hidden p-1.5 rounded-lg text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition"
+            >
+              {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
           </div>
         </div>
+
+        {/* Mobile Dropdown Menu */}
+        {mobileMenuOpen && (
+          <nav className="md:hidden border-t border-gray-100 bg-white px-4 py-3 flex flex-col gap-2 text-sm font-medium text-gray-600">
+            <button onClick={() => { scrollToSection('packages'); setMobileMenuOpen(false); }} className="text-start hover:text-blue-600 transition py-1.5">{t('home.footer.packages')}</button>
+            <button onClick={() => { scrollToSection('stages'); setMobileMenuOpen(false); }} className="text-start hover:text-blue-600 transition py-1.5">{t('home.stages.title')}</button>
+            <button onClick={() => { scrollToSection('events'); setMobileMenuOpen(false); }} className="text-start hover:text-blue-600 transition py-1.5">{t('home.events.title')}</button>
+            <button onClick={() => { scrollToSection('articles'); setMobileMenuOpen(false); }} className="text-start hover:text-blue-600 transition py-1.5">{t('home.articles.title')}</button>
+            <Link href="/free-content" onClick={() => setMobileMenuOpen(false)}><span className="block hover:text-blue-600 transition py-1.5 cursor-pointer">{t('home.footer.freeContent')}</span></Link>
+            <Link href="/faq" onClick={() => setMobileMenuOpen(false)}><span className="block hover:text-blue-600 transition py-1.5 cursor-pointer">{language === 'ar' ? 'الأسئلة الشائعة' : 'FAQ'}</span></Link>
+            <button onClick={() => { scrollToSection('contact'); setMobileMenuOpen(false); }} className="text-start hover:text-blue-600 transition py-1.5">{t('home.footer.contact')}</button>
+            <Link href="/activate-key" onClick={() => setMobileMenuOpen(false)}><span className="block hover:text-blue-600 transition py-1.5 cursor-pointer">{language === 'ar' ? 'تفعيل مفتاح' : 'Activate Key'}</span></Link>
+          </nav>
+        )}
       </header>
 
       {/* ======== HERO SECTION ======== */}
@@ -749,6 +774,8 @@ export default function Home() {
                 <li><button onClick={() => scrollToSection('packages')} className="hover:text-white transition">{t('home.footer.packages')}</button></li>
                 <li><Link href="/contact"><span className="hover:text-white transition cursor-pointer">{language === 'ar' ? 'تواصل معنا' : 'Contact Us'}</span></Link></li>
                 <li><Link href="/faq"><span className="hover:text-white transition cursor-pointer">{language === 'ar' ? 'الأسئلة الشائعة' : 'FAQ'}</span></Link></li>
+                <li><Link href="/free-content"><span className="hover:text-white transition cursor-pointer">{t('home.footer.freeContent')}</span></Link></li>
+                <li><Link href="/activate-key"><span className="hover:text-white transition cursor-pointer">{language === 'ar' ? 'تفعيل مفتاح' : 'Activate Key'}</span></Link></li>
                 <li><Link href="/terms"><span className="hover:text-white transition cursor-pointer">{language === 'ar' ? 'الشروط والأحكام' : 'Terms & Conditions'}</span></Link></li>
                 <li><Link href="/refund-policy"><span className="hover:text-white transition cursor-pointer">{language === 'ar' ? 'سياسة الاسترجاع' : 'Refund Policy'}</span></Link></li>
                 <li><Link href="/privacy"><span className="hover:text-white transition cursor-pointer">{language === 'ar' ? 'سياسة الخصوصية' : 'Privacy Policy'}</span></Link></li>
