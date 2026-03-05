@@ -1023,11 +1023,13 @@ export async function deactivateRegistrationKey(id: number, reason?: string) {
     .set(setObj)
     .where(eq(registrationKeys.id, id));
 
-  // ── CASCADE: revoke entitlements granted by this package key ──
+  // ── CASCADE: revoke MONTHLY entitlements granted by this package key ──
+  // NOTE: Course enrollments are permanent (one-time) — they are NOT revoked here.
+  // Only monthly subscriptions (LexAI, Recommendations) are deactivated.
   if (keyRow.email && keyRow.packageId) {
     const user = await getUserByEmail(keyRow.email);
     if (user) {
-      // Deactivate the package subscription
+      // Deactivate the package subscription record
       const pkgSubs = await getUserPackageSubscriptions(user.id);
       for (const sub of pkgSubs) {
         if (sub.packageId === keyRow.packageId) {
@@ -1035,12 +1037,7 @@ export async function deactivateRegistrationKey(id: number, reason?: string) {
         }
       }
 
-      // Deactivate all enrollments created by this key
-      await db.update(enrollments)
-        .set({ isSubscriptionActive: false })
-        .where(and(eq(enrollments.userId, user.id), eq(enrollments.registrationKeyId, id)));
-
-      // Deactivate LexAI / Recommendations if the package included them
+      // Deactivate LexAI / Recommendations (monthly services) if the package included them
       const pkg = await getPackageById(keyRow.packageId);
       if (pkg?.includesLexai) {
         const lexaiSub = await getActiveLexaiSubscription(user.id);
