@@ -50,6 +50,7 @@ export default function Recommendations() {
   const [takeProfit1, setTakeProfit1] = useState("");
   const [takeProfit2, setTakeProfit2] = useState("");
   const [riskPercent, setRiskPercent] = useState("");
+  const [sendEmail, setSendEmail] = useState(false);
 
   const { data: me, isLoading: meLoading } = trpc.recommendations.me.useQuery();
   const { data: feed = [], isLoading: feedLoading } = trpc.recommendations.feed.useQuery(
@@ -69,7 +70,7 @@ export default function Recommendations() {
 
   const postMessageMutation = trpc.recommendations.postMessage.useMutation({
     onSuccess: () => {
-      toast.success(t('rec.toastPublished'));
+      toast.success(sendEmail ? t('rec.toastPublished') : t('rec.toastPublishedNoEmail'));
       setContent("");
       setSymbol("");
       setSide("");
@@ -120,6 +121,7 @@ export default function Recommendations() {
       takeProfit1: takeProfit1.trim() || undefined,
       takeProfit2: takeProfit2.trim() || undefined,
       riskPercent: riskPercent.trim() || undefined,
+      sendEmail,
     });
   };
 
@@ -177,15 +179,24 @@ export default function Recommendations() {
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="flex gap-2 flex-wrap">
-                <Button variant={type === "alert" ? "default" : "outline"} onClick={() => setType("alert")}>
-                  <Bell className="h-4 w-4 me-1" /> {t('rec.typeAlert')}
-                </Button>
-                <Button variant={type === "recommendation" ? "default" : "outline"} onClick={() => setType("recommendation")}>
-                  <TrendingUp className="h-4 w-4 me-1" /> {t('rec.typeRecommendation')}
-                </Button>
-                <Button variant={type === "result" ? "default" : "outline"} onClick={() => setType("result")}>
-                  <BarChart3 className="h-4 w-4 me-1" /> {t('rec.typeResult')}
-                </Button>
+                <div className="flex flex-col gap-1">
+                  <Button variant={type === "alert" ? "default" : "outline"} onClick={() => setType("alert")}>
+                    <Bell className="h-4 w-4 me-1" /> {t('rec.typeAlert')}
+                  </Button>
+                  <span className="text-xs text-muted-foreground px-1">{t('rec.typeAlertDesc')}</span>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <Button variant={type === "recommendation" ? "default" : "outline"} onClick={() => setType("recommendation")}>
+                    <TrendingUp className="h-4 w-4 me-1" /> {t('rec.typeRecommendation')}
+                  </Button>
+                  <span className="text-xs text-muted-foreground px-1">{t('rec.typeRecommendationDesc')}</span>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <Button variant={type === "result" ? "default" : "outline"} onClick={() => setType("result")}>
+                    <BarChart3 className="h-4 w-4 me-1" /> {t('rec.typeResult')}
+                  </Button>
+                  <span className="text-xs text-muted-foreground px-1">{t('rec.typeResultDesc')}</span>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
@@ -199,7 +210,14 @@ export default function Recommendations() {
               </div>
 
               <Textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder={t('rec.messagePlaceholder')} rows={4} />
-              <Button onClick={onPublish} disabled={postMessageMutation.isPending}>{t('rec.publishBtn')}</Button>
+
+              <div className="flex items-center gap-3 flex-wrap">
+                <Button onClick={onPublish} disabled={postMessageMutation.isPending}>{t('rec.publishBtn')}</Button>
+                <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
+                  <input type="checkbox" checked={sendEmail} onChange={(e) => setSendEmail(e.target.checked)} className="rounded border-gray-300" />
+                  {t('rec.sendEmailLabel')}
+                </label>
+              </div>
             </CardContent>
           </Card>
         )}

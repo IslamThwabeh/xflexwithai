@@ -3,6 +3,7 @@ import { trpc } from '@/lib/trpc';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
 import { Download, Clock, AlertTriangle, CheckCircle } from 'lucide-react';
+import DashboardLayout from '@/components/DashboardLayout';
 
 export default function AdminExpiryReport() {
   const { language } = useLanguage();
@@ -70,6 +71,7 @@ export default function AdminExpiryReport() {
   };
 
   return (
+    <DashboardLayout>
     <div className="p-4 md:p-6 space-y-6" dir={isRtl ? 'rtl' : 'ltr'}>
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -176,5 +178,6 @@ export default function AdminExpiryReport() {
         </div>
       )}
     </div>
+    </DashboardLayout>
   );
 }

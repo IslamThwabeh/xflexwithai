@@ -53,7 +53,7 @@ import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 import { Button } from "./ui/button";
 
 // Menu sections use i18n keys – resolved at render time
-type MenuItem = { icon: any; labelKey: string; path: string };
+type MenuItem = { icon: any; labelKey: string; path: string; descKey?: string };
 type MenuSection = { labelKey: string; items: MenuItem[] };
 
 const menuSectionsDef: MenuSection[] = [
@@ -71,10 +71,10 @@ const menuSectionsDef: MenuSection[] = [
       { icon: Key, labelKey: "admin.sidebar.activationKeys", path: "/admin/package-keys" },
       { icon: Package, labelKey: "admin.sidebar.packages", path: "/admin/packages" },
       { icon: ShoppingCart, labelKey: "admin.sidebar.orders", path: "/admin/orders" },
-      { icon: CalendarDays, labelKey: "admin.sidebar.events", path: "/admin/events" },
-      { icon: FileText, labelKey: "admin.sidebar.articles", path: "/admin/articles" },
-      { icon: Tag, labelKey: "admin.sidebar.coupons", path: "/admin/coupons" },
-      { icon: MessageSquareQuote, labelKey: "admin.sidebar.testimonials", path: "/admin/testimonials" },
+      { icon: CalendarDays, labelKey: "admin.sidebar.events", path: "/admin/events", descKey: "admin.sidebar.eventsDesc" },
+      { icon: FileText, labelKey: "admin.sidebar.articles", path: "/admin/articles", descKey: "admin.sidebar.articlesDesc" },
+      { icon: Tag, labelKey: "admin.sidebar.coupons", path: "/admin/coupons", descKey: "admin.sidebar.couponsDesc" },
+      { icon: MessageSquareQuote, labelKey: "admin.sidebar.testimonials", path: "/admin/testimonials", descKey: "admin.sidebar.testimonialsDesc" },
     ]
   },
   {
@@ -305,12 +305,14 @@ function DashboardLayoutContent({
                     {section.items.map(item => {
                       const isActive = location === item.path;
                       const label = t(item.labelKey);
+                      const desc = item.descKey ? t(item.descKey) : undefined;
+                      const tooltipText = desc ? `${label} – ${desc}` : label;
                       return (
                         <SidebarMenuItem key={item.path}>
                           <SidebarMenuButton
                             isActive={isActive}
                             onClick={() => setLocation(item.path)}
-                            tooltip={label}
+                            tooltip={tooltipText}
                             className={`transition-all font-normal ${
                               isActive ? "bg-primary/10 text-primary font-medium" : ""
                             }`}
@@ -318,7 +320,12 @@ function DashboardLayoutContent({
                             <item.icon
                               className={`h-4 w-4 ${isActive ? "text-primary" : ""}`}
                             />
-                            <span>{label}</span>
+                            <div className="flex flex-col min-w-0">
+                              <span>{label}</span>
+                              {desc && !isCollapsed && (
+                                <span className="text-[10px] text-muted-foreground/70 truncate leading-tight">{desc}</span>
+                              )}
+                            </div>
                           </SidebarMenuButton>
                         </SidebarMenuItem>
                       );

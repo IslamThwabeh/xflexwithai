@@ -4,6 +4,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Download, Search, Users, Filter } from 'lucide-react';
+import DashboardLayout from '@/components/DashboardLayout';
 
 export default function AdminSubscribersReport() {
   const { language } = useLanguage();
@@ -49,6 +50,7 @@ export default function AdminSubscribersReport() {
   };
 
   return (
+    <DashboardLayout>
     <div className="p-4 md:p-6 space-y-6" dir={isRtl ? 'rtl' : 'ltr'}>
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -149,5 +151,6 @@ export default function AdminSubscribersReport() {
         </div>
       )}
     </div>
+    </DashboardLayout>
   );
 }

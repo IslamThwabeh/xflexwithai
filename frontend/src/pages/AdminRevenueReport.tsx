@@ -2,6 +2,7 @@ import { trpc } from '@/lib/trpc';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
 import { Download, DollarSign, TrendingUp, CreditCard, Package } from 'lucide-react';
+import DashboardLayout from '@/components/DashboardLayout';
 
 export default function AdminRevenueReport() {
   const { language } = useLanguage();
@@ -31,6 +32,7 @@ export default function AdminRevenueReport() {
 
   if (isLoading) {
     return (
+      <DashboardLayout>
       <div className="p-4 md:p-6 space-y-6" dir={isRtl ? 'rtl' : 'ltr'}>
         <div className="animate-pulse space-y-4">
           <div className="h-8 bg-muted rounded w-48" />
@@ -40,10 +42,12 @@ export default function AdminRevenueReport() {
           {[1,2,3,4,5].map(i => <div key={i} className="h-12 bg-muted rounded" />)}
         </div>
       </div>
+      </DashboardLayout>
     );
   }
 
   return (
+    <DashboardLayout>
     <div className="p-4 md:p-6 space-y-6" dir={isRtl ? 'rtl' : 'ltr'}>
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -198,5 +202,6 @@ export default function AdminRevenueReport() {
         </div>
       </div>
     </div>
+    </DashboardLayout>
   );
 }

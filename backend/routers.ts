@@ -1740,6 +1740,7 @@ export const appRouter = router({
           takeProfit1: z.string().max(50).optional(),
           takeProfit2: z.string().max(50).optional(),
           riskPercent: z.string().max(20).optional(),
+          sendEmail: z.boolean().optional(),
         })
       )
       .mutation(async ({ ctx, input }) => {
@@ -1759,7 +1760,7 @@ export const appRouter = router({
           createdAt: new Date().toISOString(),
         });
 
-        if (input.type === "alert" || input.type === "recommendation") {
+        if (input.sendEmail && (input.type === "alert" || input.type === "recommendation")) {
           const recipients = await db.getRecommendationSubscriberEmails();
           if (recipients.length) {
             const subject = input.type === "alert"
