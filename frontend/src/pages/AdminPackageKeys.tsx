@@ -63,6 +63,8 @@ export default function AdminPackageKeys() {
   const [quantity, setQuantity] = useState("1");
   const [notes, setNotes] = useState("");
   const [price, setPrice] = useState("0");
+  const [entitlementDays, setEntitlementDays] = useState("");
+  const [expiresAt, setExpiresAt] = useState("");
   const [assignEmail, setAssignEmail] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [filterPackage, setFilterPackage] = useState<string>("all");
@@ -128,6 +130,8 @@ export default function AdminPackageKeys() {
     setQuantity("1");
     setNotes("");
     setPrice("0");
+    setEntitlementDays("");
+    setExpiresAt("");
     setAssignEmail("");
     setIsUpgrade(false);
     setReferredBy("");
@@ -143,6 +147,8 @@ export default function AdminPackageKeys() {
       email: assignEmail || undefined,
       notes: notes || undefined,
       price: parseInt(price) || undefined,
+      entitlementDays: entitlementDays ? parseInt(entitlementDays, 10) : undefined,
+      expiresAt: expiresAt || undefined,
       isUpgrade: isUpgrade || undefined,
       referredBy: referredBy.trim() || undefined,
     });
@@ -158,6 +164,8 @@ export default function AdminPackageKeys() {
       quantity: parseInt(quantity) || 1,
       notes: notes || undefined,
       price: parseInt(price) || undefined,
+      entitlementDays: entitlementDays ? parseInt(entitlementDays, 10) : undefined,
+      expiresAt: expiresAt || undefined,
       isUpgrade: isUpgrade || undefined,
       referredBy: referredBy.trim() || undefined,
     });
@@ -171,12 +179,14 @@ export default function AdminPackageKeys() {
   const exportCSV = () => {
     const keys = filteredKeys;
     if (!keys.length) return;
-    const headers = ['Key Code', 'Package', 'Email', 'Status', 'Upgrade', 'Referred By', 'Created', 'Activated', 'Notes'];
+    const headers = ['Key Code', 'Package', 'Email', 'Status', 'Entitlement Days', 'Redeem By', 'Upgrade', 'Referred By', 'Created', 'Activated', 'Notes'];
     const rows = keys.map(k => [
       k.keyCode,
       (k as any).packageName || '',
       k.email || '',
       k.activatedAt ? 'Activated' : k.isActive ? 'Unused' : 'Deactivated',
+      k.entitlementDays || 'Default',
+      k.expiresAt ? new Date(k.expiresAt).toLocaleDateString() : '',
       (k as any).isUpgrade ? 'Yes' : 'No',
       (k as any).referredBy || '',
       k.createdAt ? new Date(k.createdAt).toLocaleDateString() : '',
@@ -285,6 +295,20 @@ export default function AdminPackageKeys() {
                     />
                   </div>
                   <div className="space-y-2">
+                    <Label>{language === 'ar' ? 'مدة الخدمة بالأيام' : 'Access duration (days)'}</Label>
+                    <Input
+                      type="number"
+                      min="1"
+                      value={entitlementDays}
+                      onChange={(e) => setEntitlementDays(e.target.value)}
+                      placeholder={language === 'ar' ? 'اتركه فارغاً لاستخدام مدة الباقة' : 'Leave empty to use package default'}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>{language === 'ar' ? 'آخر موعد لتفعيل المفتاح' : 'Redeem before'}</Label>
+                    <Input type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} />
+                  </div>
+                  <div className="space-y-2">
                     <Label>{language === 'ar' ? 'ملاحظات' : 'Notes'}</Label>
                     <Textarea
                       value={notes}
@@ -363,6 +387,20 @@ export default function AdminPackageKeys() {
                       onChange={(e) => setNotes(e.target.value)}
                       placeholder={language === 'ar' ? 'ملاحظات اختيارية...' : 'Optional notes...'}
                     />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>{language === 'ar' ? 'مدة الخدمة بالأيام' : 'Access duration (days)'}</Label>
+                    <Input
+                      type="number"
+                      min="1"
+                      value={entitlementDays}
+                      onChange={(e) => setEntitlementDays(e.target.value)}
+                      placeholder={language === 'ar' ? 'اتركه فارغاً لاستخدام مدة الباقة' : 'Leave empty to use package default'}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>{language === 'ar' ? 'آخر موعد لتفعيل المفتاح' : 'Redeem before'}</Label>
+                    <Input type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} />
                   </div>
                   {/* Upgrade toggle for bulk */}
                   <div className="flex items-center gap-3 p-3 bg-amber-50 dark:bg-amber-950/30 rounded-lg border border-amber-200 dark:border-amber-800">
@@ -486,6 +524,8 @@ export default function AdminPackageKeys() {
                     <TableHead>{language === 'ar' ? 'الباقة' : 'Package'}</TableHead>
                     <TableHead>{language === 'ar' ? 'البريد' : 'Email'}</TableHead>
                     <TableHead>{language === 'ar' ? 'الحالة' : 'Status'}</TableHead>
+                    <TableHead>{language === 'ar' ? 'المدة' : 'Duration'}</TableHead>
+                    <TableHead>{language === 'ar' ? 'آخر تفعيل' : 'Redeem By'}</TableHead>
                     <TableHead>{language === 'ar' ? 'ترقية' : 'Upgrade'}</TableHead>
                     <TableHead>{language === 'ar' ? 'تاريخ الإنشاء' : 'Created'}</TableHead>
                     <TableHead>{language === 'ar' ? 'تاريخ التفعيل' : 'Activated'}</TableHead>
@@ -546,6 +586,12 @@ export default function AdminPackageKeys() {
                               {language === 'ar' ? 'جاهز' : 'Unused'}
                             </Badge>
                           )}
+                        </TableCell>
+                        <TableCell className="text-xs text-gray-500">
+                          {key.entitlementDays ? `${key.entitlementDays}d` : (language === 'ar' ? 'الافتراضي' : 'Default')}
+                        </TableCell>
+                        <TableCell className="text-xs text-gray-500">
+                          {key.expiresAt ? new Date(key.expiresAt).toLocaleDateString() : '—'}
                         </TableCell>
                         <TableCell>
                           {(key as any).isUpgrade ? (

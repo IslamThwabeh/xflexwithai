@@ -2,14 +2,18 @@ import ClientLayout from "@/components/ClientLayout";
 import { trpc } from "@/lib/trpc";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Button } from "@/components/ui/button";
-import { Send, Headphones, Loader2 } from "lucide-react";
+import { Send, Headphones, Loader2, Paperclip, FileIcon, X } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { toast } from "sonner";
+import VoiceRecorder from "@/components/VoiceRecorder";
+import AudioPlayer from "@/components/AudioPlayer";
 
 export default function SupportChat() {
   const { t, isRTL } = useLanguage();
   const [message, setMessage] = useState("");
+  const [attachment, setAttachment] = useState<{ name: string; file: File; size: number } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data, isLoading, refetch } = trpc.supportChat.myConversation.useQuery(undefined, {
     refetchInterval: 5000, // poll every 5s
@@ -18,10 +22,14 @@ export default function SupportChat() {
   const sendMutation = trpc.supportChat.send.useMutation({
     onSuccess: () => {
       setMessage("");
+      setAttachment(null);
       refetch();
     },
     onError: (err) => toast.error(err.message),
   });
+
+  const uploadMutation = trpc.supportChat.uploadAttachment.useMutation();
+  const [uploading, setUploading] = useState(false);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -31,10 +39,77 @@ export default function SupportChat() {
     scrollToBottom();
   }, [data?.messages]);
 
-  const handleSend = () => {
+  const uploadFileToR2 = async (file: File | Blob, fileName: string, contentType: string, attachmentType: 'file' | 'voice') => {
+    const buffer = await file.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    const base64 = btoa(binary);
+    const result = await uploadMutation.mutateAsync({
+      fileData: base64,
+      fileName,
+      contentType,
+      attachmentType,
+    });
+    return result;
+  };
+
+  const handleSend = async () => {
     const trimmed = message.trim();
-    if (!trimmed) return;
-    sendMutation.mutate({ content: trimmed });
+    if (!trimmed && !attachment) return;
+
+    if (attachment && attachment.file) {
+      // Upload file to R2 first, then send message
+      setUploading(true);
+      try {
+        const uploaded = await uploadFileToR2(attachment.file, attachment.name, attachment.file.type, 'file');
+        sendMutation.mutate({
+          content: trimmed || `[${attachment.name}]`,
+          attachmentUrl: uploaded.url,
+          attachmentName: attachment.name,
+          attachmentSize: uploaded.size,
+          attachmentType: 'file',
+        });
+      } catch {
+        toast.error(isRTL ? 'فشل رفع الملف' : 'File upload failed');
+      } finally {
+        setUploading(false);
+      }
+    } else {
+      sendMutation.mutate({ content: trimmed });
+    }
+  };
+
+  const handleVoiceRecording = async (blob: Blob, durationSec: number) => {
+    setUploading(true);
+    try {
+      const ext = blob.type.includes('webm') ? 'webm' : 'mp4';
+      const fileName = `voice-${Date.now()}.${ext}`;
+      const uploaded = await uploadFileToR2(blob, fileName, blob.type, 'voice');
+      sendMutation.mutate({
+        content: isRTL ? '🎙️ رسالة صوتية' : '🎙️ Voice message',
+        attachmentUrl: uploaded.url,
+        attachmentName: fileName,
+        attachmentSize: uploaded.size,
+        attachmentType: 'voice',
+        attachmentDuration: durationSec,
+      });
+    } catch {
+      toast.error(isRTL ? 'فشل رفع التسجيل الصوتي' : 'Voice upload failed');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error(isRTL ? 'حجم الملف أكبر من 5 ميجابايت' : 'File size exceeds 5MB');
+      return;
+    }
+    setAttachment({ name: file.name, file, size: file.size });
+    e.target.value = '';
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -93,6 +168,16 @@ export default function SupportChat() {
                       </p>
                     )}
                     <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
+                    {msg.attachmentUrl && (msg as any).attachmentType === 'voice' ? (
+                      <div className="mt-1">
+                        <AudioPlayer src={msg.attachmentUrl} duration={(msg as any).attachmentDuration} isOwn={isOwn} />
+                      </div>
+                    ) : msg.attachmentUrl ? (
+                      <a href={msg.attachmentUrl} target="_blank" rel="noopener noreferrer"
+                        className={`inline-flex items-center gap-1 text-xs mt-1 underline ${isOwn ? 'text-blue-200' : 'text-blue-600'}`}>
+                        <FileIcon className="w-3 h-3" /> {msg.attachmentName || 'Attachment'}
+                      </a>
+                    ) : null}
                     <p
                       className={`text-xs mt-1 ${
                         isOwn ? "text-blue-200" : "text-gray-400"
@@ -113,23 +198,51 @@ export default function SupportChat() {
 
         {/* Input area */}
         <div className="border-t pt-3">
+          {attachment && (
+            <div className="flex items-center gap-2 mb-2 bg-blue-50 rounded-lg px-3 py-2 text-sm">
+              <FileIcon className="w-4 h-4 text-blue-500" />
+              <span className="truncate flex-1">{attachment.name}</span>
+              <button onClick={() => setAttachment(null)} className="text-gray-400 hover:text-gray-600"><X className="w-4 h-4" /></button>
+            </div>
+          )}
           <div className="flex items-end gap-2">
-            <textarea
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={t("support.placeholder")}
-              rows={1}
-              className="flex-1 resize-none border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 max-h-32"
-              style={{ minHeight: "42px" }}
+            <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileSelect}
+              accept="image/*,.pdf,.doc,.docx,.txt" />
+            <Button variant="ghost" size="icon" className="rounded-xl h-[42px] w-[42px] shrink-0"
+              onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+              <Paperclip className="h-4 w-4" />
+            </Button>
+            <VoiceRecorder
+              onRecordingComplete={handleVoiceRecording}
+              disabled={uploading || sendMutation.isPending}
+              isRTL={isRTL}
             />
+            <div className="flex-1 relative">
+              <textarea
+                value={message}
+                onChange={(e) => { if (e.target.value.length <= 5000) setMessage(e.target.value); }}
+                onKeyDown={handleKeyDown}
+                placeholder={t("support.placeholder")}
+                maxLength={5000}
+                rows={1}
+                className="w-full resize-none border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 max-h-32"
+                style={{ minHeight: "42px" }}
+              />
+              {message.length > 4500 && (
+                <span className={`absolute bottom-0.5 ${isRTL ? 'left-2' : 'right-2'} text-[10px] tabular-nums ${
+                  message.length >= 5000 ? 'text-red-500 font-semibold' : 'text-gray-400'
+                }`}>
+                  {message.length}/5000
+                </span>
+              )}
+            </div>
             <Button
               onClick={handleSend}
-              disabled={sendMutation.isPending || !message.trim()}
+              disabled={sendMutation.isPending || uploading || (!message.trim() && !attachment)}
               size="icon"
               className="rounded-xl h-[42px] w-[42px] shrink-0"
             >
-              {sendMutation.isPending ? (
+              {(sendMutation.isPending || uploading) ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <Send className={`h-4 w-4 ${isRTL ? "rotate-180" : ""}`} />

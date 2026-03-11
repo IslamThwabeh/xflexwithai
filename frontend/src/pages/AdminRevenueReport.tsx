@@ -1,7 +1,8 @@
 import { trpc } from '@/lib/trpc';
+import { printReport } from '@/lib/printReport';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
-import { Download, DollarSign, TrendingUp, CreditCard, Package } from 'lucide-react';
+import { Download, DollarSign, TrendingUp, CreditCard, Package, FileText } from 'lucide-react';
 import DashboardLayout from '@/components/DashboardLayout';
 
 export default function AdminRevenueReport() {
@@ -58,6 +59,10 @@ export default function AdminRevenueReport() {
         <Button onClick={exportCSV} variant="outline" size="sm">
           <Download className="w-4 h-4 me-2" />
           {isRtl ? 'تصدير الطلبات CSV' : 'Export Orders CSV'}
+        </Button>
+        <Button onClick={() => printReport(isRtl ? 'تقرير الإيرادات' : 'Revenue Report')} variant="outline" size="sm" className="no-print">
+          <FileText className="w-4 h-4 me-2" />
+          {isRtl ? 'تصدير PDF' : 'Export PDF'}
         </Button>
       </div>
 

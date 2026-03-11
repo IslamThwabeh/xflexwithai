@@ -1,8 +1,10 @@
-import { ReactNode } from "react";
+import { ReactNode, lazy, Suspense, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Button } from "@/components/ui/button";
+
+const GlobalSearchDialogLazy = lazy(() => import("./GlobalSearchDialog"));
 import { APP_TITLE } from "@/const";
 import {
   GraduationCap,
@@ -16,6 +18,10 @@ import {
   Package,
   ClipboardCheck,
   User,
+  Bell,
+  Award,
+  Calculator,
+  Search,
 } from "lucide-react";
 
 interface ClientLayoutProps {
@@ -28,6 +34,7 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
   const { user, logout } = useAuth();
   const { t, language, setLanguage, isRTL } = useLanguage();
   const [location] = useLocation();
+  const [showSearch, setShowSearch] = useState(false);
 
   const handleLogout = async () => {
     await logout();
@@ -83,6 +90,24 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
       icon: <User className="h-4 w-4" />,
       match: "/profile",
     },
+    {
+      href: "/notifications",
+      label: language === "ar" ? "الإشعارات" : "Notifications",
+      icon: <Bell className="h-4 w-4" />,
+      match: "/notifications",
+    },
+    {
+      href: "/my-points",
+      label: language === "ar" ? "النقاط" : "Points",
+      icon: <Award className="h-4 w-4" />,
+      match: "/my-points",
+    },
+    {
+      href: "/calculators",
+      label: language === "ar" ? "الحاسبات" : "Calculators",
+      icon: <Calculator className="h-4 w-4" />,
+      match: "/calculators",
+    },
   ];
 
   return (
@@ -126,6 +151,13 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
 
             {/* Right side */}
             <div className="flex items-center gap-2">
+              {/* Search */}
+              <button
+                onClick={() => setShowSearch(true)}
+                className="flex items-center gap-1 px-2 py-1.5 rounded-full text-xs font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition"
+              >
+                <Search className="w-3.5 h-3.5" />
+              </button>
               {/* Language Toggle */}
               <button
                 onClick={() => setLanguage(language === "ar" ? "en" : "ar")}
@@ -165,6 +197,12 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
 
       {/* Page Content */}
       <main className="flex-1">{children}</main>
+
+      {showSearch && (
+        <Suspense fallback={null}>
+          <GlobalSearchDialogLazy onClose={() => setShowSearch(false)} />
+        </Suspense>
+      )}
     </div>
   );
 }

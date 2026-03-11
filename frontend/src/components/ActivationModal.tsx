@@ -140,9 +140,9 @@ export function ActivationModal({ type, onClose, onSuccess }: ActivationModalPro
     ? 'Activate Recommendations Group'
     : 'Activate Course Access';
   const description = type === 'flexai'
-    ? 'Enter your LexAI registration key to activate 30 days of AI-powered chart analysis.'
+    ? 'Enter your LexAI registration key to activate your AI-powered chart analysis access.'
     : type === 'recommendation'
-    ? 'Enter your Recommendations Group key to join live trading signals for 30 days.'
+    ? 'Enter your Recommendations Group key to join the live trading signals access period assigned to this key.'
     : 'Enter your course registration key to access all trading courses.';
   
   return (

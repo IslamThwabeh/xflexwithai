@@ -44,6 +44,8 @@ import { useLanguage } from "@/contexts/LanguageContext";
 export default function AdminLexaiKeys() {
   const [quantity, setQuantity] = useState("1");
   const [notes, setNotes] = useState("");
+  const [entitlementDays, setEntitlementDays] = useState("");
+  const [expiresAt, setExpiresAt] = useState("");
   const [searchEmail, setSearchEmail] = useState("");
   const [showGenerateDialog, setShowGenerateDialog] = useState(false);
   const [showBulkDialog, setShowBulkDialog] = useState(false);
@@ -57,6 +59,8 @@ export default function AdminLexaiKeys() {
       toast.success("LexAI key generated successfully!");
       setShowGenerateDialog(false);
       setNotes("");
+      setEntitlementDays("");
+      setExpiresAt("");
       refetchKeys();
       refetchStats();
     },
@@ -71,6 +75,8 @@ export default function AdminLexaiKeys() {
       setShowBulkDialog(false);
       setQuantity("1");
       setNotes("");
+      setEntitlementDays("");
+      setExpiresAt("");
       refetchKeys();
       refetchStats();
     },
@@ -91,7 +97,11 @@ export default function AdminLexaiKeys() {
   });
 
   const handleGenerateSingle = () => {
-    generateKey.mutate({ notes: notes || undefined });
+    generateKey.mutate({
+      notes: notes || undefined,
+      entitlementDays: entitlementDays ? parseInt(entitlementDays, 10) : undefined,
+      expiresAt: expiresAt ? new Date(expiresAt) : undefined,
+    });
   };
 
   const handleGenerateBulk = () => {
@@ -100,7 +110,12 @@ export default function AdminLexaiKeys() {
       toast.error("Quantity must be between 1 and 1000");
       return;
     }
-    generateBulkKeys.mutate({ quantity: qty, notes: notes || undefined });
+    generateBulkKeys.mutate({
+      quantity: qty,
+      notes: notes || undefined,
+      entitlementDays: entitlementDays ? parseInt(entitlementDays, 10) : undefined,
+      expiresAt: expiresAt ? new Date(expiresAt) : undefined,
+    });
   };
 
   const copyToClipboard = (text: string) => {
@@ -124,11 +139,13 @@ export default function AdminLexaiKeys() {
     }
 
     const csv = [
-      ["Key Code", "Email", "Status", "Created At", "Activated At", "Notes"],
+      ["Key Code", "Email", "Status", "Entitlement Days", "Redeem By", "Created At", "Activated At", "Notes"],
       ...allKeys.map((key) => [
         key.keyCode,
         key.email || "Not activated",
         key.isActive ? "Active" : "Deactivated",
+        key.entitlementDays?.toString() || "Default",
+        key.expiresAt ? formatDateSafely(key.expiresAt) : "No cutoff",
         formatDateSafely(key.createdAt),
         key.activatedAt ? formatDateSafely(key.activatedAt) : "N/A",
         key.notes || "",
@@ -183,6 +200,20 @@ export default function AdminLexaiKeys() {
                     placeholder={t('admin.lexai.notesPlaceholder')}
                   />
                 </div>
+                <div>
+                  <Label>Access Duration (Days)</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={entitlementDays}
+                    onChange={(e) => setEntitlementDays(e.target.value)}
+                    placeholder="Leave empty for default"
+                  />
+                </div>
+                <div>
+                  <Label>Redeem Before</Label>
+                  <Input type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} />
+                </div>
                 <Button
                   onClick={handleGenerateSingle}
                   disabled={generateKey.isPending}
@@ -225,6 +256,20 @@ export default function AdminLexaiKeys() {
                     onChange={(e) => setNotes(e.target.value)}
                     placeholder={t('admin.lexai.notesPlaceholder')}
                   />
+                </div>
+                <div>
+                  <Label>Access Duration (Days)</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={entitlementDays}
+                    onChange={(e) => setEntitlementDays(e.target.value)}
+                    placeholder="Leave empty for default"
+                  />
+                </div>
+                <div>
+                  <Label>Redeem Before</Label>
+                  <Input type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} />
                 </div>
                 <Button
                   onClick={handleGenerateBulk}
@@ -304,6 +349,8 @@ export default function AdminLexaiKeys() {
                   <TableHead>{t('admin.lexai.key')}</TableHead>
                   <TableHead>{t('admin.lexai.email')}</TableHead>
                   <TableHead>{t('admin.lexai.status')}</TableHead>
+                  <TableHead>Duration</TableHead>
+                  <TableHead>Redeem By</TableHead>
                   <TableHead>{t('admin.lexai.created')}</TableHead>
                   <TableHead>{t('admin.lexai.used')}</TableHead>
                   <TableHead>{t('admin.lexai.notes')}</TableHead>
@@ -330,6 +377,8 @@ export default function AdminLexaiKeys() {
                           {statusLabel === "Available" ? t('admin.lexai.available') : statusLabel === "Used" ? t('admin.lexai.used') : t('admin.lexai.deactivated')}
                         </Badge>
                       </TableCell>
+                      <TableCell>{key.entitlementDays ? `${key.entitlementDays}d` : "Default"}</TableCell>
+                      <TableCell>{key.expiresAt ? formatDateSafely(key.expiresAt) : "-"}</TableCell>
                       <TableCell>
                         {formatDateSafely(key.createdAt)}
                       </TableCell>

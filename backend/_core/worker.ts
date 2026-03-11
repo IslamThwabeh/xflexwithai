@@ -36,6 +36,7 @@ export default {
         "https://www.xflexacademy.com",
         "https://xflexwithai.com",
         "https://www.xflexwithai.com",
+        "https://xflex-careers.pages.dev",
       ]);
 
       const corsHeaders = new Headers();

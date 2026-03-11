@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>XFlex Academy — وظائف</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Tajawal', sans-serif;
+      background: linear-gradient(135deg, #f0f4ff 0%, #e8eeff 50%, #f5f0ff 100%);
+      min-height: 100vh;
+      padding: 24px 16px;
+      color: #1e293b;
+    }
+    .container { max-width: 760px; margin: 0 auto; }
+
+    /* ===== SHARED ===== */
+    .card {
+      background: #fff;
+      border-radius: 20px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.07);
+      overflow: hidden;
+    }
+    .header {
+      background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+      color: #fff;
+      padding: 32px 28px;
+      text-align: center;
+    }
+    .header .logo { font-size: 13px; font-weight: 500; opacity: 0.8; margin-bottom: 6px; letter-spacing: 1.5px; text-transform: uppercase; }
+    .header h1 { font-size: 28px; font-weight: 800; margin-bottom: 6px; }
+    .header p { font-size: 14px; opacity: 0.9; line-height: 1.7; max-width: 550px; margin: 0 auto; }
+    .badge { display: inline-block; background: rgba(255,255,255,0.2); padding: 4px 16px; border-radius: 20px; font-size: 12px; font-weight: 700; margin-bottom: 12px; }
+
+    /* ===== JOBS LIST ===== */
+    .jobs-grid { display: grid; gap: 16px; margin-top: 24px; }
+    .job-card {
+      background: #fff;
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+      border: 1.5px solid #e5e7eb;
+      transition: all 0.25s;
+      cursor: pointer;
+    }
+    .job-card:hover { border-color: #3b82f6; box-shadow: 0 8px 30px rgba(59,130,246,0.12); transform: translateY(-2px); }
+    .job-card h3 { font-size: 20px; font-weight: 700; color: #1e293b; margin-bottom: 8px; }
+    .job-card p { font-size: 14px; color: #64748b; line-height: 1.7; margin-bottom: 14px; }
+    .job-card .apply-btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 20px; background: #1e40af; color: #fff;
+      border: none; border-radius: 10px; font-family: 'Tajawal', sans-serif;
+      font-size: 14px; font-weight: 700; cursor: pointer; transition: all 0.2s;
+    }
+    .job-card .apply-btn:hover { background: #1e3a8a; }
+
+    /* ===== FORM ===== */
+    .form-body { padding: 28px; }
+    .section { margin-bottom: 28px; }
+    .section-title {
+      font-size: 16px; font-weight: 700; color: #1e40af;
+      margin-bottom: 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #e0e7ff;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .section-title span { font-size: 20px; }
+    .field { margin-bottom: 18px; }
+    .field label {
+      display: block; font-size: 14px; font-weight: 600;
+      color: #374151; margin-bottom: 6px;
+    }
+    .field input[type="text"],
+    .field input[type="email"],
+    .field input[type="tel"],
+    .field textarea {
+      width: 100%; padding: 10px 14px;
+      border: 1.5px solid #d1d5db; border-radius: 10px;
+      font-family: 'Tajawal', sans-serif; font-size: 14px;
+      transition: border-color 0.2s; background: #fafbfc;
+    }
+    .field input:focus, .field textarea:focus {
+      outline: none; border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
+    }
+    .field textarea { min-height: 80px; resize: vertical; }
+    .required::after { content: ' *'; color: #ef4444; }
+    .q-number {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 24px; height: 24px; border-radius: 50%;
+      background: #e0e7ff; color: #1e40af;
+      font-size: 12px; font-weight: 700; margin-left: 6px; flex-shrink: 0;
+    }
+
+    /* CV Upload */
+    .cv-area {
+      border: 2px dashed #d1d5db; border-radius: 12px;
+      padding: 24px; text-align: center; cursor: pointer;
+      transition: all 0.2s; background: #fafbfc;
+    }
+    .cv-area:hover { border-color: #3b82f6; background: #f0f4ff; }
+    .cv-area.has-file { border-color: #10b981; background: #f0fdf4; }
+    .cv-area .icon { font-size: 32px; margin-bottom: 8px; }
+    .cv-area .label { font-size: 14px; font-weight: 600; color: #374151; }
+    .cv-area .hint { font-size: 12px; color: #9ca3af; margin-top: 4px; }
+    .cv-area .file-name { font-size: 13px; color: #059669; font-weight: 600; margin-top: 6px; }
+    .cv-area input[type="file"] { display: none; }
+
+    /* Actions */
+    .actions {
+      display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;
+      padding: 20px 28px 28px; border-top: 1px solid #f1f5f9;
+    }
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 12px 28px; border: none; border-radius: 12px;
+      font-family: 'Tajawal', sans-serif; font-size: 15px; font-weight: 700;
+      cursor: pointer; transition: all 0.2s;
+    }
+    .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    .btn-primary { background: #1e40af; color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: #1e3a8a; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(30,64,175,0.3); }
+    .btn-secondary { background: #f1f5f9; color: #475569; }
+    .btn-secondary:hover { background: #e2e8f0; }
+    .btn-back { background: none; color: #3b82f6; border: 1.5px solid #3b82f6; }
+    .btn-back:hover { background: #eff6ff; }
+
+    .footer { text-align: center; padding: 16px 28px 24px; font-size: 12px; color: #9ca3af; }
+    .privacy { background: #f0f4ff; border-radius: 10px; padding: 12px 16px; font-size: 12px; color: #64748b; text-align: center; margin-top: 16px; }
+
+    /* Loading / Success / Error */
+    .loading { text-align: center; padding: 60px 20px; }
+    .loading .spinner {
+      width: 40px; height: 40px; border: 4px solid #e0e7ff;
+      border-top-color: #3b82f6; border-radius: 50%;
+      animation: spin 0.8s linear infinite; margin: 0 auto 16px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading p { color: #64748b; font-size: 14px; }
+    .success-box {
+      text-align: center; padding: 48px 28px;
+    }
+    .success-box .icon { font-size: 60px; margin-bottom: 16px; }
+    .success-box h2 { font-size: 24px; font-weight: 800; color: #059669; margin-bottom: 8px; }
+    .success-box p { font-size: 14px; color: #64748b; line-height: 1.7; }
+    .error-msg { background: #fef2f2; border: 1px solid #fecaca; border-radius: 10px; padding: 12px 16px; color: #dc2626; font-size: 13px; margin-bottom: 16px; text-align: center; }
+
+    @media (max-width: 600px) {
+      .header h1 { font-size: 22px; }
+      .form-body { padding: 20px 16px; }
+      .actions { padding: 16px; }
+    }
+    @media print {
+      body { background: #fff; padding: 0; }
+      .card { box-shadow: none; }
+      .actions { display: none; }
+      .header { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container" id="app">
+    <div class="loading">
+      <div class="spinner"></div>
+      <p>جاري التحميل...</p>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = 'https://api.xflexacademy.com/api/trpc';
+
+    // =====================================================================
+    // tRPC HTTP helpers
+    // =====================================================================
+    async function trpcQuery(procedure, input) {
+      const url = input !== undefined
+        ? `${API_BASE}/${procedure}?input=${encodeURIComponent(JSON.stringify({ json: input }))}`
+        : `${API_BASE}/${procedure}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`API error ${res.status}`);
+      const data = await res.json();
+      // tRPC returns {result:{data:{json:...}}}
+      return data.result?.data?.json ?? data.result?.data;
+    }
+
+    async function trpcMutate(procedure, input) {
+      const res = await fetch(`${API_BASE}/${procedure}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ json: input }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        const msg = err?.error?.json?.message || err?.error?.message || `Error ${res.status}`;
+        throw new Error(msg);
+      }
+      const data = await res.json();
+      return data.result?.data?.json ?? data.result?.data;
+    }
+
+    // =====================================================================
+    // File to Base64
+    // =====================================================================
+    function fileToBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const base64 = reader.result.split(',')[1]; // strip data:...;base64,
+          resolve(base64);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
+    // =====================================================================
+    // State
+    // =====================================================================
+    let jobs = [];
+    let currentJob = null;
+    let currentQuestions = [];
+    let selectedCvFile = null;
+
+    const app = document.getElementById('app');
+
+    // =====================================================================
+    // Router
+    // =====================================================================
+    async function init() {
+      const params = new URLSearchParams(window.location.search);
+      const jobId = params.get('job');
+      try {
+        if (jobId) {
+          await showApplicationForm(Number(jobId));
+        } else {
+          await showJobsList();
+        }
+      } catch (err) {
+        app.innerHTML = `<div class="card"><div class="form-body"><div class="error-msg">حدث خطأ في التحميل: ${escapeHtml(err.message)}</div><div class="actions"><button class="btn btn-secondary" onclick="init()">إعادة المحاولة</button></div></div></div>`;
+      }
+    }
+
+    // =====================================================================
+    // Jobs List View
+    // =====================================================================
+    async function showJobsList() {
+      app.innerHTML = `<div class="loading"><div class="spinner"></div><p>جاري تحميل الوظائف...</p></div>`;
+      jobs = await trpcQuery('jobs.list');
+      
+      let html = `
+        <div class="card">
+          <div class="header">
+            <div class="logo">XFLEX TRADING ACADEMY</div>
+            <div class="badge">🚀 انضم لفريقنا</div>
+            <h1>الوظائف المتاحة</h1>
+            <p>نبحث عن أشخاص موهوبين وشغوفين للانضمام لفريقنا المتنامي. اختر الوظيفة وقدم طلبك الآن!</p>
+          </div>
+        </div>
+        <div class="jobs-grid">`;
+
+      if (!jobs || jobs.length === 0) {
+        html += `<div class="card" style="padding:40px;text-align:center;color:#64748b;">لا توجد وظائف متاحة حالياً</div>`;
+      } else {
+        for (const job of jobs) {
+          html += `
+            <div class="job-card" onclick="navigateToJob(${job.id})">
+              <h3>${escapeHtml(job.titleAr)}</h3>
+              <p>${escapeHtml(job.descriptionAr)}</p>
+              <button class="apply-btn">📋 تقديم على الوظيفة</button>
+            </div>`;
+        }
+      }
+      html += `</div>
+        <div class="footer" style="margin-top:20px;">&copy; 2026 XFlex Trading Academy</div>`;
+      app.innerHTML = html;
+    }
+
+    function navigateToJob(id) {
+      window.history.pushState({}, '', `?job=${id}`);
+      showApplicationForm(id);
+    }
+
+    // =====================================================================
+    // Application Form View
+    // =====================================================================
+    async function showApplicationForm(jobId) {
+      app.innerHTML = `<div class="loading"><div class="spinner"></div><p>جاري تحميل نموذج التقديم...</p></div>`;
+      selectedCvFile = null;
+
+      const data = await trpcQuery('jobs.getWithQuestions', { jobId });
+      currentJob = data.job;
+      currentQuestions = data.questions || [];
+
+      const jobSpecific = currentQuestions.filter(q => q.jobId === jobId);
+      const general = currentQuestions.filter(q => !q.jobId);
+      let qNum = 0;
+
+      let html = `
+        <div class="card">
+          <div class="header">
+            <div class="logo">XFLEX TRADING ACADEMY</div>
+            <div class="badge">📋 طلب توظيف</div>
+            <h1>${escapeHtml(currentJob.titleAr)}</h1>
+            <p>${escapeHtml(currentJob.descriptionAr)}</p>
+          </div>
+          <div class="form-body">
+            <div id="formError"></div>
+
+            <!-- Personal Info -->
+            <div class="section">
+              <div class="section-title"><span>👤</span> المعلومات الشخصية</div>
+              <div class="field">
+                <label class="required">الاسم الكامل</label>
+                <input type="text" id="f_name" placeholder="أدخل اسمك الكامل">
+              </div>
+              <div class="field">
+                <label class="required">البريد الإلكتروني</label>
+                <input type="email" id="f_email" placeholder="example@email.com" dir="ltr">
+              </div>
+              <div class="field">
+                <label class="required">رقم الهاتف (مع رمز الدولة)</label>
+                <input type="tel" id="f_phone" placeholder="+970 5XX XXX XXXX" dir="ltr">
+              </div>
+              <div class="field">
+                <label>الدولة / المدينة</label>
+                <input type="text" id="f_country" placeholder="مثال: فلسطين - رام الله">
+              </div>
+            </div>
+
+            <!-- CV Upload -->
+            <div class="section">
+              <div class="section-title"><span>📄</span> السيرة الذاتية</div>
+              <div class="cv-area" id="cvArea" onclick="document.getElementById('cvInput').click()">
+                <div class="icon">📎</div>
+                <div class="label">اضغط هنا لرفع السيرة الذاتية</div>
+                <div class="hint">(PDF / DOC / DOCX — حد أقصى 5MB)</div>
+                <div class="file-name" id="cvFileName"></div>
+                <input type="file" id="cvInput" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onchange="handleCvSelect(this)">
+              </div>
+            </div>
+
+            <!-- Job-Specific Questions -->`;
+
+      if (jobSpecific.length > 0) {
+        html += `<div class="section">
+              <div class="section-title"><span>💼</span> أسئلة الوظيفة</div>`;
+        for (const q of jobSpecific) {
+          qNum++;
+          html += `
+              <div class="field">
+                <label><span class="q-number">${qNum}</span> ${escapeHtml(q.questionAr)}</label>
+                <textarea data-qid="${q.id}" placeholder="اكتب إجابتك هنا..."></textarea>
+              </div>`;
+        }
+        html += `</div>`;
+      }
+
+      if (general.length > 0) {
+        html += `<div class="section">
+              <div class="section-title"><span>📝</span> أسئلة عامة</div>`;
+        for (const q of general) {
+          qNum++;
+          html += `
+              <div class="field">
+                <label><span class="q-number">${qNum}</span> ${escapeHtml(q.questionAr)}</label>
+                <textarea data-qid="${q.id}" placeholder="اكتب إجابتك هنا..."></textarea>
+              </div>`;
+        }
+        html += `</div>`;
+      }
+
+      html += `
+            <div class="privacy">🔒 جميع البيانات سرية وتُستخدم لغرض التوظيف فقط — أكاديمية XFlex للتداول</div>
+          </div>
+
+          <div class="actions">
+            <button class="btn btn-primary" id="submitBtn" onclick="submitForm()">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+              إرسال الطلب
+            </button>
+            <button class="btn btn-back" onclick="goBack()">
+              العودة للوظائف
+            </button>
+          </div>
+
+          <div class="footer">&copy; 2026 XFlex Trading Academy</div>
+        </div>`;
+
+      app.innerHTML = html;
+    }
+
+    // =====================================================================
+    // CV file handler
+    // =====================================================================
+    function handleCvSelect(input) {
+      const file = input.files[0];
+      if (!file) return;
+
+      const allowed = ['application/pdf', 'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+      if (!allowed.includes(file.type)) {
+        alert('يرجى رفع ملف بصيغة PDF أو DOC أو DOCX فقط');
+        input.value = '';
+        return;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        alert('حجم الملف يجب ألا يتجاوز 5 ميغابايت');
+        input.value = '';
+        return;
+      }
+
+      selectedCvFile = file;
+      document.getElementById('cvArea').classList.add('has-file');
+      document.getElementById('cvFileName').textContent = '✅ ' + file.name;
+    }
+
+    // =====================================================================
+    // Submit
+    // =====================================================================
+    async function submitForm() {
+      const errEl = document.getElementById('formError');
+      errEl.innerHTML = '';
+
+      const name = document.getElementById('f_name').value.trim();
+      const email = document.getElementById('f_email').value.trim();
+      const phone = document.getElementById('f_phone').value.trim();
+      const country = document.getElementById('f_country').value.trim();
+
+      // Validation
+      if (!name || name.length < 2) {
+        errEl.innerHTML = '<div class="error-msg">يرجى إدخال الاسم الكامل</div>';
+        return;
+      }
+      if (!email || !email.includes('@')) {
+        errEl.innerHTML = '<div class="error-msg">يرجى إدخال بريد إلكتروني صحيح</div>';
+        return;
+      }
+      if (!phone || phone.length < 5) {
+        errEl.innerHTML = '<div class="error-msg">يرجى إدخال رقم الهاتف</div>';
+        return;
+      }
+
+      // Collect answers
+      const textareas = document.querySelectorAll('textarea[data-qid]');
+      const answers = [];
+      for (const ta of textareas) {
+        const answer = ta.value.trim();
+        if (answer) {
+          answers.push({ questionId: Number(ta.dataset.qid), answer });
+        }
+      }
+
+      if (answers.length === 0) {
+        errEl.innerHTML = '<div class="error-msg">يرجى الإجابة على سؤال واحد على الأقل</div>';
+        return;
+      }
+
+      // Build payload
+      const payload = {
+        jobId: currentJob.id,
+        applicantName: name,
+        email,
+        phone,
+        country: country || undefined,
+        answers,
+      };
+
+      // CV base64
+      if (selectedCvFile) {
+        try {
+          payload.cvBase64 = await fileToBase64(selectedCvFile);
+          payload.cvFileName = selectedCvFile.name;
+          payload.cvContentType = selectedCvFile.type;
+        } catch (e) {
+          errEl.innerHTML = '<div class="error-msg">فشل في قراءة ملف السيرة الذاتية</div>';
+          return;
+        }
+      }
+
+      // Submit
+      const btn = document.getElementById('submitBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<div class="spinner" style="width:20px;height:20px;border-width:3px;margin:0"></div> جاري الإرسال...';
+
+      try {
+        await trpcMutate('jobs.submitApplication', payload);
+        showSuccess();
+      } catch (err) {
+        errEl.innerHTML = `<div class="error-msg">فشل الإرسال: ${escapeHtml(err.message)}</div>`;
+        btn.disabled = false;
+        btn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg> إرسال الطلب`;
+      }
+    }
+
+    // =====================================================================
+    // Success View
+    // =====================================================================
+    function showSuccess() {
+      app.innerHTML = `
+        <div class="card">
+          <div class="success-box">
+            <div class="icon">✅</div>
+            <h2>تم إرسال طلبك بنجاح!</h2>
+            <p>شكراً لتقديمك على وظيفة <strong>${escapeHtml(currentJob.titleAr)}</strong>.</p>
+            <p>سنراجع طلبك ونتواصل معك قريباً إن شاء الله.</p>
+            <div style="margin-top:24px;">
+              <button class="btn btn-primary" onclick="goBack()">العودة للوظائف</button>
+            </div>
+          </div>
+          <div class="footer">&copy; 2026 XFlex Trading Academy</div>
+        </div>`;
+    }
+
+    // =====================================================================
+    // Navigation
+    // =====================================================================
+    function goBack() {
+      window.history.pushState({}, '', window.location.pathname);
+      showJobsList();
+    }
+    window.addEventListener('popstate', init);
+
+    // =====================================================================
+    // Helpers
+    // =====================================================================
+    function escapeHtml(str) {
+      if (!str) return '';
+      const d = document.createElement('div');
+      d.textContent = str;
+      return d.innerHTML;
+    }
+
+    // =====================================================================
+    // Boot
+    // =====================================================================
+    init();
+  </script>
+</body>
+</html>

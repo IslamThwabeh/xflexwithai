@@ -1,0 +1,1057 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>XFlex — Business Owner Action Plan</title>
+  <style>
+    :root {
+      --green: #16a34a;
+      --green-bg: #f0fdf4;
+      --green-border: #bbf7d0;
+      --yellow: #ca8a04;
+      --yellow-bg: #fefce8;
+      --yellow-border: #fef08a;
+      --blue: #2563eb;
+      --blue-bg: #eff6ff;
+      --blue-border: #bfdbfe;
+      --purple: #7c3aed;
+      --purple-bg: #f5f3ff;
+      --purple-border: #ddd6fe;
+      --gray: #6b7280;
+      --gray-bg: #f9fafb;
+      --gray-border: #e5e7eb;
+      --red: #dc2626;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      line-height: 1.6;
+      color: #1f2937;
+      background: #f8fafc;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    /* Header */
+    .header {
+      background: linear-gradient(135deg, #1e40af, #7c3aed);
+      color: white;
+      border-radius: 16px;
+      padding: 40px;
+      margin-bottom: 32px;
+      text-align: center;
+    }
+    .header h1 { font-size: 2rem; margin-bottom: 8px; }
+    .header .subtitle { opacity: 0.85; font-size: 1rem; }
+    .header .date { opacity: 0.7; font-size: 0.875rem; margin-top: 12px; }
+
+    /* Progress bar */
+    .progress-bar-container {
+      background: white;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 24px;
+      border: 1px solid var(--gray-border);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    }
+    .progress-bar-container h2 { font-size: 1.25rem; margin-bottom: 16px; }
+    .progress-bar-outer {
+      background: #e5e7eb;
+      border-radius: 999px;
+      height: 32px;
+      overflow: hidden;
+      position: relative;
+    }
+    .progress-bar-inner {
+      background: linear-gradient(90deg, #16a34a, #22c55e);
+      height: 100%;
+      border-radius: 999px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 0.875rem;
+      color: white;
+      transition: width 0.5s ease;
+    }
+    .progress-stats {
+      display: flex;
+      gap: 24px;
+      margin-top: 16px;
+      flex-wrap: wrap;
+    }
+    .progress-stat {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.875rem;
+    }
+    .stat-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    /* Cards */
+    .phase-card {
+      background: white;
+      border-radius: 12px;
+      margin-bottom: 20px;
+      border: 1px solid var(--gray-border);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+      overflow: hidden;
+    }
+    .phase-header {
+      padding: 20px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      user-select: none;
+    }
+    .phase-header:hover { background: var(--gray-bg); }
+    .phase-header h3 { font-size: 1.1rem; display: flex; align-items: center; gap: 10px; }
+    .phase-badge {
+      font-size: 0.75rem;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-weight: 600;
+    }
+    .badge-done { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-border); }
+    .badge-partial { background: var(--yellow-bg); color: var(--yellow); border: 1px solid var(--yellow-border); }
+    .badge-pending { background: var(--gray-bg); color: var(--gray); border: 1px solid var(--gray-border); }
+    .phase-progress-mini {
+      font-size: 0.8rem;
+      color: var(--gray);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .mini-bar {
+      width: 80px;
+      height: 6px;
+      background: #e5e7eb;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+    .mini-bar-fill {
+      height: 100%;
+      border-radius: 999px;
+      background: var(--green);
+    }
+    .phase-toggle { font-size: 1.2rem; color: var(--gray); transition: transform 0.2s; }
+    .phase-body { display: none; border-top: 1px solid var(--gray-border); }
+    .phase-card.open .phase-body { display: block; }
+    .phase-card.open .phase-toggle { transform: rotate(180deg); }
+
+    /* Feature table */
+    .feature-table { width: 100%; border-collapse: collapse; }
+    .feature-table th {
+      background: var(--gray-bg);
+      text-align: start;
+      padding: 10px 16px;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--gray);
+      border-bottom: 1px solid var(--gray-border);
+    }
+    .feature-table td {
+      padding: 12px 16px;
+      border-bottom: 1px solid #f3f4f6;
+      font-size: 0.9rem;
+      vertical-align: top;
+    }
+    .feature-table tr:last-child td { border-bottom: none; }
+    .feature-table tr:hover { background: #fafbfc; }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      padding: 3px 10px;
+      border-radius: 999px;
+      white-space: nowrap;
+    }
+    .status-done { background: var(--green-bg); color: var(--green); }
+    .status-pending { background: var(--yellow-bg); color: var(--yellow); }
+
+    .feature-ar { color: var(--gray); font-size: 0.82rem; direction: rtl; unicode-bidi: embed; margin-top: 2px; }
+
+    /* Summary table */
+    .summary-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 16px;
+    }
+    .summary-table th, .summary-table td {
+      padding: 12px 16px;
+      text-align: start;
+      border-bottom: 1px solid var(--gray-border);
+      font-size: 0.9rem;
+    }
+    .summary-table th { background: var(--gray-bg); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--gray); }
+    .summary-table tr:last-child td { border-bottom: none; font-weight: 700; }
+    .summary-table .bar-cell { width: 200px; }
+    .summary-bar-outer { width: 100%; height: 8px; background: #e5e7eb; border-radius: 999px; overflow: hidden; }
+    .summary-bar-fill { height: 100%; border-radius: 999px; }
+
+    /* Info boxes */
+    .info-box {
+      border-radius: 10px;
+      padding: 20px 24px;
+      margin: 20px 24px;
+      font-size: 0.9rem;
+    }
+    .info-green { background: var(--green-bg); border: 1px solid var(--green-border); color: #166534; }
+    .info-blue { background: var(--blue-bg); border: 1px solid var(--blue-border); color: #1e40af; }
+    .info-purple { background: var(--purple-bg); border: 1px solid var(--purple-border); color: #5b21b6; }
+    .info-yellow { background: var(--yellow-bg); border: 1px solid var(--yellow-border); color: #854d0e; }
+    .info-box strong { display: block; margin-bottom: 6px; }
+    .info-box ul { margin: 8px 0 0 20px; }
+    .info-box li { margin-bottom: 4px; }
+
+    /* Recommendation table */
+    .rec-table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    .rec-table th { background: var(--gray-bg); text-align: start; padding: 10px 14px; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--gray); border-bottom: 1px solid var(--gray-border); }
+    .rec-table td { padding: 12px 14px; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem; vertical-align: top; }
+    .rec-table tr:last-child td { border-bottom: none; }
+    .rec-table tr:hover { background: #fafbfc; }
+    .priority-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 0.72rem; font-weight: 600; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+    .priority-high { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+    .priority-medium { background: var(--yellow-bg); color: var(--yellow); border: 1px solid var(--yellow-border); }
+    .priority-low { background: var(--blue-bg); color: var(--blue); border: 1px solid var(--blue-border); }
+    .priority-nice { background: var(--purple-bg); color: var(--purple); border: 1px solid var(--purple-border); }
+    .impact-badge { display: inline-flex; font-size: 0.72rem; padding: 2px 8px; border-radius: 999px; font-weight: 500; }
+    .impact-revenue { background: #ecfdf5; color: #059669; }
+    .impact-trust { background: #eff6ff; color: #2563eb; }
+    .impact-retention { background: #fdf4ff; color: #a855f7; }
+    .impact-growth { background: #fff7ed; color: #ea580c; }
+    .rec-section-title { font-size: 1rem; font-weight: 700; margin: 24px 0 8px 0; display: flex; align-items: center; gap: 8px; }
+    .rec-note { font-size: 0.82rem; color: var(--gray); margin-top: 4px; }
+    .rec-ar { color: var(--gray); font-size: 0.8rem; direction: rtl; unicode-bidi: embed; margin-top: 2px; }
+
+    /* Cost table */
+    .cost-table { width: 100%; border-collapse: collapse; }
+    .cost-table th, .cost-table td { padding: 10px 16px; text-align: start; border-bottom: 1px solid var(--gray-border); font-size: 0.875rem; }
+    .cost-table th { background: var(--gray-bg); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--gray); }
+    .cost-table tr:last-child { font-weight: 700; background: var(--gray-bg); }
+
+    /* Notes section */
+    .notes-section { padding: 24px; }
+    .notes-section h4 { font-size: 1rem; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+
+    .footer {
+      text-align: center;
+      padding: 32px;
+      color: var(--gray);
+      font-size: 0.8rem;
+    }
+
+    /* Language toggle */
+    .lang-toggle {
+      display: flex;
+      gap: 4px;
+      background: rgba(255,255,255,0.2);
+      border-radius: 8px;
+      padding: 3px;
+      margin-top: 16px;
+      justify-content: center;
+    }
+    .lang-btn {
+      padding: 6px 18px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 600;
+      background: transparent;
+      color: rgba(255,255,255,0.7);
+      transition: all 0.2s;
+    }
+    .lang-btn.active { background: white; color: #1e40af; }
+
+    /* RTL support */
+    body.rtl { direction: rtl; font-family: 'Segoe UI', 'Tahoma', system-ui, sans-serif; }
+    body.rtl .feature-ar { direction: rtl; }
+    body.rtl .summary-table th, body.rtl .summary-table td { text-align: start; }
+
+    /* Print */
+    @media print {
+      body { background: white; padding: 0; }
+      .header { break-after: avoid; }
+      .phase-card { break-inside: avoid; }
+      .phase-body { display: block !important; }
+      .phase-toggle { display: none; }
+      .lang-toggle { display: none; }
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .header { padding: 24px 20px; }
+      .header h1 { font-size: 1.5rem; }
+      .progress-stats { gap: 12px; }
+      .feature-table td, .feature-table th { padding: 8px 12px; }
+      .phase-header { padding: 16px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+
+    <!-- Header -->
+    <div class="header">
+      <h1 id="title">XFlex — Business Owner Action Plan</h1>
+      <div class="subtitle" id="subtitle">Complete Feature Tracking & Progress Report</div>
+      <div class="date" id="dateText">Created: March 11, 2026 &nbsp;|&nbsp; Last Updated: March 11, 2026</div>
+      <div class="lang-toggle">
+        <button class="lang-btn active" onclick="setLang('en')">English</button>
+        <button class="lang-btn" onclick="setLang('ar')">العربية</button>
+      </div>
+    </div>
+
+    <!-- Overall Progress -->
+    <div class="progress-bar-container">
+      <h2 id="progressTitle">Overall Progress</h2>
+      <div class="progress-bar-outer">
+        <div class="progress-bar-inner" style="width: 83%">35 / 42 Done — 83%</div>
+      </div>
+      <div class="progress-stats">
+        <div class="progress-stat"><span class="stat-dot" style="background:var(--green)"></span><span id="statDone">35 Completed</span></div>
+        <div class="progress-stat"><span class="stat-dot" style="background:var(--yellow)"></span><span id="statPending">7 Pending</span></div>
+        <div class="progress-stat"><span class="stat-dot" style="background:var(--blue)"></span><span id="statPhases">6 Phases + Foundation</span></div>
+      </div>
+    </div>
+
+    <!-- Phase 1 -->
+    <div class="phase-card open">
+      <div class="phase-header" onclick="togglePhase(this)">
+        <h3>
+          <span>📦</span>
+          <span data-en="Phase 1: Subscription &amp; Key Duration System" data-ar="المرحلة 1: نظام مدد الاشتراك المرنة">Phase 1: Subscription &amp; Key Duration System</span>
+          <span class="phase-badge badge-done">100%</span>
+        </h3>
+        <div class="phase-progress-mini">
+          <span>6/6</span>
+          <div class="mini-bar"><div class="mini-bar-fill" style="width:100%"></div></div>
+          <span class="phase-toggle">▼</span>
+        </div>
+      </div>
+      <div class="phase-body">
+        <table class="feature-table">
+          <thead><tr><th>#</th><th data-en="Feature" data-ar="الميزة">Feature</th><th data-en="Status" data-ar="الحالة">Status</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td>Configurable entitlement duration (14/30/60/90/180/365 days)<div class="feature-ar">مدة اشتراك مرنة قابلة للتعديل</div></td><td><span class="status-badge status-done">✅ Done</span></td></tr>
+            <tr><td>2</td><td>Custom-period keys with preset and custom day options<div class="feature-ar">مفاتيح بمدد مخصصة</div></td><td><span class="status-badge status-done">✅ Done</span></td></tr>
+            <tr><td>3</td><td>Separate key redemption expiry from access duration<div class="feature-ar">فصل تاريخ انتهاء المفتاح عن مدة الصلاحية</div></td><td><span class="status-badge status-done">✅ Done</span></td></tr>
+            <tr><td>4</td><td>Pause and resume support for LexAI and Recommendations<div class="feature-ar">إيقاف مؤقت واستئناف اشتراكات LexAI والتوصيات</div></td><td><span class="status-badge status-done">✅ Done</span></td></tr>
+            <tr><td>5</td><td>Admin UI for custom-period key management<div class="feature-ar">واجهة إدارة المفاتيح بمدد مخصصة</div></td><td><span class="status-badge status-done">✅ Done</span></td></tr>
+            <tr><td>6</td><td>Replace hardcoded 30-day messaging<div class="feature-ar">استبدال رسائل الـ 30 يوم الثابتة</div></td><td><span class="status-badge status-done">✅ Done</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Phase 2 -->
+    <div class="phase-card">
+      <div class="phase-header" onclick="togglePhase(this)">
+        <h3>
+          <span>🎓</span>
+          <span data-en="Phase 2: Student Experience &amp; Discoverability" data-ar="المرحلة 2: تجربة الطالب وسهولة الاكتشاف">Phase 2: Student Experience &amp; Discoverability</span>
+          <span class="phase-badge badge-done">100%</span>
+        </h3>
+        <div class="phase-progress-mini">
+          <span>5/5</span>
+          <div class="mini-bar"><div class="mini-bar-fill" style="width:100%"></div></div>
+          <span class="phase-toggle">▼</span>
+        </div>
+      </div>
+      <div class="phase-body">
+        <table class="feature-table">
+          <thead><tr><th>#</th><th data-en="Feature" data-ar="الميزة">Feature</th><th data-en="Status" data-ar="الحالة">Status</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td>MyDashboard with events, free content, testimonials, gifts shortcuts<div class="feature-ar">لوحة الطالب مع روابط سريعة للفعاليات والمحتوى المجاني والشهادات والهدايا</div></td><td><span class="status-badge status-done">✅ Done</span></td></tr>
+            <tr><td>2</td><td>PackageDetails page with rich info, benefits, testimonials<div class="feature-ar">صفحة تفاصيل الباقة</div></td><td><span class="status-badge status-done">✅ Done</span></td></tr>
+            <tr><td>3</td><td>Gifts page for students<div class="feature-ar">صفحة الهدايا للطلاب</div></td><td><span class="status-badge status-done">✅ Done</span></td></tr>
+            <tr><td>4</td><td>Testimonials linked to relevant packages/services<div class="feature-ar">الشهادات مرتبطة بالباقات والخدمات</div></td><td><span class="status-badge status-done">✅ Done</span></td></tr>
+            <tr><td>5</td><td>Enriched course/package detail views<div class="feature-ar">عرض تفاصيل محسّنة للدورات والباقات</div></td><td><span class="status-badge status-done">✅ Done</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Phase 3 -->
+    <div class="phase-card">
+      <div class="phase-header" onclick="togglePhase(this)">
+        <h3>
+          <span>📊</span>
+          <span data-en="Phase 3: Admin Usability &amp; Reporting" data-ar="المرحلة 3: أدوات الإدارة والتقارير">Phase 3: Admin Usability &amp; Reporting</span>
+          <span class="phase-badge badge-done">100%</span>
+        </h3>
+        <div class="phase-progress-mini">
+          <span>6/6</span>
+          <div class="mini-bar"><div class="mini-bar-fill" style="width:100%"></div></div>
+          <span class="phase-toggle">▼</span>
+        </div>
+      </div>
+      <div class="phase-body">
+        <table class="feature-table">
+          <thead><tr><th>#</th><th data-en="Feature" data-ar="الميزة">Feature</th><th data-en="Status" data-ar="الحالة">Status</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td>PDF export for revenue, expiry, subscribers reports<div class="feature-ar">تصدير PDF لتقارير الإيرادات والانتهاء والمشتركين</div></td><td><span class="status-badge status-done">✅ Done</span></td></tr>
+            <tr><td>2</td><td>Global search for public site (courses, packages, articles, events)<div class="feature-ar">بحث شامل في الموقع العام</div></td><td><span class="status-badge status-done">✅ Done</span></td></tr>
+            <tr><td>3</td><td>Admin global search (users, orders, courses, keys)<div class="feature-ar">بحث شامل في لوحة الإدارة</div></td><td><span class="status-badge status-done">✅ Done</span></td></tr>
+            <tr><td>4</td><td>Support chat attachments (images &amp; files, 5MB limit)<div class="feature-ar">مرفقات في محادثات الدعم (صور وملفات)</div></td><td><span class="status-badge status-done">✅ Done</span></td></tr>
+            <tr><td>5</td><td>Support attachment display in admin and client views<div class="feature-ar">عرض المرفقات في واجهة الدعم للطالب والإدارة</div></td><td><span class="status-badge status-done">✅ Done</span></td></tr>
+            <tr><td>6</td><td>Voice notes in support chat<div class="feature-ar">رسائل صوتية في الدعم</div></td><td><span class="status-badge status-done">✅ Done</span></td></tr>
+          </tbody>
+        </table>
+        <div class="info-box info-green">
+          <strong data-en="✅ Phase 3 Complete!" data-ar="✅ المرحلة 3 مكتملة!">✅ Phase 3 Complete!</strong>
+          <span data-en="All features including voice notes with MediaRecorder API + R2 storage are implemented." data-ar="جميع الميزات بما فيها الرسائل الصوتية باستخدام MediaRecorder API + R2 تم تنفيذها.">All features including voice notes with MediaRecorder API + R2 storage are implemented.</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Phase 4 -->
+    <div class="phase-card">
+      <div class="phase-header" onclick="togglePhase(this)">
+        <h3>
+          <span>🧩</span>
+          <span data-en="Phase 4: Internal Website Modules" data-ar="المرحلة 4: وحدات داخلية للموقع">Phase 4: Internal Website Modules</span>
+          <span class="phase-badge badge-done">100%</span>
+        </h3>
+        <div class="phase-progress-mini">
+          <span>10/10</span>
+          <div class="mini-bar"><div class="mini-bar-fill" style="width:100%"></div></div>
+          <span class="phase-toggle">▼</span>
+        </div>
+      </div>
+      <div class="phase-body">
+        <table class="feature-table">
+          <thead><tr><th>#</th><th data-en="Feature" data-ar="الميزة">Feature</th><th data-en="Status" data-ar="الحالة">Status</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td>Course reviews &amp; star ratings (student-only, admin moderation)<div class="feature-ar">تقييمات ونجوم الدورات (للطلاب فقط، بإشراف الإدارة)</div></td><td><span class="status-badge status-done">✅ Done</span></td></tr>
+            <tr><td>2</td><td>Admin reviews moderation page<div class="feature-ar">صفحة إدارة المراجعات والتقييمات</div></td><td><span class="status-badge status-done">✅ Done</span></td></tr>
+            <tr><td>3</td><td>Internal notification center (student portal)<div class="feature-ar">مركز إشعارات داخلي (بوابة الطالب)</div></td><td><span class="status-badge status-done">✅ Done</span></td></tr>
+            <tr><td>4</td><td>Admin notification management + bulk send<div class="feature-ar">إدارة الإشعارات + إرسال جماعي</div></td><td><span class="status-badge status-done">✅ Done</span></td></tr>
+            <tr><td>5</td><td>Loyalty points system (architecture, earning, admin award/deduct)<div class="feature-ar">نظام نقاط الولاء (البنية، الكسب، المنح والخصم الإداري)</div></td><td><span class="status-badge status-done">✅ Done</span></td></tr>
+            <tr><td>6</td><td>Student points balance &amp; history page<div class="feature-ar">صفحة رصيد النقاط وسجلها للطالب</div></td><td><span class="status-badge status-done">✅ Done</span></td></tr>
+            <tr><td>7</td><td>Admin points leaderboard<div class="feature-ar">لوحة المتصدرين في نقاط الولاء</div></td><td><span class="status-badge status-done">✅ Done</span></td></tr>
+            <tr><td>8</td><td>Trading calculators (pip, position size, risk/reward, profit/loss)<div class="feature-ar">حاسبات التداول (البيب، حجم الصفقة، المخاطرة/المكافأة، الربح/الخسارة)</div></td><td><span class="status-badge status-done">✅ Done</span></td></tr>
+            <tr><td>9</td><td>Student engagement tracking (events, page views, interactions)<div class="feature-ar">تتبع تفاعل الطالب (الأحداث، المشاهدات، التفاعلات)</div></td><td><span class="status-badge status-done">✅ Done</span></td></tr>
+            <tr><td>10</td><td>Admin engagement dashboard (7-day &amp; 30-day breakdowns)<div class="feature-ar">لوحة تفاعل إدارية (تحليل 7 أيام و30 يوم)</div></td><td><span class="status-badge status-done">✅ Done</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Phase 4B: Upgrade & Commerce -->
+    <div class="phase-card">
+      <div class="phase-header" onclick="togglePhase(this)">
+        <h3>
+          <span>💰</span>
+          <span data-en="Phase 4B: Commerce &amp; Upgrade Service" data-ar="المرحلة 4ب: التجارة وخدمة الترقية">Phase 4B: Commerce &amp; Upgrade Service</span>
+          <span class="phase-badge badge-done">100%</span>
+        </h3>
+        <div class="phase-progress-mini">
+          <span>4/4</span>
+          <div class="mini-bar"><div class="mini-bar-fill" style="width:100%"></div></div>
+          <span class="phase-toggle">▼</span>
+        </div>
+      </div>
+      <div class="phase-body">
+        <table class="feature-table">
+          <thead><tr><th>#</th><th data-en="Feature" data-ar="الميزة">Feature</th><th data-en="Status" data-ar="الحالة">Status</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td>Package upgrade service (Basic → Comprehensive, $300 one-time, then $100/month renewal)<div class="feature-ar">خدمة ترقية الباقة (أساسية → شاملة، 300$ مرة واحدة، ثم 100$/شهر تجديد)</div></td><td><span class="status-badge status-done">✅ Done</span></td></tr>
+            <tr><td>2</td><td>Discount/coupon system with admin CRUD, validation, and checkout integration<div class="feature-ar">نظام الخصومات والكوبونات مع إدارة كاملة وتطبيق في الدفع</div></td><td><span class="status-badge status-done">✅ Done</span></td></tr>
+            <tr><td>3</td><td>VAT-inclusive pricing display (prices shown as subtotal + VAT breakdown)<div class="feature-ar">عرض الأسعار شاملة الضريبة (السعر يُعرض كمبلغ فرعي + ضريبة)</div></td><td><span class="status-badge status-done">✅ Done</span></td></tr>
+            <tr><td>4</td><td>Admin upgrade price configuration per package<div class="feature-ar">إعداد سعر الترقية لكل باقة من لوحة الإدارة</div></td><td><span class="status-badge status-done">✅ Done</span></td></tr>
+          </tbody>
+        </table>
+        <div class="info-box info-purple">
+          <strong data-en="⬆️ Upgrade Service Details" data-ar="⬆️ تفاصيل خدمة الترقية">⬆️ Upgrade Service Details</strong>
+          <ul>
+            <li data-en="Basic subscribers see 'Upgrade to Comprehensive' on their subscriptions page" data-ar="مشتركو الباقة الأساسية يرون 'ترقية إلى الشاملة' في صفحة اشتراكاتهم">Basic subscribers see "Upgrade to Comprehensive" on their subscriptions page</li>
+            <li data-en="One-time upgrade fee: $300 (VAT inclusive — shown as $258.62 + $41.38 VAT)" data-ar="رسوم ترقية لمرة واحدة: 300$ (شاملة الضريبة — تُعرض كـ 258.62$ + 41.38$ ضريبة)">One-time upgrade fee: $300 (VAT inclusive — shown as $258.62 + $41.38 VAT)</li>
+            <li data-en="After upgrade, renewal follows standard Comprehensive rate: $100/month" data-ar="بعد الترقية، يكون التجديد بسعر الباقة الشاملة المعتاد: 100$/شهر">After upgrade, renewal follows standard Comprehensive rate: $100/month</li>
+            <li data-en="Payment via bank transfer or PayPal (same as regular orders)" data-ar="الدفع عبر تحويل بنكي أو PayPal (نفس طريقة الطلبات العادية)">Payment via bank transfer or PayPal (same as regular orders)</li>
+            <li data-en="Admin approves and processes upgrade after payment confirmation" data-ar="المدير يوافق وينفذ الترقية بعد تأكيد الدفع">Admin approves and processes upgrade after payment confirmation</li>
+          </ul>
+        </div>
+        <div class="info-box info-blue">
+          <strong data-en="💵 VAT-Inclusive Pricing" data-ar="💵 الأسعار شاملة الضريبة">💵 VAT-Inclusive Pricing</strong>
+          <span data-en="All listed prices already include 16% VAT. The checkout displays the price breakdown (e.g., $500 package shown as $431.03 + $68.97 VAT = $500 total). The customer always pays the listed price — no extra charges." data-ar="جميع الأسعار المعروضة تشمل 16% ضريبة القيمة المضافة. صفحة الدفع تعرض تفصيل السعر (مثلاً: باقة 500$ تُعرض كـ 431.03$ + 68.97$ ضريبة = 500$ إجمالي). العميل يدفع دائماً السعر المعروض — بدون رسوم إضافية.">All listed prices already include 16% VAT. The checkout displays the price breakdown (e.g., $500 package shown as $431.03 + $68.97 VAT = $500 total). The customer always pays the listed price — no extra charges.</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Phase 5 -->
+    <div class="phase-card">
+      <div class="phase-header" onclick="togglePhase(this)">
+        <h3>
+          <span>🔌</span>
+          <span data-en="Phase 5: Larger Modules (External Services Required)" data-ar="المرحلة 5: وحدات كبيرة (تتطلب خدمات خارجية)">Phase 5: Larger Modules (External Services Required)</span>
+          <span class="phase-badge badge-pending">0%</span>
+        </h3>
+        <div class="phase-progress-mini">
+          <span>0/8</span>
+          <div class="mini-bar"><div class="mini-bar-fill" style="width:0%"></div></div>
+          <span class="phase-toggle">▼</span>
+        </div>
+      </div>
+      <div class="phase-body">
+        <table class="feature-table">
+          <thead><tr><th>#</th><th data-en="Feature" data-ar="الميزة">Feature</th><th data-en="Status" data-ar="الحالة">Status</th><th data-en="External Service" data-ar="الخدمة الخارجية">External Service</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td>Free/paid consultation booking<div class="feature-ar">حجز استشارات مجانية/مدفوعة</div></td><td><span class="status-badge status-pending">⏳ Pending</span></td><td>Cal.com / TidyCal / Calendly</td></tr>
+            <tr><td>2</td><td>Zoom meeting automation<div class="feature-ar">أتمتة اجتماعات Zoom</div></td><td><span class="status-badge status-pending">⏳ Pending</span></td><td>Zoom Pro API (~$13/mo)</td></tr>
+            <tr><td>3</td><td>Newsletter email system<div class="feature-ar">نظام البريد الإخباري</div></td><td><span class="status-badge status-pending">⏳ Pending</span></td><td>Brevo / Resend / Mailchimp</td></tr>
+            <tr><td>4</td><td>External push notifications (mobile/browser)<div class="feature-ar">إشعارات دفع خارجية (موبايل/متصفح)</div></td><td><span class="status-badge status-pending">⏳ Pending</span></td><td>OneSignal / Firebase (free)</td></tr>
+            <tr><td>5</td><td>Broker partnerships section<div class="feature-ar">قسم شراكات الوسطاء</div></td><td><span class="status-badge status-pending">⏳ Pending</span></td><td>Content only — no cost</td></tr>
+            <tr><td>6</td><td>Licensing &amp; regulatory claims<div class="feature-ar">بيانات الترخيص والتنظيم</div></td><td><span class="status-badge status-pending">⏳ Pending</span></td><td>Legal review — no cost</td></tr>
+            <tr><td>7</td><td>Employee activity tracking &amp; operational monitoring<div class="feature-ar">تتبع نشاط الموظفين والمراقبة التشغيلية</div></td><td><span class="status-badge status-pending">⏳ Pending</span></td><td>Built internally — no cost</td></tr>
+            <tr><td>8</td><td>Guided problem-solving form<div class="feature-ar">نموذج إرشادي لحل المشكلات</div></td><td><span class="status-badge status-pending">⏳ Pending</span></td><td>No external cost</td></tr>
+          </tbody>
+        </table>
+        <div class="info-box info-yellow">
+          <strong data-en="⚠️ All Phase 5 items require business decisions before development" data-ar="⚠️ جميع بنود المرحلة 5 تتطلب قرارات تجارية قبل التطوير">⚠️ All Phase 5 items require business decisions before development</strong>
+          <ul>
+            <li data-en="Choose a provider for booking, newsletter, and push notifications" data-ar="اختيار مزود خدمة للحجز والبريد الإخباري والإشعارات">Choose a provider for booking, newsletter, and push notifications</li>
+            <li data-en="Provide business content for broker partnerships and licensing" data-ar="توفير محتوى تجاري لشراكات الوسطاء وبيانات الترخيص">Provide business content for broker partnerships and licensing</li>
+            <li data-en="Legal review for regulatory claims" data-ar="مراجعة قانونية للبيانات التنظيمية">Legal review for regulatory claims</li>
+          </ul>
+        </div>
+
+        <!-- External Service Costs -->
+        <div class="notes-section">
+          <h4 data-en="💲 Estimated Monthly External Service Costs" data-ar="💲 التكلفة الشهرية المتوقعة للخدمات الخارجية">💲 Estimated Monthly External Service Costs</h4>
+          <table class="cost-table">
+            <thead>
+              <tr>
+                <th data-en="Service" data-ar="الخدمة">Service</th>
+                <th data-en="Recommended" data-ar="الخيار المُوصى به">Recommended</th>
+                <th data-en="Monthly Cost" data-ar="التكلفة الشهرية">Monthly Cost</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>Consultation Booking</td><td>Cal.com (self-hosted)</td><td>Free (or $12–30 hosted)</td></tr>
+              <tr><td>Zoom API</td><td>Zoom Pro</td><td>~$13/month</td></tr>
+              <tr><td>Newsletter</td><td>Brevo (Sendinblue)</td><td>Free up to 300/day, $25/mo after</td></tr>
+              <tr><td>Push Notifications</td><td>OneSignal</td><td>Free up to 10K subscribers</td></tr>
+              <tr><td><strong>Total estimated</strong></td><td></td><td><strong>$0–68/month</strong></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Foundation -->
+    <div class="phase-card">
+      <div class="phase-header" onclick="togglePhase(this)">
+        <h3>
+          <span>🔧</span>
+          <span data-en="Foundation: Core Infrastructure" data-ar="أعمال أساسية: البنية التحتية">Foundation: Core Infrastructure</span>
+          <span class="phase-badge badge-done">100%</span>
+        </h3>
+        <div class="phase-progress-mini">
+          <span>5/5</span>
+          <div class="mini-bar"><div class="mini-bar-fill" style="width:100%"></div></div>
+          <span class="phase-toggle">▼</span>
+        </div>
+      </div>
+      <div class="phase-body">
+        <table class="feature-table">
+          <thead><tr><th>#</th><th data-en="Feature" data-ar="الميزة">Feature</th><th data-en="Status" data-ar="الحالة">Status</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td>Auth redesign (password registration, OTP login-only, configurable security mode)<div class="feature-ar">إعادة تصميم المصادقة (تسجيل بكلمة مرور، OTP للدخول فقط، وضع أمان قابل للتعديل)</div></td><td><span class="status-badge status-done">✅ Done</span></td></tr>
+            <tr><td>2</td><td>Profile security settings page<div class="feature-ar">صفحة إعدادات الأمان في الملف الشخصي</div></td><td><span class="status-badge status-done">✅ Done</span></td></tr>
+            <tr><td>3</td><td>Careers and jobs module<div class="feature-ar">وحدة الوظائف والتقديم</div></td><td><span class="status-badge status-done">✅ Done</span></td></tr>
+            <tr><td>4</td><td>Database migrations verified and clean<div class="feature-ar">التحقق من سلامة تحديثات قاعدة البيانات</div></td><td><span class="status-badge status-done">✅ Done</span></td></tr>
+            <tr><td>5</td><td>TypeScript clean build (no errors)<div class="feature-ar">بناء TypeScript نظيف (بدون أخطاء)</div></td><td><span class="status-badge status-done">✅ Done</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Overall Summary -->
+    <div class="phase-card">
+      <div class="phase-header" onclick="togglePhase(this)">
+        <h3>
+          <span>📋</span>
+          <span data-en="Overall Summary Table" data-ar="ملخص الحالة العامة">Overall Summary Table</span>
+        </h3>
+        <span class="phase-toggle">▼</span>
+      </div>
+      <div class="phase-body">
+        <div style="padding: 20px 24px;">
+          <table class="summary-table">
+            <thead>
+              <tr>
+                <th data-en="Phase" data-ar="المرحلة">Phase</th>
+                <th data-en="Done" data-ar="مُنجز">Done</th>
+                <th data-en="Pending" data-ar="معلّق">Pending</th>
+                <th data-en="Progress" data-ar="نسبة الإنجاز">Progress</th>
+                <th class="bar-cell"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td data-en="Phase 1 — Subscriptions" data-ar="المرحلة 1 — الاشتراكات">Phase 1 — Subscriptions</td>
+                <td>6/6</td><td>0</td><td>100%</td>
+                <td class="bar-cell"><div class="summary-bar-outer"><div class="summary-bar-fill" style="width:100%; background:var(--green)"></div></div></td>
+              </tr>
+              <tr>
+                <td data-en="Phase 2 — Student Experience" data-ar="المرحلة 2 — تجربة الطالب">Phase 2 — Student Experience</td>
+                <td>5/5</td><td>0</td><td>100%</td>
+                <td class="bar-cell"><div class="summary-bar-outer"><div class="summary-bar-fill" style="width:100%; background:var(--green)"></div></div></td>
+              </tr>
+              <tr>
+                <td data-en="Phase 3 — Admin &amp; Reporting" data-ar="المرحلة 3 — الإدارة والتقارير">Phase 3 — Admin &amp; Reporting</td>
+                <td>6/6</td><td>0</td><td>100%</td>
+                <td class="bar-cell"><div class="summary-bar-outer"><div class="summary-bar-fill" style="width:100%; background:var(--green)"></div></div></td>
+              </tr>
+              <tr>
+                <td data-en="Phase 4 — Internal Modules" data-ar="المرحلة 4 — الوحدات الداخلية">Phase 4 — Internal Modules</td>
+                <td>10/10</td><td>0</td><td>100%</td>
+                <td class="bar-cell"><div class="summary-bar-outer"><div class="summary-bar-fill" style="width:100%; background:var(--green)"></div></div></td>
+              </tr>
+              <tr>
+                <td data-en="Phase 4B — Commerce &amp; Upgrade" data-ar="المرحلة 4ب — التجارة والترقية">Phase 4B — Commerce &amp; Upgrade</td>
+                <td>4/4</td><td>0</td><td>100%</td>
+                <td class="bar-cell"><div class="summary-bar-outer"><div class="summary-bar-fill" style="width:100%; background:var(--green)"></div></div></td>
+              </tr>
+              <tr>
+                <td data-en="Phase 5 — External Services" data-ar="المرحلة 5 — خدمات خارجية">Phase 5 — External Services</td>
+                <td>0/8</td><td>8</td><td>0%</td>
+                <td class="bar-cell"><div class="summary-bar-outer"><div class="summary-bar-fill" style="width:0%; background:var(--gray)"></div></div></td>
+              </tr>
+              <tr>
+                <td data-en="Foundation — Core Infrastructure" data-ar="أعمال أساسية — البنية التحتية">Foundation — Core Infrastructure</td>
+                <td>5/5</td><td>0</td><td>100%</td>
+                <td class="bar-cell"><div class="summary-bar-outer"><div class="summary-bar-fill" style="width:100%; background:var(--green)"></div></div></td>
+              </tr>
+              <tr>
+                <td data-en="TOTAL" data-ar="الإجمالي"><strong>TOTAL</strong></td>
+                <td><strong>35/42</strong></td><td><strong>7</strong></td><td><strong>83%</strong></td>
+                <td class="bar-cell"><div class="summary-bar-outer"><div class="summary-bar-fill" style="width:83%; background:linear-gradient(90deg, var(--green), #22c55e)"></div></div></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================================================================= -->
+    <!-- RECOMMENDED FEATURES FOR A PROFESSIONAL ACADEMY -->
+    <!-- ================================================================= -->
+    <div class="phase-card">
+      <div class="phase-header" onclick="togglePhase(this)">
+        <h3>
+          <span>🏆</span>
+          <span data-en="Recommended: Professional Academy Features" data-ar="المُوصى به: ميزات الأكاديمية المهنية">Recommended: Professional Academy Features</span>
+          <span class="phase-badge" style="background:#fff7ed; color:#ea580c; border:1px solid #fed7aa;">Roadmap</span>
+        </h3>
+        <span class="phase-toggle">▼</span>
+      </div>
+      <div class="phase-body">
+        <div class="info-box info-blue">
+          <strong data-en="What makes a professional trading academy stand out?" data-ar="ما الذي يجعل أكاديمية تداول مهنية تتميز؟">What makes a professional trading academy stand out?</strong>
+          <span data-en="Based on analysis of leading academies (Babypips, The Trading Academy, IM Academy, Asia Forex Mentor, FTMO), here are features that separate professional platforms from basic ones. Grouped by business impact priority." data-ar="بناءً على تحليل الأكاديميات الرائدة (Babypips, The Trading Academy, IM Academy, Asia Forex Mentor, FTMO)، إليك الميزات التي تميز المنصات المهنية. مرتبة حسب أولوية التأثير التجاري.">Based on analysis of leading academies (Babypips, The Trading Academy, IM Academy, Asia Forex Mentor, FTMO), here are features that separate professional platforms from basic ones. Grouped by business impact priority.</span>
+        </div>
+
+        <div style="padding: 0 24px 24px;">
+
+          <!-- Section 1: Revenue & Conversion -->
+          <h4 class="rec-section-title">
+            <span>💰</span>
+            <span data-en="Revenue &amp; Conversion Boosters" data-ar="معززات الإيرادات والتحويل">Revenue &amp; Conversion Boosters</span>
+          </h4>
+          <table class="rec-table">
+            <thead><tr>
+              <th>#</th>
+              <th data-en="Feature" data-ar="الميزة">Feature</th>
+              <th data-en="Priority" data-ar="الأولوية">Priority</th>
+              <th data-en="Impact" data-ar="التأثير">Impact</th>
+              <th data-en="Est. Cost" data-ar="التكلفة التقديرية">Est. Cost</th>
+            </tr></thead>
+            <tbody>
+              <tr>
+                <td>1</td>
+                <td>
+                  <strong>Automated Payment Gateway (Stripe/PayTabs)</strong>
+                  <div class="rec-ar">بوابة دفع آلية (Stripe/PayTabs)</div>
+                  <div class="rec-note" data-en="Instant payment processing — no manual admin confirmation. Increases conversion by 30-50%. Supports cards, Apple Pay, Google Pay." data-ar="معالجة دفع فورية بدون تأكيد يدوي. يزيد التحويلات 30-50%. يدعم البطاقات وApple Pay وGoogle Pay.">Instant payment processing — no manual admin confirmation. Increases conversion by 30-50%. Supports cards, Apple Pay, Google Pay.</div>
+                </td>
+                <td><span class="priority-badge priority-high">🔴 High</span></td>
+                <td><span class="impact-badge impact-revenue">Revenue</span></td>
+                <td>~2.9% per transaction</td>
+              </tr>
+              <tr>
+                <td>2</td>
+                <td>
+                  <strong>Free Trial / Preview Lessons</strong>
+                  <div class="rec-ar">دروس تجريبية مجانية</div>
+                  <div class="rec-note" data-en="Let visitors watch 1-2 episodes per course before buying. Standard practice at all top academies." data-ar="السماح للزوار بمشاهدة 1-2 حلقة لكل دورة قبل الشراء. ممارسة شائعة في جميع الأكاديميات الكبرى.">Let visitors watch 1-2 episodes per course before buying. Standard practice at all top academies.</div>
+                </td>
+                <td><span class="priority-badge priority-high">🔴 High</span></td>
+                <td><span class="impact-badge impact-revenue">Revenue</span></td>
+                <td>$0</td>
+              </tr>
+              <tr>
+                <td>3</td>
+                <td>
+                  <strong>Referral / Affiliate Program</strong>
+                  <div class="rec-ar">برنامج إحالة / شراكة</div>
+                  <div class="rec-note" data-en="Students earn commission (5-15%) referring others. Auto-generated referral links, dashboard to track earnings. Top growth driver for academies." data-ar="الطلاب يكسبون عمولة (5-15%) بإحالة الآخرين. روابط إحالة تلقائية ولوحة لتتبع الأرباح. أقوى محرك نمو للأكاديميات.">Students earn commission (5-15%) referring others. Auto-generated referral links, dashboard to track earnings. Top growth driver for academies.</div>
+                </td>
+                <td><span class="priority-badge priority-high">🔴 High</span></td>
+                <td><span class="impact-badge impact-growth">Growth</span></td>
+                <td>$0 (only pay on success)</td>
+              </tr>
+              <tr>
+                <td>4</td>
+                <td>
+                  <strong>Consultation Booking System</strong>
+                  <div class="rec-ar">نظام حجز الاستشارات</div>
+                  <div class="rec-note" data-en="Free or paid 1-on-1 sessions. Calendar integration, auto Zoom links, email reminders. Standard at premium academies." data-ar="جلسات فردية مجانية أو مدفوعة. تكامل مع التقويم وروابط Zoom تلقائية وتذكيرات بريدية.">Free or paid 1-on-1 sessions. Calendar integration, auto Zoom links, email reminders. Standard at premium academies.</div>
+                </td>
+                <td><span class="priority-badge priority-high">🔴 High</span></td>
+                <td><span class="impact-badge impact-revenue">Revenue</span></td>
+                <td>$0-30/mo (Cal.com)</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <!-- Section 2: Trust & Credibility -->
+          <h4 class="rec-section-title">
+            <span>🛡️</span>
+            <span data-en="Trust &amp; Credibility" data-ar="الثقة والمصداقية">Trust &amp; Credibility</span>
+          </h4>
+          <table class="rec-table">
+            <thead><tr><th>#</th><th data-en="Feature" data-ar="الميزة">Feature</th><th data-en="Priority" data-ar="الأولوية">Priority</th><th data-en="Impact" data-ar="التأثير">Impact</th><th data-en="Est. Cost" data-ar="التكلفة التقديرية">Est. Cost</th></tr></thead>
+            <tbody>
+              <tr>
+                <td>5</td>
+                <td>
+                  <strong>Completion Certificates (PDF)</strong>
+                  <div class="rec-ar">شهادات إتمام (PDF)</div>
+                  <div class="rec-note" data-en="Auto-generated branded certificates upon course completion. Shareable on LinkedIn. Students love these — free marketing for you." data-ar="شهادات مصممة تُنشأ تلقائياً عند إتمام الدورة. قابلة للمشاركة على LinkedIn. الطلاب يحبونها — تسويق مجاني لك.">Auto-generated branded certificates upon course completion. Shareable on LinkedIn. Students love these — free marketing for you.</div>
+                </td>
+                <td><span class="priority-badge priority-high">🔴 High</span></td>
+                <td><span class="impact-badge impact-trust">Trust</span></td>
+                <td>$0</td>
+              </tr>
+              <tr>
+                <td>6</td>
+                <td>
+                  <strong>SEO &amp; Social Meta Tags</strong>
+                  <div class="rec-ar">تحسين محركات البحث وعلامات المشاركة الاجتماعية</div>
+                  <div class="rec-note" data-en="Per-page meta titles, descriptions, Open Graph images. When someone shares a course link on WhatsApp/Twitter, it shows a rich preview instead of blank." data-ar="عناوين وأوصاف وصور لكل صفحة. عند مشاركة رابط دورة على واتساب أو تويتر تظهر معاينة غنية بدلاً من فراغ.">Per-page meta titles, descriptions, Open Graph images. When someone shares a course link on WhatsApp/Twitter, it shows a rich preview instead of blank.</div>
+                </td>
+                <td><span class="priority-badge priority-high">🔴 High</span></td>
+                <td><span class="impact-badge impact-growth">Growth</span></td>
+                <td>$0</td>
+              </tr>
+              <tr>
+                <td>7</td>
+                <td>
+                  <strong>Instructor Profiles &amp; Credentials Page</strong>
+                  <div class="rec-ar">ملفات المدربين وصفحة الشهادات المهنية</div>
+                  <div class="rec-note" data-en="Dedicated instructor pages with bio, credentials, experience, linked courses. Builds trust. Every major academy has this." data-ar="صفحات مخصصة للمدربين بالسيرة الذاتية والمؤهلات والخبرة والدورات المرتبطة. يبني الثقة.">Dedicated instructor pages with bio, credentials, experience, linked courses. Builds trust. Every major academy has this.</div>
+                </td>
+                <td><span class="priority-badge priority-medium">🟡 Medium</span></td>
+                <td><span class="impact-badge impact-trust">Trust</span></td>
+                <td>$0</td>
+              </tr>
+              <tr>
+                <td>8</td>
+                <td>
+                  <strong>Broker Partnerships &amp; Regulatory Info Section</strong>
+                  <div class="rec-ar">قسم شراكات الوسطاء والمعلومات التنظيمية</div>
+                  <div class="rec-note" data-en="Dedicated page showing partner brokers, regulatory compliance, disclaimers. Signals legitimacy — critical in the trading education space." data-ar="صفحة مخصصة تعرض الوسطاء الشركاء والامتثال التنظيمي والإخلاءات. تشير إلى الشرعية — حرج في مجال تعليم التداول.">Dedicated page showing partner brokers, regulatory compliance, disclaimers. Signals legitimacy — critical in the trading education space.</div>
+                </td>
+                <td><span class="priority-badge priority-medium">🟡 Medium</span></td>
+                <td><span class="impact-badge impact-trust">Trust</span></td>
+                <td>$0 (content only)</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <!-- Section 3: Student Retention & Engagement -->
+          <h4 class="rec-section-title">
+            <span>🎯</span>
+            <span data-en="Student Retention &amp; Engagement" data-ar="الاحتفاظ بالطلاب والتفاعل">Student Retention &amp; Engagement</span>
+          </h4>
+          <table class="rec-table">
+            <thead><tr><th>#</th><th data-en="Feature" data-ar="الميزة">Feature</th><th data-en="Priority" data-ar="الأولوية">Priority</th><th data-en="Impact" data-ar="التأثير">Impact</th><th data-en="Est. Cost" data-ar="التكلفة التقديرية">Est. Cost</th></tr></thead>
+            <tbody>
+              <tr>
+                <td>9</td>
+                <td>
+                  <strong>Email Newsletter System</strong>
+                  <div class="rec-ar">نظام النشرة البريدية</div>
+                  <div class="rec-note" data-en="Weekly market insights, new course announcements, trading tips. Keeps students engaged when they're not on the platform. Proven retention booster." data-ar="رؤى سوقية أسبوعية وإعلانات دورات جديدة ونصائح تداول. يبقي الطلاب متفاعلين خارج المنصة.">Weekly market insights, new course announcements, trading tips. Keeps students engaged when they're not on the platform. Proven retention booster.</div>
+                </td>
+                <td><span class="priority-badge priority-high">🔴 High</span></td>
+                <td><span class="impact-badge impact-retention">Retention</span></td>
+                <td>Free–$25/mo (Brevo)</td>
+              </tr>
+              <tr>
+                <td>10</td>
+                <td>
+                  <strong>Push Notifications (Browser/Mobile)</strong>
+                  <div class="rec-ar">إشعارات دفع (المتصفح/الموبايل)</div>
+                  <div class="rec-note" data-en="Instant alerts for new signals, events, and course updates even when the browser is closed. 3-5x higher engagement than email." data-ar="تنبيهات فورية للإشارات الجديدة والفعاليات والتحديثات حتى عند إغلاق المتصفح.">Instant alerts for new signals, events, and course updates even when the browser is closed. 3-5x higher engagement than email.</div>
+                </td>
+                <td><span class="priority-badge priority-medium">🟡 Medium</span></td>
+                <td><span class="impact-badge impact-retention">Retention</span></td>
+                <td>Free (OneSignal)</td>
+              </tr>
+              <tr>
+                <td>11</td>
+                <td>
+                  <strong>Community Discussion Forum</strong>
+                  <div class="rec-ar">منتدى نقاش المجتمع</div>
+                  <div class="rec-note" data-en="Students discuss trades, share analyses, ask questions. Creates a sticky ecosystem — students come back daily. Babypips' #1 feature." data-ar="يناقش الطلاب الصفقات ويشاركون التحليلات ويطرحون الأسئلة. يخلق نظاماً بيئياً جاذباً — الطلاب يعودون يومياً.">Students discuss trades, share analyses, ask questions. Creates a sticky ecosystem — students come back daily. Babypips' #1 feature.</div>
+                </td>
+                <td><span class="priority-badge priority-medium">🟡 Medium</span></td>
+                <td><span class="impact-badge impact-retention">Retention</span></td>
+                <td>$0</td>
+              </tr>
+              <tr>
+                <td>12</td>
+                <td>
+                  <strong>Live Webinars &amp; Zoom Integration</strong>
+                  <div class="rec-ar">ندوات مباشرة وتكامل Zoom</div>
+                  <div class="rec-note" data-en="Weekly live trading sessions, Q&A webinars, market analysis. Auto-create Zoom meetings from the platform with registration." data-ar="جلسات تداول حية أسبوعية وندوات أسئلة وأجوبة وتحليل السوق. إنشاء اجتماعات Zoom تلقائياً من المنصة.">Weekly live trading sessions, Q&A webinars, market analysis. Auto-create Zoom meetings from the platform with registration.</div>
+                </td>
+                <td><span class="priority-badge priority-medium">🟡 Medium</span></td>
+                <td><span class="impact-badge impact-retention">Retention</span></td>
+                <td>~$13/mo (Zoom Pro)</td>
+              </tr>
+              <tr>
+                <td>13</td>
+                <td>
+                  <strong>Daily Trading Journal</strong>
+                  <div class="rec-ar">مفكرة التداول اليومية</div>
+                  <div class="rec-note" data-en="Students log their trades with entry/exit, screenshot, notes, and P&L. Auto-calculates win rate and stats. Professional-level feature." data-ar="يسجل الطلاب صفقاتهم مع الدخول/الخروج والصور والملاحظات والأرباح. يحسب نسبة الفوز تلقائياً.">Students log their trades with entry/exit, screenshot, notes, and P&L. Auto-calculates win rate and stats. Professional-level feature.</div>
+                </td>
+                <td><span class="priority-badge priority-medium">🟡 Medium</span></td>
+                <td><span class="impact-badge impact-retention">Retention</span></td>
+                <td>$0</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <!-- Section 4: Operations & Scale -->
+          <h4 class="rec-section-title">
+            <span>⚙️</span>
+            <span data-en="Operations &amp; Scale" data-ar="العمليات والتوسع">Operations &amp; Scale</span>
+          </h4>
+          <table class="rec-table">
+            <thead><tr><th>#</th><th data-en="Feature" data-ar="الميزة">Feature</th><th data-en="Priority" data-ar="الأولوية">Priority</th><th data-en="Impact" data-ar="التأثير">Impact</th><th data-en="Est. Cost" data-ar="التكلفة التقديرية">Est. Cost</th></tr></thead>
+            <tbody>
+              <tr>
+                <td>14</td>
+                <td>
+                  <strong>Google Analytics / Tracking Integration</strong>
+                  <div class="rec-ar">تكامل Google Analytics / تتبع الزوار</div>
+                  <div class="rec-note" data-en="Understand where your visitors come from, which pages convert best, and where users drop off. Essential for marketing decisions." data-ar="افهم من أين يأتي زوارك وأي الصفحات تحول أفضل وأين يغادر المستخدمون. ضروري لقرارات التسويق.">Understand where your visitors come from, which pages convert best, and where users drop off. Essential for marketing decisions.</div>
+                </td>
+                <td><span class="priority-badge priority-high">🔴 High</span></td>
+                <td><span class="impact-badge impact-growth">Growth</span></td>
+                <td>Free (GA4)</td>
+              </tr>
+              <tr>
+                <td>15</td>
+                <td>
+                  <strong>PWA (Progressive Web App) / Mobile App</strong>
+                  <div class="rec-ar">تطبيق ويب تقدمي (PWA) / تطبيق موبايل</div>
+                  <div class="rec-note" data-en="Install the academy as an app on phone home screen. Works offline, push notifications, native-like feel. Much cheaper than a native app." data-ar="تثبيت الأكاديمية كتطبيق على الشاشة الرئيسية. يعمل بدون إنترنت وإشعارات دفع وتجربة أصلية.">Install the academy as an app on phone home screen. Works offline, push notifications, native-like feel. Much cheaper than a native app.</div>
+                </td>
+                <td><span class="priority-badge priority-low">🔵 Low</span></td>
+                <td><span class="impact-badge impact-retention">Retention</span></td>
+                <td>$0</td>
+              </tr>
+              <tr>
+                <td>16</td>
+                <td>
+                  <strong>Employee Activity Monitoring Dashboard</strong>
+                  <div class="rec-ar">لوحة مراقبة نشاط الموظفين</div>
+                  <div class="rec-note" data-en="Track support response times, content creation, admin actions. Useful when you grow beyond 2-3 team members." data-ar="تتبع أوقات استجابة الدعم وإنشاء المحتوى وإجراءات المدراء. مفيد عند التوسع لأكثر من 2-3 أعضاء فريق.">Track support response times, content creation, admin actions. Useful when you grow beyond 2-3 team members.</div>
+                </td>
+                <td><span class="priority-badge priority-low">🔵 Low</span></td>
+                <td><span class="impact-badge impact-trust">Trust</span></td>
+                <td>$0</td>
+              </tr>
+              <tr>
+                <td>17</td>
+                <td>
+                  <strong>Multi-language Course Content</strong>
+                  <div class="rec-ar">محتوى الدورات متعدد اللغات</div>
+                  <div class="rec-note" data-en="Support subtitles and separate course versions in Arabic/English. Opens the market to a much wider audience." data-ar="دعم الترجمة وإصدارات منفصلة بالعربية/الإنجليزية. يفتح السوق لجمهور أوسع بكثير.">Support subtitles and separate course versions in Arabic/English. Opens the market to a much wider audience.</div>
+                </td>
+                <td><span class="priority-badge priority-low">🔵 Low</span></td>
+                <td><span class="impact-badge impact-growth">Growth</span></td>
+                <td>$0 (content effort)</td>
+              </tr>
+              <tr>
+                <td>18</td>
+                <td>
+                  <strong>Wishlist / Save for Later</strong>
+                  <div class="rec-ar">قائمة الرغبات / الحفظ لاحقاً</div>
+                  <div class="rec-note" data-en="Let visitors bookmark courses and packages. Send 'still interested?' emails. Small feature, good for conversions." data-ar="السماح للزوار بحفظ الدورات والباقات. إرسال رسائل 'هل مازلت مهتماً؟' ميزة صغيرة مفيدة للتحويلات.">Let visitors bookmark courses and packages. Send "still interested?" emails. Small feature, good for conversions.</div>
+                </td>
+                <td><span class="priority-badge priority-nice">🟣 Nice</span></td>
+                <td><span class="impact-badge impact-revenue">Revenue</span></td>
+                <td>$0</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <!-- What XFlex already has -->
+          <div class="info-box info-green" style="margin: 24px 0;">
+            <strong data-en="✅ What XFlex Already Has (ahead of many competitors)" data-ar="✅ ما يملكه XFlex بالفعل (متقدم على كثير من المنافسين)">✅ What XFlex Already Has (ahead of many competitors)</strong>
+            <ul>
+              <li data-en="🧠 AI-Powered Learning Assistant (LexAI) — most academies don't have this" data-ar="🧠 مساعد تعلم ذكي (LexAI) — معظم الأكاديميات لا تملك هذا">🧠 AI-Powered Learning Assistant (LexAI) — most academies don't have this</li>
+              <li data-en="📊 Trading Recommendations / Signals with reactions — real-time value" data-ar="📊 توصيات / إشارات التداول مع تفاعلات — قيمة فورية">📊 Trading Recommendations / Signals with reactions — real-time value</li>
+              <li data-en="📝 8-Level Progressive Quiz System with pass-gating — better than most" data-ar="📝 نظام اختبارات من 8 مستويات تدريجية مع شرط النجاح — أفضل من معظم المنافسين">📝 8-Level Progressive Quiz System with pass-gating — better than most</li>
+              <li data-en="🏆 Loyalty Points System with leaderboard — gamification" data-ar="🏆 نظام نقاط ولاء مع لوحة متصدرين — تلعيب">🏆 Loyalty Points System with leaderboard — gamification</li>
+              <li data-en="🧮 Built-in Trading Calculators (pip, position, risk, P&L)" data-ar="🧮 حاسبات تداول مدمجة (بيب، حجم صفقة، مخاطرة، ربح/خسارة)">🧮 Built-in Trading Calculators (pip, position, risk, P&L)</li>
+              <li data-en="🎤 Voice Notes in Support Chat — personal touch" data-ar="🎤 رسائل صوتية في الدعم — لمسة شخصية">🎤 Voice Notes in Support Chat — personal touch</li>
+              <li data-en="📈 Student Engagement Analytics Dashboard" data-ar="📈 لوحة تحليلات تفاعل الطلاب">📈 Student Engagement Analytics Dashboard</li>
+              <li data-en="🔔 Internal Notification Center with admin bulk-send" data-ar="🔔 مركز إشعارات داخلي مع إرسال جماعي من المدير">🔔 Internal Notification Center with admin bulk-send</li>
+              <li data-en="🏷️ Coupon &amp; Discount System" data-ar="🏷️ نظام كوبونات وخصومات">🏷️ Coupon &amp; Discount System</li>
+              <li data-en="⬆️ Package Upgrade Service with VAT-inclusive pricing" data-ar="⬆️ خدمة ترقية الباقات مع أسعار شاملة الضريبة">⬆️ Package Upgrade Service with VAT-inclusive pricing</li>
+              <li data-en="🌐 Full Arabic + English bilingual UI" data-ar="🌐 واجهة ثنائية اللغة عربي + إنجليزي كاملة">🌐 Full Arabic + English bilingual UI</li>
+            </ul>
+          </div>
+
+          <!-- Suggested Implementation Order -->
+          <div class="info-box info-purple" style="margin: 0 0 24px 0;">
+            <strong data-en="📋 Suggested Implementation Order (if all selected)" data-ar="📋 ترتيب التنفيذ المقترح (في حال اختيار الكل)">📋 Suggested Implementation Order (if all selected)</strong>
+            <ul>
+              <li data-en="<strong>Wave 1 — Quick wins ($0):</strong> Free trial lessons, SEO meta tags, Google Analytics, Certificates" data-ar="<strong>الموجة 1 — مكاسب سريعة ($0):</strong> دروس تجريبية، علامات SEO، Google Analytics، شهادات"><strong>Wave 1 — Quick wins ($0):</strong> Free trial lessons, SEO meta tags, Google Analytics, Certificates</li>
+              <li data-en="<strong>Wave 2 — Revenue drivers:</strong> Payment gateway, Referral program, Consultation booking" data-ar="<strong>الموجة 2 — محركات الإيرادات:</strong> بوابة الدفع، برنامج الإحالة، حجز الاستشارات"><strong>Wave 2 — Revenue drivers:</strong> Payment gateway, Referral program, Consultation booking</li>
+              <li data-en="<strong>Wave 3 — Retention:</strong> Email newsletter, Community forum, Trading journal" data-ar="<strong>الموجة 3 — الاحتفاظ:</strong> النشرة البريدية، منتدى المجتمع، مفكرة التداول"><strong>Wave 3 — Retention:</strong> Email newsletter, Community forum, Trading journal</li>
+              <li data-en="<strong>Wave 4 — Polish:</strong> Push notifications, PWA, Instructor profiles, Employee monitoring" data-ar="<strong>الموجة 4 — التلميع:</strong> إشعارات دفع، PWA، ملفات المدربين، مراقبة الموظفين"><strong>Wave 4 — Polish:</strong> Push notifications, PWA, Instructor profiles, Employee monitoring</li>
+            </ul>
+          </div>
+
+          <!-- Cost Summary -->
+          <h4 class="rec-section-title">
+            <span>💲</span>
+            <span data-en="Estimated Monthly Running Costs (all recommendations)" data-ar="التكاليف الشهرية المتوقعة (جميع التوصيات)">Estimated Monthly Running Costs (all recommendations)</span>
+          </h4>
+          <table class="cost-table">
+            <thead><tr>
+              <th data-en="Service" data-ar="الخدمة">Service</th>
+              <th data-en="Provider" data-ar="المزود">Provider</th>
+              <th data-en="Monthly" data-ar="شهرياً">Monthly</th>
+            </tr></thead>
+            <tbody>
+              <tr><td>Payment Gateway</td><td>Stripe / PayTabs</td><td>~2.9% per txn (no monthly fee)</td></tr>
+              <tr><td>Consultation Booking</td><td>Cal.com (self-hosted or cloud)</td><td>Free – $30/mo</td></tr>
+              <tr><td>Zoom Integration</td><td>Zoom Pro</td><td>~$13/mo</td></tr>
+              <tr><td>Email Newsletter</td><td>Brevo (Sendinblue)</td><td>Free (300/day) – $25/mo</td></tr>
+              <tr><td>Push Notifications</td><td>OneSignal</td><td>Free (up to 10K subscribers)</td></tr>
+              <tr><td>Google Analytics</td><td>GA4</td><td>Free</td></tr>
+              <tr><td>Certificate Generation</td><td>Built-in (pdf-lib)</td><td>Free</td></tr>
+              <tr><td>SEO &amp; Open Graph</td><td>Built-in (react-helmet)</td><td>Free</td></tr>
+              <tr><td>Community Forum</td><td>Built-in</td><td>Free</td></tr>
+              <tr><td>Trading Journal</td><td>Built-in</td><td>Free</td></tr>
+              <tr><td><strong>Total (all features)</strong></td><td></td><td><strong>$0 – $68/month + ~2.9% per transaction</strong></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer">
+      XFlex with AI — Business Owner Action Plan &nbsp;|&nbsp; Last Updated: March 11, 2026
+    </div>
+
+  </div>
+
+  <script>
+    function togglePhase(header) {
+      header.closest('.phase-card').classList.toggle('open');
+    }
+
+    // Language switching
+    const translations = {
+      en: {
+        title: 'XFlex — Business Owner Action Plan',
+        subtitle: 'Complete Feature Tracking & Progress Report',
+        dateText: 'Created: March 11, 2026 &nbsp;|&nbsp; Last Updated: March 11, 2026',
+        progressTitle: 'Overall Progress',
+        statDone: '35 Completed',
+        statPending: '7 Pending',
+        statPhases: '6 Phases + Foundation',
+        statusDone: '✅ Done',
+        statusPending: '⏳ Pending',
+      },
+      ar: {
+        title: 'XFlex — خطة عمل صاحب المشروع',
+        subtitle: 'تقرير تتبع المميزات والتقدم الكامل',
+        dateText: 'تاريخ الإنشاء: 11 مارس 2026 &nbsp;|&nbsp; آخر تحديث: 11 مارس 2026',
+        progressTitle: 'التقدم العام',
+        statDone: '35 مُنجز',
+        statPending: '7 معلّق',
+        statPhases: '6 مراحل + أعمال أساسية',
+        statusDone: '✅ مُنجز',
+        statusPending: '⏳ معلّق',
+      }
+    };
+
+    function setLang(lang) {
+      const isRtl = lang === 'ar';
+      document.body.classList.toggle('rtl', isRtl);
+      document.body.dir = isRtl ? 'rtl' : 'ltr';
+
+      // Toggle button active states
+      document.querySelectorAll('.lang-btn').forEach(btn => {
+        btn.classList.toggle('active', 
+          (lang === 'en' && btn.textContent === 'English') ||
+          (lang === 'ar' && btn.textContent === 'العربية')
+        );
+      });
+
+      // Update static text
+      const t = translations[lang];
+      document.getElementById('title').textContent = t.title;
+      document.getElementById('subtitle').textContent = t.subtitle;
+      document.getElementById('dateText').innerHTML = t.dateText;
+      document.getElementById('progressTitle').textContent = t.progressTitle;
+      document.getElementById('statDone').textContent = t.statDone;
+      document.getElementById('statPending').textContent = t.statPending;
+      document.getElementById('statPhases').textContent = t.statPhases;
+
+      // Update all data-en / data-ar elements
+      document.querySelectorAll('[data-en][data-ar]').forEach(el => {
+        el.innerHTML = el.getAttribute('data-' + lang);
+      });
+
+      // Update status badges
+      document.querySelectorAll('.status-badge.status-done').forEach(el => {
+        el.textContent = t.statusDone;
+      });
+      document.querySelectorAll('.status-badge.status-pending').forEach(el => {
+        el.textContent = t.statusPending;
+      });
+    }
+  </script>
+</body>
+</html>

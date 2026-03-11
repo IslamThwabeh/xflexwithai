@@ -1,5 +1,5 @@
 import { Link } from 'wouter';
-import { Package, CheckCircle, Clock, AlertCircle } from 'lucide-react';
+import { Package, CheckCircle, Clock, AlertCircle, ArrowUpCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -44,6 +44,33 @@ export default function MySubscriptions() {
               {pkg.includesRecommendations ? <Badge className="bg-white/20 text-white">{isRtl ? 'التوصيات' : 'Recommendations'}</Badge> : null}
               {pkg.includesSupport ? <Badge className="bg-white/20 text-white">{isRtl ? 'الدعم' : 'Support'}</Badge> : null}
               {pkg.includesPdf ? <Badge className="bg-white/20 text-white">PDF</Badge> : null}
+            </div>
+          </div>
+        )}
+
+        {/* Upgrade CTA for Basic subscribers */}
+        {pkg && pkg.slug === 'basic' && (
+          <div className="bg-gradient-to-r from-purple-50 to-blue-50 border-2 border-purple-200 rounded-2xl p-6 mb-8">
+            <div className="flex items-center justify-between flex-wrap gap-4">
+              <div className="flex items-center gap-3">
+                <ArrowUpCircle className="w-8 h-8 text-purple-600" />
+                <div>
+                  <h3 className="font-bold text-lg text-purple-900">
+                    {isRtl ? 'ترقية إلى الباقة الشاملة' : 'Upgrade to Comprehensive'}
+                  </h3>
+                  <p className="text-sm text-purple-600">
+                    {isRtl
+                      ? 'احصل على جميع المميزات بما فيها LexAI والتوصيات والدعم المباشر'
+                      : 'Get all features including LexAI, Recommendations & Live Support'}
+                  </p>
+                </div>
+              </div>
+              <Link href="/upgrade">
+                <Button className="bg-purple-600 hover:bg-purple-700">
+                  <ArrowUpCircle className="w-4 h-4 me-2" />
+                  {isRtl ? 'ترقية الآن' : 'Upgrade Now'}
+                </Button>
+              </Link>
             </div>
           </div>
         )}

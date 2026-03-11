@@ -1,5 +1,5 @@
 import { useParams, Link } from 'wouter';
-import { CheckCircle, ChevronRight, ArrowLeft, X, Star, BookOpen, ShoppingCart, Globe } from 'lucide-react';
+import { CheckCircle, ChevronRight, ArrowLeft, X, Star, BookOpen, ShoppingCart, Globe, MessageSquareQuote, Trophy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -17,6 +17,11 @@ export default function PackageDetails() {
   const { data: packageCourses } = trpc.packages.courses.useQuery(
     { packageId: pkg?.id || 0 },
     { enabled: !!pkg?.id }
+  );
+
+  const { data: packageTestimonials } = trpc.testimonials.listWithContext.useQuery(
+    { packageSlug: pkg?.slug, limit: 4 },
+    { enabled: !!pkg?.slug }
   );
 
   if (isLoading) {
@@ -128,11 +133,62 @@ export default function PackageDetails() {
                 <h2 className="text-lg font-bold text-gray-900 mb-4">
                   {language === 'ar' ? 'الدورات المشمولة' : 'Included Courses'}
                 </h2>
-                <div className="space-y-2">
+                <div className="space-y-3">
                   {packageCourses.map((pc: any, i: number) => (
-                    <div key={pc.id || i} className="flex items-center gap-3 p-3 rounded-lg bg-gray-50 border border-gray-100">
-                      <BookOpen className="w-4 h-4 text-blue-500 flex-shrink-0" />
-                      <span className="text-sm text-gray-700">{pc.courseId}</span>
+                    <div key={pc.id || i} className="p-4 rounded-xl bg-gray-50 border border-gray-100">
+                      <div className="flex items-start justify-between gap-3 mb-2">
+                        <div className="flex items-center gap-3">
+                          <BookOpen className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
+                          <div>
+                            <p className="text-sm font-semibold text-gray-800">
+                              {isRTL ? pc.course?.titleAr || pc.courseId : pc.course?.titleEn || `Course #${pc.courseId}`}
+                            </p>
+                            <p className="text-xs text-gray-500 capitalize">{pc.course?.level || (language === 'ar' ? 'عام' : 'General')}</p>
+                          </div>
+                        </div>
+                        {pc.course?.isFree && (
+                          <Badge variant="outline" className="text-[10px]">{language === 'ar' ? 'مجاني' : 'Free'}</Badge>
+                        )}
+                      </div>
+                      {(isRTL ? pc.course?.descriptionAr : pc.course?.descriptionEn) && (
+                        <p className="text-xs text-gray-600 line-clamp-2">{isRTL ? pc.course?.descriptionAr : pc.course?.descriptionEn}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Value Angle */}
+            <div className="mt-8 p-5 rounded-xl border bg-gradient-to-br from-blue-50 to-indigo-50">
+              <h2 className="text-lg font-bold text-gray-900 mb-2 flex items-center gap-2">
+                <Trophy className="w-5 h-5 text-indigo-600" />
+                {language === 'ar' ? 'لمن صممت هذه الباقة؟' : 'Who Is This Package For?'}
+              </h2>
+              <p className="text-sm text-gray-700 leading-relaxed">
+                {language === 'ar'
+                  ? 'هذه الباقة مناسبة للمتداول الذي يريد خطة واضحة، محتوى تدريجي، ودعم عملي يساعده على اتخاذ قرارات أكثر انضباطا.'
+                  : 'This package fits traders who want a clear roadmap, progressive learning content, and practical support to make more disciplined decisions.'}
+              </p>
+            </div>
+
+            {/* Package Testimonials */}
+            {packageTestimonials && packageTestimonials.length > 0 && (
+              <div className="mt-8">
+                <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                  <MessageSquareQuote className="w-5 h-5 text-blue-600" />
+                  {language === 'ar' ? 'ماذا يقول الطلاب عن هذه الباقة؟' : 'What Students Say About This Package'}
+                </h2>
+                <div className="grid gap-3 md:grid-cols-2">
+                  {packageTestimonials.map((item) => (
+                    <div key={item.id} className="border rounded-xl p-4 bg-white">
+                      <div className="flex gap-0.5 mb-2">
+                        {[1, 2, 3, 4, 5].map((n) => (
+                          <Star key={n} className={`w-3.5 h-3.5 ${n <= item.rating ? 'fill-yellow-400 text-yellow-400' : 'text-gray-200'}`} />
+                        ))}
+                      </div>
+                      <p className="text-sm text-gray-700 mb-2">"{isRTL ? item.textAr : item.textEn}"</p>
+                      <p className="text-xs text-gray-500">{isRTL ? item.nameAr : item.nameEn}</p>
                     </div>
                   ))}
                 </div>

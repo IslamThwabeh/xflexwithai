@@ -189,7 +189,7 @@ export default function AdminCourses() {
                   <div className="flex items-center justify-between text-sm mb-4">
                     <span className="font-medium">${(course.price / 100).toFixed(2)}</span>
                     <span className="capitalize text-muted-foreground">{course.level}</span>
-                    {course.stageNumber > 0 && (
+                    {(course.stageNumber ?? 0) > 0 && (
                       <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
                         Stage {course.stageNumber}
                       </span>

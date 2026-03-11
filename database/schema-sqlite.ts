@@ -8,6 +8,7 @@ export const users = sqliteTable("users", {
   id: int("id").primaryKey({ autoIncrement: true }),
   email: text("email", { length: 320 }).notNull().unique(),
   passwordHash: text("passwordHash", { length: 255 }).notNull(),
+  loginSecurityMode: text("loginSecurityMode", { length: 30 }).default("password_or_otp").notNull(),
   name: text("name"),
   phone: text("phone", { length: 20 }),
   city: text("city", { length: 100 }),
@@ -19,6 +20,7 @@ export const users = sqliteTable("users", {
   lastSignedIn: text("lastSignedIn").default("CURRENT_TIMESTAMP").notNull(),
   telegram_user_id: text("telegram_user_id").unique(),
   user_type: text("user_type", { length: 20 }).default("web"),
+  pointsBalance: integer("points_balance").default(0).notNull(),
 });
 
 export type User = typeof users.$inferSelect;
@@ -154,6 +156,7 @@ export const registrationKeys = sqliteTable("registrationKeys", {
   notes: text("notes"),
   price: integer("price").default(0).notNull(),
   currency: text("currency", { length: 3 }).default("USD").notNull(),
+  entitlementDays: integer("entitlementDays"),
   expiresAt: text("expiresAt"),
 });
 
@@ -183,6 +186,7 @@ export const lexaiSubscriptions = sqliteTable("lexaiSubscriptions", {
   id: int("id").primaryKey({ autoIncrement: true }),
   userId: integer("userId").notNull(),
   isActive: integer("isActive", { mode: 'boolean' }).default(true).notNull(),
+  isPaused: integer("isPaused", { mode: 'boolean' }).default(false).notNull(),
   startDate: text("startDate").default("CURRENT_TIMESTAMP").notNull(),
   endDate: text("endDate").notNull(),
   autoRenew: integer("autoRenew", { mode: 'boolean' }).default(true).notNull(),
@@ -191,6 +195,9 @@ export const lexaiSubscriptions = sqliteTable("lexaiSubscriptions", {
   paymentCurrency: text("paymentCurrency", { length: 3 }).default("USD").notNull(),
   messagesUsed: integer("messagesUsed").default(0).notNull(),
   messagesLimit: integer("messagesLimit").default(100).notNull(),
+  pausedAt: text("pausedAt"),
+  pausedReason: text("pausedReason"),
+  pausedRemainingDays: integer("pausedRemainingDays"),
   createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
   updatedAt: text("updatedAt").default("CURRENT_TIMESTAMP").notNull(),
 });
@@ -262,11 +269,15 @@ export const recommendationSubscriptions = sqliteTable("recommendationSubscripti
   userId: integer("userId").notNull(),
   registrationKeyId: integer("registrationKeyId"),
   isActive: integer("isActive", { mode: 'boolean' }).default(true).notNull(),
+  isPaused: integer("isPaused", { mode: 'boolean' }).default(false).notNull(),
   startDate: text("startDate").default("CURRENT_TIMESTAMP").notNull(),
   endDate: text("endDate").notNull(),
   paymentStatus: text("paymentStatus", { length: 20 }).default("key").notNull(),
   paymentAmount: integer("paymentAmount").default(100).notNull(),
   paymentCurrency: text("paymentCurrency", { length: 3 }).default("USD").notNull(),
+  pausedAt: text("pausedAt"),
+  pausedReason: text("pausedReason"),
+  pausedRemainingDays: integer("pausedRemainingDays"),
   createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
   updatedAt: text("updatedAt").default("CURRENT_TIMESTAMP").notNull(),
 });
@@ -466,6 +477,11 @@ export const supportMessages = sqliteTable("supportMessages", {
   senderType: text("senderType", { length: 20 }).notNull(), // 'client' | 'support' | 'admin'
   content: text("content").notNull(),
   isRead: integer("isRead", { mode: 'boolean' }).default(false).notNull(),
+  attachmentUrl: text("attachment_url"),
+  attachmentName: text("attachment_name"),
+  attachmentSize: integer("attachment_size"),
+  attachmentType: text("attachmentType"), // 'file' | 'voice' | null
+  attachmentDuration: integer("attachmentDuration"), // voice duration in seconds
   createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
 });
 
@@ -497,6 +513,7 @@ export const packages = sqliteTable("packages", {
   isPublished: integer("isPublished", { mode: 'boolean' }).default(false).notNull(),
   displayOrder: integer("displayOrder").default(0).notNull(),
   thumbnailUrl: text("thumbnailUrl"),
+  upgradePrice: integer("upgradePrice").default(0), // in cents — price to upgrade from a lower-tier package to this one
   createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
   updatedAt: text("updatedAt").default("CURRENT_TIMESTAMP").notNull(),
 });
@@ -537,6 +554,8 @@ export const orders = sqliteTable("orders", {
   giftEmail: text("giftEmail", { length: 320 }),
   giftMessage: text("giftMessage"),
   notes: text("notes"),
+  isUpgrade: integer("isUpgrade", { mode: 'boolean' }).default(false).notNull(),
+  upgradeFromPackageId: integer("upgradeFromPackageId"),
   createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
   updatedAt: text("updatedAt").default("CURRENT_TIMESTAMP").notNull(),
   completedAt: text("completedAt"),
@@ -572,6 +591,8 @@ export const packageSubscriptions = sqliteTable("packageSubscriptions", {
   endDate: text("endDate"),
   renewalDueDate: text("renewalDueDate"),
   autoRenew: integer("autoRenew", { mode: 'boolean' }).default(false).notNull(),
+  upgradedFromPackageId: integer("upgradedFromPackageId"),
+  upgradedAt: text("upgradedAt"),
   createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
   updatedAt: text("updatedAt").default("CURRENT_TIMESTAMP").notNull(),
 });
@@ -939,6 +960,9 @@ export const testimonials = sqliteTable("testimonials", {
   textAr: text("text_ar").notNull(),
   avatarUrl: text("avatar_url"),
   rating: integer("rating").notNull().default(5), // 1-5 stars
+  packageSlug: text("package_slug"),
+  courseId: integer("course_id"),
+  serviceKey: text("service_key", { length: 40 }), // lexai | recommendations | courses | community
   displayOrder: integer("display_order").notNull().default(0),
   isPublished: integer("is_published", { mode: 'boolean' }).notNull().default(true),
   createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
@@ -946,3 +970,204 @@ export const testimonials = sqliteTable("testimonials", {
 
 export type Testimonial = typeof testimonials.$inferSelect;
 export type InsertTestimonial = typeof testimonials.$inferInsert;
+
+// ============================================================================
+// Jobs / Careers System
+// ============================================================================
+
+export const jobs = sqliteTable("jobs", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  titleAr: text("title_ar").notNull(),
+  titleEn: text("title_en").notNull(),
+  descriptionAr: text("description_ar").notNull(),
+  descriptionEn: text("description_en"),
+  isActive: integer("is_active", { mode: 'boolean' }).notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
+  updatedAt: text("updated_at").default("CURRENT_TIMESTAMP").notNull(),
+});
+
+export type Job = typeof jobs.$inferSelect;
+export type InsertJob = typeof jobs.$inferInsert;
+
+export const jobQuestions = sqliteTable("job_questions", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  jobId: integer("job_id"), // null = general question for all jobs
+  questionAr: text("question_ar").notNull(),
+  questionEn: text("question_en"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  isActive: integer("is_active", { mode: 'boolean' }).notNull().default(true),
+});
+
+export type JobQuestion = typeof jobQuestions.$inferSelect;
+export type InsertJobQuestion = typeof jobQuestions.$inferInsert;
+
+export const jobApplications = sqliteTable("job_applications", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  jobId: integer("job_id").notNull(),
+  applicantName: text("applicant_name").notNull(),
+  email: text("email").notNull(),
+  phone: text("phone").notNull(),
+  country: text("country"),
+  cvFileUrl: text("cv_file_url"),
+  cvFileKey: text("cv_file_key"),
+  status: text("status", { length: 20 }).notNull().default("new"), // new | reviewed | shortlisted | rejected
+  submittedAt: text("submitted_at").default("CURRENT_TIMESTAMP").notNull(),
+  updatedAt: text("updated_at").default("CURRENT_TIMESTAMP").notNull(),
+  // AI scoring fields (future)
+  aiScore: integer("ai_score"),
+  aiSummary: text("ai_summary"),
+});
+
+export type JobApplication = typeof jobApplications.$inferSelect;
+export type InsertJobApplication = typeof jobApplications.$inferInsert;
+
+export const jobApplicationAnswers = sqliteTable("job_application_answers", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  applicationId: integer("application_id").notNull(),
+  questionId: integer("question_id").notNull(),
+  answer: text("answer").notNull(),
+});
+
+export type JobApplicationAnswer = typeof jobApplicationAnswers.$inferSelect;
+export type InsertJobApplicationAnswer = typeof jobApplicationAnswers.$inferInsert;
+
+// Relations for jobs
+export const jobsRelations = relations(jobs, ({ many }) => ({
+  questions: many(jobQuestions),
+  applications: many(jobApplications),
+}));
+
+export const jobQuestionsRelations = relations(jobQuestions, ({ one }) => ({
+  job: one(jobs, {
+    fields: [jobQuestions.jobId],
+    references: [jobs.id],
+  }),
+}));
+
+export const jobApplicationsRelations = relations(jobApplications, ({ one, many }) => ({
+  job: one(jobs, {
+    fields: [jobApplications.jobId],
+    references: [jobs.id],
+  }),
+  answers: many(jobApplicationAnswers),
+}));
+
+export const jobApplicationAnswersRelations = relations(jobApplicationAnswers, ({ one }) => ({
+  application: one(jobApplications, {
+    fields: [jobApplicationAnswers.applicationId],
+    references: [jobApplications.id],
+  }),
+  question: one(jobQuestions, {
+    fields: [jobApplicationAnswers.questionId],
+    references: [jobQuestions.id],
+  }),
+}));
+
+// ============================================================================
+// Course Reviews / Star Ratings (Phase 4)
+// ============================================================================
+
+export const courseReviews = sqliteTable("course_reviews", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull(),
+  courseId: integer("course_id").notNull(),
+  rating: integer("rating").notNull().default(5), // 1-5
+  comment: text("comment"),
+  isApproved: integer("is_approved", { mode: 'boolean' }).default(false).notNull(),
+  createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
+  updatedAt: text("updated_at").default("CURRENT_TIMESTAMP").notNull(),
+}, (table) => ({
+  uniqueUserCourse: unique().on(table.userId, table.courseId),
+}));
+
+export type CourseReview = typeof courseReviews.$inferSelect;
+export type InsertCourseReview = typeof courseReviews.$inferInsert;
+
+export const courseReviewsRelations = relations(courseReviews, ({ one }) => ({
+  user: one(users, {
+    fields: [courseReviews.userId],
+    references: [users.id],
+  }),
+  course: one(courses, {
+    fields: [courseReviews.courseId],
+    references: [courses.id],
+  }),
+}));
+
+// ============================================================================
+// User Notifications (Phase 4)
+// ============================================================================
+
+export const userNotifications = sqliteTable("user_notifications", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull(),
+  type: text("type", { length: 30 }).default("info").notNull(), // info | success | warning | action
+  titleEn: text("title_en").notNull(),
+  titleAr: text("title_ar").notNull(),
+  contentEn: text("content_en"),
+  contentAr: text("content_ar"),
+  actionUrl: text("action_url"),
+  isRead: integer("is_read", { mode: 'boolean' }).default(false).notNull(),
+  createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
+});
+
+export type UserNotification = typeof userNotifications.$inferSelect;
+export type InsertUserNotification = typeof userNotifications.$inferInsert;
+
+export const userNotificationsRelations = relations(userNotifications, ({ one }) => ({
+  user: one(users, {
+    fields: [userNotifications.userId],
+    references: [users.id],
+  }),
+}));
+
+// ============================================================================
+// Loyalty Points Transactions (Phase 4)
+// ============================================================================
+
+export const pointsTransactions = sqliteTable("points_transactions", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull(),
+  amount: integer("amount").notNull(), // positive = earn, negative = redeem
+  type: text("type", { length: 20 }).default("earn").notNull(), // earn | redeem | bonus | expire
+  reasonEn: text("reason_en"),
+  reasonAr: text("reason_ar"),
+  referenceId: integer("reference_id"),
+  referenceType: text("reference_type", { length: 30 }), // order | quiz | review | course_complete | login | referral
+  createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
+});
+
+export type PointsTransaction = typeof pointsTransactions.$inferSelect;
+export type InsertPointsTransaction = typeof pointsTransactions.$inferInsert;
+
+export const pointsTransactionsRelations = relations(pointsTransactions, ({ one }) => ({
+  user: one(users, {
+    fields: [pointsTransactions.userId],
+    references: [users.id],
+  }),
+}));
+
+// ============================================================================
+// Engagement Events (Phase 4)
+// ============================================================================
+
+export const engagementEvents = sqliteTable("engagement_events", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull(),
+  eventType: text("event_type").notNull(), // page_view | feature_use | course_start | course_complete | quiz_attempt | lexai_chat | recommendation_view
+  entityType: text("entity_type"), // course | episode | package | article | event
+  entityId: integer("entity_id"),
+  metadata: text("metadata"), // JSON
+  createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
+});
+
+export type EngagementEvent = typeof engagementEvents.$inferSelect;
+export type InsertEngagementEvent = typeof engagementEvents.$inferInsert;
+
+export const engagementEventsRelations = relations(engagementEvents, ({ one }) => ({
+  user: one(users, {
+    fields: [engagementEvents.userId],
+    references: [users.id],
+  }),
+}));

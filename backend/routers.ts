@@ -374,13 +374,14 @@ export const appRouter = router({
           return { success: true };
         }
 
-        // Only send codes to existing users OR emails that already have access (assigned keys).
+        // Option A: OTP is for login only. First-time users must register with password.
         const existingUser = await db.getUserByEmail(email);
-        const hasLexaiKey = await db.hasValidLexaiKeyByEmail(email);
-        const courseKeys = await db.getValidCourseKeysByEmail(email);
-        const hasCourseKey = courseKeys.length > 0;
+        if (!existingUser) {
+          return { success: true };
+        }
 
-        if (!existingUser && !hasLexaiKey && !hasCourseKey) {
+        // Users can disable OTP login from profile.
+        if (existingUser.loginSecurityMode === "password_only" || existingUser.loginSecurityMode === "password_plus_otp") {
           return { success: true };
         }
 
@@ -442,9 +443,15 @@ export const appRouter = router({
 
         const nowMs = Date.now();
         await db.deleteExpiredEmailOtps(nowMs);
-        const otp = await db.getLatestEmailOtp(email, "login");
+
+        const existingUser = await db.getUserByEmail(email);
+        const otpPurpose = existingUser?.loginSecurityMode === "password_plus_otp" ? "login_stepup" : "login";
+        const otp = await db.getLatestEmailOtp(email, otpPurpose);
 
         if (!otp || Number(otp.expiresAtMs) < nowMs) {
+          if (existingUser?.loginSecurityMode === "password_plus_otp") {
+            throw new TRPCError({ code: "UNAUTHORIZED", message: "Please sign in with your password first." });
+          }
           throw new TRPCError({ code: "UNAUTHORIZED", message: "Invalid code" });
         }
 
@@ -452,40 +459,27 @@ export const appRouter = router({
         if (computedHash !== otp.codeHash) {
           const attempts = await db.incrementEmailOtpAttempts(otp.id);
           if (attempts >= 10) {
-            await db.deleteEmailOtpsForEmail(email, "login");
+            await db.deleteEmailOtpsForEmail(email, otpPurpose);
           }
           throw new TRPCError({ code: "UNAUTHORIZED", message: "Invalid code" });
         }
 
-        await db.deleteEmailOtpsForEmail(email, "login");
+        await db.deleteEmailOtpsForEmail(email, otpPurpose);
 
-        let user = await db.getUserByEmail(email);
+        const user = await db.getUserByEmail(email);
+
         if (!user) {
-          const hasLexaiKey = await db.hasValidLexaiKeyByEmail(email);
-          const courseKeys = await db.getValidCourseKeysByEmail(email);
-          const hasCourseKey = courseKeys.length > 0;
-
-          if (!hasLexaiKey && !hasCourseKey) {
-            throw new TRPCError({
-              code: "FORBIDDEN",
-              message: "No access found for this email. Please activate a registration key.",
-            });
-          }
-
-          const randomPassword = `${generateSaltBase64(24)}${generateSaltBase64(24)}`;
-          const passwordHash = await hashPassword(randomPassword);
-          const displayName = email.split("@")[0] || "User";
-
-          const userId = await db.createUser({
-            email,
-            passwordHash,
-            name: displayName,
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "No account found for this email. Please register first.",
           });
-          user = await db.getUserById(userId);
         }
 
-        if (!user) {
-          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to sign in" });
+        if (user.loginSecurityMode === "password_only") {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "OTP login is disabled for your account. Please use your password.",
+          });
         }
 
         await db.updateUserLastSignIn(user.id);
@@ -530,16 +524,52 @@ export const appRouter = router({
           throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Invalid email or password' });
         }
         
+        // If user enforces password + OTP, send a step-up OTP and require verification.
+        if (user.loginSecurityMode === "password_plus_otp") {
+          const nowMs = Date.now();
+          await db.deleteExpiredEmailOtps(nowMs);
+
+          const code = generateNumericCode(6);
+          const salt = generateSaltBase64(16);
+          const codeHash = await sha256Base64(`${salt}:${code}`);
+          const expiresMinutes = 10;
+          const expiresAtMs = nowMs + expiresMinutes * 60_000;
+
+          await db.createEmailOtp({
+            email: user.email,
+            purpose: "login_stepup",
+            codeHash,
+            salt,
+            sentAtMs: nowMs,
+            expiresAtMs,
+          });
+
+          try {
+            await sendLoginCodeEmail({ to: user.email, code, expiresMinutes });
+          } catch (e) {
+            logger.error("[AUTH] Failed sending step-up login code", {
+              email: user.email,
+              error: e instanceof Error ? e.message : "Unknown error",
+            });
+          }
+
+          return {
+            success: true,
+            requiresOtp: true,
+            message: "We sent a verification code to your email. Enter it to complete sign in.",
+          };
+        }
+
         // Update last signed in
         await db.updateUserLastSignIn(user.id);
-        
+
         // Generate JWT token
         const token = await generateToken({
           userId: user.id,
           email: user.email,
           type: 'user',
         });
-        
+
         // Set cookie
         const cookieOptions = getSessionCookieOptions(ctx.req, 'user');
         ctx.setCookie(COOKIE_NAME, token, cookieOptions);
@@ -553,7 +583,7 @@ export const appRouter = router({
         
         logger.info('[AUTH] User logged in successfully', { userId: user.id, email: user.email });
         
-        return { success: true, user: { id: user.id, email: user.email, name: user.name } };
+        return { success: true, requiresOtp: false, user: { id: user.id, email: user.email, name: user.name } };
       }),
     
     // Admin login (separate from user login)
@@ -733,6 +763,28 @@ export const appRouter = router({
 
         logger.info('[USER] Profile updated successfully', { userId: ctx.user.id });
         
+        return { success: true };
+      }),
+
+    // User: Update login security mode
+    updateLoginSecurity: protectedProcedure
+      .input(z.object({
+        loginSecurityMode: z.enum(["password_or_otp", "password_only", "password_plus_otp"]),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.user) {
+          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Not authenticated' });
+        }
+
+        await db.updateUser(ctx.user.id, {
+          loginSecurityMode: input.loginSecurityMode,
+        });
+
+        logger.info('[USER] Login security mode updated', {
+          userId: ctx.user.id,
+          loginSecurityMode: input.loginSecurityMode,
+        });
+
         return { success: true };
       }),
 
@@ -1388,36 +1440,8 @@ export const appRouter = router({
           throw new TRPCError({ code: "BAD_REQUEST", message: activation.message });
         }
 
-        const endDate = new Date();
-        endDate.setDate(endDate.getDate() + 30);
-
-        const current = await db.getActiveLexaiSubscription(ctx.user.id);
-        if (current) {
-          await db.updateLexaiSubscription(current.id, {
-            isActive: true,
-            startDate: new Date().toISOString(),
-            endDate: endDate.toISOString(),
-            paymentStatus: "key",
-            paymentAmount: 0,
-            paymentCurrency: "USD",
-            messagesUsed: 0,
-            messagesLimit: 100,
-          });
-        } else {
-          await db.createLexaiSubscription({
-            userId: ctx.user.id,
-            isActive: true,
-            startDate: new Date().toISOString(),
-            endDate: endDate.toISOString(),
-            paymentStatus: "key",
-            paymentAmount: 0,
-            paymentCurrency: "USD",
-            messagesUsed: 0,
-            messagesLimit: 100,
-          });
-        }
-
-        return { success: true };
+        const expiresAt = activation.key ? db.getKeyAccessEndDate(activation.key)?.toISOString() : null;
+        return { success: true, expiresAt };
       }),
 
     // Public: Redeem a LexAI key by email (no login required)
@@ -1466,50 +1490,16 @@ export const appRouter = router({
           throw new TRPCError({ code: "NOT_FOUND", message: "No active assigned LexAI key found for this email" });
         }
 
-        const activatedAt = new Date(key.activatedAt);
-        if (Number.isNaN(activatedAt.getTime())) {
+        const keyExpiry = db.getKeyAccessEndDate(key);
+        if (!keyExpiry) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid key activation date" });
-        }
-
-        const keyExpiry = new Date(activatedAt);
-        keyExpiry.setDate(keyExpiry.getDate() + 30);
-
-        if (key.expiresAt) {
-          const absoluteExpiry = new Date(key.expiresAt);
-          if (!Number.isNaN(absoluteExpiry.getTime()) && absoluteExpiry.getTime() < keyExpiry.getTime()) {
-            keyExpiry.setTime(absoluteExpiry.getTime());
-          }
         }
 
         if (keyExpiry.getTime() < Date.now()) {
           throw new TRPCError({ code: "FORBIDDEN", message: "Assigned key has expired" });
         }
 
-        const existing = await db.getActiveLexaiSubscription(ctx.user.id);
-        if (existing) {
-          await db.updateLexaiSubscription(existing.id, {
-            isActive: true,
-            startDate: new Date().toISOString(),
-            endDate: keyExpiry.toISOString(),
-            paymentStatus: "key",
-            paymentAmount: 0,
-            paymentCurrency: "USD",
-            messagesUsed: 0,
-            messagesLimit: 100,
-          });
-        } else {
-          await db.createLexaiSubscription({
-            userId: ctx.user.id,
-            isActive: true,
-            startDate: new Date().toISOString(),
-            endDate: keyExpiry.toISOString(),
-            paymentStatus: "key",
-            paymentAmount: 0,
-            paymentCurrency: "USD",
-            messagesUsed: 0,
-            messagesLimit: 100,
-          });
-        }
+        await db.applyLexaiKeySubscription(ctx.user.id, key);
 
         return { success: true, expiresAt: keyExpiry.toISOString() };
       }),
@@ -1878,6 +1868,24 @@ export const appRouter = router({
       return await db.getRecommendationPublishers();
     }),
 
+    subscriptions: router({
+      list: adminProcedure.query(async () => {
+        return await db.getRecommendationSubscriptionsWithUsers();
+      }),
+      pause: adminProcedure
+        .input(z.object({ subscriptionId: z.number(), reason: z.string().optional() }))
+        .mutation(async ({ input }) => {
+          await db.pauseRecommendationSubscription(input.subscriptionId, input.reason);
+          return { success: true };
+        }),
+      resume: adminProcedure
+        .input(z.object({ subscriptionId: z.number() }))
+        .mutation(async ({ input }) => {
+          await db.resumeRecommendationSubscription(input.subscriptionId);
+          return { success: true };
+        }),
+    }),
+
     setAnalyst: adminProcedure
       .input(z.object({ userId: z.number(), enabled: z.boolean() }))
       .mutation(async ({ input }) => {
@@ -1893,24 +1901,35 @@ export const appRouter = router({
         return await db.getRecommendationKeyStatistics();
       }),
       generateKey: adminProcedure
-        .input(z.object({ notes: z.string().optional(), expiresAt: z.date().optional() }))
+        .input(z.object({
+          notes: z.string().optional(),
+          expiresAt: z.date().optional(),
+          entitlementDays: z.number().int().min(1).max(3650).optional(),
+        }))
         .mutation(async ({ input, ctx }) => {
           const key = await db.createRegistrationKey({
             courseId: -1,
             createdBy: ctx.admin.id,
             notes: input.notes,
+            entitlementDays: input.entitlementDays,
             expiresAt: input.expiresAt,
           });
           return { success: true, key };
         }),
       generateBulkKeys: adminProcedure
-        .input(z.object({ quantity: z.number().min(1).max(1000), notes: z.string().optional(), expiresAt: z.date().optional() }))
+        .input(z.object({
+          quantity: z.number().min(1).max(1000),
+          notes: z.string().optional(),
+          expiresAt: z.date().optional(),
+          entitlementDays: z.number().int().min(1).max(3650).optional(),
+        }))
         .mutation(async ({ input, ctx }) => {
           const keys = await db.createBulkRegistrationKeys({
             courseId: -1,
             createdBy: ctx.admin.id,
             quantity: input.quantity,
             notes: input.notes,
+            entitlementDays: input.entitlementDays,
             expiresAt: input.expiresAt,
           });
           return { success: true, keys, count: keys.length };
@@ -1960,6 +1979,20 @@ export const appRouter = router({
         await db.deleteLexaiMessagesByUser(input.userId);
         return { success: true };
       }),
+
+    pauseSubscription: adminProcedure
+      .input(z.object({ subscriptionId: z.number(), reason: z.string().optional() }))
+      .mutation(async ({ input }) => {
+        await db.pauseLexaiSubscription(input.subscriptionId, input.reason);
+        return { success: true };
+      }),
+
+    resumeSubscription: adminProcedure
+      .input(z.object({ subscriptionId: z.number() }))
+      .mutation(async ({ input }) => {
+        await db.resumeLexaiSubscription(input.subscriptionId);
+        return { success: true };
+      }),
     
     keys: router({
       list: adminProcedure.query(async () => {
@@ -1973,6 +2006,8 @@ export const appRouter = router({
       generateKey: adminProcedure
         .input(z.object({
           notes: z.string().optional(),
+          expiresAt: z.date().optional(),
+          entitlementDays: z.number().int().min(1).max(3650).optional(),
         }))
         .mutation(async ({ input, ctx }) => {
           logger.info('[LexAI] Generating key (admin)', { adminId: ctx.admin.id });
@@ -1980,6 +2015,8 @@ export const appRouter = router({
             courseId: 0,
             createdBy: ctx.admin.id,
             notes: input.notes,
+            entitlementDays: input.entitlementDays,
+            expiresAt: input.expiresAt,
           });
           return { success: true, key };
         }),
@@ -1987,6 +2024,8 @@ export const appRouter = router({
         .input(z.object({
           quantity: z.number().min(1).max(1000),
           notes: z.string().optional(),
+          expiresAt: z.date().optional(),
+          entitlementDays: z.number().int().min(1).max(3650).optional(),
         }))
         .mutation(async ({ input, ctx }) => {
           logger.info('[LexAI] Generating bulk keys (admin)', { adminId: ctx.admin.id, quantity: input.quantity });
@@ -1995,6 +2034,8 @@ export const appRouter = router({
             createdBy: ctx.admin.id,
             quantity: input.quantity,
             notes: input.notes,
+            entitlementDays: input.entitlementDays,
+            expiresAt: input.expiresAt,
           });
           return { success: true, keys, count: keys.length };
         }),
@@ -2018,6 +2059,7 @@ export const appRouter = router({
         courseId: z.number(),
         notes: z.string().optional(),
         price: z.number().min(0).optional(),
+        entitlementDays: z.number().int().min(1).max(3650).optional(),
         expiresAt: z.date().optional(),
       }))
       .mutation(async ({ input, ctx }) => {
@@ -2029,6 +2071,7 @@ export const appRouter = router({
           notes: input.notes,
           price: input.price ?? 0,
           currency: "USD",
+          entitlementDays: input.entitlementDays,
           expiresAt: input.expiresAt,
         });
         
@@ -2042,6 +2085,7 @@ export const appRouter = router({
         quantity: z.number().min(1).max(1000),
         notes: z.string().optional(),
         price: z.number().min(0).optional(),
+        entitlementDays: z.number().int().min(1).max(3650).optional(),
         expiresAt: z.date().optional(),
       }))
       .mutation(async ({ input, ctx }) => {
@@ -2058,6 +2102,7 @@ export const appRouter = router({
           notes: input.notes,
           price: input.price ?? 0,
           currency: "USD",
+          entitlementDays: input.entitlementDays,
           expiresAt: input.expiresAt,
         });
         
@@ -2134,6 +2179,7 @@ export const appRouter = router({
           activatedAt: key.activatedAt ?? null,
           keyType: key.courseId === 0 ? 'lexai' : key.courseId === -1 ? 'recommendation' : 'course',
           courseId: key.courseId,
+          entitlementDays: key.entitlementDays ?? null,
         } as const;
       }),
 
@@ -2302,6 +2348,34 @@ export const appRouter = router({
   // Support Chat – real-time 1-on-1 client↔support messaging
   // =========================================================================
   supportChat: router({
+    // Upload attachment (file or voice note) to R2
+    uploadAttachment: protectedProcedure
+      .input(z.object({
+        fileData: z.string(), // base64 encoded
+        fileName: z.string(),
+        contentType: z.string(),
+        attachmentType: z.enum(['file', 'voice']).default('file'),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        const env = getWorkerEnv();
+        if (!env?.VIDEOS_BUCKET) {
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'R2 bucket not configured' });
+        }
+
+        const buffer = Buffer.from(input.fileData, 'base64');
+        // Limit: 5MB for files, 2MB for voice
+        const maxSize = input.attachmentType === 'voice' ? 2 * 1024 * 1024 : 5 * 1024 * 1024;
+        if (buffer.length > maxSize) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'File too large' });
+        }
+
+        const randomSuffix = Math.random().toString(36).substring(2, 10);
+        const key = `support/${ctx.user.id}/${Date.now()}-${randomSuffix}-${input.fileName}`;
+        const result = await storagePutR2(env.VIDEOS_BUCKET, key, buffer, input.contentType);
+        return { url: result.url, key: result.key, size: buffer.length };
+      }),
+
     // Client: get or create their conversation & messages
     myConversation: protectedProcedure.query(async ({ ctx }) => {
       if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
@@ -2312,9 +2386,16 @@ export const appRouter = router({
       return { conversation: conv, messages };
     }),
 
-    // Client: send a message
+    // Client: send a message (with optional attachment)
     send: protectedProcedure
-      .input(z.object({ content: z.string().min(1).max(5000) }))
+      .input(z.object({
+        content: z.string().min(1).max(5000),
+        attachmentUrl: z.string().optional(),
+        attachmentName: z.string().optional(),
+        attachmentSize: z.number().optional(),
+        attachmentType: z.enum(['file', 'voice']).optional(),
+        attachmentDuration: z.number().optional(),
+      }))
       .mutation(async ({ ctx, input }) => {
         if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
         const conv = await db.getOrCreateSupportConversation(ctx.user.id);
@@ -2323,6 +2404,11 @@ export const appRouter = router({
           senderId: ctx.user.id,
           senderType: 'client',
           content: input.content,
+          attachmentUrl: input.attachmentUrl,
+          attachmentName: input.attachmentName,
+          attachmentSize: input.attachmentSize,
+          attachmentType: input.attachmentType,
+          attachmentDuration: input.attachmentDuration,
         });
         return msg;
       }),
@@ -2355,6 +2441,11 @@ export const appRouter = router({
       .input(z.object({
         conversationId: z.number(),
         content: z.string().min(1).max(5000),
+        attachmentUrl: z.string().optional(),
+        attachmentName: z.string().optional(),
+        attachmentSize: z.number().optional(),
+        attachmentType: z.enum(['file', 'voice']).optional(),
+        attachmentDuration: z.number().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
         if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
@@ -2367,6 +2458,11 @@ export const appRouter = router({
           senderId: ctx.user.id,
           senderType: isAdmin ? 'admin' : 'support',
           content: input.content,
+          attachmentUrl: input.attachmentUrl,
+          attachmentName: input.attachmentName,
+          attachmentSize: input.attachmentSize,
+          attachmentType: input.attachmentType,
+          attachmentDuration: input.attachmentDuration,
         });
         return msg;
       }),
@@ -2612,18 +2708,27 @@ export const appRouter = router({
         renewalPrice: z.number().optional(),
         renewalPeriodDays: z.number().optional(),
         renewalDescription: z.string().optional(),
-        includesLexai: z.number().min(0).max(1).default(0),
-        includesRecommendations: z.number().min(0).max(1).default(0),
-        includesSupport: z.number().min(0).max(1).default(0),
-        includesPdf: z.number().min(0).max(1).default(0),
+        includesLexai: z.union([z.boolean(), z.number().min(0).max(1)]).default(0),
+        includesRecommendations: z.union([z.boolean(), z.number().min(0).max(1)]).default(0),
+        includesSupport: z.union([z.boolean(), z.number().min(0).max(1)]).default(0),
+        includesPdf: z.union([z.boolean(), z.number().min(0).max(1)]).default(0),
         durationDays: z.number().optional(),
-        isLifetime: z.number().min(0).max(1).default(1),
-        isPublished: z.number().min(0).max(1).default(0),
+        isLifetime: z.union([z.boolean(), z.number().min(0).max(1)]).default(1),
+        isPublished: z.union([z.boolean(), z.number().min(0).max(1)]).default(0),
         displayOrder: z.number().default(0),
         thumbnailUrl: z.string().optional(),
+        upgradePrice: z.number().optional(),
       }))
       .mutation(async ({ input }) => {
-        return db.createPackage(input);
+        return db.createPackage({
+          ...input,
+          includesLexai: Boolean(input.includesLexai),
+          includesRecommendations: Boolean(input.includesRecommendations),
+          includesSupport: Boolean(input.includesSupport),
+          includesPdf: Boolean(input.includesPdf),
+          isLifetime: Boolean(input.isLifetime),
+          isPublished: Boolean(input.isPublished),
+        });
       }),
 
     // Admin: update package
@@ -2640,19 +2745,27 @@ export const appRouter = router({
         renewalPrice: z.number().optional(),
         renewalPeriodDays: z.number().optional(),
         renewalDescription: z.string().optional(),
-        includesLexai: z.number().optional(),
-        includesRecommendations: z.number().optional(),
-        includesSupport: z.number().optional(),
-        includesPdf: z.number().optional(),
+        includesLexai: z.union([z.boolean(), z.number().min(0).max(1)]).optional(),
+        includesRecommendations: z.union([z.boolean(), z.number().min(0).max(1)]).optional(),
+        includesSupport: z.union([z.boolean(), z.number().min(0).max(1)]).optional(),
+        includesPdf: z.union([z.boolean(), z.number().min(0).max(1)]).optional(),
         durationDays: z.number().optional(),
-        isLifetime: z.number().optional(),
-        isPublished: z.number().optional(),
+        isLifetime: z.union([z.boolean(), z.number().min(0).max(1)]).optional(),
+        isPublished: z.union([z.boolean(), z.number().min(0).max(1)]).optional(),
         displayOrder: z.number().optional(),
         thumbnailUrl: z.string().optional(),
+        upgradePrice: z.number().optional(),
       }))
       .mutation(async ({ input }) => {
         const { id, ...data } = input;
-        return db.updatePackage(id, data);
+        const updateData: Record<string, unknown> = { ...data };
+        if (data.includesLexai !== undefined) updateData.includesLexai = Boolean(data.includesLexai);
+        if (data.includesRecommendations !== undefined) updateData.includesRecommendations = Boolean(data.includesRecommendations);
+        if (data.includesSupport !== undefined) updateData.includesSupport = Boolean(data.includesSupport);
+        if (data.includesPdf !== undefined) updateData.includesPdf = Boolean(data.includesPdf);
+        if (data.isLifetime !== undefined) updateData.isLifetime = Boolean(data.isLifetime);
+        if (data.isPublished !== undefined) updateData.isPublished = Boolean(data.isPublished);
+        return db.updatePackage(id, updateData);
       }),
 
     // Admin: delete package
@@ -2725,21 +2838,23 @@ export const appRouter = router({
         }
 
         const vatRate = 16;
-        const vatAmount = Math.round((subtotal - discountAmount) * vatRate / 100);
-        const totalAmount = subtotal - discountAmount + vatAmount;
+        // Prices are VAT-inclusive: extract VAT from the total
+        const totalAmount = subtotal - discountAmount;
+        const vatAmount = Math.round(totalAmount * vatRate / (100 + vatRate));
+        const subtotalExVat = totalAmount - vatAmount;
 
         // Create order
         const order = await db.createOrder({
           userId: ctx.user.id,
           status: 'pending',
-          subtotal,
+          subtotal: subtotalExVat,
           discountAmount,
           vatRate,
           vatAmount,
           totalAmount,
           currency: 'USD',
           paymentMethod: input.paymentMethod,
-          isGift: input.isGift ? 1 : 0,
+          isGift: input.isGift,
           giftEmail: input.giftEmail || null,
           giftMessage: input.giftMessage || null,
           notes: input.notes || null,
@@ -2765,7 +2880,7 @@ export const appRouter = router({
           });
           if (item.packageId) {
             const pkg = await db.getPackageById(item.packageId);
-            if (pkg) packageName = pkg.titleEn || pkg.titleAr || 'Package';
+            if (pkg) packageName = pkg.nameEn || pkg.nameAr || 'Package';
           }
         }
 
@@ -2852,7 +2967,7 @@ export const appRouter = router({
           for (const item of items) {
             if (item.itemType === 'package' && item.packageId) {
               const pkg = await db.getPackageById(item.packageId);
-              if (pkg) packageName = pkg.titleEn || pkg.titleAr || 'Package';
+              if (pkg) packageName = pkg.nameEn || pkg.nameAr || 'Package';
               const targetUserId = order.isGift && order.giftEmail
                 ? (await db.getUserByEmail(order.giftEmail))?.id
                 : order.userId;
@@ -2932,10 +3047,13 @@ export const appRouter = router({
         eventEndDate: z.string().optional(),
         imageUrl: z.string().optional(),
         linkUrl: z.string().optional(),
-        isPublished: z.number().min(0).max(1).default(0),
+        isPublished: z.union([z.boolean(), z.number().min(0).max(1)]).default(0),
       }))
       .mutation(async ({ input }) => {
-        return db.createEvent(input);
+        return db.createEvent({
+          ...input,
+          isPublished: Boolean(input.isPublished),
+        });
       }),
 
     // Admin: update event
@@ -2951,11 +3069,13 @@ export const appRouter = router({
         eventEndDate: z.string().optional(),
         imageUrl: z.string().optional(),
         linkUrl: z.string().optional(),
-        isPublished: z.number().optional(),
+        isPublished: z.union([z.boolean(), z.number().min(0).max(1)]).optional(),
       }))
       .mutation(async ({ input }) => {
         const { id, ...data } = input;
-        return db.updateEvent(id, data);
+        const updateData: Record<string, unknown> = { ...data };
+        if (data.isPublished !== undefined) updateData.isPublished = Boolean(data.isPublished);
+        return db.updateEvent(id, updateData);
       }),
 
     // Admin: delete event
@@ -3085,6 +3205,110 @@ export const appRouter = router({
   }),
 
   // =============================================
+  // UPGRADE SERVICE
+  // =============================================
+  upgrade: router({
+    // Student: check if eligible to upgrade
+    checkEligibility: protectedProcedure
+      .input(z.object({ targetPackageId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        return db.checkUpgradeEligibility(ctx.user.id, input.targetPackageId);
+      }),
+
+    // Student: create an upgrade order
+    createOrder: protectedProcedure
+      .input(z.object({
+        targetPackageId: z.number(),
+        paymentMethod: z.enum(['paypal', 'bank_transfer']),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        const eligibility = await db.checkUpgradeEligibility(ctx.user.id, input.targetPackageId);
+        if (!eligibility) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Not eligible for upgrade' });
+
+        const vatRate = 16;
+        // Prices are VAT-inclusive: extract VAT from the upgrade price
+        const totalAmount = eligibility.upgradePrice;
+        const vatAmount = Math.round(totalAmount * vatRate / (100 + vatRate));
+        const subtotal = totalAmount - vatAmount;
+
+        const order = await db.createOrder({
+          userId: ctx.user.id,
+          status: 'pending',
+          subtotal,
+          discountAmount: 0,
+          vatRate,
+          vatAmount,
+          totalAmount,
+          currency: 'USD',
+          paymentMethod: input.paymentMethod,
+          isGift: false,
+          giftEmail: null,
+          giftMessage: null,
+          notes: input.notes || `Upgrade from ${eligibility.currentPackageName} to ${eligibility.targetPackageName}`,
+          isUpgrade: true,
+          upgradeFromPackageId: eligibility.currentPackageId,
+        });
+
+        if (!order) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create order' });
+
+        await db.addOrderItem({
+          orderId: order.id,
+          itemType: 'package',
+          packageId: input.targetPackageId,
+          courseId: null,
+          priceAtPurchase: totalAmount,
+          currency: 'USD',
+        });
+
+        // Send email notifications
+        const totalUsd = totalAmount / 100;
+        sendOrderConfirmationEmail(ctx.user.email, {
+          orderId: order.id, packageName: `Upgrade: ${eligibility.targetPackageName}`,
+          totalUsd, paymentMethod: input.paymentMethod,
+        }).catch(() => {});
+        sendAdminNewOrderNotification({
+          orderId: order.id, userEmail: ctx.user.email,
+          packageName: `UPGRADE: ${eligibility.currentPackageName} → ${eligibility.targetPackageName}`,
+          totalUsd, paymentMethod: input.paymentMethod,
+        }).catch(() => {});
+
+        return order;
+      }),
+
+    // Admin: process/approve an upgrade after payment confirmed
+    process: adminProcedure
+      .input(z.object({ orderId: z.number() }))
+      .mutation(async ({ input }) => {
+        const order = await db.getOrderById(input.orderId);
+        if (!order) throw new TRPCError({ code: 'NOT_FOUND', message: 'Order not found' });
+        if (!order.isUpgrade) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Not an upgrade order' });
+        if (!order.upgradeFromPackageId) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Missing upgrade source' });
+
+        // Get target package from order items
+        const items = await db.getOrderItems(order.id);
+        const pkgItem = items.find((i: any) => i.itemType === 'package' && i.packageId);
+        if (!pkgItem) throw new TRPCError({ code: 'BAD_REQUEST', message: 'No package in order' });
+
+        // Process the upgrade
+        const result = await db.processUpgrade(
+          order.userId,
+          order.upgradeFromPackageId,
+          pkgItem.packageId!,
+          order.id,
+        );
+
+        // Mark order as paid
+        await db.updateOrderStatus(order.id, 'paid');
+
+        return result;
+      }),
+  }),
+
+  // =============================================
   // ARTICLES (public + admin)
   // =============================================
   // ====== Coupons / Discount Codes ======
@@ -3157,6 +3381,24 @@ export const appRouter = router({
       return db.getAllTestimonials(true);
     }),
 
+    // Public: published testimonials filtered by package/course/service context
+    listWithContext: publicProcedure
+      .input(z.object({
+        packageSlug: z.string().optional(),
+        courseId: z.number().optional(),
+        serviceKey: z.string().optional(),
+        limit: z.number().min(1).max(30).optional(),
+      }))
+      .query(async ({ input }) => {
+        return db.getTestimonialsByContext({
+          publishedOnly: true,
+          packageSlug: input.packageSlug,
+          courseId: input.courseId,
+          serviceKey: input.serviceKey,
+          limit: input.limit,
+        });
+      }),
+
     // Admin: all testimonials
     adminList: adminProcedure.query(async () => {
       return db.getAllTestimonials(false);
@@ -3173,6 +3415,9 @@ export const appRouter = router({
         textAr: z.string().min(1),
         avatarUrl: z.string().optional(),
         rating: z.number().min(1).max(5).default(5),
+        packageSlug: z.string().optional(),
+        courseId: z.number().optional(),
+        serviceKey: z.string().optional(),
         displayOrder: z.number().default(0),
         isPublished: z.boolean().default(true),
       }))
@@ -3192,6 +3437,9 @@ export const appRouter = router({
         textAr: z.string().optional(),
         avatarUrl: z.string().optional(),
         rating: z.number().min(1).max(5).optional(),
+        packageSlug: z.string().optional(),
+        courseId: z.number().optional(),
+        serviceKey: z.string().optional(),
         displayOrder: z.number().optional(),
         isPublished: z.boolean().optional(),
       }))
@@ -3249,11 +3497,14 @@ export const appRouter = router({
         excerptAr: z.string().optional(),
         thumbnailUrl: z.string().optional(),
         authorId: z.number().optional(),
-        isPublished: z.number().min(0).max(1).default(0),
+        isPublished: z.union([z.boolean(), z.number().min(0).max(1)]).default(0),
         publishedAt: z.string().optional(),
       }))
       .mutation(async ({ input }) => {
-        return db.createArticle(input);
+        return db.createArticle({
+          ...input,
+          isPublished: Boolean(input.isPublished),
+        });
       }),
 
     // Admin: update article
@@ -3269,12 +3520,14 @@ export const appRouter = router({
         excerptAr: z.string().optional(),
         thumbnailUrl: z.string().optional(),
         authorId: z.number().optional(),
-        isPublished: z.number().optional(),
+        isPublished: z.union([z.boolean(), z.number().min(0).max(1)]).optional(),
         publishedAt: z.string().optional(),
       }))
       .mutation(async ({ input }) => {
         const { id, ...data } = input;
-        return db.updateArticle(id, data);
+        const updateData: Record<string, unknown> = { ...data };
+        if (data.isPublished !== undefined) updateData.isPublished = Boolean(data.isPublished);
+        return db.updateArticle(id, updateData);
       }),
 
     // Admin: delete article
@@ -3314,6 +3567,7 @@ export const appRouter = router({
         notes: z.string().optional(),
         price: z.number().optional(),
         currency: z.string().optional(),
+        entitlementDays: z.number().int().min(1).max(3650).optional(),
         expiresAt: z.string().optional(),
         isUpgrade: z.boolean().optional(),
         referredBy: z.string().optional(),
@@ -3327,6 +3581,7 @@ export const appRouter = router({
           notes: input.notes,
           price: input.price,
           currency: input.currency,
+          entitlementDays: input.entitlementDays,
           expiresAt: input.expiresAt,
           isUpgrade: input.isUpgrade,
           referredBy: input.referredBy,
@@ -3341,6 +3596,7 @@ export const appRouter = router({
         notes: z.string().optional(),
         price: z.number().optional(),
         currency: z.string().optional(),
+        entitlementDays: z.number().int().min(1).max(3650).optional(),
         expiresAt: z.string().optional(),
         isUpgrade: z.boolean().optional(),
         referredBy: z.string().optional(),
@@ -3354,6 +3610,7 @@ export const appRouter = router({
           notes: input.notes,
           price: input.price,
           currency: input.currency,
+          entitlementDays: input.entitlementDays,
           expiresAt: input.expiresAt,
           isUpgrade: input.isUpgrade,
           referredBy: input.referredBy,
@@ -3385,6 +3642,7 @@ export const appRouter = router({
           activatedAt: key.activatedAt,
           keyType: key.packageId ? 'package' as const : (key.courseId > 0 ? 'course' as const : key.courseId === 0 ? 'lexai' as const : 'recommendation' as const),
           packageId: key.packageId,
+          entitlementDays: key.entitlementDays,
         };
       }),
 
@@ -3419,6 +3677,559 @@ export const appRouter = router({
     expirations: adminProcedure.query(async () => {
       return db.getSubscriptionExpiryReport();
     }),
+  }),
+
+  // ============================================================================
+  // Jobs / Careers System
+  // ============================================================================
+  jobs: router({
+    // Public: list active jobs
+    list: publicProcedure.query(async () => {
+      return db.getActiveJobs();
+    }),
+
+    // Public: get single job with questions
+    getWithQuestions: publicProcedure
+      .input(z.object({ jobId: z.number() }))
+      .query(async ({ input }) => {
+        const job = await db.getJobById(input.jobId);
+        if (!job || !job.isActive) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Job not found' });
+        }
+        const questions = await db.getQuestionsForJob(input.jobId);
+        return { job, questions };
+      }),
+
+    // Public: submit application with CV upload
+    submitApplication: publicProcedure
+      .input(z.object({
+        jobId: z.number(),
+        applicantName: z.string().min(2).max(200),
+        email: z.string().email().max(320),
+        phone: z.string().min(5).max(30),
+        country: z.string().max(100).optional(),
+        cvBase64: z.string().max(7_500_000).optional(), // ~5MB base64
+        cvFileName: z.string().max(255).optional(),
+        cvContentType: z.string().max(100).optional(),
+        answers: z.array(z.object({
+          questionId: z.number(),
+          answer: z.string().min(1).max(5000),
+        })),
+      }))
+      .mutation(async ({ input }) => {
+        // Validate job exists and is active
+        const job = await db.getJobById(input.jobId);
+        if (!job || !job.isActive) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'الوظيفة غير موجودة أو غير مفعلة' });
+        }
+
+        // CV upload to R2
+        let cvFileUrl: string | undefined;
+        let cvFileKey: string | undefined;
+
+        if (input.cvBase64 && input.cvFileName && input.cvContentType) {
+          // Validate file type
+          const allowedTypes = [
+            'application/pdf',
+            'application/msword',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          ];
+          if (!allowedTypes.includes(input.cvContentType)) {
+            throw new TRPCError({ code: 'BAD_REQUEST', message: 'يُسمح فقط بملفات PDF أو DOC أو DOCX' });
+          }
+
+          // Validate file size (~5MB before base64 encoding)
+          const sizeEstimate = (input.cvBase64.length * 3) / 4;
+          if (sizeEstimate > 5 * 1024 * 1024) {
+            throw new TRPCError({ code: 'BAD_REQUEST', message: 'يجب أن يكون حجم الملف أقل من 5 ميجابايت' });
+          }
+
+          // Sanitize filename
+          const safeFileName = input.cvFileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+          const timestamp = Date.now();
+          const key = `cvs/${timestamp}_${safeFileName}`;
+
+          try {
+            const workerEnv = getWorkerEnv();
+            if (workerEnv?.VIDEOS_BUCKET) {
+              const buffer = Uint8Array.from(atob(input.cvBase64), c => c.charCodeAt(0));
+              const result = await storagePutR2(
+                workerEnv.VIDEOS_BUCKET,
+                key,
+                buffer,
+                input.cvContentType
+              );
+              cvFileUrl = result.url;
+              cvFileKey = result.key;
+            }
+          } catch (err) {
+            logger.error('CV upload failed', { error: err instanceof Error ? err.message : String(err) });
+            throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'فشل رفع السيرة الذاتية' });
+          }
+        }
+
+        // Create application
+        const applicationId = await db.createJobApplication({
+          jobId: input.jobId,
+          applicantName: input.applicantName,
+          email: input.email,
+          phone: input.phone,
+          country: input.country,
+          cvFileUrl,
+          cvFileKey,
+        });
+
+        // Save answers
+        if (input.answers.length > 0) {
+          await db.createJobApplicationAnswers(
+            input.answers.map(a => ({
+              applicationId,
+              questionId: a.questionId,
+              answer: a.answer,
+            }))
+          );
+        }
+
+        return { success: true, applicationId };
+      }),
+
+    // Admin: list all jobs (including inactive)
+    adminList: adminProcedure.query(async () => {
+      return db.getAllJobs();
+    }),
+
+    // Admin: create job
+    create: adminProcedure
+      .input(z.object({
+        titleAr: z.string().min(1),
+        titleEn: z.string().min(1),
+        descriptionAr: z.string().min(1),
+        descriptionEn: z.string().optional(),
+        sortOrder: z.number().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const id = await db.createJob(input);
+        return { id };
+      }),
+
+    // Admin: update job
+    update: adminProcedure
+      .input(z.object({
+        id: z.number(),
+        titleAr: z.string().optional(),
+        titleEn: z.string().optional(),
+        descriptionAr: z.string().optional(),
+        descriptionEn: z.string().optional(),
+        isActive: z.boolean().optional(),
+        sortOrder: z.number().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, ...data } = input;
+        await db.updateJob(id, data);
+        return { success: true };
+      }),
+
+    // Admin: list all questions
+    listQuestions: adminProcedure.query(async () => {
+      return db.getAllJobQuestions();
+    }),
+
+    // Admin: create question
+    createQuestion: adminProcedure
+      .input(z.object({
+        jobId: z.number().nullable(),
+        questionAr: z.string().min(1),
+        questionEn: z.string().optional(),
+        sortOrder: z.number().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const id = await db.createJobQuestion(input);
+        return { id };
+      }),
+
+    // Admin: update question
+    updateQuestion: adminProcedure
+      .input(z.object({
+        id: z.number(),
+        jobId: z.number().nullable().optional(),
+        questionAr: z.string().optional(),
+        questionEn: z.string().optional(),
+        sortOrder: z.number().optional(),
+        isActive: z.boolean().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, ...data } = input;
+        await db.updateJobQuestion(id, data);
+        return { success: true };
+      }),
+
+    // Admin: delete question
+    deleteQuestion: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        await db.deleteJobQuestion(input.id);
+        return { success: true };
+      }),
+
+    // Admin: list applications with optional filters
+    listApplications: adminProcedure
+      .input(z.object({
+        jobId: z.number().optional(),
+        status: z.string().optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        const apps = await db.getJobApplications(input ?? undefined);
+        // Attach job title for display
+        const allJobs = await db.getAllJobs();
+        const jobMap = new Map(allJobs.map(j => [j.id, j]));
+        return apps.map(a => ({ ...a, jobTitle: jobMap.get(a.jobId)?.titleAr || '—' }));
+      }),
+
+    // Admin: get single application details with answers
+    getApplication: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input }) => {
+        const app = await db.getJobApplicationById(input.id);
+        if (!app) throw new TRPCError({ code: 'NOT_FOUND', message: 'Application not found' });
+        const answers = await db.getJobApplicationAnswers(input.id);
+        const questions = await db.getAllJobQuestions();
+        const questionMap = new Map(questions.map(q => [q.id, q]));
+        return {
+          ...app,
+          answers: answers.map(a => ({
+            ...a,
+            questionText: questionMap.get(a.questionId)?.questionAr || '—',
+          })),
+        };
+      }),
+
+    // Admin: update application status
+    updateStatus: adminProcedure
+      .input(z.object({
+        id: z.number(),
+        status: z.enum(['new', 'reviewed', 'shortlisted', 'rejected']),
+      }))
+      .mutation(async ({ input }) => {
+        await db.updateJobApplicationStatus(input.id, input.status);
+        return { success: true };
+      }),
+
+    // Admin: stats
+    stats: adminProcedure.query(async () => {
+      return db.getJobApplicationStats();
+    }),
+
+    // Admin: AI screening – send applicant answers to LLM for evaluation
+    aiScreen: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        const app = await db.getJobApplicationById(input.id);
+        if (!app) throw new TRPCError({ code: 'NOT_FOUND', message: 'Application not found' });
+
+        const answers = await db.getJobApplicationAnswers(input.id);
+        const questions = await db.getAllJobQuestions();
+        const questionMap = new Map(questions.map(q => [q.id, q]));
+        const job = await db.getJobById(app.jobId);
+
+        // Build Q&A text
+        const qaText = answers.map(a => {
+          const q = questionMap.get(a.questionId);
+          return `السؤال: ${q?.questionAr || '—'}\nالإجابة: ${a.answer}`;
+        }).join('\n\n');
+
+        const systemPrompt = `أنت خبير موارد بشرية ومتخصص في تقييم المرشحين للوظائف. مهمتك تقييم إجابات المتقدم على أسئلة التقديم وإعطاء توصية واضحة.
+
+قيّم المتقدم من 1 إلى 10 بناءً على:
+1. جودة الإجابات ومدى تفصيلها
+2. الخبرة والمؤهلات المذكورة
+3. مدى ملاءمة المتقدم للوظيفة
+4. مهارات التواصل الظاهرة من الإجابات
+
+أجب بالعربية فقط بالشكل التالي:
+### التقييم: X/10
+
+### نقاط القوة:
+- ...
+
+### نقاط الضعف:
+- ...
+
+### التوصية:
+(مرشح بشدة / مرشح / يحتاج مقابلة / غير مناسب)
+
+### ملاحظات إضافية:
+- ...`;
+
+        const userMessage = `الوظيفة: ${job?.titleAr || '—'}
+الوصف: ${job?.descriptionAr || '—'}
+
+المتقدم: ${app.applicantName}
+البريد: ${app.email}
+الهاتف: ${app.phone}
+الدولة: ${app.country || '—'}
+
+--- الإجابات ---
+${qaText}`;
+
+        if (!ENV.openaiApiKey) {
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'مفتاح OpenAI غير مُعد' });
+        }
+
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${ENV.openaiApiKey}`,
+          },
+          body: JSON.stringify({
+            model: 'gpt-4o-mini',
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userMessage },
+            ],
+            max_tokens: 1000,
+            temperature: 0.3,
+          }),
+        });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          logger.error('AI screening failed', { error: errText });
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'فشل تقييم الذكاء الاصطناعي' });
+        }
+
+        const data = await response.json() as any;
+        const recommendation = data.choices?.[0]?.message?.content || 'لا توجد نتيجة';
+
+        return { recommendation };
+      }),
+  }),
+
+  // ============================================================================
+  // Global Search (Phase 3)
+  // ============================================================================
+  search: router({
+    public: publicProcedure
+      .input(z.object({ query: z.string().min(1).max(200) }))
+      .query(async ({ input }) => {
+        return db.globalSearch(input.query);
+      }),
+    admin: adminProcedure
+      .input(z.object({ query: z.string().min(1).max(200) }))
+      .query(async ({ input }) => {
+        return db.adminGlobalSearch(input.query);
+      }),
+  }),
+
+  // ============================================================================
+  // Course Reviews / Star Ratings (Phase 4)
+  // ============================================================================
+  reviews: router({
+    // Public: get approved reviews for a course
+    byCourse: publicProcedure
+      .input(z.object({ courseId: z.number() }))
+      .query(async ({ input }) => {
+        return db.getCourseReviews(input.courseId, true);
+      }),
+
+    // Public: get average rating for a course
+    averageRating: publicProcedure
+      .input(z.object({ courseId: z.number() }))
+      .query(async ({ input }) => {
+        return db.getCourseAverageRating(input.courseId);
+      }),
+
+    // Student: submit a review
+    submit: protectedProcedure
+      .input(z.object({
+        courseId: z.number(),
+        rating: z.number().min(1).max(5),
+        comment: z.string().max(2000).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        return db.createCourseReview({
+          userId: ctx.user.id, courseId: input.courseId,
+          rating: input.rating, comment: input.comment,
+        });
+      }),
+
+    // Admin: list all reviews with filters
+    listAll: adminProcedure
+      .input(z.object({
+        courseId: z.number().optional(),
+        isApproved: z.boolean().optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        return db.getAllReviews(input ?? undefined);
+      }),
+
+    // Admin: approve/reject a review
+    moderate: adminProcedure
+      .input(z.object({ reviewId: z.number(), isApproved: z.boolean() }))
+      .mutation(async ({ input }) => {
+        await db.updateReviewApproval(input.reviewId, input.isApproved);
+        return { success: true };
+      }),
+
+    // Admin: delete a review
+    delete: adminProcedure
+      .input(z.object({ reviewId: z.number() }))
+      .mutation(async ({ input }) => {
+        await db.deleteReview(input.reviewId);
+        return { success: true };
+      }),
+  }),
+
+  // ============================================================================
+  // User Notifications (Phase 4)
+  // ============================================================================
+  notifications: router({
+    // Student: get my notifications
+    list: protectedProcedure.query(async ({ ctx }) => {
+      if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+      return db.getUserNotifications(ctx.user.id);
+    }),
+
+    // Student: unread count
+    unreadCount: protectedProcedure.query(async ({ ctx }) => {
+      if (!ctx.user) return { count: 0 };
+      return { count: await db.getUnreadNotificationCount(ctx.user.id) };
+    }),
+
+    // Student: mark one as read
+    markRead: protectedProcedure
+      .input(z.object({ notificationId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        await db.markNotificationRead(input.notificationId, ctx.user.id);
+        return { success: true };
+      }),
+
+    // Student: mark all as read
+    markAllRead: protectedProcedure.mutation(async ({ ctx }) => {
+      if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+      await db.markAllNotificationsRead(ctx.user.id);
+      return { success: true };
+    }),
+
+    // Admin: send notification to specific users
+    send: adminProcedure
+      .input(z.object({
+        userIds: z.array(z.number()).min(1).max(1000),
+        type: z.string().optional(),
+        titleEn: z.string().min(1).max(200),
+        titleAr: z.string().min(1).max(200),
+        contentEn: z.string().max(2000).optional(),
+        contentAr: z.string().max(2000).optional(),
+        actionUrl: z.string().max(500).optional(),
+      }))
+      .mutation(async ({ input }) => {
+        await db.sendBulkNotification(input);
+        return { success: true, count: input.userIds.length };
+      }),
+  }),
+
+  // ============================================================================
+  // Loyalty Points (Phase 4)
+  // ============================================================================
+  points: router({
+    // Student: get my balance and history
+    myBalance: protectedProcedure.query(async ({ ctx }) => {
+      if (!ctx.user) return { balance: 0 };
+      return { balance: await db.getPointsBalance(ctx.user.id) };
+    }),
+
+    myHistory: protectedProcedure.query(async ({ ctx }) => {
+      if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+      return db.getPointsHistory(ctx.user.id);
+    }),
+
+    // Admin: add points to a user
+    award: adminProcedure
+      .input(z.object({
+        userId: z.number(),
+        amount: z.number().min(1).max(100000),
+        reasonEn: z.string().min(1).max(200),
+        reasonAr: z.string().min(1).max(200),
+        referenceType: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        return db.addPoints({
+          userId: input.userId, amount: input.amount,
+          reasonEn: input.reasonEn, reasonAr: input.reasonAr,
+          referenceType: input.referenceType,
+        });
+      }),
+
+    // Admin: deduct points
+    deduct: adminProcedure
+      .input(z.object({
+        userId: z.number(),
+        amount: z.number().min(1).max(100000),
+        reasonEn: z.string().min(1).max(200),
+        reasonAr: z.string().min(1).max(200),
+      }))
+      .mutation(async ({ input }) => {
+        const result = await db.redeemPoints({
+          userId: input.userId, amount: input.amount,
+          reasonEn: input.reasonEn, reasonAr: input.reasonAr,
+        });
+        if (!result) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Insufficient points balance' });
+        return result;
+      }),
+
+    // Admin: leaderboard
+    leaderboard: adminProcedure.query(async () => {
+      return db.getTopPointsUsers();
+    }),
+  }),
+
+  // ============================================================================
+  // Engagement Tracking (Phase 4)
+  // ============================================================================
+  engagement: router({
+    // Student: track an event
+    track: protectedProcedure
+      .input(z.object({
+        eventType: z.string().min(1).max(50),
+        entityType: z.string().max(30).optional(),
+        entityId: z.number().optional(),
+        metadata: z.string().max(2000).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        if (!ctx.user) return { success: false };
+        await db.trackEngagement({
+          userId: ctx.user.id, eventType: input.eventType,
+          entityType: input.entityType, entityId: input.entityId,
+          metadata: input.metadata,
+        });
+        return { success: true };
+      }),
+
+    // Admin: engagement summary
+    summary: adminProcedure
+      .input(z.object({ days: z.number().min(1).max(365).optional() }).optional())
+      .query(async ({ input }) => {
+        return db.getEngagementSummary(input?.days ?? 30);
+      }),
+
+    // Admin: engagement by entity
+    byEntity: adminProcedure
+      .input(z.object({
+        entityType: z.string(),
+        days: z.number().min(1).max(365).optional(),
+      }))
+      .query(async ({ input }) => {
+        return db.getEngagementByEntity(input.entityType, input.days ?? 30);
+      }),
+
+    // Admin: user timeline
+    userTimeline: adminProcedure
+      .input(z.object({ userId: z.number() }))
+      .query(async ({ input }) => {
+        return db.getUserEngagementTimeline(input.userId);
+      }),
   }),
 });
 

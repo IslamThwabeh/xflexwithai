@@ -39,12 +39,65 @@ import {
   articles, Article, InsertArticle,
   // Coupons & Testimonials
   coupons, Coupon, InsertCoupon,
-  testimonials, Testimonial, InsertTestimonial
+  testimonials, Testimonial, InsertTestimonial,
+  // Jobs / Careers
+  jobs, Job, InsertJob,
+  jobQuestions, JobQuestion, InsertJobQuestion,
+  jobApplications, JobApplication, InsertJobApplication,
+  jobApplicationAnswers, JobApplicationAnswer, InsertJobApplicationAnswer,
+  // Phase 3+4: Reviews, Notifications, Points, Engagement
+  courseReviews, CourseReview, InsertCourseReview,
+  userNotifications, UserNotification, InsertUserNotification,
+  pointsTransactions, PointsTransaction, InsertPointsTransaction,
+  engagementEvents, EngagementEvent, InsertEngagementEvent,
 } from "../database/schema-sqlite.ts";
 import { ENV } from './_core/env';
 import { logger } from './_core/logger';
 
 let _db: ReturnType<typeof drizzle> | null = null;
+
+const DEFAULT_KEY_ENTITLEMENT_DAYS = 30;
+
+function normalizePositiveInteger(value: unknown): number | null {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return Math.floor(parsed);
+}
+
+function getKeyEntitlementDays(
+  key: Pick<RegistrationKey, "entitlementDays"> | null | undefined,
+  fallbackDays: number = DEFAULT_KEY_ENTITLEMENT_DAYS,
+) {
+  return normalizePositiveInteger(key?.entitlementDays) ?? fallbackDays;
+}
+
+function buildEndDateFromDays(startDate: Date, days: number) {
+  const endDate = new Date(startDate);
+  endDate.setDate(endDate.getDate() + days);
+  return endDate;
+}
+
+export function getKeyAccessEndDate(
+  key: Pick<RegistrationKey, "activatedAt" | "entitlementDays"> | null | undefined,
+  fallbackDays: number = DEFAULT_KEY_ENTITLEMENT_DAYS,
+) {
+  if (!key?.activatedAt) return null;
+
+  const activatedAt = new Date(key.activatedAt);
+  if (Number.isNaN(activatedAt.getTime())) return null;
+
+  return buildEndDateFromDays(activatedAt, getKeyEntitlementDays(key, fallbackDays));
+}
+
+function getRemainingDaysUntil(endDateInput: string | Date, fromDate: Date = new Date()) {
+  const endDate = new Date(endDateInput);
+  if (Number.isNaN(endDate.getTime())) return 0;
+
+  const millisecondsRemaining = endDate.getTime() - fromDate.getTime();
+  if (millisecondsRemaining <= 0) return 0;
+
+  return Math.max(1, Math.ceil(millisecondsRemaining / (1000 * 60 * 60 * 24)));
+}
 
 /**
  * For Cloudflare Workers with D1, the database is passed via environment
@@ -227,7 +280,7 @@ export async function setUserEmailVerified(userId: number): Promise<void> {
 // Passwordless Email OTP Login
 // ============================================================================
 
-export type OtpPurpose = "login";
+export type OtpPurpose = "login" | "login_stepup";
 
 export async function deleteExpiredEmailOtps(nowMs: number): Promise<void> {
   const db = await getDb();
@@ -351,7 +404,7 @@ export async function getAllUsers() {
 /**
  * Update user (name, phone, etc.)
  */
-export async function updateUser(userId: number, updates: { name?: string; phone?: string }): Promise<void> {
+export async function updateUser(userId: number, updates: { name?: string; phone?: string; loginSecurityMode?: "password_or_otp" | "password_only" | "password_plus_otp" }): Promise<void> {
   const db = await getDb();
   if (!db) {
     logger.warn('Cannot update user: database not available');
@@ -363,6 +416,7 @@ export async function updateUser(userId: number, updates: { name?: string; phone
       .set({
         ...(updates.name !== undefined && { name: updates.name || null }),
         ...(updates.phone !== undefined && { phone: updates.phone || null }),
+        ...(updates.loginSecurityMode !== undefined && { loginSecurityMode: updates.loginSecurityMode }),
       })
       .where(eq(users.id, userId));
     logger.db('User updated successfully', { userId });
@@ -955,7 +1009,11 @@ export async function getRegistrationKeyByCode(keyCode: string) {
 }
 
 export async function createRegistrationKey(
-  key: Omit<InsertRegistrationKey, "keyCode" | "expiresAt"> & { keyCode?: string; expiresAt?: string | Date | null }
+  key: Omit<InsertRegistrationKey, "keyCode" | "expiresAt" | "entitlementDays"> & {
+    keyCode?: string;
+    expiresAt?: string | Date | null;
+    entitlementDays?: number | null;
+  }
 ) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -964,6 +1022,7 @@ export async function createRegistrationKey(
     ...key,
     keyCode,
     createdAt: new Date().toISOString(),
+    entitlementDays: normalizePositiveInteger(key.entitlementDays),
     expiresAt: key.expiresAt ? new Date(key.expiresAt).toISOString() : null,
   } as InsertRegistrationKey;
   const result = await db.insert(registrationKeys).values(values).returning({ id: registrationKeys.id });
@@ -977,6 +1036,7 @@ export async function createBulkRegistrationKeys(input: {
   notes?: string;
   price?: number;
   currency?: string;
+  entitlementDays?: number | null;
   expiresAt?: string | Date | null;
 }) {
   const db = await getDb();
@@ -990,6 +1050,7 @@ export async function createBulkRegistrationKeys(input: {
     notes: input.notes ?? null,
     price: input.price ?? 0,
     currency: input.currency ?? "USD",
+    entitlementDays: normalizePositiveInteger(input.entitlementDays),
     expiresAt: input.expiresAt ? new Date(input.expiresAt).toISOString() : null,
   }));
 
@@ -1242,21 +1303,45 @@ export async function getRecommendationKeyStatistics() {
 }
 
 function computeRecommendationKeyEndDate(key: RegistrationKey) {
-  if (!key?.activatedAt) return null;
-  const activatedAt = new Date(key.activatedAt);
-  if (Number.isNaN(activatedAt.getTime())) return null;
+  return getKeyAccessEndDate(key);
+}
 
-  const keyExpiry = new Date(activatedAt);
-  keyExpiry.setDate(keyExpiry.getDate() + 30);
+async function applyRecommendationKeySubscription(userId: number, key: RegistrationKey) {
+  const now = new Date();
+  const endDate = buildEndDateFromDays(now, getKeyEntitlementDays(key));
 
-  if (key.expiresAt) {
-    const absoluteExpiry = new Date(key.expiresAt);
-    if (!Number.isNaN(absoluteExpiry.getTime()) && absoluteExpiry.getTime() < keyExpiry.getTime()) {
-      keyExpiry.setTime(absoluteExpiry.getTime());
-    }
+  const current = await getActiveRecommendationSubscription(userId);
+  if (current) {
+    await updateRecommendationSubscription(current.id, {
+      registrationKeyId: key.id,
+      isActive: true,
+      isPaused: false,
+      pausedAt: null,
+      pausedReason: null,
+      pausedRemainingDays: null,
+      startDate: now.toISOString(),
+      endDate: endDate.toISOString(),
+      paymentStatus: "key",
+      paymentAmount: key.price ?? 0,
+      paymentCurrency: key.currency ?? "USD",
+    });
+    return current.id;
   }
 
-  return keyExpiry;
+  return createRecommendationSubscription({
+    userId,
+    registrationKeyId: key.id,
+    isActive: true,
+    isPaused: false,
+    startDate: now.toISOString(),
+    endDate: endDate.toISOString(),
+    paymentStatus: "key",
+    paymentAmount: key.price ?? 0,
+    paymentCurrency: key.currency ?? "USD",
+    pausedAt: null,
+    pausedReason: null,
+    pausedRemainingDays: null,
+  });
 }
 
 export async function getAssignedRecommendationKeyByEmail(email: string) {
@@ -1345,10 +1430,16 @@ export async function activateRecommendationKey(keyCode: string, email: string) 
     .where(eq(registrationKeys.id, key.id))
     .limit(1);
 
+  const resolvedKey = updated ?? key;
+  const user = await getUserByEmail(normalizedEmail);
+  if (user) {
+    await applyRecommendationKeySubscription(user.id, resolvedKey);
+  }
+
   return {
     success: true,
     message: "Recommendation key activated successfully",
-    key: updated ?? key,
+    key: resolvedKey,
   };
 }
 
@@ -1364,6 +1455,7 @@ export async function getActiveRecommendationSubscription(userId: number) {
       and(
         eq(recommendationSubscriptions.userId, userId),
         eq(recommendationSubscriptions.isActive, true),
+        eq(recommendationSubscriptions.isPaused, false),
         sql`${recommendationSubscriptions.endDate} >= ${nowIso}`
       )
     )
@@ -1384,6 +1476,48 @@ export async function updateRecommendationSubscription(id: number, updates: Part
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db.update(recommendationSubscriptions).set({ ...updates, updatedAt: new Date().toISOString() }).where(eq(recommendationSubscriptions.id, id));
+}
+
+export async function pauseRecommendationSubscription(id: number, reason?: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const [subscription] = await db.select().from(recommendationSubscriptions).where(eq(recommendationSubscriptions.id, id)).limit(1);
+  if (!subscription) throw new Error("Recommendation subscription not found");
+
+  const now = new Date();
+  const remainingDays = getRemainingDaysUntil(subscription.endDate, now);
+
+  await db.update(recommendationSubscriptions).set({
+    isPaused: true,
+    pausedAt: now.toISOString(),
+    pausedReason: reason ?? null,
+    pausedRemainingDays: remainingDays,
+    updatedAt: now.toISOString(),
+  }).where(eq(recommendationSubscriptions.id, id));
+}
+
+export async function resumeRecommendationSubscription(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const [subscription] = await db.select().from(recommendationSubscriptions).where(eq(recommendationSubscriptions.id, id)).limit(1);
+  if (!subscription) throw new Error("Recommendation subscription not found");
+
+  const now = new Date();
+  const remainingDays = normalizePositiveInteger(subscription.pausedRemainingDays) ?? 1;
+  const endDate = buildEndDateFromDays(now, remainingDays);
+
+  await db.update(recommendationSubscriptions).set({
+    isActive: true,
+    isPaused: false,
+    startDate: now.toISOString(),
+    endDate: endDate.toISOString(),
+    pausedAt: null,
+    pausedReason: null,
+    pausedRemainingDays: null,
+    updatedAt: now.toISOString(),
+  }).where(eq(recommendationSubscriptions.id, id));
 }
 
 export async function setRecommendationPublisher(userId: number, enabled: boolean) {
@@ -1427,6 +1561,7 @@ export async function getRecommendationSubscriberEmails() {
     .where(
       and(
         eq(recommendationSubscriptions.isActive, true),
+        eq(recommendationSubscriptions.isPaused, false),
         sql`${recommendationSubscriptions.endDate} >= ${nowIso}`
       )
     );
@@ -1653,10 +1788,16 @@ export async function activateLexaiKey(keyCode: string, email: string) {
     .where(eq(registrationKeys.id, key.id))
     .limit(1);
 
+  const resolvedKey = updated ?? key;
+  const user = await getUserByEmail(normalizedEmail);
+  if (user) {
+    await applyLexaiKeySubscription(user.id, resolvedKey);
+  }
+
   return {
     success: true,
     message: "LexAI key activated successfully",
-    key: updated ?? key,
+    key: resolvedKey,
   };
 }
 
@@ -1692,13 +1833,7 @@ export async function userHasValidKeyForCourse(email: string, courseId: number) 
 
   if (keys.length === 0) return false;
 
-  const now = Date.now();
-  return keys.some((key) => {
-    if (!key.isActive || !key.activatedAt) return false;
-    if (!key.expiresAt) return true;
-    const expiresAt = new Date(key.expiresAt).getTime();
-    return Number.isNaN(expiresAt) ? true : expiresAt >= now;
-  });
+  return keys.some((key) => key.isActive && !!key.activatedAt);
 }
 
 export async function getValidCourseKeysByEmail(email: string) {
@@ -1706,7 +1841,6 @@ export async function getValidCourseKeysByEmail(email: string) {
   if (!db) return [];
 
   const normalizedEmail = email.trim().toLowerCase();
-  const nowIso = new Date().toISOString();
 
   const keys = await db
     .select()
@@ -1716,8 +1850,7 @@ export async function getValidCourseKeysByEmail(email: string) {
         sql`lower(${registrationKeys.email}) = ${normalizedEmail}`,
         sql`${registrationKeys.activatedAt} is not null`,
         eq(registrationKeys.isActive, true),
-        sql`${registrationKeys.courseId} > 0`,
-        or(sql`${registrationKeys.expiresAt} is null`, sql`${registrationKeys.expiresAt} >= ${nowIso}`)
+        sql`${registrationKeys.courseId} > 0`
       )
     );
 
@@ -1725,21 +1858,47 @@ export async function getValidCourseKeysByEmail(email: string) {
 }
 
 function computeLexaiKeyEndDate(key: any) {
-  if (!key?.activatedAt) return null;
-  const activatedAt = new Date(key.activatedAt);
-  if (Number.isNaN(activatedAt.getTime())) return null;
+  return getKeyAccessEndDate(key);
+}
 
-  const keyExpiry = new Date(activatedAt);
-  keyExpiry.setDate(keyExpiry.getDate() + 30);
+export async function applyLexaiKeySubscription(userId: number, key: RegistrationKey) {
+  const now = new Date();
+  const endDate = buildEndDateFromDays(now, getKeyEntitlementDays(key));
 
-  if (key.expiresAt) {
-    const absoluteExpiry = new Date(key.expiresAt);
-    if (!Number.isNaN(absoluteExpiry.getTime()) && absoluteExpiry.getTime() < keyExpiry.getTime()) {
-      keyExpiry.setTime(absoluteExpiry.getTime());
-    }
+  const current = await getActiveLexaiSubscription(userId);
+  if (current) {
+    await updateLexaiSubscription(current.id, {
+      isActive: true,
+      isPaused: false,
+      pausedAt: null,
+      pausedReason: null,
+      pausedRemainingDays: null,
+      startDate: now.toISOString(),
+      endDate: endDate.toISOString(),
+      paymentStatus: "key",
+      paymentAmount: key.price ?? 0,
+      paymentCurrency: key.currency ?? "USD",
+      messagesUsed: 0,
+      messagesLimit: 100,
+    });
+    return current.id;
   }
 
-  return keyExpiry;
+  return createLexaiSubscription({
+    userId,
+    isActive: true,
+    isPaused: false,
+    startDate: now.toISOString(),
+    endDate: endDate.toISOString(),
+    paymentStatus: "key",
+    paymentAmount: key.price ?? 0,
+    paymentCurrency: key.currency ?? "USD",
+    messagesUsed: 0,
+    messagesLimit: 100,
+    pausedAt: null,
+    pausedReason: null,
+    pausedRemainingDays: null,
+  });
 }
 
 export async function hasValidLexaiKeyByEmail(email: string) {
@@ -1757,11 +1916,27 @@ export async function syncUserEntitlementsFromKeys(userId: number, email: string
 
   const normalizedEmail = email.trim().toLowerCase();
 
+  const lexaiKey = await getAssignedLexaiKeyByEmail(normalizedEmail);
+  if (lexaiKey && lexaiKey.isActive && lexaiKey.activatedAt) {
+    const lexaiEndDate = computeLexaiKeyEndDate(lexaiKey);
+    if (lexaiEndDate && lexaiEndDate.getTime() >= Date.now()) {
+      await applyLexaiKeySubscription(userId, lexaiKey);
+    }
+  }
+
+  const recommendationKey = await getAssignedRecommendationKeyByEmail(normalizedEmail);
+  if (recommendationKey && recommendationKey.isActive && recommendationKey.activatedAt) {
+    const recommendationEndDate = computeRecommendationKeyEndDate(recommendationKey);
+    if (recommendationEndDate && recommendationEndDate.getTime() >= Date.now()) {
+      await applyRecommendationKeySubscription(userId, recommendationKey);
+    }
+  }
+
   // Package keys -> ensure all package entitlements (courses, LexAI, recommendations, etc.)
   const packageKeys = await getActivatedPackageKeysByEmail(normalizedEmail);
   for (const key of packageKeys) {
     if (!key.packageId) continue;
-    await fulfillPackageEntitlements(userId, key.packageId, key.id);
+    await fulfillPackageEntitlements(userId, key.packageId, key.id, key.entitlementDays ?? undefined);
   }
 }
 
@@ -1777,11 +1952,7 @@ async function getActivatedPackageKeysByEmail(email: string) {
         sql`${registrationKeys.packageId} IS NOT NULL`,
         sql`lower(${registrationKeys.email}) = ${email}`,
         sql`${registrationKeys.activatedAt} is not null`,
-        eq(registrationKeys.isActive, true),
-        or(
-          sql`${registrationKeys.expiresAt} is null`,
-          sql`${registrationKeys.expiresAt} >= ${new Date().toISOString()}`
-        )
+        eq(registrationKeys.isActive, true)
       )
     );
 }
@@ -1847,6 +2018,7 @@ export async function createPackageKey(input: {
   notes?: string;
   price?: number;
   currency?: string;
+  entitlementDays?: number | null;
   expiresAt?: string | Date | null;
   isUpgrade?: boolean;
   referredBy?: string;
@@ -1863,6 +2035,7 @@ export async function createPackageKey(input: {
     notes: input.notes ?? null,
     price: input.price ?? 0,
     currency: input.currency ?? "USD",
+    entitlementDays: normalizePositiveInteger(input.entitlementDays),
     createdAt: new Date().toISOString(),
     expiresAt: input.expiresAt ? new Date(input.expiresAt).toISOString() : null,
     isUpgrade: input.isUpgrade ?? false,
@@ -1879,6 +2052,7 @@ export async function createBulkPackageKeys(input: {
   notes?: string;
   price?: number;
   currency?: string;
+  entitlementDays?: number | null;
   expiresAt?: string | Date | null;
   isUpgrade?: boolean;
   referredBy?: string;
@@ -1895,6 +2069,7 @@ export async function createBulkPackageKeys(input: {
     notes: input.notes ?? null,
     price: input.price ?? 0,
     currency: input.currency ?? "USD",
+    entitlementDays: normalizePositiveInteger(input.entitlementDays),
     expiresAt: input.expiresAt ? new Date(input.expiresAt).toISOString() : null,
     isUpgrade: input.isUpgrade ?? false,
     referredBy: input.referredBy ?? null,
@@ -1963,7 +2138,7 @@ export async function activatePackageKey(keyCode: string, email: string, userId?
   }
 
   if (resolvedUserId) {
-    await fulfillPackageEntitlements(resolvedUserId, key.packageId, key.id);
+    await fulfillPackageEntitlements(resolvedUserId, key.packageId, key.id, key.entitlementDays ?? undefined);
   }
 
   const [updated] = await db.select().from(registrationKeys).where(eq(registrationKeys.id, key.id)).limit(1);
@@ -1985,18 +2160,44 @@ export async function fulfillPackageEntitlements(
   userId: number,
   packageId: number,
   registrationKeyId?: number,
+  entitlementDaysOverride?: number,
 ) {
   const pkg = await getPackageById(packageId);
   if (!pkg) return;
 
-  // Create package subscription
-  await createPackageSubscription({
-    userId,
-    packageId,
-    orderId: 0, // no order for key-based activation
-    isActive: 1,
-    autoRenew: 0,
-  });
+  const entitlementDays = normalizePositiveInteger(entitlementDaysOverride)
+    ?? normalizePositiveInteger(pkg.renewalPeriodDays)
+    ?? normalizePositiveInteger(pkg.durationDays)
+    ?? DEFAULT_KEY_ENTITLEMENT_DAYS;
+  const now = new Date();
+  const serviceEndDate = buildEndDateFromDays(now, entitlementDays);
+
+  const existingPackageSubscriptions = await getUserPackageSubscriptions(userId);
+  const currentPackageSubscription = existingPackageSubscriptions.find((subscription) => subscription.packageId === packageId);
+
+  if (currentPackageSubscription) {
+    const db = await getDb();
+    if (!db) return;
+    await db.update(packageSubscriptions).set({
+      isActive: true,
+      startDate: now.toISOString(),
+      endDate: serviceEndDate.toISOString(),
+      renewalDueDate: serviceEndDate.toISOString(),
+      autoRenew: false,
+      updatedAt: now.toISOString(),
+    }).where(eq(packageSubscriptions.id, currentPackageSubscription.id));
+  } else {
+    await createPackageSubscription({
+      userId,
+      packageId,
+      orderId: 0, // no order for key-based activation
+      isActive: true,
+      startDate: now.toISOString(),
+      endDate: serviceEndDate.toISOString(),
+      renewalDueDate: serviceEndDate.toISOString(),
+      autoRenew: false,
+    });
+  }
 
   // Enroll in all package courses
   const pkgCourses = await getPackageCourses(packageId);
@@ -2020,16 +2221,16 @@ export async function fulfillPackageEntitlements(
 
   // If package includes LexAI, grant subscription
   if (pkg.includesLexai) {
-    const now = new Date();
-    // Comprehensive package: LexAI is included for 30 days (renewable)
-    const endDate = new Date(now);
-    endDate.setDate(endDate.getDate() + (pkg.renewalPeriodDays || 30));
-
     const current = await getActiveLexaiSubscription(userId);
     if (current) {
       await updateLexaiSubscription(current.id, {
         isActive: true,
-        endDate: endDate.toISOString(),
+        isPaused: false,
+        pausedAt: null,
+        pausedReason: null,
+        pausedRemainingDays: null,
+        startDate: now.toISOString(),
+        endDate: serviceEndDate.toISOString(),
         paymentStatus: "completed",
         paymentAmount: 0,
         paymentCurrency: "USD",
@@ -2039,44 +2240,136 @@ export async function fulfillPackageEntitlements(
       await createLexaiSubscription({
         userId,
         isActive: true,
+        isPaused: false,
         startDate: now.toISOString(),
-        endDate: endDate.toISOString(),
+        endDate: serviceEndDate.toISOString(),
         paymentStatus: "completed",
         paymentAmount: 0,
         paymentCurrency: "USD",
         messagesUsed: 0,
         messagesLimit: 100,
+        pausedAt: null,
+        pausedReason: null,
+        pausedRemainingDays: null,
       });
     }
   }
 
   // If package includes recommendations, grant subscription
   if (pkg.includesRecommendations) {
-    const now = new Date();
-    const endDate = new Date(now);
-    endDate.setDate(endDate.getDate() + (pkg.renewalPeriodDays || 30));
-
     const current = await getActiveRecommendationSubscription(userId);
     if (current) {
       await updateRecommendationSubscription(current.id, {
         isActive: true,
-        endDate: endDate.toISOString(),
+        isPaused: false,
+        pausedAt: null,
+        pausedReason: null,
+        pausedRemainingDays: null,
+        startDate: now.toISOString(),
+        endDate: serviceEndDate.toISOString(),
         paymentStatus: "completed",
         paymentAmount: 0,
         paymentCurrency: "USD",
+        registrationKeyId: registrationKeyId ?? current.registrationKeyId,
       });
     } else {
       await createRecommendationSubscription({
         userId,
+        registrationKeyId: registrationKeyId ?? null,
         isActive: true,
+        isPaused: false,
         startDate: now.toISOString(),
-        endDate: endDate.toISOString(),
+        endDate: serviceEndDate.toISOString(),
         paymentStatus: "completed",
         paymentAmount: 0,
         paymentCurrency: "USD",
+        pausedAt: null,
+        pausedReason: null,
+        pausedRemainingDays: null,
       });
     }
   }
+}
+
+// ============================================================================
+// Upgrade Service
+// ============================================================================
+
+/**
+ * Check if a user is eligible to upgrade to a given package.
+ * Returns the current subscription + upgrade pricing info.
+ */
+export async function checkUpgradeEligibility(userId: number, targetPackageId: number) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const targetPkg = await getPackageById(targetPackageId);
+  if (!targetPkg) return null;
+  if (!targetPkg.upgradePrice || targetPkg.upgradePrice <= 0) return null; // no upgrade path configured
+
+  // Check user has an active subscription to a DIFFERENT (lower-tier) package
+  const subs = await getUserPackageSubscriptions(userId);
+  const activeSubs = subs.filter(s => s.isActive && s.packageId !== targetPackageId);
+  if (activeSubs.length === 0) return null; // no active subscription to upgrade from
+
+  // Take the first active subscription as the source
+  const currentSub = activeSubs[0];
+  const currentPkg = await getPackageById(currentSub.packageId);
+
+  return {
+    eligible: true,
+    currentPackageId: currentSub.packageId,
+    currentPackageName: currentPkg?.nameEn || 'Current Package',
+    currentPackageNameAr: currentPkg?.nameAr || 'الباقة الحالية',
+    targetPackageId: targetPkg.id,
+    targetPackageName: targetPkg.nameEn,
+    targetPackageNameAr: targetPkg.nameAr,
+    upgradePrice: targetPkg.upgradePrice, // in cents
+    renewalPrice: targetPkg.renewalPrice || 0, // in cents — renewal after upgrade
+    renewalPeriodDays: targetPkg.renewalPeriodDays || 30,
+  };
+}
+
+/**
+ * Process an upgrade: deactivate old subscription, activate new one.
+ */
+export async function processUpgrade(
+  userId: number,
+  fromPackageId: number,
+  toPackageId: number,
+  orderId?: number,
+) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const now = new Date();
+
+  // Deactivate old subscription
+  const subs = await getUserPackageSubscriptions(userId);
+  const oldSub = subs.find(s => s.packageId === fromPackageId && s.isActive);
+  if (oldSub) {
+    await db.update(packageSubscriptions).set({
+      isActive: false,
+      updatedAt: now.toISOString(),
+    }).where(eq(packageSubscriptions.id, oldSub.id));
+  }
+
+  // Fulfill new package entitlements (creates subscription + enrollments + LexAI + recommendations)
+  await fulfillPackageEntitlements(userId, toPackageId);
+
+  // Mark the new subscription as upgraded
+  const newSubs = await getUserPackageSubscriptions(userId);
+  const newSub = newSubs.find(s => s.packageId === toPackageId && s.isActive);
+  if (newSub) {
+    await db.update(packageSubscriptions).set({
+      upgradedFromPackageId: fromPackageId,
+      upgradedAt: now.toISOString(),
+      orderId: orderId || newSub.orderId,
+      updatedAt: now.toISOString(),
+    }).where(eq(packageSubscriptions.id, newSub.id));
+  }
+
+  return { success: true, fromPackageId, toPackageId };
 }
 
 /**
@@ -2644,12 +2937,15 @@ export async function getQuizHistoryForLevel(userId: number, level: number) {
 export async function getUserLexaiSubscription(userId: number) {
   const db = await getDb();
   if (!db) return undefined;
+  const nowIso = new Date().toISOString();
   const result = await db.select().from(lexaiSubscriptions)
     .where(and(
       eq(lexaiSubscriptions.userId, userId),
-      eq(lexaiSubscriptions.isActive, true)
+      eq(lexaiSubscriptions.isActive, true),
+      eq(lexaiSubscriptions.isPaused, false),
+      sql`${lexaiSubscriptions.endDate} >= ${nowIso}`
     ))
-    .orderBy(desc(lexaiSubscriptions.createdAt))
+    .orderBy(desc(lexaiSubscriptions.endDate), desc(lexaiSubscriptions.createdAt))
     .limit(1);
   return result.length > 0 ? result[0] : undefined;
 }
@@ -2664,7 +2960,49 @@ export async function createLexaiSubscription(subscription: InsertLexaiSubscript
 export async function updateLexaiSubscription(id: number, subscription: Partial<InsertLexaiSubscription>) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.update(lexaiSubscriptions).set(subscription).where(eq(lexaiSubscriptions.id, id));
+  await db.update(lexaiSubscriptions).set({ ...subscription, updatedAt: new Date().toISOString() }).where(eq(lexaiSubscriptions.id, id));
+}
+
+export async function pauseLexaiSubscription(id: number, reason?: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const [subscription] = await db.select().from(lexaiSubscriptions).where(eq(lexaiSubscriptions.id, id)).limit(1);
+  if (!subscription) throw new Error("LexAI subscription not found");
+
+  const now = new Date();
+  const remainingDays = getRemainingDaysUntil(subscription.endDate, now);
+
+  await db.update(lexaiSubscriptions).set({
+    isPaused: true,
+    pausedAt: now.toISOString(),
+    pausedReason: reason ?? null,
+    pausedRemainingDays: remainingDays,
+    updatedAt: now.toISOString(),
+  }).where(eq(lexaiSubscriptions.id, id));
+}
+
+export async function resumeLexaiSubscription(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const [subscription] = await db.select().from(lexaiSubscriptions).where(eq(lexaiSubscriptions.id, id)).limit(1);
+  if (!subscription) throw new Error("LexAI subscription not found");
+
+  const now = new Date();
+  const remainingDays = normalizePositiveInteger(subscription.pausedRemainingDays) ?? 1;
+  const endDate = buildEndDateFromDays(now, remainingDays);
+
+  await db.update(lexaiSubscriptions).set({
+    isActive: true,
+    isPaused: false,
+    startDate: now.toISOString(),
+    endDate: endDate.toISOString(),
+    pausedAt: null,
+    pausedReason: null,
+    pausedRemainingDays: null,
+    updatedAt: now.toISOString(),
+  }).where(eq(lexaiSubscriptions.id, id));
 }
 
 export async function incrementLexaiMessageCount(subscriptionId: number) {
@@ -2679,16 +3017,13 @@ export async function incrementLexaiMessageCount(subscriptionId: number) {
 
   if (subscription) {
     const isKeySubscription = String(subscription.paymentStatus ?? "").toLowerCase() === "key";
-    if (isKeySubscription && Number(subscription.messagesUsed ?? 0) === 0) {
+    if (isKeySubscription && Number(subscription.messagesUsed ?? 0) === 0 && !subscription.startDate) {
       const startDate = new Date();
-      const endDate = new Date(startDate);
-      endDate.setDate(endDate.getDate() + 30);
 
       await db
         .update(lexaiSubscriptions)
         .set({
           startDate: startDate.toISOString(),
-          endDate: endDate.toISOString(),
         })
         .where(eq(lexaiSubscriptions.id, subscriptionId));
     }
@@ -2789,7 +3124,7 @@ export async function getLexaiStats() {
   const [activeSubs] = await db
     .select({ count: sql<number>`count(*)` })
     .from(lexaiSubscriptions)
-    .where(eq(lexaiSubscriptions.isActive, true));
+    .where(and(eq(lexaiSubscriptions.isActive, true), eq(lexaiSubscriptions.isPaused, false)));
   const [totalMessages] = await db
     .select({ count: sql<number>`count(*)` })
     .from(lexaiMessages);
@@ -2873,6 +3208,7 @@ export async function getLexaiSubscriptionsWithUsers() {
       id: lexaiSubscriptions.id,
       userId: lexaiSubscriptions.userId,
       isActive: lexaiSubscriptions.isActive,
+      isPaused: lexaiSubscriptions.isPaused,
       startDate: lexaiSubscriptions.startDate,
       endDate: lexaiSubscriptions.endDate,
       paymentStatus: lexaiSubscriptions.paymentStatus,
@@ -2880,6 +3216,9 @@ export async function getLexaiSubscriptionsWithUsers() {
       paymentCurrency: lexaiSubscriptions.paymentCurrency,
       messagesUsed: lexaiSubscriptions.messagesUsed,
       messagesLimit: lexaiSubscriptions.messagesLimit,
+      pausedAt: lexaiSubscriptions.pausedAt,
+      pausedReason: lexaiSubscriptions.pausedReason,
+      pausedRemainingDays: lexaiSubscriptions.pausedRemainingDays,
       createdAt: lexaiSubscriptions.createdAt,
       updatedAt: lexaiSubscriptions.updatedAt,
       userEmail: users.email,
@@ -3012,12 +3351,28 @@ export async function createSupportMessage(msg: {
   senderId: number;
   senderType: string;
   content: string;
+  attachmentUrl?: string;
+  attachmentName?: string;
+  attachmentSize?: number;
+  attachmentType?: string;
+  attachmentDuration?: number;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
   const now = new Date().toISOString();
-  const [message] = await db.insert(supportMessages).values({ ...msg, createdAt: now }).returning();
+  const [message] = await db.insert(supportMessages).values({
+    conversationId: msg.conversationId,
+    senderId: msg.senderId,
+    senderType: msg.senderType,
+    content: msg.content,
+    attachmentUrl: msg.attachmentUrl || null,
+    attachmentName: msg.attachmentName || null,
+    attachmentSize: msg.attachmentSize || null,
+    attachmentType: msg.attachmentType || null,
+    attachmentDuration: msg.attachmentDuration || null,
+    createdAt: now,
+  }).returning();
 
   // Update conversation updatedAt
   await db.update(supportConversations)
@@ -3242,19 +3597,32 @@ export async function getUserOrders(userId: number): Promise<Order[]> {
   return db.select().from(orders).where(eq(orders.userId, userId)).orderBy(desc(orders.createdAt));
 }
 
-export async function getAllOrders(): Promise<Order[]> {
+export async function getAllOrders(status?: string): Promise<Order[]> {
   const db = await getDb();
   if (!db) return [];
+  if (status) {
+    return db.select().from(orders).where(eq(orders.status, status)).orderBy(desc(orders.createdAt));
+  }
   return db.select().from(orders).orderBy(desc(orders.createdAt));
 }
 
-export async function updateOrderStatus(id: number, status: string, paymentRef?: string): Promise<void> {
+export async function updateOrderStatus(
+  id: number,
+  status: string,
+  metadata?: string | { paymentReference?: string; paymentProofUrl?: string },
+): Promise<Order | null> {
   const db = await getDb();
-  if (!db) return;
+  if (!db) return null;
   const updates: any = { status, updatedAt: new Date().toISOString() };
-  if (paymentRef) updates.paymentReference = paymentRef;
+  if (typeof metadata === "string") {
+    updates.paymentReference = metadata;
+  } else if (metadata) {
+    if (metadata.paymentReference) updates.paymentReference = metadata.paymentReference;
+    if (metadata.paymentProofUrl) updates.paymentProofUrl = metadata.paymentProofUrl;
+  }
   if (status === 'paid') updates.completedAt = new Date().toISOString();
-  await db.update(orders).set(updates).where(eq(orders.id, id));
+  const [updated] = await db.update(orders).set(updates).where(eq(orders.id, id)).returning();
+  return updated ?? null;
 }
 
 export async function addOrderItem(input: Omit<InsertOrderItem, 'id'>): Promise<OrderItem | null> {
@@ -3305,6 +3673,35 @@ export async function getAllPackageSubscriptions(): Promise<PackageSubscription[
   const db = await getDb();
   if (!db) return [];
   return db.select().from(packageSubscriptions).orderBy(desc(packageSubscriptions.createdAt));
+}
+
+export async function getRecommendationSubscriptionsWithUsers() {
+  const db = await getDb();
+  if (!db) return [];
+
+  return await db
+    .select({
+      id: recommendationSubscriptions.id,
+      userId: recommendationSubscriptions.userId,
+      registrationKeyId: recommendationSubscriptions.registrationKeyId,
+      isActive: recommendationSubscriptions.isActive,
+      isPaused: recommendationSubscriptions.isPaused,
+      startDate: recommendationSubscriptions.startDate,
+      endDate: recommendationSubscriptions.endDate,
+      paymentStatus: recommendationSubscriptions.paymentStatus,
+      paymentAmount: recommendationSubscriptions.paymentAmount,
+      paymentCurrency: recommendationSubscriptions.paymentCurrency,
+      pausedAt: recommendationSubscriptions.pausedAt,
+      pausedReason: recommendationSubscriptions.pausedReason,
+      pausedRemainingDays: recommendationSubscriptions.pausedRemainingDays,
+      createdAt: recommendationSubscriptions.createdAt,
+      updatedAt: recommendationSubscriptions.updatedAt,
+      userEmail: users.email,
+      userName: users.name,
+    })
+    .from(recommendationSubscriptions)
+    .leftJoin(users, eq(recommendationSubscriptions.userId, users.id))
+    .orderBy(desc(recommendationSubscriptions.createdAt));
 }
 
 // ============================================================================
@@ -3472,6 +3869,61 @@ export async function getAllTestimonials(publishedOnly = false): Promise<Testimo
   if (publishedOnly) {
     return db.select().from(testimonials).where(eq(testimonials.isPublished, true)).orderBy(testimonials.displayOrder);
   }
+  return db.select().from(testimonials).orderBy(testimonials.displayOrder);
+}
+
+export async function getTestimonialsByContext(input: {
+  publishedOnly?: boolean;
+  packageSlug?: string;
+  courseId?: number;
+  serviceKey?: string;
+  limit?: number;
+}): Promise<Testimonial[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  const conditions = [];
+  if (input.publishedOnly !== false) {
+    conditions.push(eq(testimonials.isPublished, true));
+  }
+  if (input.packageSlug) {
+    conditions.push(eq(testimonials.packageSlug, input.packageSlug));
+  }
+  if (typeof input.courseId === "number") {
+    conditions.push(eq(testimonials.courseId, input.courseId));
+  }
+  if (input.serviceKey) {
+    conditions.push(eq(testimonials.serviceKey, input.serviceKey));
+  }
+
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+  const hasLimit = typeof input.limit === "number" && input.limit > 0;
+
+  if (whereClause && hasLimit) {
+    return db
+      .select()
+      .from(testimonials)
+      .where(whereClause)
+      .orderBy(testimonials.displayOrder)
+      .limit(input.limit as number);
+  }
+
+  if (whereClause) {
+    return db
+      .select()
+      .from(testimonials)
+      .where(whereClause)
+      .orderBy(testimonials.displayOrder);
+  }
+
+  if (hasLimit) {
+    return db
+      .select()
+      .from(testimonials)
+      .orderBy(testimonials.displayOrder)
+      .limit(input.limit as number);
+  }
+
   return db.select().from(testimonials).orderBy(testimonials.displayOrder);
 }
 
@@ -3681,7 +4133,7 @@ export async function getSubscriptionExpiryReport(): Promise<any[]> {
 
   // LexAI subscriptions
   const lexSubs = await db.select().from(lexaiSubscriptions)
-    .where(eq(lexaiSubscriptions.isActive, true));
+    .where(and(eq(lexaiSubscriptions.isActive, true), eq(lexaiSubscriptions.isPaused, false)));
   for (const sub of lexSubs) {
     const user = userMap.get(sub.userId);
     results.push({
@@ -3701,7 +4153,7 @@ export async function getSubscriptionExpiryReport(): Promise<any[]> {
 
   // Recommendation subscriptions
   const recSubs = await db.select().from(recommendationSubscriptions)
-    .where(eq(recommendationSubscriptions.isActive, true));
+    .where(and(eq(recommendationSubscriptions.isActive, true), eq(recommendationSubscriptions.isPaused, false)));
   for (const sub of recSubs) {
     const user = userMap.get(sub.userId);
     results.push({
@@ -3727,4 +4179,543 @@ export async function getSubscriptionExpiryReport(): Promise<any[]> {
   });
 
   return results;
+}
+
+// ============================================================================
+// Jobs / Careers System
+// ============================================================================
+
+export async function getActiveJobs() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(jobs).where(eq(jobs.isActive, true)).orderBy(jobs.sortOrder);
+}
+
+export async function getAllJobs() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(jobs).orderBy(jobs.sortOrder);
+}
+
+export async function getJobById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(jobs).where(eq(jobs.id, id)).limit(1);
+  return result[0];
+}
+
+export async function createJob(data: { titleAr: string; titleEn: string; descriptionAr: string; descriptionEn?: string; sortOrder?: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(jobs).values({
+    titleAr: data.titleAr,
+    titleEn: data.titleEn,
+    descriptionAr: data.descriptionAr,
+    descriptionEn: data.descriptionEn || null,
+    sortOrder: data.sortOrder ?? 0,
+  }).returning({ id: jobs.id });
+  return result[0].id;
+}
+
+export async function updateJob(id: number, data: Partial<{ titleAr: string; titleEn: string; descriptionAr: string; descriptionEn: string; isActive: boolean; sortOrder: number }>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(jobs).set({ ...data, updatedAt: new Date().toISOString() }).where(eq(jobs.id, id));
+}
+
+export async function getQuestionsForJob(jobId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  // Job-specific + general (jobId IS NULL) questions
+  return db.select().from(jobQuestions)
+    .where(and(
+      eq(jobQuestions.isActive, true),
+      or(eq(jobQuestions.jobId, jobId), sql`${jobQuestions.jobId} IS NULL`)
+    ))
+    .orderBy(jobQuestions.jobId, jobQuestions.sortOrder);
+}
+
+export async function getAllJobQuestions() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(jobQuestions).orderBy(jobQuestions.jobId, jobQuestions.sortOrder);
+}
+
+export async function createJobQuestion(data: { jobId: number | null; questionAr: string; questionEn?: string; sortOrder?: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(jobQuestions).values({
+    jobId: data.jobId,
+    questionAr: data.questionAr,
+    questionEn: data.questionEn || null,
+    sortOrder: data.sortOrder ?? 0,
+  }).returning({ id: jobQuestions.id });
+  return result[0].id;
+}
+
+export async function updateJobQuestion(id: number, data: Partial<{ jobId: number | null; questionAr: string; questionEn: string; sortOrder: number; isActive: boolean }>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(jobQuestions).set(data).where(eq(jobQuestions.id, id));
+}
+
+export async function deleteJobQuestion(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(jobQuestions).where(eq(jobQuestions.id, id));
+}
+
+export async function createJobApplication(data: {
+  jobId: number;
+  applicantName: string;
+  email: string;
+  phone: string;
+  country?: string;
+  cvFileUrl?: string;
+  cvFileKey?: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(jobApplications).values({
+    jobId: data.jobId,
+    applicantName: data.applicantName,
+    email: data.email,
+    phone: data.phone,
+    country: data.country || null,
+    cvFileUrl: data.cvFileUrl || null,
+    cvFileKey: data.cvFileKey || null,
+  }).returning({ id: jobApplications.id });
+  return result[0].id;
+}
+
+export async function createJobApplicationAnswers(answers: { applicationId: number; questionId: number; answer: string }[]) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  if (answers.length === 0) return;
+  await db.insert(jobApplicationAnswers).values(answers);
+}
+
+export async function getJobApplications(filters?: { jobId?: number; status?: string }) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [];
+  if (filters?.jobId) conditions.push(eq(jobApplications.jobId, filters.jobId));
+  if (filters?.status) conditions.push(eq(jobApplications.status, filters.status));
+
+  const apps = conditions.length > 0
+    ? await db.select().from(jobApplications).where(and(...conditions)).orderBy(desc(jobApplications.submittedAt))
+    : await db.select().from(jobApplications).orderBy(desc(jobApplications.submittedAt));
+
+  return apps;
+}
+
+export async function getJobApplicationById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(jobApplications).where(eq(jobApplications.id, id)).limit(1);
+  return result[0];
+}
+
+export async function getJobApplicationAnswers(applicationId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(jobApplicationAnswers).where(eq(jobApplicationAnswers.applicationId, applicationId)).orderBy(jobApplicationAnswers.questionId);
+}
+
+export async function updateJobApplicationStatus(id: number, status: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(jobApplications).set({ status, updatedAt: new Date().toISOString() }).where(eq(jobApplications.id, id));
+}
+
+export async function getJobApplicationStats() {
+  const db = await getDb();
+  if (!db) return { total: 0, new: 0, reviewed: 0, shortlisted: 0, rejected: 0 };
+  const all = await db.select({ status: jobApplications.status, count: sql<number>`count(*)` })
+    .from(jobApplications).groupBy(jobApplications.status);
+  const stats = { total: 0, new: 0, reviewed: 0, shortlisted: 0, rejected: 0 };
+  for (const row of all) {
+    const c = Number(row.count);
+    stats.total += c;
+    if (row.status in stats) (stats as any)[row.status] = c;
+  }
+  return stats;
+}
+
+// ============================================================================
+// Global Search (Phase 3)
+// ============================================================================
+
+export async function globalSearch(query: string, limit: number = 20) {
+  const db = await getDb();
+  if (!db || !query.trim()) return { courses: [], packages: [], articles: [], events: [] };
+  const q = `%${query.trim()}%`;
+
+  const [matchedCourses, matchedPackages, matchedArticles, matchedEvents] = await Promise.all([
+    db.select({
+      id: courses.id, titleEn: courses.titleEn, titleAr: courses.titleAr,
+      descriptionEn: courses.descriptionEn, thumbnailUrl: courses.thumbnailUrl,
+      isPublished: courses.isPublished,
+    }).from(courses).where(
+      and(eq(courses.isPublished, true), or(
+        sql`${courses.titleEn} LIKE ${q}`, sql`${courses.titleAr} LIKE ${q}`,
+        sql`${courses.descriptionEn} LIKE ${q}`, sql`${courses.descriptionAr} LIKE ${q}`,
+      ))
+    ).limit(limit),
+
+    db.select({
+      id: packages.id, slug: packages.slug, nameEn: packages.nameEn, nameAr: packages.nameAr,
+      descriptionEn: packages.descriptionEn, price: packages.price,
+      isPublished: packages.isPublished,
+    }).from(packages).where(
+      and(eq(packages.isPublished, true), or(
+        sql`${packages.nameEn} LIKE ${q}`, sql`${packages.nameAr} LIKE ${q}`,
+        sql`${packages.descriptionEn} LIKE ${q}`, sql`${packages.descriptionAr} LIKE ${q}`,
+      ))
+    ).limit(limit),
+
+    db.select({
+      id: articles.id, slug: articles.slug, titleEn: articles.titleEn, titleAr: articles.titleAr,
+      isPublished: articles.isPublished,
+    }).from(articles).where(
+      and(eq(articles.isPublished, true), or(
+        sql`${articles.titleEn} LIKE ${q}`, sql`${articles.titleAr} LIKE ${q}`,
+        sql`${articles.contentEn} LIKE ${q}`, sql`${articles.contentAr} LIKE ${q}`,
+      ))
+    ).limit(limit),
+
+    db.select({
+      id: events.id, titleEn: events.titleEn, titleAr: events.titleAr,
+      eventType: events.eventType, eventDate: events.eventDate,
+      isPublished: events.isPublished,
+    }).from(events).where(
+      and(eq(events.isPublished, true), or(
+        sql`${events.titleEn} LIKE ${q}`, sql`${events.titleAr} LIKE ${q}`,
+        sql`${events.descriptionEn} LIKE ${q}`, sql`${events.descriptionAr} LIKE ${q}`,
+      ))
+    ).limit(limit),
+  ]);
+
+  return { courses: matchedCourses, packages: matchedPackages, articles: matchedArticles, events: matchedEvents };
+}
+
+export async function adminGlobalSearch(query: string, limit: number = 20) {
+  const db = await getDb();
+  if (!db || !query.trim()) return { users: [], orders: [], courses: [], articles: [], keys: [] };
+  const q = `%${query.trim()}%`;
+
+  const [matchedUsers, matchedOrders, matchedCourses, matchedArticles, matchedKeys] = await Promise.all([
+    db.select({
+      id: users.id, email: users.email, name: users.name, phone: users.phone,
+    }).from(users).where(
+      or(sql`${users.email} LIKE ${q}`, sql`${users.name} LIKE ${q}`, sql`${users.phone} LIKE ${q}`)
+    ).limit(limit),
+
+    db.select({
+      id: orders.id, userId: orders.userId, status: orders.status,
+      totalAmount: orders.totalAmount, createdAt: orders.createdAt,
+    }).from(orders).where(
+      or(sql`CAST(${orders.id} AS TEXT) LIKE ${q}`, sql`${orders.status} LIKE ${q}`)
+    ).limit(limit),
+
+    db.select({
+      id: courses.id, titleEn: courses.titleEn, titleAr: courses.titleAr, isPublished: courses.isPublished,
+    }).from(courses).where(
+      or(sql`${courses.titleEn} LIKE ${q}`, sql`${courses.titleAr} LIKE ${q}`)
+    ).limit(limit),
+
+    db.select({
+      id: articles.id, slug: articles.slug, titleEn: articles.titleEn, titleAr: articles.titleAr,
+    }).from(articles).where(
+      or(sql`${articles.titleEn} LIKE ${q}`, sql`${articles.titleAr} LIKE ${q}`)
+    ).limit(limit),
+
+    db.select({
+      id: registrationKeys.id, keyCode: registrationKeys.keyCode, email: registrationKeys.email,
+      isActive: registrationKeys.isActive,
+    }).from(registrationKeys).where(
+      or(sql`${registrationKeys.keyCode} LIKE ${q}`, sql`${registrationKeys.email} LIKE ${q}`)
+    ).limit(limit),
+  ]);
+
+  return { users: matchedUsers, orders: matchedOrders, courses: matchedCourses, articles: matchedArticles, keys: matchedKeys };
+}
+
+// ============================================================================
+// Course Reviews (Phase 4)
+// ============================================================================
+
+export async function getCourseReviews(courseId: number, approvedOnly = true) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [eq(courseReviews.courseId, courseId)];
+  if (approvedOnly) conditions.push(eq(courseReviews.isApproved, true));
+  const rows = await db.select({
+    id: courseReviews.id, userId: courseReviews.userId, courseId: courseReviews.courseId,
+    rating: courseReviews.rating, comment: courseReviews.comment,
+    isApproved: courseReviews.isApproved, createdAt: courseReviews.createdAt,
+    userName: users.name, userEmail: users.email,
+  }).from(courseReviews)
+    .leftJoin(users, eq(courseReviews.userId, users.id))
+    .where(and(...conditions))
+    .orderBy(desc(courseReviews.createdAt));
+  return rows;
+}
+
+export async function getAllReviews(filters?: { courseId?: number; isApproved?: boolean }) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions: any[] = [];
+  if (filters?.courseId) conditions.push(eq(courseReviews.courseId, filters.courseId));
+  if (filters?.isApproved !== undefined) conditions.push(eq(courseReviews.isApproved, filters.isApproved));
+  return db.select({
+    id: courseReviews.id, userId: courseReviews.userId, courseId: courseReviews.courseId,
+    rating: courseReviews.rating, comment: courseReviews.comment,
+    isApproved: courseReviews.isApproved, createdAt: courseReviews.createdAt, updatedAt: courseReviews.updatedAt,
+    userName: users.name, userEmail: users.email,
+    courseTitleEn: courses.titleEn, courseTitleAr: courses.titleAr,
+  }).from(courseReviews)
+    .leftJoin(users, eq(courseReviews.userId, users.id))
+    .leftJoin(courses, eq(courseReviews.courseId, courses.id))
+    .where(conditions.length ? and(...conditions) : undefined)
+    .orderBy(desc(courseReviews.createdAt));
+}
+
+export async function createCourseReview(review: { userId: number; courseId: number; rating: number; comment?: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const now = new Date().toISOString();
+  const [row] = await db.insert(courseReviews).values({
+    userId: review.userId, courseId: review.courseId,
+    rating: review.rating, comment: review.comment || null,
+    isApproved: false, createdAt: now, updatedAt: now,
+  }).returning();
+  return row;
+}
+
+export async function updateReviewApproval(reviewId: number, isApproved: boolean) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(courseReviews).set({ isApproved, updatedAt: new Date().toISOString() }).where(eq(courseReviews.id, reviewId));
+}
+
+export async function deleteReview(reviewId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(courseReviews).where(eq(courseReviews.id, reviewId));
+}
+
+export async function getCourseAverageRating(courseId: number) {
+  const db = await getDb();
+  if (!db) return { average: 0, count: 0 };
+  const [result] = await db.select({
+    avg: sql<number>`COALESCE(AVG(${courseReviews.rating}), 0)`,
+    count: sql<number>`COUNT(*)`,
+  }).from(courseReviews).where(and(eq(courseReviews.courseId, courseId), eq(courseReviews.isApproved, true)));
+  return { average: Number(result?.avg ?? 0), count: Number(result?.count ?? 0) };
+}
+
+// ============================================================================
+// User Notifications (Phase 4)
+// ============================================================================
+
+export async function getUserNotifications(userId: number, limit = 50) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(userNotifications)
+    .where(eq(userNotifications.userId, userId))
+    .orderBy(desc(userNotifications.createdAt))
+    .limit(limit);
+}
+
+export async function getUnreadNotificationCount(userId: number): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  const [result] = await db.select({ count: sql<number>`COUNT(*)` })
+    .from(userNotifications)
+    .where(and(eq(userNotifications.userId, userId), eq(userNotifications.isRead, false)));
+  return Number(result?.count ?? 0);
+}
+
+export async function createNotification(notif: {
+  userId: number; type?: string; titleEn: string; titleAr: string;
+  contentEn?: string; contentAr?: string; actionUrl?: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [row] = await db.insert(userNotifications).values({
+    ...notif, type: notif.type || 'info', createdAt: new Date().toISOString(),
+  }).returning();
+  return row;
+}
+
+export async function markNotificationRead(notificationId: number, userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(userNotifications).set({ isRead: true })
+    .where(and(eq(userNotifications.id, notificationId), eq(userNotifications.userId, userId)));
+}
+
+export async function markAllNotificationsRead(userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(userNotifications).set({ isRead: true })
+    .where(and(eq(userNotifications.userId, userId), eq(userNotifications.isRead, false)));
+}
+
+export async function sendBulkNotification(input: {
+  userIds: number[]; type?: string; titleEn: string; titleAr: string;
+  contentEn?: string; contentAr?: string; actionUrl?: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const now = new Date().toISOString();
+  const values = input.userIds.map(userId => ({
+    userId, type: input.type || 'info', titleEn: input.titleEn, titleAr: input.titleAr,
+    contentEn: input.contentEn, contentAr: input.contentAr, actionUrl: input.actionUrl,
+    createdAt: now,
+  }));
+  if (values.length) await db.insert(userNotifications).values(values);
+}
+
+// ============================================================================
+// Loyalty Points (Phase 4)
+// ============================================================================
+
+export async function getPointsBalance(userId: number): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  const [user] = await db.select({ pointsBalance: users.pointsBalance }).from(users).where(eq(users.id, userId));
+  return Number(user?.pointsBalance ?? 0);
+}
+
+export async function getPointsHistory(userId: number, limit = 50) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(pointsTransactions)
+    .where(eq(pointsTransactions.userId, userId))
+    .orderBy(desc(pointsTransactions.createdAt))
+    .limit(limit);
+}
+
+export async function addPoints(input: {
+  userId: number; amount: number; type?: string;
+  reasonEn: string; reasonAr: string;
+  referenceId?: number; referenceType?: string;
+}): Promise<PointsTransaction> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [tx] = await db.insert(pointsTransactions).values({
+    userId: input.userId, amount: input.amount, type: input.type || 'earn',
+    reasonEn: input.reasonEn, reasonAr: input.reasonAr,
+    referenceId: input.referenceId, referenceType: input.referenceType,
+    createdAt: new Date().toISOString(),
+  }).returning();
+  await db.update(users).set({
+    pointsBalance: sql`${users.pointsBalance} + ${input.amount}`,
+  }).where(eq(users.id, input.userId));
+  return tx;
+}
+
+export async function redeemPoints(input: {
+  userId: number; amount: number;
+  reasonEn: string; reasonAr: string;
+  referenceId?: number; referenceType?: string;
+}): Promise<PointsTransaction | null> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const balance = await getPointsBalance(input.userId);
+  if (balance < input.amount) return null;
+  const [tx] = await db.insert(pointsTransactions).values({
+    userId: input.userId, amount: -input.amount, type: 'redeem',
+    reasonEn: input.reasonEn, reasonAr: input.reasonAr,
+    referenceId: input.referenceId, referenceType: input.referenceType,
+    createdAt: new Date().toISOString(),
+  }).returning();
+  await db.update(users).set({
+    pointsBalance: sql`${users.pointsBalance} - ${input.amount}`,
+  }).where(eq(users.id, input.userId));
+  return tx;
+}
+
+export async function getTopPointsUsers(limit = 20) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({
+    id: users.id, name: users.name, email: users.email,
+    pointsBalance: users.pointsBalance,
+  }).from(users)
+    .where(sql`${users.pointsBalance} > 0`)
+    .orderBy(desc(users.pointsBalance))
+    .limit(limit);
+}
+
+// ============================================================================
+// Engagement Tracking (Phase 4)
+// ============================================================================
+
+export async function trackEngagement(input: {
+  userId: number; eventType: string; entityType?: string;
+  entityId?: number; metadata?: string;
+}) {
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(engagementEvents).values({
+    userId: input.userId, eventType: input.eventType,
+    entityType: input.entityType, entityId: input.entityId,
+    metadata: input.metadata, createdAt: new Date().toISOString(),
+  });
+}
+
+export async function getEngagementSummary(days = 30) {
+  const db = await getDb();
+  if (!db) return { totalEvents: 0, uniqueUsers: 0, byType: [] as any[] };
+  const cutoff = new Date(Date.now() - days * 86400000).toISOString();
+
+  const [totals] = await db.select({
+    totalEvents: sql<number>`COUNT(*)`,
+    uniqueUsers: sql<number>`COUNT(DISTINCT ${engagementEvents.userId})`,
+  }).from(engagementEvents).where(sql`${engagementEvents.createdAt} >= ${cutoff}`);
+
+  const byType = await db.select({
+    eventType: engagementEvents.eventType,
+    count: sql<number>`COUNT(*)`,
+    uniqueUsers: sql<number>`COUNT(DISTINCT ${engagementEvents.userId})`,
+  }).from(engagementEvents)
+    .where(sql`${engagementEvents.createdAt} >= ${cutoff}`)
+    .groupBy(engagementEvents.eventType)
+    .orderBy(sql`COUNT(*) DESC`);
+
+  return {
+    totalEvents: Number(totals?.totalEvents ?? 0),
+    uniqueUsers: Number(totals?.uniqueUsers ?? 0),
+    byType: byType.map(r => ({ eventType: r.eventType, count: Number(r.count), uniqueUsers: Number(r.uniqueUsers) })),
+  };
+}
+
+export async function getUserEngagementTimeline(userId: number, limit = 100) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(engagementEvents)
+    .where(eq(engagementEvents.userId, userId))
+    .orderBy(desc(engagementEvents.createdAt))
+    .limit(limit);
+}
+
+export async function getEngagementByEntity(entityType: string, days = 30) {
+  const db = await getDb();
+  if (!db) return [];
+  const cutoff = new Date(Date.now() - days * 86400000).toISOString();
+  return db.select({
+    entityId: engagementEvents.entityId,
+    count: sql<number>`COUNT(*)`,
+    uniqueUsers: sql<number>`COUNT(DISTINCT ${engagementEvents.userId})`,
+  }).from(engagementEvents)
+    .where(and(
+      eq(engagementEvents.entityType, entityType),
+      sql`${engagementEvents.createdAt} >= ${cutoff}`,
+    ))
+    .groupBy(engagementEvents.entityId)
+    .orderBy(sql`COUNT(*) DESC`)
+    .limit(30);
 }

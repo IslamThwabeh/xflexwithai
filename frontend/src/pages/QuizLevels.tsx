@@ -6,7 +6,7 @@ import ClientLayout from "@/components/ClientLayout";
 type LevelProgress = {
   level: number;
   title: string;
-  description: string;
+  description: string | null;
   isPassed: boolean;
   isUnlocked: boolean;
   bestScore: number;

@@ -58,12 +58,12 @@ export default function Checkout() {
     );
   }
 
-  const price = pkg.price / 100;
+  // Prices are VAT-inclusive: extract VAT from the displayed price
   const discountAmount = appliedCoupon ? appliedCoupon.discount / 100 : 0;
-  const afterDiscount = price - discountAmount;
+  const total = pkg.price / 100 - discountAmount;
   const vatRate = 16;
-  const vat = afterDiscount * (vatRate / 100);
-  const total = afterDiscount + vat;
+  const vat = total * vatRate / (100 + vatRate);
+  const price = total - vat;
 
   const handleApplyCoupon = async () => {
     if (!couponCode.trim()) return;

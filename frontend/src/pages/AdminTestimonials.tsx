@@ -10,7 +10,7 @@ import { toast } from 'sonner';
 
 const empty = () => ({
   nameEn: '', nameAr: '', titleEn: '', titleAr: '', textEn: '', textAr: '',
-  avatarUrl: '', rating: 5, displayOrder: 0, isPublished: true,
+  avatarUrl: '', rating: 5, packageSlug: '', courseId: undefined as number | undefined, serviceKey: '', displayOrder: 0, isPublished: true,
 });
 
 export default function AdminTestimonials() {
@@ -18,6 +18,8 @@ export default function AdminTestimonials() {
   const isRtl = language === 'ar';
   const utils = trpc.useUtils();
   const { data: testimonials, isLoading } = trpc.testimonials.adminList.useQuery();
+  const { data: packages } = trpc.packages.adminList.useQuery();
+  const { data: courses } = trpc.courses.listAll.useQuery();
   const createMut = trpc.testimonials.create.useMutation({ onSuccess: () => { utils.testimonials.adminList.invalidate(); setEditing(null); toast.success(isRtl ? 'تمت الإضافة' : 'Added'); } });
   const updateMut = trpc.testimonials.update.useMutation({ onSuccess: () => { utils.testimonials.adminList.invalidate(); setEditing(null); toast.success(isRtl ? 'تم التحديث' : 'Updated'); } });
   const deleteMut = trpc.testimonials.delete.useMutation({ onSuccess: () => utils.testimonials.adminList.invalidate() });
@@ -30,8 +32,14 @@ export default function AdminTestimonials() {
 
   const handleSave = async () => {
     if (!editing) return;
-    if (isNew) { await createMut.mutateAsync(editing); }
-    else { await updateMut.mutateAsync(editing); }
+    const payload = {
+      ...editing,
+      packageSlug: editing.packageSlug?.trim() || undefined,
+      serviceKey: editing.serviceKey?.trim() || undefined,
+      courseId: editing.courseId ? Number(editing.courseId) : undefined,
+    };
+    if (isNew) { await createMut.mutateAsync(payload); }
+    else { await updateMut.mutateAsync(payload); }
   };
 
   const handleDelete = async (id: number) => {
@@ -97,6 +105,46 @@ export default function AdminTestimonials() {
                 </div>
               </div>
               <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{isRtl ? 'الباقة المرتبطة (اختياري)' : 'Linked Package (optional)'}</label>
+                <select
+                  className="w-full border rounded-md p-2 text-sm"
+                  value={editing.packageSlug || ''}
+                  onChange={(e) => setEditing({ ...editing, packageSlug: e.target.value || '' })}
+                >
+                  <option value="">{isRtl ? 'الكل / عام' : 'All / Generic'}</option>
+                  {packages?.map((pkg) => (
+                    <option key={pkg.id} value={pkg.slug}>{isRtl ? pkg.nameAr : pkg.nameEn}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{isRtl ? 'الدورة المرتبطة (اختياري)' : 'Linked Course (optional)'}</label>
+                <select
+                  className="w-full border rounded-md p-2 text-sm"
+                  value={editing.courseId || ''}
+                  onChange={(e) => setEditing({ ...editing, courseId: e.target.value ? Number(e.target.value) : undefined })}
+                >
+                  <option value="">{isRtl ? 'الكل / عام' : 'All / Generic'}</option>
+                  {courses?.map((course: any) => (
+                    <option key={course.id} value={course.id}>{isRtl ? course.titleAr : course.titleEn}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{isRtl ? 'الخدمة المرتبطة (اختياري)' : 'Linked Service (optional)'}</label>
+                <select
+                  className="w-full border rounded-md p-2 text-sm"
+                  value={editing.serviceKey || ''}
+                  onChange={(e) => setEditing({ ...editing, serviceKey: e.target.value || '' })}
+                >
+                  <option value="">{isRtl ? 'الكل / عام' : 'All / Generic'}</option>
+                  <option value="courses">{isRtl ? 'الدورات' : 'Courses'}</option>
+                  <option value="lexai">LexAI</option>
+                  <option value="recommendations">{isRtl ? 'التوصيات' : 'Recommendations'}</option>
+                  <option value="community">{isRtl ? 'المجتمع' : 'Community'}</option>
+                </select>
+              </div>
+              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{isRtl ? 'ترتيب العرض' : 'Display Order'}</label>
                 <Input type="number" value={editing.displayOrder} onChange={(e) => setEditing({ ...editing, displayOrder: +e.target.value })} />
               </div>
@@ -142,6 +190,11 @@ export default function AdminTestimonials() {
                   {[1, 2, 3, 4, 5].map((n) => (
                     <Star key={n} className={`w-3.5 h-3.5 ${n <= t.rating ? 'fill-yellow-400 text-yellow-400' : 'text-gray-200'}`} />
                   ))}
+                </div>
+                <div className="flex flex-wrap gap-1 mb-2">
+                  {t.packageSlug && <Badge variant="outline" className="text-[10px]">{isRtl ? 'باقة' : 'Package'}: {t.packageSlug}</Badge>}
+                  {t.courseId && <Badge variant="outline" className="text-[10px]">{isRtl ? 'دورة' : 'Course'} #{t.courseId}</Badge>}
+                  {t.serviceKey && <Badge variant="outline" className="text-[10px]">{isRtl ? 'خدمة' : 'Service'}: {t.serviceKey}</Badge>}
                 </div>
                 <p className="text-sm text-gray-600 line-clamp-3 mb-3">"{isRtl ? t.textAr : t.textEn}"</p>
                 <div className="flex gap-1.5 border-t pt-3">

@@ -54,6 +54,8 @@ export default function AdminKeys() {
   const [quantity, setQuantity] = useState("1");
   const [notes, setNotes] = useState("");
   const [price, setPrice] = useState("0");
+  const [entitlementDays, setEntitlementDays] = useState("");
+  const [expiresAt, setExpiresAt] = useState("");
   const [searchEmail, setSearchEmail] = useState("");
   const [showGenerateDialog, setShowGenerateDialog] = useState(false);
   const [showBulkDialog, setShowBulkDialog] = useState(false);
@@ -70,6 +72,8 @@ export default function AdminKeys() {
       setShowGenerateDialog(false);
       setNotes("");
       setPrice("0");
+      setEntitlementDays("");
+      setExpiresAt("");
       refetchKeys();
       refetchStats();
     },
@@ -85,6 +89,8 @@ export default function AdminKeys() {
       setQuantity("1");
       setNotes("");
       setPrice("0");
+      setEntitlementDays("");
+      setExpiresAt("");
       refetchKeys();
       refetchStats();
     },
@@ -112,10 +118,13 @@ export default function AdminKeys() {
       return;
     }
     const priceValue = parseFloat(price) || 0;
+    const entitlementValue = entitlementDays ? parseInt(entitlementDays, 10) : undefined;
     generateKey.mutate({
       courseId: selectedCourse,
       notes: notes || undefined,
       price: priceValue,
+      entitlementDays: entitlementValue,
+      expiresAt: expiresAt ? new Date(expiresAt) : undefined,
     });
   };
 
@@ -130,11 +139,14 @@ export default function AdminKeys() {
       return;
     }
     const priceValue = parseFloat(price) || 0;
+    const entitlementValue = entitlementDays ? parseInt(entitlementDays, 10) : undefined;
     generateBulkKeys.mutate({
       courseId: selectedCourse,
       quantity: qty,
       notes: notes || undefined,
       price: priceValue,
+      entitlementDays: entitlementValue,
+      expiresAt: expiresAt ? new Date(expiresAt) : undefined,
     });
   };
 
@@ -150,12 +162,14 @@ export default function AdminKeys() {
     }
 
     const csv = [
-      ["Key Code", "Course ID", "Email", "Status", "Created At", "Activated At", "Notes"],
+      ["Key Code", "Course ID", "Email", "Status", "Entitlement Days", "Redeem By", "Created At", "Activated At", "Notes"],
       ...allKeys.map((key) => [
         key.keyCode,
         key.courseId.toString(),
         key.email || "Not activated",
         key.isActive ? "Active" : "Deactivated",
+        key.entitlementDays?.toString() || "Default",
+        key.expiresAt ? new Date(key.expiresAt).toLocaleDateString() : "No cutoff",
         new Date(key.createdAt).toLocaleString(),
         key.activatedAt ? new Date(key.activatedAt).toLocaleString() : "N/A",
         key.notes || "",
@@ -244,6 +258,24 @@ export default function AdminKeys() {
                     placeholder="0.00"
                   />
                 </div>
+                <div>
+                  <Label>Access Duration (Days)</Label>
+                  <Input
+                    type="number"
+                    min="1"
+                    value={entitlementDays}
+                    onChange={(e) => setEntitlementDays(e.target.value)}
+                    placeholder="Leave empty for default"
+                  />
+                </div>
+                <div>
+                  <Label>Redeem Before</Label>
+                  <Input
+                    type="date"
+                    value={expiresAt}
+                    onChange={(e) => setExpiresAt(e.target.value)}
+                  />
+                </div>
                 <Button
                   onClick={handleGenerateSingle}
                   disabled={generateKey.isPending}
@@ -316,6 +348,24 @@ export default function AdminKeys() {
                     value={price}
                     onChange={(e) => setPrice(e.target.value)}
                     placeholder="0.00"
+                  />
+                </div>
+                <div>
+                  <Label>Access Duration (Days)</Label>
+                  <Input
+                    type="number"
+                    min="1"
+                    value={entitlementDays}
+                    onChange={(e) => setEntitlementDays(e.target.value)}
+                    placeholder="Leave empty for default"
+                  />
+                </div>
+                <div>
+                  <Label>Redeem Before</Label>
+                  <Input
+                    type="date"
+                    value={expiresAt}
+                    onChange={(e) => setExpiresAt(e.target.value)}
                   />
                 </div>
                 <Button
@@ -426,6 +476,8 @@ export default function AdminKeys() {
                   <TableHead>{t('admin.keys.course')}</TableHead>
                   <TableHead>{t('admin.keys.email')}</TableHead>
                   <TableHead>{t('admin.keys.statusLabel')}</TableHead>
+                  <TableHead>Duration</TableHead>
+                  <TableHead>Redeem By</TableHead>
                   <TableHead>{t('admin.keys.created')}</TableHead>
                   <TableHead>{t('admin.keys.activatedDate')}</TableHead>
                   <TableHead>{t('admin.keys.actions')}</TableHead>
@@ -475,6 +527,10 @@ export default function AdminKeys() {
                               {t('admin.keys.deactivated')}
                           </Badge>
                         )}
+                      </TableCell>
+                      <TableCell>{key.entitlementDays ? `${key.entitlementDays}d` : "Default"}</TableCell>
+                      <TableCell>
+                        {key.expiresAt ? new Date(key.expiresAt).toLocaleDateString() : "-"}
                       </TableCell>
                       <TableCell>
                         {key.createdAt ? new Date(key.createdAt).toLocaleDateString() : 'N/A'}

@@ -35,6 +35,10 @@ export default function Profile() {
   // Messages
   const [profileMessage, setProfileMessage] = useState("");
   const [passwordMessage, setPasswordMessage] = useState("");
+  const [securityMessage, setSecurityMessage] = useState("");
+  const [loginSecurityMode, setLoginSecurityMode] = useState<"password_or_otp" | "password_only" | "password_plus_otp">(
+    ((user as any)?.loginSecurityMode as "password_or_otp" | "password_only" | "password_plus_otp") || "password_or_otp"
+  );
 
   // Update profile mutation
   const updateProfileMutation = trpc.users.updateProfile.useMutation({
@@ -60,6 +64,17 @@ export default function Profile() {
     },
     onError: (error) => {
       setPasswordMessage(`${t("profile.error")}: ${error.message}`);
+    },
+  });
+
+  const updateLoginSecurityMutation = trpc.users.updateLoginSecurity.useMutation({
+    onSuccess: async () => {
+      setSecurityMessage(t("profile.security.loginMethod.updated"));
+      await utils.auth.me.invalidate();
+      setTimeout(() => setSecurityMessage(""), 3000);
+    },
+    onError: (error) => {
+      setSecurityMessage(`Error: ${error.message}`);
     },
   });
 
@@ -96,6 +111,12 @@ export default function Profile() {
       currentPassword,
       newPassword,
     });
+  };
+
+  const handleUpdateLoginSecurity = (e: React.FormEvent) => {
+    e.preventDefault();
+    setSecurityMessage("");
+    updateLoginSecurityMutation.mutate({ loginSecurityMode });
   };
 
   return (
@@ -203,6 +224,37 @@ export default function Profile() {
               <CardDescription>{t("profile.security.description")}</CardDescription>
             </CardHeader>
             <CardContent>
+              <div className="mb-8 rounded-lg border p-4 bg-gray-50 dark:bg-gray-800/40">
+                <h3 className="font-semibold text-gray-900 dark:text-white mb-1">{t("profile.security.loginMethodTitle")}</h3>
+                <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
+                  {t("profile.security.loginMethodDescription")}
+                </p>
+
+                {securityMessage && (
+                  <Alert className={`mb-4 ${securityMessage.startsWith("Error") ? "border-red-500" : "border-green-500"}`}>
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>{securityMessage}</AlertDescription>
+                  </Alert>
+                )}
+
+                <form onSubmit={handleUpdateLoginSecurity} className="space-y-3">
+                  <Label htmlFor="login-security-mode">{t("profile.security.loginMethodLabel")}</Label>
+                  <select
+                    id="login-security-mode"
+                    value={loginSecurityMode}
+                    onChange={(e) => setLoginSecurityMode(e.target.value as "password_or_otp" | "password_only" | "password_plus_otp")}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  >
+                    <option value="password_or_otp">{t("profile.security.loginMethod.passwordOrOtp")}</option>
+                    <option value="password_only">{t("profile.security.loginMethod.passwordOnly")}</option>
+                    <option value="password_plus_otp">{t("profile.security.loginMethod.passwordPlusOtp")}</option>
+                  </select>
+                  <Button type="submit" variant="outline" disabled={updateLoginSecurityMutation.isPending}>
+                    {updateLoginSecurityMutation.isPending ? t("profile.security.loginMethod.saving") : t("profile.security.loginMethod.save")}
+                  </Button>
+                </form>
+              </div>
+
               {passwordMessage && (
                 <Alert className={`mb-4 ${passwordMessage.includes("Error") ? "border-red-500" : "border-green-500"}`}>
                   <AlertCircle className="h-4 w-4" />

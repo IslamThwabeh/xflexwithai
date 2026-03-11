@@ -115,6 +115,7 @@ export default function Home() {
             <button onClick={() => scrollToSection('articles')} className="hover:text-blue-600 transition">{t('home.articles.title')}</button>
             <Link href="/free-content"><span className="hover:text-blue-600 transition cursor-pointer">{t('home.footer.freeContent')}</span></Link>
             <Link href="/faq"><span className="hover:text-blue-600 transition cursor-pointer">{language === 'ar' ? 'الأسئلة الشائعة' : 'FAQ'}</span></Link>
+            <Link href="/careers"><span className="hover:text-blue-600 transition cursor-pointer">{language === 'ar' ? 'وظائف' : 'Careers'}</span></Link>
             <button onClick={() => scrollToSection('contact')} className="hover:text-blue-600 transition">{t('home.footer.contact')}</button>
           </nav>
 
@@ -151,6 +152,7 @@ export default function Home() {
             <button onClick={() => { scrollToSection('articles'); setMobileMenuOpen(false); }} className="text-start hover:text-blue-600 transition py-1.5">{t('home.articles.title')}</button>
             <Link href="/free-content" onClick={() => setMobileMenuOpen(false)}><span className="block hover:text-blue-600 transition py-1.5 cursor-pointer">{t('home.footer.freeContent')}</span></Link>
             <Link href="/faq" onClick={() => setMobileMenuOpen(false)}><span className="block hover:text-blue-600 transition py-1.5 cursor-pointer">{language === 'ar' ? 'الأسئلة الشائعة' : 'FAQ'}</span></Link>
+            <Link href="/careers" onClick={() => setMobileMenuOpen(false)}><span className="block hover:text-blue-600 transition py-1.5 cursor-pointer">{language === 'ar' ? 'وظائف' : 'Careers'}</span></Link>
             <button onClick={() => { scrollToSection('contact'); setMobileMenuOpen(false); }} className="text-start hover:text-blue-600 transition py-1.5">{t('home.footer.contact')}</button>
             <Link href="/activate-key" onClick={() => setMobileMenuOpen(false)}><span className="block hover:text-blue-600 transition py-1.5 cursor-pointer">{language === 'ar' ? 'تفعيل مفتاح' : 'Activate Key'}</span></Link>
           </nav>
@@ -681,6 +683,24 @@ export default function Home() {
         </div>
       </section>
 
+      {/* ======== CAREERS CTA SECTION ======== */}
+      <section id="careers" className="py-16 bg-gradient-to-r from-blue-50 to-indigo-50 border-t border-gray-100">
+        <div className="container mx-auto px-4 text-center">
+          <h2 className="text-3xl font-bold text-gray-900 mb-3">
+            {language === 'ar' ? 'انضم لفريق أكاديمية XFlex' : 'Join XFlex Academy Team'}
+          </h2>
+          <p className="text-gray-600 mb-6 max-w-lg mx-auto">
+            {language === 'ar' ? 'نبحث عن أشخاص موهوبين وشغوفين للانضمام لفريقنا المتنامي. اطلع على الوظائف المتاحة وقدم طلبك الآن!' : 'We are looking for talented people to join our growing team. View open positions and apply now!'}
+          </p>
+          <Link href="/careers">
+            <Button size="lg" className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white gap-2 px-8">
+              {language === 'ar' ? 'الوظائف المتاحة' : 'View Open Positions'}
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+          </Link>
+        </div>
+      </section>
+
       {/* ======== CONTACT SECTION ======== */}
       <section id="contact" className="py-20 bg-white border-t border-gray-100">
         <div className="container mx-auto px-4 max-w-lg">
@@ -776,6 +796,7 @@ export default function Home() {
                 <li><Link href="/faq"><span className="hover:text-white transition cursor-pointer">{language === 'ar' ? 'الأسئلة الشائعة' : 'FAQ'}</span></Link></li>
                 <li><Link href="/free-content"><span className="hover:text-white transition cursor-pointer">{t('home.footer.freeContent')}</span></Link></li>
                 <li><Link href="/activate-key"><span className="hover:text-white transition cursor-pointer">{language === 'ar' ? 'تفعيل مفتاح' : 'Activate Key'}</span></Link></li>
+                <li><Link href="/careers"><span className="hover:text-white transition cursor-pointer">{language === 'ar' ? 'وظائف' : 'Careers'}</span></Link></li>
                 <li><Link href="/terms"><span className="hover:text-white transition cursor-pointer">{language === 'ar' ? 'الشروط والأحكام' : 'Terms & Conditions'}</span></Link></li>
                 <li><Link href="/refund-policy"><span className="hover:text-white transition cursor-pointer">{language === 'ar' ? 'سياسة الاسترجاع' : 'Refund Policy'}</span></Link></li>
                 <li><Link href="/privacy"><span className="hover:text-white transition cursor-pointer">{language === 'ar' ? 'سياسة الخصوصية' : 'Privacy Policy'}</span></Link></li>

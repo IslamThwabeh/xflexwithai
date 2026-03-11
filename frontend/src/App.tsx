@@ -56,6 +56,7 @@ const QuizHistory = lazy(() => import("./pages/QuizHistory"));
 const MyOrders = lazy(() => import("./pages/MyOrders"));
 const OrderDetail = lazy(() => import("./pages/OrderDetail"));
 const MySubscriptions = lazy(() => import("./pages/MySubscriptions"));
+const Upgrade = lazy(() => import("./pages/Upgrade"));
 
 // Lazy-loaded public pages
 const PackageDetails = lazy(() => import("./pages/PackageDetails"));
@@ -65,11 +66,21 @@ const Articles = lazy(() => import("./pages/Articles"));
 const ArticleDetail = lazy(() => import("./pages/ArticleDetail"));
 const Checkout = lazy(() => import("./pages/Checkout"));
 const FreeContent = lazy(() => import("./pages/FreeContent"));
+const Gifts = lazy(() => import("./pages/Gifts"));
 const Contact = lazy(() => import("./pages/Contact"));
 const TermsOfService = lazy(() => import("./pages/TermsOfService"));
 const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
 const RefundPolicy = lazy(() => import("./pages/RefundPolicy"));
 const FAQ = lazy(() => import("./pages/FAQ"));
+const Careers = lazy(() => import("./pages/Careers"));
+const AdminJobs = lazy(() => import("./pages/AdminJobs"));
+const AdminReviews = lazy(() => import("./pages/AdminReviews"));
+const AdminNotifications = lazy(() => import("./pages/AdminNotifications"));
+const AdminPoints = lazy(() => import("./pages/AdminPoints"));
+const AdminEngagement = lazy(() => import("./pages/AdminEngagement"));
+const NotificationCenter = lazy(() => import("./pages/NotificationCenter"));
+const LoyaltyPoints = lazy(() => import("./pages/LoyaltyPoints"));
+const TradingCalculators = lazy(() => import("./pages/TradingCalculators"));
 
 // Minimal fallback spinner
 function PageLoader() {
@@ -248,11 +259,38 @@ function Router() {
       <Route path="/articles" component={Articles} />
       <Route path="/articles/:slug" component={ArticleDetail} />
       <Route path="/free-content" component={FreeContent} />
+      <Route path="/gifts" component={Gifts} />
       <Route path="/contact" component={Contact} />
       <Route path="/terms" component={TermsOfService} />
       <Route path="/privacy" component={PrivacyPolicy} />
       <Route path="/refund-policy" component={RefundPolicy} />
       <Route path="/faq" component={FAQ} />
+      <Route path="/careers" component={Careers} />
+      <Route path="/admin/jobs">
+        <AdminRoute>
+          <AdminJobs />
+        </AdminRoute>
+      </Route>
+      <Route path="/admin/reviews">
+        <AdminRoute>
+          <AdminReviews />
+        </AdminRoute>
+      </Route>
+      <Route path="/admin/notifications">
+        <AdminRoute>
+          <AdminNotifications />
+        </AdminRoute>
+      </Route>
+      <Route path="/admin/points">
+        <AdminRoute>
+          <AdminPoints />
+        </AdminRoute>
+      </Route>
+      <Route path="/admin/engagement">
+        <AdminRoute>
+          <AdminEngagement />
+        </AdminRoute>
+      </Route>
       <Route path="/orders">
         <ProtectedRoute>
           <MyOrders />
@@ -268,6 +306,22 @@ function Router() {
           <MySubscriptions />
         </ProtectedRoute>
       </Route>
+      <Route path="/upgrade">
+        <ProtectedRoute>
+          <Upgrade />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/notifications">
+        <ProtectedRoute>
+          <NotificationCenter />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/my-points">
+        <ProtectedRoute>
+          <LoyaltyPoints />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/calculators" component={TradingCalculators} />
       <Route path={"/"} component={Home} />
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />

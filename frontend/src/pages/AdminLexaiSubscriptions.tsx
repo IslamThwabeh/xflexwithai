@@ -1,5 +1,6 @@
 import DashboardLayout from "@/components/DashboardLayout";
 import { trpc } from "@/lib/trpc";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -12,6 +13,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { toast } from "sonner";
+import { PauseCircle, PlayCircle } from "lucide-react";
 
 function formatSafeDate(
   value: string | number | Date | null | undefined,
@@ -27,6 +30,23 @@ function formatSafeDate(
 export default function AdminLexaiSubscriptions() {
   const { data: subscriptions, isLoading } = trpc.lexaiAdmin.subscriptions.useQuery();
   const { t } = useLanguage();
+  const utils = trpc.useUtils();
+
+  const pauseMutation = trpc.lexaiAdmin.pauseSubscription.useMutation({
+    onSuccess: () => {
+      toast.success("Subscription paused");
+      utils.lexaiAdmin.subscriptions.invalidate();
+    },
+    onError: (error) => toast.error(error.message),
+  });
+
+  const resumeMutation = trpc.lexaiAdmin.resumeSubscription.useMutation({
+    onSuccess: () => {
+      toast.success("Subscription resumed");
+      utils.lexaiAdmin.subscriptions.invalidate();
+    },
+    onError: (error) => toast.error(error.message),
+  });
 
   return (
     <DashboardLayout>
@@ -54,6 +74,8 @@ export default function AdminLexaiSubscriptions() {
                   <TableHead>{t('admin.lexai.status')}</TableHead>
                   <TableHead>{t('admin.lexai.messages')}</TableHead>
                   <TableHead>{t('admin.lexai.ends')}</TableHead>
+                  <TableHead>Paused Balance</TableHead>
+                  <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -61,7 +83,8 @@ export default function AdminLexaiSubscriptions() {
                   const endDate = sub.endDate ? new Date(sub.endDate) : null;
                   const isValidEndDate = endDate ? !Number.isNaN(endDate.getTime()) : false;
                   const isExpired = isValidEndDate && endDate ? endDate.getTime() < Date.now() : false;
-                  const isActiveStatus = sub.isActive && !isExpired;
+                  const isPaused = Boolean((sub as any).isPaused);
+                  const isActiveStatus = sub.isActive && !isPaused && !isExpired;
 
                   return (
                     <TableRow key={sub.id}>
@@ -69,7 +92,7 @@ export default function AdminLexaiSubscriptions() {
                       <TableCell>{sub.userEmail || "-"}</TableCell>
                       <TableCell>
                         <Badge variant={isActiveStatus ? "default" : "secondary"}>
-                          {isActiveStatus ? t('admin.lexai.active') : t('admin.lexai.expired')}
+                          {isPaused ? 'Paused' : isActiveStatus ? t('admin.lexai.active') : t('admin.lexai.expired')}
                         </Badge>
                       </TableCell>
                       <TableCell>
@@ -77,6 +100,20 @@ export default function AdminLexaiSubscriptions() {
                       </TableCell>
                       <TableCell>
                         {formatSafeDate(sub.endDate, "MMM d, yyyy")}
+                      </TableCell>
+                      <TableCell>{(sub as any).pausedRemainingDays ? `${(sub as any).pausedRemainingDays}d` : '-'}</TableCell>
+                      <TableCell>
+                        {isPaused ? (
+                          <Button size="sm" variant="outline" onClick={() => resumeMutation.mutate({ subscriptionId: sub.id })}>
+                            <PlayCircle className="h-4 w-4 mr-1" />
+                            Resume
+                          </Button>
+                        ) : (
+                          <Button size="sm" variant="outline" onClick={() => pauseMutation.mutate({ subscriptionId: sub.id })}>
+                            <PauseCircle className="h-4 w-4 mr-1" />
+                            Pause
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   );

@@ -1,8 +1,12 @@
 import { MessageCircle } from 'lucide-react';
+import { useLocation } from 'wouter';
 
 const WHATSAPP_NUMBER = '972597596030';
 
 export default function WhatsAppFloat() {
+  const [location] = useLocation();
+  if (location.startsWith('/admin')) return null;
+
   return (
     <a
       href={`https://wa.me/${WHATSAPP_NUMBER}`}

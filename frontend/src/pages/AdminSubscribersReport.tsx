@@ -3,7 +3,8 @@ import { trpc } from '@/lib/trpc';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Download, Search, Users, Filter } from 'lucide-react';
+import { printReport } from '@/lib/printReport';
+import { Download, Search, Users, Filter, FileText } from 'lucide-react';
 import DashboardLayout from '@/components/DashboardLayout';
 
 export default function AdminSubscribersReport() {
@@ -66,6 +67,10 @@ export default function AdminSubscribersReport() {
         <Button onClick={exportCSV} variant="outline" size="sm" disabled={!filtered?.length}>
           <Download className="w-4 h-4 me-2" />
           {isRtl ? 'تصدير CSV' : 'Export CSV'}
+        </Button>
+        <Button onClick={() => printReport(isRtl ? 'تقرير المشتركين' : 'Subscribers Report')} variant="outline" size="sm" className="no-print">
+          <FileText className="w-4 h-4 me-2" />
+          {isRtl ? 'تصدير PDF' : 'Export PDF'}
         </Button>
       </div>
 

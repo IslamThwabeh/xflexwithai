@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ShoppingCart, CheckCircle, Clock, XCircle, Eye, ChevronDown, ChevronUp } from 'lucide-react';
+import { ShoppingCart, CheckCircle, Clock, XCircle, Eye, ChevronDown, ChevronUp, ArrowUpCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -30,6 +30,9 @@ export default function AdminOrders() {
   const [filter, setFilter] = useState<string | undefined>(undefined);
   const { data: orders, isLoading } = trpc.orders.adminList.useQuery(filter ? { status: filter } : undefined);
   const updateMutation = trpc.orders.adminUpdateStatus.useMutation({
+    onSuccess: () => utils.orders.adminList.invalidate(),
+  });
+  const processUpgradeMutation = trpc.upgrade.process.useMutation({
     onSuccess: () => utils.orders.adminList.invalidate(),
   });
   const [expandedId, setExpandedId] = useState<number | null>(null);
@@ -90,6 +93,7 @@ export default function AdminOrders() {
                         {language === 'ar' ? statusLabels[order.status]?.ar : statusLabels[order.status]?.en || order.status}
                       </Badge>
                       {order.isGift ? <Badge variant="outline" className="text-xs">🎁 Gift</Badge> : null}
+                      {(order as any).isUpgrade ? <Badge variant="outline" className="text-xs text-purple-600 border-purple-300">⬆ Upgrade</Badge> : null}
                     </div>
                     <p className="text-sm text-gray-500">
                       User #{order.userId} • ${(order.totalAmount / 100).toFixed(2)} {order.currency}
@@ -160,6 +164,11 @@ export default function AdminOrders() {
                       {order.status === 'paid' && (
                         <Button size="sm" onClick={() => handleStatusChange(order.id, 'completed')}>
                           <CheckCircle className="w-3.5 h-3.5 me-1" />{language === 'ar' ? 'إكمال' : 'Complete'}
+                        </Button>
+                      )}
+                      {(order as any).isUpgrade && (order.status === 'paid' || order.status === 'awaiting_confirmation') && (
+                        <Button size="sm" className="bg-purple-600 hover:bg-purple-700" disabled={processUpgradeMutation.isPending} onClick={() => processUpgradeMutation.mutate({ orderId: order.id })}>
+                          <ArrowUpCircle className="w-3.5 h-3.5 me-1" />{language === 'ar' ? 'تنفيذ الترقية' : 'Process Upgrade'}
                         </Button>
                       )}
                     </div>

@@ -24,7 +24,7 @@ export default function AdminPackages() {
       slug: '', nameEn: '', nameAr: '', descriptionEn: '', descriptionAr: '',
       price: 0, currency: 'USD', renewalPrice: 0, renewalPeriodDays: 30, renewalDescription: '',
       includesLexai: 0, includesRecommendations: 0, includesSupport: 0, includesPdf: 0,
-      isLifetime: 1, isPublished: 0, displayOrder: 0,
+      isLifetime: 1, isPublished: 0, displayOrder: 0, upgradePrice: 0,
     });
   };
 
@@ -106,6 +106,10 @@ export default function AdminPackages() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Display Order</label>
                 <Input type="number" value={editing.displayOrder || 0} onChange={(e) => setEditing({ ...editing, displayOrder: Number(e.target.value) })} dir="ltr" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{language === 'ar' ? 'سعر الترقية (سنت)' : 'Upgrade Price (cents)'}</label>
+                <Input type="number" value={editing.upgradePrice || 0} onChange={(e) => setEditing({ ...editing, upgradePrice: Number(e.target.value) })} dir="ltr" />
               </div>
             </div>
 

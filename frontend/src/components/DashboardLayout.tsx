@@ -46,8 +46,14 @@ import {
   BarChart3,
   Clock,
   DollarSign,
+  Briefcase,
+  Search,
+  Star,
+  Bell,
+  Award,
+  Activity,
 } from "lucide-react";
-import { CSSProperties, useEffect, useRef, useState } from "react";
+import { CSSProperties, useEffect, useRef, useState, lazy, Suspense } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 import { Button } from "./ui/button";
@@ -75,6 +81,12 @@ const menuSectionsDef: MenuSection[] = [
       { icon: FileText, labelKey: "admin.sidebar.articles", path: "/admin/articles", descKey: "admin.sidebar.articlesDesc" },
       { icon: Tag, labelKey: "admin.sidebar.coupons", path: "/admin/coupons", descKey: "admin.sidebar.couponsDesc" },
       { icon: MessageSquareQuote, labelKey: "admin.sidebar.testimonials", path: "/admin/testimonials", descKey: "admin.sidebar.testimonialsDesc" },
+    ]
+  },
+  {
+    labelKey: "admin.sidebar.careers",
+    items: [
+      { icon: Briefcase, labelKey: "admin.sidebar.jobsApplications", path: "/admin/jobs" },
     ]
   },
   {
@@ -109,6 +121,15 @@ const menuSectionsDef: MenuSection[] = [
       { icon: Users, labelKey: "admin.sidebar.subscribers", path: "/admin/reports/subscribers" },
       { icon: DollarSign, labelKey: "admin.sidebar.revenue", path: "/admin/reports/revenue" },
       { icon: Clock, labelKey: "admin.sidebar.expiry", path: "/admin/reports/expiry" },
+      { icon: Activity, labelKey: "admin.sidebar.engagement", path: "/admin/engagement" },
+    ]
+  },
+  {
+    labelKey: "admin.sidebar.moderation",
+    items: [
+      { icon: Star, labelKey: "admin.sidebar.reviews", path: "/admin/reviews" },
+      { icon: Bell, labelKey: "admin.sidebar.notifications", path: "/admin/notifications" },
+      { icon: Award, labelKey: "admin.sidebar.loyaltyPoints", path: "/admin/points" },
     ]
   },
 ];
@@ -202,6 +223,7 @@ function DashboardLayoutContent({
   const { state, toggleSidebar } = useSidebar();
   const isCollapsed = state === "collapsed";
   const [isResizing, setIsResizing] = useState(false);
+  const [showAdminSearch, setShowAdminSearch] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
   const isMobile = useIsMobile();
 
@@ -293,6 +315,19 @@ function DashboardLayoutContent({
           </SidebarHeader>
 
           <SidebarContent>
+            {/* Admin Search */}
+            {!isCollapsed && (
+              <div className="px-3 pt-2 pb-1">
+                <button
+                  onClick={() => setShowAdminSearch(true)}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground bg-muted/50 hover:bg-muted rounded-lg transition-colors"
+                >
+                  <Search className="w-4 h-4" />
+                  <span>{t('admin.sidebar.search')}</span>
+                  <kbd className="ms-auto text-[10px] bg-white border rounded px-1.5 py-0.5">⌘K</kbd>
+                </button>
+              </div>
+            )}
             {menuSectionsDef.map((section, sectionIndex) => (
               <SidebarGroup key={sectionIndex} className="shrink-0 py-1">
                 {!isCollapsed && (
@@ -414,6 +449,9 @@ function DashboardLayoutContent({
         )}
         <main className="flex-1 p-4" dir={isRTL ? "rtl" : "ltr"}>{children}</main>
       </SidebarInset>
+      {showAdminSearch && <AdminSearchDialogLazy onClose={() => setShowAdminSearch(false)} />}
     </div>
   );
 }
+
+const AdminSearchDialogLazy = lazy(() => import('./AdminSearchDialog'));

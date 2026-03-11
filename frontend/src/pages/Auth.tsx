@@ -101,7 +101,7 @@ export default function Auth() {
     setOtpMessage(null);
     const email = otpEmail.trim();
     if (!email) {
-      setOtpError("Please enter your email address");
+      setOtpError(t('auth.page.code.emailRequired'));
       return;
     }
 
@@ -113,11 +113,9 @@ export default function Auth() {
       await requestLoginCode.mutateAsync({ email });
       setOtpStep("verify");
       setResendCooldownSec(30);
-      setOtpMessage(
-        "If your email is eligible, we sent a 6-digit code. Please check your inbox and spam folder. If you don’t receive a code, activate a registration key or contact support."
-      );
+      setOtpMessage(t('auth.page.code.sentMessage'));
     } catch (e: any) {
-      setOtpError(e?.message || "Failed to send code. Please try again.");
+      setOtpError(e?.message || t('auth.page.code.sendFailed'));
     }
   };
 
@@ -128,11 +126,11 @@ export default function Auth() {
     const code = otpCode.trim();
 
     if (!email) {
-      setOtpError("Please enter your email address");
+      setOtpError(t('auth.page.code.emailRequired'));
       return;
     }
     if (!code) {
-      setOtpError("Please enter the 6-digit code");
+      setOtpError(t('auth.page.code.codeRequired'));
       return;
     }
 
@@ -140,7 +138,7 @@ export default function Auth() {
       await verifyLoginCode.mutateAsync({ email, code });
       window.location.href = nextPath ?? "/courses";
     } catch (e: any) {
-      setOtpError(e?.message || "Invalid code. Please try again.");
+      setOtpError(e?.message || t('auth.page.code.invalid'));
     }
   };
 
@@ -159,6 +157,13 @@ export default function Auth() {
 
       {showLogin ? (
         <div className="w-full flex flex-col items-center">
+          <Alert className="w-full max-w-md mb-4">
+            <AlertDescription>
+              <span className="block font-medium mb-1">{t('auth.page.loginOptionsTitle')}</span>
+              {t('auth.page.loginOptionsDescription')}
+            </AlertDescription>
+          </Alert>
+
           <div className="flex gap-2 mb-4">
             <Button
               type="button"
@@ -170,7 +175,7 @@ export default function Auth() {
                 setOtpMessage(null);
               }}
             >
-              Sign in with code
+              {t('auth.page.loginMethod.code')}
             </Button>
             <Button
               type="button"
@@ -182,16 +187,16 @@ export default function Auth() {
                 setOtpMessage(null);
               }}
             >
-              Sign in with password
+              {t('auth.page.loginMethod.password')}
             </Button>
           </div>
 
           {loginMethod === "code" ? (
             <Card className="w-full max-w-md">
               <CardHeader>
-                <CardTitle>Sign in</CardTitle>
+                <CardTitle>{t('auth.page.code.title')}</CardTitle>
                 <CardDescription>
-                  We’ll email you a one-time login code. If you don’t receive it, check your spam folder or activate a registration key.
+                  {t('auth.page.code.description')}
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -209,7 +214,7 @@ export default function Auth() {
                   )}
 
                   <div className="space-y-2">
-                    <Label htmlFor="otpEmail">Email</Label>
+                    <Label htmlFor="otpEmail">{t('auth.page.code.email')}</Label>
                     <Input
                       id="otpEmail"
                       name="otpEmail"
@@ -224,7 +229,7 @@ export default function Auth() {
 
                   {otpStep === "verify" && (
                     <div className="space-y-2">
-                      <Label htmlFor="otpCode">6-digit code</Label>
+                      <Label htmlFor="otpCode">{t('auth.page.code.code')}</Label>
                       <Input
                         id="otpCode"
                         name="otpCode"
@@ -245,10 +250,10 @@ export default function Auth() {
                         disabled={requestLoginCode.isPending || resendCooldownSec > 0}
                       >
                         {requestLoginCode.isPending
-                          ? "Sending..."
+                          ? t('auth.page.code.sending')
                           : resendCooldownSec > 0
-                            ? `Send code (${resendCooldownSec}s)`
-                            : "Send code"}
+                            ? `${t('auth.page.code.send')} (${resendCooldownSec}s)`
+                            : t('auth.page.code.send')}
                       </Button>
                     ) : (
                       <>
@@ -258,14 +263,14 @@ export default function Auth() {
                           onClick={handleSendCode}
                           disabled={requestLoginCode.isPending || resendCooldownSec > 0}
                         >
-                          {resendCooldownSec > 0 ? `Resend (${resendCooldownSec}s)` : "Resend"}
+                          {resendCooldownSec > 0 ? `${t('auth.page.code.resend')} (${resendCooldownSec}s)` : t('auth.page.code.resend')}
                         </Button>
                         <Button
                           className="flex-1"
                           onClick={handleVerifyCode}
                           disabled={verifyLoginCode.isPending}
                         >
-                          {verifyLoginCode.isPending ? "Verifying..." : "Verify"}
+                          {verifyLoginCode.isPending ? t('auth.page.code.verifying') : t('auth.page.code.verify')}
                         </Button>
                       </>
                     )}
@@ -274,7 +279,16 @@ export default function Auth() {
               </CardContent>
             </Card>
           ) : (
-            <LoginForm />
+            <LoginForm
+              onRequireOtp={(email, message) => {
+                setOtpEmail(email);
+                setOtpStep("verify");
+                setLoginMethod("code");
+                setOtpCode("");
+                setOtpError(null);
+                setOtpMessage(message || t('auth.page.code.stepUpFallback'));
+              }}
+            />
           )}
         </div>
       ) : (

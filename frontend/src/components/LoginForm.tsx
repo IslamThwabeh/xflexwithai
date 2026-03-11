@@ -8,14 +8,19 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2 } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 
-export function LoginForm({ onSuccess, isAdmin = false }: { onSuccess?: () => void; isAdmin?: boolean }) {
+export function LoginForm({ onSuccess, onRequireOtp, isAdmin = false }: { onSuccess?: () => void; onRequireOtp?: (email: string, message?: string) => void; isAdmin?: boolean }) {
   const { t } = useLanguage();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
   const loginMutation = trpc.auth.login.useMutation({
-    onSuccess: () => {
+    onSuccess: (data) => {
+      if (data?.requiresOtp) {
+        onRequireOtp?.(email, data?.message);
+        return;
+      }
+
       // Reload page to refresh auth state
       window.location.reload();
       onSuccess?.();
