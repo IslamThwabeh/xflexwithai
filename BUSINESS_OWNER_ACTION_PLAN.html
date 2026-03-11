@@ -294,7 +294,179 @@
       .phase-body { display: block !important; }
       .phase-toggle { display: none; }
       .lang-toggle { display: none; }
+      .interactive-section { break-inside: avoid; }
+      .action-plan-output { break-inside: avoid; }
     }
+
+    /* === Interactive Questionnaire === */
+    .interactive-section {
+      background: white;
+      border-radius: 12px;
+      margin-bottom: 20px;
+      border: 2px solid var(--blue-border);
+      box-shadow: 0 2px 8px rgba(37,99,235,0.08);
+      overflow: hidden;
+    }
+    .interactive-header {
+      background: linear-gradient(135deg, #2563eb, #3b82f6);
+      color: white;
+      padding: 24px 28px;
+    }
+    .interactive-header h2 { font-size: 1.3rem; margin-bottom: 4px; }
+    .interactive-header p { opacity: 0.85; font-size: 0.9rem; }
+    .q-section {
+      padding: 24px 28px;
+      border-bottom: 1px solid var(--gray-border);
+    }
+    .q-section:last-of-type { border-bottom: none; }
+    .q-section h3 {
+      font-size: 1.05rem;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .q-number {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--blue);
+      color: white;
+      font-size: 0.8rem;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    .q-label {
+      font-size: 0.92rem;
+      font-weight: 600;
+      margin-bottom: 10px;
+      color: #1f2937;
+    }
+    .q-sublabel {
+      font-size: 0.82rem;
+      color: var(--gray);
+      margin-bottom: 12px;
+    }
+    .radio-group, .checkbox-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .radio-opt, .checkbox-opt {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 10px 14px;
+      border: 1px solid var(--gray-border);
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.15s;
+      font-size: 0.88rem;
+    }
+    .radio-opt:hover, .checkbox-opt:hover { background: var(--blue-bg); border-color: var(--blue-border); }
+    .radio-opt.selected { background: var(--blue-bg); border-color: var(--blue); box-shadow: 0 0 0 1px var(--blue); }
+    .checkbox-opt.selected { background: var(--green-bg); border-color: var(--green); }
+    .radio-opt input, .checkbox-opt input { margin-top: 2px; accent-color: var(--blue); }
+    .opt-text { flex: 1; }
+    .opt-text strong { display: block; margin-bottom: 2px; }
+    .opt-text small { color: var(--gray); font-size: 0.8rem; }
+    .opt-tag {
+      font-size: 0.7rem;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-weight: 600;
+      white-space: nowrap;
+      align-self: center;
+    }
+    .tag-free { background: var(--green-bg); color: var(--green); }
+    .tag-paid { background: var(--yellow-bg); color: var(--yellow); }
+    .tag-recommended { background: var(--blue-bg); color: var(--blue); }
+    .comment-box {
+      width: 100%;
+      min-height: 60px;
+      border: 1px solid var(--gray-border);
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-family: inherit;
+      font-size: 0.88rem;
+      resize: vertical;
+      transition: border-color 0.2s;
+    }
+    .comment-box:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 2px rgba(37,99,235,0.15); }
+    .comment-box::placeholder { color: #9ca3af; }
+    .feature-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    @media (max-width: 640px) { .feature-grid { grid-template-columns: 1fr; } }
+
+    /* Action Plan Output */
+    .generate-btn {
+      display: block;
+      width: 100%;
+      padding: 16px;
+      background: linear-gradient(135deg, #16a34a, #22c55e);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      font-size: 1.05rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform 0.1s, box-shadow 0.2s;
+      margin: 24px 28px;
+      max-width: calc(100% - 56px);
+    }
+    .generate-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(22,163,74,0.3); }
+    .generate-btn:active { transform: translateY(0); }
+    .action-plan-output {
+      margin: 0 28px 28px;
+      padding: 24px;
+      background: linear-gradient(135deg, #f0fdf4, #ecfdf5);
+      border: 2px solid var(--green-border);
+      border-radius: 12px;
+      display: none;
+    }
+    .action-plan-output.visible { display: block; }
+    .action-plan-output h3 { font-size: 1.15rem; margin-bottom: 16px; color: var(--green); }
+    .action-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--green-border);
+      font-size: 0.9rem;
+    }
+    .action-item:last-child { border-bottom: none; }
+    .action-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 2px; }
+    .action-category {
+      font-weight: 700;
+      font-size: 0.95rem;
+      margin: 20px 0 8px;
+      padding-top: 12px;
+      border-top: 1px dashed var(--green-border);
+    }
+    .action-category:first-child { border-top: none; margin-top: 0; padding-top: 0; }
+    .copy-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      background: var(--green);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 16px;
+    }
+    .copy-btn:hover { opacity: 0.9; }
 
     /* Responsive */
     @media (max-width: 768px) {
@@ -979,6 +1151,259 @@
       </div>
     </div>
 
+    <!-- ========================== INTERACTIVE QUESTIONNAIRE ========================== -->
+    <div class="interactive-section" id="questionnaire">
+      <div class="interactive-header">
+        <h2 data-en="📋 Interactive Decision Questionnaire" data-ar="📋 استبيان القرارات التفاعلي"></h2>
+        <p data-en="Answer the questions below to generate a personalized action plan for XFlex Academy." data-ar="أجيبي على الأسئلة أدناه لتوليد خطة عمل مخصصة لأكاديمية إكس فلكس."></p>
+      </div>
+
+      <!-- Q1: Launch Readiness -->
+      <div class="q-section">
+        <h3><span class="q-number">1</span> <span data-en="Launch Readiness" data-ar="جاهزية الإطلاق"></span></h3>
+        <div class="q-label" data-en="Are you ready to launch the site for students?" data-ar="هل أنتِ مستعدة لإطلاق الموقع للطلاب؟"></div>
+        <div class="q-sublabel" data-en="The platform is functional with all core features. This determines our immediate next steps." data-ar="المنصة تعمل بجميع الميزات الأساسية. هذا يحدد خطواتنا التالية المباشرة."></div>
+        <div class="radio-group" id="q-launch">
+          <label class="radio-opt" onclick="selectRadio(this)">
+            <input type="radio" name="launch" value="now">
+            <span class="opt-text">
+              <strong data-en="Yes, launch now! 🚀" data-ar="نعم، أطلقي الآن! 🚀"></strong>
+              <small data-en="I want to start onboarding students as soon as possible." data-ar="أريد أن أبدأ بتسجيل الطلاب في أقرب وقت ممكن."></small>
+            </span>
+          </label>
+          <label class="radio-opt" onclick="selectRadio(this)">
+            <input type="radio" name="launch" value="after-qa">
+            <span class="opt-text">
+              <strong data-en="Yes, but after a QA testing round ✅" data-ar="نعم، ولكن بعد جولة اختبار ✅"></strong>
+              <small data-en="Let's do a final quality check first, then go live." data-ar="لنقم بفحص جودة نهائي أولاً، ثم ننطلق."></small>
+            </span>
+          </label>
+          <label class="radio-opt" onclick="selectRadio(this)">
+            <input type="radio" name="launch" value="not-yet">
+            <span class="opt-text">
+              <strong data-en="Not yet — I need more features first" data-ar="ليس بعد — أحتاج المزيد من الميزات أولاً"></strong>
+              <small data-en="There are specific features I want before going live." data-ar="هناك ميزات محددة أريدها قبل الإطلاق."></small>
+            </span>
+          </label>
+        </div>
+        <textarea class="comment-box" id="q-launch-comment" placeholder="Add any notes about launch timing..." data-placeholder-en="Add any notes about launch timing..." data-placeholder-ar="أضيفي أي ملاحظات حول توقيت الإطلاق..." maxlength="2000"></textarea>
+      </div>
+
+      <!-- Q2: Payment Gateway -->
+      <div class="q-section">
+        <h3><span class="q-number">2</span> <span data-en="Payment Setup" data-ar="إعداد الدفع"></span></h3>
+        <div class="q-label" data-en="How would you like students to pay?" data-ar="كيف تريدين أن يدفع الطلاب؟"></div>
+        <div class="q-sublabel" data-en="A payment gateway is required for online purchases. Manual handling works for a small number of students." data-ar="بوابة الدفع مطلوبة للمشتريات عبر الإنترنت. المعالجة اليدوية تعمل لعدد صغير من الطلاب."></div>
+        <div class="radio-group" id="q-payment">
+          <label class="radio-opt" onclick="selectRadio(this)">
+            <input type="radio" name="payment" value="stripe">
+            <span class="opt-text">
+              <strong data-en="Stripe (International)" data-ar="سترايب (دولي)"></strong>
+              <small data-en="Best for global students. ~2.9% + 30¢ per transaction. Quick setup." data-ar="الأفضل للطلاب الدوليين. ~2.9% + 30¢ لكل معاملة. إعداد سريع."></small>
+            </span>
+            <span class="opt-tag tag-recommended" data-en="Recommended" data-ar="موصى به"></span>
+          </label>
+          <label class="radio-opt" onclick="selectRadio(this)">
+            <input type="radio" name="payment" value="paytabs">
+            <span class="opt-text">
+              <strong data-en="PayTabs / HyperPay (MENA region)" data-ar="بيتابز / هايبر باي (منطقة الشرق الأوسط)"></strong>
+              <small data-en="Better for Arab region customers. Supports local payment methods." data-ar="أفضل لعملاء المنطقة العربية. يدعم طرق الدفع المحلية."></small>
+            </span>
+          </label>
+          <label class="radio-opt" onclick="selectRadio(this)">
+            <input type="radio" name="payment" value="manual">
+            <span class="opt-text">
+              <strong data-en="Manual / Bank Transfer (for now)" data-ar="يدوي / تحويل بنكي (حالياً)"></strong>
+              <small data-en="Students pay manually and you activate their accounts. Free but doesn't scale." data-ar="الطلاب يدفعون يدوياً وأنتِ تفعّلين حساباتهم. مجاني لكن لا يتوسع."></small>
+            </span>
+            <span class="opt-tag tag-free" data-en="Free" data-ar="مجاني"></span>
+          </label>
+          <label class="radio-opt" onclick="selectRadio(this)">
+            <input type="radio" name="payment" value="both">
+            <span class="opt-text">
+              <strong data-en="Both online + manual option" data-ar="كلاهما عبر الإنترنت + خيار يدوي"></strong>
+              <small data-en="Offer online checkout plus bank transfer as an alternative." data-ar="تقديم الدفع عبر الإنترنت بالإضافة إلى التحويل البنكي كبديل."></small>
+            </span>
+          </label>
+        </div>
+        <textarea class="comment-box" id="q-payment-comment" placeholder="Any preferences or questions about payment..." data-placeholder-en="Any preferences or questions about payment..." data-placeholder-ar="أي تفضيلات أو أسئلة حول الدفع..." maxlength="2000"></textarea>
+      </div>
+
+      <!-- Q3: Feature Selection -->
+      <div class="q-section">
+        <h3><span class="q-number">3</span> <span data-en="Feature Priorities" data-ar="أولويات الميزات"></span></h3>
+        <div class="q-label" data-en="Which features would you like to add? Select all that interest you." data-ar="ما الميزات التي تريدين إضافتها؟ اختاري كل ما يهمك."></div>
+        <div class="q-sublabel" data-en="✅ = Want it now &nbsp; | &nbsp; Leave unchecked = Maybe later or skip" data-ar="✅ = أريدها الآن &nbsp; | &nbsp; بدون تحديد = ربما لاحقاً أو تخطي"></div>
+
+        <div class="q-label" style="margin-top:12px; color:var(--green);" data-en="🆓 Free Features (built-in, no extra cost):" data-ar="🆓 ميزات مجانية (مبنية داخلياً، بدون تكلفة إضافية):"></div>
+        <div class="feature-grid" id="q-features-free">
+          <label class="checkbox-opt" onclick="toggleCheck(this)">
+            <input type="checkbox" name="feature" value="certificates">
+            <span class="opt-text"><strong data-en="Completion Certificates" data-ar="شهادات الإتمام"></strong><small data-en="Auto-generated PDF certificates" data-ar="شهادات PDF يتم إنشاؤها تلقائياً"></small></span>
+            <span class="opt-tag tag-free" data-en="Free" data-ar="مجاني"></span>
+          </label>
+          <label class="checkbox-opt" onclick="toggleCheck(this)">
+            <input type="checkbox" name="feature" value="analytics">
+            <span class="opt-text"><strong data-en="Analytics Dashboard" data-ar="لوحة التحليلات"></strong><small data-en="Revenue, enrollments, engagement reports" data-ar="تقارير الإيرادات، التسجيلات، المشاركة"></small></span>
+            <span class="opt-tag tag-free" data-en="Free" data-ar="مجاني"></span>
+          </label>
+          <label class="checkbox-opt" onclick="toggleCheck(this)">
+            <input type="checkbox" name="feature" value="wishlist">
+            <span class="opt-text"><strong data-en="Wishlist / Save for Later" data-ar="قائمة الأمنيات / احفظ للاحقاً"></strong><small data-en="Bookmark courses for future purchase" data-ar="ضع إشارة على الدورات للشراء لاحقاً"></small></span>
+            <span class="opt-tag tag-free" data-en="Free" data-ar="مجاني"></span>
+          </label>
+          <label class="checkbox-opt" onclick="toggleCheck(this)">
+            <input type="checkbox" name="feature" value="referral">
+            <span class="opt-text"><strong data-en="Referral System" data-ar="نظام الإحالة"></strong><small data-en="Students earn discounts by referring friends" data-ar="الطلاب يحصلون على خصومات بإحالة أصدقائهم"></small></span>
+            <span class="opt-tag tag-free" data-en="Free" data-ar="مجاني"></span>
+          </label>
+          <label class="checkbox-opt" onclick="toggleCheck(this)">
+            <input type="checkbox" name="feature" value="coupons">
+            <span class="opt-text"><strong data-en="Coupon / Promo Codes" data-ar="أكواد الخصم / العروض"></strong><small data-en="Admin-created discount codes" data-ar="أكواد خصم يتم إنشاؤها من الإدارة"></small></span>
+            <span class="opt-tag tag-free" data-en="Free" data-ar="مجاني"></span>
+          </label>
+          <label class="checkbox-opt" onclick="toggleCheck(this)">
+            <input type="checkbox" name="feature" value="community">
+            <span class="opt-text"><strong data-en="Community Forum" data-ar="منتدى المجتمع"></strong><small data-en="Discussion boards for students" data-ar="لوحات نقاش للطلاب"></small></span>
+            <span class="opt-tag tag-free" data-en="Free" data-ar="مجاني"></span>
+          </label>
+          <label class="checkbox-opt" onclick="toggleCheck(this)">
+            <input type="checkbox" name="feature" value="journal">
+            <span class="opt-text"><strong data-en="Trading Journal" data-ar="دفتر التداول"></strong><small data-en="Personal trade tracking for students" data-ar="تتبع الصفقات الشخصية للطلاب"></small></span>
+            <span class="opt-tag tag-free" data-en="Free" data-ar="مجاني"></span>
+          </label>
+          <label class="checkbox-opt" onclick="toggleCheck(this)">
+            <input type="checkbox" name="feature" value="mobile-app">
+            <span class="opt-text"><strong data-en="Mobile App (PWA)" data-ar="تطبيق الجوال (PWA)"></strong><small data-en="Installable app from browser" data-ar="تطبيق قابل للتثبيت من المتصفح"></small></span>
+            <span class="opt-tag tag-free" data-en="Free" data-ar="مجاني"></span>
+          </label>
+          <label class="checkbox-opt" onclick="toggleCheck(this)">
+            <input type="checkbox" name="feature" value="multi-lang">
+            <span class="opt-text"><strong data-en="Multi-Language Support" data-ar="دعم متعدد اللغات"></strong><small data-en="Full Arabic/English UI switch" data-ar="تبديل واجهة كامل عربي/إنجليزي"></small></span>
+            <span class="opt-tag tag-free" data-en="Free" data-ar="مجاني"></span>
+          </label>
+        </div>
+
+        <div class="q-label" style="margin-top:16px; color:var(--yellow);" data-en="💰 Paid Features (require external services):" data-ar="💰 ميزات مدفوعة (تتطلب خدمات خارجية):"></div>
+        <div class="feature-grid" id="q-features-paid">
+          <label class="checkbox-opt" onclick="toggleCheck(this)">
+            <input type="checkbox" name="feature" value="email-marketing">
+            <span class="opt-text"><strong data-en="Email Marketing" data-ar="التسويق عبر البريد"></strong><small data-en="Automated email campaigns — ~$20-35/mo" data-ar="حملات بريد تلقائية — ~$20-35/شهر"></small></span>
+            <span class="opt-tag tag-paid" data-en="~$20-35/mo" data-ar="~$20-35/شهر"></span>
+          </label>
+          <label class="checkbox-opt" onclick="toggleCheck(this)">
+            <input type="checkbox" name="feature" value="live-classes">
+            <span class="opt-text"><strong data-en="Live Classes (Zoom/Meet)" data-ar="دروس مباشرة (Zoom/Meet)"></strong><small data-en="Scheduled live sessions — ~$13-22/mo" data-ar="جلسات مباشرة مجدولة — ~$13-22/شهر"></small></span>
+            <span class="opt-tag tag-paid" data-en="~$13-22/mo" data-ar="~$13-22/شهر"></span>
+          </label>
+          <label class="checkbox-opt" onclick="toggleCheck(this)">
+            <input type="checkbox" name="feature" value="sms">
+            <span class="opt-text"><strong data-en="SMS Notifications" data-ar="إشعارات الرسائل النصية"></strong><small data-en="SMS for key events — ~$10-15/mo" data-ar="رسائل نصية للأحداث المهمة — ~$10-15/شهر"></small></span>
+            <span class="opt-tag tag-paid" data-en="~$10-15/mo" data-ar="~$10-15/شهر"></span>
+          </label>
+          <label class="checkbox-opt" onclick="toggleCheck(this)">
+            <input type="checkbox" name="feature" value="ai-tutor">
+            <span class="opt-text"><strong data-en="AI Tutor Chatbot" data-ar="روبوت المعلم الذكي"></strong><small data-en="AI answers student questions — ~$5-20/mo" data-ar="الذكاء الاصطناعي يجيب أسئلة الطلاب — ~$5-20/شهر"></small></span>
+            <span class="opt-tag tag-paid" data-en="~$5-20/mo" data-ar="~$5-20/شهر"></span>
+          </label>
+        </div>
+        <textarea class="comment-box" id="q-features-comment" placeholder="Any features you want that aren't listed? Notes on priorities..." data-placeholder-en="Any features you want that aren't listed? Notes on priorities..." data-placeholder-ar="أي ميزات تريدينها غير مذكورة؟ ملاحظات على الأولويات..." maxlength="2000"></textarea>
+      </div>
+
+      <!-- Q4: Content & Branding -->
+      <div class="q-section">
+        <h3><span class="q-number">4</span> <span data-en="Content Readiness" data-ar="جاهزية المحتوى"></span></h3>
+        <div class="q-label" data-en="What content do you have ready? Check what applies:" data-ar="ما المحتوى الجاهز لديكِ؟ حددي ما ينطبق:"></div>
+        <div class="checkbox-group" id="q-content">
+          <label class="checkbox-opt" onclick="toggleCheck(this)">
+            <input type="checkbox" name="content" value="instructor-bios">
+            <span class="opt-text"><strong data-en="Instructor profiles & bios are ready" data-ar="ملفات المدربين والسير الذاتية جاهزة"></strong></span>
+          </label>
+          <label class="checkbox-opt" onclick="toggleCheck(this)">
+            <input type="checkbox" name="content" value="course-videos">
+            <span class="opt-text"><strong data-en="All course videos are recorded & uploaded" data-ar="جميع فيديوهات الدورات مسجلة ومرفوعة"></strong></span>
+          </label>
+          <label class="checkbox-opt" onclick="toggleCheck(this)">
+            <input type="checkbox" name="content" value="pricing-final">
+            <span class="opt-text"><strong data-en="Final pricing for all packages is decided" data-ar="التسعير النهائي لجميع الباقات تم تحديده"></strong></span>
+          </label>
+          <label class="checkbox-opt" onclick="toggleCheck(this)">
+            <input type="checkbox" name="content" value="logo-branding">
+            <span class="opt-text"><strong data-en="Logo, colors & branding are finalized" data-ar="الشعار والألوان والعلامة التجارية مكتملة"></strong></span>
+          </label>
+          <label class="checkbox-opt" onclick="toggleCheck(this)">
+            <input type="checkbox" name="content" value="certificate-design">
+            <span class="opt-text"><strong data-en="Certificate design / template is ready" data-ar="تصميم / قالب الشهادة جاهز"></strong></span>
+          </label>
+          <label class="checkbox-opt" onclick="toggleCheck(this)">
+            <input type="checkbox" name="content" value="terms-privacy">
+            <span class="opt-text"><strong data-en="Terms of service & privacy policy are ready" data-ar="شروط الخدمة وسياسة الخصوصية جاهزة"></strong></span>
+          </label>
+          <label class="checkbox-opt" onclick="toggleCheck(this)">
+            <input type="checkbox" name="content" value="social-media">
+            <span class="opt-text"><strong data-en="Social media accounts are set up" data-ar="حسابات التواصل الاجتماعي جاهزة"></strong></span>
+          </label>
+        </div>
+        <textarea class="comment-box" id="q-content-comment" placeholder="What content still needs to be prepared?..." data-placeholder-en="What content still needs to be prepared?..." data-placeholder-ar="ما المحتوى الذي لا يزال بحاجة للإعداد؟..." maxlength="2000"></textarea>
+      </div>
+
+      <!-- Q5: Monthly Budget -->
+      <div class="q-section">
+        <h3><span class="q-number">5</span> <span data-en="Monthly Budget for External Services" data-ar="الميزانية الشهرية للخدمات الخارجية"></span></h3>
+        <div class="q-label" data-en="What's your comfortable monthly budget for paid tools/services?" data-ar="ما ميزانيتك الشهرية المريحة للأدوات/الخدمات المدفوعة؟"></div>
+        <div class="q-sublabel" data-en="This doesn't include development fees — just ongoing service costs (email, Zoom, etc.)" data-ar="هذا لا يشمل رسوم التطوير — فقط تكاليف الخدمات المستمرة (بريد، Zoom، إلخ)"></div>
+        <div class="radio-group" id="q-budget">
+          <label class="radio-opt" onclick="selectRadio(this)">
+            <input type="radio" name="budget" value="0">
+            <span class="opt-text">
+              <strong data-en="$0 — Free features only for now" data-ar="$0 — ميزات مجانية فقط حالياً"></strong>
+              <small data-en="Focus on what's already built. Add paid services later." data-ar="التركيز على ما هو مبني بالفعل. إضافة الخدمات المدفوعة لاحقاً."></small>
+            </span>
+          </label>
+          <label class="radio-opt" onclick="selectRadio(this)">
+            <input type="radio" name="budget" value="30">
+            <span class="opt-text">
+              <strong data-en="Up to $30/month" data-ar="حتى $30/شهر"></strong>
+              <small data-en="Enough for 1-2 paid services (e.g., Zoom or email marketing)." data-ar="كافي لخدمة أو اثنتين مدفوعتين (مثل Zoom أو التسويق عبر البريد)."></small>
+            </span>
+          </label>
+          <label class="radio-opt" onclick="selectRadio(this)">
+            <input type="radio" name="budget" value="70">
+            <span class="opt-text">
+              <strong data-en="Up to $70/month" data-ar="حتى $70/شهر"></strong>
+              <small data-en="Covers most paid features (email, Zoom, SMS)." data-ar="يغطي معظم الميزات المدفوعة (بريد، Zoom، رسائل نصية)."></small>
+            </span>
+          </label>
+          <label class="radio-opt" onclick="selectRadio(this)">
+            <input type="radio" name="budget" value="100+">
+            <span class="opt-text">
+              <strong data-en="$70+ — Full feature set" data-ar="$70+ — مجموعة ميزات كاملة"></strong>
+              <small data-en="All recommended paid services." data-ar="جميع الخدمات المدفوعة الموصى بها."></small>
+            </span>
+          </label>
+        </div>
+        <textarea class="comment-box" id="q-budget-comment" placeholder="Any budget concerns or questions..." data-placeholder-en="Any budget concerns or questions..." data-placeholder-ar="أي مخاوف أو أسئلة حول الميزانية..." maxlength="2000"></textarea>
+      </div>
+
+      <!-- Q6: Timeline -->
+      <div class="q-section">
+        <h3><span class="q-number">6</span> <span data-en="General Notes & Questions" data-ar="ملاحظات عامة وأسئلة"></span></h3>
+        <div class="q-label" data-en="Anything else you'd like to share or ask?" data-ar="أي شيء آخر تريدين مشاركته أو السؤال عنه؟"></div>
+        <textarea class="comment-box" id="q-general-comment" placeholder="Your thoughts, concerns, priorities, questions..." data-placeholder-en="Your thoughts, concerns, priorities, questions..." data-placeholder-ar="أفكارك، مخاوفك، أولوياتك، أسئلتك..." style="min-height:100px;" maxlength="2000"></textarea>
+      </div>
+
+      <!-- Generate Button -->
+      <button class="generate-btn" onclick="generateActionPlan()" data-en="✨ Generate My Action Plan" data-ar="✨ أنشئي خطة العمل الخاصة بي"></button>
+
+      <!-- Action Plan Output -->
+      <div class="action-plan-output" id="action-plan-output">
+        <h3 data-en="📌 Your Personalized Action Plan" data-ar="📌 خطة العمل المخصصة لكِ"></h3>
+        <div id="action-plan-content"></div>
+        <button class="copy-btn" onclick="copyActionPlan()" data-en="📋 Copy to Clipboard" data-ar="📋 نسخ إلى الحافظة"></button>
+      </div>
+    </div>
+    <!-- ========================== END QUESTIONNAIRE ========================== -->
+
     <div class="footer">
       XFlex with AI — Business Owner Action Plan &nbsp;|&nbsp; Last Updated: March 11, 2026
     </div>
@@ -1050,6 +1475,352 @@
       });
       document.querySelectorAll('.status-badge.status-pending').forEach(el => {
         el.textContent = t.statusPending;
+      });
+
+      // Update placeholder text
+      document.querySelectorAll('[data-placeholder-' + lang + ']').forEach(el => {
+        el.placeholder = el.getAttribute('data-placeholder-' + lang);
+      });
+    }
+
+    // ============== Interactive Questionnaire Logic ==============
+    let currentLang = 'en';
+
+    function selectRadio(label) {
+      const group = label.closest('.radio-group');
+      group.querySelectorAll('.radio-opt').forEach(l => l.classList.remove('selected'));
+      label.classList.add('selected');
+      label.querySelector('input').checked = true;
+    }
+
+    function toggleCheck(label) {
+      const cb = label.querySelector('input');
+      // Toggle happens after click, so classList should match the NEW state
+      setTimeout(() => {
+        label.classList.toggle('selected', cb.checked);
+      }, 0);
+    }
+
+    function getRadioValue(name) {
+      const checked = document.querySelector('input[name="' + name + '"]:checked');
+      return checked ? checked.value : null;
+    }
+
+    function getCheckedValues(name) {
+      return Array.from(document.querySelectorAll('input[name="' + name + '"]:checked'))
+        .map(cb => cb.value);
+    }
+
+    function getComment(id) {
+      const el = document.getElementById(id);
+      return el ? el.value.trim() : '';
+    }
+
+    const featureLabels = {
+      en: {
+        'certificates': 'Completion Certificates',
+        'analytics': 'Analytics Dashboard',
+        'wishlist': 'Wishlist / Save for Later',
+        'referral': 'Referral System',
+        'coupons': 'Coupon / Promo Codes',
+        'community': 'Community Forum',
+        'journal': 'Trading Journal',
+        'mobile-app': 'Mobile App (PWA)',
+        'multi-lang': 'Multi-Language Support',
+        'email-marketing': 'Email Marketing (~$20-35/mo)',
+        'live-classes': 'Live Classes / Zoom (~$13-22/mo)',
+        'sms': 'SMS Notifications (~$10-15/mo)',
+        'ai-tutor': 'AI Tutor Chatbot (~$5-20/mo)'
+      },
+      ar: {
+        'certificates': 'شهادات الإتمام',
+        'analytics': 'لوحة التحليلات',
+        'wishlist': 'قائمة الأمنيات',
+        'referral': 'نظام الإحالة',
+        'coupons': 'أكواد الخصم',
+        'community': 'منتدى المجتمع',
+        'journal': 'دفتر التداول',
+        'mobile-app': 'تطبيق الجوال (PWA)',
+        'multi-lang': 'دعم متعدد اللغات',
+        'email-marketing': 'التسويق عبر البريد (~$20-35/شهر)',
+        'live-classes': 'دروس مباشرة / Zoom (~$13-22/شهر)',
+        'sms': 'إشعارات الرسائل النصية (~$10-15/شهر)',
+        'ai-tutor': 'روبوت المعلم الذكي (~$5-20/شهر)'
+      }
+    };
+
+    const paidFeatures = ['email-marketing', 'live-classes', 'sms', 'ai-tutor'];
+
+    function generateActionPlan() {
+      const isAr = document.body.classList.contains('rtl');
+      const lang = isAr ? 'ar' : 'en';
+      const launch = getRadioValue('launch');
+      const payment = getRadioValue('payment');
+      const features = getCheckedValues('feature');
+      const content = getCheckedValues('content');
+      const budget = getRadioValue('budget');
+
+      const freeFeatures = features.filter(f => !paidFeatures.includes(f));
+      const selectedPaid = features.filter(f => paidFeatures.includes(f));
+      const labels = featureLabels[lang];
+
+      let html = '';
+
+      // ---- Section: Launch Steps ----
+      if (lang === 'ar') {
+        html += '<div class="action-category">🚀 خطوات الإطلاق</div>';
+      } else {
+        html += '<div class="action-category">🚀 Launch Steps</div>';
+      }
+
+      if (!launch) {
+        html += actionItem('⚠️', lang === 'ar'
+          ? 'يرجى اختيار جاهزية الإطلاق (السؤال 1) لتوليد خطة مخصصة.'
+          : 'Please select your launch readiness (Question 1) to generate a tailored plan.');
+      } else if (launch === 'now') {
+        html += actionItem('🟢', lang === 'ar'
+          ? 'قررتِ: الإطلاق الآن! نبدأ بالخطوات التالية فوراً.'
+          : 'Decision: Launch now! Proceed with the following steps immediately.');
+        html += actionItem('🧪', lang === 'ar'
+          ? 'جولة اختبار سريعة (1-2 يوم) للتأكد من أن كل شيء يعمل بشكل صحيح.'
+          : 'Quick QA check (1-2 days) to verify everything works correctly.');
+        html += actionItem('🌐', lang === 'ar'
+          ? 'ربط النطاق المخصص (إذا لم يتم بعد) وإعداد SSL.'
+          : 'Connect custom domain (if not done) and configure SSL.');
+        html += actionItem('📢', lang === 'ar'
+          ? 'إنشاء صفحة هبوط أو إعلان على وسائل التواصل الاجتماعي لإعلان الإطلاق.'
+          : 'Create a landing page or social media post to announce the launch.');
+      } else if (launch === 'after-qa') {
+        html += actionItem('🟡', lang === 'ar'
+          ? 'قررتِ: الإطلاق بعد جولة اختبار الجودة.'
+          : 'Decision: Launch after QA round.');
+        html += actionItem('🧪', lang === 'ar'
+          ? 'جدولة جولة اختبار QA شاملة (3-5 أيام) — فحص جميع تدفقات الطلاب والإدارة.'
+          : 'Schedule comprehensive QA round (3-5 days) — test all student and admin flows.');
+        html += actionItem('📝', lang === 'ar'
+          ? 'استخدمي قائمة اختبار QA الموجودة (QA_Testing_Checklist.html) لتتبع التقدم.'
+          : 'Use the existing QA Testing Checklist (QA_Testing_Checklist.html) to track progress.');
+        html += actionItem('🐛', lang === 'ar'
+          ? 'إصلاح أي مشاكل تم اكتشافها، ثم الإطلاق.'
+          : 'Fix any issues found, then proceed to launch.');
+      } else {
+        html += actionItem('🔴', lang === 'ar'
+          ? 'قررتِ: ليس بعد — تحتاجين المزيد من الميزات أولاً.'
+          : 'Decision: Not yet — need more features first.');
+        html += actionItem('📋', lang === 'ar'
+          ? 'راجعي الميزات المختارة أدناه — سنبني هذه أولاً قبل الإطلاق.'
+          : 'Review selected features below — we\'ll build these first before launch.');
+      }
+
+      // ---- Section: Payment ----
+      if (lang === 'ar') {
+        html += '<div class="action-category">💳 إعداد الدفع</div>';
+      } else {
+        html += '<div class="action-category">💳 Payment Setup</div>';
+      }
+
+      if (!payment) {
+        html += actionItem('⚠️', lang === 'ar'
+          ? 'يرجى اختيار طريقة الدفع (السؤال 2).'
+          : 'Please select a payment method (Question 2).');
+      } else if (payment === 'stripe') {
+        html += actionItem('💳', lang === 'ar'
+          ? 'إعداد حساب Stripe وربطه بالمنصة (2-3 أيام تطوير).'
+          : 'Set up Stripe account and integrate with the platform (2-3 days development).');
+        html += actionItem('🔑', lang === 'ar'
+          ? 'مطلوب: إنشاء حساب Stripe ← الحصول على API keys ← مشاركتها مع المطور.'
+          : 'Required: Create Stripe account → Get API keys → Share with developer.');
+      } else if (payment === 'paytabs') {
+        html += actionItem('💳', lang === 'ar'
+          ? 'إعداد حساب PayTabs/HyperPay وربطه (3-5 أيام تطوير).'
+          : 'Set up PayTabs/HyperPay account and integrate (3-5 days development).');
+        html += actionItem('🔑', lang === 'ar'
+          ? 'مطلوب: إنشاء حساب مع المزود ← الحصول على بيانات API ← المشاركة.'
+          : 'Required: Create account with provider → Get API credentials → Share.');
+      } else if (payment === 'manual') {
+        html += actionItem('✅', lang === 'ar'
+          ? 'دفع يدوي — لا حاجة لإعداد تقني. الطلاب يحولون المبلغ وأنتِ تفعّلين حساباتهم من لوحة الإدارة.'
+          : 'Manual payment — no tech setup needed. Students transfer money and you activate their accounts from admin panel.');
+        html += actionItem('⚠️', lang === 'ar'
+          ? 'ملاحظة: هذا لا يتوسع جيداً. فكري في بوابة دفع عند وصولك لـ 10+ طلاب.'
+          : 'Note: This doesn\'t scale well. Consider a payment gateway once you hit 10+ students.');
+      } else if (payment === 'both') {
+        html += actionItem('💳', lang === 'ar'
+          ? 'إعداد بوابة دفع عبر الإنترنت + خيار تحويل بنكي يدوي.'
+          : 'Set up online payment gateway + manual bank transfer option.');
+        html += actionItem('🔑', lang === 'ar'
+          ? 'مطلوب: اختيار مزود (Stripe أو PayTabs) ← إعداد الحساب ← مشاركة API keys.'
+          : 'Required: Pick a provider (Stripe or PayTabs) → Set up account → Share API keys.');
+      }
+
+      // ---- Section: Free Features to Build ----
+      if (freeFeatures.length > 0) {
+        html += '<div class="action-category">' + (lang === 'ar' ? '🆓 ميزات مجانية للبناء' : '🆓 Free Features to Build') + '</div>';
+        freeFeatures.forEach(f => {
+          html += actionItem('🔧', (lang === 'ar' ? 'بناء: ' : 'Build: ') + labels[f]);
+        });
+        html += actionItem('📅', lang === 'ar'
+          ? 'الوقت المقدر: ' + (freeFeatures.length * 2) + '-' + (freeFeatures.length * 4) + ' أيام تطوير للجميع.'
+          : 'Estimated time: ' + (freeFeatures.length * 2) + '-' + (freeFeatures.length * 4) + ' development days total.');
+      }
+
+      // ---- Section: Paid Features ----
+      if (selectedPaid.length > 0) {
+        html += '<div class="action-category">' + (lang === 'ar' ? '💰 ميزات مدفوعة لإعدادها' : '💰 Paid Features to Set Up') + '</div>';
+        selectedPaid.forEach(f => {
+          html += actionItem('💎', (lang === 'ar' ? 'إعداد: ' : 'Set up: ') + labels[f]);
+        });
+
+        // Estimate monthly cost
+        var monthlyCost = 0;
+        selectedPaid.forEach(f => {
+          if (f === 'email-marketing') monthlyCost += 27;
+          if (f === 'live-classes') monthlyCost += 17;
+          if (f === 'sms') monthlyCost += 12;
+          if (f === 'ai-tutor') monthlyCost += 12;
+        });
+        html += actionItem('💵', lang === 'ar'
+          ? 'التكلفة الشهرية المقدرة: ~$' + monthlyCost + '/شهر للخدمات الخارجية.'
+          : 'Estimated monthly cost: ~$' + monthlyCost + '/mo for external services.');
+
+        // Budget warning
+        if (budget && budget !== '100+') {
+          var budgetNum = parseInt(budget);
+          if (monthlyCost > budgetNum) {
+            html += actionItem('⚠️', lang === 'ar'
+              ? 'تنبيه: الميزات المختارة (~$' + monthlyCost + '/شهر) تتجاوز ميزانيتك ($' + budgetNum + '/شهر). فكري في البدء بالأهم أولاً.'
+              : 'Warning: Selected features (~$' + monthlyCost + '/mo) exceed your budget ($' + budgetNum + '/mo). Consider starting with the most important ones first.');
+          }
+        }
+      }
+
+      // ---- Section: Content Checklist ----
+      var allContentItems = ['instructor-bios', 'course-videos', 'pricing-final', 'logo-branding', 'certificate-design', 'terms-privacy', 'social-media'];
+      var missingContent = allContentItems.filter(c => !content.includes(c));
+      if (missingContent.length > 0) {
+        var contentLabelsEn = {
+          'instructor-bios': 'Prepare instructor profiles & bios',
+          'course-videos': 'Record & upload all course videos',
+          'pricing-final': 'Finalize pricing for all packages',
+          'logo-branding': 'Finalize logo, colors & branding',
+          'certificate-design': 'Design certificate template',
+          'terms-privacy': 'Prepare terms of service & privacy policy',
+          'social-media': 'Set up social media accounts'
+        };
+        var contentLabelsAr = {
+          'instructor-bios': 'إعداد ملفات وسير المدربين',
+          'course-videos': 'تسجيل ورفع جميع فيديوهات الدورات',
+          'pricing-final': 'تحديد التسعير النهائي لجميع الباقات',
+          'logo-branding': 'إكمال الشعار والألوان والعلامة التجارية',
+          'certificate-design': 'تصميم قالب الشهادة',
+          'terms-privacy': 'إعداد شروط الخدمة وسياسة الخصوصية',
+          'social-media': 'إعداد حسابات التواصل الاجتماعي'
+        };
+        html += '<div class="action-category">' + (lang === 'ar' ? '📦 محتوى يحتاج إعداد' : '📦 Content Still Needed') + '</div>';
+        var cl = lang === 'ar' ? contentLabelsAr : contentLabelsEn;
+        missingContent.forEach(c => {
+          html += actionItem('📝', cl[c]);
+        });
+      } else if (content.length > 0) {
+        html += '<div class="action-category">' + (lang === 'ar' ? '✅ المحتوى جاهز' : '✅ Content Ready') + '</div>';
+        html += actionItem('🎉', lang === 'ar'
+          ? 'جميع عناصر المحتوى جاهزة! ممتاز.'
+          : 'All content items are ready! Excellent.');
+      }
+
+      // ---- Section: Comments Summary ----
+      var comments = [];
+      var launchComment = getComment('q-launch-comment');
+      var paymentComment = getComment('q-payment-comment');
+      var featuresComment = getComment('q-features-comment');
+      var contentComment = getComment('q-content-comment');
+      var budgetComment = getComment('q-budget-comment');
+      var generalComment = getComment('q-general-comment');
+
+      if (launchComment) comments.push({ section: lang === 'ar' ? 'الإطلاق' : 'Launch', text: launchComment });
+      if (paymentComment) comments.push({ section: lang === 'ar' ? 'الدفع' : 'Payment', text: paymentComment });
+      if (featuresComment) comments.push({ section: lang === 'ar' ? 'الميزات' : 'Features', text: featuresComment });
+      if (contentComment) comments.push({ section: lang === 'ar' ? 'المحتوى' : 'Content', text: contentComment });
+      if (budgetComment) comments.push({ section: lang === 'ar' ? 'الميزانية' : 'Budget', text: budgetComment });
+      if (generalComment) comments.push({ section: lang === 'ar' ? 'ملاحظات عامة' : 'General Notes', text: generalComment });
+
+      if (comments.length > 0) {
+        html += '<div class="action-category">' + (lang === 'ar' ? '💬 ملاحظاتك' : '💬 Your Comments') + '</div>';
+        comments.forEach(c => {
+          html += actionItem('💬', '<strong>' + c.section + ':</strong> ' + escapeHtml(c.text));
+        });
+      }
+
+      // ---- Summary ----
+      html += '<div class="action-category">' + (lang === 'ar' ? '📊 الملخص' : '📊 Summary') + '</div>';
+      var totalFeatures = features.length;
+      var freeCount = freeFeatures.length;
+      var paidCount = selectedPaid.length;
+      var readyContent = content.length;
+      var totalContent = allContentItems.length;
+
+      html += actionItem('📋', lang === 'ar'
+        ? 'الميزات المختارة: ' + totalFeatures + ' (' + freeCount + ' مجانية, ' + paidCount + ' مدفوعة)'
+        : 'Features selected: ' + totalFeatures + ' (' + freeCount + ' free, ' + paidCount + ' paid)');
+      html += actionItem('📦', lang === 'ar'
+        ? 'جاهزية المحتوى: ' + readyContent + '/' + totalContent + ' عناصر جاهزة'
+        : 'Content readiness: ' + readyContent + '/' + totalContent + ' items ready');
+
+      if (launch === 'now' || launch === 'after-qa') {
+        html += actionItem('🎯', lang === 'ar'
+          ? 'الخطوة التالية الرئيسية: ' + (launch === 'now' ? 'اختبار سريع ثم الإطلاق!' : 'جولة اختبار QA شاملة.')
+          : 'Main next step: ' + (launch === 'now' ? 'Quick QA check then launch!' : 'Full QA testing round.'));
+      }
+
+      // Show the output
+      var output = document.getElementById('action-plan-output');
+      document.getElementById('action-plan-content').innerHTML = html;
+      output.classList.add('visible');
+      output.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function actionItem(icon, text) {
+      return '<div class="action-item"><span class="action-icon">' + icon + '</span><span>' + text + '</span></div>';
+    }
+
+    function escapeHtml(text) {
+      var div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function copyActionPlan() {
+      var content = document.getElementById('action-plan-content');
+      // Build plain text version
+      var lines = [];
+      content.querySelectorAll('.action-category').forEach(function(cat) {
+        lines.push('\n' + cat.textContent);
+      });
+      content.querySelectorAll('.action-item').forEach(function(item) {
+        var icon = item.querySelector('.action-icon').textContent;
+        var text = item.querySelector('span:last-child').textContent;
+        lines.push(icon + ' ' + text);
+      });
+
+      // Rebuild as ordered text
+      var plainText = '📌 XFlex Action Plan\n' + '='.repeat(30) + '\n';
+      var nodes = content.children;
+      for (var i = 0; i < nodes.length; i++) {
+        var node = nodes[i];
+        if (node.classList.contains('action-category')) {
+          plainText += '\n' + node.textContent + '\n' + '-'.repeat(20) + '\n';
+        } else if (node.classList.contains('action-item')) {
+          var icon = node.querySelector('.action-icon').textContent;
+          var text = node.querySelector('span:last-child').textContent;
+          plainText += icon + ' ' + text + '\n';
+        }
+      }
+
+      navigator.clipboard.writeText(plainText).then(function() {
+        var btn = document.querySelector('.copy-btn');
+        var original = btn.textContent;
+        btn.textContent = '✅ Copied!';
+        setTimeout(function() { btn.textContent = original; }, 2000);
       });
     }
   </script>
