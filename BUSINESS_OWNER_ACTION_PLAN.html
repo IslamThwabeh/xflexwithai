@@ -1392,17 +1392,17 @@
         <textarea class="comment-box" id="q-general-comment" placeholder="Your thoughts, concerns, priorities, questions..." data-placeholder-en="Your thoughts, concerns, priorities, questions..." data-placeholder-ar="أفكارك، مخاوفك، أولوياتك، أسئلتك..." style="min-height:100px;" maxlength="2000"></textarea>
       </div>
 
-      <!-- Generate Button -->
-      <button class="generate-btn" onclick="generateActionPlan()" data-en="✨ Generate My Action Plan" data-ar="✨ أنشئي خطة العمل الخاصة بي"></button>
+      <!-- Generate + Save Buttons -->
+      <div style="display:flex; gap:12px; flex-wrap:wrap; margin:24px 28px;">
+        <button class="generate-btn" style="margin:0; flex:1; min-width:200px;" onclick="generateActionPlan()" data-en="✨ Generate My Action Plan" data-ar="✨ أنشئي خطة العمل الخاصة بي"></button>
+        <button class="generate-btn" style="margin:0; flex:1; min-width:200px; background:linear-gradient(135deg,#2563eb,#3b82f6);" onclick="saveAsHtml()" data-en="💾 Save Answers as HTML" data-ar="💾 حفظ الإجابات كملف HTML"></button>
+      </div>
 
       <!-- Action Plan Output -->
       <div class="action-plan-output" id="action-plan-output">
         <h3 data-en="📌 Your Personalized Action Plan" data-ar="📌 خطة العمل المخصصة لكِ"></h3>
         <div id="action-plan-content"></div>
-        <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:16px;">
-          <button class="copy-btn" onclick="copyActionPlan()" data-en="📋 Copy to Clipboard" data-ar="📋 نسخ إلى الحافظة"></button>
-          <button class="copy-btn" style="background:var(--blue);" onclick="saveAsHtml()" data-en="💾 Save as HTML" data-ar="💾 حفظ كملف HTML"></button>
-        </div>
+        <button class="copy-btn" onclick="copyActionPlan()" data-en="📋 Copy to Clipboard" data-ar="📋 نسخ إلى الحافظة"></button>
       </div>
     </div>
     <!-- ========================== END QUESTIONNAIRE ========================== -->
@@ -1828,6 +1828,11 @@
     }
 
     function saveAsHtml() {
+      // Auto-generate action plan first if not already visible
+      var output = document.getElementById('action-plan-output');
+      if (!output.classList.contains('visible')) {
+        generateActionPlan();
+      }
       var isAr = document.body.classList.contains('rtl');
       var lang = isAr ? 'ar' : 'en';
       var dir = isAr ? 'rtl' : 'ltr';
