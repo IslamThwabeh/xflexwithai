@@ -90,9 +90,22 @@ const menuSectionsDef: MenuSection[] = [
     ]
   },
   {
+    labelKey: "admin.sidebar.lexai",
+    items: [
+      { icon: MessageSquare, labelKey: "admin.sidebar.conversations", path: "/admin/lexai/conversations" },
+      { icon: Users, labelKey: "admin.sidebar.subscriptions", path: "/admin/lexai/subscriptions" },
+    ]
+  },
+  {
     labelKey: "admin.sidebar.users",
     items: [
       { icon: Users, labelKey: "admin.sidebar.usersList", path: "/admin/users" },
+    ]
+  },
+  {
+    labelKey: "admin.sidebar.recommendations",
+    items: [
+      { icon: MessageSquare, labelKey: "admin.sidebar.groupMgmt", path: "/admin/recommendations" },
     ]
   },
   {

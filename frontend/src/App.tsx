@@ -23,11 +23,11 @@ const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
 const AdminCourses = lazy(() => import("./pages/AdminCourses"));
 const AdminEpisodes = lazy(() => import("./pages/AdminEpisodes"));
 const AdminUsers = lazy(() => import("./pages/AdminUsers"));
-// Legacy key pages kept in codebase but removed from navigation
+// Old course key page hidden — replaced by package keys system
 // const AdminKeys = lazy(() => import("./pages/AdminKeys"));
-// const AdminLexaiSubscriptions = lazy(() => import("./pages/AdminLexaiSubscriptions"));
-// const AdminLexaiConversations = lazy(() => import("./pages/AdminLexaiConversations"));
-// const AdminRecommendations = lazy(() => import("./pages/AdminRecommendations"));
+const AdminLexaiSubscriptions = lazy(() => import("./pages/AdminLexaiSubscriptions"));
+const AdminLexaiConversations = lazy(() => import("./pages/AdminLexaiConversations"));
+const AdminRecommendations = lazy(() => import("./pages/AdminRecommendations"));
 const AdminSupport = lazy(() => import("./pages/AdminSupport"));
 const AdminRoles = lazy(() => import("./pages/AdminRoles"));
 const AdminPackages = lazy(() => import("./pages/AdminPackages"));
@@ -143,13 +143,27 @@ function Router() {
           <AdminUsers />
         </AdminRoute>
       </Route>
-      {/* Legacy keys route removed from navigation — kept in codebase for future use */}
+      {/* Old course keys route hidden — replaced by package keys */}
       <Route path={"/admin/package-keys"}>
         <AdminRoute>
           <AdminPackageKeys />
         </AdminRoute>
       </Route>
-      {/* LexAI & Recommendations admin routes removed from navigation — kept in codebase for future use */}
+      <Route path={"/admin/lexai/subscriptions"}>
+        <AdminRoute>
+          <AdminLexaiSubscriptions />
+        </AdminRoute>
+      </Route>
+      <Route path={"/admin/lexai/conversations"}>
+        <AdminRoute>
+          <AdminLexaiConversations />
+        </AdminRoute>
+      </Route>
+      <Route path={"/admin/recommendations"}>
+        <AdminRoute>
+          <AdminRecommendations />
+        </AdminRoute>
+      </Route>
       <Route path={"/admin/support"}>
         <AdminRoute>
           <AdminSupport />
