@@ -82,7 +82,7 @@ export default function MyOrders() {
                           {order.isGift ? <Badge variant="outline" className="text-xs">🎁</Badge> : null}
                         </div>
                         <p className="text-sm text-gray-500">
-                          {new Date(order.createdAt).toLocaleDateString(isRtl ? 'ar-SA' : 'en-US')} •{' '}
+                          {new Date(order.createdAt).toLocaleDateString(isRtl ? 'ar-EG' : 'en-US')} •{' '}
                           {order.paymentMethod === 'paypal' ? 'PayPal' : order.paymentMethod === 'bank_transfer' ? (isRtl ? 'حوالة بنكية' : 'Bank Transfer') : '—'}
                         </p>
                       </div>

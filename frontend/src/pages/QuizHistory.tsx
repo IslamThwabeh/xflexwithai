@@ -117,7 +117,7 @@ export default function QuizHistory() {
                           )}
                         </div>
                         <p className="text-sm text-gray-600 mt-1">
-                          {attempt.completedAt ? new Date(attempt.completedAt).toLocaleString('ar-SA', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'N/A'}
+                          {attempt.completedAt ? new Date(attempt.completedAt).toLocaleString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'N/A'}
                         </p>
                       </div>
                     </div>

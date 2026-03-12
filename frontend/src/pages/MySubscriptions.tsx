@@ -104,8 +104,8 @@ export default function MySubscriptions() {
                       </Badge>
                     </div>
                     <p className="text-sm text-gray-500">
-                      {isRtl ? 'بدأ' : 'Started'}: {new Date(sub.startDate).toLocaleDateString(isRtl ? 'ar-SA' : 'en-US')}
-                      {sub.endDate && ` • ${isRtl ? 'ينتهي' : 'Ends'}: ${new Date(sub.endDate).toLocaleDateString(isRtl ? 'ar-SA' : 'en-US')}`}
+                      {isRtl ? 'بدأ' : 'Started'}: {new Date(sub.startDate).toLocaleDateString(isRtl ? 'ar-EG' : 'en-US')}
+                      {sub.endDate && ` • ${isRtl ? 'ينتهي' : 'Ends'}: ${new Date(sub.endDate).toLocaleDateString(isRtl ? 'ar-EG' : 'en-US')}`}
                     </p>
                   </div>
                 </div>

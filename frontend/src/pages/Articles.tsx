@@ -62,7 +62,7 @@ export default function Articles() {
                     {article.publishedAt && (
                       <div className="flex items-center gap-1.5 text-xs text-gray-400 mt-auto">
                         <Clock className="w-3 h-3" />
-                        {new Date(article.publishedAt).toLocaleDateString(isRtl ? 'ar-SA' : 'en-US', {
+                        {new Date(article.publishedAt).toLocaleDateString(isRtl ? 'ar-EG' : 'en-US', {
                           year: 'numeric', month: 'long', day: 'numeric',
                         })}
                       </div>

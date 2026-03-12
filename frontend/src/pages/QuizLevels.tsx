@@ -157,7 +157,7 @@ export default function QuizLevels() {
                           آخر محاولة
                         </span>
                         <span className="text-gray-800">
-                          {new Date(level.lastAttemptAt).toLocaleDateString('ar-SA')}
+                          {new Date(level.lastAttemptAt).toLocaleDateString('ar-EG')}
                         </span>
                       </div>
                     )}

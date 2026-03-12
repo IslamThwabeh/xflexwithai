@@ -65,7 +65,7 @@ export default function Events() {
                       {isRtl ? typeLabels[event.eventType]?.ar : typeLabels[event.eventType]?.en || event.eventType}
                     </Badge>
                     <span className="text-xs text-gray-400">
-                      {new Date(event.eventDate).toLocaleDateString(isRtl ? 'ar-SA' : 'en-US', {
+                      {new Date(event.eventDate).toLocaleDateString(isRtl ? 'ar-EG' : 'en-US', {
                         year: 'numeric', month: 'long', day: 'numeric',
                       })}
                     </span>

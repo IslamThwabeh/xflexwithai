@@ -94,7 +94,7 @@ export default function Recommendations() {
     if (!me?.subscription?.endDate) return "-";
     const date = new Date(me.subscription.endDate);
     if (Number.isNaN(date.getTime())) return "-";
-    return date.toLocaleDateString(language === 'ar' ? "ar-SA" : "en-US");
+    return date.toLocaleDateString(language === 'ar' ? "ar-EG" : "en-US");
   }, [me?.subscription?.endDate, language]);
 
   const onActivate = () => {
@@ -236,14 +236,13 @@ export default function Recommendations() {
               ) : (
                 feed.map((message: any) => (
                   <div key={message.id} className="rounded-lg border p-4 space-y-3 bg-white">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
                         <Badge variant="outline">{message.type}</Badge>
                         {message.isAnalyst && <Badge>{t('rec.analyst')}</Badge>}
-                        <span className="text-sm text-muted-foreground">{message.authorName}</span>
                       </div>
-                      <div className="text-xs text-muted-foreground">
-                        {message.createdAt ? new Date(message.createdAt).toLocaleString(language === 'ar' ? "ar-SA" : "en-US") : "-"}
+                      <div className="text-xs text-muted-foreground whitespace-nowrap">
+                        {message.createdAt ? new Date(message.createdAt).toLocaleString(language === 'ar' ? "ar-EG" : "en-US") : "-"}
                       </div>
                     </div>
 

@@ -101,7 +101,7 @@ export default function OrderDetail() {
           <div className="grid sm:grid-cols-2 gap-4 text-sm mb-6">
             <div>
               <span className="text-gray-500">{isRtl ? 'التاريخ' : 'Date'}:</span>{' '}
-              {new Date(order.createdAt).toLocaleDateString(isRtl ? 'ar-SA' : 'en-US')}
+              {new Date(order.createdAt).toLocaleDateString(isRtl ? 'ar-EG' : 'en-US')}
             </div>
             <div>
               <span className="text-gray-500">{isRtl ? 'طريقة الدفع' : 'Payment Method'}:</span>{' '}

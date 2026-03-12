@@ -247,8 +247,8 @@ export default function AdminRecommendations() {
                         <Badge variant={status === t('admin.rec.available') ? "default" : "secondary"}>{status}</Badge>
                       </TableCell>
                       <TableCell>{key.entitlementDays ? `${key.entitlementDays}d` : (isRTL ? 'افتراضي' : 'Default')}</TableCell>
-                      <TableCell>{key.expiresAt ? new Date(key.expiresAt).toLocaleDateString(isRTL ? "ar-SA" : undefined) : "-"}</TableCell>
-                      <TableCell>{key.activatedAt ? new Date(key.activatedAt).toLocaleString("ar-SA") : "-"}</TableCell>
+                      <TableCell>{key.expiresAt ? new Date(key.expiresAt).toLocaleDateString(isRTL ? "ar-EG" : undefined) : "-"}</TableCell>
+                      <TableCell>{key.activatedAt ? new Date(key.activatedAt).toLocaleString("ar-EG") : "-"}</TableCell>
                       <TableCell className="flex items-center gap-2">
                         <Button size="icon" variant="ghost" onClick={() => copyKey(key.keyCode)}>
                           <Copy className="h-4 w-4" />
@@ -297,7 +297,7 @@ export default function AdminRecommendations() {
                         {subscription.isPaused ? (isRTL ? 'موقوف مؤقتاً' : 'Paused') : (isRTL ? 'نشط' : 'Active')}
                       </Badge>
                     </TableCell>
-                    <TableCell>{subscription.endDate ? new Date(subscription.endDate).toLocaleDateString(isRTL ? 'ar-SA' : undefined) : '-'}</TableCell>
+                    <TableCell>{subscription.endDate ? new Date(subscription.endDate).toLocaleDateString(isRTL ? 'ar-EG' : undefined) : '-'}</TableCell>
                     <TableCell>{subscription.pausedRemainingDays ? `${subscription.pausedRemainingDays}d` : '-'}</TableCell>
                     <TableCell>
                       {subscription.isPaused ? (

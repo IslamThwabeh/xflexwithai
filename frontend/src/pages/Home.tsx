@@ -489,7 +489,7 @@ export default function Home() {
                       </span>
                       <span className="text-xs text-gray-400 flex items-center gap-1">
                         <Calendar className="w-3 h-3" />
-                        {new Date(event.eventDate).toLocaleDateString(language === 'ar' ? 'ar-SA' : 'en-US', {
+                        {new Date(event.eventDate).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US', {
                           month: 'short',
                           day: 'numeric',
                           year: 'numeric',
@@ -546,7 +546,7 @@ export default function Home() {
                       <Newspaper className="w-3.5 h-3.5 text-gray-400" />
                       {article.publishedAt && (
                         <span className="text-xs text-gray-400">
-                          {new Date(article.publishedAt).toLocaleDateString(language === 'ar' ? 'ar-SA' : 'en-US', {
+                          {new Date(article.publishedAt).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US', {
                             month: 'short',
                             day: 'numeric',
                           })}
