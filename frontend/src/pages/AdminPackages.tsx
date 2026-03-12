@@ -26,19 +26,33 @@ export default function AdminPackages() {
       includesLexai: 0, includesRecommendations: 0, includesSupport: 0, includesPdf: 0,
       isLifetime: 1, isPublished: 0, displayOrder: 0, upgradePrice: 0,
     });
+    // Note: for new packages, price is entered in $ and converted to cents on save
   };
 
   const startEdit = (pkg: any) => {
     setIsNew(false);
-    setEditing({ ...pkg });
+    // Convert cents → dollars for display
+    setEditing({
+      ...pkg,
+      price: (pkg.price || 0) / 100,
+      renewalPrice: (pkg.renewalPrice || 0) / 100,
+      upgradePrice: (pkg.upgradePrice || 0) / 100,
+    });
   };
 
   const handleSave = async () => {
     if (!editing) return;
+    // Convert dollars → cents for storage
+    const toSave = {
+      ...editing,
+      price: Math.round((editing.price || 0) * 100),
+      renewalPrice: Math.round((editing.renewalPrice || 0) * 100),
+      upgradePrice: Math.round((editing.upgradePrice || 0) * 100),
+    };
     if (isNew) {
-      await createMutation.mutateAsync(editing);
+      await createMutation.mutateAsync(toSave);
     } else {
-      await updateMutation.mutateAsync(editing);
+      await updateMutation.mutateAsync(toSave);
     }
     setEditing(null);
   };
@@ -86,7 +100,7 @@ export default function AdminPackages() {
                 <Input value={editing.nameAr} onChange={(e) => setEditing({ ...editing, nameAr: e.target.value })} dir="rtl" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{language === 'ar' ? 'السعر (سنت)' : 'Price (cents)'}</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{language === 'ar' ? 'السعر ($)' : 'Price ($)'}</label>
                 <Input type="number" value={editing.price} onChange={(e) => setEditing({ ...editing, price: Number(e.target.value) })} dir="ltr" />
               </div>
               <div>
@@ -100,7 +114,7 @@ export default function AdminPackages() {
                   value={editing.descriptionAr || ''} onChange={(e) => setEditing({ ...editing, descriptionAr: e.target.value })} dir="rtl" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{language === 'ar' ? 'سعر التجديد (سنت)' : 'Renewal Price (cents)'}</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{language === 'ar' ? 'سعر التجديد ($)' : 'Renewal Price ($)'}</label>
                 <Input type="number" value={editing.renewalPrice || 0} onChange={(e) => setEditing({ ...editing, renewalPrice: Number(e.target.value) })} dir="ltr" />
               </div>
               <div>
@@ -108,7 +122,7 @@ export default function AdminPackages() {
                 <Input type="number" value={editing.displayOrder || 0} onChange={(e) => setEditing({ ...editing, displayOrder: Number(e.target.value) })} dir="ltr" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{language === 'ar' ? 'سعر الترقية (سنت)' : 'Upgrade Price (cents)'}</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{language === 'ar' ? 'سعر الترقية ($)' : 'Upgrade Price ($)'}</label>
                 <Input type="number" value={editing.upgradePrice || 0} onChange={(e) => setEditing({ ...editing, upgradePrice: Number(e.target.value) })} dir="ltr" />
               </div>
             </div>

@@ -287,7 +287,7 @@ export default function AdminPackageKeys() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>{language === 'ar' ? 'السعر (سنت)' : 'Price (cents)'}</Label>
+                    <Label>{language === 'ar' ? 'السعر ($)' : 'Price ($)'}</Label>
                     <Input
                       type="number"
                       value={price}

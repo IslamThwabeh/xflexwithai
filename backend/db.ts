@@ -2199,15 +2199,23 @@ export async function fulfillPackageEntitlements(
     });
   }
 
-  // Enroll in all package courses
-  const pkgCourses = await getPackageCourses(packageId);
-  for (const pc of pkgCourses) {
+  // Enroll in all package courses (or all published courses if none linked)
+  let pkgCourses = await getPackageCourses(packageId);
+  let courseIdsToEnroll: number[] = pkgCourses.map(pc => pc.courseId);
+
+  // Fallback: if no courses are linked to this package, enroll in ALL published courses
+  if (courseIdsToEnroll.length === 0) {
+    const allPublished = await getPublishedCourses();
+    courseIdsToEnroll = allPublished.map(c => c.id);
+  }
+
+  for (const courseId of courseIdsToEnroll) {
     try {
-      const existing = await getEnrollmentByUserAndCourse(userId, pc.courseId);
+      const existing = await getEnrollmentByUserAndCourse(userId, courseId);
       if (!existing) {
         await createEnrollment({
           userId,
-          courseId: pc.courseId,
+          courseId,
           paymentStatus: "completed",
           isSubscriptionActive: true,
           registrationKeyId: registrationKeyId ?? null,
