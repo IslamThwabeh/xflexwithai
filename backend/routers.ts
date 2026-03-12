@@ -2202,6 +2202,14 @@ export const appRouter = router({
         logger.info('[KEYS] Activating key', { keyCode: input.keyCode, email: input.email });
 
         const existingKey = await db.getRegistrationKeyByCode(input.keyCode);
+        // Package keys should go through the package activation flow
+        if (existingKey?.packageId) {
+          const result = await db.activatePackageKey(input.keyCode, input.email);
+          if (!result.success) {
+            throw new TRPCError({ code: 'BAD_REQUEST', message: result.message });
+          }
+          return result;
+        }
         if (existingKey && existingKey.courseId === 0) {
           throw new TRPCError({
             code: 'BAD_REQUEST',
@@ -2267,6 +2275,14 @@ export const appRouter = router({
         logger.info('[KEYS] Redeeming key', { keyCode: input.keyCode, userId: ctx.user.id });
 
         const existingKey = await db.getRegistrationKeyByCode(input.keyCode);
+        // Package keys should go through the package activation flow
+        if (existingKey?.packageId) {
+          const result = await db.activatePackageKey(input.keyCode, ctx.user.email);
+          if (!result.success) {
+            throw new TRPCError({ code: 'BAD_REQUEST', message: result.message });
+          }
+          return result;
+        }
         if (existingKey && existingKey.courseId === 0) {
           throw new TRPCError({
             code: 'BAD_REQUEST',
@@ -2281,7 +2297,6 @@ export const appRouter = router({
         }
 
         const result = await db.activateRegistrationKey(input.keyCode, ctx.user.email);
-
         if (!result.success) {
           throw new TRPCError({ code: 'BAD_REQUEST', message: result.message });
         }

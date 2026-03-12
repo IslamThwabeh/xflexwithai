@@ -1744,6 +1744,11 @@ export async function activateLexaiKey(keyCode: string, email: string) {
     return { success: false, message: "This key is not for LexAI" };
   }
 
+  // Package keys have courseId=0 but should NOT be activated as LexAI keys
+  if (key.packageId) {
+    return { success: false, message: "This is a package key. Please activate it from the packages page." };
+  }
+
   if (!key.isActive) {
     return { success: false, message: "This LexAI key is deactivated" };
   }
