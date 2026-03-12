@@ -11,6 +11,7 @@ import { format } from "date-fns";
 import { useEffect, useRef } from "react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import ClientLayout from "@/components/ClientLayout";
+import KeyActivationPrompt from "@/components/KeyActivationPrompt";
 
 function formatSafeDate(
   value: string | number | Date | null | undefined,
@@ -110,6 +111,11 @@ export default function MyDashboard() {
 
   return (
     <ClientLayout>
+      <KeyActivationPrompt
+        hasEnrollments={totalCourses > 0}
+        hasLexai={!!lexaiSubscription}
+        hasRecommendations={!!recommendationsAccess?.hasSubscription}
+      />
       <div className="bg-gradient-to-br from-blue-50 via-white to-purple-50 min-h-[calc(100vh-64px)]">
       <main className="container mx-auto px-4 py-8">
         <div className="space-y-8">
