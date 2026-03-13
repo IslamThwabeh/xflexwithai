@@ -1146,6 +1146,16 @@ export const appRouter = router({
           lastAccessed: new Date().toISOString(),
           completedAt: completedEpisodes >= totalEpisodes ? new Date().toISOString() : null,
         });
+
+        // Check if student has reached 50% and subscriptions should auto-activate (21-day max passed)
+        // This also auto-activates if maxActivationDate has passed, so subscriptions stay in sync
+        let subscriptionActivated = false;
+        if (progressPercentage >= 50) {
+          const activationStatus = await db.getPendingActivationStatus(ctx.user.id);
+          // If maxActivationDate has passed, it will auto-activate inside getPendingActivationStatus
+          subscriptionActivated = activationStatus.hasPending === false && !activationStatus.lexai && !activationStatus.recommendation;
+        }
+
         logger.info('Episode marked as complete', { 
           userId: ctx.user.id, 
           episodeId: input.episodeId, 
@@ -1153,7 +1163,7 @@ export const appRouter = router({
           progress: progressPercentage,
           completed: completedEpisodes >= totalEpisodes
         });
-        return { success: true };
+        return { success: true, progressPercentage, reachedHalfway: progressPercentage >= 50 };
       }),
   }),
 
@@ -3019,6 +3029,28 @@ export const appRouter = router({
     myActivePackage: protectedProcedure.query(async ({ ctx }) => {
       if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
       return db.getUserActivePackage(ctx.user.id);
+    }),
+
+    // User: check if subscriptions are pending activation + course progress
+    activationStatus: protectedProcedure.query(async ({ ctx }) => {
+      if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+      return db.getPendingActivationStatus(ctx.user.id);
+    }),
+
+    // User: start the 30-day timer now (student's choice)
+    activateNow: protectedProcedure.mutation(async ({ ctx }) => {
+      if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+      const status = await db.getPendingActivationStatus(ctx.user.id);
+      if (!status.hasPending) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'No pending subscriptions to activate' });
+      }
+      if (!status.canActivate) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: `Complete at least 50% of the course first (currently at ${status.progressPercent}%)`,
+        });
+      }
+      return db.activateStudentSubscriptions(ctx.user.id, false);
     }),
 
     // Admin: list all subscriptions

@@ -2,22 +2,38 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { trpc } from "@/lib/trpc";
 import { format } from "date-fns";
-import { BookOpen, Clock, Award, Settings, LogOut } from "lucide-react";
+import { BookOpen, Clock, Award, Settings, LogOut, Zap, AlertCircle } from "lucide-react";
 import { Link, useLocation } from "wouter";
+import { toast } from "sonner";
 
 export default function Dashboard() {
   const { t } = useLanguage();
   const { user, logout } = useAuth();
   const [, setLocation] = useLocation();
+  const utils = trpc.useUtils();
 
   // Fetch user enrollments
   const { data: enrollments = [], isLoading: enrollmentsLoading } = trpc.users.getUserEnrollments.useQuery();
 
   // Fetch user statistics
   const { data: stats } = trpc.users.getUserStats.useQuery();
+
+  // Deferred activation status
+  const { data: activationStatus } = trpc.subscriptions.activationStatus.useQuery();
+
+  const activateNowMutation = trpc.subscriptions.activateNow.useMutation({
+    onSuccess: () => {
+      toast.success(t('activation.activated'));
+      utils.subscriptions.activationStatus.invalidate();
+    },
+    onError: (error) => {
+      toast.error(error.message);
+    },
+  });
 
   const displayName = user?.name || user?.email || "Student";
   const welcomeTitle = t("dashboard.title").replace("{name}", displayName);
@@ -54,6 +70,49 @@ export default function Dashboard() {
               </Button>
             </div>
           </div>
+
+          {/* Deferred Activation Banner */}
+          {activationStatus?.hasPending && (
+            <Card className={`mb-8 border-2 ${activationStatus.canActivate ? 'border-yellow-400 bg-yellow-50 dark:bg-yellow-950/20' : 'border-blue-300 bg-blue-50 dark:bg-blue-950/20'}`}>
+              <CardContent className="py-4 px-5">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                  <Zap className={`h-8 w-8 shrink-0 ${activationStatus.canActivate ? 'text-yellow-500' : 'text-blue-500'}`} />
+                  <div className="flex-1 space-y-1">
+                    <p className="font-semibold text-gray-900 dark:text-white">
+                      {t('activation.bannerTitle')}
+                    </p>
+                    <p className="text-sm text-gray-600 dark:text-gray-300">
+                      {activationStatus.canActivate
+                        ? t('activation.bannerDescReady').replace('{progress}', String(activationStatus.progressPercent ?? 0))
+                        : t('activation.bannerDescPending').replace('{progress}', String(activationStatus.progressPercent ?? 0))}
+                    </p>
+                    {activationStatus.canActivate && activationStatus.maxActivationDate && (
+                      <p className="text-xs text-amber-700 dark:text-amber-400 flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3" />
+                        {t('activation.maxDateWarning').replace(
+                          '{date}',
+                          new Date(activationStatus.maxActivationDate).toLocaleDateString()
+                        )}
+                      </p>
+                    )}
+                    {!activationStatus.canActivate && (
+                      <Progress value={activationStatus.progressPercent ?? 0} className="h-2 mt-2" />
+                    )}
+                  </div>
+                  {activationStatus.canActivate && (
+                    <Button
+                      className="shrink-0 gap-2"
+                      onClick={() => activateNowMutation.mutate()}
+                      disabled={activateNowMutation.isPending}
+                    >
+                      <Zap className="h-4 w-4" />
+                      {activateNowMutation.isPending ? t('activation.activating') : t('activation.startNow')}
+                    </Button>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Statistics Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">

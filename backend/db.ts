@@ -479,6 +479,25 @@ export async function getEnrollmentsByUserId(userId: number) {
 }
 
 /**
+ * Get course progress for a user from their enrollment record.
+ * progressPercentage is already maintained by markEpisodeComplete (episodes + quiz gating).
+ */
+export async function getCourseProgressForUser(userId: number, courseId: number) {
+  const db = await getDb();
+  if (!db) return { progressPercentage: 0, completedEpisodes: 0, totalEpisodes: 0 };
+  const [enrollment] = await db
+    .select({
+      progressPercentage: enrollments.progressPercentage,
+      completedEpisodes: enrollments.completedEpisodes,
+      totalEpisodes: sql<number>`(SELECT COUNT(*) FROM ${episodes} WHERE ${episodes.courseId} = ${courseId})`,
+    })
+    .from(enrollments)
+    .where(and(eq(enrollments.userId, userId), eq(enrollments.courseId, courseId)))
+    .limit(1);
+  return enrollment ?? { progressPercentage: 0, completedEpisodes: 0, totalEpisodes: 0 };
+}
+
+/**
  * Get user statistics
  */
 export async function getUserStatistics(userId: number) {
@@ -2037,6 +2056,8 @@ export async function createPackageKey(input: {
     packageId: input.packageId,
     createdBy: input.createdBy,
     email: input.email ?? null,
+    isActive: true,
+    activatedAt: null,
     notes: input.notes ?? null,
     price: input.price ?? 0,
     currency: input.currency ?? "USD",
@@ -2070,6 +2091,8 @@ export async function createBulkPackageKeys(input: {
     courseId: 0,
     packageId: input.packageId,
     createdBy: input.createdBy,
+    isActive: true,
+    activatedAt: null,
     createdAt: new Date().toISOString(),
     notes: input.notes ?? null,
     price: input.price ?? 0,
@@ -2175,7 +2198,9 @@ export async function fulfillPackageEntitlements(
     ?? normalizePositiveInteger(pkg.durationDays)
     ?? DEFAULT_KEY_ENTITLEMENT_DAYS;
   const now = new Date();
-  const serviceEndDate = buildEndDateFromDays(now, entitlementDays);
+  // For deferred activation: set a placeholder endDate to 21+30=51 days (max wait + real period)
+  const placeholderEndDate = buildEndDateFromDays(now, 51); // 21 days max wait + 30 days real period
+  const maxActivationDate = buildEndDateFromDays(now, 21); // 21 days from now
 
   const existingPackageSubscriptions = await getUserPackageSubscriptions(userId);
   const currentPackageSubscription = existingPackageSubscriptions.find((subscription) => subscription.packageId === packageId);
@@ -2242,8 +2267,11 @@ export async function fulfillPackageEntitlements(
         pausedAt: null,
         pausedReason: null,
         pausedRemainingDays: null,
+        isPendingActivation: true,
+        studentActivatedAt: null,
+        maxActivationDate: maxActivationDate.toISOString(),
         startDate: now.toISOString(),
-        endDate: serviceEndDate.toISOString(),
+        endDate: placeholderEndDate.toISOString(),
         paymentStatus: "completed",
         paymentAmount: 0,
         paymentCurrency: "USD",
@@ -2254,8 +2282,11 @@ export async function fulfillPackageEntitlements(
         userId,
         isActive: true,
         isPaused: false,
+        isPendingActivation: true,
+        studentActivatedAt: null,
+        maxActivationDate: maxActivationDate.toISOString(),
         startDate: now.toISOString(),
-        endDate: serviceEndDate.toISOString(),
+        endDate: placeholderEndDate.toISOString(),
         paymentStatus: "completed",
         paymentAmount: 0,
         paymentCurrency: "USD",
@@ -2278,8 +2309,11 @@ export async function fulfillPackageEntitlements(
         pausedAt: null,
         pausedReason: null,
         pausedRemainingDays: null,
+        isPendingActivation: true,
+        studentActivatedAt: null,
+        maxActivationDate: maxActivationDate.toISOString(),
         startDate: now.toISOString(),
-        endDate: serviceEndDate.toISOString(),
+        endDate: placeholderEndDate.toISOString(),
         paymentStatus: "completed",
         paymentAmount: 0,
         paymentCurrency: "USD",
@@ -2291,8 +2325,11 @@ export async function fulfillPackageEntitlements(
         registrationKeyId: registrationKeyId ?? null,
         isActive: true,
         isPaused: false,
+        isPendingActivation: true,
+        studentActivatedAt: null,
+        maxActivationDate: maxActivationDate.toISOString(),
         startDate: now.toISOString(),
-        endDate: serviceEndDate.toISOString(),
+        endDate: placeholderEndDate.toISOString(),
         paymentStatus: "completed",
         paymentAmount: 0,
         paymentCurrency: "USD",
@@ -3686,6 +3723,111 @@ export async function getAllPackageSubscriptions(): Promise<PackageSubscription[
   const db = await getDb();
   if (!db) return [];
   return db.select().from(packageSubscriptions).orderBy(desc(packageSubscriptions.createdAt));
+}
+
+// ============================================================================
+// Deferred Activation: student chooses when to start their 30-day timer
+// ============================================================================
+
+/**
+ * Get pending-activation subscriptions for a user (both LexAI and Recommendations).
+ * Also returns current course progress so the frontend can decide whether to show the popup.
+ */
+export async function getPendingActivationStatus(userId: number) {
+  const db = await getDb();
+  if (!db) return { hasPending: false, lexai: null, recommendation: null, progressPercent: 0 };
+
+  const [lexaiSub] = await db
+    .select()
+    .from(lexaiSubscriptions)
+    .where(and(eq(lexaiSubscriptions.userId, userId), eq(lexaiSubscriptions.isPendingActivation, true)))
+    .limit(1);
+
+  const [recSub] = await db
+    .select()
+    .from(recommendationSubscriptions)
+    .where(and(eq(recommendationSubscriptions.userId, userId), eq(recommendationSubscriptions.isPendingActivation, true)))
+    .limit(1);
+
+  // Get course progress from the first enrolled course
+  const [enrollment] = await db
+    .select({ courseId: enrollments.courseId, progressPercentage: enrollments.progressPercentage })
+    .from(enrollments)
+    .where(eq(enrollments.userId, userId))
+    .orderBy(desc(enrollments.enrolledAt))
+    .limit(1);
+
+  const progressPercent = enrollment?.progressPercentage ?? 0;
+
+  // Check if max activation date has passed and auto-activate if so
+  const now = new Date();
+  if (lexaiSub?.maxActivationDate && new Date(lexaiSub.maxActivationDate) <= now) {
+    await activateStudentSubscriptions(userId, true);
+    return { hasPending: false, lexai: null, recommendation: null, progressPercent };
+  }
+  if (!lexaiSub && recSub?.maxActivationDate && new Date(recSub.maxActivationDate) <= now) {
+    await activateStudentSubscriptions(userId, true);
+    return { hasPending: false, lexai: null, recommendation: null, progressPercent };
+  }
+
+  return {
+    hasPending: !!(lexaiSub || recSub),
+    lexai: lexaiSub ?? null,
+    recommendation: recSub ?? null,
+    progressPercent,
+    canActivate: progressPercent >= 50,
+    maxActivationDate: lexaiSub?.maxActivationDate ?? recSub?.maxActivationDate ?? null,
+  };
+}
+
+/**
+ * Activate all pending subscriptions for a user — starts the real 30-day timer.
+ * Called by student (when they choose "Start Now") or auto-triggered at maxActivationDate.
+ */
+export async function activateStudentSubscriptions(userId: number, isAutoActivation = false) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const now = new Date();
+  const realEndDate = buildEndDateFromDays(now, 30);
+
+  const [lexaiSub] = await db
+    .select()
+    .from(lexaiSubscriptions)
+    .where(and(eq(lexaiSubscriptions.userId, userId), eq(lexaiSubscriptions.isPendingActivation, true)))
+    .limit(1);
+
+  const [recSub] = await db
+    .select()
+    .from(recommendationSubscriptions)
+    .where(and(eq(recommendationSubscriptions.userId, userId), eq(recommendationSubscriptions.isPendingActivation, true)))
+    .limit(1);
+
+  if (lexaiSub) {
+    await db.update(lexaiSubscriptions).set({
+      isPendingActivation: false,
+      studentActivatedAt: now.toISOString(),
+      startDate: now.toISOString(),
+      endDate: realEndDate.toISOString(),
+      updatedAt: now.toISOString(),
+    }).where(eq(lexaiSubscriptions.id, lexaiSub.id));
+  }
+
+  if (recSub) {
+    await db.update(recommendationSubscriptions).set({
+      isPendingActivation: false,
+      studentActivatedAt: now.toISOString(),
+      startDate: now.toISOString(),
+      endDate: realEndDate.toISOString(),
+      updatedAt: now.toISOString(),
+    }).where(eq(recommendationSubscriptions.id, recSub.id));
+  }
+
+  return {
+    activated: !!(lexaiSub || recSub),
+    isAutoActivation,
+    endDate: realEndDate.toISOString(),
+  };
 }
 
 export async function getRecommendationSubscriptionsWithUsers() {

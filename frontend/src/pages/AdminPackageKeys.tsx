@@ -217,12 +217,26 @@ export default function AdminPackageKeys() {
     return matchesSearch && matchesPackage;
   });
 
+  const selectedPkg = packages.find((p: any) => p.id === selectedPackage);
+  const isBasicPackage = selectedPkg?.slug === 'basic';
+
   const PackageSelector = () => (
     <div className="space-y-2">
       <Label>{language === 'ar' ? 'الباقة' : 'Package'}</Label>
       <Select
         value={selectedPackage ? String(selectedPackage) : ""}
-        onValueChange={(v) => setSelectedPackage(parseInt(v))}
+        onValueChange={(v) => {
+          const pkgId = parseInt(v);
+          setSelectedPackage(pkgId);
+          const pkg = packages.find((p: any) => p.id === pkgId);
+          if (pkg) {
+            setPrice(String(Math.round(pkg.price / 100)));
+            if (pkg.slug === 'basic') {
+              setIsUpgrade(false);
+              setReferredBy("");
+            }
+          }
+        }}
       >
         <SelectTrigger>
           <SelectValue placeholder={language === 'ar' ? 'اختر الباقة...' : 'Select package...'} />
@@ -316,7 +330,8 @@ export default function AdminPackageKeys() {
                       placeholder={language === 'ar' ? 'ملاحظات اختيارية...' : 'Optional notes...'}
                     />
                   </div>
-                  {/* Upgrade toggle */}
+                  {/* Upgrade toggle - only for non-basic packages */}
+                  {!isBasicPackage && (
                   <div className="flex items-center gap-3 p-3 bg-amber-50 dark:bg-amber-950/30 rounded-lg border border-amber-200 dark:border-amber-800">
                     <input
                       type="checkbox"
@@ -330,7 +345,8 @@ export default function AdminPackageKeys() {
                       {language === 'ar' ? 'هذا ترقية (من الأساسية إلى الشاملة)' : 'This is an upgrade (Basic → Comprehensive)'}
                     </Label>
                   </div>
-                  {isUpgrade && (
+                  )}
+                  {isUpgrade && !isBasicPackage && (
                     <div className="space-y-2">
                       <Label>{language === 'ar' ? 'اسم العضو المُحوِّل' : 'Referred by (team member)'}</Label>
                       <Input
@@ -402,7 +418,8 @@ export default function AdminPackageKeys() {
                     <Label>{language === 'ar' ? 'آخر موعد لتفعيل المفتاح' : 'Redeem before'}</Label>
                     <Input type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} />
                   </div>
-                  {/* Upgrade toggle for bulk */}
+                  {/* Upgrade toggle for bulk - only for non-basic packages */}
+                  {!isBasicPackage && (
                   <div className="flex items-center gap-3 p-3 bg-amber-50 dark:bg-amber-950/30 rounded-lg border border-amber-200 dark:border-amber-800">
                     <input
                       type="checkbox"
@@ -416,7 +433,8 @@ export default function AdminPackageKeys() {
                       {language === 'ar' ? 'مفاتيح ترقية' : 'Upgrade keys'}
                     </Label>
                   </div>
-                  {isUpgrade && (
+                  )}
+                  {isUpgrade && !isBasicPackage && (
                     <div className="space-y-2">
                       <Label>{language === 'ar' ? 'اسم العضو المُحوِّل' : 'Referred by'}</Label>
                       <Input

@@ -363,6 +363,12 @@ const translations = {
     'admin.sidebar.subscribers': 'Subscribers',
     'admin.sidebar.revenue': 'Revenue',
     'admin.sidebar.expiry': 'Expiry',
+    'admin.sidebar.engagement': 'Engagement',
+    'admin.sidebar.moderation': 'Moderation',
+    'admin.sidebar.reviews': 'Reviews',
+    'admin.sidebar.notifications': 'Notifications',
+    'admin.sidebar.loyaltyPoints': 'Loyalty Points',
+    'admin.sidebar.search': 'Search',
 
     // Admin Quiz Management
     'admin.quizzes.title': 'Quiz Management',
@@ -1047,6 +1053,19 @@ const translations = {
     'course.toastCompleteFail': 'Unable to mark episode complete',
     'course.toastAnswerAll': 'Please answer all questions',
     'course.toastUnlockPrev': 'Complete previous episodes to unlock this one.',
+    // Deferred activation
+    'activation.dialogTitle': "You've Reached 50%! Ready to Start?",
+    'activation.dialogDesc': 'Your LexAI and Recommendations are ready. Start your 30-day access whenever you choose.',
+    'activation.important': 'Important',
+    'activation.autoActivateNote': 'Services will auto-activate on {date} if you haven\'t started them by then.',
+    'activation.startNow': 'Start My 30 Days Now',
+    'activation.continueLearning': 'Continue Learning First',
+    'activation.bannerTitle': 'Your Services Are Ready to Activate',
+    'activation.bannerDescReady': "You're at {progress}% — start your 30-day LexAI & Recommendations access whenever you're ready.",
+    'activation.bannerDescPending': "Complete 50% of the course to unlock your 30-day LexAI & Recommendations. You're at {progress}%.",
+    'activation.maxDateWarning': 'Auto-activates on {date}.',
+    'activation.activating': 'Activating...',
+    'activation.activated': 'Services activated! Your 30 days start now.',
   },
   ar: {
     // Header/Navigation
@@ -1398,6 +1417,12 @@ const translations = {
     'admin.sidebar.subscribers': 'المشتركون',
     'admin.sidebar.revenue': 'الإيرادات',
     'admin.sidebar.expiry': 'انتهاء الاشتراكات',
+    'admin.sidebar.engagement': 'التفاعل',
+    'admin.sidebar.moderation': 'الإشراف',
+    'admin.sidebar.reviews': 'التقييمات',
+    'admin.sidebar.notifications': 'الإشعارات',
+    'admin.sidebar.loyaltyPoints': 'نقاط الولاء',
+    'admin.sidebar.search': 'بحث',
 
     // Admin Quiz Management
     'admin.quizzes.title': 'إدارة الاختبارات',
@@ -2082,6 +2107,19 @@ const translations = {
     'course.toastCompleteFail': 'تعذر تحديد الحلقة كمكتملة',
     'course.toastAnswerAll': 'يرجى الإجابة على جميع الأسئلة',
     'course.toastUnlockPrev': 'أكمل الحلقات السابقة لفتح هذه الحلقة.',
+    // Deferred activation
+    'activation.dialogTitle': 'وصلت لـ 50%! هل أنت مستعد للبدء؟',
+    'activation.dialogDesc': 'خدمات LexAI والتوصيات جاهزة. ابدأ وصولك لمدة 30 يومًا متى تشاء.',
+    'activation.important': 'مهم',
+    'activation.autoActivateNote': 'ستبدأ الخدمات تلقائيًا بتاريخ {date} إذا لم تبدأها بنفسك.',
+    'activation.startNow': 'ابدأ الـ30 يوم الآن',
+    'activation.continueLearning': 'أكمل التعلم أولاً',
+    'activation.bannerTitle': 'خدماتك جاهزة للتفعيل',
+    'activation.bannerDescReady': 'وصلت لـ {progress}% — ابدأ وصولك لمدة 30 يومًا لـ LexAI والتوصيات متى تشاء.',
+    'activation.bannerDescPending': 'أكمل 50% من الدورة لفتح وصولك لـ30 يومًا لـ LexAI والتوصيات. أنت عند {progress}%.',
+    'activation.maxDateWarning': 'تبدأ تلقائيًا بتاريخ {date}.',
+    'activation.activating': 'جارٍ التفعيل...',
+    'activation.activated': 'تم تفعيل الخدمات! يبدأ الـ30 يومًا الآن.',
   },
 };
 

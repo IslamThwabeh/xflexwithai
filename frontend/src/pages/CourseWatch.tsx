@@ -3,6 +3,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { APP_TITLE, getLoginUrl } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { 
@@ -11,7 +19,9 @@ import {
   Play, 
   CheckCircle2, 
   Lock, 
-  ChevronRight 
+  ChevronRight,
+  Zap,
+  AlertCircle,
 } from "lucide-react";
 import { Link, useRoute } from "wouter";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -54,16 +64,38 @@ export default function CourseWatch() {
   );
 
   const markCompleteMutation = trpc.enrollments.markEpisodeComplete.useMutation({
-    onSuccess: () => {
+    onSuccess: (data) => {
       toast.success(t('course.toastCompleted'));
       utils.enrollments.getEnrollment.invalidate();
       utils.enrollments.myEnrollments.invalidate();
       utils.episodeProgress.getCourse.invalidate();
+      // Show activation dialog if student just reached 50% and has pending subscriptions
+      if (data?.reachedHalfway) {
+        utils.subscriptions.activationStatus.invalidate();
+        // Small delay so the invalidation resolves first
+        setTimeout(() => setShowActivationDialog(true), 400);
+      }
     },
     onError: (error) => {
       toast.error(error.message || t('course.toastCompleteFail'));
     },
   });
+
+  const activateNowMutation = trpc.subscriptions.activateNow.useMutation({
+    onSuccess: () => {
+      toast.success(t('activation.activated'));
+      setShowActivationDialog(false);
+      utils.subscriptions.activationStatus.invalidate();
+    },
+    onError: (error) => {
+      toast.error(error.message);
+    },
+  });
+
+  const { data: activationStatus } = trpc.subscriptions.activationStatus.useQuery(
+    undefined,
+    { enabled: isAuthenticated }
+  );
 
   const updateEpisodeProgressMutation = trpc.episodeProgress.updateProgress.useMutation();
 
@@ -76,6 +108,7 @@ export default function CourseWatch() {
     totalQuestions: number;
     passingScore: number;
   } | null>(null);
+  const [showActivationDialog, setShowActivationDialog] = useState(false);
   const lastSyncedSecondRef = useRef<number>(0);
 
   const isLoading = courseLoading || episodesLoading;
@@ -567,6 +600,58 @@ export default function CourseWatch() {
         </div>
       </div>
     </div>
+
+    {/* Deferred Activation Dialog */}
+    {activationStatus?.hasPending && (
+      <Dialog
+        open={showActivationDialog && activationStatus.hasPending}
+        onOpenChange={setShowActivationDialog}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Zap className="h-5 w-5 text-yellow-500" />
+              {t('activation.dialogTitle')}
+            </DialogTitle>
+            <DialogDescription>
+              {t('activation.dialogDesc')}
+            </DialogDescription>
+          </DialogHeader>
+
+          {activationStatus.maxActivationDate && (
+            <div className="flex items-start gap-2 rounded-md bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
+              <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+              <span>
+                <span className="font-semibold">{t('activation.important')}: </span>
+                {t('activation.autoActivateNote').replace(
+                  '{date}',
+                  new Date(activationStatus.maxActivationDate).toLocaleDateString()
+                )}
+              </span>
+            </div>
+          )}
+
+          <DialogFooter className="flex-col gap-2 sm:flex-col">
+            <Button
+              className="w-full gap-2"
+              onClick={() => activateNowMutation.mutate()}
+              disabled={activateNowMutation.isPending}
+            >
+              <Zap className="h-4 w-4" />
+              {activateNowMutation.isPending ? t('activation.activating') : t('activation.startNow')}
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => setShowActivationDialog(false)}
+            >
+              {t('activation.continueLearning')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    )}
+
     </ClientLayout>
   );
 }
