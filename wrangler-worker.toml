@@ -27,6 +27,9 @@ database_id = "cf374361-2caa-4597-a38d-5cecced7827d"
 binding = "VIDEOS_BUCKET"
 bucket_name = "xflexwithai-videos"
 
+[env.production.triggers]
+crons = ["0 2 * * *"]
+
 [env.staging]
 name = "xflexacademy-api-staging"
 

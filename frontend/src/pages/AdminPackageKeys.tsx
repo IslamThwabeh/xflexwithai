@@ -1,5 +1,6 @@
 import { useState } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
+import { ResponsiveTable } from "@/components/ui/responsive-table";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -55,6 +56,8 @@ import {
   TrendingUp,
   User,
   RotateCcw,
+  PauseCircle,
+  PlayCircle,
 } from "lucide-react";
 
 export default function AdminPackageKeys() {
@@ -71,10 +74,14 @@ export default function AdminPackageKeys() {
   const [showGenerateDialog, setShowGenerateDialog] = useState(false);
   const [showBulkDialog, setShowBulkDialog] = useState(false);
   const [isUpgrade, setIsUpgrade] = useState(false);
+  const [isRenewal, setIsRenewal] = useState(false);
   const [referredBy, setReferredBy] = useState("");
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [deactivateDialogKey, setDeactivateDialogKey] = useState<{ id: number; keyCode: string } | null>(null);
   const [deactivateReason, setDeactivateReason] = useState("");
+  const [freezeDialogUserId, setFreezeDialogUserId] = useState<number | null>(null);
+  const [freezeReason, setFreezeReason] = useState("");
+  const [freezeDays, setFreezeDays] = useState("");
 
   // Data queries
   const keysQuery = trpc.packageKeys.list.useQuery();
@@ -125,6 +132,25 @@ export default function AdminPackageKeys() {
     onError: (err) => toast.error(err.message),
   });
 
+  const freezeUser = trpc.packageKeys.freeze.useMutation({
+    onSuccess: () => {
+      toast.success(language === 'ar' ? 'تم تجميد الاشتراكات' : 'Subscriptions frozen');
+      setFreezeDialogUserId(null);
+      setFreezeReason("");
+      setFreezeDays("");
+      keysQuery.refetch();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const unfreezeUser = trpc.packageKeys.unfreeze.useMutation({
+    onSuccess: () => {
+      toast.success(language === 'ar' ? 'تم استئناف الاشتراكات' : 'Subscriptions resumed');
+      keysQuery.refetch();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
   const resetForm = () => {
     setSelectedPackage(null);
     setQuantity("1");
@@ -134,6 +160,7 @@ export default function AdminPackageKeys() {
     setExpiresAt("");
     setAssignEmail("");
     setIsUpgrade(false);
+    setIsRenewal(false);
     setReferredBy("");
   };
 
@@ -150,6 +177,7 @@ export default function AdminPackageKeys() {
       entitlementDays: entitlementDays ? parseInt(entitlementDays, 10) : undefined,
       expiresAt: expiresAt || undefined,
       isUpgrade: isUpgrade || undefined,
+      isRenewal: isRenewal || undefined,
       referredBy: referredBy.trim() || undefined,
     });
   };
@@ -167,6 +195,7 @@ export default function AdminPackageKeys() {
       entitlementDays: entitlementDays ? parseInt(entitlementDays, 10) : undefined,
       expiresAt: expiresAt || undefined,
       isUpgrade: isUpgrade || undefined,
+      isRenewal: isRenewal || undefined,
       referredBy: referredBy.trim() || undefined,
     });
   };
@@ -179,7 +208,7 @@ export default function AdminPackageKeys() {
   const exportCSV = () => {
     const keys = filteredKeys;
     if (!keys.length) return;
-    const headers = ['Key Code', 'Package', 'Email', 'Status', 'Entitlement Days', 'Redeem By', 'Upgrade', 'Referred By', 'Created', 'Activated', 'Notes'];
+    const headers = ['Key Code', 'Package', 'Email', 'Status', 'Entitlement Days', 'Redeem By', 'Type', 'Upgrade', 'Referred By', 'Created', 'Activated', 'Notes'];
     const rows = keys.map(k => [
       k.keyCode,
       (k as any).packageName || '',
@@ -187,9 +216,9 @@ export default function AdminPackageKeys() {
       k.activatedAt ? 'Activated' : k.isActive ? 'Unused' : 'Deactivated',
       k.entitlementDays || 'Default',
       k.expiresAt ? new Date(k.expiresAt).toLocaleDateString() : '',
+      (k as any).isRenewal ? 'Renewal' : (k as any).isUpgrade ? 'Upgrade' : 'New',
       (k as any).isUpgrade ? 'Yes' : 'No',
-      (k as any).referredBy || '',
-      k.createdAt ? new Date(k.createdAt).toLocaleDateString() : '',
+      (k as any).referredBy || '',      k.createdAt ? new Date(k.createdAt).toLocaleDateString() : '',
       k.activatedAt ? new Date(k.activatedAt).toLocaleDateString() : '',
       k.notes || '',
     ]);
@@ -337,7 +366,16 @@ export default function AdminPackageKeys() {
                       type="checkbox"
                       id="isUpgrade"
                       checked={isUpgrade}
-                      onChange={(e) => setIsUpgrade(e.target.checked)}
+                      onChange={(e) => {
+                        setIsUpgrade(e.target.checked);
+                        if (e.target.checked) {
+                          setIsRenewal(false);
+                          setPrice('300');
+                        } else {
+                          const pkg = packages.find((p: any) => p.id === selectedPackage);
+                          setPrice(pkg ? String(Math.round(pkg.price / 100)) : '0');
+                        }
+                      }}
                       className="w-4 h-4 accent-amber-600"
                     />
                     <Label htmlFor="isUpgrade" className="flex items-center gap-2 cursor-pointer text-sm">
@@ -346,6 +384,31 @@ export default function AdminPackageKeys() {
                     </Label>
                   </div>
                   )}
+                  {/* Renewal toggle */}
+                  <div className="flex items-center gap-3 p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-800">
+                    <input
+                      type="checkbox"
+                      id="isRenewal"
+                      checked={isRenewal}
+                      onChange={(e) => {
+                        setIsRenewal(e.target.checked);
+                        if (e.target.checked) {
+                          setIsUpgrade(false);
+                          const pkg = packages.find((p: any) => p.id === selectedPackage);
+                          const isBasic = pkg && !pkg.includesLexai;
+                          setPrice(isBasic ? '50' : '100');
+                        } else {
+                          const pkg = packages.find((p: any) => p.id === selectedPackage);
+                          setPrice(pkg ? String(Math.round(pkg.price / 100)) : '0');
+                        }
+                      }}
+                      className="w-4 h-4 accent-blue-600"
+                    />
+                    <Label htmlFor="isRenewal" className="flex items-center gap-2 cursor-pointer text-sm">
+                      <RotateCcw className="w-4 h-4 text-blue-600" />
+                      {language === 'ar' ? 'هذا تجديد (يمدد اشتراكات المستخدم)' : 'This is a renewal (extends existing subscription)'}
+                    </Label>
+                  </div>
                   {isUpgrade && !isBasicPackage && (
                     <div className="space-y-2">
                       <Label>{language === 'ar' ? 'اسم العضو المُحوِّل' : 'Referred by (team member)'}</Label>
@@ -425,7 +488,16 @@ export default function AdminPackageKeys() {
                       type="checkbox"
                       id="isUpgradeBulk"
                       checked={isUpgrade}
-                      onChange={(e) => setIsUpgrade(e.target.checked)}
+                      onChange={(e) => {
+                        setIsUpgrade(e.target.checked);
+                        if (e.target.checked) {
+                          setIsRenewal(false);
+                          setPrice('300');
+                        } else {
+                          const pkg = packages.find((p: any) => p.id === selectedPackage);
+                          setPrice(pkg ? String(Math.round(pkg.price / 100)) : '0');
+                        }
+                      }}
                       className="w-4 h-4 accent-amber-600"
                     />
                     <Label htmlFor="isUpgradeBulk" className="flex items-center gap-2 cursor-pointer text-sm">
@@ -434,6 +506,31 @@ export default function AdminPackageKeys() {
                     </Label>
                   </div>
                   )}
+                  {/* Renewal toggle for bulk */}
+                  <div className="flex items-center gap-3 p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-800">
+                    <input
+                      type="checkbox"
+                      id="isRenewalBulk"
+                      checked={isRenewal}
+                      onChange={(e) => {
+                        setIsRenewal(e.target.checked);
+                        if (e.target.checked) {
+                          setIsUpgrade(false);
+                          const pkg = packages.find((p: any) => p.id === selectedPackage);
+                          const isBasic = pkg && !pkg.includesLexai;
+                          setPrice(isBasic ? '50' : '100');
+                        } else {
+                          const pkg = packages.find((p: any) => p.id === selectedPackage);
+                          setPrice(pkg ? String(Math.round(pkg.price / 100)) : '0');
+                        }
+                      }}
+                      className="w-4 h-4 accent-blue-600"
+                    />
+                    <Label htmlFor="isRenewalBulk" className="flex items-center gap-2 cursor-pointer text-sm">
+                      <RotateCcw className="w-4 h-4 text-blue-600" />
+                      {language === 'ar' ? 'مفاتيح تجديد' : 'Renewal keys'}
+                    </Label>
+                  </div>
                   {isUpgrade && !isBasicPackage && (
                     <div className="space-y-2">
                       <Label>{language === 'ar' ? 'اسم العضو المُحوِّل' : 'Referred by'}</Label>
@@ -534,7 +631,7 @@ export default function AdminPackageKeys() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="overflow-x-auto">
+            <ResponsiveTable>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -543,8 +640,8 @@ export default function AdminPackageKeys() {
                     <TableHead>{language === 'ar' ? 'البريد' : 'Email'}</TableHead>
                     <TableHead>{language === 'ar' ? 'الحالة' : 'Status'}</TableHead>
                     <TableHead>{language === 'ar' ? 'المدة' : 'Duration'}</TableHead>
-                    <TableHead>{language === 'ar' ? 'آخر تفعيل' : 'Redeem By'}</TableHead>
-                    <TableHead>{language === 'ar' ? 'ترقية' : 'Upgrade'}</TableHead>
+                    <TableHead>{language === 'ar' ? 'انتهاء الصلاحية' : 'Expiry'}</TableHead>
+                    <TableHead>{language === 'ar' ? 'النوع' : 'Type'}</TableHead>
                     <TableHead>{language === 'ar' ? 'تاريخ الإنشاء' : 'Created'}</TableHead>
                     <TableHead>{language === 'ar' ? 'تاريخ التفعيل' : 'Activated'}</TableHead>
                     <TableHead>{language === 'ar' ? 'ملاحظات' : 'Notes'}</TableHead>
@@ -594,10 +691,18 @@ export default function AdminPackageKeys() {
                               {language === 'ar' ? 'معطّل' : 'Deactivated'}
                             </Badge>
                           ) : key.activatedAt ? (
-                            <Badge className="gap-1 bg-green-100 text-green-800 hover:bg-green-100">
-                              <CheckCircle2 className="w-3 h-3" />
-                              {language === 'ar' ? 'مفعّل' : 'Activated'}
-                            </Badge>
+                            <div className="flex flex-wrap gap-1">
+                              <Badge className="gap-1 bg-green-100 text-green-800 hover:bg-green-100">
+                                <CheckCircle2 className="w-3 h-3" />
+                                {language === 'ar' ? 'مفعّل' : 'Activated'}
+                              </Badge>
+                              {(!!key.lexaiIsPaused || !!key.recIsPaused) && (
+                                <Badge className="gap-1 bg-orange-100 text-orange-800 hover:bg-orange-100">
+                                  <PauseCircle className="w-3 h-3" />
+                                  {language === 'ar' ? 'مجمّد' : 'Frozen'}
+                                </Badge>
+                              )}
+                            </div>
                           ) : (
                             <Badge variant="secondary" className="gap-1">
                               <Clock className="w-3 h-3" />
@@ -612,7 +717,12 @@ export default function AdminPackageKeys() {
                           {key.expiresAt ? new Date(key.expiresAt).toLocaleDateString() : '—'}
                         </TableCell>
                         <TableCell>
-                          {(key as any).isUpgrade ? (
+                          {(key as any).isRenewal ? (
+                            <Badge className="gap-1 bg-blue-100 text-blue-800 hover:bg-blue-100">
+                              <RotateCcw className="w-3 h-3" />
+                              {language === 'ar' ? 'تجديد' : 'Renewal'}
+                            </Badge>
+                          ) : (key as any).isUpgrade ? (
                             <Badge className="gap-1 bg-amber-100 text-amber-800 hover:bg-amber-100">
                               <ArrowUpCircle className="w-3 h-3" />
                               {language === 'ar' ? 'ترقية' : 'Upgrade'}
@@ -636,6 +746,31 @@ export default function AdminPackageKeys() {
                           )}
                         </TableCell>
                         <TableCell>
+                          {key.isActive && key.activatedAt && key.userId && (
+                            (!!key.lexaiIsPaused || !!key.recIsPaused) ? (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                onClick={() => unfreezeUser.mutate({ userId: key.userId as number })}
+                                disabled={unfreezeUser.isPending}
+                                title={language === 'ar' ? 'استئناف الاشتراكات' : 'Unfreeze subscriptions'}
+                              >
+                                <PlayCircle className="w-4 h-4" />
+                              </Button>
+                            ) : (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-orange-600 hover:text-orange-700 hover:bg-orange-50"
+                                onClick={() => setFreezeDialogUserId(key.userId as number)}
+                                disabled={freezeUser.isPending}
+                                title={language === 'ar' ? 'تجميد الاشتراكات' : 'Freeze subscriptions'}
+                              >
+                                <PauseCircle className="w-4 h-4" />
+                              </Button>
+                            )
+                          )}
                           {key.isActive && !key.activatedAt && (
                             <Button
                               variant="ghost"
@@ -663,7 +798,7 @@ export default function AdminPackageKeys() {
                   )}
                 </TableBody>
               </Table>
-            </div>
+            </ResponsiveTable>
           </CardContent>
         </Card>
 
@@ -682,15 +817,33 @@ export default function AdminPackageKeys() {
                     : 'Track upgrades from Basic to Comprehensive package'}
                 </CardDescription>
               </div>
-              <div className="flex items-center gap-2">
-                <Label className="text-xs whitespace-nowrap">{language === 'ar' ? 'الشهر:' : 'Month:'}</Label>
-                <Input
-                  type="month"
-                  value={selectedMonth}
-                  onChange={(e) => setSelectedMonth(e.target.value)}
-                  className="w-[160px] text-sm"
-                  dir="ltr"
-                />
+              <div className="flex items-center gap-1">
+                <Label className="text-xs whitespace-nowrap mr-1">{language === 'ar' ? 'الشهر:' : 'Month:'}</Label>
+                <button
+                  onClick={() => {
+                    const [y, m] = selectedMonth.split('-').map(Number);
+                    const d = new Date(y, m - 2, 1);
+                    setSelectedMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+                  }}
+                  className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
+                  title="Previous month"
+                >
+                  ‹
+                </button>
+                <span className="text-sm font-medium px-2 min-w-[90px] text-center" dir="ltr">
+                  {new Date(selectedMonth + '-01').toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US', { year: 'numeric', month: 'short' })}
+                </span>
+                <button
+                  onClick={() => {
+                    const [y, m] = selectedMonth.split('-').map(Number);
+                    const d = new Date(y, m, 1);
+                    setSelectedMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+                  }}
+                  className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
+                  title="Next month"
+                >
+                  ›
+                </button>
               </div>
             </div>
           </CardHeader>
@@ -854,6 +1007,64 @@ export default function AdminPackageKeys() {
               {deactivateKey.isPending
                 ? (language === 'ar' ? 'جارٍ...' : 'Deactivating...')
                 : (language === 'ar' ? 'تأكيد الإلغاء' : 'Deactivate')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Freeze Subscription Dialog */}
+      <Dialog open={!!freezeDialogUserId} onOpenChange={(open) => { if (!open) { setFreezeDialogUserId(null); setFreezeReason(""); setFreezeDays(""); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{language === 'ar' ? 'تجميد الاشتراكات' : 'Freeze Subscriptions'}</DialogTitle>
+            <DialogDescription>
+              {language === 'ar'
+                ? 'سيتم إيقاف اشتراكات LexAI والتوصيات مؤقتًا.'
+                : 'LexAI and recommendation subscriptions will be paused.'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>{language === 'ar' ? 'سبب التجميد (اختياري)' : 'Reason (optional)'}</Label>
+              <Textarea
+                value={freezeReason}
+                onChange={(e) => setFreezeReason(e.target.value)}
+                placeholder={language === 'ar' ? 'أدخل السبب...' : 'Enter reason...'}
+                rows={2}
+              />
+            </div>
+            <div>
+              <Label>{language === 'ar' ? 'مدة التجميد بالأيام (فارغ = تجميد دائم)' : 'Duration in days (empty = indefinite freeze)'}</Label>
+              <Input
+                type="number"
+                min={1}
+                max={365}
+                value={freezeDays}
+                onChange={(e) => setFreezeDays(e.target.value)}
+                placeholder={language === 'ar' ? 'مثال: 30' : 'e.g. 30'}
+              />
+            </div>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => { setFreezeDialogUserId(null); setFreezeReason(""); setFreezeDays(""); }}>
+              {language === 'ar' ? 'إلغاء' : 'Cancel'}
+            </Button>
+            <Button
+              className="bg-orange-600 hover:bg-orange-700"
+              disabled={freezeUser.isPending}
+              onClick={() => {
+                if (freezeDialogUserId) {
+                  freezeUser.mutate({
+                    userId: freezeDialogUserId,
+                    reason: freezeReason.trim() || undefined,
+                    frozenUntilDays: freezeDays ? parseInt(freezeDays, 10) : undefined,
+                  });
+                }
+              }}
+            >
+              {freezeUser.isPending
+                ? (language === 'ar' ? 'جارٍ...' : 'Freezing...')
+                : (language === 'ar' ? 'تجميد' : 'Freeze')}
             </Button>
           </DialogFooter>
         </DialogContent>

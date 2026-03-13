@@ -1,4 +1,5 @@
 import DashboardLayout from "@/components/DashboardLayout";
+import { ResponsiveTable } from "@/components/ui/responsive-table";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -235,6 +236,7 @@ export default function AdminRoles() {
                 {t('admin.roles.noAssignments')}
               </p>
             ) : (
+              <ResponsiveTable>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -283,6 +285,7 @@ export default function AdminRoles() {
                   ))}
                 </TableBody>
               </Table>
+              </ResponsiveTable>
             )}
           </CardContent>
         </Card>

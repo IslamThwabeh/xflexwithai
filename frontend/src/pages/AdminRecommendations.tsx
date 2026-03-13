@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
+import { ResponsiveTable } from "@/components/ui/responsive-table";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -95,6 +96,7 @@ export default function AdminRecommendations() {
             <CardDescription>{isRTL ? 'إيقاف أو استئناف الاشتراكات النشطة مؤقتاً' : 'Temporarily pause or resume active recommendation access'}</CardDescription>
           </CardHeader>
           <CardContent>
+            <ResponsiveTable>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -135,6 +137,7 @@ export default function AdminRecommendations() {
                 ))}
               </TableBody>
             </Table>
+            </ResponsiveTable>
           </CardContent>
         </Card>
       </div>

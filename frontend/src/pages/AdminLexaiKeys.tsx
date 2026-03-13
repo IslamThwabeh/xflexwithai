@@ -1,5 +1,6 @@
 import { useState } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
+import { ResponsiveTable } from "@/components/ui/responsive-table";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -343,6 +344,7 @@ export default function AdminLexaiKeys() {
           {!filteredKeys || filteredKeys.length === 0 ? (
             <p className="text-muted-foreground">{t('admin.lexai.noKeys')}</p>
           ) : (
+            <ResponsiveTable>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -406,6 +408,7 @@ export default function AdminLexaiKeys() {
                 })}
               </TableBody>
             </Table>
+            </ResponsiveTable>
           )}
         </CardContent>
       </Card>

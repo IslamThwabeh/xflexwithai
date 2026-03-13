@@ -175,3 +175,66 @@
     }
   }
 }
+
+/* ── Admin stacked / card table layout ───────────────────────── */
+.stacked-table table {
+  display: block !important;
+  width: 100%;
+}
+.stacked-table tbody {
+  display: block !important;
+  width: 100%;
+}
+.stacked-table thead {
+  display: none !important;
+}
+.stacked-table tbody tr {
+  display: grid !important;
+  grid-template-columns: repeat(2, 1fr);
+  border: 1px solid var(--border) !important;
+  border-radius: 0.5rem;
+  margin-bottom: 0.5rem;
+  padding: 0.25rem;
+  background: var(--card) !important;
+}
+.stacked-table tbody tr:hover {
+  background: var(--accent) !important;
+}
+.stacked-table tbody td {
+  display: flex !important;
+  flex-direction: column;
+  padding: 0.4rem 0.625rem !important;
+  border: none !important;
+}
+.stacked-table tbody td::before {
+  content: attr(data-label);
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted-foreground);
+  margin-bottom: 0.2rem;
+  min-height: 0.8rem;
+}
+/* Actions cell (last): full width, buttons in a row */
+.stacked-table tbody td:last-child {
+  grid-column: 1 / -1;
+  flex-direction: row !important;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  border-top: 1px dashed var(--border) !important;
+  padding-top: 0.375rem !important;
+}
+.stacked-table tbody td:last-child::before {
+  display: none;
+}
+/* Empty-state cell with colspan: full width, centered */
+.stacked-table tbody td[colspan] {
+  grid-column: 1 / -1;
+  flex-direction: row !important;
+  justify-content: center;
+}
+.stacked-table tbody td[colspan]::before {
+  display: none;
+}

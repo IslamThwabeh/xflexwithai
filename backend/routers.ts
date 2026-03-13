@@ -2499,6 +2499,14 @@ export const appRouter = router({
         await db.closeSupportConversation(input.conversationId);
         return { success: true };
       }),
+
+    // Support/Admin: reopen a closed conversation
+    reopen: supportStaffProcedure
+      .input(z.object({ conversationId: z.number() }))
+      .mutation(async ({ input }) => {
+        await db.reopenSupportConversation(input.conversationId);
+        return { success: true };
+      }),
   }),
 
   // =========================================================================
@@ -3590,7 +3598,7 @@ export const appRouter = router({
   // ============================================================================
   packageKeys: router({
     list: adminOrRoleProcedure(['key_manager']).query(async () => {
-      const keys = await db.getAllPackageKeys();
+      const keys = await db.getAllPackageKeysEnriched();
       // Enrich with package info
       const allPackages = await db.getAllPackages();
       const pkgMap = new Map(allPackages.map(p => [p.id, p]));
@@ -3600,6 +3608,17 @@ export const appRouter = router({
         packageNameAr: k.packageId ? (pkgMap.get(k.packageId)?.nameAr || null) : null,
         isUpgrade: k.isUpgrade ?? false,
         referredBy: k.referredBy ?? null,
+      }));
+    }),
+
+    lexaiHolders: adminOrRoleProcedure(['key_manager', 'view_subscriptions']).query(async () => {
+      const holders = await db.getComprehensivePackageHolders();
+      const allPackages = await db.getAllPackages();
+      const pkgMap = new Map(allPackages.map(p => [p.id, p]));
+      return holders.map(h => ({
+        ...h,
+        packageName: h.packageId ? (pkgMap.get(h.packageId)?.nameEn ?? pkgMap.get(h.packageId)?.nameAr ?? 'Comprehensive') : 'Comprehensive',
+        packageNameAr: h.packageId ? (pkgMap.get(h.packageId)?.nameAr ?? null) : null,
       }));
     }),
 
@@ -3617,6 +3636,7 @@ export const appRouter = router({
         entitlementDays: z.number().int().min(1).max(3650).optional(),
         expiresAt: z.string().optional(),
         isUpgrade: z.boolean().optional(),
+        isRenewal: z.boolean().optional(),
         referredBy: z.string().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
@@ -3631,6 +3651,7 @@ export const appRouter = router({
           entitlementDays: input.entitlementDays,
           expiresAt: input.expiresAt,
           isUpgrade: input.isUpgrade,
+          isRenewal: input.isRenewal,
           referredBy: input.referredBy,
         });
         return result;
@@ -3646,6 +3667,7 @@ export const appRouter = router({
         entitlementDays: z.number().int().min(1).max(3650).optional(),
         expiresAt: z.string().optional(),
         isUpgrade: z.boolean().optional(),
+        isRenewal: z.boolean().optional(),
         referredBy: z.string().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
@@ -3660,6 +3682,7 @@ export const appRouter = router({
           entitlementDays: input.entitlementDays,
           expiresAt: input.expiresAt,
           isUpgrade: input.isUpgrade,
+          isRenewal: input.isRenewal,
           referredBy: input.referredBy,
         });
         return { count: keys.length };
@@ -3675,6 +3698,20 @@ export const appRouter = router({
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {
         return db.reactivateRegistrationKey(input.id);
+      }),
+
+    freeze: adminOrRoleProcedure(['key_manager'])
+      .input(z.object({ userId: z.number(), reason: z.string().optional(), frozenUntilDays: z.number().int().min(1).max(365).optional() }))
+      .mutation(async ({ input }) => {
+        const result = await db.freezeUserSubscriptions(input.userId, input.reason, input.frozenUntilDays);
+        return { success: true, ...result };
+      }),
+
+    unfreeze: adminOrRoleProcedure(['key_manager'])
+      .input(z.object({ userId: z.number() }))
+      .mutation(async ({ input }) => {
+        const result = await db.unfreezeUserSubscriptions(input.userId);
+        return { success: true, ...result };
       }),
 
     // Public: get key info (used by activation page)

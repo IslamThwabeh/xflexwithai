@@ -34,7 +34,13 @@ export default function ActivateKey() {
         toast.success(data.message);
         setTimeout(() => setLocation("/dashboard"), 4000);
       } else {
-        toast.error(data.message);
+        // Show Arabic message if available and language is Arabic
+        const msg = (language === 'ar' && data.messageAr) ? data.messageAr : data.message;
+        toast.error(msg);
+        // Only fall through to legacy key if it's NOT a renewal mismatch
+        if (!data.messageAr) {
+          activateLegacyKey.mutate({ keyCode: keyCode.trim(), email: email.trim() });
+        }
       }
     },
     onError: () => {

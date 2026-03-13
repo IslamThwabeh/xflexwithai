@@ -1,4 +1,5 @@
 import DashboardLayout from "@/components/DashboardLayout";
+import { ResponsiveTable } from "@/components/ui/responsive-table";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -107,6 +108,7 @@ export default function AdminUsers() {
             ) : !users || users.length === 0 ? (
               <p className="text-center py-8 text-muted-foreground">{t('admin.users.noUsers')}</p>
             ) : (
+              <ResponsiveTable>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -129,6 +131,7 @@ export default function AdminUsers() {
                   ))}
                 </TableBody>
               </Table>
+              </ResponsiveTable>
             )}
           </CardContent>
         </Card>
@@ -145,6 +148,7 @@ export default function AdminUsers() {
             ) : !enrollments || enrollments.length === 0 ? (
               <p className="text-center py-8 text-muted-foreground">{t('admin.users.noEnrollments')}</p>
             ) : (
+              <ResponsiveTable>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -195,6 +199,7 @@ export default function AdminUsers() {
                   ))}
                 </TableBody>
               </Table>
+              </ResponsiveTable>
             )}
           </CardContent>
         </Card>

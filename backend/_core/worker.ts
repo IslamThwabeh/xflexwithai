@@ -1,8 +1,9 @@
-import type { D1Database, ExecutionContext, KVNamespace, R2Bucket } from "@cloudflare/workers-types";
+import type { D1Database, ExecutionContext, KVNamespace, R2Bucket, ScheduledController } from "@cloudflare/workers-types";
 import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import { appRouter } from "../routers";
 import { createWorkerContext } from "./context-worker";
 import * as db from "../db";
+import { sendFreezeExpiredEmail } from "./orderEmails";
 
 export interface Env {
   DB: D1Database;
@@ -157,6 +158,17 @@ export default {
         status: 500,
         headers: { "Content-Type": "application/json" },
       });
+    }
+  },
+
+  async scheduled(_controller: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
+    (globalThis as { ENV?: Env }).ENV = env;
+    await db.getDb({ DB: env.DB });
+    const unfrozen = await db.processExpiredFreezes();
+    for (const user of unfrozen) {
+      if (user.email) {
+        await sendFreezeExpiredEmail(user.email, user.name);
+      }
     }
   },
 };

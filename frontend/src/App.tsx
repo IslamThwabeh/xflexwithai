@@ -23,8 +23,6 @@ const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
 const AdminCourses = lazy(() => import("./pages/AdminCourses"));
 const AdminEpisodes = lazy(() => import("./pages/AdminEpisodes"));
 const AdminUsers = lazy(() => import("./pages/AdminUsers"));
-// Old course key page hidden — replaced by package keys system
-// const AdminKeys = lazy(() => import("./pages/AdminKeys"));
 const AdminLexaiSubscriptions = lazy(() => import("./pages/AdminLexaiSubscriptions"));
 const AdminLexaiConversations = lazy(() => import("./pages/AdminLexaiConversations"));
 const AdminRecommendations = lazy(() => import("./pages/AdminRecommendations"));

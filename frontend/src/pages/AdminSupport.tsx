@@ -13,6 +13,7 @@ import {
   Clock,
   User,
   XCircle,
+  PlayCircle,
   Paperclip,
   FileIcon,
   X,
@@ -61,6 +62,15 @@ export default function AdminSupport() {
       toast.success("Conversation closed");
       setSelectedConvId(null);
       refetchConvs();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const reopenMutation = trpc.supportChat.reopen.useMutation({
+    onSuccess: () => {
+      toast.success("Conversation reopened");
+      refetchConvs();
+      refetchMessages();
     },
     onError: (err) => toast.error(err.message),
   });
@@ -305,17 +315,28 @@ export default function AdminSupport() {
                         </div>
                       </div>
                     </div>
-                    {selectedData?.conversation?.status === "open" && (
+                    {selectedData?.conversation?.status === "open" ? (
                       <Button
                         variant="outline"
                         size="sm"
                         className="text-red-600"
-                        onClick={() => closeMutation.mutate({ conversationId: selectedConvId })}
+                        onClick={() => closeMutation.mutate({ conversationId: selectedConvId! })}
                         disabled={closeMutation.isPending}
                       >
                         <XCircle className="h-4 w-4 mr-1" /> {t('admin.support.close')}
                       </Button>
-                    )}
+                    ) : selectedData?.conversation?.status === "closed" ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-green-600"
+                        onClick={() => reopenMutation.mutate({ conversationId: selectedConvId! })}
+                        disabled={reopenMutation.isPending}
+                      >
+                        <PlayCircle className="h-4 w-4 mr-1" />
+                        {t('admin.support.reopen') || 'Reopen'}
+                      </Button>
+                    ) : null}
                   </div>
                 </CardHeader>
 
@@ -356,10 +377,11 @@ export default function AdminSupport() {
                               <div className="mt-1">
                                 <AudioPlayer src={msg.attachmentUrl} duration={(msg as any).attachmentDuration} isOwn={!isClient} />
                               </div>
-                            ) : msg.attachmentUrl ? (
+                            ) : msg.attachmentUrl && msg.attachmentUrl.startsWith('http') ? (
                               <a href={msg.attachmentUrl} target="_blank" rel="noopener noreferrer"
                                 className={`inline-flex items-center gap-1 text-xs mt-1 underline ${isClient ? 'text-blue-600' : 'text-blue-200'}`}>
-                                <FileIcon className="w-3 h-3" /> {msg.attachmentName || 'Attachment'}
+                                <FileIcon className="w-3 h-3" />
+                                {(msg.attachmentName && msg.attachmentName !== 'attachment_name') ? msg.attachmentName : 'Attachment'}
                               </a>
                             ) : null}
                             <p

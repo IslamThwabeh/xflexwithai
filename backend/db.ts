@@ -920,6 +920,10 @@ export async function getDashboardStats() {
   const [pendingOrdersResult] = await db.select({ count: sql<number>`count(*)` }).from(orders).where(eq(orders.status, 'pending'));
   const [completedOrdersResult] = await db.select({ count: sql<number>`count(*)` }).from(orders).where(eq(orders.status, 'completed'));
   const [revenueResult] = await db.select({ total: sql<number>`COALESCE(SUM(${orders.totalAmount}), 0)` }).from(orders).where(eq(orders.status, 'completed'));
+  // Key sales: price stored in dollars; multiply by 100 to match cents unit used by dashboard
+  const [keyRevenueResult] = await db.select({ total: sql<number>`COALESCE(SUM(${registrationKeys.price} * 100), 0)` })
+    .from(registrationKeys)
+    .where(and(sql`${registrationKeys.activatedAt} IS NOT NULL`, sql`${registrationKeys.price} > 0`));
 
   return {
     totalUsers: Number(totalUsersResult?.count ?? 0),
@@ -929,7 +933,7 @@ export async function getDashboardStats() {
     totalOrders: Number(totalOrdersResult?.count ?? 0),
     pendingOrders: Number(pendingOrdersResult?.count ?? 0),
     completedOrders: Number(completedOrdersResult?.count ?? 0),
-    totalRevenue: Number(revenueResult?.total ?? 0),
+    totalRevenue: Number(revenueResult?.total ?? 0) + Number(keyRevenueResult?.total ?? 0),
   };
 }
 
@@ -1497,7 +1501,7 @@ export async function updateRecommendationSubscription(id: number, updates: Part
   await db.update(recommendationSubscriptions).set({ ...updates, updatedAt: new Date().toISOString() }).where(eq(recommendationSubscriptions.id, id));
 }
 
-export async function pauseRecommendationSubscription(id: number, reason?: string) {
+export async function pauseRecommendationSubscription(id: number, reason?: string, frozenUntilDate?: Date) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
@@ -1512,6 +1516,7 @@ export async function pauseRecommendationSubscription(id: number, reason?: strin
     pausedAt: now.toISOString(),
     pausedReason: reason ?? null,
     pausedRemainingDays: remainingDays,
+    frozenUntil: frozenUntilDate ? frozenUntilDate.toISOString() : null,
     updatedAt: now.toISOString(),
   }).where(eq(recommendationSubscriptions.id, id));
 }
@@ -1535,8 +1540,91 @@ export async function resumeRecommendationSubscription(id: number) {
     pausedAt: null,
     pausedReason: null,
     pausedRemainingDays: null,
+    frozenUntil: null,
     updatedAt: now.toISOString(),
   }).where(eq(recommendationSubscriptions.id, id));
+}
+
+export async function freezeUserSubscriptions(userId: number, reason?: string, frozenUntilDays?: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const frozenUntilDate = frozenUntilDays
+    ? new Date(Date.now() + frozenUntilDays * 86_400_000)
+    : undefined;
+  const [lexaiSub] = await db.select({ id: lexaiSubscriptions.id })
+    .from(lexaiSubscriptions)
+    .where(and(eq(lexaiSubscriptions.userId, userId), eq(lexaiSubscriptions.isActive, true), eq(lexaiSubscriptions.isPaused, false)))
+    .limit(1);
+  if (lexaiSub) await pauseLexaiSubscription(lexaiSub.id, reason, frozenUntilDate);
+  const [recSub] = await db.select({ id: recommendationSubscriptions.id })
+    .from(recommendationSubscriptions)
+    .where(and(eq(recommendationSubscriptions.userId, userId), eq(recommendationSubscriptions.isActive, true), eq(recommendationSubscriptions.isPaused, false)))
+    .limit(1);
+  if (recSub) await pauseRecommendationSubscription(recSub.id, reason, frozenUntilDate);
+  return { lexaiPaused: !!lexaiSub, recPaused: !!recSub };
+}
+
+export async function unfreezeUserSubscriptions(userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [lexaiSub] = await db.select({ id: lexaiSubscriptions.id })
+    .from(lexaiSubscriptions)
+    .where(and(eq(lexaiSubscriptions.userId, userId), eq(lexaiSubscriptions.isPaused, true)))
+    .limit(1);
+  if (lexaiSub) await resumeLexaiSubscription(lexaiSub.id);
+  const [recSub] = await db.select({ id: recommendationSubscriptions.id })
+    .from(recommendationSubscriptions)
+    .where(and(eq(recommendationSubscriptions.userId, userId), eq(recommendationSubscriptions.isPaused, true)))
+    .limit(1);
+  if (recSub) await resumeRecommendationSubscription(recSub.id);
+  return { lexaiResumed: !!lexaiSub, recResumed: !!recSub };
+}
+
+/**
+ * Called by the nightly cron job.
+ * Finds all subscriptions where frozenUntil has passed, resumes them,
+ * returns a list of { email, name } so the caller can send notifications.
+ */
+export async function processExpiredFreezes(): Promise<{ email: string; name: string | null }[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const now = new Date().toISOString();
+  const notified: { email: string; name: string | null }[] = [];
+
+  // Expired LexAI freezes
+  const expiredLexai = await db
+    .select({ id: lexaiSubscriptions.id, userId: lexaiSubscriptions.userId })
+    .from(lexaiSubscriptions)
+    .where(and(
+      eq(lexaiSubscriptions.isPaused, true),
+      sql`${lexaiSubscriptions.frozenUntil} IS NOT NULL`,
+      sql`${lexaiSubscriptions.frozenUntil} <= ${now}`,
+    ));
+  for (const sub of expiredLexai) {
+    await resumeLexaiSubscription(sub.id);
+    const [user] = await db.select({ email: users.email, name: users.name }).from(users).where(eq(users.id, sub.userId)).limit(1);
+    if (user?.email) notified.push({ email: user.email, name: user.name });
+  }
+
+  // Expired recommendation freezes
+  const expiredRec = await db
+    .select({ id: recommendationSubscriptions.id, userId: recommendationSubscriptions.userId })
+    .from(recommendationSubscriptions)
+    .where(and(
+      eq(recommendationSubscriptions.isPaused, true),
+      sql`${recommendationSubscriptions.frozenUntil} IS NOT NULL`,
+      sql`${recommendationSubscriptions.frozenUntil} <= ${now}`,
+    ));
+  for (const sub of expiredRec) {
+    await resumeRecommendationSubscription(sub.id);
+    const [user] = await db.select({ email: users.email, name: users.name }).from(users).where(eq(users.id, sub.userId)).limit(1);
+    // Only add once per user (they may have both types)
+    if (user?.email && !notified.find(n => n.email === user.email)) {
+      notified.push({ email: user.email, name: user.name });
+    }
+  }
+
+  return notified;
 }
 
 export async function setRecommendationPublisher(userId: number, enabled: boolean) {
@@ -2001,6 +2089,67 @@ export async function getAllPackageKeys() {
     .orderBy(desc(registrationKeys.createdAt));
 }
 
+// Enriched package keys list with userId + subscription pause status via correlated subqueries
+export async function getAllPackageKeysEnriched() {
+  const db = await getDb();
+  if (!db) return [];
+  return await db.select({
+    id: registrationKeys.id,
+    keyCode: registrationKeys.keyCode,
+    courseId: registrationKeys.courseId,
+    packageId: registrationKeys.packageId,
+    createdBy: registrationKeys.createdBy,
+    email: registrationKeys.email,
+    isActive: registrationKeys.isActive,
+    activatedAt: registrationKeys.activatedAt,
+    notes: registrationKeys.notes,
+    price: registrationKeys.price,
+    currency: registrationKeys.currency,
+    entitlementDays: registrationKeys.entitlementDays,
+    createdAt: registrationKeys.createdAt,
+    expiresAt: registrationKeys.expiresAt,
+    isUpgrade: registrationKeys.isUpgrade,
+    referredBy: registrationKeys.referredBy,
+    userId: sql<number | null>`(SELECT id FROM users WHERE LOWER(email) = LOWER(${registrationKeys.email}) LIMIT 1)`,
+    lexaiSubId: sql<number | null>`(SELECT ls.id FROM lexaiSubscriptions ls WHERE ls.userId = (SELECT id FROM users WHERE LOWER(email) = LOWER(${registrationKeys.email}) LIMIT 1) AND ls.isActive = 1 ORDER BY ls.createdAt DESC LIMIT 1)`,
+    lexaiIsPaused: sql<0 | 1 | null>`(SELECT ls.isPaused FROM lexaiSubscriptions ls WHERE ls.userId = (SELECT id FROM users WHERE LOWER(email) = LOWER(${registrationKeys.email}) LIMIT 1) AND ls.isActive = 1 ORDER BY ls.createdAt DESC LIMIT 1)`,
+    recSubId: sql<number | null>`(SELECT rs.id FROM recommendationSubscriptions rs WHERE rs.userId = (SELECT id FROM users WHERE LOWER(email) = LOWER(${registrationKeys.email}) LIMIT 1) AND rs.isActive = 1 ORDER BY rs.createdAt DESC LIMIT 1)`,
+    recIsPaused: sql<0 | 1 | null>`(SELECT rs.isPaused FROM recommendationSubscriptions rs WHERE rs.userId = (SELECT id FROM users WHERE LOWER(email) = LOWER(${registrationKeys.email}) LIMIT 1) AND rs.isActive = 1 ORDER BY rs.createdAt DESC LIMIT 1)`,
+  })
+  .from(registrationKeys)
+  .where(sql`${registrationKeys.packageId} IS NOT NULL`)
+  .orderBy(desc(registrationKeys.createdAt));
+}
+
+export async function getComprehensivePackageHolders() {
+  const db = await getDb();
+  if (!db) return [];
+  return await db.select({
+    keyId: registrationKeys.id,
+    userEmail: registrationKeys.email,
+    packageId: registrationKeys.packageId,
+    activatedAt: registrationKeys.activatedAt,
+    userName: sql<string | null>`(SELECT name FROM users WHERE LOWER(email) = LOWER(${registrationKeys.email}) LIMIT 1)`,
+    userId: sql<number | null>`(SELECT id FROM users WHERE LOWER(email) = LOWER(${registrationKeys.email}) LIMIT 1)`,
+    lexaiSubId: sql<number | null>`(SELECT ls.id FROM lexaiSubscriptions ls WHERE ls.userId = (SELECT id FROM users WHERE LOWER(email) = LOWER(${registrationKeys.email}) LIMIT 1) AND ls.isActive = 1 ORDER BY ls.createdAt DESC LIMIT 1)`,
+    lexaiIsPaused: sql<0 | 1 | null>`(SELECT ls.isPaused FROM lexaiSubscriptions ls WHERE ls.userId = (SELECT id FROM users WHERE LOWER(email) = LOWER(${registrationKeys.email}) LIMIT 1) AND ls.isActive = 1 ORDER BY ls.createdAt DESC LIMIT 1)`,
+    lexaiEndDate: sql<string | null>`(SELECT ls.endDate FROM lexaiSubscriptions ls WHERE ls.userId = (SELECT id FROM users WHERE LOWER(email) = LOWER(${registrationKeys.email}) LIMIT 1) AND ls.isActive = 1 ORDER BY ls.createdAt DESC LIMIT 1)`,
+    lexaiPausedRemainingDays: sql<number | null>`(SELECT ls.pausedRemainingDays FROM lexaiSubscriptions ls WHERE ls.userId = (SELECT id FROM users WHERE LOWER(email) = LOWER(${registrationKeys.email}) LIMIT 1) AND ls.isActive = 1 ORDER BY ls.createdAt DESC LIMIT 1)`,
+    recSubId: sql<number | null>`(SELECT rs.id FROM recommendationSubscriptions rs WHERE rs.userId = (SELECT id FROM users WHERE LOWER(email) = LOWER(${registrationKeys.email}) LIMIT 1) AND rs.isActive = 1 ORDER BY rs.createdAt DESC LIMIT 1)`,
+    recIsPaused: sql<0 | 1 | null>`(SELECT rs.isPaused FROM recommendationSubscriptions rs WHERE rs.userId = (SELECT id FROM users WHERE LOWER(email) = LOWER(${registrationKeys.email}) LIMIT 1) AND rs.isActive = 1 ORDER BY rs.createdAt DESC LIMIT 1)`,
+    recEndDate: sql<string | null>`(SELECT rs.endDate FROM recommendationSubscriptions rs WHERE rs.userId = (SELECT id FROM users WHERE LOWER(email) = LOWER(${registrationKeys.email}) LIMIT 1) AND rs.isActive = 1 ORDER BY rs.createdAt DESC LIMIT 1)`,
+    recPausedRemainingDays: sql<number | null>`(SELECT rs.pausedRemainingDays FROM recommendationSubscriptions rs WHERE rs.userId = (SELECT id FROM users WHERE LOWER(email) = LOWER(${registrationKeys.email}) LIMIT 1) AND rs.isActive = 1 ORDER BY rs.createdAt DESC LIMIT 1)`,
+  })
+  .from(registrationKeys)
+  .where(and(
+    sql`${registrationKeys.packageId} IS NOT NULL`,
+    eq(registrationKeys.isActive, true),
+    sql`${registrationKeys.activatedAt} IS NOT NULL`,
+    sql`(SELECT includesLexai FROM packages WHERE id = ${registrationKeys.packageId} LIMIT 1) = 1`
+  ))
+  .orderBy(desc(registrationKeys.activatedAt));
+}
+
 export async function getPackageKeyStatistics() {
   const db = await getDb();
   if (!db) return { total: 0, activated: 0, unused: 0, deactivated: 0, activationRate: 0 };
@@ -2045,6 +2194,7 @@ export async function createPackageKey(input: {
   entitlementDays?: number | null;
   expiresAt?: string | Date | null;
   isUpgrade?: boolean;
+  isRenewal?: boolean;
   referredBy?: string;
 }) {
   const db = await getDb();
@@ -2065,6 +2215,7 @@ export async function createPackageKey(input: {
     createdAt: new Date().toISOString(),
     expiresAt: input.expiresAt ? new Date(input.expiresAt).toISOString() : null,
     isUpgrade: input.isUpgrade ?? false,
+    isRenewal: input.isRenewal ?? false,
     referredBy: input.referredBy ?? null,
   };
   const result = await db.insert(registrationKeys).values(values).returning({ id: registrationKeys.id });
@@ -2081,6 +2232,7 @@ export async function createBulkPackageKeys(input: {
   entitlementDays?: number | null;
   expiresAt?: string | Date | null;
   isUpgrade?: boolean;
+  isRenewal?: boolean;
   referredBy?: string;
 }) {
   const db = await getDb();
@@ -2100,6 +2252,7 @@ export async function createBulkPackageKeys(input: {
     entitlementDays: normalizePositiveInteger(input.entitlementDays),
     expiresAt: input.expiresAt ? new Date(input.expiresAt).toISOString() : null,
     isUpgrade: input.isUpgrade ?? false,
+    isRenewal: input.isRenewal ?? false,
     referredBy: input.referredBy ?? null,
   }));
 
@@ -2148,6 +2301,22 @@ export async function activatePackageKey(keyCode: string, email: string, userId?
     }
   }
 
+  // 1b. For renewal keys: verify the user's current active subscription matches this package
+  if (key.isRenewal) {
+    const lookupUserId = userId ?? (await getUserByEmail(normalizedEmail))?.id;
+    if (lookupUserId) {
+      const existingSubs = await getUserPackageSubscriptions(lookupUserId);
+      const hasMatchingSub = existingSubs.some(s => s.isActive && s.packageId === key.packageId);
+      if (!hasMatchingSub) {
+        return {
+          success: false,
+          message: "This renewal key is for a different subscription package. Please contact the support team to provide the correct renewal key for your subscription.",
+          messageAr: "مفتاح التجديد هذا مخصص لباقة مختلفة. يرجى التواصل مع فريق الدعم للحصول على مفتاح التجديد الصحيح لاشتراكك.",
+        };
+      }
+    }
+  }
+
   // 2. Mark key as activated
   await db
     .update(registrationKeys)
@@ -2166,7 +2335,11 @@ export async function activatePackageKey(keyCode: string, email: string, userId?
   }
 
   if (resolvedUserId) {
-    await fulfillPackageEntitlements(resolvedUserId, key.packageId, key.id, key.entitlementDays ?? undefined);
+    if (key.isRenewal) {
+      await renewPackageEntitlements(resolvedUserId, key.packageId, key.id, key.entitlementDays ?? undefined);
+    } else {
+      await fulfillPackageEntitlements(resolvedUserId, key.packageId, key.id, key.entitlementDays ?? undefined);
+    }
   }
 
   const [updated] = await db.select().from(registrationKeys).where(eq(registrationKeys.id, key.id)).limit(1);
@@ -2177,7 +2350,122 @@ export async function activatePackageKey(keyCode: string, email: string, userId?
     packageName: pkg.nameEn || pkg.nameAr,
     packageNameAr: pkg.nameAr || pkg.nameEn,
     isUpgrade: key.isUpgrade ?? false,
+    isRenewal: key.isRenewal ?? false,
   };
+}
+
+/**
+ * Renew package entitlements: extends existing subscription end dates rather than restarting.
+ * If no existing subscription is found, falls back to fulfillPackageEntitlements.
+ */
+export async function renewPackageEntitlements(
+  userId: number,
+  packageId: number,
+  registrationKeyId?: number,
+  entitlementDaysOverride?: number,
+) {
+  const pkg = await getPackageById(packageId);
+  if (!pkg) return;
+
+  const entitlementDays = normalizePositiveInteger(entitlementDaysOverride)
+    ?? normalizePositiveInteger(pkg.renewalPeriodDays)
+    ?? normalizePositiveInteger(pkg.durationDays)
+    ?? DEFAULT_KEY_ENTITLEMENT_DAYS;
+  const now = new Date();
+
+  // --- Package subscription ---
+  const existingPackageSubs = await getUserPackageSubscriptions(userId);
+  const currentPkgSub = existingPackageSubs.find(s => s.packageId === packageId && s.isActive);
+  if (!currentPkgSub) {
+    // No existing sub — fall back to fresh activation
+    await fulfillPackageEntitlements(userId, packageId, registrationKeyId, entitlementDays);
+    return;
+  }
+  const pkgBase = currentPkgSub.endDate && new Date(currentPkgSub.endDate) > now
+    ? new Date(currentPkgSub.endDate)
+    : now;
+  const pkgNewEnd = buildEndDateFromDays(pkgBase, entitlementDays);
+  const dbInst = await getDb();
+  if (!dbInst) return;
+  await dbInst.update(packageSubscriptions).set({
+    isActive: true,
+    endDate: pkgNewEnd.toISOString(),
+    renewalDueDate: pkgNewEnd.toISOString(),
+    updatedAt: now.toISOString(),
+  }).where(eq(packageSubscriptions.id, currentPkgSub.id));
+
+  // --- LexAI subscription ---
+  if (pkg.includesLexai) {
+    const current = await getActiveLexaiSubscription(userId);
+    if (current) {
+      const base = current.endDate && new Date(current.endDate) > now ? new Date(current.endDate) : now;
+      const newEnd = buildEndDateFromDays(base, entitlementDays);
+      await updateLexaiSubscription(current.id, {
+        isActive: true,
+        isPaused: false,
+        isPendingActivation: false,
+        endDate: newEnd.toISOString(),
+        paymentStatus: "completed",
+      });
+    } else {
+      const maxActivationDate = buildEndDateFromDays(now, 21);
+      const newEnd = buildEndDateFromDays(now, entitlementDays);
+      await createLexaiSubscription({
+        userId,
+        isActive: true,
+        isPaused: false,
+        isPendingActivation: true,
+        studentActivatedAt: null,
+        maxActivationDate: maxActivationDate.toISOString(),
+        startDate: now.toISOString(),
+        endDate: newEnd.toISOString(),
+        paymentStatus: "completed",
+        paymentAmount: 0,
+        paymentCurrency: "USD",
+        messagesUsed: 0,
+        messagesLimit: 100,
+        pausedAt: null,
+        pausedReason: null,
+        pausedRemainingDays: null,
+      });
+    }
+  }
+
+  // --- Recommendation subscription ---
+  if (pkg.includesRecommendations) {
+    const current = await getActiveRecommendationSubscription(userId);
+    if (current) {
+      const base = current.endDate && new Date(current.endDate) > now ? new Date(current.endDate) : now;
+      const newEnd = buildEndDateFromDays(base, entitlementDays);
+      await updateRecommendationSubscription(current.id, {
+        isActive: true,
+        isPaused: false,
+        isPendingActivation: false,
+        endDate: newEnd.toISOString(),
+        paymentStatus: "completed",
+      });
+    } else {
+      const maxActivationDate = buildEndDateFromDays(now, 21);
+      const newEnd = buildEndDateFromDays(now, entitlementDays);
+      await createRecommendationSubscription({
+        userId,
+        registrationKeyId: registrationKeyId ?? null,
+        isActive: true,
+        isPaused: false,
+        isPendingActivation: true,
+        studentActivatedAt: null,
+        maxActivationDate: maxActivationDate.toISOString(),
+        startDate: now.toISOString(),
+        endDate: newEnd.toISOString(),
+        paymentStatus: "completed",
+        paymentAmount: 0,
+        paymentCurrency: "USD",
+        pausedAt: null,
+        pausedReason: null,
+        pausedRemainingDays: null,
+      });
+    }
+  }
 }
 
 /**
@@ -3013,7 +3301,7 @@ export async function updateLexaiSubscription(id: number, subscription: Partial<
   await db.update(lexaiSubscriptions).set({ ...subscription, updatedAt: new Date().toISOString() }).where(eq(lexaiSubscriptions.id, id));
 }
 
-export async function pauseLexaiSubscription(id: number, reason?: string) {
+export async function pauseLexaiSubscription(id: number, reason?: string, frozenUntilDate?: Date) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
@@ -3028,6 +3316,7 @@ export async function pauseLexaiSubscription(id: number, reason?: string) {
     pausedAt: now.toISOString(),
     pausedReason: reason ?? null,
     pausedRemainingDays: remainingDays,
+    frozenUntil: frozenUntilDate ? frozenUntilDate.toISOString() : null,
     updatedAt: now.toISOString(),
   }).where(eq(lexaiSubscriptions.id, id));
 }
@@ -3051,6 +3340,7 @@ export async function resumeLexaiSubscription(id: number) {
     pausedAt: null,
     pausedReason: null,
     pausedRemainingDays: null,
+    frozenUntil: null,
     updatedAt: now.toISOString(),
   }).where(eq(lexaiSubscriptions.id, id));
 }
@@ -3527,6 +3817,14 @@ export async function closeSupportConversation(conversationId: number) {
   if (!db) return;
   await db.update(supportConversations)
     .set({ status: "closed", closedAt: new Date().toISOString(), updatedAt: new Date().toISOString() })
+    .where(eq(supportConversations.id, conversationId));
+}
+
+export async function reopenSupportConversation(conversationId: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(supportConversations)
+    .set({ status: "open", closedAt: null, updatedAt: new Date().toISOString() })
     .where(eq(supportConversations.id, conversationId));
 }
 

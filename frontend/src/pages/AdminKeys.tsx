@@ -1,5 +1,6 @@
 import { useState } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
+import { ResponsiveTable } from "@/components/ui/responsive-table";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -468,7 +469,7 @@ export default function AdminKeys() {
           <CardTitle>{t('admin.keys.allKeys')} ({filteredKeys?.length || 0})</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
+          <ResponsiveTable>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -558,7 +559,7 @@ export default function AdminKeys() {
                 })}
               </TableBody>
             </Table>
-          </div>
+          </ResponsiveTable>
         </CardContent>
       </Card>
       </div>

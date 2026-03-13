@@ -125,3 +125,28 @@ export async function sendAdminNewOrderNotification(data: {
     logger.warn("[ORDER_EMAIL] Failed to notify admin", { orderId: data.orderId, error: String(e) });
   }
 }
+
+/** Notify user that their timed freeze has expired and subscriptions are now active again */
+export async function sendFreezeExpiredEmail(to: string, name?: string | null) {
+  const subject = `تم رفع تجميد اشتراكاتك / Your subscriptions have been unfrozen`;
+  const firstName = name?.split(' ')[0] || '';
+  const body = `
+    <h2 style="margin:0 0 12px;color:#111;">مرحباً ${firstName} 👋</h2>
+    <p style="color:#374151;line-height:1.7;">
+      نود إعلامك بأن فترة التجميد المؤقت لاشتراكاتك قد انتهت وتم استئنافها تلقائياً.
+    </p>
+    <p style="color:#374151;line-height:1.7;">
+      Hi ${firstName}, your temporary freeze period has ended and your subscriptions have been automatically resumed.
+      You now have full access again.
+    </p>
+    <div style="text-align:center;margin-top:28px;">
+      <a href="https://xflexacademy.com/dashboard" style="display:inline-block;background:#2563eb;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:bold;">
+        الدخول إلى حسابي / Go to Dashboard
+      </a>
+    </div>`;
+  try {
+    await sendEmail({ to, subject, text: wrapHtml(body) });
+  } catch (e) {
+    logger.warn("[ORDER_EMAIL] Failed to send freeze-expired notification", { to, error: String(e) });
+  }
+}

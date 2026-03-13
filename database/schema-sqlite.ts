@@ -148,6 +148,7 @@ export const registrationKeys = sqliteTable("registrationKeys", {
   courseId: integer("courseId").notNull(),
   packageId: integer("packageId"), // NEW: links to packages.id — when set, this is a package key
   isUpgrade: integer("isUpgrade", { mode: 'boolean' }).default(false), // true if this key is an upgrade from Basic→Comprehensive
+  isRenewal: integer("isRenewal", { mode: 'boolean' }).default(false), // true if this key extends (renews) an existing subscription
   referredBy: text("referredBy"), // team member who convinced the user to upgrade
   activatedAt: text("activatedAt"),
   createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
@@ -201,6 +202,7 @@ export const lexaiSubscriptions = sqliteTable("lexaiSubscriptions", {
   pausedAt: text("pausedAt"),
   pausedReason: text("pausedReason"),
   pausedRemainingDays: integer("pausedRemainingDays"),
+  frozenUntil: text("frozenUntil"),
   createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
   updatedAt: text("updatedAt").default("CURRENT_TIMESTAMP").notNull(),
 });
@@ -284,6 +286,7 @@ export const recommendationSubscriptions = sqliteTable("recommendationSubscripti
   pausedAt: text("pausedAt"),
   pausedReason: text("pausedReason"),
   pausedRemainingDays: integer("pausedRemainingDays"),
+  frozenUntil: text("frozenUntil"),
   createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
   updatedAt: text("updatedAt").default("CURRENT_TIMESTAMP").notNull(),
 });
