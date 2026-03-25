@@ -3,13 +3,13 @@ import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Copy, Flame, Heart, Rocket, ThumbsUp, Frown, Bell, TrendingUp, BarChart3 } from "lucide-react";
 import ClientLayout from "@/components/ClientLayout";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { Link } from "wouter";
 
 const reactionIcons = {
   like: <ThumbsUp className="h-4 w-4" />,
@@ -40,7 +40,6 @@ export default function Recommendations() {
   const { t, language } = useLanguage();
   const utils = trpc.useUtils();
 
-  const [keyCode, setKeyCode] = useState("");
   const [type, setType] = useState<RecommendationType>("recommendation");
   const [content, setContent] = useState("");
   const [symbol, setSymbol] = useState("");
@@ -57,16 +56,6 @@ export default function Recommendations() {
     { limit: 200 },
     { enabled: !!me && (me.hasSubscription || me.canPublish) }
   );
-
-  const activateKeyMutation = trpc.recommendations.activateKey.useMutation({
-    onSuccess: () => {
-      toast.success(t('rec.toastKeyActivated'));
-      setKeyCode("");
-      utils.recommendations.me.invalidate();
-      utils.recommendations.feed.invalidate();
-    },
-    onError: (error) => toast.error(error.message),
-  });
 
   const postMessageMutation = trpc.recommendations.postMessage.useMutation({
     onSuccess: () => {
@@ -97,14 +86,6 @@ export default function Recommendations() {
     return date.toLocaleDateString(language === 'ar' ? "ar-EG" : "en-US");
   }, [me?.subscription?.endDate, language]);
 
-  const onActivate = () => {
-    if (!keyCode.trim() || !user?.email) {
-      toast.error(t('rec.toastEnterKey'));
-      return;
-    }
-    activateKeyMutation.mutate({ keyCode: keyCode.trim(), email: user.email });
-  };
-
   const onPublish = () => {
     if (!content.trim()) {
       toast.error(t('rec.toastWriteMessage'));
@@ -131,6 +112,80 @@ export default function Recommendations() {
     toast.success(t('rec.toastCopied'));
   };
 
+  // Full-screen paywall — matches LexAI style
+  if (!meLoading && !canRead) {
+    return (
+      <ClientLayout>
+      <div className="min-h-[calc(100vh-64px)] flex items-center justify-center bg-gradient-to-br from-purple-50 to-blue-50">
+        <Card className="max-w-2xl w-full mx-4">
+          <CardHeader className="text-center">
+            <div className="mx-auto w-16 h-16 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center mb-4">
+              <TrendingUp className="h-8 w-8 text-white" />
+            </div>
+            <CardTitle className="text-3xl">
+              {language === 'ar' ? 'قروب التوصيات' : 'Recommendations Group'}
+            </CardTitle>
+            <CardDescription className="text-lg">
+              {language === 'ar'
+                ? 'تنبيهات وتوصيات مباشرة مع إمكانية نسخ سريع للتنفيذ'
+                : 'Live alerts and trading recommendations with quick copy for execution'}
+            </CardDescription>
+            <p className="text-sm text-amber-700 mt-2">
+              {language === 'ar'
+                ? 'قروب التوصيات يتطلب مفتاح باقة مفعّل'
+                : 'Recommendations requires an active package key'}
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="grid gap-4">
+              <div className="flex items-start gap-3">
+                <Bell className="h-5 w-5 text-purple-600 mt-1" />
+                <div>
+                  <h4 className="font-semibold">
+                    {language === 'ar' ? 'تنبيهات فورية' : 'Instant Alerts'}
+                  </h4>
+                  <p className="text-sm text-muted-foreground">
+                    {language === 'ar' ? 'استقبل تنبيهات السوق فور صدورها' : 'Receive market alerts the moment they are published'}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <TrendingUp className="h-5 w-5 text-purple-600 mt-1" />
+                <div>
+                  <h4 className="font-semibold">
+                    {language === 'ar' ? 'توصيات التداول' : 'Trading Recommendations'}
+                  </h4>
+                  <p className="text-sm text-muted-foreground">
+                    {language === 'ar' ? 'نقاط دخول وخروج وإيقاف خسارة واضحة' : 'Clear entry, exit, and stop-loss points'}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <Copy className="h-5 w-5 text-purple-600 mt-1" />
+                <div>
+                  <h4 className="font-semibold">
+                    {language === 'ar' ? 'نسخ سريع للتنفيذ' : 'Quick Copy for Execution'}
+                  </h4>
+                  <p className="text-sm text-muted-foreground">
+                    {language === 'ar' ? 'انسخ التوصية بضغطة واحدة للتنفيذ الفوري' : 'Copy any recommendation in one click for instant execution'}
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="border-t pt-6">
+              <Link href="/activate-key">
+                <Button className="w-full" size="lg">
+                  {language === 'ar' ? 'تفعيل مفتاح الباقة' : 'Activate Your Package Key'}
+                </Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+      </ClientLayout>
+    );
+  }
+
   return (
     <ClientLayout>
     <div className="min-h-[calc(100vh-64px)] bg-gray-50">
@@ -140,34 +195,15 @@ export default function Recommendations() {
           <p className="text-muted-foreground">{t('rec.subtitle')}</p>
         </div>
 
+        {/* Status card — only shown to active subscribers */}
         <Card>
           <CardHeader>
             <CardTitle>{t('rec.accessStatus')}</CardTitle>
             <CardDescription>{t('rec.accessDesc')}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {meLoading ? (
-              <p className="text-sm text-muted-foreground">{t('rec.checking')}</p>
-            ) : (
-              <>
-                <p className="text-sm">{t('rec.status')}: {canRead ? t('rec.activated') : t('rec.notActivated')}</p>
-                <p className="text-sm">{t('rec.expiryDate')}: {expiryText}</p>
-              </>
-            )}
-
-            {!canRead && (
-              <div className="flex flex-col md:flex-row gap-2 pt-2">
-                <Input
-                  value={keyCode}
-                  onChange={(e) => setKeyCode(e.target.value.toUpperCase())}
-                  placeholder={t('rec.enterKey')}
-                  className="font-mono"
-                />
-                <Button onClick={onActivate} disabled={activateKeyMutation.isPending}>
-                  {t('rec.activateKey')}
-                </Button>
-              </div>
-            )}
+            <p className="text-sm">{t('rec.status')}: {t('rec.activated')}</p>
+            <p className="text-sm">{t('rec.expiryDate')}: {expiryText}</p>
           </CardContent>
         </Card>
 

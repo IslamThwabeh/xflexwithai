@@ -276,6 +276,8 @@ export default function CoursePlayer() {
                 <video
                   key={currentEpisode.id}
                   controls
+                  controlsList="nodownload"
+                  onContextMenu={(e) => e.preventDefault()}
                   className="w-full h-full"
                   src={currentEpisode.videoUrl ?? undefined}
                   onTimeUpdate={(e) => {

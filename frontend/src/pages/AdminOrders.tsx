@@ -96,9 +96,11 @@ export default function AdminOrders() {
                       {(order as any).isUpgrade ? <Badge variant="outline" className="text-xs text-purple-600 border-purple-300">⬆ Upgrade</Badge> : null}
                     </div>
                     <p className="text-sm text-gray-500">
-                      User #{order.userId} • ${(order.totalAmount / 100).toFixed(2)} {order.currency}
+                      {(order as any).userName || (order as any).userEmail || `User #${order.userId}`}
+                      {(order as any).userEmail ? ` (${(order as any).userEmail})` : ''}
+                      {' '}• ${(order.totalAmount / 100).toFixed(2)} {order.currency}
                       • {order.paymentMethod || '—'}
-                      • {new Date(order.createdAt).toLocaleDateString()}
+                      • {(() => { const d = new Date(String(order.createdAt).replace(' ', 'T')); return isNaN(d.getTime()) ? '—' : d.toLocaleDateString(); })()}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -109,6 +111,16 @@ export default function AdminOrders() {
                 {expandedId === order.id && (
                   <div className="border-t px-5 py-4 bg-gray-50 rounded-b-xl">
                     <div className="grid md:grid-cols-2 gap-4 text-sm mb-4">
+                      <div className="md:col-span-2 bg-blue-50 rounded-lg px-3 py-2">
+                        <span className="text-gray-500 font-medium">{language === 'ar' ? 'العميل' : 'Customer'}:</span>{' '}
+                        <span className="font-semibold">{(order as any).userName || '—'}</span>
+                        {(order as any).userEmail && (
+                          <span className="text-blue-700 ms-2">({(order as any).userEmail})</span>
+                        )}
+                        {(order as any).userPhone && (
+                          <span className="text-gray-600 ms-2">📞 {(order as any).userPhone}</span>
+                        )}
+                      </div>
                       <div>
                         <span className="text-gray-500">{language === 'ar' ? 'المبلغ الفرعي' : 'Subtotal'}:</span>{' '}
                         ${(order.subtotal / 100).toFixed(2)}
@@ -147,9 +159,14 @@ export default function AdminOrders() {
                     {/* Status Actions */}
                     <div className="flex flex-wrap gap-2">
                       {order.status === 'pending' && (
-                        <Button size="sm" variant="outline" onClick={() => handleStatusChange(order.id, 'cancelled')} className="text-red-600">
-                          <XCircle className="w-3.5 h-3.5 me-1" />{language === 'ar' ? 'إلغاء' : 'Cancel'}
-                        </Button>
+                        <>
+                          <Button size="sm" onClick={() => handleStatusChange(order.id, 'completed')}>
+                            <CheckCircle className="w-3.5 h-3.5 me-1" />{language === 'ar' ? 'تأكيد ✓' : 'Approve'}
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => handleStatusChange(order.id, 'cancelled')} className="text-red-600">
+                            <XCircle className="w-3.5 h-3.5 me-1" />{language === 'ar' ? 'إلغاء' : 'Cancel'}
+                          </Button>
+                        </>
                       )}
                       {order.status === 'awaiting_confirmation' && (
                         <>

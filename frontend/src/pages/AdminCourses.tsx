@@ -187,7 +187,6 @@ export default function AdminCourses() {
                     {course.descriptionEn}
                   </p>
                   <div className="flex items-center justify-between text-sm mb-4">
-                    <span className="font-medium">${(course.price / 100).toFixed(2)}</span>
                     <span className="capitalize text-muted-foreground">{course.level}</span>
                     {(course.stageNumber ?? 0) > 0 && (
                       <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
@@ -308,18 +307,7 @@ export default function AdminCourses() {
                 }}
               />
 
-              <div className="grid gap-4 md:grid-cols-3">
-                <div className="space-y-2">
-                  <Label htmlFor="price">{t('admin.courses.price')}</Label>
-                  <Input
-                    id="price"
-                    type="number"
-                    step="0.01"
-                    value={formData.price / 100}
-                    onChange={(e) => setFormData({ ...formData, price: Math.round(parseFloat(e.target.value) * 100) })}
-                    required
-                  />
-                </div>
+              <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="level">{t('admin.courses.level')}</Label>
                   <Select value={formData.level} onValueChange={(value: any) => setFormData({ ...formData, level: value })}>

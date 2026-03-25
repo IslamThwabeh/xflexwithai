@@ -23,6 +23,8 @@ interface R2Object {
   httpEtag: string;
   uploadedOn: Date;
   httpMetadata?: any;
+  body: ReadableStream;
+  arrayBuffer(): Promise<ArrayBuffer>;
 }
 
 /**
@@ -94,6 +96,31 @@ export async function storageDeleteR2(
   } catch (error) {
     throw new Error(`R2 delete failed: ${error instanceof Error ? error.message : String(error)}`);
   }
+}
+
+/**
+ * Archive (soft-delete) a file in R2 by copying it to _archived/ prefix,
+ * then deleting the original. This preserves the file as a backup.
+ */
+export async function storageArchiveR2(
+  bucket: R2Bucket,
+  key: string
+): Promise<{ archivedKey: string }> {
+  const normalizedKey = key.replace(/^\/+/, "");
+  const archivedKey = `_archived/${normalizedKey}`;
+
+  const existing = await bucket.get(normalizedKey);
+  if (!existing) {
+    // File doesn't exist in R2 — nothing to archive
+    return { archivedKey };
+  }
+
+  await bucket.put(archivedKey, existing.body, {
+    httpMetadata: existing.httpMetadata,
+  });
+  await bucket.delete(normalizedKey);
+
+  return { archivedKey };
 }
 
 /**

@@ -30,6 +30,7 @@ function formatSafeDate(
 export default function AdminUsers() {
   const { data: users, isLoading: usersLoading } = trpc.users.list.useQuery();
   const { data: enrollments, isLoading: enrollmentsLoading } = trpc.enrollments.listAll.useQuery();
+  const { data: dashStats } = trpc.dashboard.stats.useQuery();
 
   const isLoading = usersLoading || enrollmentsLoading;
 
@@ -37,7 +38,8 @@ export default function AdminUsers() {
   const totalUsers = users?.length || 0;
   const totalEnrollments = enrollments?.length || 0;
   const activeSubscriptions = enrollments?.filter(e => e.enrollment.isSubscriptionActive).length || 0;
-  const totalRevenue = enrollments?.reduce((sum, e) => sum + (e.enrollment.paymentAmount || 0), 0) || 0;
+  // Revenue from dashboard stats (includes completed orders + key activations, amounts in cents)
+  const totalRevenue = (dashStats?.totalRevenue || 0) / 100;
 
   const { t } = useLanguage();
 
@@ -181,10 +183,14 @@ export default function AdminUsers() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        {enrollment.enrollment.paymentAmount ? (
+                        {(enrollment.enrollment.paymentAmount ?? 0) > 0 ? (
                           <span className="font-medium">
-                            ${enrollment.enrollment.paymentAmount.toFixed(2)} {enrollment.enrollment.paymentCurrency}
+                            ${enrollment.enrollment.paymentAmount!.toFixed(2)} {enrollment.enrollment.paymentCurrency}
                           </span>
+                        ) : enrollment.enrollment.activatedViaKey ? (
+                          <span className="text-blue-600 font-medium">{t('admin.users.viaKey')}</span>
+                        ) : enrollment.enrollment.paymentStatus === 'completed' ? (
+                          <span className="text-green-600 font-medium">{t('admin.users.paid')}</span>
                         ) : (
                           <span className="text-muted-foreground">{t('admin.users.free')}</span>
                         )}

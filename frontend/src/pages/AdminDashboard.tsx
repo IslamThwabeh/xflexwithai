@@ -196,11 +196,16 @@ export default function AdminDashboard() {
                     <div className="space-y-1">
                       <p className="font-medium">{item.user?.name || "Unknown User"}</p>
                       <p className="text-sm text-muted-foreground">
-                        {item.course?.titleEn || "Unknown Course"}
+                        {isRtl ? (item.course?.titleAr || item.course?.titleEn) : item.course?.titleEn || "Unknown Course"}
                       </p>
                     </div>
-                    <div className="text-right">
-                      <p className="text-sm font-medium">{item.enrollment.paymentStatus}</p>
+                    <div className="text-right space-y-1">
+                      <div className="flex items-center justify-end gap-2">
+                        <span className="text-xs text-muted-foreground">{item.enrollment.progressPercentage || 0}%</span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${item.enrollment.isSubscriptionActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                          {item.enrollment.isSubscriptionActive ? (isRtl ? 'نشط' : 'Active') : (isRtl ? 'غير نشط' : 'Inactive')}
+                        </span>
+                      </div>
                       <p className="text-xs text-muted-foreground">
                         {formatSafeDistanceToNow(item.enrollment.enrolledAt)}
                       </p>

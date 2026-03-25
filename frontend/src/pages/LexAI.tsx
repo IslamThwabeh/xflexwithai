@@ -136,8 +136,6 @@ export default function LexAI() {
   const analyzeSingle = trpc.lexai.analyzeSingle.useMutation();
   const analyzeFeedback = trpc.lexai.analyzeFeedback.useMutation();
   const analyzeFeedbackWithImage = trpc.lexai.analyzeFeedbackWithImage.useMutation();
-  const redeemKey = trpc.lexai.redeemKey.useMutation();
-  const verifyAssignedKeyByEmail = trpc.lexai.verifyAssignedKeyByEmail.useMutation();
   const clearHistory = trpc.lexai.clearHistory.useMutation();
 
   const [guidedFlow, setGuidedFlow] = useState<
@@ -147,8 +145,6 @@ export default function LexAI() {
   const [h4ImageUrl, setH4ImageUrl] = useState("");
   const [timeframe, setTimeframe] = useState("M15");
   const [userAnalysis, setUserAnalysis] = useState("");
-  const [activationKey, setActivationKey] = useState("");
-  const [assignedEmail, setAssignedEmail] = useState(user?.email ?? "");
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -304,37 +300,6 @@ export default function LexAI() {
     }
   };
 
-  const handleRedeemKey = async () => {
-    if (!activationKey.trim()) {
-      toast.error(copy.errEnterKey);
-      return;
-    }
-
-    try {
-      await redeemKey.mutateAsync({ keyCode: activationKey.trim() });
-      toast.success(copy.keyActivated);
-      setActivationKey("");
-      await utils.lexai.getSubscription.invalidate();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : copy.keyActivationFailed);
-    }
-  };
-
-  const handleVerifyAssignedKey = async () => {
-    if (!assignedEmail.trim()) {
-      toast.error(copy.emailForAssignedKey);
-      return;
-    }
-
-    try {
-      await verifyAssignedKeyByEmail.mutateAsync({ email: assignedEmail.trim() });
-      toast.success(copy.assignedKeyVerified);
-      await utils.lexai.getSubscription.invalidate();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : copy.errRequestFailed);
-    }
-  };
-
   const handleClearHistory = async () => {
     try {
       await clearHistory.mutateAsync();
@@ -420,50 +385,11 @@ export default function LexAI() {
             </div>
 
             <div className="border-t pt-6">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <p className="text-2xl font-bold">$29.99/month</p>
-                  <p className="text-sm text-muted-foreground">{copy.analysesPerMonth}</p>
-                </div>
-              </div>
-              <div className="space-y-3">
-                <Input
-                  placeholder={copy.enterKey}
-                  value={activationKey}
-                  onChange={(event) => setActivationKey(event.target.value)}
-                  disabled={redeemKey.isPending || verifyAssignedKeyByEmail.isPending}
-                />
-                <Button
-                  className="w-full"
-                  size="lg"
-                  onClick={handleRedeemKey}
-                  disabled={redeemKey.isPending || verifyAssignedKeyByEmail.isPending}
-                >
-                  {redeemKey.isPending ? copy.activating : copy.activateKey}
+              <Link href="/activate-key">
+                <Button className="w-full" size="lg">
+                  {language === 'ar' ? 'تفعيل مفتاح الباقة' : 'Activate Your Package Key'}
                 </Button>
-              </div>
-              <div className="border-t pt-4 mt-4 space-y-3">
-                <p className="text-sm font-medium text-right">{copy.alreadyHaveKeyTitle}</p>
-                <Input
-                  placeholder={copy.emailForAssignedKey}
-                  value={assignedEmail}
-                  onChange={(event) => setAssignedEmail(event.target.value)}
-                  disabled={redeemKey.isPending || verifyAssignedKeyByEmail.isPending}
-                  dir="ltr"
-                />
-                <Button
-                  className="w-full"
-                  variant="outline"
-                  size="lg"
-                  onClick={handleVerifyAssignedKey}
-                  disabled={redeemKey.isPending || verifyAssignedKeyByEmail.isPending}
-                >
-                  {verifyAssignedKeyByEmail.isPending ? copy.verifying : copy.verifyEmailKey}
-                </Button>
-              </div>
-              <p className="text-xs text-center text-muted-foreground mt-3">
-                {copy.noCommitment}
-              </p>
+              </Link>
             </div>
           </CardContent>
         </Card>

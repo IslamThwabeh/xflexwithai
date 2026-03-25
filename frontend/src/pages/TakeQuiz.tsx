@@ -24,7 +24,9 @@ export default function TakeQuiz() {
   const [, setLocation] = useLocation();
   const level = parseInt(params?.level || "1");
 
-  const { data: quiz, isLoading: loading, error: queryError } = trpc.userQuiz.getLevel.useQuery({ level });
+  const { data: quiz, isLoading: loading, error: queryError } = trpc.userQuiz.getLevel.useQuery({ level }, {
+    retry: false,
+  });
   const submitMutation = trpc.userQuiz.submit.useMutation();
 
   const [currentQuestion, setCurrentQuestion] = useState(0);

@@ -164,6 +164,8 @@ export function FileUpload({
               <video
                 src={uploadedUrl}
                 controls
+                controlsList="nodownload"
+                onContextMenu={(e) => e.preventDefault()}
                 className="w-full h-48 object-cover"
               />
             </div>

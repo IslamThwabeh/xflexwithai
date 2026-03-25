@@ -64,26 +64,12 @@ export default function KeyActivationPrompt({
         toast.error(data.message);
       }
     },
-    onError: () => {
-      activateLegacyKey.mutate({ keyCode: keyCode.trim(), email: user?.email || "" });
-    },
-  });
-
-  const activateLegacyKey = trpc.registrationKeys.activateKey.useMutation({
-    onSuccess: (data) => {
-      setIsActivated(true);
-      toast.success(data.message);
-      setTimeout(() => {
-        setOpen(false);
-        window.location.reload();
-      }, 2000);
-    },
     onError: (error) => {
       toast.error(error.message);
     },
   });
 
-  const isPending = activatePackageKey.isPending || activateLegacyKey.isPending;
+  const isPending = activatePackageKey.isPending;
 
   const handleActivate = () => {
     if (!keyCode.trim()) {

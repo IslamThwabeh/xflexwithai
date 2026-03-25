@@ -1,5 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
+import { useAuth } from "@/_core/hooks/useAuth";
+import ClientLayout from "@/components/ClientLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,13 +20,20 @@ import { useLanguage } from "@/contexts/LanguageContext";
 export default function ActivateKey() {
   const [, setLocation] = useLocation();
   const { language } = useLanguage();
+  const { user, loading } = useAuth();
   const [keyCode, setKeyCode] = useState("");
-  const [email, setEmail] = useState("");
   const [isActivated, setIsActivated] = useState(false);
   const [activatedPackage, setActivatedPackage] = useState<string | null>(null);
   const [isUpgradeActivation, setIsUpgradeActivation] = useState(false);
 
-  // Try package key activation first, fall back to legacy course key
+  // Require authentication — redirect to login if not logged in
+  useEffect(() => {
+    if (!loading && !user) {
+      setLocation("/auth?next=/activate-key");
+    }
+  }, [user, loading]);
+
+  // Package key activation
   const activatePackageKey = trpc.packageKeys.activateKey.useMutation({
     onSuccess: (data: any) => {
       if (data.success) {
@@ -34,60 +43,31 @@ export default function ActivateKey() {
         toast.success(data.message);
         setTimeout(() => setLocation("/dashboard"), 4000);
       } else {
-        // Show Arabic message if available and language is Arabic
         const msg = (language === 'ar' && data.messageAr) ? data.messageAr : data.message;
         toast.error(msg);
-        // Only fall through to legacy key if it's NOT a renewal mismatch
-        if (!data.messageAr) {
-          activateLegacyKey.mutate({ keyCode: keyCode.trim(), email: email.trim() });
-        }
       }
-    },
-    onError: () => {
-      // Not a package key, try legacy course key
-      activateLegacyKey.mutate({ keyCode: keyCode.trim(), email: email.trim() });
-    },
-  });
-
-  const activateLegacyKey = trpc.registrationKeys.activateKey.useMutation({
-    onSuccess: (data) => {
-      setIsActivated(true);
-      toast.success(data.message);
-      setTimeout(() => {
-        if (data.key?.courseId) {
-          setLocation(`/course/${data.key.courseId}`);
-        } else {
-          setLocation("/dashboard");
-        }
-      }, 2000);
     },
     onError: (error) => {
       toast.error(error.message);
     },
   });
 
-  const isPending = activatePackageKey.isPending || activateLegacyKey.isPending;
+  const isPending = activatePackageKey.isPending;
 
   const handleActivate = () => {
     if (!keyCode.trim()) {
       toast.error(language === 'ar' ? 'يرجى إدخال مفتاح التفعيل' : 'Please enter an activation key');
       return;
     }
-    if (!email.trim()) {
-      toast.error(language === 'ar' ? 'يرجى إدخال بريدك الإلكتروني' : 'Please enter your email');
-      return;
-    }
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      toast.error(language === 'ar' ? 'يرجى إدخال بريد إلكتروني صحيح' : 'Please enter a valid email address');
-      return;
-    }
-    // Try package key first
-    activatePackageKey.mutate({ keyCode: keyCode.trim(), email: email.trim() });
+    activatePackageKey.mutate({ keyCode: keyCode.trim() });
   };
 
+  // Show nothing while auth state is loading (prevents flash before redirect)
+  if (loading) return null;
+
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-slate-900 to-slate-800">
+    <ClientLayout>
+      <div className="flex items-center justify-center py-12 px-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <div className="mx-auto mb-4 h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center">
@@ -98,8 +78,8 @@ export default function ActivateKey() {
           </CardTitle>
           <CardDescription>
             {language === 'ar'
-              ? 'أدخل مفتاح التفعيل وبريدك الإلكتروني لفتح باقتك'
-              : 'Enter your activation key and email to unlock your package'}
+              ? 'أدخل مفتاح التفعيل لفتح باقتك'
+              : 'Enter your activation key to unlock your package'}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -120,25 +100,17 @@ export default function ActivateKey() {
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="email">
-                  {language === 'ar' ? 'البريد الإلكتروني' : 'Email Address'}
-                </Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="your@email.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  dir="ltr"
-                  disabled={isPending}
-                />
-                <p className="text-xs text-muted-foreground">
-                  {language === 'ar'
-                    ? 'سيتم ربط هذا المفتاح ببريدك الإلكتروني'
-                    : 'This key will be linked to your email address'}
-                </p>
-              </div>
+              {user && (
+                <div className="space-y-2">
+                  <Label>{language === 'ar' ? 'البريد الإلكتروني' : 'Email Address'}</Label>
+                  <Input value={user.email ?? ''} disabled dir="ltr" />
+                  <p className="text-xs text-muted-foreground">
+                    {language === 'ar'
+                      ? 'سيتم ربط هذا المفتاح بحسابك'
+                      : 'This key will be linked to your account'}
+                  </p>
+                </div>
+              )}
 
               <Button
                 onClick={handleActivate}
@@ -238,6 +210,7 @@ export default function ActivateKey() {
           )}
         </CardContent>
       </Card>
-    </div>
+      </div>
+    </ClientLayout>
   );
 }

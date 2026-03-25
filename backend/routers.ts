@@ -7,7 +7,7 @@ import { z } from "zod";
 import { logger } from "./_core/logger";
 import * as db from "./db";
 import { storagePut } from "./storage";
-import { storagePutR2 } from "./storage-r2";
+import { storagePutR2, storageArchiveR2 } from "./storage-r2";
 import { analyzeLexai } from "./_core/lexai";
 import { hashPassword, verifyPassword, generateToken, isValidEmail, isValidPassword } from "./_core/auth";
 import { sendEmail, sendLoginCodeEmail } from "./_core/email";
@@ -122,6 +122,16 @@ const ensureLexaiAccess = async (ctx: { user: { id: number; email?: string | nul
   }
 
   return { subscription, isAdmin: !!admin };
+};
+
+const requireActivePackage = async (userId: number) => {
+  const sub = await db.getUserActivePackage(userId);
+  if (!sub) {
+    throw new TRPCError({
+      code: 'FORBIDDEN',
+      message: 'يجب تفعيل مفتاح الباقة أولاً للوصول إلى الاختبارات',
+    });
+  }
 };
 
 const getLatestLexaiAnalysis = async (userId: number, analysisType: string) => {
@@ -994,6 +1004,21 @@ export const appRouter = router({
     delete: adminProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {
+        // Archive the video in R2 before deleting the DB record
+        const episode = await db.getEpisodeById(input.id);
+        if (episode?.videoUrl) {
+          try {
+            const env = getWorkerEnv();
+            if (env?.VIDEOS_BUCKET) {
+              const url = new URL(episode.videoUrl);
+              const r2Key = decodeURIComponent(url.pathname.replace(/^\//, ''));
+              await storageArchiveR2(env.VIDEOS_BUCKET, r2Key);
+            }
+          } catch {
+            // Log but don't block deletion if archive fails
+            console.error(`Failed to archive video for episode ${input.id}`);
+          }
+        }
         await db.deleteEpisode(input.id);
         return { success: true };
       }),
@@ -1248,6 +1273,7 @@ export const appRouter = router({
   userQuiz: router({
     // Get progress for all levels (used by /quiz page)
     progress: protectedProcedure.query(async ({ ctx }) => {
+      await requireActivePackage(ctx.user.id);
       return db.getUserQuizProgress(ctx.user.id);
     }),
 
@@ -1255,6 +1281,7 @@ export const appRouter = router({
     getLevel: protectedProcedure
       .input(z.object({ level: z.number().min(1).max(20) }))
       .query(async ({ ctx, input }) => {
+        await requireActivePackage(ctx.user.id);
         const canAccess = await db.canAccessQuizLevel(ctx.user.id, input.level);
         if (!canAccess) {
           throw new TRPCError({
@@ -1283,6 +1310,7 @@ export const appRouter = router({
         })).min(1),
       }))
       .mutation(async ({ ctx, input }) => {
+        await requireActivePackage(ctx.user.id);
         const quiz = await db.getQuizByLevel(input.level);
         if (!quiz || quiz.id !== input.quizId) {
           throw new TRPCError({
@@ -1415,104 +1443,6 @@ export const appRouter = router({
 
       return subscription;
     }),
-
-    redeemKey: userOnlyProcedure
-      .input(z.object({
-        keyCode: z.string().min(5),
-      }))
-      .mutation(async ({ ctx, input }) => {
-        logger.info('[LexAI] Redeeming key', { userId: ctx.user.id });
-
-        const existing = await db.getActiveLexaiSubscription(ctx.user.id);
-        if (existing?.endDate) {
-          const endDate = new Date(existing.endDate);
-          if (!Number.isNaN(endDate.getTime()) && endDate.getTime() < Date.now()) {
-            await db.updateLexaiSubscription(existing.id, { isActive: false });
-          } else if (String(existing.paymentStatus ?? "").toLowerCase() === "key") {
-            return { success: true };
-          } else {
-            await db.updateLexaiSubscription(existing.id, { isActive: false });
-          }
-        } else if (existing) {
-          if (String(existing.paymentStatus ?? "").toLowerCase() === "key") {
-            return { success: true };
-          } else {
-            await db.updateLexaiSubscription(existing.id, { isActive: false });
-          }
-        }
-
-        if (!ctx.user.email) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "User email is required" });
-        }
-
-        const activation = await db.activateLexaiKey(input.keyCode, ctx.user.email);
-        if (!activation.success) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: activation.message });
-        }
-
-        const expiresAt = activation.key ? db.getKeyAccessEndDate(activation.key)?.toISOString() : null;
-        return { success: true, expiresAt };
-      }),
-
-    // Public: Redeem a LexAI key by email (no login required)
-    redeemKeyByEmail: publicProcedure
-      .input(z.object({
-        keyCode: z.string().min(5),
-        email: z.string().email(),
-      }))
-      .mutation(async ({ input }) => {
-        logger.info('[LexAI] Redeeming key by email', { email: input.email });
-
-        const activation = await db.activateLexaiKey(input.keyCode, input.email);
-        if (!activation.success) {
-          throw new TRPCError({ code: 'BAD_REQUEST', message: activation.message });
-        }
-
-        return { success: true };
-      }),
-
-    // Public: Verify if an email already has a valid assigned LexAI key
-    hasAssignedKeyByEmail: publicProcedure
-      .input(z.object({ email: z.string().email() }))
-      .query(async ({ input }) => {
-        const hasKey = await db.hasValidLexaiKeyByEmail(input.email);
-        return { hasKey };
-      }),
-
-    verifyAssignedKeyByEmail: userOnlyProcedure
-      .input(z.object({
-        email: z.string().email(),
-      }))
-      .mutation(async ({ ctx, input }) => {
-        if (!ctx.user.email) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "User email is required" });
-        }
-
-        const accountEmail = ctx.user.email.trim().toLowerCase();
-        const requestedEmail = input.email.trim().toLowerCase();
-
-        if (requestedEmail !== accountEmail) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "Please enter the same email as your account" });
-        }
-
-        const key = await db.getAssignedLexaiKeyByEmail(requestedEmail);
-        if (!key || !key.activatedAt) {
-          throw new TRPCError({ code: "NOT_FOUND", message: "No active assigned LexAI key found for this email" });
-        }
-
-        const keyExpiry = db.getKeyAccessEndDate(key);
-        if (!keyExpiry) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid key activation date" });
-        }
-
-        if (keyExpiry.getTime() < Date.now()) {
-          throw new TRPCError({ code: "FORBIDDEN", message: "Assigned key has expired" });
-        }
-
-        await db.applyLexaiKeySubscription(ctx.user.id, key);
-
-        return { success: true, expiresAt: keyExpiry.toISOString() };
-      }),
 
     // Create new subscription
     createSubscription: userOnlyProcedure
@@ -1856,21 +1786,6 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    activateKey: publicProcedure
-      .input(z.object({ keyCode: z.string().min(5), email: z.string().email() }))
-      .mutation(async ({ input }) => {
-        const result = await db.activateRecommendationKey(input.keyCode, input.email);
-        if (!result.success) {
-          throw new TRPCError({ code: 'BAD_REQUEST', message: result.message });
-        }
-
-        const user = await db.getUserByEmail(input.email);
-        if (user) {
-          await db.syncUserEntitlementsFromKeys(user.id, input.email);
-        }
-
-        return result;
-      }),
   }),
 
   recommendationAdmin: router({
@@ -1902,55 +1817,6 @@ export const appRouter = router({
         await db.setRecommendationPublisher(input.userId, input.enabled);
         return { success: true };
       }),
-
-    keys: router({
-      list: adminProcedure.query(async () => {
-        return await db.getRecommendationKeys();
-      }),
-      stats: adminProcedure.query(async () => {
-        return await db.getRecommendationKeyStatistics();
-      }),
-      generateKey: adminProcedure
-        .input(z.object({
-          notes: z.string().optional(),
-          expiresAt: z.date().optional(),
-          entitlementDays: z.number().int().min(1).max(3650).optional(),
-        }))
-        .mutation(async ({ input, ctx }) => {
-          const key = await db.createRegistrationKey({
-            courseId: -1,
-            createdBy: ctx.admin.id,
-            notes: input.notes,
-            entitlementDays: input.entitlementDays,
-            expiresAt: input.expiresAt,
-          });
-          return { success: true, key };
-        }),
-      generateBulkKeys: adminProcedure
-        .input(z.object({
-          quantity: z.number().min(1).max(1000),
-          notes: z.string().optional(),
-          expiresAt: z.date().optional(),
-          entitlementDays: z.number().int().min(1).max(3650).optional(),
-        }))
-        .mutation(async ({ input, ctx }) => {
-          const keys = await db.createBulkRegistrationKeys({
-            courseId: -1,
-            createdBy: ctx.admin.id,
-            quantity: input.quantity,
-            notes: input.notes,
-            entitlementDays: input.entitlementDays,
-            expiresAt: input.expiresAt,
-          });
-          return { success: true, keys, count: keys.length };
-        }),
-      deactivateKey: adminProcedure
-        .input(z.object({ keyId: z.number() }))
-        .mutation(async ({ input }) => {
-          const key = await db.deactivateRegistrationKey(input.keyId);
-          return { success: true, key };
-        }),
-    }),
   }),
 
   lexaiAdmin: router({
@@ -2003,351 +1869,8 @@ export const appRouter = router({
         await db.resumeLexaiSubscription(input.subscriptionId);
         return { success: true };
       }),
-    
-    keys: router({
-      list: adminProcedure.query(async () => {
-        logger.info('[LexAI] Getting keys (admin)');
-        return await db.getLexaiKeys();
-      }),
-      stats: adminProcedure.query(async () => {
-        logger.info('[LexAI] Getting key stats (admin)');
-        return await db.getLexaiKeyStatistics();
-      }),
-      generateKey: adminProcedure
-        .input(z.object({
-          notes: z.string().optional(),
-          expiresAt: z.date().optional(),
-          entitlementDays: z.number().int().min(1).max(3650).optional(),
-        }))
-        .mutation(async ({ input, ctx }) => {
-          logger.info('[LexAI] Generating key (admin)', { adminId: ctx.admin.id });
-          const key = await db.createRegistrationKey({
-            courseId: 0,
-            createdBy: ctx.admin.id,
-            notes: input.notes,
-            entitlementDays: input.entitlementDays,
-            expiresAt: input.expiresAt,
-          });
-          return { success: true, key };
-        }),
-      generateBulkKeys: adminProcedure
-        .input(z.object({
-          quantity: z.number().min(1).max(1000),
-          notes: z.string().optional(),
-          expiresAt: z.date().optional(),
-          entitlementDays: z.number().int().min(1).max(3650).optional(),
-        }))
-        .mutation(async ({ input, ctx }) => {
-          logger.info('[LexAI] Generating bulk keys (admin)', { adminId: ctx.admin.id, quantity: input.quantity });
-          const keys = await db.createBulkRegistrationKeys({
-            courseId: 0,
-            createdBy: ctx.admin.id,
-            quantity: input.quantity,
-            notes: input.notes,
-            entitlementDays: input.entitlementDays,
-            expiresAt: input.expiresAt,
-          });
-          return { success: true, keys, count: keys.length };
-        }),
-      deactivateKey: adminProcedure
-        .input(z.object({ keyId: z.number() }))
-        .mutation(async ({ input }) => {
-          logger.info('[LexAI] Deactivating key (admin)', { keyId: input.keyId });
-          const key = await db.deactivateRegistrationKey(input.keyId);
-          return { success: true, key };
-        }),
-    }),
   }),
   
-  // ============================================================================
-  // Registration Keys Management
-  // ============================================================================
-  registrationKeys: router({
-    // Generate a single key (admin only)
-    generateKey: adminProcedure
-      .input(z.object({
-        courseId: z.number(),
-        notes: z.string().optional(),
-        price: z.number().min(0).optional(),
-        entitlementDays: z.number().int().min(1).max(3650).optional(),
-        expiresAt: z.date().optional(),
-      }))
-      .mutation(async ({ input, ctx }) => {
-        logger.info('[KEYS] Generating single key', { courseId: input.courseId, adminId: ctx.admin.id });
-        
-        const key = await db.createRegistrationKey({
-          courseId: input.courseId,
-          createdBy: ctx.admin.id,
-          notes: input.notes,
-          price: input.price ?? 0,
-          currency: "USD",
-          entitlementDays: input.entitlementDays,
-          expiresAt: input.expiresAt,
-        });
-        
-        return { success: true, key };
-      }),
-    
-    // Generate bulk keys (admin only)
-    generateBulkKeys: adminProcedure
-      .input(z.object({
-        courseId: z.number(),
-        quantity: z.number().min(1).max(1000),
-        notes: z.string().optional(),
-        price: z.number().min(0).optional(),
-        entitlementDays: z.number().int().min(1).max(3650).optional(),
-        expiresAt: z.date().optional(),
-      }))
-      .mutation(async ({ input, ctx }) => {
-        logger.info('[KEYS] Generating bulk keys', { 
-          courseId: input.courseId, 
-          quantity: input.quantity,
-          adminId: ctx.admin.id 
-        });
-        
-        const keys = await db.createBulkRegistrationKeys({
-          courseId: input.courseId,
-          createdBy: ctx.admin.id,
-          quantity: input.quantity,
-          notes: input.notes,
-          price: input.price ?? 0,
-          currency: "USD",
-          entitlementDays: input.entitlementDays,
-          expiresAt: input.expiresAt,
-        });
-        
-        return { success: true, keys, count: keys.length };
-      }),
-    
-    // Get all keys (admin only)
-    getAllKeys: adminProcedure.query(async () => {
-      logger.info('[KEYS] Getting all keys');
-      const keys = await db.getAllRegistrationKeys();
-      return keys;
-    }),
-    
-    // Get keys by course (admin only)
-    getKeysByCourse: adminProcedure
-      .input(z.object({ courseId: z.number() }))
-      .query(async ({ input }) => {
-        logger.info('[KEYS] Getting keys by course', { courseId: input.courseId });
-        const keys = await db.getRegistrationKeysByCourse(input.courseId);
-        return keys;
-      }),
-    
-    // Get unused keys (admin only)
-    getUnusedKeys: adminProcedure.query(async () => {
-      logger.info('[KEYS] Getting unused keys');
-      const keys = await db.getUnusedKeys();
-      return keys;
-    }),
-    
-    // Get activated keys (admin only)
-    getActivatedKeys: adminProcedure.query(async () => {
-      logger.info('[KEYS] Getting activated keys');
-      const keys = await db.getActivatedKeys();
-      return keys;
-    }),
-    
-    // Search keys by email (admin only)
-    searchByEmail: adminProcedure
-      .input(z.object({ email: z.string().email() }))
-      .query(async ({ input }) => {
-        logger.info('[KEYS] Searching keys by email', { email: input.email });
-        const keys = await db.searchKeysByEmail(input.email);
-        return keys;
-      }),
-    
-    // Deactivate a key (admin only)
-    deactivateKey: adminProcedure
-      .input(z.object({ keyId: z.number() }))
-      .mutation(async ({ input }) => {
-        logger.info('[KEYS] Deactivating key', { keyId: input.keyId });
-        const key = await db.deactivateRegistrationKey(input.keyId);
-        return { success: true, key };
-      }),
-    
-    // Get key statistics (admin only)
-    getStatistics: adminProcedure.query(async () => {
-      logger.info('[KEYS] Getting statistics');
-      const stats = await db.getKeyStatistics();
-      return stats;
-    }),
-
-    // Public: Get minimal key info (to guide UX and enforce correct activation path)
-    getKeyInfo: publicProcedure
-      .input(z.object({ keyCode: z.string().min(5) }))
-      .query(async ({ input }) => {
-        const key = await db.getRegistrationKeyByCode(input.keyCode);
-        if (!key) {
-          return { exists: false } as const;
-        }
-
-        return {
-          exists: true,
-          isActive: !!key.isActive,
-          activatedAt: key.activatedAt ?? null,
-          keyType: key.courseId === 0 ? 'lexai' : key.courseId === -1 ? 'recommendation' : 'course',
-          courseId: key.courseId,
-          entitlementDays: key.entitlementDays ?? null,
-        } as const;
-      }),
-
-    // Public: Verify if an email already has at least one valid course key
-    getCourseAccessByEmail: publicProcedure
-      .input(z.object({ email: z.string().email() }))
-      .query(async ({ input }) => {
-        const keys = await db.getValidCourseKeysByEmail(input.email);
-        const courseIds = Array.from(new Set(keys.map(k => Number(k.courseId)).filter(Boolean)));
-        return { hasAccess: courseIds.length > 0, courseIds };
-      }),
-    
-    // Activate a key (public - for users)
-    activateKey: publicProcedure
-      .input(z.object({
-        keyCode: z.string(),
-        email: z.string().email(),
-      }))
-      .mutation(async ({ input }) => {
-        logger.info('[KEYS] Activating key', { keyCode: input.keyCode, email: input.email });
-
-        const existingKey = await db.getRegistrationKeyByCode(input.keyCode);
-        // Package keys should go through the package activation flow
-        if (existingKey?.packageId) {
-          const result = await db.activatePackageKey(input.keyCode, input.email);
-          if (!result.success) {
-            throw new TRPCError({ code: 'BAD_REQUEST', message: result.message });
-          }
-          return result;
-        }
-        if (existingKey && existingKey.courseId === 0) {
-          throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message: 'This key is for LexAI. Please activate it from the LexAI page.',
-          });
-        }
-        if (existingKey && existingKey.courseId === -1) {
-          throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message: 'This key is for recommendations. Please activate it from the recommendations page.',
-          });
-        }
-        
-        const result = await db.activateRegistrationKey(input.keyCode, input.email);
-        
-        if (!result.success) {
-          throw new TRPCError({ code: 'BAD_REQUEST', message: result.message });
-        }
-        
-        // If activation successful and key has a course, create enrollment
-        if (result.key && result.key.courseId) {
-          // Check if user exists
-          const user = await db.getUserByEmail(input.email);
-          
-          if (user) {
-            // Check if enrollment already exists
-            const existingEnrollment = await db.getEnrollmentByUserAndCourse(user.id, result.key.courseId);
-            
-            if (!existingEnrollment) {
-              // Create enrollment
-              await db.createEnrollment({
-                userId: user.id,
-                courseId: result.key.courseId,
-                paymentStatus: 'completed',
-                paymentAmount: result.key.price ?? 0,
-                paymentCurrency: result.key.currency ?? 'USD',
-                isSubscriptionActive: true,
-                registrationKeyId: result.key.id,
-                activatedViaKey: true,
-              });
-              
-              logger.info('[KEYS] Enrollment created', { 
-                userId: user.id, 
-                courseId: result.key.courseId,
-                keyId: result.key.id 
-              });
-            }
-          }
-        }
-        
-        return result;
-      }),
-
-    // Redeem a course key for the currently logged-in user
-    // (Worker production only supports tRPC, not REST /api/courses/* routes)
-    redeemKey: protectedProcedure
-      .input(z.object({ keyCode: z.string().min(5) }))
-      .mutation(async ({ ctx, input }) => {
-        if (!ctx.user.email) {
-          throw new TRPCError({ code: 'BAD_REQUEST', message: 'User email is required' });
-        }
-
-        logger.info('[KEYS] Redeeming key', { keyCode: input.keyCode, userId: ctx.user.id });
-
-        const existingKey = await db.getRegistrationKeyByCode(input.keyCode);
-        // Package keys should go through the package activation flow
-        if (existingKey?.packageId) {
-          const result = await db.activatePackageKey(input.keyCode, ctx.user.email);
-          if (!result.success) {
-            throw new TRPCError({ code: 'BAD_REQUEST', message: result.message });
-          }
-          return result;
-        }
-        if (existingKey && existingKey.courseId === 0) {
-          throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message: 'This key is for LexAI. Please activate it from the LexAI page.',
-          });
-        }
-        if (existingKey && existingKey.courseId === -1) {
-          throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message: 'This key is for recommendations. Please activate it from the recommendations page.',
-          });
-        }
-
-        const result = await db.activateRegistrationKey(input.keyCode, ctx.user.email);
-        if (!result.success) {
-          throw new TRPCError({ code: 'BAD_REQUEST', message: result.message });
-        }
-
-        if (result.key?.courseId) {
-          const existingEnrollment = await db.getEnrollmentByUserAndCourse(ctx.user.id, result.key.courseId);
-          if (!existingEnrollment) {
-            await db.createEnrollment({
-              userId: ctx.user.id,
-              courseId: result.key.courseId,
-              paymentStatus: 'completed',
-              paymentAmount: result.key.price ?? 0,
-              paymentCurrency: result.key.currency ?? 'USD',
-              isSubscriptionActive: true,
-              registrationKeyId: result.key.id,
-              activatedViaKey: true,
-            });
-
-            logger.info('[KEYS] Enrollment created via redeemKey', {
-              userId: ctx.user.id,
-              courseId: result.key.courseId,
-              keyId: result.key.id,
-            });
-          }
-        }
-
-        return { success: true };
-      }),
-    
-    // Check if user has valid key for course (public)
-    checkAccess: publicProcedure
-      .input(z.object({
-        email: z.string().email(),
-        courseId: z.number(),
-      }))
-      .query(async ({ input }) => {
-        const hasAccess = await db.userHasValidKeyForCourse(input.email, input.courseId);
-        return { hasAccess };
-      }),
-  }),
-
   // Contact Support (public, sends email to admin)
   contactSupport: publicProcedure
     .input(z.object({
@@ -2891,6 +2414,8 @@ export const appRouter = router({
           giftEmail: input.giftEmail || null,
           giftMessage: input.giftMessage || null,
           notes: input.notes || null,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
         });
 
         if (!order) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create order' });
@@ -3007,7 +2532,7 @@ export const appRouter = router({
 
               if (targetUserId) {
                 // Use fulfillPackageEntitlements which grants courses + LexAI + Recommendations
-                await db.fulfillPackageEntitlements(targetUserId, item.packageId);
+                await db.fulfillPackageEntitlements(targetUserId, item.packageId, undefined, undefined, order.id);
               }
             }
           }
@@ -3306,6 +2831,8 @@ export const appRouter = router({
           notes: input.notes || `Upgrade from ${eligibility.currentPackageName} to ${eligibility.targetPackageName}`,
           isUpgrade: true,
           upgradeFromPackageId: eligibility.currentPackageId,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
         });
 
         if (!order) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create order' });
@@ -3731,13 +3258,12 @@ export const appRouter = router({
       }),
 
     // Public: activate a package key (requires email; will resolve user)
-    activateKey: publicProcedure
+    activateKey: protectedProcedure
       .input(z.object({
         keyCode: z.string().min(1),
-        email: z.string().email(),
       }))
-      .mutation(async ({ input }) => {
-        return db.activatePackageKey(input.keyCode, input.email);
+      .mutation(async ({ input, ctx }) => {
+        return db.activatePackageKey(input.keyCode, ctx.user.email, ctx.user.id);
       }),
 
     // Upgrade leaderboard: monthly stats by referrer

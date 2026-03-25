@@ -153,6 +153,7 @@ export async function createUser(user: { email: string; passwordHash: string; na
       phone: user.phone || null,
       city: user.city || null,
       country: user.country || null,
+      createdAt: new Date().toISOString(),
     }).returning({ id: users.id });
     const userId = result[0].id;
     logger.db('User created successfully', { userId, email: user.email });
@@ -872,7 +873,10 @@ export async function getEnrollment(userId: number, courseId: number) {
 export async function createEnrollment(enrollment: InsertEnrollment) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(enrollments).values(enrollment).returning({ id: enrollments.id });
+  const result = await db.insert(enrollments).values({
+    ...enrollment,
+    enrolledAt: enrollment.enrolledAt ?? new Date().toISOString(),
+  }).returning({ id: enrollments.id });
   return result[0].id;
 }
 
@@ -970,58 +974,6 @@ function generateRegistrationKeyCode(groupLength: number = 5, groups: number = 3
   return `${REGISTRATION_KEY_PREFIX}-${parts.join("-")}`;
 }
 
-export async function getAllRegistrationKeys() {
-  const db = await getDb();
-  if (!db) return [];
-  return await db
-    .select()
-    .from(registrationKeys)
-    .where(sql`${registrationKeys.courseId} > 0`)
-    .orderBy(desc(registrationKeys.createdAt));
-}
-
-export async function getRegistrationKeysByCourse(courseId: number) {
-  const db = await getDb();
-  if (!db) return [];
-  return await db
-    .select()
-    .from(registrationKeys)
-    .where(eq(registrationKeys.courseId, courseId))
-    .orderBy(desc(registrationKeys.createdAt));
-}
-
-export async function getUnusedKeys() {
-  const db = await getDb();
-  if (!db) return [];
-  return await db
-    .select()
-    .from(registrationKeys)
-    .where(
-      and(
-        sql`${registrationKeys.courseId} > 0`,
-        eq(registrationKeys.isActive, true),
-        sql`${registrationKeys.activatedAt} is null`
-      )
-    )
-    .orderBy(desc(registrationKeys.createdAt));
-}
-
-export async function getActivatedKeys() {
-  const db = await getDb();
-  if (!db) return [];
-  return await db
-    .select()
-    .from(registrationKeys)
-    .where(
-      and(
-        sql`${registrationKeys.courseId} > 0`,
-        eq(registrationKeys.isActive, true),
-        sql`${registrationKeys.activatedAt} is not null`
-      )
-    )
-    .orderBy(desc(registrationKeys.activatedAt));
-}
-
 export async function getRegistrationKeyByCode(keyCode: string) {
   const db = await getDb();
   if (!db) return undefined;
@@ -1029,56 +981,6 @@ export async function getRegistrationKeyByCode(keyCode: string) {
     .where(eq(registrationKeys.keyCode, keyCode))
     .limit(1);
   return result.length > 0 ? result[0] : undefined;
-}
-
-export async function createRegistrationKey(
-  key: Omit<InsertRegistrationKey, "keyCode" | "expiresAt" | "entitlementDays"> & {
-    keyCode?: string;
-    expiresAt?: string | Date | null;
-    entitlementDays?: number | null;
-  }
-) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  const keyCode = key.keyCode ?? generateRegistrationKeyCode();
-  const values: InsertRegistrationKey = {
-    ...key,
-    keyCode,
-    createdAt: new Date().toISOString(),
-    entitlementDays: normalizePositiveInteger(key.entitlementDays),
-    expiresAt: key.expiresAt ? new Date(key.expiresAt).toISOString() : null,
-  } as InsertRegistrationKey;
-  const result = await db.insert(registrationKeys).values(values).returning({ id: registrationKeys.id });
-  return result[0].id;
-}
-
-export async function createBulkRegistrationKeys(input: {
-  courseId: number;
-  createdBy: number;
-  quantity: number;
-  notes?: string;
-  price?: number;
-  currency?: string;
-  entitlementDays?: number | null;
-  expiresAt?: string | Date | null;
-}) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  const values: InsertRegistrationKey[] = Array.from({ length: input.quantity }, () => ({
-    keyCode: generateRegistrationKeyCode(),
-    courseId: input.courseId,
-    createdBy: input.createdBy,
-    createdAt: new Date().toISOString(),
-    notes: input.notes ?? null,
-    price: input.price ?? 0,
-    currency: input.currency ?? "USD",
-    entitlementDays: normalizePositiveInteger(input.entitlementDays),
-    expiresAt: input.expiresAt ? new Date(input.expiresAt).toISOString() : null,
-  }));
-
-  await db.insert(registrationKeys).values(values);
-  return values;
 }
 
 export async function updateRegistrationKey(id: number, key: Partial<InsertRegistrationKey>) {
@@ -1151,320 +1053,9 @@ export async function reactivateRegistrationKey(id: number) {
   return updated;
 }
 
-export async function searchKeysByEmail(email: string) {
-  const db = await getDb();
-  if (!db) return [];
-  return await db
-    .select()
-    .from(registrationKeys)
-    .where(and(sql`${registrationKeys.courseId} > 0`, eq(registrationKeys.email, email)))
-    .orderBy(desc(registrationKeys.createdAt));
-}
-
-export async function getKeyStatistics() {
-  const db = await getDb();
-  if (!db) {
-    return {
-      total: 0,
-      activated: 0,
-      unused: 0,
-      deactivated: 0,
-      activationRate: 0,
-    };
-  }
-
-  const [totalResult] = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(registrationKeys)
-    .where(sql`${registrationKeys.courseId} > 0`);
-  const [activatedResult] = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(registrationKeys)
-    .where(and(sql`${registrationKeys.courseId} > 0`, sql`${registrationKeys.activatedAt} is not null`));
-  const [unusedResult] = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(registrationKeys)
-    .where(
-      and(
-        sql`${registrationKeys.courseId} > 0`,
-        eq(registrationKeys.isActive, true),
-        sql`${registrationKeys.activatedAt} is null`
-      )
-    );
-  const [deactivatedResult] = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(registrationKeys)
-    .where(and(sql`${registrationKeys.courseId} > 0`, eq(registrationKeys.isActive, false)));
-
-  const total = Number(totalResult?.count ?? 0);
-  const activated = Number(activatedResult?.count ?? 0);
-  const activationRate = total > 0 ? Math.round((activated / total) * 100) : 0;
-
-  return {
-    total,
-    activated,
-    unused: Number(unusedResult?.count ?? 0),
-    deactivated: Number(deactivatedResult?.count ?? 0),
-    activationRate,
-  };
-}
-
-export async function getLexaiKeys() {
-  const db = await getDb();
-  if (!db) return [];
-  return await db
-    .select()
-    .from(registrationKeys)
-    .where(eq(registrationKeys.courseId, 0))
-    .orderBy(desc(registrationKeys.createdAt));
-}
-
-export async function getLexaiKeyStatistics() {
-  const db = await getDb();
-  if (!db) {
-    return {
-      total: 0,
-      activated: 0,
-      unused: 0,
-      deactivated: 0,
-      activationRate: 0,
-    };
-  }
-
-  const [totalResult] = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(registrationKeys)
-    .where(eq(registrationKeys.courseId, 0));
-  const [activatedResult] = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(registrationKeys)
-    .where(and(eq(registrationKeys.courseId, 0), sql`${registrationKeys.activatedAt} is not null`));
-  const [unusedResult] = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(registrationKeys)
-    .where(
-      and(
-        eq(registrationKeys.courseId, 0),
-        eq(registrationKeys.isActive, true),
-        sql`${registrationKeys.activatedAt} is null`
-      )
-    );
-  const [deactivatedResult] = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(registrationKeys)
-    .where(and(eq(registrationKeys.courseId, 0), eq(registrationKeys.isActive, false)));
-
-  const total = Number(totalResult?.count ?? 0);
-  const activated = Number(activatedResult?.count ?? 0);
-  const activationRate = total > 0 ? Math.round((activated / total) * 100) : 0;
-
-  return {
-    total,
-    activated,
-    unused: Number(unusedResult?.count ?? 0),
-    deactivated: Number(deactivatedResult?.count ?? 0),
-    activationRate,
-  };
-}
-
-export async function getRecommendationKeys() {
-  const db = await getDb();
-  if (!db) return [];
-  return await db
-    .select()
-    .from(registrationKeys)
-    .where(eq(registrationKeys.courseId, -1))
-    .orderBy(desc(registrationKeys.createdAt));
-}
-
-export async function getRecommendationKeyStatistics() {
-  const db = await getDb();
-  if (!db) {
-    return {
-      total: 0,
-      activated: 0,
-      unused: 0,
-      deactivated: 0,
-      activationRate: 0,
-    };
-  }
-
-  const [totalResult] = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(registrationKeys)
-    .where(eq(registrationKeys.courseId, -1));
-  const [activatedResult] = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(registrationKeys)
-    .where(and(eq(registrationKeys.courseId, -1), sql`${registrationKeys.activatedAt} is not null`));
-  const [unusedResult] = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(registrationKeys)
-    .where(
-      and(
-        eq(registrationKeys.courseId, -1),
-        eq(registrationKeys.isActive, true),
-        sql`${registrationKeys.activatedAt} is null`
-      )
-    );
-  const [deactivatedResult] = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(registrationKeys)
-    .where(and(eq(registrationKeys.courseId, -1), eq(registrationKeys.isActive, false)));
-
-  const total = Number(totalResult?.count ?? 0);
-  const activated = Number(activatedResult?.count ?? 0);
-  const activationRate = total > 0 ? Math.round((activated / total) * 100) : 0;
-
-  return {
-    total,
-    activated,
-    unused: Number(unusedResult?.count ?? 0),
-    deactivated: Number(deactivatedResult?.count ?? 0),
-    activationRate,
-  };
-}
-
-function computeRecommendationKeyEndDate(key: RegistrationKey) {
-  return getKeyAccessEndDate(key);
-}
-
-async function applyRecommendationKeySubscription(userId: number, key: RegistrationKey) {
-  const now = new Date();
-  const endDate = buildEndDateFromDays(now, getKeyEntitlementDays(key));
-
-  const current = await getActiveRecommendationSubscription(userId);
-  if (current) {
-    await updateRecommendationSubscription(current.id, {
-      registrationKeyId: key.id,
-      isActive: true,
-      isPaused: false,
-      pausedAt: null,
-      pausedReason: null,
-      pausedRemainingDays: null,
-      startDate: now.toISOString(),
-      endDate: endDate.toISOString(),
-      paymentStatus: "key",
-      paymentAmount: key.price ?? 0,
-      paymentCurrency: key.currency ?? "USD",
-    });
-    return current.id;
-  }
-
-  return createRecommendationSubscription({
-    userId,
-    registrationKeyId: key.id,
-    isActive: true,
-    isPaused: false,
-    startDate: now.toISOString(),
-    endDate: endDate.toISOString(),
-    paymentStatus: "key",
-    paymentAmount: key.price ?? 0,
-    paymentCurrency: key.currency ?? "USD",
-    pausedAt: null,
-    pausedReason: null,
-    pausedRemainingDays: null,
-  });
-}
-
-export async function getAssignedRecommendationKeyByEmail(email: string) {
-  const db = await getDb();
-  if (!db) return undefined;
-
-  const normalizedEmail = email.trim().toLowerCase();
-  const keys = await db
-    .select()
-    .from(registrationKeys)
-    .where(and(eq(registrationKeys.courseId, -1), eq(registrationKeys.email, normalizedEmail), eq(registrationKeys.isActive, true)))
-    .orderBy(desc(registrationKeys.activatedAt), desc(registrationKeys.createdAt))
-    .limit(1);
-
-  return keys[0];
-}
-
-export async function hasValidRecommendationKeyByEmail(email: string) {
-  const key = await getAssignedRecommendationKeyByEmail(email);
-  if (!key) return false;
-  if (!key.isActive || !key.activatedAt) return false;
-  const endDate = computeRecommendationKeyEndDate(key);
-  if (!endDate) return false;
-  return endDate.getTime() >= Date.now();
-}
-
-export async function activateRecommendationKey(keyCode: string, email: string) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  const [key] = await db
-    .select()
-    .from(registrationKeys)
-    .where(eq(registrationKeys.keyCode, keyCode))
-    .limit(1);
-
-  if (!key) {
-    return { success: false, message: "Invalid recommendation key" };
-  }
-
-  if (key.courseId !== -1) {
-    return { success: false, message: "This key is not for recommendation group" };
-  }
-
-  if (!key.isActive) {
-    return { success: false, message: "This recommendation key is deactivated" };
-  }
-
-  const normalizedEmail = email.trim().toLowerCase();
-
-  if (key.activatedAt) {
-    const keyEmail = (key.email ?? "").trim().toLowerCase();
-    if (keyEmail === normalizedEmail) {
-      return {
-        success: true,
-        message: "Recommendation key already activated for this email",
-        key,
-      };
-    }
-    return { success: false, message: "This recommendation key has already been activated" };
-  }
-
-  if (key.email && key.email.trim().toLowerCase() !== normalizedEmail) {
-    return { success: false, message: "This recommendation key is assigned to another email" };
-  }
-
-  if (key.expiresAt) {
-    const expiresAt = new Date(key.expiresAt);
-    if (!Number.isNaN(expiresAt.getTime()) && expiresAt.getTime() < Date.now()) {
-      return { success: false, message: "This recommendation key has expired" };
-    }
-  }
-
-  await db
-    .update(registrationKeys)
-    .set({
-      email: normalizedEmail,
-      activatedAt: new Date().toISOString(),
-      isActive: true,
-    })
-    .where(eq(registrationKeys.id, key.id));
-
-  const [updated] = await db
-    .select()
-    .from(registrationKeys)
-    .where(eq(registrationKeys.id, key.id))
-    .limit(1);
-
-  const resolvedKey = updated ?? key;
-  const user = await getUserByEmail(normalizedEmail);
-  if (user) {
-    await applyRecommendationKeySubscription(user.id, resolvedKey);
-  }
-
-  return {
-    success: true,
-    message: "Recommendation key activated successfully",
-    key: resolvedKey,
-  };
-}
+// ============================================================================
+// Recommendation Subscription Management
+// ============================================================================
 
 export async function getActiveRecommendationSubscription(userId: number) {
   const db = await getDb();
@@ -1774,277 +1365,8 @@ export async function setRecommendationReaction(messageId: number, userId: numbe
   });
 }
 
-export async function activateRegistrationKey(keyCode: string, email: string) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  const [key] = await db
-    .select()
-    .from(registrationKeys)
-    .where(eq(registrationKeys.keyCode, keyCode))
-    .limit(1);
-
-  if (!key) {
-    return { success: false, message: "Invalid registration key" };
-  }
-
-  if (Number(key.courseId) <= 0) {
-    return { success: false, message: "This key is not a course key" };
-  }
-
-  if (!key.isActive) {
-    return { success: false, message: "This registration key is deactivated" };
-  }
-
-  if (key.activatedAt) {
-    return { success: false, message: "This registration key has already been activated" };
-  }
-
-  if (key.email && key.email !== email) {
-    return { success: false, message: "This registration key is assigned to another email" };
-  }
-
-  if (key.expiresAt) {
-    const expiresAt = new Date(key.expiresAt);
-    if (!Number.isNaN(expiresAt.getTime()) && expiresAt.getTime() < Date.now()) {
-      return { success: false, message: "This registration key has expired" };
-    }
-  }
-
-  await db
-    .update(registrationKeys)
-    .set({
-      email,
-      activatedAt: new Date().toISOString(),
-      isActive: true,
-    })
-    .where(eq(registrationKeys.id, key.id));
-
-  const [updated] = await db
-    .select()
-    .from(registrationKeys)
-    .where(eq(registrationKeys.id, key.id))
-    .limit(1);
-
-  return {
-    success: true,
-    message: "Key activated successfully",
-    key: updated ?? key,
-  };
-}
-
-export async function activateLexaiKey(keyCode: string, email: string) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  const [key] = await db
-    .select()
-    .from(registrationKeys)
-    .where(eq(registrationKeys.keyCode, keyCode))
-    .limit(1);
-
-  if (!key) {
-    return { success: false, message: "Invalid LexAI key" };
-  }
-
-  if (key.courseId !== 0) {
-    return { success: false, message: "This key is not for LexAI" };
-  }
-
-  // Package keys have courseId=0 but should NOT be activated as LexAI keys
-  if (key.packageId) {
-    return { success: false, message: "This is a package key. Please activate it from the packages page." };
-  }
-
-  if (!key.isActive) {
-    return { success: false, message: "This LexAI key is deactivated" };
-  }
-
-  const normalizedEmail = email.trim().toLowerCase();
-
-  if (key.activatedAt) {
-    const keyEmail = (key.email ?? "").trim().toLowerCase();
-    if (keyEmail === normalizedEmail) {
-      return {
-        success: true,
-        message: "LexAI key already activated for this email",
-        key,
-      };
-    }
-    return { success: false, message: "This LexAI key has already been activated" };
-  }
-
-  if (key.email && key.email.trim().toLowerCase() !== normalizedEmail) {
-    return { success: false, message: "This LexAI key is assigned to another email" };
-  }
-
-  if (key.expiresAt) {
-    const expiresAt = new Date(key.expiresAt);
-    if (!Number.isNaN(expiresAt.getTime()) && expiresAt.getTime() < Date.now()) {
-      return { success: false, message: "This LexAI key has expired" };
-    }
-  }
-
-  await db
-    .update(registrationKeys)
-    .set({
-      email: normalizedEmail,
-      activatedAt: new Date().toISOString(),
-      isActive: true,
-    })
-    .where(eq(registrationKeys.id, key.id));
-
-  const [updated] = await db
-    .select()
-    .from(registrationKeys)
-    .where(eq(registrationKeys.id, key.id))
-    .limit(1);
-
-  const resolvedKey = updated ?? key;
-  const user = await getUserByEmail(normalizedEmail);
-  if (user) {
-    await applyLexaiKeySubscription(user.id, resolvedKey);
-  }
-
-  return {
-    success: true,
-    message: "LexAI key activated successfully",
-    key: resolvedKey,
-  };
-}
-
-export async function getAssignedLexaiKeyByEmail(email: string) {
-  const db = await getDb();
-  if (!db) return undefined;
-
-  const normalizedEmail = email.trim().toLowerCase();
-  const keys = await db
-    .select()
-    .from(registrationKeys)
-    .where(and(eq(registrationKeys.courseId, 0), eq(registrationKeys.email, normalizedEmail), eq(registrationKeys.isActive, true)))
-    .orderBy(desc(registrationKeys.activatedAt), desc(registrationKeys.createdAt))
-    .limit(1);
-
-  return keys[0];
-}
-
-export async function userHasValidKeyForCourse(email: string, courseId: number) {
-  const db = await getDb();
-  if (!db) return false;
-
-  const normalizedEmail = email.trim().toLowerCase();
-  const keys = await db
-    .select()
-    .from(registrationKeys)
-    .where(
-      and(
-        eq(registrationKeys.courseId, courseId),
-        sql`lower(${registrationKeys.email}) = ${normalizedEmail}`
-      )
-    );
-
-  if (keys.length === 0) return false;
-
-  return keys.some((key) => key.isActive && !!key.activatedAt);
-}
-
-export async function getValidCourseKeysByEmail(email: string) {
-  const db = await getDb();
-  if (!db) return [];
-
-  const normalizedEmail = email.trim().toLowerCase();
-
-  const keys = await db
-    .select()
-    .from(registrationKeys)
-    .where(
-      and(
-        sql`lower(${registrationKeys.email}) = ${normalizedEmail}`,
-        sql`${registrationKeys.activatedAt} is not null`,
-        eq(registrationKeys.isActive, true),
-        sql`${registrationKeys.courseId} > 0`
-      )
-    );
-
-  return keys;
-}
-
-function computeLexaiKeyEndDate(key: any) {
-  return getKeyAccessEndDate(key);
-}
-
-export async function applyLexaiKeySubscription(userId: number, key: RegistrationKey) {
-  const now = new Date();
-  const endDate = buildEndDateFromDays(now, getKeyEntitlementDays(key));
-
-  const current = await getActiveLexaiSubscription(userId);
-  if (current) {
-    await updateLexaiSubscription(current.id, {
-      isActive: true,
-      isPaused: false,
-      pausedAt: null,
-      pausedReason: null,
-      pausedRemainingDays: null,
-      startDate: now.toISOString(),
-      endDate: endDate.toISOString(),
-      paymentStatus: "key",
-      paymentAmount: key.price ?? 0,
-      paymentCurrency: key.currency ?? "USD",
-      messagesUsed: 0,
-      messagesLimit: 100,
-    });
-    return current.id;
-  }
-
-  return createLexaiSubscription({
-    userId,
-    isActive: true,
-    isPaused: false,
-    startDate: now.toISOString(),
-    endDate: endDate.toISOString(),
-    paymentStatus: "key",
-    paymentAmount: key.price ?? 0,
-    paymentCurrency: key.currency ?? "USD",
-    messagesUsed: 0,
-    messagesLimit: 100,
-    pausedAt: null,
-    pausedReason: null,
-    pausedRemainingDays: null,
-  });
-}
-
-export async function hasValidLexaiKeyByEmail(email: string) {
-  const key = await getAssignedLexaiKeyByEmail(email);
-  if (!key) return false;
-  if (!key.isActive || !key.activatedAt) return false;
-  const endDate = computeLexaiKeyEndDate(key);
-  if (!endDate) return false;
-  return endDate.getTime() >= Date.now();
-}
-
 export async function syncUserEntitlementsFromKeys(userId: number, email: string) {
-  const db = await getDb();
-  if (!db) return;
-
   const normalizedEmail = email.trim().toLowerCase();
-
-  const lexaiKey = await getAssignedLexaiKeyByEmail(normalizedEmail);
-  if (lexaiKey && lexaiKey.isActive && lexaiKey.activatedAt) {
-    const lexaiEndDate = computeLexaiKeyEndDate(lexaiKey);
-    if (lexaiEndDate && lexaiEndDate.getTime() >= Date.now()) {
-      await applyLexaiKeySubscription(userId, lexaiKey);
-    }
-  }
-
-  const recommendationKey = await getAssignedRecommendationKeyByEmail(normalizedEmail);
-  if (recommendationKey && recommendationKey.isActive && recommendationKey.activatedAt) {
-    const recommendationEndDate = computeRecommendationKeyEndDate(recommendationKey);
-    if (recommendationEndDate && recommendationEndDate.getTime() >= Date.now()) {
-      await applyRecommendationKeySubscription(userId, recommendationKey);
-    }
-  }
-
-  // Package keys -> ensure all package entitlements (courses, LexAI, recommendations, etc.)
   const packageKeys = await getActivatedPackageKeysByEmail(normalizedEmail);
   for (const key of packageKeys) {
     if (!key.packageId) continue;
@@ -2115,6 +1437,7 @@ export async function getAllPackageKeysEnriched() {
     lexaiIsPaused: sql<0 | 1 | null>`(SELECT ls.isPaused FROM lexaiSubscriptions ls WHERE ls.userId = (SELECT id FROM users WHERE LOWER(email) = LOWER(${registrationKeys.email}) LIMIT 1) AND ls.isActive = 1 ORDER BY ls.createdAt DESC LIMIT 1)`,
     recSubId: sql<number | null>`(SELECT rs.id FROM recommendationSubscriptions rs WHERE rs.userId = (SELECT id FROM users WHERE LOWER(email) = LOWER(${registrationKeys.email}) LIMIT 1) AND rs.isActive = 1 ORDER BY rs.createdAt DESC LIMIT 1)`,
     recIsPaused: sql<0 | 1 | null>`(SELECT rs.isPaused FROM recommendationSubscriptions rs WHERE rs.userId = (SELECT id FROM users WHERE LOWER(email) = LOWER(${registrationKeys.email}) LIMIT 1) AND rs.isActive = 1 ORDER BY rs.createdAt DESC LIMIT 1)`,
+    subEndDate: sql<string | null>`(SELECT ps.endDate FROM packageSubscriptions ps WHERE ps.userId = (SELECT id FROM users WHERE LOWER(email) = LOWER(${registrationKeys.email}) LIMIT 1) AND ps.packageId = ${registrationKeys.packageId} ORDER BY ps.createdAt DESC LIMIT 1)`,
   })
   .from(registrationKeys)
   .where(sql`${registrationKeys.packageId} IS NOT NULL`)
@@ -2124,30 +1447,69 @@ export async function getAllPackageKeysEnriched() {
 export async function getComprehensivePackageHolders() {
   const db = await getDb();
   if (!db) return [];
-  return await db.select({
+
+  // Step 1: Get key holders + user info via explicit JOINs (avoids Drizzle correlated subquery issues)
+  const holderRows = await db.select({
     keyId: registrationKeys.id,
     userEmail: registrationKeys.email,
     packageId: registrationKeys.packageId,
     activatedAt: registrationKeys.activatedAt,
-    userName: sql<string | null>`(SELECT name FROM users WHERE LOWER(email) = LOWER(${registrationKeys.email}) LIMIT 1)`,
-    userId: sql<number | null>`(SELECT id FROM users WHERE LOWER(email) = LOWER(${registrationKeys.email}) LIMIT 1)`,
-    lexaiSubId: sql<number | null>`(SELECT ls.id FROM lexaiSubscriptions ls WHERE ls.userId = (SELECT id FROM users WHERE LOWER(email) = LOWER(${registrationKeys.email}) LIMIT 1) AND ls.isActive = 1 ORDER BY ls.createdAt DESC LIMIT 1)`,
-    lexaiIsPaused: sql<0 | 1 | null>`(SELECT ls.isPaused FROM lexaiSubscriptions ls WHERE ls.userId = (SELECT id FROM users WHERE LOWER(email) = LOWER(${registrationKeys.email}) LIMIT 1) AND ls.isActive = 1 ORDER BY ls.createdAt DESC LIMIT 1)`,
-    lexaiEndDate: sql<string | null>`(SELECT ls.endDate FROM lexaiSubscriptions ls WHERE ls.userId = (SELECT id FROM users WHERE LOWER(email) = LOWER(${registrationKeys.email}) LIMIT 1) AND ls.isActive = 1 ORDER BY ls.createdAt DESC LIMIT 1)`,
-    lexaiPausedRemainingDays: sql<number | null>`(SELECT ls.pausedRemainingDays FROM lexaiSubscriptions ls WHERE ls.userId = (SELECT id FROM users WHERE LOWER(email) = LOWER(${registrationKeys.email}) LIMIT 1) AND ls.isActive = 1 ORDER BY ls.createdAt DESC LIMIT 1)`,
-    recSubId: sql<number | null>`(SELECT rs.id FROM recommendationSubscriptions rs WHERE rs.userId = (SELECT id FROM users WHERE LOWER(email) = LOWER(${registrationKeys.email}) LIMIT 1) AND rs.isActive = 1 ORDER BY rs.createdAt DESC LIMIT 1)`,
-    recIsPaused: sql<0 | 1 | null>`(SELECT rs.isPaused FROM recommendationSubscriptions rs WHERE rs.userId = (SELECT id FROM users WHERE LOWER(email) = LOWER(${registrationKeys.email}) LIMIT 1) AND rs.isActive = 1 ORDER BY rs.createdAt DESC LIMIT 1)`,
-    recEndDate: sql<string | null>`(SELECT rs.endDate FROM recommendationSubscriptions rs WHERE rs.userId = (SELECT id FROM users WHERE LOWER(email) = LOWER(${registrationKeys.email}) LIMIT 1) AND rs.isActive = 1 ORDER BY rs.createdAt DESC LIMIT 1)`,
-    recPausedRemainingDays: sql<number | null>`(SELECT rs.pausedRemainingDays FROM recommendationSubscriptions rs WHERE rs.userId = (SELECT id FROM users WHERE LOWER(email) = LOWER(${registrationKeys.email}) LIMIT 1) AND rs.isActive = 1 ORDER BY rs.createdAt DESC LIMIT 1)`,
+    userName: users.name,
+    userId: users.id,
   })
   .from(registrationKeys)
+  .leftJoin(users, sql`LOWER(${users.email}) = LOWER(${registrationKeys.email})`)
+  .innerJoin(packages, eq(packages.id, registrationKeys.packageId))
   .where(and(
-    sql`${registrationKeys.packageId} IS NOT NULL`,
     eq(registrationKeys.isActive, true),
     sql`${registrationKeys.activatedAt} IS NOT NULL`,
-    sql`(SELECT includesLexai FROM packages WHERE id = ${registrationKeys.packageId} LIMIT 1) = 1`
+    eq(packages.includesLexai, true)
   ))
   .orderBy(desc(registrationKeys.activatedAt));
+
+  // Step 2: For each holder, look up their subscriptions by userId
+  return await Promise.all(holderRows.map(async (holder) => {
+    if (!holder.userId) {
+      return {
+        ...holder,
+        lexaiSubId: null, lexaiIsPaused: null as 0 | 1 | null, lexaiEndDate: null, lexaiPausedRemainingDays: null,
+        recSubId: null, recIsPaused: null as 0 | 1 | null, recEndDate: null, recPausedRemainingDays: null,
+      };
+    }
+    const [lexaiSub] = await db.select({
+      id: lexaiSubscriptions.id,
+      isPaused: lexaiSubscriptions.isPaused,
+      endDate: lexaiSubscriptions.endDate,
+      pausedRemainingDays: lexaiSubscriptions.pausedRemainingDays,
+    })
+    .from(lexaiSubscriptions)
+    .where(and(eq(lexaiSubscriptions.userId, holder.userId), eq(lexaiSubscriptions.isActive, true)))
+    .orderBy(desc(lexaiSubscriptions.id))
+    .limit(1);
+
+    const [recSub] = await db.select({
+      id: recommendationSubscriptions.id,
+      isPaused: recommendationSubscriptions.isPaused,
+      endDate: recommendationSubscriptions.endDate,
+      pausedRemainingDays: recommendationSubscriptions.pausedRemainingDays,
+    })
+    .from(recommendationSubscriptions)
+    .where(and(eq(recommendationSubscriptions.userId, holder.userId), eq(recommendationSubscriptions.isActive, true)))
+    .orderBy(desc(recommendationSubscriptions.id))
+    .limit(1);
+
+    return {
+      ...holder,
+      lexaiSubId: lexaiSub?.id ?? null,
+      lexaiIsPaused: (lexaiSub?.isPaused ?? null) as 0 | 1 | null,
+      lexaiEndDate: lexaiSub?.endDate ?? null,
+      lexaiPausedRemainingDays: lexaiSub?.pausedRemainingDays ?? null,
+      recSubId: recSub?.id ?? null,
+      recIsPaused: (recSub?.isPaused ?? null) as 0 | 1 | null,
+      recEndDate: recSub?.endDate ?? null,
+      recPausedRemainingDays: recSub?.pausedRemainingDays ?? null,
+    };
+  }));
 }
 
 export async function getPackageKeyStatistics() {
@@ -2477,6 +1839,7 @@ export async function fulfillPackageEntitlements(
   packageId: number,
   registrationKeyId?: number,
   entitlementDaysOverride?: number,
+  orderId?: number,
 ) {
   const pkg = await getPackageById(packageId);
   if (!pkg) return;
@@ -2486,6 +1849,7 @@ export async function fulfillPackageEntitlements(
     ?? normalizePositiveInteger(pkg.durationDays)
     ?? DEFAULT_KEY_ENTITLEMENT_DAYS;
   const now = new Date();
+  const serviceEndDate = buildEndDateFromDays(now, entitlementDays);
   // For deferred activation: set a placeholder endDate to 21+30=51 days (max wait + real period)
   const placeholderEndDate = buildEndDateFromDays(now, 51); // 21 days max wait + 30 days real period
   const maxActivationDate = buildEndDateFromDays(now, 21); // 21 days from now
@@ -2508,7 +1872,7 @@ export async function fulfillPackageEntitlements(
     await createPackageSubscription({
       userId,
       packageId,
-      orderId: 0, // no order for key-based activation
+      orderId: orderId ?? 0,
       isActive: true,
       startDate: now.toISOString(),
       endDate: serviceEndDate.toISOString(),
@@ -3601,7 +2965,7 @@ export async function assignRole(userId: number, role: string, assignedBy?: numb
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   // INSERT OR IGNORE for unique constraint
-  await db.insert(userRoles).values({ userId, role, assignedBy }).onConflictDoNothing();
+  await db.insert(userRoles).values({ userId, role, assignedBy, assignedAt: new Date().toISOString() }).onConflictDoNothing();
 }
 
 export async function removeRole(userId: number, role: string) {
@@ -3945,13 +3309,43 @@ export async function getUserOrders(userId: number): Promise<Order[]> {
   return db.select().from(orders).where(eq(orders.userId, userId)).orderBy(desc(orders.createdAt));
 }
 
-export async function getAllOrders(status?: string): Promise<Order[]> {
+export async function getAllOrders(status?: string) {
   const db = await getDb();
   if (!db) return [];
+  const q = db
+    .select({
+      id: orders.id,
+      userId: orders.userId,
+      status: orders.status,
+      subtotal: orders.subtotal,
+      discountAmount: orders.discountAmount,
+      vatRate: orders.vatRate,
+      vatAmount: orders.vatAmount,
+      totalAmount: orders.totalAmount,
+      currency: orders.currency,
+      paymentMethod: orders.paymentMethod,
+      paymentReference: orders.paymentReference,
+      paymentProofUrl: orders.paymentProofUrl,
+      isGift: orders.isGift,
+      giftEmail: orders.giftEmail,
+      giftMessage: orders.giftMessage,
+      notes: orders.notes,
+      isUpgrade: orders.isUpgrade,
+      upgradeFromPackageId: orders.upgradeFromPackageId,
+      createdAt: orders.createdAt,
+      updatedAt: orders.updatedAt,
+      completedAt: orders.completedAt,
+      userEmail: users.email,
+      userName: users.name,
+      userPhone: users.phone,
+    })
+    .from(orders)
+    .leftJoin(users, eq(orders.userId, users.id))
+    .orderBy(desc(orders.createdAt));
   if (status) {
-    return db.select().from(orders).where(eq(orders.status, status)).orderBy(desc(orders.createdAt));
+    return q.where(eq(orders.status, status));
   }
-  return db.select().from(orders).orderBy(desc(orders.createdAt));
+  return q;
 }
 
 export async function updateOrderStatus(

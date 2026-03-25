@@ -1,7 +1,9 @@
 import { Link } from "wouter";
-import { Lock, CheckCircle, Circle, Trophy, Clock } from "lucide-react";
+import { Lock, CheckCircle, Circle, Trophy, Clock, Key } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import ClientLayout from "@/components/ClientLayout";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 
 type LevelProgress = {
   level: number;
@@ -15,7 +17,9 @@ type LevelProgress = {
 };
 
 export default function QuizLevels() {
-  const { data: progress = [], isLoading: loading, error: queryError, refetch } = trpc.userQuiz.progress.useQuery();
+  const { data: progress = [], isLoading: loading, error: queryError, refetch } = trpc.userQuiz.progress.useQuery(undefined, {
+    retry: false,
+  });
   const error = queryError?.message ?? "";
 
   const getLevelStatus = (level: LevelProgress) => {
@@ -57,19 +61,37 @@ export default function QuizLevels() {
   }
 
   if (error) {
+    const isForbidden = queryError?.data?.code === 'FORBIDDEN';
     return (
       <ClientLayout>
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md">
-          <p className="text-red-800 text-center">{error}</p>
-          <button
-            onClick={() => refetch()}
-            className="mt-4 w-full bg-red-600 text-white py-2 rounded-lg hover:bg-red-700"
-          >
-            إعادة المحاولة
-          </button>
+        <div className="min-h-[calc(100vh-64px)] flex items-center justify-center">
+          {isForbidden ? (
+            <Card className="max-w-md w-full mx-4" dir="rtl">
+              <CardHeader className="text-center">
+                <div className="mx-auto mb-4 h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center">
+                  <Key className="h-8 w-8 text-primary" />
+                </div>
+                <CardTitle className="text-2xl">يتطلب اشتراكاً نشطاً</CardTitle>
+                <CardDescription>يجب تفعيل مفتاح الباقة للوصول إلى الاختبارات</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Link href="/activate-key">
+                  <Button className="w-full" size="lg">تفعيل مفتاح الباقة</Button>
+                </Link>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-6 max-w-md mx-4">
+              <p className="text-destructive text-center">{error}</p>
+              <button
+                onClick={() => refetch()}
+                className="mt-4 w-full bg-destructive text-white py-2 rounded-lg hover:bg-destructive/90"
+              >
+                إعادة المحاولة
+              </button>
+            </div>
+          )}
         </div>
-      </div>
       </ClientLayout>
     );
   }

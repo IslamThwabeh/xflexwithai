@@ -17,7 +17,7 @@ import { Switch } from "@/components/ui/switch";
 import { trpc } from "@/lib/trpc";
 import { formatDuration } from "@/lib/formatDuration";
 import { FileUpload } from "@/components/FileUpload";
-import { Plus, Edit, Trash2, Video, ArrowLeft, MoveUp, MoveDown, Play } from "lucide-react";
+import { Plus, Edit, Trash2, Video, ArrowLeft, MoveUp, MoveDown, Play, Download } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useRoute, Link } from "wouter";
@@ -233,6 +233,22 @@ export default function AdminEpisodes() {
                             <Play className="h-3 w-3" />
                           </Button>
                         )}
+                        {episode.videoUrl && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              const a = document.createElement('a');
+                              a.href = episode.videoUrl!;
+                              a.download = '';
+                              a.target = '_blank';
+                              a.rel = 'noopener noreferrer';
+                              a.click();
+                            }}
+                          >
+                            <Download className="h-3 w-3" />
+                          </Button>
+                        )}
                         <Button variant="outline" size="sm" onClick={() => handleEdit(episode)}>
                           <Edit className="h-3 w-3" />
                         </Button>
@@ -248,6 +264,8 @@ export default function AdminEpisodes() {
                         <video
                           src={episode.videoUrl}
                           controls
+                          controlsList="nodownload"
+                          onContextMenu={(e) => e.preventDefault()}
                           autoPlay
                           className="w-full h-full"
                         >

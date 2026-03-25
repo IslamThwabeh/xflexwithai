@@ -389,7 +389,7 @@ const translations = {
     'admin.dashboard.registeredStudents': 'Registered students',
     'admin.dashboard.publishedCourses': 'Published courses',
     'admin.dashboard.activeSubs': 'Active Subscriptions',
-    'admin.dashboard.keys': 'Course Registration Keys',
+    'admin.dashboard.keys': 'Package Keys',
     'admin.dashboard.manageKeys': 'Manage Keys',
     'admin.dashboard.courses': 'Courses',
     'admin.dashboard.viewCourses': 'View Courses',
@@ -467,6 +467,8 @@ const translations = {
     'admin.users.active': 'Active',
     'admin.users.inactive': 'Inactive',
     'admin.users.free': 'Free',
+    'admin.users.viaKey': 'Via Key',
+    'admin.users.paid': 'Paid',
 
     // Admin Keys
     'admin.keys.title': 'Registration Keys',
@@ -689,7 +691,7 @@ const translations = {
     'admin.unknown': 'Unknown',
 
     // Additional Dashboard keys
-    'admin.dashboard.keysDesc': 'Generate and manage course registration keys',
+    'admin.dashboard.keysDesc': 'Generate and manage package access keys',
     'admin.dashboard.coursesDesc': 'View and manage all courses and episodes',
     'admin.dashboard.usersDesc': 'Manage users and enrollments',
     'admin.totalEnrollments': 'Total Enrollments',
@@ -1444,7 +1446,7 @@ const translations = {
     'admin.dashboard.registeredStudents': 'الطلاب المسجلين',
     'admin.dashboard.publishedCourses': 'الدورات المنشورة',
     'admin.dashboard.activeSubs': 'الاشتراكات النشطة',
-    'admin.dashboard.keys': 'مفاتيح تسجيل الدورات',
+    'admin.dashboard.keys': 'مفاتيح الباقات',
     'admin.dashboard.manageKeys': 'إدارة المفاتيح',
     'admin.dashboard.courses': 'الدورات',
     'admin.dashboard.viewCourses': 'عرض الدورات',
@@ -1522,6 +1524,8 @@ const translations = {
     'admin.users.active': 'نشط',
     'admin.users.inactive': 'غير نشط',
     'admin.users.free': 'مجاني',
+    'admin.users.viaKey': 'عبر مفتاح',
+    'admin.users.paid': 'مدفوع',
 
     // Admin Keys
     'admin.keys.title': 'مفاتيح التسجيل',
@@ -1744,7 +1748,7 @@ const translations = {
     'admin.unknown': 'غير معروف',
 
     // Additional Dashboard keys
-    'admin.dashboard.keysDesc': 'إنشاء وإدارة مفاتيح تسجيل الدورات',
+    'admin.dashboard.keysDesc': 'إنشاء وإدارة مفاتيح الوصول للباقات',
     'admin.dashboard.coursesDesc': 'عرض وإدارة جميع الدورات والحلقات',
     'admin.dashboard.usersDesc': 'إدارة المستخدمين والتسجيلات',
     'admin.totalEnrollments': 'إجمالي التسجيلات',

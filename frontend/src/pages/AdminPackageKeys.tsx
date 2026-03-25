@@ -208,7 +208,7 @@ export default function AdminPackageKeys() {
   const exportCSV = () => {
     const keys = filteredKeys;
     if (!keys.length) return;
-    const headers = ['Key Code', 'Package', 'Email', 'Status', 'Entitlement Days', 'Redeem By', 'Type', 'Upgrade', 'Referred By', 'Created', 'Activated', 'Notes'];
+    const headers = ['Key Code', 'Package', 'Email', 'Status', 'Entitlement Days', 'Redeem By', 'Sub Expiry', 'Type', 'Upgrade', 'Referred By', 'Created', 'Activated', 'Notes'];
     const rows = keys.map(k => [
       k.keyCode,
       (k as any).packageName || '',
@@ -216,6 +216,7 @@ export default function AdminPackageKeys() {
       k.activatedAt ? 'Activated' : k.isActive ? 'Unused' : 'Deactivated',
       k.entitlementDays || 'Default',
       k.expiresAt ? new Date(k.expiresAt).toLocaleDateString() : '',
+      (k as any).subEndDate ? new Date((k as any).subEndDate).toLocaleDateString() : '',
       (k as any).isRenewal ? 'Renewal' : (k as any).isUpgrade ? 'Upgrade' : 'New',
       (k as any).isUpgrade ? 'Yes' : 'No',
       (k as any).referredBy || '',      k.createdAt ? new Date(k.createdAt).toLocaleDateString() : '',
@@ -370,7 +371,13 @@ export default function AdminPackageKeys() {
                         setIsUpgrade(e.target.checked);
                         if (e.target.checked) {
                           setIsRenewal(false);
-                          setPrice('300');
+                          // Upgrade price = Comprehensive minus Basic
+                          const comprehensive = packages.find((p: any) => p.includesLexai);
+                          const basic = packages.find((p: any) => !p.includesLexai);
+                          const upgradePrice = comprehensive && basic
+                            ? Math.round((comprehensive.price - basic.price) / 100)
+                            : 300;
+                          setPrice(String(upgradePrice));
                         } else {
                           const pkg = packages.find((p: any) => p.id === selectedPackage);
                           setPrice(pkg ? String(Math.round(pkg.price / 100)) : '0');
@@ -492,7 +499,13 @@ export default function AdminPackageKeys() {
                         setIsUpgrade(e.target.checked);
                         if (e.target.checked) {
                           setIsRenewal(false);
-                          setPrice('300');
+                          // Upgrade price = Comprehensive minus Basic
+                          const comprehensive = packages.find((p: any) => p.includesLexai);
+                          const basic = packages.find((p: any) => !p.includesLexai);
+                          const upgradePrice = comprehensive && basic
+                            ? Math.round((comprehensive.price - basic.price) / 100)
+                            : 300;
+                          setPrice(String(upgradePrice));
                         } else {
                           const pkg = packages.find((p: any) => p.id === selectedPackage);
                           setPrice(pkg ? String(Math.round(pkg.price / 100)) : '0');
@@ -714,7 +727,9 @@ export default function AdminPackageKeys() {
                           {key.entitlementDays ? `${key.entitlementDays}d` : (language === 'ar' ? 'الافتراضي' : 'Default')}
                         </TableCell>
                         <TableCell className="text-xs text-gray-500">
-                          {key.expiresAt ? new Date(key.expiresAt).toLocaleDateString() : '—'}
+                          {(key as any).subEndDate
+                            ? new Date((key as any).subEndDate).toLocaleDateString()
+                            : key.expiresAt ? new Date(key.expiresAt).toLocaleDateString() : '—'}
                         </TableCell>
                         <TableCell>
                           {(key as any).isRenewal ? (
@@ -728,7 +743,10 @@ export default function AdminPackageKeys() {
                               {language === 'ar' ? 'ترقية' : 'Upgrade'}
                             </Badge>
                           ) : (
-                            <span className="text-xs text-gray-400">—</span>
+                            <Badge className="gap-1 bg-gray-100 text-gray-700 hover:bg-gray-100">
+                              <Plus className="w-3 h-3" />
+                              {language === 'ar' ? 'جديد' : 'New'}
+                            </Badge>
                           )}
                         </TableCell>
                         <TableCell className="text-xs text-gray-500">

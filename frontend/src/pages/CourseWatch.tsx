@@ -24,7 +24,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { Link, useRoute } from "wouter";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { toast } from "sonner";
 import ClientLayout from "@/components/ClientLayout";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -190,6 +190,24 @@ export default function CourseWatch() {
   const canMarkComplete = selectedEpisode?.order <= 1
     ? hasWatchRequirementMet
     : hasWatchRequirementMet && (!quizRequired || quizPassed);
+
+  const quizSectionRef = useRef<HTMLDivElement>(null);
+
+  const handleMarkCompleteClick = useCallback(() => {
+    if (canMarkComplete) {
+      handleEpisodeComplete();
+      return;
+    }
+    if (!hasWatchRequirementMet) return; // watch-time blocker — button already greyed
+    if (quizRequired && !quizPassed) {
+      toast.info(
+        language === 'ar'
+          ? 'يجب إتمام اختبار الحلقة أولاً لتحديدها كمكتملة'
+          : 'Complete the episode quiz first to mark it as complete'
+      );
+      quizSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [canMarkComplete, hasWatchRequirementMet, quizRequired, quizPassed, language, handleEpisodeComplete]);
 
   const handleVideoProgress = (currentTime: number) => {
     if (!selectedEpisode || !courseId) return;
@@ -369,6 +387,8 @@ export default function CourseWatch() {
                       <video
                         src={selectedEpisode.videoUrl}
                         controls
+                        controlsList="nodownload"
+                        onContextMenu={(e) => e.preventDefault()}
                         className="w-full h-full"
                         onTimeUpdate={(event) => handleVideoProgress(event.currentTarget.currentTime)}
                         onEnded={(event) => {
@@ -411,7 +431,10 @@ export default function CourseWatch() {
               </CardHeader>
               <CardContent>
                 <div className="flex gap-3">
-                  <Button onClick={handleEpisodeComplete} disabled={markCompleteMutation.isPending || !canMarkComplete}>
+                  <Button
+                    onClick={handleMarkCompleteClick}
+                    disabled={markCompleteMutation.isPending || (!canMarkComplete && !hasWatchRequirementMet)}
+                  >
                     <CheckCircle2 className="h-4 w-4 me-2" />
                     {t('course.markComplete')}
                   </Button>
@@ -428,6 +451,7 @@ export default function CourseWatch() {
 
             {/* Episode Quiz */}
             {selectedEpisode && selectedEpisode.order > 1 && (
+              <div ref={quizSectionRef}>
               <Card>
                 <CardHeader>
                   <CardTitle>{t('course.episodeQuiz')}</CardTitle>
@@ -496,6 +520,7 @@ export default function CourseWatch() {
                   )}
                 </CardContent>
               </Card>
+              </div>
             )}
 
             {/* Course Description */}
