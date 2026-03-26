@@ -150,3 +150,40 @@ export async function sendFreezeExpiredEmail(to: string, name?: string | null) {
     logger.warn("[ORDER_EMAIL] Failed to send freeze-expired notification", { to, error: String(e) });
   }
 }
+
+export async function sendExpiryAlertEmail(to: string, name: string | null, daysLeft: number, packageName: string) {
+  const firstName = name?.split(' ')[0] || '';
+  const subject = daysLeft === 0
+    ? `اشتراكك انتهى اليوم / Your subscription has expired today`
+    : `تنبيه: اشتراكك ينتهي خلال ${daysLeft} ${daysLeft === 1 ? 'يوم' : 'أيام'} / ${daysLeft} day${daysLeft === 1 ? '' : 's'} until expiry`;
+
+  const urgencyColor = daysLeft <= 1 ? '#dc2626' : daysLeft <= 3 ? '#f59e0b' : '#2563eb';
+  const body = `
+    <h2 style="margin:0 0 12px;color:#111;">مرحباً ${firstName} 👋</h2>
+    <div style="background:${urgencyColor}10;border-left:4px solid ${urgencyColor};padding:16px;border-radius:8px;margin:16px 0;">
+      <p style="color:${urgencyColor};font-weight:bold;margin:0;">
+        ${daysLeft === 0
+          ? '⚠️ انتهى اشتراكك اليوم / Your subscription has expired today'
+          : `⏰ متبقي ${daysLeft} ${daysLeft === 1 ? 'يوم' : 'أيام'} على انتهاء اشتراكك / ${daysLeft} day${daysLeft === 1 ? '' : 's'} remaining`}
+      </p>
+      <p style="color:#374151;margin:8px 0 0;">
+        ${packageName}
+      </p>
+    </div>
+    <p style="color:#374151;line-height:1.7;">
+      للاستمرار في الوصول إلى LexAI والتوصيات الحية، يرجى تجديد اشتراكك عن طريق تفعيل مفتاح تجديد جديد.
+    </p>
+    <p style="color:#374151;line-height:1.7;">
+      To continue accessing LexAI and live recommendations, please renew your subscription by activating a new renewal key.
+    </p>
+    <div style="text-align:center;margin-top:28px;">
+      <a href="https://xflexacademy.com/activate-key" style="display:inline-block;background:#2563eb;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:bold;">
+        تجديد الاشتراك / Renew Subscription
+      </a>
+    </div>`;
+  try {
+    await sendEmail({ to, subject, text: wrapHtml(body) });
+  } catch (e) {
+    logger.warn("[ORDER_EMAIL] Failed to send expiry alert", { to, daysLeft, error: String(e) });
+  }
+}

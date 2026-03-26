@@ -55,6 +55,7 @@ const QuizHistory = lazy(() => import("./pages/QuizHistory"));
 const MyOrders = lazy(() => import("./pages/MyOrders"));
 const OrderDetail = lazy(() => import("./pages/OrderDetail"));
 const MySubscriptions = lazy(() => import("./pages/MySubscriptions"));
+const StudentPackages = lazy(() => import("./pages/StudentPackages"));
 const Upgrade = lazy(() => import("./pages/Upgrade"));
 
 // Lazy-loaded public pages
@@ -301,6 +302,11 @@ function Router() {
           <MySubscriptions />
         </ProtectedRoute>
       </Route>
+      <Route path="/my-packages">
+        <ProtectedRoute>
+          <StudentPackages />
+        </ProtectedRoute>
+      </Route>
       <Route path="/upgrade">
         <ProtectedRoute>
           <Upgrade />
@@ -316,7 +322,11 @@ function Router() {
           <LoyaltyPoints />
         </ProtectedRoute>
       </Route>
-      <Route path="/calculators" component={TradingCalculators} />
+      <Route path="/calculators">
+        <ProtectedRoute>
+          <TradingCalculators />
+        </ProtectedRoute>
+      </Route>
       <Route path={"/"} component={Home} />
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />

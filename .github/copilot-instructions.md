@@ -133,6 +133,35 @@ npm run deploy:worker
 
 ---
 
+## CodeGraph (Semantic Code Intelligence)
+
+CodeGraph is set up for this project with a pre-built semantic graph of all symbols, call chains, imports, and dependencies. **Always prefer `codegraph_*` tools over file search/grep for code analysis tasks.**
+
+### When to use CodeGraph tools
+- **Understanding code**: `codegraph_get_ai_context` — returns source, callers, callees, imports, architecture context
+- **Before editing**: `codegraph_get_edit_context` — source + callers + tests + memories + git history
+- **Finding symbols**: `codegraph_symbol_search` — hybrid BM25 + semantic search by name or natural language
+- **Call chains**: `codegraph_get_callers` / `codegraph_get_callees` — who calls what
+- **Impact analysis**: `codegraph_analyze_impact` — blast radius before modifying/deleting
+- **Finding tests**: `codegraph_find_related_tests` — tests that exercise a function
+- **Project questions**: `codegraph_get_curated_context` — natural language queries ("how does auth work?")
+- **Memory**: `codegraph_memory_context` — get stored memories relevant to a file/function
+
+### CodeGraph Memory
+31 memories are stored (26 from git history mining + 5 project context). These are automatically surfaced when relevant. Key stored memories:
+- Project stack & key files
+- Business rules (packages, keys, VAT)
+- Critical conventions & pitfalls
+- Auth & session configuration
+- UI navigation & hidden features
+
+### Configuration
+- VS Code settings: `.vscode/settings.json` (indexOnStartup enabled)
+- Auto-reindexes on file changes
+- URI format for tools: `file:///c:/Users/islamt/website-xflexwithai/path/to/file.ts`
+
+---
+
 ## Common Pitfalls
 
 1. **Wrong vite config**: Use root `vite.config.ts`, never `frontend/vite.config.ts`
@@ -140,7 +169,10 @@ npm run deploy:worker
 3. **VAT formula**: Inclusive (not additive) — see formula above
 4. **Package keys**: Always check `packageId` before assuming `courseId=0` means LexAI
 5. **D1 SQLite quirks**: Some PostgreSQL features don't exist — always validate SQL syntax for SQLite
-6. **Large files**: `backend/db.ts` and `backend/routers.ts` are very large — use symbol search or grep before reading whole files
+6. **Large files**: `backend/db.ts` and `backend/routers.ts` are very large — use `codegraph_symbol_search` or `codegraph_get_ai_context` instead of reading whole files
+7. **Video URLs**: Always use `https://videos.xflexacademy.com` domain (NOT xflexwithai.com). `normalizeVideoUrl()` in db.ts is a safety net
+8. **Video `<video>` tags**: Always include `controlsList="nodownload"` and `onContextMenu={e => e.preventDefault()}` on all video elements
+9. **Episode deletion**: Must archive video in R2 before DB delete — see `storageArchiveR2()` in `storage-r2.ts`
 
 ---
 

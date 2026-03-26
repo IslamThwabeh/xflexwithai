@@ -47,8 +47,16 @@ export default function ActivateKey() {
         toast.error(msg);
       }
     },
-    onError: (error) => {
-      toast.error(error.message);
+    onError: (error: any) => {
+      // Try to extract bilingual message from error data
+      const errorData = error?.data;
+      if (language === 'ar' && errorData?.messageAr) {
+        toast.error(errorData.messageAr);
+      } else if (errorData?.message) {
+        toast.error(errorData.message);
+      } else {
+        toast.error(language === 'ar' ? 'حدث خطأ أثناء تفعيل المفتاح. يرجى المحاولة مرة أخرى.' : error.message || 'An error occurred while activating the key. Please try again.');
+      }
     },
   });
 
@@ -133,6 +141,8 @@ export default function ActivateKey() {
                   <li>{language === 'ar' ? 'سيتم ربط المفتاح ببريدك الإلكتروني بشكل دائم' : 'The key will be permanently linked to your email'}</li>
                   <li>{language === 'ar' ? 'ستحصل على جميع محتويات الباقة' : "You'll get all package contents"}</li>
                   <li>{language === 'ar' ? 'لا يمكن نقل المفاتيح أو مشاركتها' : 'Keys cannot be transferred or shared'}</li>
+                  <li>{language === 'ar' ? 'الدورة التعليمية صالحة مدى الحياة' : 'Trading course access is lifetime'}</li>
+                  <li>{language === 'ar' ? 'خدمة LexAI والتوصيات صالحة لمدة شهر من تاريخ التفعيل' : 'LexAI & Recommendations are valid for 1 month from activation'}</li>
                 </ul>
               </div>
             </>

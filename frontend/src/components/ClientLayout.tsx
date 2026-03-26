@@ -9,6 +9,16 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const GlobalSearchDialogLazy = lazy(() => import("./GlobalSearchDialog"));
 import { APP_TITLE } from "@/const";
@@ -43,8 +53,10 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
   const [location] = useLocation();
   const [showSearch, setShowSearch] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [showLogoutDialog, setShowLogoutDialog] = useState(false);
 
   const handleLogout = async () => {
+    try { window.localStorage.removeItem("xflex_last_email"); } catch {}
     await logout();
     window.location.href = "/";
   };
@@ -91,6 +103,12 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
       label: t("dashboard.nav.subscriptions"),
       icon: <Package className="h-4 w-4" />,
       match: "/subscriptions",
+    },
+    {
+      href: "/my-packages",
+      label: language === "ar" ? "باقتي" : "My Package",
+      icon: <Package className="h-4 w-4" />,
+      match: "/my-packages",
     },
     {
       href: "/profile",
@@ -186,21 +204,23 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
                 <span className="hidden sm:inline">{language === "ar" ? "EN" : "عربي"}</span>
               </button>
 
-              {/* User Avatar */}
-              <div className="flex items-center gap-1.5">
-                <div className="w-7 h-7 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white text-xs font-semibold">
-                  {user?.name?.charAt(0).toUpperCase() || "U"}
+              {/* User Avatar — links to profile */}
+              <Link href="/profile">
+                <div className="flex items-center gap-1.5 cursor-pointer hover:opacity-80 transition-opacity">
+                  <div className="w-7 h-7 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white text-xs font-semibold">
+                    {user?.name?.charAt(0).toUpperCase() || "U"}
+                  </div>
+                  <span className="text-sm font-medium hidden md:inline max-w-[100px] truncate">
+                    {user?.name}
+                  </span>
                 </div>
-                <span className="text-sm font-medium hidden md:inline max-w-[100px] truncate">
-                  {user?.name}
-                </span>
-              </div>
+              </Link>
 
               {/* Logout */}
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={handleLogout}
+                onClick={() => setShowLogoutDialog(true)}
                 className="text-gray-400 hover:text-red-600 px-1.5"
                 title={t("dashboard.logout")}
               >
@@ -226,18 +246,20 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
             </SheetTitle>
           </SheetHeader>
 
-          {/* User info */}
-          <div className="p-4 border-b bg-gray-50">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white font-semibold">
-                {user?.name?.charAt(0).toUpperCase() || "U"}
-              </div>
-              <div className="min-w-0">
-                <p className="text-sm font-medium truncate">{user?.name}</p>
-                <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
+          {/* User info — links to profile */}
+          <Link href="/profile">
+            <div className="p-4 border-b bg-gray-50 cursor-pointer hover:bg-gray-100 transition" onClick={() => setMobileMenuOpen(false)}>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white font-semibold">
+                  {user?.name?.charAt(0).toUpperCase() || "U"}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate">{user?.name}</p>
+                  <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
+                </div>
               </div>
             </div>
-          </div>
+          </Link>
 
           {/* Nav items */}
           <nav className="flex-1 overflow-y-auto p-2">
@@ -273,7 +295,7 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
               {language === "ar" ? "Switch to English" : "التبديل إلى العربية"}
             </button>
             <button
-              onClick={handleLogout}
+              onClick={() => { setMobileMenuOpen(false); setShowLogoutDialog(true); }}
               className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-red-600 hover:bg-red-50 transition"
             >
               <LogOut className="h-4 w-4" />
@@ -291,6 +313,28 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
           <GlobalSearchDialogLazy onClose={() => setShowSearch(false)} />
         </Suspense>
       )}
+
+      {/* Logout Confirmation Dialog */}
+      <AlertDialog open={showLogoutDialog} onOpenChange={setShowLogoutDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {isRTL ? "تأكيد تسجيل الخروج" : "Confirm Logout"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {isRTL ? "هل أنت متأكد من أنك تريد تسجيل الخروج؟" : "Are you sure you want to log out?"}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>
+              {isRTL ? "إلغاء" : "Cancel"}
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleLogout} className="bg-red-600 hover:bg-red-700">
+              {isRTL ? "تسجيل الخروج" : "Log Out"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

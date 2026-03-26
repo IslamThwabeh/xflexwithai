@@ -281,7 +281,7 @@ export async function setUserEmailVerified(userId: number): Promise<void> {
 // Passwordless Email OTP Login
 // ============================================================================
 
-export type OtpPurpose = "login" | "login_stepup";
+export type OtpPurpose = "login" | "login_stepup" | "password_reset";
 
 export async function deleteExpiredEmailOtps(nowMs: number): Promise<void> {
   const db = await getDb();
@@ -1218,6 +1218,50 @@ export async function processExpiredFreezes(): Promise<{ email: string; name: st
   return notified;
 }
 
+/**
+ * Get subscriptions expiring within a given number of days.
+ * Used by the daily cron to send reminder emails.
+ */
+export async function getExpiringSubscriptions(withinDays: number): Promise<{ email: string; name: string | null; daysLeft: number; packageName: string }[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  const now = new Date();
+  const futureDate = new Date(now.getTime() + withinDays * 24 * 60 * 60 * 1000);
+  const todayStr = now.toISOString().slice(0, 10);
+  const futureStr = futureDate.toISOString().slice(0, 10);
+
+  // Find package subscriptions with endDate between today and futureDate
+  const expiring = await db
+    .select({
+      userId: packageSubscriptions.userId,
+      endDate: packageSubscriptions.endDate,
+      packageId: packageSubscriptions.packageId,
+    })
+    .from(packageSubscriptions)
+    .where(and(
+      eq(packageSubscriptions.isActive, true),
+      sql`date(${packageSubscriptions.endDate}) >= ${todayStr}`,
+      sql`date(${packageSubscriptions.endDate}) <= ${futureStr}`,
+    ));
+
+  const results: { email: string; name: string | null; daysLeft: number; packageName: string }[] = [];
+  for (const sub of expiring) {
+    const [user] = await db.select({ email: users.email, name: users.name }).from(users).where(eq(users.id, sub.userId)).limit(1);
+    if (!user?.email) continue;
+    const pkg = await getPackageById(sub.packageId);
+    const endMs = new Date(sub.endDate!).getTime();
+    const daysLeft = Math.ceil((endMs - now.getTime()) / (1000 * 60 * 60 * 24));
+    results.push({
+      email: user.email,
+      name: user.name,
+      daysLeft: Math.max(0, daysLeft),
+      packageName: pkg?.nameEn ?? `Package #${sub.packageId}`,
+    });
+  }
+  return results;
+}
+
 export async function setRecommendationPublisher(userId: number, enabled: boolean) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -1770,7 +1814,7 @@ export async function renewPackageEntitlements(
         paymentStatus: "completed",
       });
     } else {
-      const maxActivationDate = buildEndDateFromDays(now, 21);
+      const maxActivationDate = buildEndDateFromDays(now, 14);
       const newEnd = buildEndDateFromDays(now, entitlementDays);
       await createLexaiSubscription({
         userId,
@@ -1807,7 +1851,7 @@ export async function renewPackageEntitlements(
         paymentStatus: "completed",
       });
     } else {
-      const maxActivationDate = buildEndDateFromDays(now, 21);
+      const maxActivationDate = buildEndDateFromDays(now, 14);
       const newEnd = buildEndDateFromDays(now, entitlementDays);
       await createRecommendationSubscription({
         userId,
@@ -1850,9 +1894,14 @@ export async function fulfillPackageEntitlements(
     ?? DEFAULT_KEY_ENTITLEMENT_DAYS;
   const now = new Date();
   const serviceEndDate = buildEndDateFromDays(now, entitlementDays);
-  // For deferred activation: set a placeholder endDate to 21+30=51 days (max wait + real period)
-  const placeholderEndDate = buildEndDateFromDays(now, 51); // 21 days max wait + 30 days real period
-  const maxActivationDate = buildEndDateFromDays(now, 21); // 21 days from now
+  // For deferred activation: set a placeholder endDate to 14+30=44 days (max wait + real period)
+  const placeholderEndDate = buildEndDateFromDays(now, 44); // 14 days max wait + 30 days real period
+  const maxActivationDate = buildEndDateFromDays(now, 14); // 14 days from now
+
+  // Check if student already completed the course (100% progress) — renewals should activate immediately
+  const [existingEnrollment] = await (await getDb())!.select({ progressPercentage: enrollments.progressPercentage })
+    .from(enrollments).where(eq(enrollments.userId, userId)).orderBy(desc(enrollments.enrolledAt)).limit(1);
+  const isRenewal = (existingEnrollment?.progressPercentage ?? 0) >= 100;
 
   const existingPackageSubscriptions = await getUserPackageSubscriptions(userId);
   const currentPackageSubscription = existingPackageSubscriptions.find((subscription) => subscription.packageId === packageId);
@@ -1913,22 +1962,43 @@ export async function fulfillPackageEntitlements(
   if (pkg.includesLexai) {
     const current = await getActiveLexaiSubscription(userId);
     if (current) {
-      await updateLexaiSubscription(current.id, {
-        isActive: true,
-        isPaused: false,
-        pausedAt: null,
-        pausedReason: null,
-        pausedRemainingDays: null,
-        isPendingActivation: true,
-        studentActivatedAt: null,
-        maxActivationDate: maxActivationDate.toISOString(),
-        startDate: now.toISOString(),
-        endDate: placeholderEndDate.toISOString(),
-        paymentStatus: "completed",
-        paymentAmount: 0,
-        paymentCurrency: "USD",
-        messagesLimit: 100,
-      });
+      if (isRenewal) {
+        // Renewal student (100% progress) — activate immediately, no deferred
+        const realEnd = buildEndDateFromDays(now, entitlementDays);
+        await updateLexaiSubscription(current.id, {
+          isActive: true,
+          isPaused: false,
+          pausedAt: null,
+          pausedReason: null,
+          pausedRemainingDays: null,
+          isPendingActivation: false,
+          studentActivatedAt: now.toISOString(),
+          maxActivationDate: null,
+          startDate: now.toISOString(),
+          endDate: realEnd.toISOString(),
+          paymentStatus: "completed",
+          paymentAmount: 0,
+          paymentCurrency: "USD",
+          messagesLimit: 100,
+        });
+      } else {
+        await updateLexaiSubscription(current.id, {
+          isActive: true,
+          isPaused: false,
+          pausedAt: null,
+          pausedReason: null,
+          pausedRemainingDays: null,
+          isPendingActivation: true,
+          studentActivatedAt: null,
+          maxActivationDate: maxActivationDate.toISOString(),
+          startDate: now.toISOString(),
+          endDate: placeholderEndDate.toISOString(),
+          paymentStatus: "completed",
+          paymentAmount: 0,
+          paymentCurrency: "USD",
+          messagesLimit: 100,
+        });
+      }
     } else {
       await createLexaiSubscription({
         userId,
@@ -1955,22 +2025,43 @@ export async function fulfillPackageEntitlements(
   if (pkg.includesRecommendations) {
     const current = await getActiveRecommendationSubscription(userId);
     if (current) {
-      await updateRecommendationSubscription(current.id, {
-        isActive: true,
-        isPaused: false,
-        pausedAt: null,
-        pausedReason: null,
-        pausedRemainingDays: null,
-        isPendingActivation: true,
-        studentActivatedAt: null,
-        maxActivationDate: maxActivationDate.toISOString(),
-        startDate: now.toISOString(),
-        endDate: placeholderEndDate.toISOString(),
-        paymentStatus: "completed",
-        paymentAmount: 0,
-        paymentCurrency: "USD",
-        registrationKeyId: registrationKeyId ?? current.registrationKeyId,
-      });
+      if (isRenewal) {
+        // Renewal student (100% progress) — activate immediately
+        const realEnd = buildEndDateFromDays(now, entitlementDays);
+        await updateRecommendationSubscription(current.id, {
+          isActive: true,
+          isPaused: false,
+          pausedAt: null,
+          pausedReason: null,
+          pausedRemainingDays: null,
+          isPendingActivation: false,
+          studentActivatedAt: now.toISOString(),
+          maxActivationDate: null,
+          startDate: now.toISOString(),
+          endDate: realEnd.toISOString(),
+          paymentStatus: "completed",
+          paymentAmount: 0,
+          paymentCurrency: "USD",
+          registrationKeyId: registrationKeyId ?? current.registrationKeyId,
+        });
+      } else {
+        await updateRecommendationSubscription(current.id, {
+          isActive: true,
+          isPaused: false,
+          pausedAt: null,
+          pausedReason: null,
+          pausedRemainingDays: null,
+          isPendingActivation: true,
+          studentActivatedAt: null,
+          maxActivationDate: maxActivationDate.toISOString(),
+          startDate: now.toISOString(),
+          endDate: placeholderEndDate.toISOString(),
+          paymentStatus: "completed",
+          paymentAmount: 0,
+          paymentCurrency: "USD",
+          registrationKeyId: registrationKeyId ?? current.registrationKeyId,
+        });
+      }
     } else {
       await createRecommendationSubscription({
         userId,
@@ -3467,7 +3558,7 @@ export async function getPendingActivationStatus(userId: number) {
     lexai: lexaiSub ?? null,
     recommendation: recSub ?? null,
     progressPercent,
-    canActivate: progressPercent >= 50,
+    canActivate: progressPercent >= 100,
     maxActivationDate: lexaiSub?.maxActivationDate ?? recSub?.maxActivationDate ?? null,
   };
 }

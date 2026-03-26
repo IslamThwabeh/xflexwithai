@@ -5,7 +5,7 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { getLoginUrl } from "@/const";
 import { trpc } from "@/lib/trpc";
-import { BookOpen, GraduationCap, Play, CheckCircle2, Clock, Calendar, Gift, MessageSquareQuote, Newspaper } from "lucide-react";
+import { BookOpen, GraduationCap, Play, CheckCircle2, Calendar, Gift, MessageSquareQuote, Newspaper, AlertCircle } from "lucide-react";
 import { Link } from "wouter";
 import { format } from "date-fns";
 import { useEffect, useRef } from "react";
@@ -104,10 +104,52 @@ export default function MyDashboard() {
 
   const totalCourses = enrollments?.length || 0;
   const completedCourses = enrollments?.filter(e => e.completedAt !== null).length || 0;
-  const inProgressCourses = totalCourses - completedCourses;
-  const averageProgress = totalCourses > 0
-    ? enrollments!.reduce((sum, e) => sum + (e.progressPercentage || 0), 0) / totalCourses
-    : 0;
+
+  // Motivational message based on course progress (professional academy style)
+  const getMotivationalMessage = (progress: number) => {
+    if (progress === 0) return {
+      en: "Your journey starts now — let's make it count!",
+      ar: "رحلتك تبدأ الآن — لنجعلها تستحق!",
+      emoji: "🚀",
+      color: "from-blue-500 to-indigo-600",
+    };
+    if (progress <= 20) return {
+      en: "Great start! Every expert was once a beginner.",
+      ar: "بداية رائعة! كل خبير كان مبتدئاً يوماً ما.",
+      emoji: "💪",
+      color: "from-cyan-500 to-blue-600",
+    };
+    if (progress <= 40) return {
+      en: "You're building solid foundations — keep the momentum!",
+      ar: "أنت تبني أسساً متينة — حافظ على الزخم!",
+      emoji: "📈",
+      color: "from-teal-500 to-emerald-600",
+    };
+    if (progress <= 60) return {
+      en: "Halfway there! Your dedication is paying off.",
+      ar: "وصلت للنصف! التزامك بدأ يؤتي ثماره.",
+      emoji: "⭐",
+      color: "from-amber-500 to-orange-600",
+    };
+    if (progress <= 80) return {
+      en: "The finish line is in sight — you've got this!",
+      ar: "خط النهاية أصبح قريباً — أنت قادر على ذلك!",
+      emoji: "🏆",
+      color: "from-orange-500 to-red-500",
+    };
+    if (progress < 100) return {
+      en: "Almost done! A few more lessons to trading mastery.",
+      ar: "أوشكت على الانتهاء! بضعة دروس تفصلك عن الاحتراف.",
+      emoji: "🔥",
+      color: "from-red-500 to-pink-600",
+    };
+    return {
+      en: "Course completed! You're ready to conquer the markets.",
+      ar: "أكملت الدورة! أنت جاهز لاحتراف الأسواق.",
+      emoji: "🎓",
+      color: "from-green-500 to-emerald-600",
+    };
+  };
 
   return (
     <ClientLayout>
@@ -121,60 +163,101 @@ export default function MyDashboard() {
         <div className="space-y-8">
           {/* Welcome Section */}
           <div>
-            <h1 className="text-4xl font-bold mb-2">
+            <h1 className="text-3xl font-bold mb-1">
               {t('dashboard.title').replace('{name}', user?.name?.split(' ')[0] || '')} 👋
             </h1>
-            <p className="text-xl text-muted-foreground">
+            <p className="text-lg text-muted-foreground">
               {t('dashboard.subtitle')}
             </p>
           </div>
 
-          {/* Statistics Cards */}
-          <div className="grid gap-4 md:grid-cols-4">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">{t('dashboard.stats.totalCourses')}</CardTitle>
-                <BookOpen className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{totalCourses}</div>
-                <p className="text-xs text-muted-foreground">{t('dashboard.stats.enrolledLabel')}</p>
-              </CardContent>
-            </Card>
+          {/* ENROLLED COURSES — Front and Center */}
+          {enrollments && enrollments.length > 0 && (
+            <div>
+              {enrollments.map((enrollment) => {
+                const progress = enrollment.progressPercentage || 0;
+                const isCompleted = enrollment.completedAt !== null;
+                const motivation = getMotivationalMessage(progress);
 
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">{t('dashboard.stats.inProgress')}</CardTitle>
-                <Clock className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{inProgressCourses}</div>
-                <p className="text-xs text-muted-foreground">{t('dashboard.stats.activeLearning')}</p>
-              </CardContent>
-            </Card>
+                return (
+                  <Card key={enrollment.id} className="overflow-hidden border-0 shadow-lg">
+                    {/* Motivational Banner */}
+                    <div className={`bg-gradient-to-r ${motivation.color} px-6 py-4 text-white`}>
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <div className="flex items-center gap-3">
+                          <span className="text-2xl">{motivation.emoji}</span>
+                          <p className="text-sm sm:text-base font-medium">
+                            {isRTL ? motivation.ar : motivation.en}
+                          </p>
+                        </div>
+                        <span className="text-2xl font-bold">{progress}%</span>
+                      </div>
+                    </div>
 
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">{t('dashboard.stats.completedCourses')}</CardTitle>
-                <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{completedCourses}</div>
-                <p className="text-xs text-muted-foreground">{t('dashboard.stats.finished')}</p>
-              </CardContent>
-            </Card>
+                    <CardContent className="p-6">
+                      <div className="flex items-start gap-4">
+                        {/* Course Thumbnail */}
+                        <div className="hidden sm:flex shrink-0 w-20 h-20 rounded-xl bg-gradient-to-br from-blue-500 to-purple-500 items-center justify-center">
+                          <BookOpen className="h-10 w-10 text-white opacity-70" />
+                        </div>
 
+                        <div className="flex-1 min-w-0 space-y-3">
+                          <div>
+                            <h3 className="text-xl font-bold">{enrollment.courseName}</h3>
+                            <p className="text-sm text-muted-foreground mt-1">
+                              {enrollment.completedEpisodes} {t('dashboard.episodesCompleted')}
+                              {isCompleted && (
+                                <Badge className="bg-green-100 text-green-700 ms-2">
+                                  <CheckCircle2 className="h-3 w-3 me-1" />
+                                  {t('dashboard.completed')}
+                                </Badge>
+                              )}
+                            </p>
+                          </div>
+
+                          {/* Large Progress Bar */}
+                          <div className="space-y-1">
+                            <Progress value={progress} className="h-3" />
+                          </div>
+
+                          {/* Action Button */}
+                          <Link href={`/course/${enrollment.courseId}`}>
+                            <Button size="lg" variant={isCompleted ? "outline" : "default"} className="w-full sm:w-auto">
+                              {isCompleted ? (
+                                <>
+                                  <CheckCircle2 className="h-4 w-4" />
+                                  {t('dashboard.review')}
+                                </>
+                              ) : (
+                                <>
+                                  <Play className="h-4 w-4" />
+                                  {t('dashboard.continue')}
+                                </>
+                              )}
+                            </Button>
+                          </Link>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+
+          {/* No courses yet */}
+          {(!enrollments || enrollments.length === 0) && (
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">{t('dashboard.stats.avgProgress')}</CardTitle>
-                <GraduationCap className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{Math.round(averageProgress)}%</div>
-                <p className="text-xs text-muted-foreground">{t('dashboard.stats.overallCompletion')}</p>
+              <CardContent className="py-12 text-center">
+                <BookOpen className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
+                <h3 className="text-lg font-semibold mb-2">{t('dashboard.noCoursesTitle')}</h3>
+                <p className="text-muted-foreground mb-4">{t('dashboard.noCoursesDesc')}</p>
+                <Link href="/my-packages">
+                  <Button>{t('dashboard.browseCourses')}</Button>
+                </Link>
               </CardContent>
             </Card>
-          </div>
+          )}
 
           {/* Access Summary */}
           <Card>
@@ -213,6 +296,27 @@ export default function MyDashboard() {
                     <Button variant="outline">{t('dashboard.activateRec')}</Button>
                   </Link>
                 )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Key Validity Information */}
+          <Card className="border-amber-200 bg-amber-50/50">
+            <CardContent className="py-4 px-5">
+              <div className="flex items-start gap-3">
+                <div className="shrink-0 mt-0.5 text-amber-600">
+                  <AlertCircle className="h-5 w-5" />
+                </div>
+                <div className="text-sm space-y-1">
+                  <p className="font-semibold text-amber-900">
+                    {isRTL ? "معلومات مهمة عن اشتراكك" : "Important Subscription Info"}
+                  </p>
+                  <ul className="text-amber-800 space-y-0.5 list-disc list-inside">
+                    <li>{isRTL ? "الدورة التعليمية صالحة مدى الحياة" : "Trading course access is lifetime"}</li>
+                    <li>{isRTL ? "خدمة LexAI والتوصيات صالحة لمدة شهر واحد من تاريخ التفعيل" : "LexAI & Recommendations are valid for 1 month from activation date"}</li>
+                    <li>{isRTL ? "يمكنك تجديد اشتراكك في أي وقت من صفحة الاشتراكات" : "You can renew your subscription anytime from the Subscriptions page"}</li>
+                  </ul>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -285,90 +389,6 @@ export default function MyDashboard() {
             </CardContent>
           </Card>
 
-          {/* Enrolled Courses */}
-          <div>
-            <h2 className="text-2xl font-bold mb-4">{t('dashboard.enrolledCourses.title')}</h2>
-            
-            {!enrollments || enrollments.length === 0 ? (
-              <Card>
-                <CardContent className="py-12 text-center">
-                  <BookOpen className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">{t('dashboard.noCoursesTitle')}</h3>
-                  <p className="text-muted-foreground mb-4">{t('dashboard.noCoursesDesc')}</p>
-                  <Link href="/">
-                    <Button>{t('dashboard.browseCourses')}</Button>
-                  </Link>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                {enrollments.map((enrollment) => {
-                  const progress = enrollment.progressPercentage || 0;
-                  const isCompleted = enrollment.completedAt !== null;
-
-                  return (
-                    <Card key={enrollment.id} className="hover:shadow-lg transition-shadow">
-                      <div className="aspect-video bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center relative">
-                        <BookOpen className="h-16 w-16 text-white opacity-50" />
-                        {isCompleted && (
-                          <div className="absolute top-2 end-2">
-                            <Badge className="bg-green-500">
-                              <CheckCircle2 className="h-3 w-3 me-1" />
-                              {t('dashboard.completed')}
-                            </Badge>
-                          </div>
-                        )}
-                      </div>
-                      <CardHeader>
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-xs text-muted-foreground">
-                            {formatSafeDate(enrollment.enrolledAt, "MMM d, yyyy")}
-                          </span>
-                        </div>
-                        <CardTitle className="line-clamp-2">{enrollment.courseName}</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="space-y-4">
-                          {/* Progress Bar */}
-                          <div className="space-y-2">
-                            <div className="flex items-center justify-between text-sm">
-                              <span className="text-muted-foreground">{t('dashboard.progress')}</span>
-                              <span className="font-semibold">{progress}%</span>
-                            </div>
-                            <Progress value={progress} className="h-2" />
-                          </div>
-
-                          {/* Episode Count */}
-                          <div className="flex items-center justify-between text-sm text-muted-foreground">
-                            <span>
-                              {enrollment.completedEpisodes} {t('dashboard.episodesCompleted')}
-                            </span>
-                          </div>
-
-                          {/* Continue Button */}
-                          <Link href={`/course/${enrollment.courseId}`}>
-                            <Button className="w-full" variant={isCompleted ? "outline" : "default"}>
-                              {isCompleted ? (
-                                <>
-                                  <CheckCircle2 className="h-4 w-4" />
-                                  {t('dashboard.review')}
-                                </>
-                              ) : (
-                                <>
-                                  <Play className="h-4 w-4" />
-                                  {t('dashboard.continue')}
-                                </>
-                              )}
-                            </Button>
-                          </Link>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-              </div>
-            )}
-          </div>
         </div>
       </main>
       </div>

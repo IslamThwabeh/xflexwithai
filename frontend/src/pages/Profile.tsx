@@ -8,11 +8,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { trpc } from "@/lib/trpc";
-import { Loader2, Check, AlertCircle, Eye, EyeOff } from "lucide-react";
+import { Loader2, Check, AlertCircle, Eye, EyeOff, Mail } from "lucide-react";
 import { Link } from "wouter";
 
 export default function Profile() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const { user } = useAuth();
   const utils = trpc.useUtils();
 
@@ -36,6 +36,15 @@ export default function Profile() {
   const [profileMessage, setProfileMessage] = useState("");
   const [passwordMessage, setPasswordMessage] = useState("");
   const [securityMessage, setSecurityMessage] = useState("");
+
+  // OTP password reset state
+  const [showOtpReset, setShowOtpReset] = useState(false);
+  const [otpStep, setOtpStep] = useState<"request" | "verify">("request");
+  const [otpCode, setOtpCode] = useState("");
+  const [otpNewPassword, setOtpNewPassword] = useState("");
+  const [otpConfirmPassword, setOtpConfirmPassword] = useState("");
+  const [otpMessage, setOtpMessage] = useState("");
+  const [showOtpPasswords, setShowOtpPasswords] = useState({ new: false, confirm: false });
   const [loginSecurityMode, setLoginSecurityMode] = useState<"password_or_otp" | "password_only" | "password_plus_otp">(
     ((user as any)?.loginSecurityMode as "password_or_otp" | "password_only" | "password_plus_otp") || "password_or_otp"
   );
@@ -77,6 +86,61 @@ export default function Profile() {
       setSecurityMessage(`Error: ${error.message}`);
     },
   });
+
+  // OTP password reset mutations
+  const requestResetCodeMutation = trpc.auth.requestPasswordResetCode.useMutation({
+    onSuccess: () => {
+      setOtpStep("verify");
+      setOtpMessage(language === "ar" ? "تم إرسال رمز التحقق إلى بريدك الإلكتروني" : "Verification code sent to your email");
+      setTimeout(() => setOtpMessage(""), 5000);
+    },
+    onError: () => {
+      setOtpMessage(language === "ar" ? "حدث خطأ. حاول مرة أخرى." : "An error occurred. Try again.");
+    },
+  });
+
+  const resetPasswordWithOtpMutation = trpc.auth.resetPasswordWithOtp.useMutation({
+    onSuccess: () => {
+      setOtpMessage(language === "ar" ? "تم تغيير كلمة المرور بنجاح!" : "Password changed successfully!");
+      setShowOtpReset(false);
+      setOtpStep("request");
+      setOtpCode("");
+      setOtpNewPassword("");
+      setOtpConfirmPassword("");
+      setTimeout(() => setOtpMessage(""), 3000);
+    },
+    onError: (error) => {
+      setOtpMessage(error.message);
+    },
+  });
+
+  const handleRequestResetCode = () => {
+    if (!user?.email) return;
+    setOtpMessage("");
+    requestResetCodeMutation.mutate({ email: user.email });
+  };
+
+  const handleResetWithOtp = (e: React.FormEvent) => {
+    e.preventDefault();
+    setOtpMessage("");
+    if (!otpCode || otpCode.length !== 6) {
+      setOtpMessage(language === "ar" ? "أدخل رمز التحقق المكون من 6 أرقام" : "Enter the 6-digit code");
+      return;
+    }
+    if (otpNewPassword !== otpConfirmPassword) {
+      setOtpMessage(language === "ar" ? "كلمات المرور غير متطابقة" : "Passwords do not match");
+      return;
+    }
+    if (otpNewPassword.length < 8) {
+      setOtpMessage(language === "ar" ? "كلمة المرور قصيرة جداً (8 أحرف كحد أدنى)" : "Password too short (minimum 8 characters)");
+      return;
+    }
+    resetPasswordWithOtpMutation.mutate({
+      email: user!.email,
+      code: otpCode,
+      newPassword: otpNewPassword,
+    });
+  };
 
   const handleUpdateProfile = (e: React.FormEvent) => {
     e.preventDefault();
@@ -401,6 +465,121 @@ export default function Profile() {
                   </div>
                 </form>
               )}
+
+              {/* OTP Password Reset - Alternative Method */}
+              <div className="border-t pt-4 mt-4">
+                <p className="text-sm text-muted-foreground mb-3">
+                  {language === "ar" ? "نسيت كلمة المرور الحالية؟" : "Forgot your current password?"}
+                </p>
+                {!showOtpReset ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => { setShowOtpReset(true); setOtpStep("request"); setOtpMessage(""); }}
+                    className="gap-2"
+                  >
+                    <Mail className="w-4 h-4" />
+                    {language === "ar" ? "تغيير عبر رمز التحقق (OTP)" : "Change via OTP Code"}
+                  </Button>
+                ) : (
+                  <div className="space-y-4 bg-gray-50 dark:bg-gray-900 rounded-lg p-4">
+                    {otpMessage && (
+                      <Alert className={`${otpMessage.includes("success") || otpMessage.includes("نجاح") || otpMessage.includes("تم إرسال") || otpMessage.includes("sent") ? "border-green-500" : "border-red-500"}`}>
+                        <AlertCircle className="h-4 w-4" />
+                        <AlertDescription>{otpMessage}</AlertDescription>
+                      </Alert>
+                    )}
+
+                    {otpStep === "request" && (
+                      <div className="space-y-3">
+                        <p className="text-sm">
+                          {language === "ar"
+                            ? `سيتم إرسال رمز تحقق إلى: ${user?.email}`
+                            : `A verification code will be sent to: ${user?.email}`}
+                        </p>
+                        <div className="flex gap-2">
+                          <Button
+                            onClick={handleRequestResetCode}
+                            disabled={requestResetCodeMutation.isPending}
+                            size="sm"
+                          >
+                            {requestResetCodeMutation.isPending ? (
+                              <><Loader2 className="w-4 h-4 animate-spin me-2" />{language === "ar" ? "جارٍ الإرسال..." : "Sending..."}</>
+                            ) : (
+                              language === "ar" ? "إرسال الرمز" : "Send Code"
+                            )}
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => setShowOtpReset(false)}>
+                            {language === "ar" ? "إلغاء" : "Cancel"}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+
+                    {otpStep === "verify" && (
+                      <form onSubmit={handleResetWithOtp} className="space-y-4">
+                        <div>
+                          <Label>{language === "ar" ? "رمز التحقق" : "Verification Code"}</Label>
+                          <Input
+                            type="text"
+                            inputMode="numeric"
+                            maxLength={6}
+                            value={otpCode}
+                            onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ""))}
+                            placeholder="000000"
+                            className="mt-1 text-center tracking-[0.5em] font-mono text-lg"
+                          />
+                        </div>
+                        <div>
+                          <Label>{language === "ar" ? "كلمة المرور الجديدة" : "New Password"}</Label>
+                          <div className="relative mt-1">
+                            <Input
+                              type={showOtpPasswords.new ? "text" : "password"}
+                              value={otpNewPassword}
+                              onChange={(e) => setOtpNewPassword(e.target.value)}
+                              placeholder={language === "ar" ? "أدخل كلمة المرور الجديدة" : "Enter new password"}
+                              className="pr-10"
+                            />
+                            <button type="button" onClick={() => setShowOtpPasswords(p => ({ ...p, new: !p.new }))} className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600">
+                              {showOtpPasswords.new ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                            </button>
+                          </div>
+                        </div>
+                        <div>
+                          <Label>{language === "ar" ? "تأكيد كلمة المرور" : "Confirm Password"}</Label>
+                          <div className="relative mt-1">
+                            <Input
+                              type={showOtpPasswords.confirm ? "text" : "password"}
+                              value={otpConfirmPassword}
+                              onChange={(e) => setOtpConfirmPassword(e.target.value)}
+                              placeholder={language === "ar" ? "أعد إدخال كلمة المرور" : "Re-enter password"}
+                              className="pr-10"
+                            />
+                            <button type="button" onClick={() => setShowOtpPasswords(p => ({ ...p, confirm: !p.confirm }))} className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600">
+                              {showOtpPasswords.confirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                            </button>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button type="submit" disabled={resetPasswordWithOtpMutation.isPending} size="sm">
+                            {resetPasswordWithOtpMutation.isPending ? (
+                              <><Loader2 className="w-4 h-4 animate-spin me-2" />{language === "ar" ? "جارٍ التغيير..." : "Changing..."}</>
+                            ) : (
+                              <><Check className="w-4 h-4 me-2" />{language === "ar" ? "تغيير كلمة المرور" : "Change Password"}</>
+                            )}
+                          </Button>
+                          <Button type="button" variant="ghost" size="sm" onClick={() => { setShowOtpReset(false); setOtpStep("request"); setOtpCode(""); setOtpNewPassword(""); setOtpConfirmPassword(""); }}>
+                            {language === "ar" ? "إلغاء" : "Cancel"}
+                          </Button>
+                          <Button type="button" variant="link" size="sm" onClick={handleRequestResetCode} disabled={requestResetCodeMutation.isPending}>
+                            {language === "ar" ? "إعادة إرسال الرمز" : "Resend Code"}
+                          </Button>
+                        </div>
+                      </form>
+                    )}
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
         </div>

@@ -5,9 +5,10 @@ const WHATSAPP_NUMBER = '972597596030';
 
 export default function WhatsAppFloat() {
   const [location] = useLocation();
-  // Only show on public pages (not admin or authenticated student pages)
-  const studentPaths = ['/courses', '/lexai', '/recommendations', '/support', '/quiz', '/orders', '/subscriptions', '/profile', '/notifications', '/my-points', '/calculators', '/dashboard', '/course/', '/upgrade'];
+  // Only show on public pages (not admin, auth, or authenticated student pages)
+  const studentPaths = ['/courses', '/lexai', '/recommendations', '/support', '/quiz', '/orders', '/subscriptions', '/profile', '/notifications', '/my-points', '/calculators', '/dashboard', '/course/', '/upgrade', '/activate-key'];
   if (location.startsWith('/admin')) return null;
+  if (location.startsWith('/auth')) return null;
   if (studentPaths.some(p => location.startsWith(p))) return null;
 
   return (

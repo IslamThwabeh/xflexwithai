@@ -1,0 +1,1602 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>أكاديمية اكس فليكس — خطة التنفيذ</title>
+<style>
+  :root {
+    --accent: #2563eb;
+    --accent-light: #dbeafe;
+    --success: #16a34a;
+    --success-light: #dcfce7;
+    --warning: #d97706;
+    --warning-light: #fef3c7;
+    --danger: #dc2626;
+    --danger-light: #fee2e2;
+    --info: #7c3aed;
+    --info-light: #ede9fe;
+    --gray: #64748b;
+    --gray-light: #f1f5f9;
+    --border: #e2e8f0;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; line-height: 1.7; color: #1e293b; background: #f8fafc; }
+  
+  .container { max-width: 1100px; margin: 0 auto; padding: 20px; }
+  
+  /* Language Toggle */
+  .lang-toggle { position: fixed; top: 16px; right: 20px; z-index: 1000; display: flex; gap: 4px; background: white; border: 1px solid var(--border); border-radius: 8px; padding: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+  .lang-toggle button { padding: 6px 16px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 14px; transition: all 0.2s; background: transparent; color: var(--gray); }
+  .lang-toggle button.active { background: var(--accent); color: white; }
+  
+  /* Header */
+  .header { text-align: center; padding: 40px 20px; background: linear-gradient(135deg, #1e40af, #7c3aed); color: white; border-radius: 16px; margin-bottom: 32px; }
+  .header h1 { font-size: 28px; margin-bottom: 8px; }
+  .header p { opacity: 0.9; font-size: 16px; }
+  
+  /* TOC */
+  .toc { background: white; border-radius: 12px; padding: 24px; margin-bottom: 32px; border: 1px solid var(--border); }
+  .toc h2 { font-size: 18px; margin-bottom: 16px; color: var(--accent); }
+  .toc ol { padding-left: 24px; }
+  .toc li { margin-bottom: 8px; }
+  .toc a { color: var(--accent); text-decoration: none; font-weight: 500; }
+  .toc a:hover { text-decoration: underline; }
+  .toc .deferred { color: var(--gray); font-style: italic; }
+  
+  /* Section */
+  .section { background: white; border-radius: 12px; margin-bottom: 28px; border: 1px solid var(--border); overflow: hidden; }
+  .section-header { padding: 20px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; }
+  .section-number { background: var(--accent); color: white; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 16px; flex-shrink: 0; }
+  .section-title { font-size: 20px; font-weight: 700; }
+  .section-body { padding: 24px; }
+  
+  /* BO Request / Our Response columns */
+  .dialogue { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px; }
+  @media (max-width: 768px) { .dialogue { grid-template-columns: 1fr; } }
+  .dialogue-box { border-radius: 10px; padding: 16px; border: 1px solid; }
+  .dialogue-box.bo { border-color: #c4b5fd; background: #f5f3ff; }
+  .dialogue-box.dev { border-color: #93c5fd; background: #eff6ff; }
+  .dialogue-label { display: inline-block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; padding: 2px 8px; border-radius: 4px; margin-bottom: 8px; }
+  .dialogue-box.bo .dialogue-label { background: #7c3aed; color: white; }
+  .dialogue-box.dev .dialogue-label { background: var(--accent); color: white; }
+  .dialogue-box ul { padding-left: 18px; margin-top: 8px; }
+  .dialogue-box li { margin-bottom: 4px; font-size: 14px; }
+  
+  /* Question Box */
+  .question-box { background: var(--warning-light); border: 1px solid #fbbf24; border-radius: 10px; padding: 16px; margin: 16px 0; }
+  .question-box::before { content: "❓"; margin-right: 8px; }
+  .question-box h4 { color: var(--warning); margin-bottom: 8px; display: inline; }
+  .question-box p, .question-box li { font-size: 14px; }
+  
+  /* BO Answer boxes */
+  .bo-answer { background: white; border: 2px solid #a78bfa; border-radius: 8px; padding: 12px; margin: 8px 0 16px; min-height: 60px; font-family: inherit; font-size: 14px; width: 100%; resize: vertical; direction: rtl; text-align: right; }
+  .bo-answer:focus { outline: none; border-color: #7c3aed; box-shadow: 0 0 0 3px rgba(124,58,237,0.15); }
+  .bo-answer-label { display: block; font-size: 12px; font-weight: 700; color: #7c3aed; margin-top: 8px; margin-bottom: 4px; }
+  .lang-note { background: var(--info-light); border: 1px solid #a78bfa; border-radius: 10px; padding: 16px; margin-bottom: 32px; }
+  .lang-note h3 { color: var(--info); font-size: 16px; margin-bottom: 8px; }
+  
+  /* Mockup */
+  .mockup { border: 2px dashed var(--accent); border-radius: 12px; padding: 20px; margin: 20px 0; background: #fafbff; }
+  .mockup-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--accent); margin-bottom: 12px; display: flex; align-items: center; gap: 6px; }
+  .mockup-label::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+  
+  /* Card mockup */
+  .broker-card { background: white; border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin: 12px 0; transition: box-shadow 0.2s; }
+  .broker-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
+  .broker-card h3 { font-size: 18px; margin-bottom: 4px; }
+  .broker-features { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+  .broker-features span { background: var(--gray-light); padding: 4px 10px; border-radius: 20px; font-size: 12px; color: var(--gray); }
+  .btn { display: inline-block; padding: 10px 20px; border-radius: 8px; font-weight: 600; text-decoration: none; font-size: 14px; cursor: pointer; border: none; }
+  .btn-primary { background: var(--accent); color: white; }
+  .btn-success { background: var(--success); color: white; }
+  .btn-outline { background: white; color: var(--accent); border: 1px solid var(--accent); }
+  .btn-sm { padding: 6px 14px; font-size: 13px; }
+  .btn-danger { background: var(--danger); color: white; }
+  
+  /* Step Wizard */
+  .wizard { display: flex; gap: 4px; margin: 16px 0; flex-wrap: wrap; }
+  .wizard-step { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 8px; font-size: 13px; font-weight: 500; }
+  .wizard-step.completed { background: var(--success-light); color: var(--success); }
+  .wizard-step.current { background: var(--accent-light); color: var(--accent); border: 2px solid var(--accent); }
+  .wizard-step.locked { background: var(--gray-light); color: var(--gray); }
+  .wizard-step.pending { background: var(--warning-light); color: var(--warning); }
+  .wizard-step .step-icon { width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; }
+  .wizard-step.completed .step-icon { background: var(--success); color: white; }
+  .wizard-step.current .step-icon { background: var(--accent); color: white; }
+  .wizard-step.locked .step-icon { background: #cbd5e1; color: white; }
+  .wizard-step.pending .step-icon { background: var(--warning); color: white; }
+  
+  /* Upload area */
+  .upload-area { border: 2px dashed #cbd5e1; border-radius: 10px; padding: 24px; text-align: center; color: var(--gray); margin: 12px 0; }
+  .upload-area .icon { font-size: 32px; margin-bottom: 8px; }
+  
+  /* Progress bar */
+  .progress-bar { background: #e2e8f0; border-radius: 100px; height: 12px; overflow: hidden; margin: 8px 0; }
+  .progress-fill { background: linear-gradient(90deg, var(--accent), #7c3aed); height: 100%; border-radius: 100px; transition: width 0.3s; }
+  
+  /* Email Template */
+  .email-template { max-width: 600px; margin: 16px auto; background: white; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; font-size: 14px; }
+  .email-header { background: linear-gradient(135deg, #1e40af, #7c3aed); color: white; padding: 24px; text-align: center; }
+  .email-header img { width: 60px; margin-bottom: 8px; }
+  .email-body { padding: 24px; }
+  .email-body h2 { font-size: 20px; margin-bottom: 12px; }
+  .email-body p { margin-bottom: 12px; color: #475569; }
+  .email-steps { background: var(--gray-light); border-radius: 8px; padding: 16px; margin: 16px 0; }
+  .email-steps ol { padding-left: 20px; }
+  .email-steps li { margin-bottom: 6px; font-size: 13px; }
+  .email-footer { background: var(--gray-light); padding: 16px; text-align: center; font-size: 12px; color: var(--gray); }
+  .email-cta { text-align: center; margin: 20px 0; }
+  .email-warning { background: var(--warning-light); border-radius: 8px; padding: 12px; margin: 16px 0; font-size: 13px; }
+  
+  /* Admin Table */
+  .admin-table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 16px 0; }
+  .admin-table th { background: var(--gray-light); padding: 10px 12px; text-align: left; font-weight: 600; border-bottom: 2px solid var(--border); }
+  .admin-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+  .admin-table tr:hover td { background: #f8fafc; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+  .badge-success { background: var(--success-light); color: var(--success); }
+  .badge-warning { background: var(--warning-light); color: var(--warning); }
+  .badge-danger { background: var(--danger-light); color: var(--danger); }
+  .badge-info { background: var(--info-light); color: var(--info); }
+  .badge-gray { background: var(--gray-light); color: var(--gray); }
+  
+  /* Feedback Form */
+  .feedback-form { background: var(--gray-light); border-radius: 10px; padding: 20px; margin: 16px 0; }
+  .form-group { margin-bottom: 16px; }
+  .form-group label { display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px; }
+  .form-group input, .form-group textarea, .form-group select { width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px; }
+  .form-group textarea { height: 80px; resize: vertical; }
+  .stars { font-size: 28px; color: #fbbf24; letter-spacing: 4px; cursor: pointer; }
+  
+  /* Divider */
+  .divider { height: 1px; background: var(--border); margin: 24px 0; }
+  
+  /* Bilingual Layout */
+  .bilingual { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 768px) { .bilingual { grid-template-columns: 1fr; } }
+  .bilingual .en { text-align: left; direction: ltr; }
+  .bilingual .ar { text-align: right; direction: rtl; font-family: 'Segoe UI', 'Tahoma', sans-serif; }
+  
+  .note { background: #f0fdf4; border-left: 4px solid var(--success); padding: 12px 16px; margin: 12px 0; border-radius: 0 8px 8px 0; font-size: 14px; }
+  .note.warning { background: var(--warning-light); border-left-color: var(--warning); }
+  .note.info { background: var(--info-light); border-left-color: var(--info); }
+  
+  /* Tabs for admin/student view */
+  .view-tabs { display: flex; gap: 4px; margin-bottom: 16px; background: var(--gray-light); padding: 4px; border-radius: 8px; width: fit-content; }
+  .view-tab { padding: 6px 16px; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; font-size: 13px; background: transparent; color: var(--gray); }
+  .view-tab.active { background: white; color: #1e293b; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  
+  h4 { margin: 16px 0 8px; color: #334155; }
+  .text-sm { font-size: 13px; }
+  .text-gray { color: var(--gray); }
+  .mt-2 { margin-top: 8px; }
+  .mt-4 { margin-top: 16px; }
+  .mb-2 { margin-bottom: 8px; }
+  .mb-4 { margin-bottom: 16px; }
+  .flex { display: flex; }
+  .gap-2 { gap: 8px; }
+  .gap-4 { gap: 16px; }
+  .items-center { align-items: center; }
+  .justify-between { justify-content: space-between; }
+  .flex-wrap { flex-wrap: wrap; }
+  
+  /* Timeline */
+  .timeline { position: relative; padding-left: 30px; }
+  .timeline::before { content: ''; position: absolute; left: 12px; top: 0; bottom: 0; width: 2px; background: var(--border); }
+  .timeline-item { position: relative; margin-bottom: 20px; }
+  .timeline-item::before { content: ''; position: absolute; left: -22px; top: 4px; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); border: 2px solid white; }
+  .timeline-item .time { font-size: 12px; color: var(--gray); font-weight: 600; }
+  .timeline-item .content { font-size: 14px; margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+<!-- Header -->
+<div class="header">
+  <h1>أكاديمية اكس فليكس — خطة التنفيذ</h1>
+  <p style="font-size:18px; margin-top:8px;">أهلاً روان</p>
+  <p style="opacity:0.85; font-size:14px; margin-top:10px; line-height:1.8; direction:rtl;">هاي الوثيقة فيها كل التفاصيل اللي حكينا عنها — كل قسم فيه طلبك وردّنا عليه مع نماذج بصرية.<br>في أسئلة بسيطة بحتاج جوابك عليها عشان نبلش بالتنفيذ — اكتبي جواباتك بالمربعات البنفسجية واحفظي الملف 🙏</p>
+  <p style="opacity:0.6; font-size:12px; margin-top:10px;">آذار 2026</p>
+</div>
+
+<!-- Language Note -->
+<div class="lang-note">
+  <h3>🌐 Language / اللغة</h3>
+  <p style="font-size:14px;">All emails, dashboards, and student-facing UI will be displayed in <strong>one language only</strong> — based on the student's or admin's preferred language setting (Arabic or English). The mockups below show each version separately with a <span class="badge badge-info">EN</span> / <span class="badge badge-info">AR</span> label.</p>
+  <p style="font-size:14px; direction:rtl; text-align:right; margin-top:8px;">جميع الإيميلات ولوحات التحكم وواجهات الطالب ستُعرض <strong>بلغة واحدة فقط</strong> — حسب إعداد اللغة المفضلة للطالب أو الأدمن (عربي أو إنجليزي). النماذج أدناه تعرض كل نسخة بشكل منفصل.</p>
+</div>
+
+<!-- How to fill this document -->
+<div style="background:#f5f3ff; border:2px solid #a78bfa; border-radius:12px; padding:20px; margin-bottom:32px; direction:rtl; text-align:right;">
+  <h3 style="color:#7c3aed; margin-bottom:8px;">✍️ كيف تعبئين إجاباتك يا روان</h3>
+  <p style="font-size:14px;">كل سؤال تحته <span style="color:#7c3aed; font-weight:700;">مربع نص بنفسجي</span>. اكتبي جوابك مباشرة فيه، وبآخر الصفحة في زر حفظ لتحفظي إجاباتك. 😊</p>
+  <p style="font-size:13px; color:var(--gray); margin-top:6px;">الإجابات متزامنة — إذا كتبتي جواب بأي مكان، رح يظهر تلقائياً بالمكان الثاني (بالقسم التفصيلي وبملخص الأسئلة بالآخر).</p>
+</div>
+
+<!-- Table of Contents -->
+<div class="toc" style="direction:rtl; text-align:right;">
+  <h2>📋 جدول المحتويات</h2>
+  <ol>
+    <li><a href="#s1">Auto-Renewal & Payments — التجديد التلقائي والدفع</a> <span class="deferred">(Deferred — needs PayPal credentials)</span></li>
+    <li><a href="#s2">Broker Selection System — نظام اختيار الوسيط</a></li>
+    <li><a href="#s3">Trading Account Opening Path — مسار فتح حساب التداول</a></li>
+    <li><a href="#s4">Proof Upload & Admin Review — رفع الإثبات ومراجعة الإدارة</a></li>
+    <li><a href="#s5">Course Gating & Learning Path — بوابة المقرر ومسار التعلم</a></li>
+    <li><a href="#s6">Welcome Email — الإيميل الترحيبي</a></li>
+    <li><a href="#s7">Time-Based Drip Emails — الرسائل الآلية الزمنية</a></li>
+    <li><a href="#s8">Progress-Based Trigger Emails — الرسائل حسب التقدم</a></li>
+    <li><a href="#s9">Post-Quiz Emails & Feedback — إيميلات ما بعد الاختبار والتقييم</a></li>
+    <li><a href="#s10">Student Dashboard & Progress — لوحة الطالب والتقدم</a></li>
+  </ol>
+</div>
+
+<!-- ============================================ -->
+<!-- SECTION 1: Auto-Renewal (Deferred) -->
+<!-- ============================================ -->
+<div class="section" id="s1">
+  <div class="section-header">
+    <div class="section-number">1</div>
+    <div class="section-title">Auto-Renewal & Payments / التجديد التلقائي والدفع</div>
+  </div>
+  <div class="section-body">
+    <div class="dialogue">
+      <div class="dialogue-box bo">
+        <span class="dialogue-label">طلب روان</span>
+        <p style="direction:rtl; text-align:right;">تجديد تلقائي حط هالخاصيه ازا الشخص حفظ بيانات بطاقته بالموقع عشان يجدد دايركت ونسهل عليهم العمليه</p>
+      </div>
+      <div class="dialogue-box dev">
+        <span class="dialogue-label">ردنا</span>
+        <p>This feature requires integration with a payment gateway (PayPal/Stripe). We cannot store card data ourselves — the payment provider handles that via "vaulting".</p>
+        <p style="direction:rtl; text-align:right;">هاي الخاصية بتحتاج ربط مع بوابة دفع (بي بال/سترايب). ما بنقدر نخزن بيانات البطاقة عنا — مزود الدفع بيخزنها عنده.</p>
+      </div>
+    </div>
+    <div class="note warning">
+      <strong>⏸️ DEFERRED / مؤجل:</strong> This will be implemented once the BO provides PayPal Business credentials or chooses a payment gateway. No card data will ever be stored on our servers.
+      <br><span style="direction:rtl; display:block; text-align:right; margin-top:4px;">سيتم التنفيذ بعد ما توفر روان بيانات حساب بي بال التجاري أو تختار بوابة دفع. لن يتم تخزين أي بيانات بطاقات على خوادمنا.</span>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================ -->
+<!-- SECTION 2: Broker Selection -->
+<!-- ============================================ -->
+<div class="section" id="s2">
+  <div class="section-header">
+    <div class="section-number">2</div>
+    <div class="section-title">Broker Selection System / نظام اختيار الوسيط</div>
+  </div>
+  <div class="section-body">
+    <div class="dialogue">
+      <div class="dialogue-box bo">
+        <span class="dialogue-label">طلب روان</span>
+        <p style="direction:rtl; text-align:right;">منحط مجموعه من البروكر هو بختار منها. يكون في صفحة بعنوان "اختيار شركة الوساطة" وفيه مجموعة الوسطاء المعتمدين. لازم يكون موجود: اسم كل بروكر، نبذة مختصرة، مميزاته، زر "افتح حسابك عبر هذا الرابط". كل روابط فتح الحساب تكون روابط الوكالة الخاصة فينا فقط.</p>
+        <p style="direction:rtl; text-align:right; margin-top:8px;"><strong>لينك اول بروكر:</strong> Equiti — سيتم اضافة اثنين او اكثر لاحقاً</p>
+      </div>
+      <div class="dialogue-box dev">
+        <span class="dialogue-label">ردنا</span>
+        <p><strong>Plan:</strong> Build a reusable broker management system - admin adds/edits brokers, students see them after completing episode 39 (configurable). Each broker has name, description, features, logo, and affiliate link.</p>
+        <p><strong>Trigger:</strong> Broker selection will appear after the student completes the entire course (episode 39). This can be changed later to any episode.</p>
+      </div>
+    </div>
+
+    <!-- Admin View Mockup -->
+    <div class="mockup">
+      <div class="mockup-label">Admin View — Broker Management / عرض الأدمن — إدارة الوسطاء</div>
+      
+      <div class="flex justify-between items-center mb-4">
+        <h3 style="font-size:18px;">Manage Brokers / إدارة الوسطاء</h3>
+        <button class="btn btn-primary btn-sm">+ Add Broker / إضافة وسيط</button>
+      </div>
+
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Logo</th>
+            <th>Name / الاسم</th>
+            <th>Status / الحالة</th>
+            <th>Affiliate Link</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1</td>
+            <td><div style="width:40px;height:40px;background:#1e40af;border-radius:8px;display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:10px;">EQ</div></td>
+            <td><strong>Equiti</strong><br><span class="text-sm text-gray">إكويتي</span></td>
+            <td><span class="badge badge-success">Active</span></td>
+            <td><span class="text-sm text-gray" style="word-break:break-all;">portal.my-equiti.com/sc/register/?...</span></td>
+            <td>
+              <button class="btn btn-outline btn-sm" style="margin-right:4px;">Edit</button>
+              <button class="btn btn-sm" style="background:var(--danger-light);color:var(--danger);border:none;">Disable</button>
+            </td>
+          </tr>
+          <tr style="opacity:0.5;">
+            <td>2</td>
+            <td><div style="width:40px;height:40px;background:#gray;border-radius:8px;display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:10px;background:#94a3b8;">?</div></td>
+            <td><span class="text-gray">Future broker...</span></td>
+            <td><span class="badge badge-gray">Pending</span></td>
+            <td>—</td>
+            <td>—</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="note info">
+        <strong>Admin Form Fields:</strong> Name (EN/AR), Description (EN/AR), Features list, Logo upload, Affiliate URL, Support WhatsApp, Min deposit, Active toggle, Display order
+      </div>
+    </div>
+
+    <!-- Student View Mockup -->
+    <div class="mockup">
+      <div class="mockup-label">Student View — After Episode 39 / عرض الطالب — بعد الحلقة 39</div>
+      
+      <div class="bilingual mb-4">
+        <div class="en">
+          <h3 style="font-size:20px;">🎉 Choose Your Broker</h3>
+          <p class="text-sm text-gray">You've completed the trading course! Now select a broker to open your real account through our official links.</p>
+        </div>
+        <div class="ar">
+          <h3 style="font-size:20px;">🎉 اختيار شركة الوساطة</h3>
+          <p class="text-sm text-gray">أنهيت كورس التداول بنجاح! الآن اختر الوسيط لفتح حسابك الحقيقي عبر روابطنا الرسمية.</p>
+        </div>
+      </div>
+      
+      <div class="broker-card">
+        <div class="flex items-center gap-4">
+          <div style="width:60px;height:60px;background:linear-gradient(135deg,#1e40af,#3b82f6);border-radius:12px;display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:14px;">EQUITI</div>
+          <div>
+            <h3>Equiti / إكويتي</h3>
+            <p class="text-sm text-gray">وسيط تداول عالمي خاضع للرقابة، يقدم تداولًا على الفوركس والأسهم والسلع</p>
+            <p class="text-sm text-gray">Global regulated broker offering Forex, stocks, and commodities trading</p>
+          </div>
+        </div>
+        <div class="broker-features">
+          <span>🔒 Regulated / مرخص</span>
+          <span>📱 MT5 Support</span>
+          <span>💰 Low Spreads</span>
+          <span>🇯🇴 Jordan Support</span>
+          <span>🎧 Arabic Support / دعم عربي</span>
+        </div>
+        <div class="flex gap-2 mt-2">
+          <a href="#" class="btn btn-primary">افتح حسابك عبر رابطنا / Open Account via Our Link →</a>
+        </div>
+        <p class="text-sm text-gray mt-2">📞 Equiti Support WhatsApp: +971 52 727 4258</p>
+      </div>
+      
+      <div class="broker-card" style="opacity:0.4; border-style:dashed;">
+        <div class="flex items-center gap-4">
+          <div style="width:60px;height:60px;background:#94a3b8;border-radius:12px;display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:20px;">+</div>
+          <div>
+            <h3 class="text-gray">More brokers coming soon / وسطاء إضافيون قريبًا</h3>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="question-box">
+      <h4>أسئلة لروان:</h4>
+      <ol style="padding-left:18px; margin-top:8px;">
+        <li>Should the Equiti support WhatsApp (+971 52 727 4258) appear on the broker card, or only in the onboarding steps?<br><span style="direction:rtl;display:block;text-align:right;">هل رقم واتساب دعم إكويتي (+971 52 727 4258) بده يظهر على بطاقة الوسيط أو بس في خطوات فتح الحساب؟</span>
+          <span class="bo-answer-label">✍️ جوابك يا روان:</span>
+          <textarea class="bo-answer" data-q="q1" placeholder="اكتبي جوابك هنا... / Type your answer here..."></textarea>
+        </li>
+        <li>Do you have the Equiti logo file? If yes, please share it. If not, we'll use text placeholder.<br><span style="direction:rtl;display:block;text-align:right;">هل عندك ملف شعار إكويتي؟ إذا أي، ابعتيه. إذا لا، رح نستخدم نص مؤقت.</span>
+          <span class="bo-answer-label">✍️ جوابك يا روان:</span>
+          <textarea class="bo-answer" data-q="q2" placeholder="اكتبي جوابك هنا... / Type your answer here..."></textarea>
+        </li>
+        <li>What is the minimum deposit amount for Equiti that we should display?<br><span style="direction:rtl;display:block;text-align:right;">شو الحد الأدنى للإيداع عند إكويتي عشان نعرضه؟</span>
+          <span class="bo-answer-label">✍️ جوابك يا روان:</span>
+          <textarea class="bo-answer" data-q="q3" placeholder="اكتبي جوابك هنا... / Type your answer here..."></textarea>
+        </li>
+      </ol>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================ -->
+<!-- SECTION 3: Account Opening Path -->
+<!-- ============================================ -->
+<div class="section" id="s3">
+  <div class="section-header">
+    <div class="section-number">3</div>
+    <div class="section-title">Trading Account Opening Path / مسار فتح حساب التداول</div>
+  </div>
+  <div class="section-body">
+    <div class="dialogue">
+      <div class="dialogue-box bo">
+        <span class="dialogue-label">طلب روان</span>
+        <p style="direction:rtl; text-align:right;">بدي مهمه فتح حسابات التداول عبر وكالتنا نجبر الطالب فيها بشكل الي من خلال خطوات الخطه التعليمية. الخطوات تكون خطوه ورا خطوه تنفتح اله عبر رابطنا فقط. <strong>جداً ضروريه مابدي الدعم يمسكها.</strong></p>
+        <p style="direction:rtl; text-align:right; margin-top:6px;">المسار: اختيار الوسيط → فيديو فتح الحساب + رفع إثبات → فيديو التوثيق + رفع إثبات → فيديو الإيداع والتفعيل + رفع إثبات → اعتماد الإنجاز</p>
+      </div>
+      <div class="dialogue-box dev">
+        <span class="dialogue-label">ردنا</span>
+        <p><strong>Plan:</strong> 4-step guided wizard that locks progression. Each step has: instruction video, text guide, proof upload requirement, and admin review. Student cannot reach the next step until the current one is approved.</p>
+        <p><strong>This appears AFTER episode 39</strong> (or configurable episode), right after broker selection.</p>
+      </div>
+    </div>
+
+    <!-- Step Wizard Mockup -->
+    <div class="mockup">
+      <div class="mockup-label">Student View — Account Opening Wizard / عرض الطالب — معالج فتح الحساب</div>
+
+      <div class="wizard">
+        <div class="wizard-step completed"><div class="step-icon">✓</div> Select Broker / اختيار الوسيط</div>
+        <div class="wizard-step current"><div class="step-icon">2</div> Open Account / فتح الحساب</div>
+        <div class="wizard-step locked"><div class="step-icon">3</div> Verify Account / توثيق الحساب</div>
+        <div class="wizard-step locked"><div class="step-icon">4</div> Deposit & Activate / الإيداع والتفعيل</div>
+      </div>
+
+      <div style="background:white; border:1px solid var(--border); border-radius:10px; padding:20px; margin-top:16px;">
+        <div class="bilingual mb-4">
+          <div class="en">
+            <h3>Step 2: Open Your Trading Account</h3>
+            <p class="text-sm text-gray">Watch the video below, then open your account using our official link and upload proof.</p>
+          </div>
+          <div class="ar">
+            <h3>الخطوة 2: فتح حساب التداول</h3>
+            <p class="text-sm text-gray">شاهد الفيديو أدناه، ثم افتح حسابك عبر رابطنا الرسمي وارفع الإثبات.</p>
+          </div>
+        </div>
+
+        <!-- Video placeholder -->
+        <div style="background:#000; border-radius:8px; aspect-ratio:16/9; display:flex; align-items:center; justify-content:center; color:white; margin-bottom:16px;">
+          <div style="text-align:center;">
+            <div style="font-size:48px;">▶</div>
+            <p>How to Open Your Trading Account / كيفية فتح حساب التداول</p>
+            <p class="text-sm" style="opacity:0.6;">YouTube: youtu.be/rh6vI2ZCbhQ</p>
+          </div>
+        </div>
+
+        <div class="flex gap-2 mb-4">
+          <a href="#" class="btn btn-primary">🔗 Open Account with Equiti / افتح حسابك مع إكويتي</a>
+        </div>
+
+        <div class="divider"></div>
+
+        <h4>Upload Proof / ارفع الإثبات</h4>
+        <p class="text-sm text-gray mb-2">Upload one of the following / ارفع أحد المستندات التالية:</p>
+        <ul class="text-sm" style="padding-left:18px; margin-bottom:12px;">
+          <li>Screenshot of the registration confirmation / لقطة شاشة لتأكيد التسجيل</li>
+          <li>Your account number / رقم الحساب</li>
+          <li>Confirmation email from the broker / إيميل التأكيد من الوسيط</li>
+        </ul>
+
+        <div class="upload-area">
+          <div class="icon">📁</div>
+          <p>Drag & drop your proof here, or click to upload</p>
+          <p style="direction:rtl">اسحب الملف هنا أو اضغط لرفع الإثبات</p>
+          <p class="text-sm text-gray mt-2">Accepted: JPG, PNG, PDF — Max 5MB</p>
+        </div>
+
+        <div class="flex gap-2 mt-4">
+          <button class="btn btn-success">✅ Submit Proof / إرسال الإثبات</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pending Review State -->
+    <div class="mockup">
+      <div class="mockup-label">Student View — Waiting for Review / عرض الطالب — بانتظار المراجعة</div>
+      <div class="wizard">
+        <div class="wizard-step completed"><div class="step-icon">✓</div> Select Broker</div>
+        <div class="wizard-step pending"><div class="step-icon">⏳</div> Open Account</div>
+        <div class="wizard-step locked"><div class="step-icon">3</div> Verify Account</div>
+        <div class="wizard-step locked"><div class="step-icon">4</div> Deposit</div>
+      </div>
+      <div style="background:var(--warning-light); border:1px solid #fbbf24; border-radius:10px; padding:20px; margin-top:12px; text-align:center;">
+        <p style="font-size:32px;">⏳</p>
+        <h3 style="color:var(--warning);">Proof Under Review / الإثبات قيد المراجعة</h3>
+        <p class="text-sm text-gray">Your proof has been submitted. Our team will review it shortly.</p>
+        <p class="text-sm text-gray" style="direction:rtl;">تم إرسال الإثبات. فريقنا سيراجعه قريبًا.</p>
+        <p class="text-sm mt-2">Submitted: 26 Mar 2026, 10:45 AM</p>
+      </div>
+    </div>
+
+    <div class="question-box">
+      <h4>أسئلة لروان:</h4>
+      <ol style="padding-left:18px; margin-top:8px;">
+        <li>The onboarding videos (account opening, verification, deposit) — are these already recorded/uploaded? Or should we embed the YouTube video (youtu.be/rh6vI2ZCbhQ)?<br><span style="direction:rtl;display:block;text-align:right;">فيديوهات فتح الحساب والتوثيق والإيداع — هل هي جاهزة ومرفوعة؟ ولا نستخدم فيديو اليوتيوب (youtu.be/rh6vI2ZCbhQ)؟</span>
+          <span class="bo-answer-label">✍️ جوابك يا روان:</span>
+          <textarea class="bo-answer" data-q="q4" placeholder="اكتبي جوابك هنا... / Type your answer here..."></textarea>
+        </li>
+        <li style="background:#f0fdf4; border-radius:6px; padding:8px; border:1px solid #bbf7d0;">"We need to do some OpenAI check" — <strong style="color:var(--success);">✅ ANSWERED:</strong> Student uploads screenshot of Equiti IB link confirmation email. OpenAI Vision checks: sender is equiti.com, contains account linking text, has account number. If ≥90% confidence → auto-approve. Otherwise → admin review.<br><span style="direction:rtl;display:block;text-align:right;">"بدنا نعمل فحص بالذكاء الاصطناعي" — <strong style="color:var(--success);">✅ تم الإجابة:</strong> الطالب يرفع لقطة شاشة لإيميل ربط حساب الوسيط من إكويتي. الذكاء الاصطناعي يتحقق: المرسل من equiti.com، يحتوي نص ربط الحساب، فيه رقم حساب. إذا الثقة ≥90% → موافقة تلقائية. غير هيك → مراجعة يدوية.</span>
+        </li>
+        <li>If a proof is rejected, how many times can the student re-upload? Unlimited?<br><span style="direction:rtl;display:block;text-align:right;">إذا رُفض الإثبات، كم مرة يقدر الطالب يعيد الرفع؟ بلا حدود؟</span>
+          <span class="bo-answer-label">✍️ جوابك يا روان:</span>
+          <textarea class="bo-answer" data-q="q5" placeholder="اكتبي جوابك هنا... / Type your answer here..."></textarea>
+        </li>
+        <li>Should the student be able to contact support directly from the onboarding step if stuck?<br><span style="direction:rtl;display:block;text-align:right;">هل الطالب بقدر يتواصل مع الدعم مباشرة من خطوة فتح الحساب إذا علق؟</span>
+          <span class="bo-answer-label">✍️ جوابك يا روان:</span>
+          <textarea class="bo-answer" data-q="q6" placeholder="اكتبي جوابك هنا... / Type your answer here..."></textarea>
+        </li>
+      </ol>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================ -->
+<!-- SECTION 4: Proof Upload & Admin Review -->
+<!-- ============================================ -->
+<div class="section" id="s4">
+  <div class="section-header">
+    <div class="section-number">4</div>
+    <div class="section-title">Proof Upload & Admin Review / رفع الإثبات ومراجعة الإدارة</div>
+  </div>
+  <div class="section-body">
+    <div class="dialogue">
+      <div class="dialogue-box bo">
+        <span class="dialogue-label">طلب روان</span>
+        <p style="direction:rtl; text-align:right;">ثم يرفع إثبات أنه فتح الحساب — مثل لقطة شاشة، أو رقم الحساب، أو البريد الذي وصله من الوسيط. بعد إتمام الخطوات تنحسب المهمة كمكتملة.</p>
+        <p style="direction:rtl; text-align:right; margin-top:6px;">كل خطوة يكون إلها حالة: لم يبدأ، قيد التنفيذ، مكتمل، بانتظار مراجعة، يحتاج إعادة رفع إثبات</p>
+      </div>
+      <div class="dialogue-box dev">
+        <span class="dialogue-label">ردنا</span>
+        <p><strong>Plan:</strong> Two-tier verification system:</p>
+        <ol>
+          <li><strong>OpenAI Vision API auto-check:</strong> When the student uploads a screenshot, our backend sends it to GPT-4o Vision with a prompt asking: "Is this a legitimate Equiti broker confirmation email? Check for: (a) sender from equiti.com/salesforce.com, (b) IB account linking confirmation text, (c) account number reference." The AI returns a confidence score.</li>
+          <li><strong>Confidence ≥ 90%</strong> → <span style="color:var(--success); font-weight:600;">Auto-approved</span> instantly. Student proceeds to next step.</li>
+          <li><strong>Confidence &lt; 90%</strong> → <span style="color:var(--warning); font-weight:600;">Queued for admin/support review</span>. Admin sees the AI's analysis alongside the image.</li>
+        </ol>
+        <p class="mt-2">This reduces admin workload — most legitimate proofs auto-approve, only edge cases need human review.</p>
+      </div>
+    </div>
+
+    <div class="mockup">
+      <div class="mockup-label">Admin View — Proof Review Queue / عرض الأدمن — طابور مراجعة الإثبات</div>
+
+      <div class="flex justify-between items-center mb-4">
+        <h3 style="font-size:18px;">Onboarding Proofs / إثبات فتح الحساب</h3>
+        <div class="flex gap-2">
+          <span class="badge badge-warning">3 Pending</span>
+          <span class="badge badge-success">12 Approved</span>
+          <span class="badge badge-danger">1 Rejected</span>
+        </div>
+      </div>
+
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Student / الطالب</th>
+            <th>Step / الخطوة</th>
+            <th>Broker</th>
+            <th>Submitted</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Ahmad Khalil</strong><br><span class="text-sm text-gray">ahmad@email.com</span></td>
+            <td>Account Opening</td>
+            <td>Equiti</td>
+            <td>26 Mar, 10:45</td>
+            <td><span class="badge badge-warning">Pending</span></td>
+            <td>
+              <button class="btn btn-sm btn-outline" style="margin-right:4px;">👁 View</button>
+              <button class="btn btn-sm btn-success" style="margin-right:4px;">✓</button>
+              <button class="btn btn-sm btn-danger">✗</button>
+            </td>
+          </tr>
+          <tr>
+            <td><strong>Sara Mohammed</strong><br><span class="text-sm text-gray">sara@email.com</span></td>
+            <td>Verification</td>
+            <td>Equiti</td>
+            <td>25 Mar, 15:20</td>
+            <td><span class="badge badge-warning">Pending</span></td>
+            <td>
+              <button class="btn btn-sm btn-outline" style="margin-right:4px;">👁 View</button>
+              <button class="btn btn-sm btn-success" style="margin-right:4px;">✓</button>
+              <button class="btn btn-sm btn-danger">✗</button>
+            </td>
+          </tr>
+          <tr style="opacity:0.6;">
+            <td><strong>Omar Nasser</strong></td>
+            <td>Deposit</td>
+            <td>Equiti</td>
+            <td>24 Mar, 09:10</td>
+            <td><span class="badge badge-success">Approved</span></td>
+            <td><button class="btn btn-sm btn-outline">👁 View</button></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- Proof Detail Modal -->
+      <div style="border:1px solid var(--border); border-radius:10px; padding:20px; margin-top:16px; background:white;">
+        <h4>📎 Proof Detail — Ahmad Khalil — Account Opening</h4>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:12px;">
+          <div>
+            <div style="background:#f1f5f9; border-radius:8px; aspect-ratio:4/3; display:flex; align-items:center; justify-content:center; border:1px solid var(--border);">
+              <span style="color:var(--gray);">📸 Uploaded screenshot preview<br><small>(Equiti IB link confirmation email)</small></span>
+            </div>
+          </div>
+          <div>
+            <p><strong>Student:</strong> Ahmad Khalil</p>
+            <p><strong>Step:</strong> Account Opening</p>
+            <p><strong>Broker:</strong> Equiti</p>
+            <p><strong>Submitted:</strong> 26 Mar 2026, 10:45 AM</p>
+            <p><strong>File:</strong> screenshot_equiti.png (245 KB)</p>
+
+            <!-- AI Verification Result -->
+            <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:12px; margin:12px 0;">
+              <h5 style="margin:0 0 6px 0; font-size:13px;">🤖 AI Verification Result</h5>
+              <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+                <span style="font-size:24px; font-weight:700; color:var(--success);">96%</span>
+                <span class="badge badge-success">Auto-Approved</span>
+              </div>
+              <ul style="font-size:12px; color:#555; padding-left:16px; margin:0;">
+                <li>✅ Sender: partners@equiti.com via salesforce.com</li>
+                <li>✅ Contains IB account linking confirmation</li>
+                <li>✅ Account number reference found (C02...)</li>
+              </ul>
+            </div>
+
+            <div class="divider"></div>
+            <div class="form-group">
+              <label>Admin Note (optional):</label>
+              <textarea placeholder="Reason for rejection (if rejecting)..."></textarea>
+            </div>
+            <div class="flex gap-2">
+              <button class="btn btn-success">✅ Approve</button>
+              <button class="btn btn-danger">❌ Reject</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Low-confidence example -->
+      <div style="border:1px solid var(--warning); border-radius:10px; padding:20px; margin-top:12px; background:#fffbeb;">
+        <h4>⚠️ Example: Low-Confidence Proof (Needs Human Review)</h4>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:12px;">
+          <div>
+            <div style="background:#fef3c7; border-radius:8px; aspect-ratio:4/3; display:flex; align-items:center; justify-content:center; border:1px solid #fcd34d;">
+              <span style="color:#92400e;">📸 Blurry/cropped screenshot</span>
+            </div>
+          </div>
+          <div>
+            <p><strong>Student:</strong> Lina Hamed</p>
+            <p><strong>Step:</strong> Account Opening</p>
+
+            <div style="background:#fffbeb; border:1px solid #fcd34d; border-radius:8px; padding:12px; margin:12px 0;">
+              <h5 style="margin:0 0 6px 0; font-size:13px;">🤖 AI Verification Result</h5>
+              <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+                <span style="font-size:24px; font-weight:700; color:var(--warning);">62%</span>
+                <span class="badge badge-warning">Needs Review</span>
+              </div>
+              <ul style="font-size:12px; color:#555; padding-left:16px; margin:0;">
+                <li>⚠️ Image is partially cropped — sender email not fully visible</li>
+                <li>✅ Contains Arabic text mentioning account linking</li>
+                <li>❌ No account number reference found</li>
+              </ul>
+            </div>
+
+            <div class="flex gap-2">
+              <button class="btn btn-success">✅ Approve</button>
+              <button class="btn btn-danger">❌ Reject</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================ -->
+<!-- SECTION 5: Course Gating -->
+<!-- ============================================ -->
+<div class="section" id="s5">
+  <div class="section-header">
+    <div class="section-number">5</div>
+    <div class="section-title">Course Gating & Learning Path / بوابة المقرر ومسار التعلم</div>
+  </div>
+  <div class="section-body">
+    <div class="dialogue">
+      <div class="dialogue-box bo">
+        <span class="dialogue-label">طلب روان</span>
+        <p style="direction:rtl; text-align:right;">ما بدي الطالب يدخل عشوائيًا على الدروس بدون ما يكون خلص الخطوات التشغيلية. بدي بعض الدروس يكون عليها شرط: لا يفتح هذا القسم إلا بعد إنهاء خطوات فتح الحساب والتوثيق.</p>
+        <p style="direction:rtl; text-align:right; margin-top:6px;"><strong>الترتيب المقترح:</strong> فيديو ترحيبي → شرح الباقات → اختيار الوسيط → فتح الحساب → التوثيق → الإيداع → ثم المحتوى التعليمي</p>
+      </div>
+      <div class="dialogue-box dev">
+        <span class="dialogue-label">ردنا</span>
+        <p><strong>Updated Plan:</strong> Since the BO wants broker selection + onboarding AFTER the full course (episode 39), the gating will work as follows:</p>
+        <ul>
+          <li>Episodes 1-39: Trading course — open sequential access</li>
+          <li>After episode 39: Broker selection + onboarding steps unlock</li>
+          <li>Future phases (advanced content): locked until onboarding is complete</li>
+        </ul>
+        <p class="mt-2"><strong>Note:</strong> The BO originally wanted onboarding at the beginning, but then specified it should come after episode 39. We'll make this configurable so it can be moved later.</p>
+      </div>
+    </div>
+
+    <div class="mockup">
+      <div class="mockup-label">Student View — Course Player with Gating / عرض الطالب — مشغل الكورس مع البوابة</div>
+
+      <div style="display:grid; grid-template-columns:300px 1fr; gap:16px;">
+        <!-- Episode sidebar -->
+        <div style="background:white; border:1px solid var(--border); border-radius:10px; overflow:hidden;">
+          <div style="padding:12px 16px; background:var(--gray-light); font-weight:600; font-size:14px;">
+            Course Episodes / حلقات الكورس
+          </div>
+          <div style="padding:8px;">
+            <div style="padding:8px 12px; background:var(--success-light); border-radius:6px; margin-bottom:4px; font-size:13px; display:flex; align-items:center; gap:8px;">
+              <span style="color:var(--success);">✓</span> 1. محتويات الكورس
+            </div>
+            <div style="padding:8px 12px; background:var(--success-light); border-radius:6px; margin-bottom:4px; font-size:13px; display:flex; align-items:center; gap:8px;">
+              <span style="color:var(--success);">✓</span> 2. ما هي الأسواق المالية
+            </div>
+            <div style="padding:8px 12px; border-radius:6px; margin-bottom:4px; font-size:13px; display:flex; align-items:center; gap:8px; color:var(--gray);">
+              ... episodes 3-38 ...
+            </div>
+            <div style="padding:8px 12px; background:var(--accent-light); border-radius:6px; margin-bottom:4px; font-size:13px; display:flex; align-items:center; gap:8px; border:2px solid var(--accent);">
+              <span style="color:var(--accent);">▶</span> <strong>39. خطة التداول</strong>
+            </div>
+            <div style="padding:0; margin:8px 0;">
+              <div style="height:2px; background:var(--accent); border-radius:2px;"></div>
+            </div>
+            <div style="padding:8px 12px; background:var(--info-light); border-radius:6px; margin-bottom:4px; font-size:13px; display:flex; align-items:center; gap:8px; font-weight:600; color:var(--info);">
+              🏦 Broker & Account Setup
+            </div>
+            <div style="padding:8px 12px; border-radius:6px; margin-bottom:2px; font-size:12px; padding-left:24px; color:var(--gray);">
+              🔒 Choose Broker
+            </div>
+            <div style="padding:8px 12px; border-radius:6px; margin-bottom:2px; font-size:12px; padding-left:24px; color:var(--gray);">
+              🔒 Open Account
+            </div>
+            <div style="padding:8px 12px; border-radius:6px; margin-bottom:2px; font-size:12px; padding-left:24px; color:var(--gray);">
+              🔒 Verify Account
+            </div>
+            <div style="padding:8px 12px; border-radius:6px; margin-bottom:2px; font-size:12px; padding-left:24px; color:var(--gray);">
+              🔒 Deposit & Activate
+            </div>
+          </div>
+        </div>
+        <!-- Main content area -->
+        <div>
+          <div style="background:#000; border-radius:10px; aspect-ratio:16/9; display:flex; align-items:center; justify-content:center; color:white;">
+            <div style="text-align:center;">
+              <div style="font-size:48px;">▶</div>
+              <p>Episode 39: خطة التداول</p>
+            </div>
+          </div>
+          <div style="padding:16px 0;">
+            <div class="progress-bar" style="height:8px;">
+              <div class="progress-fill" style="width:100%;"></div>
+            </div>
+            <p class="text-sm text-gray mt-2">Course Progress: 39/39 episodes completed (100%) ✅</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="question-box">
+      <h4>أسئلة لروان:</h4>
+      <ol style="padding-left:18px; margin-top:8px;">
+        <li>You mentioned the onboarding should come at the beginning of the learning path, BUT also that it should come after the course. We plan to put it <strong>after episode 39</strong> for now. Should <strong>future advanced content</strong> (if added later) be locked until onboarding is complete?<br><span style="direction:rtl;display:block;text-align:right;">ذكرتي إنه فتح الحساب يكون ببداية المسار، وكمان ذكرتي إنه بعد الكورس. خطتنا نحطه <strong>بعد الحلقة 39</strong> حالياً. هل <strong>المحتوى المتقدم المستقبلي</strong> (إذا أضفناه) بده يكون مقفل لحد ما يخلص فتح الحساب؟</span>
+          <span class="bo-answer-label">✍️ جوابك يا روان:</span>
+          <textarea class="bo-answer" data-q="q7" placeholder="اكتبي جوابك هنا... / Type your answer here..."></textarea>
+        </li>
+        <li>Should gating be strict (can't even see locked episodes) or soft (can see titles but can't play)?<br><span style="direction:rtl;display:block;text-align:right;">هل البوابة تكون صارمة (ما يشوف الحلقات المقفلة) ولا خفيفة (يشوف العناوين بس ما يقدر يشغلها)؟</span>
+          <span class="bo-answer-label">✍️ جوابك يا روان:</span>
+          <textarea class="bo-answer" data-q="q8" placeholder="اكتبي جوابك هنا... / Type your answer here..."></textarea>
+        </li>
+      </ol>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================ -->
+<!-- SECTION 6: Welcome Email -->
+<!-- ============================================ -->
+<div class="section" id="s6">
+  <div class="section-header">
+    <div class="section-number">6</div>
+    <div class="section-title">Welcome Email / الإيميل الترحيبي</div>
+  </div>
+  <div class="section-body">
+    <div class="dialogue">
+      <div class="dialogue-box bo">
+        <span class="dialogue-label">طلب روان</span>
+        <p style="direction:rtl; text-align:right;">أول ما الطالب يشترك أو يتفعل اشتراكه يوصله إيميل ترحيبي رسمي ومرتب. فيه: ترحيب باسم الطالب، تهنئة، شرح مختصر، خطوات البداية المتسلسلة، روابط مباشرة، تنبيهات مهمة، رابط PDF.</p>
+      </div>
+      <div class="dialogue-box dev">
+        <span class="dialogue-label">ردنا</span>
+        <p><strong>Plan:</strong> Auto-triggered email on key activation or order fulfillment. Email will be sent in the student's preferred language (AR or EN). Below are both versions.</p>
+      </div>
+    </div>
+
+    <!-- Email Template -->
+    <div class="mockup">
+      <div class="mockup-label">Email Template — Welcome / قالب الإيميل الترحيبي</div>
+
+      <!-- Arabic Version -->
+      <div style="margin-bottom:12px;"><span class="badge badge-info" style="font-size:13px; padding:4px 12px;">AR — النسخة العربية</span></div>
+      <div class="email-template" dir="rtl">
+        <div class="email-header">
+          <div style="font-size:24px; font-weight:700;">أكاديمية اكس فليكس</div>
+        </div>
+        <div class="email-body" style="text-align:right;">
+          <h2 style="text-align:center;">أهلاً وسهلاً بك في أكاديمية اكس فليكس! 🎉</h2>
+          <p>عزيزي <strong>{{studentName}}</strong>،</p>
+          <p>مبروك انضمامك لأكاديمية اكس فليكس للتداول! أصبح لديك وصول لبرنامج تعليم تداول كامل ومنظم.</p>
+          <div class="email-steps">
+            <h4>📋 خطوات البداية:</h4>
+            <ol>
+              <li>سجّل دخولك للوحة الطالب</li>
+              <li>ابدأ بمشاهدة كورس التداول</li>
+              <li>أكمل الـ39 حلقة بالترتيب</li>
+              <li>اختر الوسيط</li>
+              <li>افتح حسابك عبر رابطنا الرسمي</li>
+              <li>وثّق حسابك</li>
+              <li>أودع وفعّل الحساب</li>
+              <li>ابدأ التداول!</li>
+            </ol>
+          </div>
+          <div class="email-cta">
+            <a href="#" class="btn btn-primary" style="text-decoration:none; padding:14px 32px; font-size:16px;">الذهاب للوحة الطالب ←</a>
+          </div>
+          <div class="email-warning">
+            <strong>⚠️ مهم:</strong>
+            <ul style="padding-right:18px; margin-top:6px;">
+              <li>اتبع الخطوات بالترتيب</li>
+              <li>ارفع الإثبات المطلوب في كل خطوة</li>
+              <li>استخدم روابطنا الرسمية فقط</li>
+            </ul>
+          </div>
+          <p style="text-align:center; margin-top:16px;">
+            <a href="#" style="color:var(--accent);">📥 تحميل: دليل البداية في الأكاديمية (PDF)</a>
+          </p>
+          <p style="text-align:center; color:var(--gray); margin-top:16px;">
+            بحاجة مساعدة؟ <a href="#" style="color:var(--accent);">فتح محادثة الدعم</a>
+          </p>
+        </div>
+        <div class="email-footer">أكاديمية إكس فليكس للتداول © 2026</div>
+      </div>
+
+      <!-- English Version -->
+      <div style="margin-top:24px; margin-bottom:12px;"><span class="badge badge-info" style="font-size:13px; padding:4px 12px;">EN — English Version</span></div>
+      <div class="email-template">
+        <div class="email-header">
+          <div style="font-size:24px; font-weight:700;">XFlex Academy</div>
+        </div>
+        <div class="email-body">
+          <h2 style="text-align:center;">Welcome to XFlex Academy! 🎉</h2>
+          <p>Dear <strong>{{studentName}}</strong>,</p>
+          <p>Congratulations on joining XFlex Trading Academy! You now have access to a complete structured trading education program.</p>
+          <div class="email-steps">
+            <h4>📋 Your Getting Started Steps:</h4>
+            <ol>
+              <li>Login to your dashboard</li>
+              <li>Start watching the trading course</li>
+              <li>Complete all 39 episodes in order</li>
+              <li>Choose your broker</li>
+              <li>Open your trading account via our official link</li>
+              <li>Verify your account</li>
+              <li>Deposit and activate</li>
+              <li>Start trading!</li>
+            </ol>
+          </div>
+          <div class="email-cta">
+            <a href="#" class="btn btn-primary" style="text-decoration:none; padding:14px 32px; font-size:16px;">Go to My Dashboard →</a>
+          </div>
+          <div class="email-warning">
+            <strong>⚠️ Important:</strong>
+            <ul style="padding-left:18px; margin-top:6px;">
+              <li>Follow the steps in order</li>
+              <li>Upload required proofs at each step</li>
+              <li>Use only our official broker links</li>
+            </ul>
+          </div>
+          <p style="text-align:center; margin-top:16px;">
+            <a href="#" style="color:var(--accent);">📥 Download: Academy Getting Started Guide (PDF)</a>
+          </p>
+          <p style="text-align:center; color:var(--gray); margin-top:16px;">
+            Need help? <a href="#" style="color:var(--accent);">Open Support Chat</a>
+          </p>
+        </div>
+        <div class="email-footer">XFlex Trading Academy © 2026</div>
+      </div>
+    </div>
+
+    <div class="question-box">
+      <h4>أسئلة لروان:</h4>
+      <ol style="padding-left:18px; margin-top:8px;">
+        <li>The PDF "خطة البداية داخل الأكاديمية" — does this file already exist? Or should we create it?<br><span style="direction:rtl;display:block;text-align:right;">ملف PDF "خطة البداية داخل الأكاديمية" — هل هو جاهز؟ ولا لازم نعمله؟</span>
+          <span class="bo-answer-label">✍️ جوابك يا روان:</span>
+          <textarea class="bo-answer" data-q="q9" placeholder="اكتبي جوابك هنا... / Type your answer here..."></textarea>
+        </li>
+      </ol>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================ -->
+<!-- SECTION 7: Time-Based Drip Emails -->
+<!-- ============================================ -->
+<div class="section" id="s7">
+  <div class="section-header">
+    <div class="section-number">7</div>
+    <div class="section-title">Time-Based Drip Emails / الرسائل الآلية الزمنية</div>
+  </div>
+  <div class="section-body">
+    <div class="dialogue">
+      <div class="dialogue-box bo">
+        <span class="dialogue-label">طلب روان</span>
+        <p style="direction:rtl; text-align:right;">رسائل تنرسل تلقائيًا بعد: 5 أيام، 10 أيام، 20 يوم، 30 يوم من الاشتراك. هدفها: الاطمئنان على الطالب، سؤاله إذا واجه مشكلة، تذكيره بالخطوات، تشجيعه يكمل.</p>
+      </div>
+      <div class="dialogue-box dev">
+        <span class="dialogue-label">ردنا</span>
+        <p><strong>Plan:</strong> A cron job (already set up as a daily schedule in our Worker) will check students' subscription age and send emails at the defined intervals. Each email has a different tone and CTA.</p>
+      </div>
+    </div>
+
+    <div class="mockup">
+      <div class="mockup-label">Email Schedule & Content / جدول الإيميلات ومحتواها</div>
+
+      <table class="admin-table">
+        <thead>
+          <tr><th>Day</th><th>Subject (EN)</th><th>Subject (AR)</th><th>Tone & CTA</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Day 5</strong></td>
+            <td>How's your learning going? 📚</td>
+            <td style="direction:rtl;">كيف ماشي معك المسار؟ 📚</td>
+            <td>Warm check-in. CTA: "Continue learning" → dashboard link</td>
+          </tr>
+          <tr>
+            <td><strong>Day 10</strong></td>
+            <td>You're making progress! Keep it up 💪</td>
+            <td style="direction:rtl;">أنت تتقدم! استمر 💪</td>
+            <td>Encouragement + reminder about broker steps if not started. CTA: "See your progress"</td>
+          </tr>
+          <tr>
+            <td><strong>Day 20</strong></td>
+            <td>Need any help? We're here for you 🤝</td>
+            <td style="direction:rtl;">بحاجة مساعدة؟ إحنا هون 🤝</td>
+            <td>Support-oriented. CTA: "Contact support" or "Continue where you left off"</td>
+          </tr>
+          <tr>
+            <td><strong>Day 30</strong></td>
+            <td>One month milestone! 🎯</td>
+            <td style="direction:rtl;">مر شهر على اشتراكك! 🎯</td>
+            <td>Summary of progress + reminder of uncompleted steps. CTA: "View your achievements"</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- Sample Day 5 Email -->
+      <h4 class="mt-4">Sample: Day 5 Email</h4>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+        <!-- AR -->
+        <div>
+          <div style="margin-bottom:8px;"><span class="badge badge-info">AR</span></div>
+          <div class="email-template">
+            <div class="email-header" style="padding:12px;"><div style="font-size:16px; font-weight:700;">أكاديمية اكس فليكس</div></div>
+            <div class="email-body" style="padding:16px; direction:rtl; text-align:right;">
+              <h2 style="font-size:16px;">كيف ماشي معك المسار يا {{studentName}}؟ 📚</h2>
+              <p>مر 5 أيام على انضمامك لأكاديمية اكس فليكس. بنحب نتأكد إنه كله تمام!</p>
+              <p>تقدمك: <strong>{{watchedCount}}/39 حلقة</strong></p>
+              <div class="progress-bar" style="height:8px;"><div class="progress-fill" style="width:15%;"></div></div>
+              <p>إذا واجهتك أي مشكلة، فريق الدعم جاهز يساعدك!</p>
+              <div class="email-cta"><a href="#" class="btn btn-primary btn-sm" style="text-decoration:none;">أكمل التعلم ←</a></div>
+            </div>
+            <div class="email-footer">أكاديمية اكس فليكس © 2026</div>
+          </div>
+        </div>
+        <!-- EN -->
+        <div>
+          <div style="margin-bottom:8px;"><span class="badge badge-info">EN</span></div>
+          <div class="email-template">
+            <div class="email-header" style="padding:12px;"><div style="font-size:16px; font-weight:700;">XFlex Academy</div></div>
+            <div class="email-body" style="padding:16px;">
+              <h2 style="font-size:16px;">How's it going, {{studentName}}? 📚</h2>
+              <p>It's been 5 days since you joined XFlex Academy. We want to make sure everything is going smoothly!</p>
+              <p>Your progress: <strong>{{watchedCount}}/39 episodes</strong></p>
+              <div class="progress-bar" style="height:8px;"><div class="progress-fill" style="width:15%;"></div></div>
+              <p>If you're facing any issues, our support team is ready to help!</p>
+              <div class="email-cta"><a href="#" class="btn btn-primary btn-sm" style="text-decoration:none;">Continue Learning →</a></div>
+            </div>
+            <div class="email-footer">XFlex Academy © 2026</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="note info">
+      <strong>Admin Control:</strong> Admin can enable/disable each drip email and customize send times from the admin settings page. Emails not sent if student has already completed the course.
+      <br><span style="direction:rtl;display:block;text-align:right; margin-top:4px;"><strong>تحكم الأدمن:</strong> الأدمن يقدر يفعّل/يعطل كل إيميل ويعدّل أوقات الإرسال من صفحة الإعدادات. الإيميلات ما بتنبعت إذا الطالب خلّص الكورس.</span>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================ -->
+<!-- SECTION 8: Progress-Based Trigger Emails -->
+<!-- ============================================ -->
+<div class="section" id="s8">
+  <div class="section-header">
+    <div class="section-number">8</div>
+    <div class="section-title">Progress-Based Trigger Emails / الرسائل حسب التقدم</div>
+  </div>
+  <div class="section-body">
+    <div class="dialogue">
+      <div class="dialogue-box bo">
+        <span class="dialogue-label">طلب روان</span>
+        <p style="direction:rtl; text-align:right;">رسائل تنرسل عندما: يشاهد عدد معين من الفيديوهات، ينهي مرحلة، يتوقف عن الدخول، ما يرفع المطلوب في خطوة مهمة. هذا النوع أذكى من الرسائل الزمنية فقط.</p>
+      </div>
+      <div class="dialogue-box dev">
+        <span class="dialogue-label">ردنا</span>
+        <p><strong>Plan:</strong> Event-driven emails triggered by specific student behaviors. The daily cron also checks for inactivity. These are smarter than time-based emails because they react to what the student actually did.</p>
+      </div>
+    </div>
+
+    <div class="mockup">
+      <div class="mockup-label">Trigger Events & Emails / الأحداث والإيميلات المرتبطة</div>
+
+      <table class="admin-table">
+        <thead>
+          <tr><th>Trigger / المحفّز</th><th>Email Subject</th><th>الموضوع بالعربي</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="badge badge-success">Completed 10 episodes</span></td>
+            <td>Great progress! You've completed 10 episodes 🔥</td>
+            <td style="direction:rtl;">تقدم رائع! أنهيت 10 حلقات 🔥</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-success">Completed Level 1 (ep 1-14)</span></td>
+            <td>Congrats! Level 1 complete 🎉</td>
+            <td style="direction:rtl;">مبروك! أنهيت المرحلة الأولى 🎉</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-success">Completed all 39 episodes</span></td>
+            <td>You've completed the course! Time to open your account 🏆</td>
+            <td style="direction:rtl;">أنهيت الكورس كاملاً! حان وقت فتح حسابك 🏆</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-warning">Inactive 7 days</span></td>
+            <td>We miss you! Come back and continue 💭</td>
+            <td style="direction:rtl;">اشتقنالك! تعال أكمل المسار 💭</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-warning">Inactive 14 days</span></td>
+            <td>It's been 2 weeks — need any help? 🤝</td>
+            <td style="direction:rtl;">مر أسبوعين — بحاجة مساعدة؟ 🤝</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-danger">Onboarding step pending 3+ days</span></td>
+            <td>You're one step away! Upload your proof 📎</td>
+            <td style="direction:rtl;">باقي خطوة واحدة! ارفع الإثبات 📎</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-info">Passed a quiz</span></td>
+            <td>Quiz passed! Rate this level ⭐</td>
+            <td style="direction:rtl;">نجحت بالاختبار! قيّم هذه المرحلة ⭐</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="question-box">
+      <h4>أسئلة لروان:</h4>
+      <ol style="padding-left:18px; margin-top:8px;">
+        <li>After how many days of inactivity should we send the "come back" email? We suggest 7 days (first) and 14 days (second). OK?<br><span style="direction:rtl;display:block;text-align:right;">بعد كم يوم من عدم الدخول نبعت إيميل "نشتقلك"؟ اقتراحنا 7 أيام (الأول) و14 يوم (الثاني). موافقة؟</span>
+          <span class="bo-answer-label">✍️ جوابك يا روان:</span>
+          <textarea class="bo-answer" data-q="q10" placeholder="اكتبي جوابك هنا... / Type your answer here..."></textarea>
+        </li>
+        <li>Should we also send a WhatsApp message or only email?<br><span style="direction:rtl;display:block;text-align:right;">هل نبعت رسالة واتساب كمان ولا بس إيميل؟</span>
+          <span class="bo-answer-label">✍️ جوابك يا روان:</span>
+          <textarea class="bo-answer" data-q="q11" placeholder="اكتبي جوابك هنا... / Type your answer here..."></textarea>
+        </li>
+        <li>What episode counts should trigger "milestone" emails? We suggest 10, 14 (end of Level 1), 27 (end of Levels 2&3), 39 (course complete). OK?<br><span style="direction:rtl;display:block;text-align:right;">أي أرقام حلقات تحفّز إيميلات "إنجاز"؟ اقتراحنا 10، 14 (نهاية المرحلة الأولى)، 27 (نهاية المرحلتين الثانية والثالثة)، 39 (إنهاء الكورس). موافقة؟</span>
+          <span class="bo-answer-label">✍️ جوابك يا روان:</span>
+          <textarea class="bo-answer" data-q="q12" placeholder="اكتبي جوابك هنا... / Type your answer here..."></textarea>
+        </li>
+      </ol>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================ -->
+<!-- SECTION 9: Post-Quiz Emails & Feedback -->
+<!-- ============================================ -->
+<div class="section" id="s9">
+  <div class="section-header">
+    <div class="section-number">9</div>
+    <div class="section-title">Post-Quiz Emails & Feedback / إيميلات ما بعد الاختبار والتقييم</div>
+  </div>
+  <div class="section-body">
+    <div class="dialogue">
+      <div class="dialogue-box bo">
+        <span class="dialogue-label">طلب روان</span>
+        <p style="direction:rtl; text-align:right;">بعد إنهاء المرحلة والاختبار ينرسل إيميل تهنئة ونتيجة ورابط تقييم. نموذج التقييم: تقييم 1-5، هل كان الشرح واضح؟ هل واجهت صعوبة؟ ما الذي تريد تحسينه؟ هل تحتاج مساعدة؟</p>
+      </div>
+      <div class="dialogue-box dev">
+        <span class="dialogue-label">ردنا</span>
+        <p><strong>Plan:</strong> After quiz completion, auto-email with results + link to feedback form inside the platform. Feedback stored in DB, visible in admin reports.</p>
+      </div>
+    </div>
+
+    <!-- Post-Quiz Email -->
+    <div class="mockup">
+      <div class="mockup-label">Email Template — Post-Quiz / قالب إيميل ما بعد الاختبار</div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+        <!-- AR -->
+        <div>
+          <div style="margin-bottom:8px;"><span class="badge badge-info">AR</span></div>
+          <div class="email-template">
+            <div class="email-header" style="padding:12px;"><div style="font-size:16px; font-weight:700;">أكاديمية اكس فليكس</div></div>
+            <div class="email-body" style="padding:16px; direction:rtl; text-align:right;">
+              <h2 style="font-size:16px; text-align:center;">مبروك! نجحت بالاختبار 🎉</h2>
+              <div style="background:var(--success-light); border-radius:10px; padding:14px; text-align:center; margin:12px 0;">
+                <p style="font-size:13px; color:var(--gray);">المرحلة الأولى</p>
+                <p style="font-size:32px; font-weight:700; color:var(--success);">85%</p>
+                <p style="font-size:13px; color:var(--success);">النتيجة: 17/20 صحيحة</p>
+              </div>
+              <p>أحسنت يا {{studentName}}! أخبرنا عن تجربتك في هالمرحلة:</p>
+              <div class="email-cta"><a href="#" class="btn btn-primary btn-sm" style="text-decoration:none;">قيّم هالمرحلة ⭐</a></div>
+            </div>
+            <div class="email-footer">أكاديمية اكس فليكس © 2026</div>
+          </div>
+        </div>
+        <!-- EN -->
+        <div>
+          <div style="margin-bottom:8px;"><span class="badge badge-info">EN</span></div>
+          <div class="email-template">
+            <div class="email-header" style="padding:12px;"><div style="font-size:16px; font-weight:700;">XFlex Academy</div></div>
+            <div class="email-body" style="padding:16px;">
+              <h2 style="font-size:16px; text-align:center;">Congratulations! Quiz Passed 🎉</h2>
+              <div style="background:var(--success-light); border-radius:10px; padding:14px; text-align:center; margin:12px 0;">
+                <p style="font-size:13px; color:var(--gray);">Level 1</p>
+                <p style="font-size:32px; font-weight:700; color:var(--success);">85%</p>
+                <p style="font-size:13px; color:var(--success);">Score: 17/20 correct</p>
+              </div>
+              <p>Great job completing Level 1, {{studentName}}! Tell us about your experience:</p>
+              <div class="email-cta"><a href="#" class="btn btn-primary btn-sm" style="text-decoration:none;">Rate This Level ⭐</a></div>
+            </div>
+            <div class="email-footer">XFlex Academy © 2026</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Feedback Form Mockup -->
+    <div class="mockup">
+      <div class="mockup-label">Student View — Feedback Form / عرض الطالب — نموذج التقييم</div>
+
+      <div class="feedback-form" style="max-width:500px; margin:0 auto;">
+        <p class="lang-note" style="font-size:12px; margin-bottom:12px;">Form is shown in the student's preferred language. Arabic example below.</p>
+        <h3 style="text-align:center; margin-bottom:16px; direction:rtl;">قيّم المرحلة الأولى</h3>
+
+        <div class="form-group">
+          <label style="direction:rtl; text-align:right; display:block;">التقييم العام</label>
+          <div class="stars" style="text-align:center;">★★★★☆</div>
+        </div>
+
+        <div class="form-group">
+          <label style="direction:rtl; text-align:right; display:block;">هل كان الشرح واضح؟</label>
+          <select>
+            <option>واضح جداً</option>
+            <option>واضح</option>
+            <option>متوسط</option>
+            <option>غير واضح</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label style="direction:rtl; text-align:right; display:block;">هل واجهت أي صعوبة؟</label>
+          <select>
+            <option>لا صعوبات</option>
+            <option>بعض الأجزاء صعبة</option>
+            <option>صعب جداً</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label style="direction:rtl; text-align:right; display:block;">ما الذي تريد تحسينه؟</label>
+          <textarea placeholder="اقتراحاتك..."></textarea>
+        </div>
+
+        <div class="form-group">
+          <label style="direction:rtl; text-align:right; display:block;">هل تحتاج مساعدة من الفريق؟</label>
+          <select>
+            <option>لا، كله تمام</option>
+            <option>نعم، تواصلوا معي</option>
+          </select>
+        </div>
+
+        <button class="btn btn-primary" style="width:100%;">إرسال التقييم</button>
+      </div>
+    </div>
+
+    <!-- Admin Feedback Report -->
+    <div class="mockup">
+      <div class="mockup-label">Admin View — Feedback Report / عرض الأدمن — تقرير التقييم</div>
+
+      <div class="flex justify-between items-center mb-4">
+        <h3 style="font-size:18px;">Level Feedback Report</h3>
+        <select style="padding:6px 12px; border:1px solid var(--border); border-radius:6px;">
+          <option>All Levels</option>
+          <option>Level 1</option>
+          <option>Level 2 & 3</option>
+        </select>
+      </div>
+
+      <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:16px;">
+        <div style="background:var(--gray-light); border-radius:8px; padding:12px; text-align:center;">
+          <div style="font-size:24px; font-weight:700; color:var(--accent);">4.2</div>
+          <div class="text-sm text-gray">Avg Rating</div>
+        </div>
+        <div style="background:var(--gray-light); border-radius:8px; padding:12px; text-align:center;">
+          <div style="font-size:24px; font-weight:700; color:var(--success);">87%</div>
+          <div class="text-sm text-gray">Clear</div>
+        </div>
+        <div style="background:var(--gray-light); border-radius:8px; padding:12px; text-align:center;">
+          <div style="font-size:24px; font-weight:700; color:var(--warning);">12%</div>
+          <div class="text-sm text-gray">Need Help</div>
+        </div>
+        <div style="background:var(--gray-light); border-radius:8px; padding:12px; text-align:center;">
+          <div style="font-size:24px; font-weight:700;">23</div>
+          <div class="text-sm text-gray">Responses</div>
+        </div>
+      </div>
+
+      <table class="admin-table">
+        <thead>
+          <tr><th>Student</th><th>Level</th><th>Rating</th><th>Difficulty</th><th>Need Help?</th><th>Date</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Ahmad K.</td><td>Level 1</td>
+            <td>⭐⭐⭐⭐⭐</td>
+            <td><span class="badge badge-success">No issues</span></td>
+            <td>No</td><td>26 Mar</td>
+          </tr>
+          <tr>
+            <td>Sara M.</td><td>Level 1</td>
+            <td>⭐⭐⭐⭐</td>
+            <td><span class="badge badge-warning">Some parts</span></td>
+            <td><span class="badge badge-danger">Yes</span></td><td>25 Mar</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================ -->
+<!-- SECTION 10: Student Dashboard & Progress -->
+<!-- ============================================ -->
+<div class="section" id="s10">
+  <div class="section-header">
+    <div class="section-number">10</div>
+    <div class="section-title">Student Dashboard & Progress / لوحة الطالب والتقدم</div>
+  </div>
+  <div class="section-body">
+    <div class="dialogue">
+      <div class="dialogue-box bo">
+        <span class="dialogue-label">طلب روان</span>
+        <p style="direction:rtl; text-align:right;">بدي الموقع ينفذ على أساس إن الطالب يمشي في رحلة واضحة. الطالب يفهم: وين هو، شو الخطوة الحالية، شو المطلوب منه، شو اللي بعده. وجود progress bar واضح. لوحة الطالب مرتبة جدًا وما فيها تشتيت.</p>
+        <p style="direction:rtl; text-align:right; margin-top:6px;">كل خطوة يكون إلها حالة: لم يبدأ، قيد التنفيذ، مكتمل، بانتظار مراجعة</p>
+      </div>
+      <div class="dialogue-box dev">
+        <span class="dialogue-label">ردنا</span>
+        <p><strong>Plan:</strong> Redesign student dashboard to show a clear journey view with progress bar, current step highlight, and status badges. The dashboard becomes a mission-control for the student's learning path.</p>
+      </div>
+    </div>
+
+    <div class="mockup">
+      <div class="mockup-label">Student Dashboard — Journey View / لوحة الطالب — عرض الرحلة</div>
+
+      <div style="background:white; border:1px solid var(--border); border-radius:12px; padding:24px;">
+        <p class="lang-note" style="font-size:12px; margin-bottom:12px;">Dashboard is shown in the student's preferred language. Arabic example below — English users see the same layout in English.</p>
+
+        <!-- Welcome Banner -->
+        <div style="background:linear-gradient(135deg, #1e40af, #7c3aed); color:white; border-radius:10px; padding:20px; margin-bottom:20px; direction:rtl; text-align:right;">
+          <h2 style="color:white;">أهلاً أحمد! 👋</h2>
+          <p style="opacity:0.8;">أنت ماشي بالمسار الصحيح. استمر!</p>
+        </div>
+
+        <!-- Overall Progress -->
+        <h3 class="mb-2" style="direction:rtl; text-align:right;">رحلتك التعليمية</h3>
+        <div class="progress-bar" style="height:16px; margin-bottom:4px;">
+          <div class="progress-fill" style="width:60%;"></div>
+        </div>
+        <p class="text-sm text-gray mb-4" style="direction:rtl; text-align:right;">60% مكتمل — 24/39 حلقة + 0/4 خطوات تسجيل</p>
+
+        <!-- Journey Steps -->
+        <div style="display:grid; gap:12px;">
+
+          <!-- Course Progress -->
+          <div style="border:1px solid var(--border); border-radius:10px; padding:16px; display:flex; align-items:center; gap:16px; direction:rtl;">
+            <div style="width:60px; height:60px; background:var(--accent-light); border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:28px;">📚</div>
+            <div style="flex:1;">
+              <div class="flex justify-between items-center">
+                <h4 style="margin:0;">كورس التداول</h4>
+                <span class="badge badge-info">قيد التعلم</span>
+              </div>
+              <div class="progress-bar" style="height:6px; margin:8px 0;">
+                <div class="progress-fill" style="width:62%;"></div>
+              </div>
+              <p class="text-sm text-gray">24/39 حلقة — الحالية: الحلقة 25</p>
+            </div>
+            <button class="btn btn-primary btn-sm">أكمل ←</button>
+          </div>
+
+          <!-- Broker Selection (locked) -->
+          <div style="border:1px solid var(--border); border-radius:10px; padding:16px; display:flex; align-items:center; gap:16px; opacity:0.5; direction:rtl;">
+            <div style="width:60px; height:60px; background:var(--gray-light); border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:28px;">🏦</div>
+            <div style="flex:1;">
+              <h4 style="margin:0;">اختيار الوسيط</h4>
+              <p class="text-sm text-gray">🔒 متاح بعد إنهاء كل الـ39 حلقة</p>
+            </div>
+          </div>
+
+          <!-- Account Opening (locked) -->
+          <div style="border:1px solid var(--border); border-radius:10px; padding:16px; display:flex; align-items:center; gap:16px; opacity:0.5; direction:rtl;">
+            <div style="width:60px; height:60px; background:var(--gray-light); border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:28px;">📝</div>
+            <div style="flex:1;">
+              <h4 style="margin:0;">فتح الحساب</h4>
+              <p class="text-sm text-gray">🔒 أكمل اختيار الوسيط أولاً</p>
+            </div>
+          </div>
+
+          <!-- Verify (locked) -->
+          <div style="border:1px solid var(--border); border-radius:10px; padding:16px; display:flex; align-items:center; gap:16px; opacity:0.5; direction:rtl;">
+            <div style="width:60px; height:60px; background:var(--gray-light); border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:28px;">✅</div>
+            <div style="flex:1;">
+              <h4 style="margin:0;">توثيق الحساب</h4>
+              <p class="text-sm text-gray">🔒 أكمل فتح الحساب أولاً</p>
+            </div>
+          </div>
+
+          <!-- Deposit (locked) -->
+          <div style="border:1px solid var(--border); border-radius:10px; padding:16px; display:flex; align-items:center; gap:16px; opacity:0.5; direction:rtl;">
+            <div style="width:60px; height:60px; background:var(--gray-light); border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:28px;">💰</div>
+            <div style="flex:1;">
+              <h4 style="margin:0;">الإيداع والتفعيل</h4>
+              <p class="text-sm text-gray">🔒 أكمل التوثيق أولاً</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="divider"></div>
+        <h4 style="direction:rtl; text-align:right;">إجراءات سريعة</h4>
+        <div class="flex gap-2 flex-wrap mt-2" style="direction:rtl;">
+          <button class="btn btn-outline btn-sm">📞 تواصل مع الدعم</button>
+          <button class="btn btn-outline btn-sm">📊 سجل الاختبارات</button>
+          <button class="btn btn-outline btn-sm">📐 حاسبات التداول</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================ -->
+<!-- SUMMARY: All BO Points Addressed -->
+<!-- ============================================ -->
+<div class="section" style="border-color:var(--accent);">
+  <div class="section-header" style="background:var(--accent-light);">
+    <div class="section-number" style="background:var(--success);">✓</div>
+    <div class="section-title">ملخص: جميع نقاط روان</div>
+  </div>
+  <div class="section-body">
+    <table class="admin-table">
+      <thead>
+        <tr><th>#</th><th>BO Request</th><th>طلب روان</th><th>Status</th><th>Section</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>1</td><td>Auto-renewal & saved cards</td><td style="direction:rtl;">تجديد تلقائي وحفظ بيانات البطاقة</td><td><span class="badge badge-gray">Deferred</span></td><td><a href="#s1">§1</a></td></tr>
+        <tr><td>2</td><td>Broker selection with affiliate links</td><td style="direction:rtl;">اختيار الوسيط مع روابط الوكالة</td><td><span class="badge badge-success">Planned</span></td><td><a href="#s2">§2</a></td></tr>
+        <tr><td>3</td><td>Account opening guided path</td><td style="direction:rtl;">مسار فتح الحساب المنظم</td><td><span class="badge badge-success">Planned</span></td><td><a href="#s3">§3</a></td></tr>
+        <tr><td>4</td><td>Video + proof upload at each step</td><td style="direction:rtl;">فيديو + رفع إثبات في كل خطوة</td><td><span class="badge badge-success">Planned</span></td><td><a href="#s3">§3</a>, <a href="#s4">§4</a></td></tr>
+        <tr><td>5</td><td>Admin proof review queue</td><td style="direction:rtl;">طابور مراجعة الإثبات للأدمن</td><td><span class="badge badge-success">Planned</span></td><td><a href="#s4">§4</a></td></tr>
+        <tr><td>6</td><td>Course gating (sequential access)</td><td style="direction:rtl;">بوابة المقرر (وصول متسلسل)</td><td><span class="badge badge-success">Planned</span></td><td><a href="#s5">§5</a></td></tr>
+        <tr><td>7</td><td>No support dependency for key steps</td><td style="direction:rtl;">عدم الاعتماد على الدعم للخطوات الأساسية</td><td><span class="badge badge-success">Addressed</span></td><td>All</td></tr>
+        <tr><td>8</td><td>Welcome email with steps & PDF</td><td style="direction:rtl;">إيميل ترحيبي بالخطوات وملف PDF</td><td><span class="badge badge-success">Planned</span></td><td><a href="#s6">§6</a></td></tr>
+        <tr><td>9</td><td>Time-based drip emails (5/10/20/30 days)</td><td style="direction:rtl;">رسائل زمنية (5/10/20/30 يوم)</td><td><span class="badge badge-success">Planned</span></td><td><a href="#s7">§7</a></td></tr>
+        <tr><td>10</td><td>Progress-based trigger emails</td><td style="direction:rtl;">رسائل حسب التقدم</td><td><span class="badge badge-success">Planned</span></td><td><a href="#s8">§8</a></td></tr>
+        <tr><td>11</td><td>Inactivity reminder emails</td><td style="direction:rtl;">رسائل تذكير عند عدم النشاط</td><td><span class="badge badge-success">Planned</span></td><td><a href="#s8">§8</a></td></tr>
+        <tr><td>12</td><td>Post-quiz emails + feedback form</td><td style="direction:rtl;">إيميلات ما بعد الاختبار + نموذج تقييم</td><td><span class="badge badge-success">Planned</span></td><td><a href="#s9">§9</a></td></tr>
+        <tr><td>13</td><td>Progress bar + journey status</td><td style="direction:rtl;">شريط التقدم وحالة الرحلة</td><td><span class="badge badge-success">Planned</span></td><td><a href="#s10">§10</a></td></tr>
+        <tr><td>14</td><td>Step statuses (not started/in progress/complete/pending)</td><td style="direction:rtl;">حالات الخطوات (لم يبدأ/قيد التنفيذ/مكتمل/بانتظار المراجعة)</td><td><span class="badge badge-success">Planned</span></td><td><a href="#s3">§3</a>, <a href="#s10">§10</a></td></tr>
+        <tr><td>15</td><td>Clean student dashboard, no clutter</td><td style="direction:rtl;">لوحة طالب مرتبة بدون تشتيت</td><td><span class="badge badge-success">Planned</span></td><td><a href="#s10">§10</a></td></tr>
+        <tr><td>16</td><td>OpenAI Vision check for proof verification (≥90% auto-approve)</td><td style="direction:rtl;">فحص GPT-4o Vision للإثبات (≥90% موافقة تلقائية)</td><td><span class="badge badge-success">Planned</span></td><td><a href="#s4">§4</a></td></tr>
+        <tr><td>17</td><td>Equiti broker data + affiliate link</td><td style="direction:rtl;">بيانات وسيط إكويتي + رابط الوكالة</td><td><span class="badge badge-success">Ready</span></td><td><a href="#s2">§2</a></td></tr>
+        <tr><td>18</td><td>Equiti YouTube video for account opening</td><td style="direction:rtl;">فيديو يوتيوب لفتح حساب إكويتي</td><td><span class="badge badge-success">Ready</span></td><td><a href="#s3">§3</a></td></tr>
+        <tr><td>19</td><td>Equiti support WhatsApp</td><td style="direction:rtl;">واتساب دعم إكويتي</td><td><span class="badge badge-success">Ready</span></td><td><a href="#s2">§2</a></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ============================================ -->
+<!-- ALL QUESTIONS CONSOLIDATED -->
+<!-- ============================================ -->
+<div class="section" style="border-color:var(--warning);">
+  <div class="section-header" style="background:var(--warning-light);">
+    <div class="section-number" style="background:var(--warning);">?</div>
+    <div class="section-title">جميع الأسئلة لروان</div>
+  </div>
+  <div class="section-body">
+    <p class="mb-4">الرجاء الإجابة على هاي الأسئلة قبل ما نبلش بالتنفيذ يا روان:</p>
+    <p class="lang-note" style="font-size:12px; margin-bottom:16px;">الإجابات متزامنة مع الأسئلة بالأقسام فوق  اكتبي بأي مكان وبتظهر بالمكان الثاني تلقائيا.</p>
+
+    <h4>الوسيط</h4>
+    <ol style="padding-left:18px; margin-bottom:16px;">
+      <li>Do you have the Equiti logo file? / هل عندك ملف شعار إكويتي؟
+        <span class="bo-answer-label"> جوابك يا روان:</span>
+        <textarea class="bo-answer" data-q="q2" rows="2"></textarea>
+      </li>
+      <li>What is the minimum deposit amount for Equiti? / شو الحد الأدنى للإيداع؟
+        <span class="bo-answer-label"> جوابك يا روان:</span>
+        <textarea class="bo-answer" data-q="q3" rows="2"></textarea>
+      </li>
+      <li>Should WhatsApp (+971 52 727 4258) show on the broker card? / رقم الواتساب بده يظهر على بطاقة الوسيط؟
+        <span class="bo-answer-label"> جوابك يا روان:</span>
+        <textarea class="bo-answer" data-q="q1" rows="2"></textarea>
+      </li>
+    </ol>
+
+    <h4>فيديوهات فتح الحساب</h4>
+    <ol start="4" style="padding-left:18px; margin-bottom:16px;">
+      <li>Are separate videos for verification & deposit ready? Should we embed YouTube or host on R2? / هل فيديوهات التوثيق والإيداع جاهزة؟ نستخدم يوتيوب ولا R2؟
+        <span class="bo-answer-label"> جوابك يا روان:</span>
+        <textarea class="bo-answer" data-q="q4" rows="2"></textarea>
+      </li>
+    </ol>
+
+    <h4>فحص الذكاء الاصطناعي</h4>
+    <ol start="5" style="padding-left:18px; margin-bottom:16px;">
+      <li style="background:#f0fdf4; border-radius:6px; padding:8px; border:1px solid #bbf7d0;">What exactly should AI verify in uploaded proofs? — <strong style="color:var(--success);">✅ ANSWERED:</strong> Verify Equiti IB link confirmation email screenshot. Check sender (equiti.com), account linking text, account number. ≥90% confidence = auto-approve, otherwise admin review.
+      </li>
+    </ol>
+
+    <h4>مسار الكورس</h4>
+    <ol start="6" style="padding-left:18px; margin-bottom:16px;">
+      <li>Should future advanced content be locked until onboarding is complete? / المحتوى المتقدم المستقبلي بده يكون مقفل لحد ما يخلص فتح الحساب؟
+        <span class="bo-answer-label"> جوابك يا روان:</span>
+        <textarea class="bo-answer" data-q="q7" rows="2"></textarea>
+      </li>
+      <li>Strict gating (can't see locked items) or soft (see titles but can't play)? / بوابة صارمة (ما يشوفها) ولا خفيفة (يشوف العناوين بس)؟
+        <span class="bo-answer-label"> جوابك يا روان:</span>
+        <textarea class="bo-answer" data-q="q8" rows="2"></textarea>
+      </li>
+    </ol>
+
+    <h4>الإيميلات</h4>
+    <ol start="8" style="padding-left:18px; margin-bottom:16px;">
+      <li>Does the PDF "Getting Started Guide" exist already? / هل ملف PDF "دليل البداية" جاهز؟
+        <span class="bo-answer-label"> جوابك يا روان:</span>
+        <textarea class="bo-answer" data-q="q9" rows="2"></textarea>
+      </li>
+      <li>Inactivity emails at 7 and 14 days — OK? / إيميلات عدم النشاط بعد 7 و14 يوم — موافقة؟
+        <span class="bo-answer-label"> جوابك يا روان:</span>
+        <textarea class="bo-answer" data-q="q10" rows="2"></textarea>
+      </li>
+      <li>Should we also send WhatsApp messages or only email? / هل نبعت واتساب كمان ولا بس إيميل؟
+        <span class="bo-answer-label"> جوابك يا روان:</span>
+        <textarea class="bo-answer" data-q="q11" rows="2"></textarea>
+      </li>
+      <li>Milestone emails at episodes 10, 14, 27, 39 — OK? / إيميلات الإنجاز عند الحلقات 10، 14، 27، 39 — موافقة؟
+        <span class="bo-answer-label"> جوابك يا روان:</span>
+        <textarea class="bo-answer" data-q="q12" rows="2"></textarea>
+      </li>
+    </ol>
+
+    <h4>مراجعة الإثبات</h4>
+    <ol start="12" style="padding-left:18px; margin-bottom:16px;">
+      <li>Unlimited re-uploads if rejected? / إعادة رفع بلا حدود إذا رُفض؟
+        <span class="bo-answer-label"> جوابك يا روان:</span>
+        <textarea class="bo-answer" data-q="q5" rows="2"></textarea>
+      </li>
+      <li>Should student have a "contact support" button from onboarding steps? / هل يكون في زر "تواصل مع الدعم" من خطوات فتح الحساب؟
+        <span class="bo-answer-label"> جوابك يا روان:</span>
+        <textarea class="bo-answer" data-q="q6" rows="2"></textarea>
+      </li>
+    </ol>
+  </div>
+</div>
+
+<!-- Implementation Priority -->
+<div class="section">
+  <div class="section-header">
+    <div class="section-number" style="background:var(--info);">📋</div>
+    <div class="section-title">أولوية التنفيذ</div>
+  </div>
+  <div class="section-body">
+    <p class="mb-4">Based on BO's priorities (excluding payments) / بناءً على أولويات روان (بدون الدفع):</p>
+
+    <div class="timeline">
+      <div class="timeline-item">
+        <div class="time">Phase 1 — Foundation</div>
+        <div class="content"><strong>Database schema</strong> — Brokers table, onboarding steps table, student progress table, feedback table</div>
+      </div>
+      <div class="timeline-item">
+        <div class="time">Phase 2 — Welcome Email</div>
+        <div class="content"><strong>Welcome email</strong> — Auto-triggered on key activation/order fulfillment</div>
+      </div>
+      <div class="timeline-item">
+        <div class="time">Phase 3 — Broker & Onboarding</div>
+        <div class="content"><strong>Broker admin page</strong> + <strong>broker selection UI</strong> + <strong>4-step onboarding wizard</strong></div>
+      </div>
+      <div class="timeline-item">
+        <div class="time">Phase 4 — Proof System</div>
+        <div class="content"><strong>Proof upload</strong> + <strong>admin review queue</strong> + <strong>approve/reject flow</strong></div>
+      </div>
+      <div class="timeline-item">
+        <div class="time">Phase 5 — Drip Emails</div>
+        <div class="content"><strong>Time-based emails</strong> (5/10/20/30 days) via Worker cron</div>
+      </div>
+      <div class="timeline-item">
+        <div class="time">Phase 6 — Smart Emails</div>
+        <div class="content"><strong>Progress-based emails</strong> + <strong>inactivity reminders</strong></div>
+      </div>
+      <div class="timeline-item">
+        <div class="time">Phase 7 — Feedback</div>
+        <div class="content"><strong>Post-quiz emails</strong> + <strong>feedback form</strong> + <strong>admin report</strong></div>
+      </div>
+      <div class="timeline-item">
+        <div class="time">Phase 8 — Dashboard Redesign</div>
+        <div class="content"><strong>Student dashboard journey view</strong> + <strong>progress bar</strong> + <strong>course gating</strong></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div style="text-align:center; padding:32px; color:var(--gray); font-size:13px; direction:rtl;">
+  <p>هذا المستند نموذج للمراجعة. التنفيذ الفعلي رح يتطابق مع تصميم منصتكم.</p>
+  <p style="margin-top:8px; font-size:14px; color:#64748b;">شكراً روان على وقتك وثقتك — إحنا إخوة قبل ما نكون شركاء عمل 🙏</p>
+</div>
+
+<!-- Save Button -->
+<div style="text-align:center; padding:24px 0 48px; direction:rtl;">
+  <button onclick="saveAnswers()" style="background:linear-gradient(135deg, #7c3aed, #2563eb); color:white; border:none; padding:16px 48px; border-radius:12px; font-size:18px; font-weight:700; cursor:pointer; box-shadow:0 4px 16px rgba(124,58,237,0.3); transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
+    💾 حفظ إجاباتي
+  </button>
+  <p style="font-size:12px; color:var(--gray); margin-top:10px;">رح ينزّل نسخة من الملف مع إجاباتك محفوظة فيه — ابعتيلي إياه عالواتساب أو الإيميل 😊</p>
+</div>
+
+</div><!-- container -->
+
+<script>
+// Sync textareas with matching data-q attributes
+document.addEventListener('DOMContentLoaded', function() {
+  document.addEventListener('input', function(e) {
+    if (e.target.matches('textarea[data-q]')) {
+      var qId = e.target.getAttribute('data-q');
+      var all = document.querySelectorAll('textarea[data-q="' + qId + '"]');
+      for (var i = 0; i < all.length; i++) {
+        if (all[i] !== e.target) all[i].value = e.target.value;
+      }
+    }
+  });
+});
+
+// Save answers — downloads a copy of the HTML with answers baked in
+function saveAnswers() {
+  // Bake textarea values into the HTML so they persist in the downloaded file
+  var areas = document.querySelectorAll('textarea');
+  for (var i = 0; i < areas.length; i++) {
+    areas[i].setAttribute('data-saved', 'true');
+    areas[i].innerHTML = areas[i].value;
+  }
+  var html = '<!DOCTYPE html>' + document.documentElement.outerHTML;
+  var blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'BO-Implementation-Plan-answers.html';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+</script>
+
+</body>
+</html>
+
+
+

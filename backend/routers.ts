@@ -715,6 +715,100 @@ export const appRouter = router({
         
         return { success: true };
       }),
+
+    // ── OTP-based password reset (for profile page) ──────────────
+    requestPasswordResetCode: protectedProcedure
+      .input(z.object({ email: z.string() }))
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        const email = normalizeEmail(input.email || "");
+        // Only allow resetting your own password
+        const user = await db.getUserByEmail(email);
+        if (!user || user.id !== ctx.user.id) {
+          return { success: true };
+        }
+
+        const nowMs = Date.now();
+        await db.deleteExpiredEmailOtps(nowMs);
+
+        const ip = getReqHeader(ctx.req, "cf-connecting-ip") ||
+          (getReqHeader(ctx.req, "x-forwarded-for") || "").split(",")[0].trim() || "";
+        const ipHash = ip ? await sha256Base64(`ip:${ip}`) : null;
+        const userAgent = getReqHeader(ctx.req, "user-agent") || "";
+        const userAgentHash = userAgent ? await sha256Base64(`ua:${userAgent}`) : null;
+
+        // Rate limits
+        const per30Sec = await db.countEmailOtpsSentSince({ email, sinceMs: nowMs - 30_000, purpose: "password_reset" });
+        if (per30Sec > 0) return { success: true };
+        const perHour = await db.countEmailOtpsSentSince({ email, sinceMs: nowMs - 60 * 60_000, purpose: "password_reset" });
+        if (perHour >= 5) return { success: true };
+
+        const code = generateNumericCode(6);
+        const salt = generateSaltBase64(16);
+        const codeHash = await sha256Base64(`${salt}:${code}`);
+        const expiresMinutes = 10;
+
+        await db.createEmailOtp({
+          email,
+          purpose: "password_reset",
+          codeHash,
+          salt,
+          sentAtMs: nowMs,
+          expiresAtMs: nowMs + expiresMinutes * 60_000,
+          ipHash,
+          userAgentHash,
+        });
+
+        try {
+          await sendLoginCodeEmail({ to: email, code, expiresMinutes });
+        } catch (e) {
+          logger.error("[AUTH] Failed sending password reset code", { email, error: e instanceof Error ? e.message : "Unknown" });
+        }
+
+        return { success: true };
+      }),
+
+    resetPasswordWithOtp: protectedProcedure
+      .input(z.object({
+        email: z.string(),
+        code: z.string().regex(/^\d{6}$/),
+        newPassword: z.string().min(8),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        const email = normalizeEmail(input.email);
+        const code = input.code.trim();
+
+        const user = await db.getUserByEmail(email);
+        if (!user || user.id !== ctx.user.id) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid request' });
+        }
+
+        const otp = await db.getLatestEmailOtp(email, "password_reset");
+        if (!otp || otp.expiresAtMs < Date.now()) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Code expired. Please request a new one.' });
+        }
+
+        const computedHash = await sha256Base64(`${otp.salt}:${code}`);
+        if (computedHash !== otp.codeHash) {
+          await db.incrementEmailOtpAttempts(otp.id);
+          if ((otp.attempts ?? 0) + 1 >= 10) {
+            await db.deleteEmailOtpsForEmail(email, "password_reset");
+          }
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid code' });
+        }
+
+        // Valid OTP — update password
+        if (!isValidPassword(input.newPassword)) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Password must be at least 8 characters with uppercase, lowercase, and a number' });
+        }
+        const hashed = await hashPassword(input.newPassword);
+        await db.updateUserPassword(user.id, hashed);
+        await db.deleteEmailOtpsForEmail(email, "password_reset");
+
+        logger.info('[AUTH] Password reset via OTP', { userId: user.id });
+        return { success: true };
+      }),
     
     logout: publicProcedure.mutation(({ ctx }) => {
       // Clear with both role maxAge values – the important thing is maxAge: -1 which deletes the cookie
@@ -2555,7 +2649,19 @@ export const appRouter = router({
     // User: get my active subscriptions
     mySubscriptions: protectedProcedure.query(async ({ ctx }) => {
       if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
-      return db.getUserPackageSubscriptions(ctx.user.id);
+      const subs = await db.getUserPackageSubscriptions(ctx.user.id);
+      // Enrich each subscription with package name
+      const enriched = await Promise.all(
+        subs.map(async (sub) => {
+          const pkg = await db.getPackageById(sub.packageId);
+          return {
+            ...sub,
+            packageNameEn: pkg?.nameEn ?? `Package #${sub.packageId}`,
+            packageNameAr: pkg?.nameAr ?? `الباقة #${sub.packageId}`,
+          };
+        })
+      );
+      return enriched;
     }),
 
     // User: get active package (most recent active)
@@ -2580,10 +2686,26 @@ export const appRouter = router({
       if (!status.canActivate) {
         throw new TRPCError({
           code: 'FORBIDDEN',
-          message: `Complete at least 50% of the course first (currently at ${status.progressPercent}%)`,
+          message: `Complete the course first (currently at ${status.progressPercent}%)`,
         });
       }
       return db.activateStudentSubscriptions(ctx.user.id, false);
+    }),
+
+    // User: request freeze (sends a support chat message, admin handles manually)
+    requestFreeze: protectedProcedure.mutation(async ({ ctx }) => {
+      if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+      // Auto-send a freeze request as a support chat message
+      const conv = await db.getOrCreateSupportConversation(ctx.user.id);
+      await db.createSupportMessage({
+        conversationId: conv.id,
+        senderId: ctx.user.id,
+        senderType: 'client',
+        content: `🧊 Freeze Request / طلب تجميد\n\nI would like to freeze my subscription. Please contact me to discuss the freeze period.\n\nأرغب في تجميد اشتراكي. يرجى التواصل معي لمناقشة فترة التجميد.`,
+      });
+
+      return { success: true };
     }),
 
     // Admin: list all subscriptions

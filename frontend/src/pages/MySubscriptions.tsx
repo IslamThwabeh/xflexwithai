@@ -1,5 +1,6 @@
-import { Link } from 'wouter';
-import { Package, CheckCircle, Clock, AlertCircle, ArrowUpCircle } from 'lucide-react';
+import { useState } from 'react';
+import { Link, useLocation } from 'wouter';
+import { Package, CheckCircle, Clock, AlertCircle, ArrowUpCircle, Snowflake } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -9,9 +10,19 @@ import ClientLayout from '@/components/ClientLayout';
 export default function MySubscriptions() {
   const { language, t } = useLanguage();
   const isRtl = language === 'ar';
+  const [, setLocation] = useLocation();
+  const [freezeRequested, setFreezeRequested] = useState(false);
   const { data: subscriptions, isLoading } = trpc.subscriptions.mySubscriptions.useQuery();
   const { data: activePackage } = trpc.subscriptions.myActivePackage.useQuery();
   const pkg = (activePackage as any)?.package;
+
+  const freezeMutation = trpc.subscriptions.requestFreeze.useMutation({
+    onSuccess: () => {
+      setFreezeRequested(true);
+      // Redirect to support chat after a brief moment
+      setTimeout(() => setLocation('/support'), 1500);
+    },
+  });
 
   return (
     <ClientLayout>
@@ -84,7 +95,7 @@ export default function MySubscriptions() {
           <div className="text-center py-20">
             <Package className="w-16 h-16 text-gray-200 mx-auto mb-4" />
             <p className="text-gray-500 mb-4">{t('mySubscriptions.noSubs')}</p>
-            <Link href="/#packages">
+            <Link href="/my-packages">
               <Button>{t('mySubscriptions.browsePkgs')}</Button>
             </Link>
           </div>
@@ -98,7 +109,7 @@ export default function MySubscriptions() {
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="font-bold text-gray-900">{isRtl ? (sub as any).packageNameAr || `Package #${sub.packageId}` : (sub as any).packageNameEn || `Package #${sub.packageId}`}</span>
+                      <span className="font-bold text-gray-900">{isRtl ? (sub as any).packageNameAr : (sub as any).packageNameEn}</span>
                       <Badge className={sub.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}>
                         {sub.isActive ? (isRtl ? 'نشط' : 'Active') : (isRtl ? 'منتهي' : 'Expired')}
                       </Badge>
@@ -116,6 +127,41 @@ export default function MySubscriptions() {
                 )}
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Freeze Request Section */}
+        {subscriptions && subscriptions.length > 0 && subscriptions.some(s => s.isActive) && (
+          <div className="mt-8 border rounded-xl p-5 bg-blue-50/50">
+            <div className="flex items-center gap-3 mb-2">
+              <Snowflake className="w-5 h-5 text-blue-500" />
+              <h3 className="font-semibold text-gray-900">
+                {isRtl ? 'تجميد الاشتراك' : 'Freeze Subscription'}
+              </h3>
+            </div>
+            <p className="text-sm text-gray-600 mb-3">
+              {isRtl
+                ? 'يمكنك طلب تجميد اشتراكك مؤقتاً. سيتواصل فريق الدعم معك لتحديد مدة التجميد.'
+                : 'You can request a temporary freeze on your subscription. Our support team will contact you to set the freeze duration.'}
+            </p>
+            {freezeRequested ? (
+              <p className="text-sm text-green-600 font-medium">
+                {isRtl ? '✅ تم إرسال طلب التجميد. جارٍ تحويلك للدعم...' : '✅ Freeze request sent. Redirecting to support...'}
+              </p>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => freezeMutation.mutate()}
+                disabled={freezeMutation.isPending}
+                className="gap-2"
+              >
+                <Snowflake className="w-4 h-4" />
+                {freezeMutation.isPending
+                  ? (isRtl ? 'جارٍ الإرسال...' : 'Sending...')
+                  : (isRtl ? 'طلب تجميد' : 'Request Freeze')}
+              </Button>
+            )}
           </div>
         )}
       </div>

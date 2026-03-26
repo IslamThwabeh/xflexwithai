@@ -251,7 +251,7 @@ export default function CourseWatch() {
   };
 
   const handleSubmitEpisodeQuiz = () => {
-    if (!selectedEpisode || !courseId || !episodeQuiz?.quiz) return;
+    if (!selectedEpisode || !courseId || !episodeQuiz?.quiz?.questions?.length) return;
 
     const unanswered = episodeQuiz.quiz.questions.filter(
       (question) => !quizAnswers[question.id]
@@ -470,6 +470,10 @@ export default function CourseWatch() {
                     <div className="rounded border border-green-200 bg-green-50 p-3 text-sm text-green-700">
                       {t('course.quizPassed')}
                     </div>
+                  ) : !episodeQuiz.quiz?.questions?.length ? (
+                    <p className="text-sm text-muted-foreground">
+                      {t('course.noQuiz')}
+                    </p>
                   ) : (
                     <>
                       {episodeQuiz.quiz.questions.map((question, questionIndex) => (

@@ -121,6 +121,22 @@ export default function SupportChat() {
 
   const messages = data?.messages ?? [];
 
+  // Group messages by date for date separators
+  const getDateLabel = (dateStr: string) => {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return '';
+    const today = new Date();
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    const isSameDay = (a: Date, b: Date) =>
+      a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+
+    if (isSameDay(d, today)) return isRTL ? 'اليوم' : 'Today';
+    if (isSameDay(d, yesterday)) return isRTL ? 'أمس' : 'Yesterday';
+    return d.toLocaleDateString(isRTL ? 'ar-EG' : 'en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  };
+
   return (
     <ClientLayout>
       <div className="container mx-auto max-w-3xl px-4 py-6 h-[calc(100vh-80px)] flex flex-col" dir={isRTL ? "rtl" : "ltr"}>
@@ -148,13 +164,25 @@ export default function SupportChat() {
               <p className="text-sm">{t("support.emptyHint")}</p>
             </div>
           ) : (
-            messages.map((msg) => {
+            messages.map((msg, idx) => {
               const isOwn = msg.senderType === "client";
+              // Date separator logic
+              const currentDate = new Date(msg.createdAt).toDateString();
+              const prevDate = idx > 0 ? new Date(messages[idx - 1].createdAt).toDateString() : null;
+              const showDateSeparator = idx === 0 || currentDate !== prevDate;
+
               return (
-                <div
-                  key={msg.id}
-                  className={`flex ${isOwn ? (isRTL ? "justify-start" : "justify-end") : (isRTL ? "justify-end" : "justify-start")}`}
-                >
+                <div key={msg.id}>
+                  {showDateSeparator && (
+                    <div className="flex items-center gap-3 my-4">
+                      <div className="flex-1 h-px bg-gray-200" />
+                      <span className="text-xs text-gray-400 font-medium px-2">{getDateLabel(msg.createdAt)}</span>
+                      <div className="flex-1 h-px bg-gray-200" />
+                    </div>
+                  )}
+                  <div
+                    className={`flex ${isOwn ? (isRTL ? "justify-start" : "justify-end") : (isRTL ? "justify-end" : "justify-start")}`}
+                  >
                   <div
                     className={`max-w-[80%] rounded-2xl px-4 py-2.5 ${
                       isOwn
@@ -189,6 +217,7 @@ export default function SupportChat() {
                       })()}
                     </p>
                   </div>
+                </div>
                 </div>
               );
             })

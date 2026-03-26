@@ -3,7 +3,7 @@ import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import { appRouter } from "../routers";
 import { createWorkerContext } from "./context-worker";
 import * as db from "../db";
-import { sendFreezeExpiredEmail } from "./orderEmails";
+import { sendFreezeExpiredEmail, sendExpiryAlertEmail } from "./orderEmails";
 
 export interface Env {
   DB: D1Database;
@@ -168,6 +168,15 @@ export default {
     for (const user of unfrozen) {
       if (user.email) {
         await sendFreezeExpiredEmail(user.email, user.name);
+      }
+    }
+
+    // Send package expiry alerts (7 days, 3 days, and day-of)
+    const expiringWithin7 = await db.getExpiringSubscriptions(7);
+    for (const sub of expiringWithin7) {
+      // Send alerts at exactly 7, 3, and 0 days before expiry
+      if (sub.daysLeft === 7 || sub.daysLeft === 3 || sub.daysLeft === 0) {
+        await sendExpiryAlertEmail(sub.email, sub.name, sub.daysLeft, sub.packageName);
       }
     }
   },

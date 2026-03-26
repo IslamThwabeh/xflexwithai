@@ -1,0 +1,8 @@
+name = "r2-lister"
+main = "list-r2.js"
+compatibility_date = "2024-01-01"
+
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "xflexwithai-videos"
+preview_bucket_name = "xflexwithai-videos"

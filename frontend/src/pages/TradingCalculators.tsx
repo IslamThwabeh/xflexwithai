@@ -1,6 +1,7 @@
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Calculator, DollarSign, TrendingUp, Target, BarChart3 } from 'lucide-react';
 import { useState } from 'react';
+import ClientLayout from '@/components/ClientLayout';
 
 export default function TradingCalculators() {
   const { language } = useLanguage();
@@ -15,6 +16,7 @@ export default function TradingCalculators() {
   ];
 
   return (
+    <ClientLayout>
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-3xl mx-auto px-4 py-8" dir={isRtl ? 'rtl' : 'ltr'}>
         <h1 className="text-2xl font-bold flex items-center gap-2 mb-6">
@@ -42,6 +44,7 @@ export default function TradingCalculators() {
         </div>
       </div>
     </div>
+    </ClientLayout>
   );
 }
 
