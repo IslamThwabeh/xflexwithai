@@ -1,6 +1,5 @@
 import { useState } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
-import { ResponsiveTable } from "@/components/ui/responsive-table";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -635,8 +634,190 @@ export default function AdminPackageKeys() {
           </CardContent>
         </Card>
 
-        {/* Keys Table */}
-        <Card>
+        {/* Keys — Mobile Cards (below md) */}
+        <div className="md:hidden space-y-3">
+          <div className="flex items-center justify-between px-1">
+            <h3 className="text-base font-semibold">
+              {language === 'ar' ? 'المفاتيح' : 'Keys'}{' '}
+              <span className="text-gray-400 font-normal">({filteredKeys.length})</span>
+            </h3>
+          </div>
+          {filteredKeys.length === 0 ? (
+            <Card>
+              <CardContent className="py-8 text-center text-gray-500">
+                {language === 'ar' ? 'لا توجد مفاتيح' : 'No keys found'}
+              </CardContent>
+            </Card>
+          ) : (
+            filteredKeys.map((key: any) => (
+              <Card key={key.id} className={!key.isActive ? 'opacity-60' : ''}>
+                <CardContent className="p-4 space-y-3">
+                  {/* Row 1: Key code + copy */}
+                  <div className="flex items-center justify-between gap-2">
+                    <code className="text-xs font-mono bg-gray-100 px-2 py-1 rounded flex-1 truncate" dir="ltr">
+                      {key.keyCode}
+                    </code>
+                    <button
+                      onClick={() => copyToClipboard(key.keyCode)}
+                      className="text-gray-400 hover:text-blue-600 transition-colors shrink-0 p-1"
+                    >
+                      <Copy className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  {/* Row 2: Badges — Package, Status, Type */}
+                  <div className="flex flex-wrap gap-1.5">
+                    <Badge variant="outline" className="gap-1 text-xs">
+                      <Package className="w-3 h-3" />
+                      {language === 'ar' ? (key.packageNameAr || key.packageName) : key.packageName}
+                    </Badge>
+                    {!key.isActive ? (
+                      <Badge variant="destructive" className="gap-1 text-xs">
+                        <XCircle className="w-3 h-3" />
+                        {language === 'ar' ? 'معطّل' : 'Deactivated'}
+                      </Badge>
+                    ) : key.activatedAt ? (
+                      <>
+                        <Badge className="gap-1 text-xs bg-green-100 text-green-800 hover:bg-green-100">
+                          <CheckCircle2 className="w-3 h-3" />
+                          {language === 'ar' ? 'مفعّل' : 'Activated'}
+                        </Badge>
+                        {(!!key.lexaiIsPaused || !!key.recIsPaused) && (
+                          <Badge className="gap-1 text-xs bg-orange-100 text-orange-800 hover:bg-orange-100">
+                            <PauseCircle className="w-3 h-3" />
+                            {language === 'ar' ? 'مجمّد' : 'Frozen'}
+                          </Badge>
+                        )}
+                      </>
+                    ) : (
+                      <Badge variant="secondary" className="gap-1 text-xs">
+                        <Clock className="w-3 h-3" />
+                        {language === 'ar' ? 'جاهز' : 'Unused'}
+                      </Badge>
+                    )}
+                    {(key as any).isRenewal ? (
+                      <Badge className="gap-1 text-xs bg-blue-100 text-blue-800 hover:bg-blue-100">
+                        <RotateCcw className="w-3 h-3" />
+                        {language === 'ar' ? 'تجديد' : 'Renewal'}
+                      </Badge>
+                    ) : (key as any).isUpgrade ? (
+                      <Badge className="gap-1 text-xs bg-amber-100 text-amber-800 hover:bg-amber-100">
+                        <ArrowUpCircle className="w-3 h-3" />
+                        {language === 'ar' ? 'ترقية' : 'Upgrade'}
+                      </Badge>
+                    ) : (
+                      <Badge className="gap-1 text-xs bg-gray-100 text-gray-700 hover:bg-gray-100">
+                        <Plus className="w-3 h-3" />
+                        {language === 'ar' ? 'جديد' : 'New'}
+                      </Badge>
+                    )}
+                  </div>
+
+                  {/* Row 3: Email */}
+                  {key.email && (
+                    <p className="text-sm text-gray-700" dir="ltr">{key.email}</p>
+                  )}
+
+                  {/* Row 4: Key details grid — 2 columns */}
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                    <div>
+                      <span className="text-gray-400 block">{language === 'ar' ? 'السعر' : 'Price'}</span>
+                      <span className="font-medium">{key.price ? `$${key.price}` : '—'}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-400 block">{language === 'ar' ? 'المدة' : 'Duration'}</span>
+                      <span className="font-medium">{key.entitlementDays ? `${key.entitlementDays}d` : (language === 'ar' ? 'الافتراضي' : 'Default')}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-400 block">{language === 'ar' ? 'تاريخ التفعيل' : 'Activated'}</span>
+                      <span className="font-medium">{key.activatedAt ? new Date(key.activatedAt).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US') : '—'}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-400 block">{language === 'ar' ? 'انتهاء الاشتراك' : 'Sub Expiry'}</span>
+                      <span className="font-medium">
+                        {(key as any).subEndDate
+                          ? new Date((key as any).subEndDate).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US')
+                          : key.expiresAt ? new Date(key.expiresAt).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US') : '—'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-gray-400 block">{language === 'ar' ? 'تاريخ الإنشاء' : 'Created'}</span>
+                      <span className="font-medium">{key.createdAt ? new Date(key.createdAt).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US') : '—'}</span>
+                    </div>
+                    {key.notes && (
+                      <div>
+                        <span className="text-gray-400 block">{language === 'ar' ? 'ملاحظات' : 'Notes'}</span>
+                        <span className="font-medium truncate block">{key.notes}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Row 5: Referred by */}
+                  {(key as any).referredBy && (
+                    <p className="text-xs text-amber-600">
+                      {language === 'ar' ? 'بواسطة: ' : 'By: '}{(key as any).referredBy}
+                    </p>
+                  )}
+
+                  {/* Row 6: Actions */}
+                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-dashed">
+                    {key.isActive && key.activatedAt && key.userId && (
+                      (!!key.lexaiIsPaused || !!key.recIsPaused) ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 gap-1"
+                          onClick={() => unfreezeUser.mutate({ userId: key.userId as number })}
+                          disabled={unfreezeUser.isPending}
+                        >
+                          <PlayCircle className="w-4 h-4" />
+                          {language === 'ar' ? 'استئناف' : 'Unfreeze'}
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-orange-600 hover:text-orange-700 hover:bg-orange-50 gap-1"
+                          onClick={() => setFreezeDialogUserId(key.userId as number)}
+                          disabled={freezeUser.isPending}
+                        >
+                          <PauseCircle className="w-4 h-4" />
+                          {language === 'ar' ? 'تجميد' : 'Freeze'}
+                        </Button>
+                      )
+                    )}
+                    {key.isActive && !key.activatedAt && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50 gap-1"
+                        onClick={() => setDeactivateDialogKey({ id: key.id, keyCode: key.keyCode })}
+                      >
+                        <XCircle className="w-4 h-4" />
+                        {language === 'ar' ? 'إلغاء' : 'Deactivate'}
+                      </Button>
+                    )}
+                    {!key.isActive && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-green-600 hover:text-green-700 hover:bg-green-50 gap-1"
+                        onClick={() => reactivateKey.mutate({ id: key.id })}
+                        disabled={reactivateKey.isPending}
+                      >
+                        <RotateCcw className="w-4 h-4" />
+                        {language === 'ar' ? 'إعادة تفعيل' : 'Reactivate'}
+                      </Button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </div>
+
+        {/* Keys — Desktop Table (md and up) */}
+        <Card className="hidden md:block">
           <CardHeader className="pb-3">
             <CardTitle className="text-base">
               {language === 'ar' ? 'المفاتيح' : 'Keys'}{' '}
@@ -644,7 +825,7 @@ export default function AdminPackageKeys() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <ResponsiveTable>
+            <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -652,11 +833,12 @@ export default function AdminPackageKeys() {
                     <TableHead>{language === 'ar' ? 'الباقة' : 'Package'}</TableHead>
                     <TableHead>{language === 'ar' ? 'البريد' : 'Email'}</TableHead>
                     <TableHead>{language === 'ar' ? 'الحالة' : 'Status'}</TableHead>
+                    <TableHead>{language === 'ar' ? 'السعر' : 'Price'}</TableHead>
                     <TableHead>{language === 'ar' ? 'المدة' : 'Duration'}</TableHead>
-                    <TableHead>{language === 'ar' ? 'انتهاء الصلاحية' : 'Expiry'}</TableHead>
+                    <TableHead>{language === 'ar' ? 'انتهاء الاشتراك' : 'Sub Expiry'}</TableHead>
                     <TableHead>{language === 'ar' ? 'النوع' : 'Type'}</TableHead>
-                    <TableHead>{language === 'ar' ? 'تاريخ الإنشاء' : 'Created'}</TableHead>
                     <TableHead>{language === 'ar' ? 'تاريخ التفعيل' : 'Activated'}</TableHead>
+                    <TableHead>{language === 'ar' ? 'تاريخ الإنشاء' : 'Created'}</TableHead>
                     <TableHead>{language === 'ar' ? 'ملاحظات' : 'Notes'}</TableHead>
                     <TableHead></TableHead>
                   </TableRow>
@@ -664,7 +846,7 @@ export default function AdminPackageKeys() {
                 <TableBody>
                   {filteredKeys.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center py-8 text-gray-500">
+                      <TableCell colSpan={12} className="text-center py-8 text-gray-500">
                         {language === 'ar' ? 'لا توجد مفاتيح' : 'No keys found'}
                       </TableCell>
                     </TableRow>
@@ -723,13 +905,16 @@ export default function AdminPackageKeys() {
                             </Badge>
                           )}
                         </TableCell>
+                        <TableCell className="text-sm font-medium">
+                          {key.price ? `$${key.price}` : '—'}
+                        </TableCell>
                         <TableCell className="text-xs text-gray-500">
                           {key.entitlementDays ? `${key.entitlementDays}d` : (language === 'ar' ? 'الافتراضي' : 'Default')}
                         </TableCell>
                         <TableCell className="text-xs text-gray-500">
                           {(key as any).subEndDate
-                            ? new Date((key as any).subEndDate).toLocaleDateString()
-                            : key.expiresAt ? new Date(key.expiresAt).toLocaleDateString() : '—'}
+                            ? new Date((key as any).subEndDate).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US')
+                            : key.expiresAt ? new Date(key.expiresAt).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US') : '—'}
                         </TableCell>
                         <TableCell>
                           {(key as any).isRenewal ? (
@@ -750,10 +935,10 @@ export default function AdminPackageKeys() {
                           )}
                         </TableCell>
                         <TableCell className="text-xs text-gray-500">
-                          {key.createdAt ? new Date(key.createdAt).toLocaleDateString() : '—'}
+                          {key.activatedAt ? new Date(key.activatedAt).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US') : '—'}
                         </TableCell>
                         <TableCell className="text-xs text-gray-500">
-                          {key.activatedAt ? new Date(key.activatedAt).toLocaleDateString() : '—'}
+                          {key.createdAt ? new Date(key.createdAt).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US') : '—'}
                         </TableCell>
                         <TableCell className="text-xs text-gray-500 max-w-[150px] truncate">
                           {key.notes || '—'}
@@ -816,7 +1001,7 @@ export default function AdminPackageKeys() {
                   )}
                 </TableBody>
               </Table>
-            </ResponsiveTable>
+            </div>
           </CardContent>
         </Card>
 
