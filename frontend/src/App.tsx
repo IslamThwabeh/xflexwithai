@@ -22,7 +22,7 @@ const AdminLogin = lazy(() => import("./pages/AdminLogin"));
 const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
 const AdminCourses = lazy(() => import("./pages/AdminCourses"));
 const AdminEpisodes = lazy(() => import("./pages/AdminEpisodes"));
-const AdminUsers = lazy(() => import("./pages/AdminUsers"));
+const AdminUsers = lazy(() => import("./pages/AdminStudents"));
 const AdminLexaiSubscriptions = lazy(() => import("./pages/AdminLexaiSubscriptions"));
 const AdminLexaiConversations = lazy(() => import("./pages/AdminLexaiConversations"));
 const AdminRecommendations = lazy(() => import("./pages/AdminRecommendations"));
@@ -35,7 +35,7 @@ const AdminOrders = lazy(() => import("./pages/AdminOrders"));
 const AdminQuizzes = lazy(() => import("./pages/AdminQuizzes"));
 const AdminCoupons = lazy(() => import("./pages/AdminCoupons"));
 const AdminTestimonials = lazy(() => import("./pages/AdminTestimonials"));
-const AdminSubscribersReport = lazy(() => import("./pages/AdminSubscribersReport"));
+const AdminSubscribersReport = lazy(() => import("./pages/AdminStudents"));
 const AdminRevenueReport = lazy(() => import("./pages/AdminRevenueReport"));
 const AdminExpiryReport = lazy(() => import("./pages/AdminExpiryReport"));
 const AdminPackageKeys = lazy(() => import("./pages/AdminPackageKeys"));
@@ -135,6 +135,11 @@ function Router() {
       <Route path={"/admin/quizzes"}>
         <AdminRoute>
           <AdminQuizzes />
+        </AdminRoute>
+      </Route>
+      <Route path={"/admin/students"}>
+        <AdminRoute>
+          <AdminUsers />
         </AdminRoute>
       </Route>
       <Route path={"/admin/users"}>

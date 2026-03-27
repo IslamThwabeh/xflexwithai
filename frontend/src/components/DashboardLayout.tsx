@@ -43,7 +43,6 @@ import {
   ClipboardCheck,
   Tag,
   MessageSquareQuote,
-  BarChart3,
   Clock,
   DollarSign,
   Briefcase,
@@ -96,8 +95,7 @@ const menuSectionsDef: MenuSection[] = [
   {
     labelKey: "admin.sidebar.students",
     items: [
-      { icon: Users, labelKey: "admin.sidebar.usersList", path: "/admin/users" },
-      { icon: BarChart3, labelKey: "admin.sidebar.subscribers", path: "/admin/reports/subscribers" },
+      { icon: Users, labelKey: "admin.sidebar.students", path: "/admin/students" },
     ]
   },
   {

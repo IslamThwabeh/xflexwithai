@@ -4001,23 +4001,29 @@ export async function getSubscribersReport(): Promise<any[]> {
     country: users.country,
     createdAt: users.createdAt,
     emailVerified: users.emailVerified,
+    lastSignedIn: users.lastSignedIn,
   }).from(users).orderBy(desc(users.createdAt));
 
-  // Get all orders
-  const allOrders = await db.select().from(orders);
   // Get all package subscriptions
   const allPkgSubs = await db.select().from(packageSubscriptions);
   // Get all packages
   const allPackages = await db.select().from(packages);
-  // Get all orderItems
-  const allItems = await db.select().from(orderItems);
+  // Get all activated keys (the real revenue source)
+  const allKeys = await db.select().from(registrationKeys)
+    .where(sql`${registrationKeys.packageId} IS NOT NULL`);
 
   const pkgMap = new Map(allPackages.map(p => [p.id, p]));
 
   return allUsers.map(u => {
-    const userOrders = allOrders.filter(o => o.userId === u.id);
-    const completedOrders = userOrders.filter(o => o.status === 'completed' || o.status === 'paid');
-    const totalSpent = completedOrders.reduce((s, o) => s + (o.totalAmount || 0), 0);
+    const normalizedEmail = (u.email || '').trim().toLowerCase();
+    // Key-based revenue: sum of prices from activated keys matching this user's email
+    const userKeys = allKeys.filter(k =>
+      k.activatedAt && (k.email || '').trim().toLowerCase() === normalizedEmail
+    );
+    const totalSpent = userKeys.reduce((s, k) => s + (k.price || 0), 0);
+    // Count renewal keys
+    const renewalCount = userKeys.filter(k => k.isRenewal).length;
+
     const userSubs = allPkgSubs.filter(s => s.userId === u.id);
     const activeSubs = userSubs.filter(s => s.isActive);
     const activePackageNames = activeSubs
@@ -4026,15 +4032,21 @@ export async function getSubscribersReport(): Promise<any[]> {
         return pkg ? pkg.nameEn : null;
       })
       .filter(Boolean);
-    // Count renewals (multiple orders = renewals)
-    const renewalCount = completedOrders.length > 1 ? completedOrders.length - 1 : 0;
+    const activePackageNamesAr = activeSubs
+      .map(s => {
+        const pkg = pkgMap.get(s.packageId);
+        return pkg ? pkg.nameAr : null;
+      })
+      .filter(Boolean);
+    // Frozen status
+    const isFrozen = userSubs.some(s => s.isActive && (s as any).isPaused);
 
     return {
       ...u,
-      totalOrders: userOrders.length,
-      completedOrders: completedOrders.length,
-      totalSpent,
+      totalKeys: userKeys.length,
+      totalSpent, // already in dollars (key prices are stored in dollars)
       activePackages: activePackageNames,
+      activePackagesAr: activePackageNamesAr,
       subscriptionCount: userSubs.length,
       renewalCount,
     };
