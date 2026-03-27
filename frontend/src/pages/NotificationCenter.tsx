@@ -3,6 +3,7 @@ import { trpc } from '@/lib/trpc';
 import { Bell, Check, CheckCheck, Loader2, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLocation } from 'wouter';
+import ClientLayout from '@/components/ClientLayout';
 
 export default function NotificationCenter() {
   const { language } = useLanguage();
@@ -26,8 +27,9 @@ export default function NotificationCenter() {
   };
 
   return (
+    <ClientLayout>
     <div className="min-h-screen bg-gray-50">
-      <div className="max-w-2xl mx-auto px-4 py-8" dir={isRtl ? 'rtl' : 'ltr'}>
+      <div className="max-w-2xl mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Bell className="w-6 h-6 text-blue-500" />
@@ -90,5 +92,6 @@ export default function NotificationCenter() {
         )}
       </div>
     </div>
+    </ClientLayout>
   );
 }

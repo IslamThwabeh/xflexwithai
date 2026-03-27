@@ -870,6 +870,24 @@ export const appRouter = router({
         return { success: true };
       }),
 
+    // User: Update notification preferences
+    updateNotificationPrefs: protectedProcedure
+      .input(z.object({
+        support_replies: z.boolean().optional(),
+        recommendations: z.boolean().optional(),
+        course_updates: z.boolean().optional(),
+        admin_announcements: z.boolean().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.user) {
+          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Not authenticated' });
+        }
+        const current = JSON.parse((ctx.user as any).notificationPrefs || '{}');
+        const updated = { ...current, ...input };
+        await db.updateUser(ctx.user.id, { notificationPrefs: JSON.stringify(updated) });
+        return { success: true, prefs: updated };
+      }),
+
     // User: Update login security mode
     updateLoginSecurity: protectedProcedure
       .input(z.object({
@@ -1845,15 +1863,27 @@ export const appRouter = router({
         });
 
         if (input.sendEmail && (input.type === "alert" || input.type === "recommendation")) {
-          const recipients = await db.getRecommendationSubscriberEmails();
-          if (recipients.length) {
+          const subscribers = await db.getRecommendationSubscriberDetails();
+          const onlineThreshold = new Date(Date.now() - 5 * 60 * 1000);
+          const eligibleEmails = subscribers.filter(sub => {
+            // Skip if user opted out of recommendations
+            try {
+              const prefs = JSON.parse(sub.notificationPrefs || '{}');
+              if (prefs.recommendations === false) return false;
+            } catch { /* default: send */ }
+            // Skip if user is currently online
+            if (sub.lastActiveAt && new Date(sub.lastActiveAt) > onlineThreshold) return false;
+            return true;
+          }).map(sub => sub.email);
+
+          if (eligibleEmails.length) {
             const subject = input.type === "alert"
               ? "تنبيه: توصية جديدة خلال دقيقة - XFlex"
               : "توصية جديدة في قروب التوصيات - XFlex";
             const text = buildRecommendationPlainText(input);
 
             await Promise.allSettled(
-              recipients.map((to) =>
+              eligibleEmails.map((to) =>
                 sendEmail({
                   to,
                   subject,
@@ -2063,9 +2093,11 @@ export const appRouter = router({
     }),
 
     // Support/Admin: list all conversations with last message & unread counts
-    listAll: supportStaffProcedure.query(async () => {
-      return db.getAllSupportConversations();
-    }),
+    listAll: supportStaffProcedure
+      .input(z.object({ search: z.string().optional() }).optional())
+      .query(async ({ input }) => {
+        return db.getAllSupportConversations(input?.search);
+      }),
 
     // Support/Admin: get messages of a specific conversation
     getMessages: supportStaffProcedure

@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { trpc } from "@/lib/trpc";
+import { Input } from "@/components/ui/input";
 import {
   Headphones,
   Send,
@@ -17,8 +18,9 @@ import {
   Paperclip,
   FileIcon,
   X,
+  Search,
 } from "lucide-react";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { toast } from "sonner";
 import VoiceRecorder from "@/components/VoiceRecorder";
 import AudioPlayer from "@/components/AudioPlayer";
@@ -30,14 +32,31 @@ export default function AdminSupport() {
   const [uploading, setUploading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [searchInput, setSearchInput] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "open" | "closed">("all");
+
+  // Debounce search input (300ms)
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchInput), 300);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
 
   const {
     data: conversations,
     isLoading: loadingConvs,
     refetch: refetchConvs,
-  } = trpc.supportChat.listAll.useQuery(undefined, {
-    refetchInterval: 8000,
-  });
+  } = trpc.supportChat.listAll.useQuery(
+    debouncedSearch.length >= 2 ? { search: debouncedSearch } : undefined,
+    { refetchInterval: 8000 }
+  );
+
+  // Client-side status filter (applied on top of backend search results)
+  const filteredConversations = useMemo(() => {
+    if (!conversations) return [];
+    if (statusFilter === "all") return conversations;
+    return conversations.filter(c => c.status === statusFilter);
+  }, [conversations, statusFilter]);
 
   const {
     data: selectedData,
@@ -161,6 +180,7 @@ export default function AdminSupport() {
 
   const totalOpen = (conversations ?? []).filter((c) => c.status === "open").length;
   const totalUnread = (conversations ?? []).reduce((sum, c) => sum + (c.unreadCount ?? 0), 0);
+  const displayedCount = filteredConversations.length;
 
   return (
     <DashboardLayout>
@@ -211,19 +231,63 @@ export default function AdminSupport() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Conversation list */}
           <Card className="lg:col-span-1">
-            <CardHeader className="pb-3">
+            <CardHeader className="pb-3 space-y-3">
               <CardTitle className="text-lg">{t('admin.support.convos')}</CardTitle>
+              {/* Search bar */}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search by name, email, or message..."
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  className="pl-9 h-9 text-sm"
+                />
+                {searchInput && (
+                  <button
+                    onClick={() => setSearchInput("")}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+              {/* Status filter */}
+              <div className="flex gap-1">
+                {(["all", "open", "closed"] as const).map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => setStatusFilter(s)}
+                    className={`px-3 py-1 text-xs rounded-full transition ${
+                      statusFilter === s
+                        ? "bg-blue-100 text-blue-700 font-medium"
+                        : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                    }`}
+                  >
+                    {s === "all" ? "All" : s === "open" ? "Open" : "Closed"}
+                    {s === "all" && ` (${(conversations ?? []).length})`}
+                    {s === "open" && ` (${totalOpen})`}
+                    {s === "closed" && ` (${(conversations ?? []).length - totalOpen})`}
+                  </button>
+                ))}
+              </div>
             </CardHeader>
             <CardContent className="p-0">
               {loadingConvs ? (
                 <p className="text-center text-muted-foreground py-8">{t('admin.loading')}</p>
-              ) : (conversations ?? []).length === 0 ? (
-                <p className="text-center text-muted-foreground py-8">
-                  {t('admin.support.noConvos')}
-                </p>
+              ) : filteredConversations.length === 0 ? (
+                <div className="text-center text-muted-foreground py-8">
+                  {debouncedSearch.length >= 2 ? (
+                    <div>
+                      <Search className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                      <p className="text-sm">No conversations match "{debouncedSearch}"</p>
+                    </div>
+                  ) : (
+                    <p>{t('admin.support.noConvos')}</p>
+                  )}
+                </div>
               ) : (
                 <div className="divide-y max-h-[600px] overflow-y-auto">
-                  {(conversations ?? []).map((conv) => (
+                  {filteredConversations.map((conv) => (
                     <button
                       key={conv.id}
                       onClick={() => setSelectedConvId(conv.id)}

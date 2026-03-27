@@ -181,7 +181,7 @@ export default function CourseWatch() {
     : null;
   const canGoToNextEpisode = !!nextEpisode && isEpisodeUnlocked(nextEpisode);
   const requiredWatchSeconds = selectedEpisode?.duration && selectedEpisode.duration > 0
-    ? Math.max(60, Math.floor(selectedEpisode.duration * 60 * 0.7))
+    ? Math.max(60, Math.floor(selectedEpisode.duration * 0.7))
     : 60;
   const hasWatchRequirementMet = watchedSeconds >= requiredWatchSeconds;
 
@@ -192,6 +192,14 @@ export default function CourseWatch() {
     : hasWatchRequirementMet && (!quizRequired || quizPassed);
 
   const quizSectionRef = useRef<HTMLDivElement>(null);
+
+  const handleEpisodeComplete = useCallback(() => {
+    if (!selectedEpisode || !courseId) return;
+    markCompleteMutation.mutate({
+      courseId,
+      episodeId: selectedEpisode.id,
+    });
+  }, [selectedEpisode, courseId, markCompleteMutation]);
 
   const handleMarkCompleteClick = useCallback(() => {
     if (canMarkComplete) {
@@ -224,14 +232,6 @@ export default function CourseWatch() {
       courseId,
       watchedDuration: second,
       isCompleted: false,
-    });
-  };
-
-  const handleEpisodeComplete = () => {
-    if (!selectedEpisode || !courseId) return;
-    markCompleteMutation.mutate({
-      courseId,
-      episodeId: selectedEpisode.id,
     });
   };
 
@@ -443,9 +443,7 @@ export default function CourseWatch() {
                     <ChevronRight className="h-4 w-4 ms-2" />
                   </Button>
                 </div>
-                <p className="text-xs text-muted-foreground mt-3">
-                  {t('course.watchProgress')}: {Math.min(watchedSeconds, requiredWatchSeconds)}s / {requiredWatchSeconds}s {t('course.required')}
-                </p>
+
               </CardContent>
             </Card>
 
@@ -609,7 +607,7 @@ export default function CourseWatch() {
                               )}
                             </div>
                             {episode.duration && (
-                              <p className="text-xs text-muted-foreground">{episode.duration} {t('course.min')}</p>
+                              <p className="text-xs text-muted-foreground">{Math.floor(episode.duration / 60)} {t('course.min')}</p>
                             )}
                           </div>
                           {isSelected && (

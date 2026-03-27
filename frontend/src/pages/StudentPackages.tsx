@@ -1,5 +1,6 @@
-import { Link } from 'wouter';
-import { Package, CheckCircle2, X, ArrowUpCircle, Clock, Sparkles, MessageSquare, BookOpen, Shield } from 'lucide-react';
+import { useState } from 'react';
+import { Link, useLocation } from 'wouter';
+import { Package, CheckCircle2, X, ArrowUpCircle, Clock, Sparkles, MessageSquare, BookOpen, Shield, Snowflake, CheckCircle, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -11,9 +12,20 @@ import ClientLayout from '@/components/ClientLayout';
 export default function StudentPackages() {
   const { language } = useLanguage();
   const isRtl = language === 'ar';
+  const [, setLocation] = useLocation();
+  const [freezeRequested, setFreezeRequested] = useState(false);
 
   const { data: activePackage, isLoading } = trpc.subscriptions.myActivePackage.useQuery();
+  const { data: subscriptions, isLoading: subsLoading } = trpc.subscriptions.mySubscriptions.useQuery();
+  const { data: activationStatus } = trpc.subscriptions.activationStatus.useQuery();
   const pkg = (activePackage as any)?.package;
+
+  const freezeMutation = trpc.subscriptions.requestFreeze.useMutation({
+    onSuccess: () => {
+      setFreezeRequested(true);
+      setTimeout(() => setLocation('/support'), 1500);
+    },
+  });
 
   const isBasic = pkg?.slug === 'basic';
   const isComprehensive = pkg?.slug === 'comprehensive';
@@ -60,7 +72,7 @@ export default function StudentPackages() {
     },
   ];
 
-  if (isLoading) {
+  if (isLoading || subsLoading) {
     return (
       <ClientLayout>
         <div className="max-w-4xl mx-auto px-4 py-8">
@@ -100,6 +112,11 @@ export default function StudentPackages() {
                 ? 'استفد من جميع المميزات قبل انتهاء اشتراكك! اجمع أكبر قدر من الأرباح.'
                 : 'Make the most of all features before your subscription expires! Collect as much profit as possible.'}
             </p>
+            <div className="flex flex-wrap gap-2 mb-4">
+              {pkg.includesLexai && <Badge className="bg-white/20 text-white">LexAI</Badge>}
+              {pkg.includesRecommendations && <Badge className="bg-white/20 text-white">{isRtl ? 'التوصيات' : 'Recommendations'}</Badge>}
+              {pkg.includesSupport && <Badge className="bg-white/20 text-white">{isRtl ? 'الدعم' : 'Support'}</Badge>}
+            </div>
             {remainingDays !== null && (
               <div className="bg-white/10 rounded-xl p-4">
                 <div className="flex items-center justify-between mb-2">
@@ -149,6 +166,83 @@ export default function StudentPackages() {
             <Link href="/activate-key">
               <Button>{isRtl ? 'تفعيل مفتاح' : 'Activate Key'}</Button>
             </Link>
+          </div>
+        )}
+
+        {/* Upgrade CTA for Basic */}
+        {isBasic && (
+          <div className="bg-gradient-to-r from-purple-50 to-blue-50 border-2 border-purple-200 rounded-2xl p-6 mb-8">
+            <div className="flex items-center justify-between flex-wrap gap-4">
+              <div className="flex items-center gap-3">
+                <ArrowUpCircle className="w-8 h-8 text-purple-600" />
+                <div>
+                  <h3 className="font-bold text-lg text-purple-900">
+                    {isRtl ? 'ترقية إلى الباقة الشاملة' : 'Upgrade to Comprehensive'}
+                  </h3>
+                  <p className="text-sm text-purple-600">
+                    {isRtl
+                      ? 'احصل على جميع المميزات بما فيها LexAI والتوصيات والدعم المباشر'
+                      : 'Get all features including LexAI, Recommendations & Live Support'}
+                  </p>
+                </div>
+              </div>
+              <Link href="/upgrade">
+                <Button className="bg-purple-600 hover:bg-purple-700">
+                  <ArrowUpCircle className="w-4 h-4 me-2" />
+                  {isRtl ? 'ترقية الآن' : 'Upgrade Now'}
+                </Button>
+              </Link>
+            </div>
+          </div>
+        )}
+
+        {/* Deferred Activation Status */}
+        {activationStatus?.hasPending && (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 mb-8">
+            <div className="flex items-center gap-3 mb-2">
+              <Clock className="w-5 h-5 text-amber-600" />
+              <h3 className="font-semibold text-amber-900">
+                {isRtl ? 'تفعيل مؤجل' : 'Deferred Activation'}
+              </h3>
+            </div>
+            <p className="text-sm text-amber-700 mb-2">
+              {isRtl
+                ? `سيتم تفعيل LexAI والتوصيات تلقائياً عند إكمال الدورة أو في ${activationStatus.maxActivationDate ? new Date(activationStatus.maxActivationDate).toLocaleDateString('ar-EG') : ''}`
+                : `LexAI & Recommendations will activate automatically upon course completion or on ${activationStatus.maxActivationDate ? new Date(activationStatus.maxActivationDate).toLocaleDateString('en-US') : ''}`}
+            </p>
+            <div className="flex items-center gap-2 text-sm text-amber-600">
+              <span>{isRtl ? 'تقدم الدورة' : 'Course progress'}: {activationStatus.progressPercent}%</span>
+            </div>
+          </div>
+        )}
+
+        {/* Subscription History */}
+        {subscriptions && subscriptions.length > 0 && (
+          <div className="mb-8">
+            <h2 className="text-xl font-bold mb-4">{isRtl ? 'سجل الاشتراكات' : 'Subscription History'}</h2>
+            <div className="space-y-3">
+              {subscriptions.map((sub) => (
+                <div key={sub.id} className="bg-white border rounded-xl p-4 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-9 h-9 rounded-full flex items-center justify-center ${sub.isActive ? 'bg-green-100' : 'bg-gray-100'}`}>
+                      {sub.isActive ? <CheckCircle className="w-5 h-5 text-green-600" /> : <AlertCircle className="w-5 h-5 text-gray-400" />}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-gray-900">{isRtl ? (sub as any).packageNameAr : (sub as any).packageNameEn}</span>
+                        <Badge className={sub.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}>
+                          {sub.isActive ? (isRtl ? 'نشط' : 'Active') : (isRtl ? 'منتهي' : 'Expired')}
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-gray-500">
+                        {isRtl ? 'بدأ' : 'Started'}: {new Date(sub.startDate).toLocaleDateString(isRtl ? 'ar-EG' : 'en-US')}
+                        {sub.endDate && ` • ${isRtl ? 'ينتهي' : 'Ends'}: ${new Date(sub.endDate).toLocaleDateString(isRtl ? 'ar-EG' : 'en-US')}`}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
@@ -222,6 +316,41 @@ export default function StudentPackages() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Freeze Subscription */}
+        {subscriptions && subscriptions.length > 0 && subscriptions.some(s => s.isActive) && (
+          <div className="border rounded-xl p-5 bg-blue-50/50 mb-8">
+            <div className="flex items-center gap-3 mb-2">
+              <Snowflake className="w-5 h-5 text-blue-500" />
+              <h3 className="font-semibold text-gray-900">
+                {isRtl ? 'تجميد الاشتراك' : 'Freeze Subscription'}
+              </h3>
+            </div>
+            <p className="text-sm text-gray-600 mb-3">
+              {isRtl
+                ? 'يمكنك طلب تجميد اشتراكك مؤقتاً. سيتواصل فريق الدعم معك لتحديد مدة التجميد.'
+                : 'You can request a temporary freeze on your subscription. Our support team will contact you to set the freeze duration.'}
+            </p>
+            {freezeRequested ? (
+              <p className="text-sm text-green-600 font-medium">
+                {isRtl ? '✅ تم إرسال طلب التجميد. جارٍ تحويلك للدعم...' : '✅ Freeze request sent. Redirecting to support...'}
+              </p>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => freezeMutation.mutate()}
+                disabled={freezeMutation.isPending}
+                className="gap-2"
+              >
+                <Snowflake className="w-4 h-4" />
+                {freezeMutation.isPending
+                  ? (isRtl ? 'جارٍ الإرسال...' : 'Sending...')
+                  : (isRtl ? 'طلب تجميد' : 'Request Freeze')}
+              </Button>
+            )}
+          </div>
+        )}
 
         {/* Activate Key CTA */}
         <Card className="bg-gray-50">

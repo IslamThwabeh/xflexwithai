@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { trpc } from "@/lib/trpc";
-import { Loader2, Check, AlertCircle, Eye, EyeOff, Mail } from "lucide-react";
+import { Loader2, Check, AlertCircle, Eye, EyeOff, Mail, Bell } from "lucide-react";
 import { Link } from "wouter";
 
 export default function Profile() {
@@ -49,6 +49,18 @@ export default function Profile() {
     ((user as any)?.loginSecurityMode as "password_or_otp" | "password_only" | "password_plus_otp") || "password_or_otp"
   );
 
+  // Notification preferences state
+  const parsedPrefs = (() => {
+    try { return JSON.parse((user as any)?.notificationPrefs || '{}'); } catch { return {}; }
+  })();
+  const [notifPrefs, setNotifPrefs] = useState({
+    support_replies: parsedPrefs.support_replies !== false,
+    recommendations: parsedPrefs.recommendations !== false,
+    course_updates: parsedPrefs.course_updates !== false,
+    admin_announcements: parsedPrefs.admin_announcements !== false,
+  });
+  const [notifMessage, setNotifMessage] = useState("");
+
   // Update profile mutation
   const updateProfileMutation = trpc.users.updateProfile.useMutation({
     onSuccess: async () => {
@@ -84,6 +96,17 @@ export default function Profile() {
     },
     onError: (error) => {
       setSecurityMessage(`Error: ${error.message}`);
+    },
+  });
+
+  const updateNotifPrefsMutation = trpc.users.updateNotificationPrefs.useMutation({
+    onSuccess: async () => {
+      setNotifMessage(language === "ar" ? "تم حفظ تفضيلات الإشعارات" : "Notification preferences saved");
+      await utils.auth.me.invalidate();
+      setTimeout(() => setNotifMessage(""), 3000);
+    },
+    onError: (error) => {
+      setNotifMessage(`Error: ${error.message}`);
     },
   });
 
@@ -278,6 +301,66 @@ export default function Profile() {
                   )}
                 </Button>
               </form>
+            </CardContent>
+          </Card>
+
+          {/* Notification Preferences */}
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Bell className="w-5 h-5" />
+                {language === "ar" ? "تفضيلات الإشعارات" : "Notification Preferences"}
+              </CardTitle>
+              <CardDescription>
+                {language === "ar"
+                  ? "اختر أنواع الإشعارات التي ترغب في استلامها عبر البريد الإلكتروني"
+                  : "Choose which notification types you'd like to receive via email"}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {notifMessage && (
+                <Alert className={`mb-4 ${notifMessage.startsWith("Error") ? "border-red-500" : "border-green-500"}`}>
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>{notifMessage}</AlertDescription>
+                </Alert>
+              )}
+              <div className="space-y-4">
+                {([
+                  { key: "support_replies" as const, labelAr: "ردود الدعم الفني", labelEn: "Support Replies", descAr: "عند الرد على طلبات الدعم الخاصة بك", descEn: "When your support tickets receive a reply" },
+                  { key: "recommendations" as const, labelAr: "التوصيات", labelEn: "Recommendations", descAr: "توصيات التداول والتنبيهات", descEn: "Trading recommendations and alerts" },
+                  { key: "course_updates" as const, labelAr: "تحديثات الدورات", labelEn: "Course Updates", descAr: "حلقات أو محتوى جديد في دوراتك", descEn: "New episodes or content in your courses" },
+                  { key: "admin_announcements" as const, labelAr: "إعلانات الإدارة", labelEn: "Admin Announcements", descAr: "إعلانات عامة من الأكاديمية", descEn: "General announcements from the academy" },
+                ]).map(({ key, labelAr, labelEn, descAr, descEn }) => (
+                  <label key={key} className="flex items-start gap-3 cursor-pointer p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
+                    <input
+                      type="checkbox"
+                      className="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      checked={notifPrefs[key]}
+                      onChange={(e) => setNotifPrefs(prev => ({ ...prev, [key]: e.target.checked }))}
+                    />
+                    <div>
+                      <div className="font-medium text-sm">{language === "ar" ? labelAr : labelEn}</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">{language === "ar" ? descAr : descEn}</div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+              <div className="mt-4 pt-3 border-t text-xs text-gray-500 dark:text-gray-400">
+                {language === "ar"
+                  ? "ملاحظة: لن يتم إرسال إشعارات عبر البريد أثناء تواجدك على المنصة"
+                  : "Note: Email notifications are suppressed while you're active on the platform"}
+              </div>
+              <Button
+                className="mt-4 gap-2"
+                disabled={updateNotifPrefsMutation.isPending}
+                onClick={() => updateNotifPrefsMutation.mutate(notifPrefs)}
+              >
+                {updateNotifPrefsMutation.isPending ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" />{language === "ar" ? "جارٍ الحفظ..." : "Saving..."}</>
+                ) : (
+                  <><Check className="w-4 h-4" />{language === "ar" ? "حفظ التفضيلات" : "Save Preferences"}</>
+                )}
+              </Button>
             </CardContent>
           </Card>
 

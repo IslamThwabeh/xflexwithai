@@ -58,6 +58,10 @@ export async function createWorkerContext(
         }
       } else {
         user = await db.getUserById(decoded.userId);
+        // Touch last-active timestamp (non-blocking, for email suppression)
+        if (user) {
+          db.touchUserActivity(user.id).catch(() => {});
+        }
       }
     }
   } catch (error) {

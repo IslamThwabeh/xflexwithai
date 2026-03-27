@@ -18,6 +18,8 @@ export const users = sqliteTable("users", {
   createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
   updatedAt: text("updatedAt").default("CURRENT_TIMESTAMP").notNull(),
   lastSignedIn: text("lastSignedIn").default("CURRENT_TIMESTAMP").notNull(),
+  lastActiveAt: text("lastActiveAt"),
+  notificationPrefs: text("notificationPrefs").default("{}"),
   telegram_user_id: text("telegram_user_id").unique(),
   user_type: text("user_type", { length: 20 }).default("web"),
   pointsBalance: integer("points_balance").default(0).notNull(),

@@ -96,10 +96,14 @@ vatAmount = totalAmount * 0.16
 
 - **Bilingual**: All user-facing text must have both Arabic and English variants
 - **Mobile-first**: Business owner tests on mobile frequently — always verify mobile layout
-- **WhatsAppFloat**: Shows only on public pages (`WhatsAppFloat.tsx`), hidden on student/admin pages
+- **WhatsAppFloat**: Whitelist approach — only shows on known public paths (`/`, `/checkout`, `/articles`, `/events`, `/careers`, `/about`, `/refund-policy`, `/terms`, `/privacy`). Hidden everywhere else.
 - **KeyActivationPrompt**: Dialog on `MyDashboard` when user has no enrollments — dismissed via `sessionStorage`
 - **Admin sidebar sections**: Overview → Content → Careers → Users → Support → Reports → Moderation
-- Student nav items: Dashboard, LexAI, Recommendations, Support, Quizzes, Orders, Subscriptions, Profile, Notifications, Points, Calculators
+- Student nav items: Dashboard, LexAI, Recommendations, Support, Quizzes, My Package, Notifications, Points, Calculators
+- **Removed from nav**: Orders (page kept), Subscriptions (redirects to `/my-packages`), Profile (accessible via avatar click)
+- **StudentPackages.tsx**: Merged "My Package" + "My Subscriptions" into one page — package status, subscription history, freeze, upgrade CTA, feature badges
+- **Episode duration**: DB stores seconds (e.g., 182 = ~3 min). Display: `Math.floor(duration / 60)` min. Watch requirement: `duration * 0.7` seconds.
+- **Notification system**: `user_notifications` table + `users.lastActiveAt` + `users.notificationPrefs` (JSON). Email suppression when user is online (active < 5 min). Notification prefs UI in Profile.tsx.
 
 ---
 
@@ -173,6 +177,7 @@ CodeGraph is set up for this project with a pre-built semantic graph of all symb
 7. **Video URLs**: Always use `https://videos.xflexacademy.com` domain (NOT xflexwithai.com). `normalizeVideoUrl()` in db.ts is a safety net
 8. **Video `<video>` tags**: Always include `controlsList="nodownload"` and `onContextMenu={e => e.preventDefault()}` on all video elements
 9. **Episode deletion**: Must archive video in R2 before DB delete — see `storageArchiveR2()` in `storage-r2.ts`
+10. **Episode duration**: DB stores **seconds**, not minutes. Display: `Math.floor(duration / 60)`. Watch threshold: `duration * 0.7`. Never multiply by 60.
 
 ---
 

@@ -405,7 +405,7 @@ export async function getAllUsers() {
 /**
  * Update user (name, phone, etc.)
  */
-export async function updateUser(userId: number, updates: { name?: string; phone?: string; loginSecurityMode?: "password_or_otp" | "password_only" | "password_plus_otp" }): Promise<void> {
+export async function updateUser(userId: number, updates: { name?: string; phone?: string; loginSecurityMode?: "password_or_otp" | "password_only" | "password_plus_otp"; notificationPrefs?: string }): Promise<void> {
   const db = await getDb();
   if (!db) {
     logger.warn('Cannot update user: database not available');
@@ -418,12 +418,48 @@ export async function updateUser(userId: number, updates: { name?: string; phone
         ...(updates.name !== undefined && { name: updates.name || null }),
         ...(updates.phone !== undefined && { phone: updates.phone || null }),
         ...(updates.loginSecurityMode !== undefined && { loginSecurityMode: updates.loginSecurityMode }),
+        ...(updates.notificationPrefs !== undefined && { notificationPrefs: updates.notificationPrefs }),
       })
       .where(eq(users.id, userId));
     logger.db('User updated successfully', { userId });
   } catch (error) {
     logger.error('Failed to update user', { error: error instanceof Error ? error.message : 'Unknown error' });
     throw error;
+  }
+}
+
+/**
+ * Touch user's lastActiveAt timestamp (called from auth middleware)
+ */
+export async function touchUserActivity(userId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  try {
+    await db.update(users)
+      .set({ lastActiveAt: new Date().toISOString() })
+      .where(eq(users.id, userId));
+  } catch {
+    // Non-critical, don't throw
+  }
+}
+
+/**
+ * Check if user was active in the last N minutes (for email suppression)
+ */
+export async function isUserOnline(userId: number, withinMinutes = 5): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  try {
+    const result = await db.select({ lastActiveAt: users.lastActiveAt })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    if (!result.length || !result[0].lastActiveAt) return false;
+    const lastActive = new Date(result[0].lastActiveAt);
+    const threshold = new Date(Date.now() - withinMinutes * 60 * 1000);
+    return lastActive > threshold;
+  } catch {
+    return false;
   }
 }
 
@@ -1317,6 +1353,44 @@ export async function getRecommendationSubscriberEmails() {
     .where(inArray(users.id, userIds));
 
   return Array.from(new Set(rows.map((row) => row.email).filter(Boolean)));
+}
+
+/**
+ * Get recommendation subscriber details including online status and notification prefs.
+ * Used for email suppression: skip email if user is online or opted out.
+ */
+export async function getRecommendationSubscriberDetails(): Promise<Array<{ userId: number; email: string; lastActiveAt: string | null; notificationPrefs: string | null }>> {
+  const db = await getDb();
+  if (!db) return [];
+
+  const nowIso = new Date().toISOString();
+  const activeSubscriptions = await db
+    .select({ userId: recommendationSubscriptions.userId })
+    .from(recommendationSubscriptions)
+    .where(
+      and(
+        eq(recommendationSubscriptions.isActive, true),
+        eq(recommendationSubscriptions.isPaused, false),
+        sql`${recommendationSubscriptions.endDate} >= ${nowIso}`
+      )
+    );
+
+  const userIds = activeSubscriptions.map((item) => item.userId);
+  if (!userIds.length) return [];
+
+  const rows = await db
+    .select({
+      id: users.id,
+      email: users.email,
+      lastActiveAt: users.lastActiveAt,
+      notificationPrefs: users.notificationPrefs,
+    })
+    .from(users)
+    .where(inArray(users.id, userIds));
+
+  return rows
+    .filter(r => r.email)
+    .map(r => ({ userId: r.id, email: r.email, lastActiveAt: r.lastActiveAt, notificationPrefs: r.notificationPrefs }));
 }
 
 export async function createRecommendationMessage(message: InsertRecommendationMessage) {
@@ -3186,7 +3260,7 @@ export async function getSupportMessages(conversationId: number, limit: number =
     .limit(limit);
 }
 
-export async function getAllSupportConversations() {
+export async function getAllSupportConversations(searchQuery?: string) {
   const db = await getDb();
   if (!db) return [];
 
@@ -3206,9 +3280,32 @@ export async function getAllSupportConversations() {
     .leftJoin(users, eq(supportConversations.userId, users.id))
     .orderBy(desc(supportConversations.updatedAt));
 
+  // If searching within message content, find matching conversation IDs
+  let messageMatchConvIds: Set<number> | null = null;
+  if (searchQuery && searchQuery.trim().length >= 2) {
+    const q = `%${searchQuery.trim().toLowerCase()}%`;
+    const matchingMessages = await db
+      .select({ conversationId: supportMessages.conversationId })
+      .from(supportMessages)
+      .where(sql`lower(${supportMessages.content}) LIKE ${q}`)
+      .groupBy(supportMessages.conversationId);
+    messageMatchConvIds = new Set(matchingMessages.map(m => m.conversationId));
+  }
+
+  // Filter conversations by search query (name/email match OR message content match)
+  const q = searchQuery?.trim().toLowerCase();
+  const filtered = q && q.length >= 2
+    ? conversations.filter(conv => {
+        const nameMatch = conv.userName?.toLowerCase().includes(q);
+        const emailMatch = conv.userEmail?.toLowerCase().includes(q);
+        const msgMatch = messageMatchConvIds?.has(conv.id);
+        return nameMatch || emailMatch || msgMatch;
+      })
+    : conversations;
+
   // Get last message + unread count for each conversation
   const result = [];
-  for (const conv of conversations) {
+  for (const conv of filtered) {
     const msgs = await db.select().from(supportMessages)
       .where(eq(supportMessages.conversationId, conv.id))
       .orderBy(desc(supportMessages.createdAt))
