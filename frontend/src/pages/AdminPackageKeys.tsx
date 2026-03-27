@@ -57,6 +57,8 @@ import {
   RotateCcw,
   PauseCircle,
   PlayCircle,
+  Snowflake,
+  X,
 } from "lucide-react";
 
 export default function AdminPackageKeys() {
@@ -81,6 +83,7 @@ export default function AdminPackageKeys() {
   const [freezeDialogUserId, setFreezeDialogUserId] = useState<number | null>(null);
   const [freezeReason, setFreezeReason] = useState("");
   const [freezeDays, setFreezeDays] = useState("");
+  const [statusFilter, setStatusFilter] = useState<'all' | 'activated' | 'unused' | 'deactivated' | 'frozen'>('all');
 
   // Data queries
   const keysQuery = trpc.packageKeys.list.useQuery();
@@ -236,14 +239,22 @@ export default function AdminPackageKeys() {
   const stats = statsQuery.data;
   const packages = packagesQuery.data ?? [];
 
+  // Compute frozen count client-side
+  const frozenCount = keys.filter((k: any) => k.isActive && k.activatedAt && (!!k.lexaiIsPaused || !!k.recIsPaused)).length;
+
   // Filter keys
-  const filteredKeys = keys.filter(k => {
+  const filteredKeys = keys.filter((k: any) => {
     const matchesSearch = !searchQuery || 
       k.keyCode.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (k.email && k.email.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (k.notes && k.notes.toLowerCase().includes(searchQuery.toLowerCase()));
     const matchesPackage = filterPackage === 'all' || String(k.packageId) === filterPackage;
-    return matchesSearch && matchesPackage;
+    let matchesStatus = true;
+    if (statusFilter === 'activated') matchesStatus = !!k.isActive && !!k.activatedAt;
+    else if (statusFilter === 'unused') matchesStatus = !!k.isActive && !k.activatedAt;
+    else if (statusFilter === 'deactivated') matchesStatus = !k.isActive;
+    else if (statusFilter === 'frozen') matchesStatus = !!k.isActive && !!k.activatedAt && (!!k.lexaiIsPaused || !!k.recIsPaused);
+    return matchesSearch && matchesPackage && matchesStatus;
   });
 
   const selectedPkg = packages.find((p: any) => p.id === selectedPackage);
@@ -568,33 +579,32 @@ export default function AdminPackageKeys() {
           </div>
         </div>
 
-        {/* Stats Cards */}
+        {/* Stats Cards — clickable to filter */}
         {stats && (
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            <Card>
-              <CardContent className="pt-4 pb-3 text-center">
-                <p className="text-2xl font-bold text-blue-600">{stats.total}</p>
-                <p className="text-xs text-gray-500">{language === 'ar' ? 'الإجمالي' : 'Total'}</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-4 pb-3 text-center">
-                <p className="text-2xl font-bold text-green-600">{stats.activated}</p>
-                <p className="text-xs text-gray-500">{language === 'ar' ? 'مفعّل' : 'Activated'}</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-4 pb-3 text-center">
-                <p className="text-2xl font-bold text-amber-600">{stats.unused}</p>
-                <p className="text-xs text-gray-500">{language === 'ar' ? 'غير مستخدم' : 'Unused'}</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-4 pb-3 text-center">
-                <p className="text-2xl font-bold text-red-600">{stats.deactivated}</p>
-                <p className="text-xs text-gray-500">{language === 'ar' ? 'معطّل' : 'Deactivated'}</p>
-              </CardContent>
-            </Card>
+          <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
+            {([
+              { key: 'all' as const, value: stats.total, textCls: 'text-blue-600', ringCls: 'ring-blue-500 bg-blue-50 dark:bg-blue-950/30', label: language === 'ar' ? 'الإجمالي' : 'Total' },
+              { key: 'activated' as const, value: stats.activated, textCls: 'text-green-600', ringCls: 'ring-green-500 bg-green-50 dark:bg-green-950/30', label: language === 'ar' ? 'مفعّل' : 'Activated' },
+              { key: 'unused' as const, value: stats.unused, textCls: 'text-amber-600', ringCls: 'ring-amber-500 bg-amber-50 dark:bg-amber-950/30', label: language === 'ar' ? 'غير مستخدم' : 'Unused' },
+              { key: 'deactivated' as const, value: stats.deactivated, textCls: 'text-red-600', ringCls: 'ring-red-500 bg-red-50 dark:bg-red-950/30', label: language === 'ar' ? 'معطّل' : 'Deactivated' },
+              { key: 'frozen' as const, value: frozenCount, textCls: 'text-cyan-600', ringCls: 'ring-cyan-500 bg-cyan-50 dark:bg-cyan-950/30', label: language === 'ar' ? 'مجمّد' : 'Frozen' },
+            ] as const).map((s) => (
+              <Card
+                key={s.key}
+                className={`cursor-pointer transition-all hover:shadow-md ${
+                  statusFilter === s.key
+                    ? `ring-2 ${s.ringCls}`
+                    : 'hover:scale-[1.02]'
+                }`}
+                onClick={() => setStatusFilter(statusFilter === s.key ? 'all' : s.key)}
+              >
+                <CardContent className="pt-4 pb-3 text-center">
+                  <p className={`text-2xl font-bold ${s.textCls}`}>{s.value}</p>
+                  <p className="text-xs text-gray-500">{s.label}</p>
+                </CardContent>
+              </Card>
+            ))}
+            {/* Activation Rate — not clickable */}
             <Card>
               <CardContent className="pt-4 pb-3 text-center">
                 <p className="text-2xl font-bold text-purple-600">{stats.activationRate}%</p>
@@ -631,6 +641,26 @@ export default function AdminPackageKeys() {
                 </SelectContent>
               </Select>
             </div>
+            {/* Active status filter indicator */}
+            {statusFilter !== 'all' && (
+              <div className="mt-3 flex items-center gap-2">
+                <Badge variant="secondary" className="gap-1.5 px-3 py-1">
+                  {statusFilter === 'activated' && <><CheckCircle2 className="w-3 h-3 text-green-600" /> {language === 'ar' ? 'عرض: مفعّل' : 'Showing: Activated'}</>}
+                  {statusFilter === 'unused' && <><Clock className="w-3 h-3 text-amber-600" /> {language === 'ar' ? 'عرض: غير مستخدم' : 'Showing: Unused'}</>}
+                  {statusFilter === 'deactivated' && <><XCircle className="w-3 h-3 text-red-600" /> {language === 'ar' ? 'عرض: معطّل' : 'Showing: Deactivated'}</>}
+                  {statusFilter === 'frozen' && <><Snowflake className="w-3 h-3 text-cyan-600" /> {language === 'ar' ? 'عرض: مجمّد' : 'Showing: Frozen'}</>}
+                  <button
+                    onClick={() => setStatusFilter('all')}
+                    className="ml-1 hover:text-red-500 transition-colors"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </Badge>
+                <span className="text-xs text-gray-400">
+                  {filteredKeys.length} {language === 'ar' ? 'مفتاح' : 'keys'}
+                </span>
+              </div>
+            )}
           </CardContent>
         </Card>
 
