@@ -78,7 +78,7 @@ export default function AdminSupport() {
 
   const closeMutation = trpc.supportChat.close.useMutation({
     onSuccess: () => {
-      toast.success("Conversation closed");
+      toast.success(isRtl ? 'تم إغلاق المحادثة' : 'Conversation closed');
       setSelectedConvId(null);
       refetchConvs();
     },
@@ -87,7 +87,7 @@ export default function AdminSupport() {
 
   const reopenMutation = trpc.supportChat.reopen.useMutation({
     onSuccess: () => {
-      toast.success("Conversation reopened");
+      toast.success(isRtl ? 'تم إعادة فتح المحادثة' : 'Conversation reopened');
       refetchConvs();
       refetchMessages();
     },
@@ -121,7 +121,8 @@ export default function AdminSupport() {
     scrollToBottom();
   }, [selectedData?.messages]);
 
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const isRtl = language === 'ar';
 
   const handleSendReply = async () => {
     const trimmed = reply.trim();
@@ -229,15 +230,15 @@ export default function AdminSupport() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Conversation list */}
-          <Card className="lg:col-span-1">
+          {/* Conversation list — hidden on mobile when a conversation is selected */}
+          <Card className={`lg:col-span-1 ${selectedConvId ? 'hidden lg:block' : ''}`}>
             <CardHeader className="pb-3 space-y-3">
               <CardTitle className="text-lg">{t('admin.support.convos')}</CardTitle>
               {/* Search bar */}
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Search by name, email, or message..."
+                  placeholder={isRtl ? 'البحث بالاسم أو البريد أو الرسالة...' : 'Search by name, email, or message...'}
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
                   className="pl-9 h-9 text-sm"
@@ -263,7 +264,7 @@ export default function AdminSupport() {
                         : "bg-gray-100 text-gray-600 hover:bg-gray-200"
                     }`}
                   >
-                    {s === "all" ? "All" : s === "open" ? "Open" : "Closed"}
+                    {s === "all" ? (isRtl ? 'الكل' : 'All') : s === "open" ? (isRtl ? 'مفتوح' : 'Open') : (isRtl ? 'مغلق' : 'Closed')}
                     {s === "all" && ` (${(conversations ?? []).length})`}
                     {s === "open" && ` (${totalOpen})`}
                     {s === "closed" && ` (${(conversations ?? []).length - totalOpen})`}
@@ -279,7 +280,7 @@ export default function AdminSupport() {
                   {debouncedSearch.length >= 2 ? (
                     <div>
                       <Search className="h-8 w-8 mx-auto mb-2 opacity-40" />
-                      <p className="text-sm">No conversations match "{debouncedSearch}"</p>
+                      <p className="text-sm">{isRtl ? `لا توجد محادثات تطابق "${debouncedSearch}"` : `No conversations match "${debouncedSearch}"`}</p>
                     </div>
                   ) : (
                     <p>{t('admin.support.noConvos')}</p>
@@ -328,13 +329,13 @@ export default function AdminSupport() {
                       </div>
                       {conv.lastMessage && (
                         <p className="text-xs text-muted-foreground truncate mt-1">
-                          {conv.lastMessage.senderType === "client" ? "Client: " : "You: "}
+                          {conv.lastMessage.senderType === "client" ? (isRtl ? 'العميل: ' : 'Client: ') : (isRtl ? 'أنت: ' : 'You: ')}
                           {conv.lastMessage.content}
                         </p>
                       )}
                       <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
                         <Clock className="h-3 w-3" />
-                        {new Date(conv.updatedAt).toLocaleString()}
+                        {new Date(conv.updatedAt).toLocaleString(isRtl ? 'ar-EG' : 'en-US')}
                       </p>
                     </button>
                   ))}
@@ -343,8 +344,8 @@ export default function AdminSupport() {
             </CardContent>
           </Card>
 
-          {/* Message view */}
-          <Card className="lg:col-span-2 flex flex-col" style={{ minHeight: "600px" }}>
+          {/* Message view — full width on mobile when conversation selected */}
+          <Card className={`lg:col-span-2 flex flex-col ${!selectedConvId ? 'hidden lg:flex' : ''}`} style={{ minHeight: "600px" }}>
             {!selectedConvId ? (
               <div className="flex-1 flex items-center justify-center text-muted-foreground">
                 <div className="text-center">
@@ -362,7 +363,6 @@ export default function AdminSupport() {
                         variant="ghost"
                         size="icon"
                         onClick={() => setSelectedConvId(null)}
-                        className="lg:hidden"
                       >
                         <ArrowLeft className="h-4 w-4" />
                       </Button>

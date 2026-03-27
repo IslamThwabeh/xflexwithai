@@ -940,10 +940,9 @@ export async function getDashboardStats() {
       totalCourses: 0,
       totalEnrollments: 0,
       activeEnrollments: 0,
-      totalOrders: 0,
-      pendingOrders: 0,
-      completedOrders: 0,
+      totalKeySales: 0,
       totalRevenue: 0,
+      pendingOrders: 0,
     };
   }
 
@@ -955,14 +954,14 @@ export async function getDashboardStats() {
     .from(enrollments)
     .where(eq(enrollments.isSubscriptionActive, true));
 
-  // Order stats
-  const [totalOrdersResult] = await db.select({ count: sql<number>`count(*)` }).from(orders);
+  // Pending orders (for attention banner)
   const [pendingOrdersResult] = await db.select({ count: sql<number>`count(*)` }).from(orders).where(eq(orders.status, 'pending'));
-  const [completedOrdersResult] = await db.select({ count: sql<number>`count(*)` }).from(orders).where(eq(orders.status, 'completed'));
-  const [revenueResult] = await db.select({ total: sql<number>`COALESCE(SUM(${orders.totalAmount}), 0)` }).from(orders).where(eq(orders.status, 'completed'));
-  // Key sales: price stored in dollars; multiply by 100 to match cents unit used by dashboard
-  const [keyRevenueResult] = await db.select({ total: sql<number>`COALESCE(SUM(${registrationKeys.price} * 100), 0)` })
-    .from(registrationKeys)
+
+  // Revenue = activated key sales only (the sole revenue source today)
+  const [keySalesResult] = await db.select({
+    count: sql<number>`count(*)`,
+    total: sql<number>`COALESCE(SUM(${registrationKeys.price}), 0)`,
+  }).from(registrationKeys)
     .where(and(sql`${registrationKeys.activatedAt} IS NOT NULL`, sql`${registrationKeys.price} > 0`));
 
   return {
@@ -970,10 +969,9 @@ export async function getDashboardStats() {
     totalCourses: Number(totalCoursesResult?.count ?? 0),
     totalEnrollments: Number(totalEnrollmentsResult?.count ?? 0),
     activeEnrollments: Number(activeEnrollmentsResult?.count ?? 0),
-    totalOrders: Number(totalOrdersResult?.count ?? 0),
+    totalKeySales: Number(keySalesResult?.count ?? 0),
+    totalRevenue: Number(keySalesResult?.total ?? 0),  // dollars (not cents)
     pendingOrders: Number(pendingOrdersResult?.count ?? 0),
-    completedOrders: Number(completedOrdersResult?.count ?? 0),
-    totalRevenue: Number(revenueResult?.total ?? 0) + Number(keyRevenueResult?.total ?? 0),
   };
 }
 
@@ -4047,32 +4045,36 @@ export async function getSubscribersReport(): Promise<any[]> {
  * Get monthly revenue report
  */
 export async function getRevenueReport(): Promise<{
-  monthlyRevenue: { month: string; revenue: number; orderCount: number }[];
-  packageRevenue: { packageId: number; packageName: string; revenue: number; orderCount: number }[];
-  paymentMethodBreakdown: { method: string; revenue: number; count: number }[];
-  recentOrders: any[];
+  totalRevenue: number;
+  totalKeySales: number;
+  monthlyRevenue: { month: string; revenue: number; count: number }[];
+  packageRevenue: { packageId: number; packageName: string; packageNameAr: string; revenue: number; count: number }[];
+  recentActivations: { id: number; keyCode: string; price: number; packageName: string; packageNameAr: string; userName: string; userEmail: string; activatedAt: string; isUpgrade: boolean; isRenewal: boolean }[];
 }> {
   const db = await getDb();
-  if (!db) return { monthlyRevenue: [], packageRevenue: [], paymentMethodBreakdown: [], recentOrders: [] };
+  if (!db) return { totalRevenue: 0, totalKeySales: 0, monthlyRevenue: [], packageRevenue: [], recentActivations: [] };
 
-  const allOrders = await db.select().from(orders).orderBy(desc(orders.createdAt));
-  const allItems = await db.select().from(orderItems);
+  // All activated keys with price > 0 = actual sales
+  const activatedKeys = await db.select().from(registrationKeys)
+    .where(and(sql`${registrationKeys.activatedAt} IS NOT NULL`, sql`${registrationKeys.price} > 0`))
+    .orderBy(desc(registrationKeys.activatedAt));
+
   const allPackages = await db.select().from(packages);
   const allUsers = await db.select({ id: users.id, name: users.name, email: users.email }).from(users);
 
   const pkgMap = new Map(allPackages.map(p => [p.id, p]));
-  const userMap = new Map(allUsers.map(u => [u.id, u]));
+  const userByEmail = new Map(allUsers.map(u => [u.email?.toLowerCase(), u]));
 
-  const completedOrders = allOrders.filter(o => o.status === 'completed' || o.status === 'paid');
+  const totalRevenue = activatedKeys.reduce((sum, k) => sum + (k.price || 0), 0);
+  const totalKeySales = activatedKeys.length;
 
-  // Monthly revenue
-  const monthMap = new Map<string, { revenue: number; orderCount: number }>();
-  for (const o of completedOrders) {
-    const date = o.completedAt || o.createdAt;
-    const month = date ? date.substring(0, 7) : 'unknown';
-    const existing = monthMap.get(month) || { revenue: 0, orderCount: 0 };
-    existing.revenue += o.totalAmount || 0;
-    existing.orderCount += 1;
+  // Monthly revenue by activatedAt month
+  const monthMap = new Map<string, { revenue: number; count: number }>();
+  for (const k of activatedKeys) {
+    const month = k.activatedAt ? k.activatedAt.substring(0, 7) : 'unknown';
+    const existing = monthMap.get(month) || { revenue: 0, count: 0 };
+    existing.revenue += k.price || 0;
+    existing.count += 1;
     monthMap.set(month, existing);
   }
   const monthlyRevenue = Array.from(monthMap.entries())
@@ -4080,54 +4082,41 @@ export async function getRevenueReport(): Promise<{
     .sort((a, b) => b.month.localeCompare(a.month));
 
   // Revenue by package
-  const pkgRevMap = new Map<number, { revenue: number; orderCount: number }>();
-  for (const o of completedOrders) {
-    const items = allItems.filter(i => i.orderId === o.id);
-    for (const item of items) {
-      if (item.packageId) {
-        const existing = pkgRevMap.get(item.packageId) || { revenue: 0, orderCount: 0 };
-        existing.revenue += item.priceAtPurchase || 0;
-        existing.orderCount += 1;
-        pkgRevMap.set(item.packageId, existing);
-      }
-    }
+  const pkgRevMap = new Map<number, { revenue: number; count: number }>();
+  for (const k of activatedKeys) {
+    const pid = k.packageId || 0;
+    const existing = pkgRevMap.get(pid) || { revenue: 0, count: 0 };
+    existing.revenue += k.price || 0;
+    existing.count += 1;
+    pkgRevMap.set(pid, existing);
   }
   const packageRevenue = Array.from(pkgRevMap.entries())
     .map(([packageId, data]) => ({
       packageId,
-      packageName: pkgMap.get(packageId)?.nameEn || `Package #${packageId}`,
+      packageName: pkgMap.get(packageId)?.nameEn || (packageId === 0 ? 'Other' : `Package #${packageId}`),
+      packageNameAr: pkgMap.get(packageId)?.nameAr || (packageId === 0 ? 'أخرى' : `باقة #${packageId}`),
       ...data,
     }));
 
-  // Payment method breakdown
-  const methodMap = new Map<string, { revenue: number; count: number }>();
-  for (const o of completedOrders) {
-    const method = o.paymentMethod || 'unknown';
-    const existing = methodMap.get(method) || { revenue: 0, count: 0 };
-    existing.revenue += o.totalAmount || 0;
-    existing.count += 1;
-    methodMap.set(method, existing);
-  }
-  const paymentMethodBreakdown = Array.from(methodMap.entries())
-    .map(([method, data]) => ({ method, ...data }));
-
-  // Recent orders with user info
-  const recentOrders = allOrders.slice(0, 50).map(o => {
-    const user = userMap.get(o.userId);
-    const items = allItems.filter(i => i.orderId === o.id);
-    const packageNames = items
-      .filter(i => i.packageId)
-      .map(i => pkgMap.get(i.packageId!)?.nameEn || 'Unknown')
-      .join(', ');
+  // Recent activations (last 50)
+  const recentActivations = activatedKeys.slice(0, 50).map(k => {
+    const user = k.email ? userByEmail.get(k.email.toLowerCase()) : undefined;
+    const pkg = k.packageId ? pkgMap.get(k.packageId) : undefined;
     return {
-      ...o,
-      userName: user?.name || 'Unknown',
-      userEmail: user?.email || 'Unknown',
-      packageNames,
+      id: k.id,
+      keyCode: k.keyCode,
+      price: k.price || 0,
+      packageName: pkg?.nameEn || 'Unknown',
+      packageNameAr: pkg?.nameAr || 'غير معروف',
+      userName: user?.name || k.email || 'Unknown',
+      userEmail: k.email || user?.email || 'Unknown',
+      activatedAt: k.activatedAt || '',
+      isUpgrade: !!k.isUpgrade,
+      isRenewal: !!k.isRenewal,
     };
   });
 
-  return { monthlyRevenue, packageRevenue, paymentMethodBreakdown, recentOrders };
+  return { totalRevenue, totalKeySales, monthlyRevenue, packageRevenue, recentActivations };
 }
 
 /**

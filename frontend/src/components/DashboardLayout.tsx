@@ -70,46 +70,38 @@ const menuSectionsDef: MenuSection[] = [
     ]
   },
   {
-    labelKey: "admin.sidebar.content",
+    labelKey: "admin.sidebar.sales",
+    items: [
+      { icon: ShoppingCart, labelKey: "admin.sidebar.orders", path: "/admin/orders" },
+      { icon: Key, labelKey: "admin.sidebar.activationKeys", path: "/admin/package-keys" },
+      { icon: Package, labelKey: "admin.sidebar.packages", path: "/admin/packages" },
+      { icon: Tag, labelKey: "admin.sidebar.coupons", path: "/admin/coupons" },
+    ]
+  },
+  {
+    labelKey: "admin.sidebar.learning",
     items: [
       { icon: BookOpen, labelKey: "admin.sidebar.courses", path: "/admin/courses" },
       { icon: ClipboardCheck, labelKey: "admin.sidebar.quizzes", path: "/admin/quizzes" },
-      { icon: Key, labelKey: "admin.sidebar.activationKeys", path: "/admin/package-keys" },
-      { icon: Package, labelKey: "admin.sidebar.packages", path: "/admin/packages" },
-      { icon: ShoppingCart, labelKey: "admin.sidebar.orders", path: "/admin/orders" },
-      { icon: CalendarDays, labelKey: "admin.sidebar.events", path: "/admin/events", descKey: "admin.sidebar.eventsDesc" },
-      { icon: FileText, labelKey: "admin.sidebar.articles", path: "/admin/articles", descKey: "admin.sidebar.articlesDesc" },
-      { icon: Tag, labelKey: "admin.sidebar.coupons", path: "/admin/coupons", descKey: "admin.sidebar.couponsDesc" },
-      { icon: MessageSquareQuote, labelKey: "admin.sidebar.testimonials", path: "/admin/testimonials", descKey: "admin.sidebar.testimonialsDesc" },
     ]
   },
   {
-    labelKey: "admin.sidebar.careers",
+    labelKey: "admin.sidebar.content",
     items: [
-      { icon: Briefcase, labelKey: "admin.sidebar.jobsApplications", path: "/admin/jobs" },
+      { icon: FileText, labelKey: "admin.sidebar.articles", path: "/admin/articles" },
+      { icon: CalendarDays, labelKey: "admin.sidebar.events", path: "/admin/events" },
+      { icon: MessageSquareQuote, labelKey: "admin.sidebar.testimonials", path: "/admin/testimonials" },
     ]
   },
   {
-    labelKey: "admin.sidebar.lexai",
-    items: [
-      { icon: MessageSquare, labelKey: "admin.sidebar.conversations", path: "/admin/lexai/conversations" },
-      { icon: Users, labelKey: "admin.sidebar.subscriptions", path: "/admin/lexai/subscriptions" },
-    ]
-  },
-  {
-    labelKey: "admin.sidebar.users",
+    labelKey: "admin.sidebar.students",
     items: [
       { icon: Users, labelKey: "admin.sidebar.usersList", path: "/admin/users" },
+      { icon: BarChart3, labelKey: "admin.sidebar.subscribers", path: "/admin/reports/subscribers" },
     ]
   },
   {
-    labelKey: "admin.sidebar.recommendations",
-    items: [
-      { icon: MessageSquare, labelKey: "admin.sidebar.groupMgmt", path: "/admin/recommendations" },
-    ]
-  },
-  {
-    labelKey: "admin.sidebar.support",
+    labelKey: "admin.sidebar.team",
     items: [
       { icon: Headphones, labelKey: "admin.sidebar.supportChat", path: "/admin/support" },
       { icon: Shield, labelKey: "admin.sidebar.roles", path: "/admin/roles" },
@@ -118,7 +110,6 @@ const menuSectionsDef: MenuSection[] = [
   {
     labelKey: "admin.sidebar.reports",
     items: [
-      { icon: Users, labelKey: "admin.sidebar.subscribers", path: "/admin/reports/subscribers" },
       { icon: DollarSign, labelKey: "admin.sidebar.revenue", path: "/admin/reports/revenue" },
       { icon: Clock, labelKey: "admin.sidebar.expiry", path: "/admin/reports/expiry" },
       { icon: Activity, labelKey: "admin.sidebar.engagement", path: "/admin/engagement" },
@@ -132,6 +123,26 @@ const menuSectionsDef: MenuSection[] = [
       { icon: Award, labelKey: "admin.sidebar.loyaltyPoints", path: "/admin/points" },
     ]
   },
+  {
+    labelKey: "admin.sidebar.careers",
+    items: [
+      { icon: Briefcase, labelKey: "admin.sidebar.jobsApplications", path: "/admin/jobs" },
+    ]
+  },
+  // Hidden sections — backend kept, UI disabled
+  // {
+  //   labelKey: "admin.sidebar.lexai",
+  //   items: [
+  //     { icon: MessageSquare, labelKey: "admin.sidebar.conversations", path: "/admin/lexai/conversations" },
+  //     { icon: Users, labelKey: "admin.sidebar.subscriptions", path: "/admin/lexai/subscriptions" },
+  //   ]
+  // },
+  // {
+  //   labelKey: "admin.sidebar.recommendations",
+  //   items: [
+  //     { icon: MessageSquare, labelKey: "admin.sidebar.groupMgmt", path: "/admin/recommendations" },
+  //   ]
+  // },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";

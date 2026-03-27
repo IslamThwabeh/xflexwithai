@@ -24,15 +24,15 @@ import { Shield, UserPlus, Trash2, Search } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
-const ROLE_LABELS: Record<string, { en: string; color: string; group: string }> = {
-  analyst: { en: "Analyst", color: "bg-purple-100 text-purple-800", group: "Core Roles" },
-  support: { en: "Support", color: "bg-blue-100 text-blue-800", group: "Core Roles" },
-  key_manager: { en: "Key Manager", color: "bg-amber-100 text-amber-800", group: "Core Roles" },
-  view_progress: { en: "View Progress", color: "bg-green-100 text-green-800", group: "Support Permissions" },
-  view_recommendations: { en: "View Recommendations", color: "bg-pink-100 text-pink-800", group: "Support Permissions" },
-  view_subscriptions: { en: "View Subscriptions", color: "bg-cyan-100 text-cyan-800", group: "Support Permissions" },
-  view_quizzes: { en: "View Quizzes", color: "bg-orange-100 text-orange-800", group: "Support Permissions" },
-  client_lookup: { en: "Client Lookup", color: "bg-indigo-100 text-indigo-800", group: "Support Permissions" },
+const ROLE_LABELS: Record<string, { labelKey: string; color: string; group: string }> = {
+  analyst: { labelKey: "admin.roles.analyst", color: "bg-purple-100 text-purple-800", group: "Core Roles" },
+  support: { labelKey: "admin.roles.support", color: "bg-blue-100 text-blue-800", group: "Core Roles" },
+  key_manager: { labelKey: "admin.roles.keyManager", color: "bg-amber-100 text-amber-800", group: "Core Roles" },
+  view_progress: { labelKey: "admin.roles.viewProgress", color: "bg-green-100 text-green-800", group: "Support Permissions" },
+  view_recommendations: { labelKey: "admin.roles.viewRec", color: "bg-pink-100 text-pink-800", group: "Support Permissions" },
+  view_subscriptions: { labelKey: "admin.roles.viewSubs", color: "bg-cyan-100 text-cyan-800", group: "Support Permissions" },
+  view_quizzes: { labelKey: "admin.roles.viewQuizzes", color: "bg-orange-100 text-orange-800", group: "Support Permissions" },
+  client_lookup: { labelKey: "admin.roles.clientLookup", color: "bg-indigo-100 text-indigo-800", group: "Support Permissions" },
 };
 
 export default function AdminRoles() {
@@ -41,14 +41,15 @@ export default function AdminRoles() {
   const [showAssign, setShowAssign] = useState(false);
   const [assignUserId, setAssignUserId] = useState("");
 
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const isRtl = language === 'ar';
 
   const { data: roleAssignments, isLoading, refetch } = trpc.roles.list.useQuery();
   const { data: allUsers } = trpc.users.list.useQuery();
 
   const assignMutation = trpc.roles.assign.useMutation({
     onSuccess: () => {
-      toast.success("Role assigned successfully");
+      toast.success(isRtl ? 'تم تعيين الدور بنجاح' : 'Role assigned successfully');
       refetch();
       setShowAssign(false);
       setAssignUserId("");
@@ -58,7 +59,7 @@ export default function AdminRoles() {
 
   const removeMutation = trpc.roles.remove.useMutation({
     onSuccess: () => {
-      toast.success("Role removed successfully");
+      toast.success(isRtl ? 'تم إزالة الدور بنجاح' : 'Role removed successfully');
       refetch();
     },
     onError: (err) => toast.error(err.message),
@@ -85,7 +86,7 @@ export default function AdminRoles() {
   const handleAssign = () => {
     const id = parseInt(assignUserId, 10);
     if (!id) {
-      toast.error("Select a user");
+      toast.error(isRtl ? 'اختر مستخدم' : 'Select a user');
       return;
     }
     assignMutation.mutate({
@@ -134,14 +135,14 @@ export default function AdminRoles() {
                     <optgroup label={t('admin.roles.coreRoles')}>
                       {Object.entries(ROLE_LABELS).filter(([, v]) => v.group === "Core Roles").map(([key, val]) => (
                         <option key={key} value={key}>
-                          {val.en}
+                          {t(val.labelKey)}
                         </option>
                       ))}
                     </optgroup>
                     <optgroup label={t('admin.roles.supportPerms')}>
                       {Object.entries(ROLE_LABELS).filter(([, v]) => v.group === "Support Permissions").map(([key, val]) => (
                         <option key={key} value={key}>
-                          {val.en}
+                          {t(val.labelKey)}
                         </option>
                       ))}
                     </optgroup>
@@ -182,7 +183,7 @@ export default function AdminRoles() {
               <Card key={role}>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-lg">
-                    {ROLE_LABELS[role].en}
+                    {t(ROLE_LABELS[role].labelKey)}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -200,7 +201,7 @@ export default function AdminRoles() {
               <Card key={role}>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm">
-                    {ROLE_LABELS[role].en}
+                    {t(ROLE_LABELS[role].labelKey)}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -259,11 +260,11 @@ export default function AdminRoles() {
                           variant="secondary"
                           className={ROLE_LABELS[r.role]?.color ?? ""}
                         >
-                          {ROLE_LABELS[r.role]?.en ?? r.role}
+                          {ROLE_LABELS[r.role] ? t(ROLE_LABELS[r.role].labelKey) : r.role}
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        {new Date(r.assignedAt).toLocaleDateString()}
+                        {new Date(r.assignedAt).toLocaleDateString(isRtl ? 'ar-EG' : 'en-US')}
                       </TableCell>
                       <TableCell className="text-right">
                         <Button

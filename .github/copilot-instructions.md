@@ -98,7 +98,7 @@ vatAmount = totalAmount * 0.16
 - **Mobile-first**: Business owner tests on mobile frequently — always verify mobile layout
 - **WhatsAppFloat**: Whitelist approach — only shows on known public paths (`/`, `/checkout`, `/articles`, `/events`, `/careers`, `/about`, `/refund-policy`, `/terms`, `/privacy`). Hidden everywhere else.
 - **KeyActivationPrompt**: Dialog on `MyDashboard` when user has no enrollments — dismissed via `sessionStorage`
-- **Admin sidebar sections**: Overview → Content → Careers → Users → Support → Reports → Moderation
+- **Admin sidebar sections**: Overview → Sales → Learning → Content → Users & Support → Reports → Moderation → Careers
 - Student nav items: Dashboard, LexAI, Recommendations, Support, Quizzes, My Package, Notifications, Points, Calculators
 - **Removed from nav**: Orders (page kept), Subscriptions (redirects to `/my-packages`), Profile (accessible via avatar click)
 - **StudentPackages.tsx**: Merged "My Package" + "My Subscriptions" into one page — package status, subscription history, freeze, upgrade CTA, feature badges

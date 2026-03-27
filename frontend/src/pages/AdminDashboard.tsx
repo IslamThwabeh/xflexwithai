@@ -2,7 +2,7 @@ import DashboardLayout from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { trpc } from "@/lib/trpc";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { Users, BookOpen, GraduationCap, TrendingUp, Key, Library, ShoppingCart, DollarSign, Clock, CheckCircle2 } from "lucide-react";
+import { Users, BookOpen, GraduationCap, TrendingUp, Key, Library, ShoppingCart, DollarSign, Clock, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useLocation } from "wouter";
 import { formatDistanceToNow } from "date-fns";
@@ -29,60 +29,126 @@ export default function AdminDashboard() {
           <p className="text-muted-foreground">{t('admin.dashboard.welcome')}</p>
         </div>
 
-        {/* Quick Actions */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={() => setLocation("/admin/package-keys")}>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-lg font-semibold">{t('admin.dashboard.keys')}</CardTitle>
-              <Key className="h-6 w-6 text-primary" />
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground mb-4">
-                {t('admin.dashboard.keysDesc')}
-              </p>
-              <Button className="w-full" variant="default">
-                {t('admin.dashboard.manageKeys')}
+        {/* Attention Banner — pending orders */}
+        {!statsLoading && (stats?.pendingOrders ?? 0) > 0 && (
+          <Card
+            className="border-amber-200 bg-amber-50/50 cursor-pointer hover:shadow-md transition-shadow"
+            onClick={() => setLocation("/admin/orders")}
+          >
+            <CardContent className="flex items-center gap-3 py-3 px-4">
+              <div className="flex items-center justify-center h-9 w-9 rounded-full bg-amber-100">
+                <AlertCircle className="h-5 w-5 text-amber-600" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-amber-800">
+                  {isRtl
+                    ? `${stats?.pendingOrders} طلبات بانتظار المراجعة`
+                    : `${stats?.pendingOrders} order${(stats?.pendingOrders ?? 0) > 1 ? 's' : ''} pending review`}
+                </p>
+                <p className="text-xs text-amber-600">
+                  {isRtl ? 'اضغط للمراجعة' : 'Click to review'}
+                </p>
+              </div>
+              <Button variant="outline" size="sm" className="border-amber-300 text-amber-700 hover:bg-amber-100 shrink-0">
+                {isRtl ? 'مراجعة' : 'Review'}
               </Button>
             </CardContent>
           </Card>
+        )}
 
-          <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={() => setLocation("/admin/courses")}>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-lg font-semibold">{t('admin.dashboard.courses')}</CardTitle>
-              <Library className="h-6 w-6 text-primary" />
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground mb-4">
-                {t('admin.dashboard.coursesDesc')}
-              </p>
-              <Button className="w-full" variant="default">
-                {t('admin.dashboard.viewCourses')}
-              </Button>
+        {/* Quick Actions — compact 4-column grid */}
+        <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+          <Card className="hover:shadow-md transition-shadow cursor-pointer group" onClick={() => setLocation("/admin/orders")}>
+            <CardContent className="flex items-center gap-3 py-4 px-4">
+              <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-blue-50 group-hover:bg-blue-100 transition-colors">
+                <ShoppingCart className="h-5 w-5 text-blue-600" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold truncate">{isRtl ? 'الطلبات' : 'Orders'}</p>
+                <p className="text-xs text-muted-foreground truncate">{isRtl ? 'مراجعة وإدارة' : 'Review & manage'}</p>
+              </div>
             </CardContent>
           </Card>
 
-          <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={() => setLocation("/admin/users")}>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-lg font-semibold">{t('admin.dashboard.users')}</CardTitle>
-              <Users className="h-6 w-6 text-primary" />
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground mb-4">
-                {t('admin.dashboard.usersDesc')}
-              </p>
-              <Button className="w-full" variant="default">
-                {t('admin.dashboard.viewUsers')}
-              </Button>
+          <Card className="hover:shadow-md transition-shadow cursor-pointer group" onClick={() => setLocation("/admin/package-keys")}>
+            <CardContent className="flex items-center gap-3 py-4 px-4">
+              <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-violet-50 group-hover:bg-violet-100 transition-colors">
+                <Key className="h-5 w-5 text-violet-600" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold truncate">{t('admin.dashboard.keys')}</p>
+                <p className="text-xs text-muted-foreground truncate">{isRtl ? 'إنشاء وتتبع' : 'Generate & track'}</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="hover:shadow-md transition-shadow cursor-pointer group" onClick={() => setLocation("/admin/courses")}>
+            <CardContent className="flex items-center gap-3 py-4 px-4">
+              <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-emerald-50 group-hover:bg-emerald-100 transition-colors">
+                <Library className="h-5 w-5 text-emerald-600" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold truncate">{t('admin.dashboard.courses')}</p>
+                <p className="text-xs text-muted-foreground truncate">{isRtl ? 'الدورات والحلقات' : 'Courses & episodes'}</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="hover:shadow-md transition-shadow cursor-pointer group" onClick={() => setLocation("/admin/users")}>
+            <CardContent className="flex items-center gap-3 py-4 px-4">
+              <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-orange-50 group-hover:bg-orange-100 transition-colors">
+                <Users className="h-5 w-5 text-orange-600" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold truncate">{t('admin.dashboard.users')}</p>
+                <p className="text-xs text-muted-foreground truncate">{isRtl ? 'إدارة المستخدمين' : 'Manage students'}</p>
+              </div>
             </CardContent>
           </Card>
         </div>
 
-        {/* Statistics Cards - Row 1: Core */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        {/* Statistics — flat grid, no sub-headers */}
+        <div className="grid gap-3 grid-cols-2 lg:grid-cols-3">
+          <Card className="bg-gradient-to-br from-green-50 to-emerald-50 border-green-200">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-green-800">{t('admin.totalRevenue')}</CardTitle>
+              <DollarSign className="h-4 w-4 shrink-0 text-green-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-700">
+                ${statsLoading ? "..." : (stats?.totalRevenue || 0).toFixed(2)}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">{isRtl ? 'مفاتيح مُفعّلة' : 'Keys Sold'}</CardTitle>
+              <Key className="h-4 w-4 shrink-0 text-violet-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {statsLoading ? "..." : stats?.totalKeySales || 0}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">{isRtl ? 'طلبات معلقة' : 'Pending Orders'}</CardTitle>
+              <Clock className="h-4 w-4 shrink-0 text-amber-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-amber-600">
+                {statsLoading ? "..." : stats?.pendingOrders || 0}
+              </div>
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">{t('admin.totalUsers')}</CardTitle>
-              <Users className="h-4 w-4 text-muted-foreground" />
+              <Users className="h-4 w-4 shrink-0 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
@@ -94,7 +160,7 @@ export default function AdminDashboard() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">{t('admin.totalCourses')}</CardTitle>
-              <BookOpen className="h-4 w-4 text-muted-foreground" />
+              <BookOpen className="h-4 w-4 shrink-0 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
@@ -106,74 +172,11 @@ export default function AdminDashboard() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">{t('admin.totalEnrollments')}</CardTitle>
-              <GraduationCap className="h-4 w-4 text-muted-foreground" />
+              <GraduationCap className="h-4 w-4 shrink-0 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
                 {statsLoading ? "..." : stats?.totalEnrollments || 0}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">{t('admin.dashboard.activeSubs')}</CardTitle>
-              <TrendingUp className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {statsLoading ? "..." : stats?.activeEnrollments || 0}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Statistics Cards - Row 2: Orders & Revenue */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">{isRtl ? 'إجمالي الطلبات' : 'Total Orders'}</CardTitle>
-              <ShoppingCart className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {statsLoading ? "..." : stats?.totalOrders || 0}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">{isRtl ? 'طلبات معلقة' : 'Pending Orders'}</CardTitle>
-              <Clock className="h-4 w-4 text-amber-500" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-amber-600">
-                {statsLoading ? "..." : stats?.pendingOrders || 0}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">{isRtl ? 'طلبات مكتملة' : 'Completed Orders'}</CardTitle>
-              <CheckCircle2 className="h-4 w-4 text-green-500" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-green-600">
-                {statsLoading ? "..." : stats?.completedOrders || 0}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-gradient-to-br from-green-50 to-emerald-50 border-green-200">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-green-800">{t('admin.totalRevenue')}</CardTitle>
-              <DollarSign className="h-4 w-4 text-green-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-green-700">
-                ${statsLoading ? "..." : ((stats?.totalRevenue || 0) / 100).toFixed(2)}
               </div>
             </CardContent>
           </Card>
