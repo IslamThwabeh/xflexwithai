@@ -755,29 +755,25 @@ export default function AdminPackageKeys() {
                       <span className="font-medium">{key.price ? `$${key.price}` : '—'}</span>
                     </div>
                     <div>
-                      <span className="text-gray-400 block">{language === 'ar' ? 'المدة' : 'Duration'}</span>
-                      <span className="font-medium">{key.entitlementDays ? `${key.entitlementDays}d` : (language === 'ar' ? 'الافتراضي' : 'Default')}</span>
+                      <span className="text-gray-400 block">
+                        {key.activatedAt
+                          ? (language === 'ar' ? 'انتهاء الاشتراك' : 'Sub Expiry')
+                          : (language === 'ar' ? 'مدة الاشتراك' : 'Duration')}
+                      </span>
+                      <span className="font-medium">
+                        {key.activatedAt
+                          ? ((key as any).subEndDate
+                              ? new Date((key as any).subEndDate).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US')
+                              : '—')
+                          : (key.entitlementDays
+                              ? `${key.entitlementDays} ${language === 'ar' ? 'يوم' : 'days'}`
+                              : (language === 'ar' ? 'الافتراضي' : 'Default'))}
+                      </span>
                     </div>
                     <div>
                       <span className="text-gray-400 block">{language === 'ar' ? 'تاريخ التفعيل' : 'Activated'}</span>
                       <span className="font-medium">{key.activatedAt ? new Date(key.activatedAt).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US') : '—'}</span>
                     </div>
-                    {key.expiresAt && !key.activatedAt && (
-                      <div>
-                        <span className="text-gray-400 block">{language === 'ar' ? 'آخر موعد للتفعيل' : 'Redeem By'}</span>
-                        <span className={`font-medium ${new Date(key.expiresAt).getTime() < Date.now() ? 'text-red-500' : ''}`}>
-                          {new Date(key.expiresAt).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US')}
-                        </span>
-                      </div>
-                    )}
-                    {(key as any).subEndDate && (
-                      <div>
-                        <span className="text-gray-400 block">{language === 'ar' ? 'انتهاء الاشتراك' : 'Sub Expiry'}</span>
-                        <span className="font-medium">
-                          {new Date((key as any).subEndDate).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US')}
-                        </span>
-                      </div>
-                    )}
                     <div>
                       <span className="text-gray-400 block">{language === 'ar' ? 'تاريخ الإنشاء' : 'Created'}</span>
                       <span className="font-medium">{key.createdAt ? new Date(key.createdAt).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US') : '—'}</span>
@@ -872,9 +868,7 @@ export default function AdminPackageKeys() {
                     <TableHead>{language === 'ar' ? 'البريد' : 'Email'}</TableHead>
                     <TableHead>{language === 'ar' ? 'الحالة' : 'Status'}</TableHead>
                     <TableHead>{language === 'ar' ? 'السعر' : 'Price'}</TableHead>
-                    <TableHead>{language === 'ar' ? 'المدة' : 'Duration'}</TableHead>
-                    <TableHead>{language === 'ar' ? 'آخر موعد للتفعيل' : 'Redeem By'}</TableHead>
-                    <TableHead>{language === 'ar' ? 'انتهاء الاشتراك' : 'Sub Expiry'}</TableHead>
+                    <TableHead>{language === 'ar' ? 'المدة / الانتهاء' : 'Duration / Expiry'}</TableHead>
                     <TableHead>{language === 'ar' ? 'النوع' : 'Type'}</TableHead>
                     <TableHead>{language === 'ar' ? 'تاريخ التفعيل' : 'Activated'}</TableHead>
                     <TableHead>{language === 'ar' ? 'تاريخ الإنشاء' : 'Created'}</TableHead>
@@ -885,7 +879,7 @@ export default function AdminPackageKeys() {
                 <TableBody>
                   {filteredKeys.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={13} className="text-center py-8 text-gray-500">
+                      <TableCell colSpan={11} className="text-center py-8 text-gray-500">
                         {language === 'ar' ? 'لا توجد مفاتيح' : 'No keys found'}
                       </TableCell>
                     </TableRow>
@@ -947,20 +941,12 @@ export default function AdminPackageKeys() {
                         <TableCell className="text-sm font-medium">
                           {key.price ? `$${key.price}` : '—'}
                         </TableCell>
-                        <TableCell className="text-xs text-gray-500">
-                          {key.entitlementDays ? `${key.entitlementDays}d` : (language === 'ar' ? 'الافتراضي' : 'Default')}
-                        </TableCell>
-                        <TableCell className="text-xs text-gray-500">
-                          {key.expiresAt ? (
-                            <span className={new Date(key.expiresAt).getTime() < Date.now() ? 'text-red-500' : ''}>
-                              {new Date(key.expiresAt).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US')}
-                            </span>
-                          ) : '—'}
-                        </TableCell>
-                        <TableCell className="text-xs text-gray-500">
-                          {(key as any).subEndDate
-                            ? new Date((key as any).subEndDate).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US')
-                            : '—'}
+                        <TableCell className="text-xs">
+                          {key.activatedAt
+                            ? ((key as any).subEndDate
+                                ? <span className="text-gray-600">{new Date((key as any).subEndDate).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US')}</span>
+                                : <span className="text-gray-400">—</span>)
+                            : <span className="text-gray-500">{key.entitlementDays ? `${key.entitlementDays} ${language === 'ar' ? 'يوم' : 'days'}` : (language === 'ar' ? 'الافتراضي' : 'Default')}</span>}
                         </TableCell>
                         <TableCell>
                           {(key as any).isRenewal ? (
