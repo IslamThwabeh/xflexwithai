@@ -1937,8 +1937,12 @@ export const appRouter = router({
 
     setAnalyst: adminProcedure
       .input(z.object({ userId: z.number(), enabled: z.boolean() }))
-      .mutation(async ({ input }) => {
-        await db.setRecommendationPublisher(input.userId, input.enabled);
+      .mutation(async ({ ctx, input }) => {
+        if (input.enabled) {
+          await db.assignRole(input.userId, 'analyst', (ctx as any).admin?.id);
+        } else {
+          await db.removeRole(input.userId, 'analyst');
+        }
         return { success: true };
       }),
   }),
@@ -2186,11 +2190,6 @@ export const appRouter = router({
         if (!user) throw new TRPCError({ code: 'NOT_FOUND', message: 'User not found' });
         await db.assignRole(input.userId, input.role, (ctx as any).admin?.id);
 
-        // Keep canPublishRecommendations in sync for backward compat
-        if (input.role === 'analyst') {
-          await db.setRecommendationPublisher(input.userId, true);
-        }
-
         return { success: true };
       }),
 
@@ -2202,11 +2201,6 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         await db.removeRole(input.userId, input.role);
-
-        // Keep canPublishRecommendations in sync for backward compat
-        if (input.role === 'analyst') {
-          await db.setRecommendationPublisher(input.userId, false);
-        }
 
         return { success: true };
       }),
@@ -2239,9 +2233,6 @@ export const appRouter = router({
         // Assign all selected roles
         for (const role of input.roles) {
           await db.assignRole(userId, role, (ctx as any).admin?.id);
-          if (role === 'analyst') {
-            await db.setRecommendationPublisher(userId, true);
-          }
         }
         return { success: true, userId };
       }),

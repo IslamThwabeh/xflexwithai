@@ -1296,19 +1296,14 @@ export async function getExpiringSubscriptions(withinDays: number): Promise<{ em
   return results;
 }
 
-export async function setRecommendationPublisher(userId: number, enabled: boolean) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  await db.update(users).set({ canPublishRecommendations: enabled }).where(eq(users.id, userId));
-}
-
 export async function getRecommendationPublishers() {
   const db = await getDb();
   if (!db) return [];
   return await db
     .select({ id: users.id, email: users.email, name: users.name })
     .from(users)
-    .where(eq(users.canPublishRecommendations, true))
+    .innerJoin(userRoles, eq(users.id, userRoles.userId))
+    .where(eq(userRoles.role, 'analyst'))
     .orderBy(users.name, users.email);
 }
 
@@ -1316,11 +1311,11 @@ export async function getUserRecommendationsAccess(userId: number) {
   const db = await getDb();
   if (!db) return { canPublish: false, hasSubscription: false, subscription: null as RecommendationSubscription | null };
 
-  const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  const canPublish = await hasRole(userId, 'analyst');
   const subscription = await getActiveRecommendationSubscription(userId);
 
   return {
-    canPublish: Boolean(user?.canPublishRecommendations),
+    canPublish,
     hasSubscription: !!subscription,
     subscription: subscription ?? null,
   };
@@ -1413,10 +1408,18 @@ export async function getRecommendationMessagesFeed(userId: number, limit: numbe
 
   const authors = authorIds.length
     ? await db
-        .select({ id: users.id, name: users.name, email: users.email, canPublishRecommendations: users.canPublishRecommendations })
+        .select({ id: users.id, name: users.name, email: users.email })
         .from(users)
         .where(inArray(users.id, authorIds))
     : [];
+
+  // Check which authors have the analyst role
+  const analystRoles = authorIds.length
+    ? await db.select({ userId: userRoles.userId })
+        .from(userRoles)
+        .where(and(inArray(userRoles.userId, authorIds), eq(userRoles.role, 'analyst')))
+    : [];
+  const analystSet = new Set(analystRoles.map(r => r.userId));
 
   const reactions = messageIds.length
     ? await db
@@ -1442,7 +1445,7 @@ export async function getRecommendationMessagesFeed(userId: number, limit: numbe
       ...message,
       authorName: author?.name || author?.email || "Unknown",
       authorEmail: author?.email || null,
-      isAnalyst: !!author?.canPublishRecommendations,
+      isAnalyst: analystSet.has(message.userId),
       reactions: reactionCounts,
       myReaction,
     };

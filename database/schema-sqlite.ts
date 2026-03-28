@@ -13,7 +13,6 @@ export const users = sqliteTable("users", {
   phone: text("phone", { length: 20 }),
   city: text("city", { length: 100 }),
   country: text("country", { length: 100 }),
-  canPublishRecommendations: integer("canPublishRecommendations", { mode: 'boolean' }).default(false).notNull(),
   emailVerified: integer("emailVerified", { mode: 'boolean' }).default(false).notNull(),
   createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
   updatedAt: text("updatedAt").default("CURRENT_TIMESTAMP").notNull(),
