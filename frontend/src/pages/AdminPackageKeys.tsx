@@ -60,6 +60,31 @@ import {
   Snowflake,
   X,
 } from "lucide-react";
+import {
+  useDataTable,
+  DataTablePagination,
+  SortableHeader,
+  zebraRow,
+} from "@/components/DataTable";
+
+const keySortFns: Record<string, (a: any, b: any) => number> = {
+  keyCode: (a, b) => (a.keyCode || "").localeCompare(b.keyCode || ""),
+  package: (a, b) => (a.packageName || "").localeCompare(b.packageName || ""),
+  email: (a, b) => (a.email || "").localeCompare(b.email || ""),
+  status: (a, b) => {
+    const rank = (k: any) => !k.isActive ? 0 : k.activatedAt ? 2 : 1;
+    return rank(a) - rank(b);
+  },
+  price: (a, b) => (a.price || 0) - (b.price || 0),
+  type: (a, b) => {
+    const rank = (k: any) => k.isRenewal ? 2 : k.isUpgrade ? 1 : 0;
+    return rank(a) - rank(b);
+  },
+  activated: (a, b) =>
+    new Date(a.activatedAt || 0).getTime() - new Date(b.activatedAt || 0).getTime(),
+  created: (a, b) =>
+    new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime(),
+};
 
 export default function AdminPackageKeys() {
   const { t, language } = useLanguage();
@@ -256,6 +281,20 @@ export default function AdminPackageKeys() {
     else if (statusFilter === 'frozen') matchesStatus = !!k.isActive && !!k.activatedAt && (!!k.lexaiIsPaused || !!k.recIsPaused);
     return matchesSearch && matchesPackage && matchesStatus;
   });
+
+  // Pagination + sorting
+  const {
+    paged: pagedKeys,
+    page,
+    pageSize,
+    totalPages,
+    totalItems,
+    sortKey,
+    sortDir,
+    setPage,
+    handleSort,
+    changePageSize,
+  } = useDataTable(filteredKeys, keySortFns);
 
   const selectedPkg = packages.find((p: any) => p.id === selectedPackage);
   const isBasicPackage = selectedPkg?.slug === 'basic';
@@ -679,7 +718,7 @@ export default function AdminPackageKeys() {
               </CardContent>
             </Card>
           ) : (
-            filteredKeys.map((key: any) => (
+            pagedKeys.map((key: any) => (
               <Card key={key.id} className={!key.isActive ? 'opacity-60' : ''}>
                 <CardContent className="p-4 space-y-3">
                   {/* Row 1: Key code + copy */}
@@ -863,29 +902,29 @@ export default function AdminPackageKeys() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>{language === 'ar' ? 'المفتاح' : 'Key Code'}</TableHead>
-                    <TableHead>{language === 'ar' ? 'الباقة' : 'Package'}</TableHead>
-                    <TableHead>{language === 'ar' ? 'البريد' : 'Email'}</TableHead>
-                    <TableHead>{language === 'ar' ? 'الحالة' : 'Status'}</TableHead>
-                    <TableHead>{language === 'ar' ? 'السعر' : 'Price'}</TableHead>
+                    <TableHead><SortableHeader label={language === 'ar' ? 'المفتاح' : 'Key Code'} sortKey="keyCode" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></TableHead>
+                    <TableHead><SortableHeader label={language === 'ar' ? 'الباقة' : 'Package'} sortKey="package" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></TableHead>
+                    <TableHead><SortableHeader label={language === 'ar' ? 'البريد' : 'Email'} sortKey="email" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></TableHead>
+                    <TableHead><SortableHeader label={language === 'ar' ? 'الحالة' : 'Status'} sortKey="status" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></TableHead>
+                    <TableHead><SortableHeader label={language === 'ar' ? 'السعر' : 'Price'} sortKey="price" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></TableHead>
                     <TableHead>{language === 'ar' ? 'المدة / الانتهاء' : 'Duration / Expiry'}</TableHead>
-                    <TableHead>{language === 'ar' ? 'النوع' : 'Type'}</TableHead>
-                    <TableHead>{language === 'ar' ? 'تاريخ التفعيل' : 'Activated'}</TableHead>
-                    <TableHead>{language === 'ar' ? 'تاريخ الإنشاء' : 'Created'}</TableHead>
+                    <TableHead><SortableHeader label={language === 'ar' ? 'النوع' : 'Type'} sortKey="type" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></TableHead>
+                    <TableHead><SortableHeader label={language === 'ar' ? 'تاريخ التفعيل' : 'Activated'} sortKey="activated" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></TableHead>
+                    <TableHead><SortableHeader label={language === 'ar' ? 'تاريخ الإنشاء' : 'Created'} sortKey="created" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></TableHead>
                     <TableHead>{language === 'ar' ? 'ملاحظات' : 'Notes'}</TableHead>
                     <TableHead></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredKeys.length === 0 ? (
+                  {pagedKeys.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={11} className="text-center py-8 text-gray-500">
                         {language === 'ar' ? 'لا توجد مفاتيح' : 'No keys found'}
                       </TableCell>
                     </TableRow>
                   ) : (
-                    filteredKeys.map((key: any) => (
-                      <TableRow key={key.id} className={!key.isActive ? 'opacity-50' : ''}>
+                    pagedKeys.map((key: any, i: number) => (
+                      <TableRow key={key.id} className={zebraRow(i, !key.isActive ? 'opacity-50' : '')}>
                         <TableCell>
                           <div className="flex items-center gap-1.5">
                             <code className="text-xs font-mono bg-gray-100 px-1.5 py-0.5 rounded">
@@ -1036,6 +1075,17 @@ export default function AdminPackageKeys() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Keys Pagination */}
+        <DataTablePagination
+          page={page}
+          pageSize={pageSize}
+          totalPages={totalPages}
+          totalItems={totalItems}
+          setPage={setPage}
+          changePageSize={changePageSize}
+          isRtl={language === 'ar'}
+        />
 
         {/* Upgrade Leaderboard */}
         <Card>

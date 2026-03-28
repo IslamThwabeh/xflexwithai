@@ -28,6 +28,12 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { printReport } from "@/lib/printReport";
 import {
+  useDataTable,
+  DataTablePagination,
+  SortableHeader,
+  zebraRow,
+} from "@/components/DataTable";
+import {
   Users,
   Search,
   Download,
@@ -39,6 +45,24 @@ import {
   Copy,
 } from "lucide-react";
 import { toast } from "sonner";
+
+const studentSortFns: Record<string, (a: any, b: any) => number> = {
+  name: (a, b) => (a.name || "").localeCompare(b.name || ""),
+  email: (a, b) => (a.email || "").localeCompare(b.email || ""),
+  location: (a, b) =>
+    [a.city, a.country].filter(Boolean).join(", ").localeCompare(
+      [b.city, b.country].filter(Boolean).join(", ")
+    ),
+  package: (a, b) =>
+    (a.activePackages || []).length - (b.activePackages || []).length,
+  spent: (a, b) => (a.totalSpent || 0) - (b.totalSpent || 0),
+  renewals: (a, b) => (a.renewalCount || 0) - (b.renewalCount || 0),
+  registered: (a, b) =>
+    new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime(),
+  lastSignIn: (a, b) =>
+    new Date(a.lastSignedIn || 0).getTime() -
+    new Date(b.lastSignedIn || 0).getTime(),
+};
 
 export default function AdminStudents() {
   const { language } = useLanguage();
@@ -73,6 +97,20 @@ export default function AdminStudents() {
       return matchSearch && matchCountry && matchPackage;
     });
   }, [students, search, countryFilter, packageFilter]);
+
+  // Pagination + sorting
+  const {
+    paged,
+    page,
+    pageSize,
+    totalPages,
+    totalItems,
+    sortKey,
+    sortDir,
+    setPage,
+    handleSort,
+    changePageSize,
+  } = useDataTable(filtered, studentSortFns);
 
   // Stats
   const totalStudents = students?.length || 0;
@@ -292,14 +330,14 @@ export default function AdminStudents() {
           <>
             {/* Mobile Cards */}
             <div className="md:hidden space-y-3">
-              {filtered.length === 0 ? (
+              {paged.length === 0 ? (
                 <Card>
                   <CardContent className="py-8 text-center text-gray-500">
                     {isRtl ? "لا توجد نتائج" : "No results found"}
                   </CardContent>
                 </Card>
               ) : (
-                filtered.map((s: any) => (
+                paged.map((s: any) => (
                   <Card key={s.id}>
                     <CardContent className="p-4 space-y-3">
                       {/* Name + badges */}
@@ -432,36 +470,36 @@ export default function AdminStudents() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>
-                          {isRtl ? "الاسم" : "Name"}
+                          <SortableHeader label={isRtl ? "الاسم" : "Name"} sortKey="name" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} />
                         </TableHead>
                         <TableHead>
-                          {isRtl ? "الإيميل" : "Email"}
+                          <SortableHeader label={isRtl ? "الإيميل" : "Email"} sortKey="email" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} />
                         </TableHead>
                         <TableHead>
                           {isRtl ? "الهاتف" : "Phone"}
                         </TableHead>
                         <TableHead>
-                          {isRtl ? "الموقع" : "Location"}
+                          <SortableHeader label={isRtl ? "الموقع" : "Location"} sortKey="location" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} />
                         </TableHead>
                         <TableHead>
-                          {isRtl ? "الباقة" : "Package"}
+                          <SortableHeader label={isRtl ? "الباقة" : "Package"} sortKey="package" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} />
                         </TableHead>
                         <TableHead>
-                          {isRtl ? "الإنفاق" : "Spent"}
+                          <SortableHeader label={isRtl ? "الإنفاق" : "Spent"} sortKey="spent" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} />
                         </TableHead>
                         <TableHead>
-                          {isRtl ? "التجديدات" : "Renewals"}
+                          <SortableHeader label={isRtl ? "التجديدات" : "Renewals"} sortKey="renewals" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} />
                         </TableHead>
                         <TableHead>
-                          {isRtl ? "التسجيل" : "Registered"}
+                          <SortableHeader label={isRtl ? "التسجيل" : "Registered"} sortKey="registered" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} />
                         </TableHead>
                         <TableHead>
-                          {isRtl ? "آخر دخول" : "Last Sign In"}
+                          <SortableHeader label={isRtl ? "آخر دخول" : "Last Sign In"} sortKey="lastSignIn" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} />
                         </TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filtered.length === 0 ? (
+                      {paged.length === 0 ? (
                         <TableRow>
                           <TableCell
                             colSpan={9}
@@ -471,8 +509,8 @@ export default function AdminStudents() {
                           </TableCell>
                         </TableRow>
                       ) : (
-                        filtered.map((s: any) => (
-                          <TableRow key={s.id}>
+                        paged.map((s: any, i: number) => (
+                          <TableRow key={s.id} className={zebraRow(i)}>
                             <TableCell className="font-medium">
                               {s.name || "—"}
                             </TableCell>
@@ -546,6 +584,17 @@ export default function AdminStudents() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Pagination */}
+            <DataTablePagination
+              page={page}
+              pageSize={pageSize}
+              totalPages={totalPages}
+              totalItems={totalItems}
+              setPage={setPage}
+              changePageSize={changePageSize}
+              isRtl={isRtl}
+            />
           </>
         )}
       </div>

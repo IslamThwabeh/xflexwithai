@@ -5,6 +5,11 @@ import { Badge } from '@/components/ui/badge';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { trpc } from '@/lib/trpc';
 import DashboardLayout from '@/components/DashboardLayout';
+import { useDataTable, DataTablePagination } from '@/components/DataTable';
+
+const orderSortFns: Record<string, (a: any, b: any) => number> = {
+  created: (a, b) => new Date(String(a.createdAt).replace(' ', 'T')).getTime() - new Date(String(b.createdAt).replace(' ', 'T')).getTime(),
+};
 
 const statusColors: Record<string, string> = {
   pending: 'bg-yellow-100 text-yellow-800',
@@ -36,6 +41,17 @@ export default function AdminOrders() {
     onSuccess: () => utils.orders.adminList.invalidate(),
   });
   const [expandedId, setExpandedId] = useState<number | null>(null);
+
+  const allOrders = orders ?? [];
+  const {
+    paged,
+    page,
+    pageSize,
+    totalPages,
+    totalItems,
+    setPage,
+    changePageSize,
+  } = useDataTable(allOrders, orderSortFns);
 
   const handleStatusChange = async (orderId: number, newStatus: string) => {
     await updateMutation.mutateAsync({
@@ -83,7 +99,7 @@ export default function AdminOrders() {
           </div>
         ) : (
           <div className="space-y-3">
-            {orders?.map((order) => (
+            {paged.map((order: any) => (
               <div key={order.id} className="bg-white border rounded-xl shadow-sm">
                 <div className="p-5 flex items-center justify-between cursor-pointer" onClick={() => setExpandedId(expandedId === order.id ? null : order.id)}>
                   <div>
@@ -194,6 +210,19 @@ export default function AdminOrders() {
               </div>
             ))}
           </div>
+        )}
+
+        {/* Pagination */}
+        {!isLoading && allOrders.length > 0 && (
+          <DataTablePagination
+            page={page}
+            pageSize={pageSize}
+            totalPages={totalPages}
+            totalItems={totalItems}
+            setPage={setPage}
+            changePageSize={changePageSize}
+            isRtl={language === 'ar'}
+          />
         )}
       </div>
     </DashboardLayout>

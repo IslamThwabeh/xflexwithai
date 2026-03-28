@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
 import { PauseCircle, PlayCircle, UserCog } from "lucide-react";
+import { useDataTable, DataTablePagination, zebraRow } from "@/components/DataTable";
 
 export default function AdminRecommendations() {
   const [search, setSearch] = useState("");
@@ -53,6 +54,9 @@ export default function AdminRecommendations() {
     return (user.name || "").toLowerCase().includes(value) || (user.email || "").toLowerCase().includes(value);
   });
 
+  const userTable = useDataTable(filteredUsers, undefined, 10);
+  const subTable = useDataTable(subscriptions as any[], undefined, 10);
+
   return (
     <DashboardLayout>
       <div className="container mx-auto p-4 md:p-6 space-y-6" dir={isRTL ? "rtl" : "ltr"}>
@@ -69,7 +73,7 @@ export default function AdminRecommendations() {
           <CardContent className="space-y-3">
             <Input placeholder={t('admin.rec.searchUser')} value={search} onChange={(e) => setSearch(e.target.value)} />
             <div className="space-y-2">
-              {filteredUsers.slice(0, 100).map((user: any) => {
+              {userTable.paged.map((user: any) => {
                 const isAnalyst = analystIds.has(user.id);
                 return (
                   <div key={user.id} className="flex items-center justify-between border rounded p-3">
@@ -87,6 +91,15 @@ export default function AdminRecommendations() {
                 );
               })}
             </div>
+            <DataTablePagination
+              page={userTable.page}
+              pageSize={userTable.pageSize}
+              totalPages={userTable.totalPages}
+              totalItems={userTable.totalItems}
+              setPage={userTable.setPage}
+              changePageSize={userTable.changePageSize}
+              isRtl={isRTL}
+            />
           </CardContent>
         </Card>
 
@@ -109,8 +122,8 @@ export default function AdminRecommendations() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {subscriptions.map((subscription: any) => (
-                  <TableRow key={subscription.id}>
+                {subTable.paged.map((subscription: any, i: number) => (
+                  <TableRow key={subscription.id} className={zebraRow(i)}>
                     <TableCell>{subscription.userName || '-'}</TableCell>
                     <TableCell>{subscription.userEmail || '-'}</TableCell>
                     <TableCell>
@@ -138,6 +151,15 @@ export default function AdminRecommendations() {
               </TableBody>
             </Table>
             </ResponsiveTable>
+            <DataTablePagination
+              page={subTable.page}
+              pageSize={subTable.pageSize}
+              totalPages={subTable.totalPages}
+              totalItems={subTable.totalItems}
+              setPage={subTable.setPage}
+              changePageSize={subTable.changePageSize}
+              isRtl={isRTL}
+            />
           </CardContent>
         </Card>
       </div>

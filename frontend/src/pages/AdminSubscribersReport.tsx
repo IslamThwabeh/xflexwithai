@@ -6,6 +6,23 @@ import { Input } from '@/components/ui/input';
 import { printReport } from '@/lib/printReport';
 import { Download, Search, Users, Filter, FileText } from 'lucide-react';
 import DashboardLayout from '@/components/DashboardLayout';
+import {
+  useDataTable,
+  DataTablePagination,
+  SortableHeader,
+  zebraRow,
+} from '@/components/DataTable';
+
+const subSortFns: Record<string, (a: any, b: any) => number> = {
+  name: (a, b) => (a.name || '').localeCompare(b.name || ''),
+  email: (a, b) => (a.email || '').localeCompare(b.email || ''),
+  city: (a, b) => (a.city || '').localeCompare(b.city || ''),
+  country: (a, b) => (a.country || '').localeCompare(b.country || ''),
+  registered: (a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime(),
+  orders: (a, b) => (a.completedOrders || 0) - (b.completedOrders || 0),
+  spent: (a, b) => (a.totalSpent || 0) - (b.totalSpent || 0),
+  renewals: (a, b) => (a.renewalCount || 0) - (b.renewalCount || 0),
+};
 
 export default function AdminSubscribersReport() {
   const { language } = useLanguage();
@@ -32,6 +49,19 @@ export default function AdminSubscribersReport() {
       return matchSearch && matchCountry;
     });
   }, [subscribers, search, countryFilter]);
+
+  const {
+    paged,
+    page,
+    pageSize,
+    totalPages,
+    totalItems,
+    sortKey,
+    sortDir,
+    setPage,
+    handleSort,
+    changePageSize,
+  } = useDataTable(filtered, subSortFns);
 
   const exportCSV = () => {
     if (!filtered.length) return;
@@ -101,25 +131,26 @@ export default function AdminSubscribersReport() {
           {[...Array(8)].map((_, i) => <div key={i} className="h-12 bg-muted rounded" />)}
         </div>
       ) : (
+        <>
         <div className="border rounded-lg overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/50">
               <tr>
-                <th className="px-3 py-3 text-start font-medium">{isRtl ? 'الاسم' : 'Name'}</th>
-                <th className="px-3 py-3 text-start font-medium">{isRtl ? 'الإيميل' : 'Email'}</th>
+                <th className="px-3 py-3 text-start font-medium"><SortableHeader label={isRtl ? 'الاسم' : 'Name'} sortKey="name" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>
+                <th className="px-3 py-3 text-start font-medium"><SortableHeader label={isRtl ? 'الإيميل' : 'Email'} sortKey="email" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>
                 <th className="px-3 py-3 text-start font-medium">{isRtl ? 'الهاتف' : 'Phone'}</th>
-                <th className="px-3 py-3 text-start font-medium">{isRtl ? 'المدينة' : 'City'}</th>
-                <th className="px-3 py-3 text-start font-medium">{isRtl ? 'البلد' : 'Country'}</th>
-                <th className="px-3 py-3 text-start font-medium">{isRtl ? 'تاريخ التسجيل' : 'Registered'}</th>
-                <th className="px-3 py-3 text-center font-medium">{isRtl ? 'الطلبات' : 'Orders'}</th>
-                <th className="px-3 py-3 text-center font-medium">{isRtl ? 'الإنفاق' : 'Spent'}</th>
+                <th className="px-3 py-3 text-start font-medium"><SortableHeader label={isRtl ? 'المدينة' : 'City'} sortKey="city" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>
+                <th className="px-3 py-3 text-start font-medium"><SortableHeader label={isRtl ? 'البلد' : 'Country'} sortKey="country" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>
+                <th className="px-3 py-3 text-start font-medium"><SortableHeader label={isRtl ? 'تاريخ التسجيل' : 'Registered'} sortKey="registered" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>
+                <th className="px-3 py-3 text-center font-medium"><SortableHeader label={isRtl ? 'الطلبات' : 'Orders'} sortKey="orders" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>
+                <th className="px-3 py-3 text-center font-medium"><SortableHeader label={isRtl ? 'الإنفاق' : 'Spent'} sortKey="spent" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>
                 <th className="px-3 py-3 text-start font-medium">{isRtl ? 'الباقات النشطة' : 'Active Packages'}</th>
-                <th className="px-3 py-3 text-center font-medium">{isRtl ? 'التجديدات' : 'Renewals'}</th>
+                <th className="px-3 py-3 text-center font-medium"><SortableHeader label={isRtl ? 'التجديدات' : 'Renewals'} sortKey="renewals" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>
               </tr>
             </thead>
             <tbody className="divide-y">
-              {filtered?.map((s: any) => (
-                <tr key={s.id} className="hover:bg-muted/30">
+              {paged.map((s: any, i: number) => (
+                <tr key={s.id} className={zebraRow(i, "hover:bg-muted/30")}>
                   <td className="px-3 py-2.5 font-medium">{s.name || '—'}</td>
                   <td className="px-3 py-2.5 text-muted-foreground" dir="ltr">{s.email}</td>
                   <td className="px-3 py-2.5" dir="ltr">{s.phone || '—'}</td>
@@ -146,7 +177,7 @@ export default function AdminSubscribersReport() {
                   </td>
                 </tr>
               ))}
-              {filtered?.length === 0 && (
+              {paged.length === 0 && (
                 <tr><td colSpan={10} className="px-3 py-8 text-center text-muted-foreground">
                   {isRtl ? 'لا توجد نتائج' : 'No results found'}
                 </td></tr>
@@ -154,6 +185,16 @@ export default function AdminSubscribersReport() {
             </tbody>
           </table>
         </div>
+        <DataTablePagination
+          page={page}
+          pageSize={pageSize}
+          totalPages={totalPages}
+          totalItems={totalItems}
+          setPage={setPage}
+          changePageSize={changePageSize}
+          isRtl={isRtl}
+        />
+        </>
       )}
     </div>
     </DashboardLayout>

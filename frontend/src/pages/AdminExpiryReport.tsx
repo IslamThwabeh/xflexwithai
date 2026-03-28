@@ -5,6 +5,25 @@ import { Button } from '@/components/ui/button';
 import { printReport } from '@/lib/printReport';
 import { Download, Clock, AlertTriangle, CheckCircle, FileText } from 'lucide-react';
 import DashboardLayout from '@/components/DashboardLayout';
+import {
+  useDataTable,
+  DataTablePagination,
+  SortableHeader,
+  zebraRow,
+} from '@/components/DataTable';
+
+const expirySortFns: Record<string, (a: any, b: any) => number> = {
+  type: (a, b) => (a.type || '').localeCompare(b.type || ''),
+  user: (a, b) => (a.userName || '').localeCompare(b.userName || ''),
+  email: (a, b) => (a.userEmail || '').localeCompare(b.userEmail || ''),
+  subscription: (a, b) => (a.subscriptionName || '').localeCompare(b.subscriptionName || ''),
+  start: (a, b) => new Date(a.startDate || 0).getTime() - new Date(b.startDate || 0).getTime(),
+  end: (a, b) => {
+    if (a.endDate === 'Lifetime') return 1;
+    if (b.endDate === 'Lifetime') return -1;
+    return new Date(a.endDate || 0).getTime() - new Date(b.endDate || 0).getTime();
+  },
+};
 
 export default function AdminExpiryReport() {
   const { language } = useLanguage();
@@ -20,6 +39,19 @@ export default function AdminExpiryReport() {
     if (typeFilter) list = list.filter(s => s.type === typeFilter);
     return list;
   }, [subscriptions, typeFilter]);
+
+  const {
+    paged,
+    page,
+    pageSize,
+    totalPages,
+    totalItems,
+    sortKey,
+    sortDir,
+    setPage,
+    handleSort,
+    changePageSize,
+  } = useDataTable(filtered, expirySortFns);
 
   // Stats
   const stats = useMemo(() => {
@@ -130,25 +162,26 @@ export default function AdminExpiryReport() {
           {[...Array(8)].map((_, i) => <div key={i} className="h-12 bg-muted rounded" />)}
         </div>
       ) : (
+        <>
         <div className="border rounded-lg overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/50">
               <tr>
                 <th className="px-3 py-3 text-start font-medium">{isRtl ? 'الحالة' : 'Status'}</th>
-                <th className="px-3 py-3 text-start font-medium">{isRtl ? 'النوع' : 'Type'}</th>
-                <th className="px-3 py-3 text-start font-medium">{isRtl ? 'المستخدم' : 'User'}</th>
-                <th className="px-3 py-3 text-start font-medium">{isRtl ? 'الإيميل' : 'Email'}</th>
+                <th className="px-3 py-3 text-start font-medium"><SortableHeader label={isRtl ? 'النوع' : 'Type'} sortKey="type" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>
+                <th className="px-3 py-3 text-start font-medium"><SortableHeader label={isRtl ? 'المستخدم' : 'User'} sortKey="user" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>
+                <th className="px-3 py-3 text-start font-medium"><SortableHeader label={isRtl ? 'الإيميل' : 'Email'} sortKey="email" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>
                 <th className="px-3 py-3 text-start font-medium">{isRtl ? 'الهاتف' : 'Phone'}</th>
-                <th className="px-3 py-3 text-start font-medium">{isRtl ? 'الاشتراك' : 'Subscription'}</th>
-                <th className="px-3 py-3 text-start font-medium">{isRtl ? 'تاريخ البدء' : 'Start'}</th>
-                <th className="px-3 py-3 text-start font-medium">{isRtl ? 'تاريخ الانتهاء' : 'End'}</th>
+                <th className="px-3 py-3 text-start font-medium"><SortableHeader label={isRtl ? 'الاشتراك' : 'Subscription'} sortKey="subscription" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>
+                <th className="px-3 py-3 text-start font-medium"><SortableHeader label={isRtl ? 'تاريخ البدء' : 'Start'} sortKey="start" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>
+                <th className="px-3 py-3 text-start font-medium"><SortableHeader label={isRtl ? 'تاريخ الانتهاء' : 'End'} sortKey="end" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>
               </tr>
             </thead>
             <tbody className="divide-y">
-              {filtered?.map((s: any, i: number) => {
+              {paged.map((s: any, i: number) => {
                 const status = getExpiryStatus(s.endDate);
                 return (
-                  <tr key={i} className={`hover:bg-muted/30 ${status === 'expired' ? 'bg-red-50/50' : status === 'critical' ? 'bg-amber-50/50' : ''}`}>
+                  <tr key={i} className={zebraRow(i, `hover:bg-muted/30 ${status === 'expired' ? 'bg-red-50/50' : status === 'critical' ? 'bg-amber-50/50' : ''}`)}>
                     <td className="px-3 py-2.5">
                       {status === 'lifetime' && <span className="inline-flex items-center gap-1 text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full"><CheckCircle className="w-3 h-3" />{isRtl ? 'مدى الحياة' : 'Lifetime'}</span>}
                       {status === 'active' && <span className="inline-flex items-center gap-1 text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">{isRtl ? 'نشط' : 'Active'}</span>}
@@ -173,7 +206,7 @@ export default function AdminExpiryReport() {
                   </tr>
                 );
               })}
-              {filtered?.length === 0 && (
+              {paged.length === 0 && (
                 <tr><td colSpan={8} className="px-3 py-8 text-center text-muted-foreground">
                   {isRtl ? 'لا توجد اشتراكات' : 'No subscriptions found'}
                 </td></tr>
@@ -181,6 +214,16 @@ export default function AdminExpiryReport() {
             </tbody>
           </table>
         </div>
+        <DataTablePagination
+          page={page}
+          pageSize={pageSize}
+          totalPages={totalPages}
+          totalItems={totalItems}
+          setPage={setPage}
+          changePageSize={changePageSize}
+          isRtl={isRtl}
+        />
+        </>
       )}
     </div>
     </DashboardLayout>
