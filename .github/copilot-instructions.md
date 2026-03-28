@@ -83,6 +83,14 @@ vatAmount = totalAmount * 0.16
 - Admins: JWT 2h expiry, idle timeout 15 min, cookie maxAge 2h
 - Cookie name: `app_session_id`
 
+### Staff System
+- `users.isStaff` (boolean) separates staff from students — staff are excluded from student reports/stats
+- Staff accounts created from AdminRoles page → `createStaffUser()` in db.ts (sets `isStaff=true`, dummy password, OTP login)
+- Role assignment is the single source of truth for permissions — no separate `canPublishRecommendations` column (removed)
+- `recommendations.setAnalyst` uses `assignRole()`/`removeRole()` directly
+- Backend: `roles.createStaff`, `roles.listStaff`, `roles.removeStaff` (admin-only)
+- `getSubscribersReport()` excludes `isStaff=true` users
+
 ---
 
 ## Dates & Locale
@@ -178,6 +186,7 @@ CodeGraph is set up for this project with a pre-built semantic graph of all symb
 8. **Video `<video>` tags**: Always include `controlsList="nodownload"` and `onContextMenu={e => e.preventDefault()}` on all video elements
 9. **Episode deletion**: Must archive video in R2 before DB delete — see `storageArchiveR2()` in `storage-r2.ts`
 10. **Episode duration**: DB stores **seconds**, not minutes. Display: `Math.floor(duration / 60)`. Watch threshold: `duration * 0.7`. Never multiply by 60.
+11. **canPublishRecommendations REMOVED**: This column no longer exists. Analyst permission is purely role-based — use `hasRole(userId, 'analyst')` or check `userRoles` table. Do NOT reference `canPublishRecommendations` or `setRecommendationPublisher()`.
 
 ---
 
