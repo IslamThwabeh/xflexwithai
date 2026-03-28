@@ -22,6 +22,7 @@ export const users = sqliteTable("users", {
   telegram_user_id: text("telegram_user_id").unique(),
   user_type: text("user_type", { length: 20 }).default("web"),
   pointsBalance: integer("points_balance").default(0).notNull(),
+  referralCode: text("referralCode"),
   isStaff: integer("isStaff", { mode: 'boolean' }).default(false).notNull(),
 });
 
@@ -1094,6 +1095,25 @@ export const courseReviews = sqliteTable("course_reviews", {
 
 export type CourseReview = typeof courseReviews.$inferSelect;
 export type InsertCourseReview = typeof courseReviews.$inferInsert;
+
+// ============================================================================
+// Offer Agreements (Eid / Promotional offers — terms acceptance tracking)
+// ============================================================================
+
+export const offerAgreements = sqliteTable("offer_agreements", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  fullName: text("fullName").notNull(),
+  email: text("email").notNull(),
+  phone: text("phone").default(""),
+  offerSlug: text("offerSlug").notNull().default("eid-fitr-2026"),
+  agreedAt: text("agreedAt").default("CURRENT_TIMESTAMP").notNull(),
+  ipAddress: text("ipAddress").default(""),
+}, (table) => ({
+  uniqueEmailSlug: unique().on(table.email, table.offerSlug),
+}));
+
+export type OfferAgreement = typeof offerAgreements.$inferSelect;
+export type InsertOfferAgreement = typeof offerAgreements.$inferInsert;
 
 export const courseReviewsRelations = relations(courseReviews, ({ one }) => ({
   user: one(users, {

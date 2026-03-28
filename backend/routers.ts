@@ -4201,6 +4201,29 @@ ${qaText}`;
         return db.deleteBroker(input.id);
       }),
   }),
+
+  // ====== Offer Agreements ======
+  offers: router({
+    // Public: submit agreement (from standalone offer page)
+    submitAgreement: publicProcedure
+      .input(z.object({
+        fullName: z.string().min(2).max(100),
+        email: z.string().email().max(320),
+        phone: z.string().max(20).optional(),
+        offerSlug: z.string().min(1).max(50),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const ip = getReqHeader(ctx.req, 'cf-connecting-ip') || getReqHeader(ctx.req, 'x-forwarded-for') || '';
+        return db.submitOfferAgreement({ ...input, ipAddress: ip });
+      }),
+
+    // Admin: list agreements
+    listAgreements: adminProcedure
+      .input(z.object({ offerSlug: z.string().optional() }).optional())
+      .query(async ({ input }) => {
+        return db.listOfferAgreements(input?.offerSlug);
+      }),
+  }),
 });
 
 export type AppRouter = typeof appRouter;

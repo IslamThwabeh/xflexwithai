@@ -72,6 +72,24 @@ export default function MyDashboard() {
       });
   }, [isAuthenticated, syncEntitlements, user?.email, utils.enrollments.myEnrollments, utils.lexai.getSubscription, utils.recommendations.me]);
 
+  // Computed values (safe before early returns)
+  const totalCourses = enrollments?.length || 0;
+  const completedCourses = enrollments?.filter(e => e.completedAt !== null).length || 0;
+  const allCoursesCompleted = totalCourses > 0 && completedCourses === totalCourses;
+
+  // One-time congrats: show only once per user, dismiss forever
+  const congratsKey = user?.id ? `course_completion_celebrated_${user.id}` : '';
+  const [showCongrats, setShowCongrats] = useState(false);
+  useEffect(() => {
+    if (!congratsKey) return;
+    if (localStorage.getItem(congratsKey)) return;
+    setShowCongrats(true);
+  }, [congratsKey]);
+  const dismissCongrats = () => {
+    if (congratsKey) localStorage.setItem(congratsKey, '1');
+    setShowCongrats(false);
+  };
+
   if (loading || enrollmentsLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center" dir={isRTL ? 'rtl' : 'ltr'}>
@@ -101,21 +119,6 @@ export default function MyDashboard() {
       </div>
     );
   }
-
-  const totalCourses = enrollments?.length || 0;
-  const completedCourses = enrollments?.filter(e => e.completedAt !== null).length || 0;
-  const allCoursesCompleted = totalCourses > 0 && completedCourses === totalCourses;
-
-  // One-time congrats: show only once per user, dismiss forever
-  const congratsKey = user?.id ? `course_completion_celebrated_${user.id}` : '';
-  const [showCongrats, setShowCongrats] = useState(() => {
-    if (!congratsKey) return false;
-    return !localStorage.getItem(congratsKey);
-  });
-  const dismissCongrats = () => {
-    if (congratsKey) localStorage.setItem(congratsKey, '1');
-    setShowCongrats(false);
-  };
 
   // Motivational message based on course progress (professional academy style)
   const getMotivationalMessage = (progress: number) => {

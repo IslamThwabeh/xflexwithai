@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>عرض ضمان الاستفادة — أكاديمية XFlex</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Tajawal', sans-serif;
+      background: linear-gradient(135deg, #f5f0e4 0%, #ebe5d5 50%, #f0ead8 100%);
+      min-height: 100vh;
+      padding: 24px 16px;
+      color: #1a1a2e;
+    }
+    .container { max-width: 760px; margin: 0 auto; }
+
+    .card {
+      background: #fffdf7;
+      border-radius: 20px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.08);
+      overflow: hidden;
+      border: 1px solid rgba(26,26,46,0.08);
+    }
+
+    /* Header with Eid theme + brand colors */
+    .header {
+      background: linear-gradient(135deg, #1a1a2e 0%, #2d2d44 50%, #1a1a2e 100%);
+      color: #f5f0e4;
+      padding: 36px 28px;
+      text-align: center;
+      position: relative;
+    }
+    .header::after {
+      content: '🌙';
+      position: absolute;
+      top: 12px;
+      left: 20px;
+      font-size: 28px;
+      opacity: 0.5;
+    }
+    .header .badge {
+      display: inline-block;
+      background: rgba(212,160,23,0.25);
+      color: #f5c842;
+      padding: 4px 18px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 10px;
+      letter-spacing: 0.5px;
+    }
+    .header h1 { font-size: 30px; font-weight: 800; margin-bottom: 6px; }
+    .header p { font-size: 15px; opacity: 0.8; line-height: 1.8; max-width: 550px; margin: 0 auto; }
+
+    .eid-greeting {
+      text-align: center;
+      padding: 24px 28px 0;
+      font-size: 22px;
+      font-weight: 700;
+      color: #c9952a;
+    }
+
+    /* Terms section */
+    .terms-section {
+      padding: 24px 28px;
+    }
+    .terms-section h2 {
+      font-size: 20px;
+      font-weight: 800;
+      color: #1a1a2e;
+      margin-bottom: 16px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid rgba(26,26,46,0.12);
+    }
+    .terms-block {
+      margin-bottom: 20px;
+    }
+    .terms-block h3 {
+      font-size: 16px;
+      font-weight: 700;
+      color: #2d2d44;
+      margin-bottom: 10px;
+    }
+    .terms-block p, .terms-block li {
+      font-size: 14px;
+      line-height: 1.9;
+      color: #4a4a5a;
+    }
+    .terms-block ul, .terms-block ol {
+      padding-right: 20px;
+      margin-top: 6px;
+    }
+    .terms-block li { margin-bottom: 6px; }
+    .warning-box {
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      border-radius: 12px;
+      padding: 14px 18px;
+      margin-top: 10px;
+    }
+    .warning-box p {
+      color: #991b1b;
+      font-size: 13px;
+      line-height: 1.8;
+    }
+    .warning-box strong { color: #b91c1c; }
+
+    /* Form */
+    .form-section {
+      padding: 0 28px 28px;
+    }
+    .form-divider {
+      height: 2px;
+      background: linear-gradient(90deg, transparent, rgba(26,26,46,0.12), transparent);
+      margin: 8px 0 24px;
+    }
+    .form-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: #1a1a2e;
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .field { margin-bottom: 16px; }
+    .field label {
+      display: block;
+      font-size: 14px;
+      font-weight: 600;
+      color: #4a4a5a;
+      margin-bottom: 6px;
+    }
+    .field input[type="text"],
+    .field input[type="email"],
+    .field input[type="tel"],
+    .field select {
+      width: 100%;
+      padding: 12px 16px;
+      border: 1.5px solid #d4d0c8;
+      border-radius: 12px;
+      font-family: 'Tajawal', sans-serif;
+      font-size: 15px;
+      background: #fff;
+      color: #1a1a2e;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .field input:focus, .field select:focus {
+      outline: none;
+      border-color: #c9952a;
+      box-shadow: 0 0 0 3px rgba(201,149,42,0.15);
+    }
+    .field input::placeholder { color: #9ca3af; }
+    .field select option { background: #fff; color: #1a1a2e; }
+    .phone-row {
+      display: flex;
+      gap: 10px;
+      direction: ltr;
+    }
+    .phone-row .country-code {
+      width: 130px;
+      flex-shrink: 0;
+    }
+    .phone-row .phone-number {
+      flex: 1;
+    }
+
+    .checkbox-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      margin: 20px 0;
+      cursor: pointer;
+    }
+    .checkbox-row input[type="checkbox"] {
+      width: 20px;
+      height: 20px;
+      margin-top: 3px;
+      accent-color: #c9952a;
+      flex-shrink: 0;
+      cursor: pointer;
+    }
+    .checkbox-row label {
+      font-size: 14px;
+      color: #4a4a5a;
+      line-height: 1.7;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .submit-btn {
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(135deg, #1a1a2e 0%, #2d2d44 100%);
+      color: #f5f0e4;
+      border: none;
+      border-radius: 14px;
+      font-family: 'Tajawal', sans-serif;
+      font-size: 17px;
+      font-weight: 800;
+      cursor: pointer;
+      transition: all 0.25s;
+      letter-spacing: 0.3px;
+    }
+    .submit-btn:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 25px rgba(26,26,46,0.25);
+    }
+    .submit-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* States */
+    .msg { padding: 12px 18px; border-radius: 12px; margin-top: 14px; font-size: 14px; line-height: 1.7; text-align: center; display: none; }
+    .msg.error { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+    .msg.success { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; }
+    .msg.info { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; }
+
+    .success-view {
+      display: none;
+      text-align: center;
+      padding: 48px 28px;
+    }
+    .success-view .icon { font-size: 56px; margin-bottom: 16px; }
+    .success-view h2 { font-size: 24px; font-weight: 800; color: #166534; margin-bottom: 10px; }
+    .success-view p { font-size: 15px; color: #4a4a5a; line-height: 1.8; }
+
+    /* Footer */
+    .footer {
+      text-align: center;
+      padding: 18px;
+      font-size: 12px;
+      color: #9ca3af;
+      border-top: 1px solid rgba(26,26,46,0.08);
+    }
+
+    /* Spinner */
+    .spinner { display: inline-block; width: 18px; height: 18px; border: 2.5px solid rgba(245,240,228,0.3); border-top-color: #f5f0e4; border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; margin-left: 6px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    @media (max-width: 500px) {
+      .header h1 { font-size: 24px; }
+      .terms-section { padding: 20px 20px; }
+      .form-section { padding: 0 20px 20px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <div class="header">
+        <div class="badge">عرض لفترة محدودة 🎁</div>
+        <h1>عرض ضمان الاستفادة</h1>
+        <p>استرجع كامل المبلغ إذا لم تستفد — بشرط تقديم الطلب قبل مرور ١٠ أيام كاملة</p>
+      </div>
+
+      <div class="eid-greeting">🌙 كل عام وأنتم بخير — عيد فطر سعيد 🌙</div>
+
+      <!-- Terms & Conditions -->
+      <div class="terms-section">
+        <h2>📋 الشروط والأحكام التفصيلية</h2>
+
+        <div class="terms-block">
+          <h3>أولاً: تعريف العرض</h3>
+          <p>تقدّم أكاديمية XFlex عرضاً ترويجياً لفترة محدودة بعنوان "ضمان الاستفادة"، يتيح للمشترك الجديد تجربة الباقة لمدة عشرة (١٠) أيام تقويمية كاملة من وقت الدفع، مع إمكانية استرداد كامل المبلغ في حال استيفاء جميع الشروط الواردة أدناه.</p>
+        </div>
+
+        <div class="terms-block">
+          <h3>ثانياً: تعريف "الالتزام"</h3>
+          <p>يُعتبر المشترك ملتزماً إذا تحققت جميع الشروط التالية مجتمعة:</p>
+          <ol>
+            <li>إتمام مشاهدة <strong>٢٠ حلقة على الأقل</strong> من أصل ٣٩ حلقة خلال فترة الـ ١٠ أيام</li>
+            <li>مشاهدة <strong>٣ حلقات يومياً كحد أدنى</strong> في ٧ أيام على الأقل من أصل ١٠</li>
+            <li>عدم مشاركة المحتوى التعليمي أو بيانات الاشتراك مع أي طرف ثالث</li>
+          </ol>
+        </div>
+
+        <div class="terms-block">
+          <h3>ثالثاً: تعريف "عدم الاستفادة"</h3>
+          <p>يحق للمشترك المطالبة بعدم الاستفادة فقط في الحالات التالية:</p>
+          <ol>
+            <li>عدم اجتياز اختبار التقييم الذي تعدّه الإدارة بعد فترة الـ ١٠ أيام (بنسبة أقل من ٥٠٪)</li>
+            <li>أو تقديم شرح مكتوب مفصّل عن أسباب عدم الاستفادة، تقبله الإدارة وفق تقديرها</li>
+          </ol>
+          <div class="warning-box">
+            <p><strong>⚠️ لا يُعتبر عدم استفادة:</strong></p>
+            <p>• عدم وجود وقت كافٍ أو انشغال المشترك</p>
+            <p>• تغيّر رأي المشترك أو رغبته بعدم الاستمرار</p>
+            <p>• ادعاء عدم الاستفادة دون استيفاء شرط الالتزام (ثانياً)</p>
+          </div>
+        </div>
+
+        <div class="terms-block">
+          <h3>رابعاً: آلية طلب الاسترداد</h3>
+          <ol>
+            <li>يُقدَّم الطلب <strong>قبل انتهاء اليوم العاشر</strong> من تاريخ الدفع عبر الدردشة المباشرة في قناة التليجرام</li>
+            <li>تراجع الإدارة سجلات المتابعة للتحقق من الالتزام</li>
+            <li>يتم الرد على الطلب خلال ٥ أيام عمل</li>
+            <li>في حال الموافقة، يُحوَّل المبلغ خلال ٧-١٤ يوم عمل بنفس وسيلة الدفع الأصلية</li>
+          </ol>
+        </div>
+
+        <div class="terms-block">
+          <h3>خامساً: أحكام عامة</h3>
+          <ul>
+            <li>هذا العرض ساري لفترة محدودة ولا يُجمع مع أي عرض أو خصم آخر</li>
+            <li>يحق للإدارة تعديل أو إلغاء العرض في أي وقت دون إشعار مسبق، على ألّا يؤثر ذلك على المشتركين الحاليين</li>
+            <li>يخضع هذا الاتفاق للقوانين المعمول بها في المملكة الأردنية الهاشمية</li>
+            <li>في حال وجود نزاع، يتم حلّه ودّياً أولاً، وإلّا تختص محاكم عمّان بالنظر فيه</li>
+            <li>الاشتراك في هذا العرض يعني موافقة المشترك على جميع الشروط المذكورة أعلاه</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Form -->
+      <div class="form-section" id="formSection">
+        <div class="form-divider"></div>
+        <div class="form-title">✍️ سجّل موافقتك على الشروط والأحكام</div>
+
+        <form id="agreementForm" autocomplete="on">
+          <div class="field">
+            <label for="fullName">الاسم الكامل</label>
+            <input type="text" id="fullName" name="fullName" placeholder="أدخل اسمك الكامل" required autocomplete="name">
+          </div>
+          <div class="field">
+            <label for="email">البريد الإلكتروني</label>
+            <input type="email" id="email" name="email" placeholder="example@email.com" required autocomplete="email" dir="ltr" style="text-align:left;">
+          </div>
+          <div class="field">
+            <label>رقم الواتساب</label>
+            <div class="phone-row">
+              <select id="countryCode" class="country-code" autocomplete="tel-country-code">
+                <option value="+962">🇯🇴 +962</option>
+                <option value="+966">🇸🇦 +966</option>
+                <option value="+971">🇦🇪 +971</option>
+                <option value="+973">🇧🇭 +973</option>
+                <option value="+974">🇶🇦 +974</option>
+                <option value="+968">🇴🇲 +968</option>
+                <option value="+965">🇰🇼 +965</option>
+                <option value="+961">🇱🇧 +961</option>
+                <option value="+970">🇵🇸 +970</option>
+                <option value="+964">🇮🇶 +964</option>
+                <option value="+20">🇪🇬 +20</option>
+                <option value="+212">🇲🇦 +212</option>
+                <option value="+216">🇹🇳 +216</option>
+                <option value="+213">🇩🇿 +213</option>
+                <option value="+218">🇱🇾 +218</option>
+                <option value="+249">🇸🇩 +249</option>
+                <option value="+90">🇹🇷 +90</option>
+                <option value="+44">🇬🇧 +44</option>
+                <option value="+1">🇺🇸 +1</option>
+              </select>
+              <input type="tel" id="phoneNumber" class="phone-number" placeholder="7XXXXXXXX" required autocomplete="tel-national" dir="ltr" style="text-align:left;">
+            </div>
+          </div>
+
+          <div class="checkbox-row" onclick="document.getElementById('agreeCheck').click()">
+            <input type="checkbox" id="agreeCheck" required onclick="event.stopPropagation()">
+            <label for="agreeCheck" onclick="event.stopPropagation()">
+              أقر بأنني قرأت جميع الشروط والأحكام المذكورة أعلاه وأوافق عليها بالكامل، وأفهم أن هذا العرض مشروط بالالتزام الكامل بالشروط الواردة.
+            </label>
+          </div>
+
+          <button type="submit" class="submit-btn" id="submitBtn">تأكيد الموافقة</button>
+          <div class="msg error" id="errorMsg"></div>
+          <div class="msg success" id="successMsg"></div>
+          <div class="msg info" id="infoMsg"></div>
+        </form>
+      </div>
+
+      <!-- Success view (shown after submission) -->
+      <div class="success-view" id="successView">
+        <div class="icon">✅</div>
+        <h2>تم تسجيل موافقتك بنجاح</h2>
+        <p>شكراً لك! تم حفظ موافقتك على شروط وأحكام عرض "ضمان الاستفادة".<br>سيتم التواصل معك قريباً بخصوص تفاصيل الاشتراك.</p>
+      </div>
+
+      <div class="footer">
+        &copy; 2026 XFlex Trading Academy — جميع الحقوق محفوظة
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = 'https://api.xflexacademy.com/api/trpc';
+    const OFFER_SLUG = 'eid-fitr-2026';
+
+    const form = document.getElementById('agreementForm');
+    const submitBtn = document.getElementById('submitBtn');
+    const errorMsg = document.getElementById('errorMsg');
+    const successMsg = document.getElementById('successMsg');
+    const infoMsg = document.getElementById('infoMsg');
+    const formSection = document.getElementById('formSection');
+    const successView = document.getElementById('successView');
+
+    function hideMessages() {
+      errorMsg.style.display = 'none';
+      successMsg.style.display = 'none';
+      infoMsg.style.display = 'none';
+    }
+
+    function showError(text) {
+      hideMessages();
+      errorMsg.textContent = text;
+      errorMsg.style.display = 'block';
+    }
+
+    function showInfo(text) {
+      hideMessages();
+      infoMsg.textContent = text;
+      infoMsg.style.display = 'block';
+    }
+
+    function showSuccess() {
+      formSection.style.display = 'none';
+      successView.style.display = 'block';
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      hideMessages();
+
+      const fullName = document.getElementById('fullName').value.trim();
+      const email = document.getElementById('email').value.trim();
+      const countryCode = document.getElementById('countryCode').value;
+      const phoneNumber = document.getElementById('phoneNumber').value.trim().replace(/\s+/g, '');
+      const agreed = document.getElementById('agreeCheck').checked;
+
+      if (!fullName || fullName.length < 2) {
+        showError('يرجى إدخال الاسم الكامل');
+        return;
+      }
+      if (!email || !email.includes('@')) {
+        showError('يرجى إدخال بريد إلكتروني صحيح');
+        return;
+      }
+      if (!phoneNumber || phoneNumber.length < 6) {
+        showError('يرجى إدخال رقم الواتساب');
+        return;
+      }
+      if (!agreed) {
+        showError('يرجى الموافقة على الشروط والأحكام أولاً');
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = 'جارٍ الإرسال... <span class="spinner"></span>';
+
+      try {
+        const res = await fetch(`${API_BASE}/offers.submitAgreement`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            json: {
+              fullName,
+              email,
+              phone: countryCode + phoneNumber,
+              offerSlug: OFFER_SLUG,
+            }
+          }),
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => null);
+          const message = err?.error?.json?.message || err?.error?.message || 'حدث خطأ، يرجى المحاولة لاحقاً';
+          showError(message);
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'تأكيد الموافقة';
+          return;
+        }
+
+        const data = await res.json();
+        const result = data?.result?.data?.json;
+
+        if (result?.duplicate) {
+          showInfo('سبق وأن تم تسجيل موافقتك على هذا العرض. شكراً لك! ✅');
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'تأكيد الموافقة';
+        } else {
+          showSuccess();
+        }
+      } catch (err) {
+        showError('حدث خطأ في الاتصال، يرجى المحاولة لاحقاً');
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'تأكيد الموافقة';
+      }
+    });
+  </script>
+</body>
+</html>

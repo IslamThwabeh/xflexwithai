@@ -5,6 +5,7 @@ import { Award, Gift, TrendingUp, Loader2, History, Copy, Check, Users, Share2, 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import ClientLayout from '@/components/ClientLayout';
 
 export default function LoyaltyPoints() {
   const { language } = useLanguage();
@@ -60,6 +61,7 @@ export default function LoyaltyPoints() {
   const visibleHistory = showAllHistory ? history : history?.slice(0, 10);
 
   return (
+    <ClientLayout>
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-2xl mx-auto px-4 py-8" dir={isRtl ? 'rtl' : 'ltr'}>
         <h1 className="text-2xl font-bold flex items-center gap-2 mb-6">
@@ -223,5 +225,6 @@ export default function LoyaltyPoints() {
         )}
       </div>
     </div>
+    </ClientLayout>
   );
 }

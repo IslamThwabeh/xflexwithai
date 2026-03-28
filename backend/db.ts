@@ -53,6 +53,7 @@ import {
   brokers, Broker, NewBroker,
   referrals, Referral, NewReferral,
   pointsRules, PointsRule, NewPointsRule,
+  offerAgreements, OfferAgreement, InsertOfferAgreement,
 } from "../database/schema-sqlite.ts";
 import { ENV } from './_core/env';
 import { logger } from './_core/logger';
@@ -5194,4 +5195,38 @@ export async function autoAwardPoints(userId: number, ruleKey: string, meta?: { 
     referenceId: meta?.referenceId,
     referenceType: ruleKey,
   });
+}
+
+// ============================================================================
+// Offer Agreements
+// ============================================================================
+
+export async function submitOfferAgreement(data: { fullName: string; email: string; phone?: string; offerSlug: string; ipAddress?: string }) {
+  const db = await getDb();
+  if (!db) throw new Error('DB not available');
+  // Check for duplicate
+  const existing = await db.select().from(offerAgreements)
+    .where(and(eq(offerAgreements.email, data.email.toLowerCase().trim()), eq(offerAgreements.offerSlug, data.offerSlug)))
+    .limit(1);
+  if (existing.length > 0) {
+    return { duplicate: true, agreement: existing[0] };
+  }
+  const [row] = await db.insert(offerAgreements).values({
+    fullName: data.fullName.trim(),
+    email: data.email.toLowerCase().trim(),
+    phone: data.phone?.trim() || '',
+    offerSlug: data.offerSlug,
+    agreedAt: new Date().toISOString(),
+    ipAddress: data.ipAddress || '',
+  }).returning();
+  return { duplicate: false, agreement: row };
+}
+
+export async function listOfferAgreements(offerSlug?: string) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = offerSlug ? [eq(offerAgreements.offerSlug, offerSlug)] : [];
+  return db.select().from(offerAgreements)
+    .where(conditions.length ? and(...conditions) : undefined)
+    .orderBy(desc(offerAgreements.agreedAt));
 }

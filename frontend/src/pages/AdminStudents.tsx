@@ -127,7 +127,7 @@ export default function AdminStudents() {
     setVisibleCols(prev => {
       const next = new Set(prev);
       if (next.has(col)) next.delete(col); else next.add(col);
-      localStorage.setItem('adminStudents_visibleCols', JSON.stringify([...next]));
+      localStorage.setItem('adminStudents_visibleCols', JSON.stringify(Array.from(next)));
       return next;
     });
   };
