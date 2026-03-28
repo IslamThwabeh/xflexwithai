@@ -495,6 +495,9 @@ export const appRouter = router({
         await db.updateUserLastSignIn(user.id);
         await db.setUserEmailVerified(user.id);
 
+        // Daily login points
+        try { await db.autoAwardPoints(user.id, 'daily_login'); } catch {}
+
         const token = await generateToken({
           userId: user.id,
           email,
@@ -572,6 +575,9 @@ export const appRouter = router({
 
         // Update last signed in
         await db.updateUserLastSignIn(user.id);
+
+        // Daily login points
+        try { await db.autoAwardPoints(user.id, 'daily_login'); } catch {}
 
         // Generate JWT token
         const token = await generateToken({
@@ -1302,6 +1308,28 @@ export const appRouter = router({
         });
         return { success: true, progressPercentage, reachedHalfway: progressPercentage >= 50 };
       }),
+
+    // Admin/Support: Skip course for a user (marks all episodes complete)
+    skipCourse: adminOrRoleProcedure(['key_manager', 'support'])
+      .input(z.object({
+        userId: z.number(),
+        courseId: z.number(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        logger.procedure('enrollments.skipCourse', input, ctx.user.id);
+        const result = await db.skipCourseForUser(input.userId, input.courseId);
+
+        // Trigger subscription activation (same as reaching 50%)
+        await db.getPendingActivationStatus(input.userId);
+
+        logger.info('Course skipped for user by admin', {
+          adminId: ctx.user.id,
+          userId: input.userId,
+          courseId: input.courseId,
+          skippedEpisodes: result.skippedEpisodes,
+        });
+        return { success: true, ...result };
+      }),
   }),
 
   episodeQuiz: router({
@@ -1541,6 +1569,11 @@ export const appRouter = router({
       const subscription = await db.getActiveLexaiSubscription(ctx.user.id);
 
       if (!subscription) {
+        // Check if subscription is frozen
+        const frozen = await db.getFrozenLexaiSubscription(ctx.user.id);
+        if (frozen) {
+          return { isFrozen: true, frozenUntil: frozen.frozenUntil ?? null, frozenReason: frozen.pausedReason ?? null };
+        }
         return null;
       }
 
@@ -1820,6 +1853,9 @@ export const appRouter = router({
         canPublish: access.canPublish,
         hasSubscription: access.hasSubscription,
         subscription: access.subscription,
+        isFrozen: access.isFrozen,
+        frozenUntil: access.frozenUntil,
+        frozenReason: access.frozenReason,
       };
     }),
 
@@ -2734,6 +2770,19 @@ export const appRouter = router({
       return db.getPendingActivationStatus(ctx.user.id);
     }),
 
+    // User: check if LexAI / Recommendations are frozen
+    frozenStatus: protectedProcedure.query(async ({ ctx }) => {
+      if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+      const frozenLexai = await db.getFrozenLexaiSubscription(ctx.user.id);
+      const frozenRec = await db.getFrozenRecommendationSubscription(ctx.user.id);
+      return {
+        lexaiFrozen: !!frozenLexai,
+        lexaiFrozenUntil: frozenLexai?.frozenUntil ?? null,
+        recFrozen: !!frozenRec,
+        recFrozenUntil: frozenRec?.frozenUntil ?? null,
+      };
+    }),
+
     // User: start the 30-day timer now (student's choice)
     activateNow: protectedProcedure.mutation(async ({ ctx }) => {
       if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
@@ -3443,7 +3492,12 @@ export const appRouter = router({
         keyCode: z.string().min(1),
       }))
       .mutation(async ({ input, ctx }) => {
-        return db.activatePackageKey(input.keyCode, ctx.user.email, ctx.user.id);
+        const result = await db.activatePackageKey(input.keyCode, ctx.user.email, ctx.user.id);
+        if (result.success) {
+          // Auto-award referral points (if user was referred)
+          try { await db.activateReferral(ctx.user.id); } catch {}
+        }
+        return result;
       }),
 
     // Upgrade leaderboard: monthly stats by referrer
@@ -3838,10 +3892,13 @@ ${qaText}`;
       }))
       .mutation(async ({ ctx, input }) => {
         if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
-        return db.createCourseReview({
+        const review = await db.createCourseReview({
           userId: ctx.user.id, courseId: input.courseId,
           rating: input.rating, comment: input.comment,
         });
+        // Auto-award points for review
+        try { await db.autoAwardPoints(ctx.user.id, 'review', { referenceId: input.courseId, referenceType: 'review' }); } catch {}
+        return review;
       }),
 
     // Admin: list all reviews with filters
@@ -3935,6 +3992,36 @@ ${qaText}`;
       return db.getPointsHistory(ctx.user.id);
     }),
 
+    // Student: get my referral code (generates one if missing)
+    myReferralCode: protectedProcedure.query(async ({ ctx }) => {
+      if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+      const code = await db.getOrCreateReferralCode(ctx.user.id);
+      return { code };
+    }),
+
+    // Student: get my referrals list
+    myReferrals: protectedProcedure.query(async ({ ctx }) => {
+      if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+      return db.getMyReferrals(ctx.user.id);
+    }),
+
+    // Student: get points earning rules
+    rules: protectedProcedure.query(async () => {
+      return db.getPointsRules();
+    }),
+
+    // Public: register a referral (when new user signs up via referral code)
+    registerReferral: publicProcedure
+      .input(z.object({ referralCode: z.string().min(4).max(10) }))
+      .mutation(async ({ ctx, input }) => {
+        if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        const referrer = await db.getUserByReferralCode(input.referralCode);
+        if (!referrer) throw new TRPCError({ code: 'NOT_FOUND', message: 'Invalid referral code' });
+        const result = await db.createReferral(referrer.id, ctx.user.id);
+        if (!result) throw new TRPCError({ code: 'CONFLICT', message: 'Referral already registered' });
+        return { success: true };
+      }),
+
     // Admin: add points to a user
     award: adminProcedure
       .input(z.object({
@@ -3973,6 +4060,28 @@ ${qaText}`;
     leaderboard: adminProcedure.query(async () => {
       return db.getTopPointsUsers();
     }),
+
+    // Admin: referral stats
+    referralStats: adminProcedure.query(async () => {
+      return db.getReferralStats();
+    }),
+
+    // Admin: list/update points rules
+    adminRules: adminProcedure.query(async () => {
+      return db.getPointsRules();
+    }),
+
+    updateRule: adminProcedure
+      .input(z.object({
+        id: z.number(),
+        points: z.number().min(0).optional(),
+        isActive: z.boolean().optional(),
+        maxPerDay: z.number().min(1).nullable().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, ...data } = input;
+        return db.updatePointsRule(id, data);
+      }),
   }),
 
   // ============================================================================
@@ -4019,6 +4128,77 @@ ${qaText}`;
       .input(z.object({ userId: z.number() }))
       .query(async ({ input }) => {
         return db.getUserEngagementTimeline(input.userId);
+      }),
+  }),
+
+  // ====== Brokers ======
+  brokers: router({
+    // Public: active brokers for students
+    listActive: publicProcedure.query(async () => {
+      return db.getActiveBrokers();
+    }),
+
+    // Admin: all brokers
+    list: adminProcedure.query(async () => {
+      return db.getAllBrokers();
+    }),
+
+    // Admin: get single broker
+    get: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input }) => {
+        return db.getBrokerById(input.id);
+      }),
+
+    // Admin: create broker
+    create: adminProcedure
+      .input(z.object({
+        nameEn: z.string().min(1),
+        nameAr: z.string().min(1),
+        descriptionEn: z.string().optional(),
+        descriptionAr: z.string().optional(),
+        logoUrl: z.string().optional(),
+        affiliateUrl: z.string().url(),
+        supportWhatsapp: z.string().optional(),
+        minDeposit: z.number().min(0).default(0),
+        minDepositCurrency: z.string().default("USD"),
+        featuresEn: z.string().optional(),
+        featuresAr: z.string().optional(),
+        isActive: z.boolean().default(true),
+        displayOrder: z.number().default(0),
+      }))
+      .mutation(async ({ input }) => {
+        return db.createBroker(input);
+      }),
+
+    // Admin: update broker
+    update: adminProcedure
+      .input(z.object({
+        id: z.number(),
+        nameEn: z.string().min(1).optional(),
+        nameAr: z.string().min(1).optional(),
+        descriptionEn: z.string().optional(),
+        descriptionAr: z.string().optional(),
+        logoUrl: z.string().optional(),
+        affiliateUrl: z.string().url().optional(),
+        supportWhatsapp: z.string().optional(),
+        minDeposit: z.number().min(0).optional(),
+        minDepositCurrency: z.string().optional(),
+        featuresEn: z.string().optional(),
+        featuresAr: z.string().optional(),
+        isActive: z.boolean().optional(),
+        displayOrder: z.number().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, ...data } = input;
+        return db.updateBroker(id, data);
+      }),
+
+    // Admin: delete broker
+    delete: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        return db.deleteBroker(input.id);
       }),
   }),
 });

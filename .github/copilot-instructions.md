@@ -107,11 +107,29 @@ vatAmount = totalAmount * 0.16
 - **WhatsAppFloat**: Whitelist approach — only shows on known public paths (`/`, `/checkout`, `/articles`, `/events`, `/careers`, `/about`, `/refund-policy`, `/terms`, `/privacy`). Hidden everywhere else.
 - **KeyActivationPrompt**: Dialog on `MyDashboard` when user has no enrollments — dismissed via `sessionStorage`
 - **Admin sidebar sections**: Overview → Sales → Learning → Content → Students → Team → Reports → Moderation → Careers
-- Student nav items: Dashboard, LexAI, Recommendations, Support, Quizzes, My Package, Notifications, Points, Calculators
+- Student nav items: Dashboard, LexAI, Recommendations, Support, Quizzes, My Package, Brokers, Notifications, Points, Calculators
 - **Removed from nav**: Orders (page kept), Subscriptions (redirects to `/my-packages`), Profile (accessible via avatar click)
 - **StudentPackages.tsx**: Merged "My Package" + "My Subscriptions" into one page — package status, subscription history, freeze, upgrade CTA, feature badges
 - **Episode duration**: DB stores seconds (e.g., 182 = ~3 min). Display: `Math.floor(duration / 60)` min. Watch requirement: `duration * 0.7` seconds.
 - **Notification system**: `user_notifications` table + `users.lastActiveAt` + `users.notificationPrefs` (JSON). Email suppression when user is online (active < 5 min). Notification prefs UI in Profile.tsx.
+
+### Broker System
+- Table: `brokers` (id, name, nameAr, description, descriptionAr, logoUrl, websiteUrl, features, featuresAr, isActive, sortOrder, createdAt, updatedAt)
+- Admin: `AdminBrokers.tsx` — card-based CRUD with logo preview, features as comma-separated input
+- Student: `BrokerSelection.tsx` — broker cards with "Open Account" + "WhatsApp Support" buttons
+- Backend: `brokers` sub-router with `list`, `listActive`, `byId`, `create`, `update`, `delete`
+- Admin sidebar: Sales section. Student nav: after My Package.
+
+### Loyalty Points & Referral System
+- Tables: `points_transactions`, `points_rules`, `referrals` + `users.pointsBalance`, `users.referralCode`
+- 8 configurable rules in `points_rules`: `course_complete`(100), `quiz_pass`(25), `daily_login`(5, cap 1/day), `review`(30), `referral_referrer`(200), `referral_referee`(50), `renewal`(150), `episode_milestone`(10 per 5 episodes)
+- `autoAwardPoints(userId, ruleKey, meta?)` — core function, checks rule active + daily cap, then awards
+- Auto-award triggers wired into: OTP login, password login, quiz pass, review submit, episode milestones (every 5), package key activation (referral)
+- Referral flow: student shares link → new user registers with `?ref=CODE` → stored in `localStorage` → `registerReferral` called after registration → `activateReferral` awards both users on key activation
+- Referral code format: 6 chars from `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`
+- Admin page (`AdminPoints.tsx`): 3 tabs — Leaderboard (award/deduct), Rules (edit points/caps/toggle active), Referrals (stats + top referrers)
+- Student page (`LoyaltyPoints.tsx`): balance card, referral section (code+copy+share+stats), earning rules from DB, points history
+- Registration capture: `Auth.tsx` extracts `?ref=CODE` from URL, persists in localStorage, passes to `RegisterForm.tsx` which calls `points.registerReferral` after successful registration
 
 ---
 
@@ -180,7 +198,7 @@ CodeGraph is set up for this project with a pre-built semantic graph of all symb
 2. **ar-SA dates**: Will render Hijri calendar — always use `ar-EG`
 3. **VAT formula**: Inclusive (not additive) — see formula above
 4. **Package keys**: Always check `packageId` before assuming `courseId=0` means LexAI
-5. **D1 SQLite quirks**: Some PostgreSQL features don't exist — always validate SQL syntax for SQLite
+5. **D1 SQLite quirks**: Some PostgreSQL features don't exist — always validate SQL syntax for SQLite. Cannot add UNIQUE column via ALTER TABLE — use `ALTER TABLE ADD COLUMN` + `CREATE UNIQUE INDEX` separately.
 6. **Large files**: `backend/db.ts` and `backend/routers.ts` are very large — use `codegraph_symbol_search` or `codegraph_get_ai_context` instead of reading whole files
 7. **Video URLs**: Always use `https://videos.xflexacademy.com` domain (NOT xflexwithai.com). `normalizeVideoUrl()` in db.ts is a safety net
 8. **Video `<video>` tags**: Always include `controlsList="nodownload"` and `onContextMenu={e => e.preventDefault()}` on all video elements

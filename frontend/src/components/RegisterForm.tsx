@@ -8,7 +8,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2 } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 
-export function RegisterForm({ onSuccess }: { onSuccess?: () => void }) {
+export function RegisterForm({ onSuccess, referralCode }: { onSuccess?: () => void; referralCode?: string | null }) {
   const { t } = useLanguage();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -19,8 +19,17 @@ export function RegisterForm({ onSuccess }: { onSuccess?: () => void }) {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
 
+  const registerReferralMutation = trpc.points.registerReferral.useMutation();
+
   const registerMutation = trpc.auth.register.useMutation({
-    onSuccess: () => {
+    onSuccess: async () => {
+      // Register referral if code was captured from URL
+      if (referralCode) {
+        try {
+          await registerReferralMutation.mutateAsync({ referralCode });
+        } catch { /* referral registration is best-effort */ }
+        localStorage.removeItem("xflex_referral_code");
+      }
       // Reload page to refresh auth state
       window.location.reload();
       onSuccess?.();

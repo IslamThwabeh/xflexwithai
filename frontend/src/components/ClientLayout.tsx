@@ -39,6 +39,7 @@ import {
   Calculator,
   Search,
   Menu,
+  Building2,
 } from "lucide-react";
 
 interface ClientLayoutProps {
@@ -97,6 +98,12 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
       label: language === "ar" ? "باقتي" : "My Package",
       icon: <Package className="h-4 w-4" />,
       match: "/my-packages",
+    },
+    {
+      href: "/brokers",
+      label: language === "ar" ? "الوسطاء" : "Brokers",
+      icon: <Building2 className="h-4 w-4" />,
+      match: "/brokers",
     },
     {
       href: "/notifications",

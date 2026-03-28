@@ -17,7 +17,7 @@ import { trpc } from '@/lib/trpc';
 const stageData = [
   { num: 1, icon: BookOpen, color: 'from-blue-500 to-blue-600', price: 150 },
   { num: 2, icon: BarChart3, color: 'from-indigo-500 to-indigo-600', price: 300 },
-  { num: 3, icon: TrendingUp, color: 'from-violet-500 to-violet-600', price: 0, comingSoon: true },
+  { num: 3, icon: TrendingUp, color: 'from-violet-500 to-violet-600', price: 200 },
   { num: 4, icon: Lightbulb, color: 'from-amber-500 to-amber-600', price: 100 },
   { num: 5, icon: Shield, color: 'from-emerald-500 to-emerald-600', price: 50 },
   { num: 6, icon: Signal, color: 'from-cyan-500 to-cyan-600', price: 50 },

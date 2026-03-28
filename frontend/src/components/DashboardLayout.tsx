@@ -51,6 +51,7 @@ import {
   Bell,
   Award,
   Activity,
+  Building2,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState, lazy, Suspense } from "react";
 import { useLocation } from "wouter";
@@ -75,6 +76,7 @@ const menuSectionsDef: MenuSection[] = [
       { icon: Key, labelKey: "admin.sidebar.activationKeys", path: "/admin/package-keys" },
       { icon: Package, labelKey: "admin.sidebar.packages", path: "/admin/packages" },
       { icon: Tag, labelKey: "admin.sidebar.coupons", path: "/admin/coupons" },
+      { icon: Building2, labelKey: "admin.sidebar.brokers", path: "/admin/brokers" },
     ]
   },
   {

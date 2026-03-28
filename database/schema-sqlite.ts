@@ -1,5 +1,5 @@
 import { int, sqliteTable, text, integer, unique } from "drizzle-orm/sqlite-core";
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 
 /**
  * Core user table backing auth flow.
@@ -1182,3 +1182,63 @@ export const engagementEventsRelations = relations(engagementEvents, ({ one }) =
     references: [users.id],
   }),
 }));
+
+// ── Brokers ──────────────────────────────────────────────
+export const brokers = sqliteTable("brokers", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  nameEn: text("nameEn").notNull(),
+  nameAr: text("nameAr").notNull(),
+  descriptionEn: text("descriptionEn"),
+  descriptionAr: text("descriptionAr"),
+  logoUrl: text("logoUrl"),
+  affiliateUrl: text("affiliateUrl").notNull(),
+  supportWhatsapp: text("supportWhatsapp"),
+  minDeposit: integer("minDeposit").default(0),
+  minDepositCurrency: text("minDepositCurrency").default("USD"),
+  featuresEn: text("featuresEn"), // JSON array
+  featuresAr: text("featuresAr"), // JSON array
+  isActive: integer("isActive", { mode: "boolean" }).notNull().default(true),
+  displayOrder: integer("displayOrder").notNull().default(0),
+  createdAt: text("createdAt").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: text("updatedAt").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export type Broker = typeof brokers.$inferSelect;
+export type NewBroker = typeof brokers.$inferInsert;
+
+// ── Referrals ────────────────────────────────────────────
+export const referrals = sqliteTable("referrals", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  referrerId: integer("referrerId").notNull(),
+  refereeId: integer("refereeId").notNull(),
+  status: text("status", { length: 20 }).default("pending").notNull(), // pending | activated | rewarded
+  referrerPoints: integer("referrerPoints").default(0).notNull(),
+  refereePoints: integer("refereePoints").default(0).notNull(),
+  createdAt: text("createdAt").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  activatedAt: text("activatedAt"),
+});
+
+export type Referral = typeof referrals.$inferSelect;
+export type NewReferral = typeof referrals.$inferInsert;
+
+export const referralRelations = relations(referrals, ({ one }) => ({
+  referrer: one(users, { fields: [referrals.referrerId], references: [users.id] }),
+  referee: one(users, { fields: [referrals.refereeId], references: [users.id] }),
+}));
+
+// ── Points Rules ─────────────────────────────────────────
+export const pointsRules = sqliteTable("points_rules", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  ruleKey: text("ruleKey").notNull().unique(),
+  points: integer("points").notNull().default(0),
+  nameEn: text("nameEn").notNull(),
+  nameAr: text("nameAr").notNull(),
+  descriptionEn: text("descriptionEn"),
+  descriptionAr: text("descriptionAr"),
+  isActive: integer("isActive", { mode: "boolean" }).notNull().default(true),
+  maxPerDay: integer("maxPerDay"),
+  createdAt: text("createdAt").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export type PointsRule = typeof pointsRules.$inferSelect;
+export type NewPointsRule = typeof pointsRules.$inferInsert;

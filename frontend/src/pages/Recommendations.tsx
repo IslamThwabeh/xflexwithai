@@ -79,6 +79,7 @@ export default function Recommendations() {
   });
 
   const canRead = !!me && (me.hasSubscription || me.canPublish);
+  const isFrozenRec = !!me && !me.hasSubscription && !me.canPublish && me.isFrozen;
   const expiryText = useMemo(() => {
     if (!me?.subscription?.endDate) return "-";
     const date = new Date(me.subscription.endDate);
@@ -114,6 +115,46 @@ export default function Recommendations() {
 
   // Full-screen paywall — matches LexAI style
   if (!meLoading && !canRead) {
+    // Frozen subscription — show specific frozen message
+    if (isFrozenRec) {
+      const frozenUntil = me?.frozenUntil;
+      const frozenDate = frozenUntil ? new Date(frozenUntil).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US') : null;
+      return (
+        <ClientLayout>
+        <div className="min-h-[calc(100vh-64px)] flex items-center justify-center bg-gradient-to-br from-amber-50 to-orange-50">
+          <Card className="max-w-lg mx-4">
+            <CardHeader className="text-center">
+              <div className="mx-auto w-16 h-16 bg-gradient-to-br from-amber-400 to-orange-500 rounded-full flex items-center justify-center mb-4">
+                <TrendingUp className="h-8 w-8 text-white" />
+              </div>
+              <CardTitle className="text-2xl">
+                {language === 'ar' ? 'اشتراك التوصيات مُجمّد مؤقتاً' : 'Recommendations Subscription Frozen'}
+              </CardTitle>
+              <CardDescription className="text-base mt-2">
+                {language === 'ar'
+                  ? 'تم تجميد اشتراكك مؤقتاً. سيتم استئنافه تلقائياً عند انتهاء فترة التجميد.'
+                  : 'Your subscription is temporarily frozen. It will resume automatically when the freeze period ends.'}
+              </CardDescription>
+              {frozenDate && (
+                <p className="text-sm font-medium text-amber-700 mt-3">
+                  {language === 'ar' ? `ينتهي التجميد في: ${frozenDate}` : `Frozen until: ${frozenDate}`}
+                </p>
+              )}
+            </CardHeader>
+            <CardContent>
+              <Link href="/support">
+                <Button variant="outline" className="w-full">
+                  {language === 'ar' ? 'تواصل مع الدعم' : 'Contact Support'}
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        </div>
+        </ClientLayout>
+      );
+    }
+
+    // No subscription — show standard paywall
     return (
       <ClientLayout>
       <div className="min-h-[calc(100vh-64px)] flex items-center justify-center bg-gradient-to-br from-purple-50 to-blue-50">

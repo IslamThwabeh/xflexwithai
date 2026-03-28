@@ -36,6 +36,17 @@ export default function Auth() {
     return next;
   }, [location]);
 
+  // Capture referral code from URL and persist in localStorage
+  const referralCode = useMemo(() => {
+    if (typeof window === "undefined") return null;
+    const ref = new URLSearchParams(window.location.search).get("ref");
+    if (ref && /^[A-Z0-9]{4,10}$/i.test(ref)) {
+      localStorage.setItem("xflex_referral_code", ref);
+      return ref;
+    }
+    return localStorage.getItem("xflex_referral_code");
+  }, [location]);
+
   const prefillEmail = useMemo(() => {
     if (typeof window === "undefined") return "";
     const fromQuery = new URLSearchParams(window.location.search).get("email") || "";
@@ -292,7 +303,7 @@ export default function Auth() {
           )}
         </div>
       ) : (
-        <RegisterForm />
+        <RegisterForm referralCode={referralCode} />
       )}
 
       <div className="mt-6 text-center">

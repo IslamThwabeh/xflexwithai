@@ -26,6 +26,24 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { printReport } from "@/lib/printReport";
 import {
   useDataTable,
@@ -43,6 +61,8 @@ import {
   UserCheck,
   UserX,
   Copy,
+  SlidersHorizontal,
+  FastForward,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -72,6 +92,54 @@ export default function AdminStudents() {
   const [search, setSearch] = useState("");
   const [countryFilter, setCountryFilter] = useState("all");
   const [packageFilter, setPackageFilter] = useState("all");
+  const [skipConfirm, setSkipConfirm] = useState<{ id: number; name: string } | null>(null);
+
+  const skipCourseMutation = trpc.enrollments.skipCourse.useMutation({
+    onSuccess: () => {
+      toast.success(isRtl ? "تم تخطي الدورة بنجاح" : "Course skipped successfully");
+      setSkipConfirm(null);
+    },
+    onError: (err) => {
+      toast.error(err.message);
+    },
+  });
+
+  // Column visibility
+  const allColumns = [
+    { key: 'name', en: 'Name', ar: 'الاسم' },
+    { key: 'email', en: 'Email', ar: 'الإيميل' },
+    { key: 'phone', en: 'Phone', ar: 'الهاتف' },
+    { key: 'location', en: 'Location', ar: 'الموقع' },
+    { key: 'package', en: 'Package', ar: 'الباقة' },
+    { key: 'spent', en: 'Spent', ar: 'الإنفاق' },
+    { key: 'renewals', en: 'Renewals', ar: 'التجديدات' },
+    { key: 'registered', en: 'Registered', ar: 'التسجيل' },
+    { key: 'lastSignIn', en: 'Last Sign In', ar: 'آخر دخول' },
+  ] as const;
+  const [visibleCols, setVisibleCols] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem('adminStudents_visibleCols');
+      if (saved) return new Set(JSON.parse(saved));
+    } catch {}
+    return new Set(['name', 'email', 'package', 'spent', 'registered', 'lastSignIn']);
+  });
+  const toggleCol = (col: string) => {
+    setVisibleCols(prev => {
+      const next = new Set(prev);
+      if (next.has(col)) next.delete(col); else next.add(col);
+      localStorage.setItem('adminStudents_visibleCols', JSON.stringify([...next]));
+      return next;
+    });
+  };
+  const visibleColCount = visibleCols.size;
+
+  // Package badge colors
+  const pkgBadgeClass = (name: string) => {
+    const lower = name.toLowerCase();
+    if (lower.includes('comprehensive') || lower.includes('شامل'))
+      return 'bg-purple-100 text-purple-800 border-purple-300 hover:bg-purple-100';
+    return 'bg-blue-100 text-blue-800 border-blue-300 hover:bg-blue-100';
+  };
 
   // Derived data
   const countries = useMemo(() => {
@@ -385,7 +453,7 @@ export default function AdminStudents() {
                               <Badge
                                 key={i}
                                 variant="outline"
-                                className="text-xs gap-1"
+                                className={`text-xs gap-1 ${pkgBadgeClass(p)}`}
                               >
                                 <Package className="w-3 h-3" />
                                 {p}
@@ -448,6 +516,19 @@ export default function AdminStudents() {
                           </span>
                         </div>
                       </div>
+
+                      {/* Actions */}
+                      <div className="pt-2 border-t">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-xs gap-1"
+                          onClick={() => setSkipConfirm({ id: s.id, name: s.name || s.email })}
+                        >
+                          <FastForward className="w-3 h-3" />
+                          {isRtl ? "تخطي الدورة" : "Skip Course"}
+                        </Button>
+                      </div>
                     </CardContent>
                   </Card>
                 ))
@@ -457,52 +538,77 @@ export default function AdminStudents() {
             {/* Desktop Table */}
             <Card className="hidden md:block">
               <CardHeader className="pb-3">
-                <CardTitle className="text-base">
-                  {isRtl ? "قائمة الطلاب" : "Student List"}{" "}
-                  <span className="text-gray-400 font-normal">
-                    ({filtered.length})
-                  </span>
-                </CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base">
+                    {isRtl ? "قائمة الطلاب" : "Student List"}{" "}
+                    <span className="text-gray-400 font-normal">
+                      ({filtered.length})
+                    </span>
+                  </CardTitle>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm" className="gap-1.5 text-xs">
+                        <SlidersHorizontal className="w-3.5 h-3.5" />
+                        {isRtl ? 'الأعمدة' : 'Columns'}
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align={isRtl ? 'start' : 'end'} className="w-48">
+                      <DropdownMenuLabel>{isRtl ? 'إظهار / إخفاء الأعمدة' : 'Toggle Columns'}</DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      {allColumns.map(col => (
+                        <DropdownMenuCheckboxItem
+                          key={col.key}
+                          checked={visibleCols.has(col.key)}
+                          onCheckedChange={() => toggleCol(col.key)}
+                          onSelect={(e) => e.preventDefault()}
+                        >
+                          {isRtl ? col.ar : col.en}
+                        </DropdownMenuCheckboxItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
               </CardHeader>
               <CardContent>
                 <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>
+                        {visibleCols.has('name') && <TableHead>
                           <SortableHeader label={isRtl ? "الاسم" : "Name"} sortKey="name" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} />
-                        </TableHead>
-                        <TableHead>
+                        </TableHead>}
+                        {visibleCols.has('email') && <TableHead>
                           <SortableHeader label={isRtl ? "الإيميل" : "Email"} sortKey="email" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} />
-                        </TableHead>
-                        <TableHead>
+                        </TableHead>}
+                        {visibleCols.has('phone') && <TableHead>
                           {isRtl ? "الهاتف" : "Phone"}
-                        </TableHead>
-                        <TableHead>
+                        </TableHead>}
+                        {visibleCols.has('location') && <TableHead>
                           <SortableHeader label={isRtl ? "الموقع" : "Location"} sortKey="location" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} />
-                        </TableHead>
-                        <TableHead>
+                        </TableHead>}
+                        {visibleCols.has('package') && <TableHead>
                           <SortableHeader label={isRtl ? "الباقة" : "Package"} sortKey="package" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} />
-                        </TableHead>
-                        <TableHead>
+                        </TableHead>}
+                        {visibleCols.has('spent') && <TableHead>
                           <SortableHeader label={isRtl ? "الإنفاق" : "Spent"} sortKey="spent" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} />
-                        </TableHead>
-                        <TableHead>
+                        </TableHead>}
+                        {visibleCols.has('renewals') && <TableHead>
                           <SortableHeader label={isRtl ? "التجديدات" : "Renewals"} sortKey="renewals" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} />
-                        </TableHead>
-                        <TableHead>
+                        </TableHead>}
+                        {visibleCols.has('registered') && <TableHead>
                           <SortableHeader label={isRtl ? "التسجيل" : "Registered"} sortKey="registered" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} />
-                        </TableHead>
-                        <TableHead>
+                        </TableHead>}
+                        {visibleCols.has('lastSignIn') && <TableHead>
                           <SortableHeader label={isRtl ? "آخر دخول" : "Last Sign In"} sortKey="lastSignIn" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} />
-                        </TableHead>
+                        </TableHead>}
+                        <TableHead className="w-[80px]">{isRtl ? "إجراءات" : "Actions"}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {paged.length === 0 ? (
                         <TableRow>
                           <TableCell
-                            colSpan={9}
+                            colSpan={visibleColCount + 1}
                             className="text-center py-8 text-gray-500"
                           >
                             {isRtl ? "لا توجد نتائج" : "No results found"}
@@ -511,10 +617,10 @@ export default function AdminStudents() {
                       ) : (
                         paged.map((s: any, i: number) => (
                           <TableRow key={s.id} className={zebraRow(i)}>
-                            <TableCell className="font-medium">
+                            {visibleCols.has('name') && <TableCell className="font-medium">
                               {s.name || "—"}
-                            </TableCell>
-                            <TableCell>
+                            </TableCell>}
+                            {visibleCols.has('email') && <TableCell>
                               <div className="flex items-center gap-1">
                                 <span className="text-sm" dir="ltr">
                                   {s.email}
@@ -526,16 +632,16 @@ export default function AdminStudents() {
                                   <Copy className="w-3 h-3" />
                                 </button>
                               </div>
-                            </TableCell>
-                            <TableCell className="text-sm" dir="ltr">
+                            </TableCell>}
+                            {visibleCols.has('phone') && <TableCell className="text-sm" dir="ltr">
                               {s.phone || "—"}
-                            </TableCell>
-                            <TableCell className="text-sm text-gray-500">
+                            </TableCell>}
+                            {visibleCols.has('location') && <TableCell className="text-sm text-gray-500">
                               {[s.city, s.country]
                                 .filter(Boolean)
                                 .join(", ") || "—"}
-                            </TableCell>
-                            <TableCell>
+                            </TableCell>}
+                            {visibleCols.has('package') && <TableCell>
                               {(s.activePackages || []).length > 0 ? (
                                 <div className="flex flex-wrap gap-1">
                                   {(isRtl
@@ -545,7 +651,7 @@ export default function AdminStudents() {
                                     <Badge
                                       key={i}
                                       variant="outline"
-                                      className="text-xs gap-1"
+                                      className={`text-xs gap-1 ${pkgBadgeClass(p)}`}
                                     >
                                       <Package className="w-3 h-3" />
                                       {p}
@@ -557,11 +663,11 @@ export default function AdminStudents() {
                                   —
                                 </span>
                               )}
-                            </TableCell>
-                            <TableCell className="text-sm font-medium text-emerald-600">
+                            </TableCell>}
+                            {visibleCols.has('spent') && <TableCell className="text-sm font-medium text-emerald-600">
                               {s.totalSpent > 0 ? `$${s.totalSpent}` : "—"}
-                            </TableCell>
-                            <TableCell className="text-center">
+                            </TableCell>}
+                            {visibleCols.has('renewals') && <TableCell className="text-center">
                               {s.renewalCount > 0 ? (
                                 <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100 text-xs">
                                   {s.renewalCount}
@@ -569,12 +675,23 @@ export default function AdminStudents() {
                               ) : (
                                 "—"
                               )}
-                            </TableCell>
-                            <TableCell className="text-xs text-gray-500">
+                            </TableCell>}
+                            {visibleCols.has('registered') && <TableCell className="text-xs text-gray-500">
                               {fmtDate(s.createdAt)}
-                            </TableCell>
-                            <TableCell className="text-xs text-gray-500">
+                            </TableCell>}
+                            {visibleCols.has('lastSignIn') && <TableCell className="text-xs text-gray-500">
                               {fmtDate(s.lastSignedIn)}
+                            </TableCell>}
+                            <TableCell>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-xs gap-1 h-7"
+                                onClick={() => setSkipConfirm({ id: s.id, name: s.name || s.email })}
+                              >
+                                <FastForward className="w-3 h-3" />
+                                {isRtl ? "تخطي" : "Skip"}
+                              </Button>
                             </TableCell>
                           </TableRow>
                         ))
@@ -598,6 +715,37 @@ export default function AdminStudents() {
           </>
         )}
       </div>
+
+      {/* Skip Course Confirmation Dialog */}
+      <AlertDialog open={!!skipConfirm} onOpenChange={(open) => !open && setSkipConfirm(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {isRtl ? "تخطي الدورة التعليمية" : "Skip Trading Course"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {isRtl
+                ? `هل أنت متأكد من تخطي الدورة للطالب "${skipConfirm?.name}"؟ سيتم تعليم جميع الحلقات كمكتملة ونسبة التقدم 100%.`
+                : `Are you sure you want to skip the course for "${skipConfirm?.name}"? All episodes will be marked as complete with 100% progress.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{isRtl ? "إلغاء" : "Cancel"}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (skipConfirm) {
+                  skipCourseMutation.mutate({ userId: skipConfirm.id, courseId: 1 });
+                }
+              }}
+              disabled={skipCourseMutation.isPending}
+            >
+              {skipCourseMutation.isPending
+                ? (isRtl ? "جاري التخطي..." : "Skipping...")
+                : (isRtl ? "تأكيد التخطي" : "Confirm Skip")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </DashboardLayout>
   );
 }

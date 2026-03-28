@@ -5,10 +5,10 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { getLoginUrl } from "@/const";
 import { trpc } from "@/lib/trpc";
-import { BookOpen, GraduationCap, Play, CheckCircle2, Calendar, Gift, MessageSquareQuote, Newspaper, AlertCircle } from "lucide-react";
+import { BookOpen, GraduationCap, Play, CheckCircle2, Calendar, Gift, MessageSquareQuote, Newspaper, AlertCircle, Bot, TrendingUp, Trophy } from "lucide-react";
 import { Link } from "wouter";
 import { format } from "date-fns";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import ClientLayout from "@/components/ClientLayout";
 import KeyActivationPrompt from "@/components/KeyActivationPrompt";
@@ -26,7 +26,7 @@ function formatSafeDate(
 
 export default function MyDashboard() {
   const { user, isAuthenticated, loading } = useAuth();
-  const { t, isRTL } = useLanguage();
+  const { t, isRTL, language } = useLanguage();
   const utils = trpc.useUtils();
   const didSyncRef = useRef(false);
 
@@ -104,6 +104,18 @@ export default function MyDashboard() {
 
   const totalCourses = enrollments?.length || 0;
   const completedCourses = enrollments?.filter(e => e.completedAt !== null).length || 0;
+  const allCoursesCompleted = totalCourses > 0 && completedCourses === totalCourses;
+
+  // One-time congrats: show only once per user, dismiss forever
+  const congratsKey = user?.id ? `course_completion_celebrated_${user.id}` : '';
+  const [showCongrats, setShowCongrats] = useState(() => {
+    if (!congratsKey) return false;
+    return !localStorage.getItem(congratsKey);
+  });
+  const dismissCongrats = () => {
+    if (congratsKey) localStorage.setItem(congratsKey, '1');
+    setShowCongrats(false);
+  };
 
   // Motivational message based on course progress (professional academy style)
   const getMotivationalMessage = (progress: number) => {
@@ -155,7 +167,7 @@ export default function MyDashboard() {
     <ClientLayout>
       <KeyActivationPrompt
         hasEnrollments={totalCourses > 0}
-        hasLexai={!!lexaiSubscription}
+        hasLexai={!!(lexaiSubscription && 'isActive' in lexaiSubscription)}
         hasRecommendations={!!recommendationsAccess?.hasSubscription}
       />
       <div className="bg-gradient-to-br from-blue-50 via-white to-purple-50 min-h-[calc(100vh-64px)]">
@@ -171,7 +183,91 @@ export default function MyDashboard() {
             </p>
           </div>
 
-          {/* ENROLLED COURSES — Front and Center */}
+          {/* ONE-TIME CONGRATS BANNER — shown only once after completion */}
+          {allCoursesCompleted && showCongrats && (
+            <Card className="overflow-hidden border-0 shadow-lg bg-gradient-to-r from-green-500 to-emerald-600 text-white">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between flex-wrap gap-4">
+                  <div className="flex items-center gap-4">
+                    <Trophy className="h-10 w-10 shrink-0" />
+                    <div>
+                      <h2 className="text-xl font-bold">
+                        {isRTL ? "مبروك! أكملت الدورة التعليمية 🎓" : "Congratulations! You completed the course 🎓"}
+                      </h2>
+                      <p className="text-sm text-green-100 mt-1">
+                        {isRTL
+                          ? "أنت الآن جاهز لاحتراف الأسواق. استفد من LexAI والتوصيات!"
+                          : "You're now ready to conquer the markets. Use LexAI and Recommendations!"}
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={dismissCongrats}
+                    className="text-green-800 bg-white/90 hover:bg-white shrink-0"
+                  >
+                    {isRTL ? "حسناً" : "Got it!"}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* POST-COMPLETION: LexAI & Recommendations as Primary CTAs */}
+          {allCoursesCompleted && (
+            <div className="grid gap-4 md:grid-cols-2">
+              {/* LexAI CTA */}
+              <Card className="border-0 shadow-md overflow-hidden">
+                <div className="bg-gradient-to-r from-purple-500 to-indigo-600 px-5 py-3">
+                  <div className="flex items-center gap-2 text-white">
+                    <Bot className="h-5 w-5" />
+                    <h3 className="font-bold">LexAI</h3>
+                  </div>
+                </div>
+                <CardContent className="p-5">
+                  <p className="text-sm text-muted-foreground mb-4">
+                    {isRTL
+                      ? "مساعدك الذكي للتداول — اسأل أي سؤال واحصل على إجابات فورية."
+                      : "Your AI trading assistant — ask any question and get instant answers."}
+                  </p>
+                  <Link href="/lexai">
+                    <Button className="w-full bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700">
+                      {lexaiSubscription && 'isActive' in lexaiSubscription
+                        ? (isRTL ? "فتح LexAI" : "Open LexAI")
+                        : (isRTL ? "تفعيل LexAI" : "Activate LexAI")}
+                    </Button>
+                  </Link>
+                </CardContent>
+              </Card>
+
+              {/* Recommendations CTA */}
+              <Card className="border-0 shadow-md overflow-hidden">
+                <div className="bg-gradient-to-r from-amber-500 to-orange-600 px-5 py-3">
+                  <div className="flex items-center gap-2 text-white">
+                    <TrendingUp className="h-5 w-5" />
+                    <h3 className="font-bold">{isRTL ? "التوصيات" : "Recommendations"}</h3>
+                  </div>
+                </div>
+                <CardContent className="p-5">
+                  <p className="text-sm text-muted-foreground mb-4">
+                    {isRTL
+                      ? "توصيات تداول يومية من فريق المحللين المحترفين."
+                      : "Daily trading recommendations from our professional analyst team."}
+                  </p>
+                  <Link href="/recommendations">
+                    <Button className="w-full bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700">
+                      {recommendationsAccess?.hasSubscription
+                        ? (isRTL ? "فتح التوصيات" : "Open Recommendations")
+                        : (isRTL ? "تفعيل التوصيات" : "Activate Recommendations")}
+                    </Button>
+                  </Link>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* ENROLLED COURSES — Full card when in-progress, compact when completed */}
           {enrollments && enrollments.length > 0 && (
             <div>
               {enrollments.map((enrollment) => {
@@ -179,6 +275,39 @@ export default function MyDashboard() {
                 const isCompleted = enrollment.completedAt !== null;
                 const motivation = getMotivationalMessage(progress);
 
+                {/* Compact card for completed courses when all courses are done */}
+                if (allCoursesCompleted && isCompleted) {
+                  return (
+                    <Card key={enrollment.id} className="border shadow-sm">
+                      <CardContent className="p-4">
+                        <div className="flex items-center justify-between flex-wrap gap-3">
+                          <div className="flex items-center gap-3">
+                            <div className="shrink-0 w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
+                              <CheckCircle2 className="h-5 w-5 text-green-600" />
+                            </div>
+                            <div>
+                              <h3 className="font-semibold">{enrollment.courseName}</h3>
+                              <p className="text-xs text-muted-foreground">
+                                {enrollment.completedEpisodes} {t('dashboard.episodesCompleted')}
+                                <Badge className="bg-green-100 text-green-700 ms-2 text-xs">
+                                  {t('dashboard.completed')}
+                                </Badge>
+                              </p>
+                            </div>
+                          </div>
+                          <Link href={`/course/${enrollment.courseId}`}>
+                            <Button size="sm" variant="outline" className="gap-1">
+                              <Play className="h-3 w-3" />
+                              {t('dashboard.review')}
+                            </Button>
+                          </Link>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                }
+
+                {/* Full card for in-progress courses */}
                 return (
                   <Card key={enrollment.id} className="overflow-hidden border-0 shadow-lg">
                     {/* Motivational Banner */}
@@ -270,10 +399,18 @@ export default function MyDashboard() {
                 {t('dashboard.courseAccess')}: {totalCourses > 0 ? t('dashboard.active') : t('dashboard.notActive')}
               </div>
               <div className="text-sm text-muted-foreground">
-                {t('dashboard.lexaiAccess')}: {lexaiSubscription ? t('dashboard.active') : t('dashboard.notActive')}
+                {t('dashboard.lexaiAccess')}: {lexaiSubscription && 'isActive' in lexaiSubscription
+                  ? t('dashboard.active')
+                  : lexaiSubscription && 'isFrozen' in lexaiSubscription
+                    ? <span className="text-amber-600 font-medium">{language === 'ar' ? 'مُجمّد' : 'Frozen'}</span>
+                    : t('dashboard.notActive')}
               </div>
               <div className="text-sm text-muted-foreground">
-                {t('dashboard.recAccess')}: {recommendationsAccess?.hasSubscription ? t('dashboard.active') : t('dashboard.notActive')}
+                {t('dashboard.recAccess')}: {recommendationsAccess?.hasSubscription
+                  ? t('dashboard.active')
+                  : recommendationsAccess?.isFrozen
+                    ? <span className="text-amber-600 font-medium">{language === 'ar' ? 'مُجمّد' : 'Frozen'}</span>
+                    : t('dashboard.notActive')}
               </div>
               <div className="flex flex-wrap gap-2">
                 {totalCourses > 0 && (
@@ -281,7 +418,7 @@ export default function MyDashboard() {
                     <Button variant="outline">{t('dashboard.openCourses')}</Button>
                   </Link>
                 )}
-                {lexaiSubscription && (
+                {lexaiSubscription && 'isActive' in lexaiSubscription && (
                   <Link href="/lexai">
                     <Button variant="outline">{t('dashboard.openLexai')}</Button>
                   </Link>
@@ -291,7 +428,7 @@ export default function MyDashboard() {
                     <Button variant="outline">{t('dashboard.openRec')}</Button>
                   </Link>
                 )}
-                {!recommendationsAccess?.hasSubscription && (
+                {!recommendationsAccess?.hasSubscription && !recommendationsAccess?.isFrozen && (
                   <Link href="/recommendations">
                     <Button variant="outline">{t('dashboard.activateRec')}</Button>
                   </Link>

@@ -18,6 +18,7 @@ export default function StudentPackages() {
   const { data: activePackage, isLoading } = trpc.subscriptions.myActivePackage.useQuery();
   const { data: subscriptions, isLoading: subsLoading } = trpc.subscriptions.mySubscriptions.useQuery();
   const { data: activationStatus } = trpc.subscriptions.activationStatus.useQuery();
+  const { data: frozenStatus } = trpc.subscriptions.frozenStatus.useQuery();
   const pkg = (activePackage as any)?.package;
 
   const freezeMutation = trpc.subscriptions.requestFreeze.useMutation({
@@ -213,6 +214,47 @@ export default function StudentPackages() {
             <div className="flex items-center gap-2 text-sm text-amber-600">
               <span>{isRtl ? 'تقدم الدورة' : 'Course progress'}: {activationStatus.progressPercent}%</span>
             </div>
+          </div>
+        )}
+
+        {/* Subscription Frozen Status */}
+        {(frozenStatus?.lexaiFrozen || frozenStatus?.recFrozen) && (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 mb-8">
+            <div className="flex items-center gap-3 mb-2">
+              <Snowflake className="w-5 h-5 text-amber-600" />
+              <h3 className="font-semibold text-amber-900">
+                {isRtl ? 'اشتراكات مُجمّدة' : 'Frozen Subscriptions'}
+              </h3>
+            </div>
+            <div className="space-y-2">
+              {frozenStatus.lexaiFrozen && (
+                <div className="flex items-center gap-2 text-sm text-amber-700">
+                  <Sparkles className="w-4 h-4" />
+                  <span>
+                    LexAI — {isRtl ? 'مُجمّد' : 'Frozen'}
+                    {frozenStatus.lexaiFrozenUntil && (
+                      <> {isRtl ? 'حتى' : 'until'} {new Date(frozenStatus.lexaiFrozenUntil).toLocaleDateString(isRtl ? 'ar-EG' : 'en-US')}</>
+                    )}
+                  </span>
+                </div>
+              )}
+              {frozenStatus.recFrozen && (
+                <div className="flex items-center gap-2 text-sm text-amber-700">
+                  <MessageSquare className="w-4 h-4" />
+                  <span>
+                    {isRtl ? 'التوصيات' : 'Recommendations'} — {isRtl ? 'مُجمّد' : 'Frozen'}
+                    {frozenStatus.recFrozenUntil && (
+                      <> {isRtl ? 'حتى' : 'until'} {new Date(frozenStatus.recFrozenUntil).toLocaleDateString(isRtl ? 'ar-EG' : 'en-US')}</>
+                    )}
+                  </span>
+                </div>
+              )}
+            </div>
+            <p className="text-xs text-amber-600 mt-2">
+              {isRtl
+                ? 'سيتم استئناف الاشتراكات تلقائياً عند انتهاء فترة التجميد.'
+                : 'Subscriptions will resume automatically when the freeze period ends.'}
+            </p>
           </div>
         )}
 

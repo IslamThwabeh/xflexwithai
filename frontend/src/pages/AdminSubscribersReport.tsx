@@ -4,8 +4,16 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { printReport } from '@/lib/printReport';
-import { Download, Search, Users, Filter, FileText } from 'lucide-react';
+import { Download, Search, Users, Filter, FileText, SlidersHorizontal } from 'lucide-react';
 import DashboardLayout from '@/components/DashboardLayout';
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
   useDataTable,
   DataTablePagination,
@@ -30,6 +38,44 @@ export default function AdminSubscribersReport() {
   const { data: subscribers, isLoading } = trpc.reports.subscribers.useQuery();
   const [search, setSearch] = useState('');
   const [countryFilter, setCountryFilter] = useState('');
+
+  // Column visibility
+  const allColumns = [
+    { key: 'name', en: 'Name', ar: 'الاسم' },
+    { key: 'email', en: 'Email', ar: 'الإيميل' },
+    { key: 'phone', en: 'Phone', ar: 'الهاتف' },
+    { key: 'city', en: 'City', ar: 'المدينة' },
+    { key: 'country', en: 'Country', ar: 'البلد' },
+    { key: 'registered', en: 'Registered', ar: 'تاريخ التسجيل' },
+    { key: 'orders', en: 'Orders', ar: 'الطلبات' },
+    { key: 'spent', en: 'Spent', ar: 'الإنفاق' },
+    { key: 'packages', en: 'Active Packages', ar: 'الباقات النشطة' },
+    { key: 'renewals', en: 'Renewals', ar: 'التجديدات' },
+  ] as const;
+  const [visibleCols, setVisibleCols] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem('adminSubs_visibleCols');
+      if (saved) return new Set(JSON.parse(saved));
+    } catch {}
+    return new Set(['name', 'email', 'country', 'spent', 'packages', 'renewals']);
+  });
+  const toggleCol = (col: string) => {
+    setVisibleCols(prev => {
+      const next = new Set(prev);
+      if (next.has(col)) next.delete(col); else next.add(col);
+      localStorage.setItem('adminSubs_visibleCols', JSON.stringify([...next]));
+      return next;
+    });
+  };
+  const visibleColCount = visibleCols.size;
+
+  // Package badge colors
+  const pkgBadgeClass = (name: string) => {
+    const lower = (name || '').toLowerCase();
+    if (lower.includes('comprehensive') || lower.includes('شامل'))
+      return 'bg-purple-100 text-purple-800 border-purple-300';
+    return 'bg-blue-100 text-blue-800 border-blue-300';
+  };
 
   const countries = useMemo(() => {
     if (!subscribers) return [];
@@ -102,6 +148,28 @@ export default function AdminSubscribersReport() {
           <FileText className="w-4 h-4 me-2" />
           {isRtl ? 'تصدير PDF' : 'Export PDF'}
         </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" className="gap-1.5 text-xs">
+              <SlidersHorizontal className="w-3.5 h-3.5" />
+              {isRtl ? 'الأعمدة' : 'Columns'}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align={isRtl ? 'start' : 'end'} className="w-48">
+            <DropdownMenuLabel>{isRtl ? 'إظهار / إخفاء الأعمدة' : 'Toggle Columns'}</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {allColumns.map(col => (
+              <DropdownMenuCheckboxItem
+                key={col.key}
+                checked={visibleCols.has(col.key)}
+                onCheckedChange={() => toggleCol(col.key)}
+                onSelect={(e) => e.preventDefault()}
+              >
+                {isRtl ? col.ar : col.en}
+              </DropdownMenuCheckboxItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {/* Filters */}
@@ -136,49 +204,49 @@ export default function AdminSubscribersReport() {
           <table className="w-full text-sm">
             <thead className="bg-muted/50">
               <tr>
-                <th className="px-3 py-3 text-start font-medium"><SortableHeader label={isRtl ? 'الاسم' : 'Name'} sortKey="name" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>
-                <th className="px-3 py-3 text-start font-medium"><SortableHeader label={isRtl ? 'الإيميل' : 'Email'} sortKey="email" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>
-                <th className="px-3 py-3 text-start font-medium">{isRtl ? 'الهاتف' : 'Phone'}</th>
-                <th className="px-3 py-3 text-start font-medium"><SortableHeader label={isRtl ? 'المدينة' : 'City'} sortKey="city" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>
-                <th className="px-3 py-3 text-start font-medium"><SortableHeader label={isRtl ? 'البلد' : 'Country'} sortKey="country" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>
-                <th className="px-3 py-3 text-start font-medium"><SortableHeader label={isRtl ? 'تاريخ التسجيل' : 'Registered'} sortKey="registered" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>
-                <th className="px-3 py-3 text-center font-medium"><SortableHeader label={isRtl ? 'الطلبات' : 'Orders'} sortKey="orders" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>
-                <th className="px-3 py-3 text-center font-medium"><SortableHeader label={isRtl ? 'الإنفاق' : 'Spent'} sortKey="spent" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>
-                <th className="px-3 py-3 text-start font-medium">{isRtl ? 'الباقات النشطة' : 'Active Packages'}</th>
-                <th className="px-3 py-3 text-center font-medium"><SortableHeader label={isRtl ? 'التجديدات' : 'Renewals'} sortKey="renewals" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>
+                {visibleCols.has('name') && <th className="px-3 py-3 text-start font-medium"><SortableHeader label={isRtl ? 'الاسم' : 'Name'} sortKey="name" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>}
+                {visibleCols.has('email') && <th className="px-3 py-3 text-start font-medium"><SortableHeader label={isRtl ? 'الإيميل' : 'Email'} sortKey="email" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>}
+                {visibleCols.has('phone') && <th className="px-3 py-3 text-start font-medium">{isRtl ? 'الهاتف' : 'Phone'}</th>}
+                {visibleCols.has('city') && <th className="px-3 py-3 text-start font-medium"><SortableHeader label={isRtl ? 'المدينة' : 'City'} sortKey="city" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>}
+                {visibleCols.has('country') && <th className="px-3 py-3 text-start font-medium"><SortableHeader label={isRtl ? 'البلد' : 'Country'} sortKey="country" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>}
+                {visibleCols.has('registered') && <th className="px-3 py-3 text-start font-medium"><SortableHeader label={isRtl ? 'تاريخ التسجيل' : 'Registered'} sortKey="registered" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>}
+                {visibleCols.has('orders') && <th className="px-3 py-3 text-center font-medium"><SortableHeader label={isRtl ? 'الطلبات' : 'Orders'} sortKey="orders" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>}
+                {visibleCols.has('spent') && <th className="px-3 py-3 text-center font-medium"><SortableHeader label={isRtl ? 'الإنفاق' : 'Spent'} sortKey="spent" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>}
+                {visibleCols.has('packages') && <th className="px-3 py-3 text-start font-medium">{isRtl ? 'الباقات النشطة' : 'Active Packages'}</th>}
+                {visibleCols.has('renewals') && <th className="px-3 py-3 text-center font-medium"><SortableHeader label={isRtl ? 'التجديدات' : 'Renewals'} sortKey="renewals" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>}
               </tr>
             </thead>
             <tbody className="divide-y">
               {paged.map((s: any, i: number) => (
                 <tr key={s.id} className={zebraRow(i, "hover:bg-muted/30")}>
-                  <td className="px-3 py-2.5 font-medium">{s.name || '—'}</td>
-                  <td className="px-3 py-2.5 text-muted-foreground" dir="ltr">{s.email}</td>
-                  <td className="px-3 py-2.5" dir="ltr">{s.phone || '—'}</td>
-                  <td className="px-3 py-2.5">{s.city || '—'}</td>
-                  <td className="px-3 py-2.5">{s.country || '—'}</td>
-                  <td className="px-3 py-2.5 text-muted-foreground">
-                    {s.createdAt ? new Date(s.createdAt).toLocaleDateString() : '—'}
-                  </td>
-                  <td className="px-3 py-2.5 text-center">{s.completedOrders}</td>
-                  <td className="px-3 py-2.5 text-center font-medium text-green-700">
+                  {visibleCols.has('name') && <td className="px-3 py-2.5 font-medium">{s.name || '—'}</td>}
+                  {visibleCols.has('email') && <td className="px-3 py-2.5 text-muted-foreground" dir="ltr">{s.email}</td>}
+                  {visibleCols.has('phone') && <td className="px-3 py-2.5" dir="ltr">{s.phone || '—'}</td>}
+                  {visibleCols.has('city') && <td className="px-3 py-2.5">{s.city || '—'}</td>}
+                  {visibleCols.has('country') && <td className="px-3 py-2.5">{s.country || '—'}</td>}
+                  {visibleCols.has('registered') && <td className="px-3 py-2.5 text-muted-foreground">
+                    {s.createdAt ? new Date(s.createdAt).toLocaleDateString(isRtl ? 'ar-EG' : 'en-US') : '—'}
+                  </td>}
+                  {visibleCols.has('orders') && <td className="px-3 py-2.5 text-center">{s.completedOrders}</td>}
+                  {visibleCols.has('spent') && <td className="px-3 py-2.5 text-center font-medium text-green-700">
                     ${((s.totalSpent || 0) / 100).toFixed(0)}
-                  </td>
-                  <td className="px-3 py-2.5">
+                  </td>}
+                  {visibleCols.has('packages') && <td className="px-3 py-2.5">
                     {(s.activePackages || []).length > 0
                       ? s.activePackages.map((p: string, i: number) => (
-                          <span key={i} className="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded-full me-1 mb-1">{p}</span>
+                          <span key={i} className={`inline-block text-xs px-2 py-0.5 rounded-full me-1 mb-1 border ${pkgBadgeClass(p)}`}>{p}</span>
                         ))
                       : <span className="text-muted-foreground text-xs">—</span>}
-                  </td>
-                  <td className="px-3 py-2.5 text-center">
+                  </td>}
+                  {visibleCols.has('renewals') && <td className="px-3 py-2.5 text-center">
                     {s.renewalCount > 0
                       ? <span className="bg-green-100 text-green-800 text-xs px-2 py-0.5 rounded-full">{s.renewalCount}</span>
                       : '—'}
-                  </td>
+                  </td>}
                 </tr>
               ))}
               {paged.length === 0 && (
-                <tr><td colSpan={10} className="px-3 py-8 text-center text-muted-foreground">
+                <tr><td colSpan={visibleColCount} className="px-3 py-8 text-center text-muted-foreground">
                   {isRtl ? 'لا توجد نتائج' : 'No results found'}
                 </td></tr>
               )}

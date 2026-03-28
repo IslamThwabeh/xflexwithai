@@ -7,6 +7,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Card,
   CardContent,
   CardDescription,
@@ -59,6 +67,7 @@ import {
   PlayCircle,
   Snowflake,
   X,
+  SlidersHorizontal,
 } from "lucide-react";
 import {
   useDataTable,
@@ -109,6 +118,43 @@ export default function AdminPackageKeys() {
   const [freezeReason, setFreezeReason] = useState("");
   const [freezeDays, setFreezeDays] = useState("");
   const [statusFilter, setStatusFilter] = useState<'all' | 'activated' | 'unused' | 'deactivated' | 'frozen'>('all');
+
+  // Column visibility — smart defaults: show most important columns
+  const allColumns = [
+    { key: 'keyCode', en: 'Key Code', ar: 'المفتاح' },
+    { key: 'package', en: 'Package', ar: 'الباقة' },
+    { key: 'email', en: 'Email', ar: 'البريد' },
+    { key: 'status', en: 'Status', ar: 'الحالة' },
+    { key: 'price', en: 'Price', ar: 'السعر' },
+    { key: 'duration', en: 'Duration / Expiry', ar: 'المدة / الانتهاء' },
+    { key: 'activated', en: 'Activated', ar: 'تاريخ التفعيل' },
+    { key: 'created', en: 'Created', ar: 'تاريخ الإنشاء' },
+    { key: 'notes', en: 'Notes', ar: 'ملاحظات' },
+  ] as const;
+  const defaultVisibleCols = new Set(['keyCode', 'package', 'email', 'status', 'price']);
+  const [visibleCols, setVisibleCols] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem('adminKeys_visibleCols');
+      if (saved) return new Set(JSON.parse(saved));
+    } catch {}
+    return new Set(defaultVisibleCols);
+  });
+  const toggleCol = (col: string) => {
+    setVisibleCols(prev => {
+      const next = new Set(prev);
+      if (next.has(col)) next.delete(col); else next.add(col);
+      localStorage.setItem('adminKeys_visibleCols', JSON.stringify([...next]));
+      return next;
+    });
+  };
+  const visibleColCount = visibleCols.size + 1; // +1 for actions column
+
+  // Helper: package badge color classes
+  const getPackageBadgeClass = (packageId: number) => {
+    const pkg = packages.find((p: any) => p.id === packageId);
+    if (pkg?.includesLexai) return 'bg-purple-100 text-purple-800 border-purple-300 hover:bg-purple-100';
+    return 'bg-blue-100 text-blue-800 border-blue-300 hover:bg-blue-100';
+  };
 
   // Data queries
   const keysQuery = trpc.packageKeys.list.useQuery();
@@ -736,7 +782,7 @@ export default function AdminPackageKeys() {
 
                   {/* Row 2: Badges — Package, Status, Type */}
                   <div className="flex flex-wrap gap-1.5">
-                    <Badge variant="outline" className="gap-1 text-xs">
+                    <Badge variant="outline" className={`gap-1 text-xs ${getPackageBadgeClass(key.packageId)}`}>
                       <Package className="w-3 h-3" />
                       {language === 'ar' ? (key.packageNameAr || key.packageName) : key.packageName}
                     </Badge>
@@ -764,20 +810,16 @@ export default function AdminPackageKeys() {
                         {language === 'ar' ? 'جاهز' : 'Unused'}
                       </Badge>
                     )}
-                    {(key as any).isRenewal ? (
+                    {(key as any).isRenewal && (
                       <Badge className="gap-1 text-xs bg-blue-100 text-blue-800 hover:bg-blue-100">
                         <RotateCcw className="w-3 h-3" />
                         {language === 'ar' ? 'تجديد' : 'Renewal'}
                       </Badge>
-                    ) : (key as any).isUpgrade ? (
+                    )}
+                    {(key as any).isUpgrade && !(key as any).isRenewal && (
                       <Badge className="gap-1 text-xs bg-amber-100 text-amber-800 hover:bg-amber-100">
                         <ArrowUpCircle className="w-3 h-3" />
                         {language === 'ar' ? 'ترقية' : 'Upgrade'}
-                      </Badge>
-                    ) : (
-                      <Badge className="gap-1 text-xs bg-gray-100 text-gray-700 hover:bg-gray-100">
-                        <Plus className="w-3 h-3" />
-                        {language === 'ar' ? 'جديد' : 'New'}
                       </Badge>
                     )}
                   </div>
@@ -892,40 +934,63 @@ export default function AdminPackageKeys() {
         {/* Keys — Desktop Table (md and up) */}
         <Card className="hidden md:block">
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">
-              {language === 'ar' ? 'المفاتيح' : 'Keys'}{' '}
-              <span className="text-gray-400 font-normal">({filteredKeys.length})</span>
-            </CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base">
+                {language === 'ar' ? 'المفاتيح' : 'Keys'}{' '}
+                <span className="text-gray-400 font-normal">({filteredKeys.length})</span>
+              </CardTitle>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="gap-1.5 text-xs">
+                    <SlidersHorizontal className="w-3.5 h-3.5" />
+                    {language === 'ar' ? 'الأعمدة' : 'Columns'}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align={language === 'ar' ? 'start' : 'end'} className="w-48">
+                  <DropdownMenuLabel>{language === 'ar' ? 'إظهار / إخفاء الأعمدة' : 'Toggle Columns'}</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {allColumns.map(col => (
+                    <DropdownMenuCheckboxItem
+                      key={col.key}
+                      checked={visibleCols.has(col.key)}
+                      onCheckedChange={() => toggleCol(col.key)}
+                      onSelect={(e) => e.preventDefault()}
+                    >
+                      {language === 'ar' ? col.ar : col.en}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead><SortableHeader label={language === 'ar' ? 'المفتاح' : 'Key Code'} sortKey="keyCode" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></TableHead>
-                    <TableHead><SortableHeader label={language === 'ar' ? 'الباقة' : 'Package'} sortKey="package" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></TableHead>
-                    <TableHead><SortableHeader label={language === 'ar' ? 'البريد' : 'Email'} sortKey="email" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></TableHead>
-                    <TableHead><SortableHeader label={language === 'ar' ? 'الحالة' : 'Status'} sortKey="status" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></TableHead>
-                    <TableHead><SortableHeader label={language === 'ar' ? 'السعر' : 'Price'} sortKey="price" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></TableHead>
-                    <TableHead>{language === 'ar' ? 'المدة / الانتهاء' : 'Duration / Expiry'}</TableHead>
-                    <TableHead><SortableHeader label={language === 'ar' ? 'النوع' : 'Type'} sortKey="type" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></TableHead>
-                    <TableHead><SortableHeader label={language === 'ar' ? 'تاريخ التفعيل' : 'Activated'} sortKey="activated" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></TableHead>
-                    <TableHead><SortableHeader label={language === 'ar' ? 'تاريخ الإنشاء' : 'Created'} sortKey="created" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></TableHead>
-                    <TableHead>{language === 'ar' ? 'ملاحظات' : 'Notes'}</TableHead>
+                    {visibleCols.has('keyCode') && <TableHead><SortableHeader label={language === 'ar' ? 'المفتاح' : 'Key Code'} sortKey="keyCode" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></TableHead>}
+                    {visibleCols.has('package') && <TableHead><SortableHeader label={language === 'ar' ? 'الباقة' : 'Package'} sortKey="package" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></TableHead>}
+                    {visibleCols.has('email') && <TableHead><SortableHeader label={language === 'ar' ? 'البريد' : 'Email'} sortKey="email" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></TableHead>}
+                    {visibleCols.has('status') && <TableHead><SortableHeader label={language === 'ar' ? 'الحالة' : 'Status'} sortKey="status" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></TableHead>}
+                    {visibleCols.has('price') && <TableHead><SortableHeader label={language === 'ar' ? 'السعر' : 'Price'} sortKey="price" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></TableHead>}
+                    {visibleCols.has('duration') && <TableHead>{language === 'ar' ? 'المدة / الانتهاء' : 'Duration / Expiry'}</TableHead>}
+                    {visibleCols.has('activated') && <TableHead><SortableHeader label={language === 'ar' ? 'تاريخ التفعيل' : 'Activated'} sortKey="activated" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></TableHead>}
+                    {visibleCols.has('created') && <TableHead><SortableHeader label={language === 'ar' ? 'تاريخ الإنشاء' : 'Created'} sortKey="created" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></TableHead>}
+                    {visibleCols.has('notes') && <TableHead>{language === 'ar' ? 'ملاحظات' : 'Notes'}</TableHead>}
                     <TableHead></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {pagedKeys.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={11} className="text-center py-8 text-gray-500">
+                      <TableCell colSpan={visibleColCount} className="text-center py-8 text-gray-500">
                         {language === 'ar' ? 'لا توجد مفاتيح' : 'No keys found'}
                       </TableCell>
                     </TableRow>
                   ) : (
                     pagedKeys.map((key: any, i: number) => (
                       <TableRow key={key.id} className={zebraRow(i, !key.isActive ? 'opacity-50' : '')}>
-                        <TableCell>
+                        {visibleCols.has('keyCode') && <TableCell>
                           <div className="flex items-center gap-1.5">
                             <code className="text-xs font-mono bg-gray-100 px-1.5 py-0.5 rounded">
                               {key.keyCode}
@@ -937,21 +1002,21 @@ export default function AdminPackageKeys() {
                               <Copy className="w-3.5 h-3.5" />
                             </button>
                           </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className="gap-1">
+                        </TableCell>}
+                        {visibleCols.has('package') && <TableCell>
+                          <Badge variant="outline" className={`gap-1 ${getPackageBadgeClass(key.packageId)}`}>
                             <Package className="w-3 h-3" />
                             {language === 'ar' ? (key.packageNameAr || key.packageName) : key.packageName}
                           </Badge>
-                        </TableCell>
-                        <TableCell>
+                        </TableCell>}
+                        {visibleCols.has('email') && <TableCell>
                           {key.email ? (
                             <span className="text-sm">{key.email}</span>
                           ) : (
                             <span className="text-xs text-gray-400">—</span>
                           )}
-                        </TableCell>
-                        <TableCell>
+                        </TableCell>}
+                        {visibleCols.has('status') && <TableCell>
                           {!key.isActive ? (
                             <Badge variant="destructive" className="gap-1">
                               <XCircle className="w-3 h-3" />
@@ -969,6 +1034,18 @@ export default function AdminPackageKeys() {
                                   {language === 'ar' ? 'مجمّد' : 'Frozen'}
                                 </Badge>
                               )}
+                              {(key as any).isRenewal && (
+                                <Badge className="gap-1 bg-blue-100 text-blue-800 hover:bg-blue-100">
+                                  <RotateCcw className="w-3 h-3" />
+                                  {language === 'ar' ? 'تجديد' : 'Renewal'}
+                                </Badge>
+                              )}
+                              {(key as any).isUpgrade && !(key as any).isRenewal && (
+                                <Badge className="gap-1 bg-amber-100 text-amber-800 hover:bg-amber-100">
+                                  <ArrowUpCircle className="w-3 h-3" />
+                                  {language === 'ar' ? 'ترقية' : 'Upgrade'}
+                                </Badge>
+                              )}
                             </div>
                           ) : (
                             <Badge variant="secondary" className="gap-1">
@@ -976,49 +1053,31 @@ export default function AdminPackageKeys() {
                               {language === 'ar' ? 'جاهز' : 'Unused'}
                             </Badge>
                           )}
-                        </TableCell>
-                        <TableCell className="text-sm font-medium">
+                        </TableCell>}
+                        {visibleCols.has('price') && <TableCell className="text-sm font-medium">
                           {key.price ? `$${key.price}` : '—'}
-                        </TableCell>
-                        <TableCell className="text-xs">
+                        </TableCell>}
+                        {visibleCols.has('duration') && <TableCell className="text-xs">
                           {key.activatedAt
                             ? ((key as any).subEndDate
                                 ? <span className="text-gray-600">{new Date((key as any).subEndDate).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US')}</span>
                                 : <span className="text-gray-400">—</span>)
                             : <span className="text-gray-500">{key.entitlementDays ? `${key.entitlementDays} ${language === 'ar' ? 'يوم' : 'days'}` : (language === 'ar' ? 'الافتراضي' : 'Default')}</span>}
-                        </TableCell>
-                        <TableCell>
-                          {(key as any).isRenewal ? (
-                            <Badge className="gap-1 bg-blue-100 text-blue-800 hover:bg-blue-100">
-                              <RotateCcw className="w-3 h-3" />
-                              {language === 'ar' ? 'تجديد' : 'Renewal'}
-                            </Badge>
-                          ) : (key as any).isUpgrade ? (
-                            <Badge className="gap-1 bg-amber-100 text-amber-800 hover:bg-amber-100">
-                              <ArrowUpCircle className="w-3 h-3" />
-                              {language === 'ar' ? 'ترقية' : 'Upgrade'}
-                            </Badge>
-                          ) : (
-                            <Badge className="gap-1 bg-gray-100 text-gray-700 hover:bg-gray-100">
-                              <Plus className="w-3 h-3" />
-                              {language === 'ar' ? 'جديد' : 'New'}
-                            </Badge>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-xs text-gray-500">
+                        </TableCell>}
+                        {visibleCols.has('activated') && <TableCell className="text-xs text-gray-500">
                           {key.activatedAt ? new Date(key.activatedAt).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US') : '—'}
-                        </TableCell>
-                        <TableCell className="text-xs text-gray-500">
+                        </TableCell>}
+                        {visibleCols.has('created') && <TableCell className="text-xs text-gray-500">
                           {key.createdAt ? new Date(key.createdAt).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US') : '—'}
-                        </TableCell>
-                        <TableCell className="text-xs text-gray-500 max-w-[150px] truncate">
+                        </TableCell>}
+                        {visibleCols.has('notes') && <TableCell className="text-xs text-gray-500 max-w-[150px] truncate">
                           {key.notes || '—'}
                           {(key as any).referredBy && (
                             <span className="block text-amber-600 mt-0.5">
                               {language === 'ar' ? 'بواسطة: ' : 'By: '}{(key as any).referredBy}
                             </span>
                           )}
-                        </TableCell>
+                        </TableCell>}
                         <TableCell>
                           {key.isActive && key.activatedAt && key.userId && (
                             (!!key.lexaiIsPaused || !!key.recIsPaused) ? (

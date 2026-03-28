@@ -50,6 +50,9 @@ import {
   userNotifications, UserNotification, InsertUserNotification,
   pointsTransactions, PointsTransaction, InsertPointsTransaction,
   engagementEvents, EngagementEvent, InsertEngagementEvent,
+  brokers, Broker, NewBroker,
+  referrals, Referral, NewReferral,
+  pointsRules, PointsRule, NewPointsRule,
 } from "../database/schema-sqlite.ts";
 import { ENV } from './_core/env';
 import { logger } from './_core/logger';
@@ -928,6 +931,54 @@ export async function deleteEnrollment(id: number) {
   await db.delete(enrollments).where(eq(enrollments.id, id));
 }
 
+/**
+ * Skip course for a user — marks all episodes complete + enrollment at 100%.
+ * Used by admin/support for existing traders who already know the material.
+ */
+export async function skipCourseForUser(userId: number, courseId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // Get or create enrollment
+  let enrollment = await getEnrollment(userId, courseId);
+  if (!enrollment) {
+    const id = await createEnrollment({
+      userId,
+      courseId,
+      paymentStatus: 'completed',
+    });
+    enrollment = { id } as any;
+  }
+
+  // Get all episodes for the course
+  const allEpisodes = await getEpisodesByCourseId(courseId);
+  if (allEpisodes.length === 0) {
+    throw new Error("No episodes found for this course");
+  }
+
+  // Mark every episode as complete
+  for (const ep of allEpisodes) {
+    await createOrUpdateEpisodeProgress({
+      userId,
+      episodeId: ep.id,
+      courseId,
+      watchedDuration: ep.duration || 300, // use actual duration or default
+      isCompleted: true,
+      lastWatchedAt: new Date().toISOString(),
+    });
+  }
+
+  // Update enrollment to 100% complete
+  await updateEnrollment(enrollment.id, {
+    completedEpisodes: allEpisodes.length,
+    progressPercentage: 100,
+    completedAt: new Date().toISOString(),
+    lastAccessed: new Date().toISOString(),
+  });
+
+  return { enrollmentId: enrollment.id, skippedEpisodes: allEpisodes.length };
+}
+
 // ============================================================================
 // Dashboard Statistics
 // ============================================================================
@@ -1110,6 +1161,27 @@ export async function getActiveRecommendationSubscription(userId: number) {
     .orderBy(desc(recommendationSubscriptions.endDate))
     .limit(1);
 
+  return rows[0];
+}
+
+/** Returns the frozen (paused) Recommendation subscription if one exists, or undefined. */
+export async function getFrozenRecommendationSubscription(userId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select({
+    id: recommendationSubscriptions.id,
+    isPaused: recommendationSubscriptions.isPaused,
+    frozenUntil: recommendationSubscriptions.frozenUntil,
+    pausedReason: recommendationSubscriptions.pausedReason,
+    endDate: recommendationSubscriptions.endDate,
+  }).from(recommendationSubscriptions)
+    .where(and(
+      eq(recommendationSubscriptions.userId, userId),
+      eq(recommendationSubscriptions.isActive, true),
+      eq(recommendationSubscriptions.isPaused, true),
+    ))
+    .orderBy(desc(recommendationSubscriptions.endDate))
+    .limit(1);
   return rows[0];
 }
 
@@ -1309,15 +1381,30 @@ export async function getRecommendationPublishers() {
 
 export async function getUserRecommendationsAccess(userId: number) {
   const db = await getDb();
-  if (!db) return { canPublish: false, hasSubscription: false, subscription: null as RecommendationSubscription | null };
+  if (!db) return { canPublish: false, hasSubscription: false, subscription: null as RecommendationSubscription | null, isFrozen: false, frozenUntil: null as string | null, frozenReason: null as string | null };
 
   const canPublish = await hasRole(userId, 'analyst');
   const subscription = await getActiveRecommendationSubscription(userId);
+
+  let isFrozen = false;
+  let frozenUntil: string | null = null;
+  let frozenReason: string | null = null;
+  if (!subscription) {
+    const frozen = await getFrozenRecommendationSubscription(userId);
+    if (frozen) {
+      isFrozen = true;
+      frozenUntil = frozen.frozenUntil ?? null;
+      frozenReason = frozen.pausedReason ?? null;
+    }
+  }
 
   return {
     canPublish,
     hasSubscription: !!subscription,
     subscription: subscription ?? null,
+    isFrozen,
+    frozenUntil,
+    frozenReason,
   };
 }
 
@@ -2357,9 +2444,31 @@ export async function createOrUpdateEpisodeProgress(progress: InsertEpisodeProgr
         lastWatchedAt: new Date().toISOString(),
       })
       .where(eq(episodeProgress.id, existing.id));
+    // Award points on first episode completion
+    if (nextCompleted && !existing.isCompleted) {
+      try {
+        const completed = await db.select({ c: sql<number>`COUNT(*)` }).from(episodeProgress)
+          .where(and(eq(episodeProgress.userId, progress.userId), eq(episodeProgress.isCompleted, true)));
+        const count = Number(completed[0]?.c ?? 0);
+        if (count > 0 && count % 5 === 0) {
+          await autoAwardPoints(progress.userId, 'episode_milestone', { referenceId: progress.episodeId, referenceType: 'episode_milestone' });
+        }
+      } catch {}
+    }
     return existing.id;
   } else {
     const result = await db.insert(episodeProgress).values(progress).returning({ id: episodeProgress.id });
+    // Award milestone on first creation if completed
+    if (progress.isCompleted) {
+      try {
+        const completed = await db.select({ c: sql<number>`COUNT(*)` }).from(episodeProgress)
+          .where(and(eq(episodeProgress.userId, progress.userId), eq(episodeProgress.isCompleted, true)));
+        const count = Number(completed[0]?.c ?? 0);
+        if (count > 0 && count % 5 === 0) {
+          await autoAwardPoints(progress.userId, 'episode_milestone', { referenceId: progress.episodeId, referenceType: 'episode_milestone' });
+        }
+      } catch {}
+    }
     return result[0].id;
   }
 }
@@ -2719,6 +2828,11 @@ export async function submitEpisodeQuizAttempt(
     });
   }
 
+  // Auto-award points for passing quiz
+  if (passed) {
+    try { await autoAwardPoints(userId, 'quiz_pass', { referenceId: quiz.id, referenceType: 'quiz' }); } catch {}
+  }
+
   return {
     attemptId: attempt.id,
     score,
@@ -2814,6 +2928,27 @@ export async function getUserLexaiSubscription(userId: number) {
       sql`${lexaiSubscriptions.endDate} >= ${nowIso}`
     ))
     .orderBy(desc(lexaiSubscriptions.endDate), desc(lexaiSubscriptions.createdAt))
+    .limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+/** Returns the frozen (paused) LexAI subscription if one exists, or undefined. */
+export async function getFrozenLexaiSubscription(userId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select({
+    id: lexaiSubscriptions.id,
+    isPaused: lexaiSubscriptions.isPaused,
+    frozenUntil: lexaiSubscriptions.frozenUntil,
+    pausedReason: lexaiSubscriptions.pausedReason,
+    endDate: lexaiSubscriptions.endDate,
+  }).from(lexaiSubscriptions)
+    .where(and(
+      eq(lexaiSubscriptions.userId, userId),
+      eq(lexaiSubscriptions.isActive, true),
+      eq(lexaiSubscriptions.isPaused, true),
+    ))
+    .orderBy(desc(lexaiSubscriptions.endDate))
     .limit(1);
   return result.length > 0 ? result[0] : undefined;
 }
@@ -4229,7 +4364,7 @@ export async function getSubscriptionExpiryReport(): Promise<any[]> {
 
   const results: any[] = [];
 
-  // Package subscriptions
+  // Package subscriptions (only — lexai/recommendations are legacy, managed via packages now)
   const pkgSubs = await db.select().from(packageSubscriptions)
     .where(eq(packageSubscriptions.isActive, true));
   for (const sub of pkgSubs) {
@@ -4242,49 +4377,10 @@ export async function getSubscriptionExpiryReport(): Promise<any[]> {
       userEmail: user?.email || 'Unknown',
       userPhone: user?.phone || '',
       subscriptionName: pkg?.nameEn || `Package #${sub.packageId}`,
+      subscriptionNameAr: pkg?.nameAr || pkg?.nameEn || `Package #${sub.packageId}`,
       startDate: sub.startDate,
       endDate: sub.endDate || 'Lifetime',
       renewalDueDate: sub.renewalDueDate,
-      isActive: sub.isActive,
-      createdAt: sub.createdAt,
-    });
-  }
-
-  // LexAI subscriptions
-  const lexSubs = await db.select().from(lexaiSubscriptions)
-    .where(and(eq(lexaiSubscriptions.isActive, true), eq(lexaiSubscriptions.isPaused, false)));
-  for (const sub of lexSubs) {
-    const user = userMap.get(sub.userId);
-    results.push({
-      type: 'lexai',
-      userId: sub.userId,
-      userName: user?.name || 'Unknown',
-      userEmail: user?.email || 'Unknown',
-      userPhone: user?.phone || '',
-      subscriptionName: 'Lex AI',
-      startDate: sub.startDate,
-      endDate: sub.endDate,
-      renewalDueDate: null,
-      isActive: sub.isActive,
-      createdAt: sub.createdAt,
-    });
-  }
-
-  // Recommendation subscriptions
-  const recSubs = await db.select().from(recommendationSubscriptions)
-    .where(and(eq(recommendationSubscriptions.isActive, true), eq(recommendationSubscriptions.isPaused, false)));
-  for (const sub of recSubs) {
-    const user = userMap.get(sub.userId);
-    results.push({
-      type: 'recommendations',
-      userId: sub.userId,
-      userName: user?.name || 'Unknown',
-      userEmail: user?.email || 'Unknown',
-      userPhone: user?.phone || '',
-      subscriptionName: 'Recommendations',
-      startDate: sub.startDate,
-      endDate: sub.endDate,
-      renewalDueDate: null,
       isActive: sub.isActive,
       createdAt: sub.createdAt,
     });
@@ -4837,4 +4933,265 @@ export async function getEngagementByEntity(entityType: string, days = 30) {
     .groupBy(engagementEvents.entityId)
     .orderBy(sql`COUNT(*) DESC`)
     .limit(30);
+}
+
+// ── Broker CRUD ──────────────────────────────────────────
+
+export async function getAllBrokers() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(brokers).orderBy(brokers.displayOrder);
+}
+
+export async function getActiveBrokers() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(brokers)
+    .where(eq(brokers.isActive, true))
+    .orderBy(brokers.displayOrder);
+}
+
+export async function getBrokerById(id: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(brokers).where(eq(brokers.id, id));
+  return rows[0] ?? null;
+}
+
+export async function createBroker(data: Omit<NewBroker, 'id' | 'createdAt' | 'updatedAt'>) {
+  const db = await getDb();
+  if (!db) throw new Error('DB not available');
+  const result = await db.insert(brokers).values({
+    ...data,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  });
+  return { id: Number(result.lastInsertRowid) };
+}
+
+export async function updateBroker(id: number, data: Partial<Omit<NewBroker, 'id' | 'createdAt'>>) {
+  const db = await getDb();
+  if (!db) throw new Error('DB not available');
+  await db.update(brokers).set({
+    ...data,
+    updatedAt: new Date().toISOString(),
+  }).where(eq(brokers.id, id));
+  return { success: true };
+}
+
+export async function deleteBroker(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error('DB not available');
+  await db.delete(brokers).where(eq(brokers.id, id));
+  return { success: true };
+}
+
+// ── Points Rules ────────────────────────────────────────────
+
+export async function getPointsRules() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(pointsRules).orderBy(pointsRules.id);
+}
+
+export async function getActivePointsRule(ruleKey: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(pointsRules)
+    .where(and(eq(pointsRules.ruleKey, ruleKey), eq(pointsRules.isActive, true)));
+  return rows[0] ?? null;
+}
+
+export async function updatePointsRule(id: number, data: { points?: number; isActive?: boolean; maxPerDay?: number | null }) {
+  const db = await getDb();
+  if (!db) throw new Error('DB not available');
+  await db.update(pointsRules).set(data).where(eq(pointsRules.id, id));
+  return { success: true };
+}
+
+// ── Referral System ─────────────────────────────────────────
+
+function generateReferralCode(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no I/O/0/1 to avoid confusion
+  let code = '';
+  for (let i = 0; i < 6; i++) {
+    code += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return code;
+}
+
+export async function getOrCreateReferralCode(userId: number): Promise<string> {
+  const db = await getDb();
+  if (!db) throw new Error('DB not available');
+  const [user] = await db.select({ referralCode: users.referralCode }).from(users).where(eq(users.id, userId));
+  if (user?.referralCode) return user.referralCode;
+  // Generate unique code
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const code = generateReferralCode();
+    try {
+      await db.update(users).set({ referralCode: code }).where(eq(users.id, userId));
+      return code;
+    } catch {
+      // collision — retry
+    }
+  }
+  throw new Error('Failed to generate unique referral code');
+}
+
+export async function getUserByReferralCode(code: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select({ id: users.id, name: users.name, email: users.email })
+    .from(users).where(eq(users.referralCode, code.toUpperCase()));
+  return rows[0] ?? null;
+}
+
+export async function createReferral(referrerId: number, refereeId: number) {
+  const db = await getDb();
+  if (!db) throw new Error('DB not available');
+  // Check if referee already has a referral
+  const existing = await db.select().from(referrals).where(eq(referrals.refereeId, refereeId));
+  if (existing.length > 0) return null; // already referred
+  // Don't allow self-referral
+  if (referrerId === refereeId) return null;
+  await db.insert(referrals).values({
+    referrerId,
+    refereeId,
+    status: 'pending',
+    createdAt: new Date().toISOString(),
+  });
+  return { success: true };
+}
+
+export async function activateReferral(refereeId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  // Find pending referral for this referee
+  const rows = await db.select().from(referrals)
+    .where(and(eq(referrals.refereeId, refereeId), eq(referrals.status, 'pending')));
+  const ref = rows[0];
+  if (!ref) return null;
+
+  // Get reward rules
+  const referrerRule = await getActivePointsRule('referral_referrer');
+  const refereeRule = await getActivePointsRule('referral_referee');
+  const referrerPts = referrerRule?.points ?? 200;
+  const refereePts = refereeRule?.points ?? 50;
+
+  // Award points to referrer
+  await addPoints({
+    userId: ref.referrerId,
+    amount: referrerPts,
+    type: 'bonus',
+    reasonEn: 'Referral reward — your friend activated a package!',
+    reasonAr: 'مكافأة إحالة — صديقك فعّل باقة!',
+    referenceId: refereeId,
+    referenceType: 'referral',
+  });
+
+  // Award points to referee
+  await addPoints({
+    userId: refereeId,
+    amount: refereePts,
+    type: 'bonus',
+    reasonEn: 'Welcome bonus — you signed up via a referral!',
+    reasonAr: 'مكافأة ترحيبية — سجلت عبر إحالة!',
+    referenceId: ref.referrerId,
+    referenceType: 'referral',
+  });
+
+  // Update referral status
+  await db.update(referrals).set({
+    status: 'rewarded',
+    referrerPoints: referrerPts,
+    refereePoints: refereePts,
+    activatedAt: new Date().toISOString(),
+  }).where(eq(referrals.id, ref.id));
+
+  return { referrerPoints: referrerPts, refereePoints: refereePts };
+}
+
+export async function getMyReferrals(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({
+    id: referrals.id,
+    refereeId: referrals.refereeId,
+    refereeName: users.name,
+    refereeEmail: users.email,
+    status: referrals.status,
+    referrerPoints: referrals.referrerPoints,
+    createdAt: referrals.createdAt,
+    activatedAt: referrals.activatedAt,
+  }).from(referrals)
+    .innerJoin(users, eq(referrals.refereeId, users.id))
+    .where(eq(referrals.referrerId, userId))
+    .orderBy(desc(referrals.createdAt));
+}
+
+export async function getReferralStats() {
+  const db = await getDb();
+  if (!db) return { totalReferrals: 0, activatedReferrals: 0, totalPointsAwarded: 0, topReferrers: [] };
+
+  const total = await db.select({ count: sql<number>`COUNT(*)` }).from(referrals);
+  const activated = await db.select({ count: sql<number>`COUNT(*)` }).from(referrals)
+    .where(eq(referrals.status, 'rewarded'));
+  const pointsSum = await db.select({
+    total: sql<number>`COALESCE(SUM(${referrals.referrerPoints} + ${referrals.refereePoints}), 0)`,
+  }).from(referrals).where(eq(referrals.status, 'rewarded'));
+
+  const topReferrers = await db.select({
+    userId: referrals.referrerId,
+    name: users.name,
+    email: users.email,
+    count: sql<number>`COUNT(*)`,
+    totalPoints: sql<number>`SUM(${referrals.referrerPoints})`,
+  }).from(referrals)
+    .innerJoin(users, eq(referrals.referrerId, users.id))
+    .where(eq(referrals.status, 'rewarded'))
+    .groupBy(referrals.referrerId)
+    .orderBy(sql`COUNT(*) DESC`)
+    .limit(10);
+
+  return {
+    totalReferrals: Number(total[0]?.count ?? 0),
+    activatedReferrals: Number(activated[0]?.count ?? 0),
+    totalPointsAwarded: Number(pointsSum[0]?.total ?? 0),
+    topReferrers: topReferrers.map(r => ({
+      ...r,
+      count: Number(r.count),
+      totalPoints: Number(r.totalPoints),
+    })),
+  };
+}
+
+// ── Auto-Award Points by Rule ───────────────────────────────
+
+export async function autoAwardPoints(userId: number, ruleKey: string, meta?: { referenceId?: number; referenceType?: string }) {
+  const rule = await getActivePointsRule(ruleKey);
+  if (!rule || rule.points <= 0) return null;
+
+  // Check daily cap
+  if (rule.maxPerDay) {
+    const db = await getDb();
+    if (!db) return null;
+    const today = new Date().toISOString().slice(0, 10);
+    const [count] = await db.select({ c: sql<number>`COUNT(*)` }).from(pointsTransactions)
+      .where(and(
+        eq(pointsTransactions.userId, userId),
+        sql`${pointsTransactions.referenceType} = ${ruleKey}`,
+        sql`${pointsTransactions.createdAt} >= ${today}`,
+      ));
+    if (Number(count?.c ?? 0) >= rule.maxPerDay) return null; // already hit limit
+  }
+
+  return addPoints({
+    userId,
+    amount: rule.points,
+    type: 'earn',
+    reasonEn: rule.nameEn,
+    reasonAr: rule.nameAr,
+    referenceId: meta?.referenceId,
+    referenceType: ruleKey,
+  });
 }
