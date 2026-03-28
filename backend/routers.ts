@@ -2223,6 +2223,41 @@ export const appRouter = router({
       if (!ctx.user) return [];
       return db.getUserRoles(ctx.user.id);
     }),
+
+    // ---- Staff Management ----
+
+    // Create a staff member (+ assign roles in one step)
+    createStaff: adminProcedure
+      .input(z.object({
+        name: z.string().min(2),
+        email: z.string().email(),
+        phone: z.string().optional(),
+        roles: z.array(z.enum(['analyst', 'support', 'key_manager', 'view_progress', 'view_recommendations', 'view_subscriptions', 'view_quizzes', 'client_lookup'])).min(1),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const userId = await db.createStaffUser({ name: input.name, email: input.email, phone: input.phone });
+        // Assign all selected roles
+        for (const role of input.roles) {
+          await db.assignRole(userId, role, (ctx as any).admin?.id);
+          if (role === 'analyst') {
+            await db.setRecommendationPublisher(userId, true);
+          }
+        }
+        return { success: true, userId };
+      }),
+
+    // List all staff members with their roles
+    listStaff: adminProcedure.query(async () => {
+      return db.getStaffMembers();
+    }),
+
+    // Remove a staff member (reverts to student, removes all roles)
+    removeStaff: adminProcedure
+      .input(z.object({ userId: z.number() }))
+      .mutation(async ({ input }) => {
+        await db.removeStaffStatus(input.userId);
+        return { success: true };
+      }),
   }),
 
   // =========================================================================

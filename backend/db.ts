@@ -3174,6 +3174,86 @@ export async function getAllRoleAssignments() {
     .orderBy(desc(userRoles.assignedAt));
 }
 
+/**
+ * Create a staff user account (for roles assignment).
+ * Sets isStaff=true, emailVerified=true, dummy password (they login via OTP).
+ */
+export async function createStaffUser(data: { name: string; email: string; phone?: string }): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // Check if email already exists
+  const existing = await getUserByEmail(data.email);
+  if (existing) {
+    // If existing user is already staff, throw
+    if ((existing as any).isStaff) {
+      throw new Error("Staff member with this email already exists");
+    }
+    // Convert existing student to staff
+    await db.update(users).set({ isStaff: true }).where(eq(users.id, existing.id));
+    logger.db('Converted existing user to staff', { userId: existing.id, email: data.email });
+    return existing.id;
+  }
+
+  // Create new staff user with dummy password (OTP login)
+  const result = await db.insert(users).values({
+    email: data.email,
+    name: data.name,
+    phone: data.phone || null,
+    passwordHash: '__staff_no_password__',
+    emailVerified: true,
+    isStaff: true,
+    loginSecurityMode: 'password_or_otp',
+    createdAt: new Date().toISOString(),
+  }).returning({ id: users.id });
+
+  logger.db('Staff user created', { userId: result[0].id, email: data.email });
+  return result[0].id;
+}
+
+/**
+ * Get all staff members with their roles
+ */
+export async function getStaffMembers() {
+  const db = await getDb();
+  if (!db) return [];
+
+  const staffUsers = await db.select({
+    id: users.id,
+    name: users.name,
+    email: users.email,
+    phone: users.phone,
+    createdAt: users.createdAt,
+    lastSignedIn: users.lastSignedIn,
+  }).from(users).where(eq(users.isStaff, true)).orderBy(desc(users.createdAt));
+
+  // Get all roles for staff users
+  const staffIds = staffUsers.map(u => u.id);
+  if (staffIds.length === 0) return [];
+
+  const allRoles = await db.select().from(userRoles)
+    .where(inArray(userRoles.userId, staffIds));
+
+  return staffUsers.map(u => ({
+    ...u,
+    roles: allRoles.filter(r => r.userId === u.id).map(r => r.role),
+  }));
+}
+
+/**
+ * Remove staff status from a user (reverts to regular student)
+ */
+export async function removeStaffStatus(userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // Remove all roles first
+  await db.delete(userRoles).where(eq(userRoles.userId, userId));
+  // Remove staff flag
+  await db.update(users).set({ isStaff: false }).where(eq(users.id, userId));
+  logger.db('Staff status removed', { userId });
+}
+
 // ============================================================================
 // Support Chat
 // ============================================================================
@@ -3991,7 +4071,7 @@ export async function getSubscribersReport(): Promise<any[]> {
   const db = await getDb();
   if (!db) return [];
   
-  // Get all users
+  // Get all users (exclude staff members)
   const allUsers = await db.select({
     id: users.id,
     name: users.name,
@@ -4002,7 +4082,7 @@ export async function getSubscribersReport(): Promise<any[]> {
     createdAt: users.createdAt,
     emailVerified: users.emailVerified,
     lastSignedIn: users.lastSignedIn,
-  }).from(users).orderBy(desc(users.createdAt));
+  }).from(users).where(eq(users.isStaff, false)).orderBy(desc(users.createdAt));
 
   // Get all package subscriptions
   const allPkgSubs = await db.select().from(packageSubscriptions);

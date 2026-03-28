@@ -23,6 +23,7 @@ export const users = sqliteTable("users", {
   telegram_user_id: text("telegram_user_id").unique(),
   user_type: text("user_type", { length: 20 }).default("web"),
   pointsBalance: integer("points_balance").default(0).notNull(),
+  isStaff: integer("isStaff", { mode: 'boolean' }).default(false).notNull(),
 });
 
 export type User = typeof users.$inferSelect;
