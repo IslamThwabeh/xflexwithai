@@ -152,16 +152,16 @@ export default function FAQ() {
       {/* Hero */}
       <section className="relative overflow-hidden text-white py-20 md:py-28" style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #312e81 100%)' }}>
         <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse 60% 50% at 50% 50%, rgba(99,102,241,0.15), transparent)' }} />
-        <div className="absolute top-10 left-10 w-72 h-72 bg-indigo-500/10 rounded-full blur-[80px]" />
-        <div className="absolute bottom-10 right-10 w-96 h-96 bg-purple-500/8 rounded-full blur-[100px]" />
+        <div className="absolute top-10 left-10 w-72 h-72 bg-emerald-500/10 rounded-full blur-[80px]" />
+        <div className="absolute bottom-10 right-10 w-96 h-96 bg-amber-500/8 rounded-full blur-[100px]" />
         <div className="relative container mx-auto px-4 text-center">
           <div className="flex items-center justify-center gap-3 mb-4">
-            <HelpCircle className="w-8 h-8 text-indigo-300" />
+            <HelpCircle className="w-8 h-8 text-emerald-300" />
             <h1 className="text-3xl md:text-5xl font-extrabold tracking-[-0.5px]">
               {isRtl ? 'الأسئلة الشائعة' : 'Frequently Asked Questions'}
             </h1>
           </div>
-          <p className="text-indigo-200/80 text-lg max-w-lg mx-auto">
+          <p className="text-emerald-200/80 text-lg max-w-lg mx-auto">
             {isRtl ? 'إجابات على أكثر الأسئلة شيوعًا حول التداول والأكاديمية' : 'Answers to the most common questions about trading and the Academy'}
           </p>
         </div>

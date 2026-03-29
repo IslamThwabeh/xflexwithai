@@ -13,7 +13,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import { toast } from 'sonner';
 
 const STATUS_MAP: Record<string, { label: string; labelAr: string; color: string; icon: any }> = {
-  new: { label: 'New', labelAr: 'جديد', color: 'bg-blue-100 text-blue-700', icon: Clock },
+  new: { label: 'New', labelAr: 'جديد', color: 'bg-emerald-100 text-emerald-700', icon: Clock },
   reviewed: { label: 'Reviewed', labelAr: 'تمت المراجعة', color: 'bg-yellow-100 text-yellow-700', icon: Eye },
   shortlisted: { label: 'Shortlisted', labelAr: 'مرشح', color: 'bg-green-100 text-green-700', icon: Star },
   rejected: { label: 'Rejected', labelAr: 'مرفوض', color: 'bg-red-100 text-red-700', icon: XCircle },
@@ -31,7 +31,7 @@ export default function AdminJobs() {
       <div className="p-4 md:p-6">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
           <div className="flex items-center gap-3">
-            <Briefcase className="w-6 h-6 text-blue-600" />
+            <Briefcase className="w-6 h-6 text-emerald-600" />
             <h1 className="text-2xl font-bold">{isRtl ? 'إدارة الوظائف والطلبات' : 'Jobs & Applications'}</h1>
           </div>
         </div>
@@ -48,7 +48,7 @@ export default function AdminJobs() {
               onClick={() => setActiveTab(tab.key)}
               className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition ${
                 activeTab === tab.key
-                  ? 'bg-blue-100 text-blue-700'
+                  ? 'bg-emerald-100 text-emerald-700'
                   : 'text-gray-500 hover:text-gray-800 hover:bg-gray-100'
               }`}
             >
@@ -96,7 +96,7 @@ function ApplicationsTab({ isRtl }: { isRtl: boolean }) {
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
           {[
             { key: 'total', label: isRtl ? 'الإجمالي' : 'Total', value: stats.total, color: 'text-gray-700 bg-gray-50' },
-            { key: 'new', label: isRtl ? 'جديد' : 'New', value: stats.new, color: 'text-blue-700 bg-blue-50' },
+            { key: 'new', label: isRtl ? 'جديد' : 'New', value: stats.new, color: 'text-emerald-700 bg-emerald-50' },
             { key: 'reviewed', label: isRtl ? 'تمت المراجعة' : 'Reviewed', value: stats.reviewed, color: 'text-yellow-700 bg-yellow-50' },
             { key: 'shortlisted', label: isRtl ? 'مرشح' : 'Shortlisted', value: stats.shortlisted, color: 'text-green-700 bg-green-50' },
             { key: 'rejected', label: isRtl ? 'مرفوض' : 'Rejected', value: stats.rejected, color: 'text-red-700 bg-red-50' },
@@ -192,8 +192,8 @@ function ApplicationCard({
         onClick={onToggle}
       >
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
-            <Users className="w-5 h-5 text-blue-600" />
+          <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0">
+            <Users className="w-5 h-5 text-emerald-600" />
           </div>
           <div className="min-w-0">
             <div className="font-semibold text-gray-900 truncate">{app.applicantName}</div>
@@ -219,7 +219,7 @@ function ApplicationCard({
             <div>
               <span className="text-gray-500">{isRtl ? 'السيرة الذاتية:' : 'CV:'}</span>{' '}
               {detail.cvFileUrl ? (
-                <a href={detail.cvFileUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline gap-1 inline-flex items-center">
+                <a href={detail.cvFileUrl} target="_blank" rel="noopener noreferrer" className="text-emerald-600 hover:underline gap-1 inline-flex items-center">
                   <Download className="w-3 h-3" /> {isRtl ? 'تحميل' : 'Download'}
                 </a>
               ) : (
@@ -245,13 +245,13 @@ function ApplicationCard({
           <div className="space-y-3 pt-2 border-t">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-gray-700 flex items-center gap-1.5">
-                <Sparkles className="w-4 h-4 text-purple-500" />
+                <Sparkles className="w-4 h-4 text-amber-500" />
                 {isRtl ? 'تقييم الذكاء الاصطناعي' : 'AI Screening'}
               </h3>
               <Button
                 size="sm"
                 variant="outline"
-                className="gap-1.5 text-purple-600 border-purple-200 hover:bg-purple-50"
+                className="gap-1.5 text-amber-600 border-amber-200 hover:bg-amber-50"
                 onClick={handleAiScreen}
                 disabled={aiScreenMut.isPending}
               >
@@ -268,7 +268,7 @@ function ApplicationCard({
               </div>
             )}
             {aiResult && (
-              <div className="bg-purple-50 border border-purple-200 rounded-xl p-4" dir="rtl">
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4" dir="rtl">
                 <div className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed prose prose-sm max-w-none"
                   dangerouslySetInnerHTML={{ __html: aiResult.replace(/### /g, '<strong>').replace(/\n(?=\S)/g, '</strong>\n').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br/>') }}
                 />

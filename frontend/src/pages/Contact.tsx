@@ -38,7 +38,7 @@ export default function Contact() {
   return (
     <div className="min-h-screen bg-gray-50" dir={isRtl ? 'rtl' : 'ltr'}>
       {/* Header */}
-      <div className="bg-gradient-to-br from-blue-600 to-indigo-700 text-white py-16">
+      <div className="bg-gradient-to-br from-emerald-600 to-teal-700 text-white py-16">
         <div className="container mx-auto px-4 text-center">
           <Link href="/">
             <Button variant="ghost" size="sm" className="text-white/70 hover:text-white mb-4">
@@ -49,7 +49,7 @@ export default function Contact() {
           <h1 className="text-3xl md:text-4xl font-extrabold mb-3">
             {isRtl ? 'تواصل معنا' : 'Contact Us'}
           </h1>
-          <p className="text-blue-100 text-lg max-w-lg mx-auto">
+          <p className="text-emerald-100 text-lg max-w-lg mx-auto">
             {isRtl ? 'نحن هنا لمساعدتك. أرسل لنا رسالتك وسنرد عليك في أقرب وقت.' : "We're here to help. Send us a message and we'll get back to you soon."}
           </p>
         </div>
@@ -59,11 +59,11 @@ export default function Contact() {
         <div className="grid md:grid-cols-3 gap-6 max-w-4xl mx-auto">
           {/* Contact Info Cards */}
           <div className="bg-white rounded-xl border p-6 text-center shadow-sm hover:shadow-md transition">
-            <div className="w-12 h-12 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-3">
-              <Phone className="w-5 h-5 text-blue-600" />
+            <div className="w-12 h-12 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-3">
+              <Phone className="w-5 h-5 text-emerald-600" />
             </div>
             <h3 className="font-bold text-gray-900 mb-1">{isRtl ? 'واتساب' : 'WhatsApp'}</h3>
-            <a href="https://wa.me/972597596030" target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline">
+            <a href="https://wa.me/972597596030" target="_blank" rel="noopener noreferrer" className="text-sm text-emerald-600 hover:underline">
               +972 59 759 6030
             </a>
           </div>
@@ -72,17 +72,17 @@ export default function Contact() {
               <Mail className="w-5 h-5 text-green-600" />
             </div>
             <h3 className="font-bold text-gray-900 mb-1">{isRtl ? 'البريد الإلكتروني' : 'Email'}</h3>
-            <a href="mailto:support@xflexacademy.com" className="text-sm text-blue-600 hover:underline">
+            <a href="mailto:support@xflexacademy.com" className="text-sm text-emerald-600 hover:underline">
               support@xflexacademy.com
             </a>
           </div>
           <div className="bg-white rounded-xl border p-6 text-center shadow-sm hover:shadow-md transition">
-            <div className="w-12 h-12 bg-purple-50 rounded-full flex items-center justify-center mx-auto mb-3">
-              <MessageCircle className="w-5 h-5 text-purple-600" />
+            <div className="w-12 h-12 bg-amber-50 rounded-full flex items-center justify-center mx-auto mb-3">
+              <MessageCircle className="w-5 h-5 text-amber-600" />
             </div>
             <h3 className="font-bold text-gray-900 mb-1">{isRtl ? 'الدعم الفني' : 'Live Support'}</h3>
             <Link href="/support">
-              <span className="text-sm text-blue-600 hover:underline cursor-pointer">
+              <span className="text-sm text-emerald-600 hover:underline cursor-pointer">
                 {isRtl ? 'فتح محادثة الدعم' : 'Open Support Chat'}
               </span>
             </Link>

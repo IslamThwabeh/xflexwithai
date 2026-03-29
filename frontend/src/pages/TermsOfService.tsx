@@ -18,7 +18,7 @@ export default function TermsOfService() {
             </Button>
           </Link>
           <div className="flex items-center gap-3">
-            <Shield className="w-8 h-8 text-blue-400" />
+            <Shield className="w-8 h-8 text-emerald-400" />
             <h1 className="text-3xl font-extrabold">{isRtl ? 'الشروط والأحكام' : 'Terms & Conditions'}</h1>
           </div>
           <p className="text-sm text-gray-400 mt-2">
@@ -142,11 +142,11 @@ export default function TermsOfService() {
                 <li>توافق عليها دون أي تحفظ.</li>
               </ul>
 
-              <div className="mt-8 p-4 bg-blue-50 rounded-lg border border-blue-200">
+              <div className="mt-8 p-4 bg-emerald-50 rounded-lg border border-emerald-200">
                 <p className="font-semibold text-gray-900">📋 سياسة الاشتراك والاسترجاع</p>
                 <p>للاطلاع على سياسة الاشتراك والاسترجاع الكاملة، يرجى زيارة:</p>
                 <Link href="/refund-policy">
-                  <span className="text-blue-600 hover:underline cursor-pointer font-medium">سياسة الاسترجاع ←</span>
+                  <span className="text-emerald-600 hover:underline cursor-pointer font-medium">سياسة الاسترجاع ←</span>
                 </Link>
               </div>
             </>
@@ -263,11 +263,11 @@ export default function TermsOfService() {
                 <li>Agree to them without reservation.</li>
               </ul>
 
-              <div className="mt-8 p-4 bg-blue-50 rounded-lg border border-blue-200">
+              <div className="mt-8 p-4 bg-emerald-50 rounded-lg border border-emerald-200">
                 <p className="font-semibold text-gray-900">📋 Subscription & Refund Policy</p>
                 <p>To view the full subscription and refund policy, please visit:</p>
                 <Link href="/refund-policy">
-                  <span className="text-blue-600 hover:underline cursor-pointer font-medium">Refund Policy →</span>
+                  <span className="text-emerald-600 hover:underline cursor-pointer font-medium">Refund Policy →</span>
                 </Link>
               </div>
             </>

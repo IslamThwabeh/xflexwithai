@@ -18,7 +18,7 @@ export default function QuizHistory() {
       <ClientLayout>
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto"></div>
           <p className="mt-4 text-gray-600">جاري التحميل...</p>
         </div>
       </div>
@@ -81,10 +81,10 @@ export default function QuizHistory() {
           </div>
           <div className="bg-white rounded-lg shadow-md p-6">
             <div className="flex items-center gap-3 mb-2">
-              <Calendar className="w-6 h-6 text-blue-500" />
+              <Calendar className="w-6 h-6 text-emerald-500" />
               <span className="text-gray-600">المعدل</span>
             </div>
-            <div className="text-3xl font-bold text-blue-600">{avgScore}%</div>
+            <div className="text-3xl font-bold text-emerald-600">{avgScore}%</div>
           </div>
         </div>
 
@@ -96,7 +96,7 @@ export default function QuizHistory() {
             <div className="p-12 text-center text-gray-500">
               <p className="mb-4">لم تقم بأي محاولة بعد</p>
               <Link href={`/quiz/${level}`}>
-                <button className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700">ابدأ الاختبار</button>
+                <button className="bg-emerald-600 text-white px-6 py-2 rounded-lg hover:bg-emerald-700">ابدأ الاختبار</button>
               </Link>
             </div>
           ) : (
@@ -133,7 +133,7 @@ export default function QuizHistory() {
 
         <div className="mt-6">
           <Link href={`/quiz/${level}`}>
-            <button className="w-full bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700">محاولة جديدة</button>
+            <button className="w-full bg-emerald-600 text-white py-3 rounded-lg font-medium hover:bg-emerald-700">محاولة جديدة</button>
           </Link>
         </div>
       </div>

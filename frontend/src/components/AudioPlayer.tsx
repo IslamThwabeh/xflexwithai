@@ -83,7 +83,7 @@ export default function AudioPlayer({ src, duration, isOwn }: AudioPlayerProps) 
         className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition ${
           isOwn
             ? 'bg-white/20 hover:bg-white/30 text-white'
-            : 'bg-blue-100 hover:bg-blue-200 text-blue-600'
+            : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-600'
         }`}
       >
         {playing ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 ms-0.5" />}
@@ -94,11 +94,11 @@ export default function AudioPlayer({ src, duration, isOwn }: AudioPlayerProps) 
           onClick={handleBarClick}
         >
           <div
-            className={`h-full rounded-full transition-all ${isOwn ? 'bg-white/70' : 'bg-blue-500'}`}
+            className={`h-full rounded-full transition-all ${isOwn ? 'bg-white/70' : 'bg-emerald-500'}`}
             style={{ width: `${progress}%` }}
           />
         </div>
-        <p className={`text-[10px] mt-0.5 tabular-nums ${isOwn ? 'text-blue-200' : 'text-gray-400'}`}>
+        <p className={`text-[10px] mt-0.5 tabular-nums ${isOwn ? 'text-emerald-200' : 'text-gray-400'}`}>
           {playing ? formatTime(currentTime) : formatTime(displayDuration)}
         </p>
       </div>

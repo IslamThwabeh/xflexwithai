@@ -39,12 +39,12 @@ export default function AdminEngagement() {
                 value={summary7?.totalEvents ?? 0}
               />
               <SummaryCard
-                icon={<TrendingUp className="w-5 h-5 text-blue-500" />}
+                icon={<TrendingUp className="w-5 h-5 text-emerald-500" />}
                 label={isRtl ? 'الأحداث (30 يوم)' : 'Events (30 days)'}
                 value={summary30?.totalEvents ?? 0}
               />
               <SummaryCard
-                icon={<Users className="w-5 h-5 text-purple-500" />}
+                icon={<Users className="w-5 h-5 text-amber-500" />}
                 label={isRtl ? 'أنواع (7 أيام)' : 'Types (7 days)'}
                 value={summary7?.byType?.length ?? 0}
               />

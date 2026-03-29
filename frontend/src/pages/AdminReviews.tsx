@@ -60,7 +60,7 @@ export default function AdminReviews() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-medium text-sm">{review.userName || review.userEmail}</span>
                       <span className="text-xs text-muted-foreground">→</span>
-                      <span className="text-sm text-blue-600">{isRtl ? review.courseTitleAr : review.courseTitleEn}</span>
+                      <span className="text-sm text-emerald-600">{isRtl ? review.courseTitleAr : review.courseTitleEn}</span>
                     </div>
                     <div className="flex items-center gap-1 mt-1">
                       {Array.from({ length: 5 }).map((_, i) => (

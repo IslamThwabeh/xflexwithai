@@ -51,7 +51,7 @@ export default function AdminLogin() {
       <div className="mb-8 text-center">
         <Link href="/">
           <div className="flex items-center gap-2 justify-center cursor-pointer hover:opacity-80 transition-opacity mb-4">
-            <GraduationCap className="h-10 w-10 text-blue-500" />
+            <GraduationCap className="h-10 w-10 text-emerald-500" />
             <h1 className="text-3xl font-bold text-white">
               {APP_TITLE}
             </h1>

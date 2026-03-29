@@ -60,7 +60,7 @@ export default function AdminArticles() {
       <div className="p-6">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
-            <Newspaper className="w-6 h-6 text-blue-600" />
+            <Newspaper className="w-6 h-6 text-emerald-600" />
             <h1 className="text-2xl font-bold">{language === 'ar' ? 'إدارة المقالات' : 'Manage Articles'}</h1>
           </div>
           <Button onClick={startNew} className="gap-1.5">

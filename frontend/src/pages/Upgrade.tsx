@@ -45,7 +45,7 @@ export default function Upgrade() {
     return (
       <ClientLayout>
         <div className="min-h-[60vh] flex items-center justify-center">
-          <div className="w-8 h-8 border-4 border-blue-400 border-t-transparent rounded-full animate-spin" />
+          <div className="w-8 h-8 border-4 border-emerald-400 border-t-transparent rounded-full animate-spin" />
         </div>
       </ClientLayout>
     );
@@ -90,12 +90,12 @@ export default function Upgrade() {
         </Link>
 
         <div className="flex items-center gap-3 mb-8">
-          <ArrowUpCircle className="w-8 h-8 text-blue-600" />
+          <ArrowUpCircle className="w-8 h-8 text-emerald-600" />
           <h1 className="text-3xl font-bold">{isRtl ? 'ترقية الباقة' : 'Upgrade Package'}</h1>
         </div>
 
         {/* Upgrade Info Banner */}
-        <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-2xl p-6 mb-8">
+        <div className="bg-gradient-to-r from-emerald-600 to-amber-600 text-white rounded-2xl p-6 mb-8">
           <div className="flex items-center gap-2 mb-3">
             <ArrowUpCircle className="w-6 h-6" />
             <h2 className="text-xl font-bold">
@@ -104,7 +104,7 @@ export default function Upgrade() {
                 : `Upgrade from ${eligibility.currentPackageName} to ${eligibility.targetPackageName}`}
             </h2>
           </div>
-          <p className="text-blue-100">
+          <p className="text-emerald-100">
             {isRtl
               ? `ادفع $${total.toFixed(0)} مرة واحدة فقط، ثم التجديد بسعر $${renewalPrice.toFixed(0)} كالمعتاد`
               : `Pay $${total.toFixed(0)} one-time upgrade fee, then renew at $${renewalPrice.toFixed(0)} as usual`}
@@ -120,17 +120,17 @@ export default function Upgrade() {
               <div className="grid sm:grid-cols-2 gap-3">
                 <button
                   onClick={() => setPaymentMethod('bank_transfer')}
-                  className={`border-2 rounded-xl p-4 text-start transition-all ${paymentMethod === 'bank_transfer' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}
+                  className={`border-2 rounded-xl p-4 text-start transition-all ${paymentMethod === 'bank_transfer' ? 'border-emerald-500 bg-emerald-50' : 'border-gray-200 hover:border-gray-300'}`}
                 >
-                  <Building2 className="w-6 h-6 mb-2 text-blue-600" />
+                  <Building2 className="w-6 h-6 mb-2 text-emerald-600" />
                   <p className="font-bold">{isRtl ? 'حوالة بنكية' : 'Bank Transfer'}</p>
                   <p className="text-xs text-gray-500">{isRtl ? 'تحويل بنكي مع رفع إيصال' : 'Transfer & upload receipt'}</p>
                 </button>
                 <button
                   onClick={() => setPaymentMethod('paypal')}
-                  className={`border-2 rounded-xl p-4 text-start transition-all ${paymentMethod === 'paypal' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}
+                  className={`border-2 rounded-xl p-4 text-start transition-all ${paymentMethod === 'paypal' ? 'border-emerald-500 bg-emerald-50' : 'border-gray-200 hover:border-gray-300'}`}
                 >
-                  <CreditCard className="w-6 h-6 mb-2 text-blue-600" />
+                  <CreditCard className="w-6 h-6 mb-2 text-emerald-600" />
                   <p className="font-bold">PayPal</p>
                   <p className="text-xs text-gray-500">{isRtl ? 'دفع عبر PayPal' : 'Pay with PayPal'}</p>
                 </button>
@@ -167,7 +167,7 @@ export default function Upgrade() {
               <h2 className="font-bold text-lg mb-4">{isRtl ? 'ملخص الترقية' : 'Upgrade Summary'}</h2>
 
               <div className="flex items-center gap-3 pb-4 border-b mb-4">
-                <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-blue-700 rounded-xl flex items-center justify-center text-white font-bold">
+                <div className="w-12 h-12 bg-gradient-to-br from-amber-500 to-emerald-700 rounded-xl flex items-center justify-center text-white font-bold">
                   ⬆
                 </div>
                 <div>
@@ -191,7 +191,7 @@ export default function Upgrade() {
                 </div>
               </div>
 
-              <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4 text-xs text-blue-700">
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 mb-4 text-xs text-emerald-700">
                 {isRtl
                   ? `بعد الترقية، سيكون التجديد بسعر $${renewalPrice.toFixed(0)}/شهر`
                   : `After upgrade, renewal will be $${renewalPrice.toFixed(0)}/month`}

@@ -54,6 +54,7 @@ import {
   referrals, Referral, NewReferral,
   pointsRules, PointsRule, NewPointsRule,
   offerAgreements, OfferAgreement, InsertOfferAgreement,
+  adminActions, AdminAction, InsertAdminAction,
 } from "../database/schema-sqlite.ts";
 import { ENV } from './_core/env';
 import { logger } from './_core/logger';
@@ -79,6 +80,47 @@ function buildEndDateFromDays(startDate: Date, days: number) {
   const endDate = new Date(startDate);
   endDate.setDate(endDate.getDate() + days);
   return endDate;
+}
+
+/**
+ * Look up actual entitlement days for a user from their most recent activated key → package.
+ * Keys can have custom durations (15, 45, etc.) — never assume 30.
+ */
+async function getUserEntitlementDays(userId: number): Promise<number> {
+  const db = await getDb();
+  if (!db) return DEFAULT_KEY_ENTITLEMENT_DAYS;
+
+  // Get user email to find their key
+  const [user] = await db.select({ email: users.email }).from(users)
+    .where(eq(users.id, userId)).limit(1);
+  if (!user?.email) return DEFAULT_KEY_ENTITLEMENT_DAYS;
+
+  // Find the latest activated package key for this user
+  const [key] = await db.select({
+    entitlementDays: registrationKeys.entitlementDays,
+    packageId: registrationKeys.packageId,
+  }).from(registrationKeys)
+    .where(and(
+      sql`LOWER(${registrationKeys.email}) = LOWER(${user.email})`,
+      sql`${registrationKeys.activatedAt} IS NOT NULL`,
+      sql`${registrationKeys.packageId} IS NOT NULL`,
+    ))
+    .orderBy(desc(registrationKeys.activatedAt))
+    .limit(1);
+
+  if (!key) return DEFAULT_KEY_ENTITLEMENT_DAYS;
+
+  // Key's custom entitlement days take priority
+  const keyDays = normalizePositiveInteger(key.entitlementDays);
+  if (keyDays) return keyDays;
+
+  // Fallback to the package's configured duration
+  if (key.packageId) {
+    const pkg = await getPackageById(key.packageId);
+    return normalizePositiveInteger(pkg?.durationDays) ?? DEFAULT_KEY_ENTITLEMENT_DAYS;
+  }
+
+  return DEFAULT_KEY_ENTITLEMENT_DAYS;
 }
 
 export function getKeyAccessEndDate(
@@ -933,8 +975,9 @@ export async function deleteEnrollment(id: number) {
 }
 
 /**
- * Skip course for a user — marks all episodes complete + enrollment at 100%.
- * Used by admin/support for existing traders who already know the material.
+ * Skip course for a user — sets isAdminSkipped flag WITHOUT touching episode progress.
+ * The student's real progress is preserved for rollback.
+ * Immediately activates pending LexAI/Rec subscriptions (starts the 30-day timer).
  */
 export async function skipCourseForUser(userId: number, courseId: number) {
   const db = await getDb();
@@ -948,36 +991,151 @@ export async function skipCourseForUser(userId: number, courseId: number) {
       courseId,
       paymentStatus: 'completed',
     });
-    enrollment = { id } as any;
+    enrollment = { id, progressPercentage: 0, completedEpisodes: 0 } as any;
   }
 
-  // Get all episodes for the course
-  const allEpisodes = await getEpisodesByCourseId(courseId);
-  if (allEpisodes.length === 0) {
-    throw new Error("No episodes found for this course");
+  if (enrollment.isAdminSkipped) {
+    throw new Error("Course is already skipped for this user");
   }
 
-  // Mark every episode as complete
-  for (const ep of allEpisodes) {
-    await createOrUpdateEpisodeProgress({
-      userId,
-      episodeId: ep.id,
-      courseId,
-      watchedDuration: ep.duration || 300, // use actual duration or default
-      isCompleted: true,
-      lastWatchedAt: new Date().toISOString(),
-    });
-  }
-
-  // Update enrollment to 100% complete
+  // Set the admin-skipped flag + mark as completed — do NOT touch individual episodes
   await updateEnrollment(enrollment.id, {
-    completedEpisodes: allEpisodes.length,
-    progressPercentage: 100,
+    isAdminSkipped: true,
     completedAt: new Date().toISOString(),
     lastAccessed: new Date().toISOString(),
   });
 
-  return { enrollmentId: enrollment.id, skippedEpisodes: allEpisodes.length };
+  // Immediately activate pending subscriptions (starts the real 30-day timer)
+  const activation = await activateStudentSubscriptions(userId, false);
+
+  return {
+    enrollmentId: enrollment.id,
+    previousProgress: enrollment.progressPercentage ?? 0,
+    activated: activation.activated,
+  };
+}
+
+/**
+ * Rollback a skipped course — clears the admin-skip flag, restores pending subscriptions.
+ * The student's real episode progress is untouched (preserved during skip).
+ */
+export async function rollbackSkipCourse(userId: number, courseId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const enrollment = await getEnrollment(userId, courseId);
+  if (!enrollment) throw new Error("No enrollment found");
+  if (!enrollment.isAdminSkipped) throw new Error("Course was not skipped");
+
+  // Clear the skip flag + completedAt (unless they actually completed on their own)
+  const genuinelyCompleted = (enrollment.progressPercentage ?? 0) >= 100;
+  await updateEnrollment(enrollment.id, {
+    isAdminSkipped: false,
+    completedAt: genuinelyCompleted ? enrollment.completedAt : null,
+  });
+
+  // Deactivate LexAI/Rec subscriptions back to pending (if they were activated by the skip)
+  if (!genuinelyCompleted) {
+    await deactivateStudentSubscriptions(userId);
+  }
+
+  return { enrollmentId: enrollment.id, restoredProgress: enrollment.progressPercentage ?? 0 };
+}
+
+/**
+ * Deactivate student subscriptions back to pending state (reversal of activateStudentSubscriptions).
+ * Used when rolling back an admin skip.
+ */
+async function deactivateStudentSubscriptions(userId: number) {
+  const db = await getDb();
+  if (!db) return;
+
+  const now = new Date();
+  const entitlementDays = await getUserEntitlementDays(userId);
+  const maxActivationDate = buildEndDateFromDays(now, 14).toISOString();
+  const placeholderEndDate = buildEndDateFromDays(now, 14 + entitlementDays).toISOString();
+
+  // Find recently activated (non-pending) LexAI sub
+  const [lexaiSub] = await db.select().from(lexaiSubscriptions)
+    .where(and(
+      eq(lexaiSubscriptions.userId, userId),
+      eq(lexaiSubscriptions.isActive, true),
+      eq(lexaiSubscriptions.isPendingActivation, false),
+    ))
+    .orderBy(desc(lexaiSubscriptions.createdAt))
+    .limit(1);
+
+  if (lexaiSub) {
+    await db.update(lexaiSubscriptions).set({
+      isPendingActivation: true,
+      studentActivatedAt: null,
+      maxActivationDate,
+      startDate: now.toISOString(),
+      endDate: placeholderEndDate,
+      updatedAt: now.toISOString(),
+    }).where(eq(lexaiSubscriptions.id, lexaiSub.id));
+  }
+
+  // Find recently activated (non-pending) Rec sub
+  const [recSub] = await db.select().from(recommendationSubscriptions)
+    .where(and(
+      eq(recommendationSubscriptions.userId, userId),
+      eq(recommendationSubscriptions.isActive, true),
+      eq(recommendationSubscriptions.isPendingActivation, false),
+    ))
+    .orderBy(desc(recommendationSubscriptions.createdAt))
+    .limit(1);
+
+  if (recSub) {
+    await db.update(recommendationSubscriptions).set({
+      isPendingActivation: true,
+      studentActivatedAt: null,
+      maxActivationDate,
+      startDate: now.toISOString(),
+      endDate: placeholderEndDate,
+      updatedAt: now.toISOString(),
+    }).where(eq(recommendationSubscriptions.id, recSub.id));
+  }
+}
+
+// ============================================================================
+// Admin Actions (Audit Trail)
+// ============================================================================
+
+export async function logAdminAction(adminId: number, userId: number, action: string, details?: Record<string, any>) {
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(adminActions).values({
+    adminId,
+    userId,
+    action,
+    details: details ? JSON.stringify(details) : null,
+    createdAt: new Date().toISOString(),
+  });
+}
+
+export async function getAdminActionsForUser(userId: number, limit = 50) {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db
+    .select({
+      id: adminActions.id,
+      adminId: adminActions.adminId,
+      adminName: users.name,
+      userId: adminActions.userId,
+      action: adminActions.action,
+      details: adminActions.details,
+      createdAt: adminActions.createdAt,
+    })
+    .from(adminActions)
+    .leftJoin(users, eq(adminActions.adminId, users.id))
+    .where(eq(adminActions.userId, userId))
+    .orderBy(desc(adminActions.createdAt))
+    .limit(limit);
+  return rows.map(r => ({
+    ...r,
+    details: r.details ? JSON.parse(r.details) : null,
+  }));
 }
 
 // ============================================================================
@@ -1156,6 +1314,7 @@ export async function getActiveRecommendationSubscription(userId: number) {
         eq(recommendationSubscriptions.userId, userId),
         eq(recommendationSubscriptions.isActive, true),
         eq(recommendationSubscriptions.isPaused, false),
+        eq(recommendationSubscriptions.isPendingActivation, false),
         sql`${recommendationSubscriptions.endDate} >= ${nowIso}`
       )
     )
@@ -1421,6 +1580,7 @@ export async function getRecommendationSubscriberEmails() {
       and(
         eq(recommendationSubscriptions.isActive, true),
         eq(recommendationSubscriptions.isPaused, false),
+        eq(recommendationSubscriptions.isPendingActivation, false),
         sql`${recommendationSubscriptions.endDate} >= ${nowIso}`
       )
     );
@@ -1452,6 +1612,7 @@ export async function getRecommendationSubscriberDetails(): Promise<Array<{ user
       and(
         eq(recommendationSubscriptions.isActive, true),
         eq(recommendationSubscriptions.isPaused, false),
+        eq(recommendationSubscriptions.isPendingActivation, false),
         sql`${recommendationSubscriptions.endDate} >= ${nowIso}`
       )
     );
@@ -2057,8 +2218,8 @@ export async function fulfillPackageEntitlements(
     ?? DEFAULT_KEY_ENTITLEMENT_DAYS;
   const now = new Date();
   const serviceEndDate = buildEndDateFromDays(now, entitlementDays);
-  // For deferred activation: set a placeholder endDate to 14+30=44 days (max wait + real period)
-  const placeholderEndDate = buildEndDateFromDays(now, 44); // 14 days max wait + 30 days real period
+  // For deferred activation: placeholder endDate = 14 days max wait + entitlement days
+  const placeholderEndDate = buildEndDateFromDays(now, 14 + entitlementDays);
   const maxActivationDate = buildEndDateFromDays(now, 14); // 14 days from now
 
   // Check if student already completed the course (100% progress) — renewals should activate immediately
@@ -2926,6 +3087,7 @@ export async function getUserLexaiSubscription(userId: number) {
       eq(lexaiSubscriptions.userId, userId),
       eq(lexaiSubscriptions.isActive, true),
       eq(lexaiSubscriptions.isPaused, false),
+      eq(lexaiSubscriptions.isPendingActivation, false),
       sql`${lexaiSubscriptions.endDate} >= ${nowIso}`
     ))
     .orderBy(desc(lexaiSubscriptions.endDate), desc(lexaiSubscriptions.createdAt))
@@ -3886,7 +4048,8 @@ export async function activateStudentSubscriptions(userId: number, isAutoActivat
   if (!db) throw new Error("Database not available");
 
   const now = new Date();
-  const realEndDate = buildEndDateFromDays(now, 30);
+  const entitlementDays = await getUserEntitlementDays(userId);
+  const realEndDate = buildEndDateFromDays(now, entitlementDays);
 
   const [lexaiSub] = await db
     .select()
@@ -4230,6 +4393,14 @@ export async function getSubscribersReport(): Promise<any[]> {
   // Get all activated keys (the real revenue source)
   const allKeys = await db.select().from(registrationKeys)
     .where(sql`${registrationKeys.packageId} IS NOT NULL`);
+  // Get enrollments for skip status
+  const allEnrollments = await db.select({
+    userId: enrollments.userId,
+    courseId: enrollments.courseId,
+    isAdminSkipped: enrollments.isAdminSkipped,
+    progressPercentage: enrollments.progressPercentage,
+    completedAt: enrollments.completedAt,
+  }).from(enrollments);
 
   const pkgMap = new Map(allPackages.map(p => [p.id, p]));
 
@@ -4260,6 +4431,9 @@ export async function getSubscribersReport(): Promise<any[]> {
     // Frozen status
     const isFrozen = userSubs.some(s => s.isActive && (s as any).isPaused);
 
+    // Enrollment info (main course = courseId 1)
+    const enrollment = allEnrollments.find(e => e.userId === u.id && e.courseId === 1);
+
     return {
       ...u,
       totalKeys: userKeys.length,
@@ -4268,6 +4442,8 @@ export async function getSubscribersReport(): Promise<any[]> {
       activePackagesAr: activePackageNamesAr,
       subscriptionCount: userSubs.length,
       renewalCount,
+      isAdminSkipped: enrollment?.isAdminSkipped ?? false,
+      courseProgress: enrollment?.progressPercentage ?? 0,
     };
   });
 }

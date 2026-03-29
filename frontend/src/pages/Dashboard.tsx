@@ -73,10 +73,10 @@ export default function Dashboard() {
 
           {/* Deferred Activation Banner */}
           {activationStatus?.hasPending && (
-            <Card className={`mb-8 border-2 ${activationStatus.canActivate ? 'border-yellow-400 bg-yellow-50 dark:bg-yellow-950/20' : 'border-blue-300 bg-blue-50 dark:bg-blue-950/20'}`}>
+            <Card className={`mb-8 border-2 ${activationStatus.canActivate ? 'border-yellow-400 bg-yellow-50 dark:bg-yellow-950/20' : 'border-emerald-300 bg-emerald-50 dark:bg-emerald-950/20'}`}>
               <CardContent className="py-4 px-5">
                 <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-                  <Zap className={`h-8 w-8 shrink-0 ${activationStatus.canActivate ? 'text-yellow-500' : 'text-blue-500'}`} />
+                  <Zap className={`h-8 w-8 shrink-0 ${activationStatus.canActivate ? 'text-yellow-500' : 'text-emerald-500'}`} />
                   <div className="flex-1 space-y-1">
                     <p className="font-semibold text-gray-900 dark:text-white">
                       {t('activation.bannerTitle')}
@@ -155,7 +155,7 @@ export default function Dashboard() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
                   {stats?.quizzesPassed ?? 0}
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
@@ -179,7 +179,7 @@ export default function Dashboard() {
             <CardContent>
               {enrollmentsLoading ? (
                 <div className="text-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div>
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500 mx-auto mb-2"></div>
                   <p className="text-muted-foreground">{t("dashboard.loading")}</p>
                 </div>
               ) : enrollments.length === 0 ? (

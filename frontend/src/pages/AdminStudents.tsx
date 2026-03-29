@@ -63,6 +63,7 @@ import {
   Copy,
   SlidersHorizontal,
   FastForward,
+  Undo2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -89,15 +90,32 @@ export default function AdminStudents() {
   const isRtl = language === "ar";
 
   const { data: students, isLoading } = trpc.reports.subscribers.useQuery();
+  const utils = trpc.useUtils();
   const [search, setSearch] = useState("");
   const [countryFilter, setCountryFilter] = useState("all");
   const [packageFilter, setPackageFilter] = useState("all");
   const [skipConfirm, setSkipConfirm] = useState<{ id: number; name: string } | null>(null);
+  const [rollbackConfirm, setRollbackConfirm] = useState<{ id: number; name: string } | null>(null);
+  const [confirmNameInput, setConfirmNameInput] = useState("");
 
   const skipCourseMutation = trpc.enrollments.skipCourse.useMutation({
     onSuccess: () => {
       toast.success(isRtl ? "تم تخطي الدورة بنجاح" : "Course skipped successfully");
       setSkipConfirm(null);
+      setConfirmNameInput("");
+      utils.reports.subscribers.invalidate();
+    },
+    onError: (err) => {
+      toast.error(err.message);
+    },
+  });
+
+  const rollbackSkipMutation = trpc.enrollments.rollbackSkip.useMutation({
+    onSuccess: () => {
+      toast.success(isRtl ? "تم التراجع عن التخطي بنجاح" : "Skip rolled back successfully");
+      setRollbackConfirm(null);
+      setConfirmNameInput("");
+      utils.reports.subscribers.invalidate();
     },
     onError: (err) => {
       toast.error(err.message);
@@ -137,8 +155,8 @@ export default function AdminStudents() {
   const pkgBadgeClass = (name: string) => {
     const lower = name.toLowerCase();
     if (lower.includes('comprehensive') || lower.includes('شامل'))
-      return 'bg-purple-100 text-purple-800 border-purple-300 hover:bg-purple-100';
-    return 'bg-blue-100 text-blue-800 border-blue-300 hover:bg-blue-100';
+      return 'bg-amber-100 text-amber-800 border-amber-300 hover:bg-amber-100';
+    return 'bg-emerald-100 text-emerald-800 border-emerald-300 hover:bg-emerald-100';
   };
 
   // Derived data
@@ -257,7 +275,7 @@ export default function AdminStudents() {
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold flex items-center gap-2">
-              <Users className="w-6 h-6 text-blue-600" />
+              <Users className="w-6 h-6 text-emerald-600" />
               {isRtl ? "الطلاب" : "Students"}
             </h1>
             <p className="text-sm text-gray-500 mt-1">
@@ -295,7 +313,7 @@ export default function AdminStudents() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <Card>
             <CardContent className="pt-4 pb-3 text-center">
-              <p className="text-2xl font-bold text-blue-600">
+              <p className="text-2xl font-bold text-emerald-600">
                 {totalStudents}
               </p>
               <p className="text-xs text-gray-500">
@@ -423,7 +441,7 @@ export default function AdminStudents() {
                             </p>
                             <button
                               onClick={() => copyEmail(s.email)}
-                              className="text-gray-400 hover:text-blue-600 shrink-0"
+                              className="text-gray-400 hover:text-emerald-600 shrink-0"
                             >
                               <Copy className="w-3 h-3" />
                             </button>
@@ -461,7 +479,7 @@ export default function AdminStudents() {
                             )
                           )}
                           {s.renewalCount > 0 && (
-                            <Badge className="text-xs bg-blue-100 text-blue-800 hover:bg-blue-100">
+                            <Badge className="text-xs bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
                               {s.renewalCount}{" "}
                               {isRtl ? "تجديد" : "renewal"}
                             </Badge>
@@ -518,16 +536,33 @@ export default function AdminStudents() {
                       </div>
 
                       {/* Actions */}
-                      <div className="pt-2 border-t">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="text-xs gap-1"
-                          onClick={() => setSkipConfirm({ id: s.id, name: s.name || s.email })}
-                        >
-                          <FastForward className="w-3 h-3" />
-                          {isRtl ? "تخطي الدورة" : "Skip Course"}
-                        </Button>
+                      <div className="pt-2 border-t flex gap-2 items-center">
+                        {s.isAdminSkipped ? (
+                          <>
+                            <Badge variant="outline" className="text-amber-600 border-amber-300 bg-amber-50 text-xs">
+                              {isRtl ? "تم التخطي" : "Skipped"}
+                            </Badge>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-xs gap-1"
+                              onClick={() => setRollbackConfirm({ id: s.id, name: s.name || s.email })}
+                            >
+                              <Undo2 className="w-3 h-3" />
+                              {isRtl ? "تراجع" : "Undo Skip"}
+                            </Button>
+                          </>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-xs gap-1"
+                            onClick={() => setSkipConfirm({ id: s.id, name: s.name || s.email })}
+                          >
+                            <FastForward className="w-3 h-3" />
+                            {isRtl ? "تخطي الدورة" : "Skip Course"}
+                          </Button>
+                        )}
                       </div>
                     </CardContent>
                   </Card>
@@ -627,7 +662,7 @@ export default function AdminStudents() {
                                 </span>
                                 <button
                                   onClick={() => copyEmail(s.email)}
-                                  className="text-gray-400 hover:text-blue-600 transition-colors"
+                                  className="text-gray-400 hover:text-emerald-600 transition-colors"
                                 >
                                   <Copy className="w-3 h-3" />
                                 </button>
@@ -669,7 +704,7 @@ export default function AdminStudents() {
                             </TableCell>}
                             {visibleCols.has('renewals') && <TableCell className="text-center">
                               {s.renewalCount > 0 ? (
-                                <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100 text-xs">
+                                <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 text-xs">
                                   {s.renewalCount}
                                 </Badge>
                               ) : (
@@ -683,15 +718,32 @@ export default function AdminStudents() {
                               {fmtDate(s.lastSignedIn)}
                             </TableCell>}
                             <TableCell>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="text-xs gap-1 h-7"
-                                onClick={() => setSkipConfirm({ id: s.id, name: s.name || s.email })}
-                              >
-                                <FastForward className="w-3 h-3" />
-                                {isRtl ? "تخطي" : "Skip"}
-                              </Button>
+                              {s.isAdminSkipped ? (
+                                <div className="flex items-center gap-1">
+                                  <Badge variant="outline" className="text-amber-600 border-amber-300 bg-amber-50 text-xs">
+                                    {isRtl ? "تم التخطي" : "Skipped"}
+                                  </Badge>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-xs gap-1 h-7"
+                                    onClick={() => setRollbackConfirm({ id: s.id, name: s.name || s.email })}
+                                  >
+                                    <Undo2 className="w-3 h-3" />
+                                    {isRtl ? "تراجع" : "Undo"}
+                                  </Button>
+                                </div>
+                              ) : (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-xs gap-1 h-7"
+                                  onClick={() => setSkipConfirm({ id: s.id, name: s.name || s.email })}
+                                >
+                                  <FastForward className="w-3 h-3" />
+                                  {isRtl ? "تخطي" : "Skip"}
+                                </Button>
+                              )}
                             </TableCell>
                           </TableRow>
                         ))
@@ -717,16 +769,32 @@ export default function AdminStudents() {
       </div>
 
       {/* Skip Course Confirmation Dialog */}
-      <AlertDialog open={!!skipConfirm} onOpenChange={(open) => !open && setSkipConfirm(null)}>
+      <AlertDialog open={!!skipConfirm} onOpenChange={(open) => { if (!open) { setSkipConfirm(null); setConfirmNameInput(""); } }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
               {isRtl ? "تخطي الدورة التعليمية" : "Skip Trading Course"}
             </AlertDialogTitle>
-            <AlertDialogDescription>
-              {isRtl
-                ? `هل أنت متأكد من تخطي الدورة للطالب "${skipConfirm?.name}"؟ سيتم تعليم جميع الحلقات كمكتملة ونسبة التقدم 100%.`
-                : `Are you sure you want to skip the course for "${skipConfirm?.name}"? All episodes will be marked as complete with 100% progress.`}
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <span className="block">
+                  {isRtl
+                    ? `سيتم تفعيل اشتراكات LexAI والتوصيات فوراً للطالب. تقدم الطالب الفعلي لن يتغير.`
+                    : `LexAI and Recommendations subscriptions will be activated immediately. The student's actual progress will not change.`}
+                </span>
+                <span className="block font-medium text-foreground">
+                  {isRtl
+                    ? `للتأكيد، اكتب اسم الطالب: "${skipConfirm?.name}"`
+                    : `To confirm, type the student's name: "${skipConfirm?.name}"`}
+                </span>
+                <Input
+                  value={confirmNameInput}
+                  onChange={(e) => setConfirmNameInput(e.target.value)}
+                  placeholder={skipConfirm?.name ?? ""}
+                  className="mt-1"
+                  dir="auto"
+                />
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -737,11 +805,58 @@ export default function AdminStudents() {
                   skipCourseMutation.mutate({ userId: skipConfirm.id, courseId: 1 });
                 }
               }}
-              disabled={skipCourseMutation.isPending}
+              disabled={skipCourseMutation.isPending || confirmNameInput.trim() !== skipConfirm?.name?.trim()}
             >
               {skipCourseMutation.isPending
                 ? (isRtl ? "جاري التخطي..." : "Skipping...")
                 : (isRtl ? "تأكيد التخطي" : "Confirm Skip")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Rollback Skip Confirmation Dialog */}
+      <AlertDialog open={!!rollbackConfirm} onOpenChange={(open) => { if (!open) { setRollbackConfirm(null); setConfirmNameInput(""); } }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {isRtl ? "التراجع عن تخطي الدورة" : "Undo Course Skip"}
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <span className="block">
+                  {isRtl
+                    ? `إذا لم يكمل الطالب الدورة فعلياً، سيتم إعادة اشتراكاته إلى حالة الانتظار.`
+                    : `If the student hasn't genuinely completed the course, their subscriptions will be set back to pending.`}
+                </span>
+                <span className="block font-medium text-foreground">
+                  {isRtl
+                    ? `للتأكيد، اكتب اسم الطالب: "${rollbackConfirm?.name}"`
+                    : `To confirm, type the student's name: "${rollbackConfirm?.name}"`}
+                </span>
+                <Input
+                  value={confirmNameInput}
+                  onChange={(e) => setConfirmNameInput(e.target.value)}
+                  placeholder={rollbackConfirm?.name ?? ""}
+                  className="mt-1"
+                  dir="auto"
+                />
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{isRtl ? "إلغاء" : "Cancel"}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (rollbackConfirm) {
+                  rollbackSkipMutation.mutate({ userId: rollbackConfirm.id, courseId: 1 });
+                }
+              }}
+              disabled={rollbackSkipMutation.isPending || confirmNameInput.trim() !== rollbackConfirm?.name?.trim()}
+            >
+              {rollbackSkipMutation.isPending
+                ? (isRtl ? "جاري التراجع..." : "Rolling back...")
+                : (isRtl ? "تأكيد التراجع" : "Confirm Rollback")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -160,12 +160,12 @@ export default function AdminLexaiSubscriptions() {
                                     </div>
                                   )}
                                   {lexaiPaused && h.lexaiPausedRemainingDays ? (
-                                    <div className="text-xs text-blue-600">{h.lexaiPausedRemainingDays}d {language === 'ar' ? 'متبقية' : 'left'}</div>
+                                    <div className="text-xs text-emerald-600">{h.lexaiPausedRemainingDays}d {language === 'ar' ? 'متبقية' : 'left'}</div>
                                   ) : null}
                                 </div>
                                 {h.lexaiSubId && (
                                   lexaiPaused ? (
-                                    <Button variant="ghost" size="sm" className="h-7 px-2 text-blue-600 hover:bg-blue-50"
+                                    <Button variant="ghost" size="sm" className="h-7 px-2 text-emerald-600 hover:bg-emerald-50"
                                       onClick={() => resumeLexai.mutate({ subscriptionId: h.lexaiSubId! })}
                                       disabled={resumeLexai.isPending}
                                       title={language === 'ar' ? 'استئناف LexAI فقط' : 'Resume LexAI only'}>
@@ -204,12 +204,12 @@ export default function AdminLexaiSubscriptions() {
                                     </div>
                                   )}
                                   {recPaused && h.recPausedRemainingDays ? (
-                                    <div className="text-xs text-blue-600">{h.recPausedRemainingDays}d {language === 'ar' ? 'متبقية' : 'left'}</div>
+                                    <div className="text-xs text-emerald-600">{h.recPausedRemainingDays}d {language === 'ar' ? 'متبقية' : 'left'}</div>
                                   ) : null}
                                 </div>
                                 {h.recSubId && (
                                   recPaused ? (
-                                    <Button variant="ghost" size="sm" className="h-7 px-2 text-blue-600 hover:bg-blue-50"
+                                    <Button variant="ghost" size="sm" className="h-7 px-2 text-emerald-600 hover:bg-emerald-50"
                                       onClick={() => resumeRec.mutate({ subscriptionId: h.recSubId! })}
                                       disabled={resumeRec.isPending}
                                       title={language === 'ar' ? 'استئناف التوصيات فقط' : 'Resume Rec only'}>
@@ -235,7 +235,7 @@ export default function AdminLexaiSubscriptions() {
                             {h.userId && (
                               bothPaused ? (
                                 <Button variant="ghost" size="sm"
-                                  className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                  className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
                                   onClick={() => unfreezeAll.mutate({ userId: h.userId! })}
                                   disabled={unfreezeAll.isPending}
                                   title={language === 'ar' ? 'استئناف الكل' : 'Unfreeze all'}>

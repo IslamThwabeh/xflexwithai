@@ -46,7 +46,7 @@ export default function AdminPoints() {
       <div className="p-4 md:p-6 space-y-6" dir={isRtl ? 'rtl' : 'ltr'}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Award className="w-6 h-6 text-purple-500" />
+            <Award className="w-6 h-6 text-amber-500" />
             {isRtl ? 'نظام نقاط الولاء' : 'Loyalty Points System'}
           </h1>
           {tab === 'leaderboard' && (
@@ -61,7 +61,7 @@ export default function AdminPoints() {
         <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
           {tabs.map(t => (
             <button key={t.key} onClick={() => setTab(t.key)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors flex-1 justify-center ${tab === t.key ? 'bg-white shadow-sm text-purple-700' : 'text-gray-600 hover:text-gray-900'}`}>
+              className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors flex-1 justify-center ${tab === t.key ? 'bg-white shadow-sm text-amber-700' : 'text-gray-600 hover:text-gray-900'}`}>
               {t.icon} {t.label}
             </button>
           ))}
@@ -141,7 +141,7 @@ export default function AdminPoints() {
                         <td className="p-3 font-medium">{user.name || '-'}</td>
                         <td className="p-3 text-muted-foreground">{user.email}</td>
                         <td className="p-3 text-center">
-                          <Badge variant="default" className="bg-purple-100 text-purple-700">{user.pointsBalance ?? 0}</Badge>
+                          <Badge variant="default" className="bg-amber-100 text-amber-700">{user.pointsBalance ?? 0}</Badge>
                         </td>
                         <td className="p-3 text-center">
                           <Button size="sm" variant="ghost" className="text-red-500 h-7 px-2"
@@ -226,7 +226,7 @@ function RulesTab({ rules, isLoading, isRtl, onUpdate, updating }: {
                   </>
                 ) : (
                   <>
-                    <Badge className="bg-purple-100 text-purple-700 text-sm">+{rule.points}</Badge>
+                    <Badge className="bg-amber-100 text-amber-700 text-sm">+{rule.points}</Badge>
                     {rule.maxPerDay && (
                       <span className="text-xs text-muted-foreground">{isRtl ? `حد: ${rule.maxPerDay}/يوم` : `Cap: ${rule.maxPerDay}/day`}</span>
                     )}
@@ -255,9 +255,9 @@ function ReferralsTab({ stats, isLoading, isRtl }: { stats: any; isLoading: bool
   if (!stats) return <div className="text-center py-8 text-muted-foreground">{isRtl ? 'لا توجد بيانات' : 'No data'}</div>;
 
   const statCards = [
-    { label: isRtl ? 'إجمالي الإحالات' : 'Total Referrals', value: stats.total ?? 0, color: 'bg-blue-100 text-blue-700' },
+    { label: isRtl ? 'إجمالي الإحالات' : 'Total Referrals', value: stats.total ?? 0, color: 'bg-emerald-100 text-emerald-700' },
     { label: isRtl ? 'إحالات مفعّلة' : 'Activated', value: stats.activated ?? 0, color: 'bg-green-100 text-green-700' },
-    { label: isRtl ? 'نقاط ممنوحة' : 'Points Awarded', value: stats.totalPointsAwarded ?? 0, color: 'bg-purple-100 text-purple-700' },
+    { label: isRtl ? 'نقاط ممنوحة' : 'Points Awarded', value: stats.totalPointsAwarded ?? 0, color: 'bg-amber-100 text-amber-700' },
   ];
 
   return (

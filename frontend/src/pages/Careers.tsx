@@ -33,8 +33,8 @@ export default function Careers() {
       {/* Hero */}
       <section className="relative overflow-hidden text-white py-20 md:py-28" style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #1e3a5f 100%)' }}>
         <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse 60% 50% at 50% 50%, rgba(59,130,246,0.12), transparent)' }} />
-        <div className="absolute top-10 left-10 w-72 h-72 bg-blue-500/10 rounded-full blur-[80px]" />
-        <div className="absolute bottom-10 right-10 w-96 h-96 bg-indigo-500/8 rounded-full blur-[100px]" />
+        <div className="absolute top-10 left-10 w-72 h-72 bg-emerald-500/10 rounded-full blur-[80px]" />
+        <div className="absolute bottom-10 right-10 w-96 h-96 bg-emerald-500/8 rounded-full blur-[100px]" />
         <div className="relative container mx-auto px-4 text-center">
           <Badge className="mb-4 bg-white/10 text-white border-white/20 px-4 py-1.5 text-sm font-medium">
             <Briefcase className="w-4 h-4 mr-1.5" />
@@ -43,7 +43,7 @@ export default function Careers() {
           <h1 className="text-3xl md:text-5xl font-extrabold mb-4 tracking-[-0.5px]">
             {isRtl ? 'الوظائف المتاحة في أكاديمية XFlex' : 'Open Positions at XFlex Academy'}
           </h1>
-          <p className="text-lg text-blue-100/80 max-w-2xl mx-auto">
+          <p className="text-lg text-emerald-100/80 max-w-2xl mx-auto">
             {isRtl ? 'نبحث عن أشخاص موهوبين وشغوفين للانضمام لفريقنا المتنامي' : 'We are looking for talented and passionate people to join our growing team'}
           </p>
         </div>
@@ -69,10 +69,10 @@ export default function Careers() {
                 className="glass-card overflow-hidden group hover:shadow-lg transition-all duration-300"
               >
                 <div className="p-6">
-                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center mb-4 shadow-lg shadow-blue-500/20">
+                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center mb-4 shadow-lg shadow-emerald-500/20">
                     <Briefcase className="w-6 h-6 text-white" />
                   </div>
-                  <h3 className="text-xl font-extrabold text-xf-dark mb-2 group-hover:text-blue-600 transition">
+                  <h3 className="text-xl font-extrabold text-xf-dark mb-2 group-hover:text-emerald-600 transition">
                     {isRtl ? job.titleAr : (job.titleEn || job.titleAr)}
                   </h3>
                   <p className="text-gray-500 text-sm leading-relaxed mb-6 line-clamp-3">
@@ -263,14 +263,14 @@ function ApplicationForm({ jobId, onBack }: { jobId: number; onBack: () => void 
         <div className="rounded-[16px] p-6 mb-8 text-white" style={{ background: 'linear-gradient(135deg, #3b82f6, #4f46e5)', boxShadow: '0 12px 40px rgba(59,130,246,0.2)' }}>
           <Badge className="bg-white/20 text-white border-0 mb-3">{isRtl ? 'تقديم طلب توظيف' : 'Job Application'}</Badge>
           <h1 className="text-2xl font-extrabold mb-2">{isRtl ? job.titleAr : (job.titleEn || job.titleAr)}</h1>
-          <p className="text-blue-100/90 text-sm leading-relaxed">{isRtl ? job.descriptionAr : (job.descriptionEn || job.descriptionAr)}</p>
+          <p className="text-emerald-100/90 text-sm leading-relaxed">{isRtl ? job.descriptionAr : (job.descriptionEn || job.descriptionAr)}</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-8">
           {/* Basic Info Section */}
           <div className="glass-card p-6">
             <h2 className="text-lg font-extrabold text-xf-dark mb-4 flex items-center gap-2">
-              <User className="w-5 h-5 text-blue-600" />
+              <User className="w-5 h-5 text-emerald-600" />
               {isRtl ? 'المعلومات الأساسية' : 'Basic Information'}
             </h2>
             <div className="space-y-4">
@@ -344,7 +344,7 @@ function ApplicationForm({ jobId, onBack }: { jobId: number; onBack: () => void 
                   />
                   <label
                     htmlFor="cv-upload"
-                    className="flex items-center gap-3 px-4 py-3 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-blue-400 hover:bg-blue-50/50 transition"
+                    className="flex items-center gap-3 px-4 py-3 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-emerald-400 hover:bg-emerald-50/50 transition"
                   >
                     <Upload className="w-5 h-5 text-gray-400" />
                     <span className="text-sm text-gray-500">
@@ -360,7 +360,7 @@ function ApplicationForm({ jobId, onBack }: { jobId: number; onBack: () => void 
           {jobQuestions.length > 0 && (
             <div className="glass-card p-6">
               <h2 className="text-lg font-extrabold text-xf-dark mb-4 flex items-center gap-2">
-                <Briefcase className="w-5 h-5 text-blue-600" />
+                <Briefcase className="w-5 h-5 text-emerald-600" />
                 {isRtl ? 'أسئلة الوظيفة' : 'Job Questions'}
               </h2>
               <div className="space-y-5">
@@ -371,7 +371,7 @@ function ApplicationForm({ jobId, onBack }: { jobId: number; onBack: () => void 
                     </label>
                     <textarea
                       required
-                      className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm resize-y min-h-[80px] focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition"
+                      className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm resize-y min-h-[80px] focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 transition"
                       value={answers[q.id] || ''}
                       onChange={(e) => setAnswers({ ...answers, [q.id]: e.target.value })}
                       placeholder="اكتب إجابتك هنا..."
@@ -387,7 +387,7 @@ function ApplicationForm({ jobId, onBack }: { jobId: number; onBack: () => void 
           {generalQuestions.length > 0 && (
             <div className="glass-card p-6">
               <h2 className="text-lg font-extrabold text-xf-dark mb-4 flex items-center gap-2">
-                <Briefcase className="w-5 h-5 text-indigo-600" />
+                <Briefcase className="w-5 h-5 text-emerald-600" />
                 {isRtl ? 'أسئلة عامة' : 'General Questions'}
               </h2>
               <div className="space-y-5">
@@ -398,7 +398,7 @@ function ApplicationForm({ jobId, onBack }: { jobId: number; onBack: () => void 
                     </label>
                     <textarea
                       required
-                      className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm resize-y min-h-[80px] focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition"
+                      className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm resize-y min-h-[80px] focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 transition"
                       value={answers[q.id] || ''}
                       onChange={(e) => setAnswers({ ...answers, [q.id]: e.target.value })}
                       placeholder="اكتب إجابتك هنا..."

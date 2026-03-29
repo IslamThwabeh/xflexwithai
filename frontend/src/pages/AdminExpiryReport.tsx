@@ -75,8 +75,8 @@ export default function AdminExpiryReport() {
   const pkgBadgeClass = (name: string) => {
     const lower = (name || '').toLowerCase();
     if (lower.includes('comprehensive') || lower.includes('شامل'))
-      return 'bg-purple-100 text-purple-800 border-purple-300';
-    return 'bg-blue-100 text-blue-800 border-blue-300';
+      return 'bg-amber-100 text-amber-800 border-amber-300';
+    return 'bg-emerald-100 text-emerald-800 border-emerald-300';
   };
 
   const {
@@ -227,7 +227,7 @@ export default function AdminExpiryReport() {
                   <tr key={i} className={zebraRow(i, `hover:bg-muted/30 ${status === 'expired' ? 'bg-red-50/50' : status === 'critical' ? 'bg-amber-50/50' : ''}`)}>
                     {visibleCols.has('status') && <td className="px-3 py-2.5">
                       {status === 'lifetime' && <span className="inline-flex items-center gap-1 text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full"><CheckCircle className="w-3 h-3" />{isRtl ? 'مدى الحياة' : 'Lifetime'}</span>}
-                      {status === 'active' && <span className="inline-flex items-center gap-1 text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">{isRtl ? 'نشط' : 'Active'}</span>}
+                      {status === 'active' && <span className="inline-flex items-center gap-1 text-xs bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">{isRtl ? 'نشط' : 'Active'}</span>}
                       {status === 'warning' && <span className="inline-flex items-center gap-1 text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full"><AlertTriangle className="w-3 h-3" />{isRtl ? 'قريب الانتهاء' : 'Expiring Soon'}</span>}
                       {status === 'critical' && <span className="inline-flex items-center gap-1 text-xs bg-red-100 text-red-800 px-2 py-0.5 rounded-full"><AlertTriangle className="w-3 h-3" />{isRtl ? 'حرج' : 'Critical'}</span>}
                       {status === 'expired' && <span className="inline-flex items-center gap-1 text-xs bg-red-200 text-red-900 px-2 py-0.5 rounded-full">{isRtl ? 'منتهي' : 'Expired'}</span>}

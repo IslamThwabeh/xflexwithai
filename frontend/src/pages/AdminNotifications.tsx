@@ -31,7 +31,7 @@ export default function AdminNotifications() {
       <div className="p-4 md:p-6 space-y-6" dir={isRtl ? 'rtl' : 'ltr'}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Bell className="w-6 h-6 text-blue-500" />
+            <Bell className="w-6 h-6 text-emerald-500" />
             {isRtl ? 'مركز الإشعارات' : 'Notification Center'}
           </h1>
           <Button onClick={() => setShowSend(!showSend)}>
@@ -106,8 +106,8 @@ export default function AdminNotifications() {
           ) : (
             <div className="space-y-2">
               {recentNotifications.map((n: any) => (
-                <div key={n.id} className={`bg-white border rounded-lg p-3 flex items-start gap-3 ${!n.isRead ? 'border-blue-200 bg-blue-50/30' : ''}`}>
-                  <Bell className={`w-4 h-4 mt-0.5 shrink-0 ${n.type === 'warning' ? 'text-amber-500' : n.type === 'success' ? 'text-green-500' : n.type === 'action' ? 'text-red-500' : 'text-blue-500'}`} />
+                <div key={n.id} className={`bg-white border rounded-lg p-3 flex items-start gap-3 ${!n.isRead ? 'border-emerald-200 bg-emerald-50/30' : ''}`}>
+                  <Bell className={`w-4 h-4 mt-0.5 shrink-0 ${n.type === 'warning' ? 'text-amber-500' : n.type === 'success' ? 'text-green-500' : n.type === 'action' ? 'text-red-500' : 'text-emerald-500'}`} />
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium">{isRtl ? n.titleAr : n.titleEn}</p>
                     {(isRtl ? n.contentAr : n.contentEn) && (

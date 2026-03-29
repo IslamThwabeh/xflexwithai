@@ -13,7 +13,7 @@ import { toast } from 'sonner';
 const statusColors: Record<string, string> = {
   pending: 'bg-yellow-100 text-yellow-700',
   awaiting_confirmation: 'bg-orange-100 text-orange-700',
-  paid: 'bg-blue-100 text-blue-700',
+  paid: 'bg-emerald-100 text-emerald-700',
   completed: 'bg-green-100 text-green-700',
   cancelled: 'bg-red-100 text-red-700',
   refunded: 'bg-gray-100 text-gray-700',
@@ -52,7 +52,7 @@ export default function OrderDetail() {
     return (
       <ClientLayout>
         <div className="flex items-center justify-center min-h-[60vh]">
-          <div className="w-8 h-8 border-4 border-blue-400 border-t-transparent rounded-full animate-spin" />
+          <div className="w-8 h-8 border-4 border-emerald-400 border-t-transparent rounded-full animate-spin" />
         </div>
       </ClientLayout>
     );
@@ -138,9 +138,9 @@ export default function OrderDetail() {
 
         {/* Upload proof for bank transfer orders */}
         {order.paymentMethod === 'bank_transfer' && order.status === 'pending' && (
-          <div className="bg-blue-50 border border-blue-200 rounded-2xl p-6">
+          <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-6">
             <h3 className="font-bold mb-2 flex items-center gap-2">
-              <Upload className="w-5 h-5 text-blue-600" />
+              <Upload className="w-5 h-5 text-emerald-600" />
               {isRtl ? 'رفع إيصال الدفع' : 'Upload Payment Proof'}
             </h3>
             <p className="text-sm text-gray-600 mb-4">

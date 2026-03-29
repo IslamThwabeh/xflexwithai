@@ -17,10 +17,10 @@ export default function AdminAnalytics() {
       </div>
 
       {/* Coming Soon Message */}
-      <Card className="mb-8 border-blue-200 bg-blue-50">
+      <Card className="mb-8 border-emerald-200 bg-emerald-50">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <BarChart3 className="w-6 h-6 text-blue-600" />
+            <BarChart3 className="w-6 h-6 text-emerald-600" />
             {t('admin.analytics.comingSoon')}
           </CardTitle>
           <CardDescription>
@@ -37,11 +37,11 @@ export default function AdminAnalytics() {
               <span>{t('admin.analytics.revenue')}</span>
             </li>
             <li className="flex items-center gap-2">
-              <Users className="w-4 h-4 text-blue-600" />
+              <Users className="w-4 h-4 text-emerald-600" />
               <span>{t('admin.analytics.userGrowth')}</span>
             </li>
             <li className="flex items-center gap-2">
-              <BarChart3 className="w-4 h-4 text-purple-600" />
+              <BarChart3 className="w-4 h-4 text-amber-600" />
               <span>{t('admin.analytics.viewCompletionRates')}</span>
             </li>
             <li className="flex items-center gap-2">

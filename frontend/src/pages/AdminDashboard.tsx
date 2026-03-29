@@ -60,8 +60,8 @@ export default function AdminDashboard() {
         <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
           <Card className="hover:shadow-md transition-shadow cursor-pointer group" onClick={() => setLocation("/admin/orders")}>
             <CardContent className="flex items-center gap-3 py-4 px-4">
-              <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-blue-50 group-hover:bg-blue-100 transition-colors">
-                <ShoppingCart className="h-5 w-5 text-blue-600" />
+              <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-emerald-50 group-hover:bg-emerald-100 transition-colors">
+                <ShoppingCart className="h-5 w-5 text-emerald-600" />
               </div>
               <div className="min-w-0">
                 <p className="text-sm font-semibold truncate">{isRtl ? 'الطلبات' : 'Orders'}</p>
@@ -72,8 +72,8 @@ export default function AdminDashboard() {
 
           <Card className="hover:shadow-md transition-shadow cursor-pointer group" onClick={() => setLocation("/admin/package-keys")}>
             <CardContent className="flex items-center gap-3 py-4 px-4">
-              <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-violet-50 group-hover:bg-violet-100 transition-colors">
-                <Key className="h-5 w-5 text-violet-600" />
+              <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-teal-50 group-hover:bg-teal-100 transition-colors">
+                <Key className="h-5 w-5 text-teal-600" />
               </div>
               <div className="min-w-0">
                 <p className="text-sm font-semibold truncate">{t('admin.dashboard.keys')}</p>
@@ -124,7 +124,7 @@ export default function AdminDashboard() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">{isRtl ? 'مفاتيح مُفعّلة' : 'Keys Sold'}</CardTitle>
-              <Key className="h-4 w-4 shrink-0 text-violet-500" />
+              <Key className="h-4 w-4 shrink-0 text-teal-500" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">

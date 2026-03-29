@@ -56,7 +56,7 @@ export default function AdminTestimonials() {
       <div className="p-4 md:p-6">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
           <div className="flex items-center gap-3">
-            <MessageSquareQuote className="w-6 h-6 text-blue-600" />
+            <MessageSquareQuote className="w-6 h-6 text-emerald-600" />
             <h1 className="text-2xl font-bold">{isRtl ? 'إدارة الشهادات' : 'Manage Testimonials'}</h1>
           </div>
           <Button onClick={startNew} className="gap-1.5"><Plus className="w-4 h-4" />{isRtl ? 'شهادة جديدة' : 'New Testimonial'}</Button>
@@ -173,7 +173,7 @@ export default function AdminTestimonials() {
                     {t.avatarUrl ? (
                       <img src={t.avatarUrl} alt="" className="w-10 h-10 rounded-full object-cover" />
                     ) : (
-                      <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-sm">
+                      <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 font-bold text-sm">
                         {(isRtl ? t.nameAr : t.nameEn).charAt(0)}
                       </div>
                     )}

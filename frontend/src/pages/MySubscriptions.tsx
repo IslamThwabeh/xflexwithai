@@ -28,13 +28,13 @@ export default function MySubscriptions() {
     <ClientLayout>
       <div className="max-w-4xl mx-auto px-4 py-8">
         <div className="flex items-center gap-3 mb-8">
-          <Package className="w-6 h-6 text-blue-600" />
+          <Package className="w-6 h-6 text-emerald-600" />
           <h1 className="text-2xl font-bold">{t('mySubscriptions.title')}</h1>
         </div>
 
         {/* Active Package Banner */}
         {pkg && (
-          <div className="bg-gradient-to-r from-blue-600 to-blue-800 text-white rounded-2xl p-6 mb-8">
+          <div className="bg-gradient-to-r from-emerald-600 to-emerald-800 text-white rounded-2xl p-6 mb-8">
             <div className="flex items-center gap-3 mb-2">
               <CheckCircle className="w-6 h-6" />
               <h2 className="text-xl font-bold">{t('mySubscriptions.activePkg')}</h2>
@@ -42,7 +42,7 @@ export default function MySubscriptions() {
             <p className="text-2xl font-bold mb-1">
               {isRtl ? pkg.nameAr : pkg.nameEn}
             </p>
-            <p className="text-blue-200 text-sm">
+            <p className="text-emerald-200 text-sm">
               {pkg.isLifetime
                 ? (isRtl ? 'وصول مدى الحياة' : 'Lifetime Access')
                 : activePackage?.renewalDueDate
@@ -61,15 +61,15 @@ export default function MySubscriptions() {
 
         {/* Upgrade CTA for Basic subscribers */}
         {pkg && pkg.slug === 'basic' && (
-          <div className="bg-gradient-to-r from-purple-50 to-blue-50 border-2 border-purple-200 rounded-2xl p-6 mb-8">
+          <div className="bg-gradient-to-r from-amber-50 to-emerald-50 border-2 border-amber-200 rounded-2xl p-6 mb-8">
             <div className="flex items-center justify-between flex-wrap gap-4">
               <div className="flex items-center gap-3">
-                <ArrowUpCircle className="w-8 h-8 text-purple-600" />
+                <ArrowUpCircle className="w-8 h-8 text-amber-600" />
                 <div>
-                  <h3 className="font-bold text-lg text-purple-900">
+                  <h3 className="font-bold text-lg text-amber-900">
                     {isRtl ? 'ترقية إلى الباقة الشاملة' : 'Upgrade to Comprehensive'}
                   </h3>
-                  <p className="text-sm text-purple-600">
+                  <p className="text-sm text-amber-600">
                     {isRtl
                       ? 'احصل على جميع المميزات بما فيها LexAI والتوصيات والدعم المباشر'
                       : 'Get all features including LexAI, Recommendations & Live Support'}
@@ -77,7 +77,7 @@ export default function MySubscriptions() {
                 </div>
               </div>
               <Link href="/upgrade">
-                <Button className="bg-purple-600 hover:bg-purple-700">
+                <Button className="bg-amber-600 hover:bg-amber-700">
                   <ArrowUpCircle className="w-4 h-4 me-2" />
                   {isRtl ? 'ترقية الآن' : 'Upgrade Now'}
                 </Button>
@@ -132,9 +132,9 @@ export default function MySubscriptions() {
 
         {/* Freeze Request Section */}
         {subscriptions && subscriptions.length > 0 && subscriptions.some(s => s.isActive) && (
-          <div className="mt-8 border rounded-xl p-5 bg-blue-50/50">
+          <div className="mt-8 border rounded-xl p-5 bg-emerald-50/50">
             <div className="flex items-center gap-3 mb-2">
-              <Snowflake className="w-5 h-5 text-blue-500" />
+              <Snowflake className="w-5 h-5 text-emerald-500" />
               <h3 className="font-semibold text-gray-900">
                 {isRtl ? 'تجميد الاشتراك' : 'Freeze Subscription'}
               </h3>

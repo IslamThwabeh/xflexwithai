@@ -17,7 +17,7 @@ const statusIcons: Record<string, any> = {
 const statusColors: Record<string, string> = {
   pending: 'bg-yellow-100 text-yellow-700',
   awaiting_confirmation: 'bg-orange-100 text-orange-700',
-  paid: 'bg-blue-100 text-blue-700',
+  paid: 'bg-emerald-100 text-emerald-700',
   completed: 'bg-green-100 text-green-700',
   cancelled: 'bg-red-100 text-red-700',
   refunded: 'bg-gray-100 text-gray-700',
@@ -44,7 +44,7 @@ export default function MyOrders() {
     <ClientLayout>
       <div className="max-w-4xl mx-auto px-4 py-8">
         <div className="flex items-center gap-3 mb-8">
-          <ShoppingBag className="w-6 h-6 text-blue-600" />
+          <ShoppingBag className="w-6 h-6 text-emerald-600" />
           <h1 className="text-2xl font-bold">{t('myOrders.title')}</h1>
         </div>
 

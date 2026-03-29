@@ -60,7 +60,7 @@ export default function AdminCoupons() {
       <div className="p-4 md:p-6">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
           <div className="flex items-center gap-3">
-            <Tag className="w-6 h-6 text-blue-600" />
+            <Tag className="w-6 h-6 text-emerald-600" />
             <h1 className="text-2xl font-bold">{isRtl ? 'إدارة كوبونات الخصم' : 'Manage Coupons'}</h1>
           </div>
           <Button onClick={startNew} className="gap-1.5"><Plus className="w-4 h-4" />{isRtl ? 'كوبون جديد' : 'New Coupon'}</Button>

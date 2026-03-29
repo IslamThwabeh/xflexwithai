@@ -14,7 +14,7 @@ const orderSortFns: Record<string, (a: any, b: any) => number> = {
 const statusColors: Record<string, string> = {
   pending: 'bg-yellow-100 text-yellow-800',
   awaiting_confirmation: 'bg-orange-100 text-orange-800',
-  paid: 'bg-blue-100 text-blue-800',
+  paid: 'bg-emerald-100 text-emerald-800',
   completed: 'bg-green-100 text-green-800',
   cancelled: 'bg-red-100 text-red-800',
   refunded: 'bg-gray-100 text-gray-800',
@@ -65,7 +65,7 @@ export default function AdminOrders() {
       <div className="p-6">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
-            <ShoppingCart className="w-6 h-6 text-blue-600" />
+            <ShoppingCart className="w-6 h-6 text-emerald-600" />
             <h1 className="text-2xl font-bold">{language === 'ar' ? 'إدارة الطلبات' : 'Manage Orders'}</h1>
           </div>
         </div>
@@ -109,7 +109,7 @@ export default function AdminOrders() {
                         {language === 'ar' ? statusLabels[order.status]?.ar : statusLabels[order.status]?.en || order.status}
                       </Badge>
                       {order.isGift ? <Badge variant="outline" className="text-xs">🎁 Gift</Badge> : null}
-                      {(order as any).isUpgrade ? <Badge variant="outline" className="text-xs text-purple-600 border-purple-300">⬆ Upgrade</Badge> : null}
+                      {(order as any).isUpgrade ? <Badge variant="outline" className="text-xs text-amber-600 border-amber-300">⬆ Upgrade</Badge> : null}
                     </div>
                     <p className="text-sm text-gray-500">
                       {(order as any).userName || (order as any).userEmail || `User #${order.userId}`}
@@ -127,11 +127,11 @@ export default function AdminOrders() {
                 {expandedId === order.id && (
                   <div className="border-t px-5 py-4 bg-gray-50 rounded-b-xl">
                     <div className="grid md:grid-cols-2 gap-4 text-sm mb-4">
-                      <div className="md:col-span-2 bg-blue-50 rounded-lg px-3 py-2">
+                      <div className="md:col-span-2 bg-emerald-50 rounded-lg px-3 py-2">
                         <span className="text-gray-500 font-medium">{language === 'ar' ? 'العميل' : 'Customer'}:</span>{' '}
                         <span className="font-semibold">{(order as any).userName || '—'}</span>
                         {(order as any).userEmail && (
-                          <span className="text-blue-700 ms-2">({(order as any).userEmail})</span>
+                          <span className="text-emerald-700 ms-2">({(order as any).userEmail})</span>
                         )}
                         {(order as any).userPhone && (
                           <span className="text-gray-600 ms-2">📞 {(order as any).userPhone}</span>
@@ -160,7 +160,7 @@ export default function AdminOrders() {
                       )}
                       {order.paymentProofUrl && (
                         <div>
-                          <a href={order.paymentProofUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline flex items-center gap-1">
+                          <a href={order.paymentProofUrl} target="_blank" rel="noopener noreferrer" className="text-emerald-600 hover:underline flex items-center gap-1">
                             <Eye className="w-3.5 h-3.5" />{language === 'ar' ? 'إيصال الدفع' : 'Payment Proof'}
                           </a>
                         </div>
@@ -200,7 +200,7 @@ export default function AdminOrders() {
                         </Button>
                       )}
                       {(order as any).isUpgrade && (order.status === 'paid' || order.status === 'awaiting_confirmation') && (
-                        <Button size="sm" className="bg-purple-600 hover:bg-purple-700" disabled={processUpgradeMutation.isPending} onClick={() => processUpgradeMutation.mutate({ orderId: order.id })}>
+                        <Button size="sm" className="bg-amber-600 hover:bg-amber-700" disabled={processUpgradeMutation.isPending} onClick={() => processUpgradeMutation.mutate({ orderId: order.id })}>
                           <ArrowUpCircle className="w-3.5 h-3.5 me-1" />{language === 'ar' ? 'تنفيذ الترقية' : 'Process Upgrade'}
                         </Button>
                       )}

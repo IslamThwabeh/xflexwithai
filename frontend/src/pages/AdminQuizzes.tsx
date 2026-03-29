@@ -215,7 +215,7 @@ export default function AdminQuizzes() {
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
-            <ClipboardCheck className="w-6 h-6 text-blue-600" />
+            <ClipboardCheck className="w-6 h-6 text-emerald-600" />
             <h1 className="text-2xl font-bold">{t("admin.quizzes.title")}</h1>
           </div>
           <Button onClick={() => setCreatingQuiz(true)} className="gap-1.5" disabled={creatingQuiz}>
@@ -315,7 +315,7 @@ export default function AdminQuizzes() {
                         <p className="text-sm text-muted-foreground line-clamp-1">{quiz.description}</p>
                       )}
                     </div>
-                    <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
+                    <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300">
                       {isAr ? `نسبة النجاح: ${quiz.passingScore}%` : `Pass: ${quiz.passingScore}%`}
                     </Badge>
                     {isExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
@@ -407,7 +407,7 @@ export default function AdminQuizzes() {
                     {quizStats && (
                       <div className="px-4 py-3 bg-gray-50 dark:bg-gray-800 flex flex-wrap gap-6 text-sm">
                         <div className="flex items-center gap-2">
-                          <BarChart3 className="w-4 h-4 text-blue-600" />
+                          <BarChart3 className="w-4 h-4 text-emerald-600" />
                           <span className="text-muted-foreground">{isAr ? "المحاولات:" : "Attempts:"}</span>
                           <span className="font-semibold">{quizStats.totalAttempts}</span>
                         </div>
@@ -451,7 +451,7 @@ export default function AdminQuizzes() {
 
                       {/* Add Question Form */}
                       {addingQuestionForQuiz === quiz.id && (
-                        <div className="border rounded-lg p-4 bg-blue-50 dark:bg-blue-900/20">
+                        <div className="border rounded-lg p-4 bg-emerald-50 dark:bg-emerald-900/20">
                           <div className="grid grid-cols-1 md:grid-cols-[1fr_120px] gap-3">
                             <div>
                               <Label>{isAr ? "نص السؤال" : "Question Text"}</Label>

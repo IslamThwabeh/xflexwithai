@@ -44,7 +44,7 @@ export default function Checkout() {
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-blue-400 border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-4 border-emerald-400 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -122,17 +122,17 @@ export default function Checkout() {
               <div className="grid sm:grid-cols-2 gap-3">
                 <button
                   onClick={() => setPaymentMethod('bank_transfer')}
-                  className={`border-2 rounded-xl p-4 text-start transition-all ${paymentMethod === 'bank_transfer' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}
+                  className={`border-2 rounded-xl p-4 text-start transition-all ${paymentMethod === 'bank_transfer' ? 'border-emerald-500 bg-emerald-50' : 'border-gray-200 hover:border-gray-300'}`}
                 >
-                  <Building2 className="w-6 h-6 mb-2 text-blue-600" />
+                  <Building2 className="w-6 h-6 mb-2 text-emerald-600" />
                   <p className="font-bold">{isRtl ? 'حوالة بنكية' : 'Bank Transfer'}</p>
                   <p className="text-xs text-gray-500">{isRtl ? 'تحويل بنكي مع رفع إيصال' : 'Transfer & upload receipt'}</p>
                 </button>
                 <button
                   onClick={() => setPaymentMethod('paypal')}
-                  className={`border-2 rounded-xl p-4 text-start transition-all ${paymentMethod === 'paypal' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}
+                  className={`border-2 rounded-xl p-4 text-start transition-all ${paymentMethod === 'paypal' ? 'border-emerald-500 bg-emerald-50' : 'border-gray-200 hover:border-gray-300'}`}
                 >
-                  <CreditCard className="w-6 h-6 mb-2 text-blue-600" />
+                  <CreditCard className="w-6 h-6 mb-2 text-emerald-600" />
                   <p className="font-bold">PayPal</p>
                   <p className="text-xs text-gray-500">{isRtl ? 'دفع عبر PayPal' : 'Pay with PayPal'}</p>
                 </button>
@@ -179,7 +179,7 @@ export default function Checkout() {
             {/* Coupon Code */}
             <div className="bg-white border rounded-2xl p-6">
               <div className="flex items-center gap-2 mb-3">
-                <Tag className="w-5 h-5 text-blue-500" />
+                <Tag className="w-5 h-5 text-emerald-500" />
                 <span className="font-medium">{isRtl ? 'كوبون خصم' : 'Discount Code'}</span>
               </div>
               {appliedCoupon ? (
@@ -225,7 +225,7 @@ export default function Checkout() {
               <h2 className="font-bold text-lg mb-4">{t('checkout.summary')}</h2>
 
               <div className="flex items-center gap-3 pb-4 border-b mb-4">
-                <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-700 rounded-xl flex items-center justify-center text-white font-bold">
+                <div className="w-12 h-12 bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-xl flex items-center justify-center text-white font-bold">
                   {pkg.slug === 'basic' ? 'B' : 'C'}
                 </div>
                 <div>

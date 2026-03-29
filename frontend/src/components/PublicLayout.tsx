@@ -169,7 +169,7 @@ export default function PublicLayout({ children }: { children: ReactNode }) {
                   <Instagram className="w-4 h-4 text-gray-400" />
                 </a>
                 <a href="https://www.facebook.com/share/1Aj9HNNwsv/?mibextid=wwXIfr" target="_blank" rel="noopener noreferrer"
-                  className="w-9 h-9 rounded-[10px] bg-white/8 hover:bg-blue-600 flex items-center justify-center transition-all duration-150">
+                  className="w-9 h-9 rounded-[10px] bg-white/8 hover:bg-emerald-600 flex items-center justify-center transition-all duration-150">
                   <Facebook className="w-4 h-4 text-gray-400" />
                 </a>
                 <a href="https://t.me/+cXq1JGThuZkxNGI0" target="_blank" rel="noopener noreferrer"

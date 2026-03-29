@@ -260,7 +260,7 @@ export default function AdminSupport() {
                     onClick={() => setStatusFilter(s)}
                     className={`px-3 py-1 text-xs rounded-full transition ${
                       statusFilter === s
-                        ? "bg-blue-100 text-blue-700 font-medium"
+                        ? "bg-emerald-100 text-emerald-700 font-medium"
                         : "bg-gray-100 text-gray-600 hover:bg-gray-200"
                     }`}
                   >
@@ -293,12 +293,12 @@ export default function AdminSupport() {
                       key={conv.id}
                       onClick={() => setSelectedConvId(conv.id)}
                       className={`w-full text-left p-4 hover:bg-gray-50 transition ${
-                        selectedConvId === conv.id ? "bg-blue-50 border-r-2 border-blue-600" : ""
+                        selectedConvId === conv.id ? "bg-emerald-50 border-r-2 border-emerald-600" : ""
                       }`}
                     >
                       <div className="flex items-center justify-between mb-1">
                         <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white text-xs font-semibold">
+                          <div className="w-8 h-8 rounded-full bg-gradient-to-r from-emerald-500 to-amber-500 flex items-center justify-center text-white text-xs font-semibold">
                             {(conv.userName ?? conv.userEmail ?? "?").charAt(0).toUpperCase()}
                           </div>
                           <div>
@@ -422,13 +422,13 @@ export default function AdminSupport() {
                             className={`max-w-[75%] rounded-2xl px-4 py-2.5 ${
                               isClient
                                 ? "bg-gray-100 text-gray-900 rounded-bl-md"
-                                : "bg-blue-600 text-white rounded-br-md"
+                                : "bg-emerald-600 text-white rounded-br-md"
                             }`}
                           >
                             {!isClient && (
                               <p
                                 className={`text-xs font-semibold mb-1 ${
-                                  isClient ? "text-blue-600" : "text-blue-200"
+                                  isClient ? "text-emerald-600" : "text-emerald-200"
                                 }`}
                               >
                                 {msg.senderType === "admin" ? t('admin.support.admin') : t('admin.support.support')}
@@ -443,14 +443,14 @@ export default function AdminSupport() {
                               </div>
                             ) : msg.attachmentUrl && msg.attachmentUrl.startsWith('http') ? (
                               <a href={msg.attachmentUrl} target="_blank" rel="noopener noreferrer"
-                                className={`inline-flex items-center gap-1 text-xs mt-1 underline ${isClient ? 'text-blue-600' : 'text-blue-200'}`}>
+                                className={`inline-flex items-center gap-1 text-xs mt-1 underline ${isClient ? 'text-emerald-600' : 'text-emerald-200'}`}>
                                 <FileIcon className="w-3 h-3" />
                                 {(msg.attachmentName && msg.attachmentName !== 'attachment_name') ? msg.attachmentName : 'Attachment'}
                               </a>
                             ) : null}
                             <p
                               className={`text-xs mt-1 ${
-                                isClient ? "text-gray-400" : "text-blue-200"
+                                isClient ? "text-gray-400" : "text-emerald-200"
                               }`}
                             >
                               {(() => {
@@ -470,8 +470,8 @@ export default function AdminSupport() {
                 {selectedData?.conversation?.status === "open" && (
                   <div className="border-t p-4">
                     {attachment && (
-                      <div className="flex items-center gap-2 mb-2 bg-blue-50 rounded-lg px-3 py-2 text-sm">
-                        <FileIcon className="w-4 h-4 text-blue-500" />
+                      <div className="flex items-center gap-2 mb-2 bg-emerald-50 rounded-lg px-3 py-2 text-sm">
+                        <FileIcon className="w-4 h-4 text-emerald-500" />
                         <span className="truncate flex-1">{attachment.name}</span>
                         <button onClick={() => setAttachment(null)} className="text-gray-400 hover:text-gray-600"><X className="w-4 h-4" /></button>
                       </div>
@@ -495,7 +495,7 @@ export default function AdminSupport() {
                           placeholder={t('admin.support.replyPlaceholder')}
                           maxLength={5000}
                           rows={1}
-                          className="w-full resize-none border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 max-h-32"
+                          className="w-full resize-none border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 max-h-32"
                           style={{ minHeight: "42px" }}
                         />
                         {reply.length > 4500 && (

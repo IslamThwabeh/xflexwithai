@@ -17,10 +17,10 @@ export default function AdminSettings() {
       </div>
 
       {/* Coming Soon Message */}
-      <Card className="mb-8 border-purple-200 bg-purple-50">
+      <Card className="mb-8 border-amber-200 bg-amber-50">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Settings className="w-6 h-6 text-purple-600" />
+            <Settings className="w-6 h-6 text-amber-600" />
             {t('admin.settings.comingSoon')}
           </CardTitle>
           <CardDescription>
@@ -33,7 +33,7 @@ export default function AdminSettings() {
           </p>
           <ul className="space-y-2">
             <li className="flex items-center gap-2">
-              <Bell className="w-4 h-4 text-blue-600" />
+              <Bell className="w-4 h-4 text-emerald-600" />
               <span>{t('admin.settings.notifPref')}</span>
             </li>
             <li className="flex items-center gap-2">
@@ -45,7 +45,7 @@ export default function AdminSettings() {
               <span>{t('admin.settings.emailTemplates')}</span>
             </li>
             <li className="flex items-center gap-2">
-              <Database className="w-4 h-4 text-purple-600" />
+              <Database className="w-4 h-4 text-amber-600" />
               <span>{t('admin.settings.dbBackup')}</span>
             </li>
           </ul>

@@ -152,8 +152,8 @@ export default function AdminPackageKeys() {
   // Helper: package badge color classes
   const getPackageBadgeClass = (packageId: number) => {
     const pkg = packages.find((p: any) => p.id === packageId);
-    if (pkg?.includesLexai) return 'bg-purple-100 text-purple-800 border-purple-300 hover:bg-purple-100';
-    return 'bg-blue-100 text-blue-800 border-blue-300 hover:bg-blue-100';
+    if (pkg?.includesLexai) return 'bg-amber-100 text-amber-800 border-amber-300 hover:bg-amber-100';
+    return 'bg-emerald-100 text-emerald-800 border-emerald-300 hover:bg-emerald-100';
   };
 
   // Data queries
@@ -388,7 +388,7 @@ export default function AdminPackageKeys() {
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold flex items-center gap-2">
-              <Key className="w-6 h-6 text-blue-600" />
+              <Key className="w-6 h-6 text-emerald-600" />
               {language === 'ar' ? 'مفاتيح التفعيل' : 'Activation Keys'}
             </h1>
             <p className="text-sm text-gray-500 mt-1">
@@ -487,7 +487,7 @@ export default function AdminPackageKeys() {
                   </div>
                   )}
                   {/* Renewal toggle */}
-                  <div className="flex items-center gap-3 p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-800">
+                  <div className="flex items-center gap-3 p-3 bg-emerald-50 dark:bg-emerald-950/30 rounded-lg border border-emerald-200 dark:border-emerald-800">
                     <input
                       type="checkbox"
                       id="isRenewal"
@@ -504,10 +504,10 @@ export default function AdminPackageKeys() {
                           setPrice(pkg ? String(Math.round(pkg.price / 100)) : '0');
                         }
                       }}
-                      className="w-4 h-4 accent-blue-600"
+                      className="w-4 h-4 accent-emerald-600"
                     />
                     <Label htmlFor="isRenewal" className="flex items-center gap-2 cursor-pointer text-sm">
-                      <RotateCcw className="w-4 h-4 text-blue-600" />
+                      <RotateCcw className="w-4 h-4 text-emerald-600" />
                       {language === 'ar' ? 'هذا تجديد (يمدد اشتراكات المستخدم)' : 'This is a renewal (extends existing subscription)'}
                     </Label>
                   </div>
@@ -615,7 +615,7 @@ export default function AdminPackageKeys() {
                   </div>
                   )}
                   {/* Renewal toggle for bulk */}
-                  <div className="flex items-center gap-3 p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-800">
+                  <div className="flex items-center gap-3 p-3 bg-emerald-50 dark:bg-emerald-950/30 rounded-lg border border-emerald-200 dark:border-emerald-800">
                     <input
                       type="checkbox"
                       id="isRenewalBulk"
@@ -632,10 +632,10 @@ export default function AdminPackageKeys() {
                           setPrice(pkg ? String(Math.round(pkg.price / 100)) : '0');
                         }
                       }}
-                      className="w-4 h-4 accent-blue-600"
+                      className="w-4 h-4 accent-emerald-600"
                     />
                     <Label htmlFor="isRenewalBulk" className="flex items-center gap-2 cursor-pointer text-sm">
-                      <RotateCcw className="w-4 h-4 text-blue-600" />
+                      <RotateCcw className="w-4 h-4 text-emerald-600" />
                       {language === 'ar' ? 'مفاتيح تجديد' : 'Renewal keys'}
                     </Label>
                   </div>
@@ -668,7 +668,7 @@ export default function AdminPackageKeys() {
         {stats && (
           <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
             {([
-              { key: 'all' as const, value: stats.total, textCls: 'text-blue-600', ringCls: 'ring-blue-500 bg-blue-50 dark:bg-blue-950/30', label: language === 'ar' ? 'الإجمالي' : 'Total' },
+              { key: 'all' as const, value: stats.total, textCls: 'text-emerald-600', ringCls: 'ring-emerald-500 bg-emerald-50 dark:bg-emerald-950/30', label: language === 'ar' ? 'الإجمالي' : 'Total' },
               { key: 'activated' as const, value: stats.activated, textCls: 'text-green-600', ringCls: 'ring-green-500 bg-green-50 dark:bg-green-950/30', label: language === 'ar' ? 'مفعّل' : 'Activated' },
               { key: 'unused' as const, value: stats.unused, textCls: 'text-amber-600', ringCls: 'ring-amber-500 bg-amber-50 dark:bg-amber-950/30', label: language === 'ar' ? 'غير مستخدم' : 'Unused' },
               { key: 'deactivated' as const, value: stats.deactivated, textCls: 'text-red-600', ringCls: 'ring-red-500 bg-red-50 dark:bg-red-950/30', label: language === 'ar' ? 'معطّل' : 'Deactivated' },
@@ -692,7 +692,7 @@ export default function AdminPackageKeys() {
             {/* Activation Rate — not clickable */}
             <Card>
               <CardContent className="pt-4 pb-3 text-center">
-                <p className="text-2xl font-bold text-purple-600">{stats.activationRate}%</p>
+                <p className="text-2xl font-bold text-amber-600">{stats.activationRate}%</p>
                 <p className="text-xs text-gray-500">{language === 'ar' ? 'نسبة التفعيل' : 'Activation Rate'}</p>
               </CardContent>
             </Card>
@@ -774,7 +774,7 @@ export default function AdminPackageKeys() {
                     </code>
                     <button
                       onClick={() => copyToClipboard(key.keyCode)}
-                      className="text-gray-400 hover:text-blue-600 transition-colors shrink-0 p-1"
+                      className="text-gray-400 hover:text-emerald-600 transition-colors shrink-0 p-1"
                     >
                       <Copy className="w-4 h-4" />
                     </button>
@@ -811,7 +811,7 @@ export default function AdminPackageKeys() {
                       </Badge>
                     )}
                     {(key as any).isRenewal && (
-                      <Badge className="gap-1 text-xs bg-blue-100 text-blue-800 hover:bg-blue-100">
+                      <Badge className="gap-1 text-xs bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
                         <RotateCcw className="w-3 h-3" />
                         {language === 'ar' ? 'تجديد' : 'Renewal'}
                       </Badge>
@@ -881,7 +881,7 @@ export default function AdminPackageKeys() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 gap-1"
+                          className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 gap-1"
                           onClick={() => unfreezeUser.mutate({ userId: key.userId as number })}
                           disabled={unfreezeUser.isPending}
                         >
@@ -997,7 +997,7 @@ export default function AdminPackageKeys() {
                             </code>
                             <button
                               onClick={() => copyToClipboard(key.keyCode)}
-                              className="text-gray-400 hover:text-blue-600 transition-colors"
+                              className="text-gray-400 hover:text-emerald-600 transition-colors"
                             >
                               <Copy className="w-3.5 h-3.5" />
                             </button>
@@ -1035,7 +1035,7 @@ export default function AdminPackageKeys() {
                                 </Badge>
                               )}
                               {(key as any).isRenewal && (
-                                <Badge className="gap-1 bg-blue-100 text-blue-800 hover:bg-blue-100">
+                                <Badge className="gap-1 bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
                                   <RotateCcw className="w-3 h-3" />
                                   {language === 'ar' ? 'تجديد' : 'Renewal'}
                                 </Badge>
@@ -1084,7 +1084,7 @@ export default function AdminPackageKeys() {
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
                                 onClick={() => unfreezeUser.mutate({ userId: key.userId as number })}
                                 disabled={unfreezeUser.isPending}
                                 title={language === 'ar' ? 'استئناف الاشتراكات' : 'Unfreeze subscriptions'}
@@ -1203,10 +1203,10 @@ export default function AdminPackageKeys() {
                       <p className="text-xs text-gray-500">{language === 'ar' ? 'ترقيات هذا الشهر' : 'This Month'}</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3 p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg">
-                    <TrendingUp className="w-8 h-8 text-blue-500" />
+                  <div className="flex items-center gap-3 p-3 bg-emerald-50 dark:bg-emerald-950/30 rounded-lg">
+                    <TrendingUp className="w-8 h-8 text-emerald-500" />
                     <div>
-                      <p className="text-2xl font-bold text-blue-600">{upgradeStatsQuery.data.totalUpgrades}</p>
+                      <p className="text-2xl font-bold text-emerald-600">{upgradeStatsQuery.data.totalUpgrades}</p>
                       <p className="text-xs text-gray-500">{language === 'ar' ? 'إجمالي الترقيات' : 'All-time'}</p>
                     </div>
                   </div>
@@ -1267,7 +1267,7 @@ export default function AdminPackageKeys() {
                   {/* All-time */}
                   <div>
                     <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
-                      <TrendingUp className="w-4 h-4 text-blue-500" />
+                      <TrendingUp className="w-4 h-4 text-emerald-500" />
                       {language === 'ar' ? 'الترتيب العام' : 'All-Time Rankings'}
                     </h4>
                     {(upgradeStatsQuery.data.allTimeLeaderboard?.length ?? 0) === 0 ? (

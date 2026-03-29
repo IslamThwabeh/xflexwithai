@@ -134,6 +134,7 @@ export const enrollments = sqliteTable("enrollments", {
   subscriptionEndDate: text("subscriptionEndDate"),
   registrationKeyId: integer("registrationKeyId"),
   activatedViaKey: integer("activatedViaKey", { mode: 'boolean' }).default(false).notNull(),
+  isAdminSkipped: integer("isAdminSkipped", { mode: 'boolean' }).default(false).notNull(),
 });
 
 export type Enrollment = typeof enrollments.$inferSelect;
@@ -1152,6 +1153,22 @@ export const userNotificationsRelations = relations(userNotifications, ({ one })
     references: [users.id],
   }),
 }));
+
+// ============================================================================
+// Admin Actions (Audit Trail)
+// ============================================================================
+
+export const adminActions = sqliteTable("admin_actions", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  adminId: integer("adminId").notNull(),
+  userId: integer("userId").notNull(),
+  action: text("action").notNull(),
+  details: text("details"), // JSON string
+  createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
+});
+
+export type AdminAction = typeof adminActions.$inferSelect;
+export type InsertAdminAction = typeof adminActions.$inferInsert;
 
 // ============================================================================
 // Loyalty Points Transactions (Phase 4)

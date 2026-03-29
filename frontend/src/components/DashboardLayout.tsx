@@ -173,7 +173,7 @@ export default function DashboardLayout({
 
   if (!user) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex items-center justify-center min-h-screen bg-[#faf7f2]">
         <div className="flex flex-col items-center gap-8 p-8 max-w-md w-full">
           <div className="flex flex-col items-center gap-6">
             <div className="relative group">
@@ -186,7 +186,7 @@ export default function DashboardLayout({
               </div>
             </div>
             <div className="text-center space-y-2">
-              <h1 className="text-2xl font-bold tracking-tight">{APP_TITLE}</h1>
+              <h1 className="text-2xl font-bold tracking-tight text-slate-900">{APP_TITLE}</h1>
               <p className="text-sm text-muted-foreground">
                 Please sign in to continue
               </p>
@@ -197,7 +197,7 @@ export default function DashboardLayout({
               window.location.href = getLoginUrl();
             }}
             size="lg"
-            className="w-full shadow-lg hover:shadow-xl transition-all"
+            className="w-full shadow-lg hover:shadow-xl transition-all bg-emerald-600 hover:bg-emerald-700 text-white"
           >
             Sign in
           </Button>
@@ -285,23 +285,23 @@ function DashboardLayoutContent({
     <div className="relative flex w-full" ref={sidebarRef} dir="ltr">
       <Sidebar
         collapsible="icon"
-        className="border-r-0"
+        className="border-r-0 bg-white"
         disableTransition={isResizing}
       >
-          <SidebarHeader className="h-16 justify-center">
+          <SidebarHeader className="h-16 justify-center border-b border-emerald-100/60">
             <div className="flex items-center gap-3 pl-2 group-data-[collapsible=icon]:px-0 transition-all w-full">
               {isCollapsed ? (
                 <div className="relative h-8 w-8 shrink-0 group">
                   <img
                     src={APP_LOGO}
-                    className="h-8 w-8 rounded-md object-cover ring-1 ring-border"
+                    className="h-8 w-8 rounded-md object-cover ring-1 ring-emerald-200"
                     alt="Logo"
                   />
                   <button
                     onClick={toggleSidebar}
-                    className="absolute inset-0 flex items-center justify-center bg-accent rounded-md ring-1 ring-border opacity-0 group-hover:opacity-100 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="absolute inset-0 flex items-center justify-center bg-emerald-50 rounded-md ring-1 ring-emerald-200 opacity-0 group-hover:opacity-100 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                   >
-                    <PanelLeft className="h-4 w-4 text-foreground" />
+                    <PanelLeft className="h-4 w-4 text-emerald-700" />
                   </button>
                 </div>
               ) : (
@@ -309,18 +309,18 @@ function DashboardLayoutContent({
                   <div className="flex items-center gap-3 min-w-0">
                     <img
                       src={APP_LOGO}
-                      className="h-8 w-8 rounded-md object-cover ring-1 ring-border shrink-0"
+                      className="h-8 w-8 rounded-md object-cover ring-1 ring-emerald-200 shrink-0"
                       alt="Logo"
                     />
-                    <span className="font-semibold tracking-tight truncate">
+                    <span className="font-semibold tracking-tight truncate text-slate-900">
                       {APP_TITLE}
                     </span>
                   </div>
                   <button
                     onClick={toggleSidebar}
-                    className="ml-auto h-8 w-8 flex items-center justify-center hover:bg-accent rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring shrink-0"
+                    className="ml-auto h-8 w-8 flex items-center justify-center hover:bg-emerald-50 rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 shrink-0"
                   >
-                    <PanelLeft className="h-4 w-4 text-muted-foreground" />
+                    <PanelLeft className="h-4 w-4 text-slate-500" />
                   </button>
                 </>
               )}
@@ -333,18 +333,18 @@ function DashboardLayoutContent({
               <div className="px-3 pt-2 pb-1">
                 <button
                   onClick={() => setShowAdminSearch(true)}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground bg-muted/50 hover:bg-muted rounded-lg transition-colors"
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-500 bg-slate-50 hover:bg-emerald-50 rounded-lg transition-colors"
                 >
                   <Search className="w-4 h-4" />
                   <span>{t('admin.sidebar.search')}</span>
-                  <kbd className="ms-auto text-[10px] bg-white border rounded px-1.5 py-0.5">⌘K</kbd>
+                  <kbd className="ms-auto text-[10px] bg-white border border-slate-200 rounded px-1.5 py-0.5 text-slate-400">⌘K</kbd>
                 </button>
               </div>
             )}
             {menuSectionsDef.map((section, sectionIndex) => (
               <SidebarGroup key={sectionIndex} className="shrink-0 py-1">
                 {!isCollapsed && (
-                  <SidebarGroupLabel className="h-auto text-[11px] uppercase tracking-wider font-semibold text-muted-foreground/70 px-3 pb-1">
+                  <SidebarGroupLabel className="h-auto text-[11px] uppercase tracking-wider font-semibold text-slate-400 px-3 pb-1">
                     {t(section.labelKey)}
                   </SidebarGroupLabel>
                 )}
@@ -362,16 +362,16 @@ function DashboardLayoutContent({
                             onClick={() => setLocation(item.path)}
                             tooltip={tooltipText}
                             className={`transition-all font-normal ${
-                              isActive ? "bg-primary/10 text-primary font-medium" : ""
+                              isActive ? "bg-emerald-50 text-emerald-700 font-medium" : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
                             }`}
                           >
                             <item.icon
-                              className={`h-4 w-4 ${isActive ? "text-primary" : ""}`}
+                              className={`h-4 w-4 ${isActive ? "text-emerald-600" : ""}`}
                             />
                             <div className="flex flex-col min-w-0">
                               <span>{label}</span>
                               {desc && !isCollapsed && (
-                                <span className="text-[10px] text-muted-foreground/70 truncate leading-tight">{desc}</span>
+                                <span className="text-[10px] text-slate-400 truncate leading-tight">{desc}</span>
                               )}
                             </div>
                           </SidebarMenuButton>
@@ -384,12 +384,12 @@ function DashboardLayoutContent({
             ))}
           </SidebarContent>
 
-          <SidebarFooter className="p-3 space-y-2">
+          <SidebarFooter className="p-3 space-y-2 border-t border-emerald-100/60">
             {/* Language Switcher */}
             {!isCollapsed && (
               <button
                 onClick={() => setLanguage(language === "ar" ? "en" : "ar")}
-                className="flex items-center gap-2 w-full rounded-lg px-2 py-2 text-sm text-muted-foreground hover:bg-accent/50 transition-colors"
+                className="flex items-center gap-2 w-full rounded-lg px-2 py-2 text-sm text-slate-500 hover:bg-emerald-50 hover:text-emerald-700 transition-colors"
               >
                 <Globe className="h-4 w-4" />
                 <span>{language === "ar" ? "English" : "عربي"}</span>
@@ -398,7 +398,7 @@ function DashboardLayoutContent({
             {isCollapsed && (
               <button
                 onClick={() => setLanguage(language === "ar" ? "en" : "ar")}
-                className="flex items-center justify-center w-full rounded-lg py-2 text-sm text-muted-foreground hover:bg-accent/50 transition-colors"
+                className="flex items-center justify-center w-full rounded-lg py-2 text-sm text-slate-500 hover:bg-emerald-50 hover:text-emerald-700 transition-colors"
                 title={language === "ar" ? "English" : "عربي"}
               >
                 <Globe className="h-4 w-4" />
@@ -407,17 +407,17 @@ function DashboardLayoutContent({
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="flex items-center gap-3 rounded-lg px-1 py-1 hover:bg-accent/50 transition-colors w-full text-left group-data-[collapsible=icon]:justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                  <Avatar className="h-9 w-9 border shrink-0">
-                    <AvatarFallback className="text-xs font-medium">
+                <button className="flex items-center gap-3 rounded-lg px-1 py-1 hover:bg-emerald-50 transition-colors w-full text-left group-data-[collapsible=icon]:justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500">
+                  <Avatar className="h-9 w-9 border border-emerald-200 shrink-0">
+                    <AvatarFallback className="text-xs font-medium bg-emerald-50 text-emerald-700">
                       {user?.name?.charAt(0).toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
-                    <p className="text-sm font-medium truncate leading-none">
+                    <p className="text-sm font-medium truncate leading-none text-slate-900">
                       {user?.name || "-"}
                     </p>
-                    <p className="text-xs text-muted-foreground truncate mt-1.5">
+                    <p className="text-xs text-slate-500 truncate mt-1.5">
                       {user?.email || "-"}
                     </p>
                   </div>
@@ -437,7 +437,7 @@ function DashboardLayoutContent({
       </Sidebar>
 
       <div
-        className={`absolute top-0 h-full cursor-col-resize hover:bg-primary/20 transition-colors ${isCollapsed ? "hidden" : ""}`}
+        className={`absolute top-0 h-full cursor-col-resize hover:bg-emerald-500/20 transition-colors ${isCollapsed ? "hidden" : ""}`}
         onMouseDown={() => {
           if (isCollapsed) return;
           setIsResizing(true);
@@ -447,12 +447,12 @@ function DashboardLayoutContent({
 
       <SidebarInset>
         {isMobile && (
-          <div className="flex border-b h-14 items-center justify-between bg-background/95 px-2 backdrop-blur supports-[backdrop-filter]:backdrop-blur sticky top-0 z-40">
+          <div className="flex border-b border-emerald-100/60 h-14 items-center justify-between bg-white/95 px-2 backdrop-blur supports-[backdrop-filter]:backdrop-blur sticky top-0 z-40">
             <div className="flex items-center gap-2">
-              <SidebarTrigger className="h-9 w-9 rounded-lg bg-background" />
+              <SidebarTrigger className="h-9 w-9 rounded-lg bg-white" />
               <div className="flex items-center gap-3">
                 <div className="flex flex-col gap-1">
-                  <span className="tracking-tight text-foreground">
+                  <span className="tracking-tight text-slate-900">
                     {activeMenuItem ? t(activeMenuItem.labelKey) : APP_TITLE}
                   </span>
                 </div>
@@ -460,7 +460,7 @@ function DashboardLayoutContent({
             </div>
           </div>
         )}
-        <main className="flex-1 p-4" dir={isRTL ? "rtl" : "ltr"}>{children}</main>
+        <main className="flex-1 p-4 bg-[#faf7f2]" dir={isRTL ? "rtl" : "ltr"}>{children}</main>
       </SidebarInset>
       {showAdminSearch && <AdminSearchDialogLazy onClose={() => setShowAdminSearch(false)} />}
     </div>

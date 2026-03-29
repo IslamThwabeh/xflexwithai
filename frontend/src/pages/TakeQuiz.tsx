@@ -94,7 +94,7 @@ export default function TakeQuiz() {
       <ClientLayout>
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto"></div>
           <p className="mt-4 text-gray-600">جاري تحميل الاختبار...</p>
         </div>
       </div>
@@ -222,7 +222,7 @@ export default function TakeQuiz() {
           <div className="flex gap-4">
             <button
               onClick={handleRetry}
-              className="flex-1 bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700 flex items-center justify-center gap-2"
+              className="flex-1 bg-emerald-600 text-white py-3 rounded-lg font-medium hover:bg-emerald-700 flex items-center justify-center gap-2"
             >
               <RotateCcw className="w-5 h-5" />
               إعادة المحاولة
@@ -270,7 +270,7 @@ export default function TakeQuiz() {
           {/* Progress Bar */}
           <div className="w-full bg-gray-200 rounded-full h-2">
             <div
-              className="bg-blue-600 rounded-full h-2 transition-all duration-300"
+              className="bg-emerald-600 rounded-full h-2 transition-all duration-300"
               style={{ width: `${progress}%` }}
             ></div>
           </div>
@@ -289,7 +289,7 @@ export default function TakeQuiz() {
                 onClick={() => handleAnswerSelect(question.id, option.optionId)}
                 className={`w-full text-right p-4 rounded-lg border-2 transition-all ${
                   answers[question.id] === option.optionId
-                    ? "border-blue-600 bg-blue-50 text-blue-900"
+                    ? "border-emerald-600 bg-emerald-50 text-emerald-900"
                     : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
                 }`}
               >
@@ -331,7 +331,7 @@ export default function TakeQuiz() {
           ) : (
             <button
               onClick={handleNext}
-              className="flex items-center gap-2 px-6 py-3 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
+              className="flex items-center gap-2 px-6 py-3 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700"
             >
               التالي
               <ArrowLeft className="w-5 h-5" />
@@ -347,9 +347,9 @@ export default function TakeQuiz() {
               onClick={() => setCurrentQuestion(index)}
               className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-all ${
                 answers[q.id]
-                  ? "bg-blue-600 text-white"
+                  ? "bg-emerald-600 text-white"
                   : index === currentQuestion
-                  ? "bg-blue-100 text-blue-600 border-2 border-blue-600"
+                  ? "bg-emerald-100 text-emerald-600 border-2 border-emerald-600"
                   : "bg-gray-200 text-gray-600"
               }`}
             >

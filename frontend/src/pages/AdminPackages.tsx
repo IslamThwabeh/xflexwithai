@@ -71,7 +71,7 @@ export default function AdminPackages() {
       <div className="p-6">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
-            <Package className="w-6 h-6 text-blue-600" />
+            <Package className="w-6 h-6 text-emerald-600" />
             <h1 className="text-2xl font-bold">{language === 'ar' ? 'إدارة الباقات' : 'Manage Packages'}</h1>
           </div>
           <Button onClick={startNew} className="gap-1.5">

@@ -12,7 +12,7 @@ export default function About() {
       <header className="bg-white/95 backdrop-blur-md border-b border-gray-100 sticky top-0 z-50">
         <div className="container mx-auto px-4 py-3 flex items-center justify-between">
           <Link href="/">
-            <span className="text-xl font-extrabold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent cursor-pointer">
+            <span className="text-xl font-extrabold bg-gradient-to-r from-emerald-600 to-emerald-600 bg-clip-text text-transparent cursor-pointer">
               XFlex
             </span>
           </Link>
@@ -35,12 +35,12 @@ export default function About() {
       </header>
 
       {/* Hero */}
-      <section className="bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-950 text-white py-16 md:py-24">
+      <section className="bg-gradient-to-br from-slate-900 via-emerald-950 to-emerald-950 text-white py-16 md:py-24">
         <div className="container mx-auto px-4 text-center">
           <h1 className="text-3xl md:text-5xl font-extrabold mb-4">
             {t('home.about.title')}
           </h1>
-          <div className="flex items-center justify-center gap-2 text-sm text-blue-200/60">
+          <div className="flex items-center justify-center gap-2 text-sm text-emerald-200/60">
             <Link href="/"><span className="hover:text-white cursor-pointer">{t('home.footer.home')}</span></Link>
             <ChevronRight className="w-3.5 h-3.5" />
             <span className="text-white">{t('home.footer.aboutUs')}</span>
@@ -52,7 +52,7 @@ export default function About() {
       <section className="py-16">
         <div className="container mx-auto px-4 max-w-3xl">
           <div className="text-center mb-12">
-            <div className="w-24 h-24 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center mx-auto mb-6 shadow-lg shadow-blue-500/20">
+            <div className="w-24 h-24 rounded-full bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center mx-auto mb-6 shadow-lg shadow-emerald-500/20">
               <GraduationCap className="w-12 h-12 text-white" />
             </div>
             <h2 className="text-2xl font-bold text-gray-900 mb-2">
@@ -82,12 +82,12 @@ export default function About() {
           <div className="grid md:grid-cols-3 gap-8">
             {[
               {
-                icon: <Target className="w-7 h-7 text-blue-600" />,
+                icon: <Target className="w-7 h-7 text-emerald-600" />,
                 title: language === 'ar' ? 'التعليم الشامل' : 'Comprehensive Education',
                 desc: language === 'ar'
                   ? '8 مراحل تعليمية تغطي كل ما يحتاجه المتداول من الأساسيات حتى بناء خطة التداول'
                   : '8 learning stages covering everything a trader needs from basics to building a trading plan',
-                bg: 'bg-blue-50',
+                bg: 'bg-emerald-50',
               },
               {
                 icon: <Users className="w-7 h-7 text-emerald-600" />,
@@ -98,12 +98,12 @@ export default function About() {
                 bg: 'bg-emerald-50',
               },
               {
-                icon: <Award className="w-7 h-7 text-purple-600" />,
+                icon: <Award className="w-7 h-7 text-amber-600" />,
                 title: language === 'ar' ? 'تقنية متقدمة' : 'Advanced Technology',
                 desc: language === 'ar'
                   ? 'LexAI للتحليل الذكي بالذكاء الاصطناعي يساعدك في اتخاذ قرارات أفضل'
                   : 'LexAI for smart AI analysis helps you make better decisions',
-                bg: 'bg-purple-50',
+                bg: 'bg-amber-50',
               },
             ].map((v, i) => (
               <div key={i} className="text-center p-6">
@@ -130,8 +130,8 @@ export default function About() {
               <Instagram className="w-5 h-5 text-pink-600" />
             </a>
             <a href="https://www.facebook.com/share/1Aj9HNNwsv/?mibextid=wwXIfr" target="_blank" rel="noopener noreferrer"
-              className="w-12 h-12 rounded-xl bg-blue-50 hover:bg-blue-100 flex items-center justify-center transition">
-              <Facebook className="w-5 h-5 text-blue-600" />
+              className="w-12 h-12 rounded-xl bg-emerald-50 hover:bg-emerald-100 flex items-center justify-center transition">
+              <Facebook className="w-5 h-5 text-emerald-600" />
             </a>
             <a href="https://t.me/+cXq1JGThuZkxNGI0" target="_blank" rel="noopener noreferrer"
               className="w-12 h-12 rounded-xl bg-sky-50 hover:bg-sky-100 flex items-center justify-center transition">

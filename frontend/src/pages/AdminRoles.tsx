@@ -24,14 +24,14 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 const ROLE_LABELS: Record<string, { labelKey: string; color: string; group: string }> = {
-  analyst: { labelKey: "admin.roles.analyst", color: "bg-purple-100 text-purple-800", group: "Core Roles" },
-  support: { labelKey: "admin.roles.support", color: "bg-blue-100 text-blue-800", group: "Core Roles" },
+  analyst: { labelKey: "admin.roles.analyst", color: "bg-amber-100 text-amber-800", group: "Core Roles" },
+  support: { labelKey: "admin.roles.support", color: "bg-emerald-100 text-emerald-800", group: "Core Roles" },
   key_manager: { labelKey: "admin.roles.keyManager", color: "bg-amber-100 text-amber-800", group: "Core Roles" },
   view_progress: { labelKey: "admin.roles.viewProgress", color: "bg-green-100 text-green-800", group: "Support Permissions" },
   view_recommendations: { labelKey: "admin.roles.viewRec", color: "bg-pink-100 text-pink-800", group: "Support Permissions" },
   view_subscriptions: { labelKey: "admin.roles.viewSubs", color: "bg-cyan-100 text-cyan-800", group: "Support Permissions" },
   view_quizzes: { labelKey: "admin.roles.viewQuizzes", color: "bg-orange-100 text-orange-800", group: "Support Permissions" },
-  client_lookup: { labelKey: "admin.roles.clientLookup", color: "bg-indigo-100 text-indigo-800", group: "Support Permissions" },
+  client_lookup: { labelKey: "admin.roles.clientLookup", color: "bg-emerald-100 text-emerald-800", group: "Support Permissions" },
 };
 
 const ALL_ROLES = Object.keys(ROLE_LABELS) as Array<keyof typeof ROLE_LABELS>;

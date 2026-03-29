@@ -277,7 +277,7 @@ export default function CourseWatch() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto mb-4"></div>
           <p className="text-muted-foreground">{t('course.loading')}</p>
         </div>
       </div>
@@ -302,10 +302,10 @@ export default function CourseWatch() {
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-purple-50">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-50 to-amber-50">
         <Card className="max-w-md">
           <CardHeader className="text-center">
-            <Lock className="h-16 w-16 mx-auto text-blue-600 mb-4" />
+            <Lock className="h-16 w-16 mx-auto text-emerald-600 mb-4" />
             <CardTitle className="text-2xl">{t('course.signInRequired')}</CardTitle>
             <CardDescription>
               {t('course.signInToAccess')}
@@ -325,10 +325,10 @@ export default function CourseWatch() {
 
   if (!enrollment) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-purple-50">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-50 to-amber-50">
         <Card className="max-w-md">
           <CardHeader className="text-center">
-            <Lock className="h-16 w-16 mx-auto text-blue-600 mb-4" />
+            <Lock className="h-16 w-16 mx-auto text-emerald-600 mb-4" />
             <CardTitle className="text-2xl">{t('course.enrollRequired')}</CardTitle>
             <CardDescription>
               {t('course.enrollDesc')}
@@ -336,7 +336,7 @@ export default function CourseWatch() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="text-center">
-              <p className="text-2xl font-bold text-blue-600">${course.price}</p>
+              <p className="text-2xl font-bold text-emerald-600">${course.price}</p>
               <p className="text-sm text-muted-foreground">{t('course.oneTimePayment')}</p>
             </div>
             <Button className="w-full" size="lg">
@@ -404,7 +404,7 @@ export default function CourseWatch() {
                     )}
                   </div>
                 ) : (
-                  <div className="aspect-video bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center">
+                  <div className="aspect-video bg-gradient-to-br from-emerald-500 to-amber-500 flex items-center justify-center">
                     <Play className="h-24 w-24 text-white opacity-50" />
                   </div>
                 )}
@@ -487,7 +487,7 @@ export default function CourseWatch() {
                                 onClick={() => handleQuizAnswerSelect(question.id, option.optionId)}
                                 className={`w-full text-left rounded border px-3 py-2 text-sm transition-colors ${
                                   quizAnswers[question.id] === option.optionId
-                                    ? "border-blue-600 bg-blue-50"
+                                    ? "border-emerald-600 bg-emerald-50"
                                     : "border-gray-200 hover:bg-gray-50"
                                 }`}
                               >
@@ -586,7 +586,7 @@ export default function CourseWatch() {
                         className={`w-full text-left p-4 transition-colors ${
                           isUnlocked ? 'hover:bg-gray-50' : 'opacity-60 cursor-not-allowed bg-gray-50'
                         } ${
-                          isSelected ? 'bg-blue-50 border-l-4 border-blue-600' : ''
+                          isSelected ? 'bg-emerald-50 border-l-4 border-emerald-600' : ''
                         }`}
                       >
                         <div className="flex items-start gap-3">
@@ -611,7 +611,7 @@ export default function CourseWatch() {
                             )}
                           </div>
                           {isSelected && (
-                            <Play className="h-4 w-4 text-blue-600 flex-shrink-0" />
+                            <Play className="h-4 w-4 text-emerald-600 flex-shrink-0" />
                           )}
                           {!isUnlocked && (
                             <Lock className="h-4 w-4 text-gray-400 flex-shrink-0" />

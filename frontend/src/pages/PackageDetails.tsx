@@ -65,7 +65,7 @@ export default function PackageDetails() {
       <header className="bg-white/95 backdrop-blur-md border-b border-gray-100 sticky top-0 z-50">
         <div className="container mx-auto px-4 py-3 flex items-center justify-between">
           <Link href="/">
-            <span className="text-xl font-extrabold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent cursor-pointer">
+            <span className="text-xl font-extrabold bg-gradient-to-r from-emerald-600 to-emerald-600 bg-clip-text text-transparent cursor-pointer">
               XFlex
             </span>
           </Link>
@@ -85,7 +85,7 @@ export default function PackageDetails() {
       <div className="container mx-auto px-4 py-12 max-w-4xl">
         {/* Breadcrumb */}
         <div className="flex items-center gap-2 text-sm text-gray-400 mb-8">
-          <Link href="/"><span className="hover:text-blue-600 cursor-pointer">{t('home.footer.home')}</span></Link>
+          <Link href="/"><span className="hover:text-emerald-600 cursor-pointer">{t('home.footer.home')}</span></Link>
           <ChevronRight className="w-3.5 h-3.5" />
           <span className="text-gray-700">{isRTL ? pkg.nameAr : pkg.nameEn}</span>
         </div>
@@ -138,7 +138,7 @@ export default function PackageDetails() {
                     <div key={pc.id || i} className="p-4 rounded-xl bg-gray-50 border border-gray-100">
                       <div className="flex items-start justify-between gap-3 mb-2">
                         <div className="flex items-center gap-3">
-                          <BookOpen className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
+                          <BookOpen className="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" />
                           <div>
                             <p className="text-sm font-semibold text-gray-800">
                               {isRTL ? pc.course?.titleAr || pc.courseId : pc.course?.titleEn || `Course #${pc.courseId}`}
@@ -160,9 +160,9 @@ export default function PackageDetails() {
             )}
 
             {/* Value Angle */}
-            <div className="mt-8 p-5 rounded-xl border bg-gradient-to-br from-blue-50 to-indigo-50">
+            <div className="mt-8 p-5 rounded-xl border bg-gradient-to-br from-emerald-50 to-emerald-50">
               <h2 className="text-lg font-bold text-gray-900 mb-2 flex items-center gap-2">
-                <Trophy className="w-5 h-5 text-indigo-600" />
+                <Trophy className="w-5 h-5 text-emerald-600" />
                 {language === 'ar' ? 'لمن صممت هذه الباقة؟' : 'Who Is This Package For?'}
               </h2>
               <p className="text-sm text-gray-700 leading-relaxed">
@@ -176,7 +176,7 @@ export default function PackageDetails() {
             {packageTestimonials && packageTestimonials.length > 0 && (
               <div className="mt-8">
                 <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                  <MessageSquareQuote className="w-5 h-5 text-blue-600" />
+                  <MessageSquareQuote className="w-5 h-5 text-emerald-600" />
                   {language === 'ar' ? 'ماذا يقول الطلاب عن هذه الباقة؟' : 'What Students Say About This Package'}
                 </h2>
                 <div className="grid gap-3 md:grid-cols-2">
@@ -200,23 +200,23 @@ export default function PackageDetails() {
           <div className="md:col-span-2">
             <div className={`rounded-2xl p-6 sticky top-24 ${
               isComprehensive
-                ? 'bg-gradient-to-br from-blue-600 to-indigo-700 text-white shadow-xl shadow-blue-500/20'
+                ? 'bg-gradient-to-br from-emerald-600 to-teal-700 text-white shadow-xl shadow-emerald-500/20'
                 : 'bg-white border-2 border-gray-200 shadow-lg'
             }`}>
               <div className="text-center mb-6">
                 <div className="text-4xl font-extrabold mb-1">{priceFormatted}</div>
-                <p className={`text-sm ${isComprehensive ? 'text-blue-100' : 'text-gray-500'}`}>
+                <p className={`text-sm ${isComprehensive ? 'text-emerald-100' : 'text-gray-500'}`}>
                   {t('home.packages.price')} • {t('home.packages.lifetime')}
                 </p>
                 {renewalFormatted && (
-                  <p className={`text-xs mt-2 ${isComprehensive ? 'text-blue-200' : 'text-blue-600'}`}>
+                  <p className={`text-xs mt-2 ${isComprehensive ? 'text-emerald-200' : 'text-emerald-600'}`}>
                     {t('home.packages.renewal')}: {renewalFormatted}{t('home.packages.perMonth')}
                   </p>
                 )}
               </div>
 
               <div className={`border-t ${isComprehensive ? 'border-white/20' : 'border-gray-100'} pt-4 mb-4`}>
-                <p className={`text-xs ${isComprehensive ? 'text-blue-100' : 'text-gray-500'}`}>
+                <p className={`text-xs ${isComprehensive ? 'text-emerald-100' : 'text-gray-500'}`}>
                   {language === 'ar' ? 'ضريبة القيمة المضافة 16% ستُضاف عند الدفع' : 'VAT 16% will be added at checkout'}
                 </p>
               </div>
@@ -226,7 +226,7 @@ export default function PackageDetails() {
                   size="lg"
                   className={`w-full font-bold ${
                     isComprehensive
-                      ? 'bg-white text-blue-700 hover:bg-blue-50'
+                      ? 'bg-white text-emerald-700 hover:bg-emerald-50'
                       : 'bg-gray-900 hover:bg-gray-800 text-white'
                   }`}
                 >
@@ -235,7 +235,7 @@ export default function PackageDetails() {
                 </Button>
               </Link>
 
-              <p className={`text-center text-xs mt-3 ${isComprehensive ? 'text-blue-200' : 'text-gray-400'}`}>
+              <p className={`text-center text-xs mt-3 ${isComprehensive ? 'text-emerald-200' : 'text-gray-400'}`}>
                 {language === 'ar' 
                   ? 'ضريبة القيمة المضافة 16% ستُضاف عند الدفع'
                   : 'VAT 16% will be applied at checkout'}

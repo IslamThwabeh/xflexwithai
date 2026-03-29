@@ -78,7 +78,7 @@ export default function GlobalSearchDialog({ onClose }: { onClose: () => void })
               {data.courses.map((c: any) => (
                 <button key={c.id} onClick={() => go(`/course/${c.id}`)}
                   className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-50 text-start">
-                  <BookOpen className="w-4 h-4 text-blue-500 shrink-0" />
+                  <BookOpen className="w-4 h-4 text-emerald-500 shrink-0" />
                   <span className="text-sm truncate">{isRtl ? c.titleAr : c.titleEn}</span>
                 </button>
               ))}
@@ -93,7 +93,7 @@ export default function GlobalSearchDialog({ onClose }: { onClose: () => void })
               {data.packages.map((p: any) => (
                 <button key={p.id} onClick={() => go(`/packages/${p.slug}`)}
                   className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-50 text-start">
-                  <Package className="w-4 h-4 text-purple-500 shrink-0" />
+                  <Package className="w-4 h-4 text-amber-500 shrink-0" />
                   <span className="text-sm truncate">{isRtl ? p.nameAr : p.nameEn}</span>
                 </button>
               ))}

@@ -80,12 +80,13 @@ export default function Recommendations() {
 
   const canRead = !!me && (me.hasSubscription || me.canPublish);
   const isFrozenRec = !!me && !me.hasSubscription && !me.canPublish && me.isFrozen;
-  const expiryText = useMemo(() => {
-    if (!me?.subscription?.endDate) return "-";
-    const date = new Date(me.subscription.endDate);
-    if (Number.isNaN(date.getTime())) return "-";
-    return date.toLocaleDateString(language === 'ar' ? "ar-EG" : "en-US");
-  }, [me?.subscription?.endDate, language]);
+  const remainingDays = useMemo(() => {
+    if (!me?.subscription?.endDate) return 0;
+    const end = new Date(me.subscription.endDate);
+    if (Number.isNaN(end.getTime())) return 0;
+    const diff = end.getTime() - Date.now();
+    return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+  }, [me?.subscription?.endDate]);
 
   const onPublish = () => {
     if (!content.trim()) {
@@ -244,7 +245,9 @@ export default function Recommendations() {
           </CardHeader>
           <CardContent className="space-y-3">
             <p className="text-sm">{t('rec.status')}: {t('rec.activated')}</p>
-            <p className="text-sm">{t('rec.expiryDate')}: {expiryText}</p>
+            <p className="text-sm">
+              {t('rec.remainingDays')}: <span className="font-semibold">{remainingDays} {t('rec.daysSuffix')}</span>
+            </p>
           </CardContent>
         </Card>
 

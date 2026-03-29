@@ -73,8 +73,8 @@ export default function AdminSubscribersReport() {
   const pkgBadgeClass = (name: string) => {
     const lower = (name || '').toLowerCase();
     if (lower.includes('comprehensive') || lower.includes('شامل'))
-      return 'bg-purple-100 text-purple-800 border-purple-300';
-    return 'bg-blue-100 text-blue-800 border-blue-300';
+      return 'bg-amber-100 text-amber-800 border-amber-300';
+    return 'bg-emerald-100 text-emerald-800 border-emerald-300';
   };
 
   const countries = useMemo(() => {
@@ -133,7 +133,7 @@ export default function AdminSubscribersReport() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Users className="w-6 h-6 text-blue-600" />
+            <Users className="w-6 h-6 text-emerald-600" />
             {isRtl ? 'تقرير المشتركين' : 'Subscribers Report'}
           </h1>
           <p className="text-sm text-muted-foreground mt-1">

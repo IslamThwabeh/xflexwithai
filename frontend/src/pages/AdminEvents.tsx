@@ -63,7 +63,7 @@ export default function AdminEvents() {
       <div className="p-6">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
-            <Calendar className="w-6 h-6 text-blue-600" />
+            <Calendar className="w-6 h-6 text-emerald-600" />
             <h1 className="text-2xl font-bold">{language === 'ar' ? 'إدارة الأحداث' : 'Manage Events'}</h1>
           </div>
           <Button onClick={startNew} className="gap-1.5">

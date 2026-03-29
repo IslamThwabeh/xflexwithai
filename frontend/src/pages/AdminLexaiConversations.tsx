@@ -142,7 +142,7 @@ export default function AdminLexaiConversations() {
                         key={message.id}
                         className={`p-4 rounded-lg ${
                           message.role === "user"
-                            ? "bg-blue-50 dark:bg-blue-950/30 border-l-4 border-blue-500"
+                            ? "bg-emerald-50 dark:bg-emerald-950/30 border-l-4 border-emerald-500"
                             : "bg-gray-50 dark:bg-gray-800/50 border-l-4 border-gray-300"
                         }`}
                       >

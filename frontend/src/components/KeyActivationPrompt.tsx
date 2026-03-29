@@ -110,8 +110,8 @@ export default function KeyActivationPrompt({
         ) : step === "prompt" ? (
           <>
             <DialogHeader>
-              <div className="mx-auto mb-3 h-14 w-14 rounded-full bg-blue-100 flex items-center justify-center">
-                <Package className="h-7 w-7 text-blue-600" />
+              <div className="mx-auto mb-3 h-14 w-14 rounded-full bg-emerald-100 flex items-center justify-center">
+                <Package className="h-7 w-7 text-emerald-600" />
               </div>
               <DialogTitle className="text-center text-xl">
                 {isAr ? "مرحباً بك في XFlex! 👋" : "Welcome to XFlex! 👋"}
@@ -124,25 +124,25 @@ export default function KeyActivationPrompt({
             </DialogHeader>
 
             <div className="space-y-3 py-2">
-              <div className="flex items-start gap-3 p-3 rounded-lg bg-blue-50 border border-blue-100">
-                <Key className="h-5 w-5 text-blue-600 mt-0.5 shrink-0" />
+              <div className="flex items-start gap-3 p-3 rounded-lg bg-emerald-50 border border-emerald-100">
+                <Key className="h-5 w-5 text-emerald-600 mt-0.5 shrink-0" />
                 <div>
-                  <p className="text-sm font-medium text-blue-900">
+                  <p className="text-sm font-medium text-emerald-900">
                     {isAr ? "لديك مفتاح تفعيل؟" : "Have an activation key?"}
                   </p>
-                  <p className="text-xs text-blue-700 mt-0.5">
+                  <p className="text-xs text-emerald-700 mt-0.5">
                     {isAr ? "أدخل مفتاحك الآن لفتح جميع المحتوى المدفوع" : "Enter it now to unlock all paid content"}
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-start gap-3 p-3 rounded-lg bg-purple-50 border border-purple-100">
-                <Sparkles className="h-5 w-5 text-purple-600 mt-0.5 shrink-0" />
+              <div className="flex items-start gap-3 p-3 rounded-lg bg-amber-50 border border-amber-100">
+                <Sparkles className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
                 <div>
-                  <p className="text-sm font-medium text-purple-900">
+                  <p className="text-sm font-medium text-amber-900">
                     {isAr ? "لا تملك مفتاحاً؟" : "Don't have a key?"}
                   </p>
-                  <p className="text-xs text-purple-700 mt-0.5">
+                  <p className="text-xs text-amber-700 mt-0.5">
                     {isAr ? "تصفح باقاتنا واحصل على مفتاح التفعيل" : "Browse our packages to get started"}
                   </p>
                 </div>

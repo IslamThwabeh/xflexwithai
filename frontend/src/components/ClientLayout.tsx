@@ -1,4 +1,4 @@
-import { ReactNode, lazy, Suspense, useState } from "react";
+import { ReactNode, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -20,7 +20,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-const GlobalSearchDialogLazy = lazy(() => import("./GlobalSearchDialog"));
 import { APP_TITLE } from "@/const";
 import {
   GraduationCap,
@@ -37,7 +36,6 @@ import {
   Bell,
   Award,
   Calculator,
-  Search,
   Menu,
   Building2,
 } from "lucide-react";
@@ -52,7 +50,6 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
   const { user, logout } = useAuth();
   const { t, language, setLanguage, isRTL } = useLanguage();
   const [location] = useLocation();
-  const [showSearch, setShowSearch] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
 
@@ -175,20 +172,13 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
 
             {/* Right side */}
             <div className="flex items-center gap-1.5 sm:gap-2">
-              {/* Search */}
-              <button
-                onClick={() => setShowSearch(true)}
-                className="flex items-center gap-1 p-1.5 sm:px-2 sm:py-1.5 rounded-full text-xs font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition"
-              >
-                <Search className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
-              </button>
               {/* Language Toggle */}
               <button
                 onClick={() => setLanguage(language === "ar" ? "en" : "ar")}
                 className="flex items-center gap-1 px-1.5 sm:px-2 py-1.5 rounded-full text-xs font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition"
               >
                 <Globe className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">{language === "ar" ? "EN" : "عربي"}</span>
+                <span>{language === "ar" ? "EN" : "عربي"}</span>
               </button>
 
               {/* User Avatar — links to profile */}
@@ -295,12 +285,6 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
       {/* Page Content */}
       {/* Main content — respects RTL */}
       <main className="flex-1" dir={isRTL ? "rtl" : "ltr"}>{children}</main>
-
-      {showSearch && (
-        <Suspense fallback={null}>
-          <GlobalSearchDialogLazy onClose={() => setShowSearch(false)} />
-        </Suspense>
-      )}
 
       {/* Logout Confirmation Dialog */}
       <AlertDialog open={showLogoutDialog} onOpenChange={setShowLogoutDialog}>

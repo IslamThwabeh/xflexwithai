@@ -7,9 +7,9 @@ import PublicLayout from '@/components/PublicLayout';
 
 const typeColors: Record<string, string> = {
   live: 'bg-red-100 text-red-700',
-  competition: 'bg-purple-100 text-purple-700',
+  competition: 'bg-amber-100 text-amber-700',
   discount: 'bg-green-100 text-green-700',
-  webinar: 'bg-blue-100 text-blue-700',
+  webinar: 'bg-emerald-100 text-emerald-700',
 };
 const typeLabels: Record<string, { en: string; ar: string }> = {
   live: { en: 'Live Session', ar: 'جلسة مباشرة' },
@@ -28,13 +28,13 @@ export default function Events() {
       {/* Hero */}
       <section className="relative overflow-hidden text-white py-20 md:py-28" style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #1e40af 100%)' }}>
         <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse 60% 50% at 50% 50%, rgba(59,130,246,0.12), transparent)' }} />
-        <div className="absolute top-10 left-10 w-72 h-72 bg-blue-500/10 rounded-full blur-[80px]" />
-        <div className="absolute bottom-10 right-10 w-96 h-96 bg-indigo-500/8 rounded-full blur-[100px]" />
+        <div className="absolute top-10 left-10 w-72 h-72 bg-emerald-500/10 rounded-full blur-[80px]" />
+        <div className="absolute bottom-10 right-10 w-96 h-96 bg-emerald-500/8 rounded-full blur-[100px]" />
         <div className="relative container mx-auto px-4 text-center">
           <h1 className="text-3xl md:text-5xl font-extrabold mb-4 tracking-[-0.5px]">
             {t('events.pageTitle')}
           </h1>
-          <p className="text-blue-100/80 text-lg max-w-lg mx-auto">
+          <p className="text-emerald-100/80 text-lg max-w-lg mx-auto">
             {t('events.pageSubtitle')}
           </p>
         </div>

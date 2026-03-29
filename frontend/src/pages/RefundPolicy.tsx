@@ -125,7 +125,7 @@ export default function RefundPolicy() {
 
               {/* 8 - Acknowledgment */}
               <h2 className="text-xl font-bold text-gray-900">ثامنًا: الإقرار والموافقة</h2>
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
                 <p className="font-semibold">بإتمام عملية الاشتراك، يقرّ المستخدم بما يلي:</p>
                 <ul className="list-disc ps-6 space-y-1 mt-2">
                   <li>أنه قرأ سياسة الاشتراك والاسترجاع كاملة.</li>
@@ -144,7 +144,7 @@ export default function RefundPolicy() {
               <div className="mt-8 p-4 bg-gray-50 rounded-lg border">
                 <p className="text-gray-600">للاطلاع على الشروط والأحكام العامة:</p>
                 <Link href="/terms">
-                  <span className="text-blue-600 hover:underline cursor-pointer font-medium">الشروط والأحكام ←</span>
+                  <span className="text-emerald-600 hover:underline cursor-pointer font-medium">الشروط والأحكام ←</span>
                 </Link>
               </div>
             </>
@@ -244,7 +244,7 @@ export default function RefundPolicy() {
 
               {/* 8 - Acknowledgment */}
               <h2 className="text-xl font-bold text-gray-900">8. Acknowledgment & Consent</h2>
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
                 <p className="font-semibold">By completing the subscription process, the user acknowledges:</p>
                 <ul className="list-disc ps-6 space-y-1 mt-2">
                   <li>Having read the subscription and refund policy in full.</li>
@@ -263,7 +263,7 @@ export default function RefundPolicy() {
               <div className="mt-8 p-4 bg-gray-50 rounded-lg border">
                 <p className="text-gray-600">To view the general Terms and Conditions:</p>
                 <Link href="/terms">
-                  <span className="text-blue-600 hover:underline cursor-pointer font-medium">Terms & Conditions →</span>
+                  <span className="text-emerald-600 hover:underline cursor-pointer font-medium">Terms & Conditions →</span>
                 </Link>
               </div>
             </>

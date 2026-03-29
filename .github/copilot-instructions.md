@@ -55,8 +55,19 @@ It sells 2 package types: **Basic ($200, no LexAI)** and **Comprehensive ($500, 
 - All new keys are created as package keys (via `AdminPackageKeys` page and `createPackageKey` in `db.ts`)
 - `courseId=0` on a key historically meant "LexAI key" — package keys also have `courseId=0`, so **always check `key.packageId` first** before treating as LexAI
 - Guard locations: `activateLexaiKey()` in `db.ts`, `activateKey` and `redeemKey` in `routers.ts`
-- `fulfillPackageEntitlements()` in `db.ts` falls back to enrolling in ALL published courses when `packageCourses` table is empty
+- `fulfillPackageEntitlements()` in `db.ts` falls back to enrolling in ALL published courses when `packageCourses` table is empty. Placeholder endDate = `14 + entitlementDays` (dynamic, not hardcoded 44)
 - Do NOT create or reference `registrationKeys` (old course keys) for any new feature — use `packageKeys` table only
+
+### Deferred Activation & Skip Course
+- Fresh students: pending for up to 14 days or until 100% course completion
+- `getUserLexaiSubscription()` and `getActiveRecommendationSubscription()` filter `isPendingActivation=false` — pending subs are NOT accessible
+- `getRecommendationSubscriberEmails()` and `getRecommendationSubscriberDetails()` also filter `isPendingActivation=false` — pending students don't get notification emails
+- `activateStudentSubscriptions()` uses `getUserEntitlementDays(userId)` for dynamic duration (key.entitlementDays → package.durationDays → fallback 30)
+- Episode completion at 100% auto-calls `activateStudentSubscriptions()`
+- Admin skip: `skipCourseForUser()` sets `isAdminSkipped=1` (flag-only, does NOT mark episodes), then activates subs
+- Admin rollback: `rollbackSkipCourse()` clears flag + deactivates subs back to pending
+- Audit: `admin_actions` table logs skip/rollback with details JSON
+- AdminStudents.tsx: name-typing confirmation for skip/rollback actions
 
 ---
 
@@ -137,7 +148,7 @@ vatAmount = totalAmount * 0.16
 - Rephrase to end with Arabic words (e.g., "عن الأكاديمية" not "عن أكاديمية XFlex")
 
 ### Pages Redesigned
-All public pages (Home, FAQ, Careers, FreeContent, Articles, Events, ArticleDetail, About), Auth pages, PublicLayout, ClientLayout, and all 10 client pages (MyDashboard, LexAI, Recommendations, SupportChat, QuizLevels, StudentPackages, BrokerSelection, NotificationCenter, LoyaltyPoints, TradingCalculators).
+All public pages (Home, FAQ, Careers, FreeContent, Articles, Events, ArticleDetail, About), Auth pages, PublicLayout, ClientLayout, all 10 client pages (MyDashboard, LexAI, Recommendations, SupportChat, QuizLevels, StudentPackages, BrokerSelection, NotificationCenter, LoyaltyPoints, TradingCalculators), **and all 31 admin pages + DashboardLayout** (batch color migration — individual UX polish may still be needed).
 
 ---
 
@@ -246,6 +257,9 @@ CodeGraph is set up for this project with a pre-built semantic graph of all symb
 9. **Episode deletion**: Must archive video in R2 before DB delete — see `storageArchiveR2()` in `storage-r2.ts`
 10. **Episode duration**: DB stores **seconds**, not minutes. Display: `Math.floor(duration / 60)`. Watch threshold: `duration * 0.7`. Never multiply by 60.
 11. **canPublishRecommendations REMOVED**: This column no longer exists. Analyst permission is purely role-based — use `hasRole(userId, 'analyst')` or check `userRoles` table. Do NOT reference `canPublishRecommendations` or `setRecommendationPublisher()`.
+12. **isPendingActivation filter**: Always filter `isPendingActivation=false` when querying active LexAI/Rec subscriptions. Missing this filter caused students to get 44 days (14 pending + 30 active) instead of 30.
+13. **Hardcoded days**: Never hardcode 30 or 44 for subscription duration. Use `getUserEntitlementDays(userId)` which checks key → package → fallback 30.
+14. **Skip course is flag-only**: `skipCourseForUser()` sets `isAdminSkipped=1` but does NOT mark episodes as watched. Student progress is preserved.
 
 ---
 

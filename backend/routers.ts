@@ -1290,12 +1290,14 @@ export const appRouter = router({
           completedAt: completedEpisodes >= totalEpisodes ? new Date().toISOString() : null,
         });
 
-        // Check if student has reached 50% and subscriptions should auto-activate (21-day max passed)
-        // This also auto-activates if maxActivationDate has passed, so subscriptions stay in sync
+        // When course is 100% complete, immediately activate pending subscriptions
+        // At lower percentages, just check if maxActivationDate has passed (14-day deadline)
         let subscriptionActivated = false;
-        if (progressPercentage >= 50) {
+        if (completedEpisodes >= totalEpisodes) {
+          const activation = await db.activateStudentSubscriptions(ctx.user.id, false);
+          subscriptionActivated = activation.activated;
+        } else if (progressPercentage >= 50) {
           const activationStatus = await db.getPendingActivationStatus(ctx.user.id);
-          // If maxActivationDate has passed, it will auto-activate inside getPendingActivationStatus
           subscriptionActivated = activationStatus.hasPending === false && !activationStatus.lexai && !activationStatus.recommendation;
         }
 
@@ -1309,7 +1311,7 @@ export const appRouter = router({
         return { success: true, progressPercentage, reachedHalfway: progressPercentage >= 50 };
       }),
 
-    // Admin/Support: Skip course for a user (marks all episodes complete)
+    // Admin/Support: Skip course for a user (flag-only, preserves real progress)
     skipCourse: adminOrRoleProcedure(['key_manager', 'support'])
       .input(z.object({
         userId: z.number(),
@@ -1319,16 +1321,58 @@ export const appRouter = router({
         logger.procedure('enrollments.skipCourse', input, ctx.user.id);
         const result = await db.skipCourseForUser(input.userId, input.courseId);
 
-        // Trigger subscription activation (same as reaching 50%)
-        await db.getPendingActivationStatus(input.userId);
+        // Log admin action for audit trail
+        await db.logAdminAction(ctx.user.id, input.userId, 'skip_course', {
+          courseId: input.courseId,
+          enrollmentId: result.enrollmentId,
+          previousProgress: result.previousProgress,
+          activated: result.activated,
+        });
 
-        logger.info('Course skipped for user by admin', {
+        logger.info('Course skipped for user by admin (flag-only)', {
           adminId: ctx.user.id,
           userId: input.userId,
           courseId: input.courseId,
-          skippedEpisodes: result.skippedEpisodes,
+          previousProgress: result.previousProgress,
+          activated: result.activated,
         });
         return { success: true, ...result };
+      }),
+
+    // Admin/Support: Rollback a skip (restores pending state if not genuinely completed)
+    rollbackSkip: adminOrRoleProcedure(['key_manager', 'support'])
+      .input(z.object({
+        userId: z.number(),
+        courseId: z.number(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        logger.procedure('enrollments.rollbackSkip', input, ctx.user.id);
+        const result = await db.rollbackSkipCourse(input.userId, input.courseId);
+
+        await db.logAdminAction(ctx.user.id, input.userId, 'rollback_skip', {
+          courseId: input.courseId,
+          enrollmentId: result.enrollmentId,
+          currentProgress: result.currentProgress,
+          subscriptionsDeactivated: result.subscriptionsDeactivated,
+        });
+
+        logger.info('Course skip rolled back by admin', {
+          adminId: ctx.user.id,
+          userId: input.userId,
+          courseId: input.courseId,
+          subscriptionsDeactivated: result.subscriptionsDeactivated,
+        });
+        return { success: true, ...result };
+      }),
+
+    // Admin: Get admin action history for a user
+    adminActions: adminOrRoleProcedure(['key_manager', 'support'])
+      .input(z.object({
+        userId: z.number(),
+        limit: z.number().optional().default(50),
+      }))
+      .query(async ({ ctx, input }) => {
+        return db.getAdminActionsForUser(input.userId, input.limit);
       }),
   }),
 

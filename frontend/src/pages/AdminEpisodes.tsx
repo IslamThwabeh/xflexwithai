@@ -196,8 +196,8 @@ export default function AdminEpisodes() {
                   <CardHeader>
                     <div className="flex items-start justify-between">
                       <div className="flex items-start gap-4 flex-1">
-                        <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
-                          <span className="text-lg font-bold text-blue-600">{episode.order}</span>
+                        <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                          <span className="text-lg font-bold text-emerald-600">{episode.order}</span>
                         </div>
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-1">

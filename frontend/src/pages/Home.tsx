@@ -14,9 +14,9 @@ import { trpc } from '@/lib/trpc';
 
 // Stage data with icons and individual prices (display only — to show package value)
 const stageData = [
-  { num: 1, icon: BookOpen, color: 'from-blue-500 to-blue-600', price: 150 },
-  { num: 2, icon: BarChart3, color: 'from-indigo-500 to-indigo-600', price: 300 },
-  { num: 3, icon: TrendingUp, color: 'from-violet-500 to-violet-600', price: 200 },
+  { num: 1, icon: BookOpen, color: 'from-emerald-500 to-emerald-600', price: 150 },
+  { num: 2, icon: BarChart3, color: 'from-emerald-500 to-emerald-600', price: 300 },
+  { num: 3, icon: TrendingUp, color: 'from-teal-500 to-teal-600', price: 200 },
   { num: 4, icon: Lightbulb, color: 'from-amber-500 to-amber-600', price: 100 },
   { num: 5, icon: Shield, color: 'from-emerald-500 to-emerald-600', price: 50 },
   { num: 6, icon: Signal, color: 'from-cyan-500 to-cyan-600', price: 50 },
@@ -107,7 +107,7 @@ export default function Home() {
       live: 'bg-red-100 text-red-700',
       competition: 'bg-amber-100 text-amber-700',
       discount: 'bg-green-100 text-green-700',
-      webinar: 'bg-blue-100 text-blue-700',
+      webinar: 'bg-emerald-100 text-emerald-700',
     };
     return map[type] || 'bg-gray-100 text-gray-700';
   };
@@ -393,10 +393,10 @@ export default function Home() {
               return (
                 <div
                   key={stage.num}
-                  className={`fade-up group relative glass-card ${stage.comingSoon ? 'border-violet-200 bg-violet-50/30' : ''} p-5`}
+                  className={`fade-up group relative glass-card ${stage.comingSoon ? 'border-teal-200 bg-teal-50/30' : ''} p-5`}
                 >
                   {stage.comingSoon && (
-                    <span className="absolute -top-2.5 ltr:right-3 rtl:left-3 bg-gradient-to-r from-violet-500 to-purple-600 text-white text-[10px] font-bold px-2.5 py-0.5 rounded-full shadow-sm">
+                    <span className="absolute -top-2.5 ltr:right-3 rtl:left-3 bg-gradient-to-r from-teal-500 to-amber-600 text-white text-[10px] font-bold px-2.5 py-0.5 rounded-full shadow-sm">
                       {language === 'ar' ? 'قريباً' : 'Coming Soon'}
                     </span>
                   )}
@@ -466,10 +466,10 @@ export default function Home() {
                 bg: 'bg-emerald-50',
               },
               {
-                icon: <Bot className="w-7 h-7 text-purple-600" />,
+                icon: <Bot className="w-7 h-7 text-amber-600" />,
                 title: t('home.why.aiPowered'),
                 desc: t('home.why.aiDesc'),
-                bg: 'bg-purple-50',
+                bg: 'bg-amber-50',
               },
               {
                 icon: <Signal className="w-7 h-7 text-xf-accent-dark" />,
@@ -866,7 +866,7 @@ export default function Home() {
                   <Instagram className="w-4 h-4 text-gray-400" />
                 </a>
                 <a href="https://www.facebook.com/share/1Aj9HNNwsv/?mibextid=wwXIfr" target="_blank" rel="noopener noreferrer"
-                  className="w-9 h-9 rounded-[10px] bg-white/8 hover:bg-blue-600 flex items-center justify-center transition-all duration-150">
+                  className="w-9 h-9 rounded-[10px] bg-white/8 hover:bg-emerald-600 flex items-center justify-center transition-all duration-150">
                   <Facebook className="w-4 h-4 text-gray-400" />
                 </a>
                 <a href="https://t.me/+cXq1JGThuZkxNGI0" target="_blank" rel="noopener noreferrer"

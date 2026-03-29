@@ -173,7 +173,7 @@ export default function AdminUsers() {
                         <div className="flex items-center gap-2">
                           <div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
                             <div 
-                              className="h-full bg-blue-600 rounded-full"
+                              className="h-full bg-emerald-600 rounded-full"
                               style={{ width: `${enrollment.enrollment.progressPercentage || 0}%` }}
                             />
                           </div>
@@ -188,7 +188,7 @@ export default function AdminUsers() {
                             ${enrollment.enrollment.paymentAmount!.toFixed(2)} {enrollment.enrollment.paymentCurrency}
                           </span>
                         ) : enrollment.enrollment.activatedViaKey ? (
-                          <span className="text-blue-600 font-medium">{t('admin.users.viaKey')}</span>
+                          <span className="text-emerald-600 font-medium">{t('admin.users.viaKey')}</span>
                         ) : enrollment.enrollment.paymentStatus === 'completed' ? (
                           <span className="text-green-600 font-medium">{t('admin.users.paid')}</span>
                         ) : (

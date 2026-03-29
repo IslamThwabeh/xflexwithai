@@ -208,7 +208,7 @@ export default function Profile() {
 
   return (
     <ClientLayout>
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      <div className="min-h-screen bg-[var(--color-xf-cream)]">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {/* Header */}
           <div className="mb-8">
@@ -331,10 +331,10 @@ export default function Profile() {
                   { key: "course_updates" as const, labelAr: "تحديثات الدورات", labelEn: "Course Updates", descAr: "حلقات أو محتوى جديد في دوراتك", descEn: "New episodes or content in your courses" },
                   { key: "admin_announcements" as const, labelAr: "إعلانات الإدارة", labelEn: "Admin Announcements", descAr: "إعلانات عامة من الأكاديمية", descEn: "General announcements from the academy" },
                 ]).map(({ key, labelAr, labelEn, descAr, descEn }) => (
-                  <label key={key} className="flex items-start gap-3 cursor-pointer p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
+                  <label key={key} className="flex items-start gap-3 cursor-pointer p-3 rounded-lg hover:bg-emerald-50/50 transition-colors">
                     <input
                       type="checkbox"
-                      className="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      className="mt-1 h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
                       checked={notifPrefs[key]}
                       onChange={(e) => setNotifPrefs(prev => ({ ...prev, [key]: e.target.checked }))}
                     />
@@ -371,7 +371,7 @@ export default function Profile() {
               <CardDescription>{t("profile.security.description")}</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="mb-8 rounded-lg border p-4 bg-gray-50 dark:bg-gray-800/40">
+              <div className="mb-8 rounded-lg border border-emerald-100 p-4 bg-emerald-50/30">
                 <h3 className="font-semibold text-gray-900 dark:text-white mb-1">{t("profile.security.loginMethodTitle")}</h3>
                 <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
                   {t("profile.security.loginMethodDescription")}
@@ -565,7 +565,7 @@ export default function Profile() {
                     {language === "ar" ? "تغيير عبر رمز التحقق (OTP)" : "Change via OTP Code"}
                   </Button>
                 ) : (
-                  <div className="space-y-4 bg-gray-50 dark:bg-gray-900 rounded-lg p-4">
+                  <div className="space-y-4 bg-emerald-50/30 rounded-lg p-4">
                     {otpMessage && (
                       <Alert className={`${otpMessage.includes("success") || otpMessage.includes("نجاح") || otpMessage.includes("تم إرسال") || otpMessage.includes("sent") ? "border-green-500" : "border-red-500"}`}>
                         <AlertCircle className="h-4 w-4" />

@@ -77,7 +77,7 @@ export default function AdminBrokers() {
         {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
           <div className="flex items-center gap-3">
-            <Building2 className="w-6 h-6 text-blue-600" />
+            <Building2 className="w-6 h-6 text-emerald-600" />
             <h1 className="text-2xl font-bold">{isRtl ? 'إدارة الوسطاء' : 'Manage Brokers'}</h1>
           </div>
           <Button onClick={startNew} className="gap-1.5">
@@ -249,8 +249,8 @@ export default function AdminBrokers() {
                       {b.logoUrl ? (
                         <img src={b.logoUrl} alt={b.nameEn} className="h-10 w-10 object-contain rounded" />
                       ) : (
-                        <div className="h-10 w-10 rounded bg-blue-100 flex items-center justify-center">
-                          <Building2 className="w-5 h-5 text-blue-600" />
+                        <div className="h-10 w-10 rounded bg-emerald-100 flex items-center justify-center">
+                          <Building2 className="w-5 h-5 text-emerald-600" />
                         </div>
                       )}
                       <div>
@@ -288,7 +288,7 @@ export default function AdminBrokers() {
                   )}
 
                   {/* Affiliate Link */}
-                  <a href={b.affiliateUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline flex items-center gap-1 mb-3">
+                  <a href={b.affiliateUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-emerald-600 hover:underline flex items-center gap-1 mb-3">
                     <ExternalLink className="w-3 h-3" />
                     {isRtl ? 'رابط الأفلييت' : 'Affiliate Link'}
                   </a>
