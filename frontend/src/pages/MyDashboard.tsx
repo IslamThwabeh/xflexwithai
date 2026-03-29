@@ -94,7 +94,7 @@ export default function MyDashboard() {
     return (
       <div className="min-h-screen flex items-center justify-center" dir={isRTL ? 'rtl' : 'ltr'}>
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto mb-4"></div>
           <p className="text-muted-foreground">{t('dashboard.loading')}</p>
         </div>
       </div>
@@ -103,10 +103,10 @@ export default function MyDashboard() {
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-purple-50" dir={isRTL ? 'rtl' : 'ltr'}>
+      <div className="min-h-screen flex items-center justify-center bg-[var(--color-xf-cream)]" dir={isRTL ? 'rtl' : 'ltr'}>
         <Card className="max-w-md">
           <CardHeader className="text-center">
-            <GraduationCap className="h-16 w-16 mx-auto text-blue-600 mb-4" />
+            <GraduationCap className="h-16 w-16 mx-auto text-emerald-600 mb-4" />
             <CardTitle className="text-2xl">{t('dashboard.signInTitle')}</CardTitle>
             <CardDescription>{t('dashboard.signInDesc')}</CardDescription>
           </CardHeader>
@@ -126,13 +126,13 @@ export default function MyDashboard() {
       en: "Your journey starts now — let's make it count!",
       ar: "رحلتك تبدأ الآن — لنجعلها تستحق!",
       emoji: "🚀",
-      color: "from-blue-500 to-indigo-600",
+      color: "from-emerald-500 to-teal-600",
     };
     if (progress <= 20) return {
       en: "Great start! Every expert was once a beginner.",
       ar: "بداية رائعة! كل خبير كان مبتدئاً يوماً ما.",
       emoji: "💪",
-      color: "from-cyan-500 to-blue-600",
+      color: "from-teal-500 to-emerald-600",
     };
     if (progress <= 40) return {
       en: "You're building solid foundations — keep the momentum!",
@@ -173,7 +173,7 @@ export default function MyDashboard() {
         hasLexai={!!(lexaiSubscription && 'isActive' in lexaiSubscription)}
         hasRecommendations={!!recommendationsAccess?.hasSubscription}
       />
-      <div className="bg-gradient-to-br from-blue-50 via-white to-purple-50 min-h-[calc(100vh-64px)]">
+      <div className="bg-[var(--color-xf-cream)] min-h-[calc(100vh-64px)]">
       <main className="container mx-auto px-4 py-8">
         <div className="space-y-8">
           {/* Welcome Section */}
@@ -222,7 +222,7 @@ export default function MyDashboard() {
             <div className="grid gap-4 md:grid-cols-2">
               {/* LexAI CTA */}
               <Card className="border-0 shadow-md overflow-hidden">
-                <div className="bg-gradient-to-r from-purple-500 to-indigo-600 px-5 py-3">
+                <div className="bg-gradient-to-r from-emerald-500 to-teal-600 px-5 py-3">
                   <div className="flex items-center gap-2 text-white">
                     <Bot className="h-5 w-5" />
                     <h3 className="font-bold">LexAI</h3>
@@ -235,7 +235,7 @@ export default function MyDashboard() {
                       : "Your AI trading assistant — ask any question and get instant answers."}
                   </p>
                   <Link href="/lexai">
-                    <Button className="w-full bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700">
+                    <Button className="w-full bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700">
                       {lexaiSubscription && 'isActive' in lexaiSubscription
                         ? (isRTL ? "فتح LexAI" : "Open LexAI")
                         : (isRTL ? "تفعيل LexAI" : "Activate LexAI")}
@@ -329,7 +329,7 @@ export default function MyDashboard() {
                     <CardContent className="p-6">
                       <div className="flex items-start gap-4">
                         {/* Course Thumbnail */}
-                        <div className="hidden sm:flex shrink-0 w-20 h-20 rounded-xl bg-gradient-to-br from-blue-500 to-purple-500 items-center justify-center">
+                        <div className="hidden sm:flex shrink-0 w-20 h-20 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 items-center justify-center">
                           <BookOpen className="h-10 w-10 text-white opacity-70" />
                         </div>
 
@@ -465,9 +465,9 @@ export default function MyDashboard() {
           <div>
             <h2 className="text-2xl font-bold mb-4">{isRTL ? "استكشف أكثر" : "Discover More"}</h2>
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-              <Card className="border-blue-100">
+              <Card className="border-emerald-100">
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-base flex items-center gap-2"><Calendar className="h-4 w-4 text-blue-600" />{isRTL ? "الفعاليات" : "Events"}</CardTitle>
+                  <CardTitle className="text-base flex items-center gap-2"><Calendar className="h-4 w-4 text-emerald-600" />{isRTL ? "الفعاليات" : "Events"}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <p className="text-sm text-muted-foreground mb-3">{isRTL ? "جلسات مباشرة، عروض خاصة، ومنافسات." : "Live sessions, special offers, and competitions."}</p>
@@ -510,7 +510,7 @@ export default function MyDashboard() {
           {/* Social Proof */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2"><MessageSquareQuote className="h-5 w-5 text-blue-600" />{isRTL ? "آراء الطلاب" : "Student Testimonials"}</CardTitle>
+              <CardTitle className="flex items-center gap-2"><MessageSquareQuote className="h-5 w-5 text-emerald-600" />{isRTL ? "آراء الطلاب" : "Student Testimonials"}</CardTitle>
               <CardDescription>{isRTL ? "آراء حقيقية من متداولين يتعلمون معنا." : "Real feedback from traders learning with us."}</CardDescription>
             </CardHeader>
             <CardContent>

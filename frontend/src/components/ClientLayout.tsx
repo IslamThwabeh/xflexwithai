@@ -126,9 +126,9 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
   ];
 
   return (
-    <div className="min-h-screen flex flex-col" dir={isRTL ? "rtl" : "ltr"}>
-      {/* Sticky Nav */}
-      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
+    <div className="min-h-screen flex flex-col">
+      {/* Sticky Nav — always LTR so buttons stay in place regardless of language */}
+      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50" dir="ltr">
         <div className="container mx-auto px-3 sm:px-4 py-2 sm:py-3">
           <div className="flex items-center justify-between">
             {/* Left: Hamburger (mobile) + Logo */}
@@ -144,8 +144,8 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
 
               <Link href="/courses">
                 <div className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity">
-                  <GraduationCap className="h-6 w-6 sm:h-7 sm:w-7 text-blue-600" />
-                  <span className="text-lg sm:text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent hidden sm:inline">
+                  <GraduationCap className="h-6 w-6 sm:h-7 sm:w-7 text-emerald-600" />
+                  <span className="text-lg sm:text-xl font-bold text-[var(--color-xf-dark)] hidden sm:inline">
                     {APP_TITLE}
                   </span>
                 </div>
@@ -158,18 +158,16 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
                 const isActive = location.startsWith(item.match);
                 return (
                   <Link key={item.href} href={item.href}>
-                    <Button
-                      variant={isActive ? "default" : "ghost"}
-                      size="sm"
-                      className={
+                    <button
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
                         isActive
-                          ? ""
-                          : "text-gray-600 hover:text-gray-900"
-                      }
+                          ? "bg-[var(--color-xf-primary)] text-white shadow-sm shadow-emerald-500/20"
+                          : "text-[var(--color-xf-dark)]/60 hover:text-[var(--color-xf-dark)] hover:bg-black/[0.04]"
+                      }`}
                     >
                       {item.icon}
                       <span>{item.label}</span>
-                    </Button>
+                    </button>
                   </Link>
                 );
               })}
@@ -196,11 +194,11 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
               {/* User Avatar — links to profile */}
               <Link href="/profile">
                 <div className="flex items-center gap-1.5 cursor-pointer hover:opacity-80 transition-opacity">
-                  <div className="w-7 h-7 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white text-xs font-semibold">
+                  <div className="w-7 h-7 rounded-full bg-gradient-to-r from-emerald-500 to-teal-600 flex items-center justify-center text-white text-xs font-semibold">
                     {user?.name?.charAt(0).toUpperCase() || "U"}
                   </div>
-                  <span className="text-sm font-medium hidden md:inline max-w-[100px] truncate">
-                    {user?.name}
+                  <span className="text-sm font-medium hidden md:inline max-w-[80px] truncate">
+                    {user?.name?.split(' ')[0]}
                   </span>
                 </div>
               </Link>
@@ -225,11 +223,11 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
 
       {/* Mobile Navigation Drawer */}
       <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-        <SheetContent side={isRTL ? "right" : "left"} className="w-72 p-0">
+        <SheetContent side={isRTL ? "right" : "left"} className="w-72 p-0" dir={isRTL ? "rtl" : "ltr"}>
           <SheetHeader className="p-4 pb-2 border-b">
             <SheetTitle className="flex items-center gap-2">
-              <GraduationCap className="h-6 w-6 text-blue-600" />
-              <span className="font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+              <GraduationCap className="h-6 w-6 text-emerald-600" />
+              <span className="font-bold text-[var(--color-xf-dark)]">
                 {APP_TITLE}
               </span>
             </SheetTitle>
@@ -239,7 +237,7 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
           <Link href="/profile">
             <div className="p-4 border-b bg-gray-50 cursor-pointer hover:bg-gray-100 transition" onClick={() => setMobileMenuOpen(false)}>
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white font-semibold">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-r from-emerald-500 to-teal-600 flex items-center justify-center text-white font-semibold">
                   {user?.name?.charAt(0).toUpperCase() || "U"}
                 </div>
                 <div className="min-w-0">
@@ -260,11 +258,11 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
                     onClick={() => setMobileMenuOpen(false)}
                     className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition ${
                       isActive
-                        ? "bg-blue-50 text-blue-700 font-medium"
+                        ? "bg-emerald-50 text-emerald-700 font-medium"
                         : "text-gray-700 hover:bg-gray-100"
                     }`}
                   >
-                    <span className={isActive ? "text-blue-600" : "text-gray-400"}>
+                    <span className={isActive ? "text-emerald-600" : "text-gray-400"}>
                       {item.icon}
                     </span>
                     {item.label}
@@ -295,7 +293,8 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
       </Sheet>
 
       {/* Page Content */}
-      <main className="flex-1">{children}</main>
+      {/* Main content — respects RTL */}
+      <main className="flex-1" dir={isRTL ? "rtl" : "ltr"}>{children}</main>
 
       {showSearch && (
         <Suspense fallback={null}>
@@ -305,7 +304,7 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
 
       {/* Logout Confirmation Dialog */}
       <AlertDialog open={showLogoutDialog} onOpenChange={setShowLogoutDialog}>
-        <AlertDialogContent>
+        <AlertDialogContent dir={isRTL ? "rtl" : "ltr"}>
           <AlertDialogHeader>
             <AlertDialogTitle>
               {isRTL ? "تأكيد تسجيل الخروج" : "Confirm Logout"}

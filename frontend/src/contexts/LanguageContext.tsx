@@ -1105,7 +1105,7 @@ const translations = {
     'home.cta.signIn': 'تسجيل الدخول',
     'home.cta.guarantee': 'ضمان استرداد الأموال لمدة 30 يومًا',
     
-    'home.why.title': 'لماذا تختار أكاديمية XFlex؟',
+    'home.why.title': 'ماذا تقدم الأكاديمية؟',
     'home.why.subtitle': 'كل ما تحتاجه لتصبح متداولًا ناجحًا في مكان واحد',
     'home.why.expertCourses': 'دورات يقودها خبراء',
     'home.why.expertDesc': 'تعلم من متداولين ذوي خبرة وسجلات حافلة في الأسواق',
@@ -1260,7 +1260,7 @@ const translations = {
     'home.articles.viewAll': 'عرض كل المقالات',
     
     // About Section
-    'home.about.title': 'عن أكاديمية XFlex',
+    'home.about.title': 'عن الأكاديمية',
     'home.about.text': 'تأسست أكاديمية XFlex للتداول على يد روان، فلسطينية حاصلة على ماجستير في المحاسبة من جامعة بيرزيت. الأكاديمية مخصصة لتقديم تعليم شامل لتداول الفوركس مع التركيز على التطبيق العملي.',
     'home.about.learnMore': 'تعرف علينا أكثر',
     

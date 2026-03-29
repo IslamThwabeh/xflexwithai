@@ -6,8 +6,8 @@ const WHATSAPP_NUMBER = '972597596030';
 export default function WhatsAppFloat() {
   const [location] = useLocation();
   // Only show on known public pages — whitelist approach prevents leaking onto new student pages
-  const publicPaths = ['/', '/checkout', '/articles', '/events', '/careers', '/about', '/refund-policy', '/terms', '/privacy'];
-  const isPublic = publicPaths.some(p => p === '/' ? location === '/' : location.startsWith(p));
+  const publicPaths = ['/checkout', '/articles', '/events', '/careers', '/about', '/refund-policy', '/terms', '/privacy'];
+  const isPublic = publicPaths.some(p => location.startsWith(p));
   if (!isPublic) return null;
 
   return (

@@ -22,17 +22,17 @@ export default function NotificationCenter() {
       case 'success': return 'text-green-500';
       case 'warning': return 'text-amber-500';
       case 'action': return 'text-red-500';
-      default: return 'text-blue-500';
+      default: return 'text-emerald-500';
     }
   };
 
   return (
     <ClientLayout>
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-[var(--color-xf-cream)]">
       <div className="max-w-2xl mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Bell className="w-6 h-6 text-blue-500" />
+            <Bell className="w-6 h-6 text-emerald-500" />
             {isRtl ? 'الإشعارات' : 'Notifications'}
             {unreadCount > 0 && (
               <span className="bg-red-500 text-white text-xs rounded-full px-2 py-0.5">{unreadCount}</span>
@@ -57,7 +57,7 @@ export default function NotificationCenter() {
           <div className="space-y-2">
             {notifications.map((n: any) => (
               <div key={n.id}
-                className={`bg-white border rounded-lg p-4 transition-colors cursor-pointer hover:bg-gray-50 ${!n.isRead ? 'border-blue-200 bg-blue-50/40' : ''}`}
+                className={`bg-white border rounded-lg p-4 transition-colors cursor-pointer hover:bg-gray-50 ${!n.isRead ? 'border-emerald-200 bg-emerald-50/40' : ''}`}
                 onClick={() => {
                   if (!n.isRead) markReadMut.mutate({ notificationId: n.id });
                   if (n.actionUrl) navigate(n.actionUrl);
@@ -69,7 +69,7 @@ export default function NotificationCenter() {
                       <p className={`text-sm ${!n.isRead ? 'font-semibold' : 'font-medium'}`}>
                         {isRtl ? n.titleAr : n.titleEn}
                       </p>
-                      {!n.isRead && <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />}
+                      {!n.isRead && <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />}
                     </div>
                     {(isRtl ? n.contentAr : n.contentEn) && (
                       <p className="text-xs text-muted-foreground mt-1">{isRtl ? n.contentAr : n.contentEn}</p>

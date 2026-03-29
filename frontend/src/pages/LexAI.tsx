@@ -323,7 +323,7 @@ export default function LexAI() {
 
   if (!user) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 to-blue-50">
+      <div className="min-h-screen flex items-center justify-center bg-[var(--color-xf-cream)]">
         <Card className="max-w-md">
           <CardHeader>
             <CardTitle>{copy.signInRequired}</CardTitle>
@@ -346,10 +346,10 @@ export default function LexAI() {
       const frozenDate = frozenUntil ? new Date(frozenUntil).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US') : null;
       return (
         <ClientLayout>
-        <div className="min-h-[calc(100vh-64px)] flex items-center justify-center bg-gradient-to-br from-amber-50 to-orange-50">
+        <div className="min-h-[calc(100vh-64px)] flex items-center justify-center bg-[var(--color-xf-cream)]">
           <Card className="max-w-lg mx-4">
             <CardHeader className="text-center">
-              <div className="mx-auto w-16 h-16 bg-gradient-to-br from-amber-400 to-orange-500 rounded-full flex items-center justify-center mb-4">
+              <div className="mx-auto w-16 h-16 bg-gradient-to-br from-amber-400 to-amber-500 rounded-full flex items-center justify-center mb-4">
                 <Sparkles className="h-8 w-8 text-white" />
               </div>
               <CardTitle className="text-2xl">
@@ -382,10 +382,10 @@ export default function LexAI() {
     // No subscription — show standard paywall
     return (
       <ClientLayout>
-      <div className="min-h-[calc(100vh-64px)] flex items-center justify-center bg-gradient-to-br from-purple-50 to-blue-50">
+      <div className="min-h-[calc(100vh-64px)] flex items-center justify-center bg-[var(--color-xf-cream)]">
         <Card className="max-w-2xl">
           <CardHeader className="text-center">
-            <div className="mx-auto w-16 h-16 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center mb-4">
+            <div className="mx-auto w-16 h-16 bg-gradient-to-br from-emerald-500 to-teal-500 rounded-full flex items-center justify-center mb-4">
               <Sparkles className="h-8 w-8 text-white" />
             </div>
             <CardTitle className="text-3xl">{copy.title}</CardTitle>
@@ -397,7 +397,7 @@ export default function LexAI() {
           <CardContent className="space-y-6">
             <div className="grid gap-4">
               <div className="flex items-start gap-3">
-                <Crown className="h-5 w-5 text-purple-600 mt-1" />
+                <Crown className="h-5 w-5 text-emerald-600 mt-1" />
                 <div>
                   <h4 className="font-semibold">{copy.featurePro}</h4>
                   <p className="text-sm text-muted-foreground">
@@ -406,7 +406,7 @@ export default function LexAI() {
                 </div>
               </div>
               <div className="flex items-start gap-3">
-                <Sparkles className="h-5 w-5 text-purple-600 mt-1" />
+                <Sparkles className="h-5 w-5 text-emerald-600 mt-1" />
                 <div>
                   <h4 className="font-semibold">{copy.featureRealtime}</h4>
                   <p className="text-sm text-muted-foreground">
@@ -415,7 +415,7 @@ export default function LexAI() {
                 </div>
               </div>
               <div className="flex items-start gap-3">
-                <ImageIcon className="h-5 w-5 text-purple-600 mt-1" />
+                <ImageIcon className="h-5 w-5 text-emerald-600 mt-1" />
                 <div>
                   <h4 className="font-semibold">{copy.featureUpload}</h4>
                   <p className="text-sm text-muted-foreground">
@@ -443,12 +443,12 @@ export default function LexAI() {
 
   return (
     <ClientLayout>
-    <div className="min-h-[calc(100vh-64px)] md:min-h-0 bg-gradient-to-br from-purple-50 to-blue-50 flex flex-col">
+    <div className="min-h-[calc(100vh-64px)] md:min-h-0 bg-[var(--color-xf-cream)] flex flex-col">
       {/* Sub-header with title and stats */}
       <div className="container max-w-5xl py-2 md:py-4 px-2 md:px-0 shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 md:gap-3">
-            <div className="w-10 h-10 md:w-12 md:h-12 bg-gradient-to-br from-purple-500 to-blue-500 rounded-xl md:rounded-2xl flex items-center justify-center shadow-md">
+            <div className="w-10 h-10 md:w-12 md:h-12 bg-gradient-to-br from-emerald-500 to-teal-500 rounded-xl md:rounded-2xl flex items-center justify-center shadow-md">
               <Sparkles className="h-5 w-5 md:h-6 md:w-6 text-white" />
             </div>
             <div>
@@ -481,7 +481,7 @@ export default function LexAI() {
 
           {/* Messages */}
           <div
-            className="flex-1 p-3 md:p-4 overflow-y-auto bg-slate-50/70 bg-[radial-gradient(circle_at_top,_rgba(129,140,248,0.18),_transparent_55%),radial-gradient(circle_at_bottom,_rgba(56,189,248,0.16),_transparent_55%)]"
+            className="flex-1 p-3 md:p-4 overflow-y-auto bg-slate-50/70 bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.12),_transparent_55%),radial-gradient(circle_at_bottom,_rgba(20,184,166,0.10),_transparent_55%)]"
             ref={scrollRef}
           >
             {messagesLoading ? (
@@ -492,7 +492,7 @@ export default function LexAI() {
                 {(!messages || messages.length === 0) && (
                   <div className="flex justify-center py-6">
                     <div className="text-center max-w-md">
-                      <Sparkles className="h-10 w-10 text-purple-500 mx-auto mb-3" />
+                      <Sparkles className="h-10 w-10 text-emerald-500 mx-auto mb-3" />
                       <h3 className="text-base font-semibold mb-1">{copy.startAnalysis}</h3>
                       <p className="text-sm text-muted-foreground">
                         {copy.startAnalysisDesc}
@@ -512,16 +512,19 @@ export default function LexAI() {
                       <div
                         className={`max-w-[82%] rounded-2xl px-3 py-2.5 md:px-4 md:py-3 shadow ${
                           message.role === "user"
-                            ? "bg-gradient-to-br from-purple-500 to-blue-500 text-white"
+                            ? "bg-gradient-to-br from-emerald-500 to-teal-500 text-white"
                             : "bg-white border border-slate-200"
                         }`}
                       >
                         {message.imageUrl && (
-                          <img
-                            src={message.imageUrl}
-                            alt="Chart"
-                            className="rounded mb-2 w-full max-w-[360px] max-h-[420px] object-contain bg-black/5"
-                          />
+                          <div className="mb-2">
+                            <img
+                              src={message.imageUrl}
+                              alt="Chart"
+                              className="rounded-lg max-w-[120px] max-h-[90px] object-cover bg-black/5 cursor-pointer hover:opacity-80 transition-opacity"
+                              onClick={() => window.open(message.imageUrl, '_blank')}
+                            />
+                          </div>
                         )}
                         <div
                           dir={rtl ? "rtl" : "ltr"}
@@ -533,7 +536,7 @@ export default function LexAI() {
                         </div>
                         <p
                           className={`text-xs mt-2 ${
-                            message.role === "user" ? "text-purple-100" : "text-muted-foreground"
+                            message.role === "user" ? "text-emerald-100" : "text-muted-foreground"
                           }`}
                         >
                           {formatMessageDate(message.createdAt)}

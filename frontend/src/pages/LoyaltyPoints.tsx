@@ -50,8 +50,8 @@ export default function LoyaltyPoints() {
   const typeIcon = (type: string) => {
     switch (type) {
       case 'earn': return <TrendingUp className="w-4 h-4 text-green-500" />;
-      case 'bonus': return <Gift className="w-4 h-4 text-purple-500" />;
-      case 'redeem': return <Award className="w-4 h-4 text-blue-500" />;
+      case 'bonus': return <Gift className="w-4 h-4 text-amber-500" />;
+      case 'redeem': return <Award className="w-4 h-4 text-emerald-500" />;
       default: return <Award className="w-4 h-4 text-gray-400" />;
     }
   };
@@ -62,10 +62,10 @@ export default function LoyaltyPoints() {
 
   return (
     <ClientLayout>
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-[var(--color-xf-cream)]">
       <div className="max-w-2xl mx-auto px-4 py-8" dir={isRtl ? 'rtl' : 'ltr'}>
         <h1 className="text-2xl font-bold flex items-center gap-2 mb-6">
-          <Award className="w-6 h-6 text-purple-500" />
+          <Award className="w-6 h-6 text-emerald-500" />
           {isRtl ? 'نقاط الولاء' : 'Loyalty Points'}
         </h1>
 
@@ -74,14 +74,14 @@ export default function LoyaltyPoints() {
         ) : (
           <>
             {/* Balance Card */}
-            <div className="bg-gradient-to-br from-purple-600 to-indigo-700 text-white rounded-2xl p-6 mb-6">
+            <div className="bg-gradient-to-br from-emerald-600 to-teal-700 text-white rounded-2xl p-6 mb-6">
               <p className="text-sm opacity-80">{isRtl ? 'رصيدك الحالي' : 'Your Current Balance'}</p>
               <p className="text-4xl font-bold mt-1">{(balance ?? 0).toLocaleString()}</p>
               <p className="text-sm opacity-70 mt-1">{isRtl ? 'نقطة' : 'points'}</p>
             </div>
 
             {/* Referral Section */}
-            <div className="bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 rounded-2xl p-5 mb-6">
+            <div className="bg-gradient-to-br from-amber-50 to-amber-100/70 border border-amber-200 rounded-2xl p-5 mb-6">
               <div className="flex items-center gap-2 mb-3">
                 <Users className="w-5 h-5 text-amber-600" />
                 <h2 className="font-bold text-lg">{isRtl ? 'ادعُ أصدقاءك' : 'Invite Friends'}</h2>
@@ -126,7 +126,7 @@ export default function LoyaltyPoints() {
                   <p className="text-xs text-gray-500">{isRtl ? 'مفعّلون' : 'Activated'}</p>
                 </div>
                 <div className="bg-white rounded-xl p-3 text-center">
-                  <p className="text-2xl font-bold text-purple-600">{totalReferralPoints}</p>
+                  <p className="text-2xl font-bold text-emerald-600">{totalReferralPoints}</p>
                   <p className="text-xs text-gray-500">{isRtl ? 'نقاط مكتسبة' : 'Points Earned'}</p>
                 </div>
               </div>

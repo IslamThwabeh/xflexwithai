@@ -100,6 +100,47 @@ vatAmount = totalAmount * 0.16
 
 ---
 
+## Design System (March 2026 Redesign)
+
+### Color Palette
+| Token | Hex | Usage |
+|---|---|---|
+| `--color-xf-dark` | `#0f172a` | Text, dark backgrounds |
+| `--color-xf-primary` | `#10b981` (emerald-500) | Primary buttons, icons, links, active states |
+| `--color-xf-accent` | `#f59e0b` (amber-500) | Highlights, badges, secondary CTA |
+| `--color-xf-cream` | `#faf7f2` | Page backgrounds (replaces white/gray) |
+
+### Color Rules
+- **No blue/purple/indigo** — all replaced with emerald/teal/amber/cream across all pages
+- Gradients: `from-emerald-500 to-teal-600` (primary), `from-amber-400 to-orange-500` (accent)
+- Backgrounds: cream (`bg-[#faf7f2]`) or CSS variable (`bg-[var(--color-xf-cream)]`)
+- Focus rings: `focus:ring-emerald-500` (never blue)
+
+### Glass Utilities (defined in `frontend/src/index.css`)
+- `.glass` — backdrop-blur + semi-transparent bg
+- `.glass-card` — glass with border and shadow
+- `.nav-link-xf` — navigation link style
+- `.btn-primary-xf` — primary button with emerald gradient
+- `.heading-accent` — heading with amber underline accent
+
+### ClientLayout Patterns
+- **Header always `dir="ltr"`** — prevents buttons from reordering on language switch
+- **Content uses `dir={isRTL ? "rtl" : "ltr"}`** on `<main>`, drawer `<SheetContent>`, and `<AlertDialogContent>`
+- **Username**: first name only (`user?.name?.split(' ')[0]`), `max-w-[80px] truncate`
+
+### LexAI Chat Images
+- Compact thumbnails: `max-w-[120px] max-h-[90px] object-cover cursor-pointer`
+- Click opens full image in new tab: `onClick={() => window.open(url, '_blank')}`
+
+### Arabic Text Rule
+- Never embed "XFlex" at the end of an Arabic sentence — causes RTL punctuation issues
+- Rephrase to end with Arabic words (e.g., "عن الأكاديمية" not "عن أكاديمية XFlex")
+
+### Pages Redesigned
+All public pages (Home, FAQ, Careers, FreeContent, Articles, Events, ArticleDetail, About), Auth pages, PublicLayout, ClientLayout, and all 10 client pages (MyDashboard, LexAI, Recommendations, SupportChat, QuizLevels, StudentPackages, BrokerSelection, NotificationCenter, LoyaltyPoints, TradingCalculators).
+
+---
+
 ## UI/UX Conventions
 
 - **Bilingual**: All user-facing text must have both Arabic and English variants

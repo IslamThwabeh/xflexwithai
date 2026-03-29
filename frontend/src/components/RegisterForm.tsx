@@ -1,12 +1,9 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2 } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
+
+const inputClass = "w-full px-4 py-3 rounded-xl bg-black/[0.03] border border-black/[0.08] text-[var(--color-xf-dark)] placeholder:text-black/25 focus:outline-none focus:ring-2 focus:ring-[var(--color-xf-primary)]/40 focus:border-[var(--color-xf-primary)]/40 transition-all";
 
 export function RegisterForm({ onSuccess, referralCode }: { onSuccess?: () => void; referralCode?: string | null }) {
   const { t } = useLanguage();
@@ -23,14 +20,12 @@ export function RegisterForm({ onSuccess, referralCode }: { onSuccess?: () => vo
 
   const registerMutation = trpc.auth.register.useMutation({
     onSuccess: async () => {
-      // Register referral if code was captured from URL
       if (referralCode) {
         try {
           await registerReferralMutation.mutateAsync({ referralCode });
         } catch { /* referral registration is best-effort */ }
         localStorage.removeItem("xflex_referral_code");
       }
-      // Reload page to refresh auth state
       window.location.reload();
       onSuccess?.();
     },
@@ -42,158 +37,83 @@ export function RegisterForm({ onSuccess, referralCode }: { onSuccess?: () => vo
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-
-    // Validation
     if (!name || !email || !password || !phone || !city || !country) {
       setError(t('auth.register.allFieldsRequired'));
       return;
     }
-
     if (password !== confirmPassword) {
       setError(t('auth.register.passwordMismatch'));
       return;
     }
-
     if (password.length < 8) {
       setError(t('auth.register.passwordTooShort'));
       return;
     }
-
     registerMutation.mutate({ name, email, password, phone, city, country });
   };
 
   return (
-    <Card className="w-full max-w-md">
-      <CardHeader>
-        <CardTitle>{t('auth.register.title')}</CardTitle>
-        <CardDescription>{t('auth.register.description')}</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {error && (
-            <Alert variant="destructive">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
+    <div>
+      <h2 className="text-xl font-semibold text-[var(--color-xf-dark)] mb-1">{t('auth.register.title')}</h2>
+      <p className="text-[var(--color-xf-dark)]/40 text-sm mb-5">{t('auth.register.description')}</p>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-red-700 text-sm">{error}</div>
+        )}
+
+        <div>
+          <label htmlFor="name" className="block text-sm font-medium text-[var(--color-xf-dark)]/60 mb-1.5">{t('auth.register.fullName')}</label>
+          <input id="name" name="name" type="text" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} placeholder={t('auth.register.namePlaceholder')} required className={inputClass} />
+        </div>
+
+        <div>
+          <label htmlFor="regEmail" className="block text-sm font-medium text-[var(--color-xf-dark)]/60 mb-1.5">{t('auth.register.email')}</label>
+          <input id="regEmail" name="email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t('auth.register.emailPlaceholder')} required dir="ltr" className={inputClass} />
+        </div>
+
+        <div>
+          <label htmlFor="phone" className="block text-sm font-medium text-[var(--color-xf-dark)]/60 mb-1.5">{t('auth.register.phone')}</label>
+          <input id="phone" name="phone" type="tel" autoComplete="tel" dir="ltr" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={t('auth.register.phonePlaceholder')} required className={inputClass} />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label htmlFor="city" className="block text-sm font-medium text-[var(--color-xf-dark)]/60 mb-1.5">{t('auth.register.city')}</label>
+            <input id="city" name="city" type="text" value={city} onChange={(e) => setCity(e.target.value)} placeholder={t('auth.register.cityPlaceholder')} required className={inputClass} />
+          </div>
+          <div>
+            <label htmlFor="country" className="block text-sm font-medium text-[var(--color-xf-dark)]/60 mb-1.5">{t('auth.register.country')}</label>
+            <input id="country" name="country" type="text" value={country} onChange={(e) => setCountry(e.target.value)} placeholder={t('auth.register.countryPlaceholder')} required className={inputClass} />
+          </div>
+        </div>
+
+        <div>
+          <label htmlFor="regPassword" className="block text-sm font-medium text-[var(--color-xf-dark)]/60 mb-1.5">{t('auth.register.password')}</label>
+          <input id="regPassword" name="password" type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={t('auth.register.passwordPlaceholder')} required className={inputClass} />
+          <p className="text-xs text-[var(--color-xf-dark)]/30 mt-1">{t('auth.register.passwordHint')}</p>
+        </div>
+
+        <div>
+          <label htmlFor="confirmPassword" className="block text-sm font-medium text-[var(--color-xf-dark)]/60 mb-1.5">{t('auth.register.confirmPassword')}</label>
+          <input id="confirmPassword" name="confirmPassword" type="password" autoComplete="new-password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder={t('auth.register.passwordPlaceholder')} required className={inputClass} />
+        </div>
+
+        <button
+          type="submit"
+          className="w-full py-3 rounded-xl bg-[var(--color-xf-primary)] text-white font-semibold hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-emerald-500/20"
+          disabled={registerMutation.isPending}
+        >
+          {registerMutation.isPending ? (
+            <span className="flex items-center justify-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              {t('auth.register.submitting')}
+            </span>
+          ) : (
+            t('auth.register.submit')
           )}
-
-          <div className="space-y-2">
-            <Label htmlFor="name">{t('auth.register.fullName')}</Label>
-            <Input
-              id="name"
-              name="name"
-              type="text"
-              autoComplete="name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder={t('auth.register.namePlaceholder')}
-              required
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="email">{t('auth.register.email')}</Label>
-            <Input
-              id="email"
-              name="email"
-              type="email"
-              autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder={t('auth.register.emailPlaceholder')}
-              required
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="phone">{t('auth.register.phone')}</Label>
-            <Input
-              id="phone"
-              name="phone"
-              type="tel"
-              autoComplete="tel"
-              dir="ltr"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder={t('auth.register.phonePlaceholder')}
-              required
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label htmlFor="city">{t('auth.register.city')}</Label>
-              <Input
-                id="city"
-                name="city"
-                type="text"
-                value={city}
-                onChange={(e) => setCity(e.target.value)}
-                placeholder={t('auth.register.cityPlaceholder')}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="country">{t('auth.register.country')}</Label>
-              <Input
-                id="country"
-                name="country"
-                type="text"
-                value={country}
-                onChange={(e) => setCountry(e.target.value)}
-                placeholder={t('auth.register.countryPlaceholder')}
-                required
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="password">{t('auth.register.password')}</Label>
-            <Input
-              id="password"
-              name="password"
-              type="password"
-              autoComplete="new-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder={t('auth.register.passwordPlaceholder')}
-              required
-            />
-            <p className="text-sm text-muted-foreground">
-              {t('auth.register.passwordHint')}
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="confirmPassword">{t('auth.register.confirmPassword')}</Label>
-            <Input
-              id="confirmPassword"
-              name="confirmPassword"
-              type="password"
-              autoComplete="new-password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder={t('auth.register.passwordPlaceholder')}
-              required
-            />
-          </div>
-
-          <Button
-            type="submit"
-            className="w-full"
-            disabled={registerMutation.isPending}
-          >
-            {registerMutation.isPending ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {t('auth.register.submitting')}
-              </>
-            ) : (
-              t('auth.register.submit')
-            )}
-          </Button>
-        </form>
-      </CardContent>
-    </Card>
+        </button>
+      </form>
+    </div>
   );
 }
 

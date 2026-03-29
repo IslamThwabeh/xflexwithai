@@ -142,7 +142,7 @@ export default function SupportChat() {
       <div className="container mx-auto max-w-3xl px-4 py-6 h-[calc(100vh-80px)] flex flex-col" dir={isRTL ? "rtl" : "ltr"}>
         {/* Header */}
         <div className="flex items-center gap-3 pb-4 border-b mb-4">
-          <div className="w-10 h-10 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center">
+          <div className="w-10 h-10 rounded-full bg-gradient-to-r from-emerald-500 to-teal-500 flex items-center justify-center">
             <Headphones className="h-5 w-5 text-white" />
           </div>
           <div>
@@ -186,12 +186,12 @@ export default function SupportChat() {
                   <div
                     className={`max-w-[80%] rounded-2xl px-4 py-2.5 ${
                       isOwn
-                        ? "bg-blue-600 text-white rounded-br-md"
+                        ? "bg-emerald-600 text-white rounded-br-md"
                         : "bg-gray-100 text-gray-900 rounded-bl-md"
                     }`}
                   >
                     {!isOwn && (
-                      <p className="text-xs font-semibold mb-1 text-blue-600">
+                      <p className="text-xs font-semibold mb-1 text-emerald-600">
                         {msg.senderType === "admin" ? t("support.admin") : t("support.agent")}
                       </p>
                     )}
@@ -202,13 +202,13 @@ export default function SupportChat() {
                       </div>
                     ) : msg.attachmentUrl ? (
                       <a href={msg.attachmentUrl} target="_blank" rel="noopener noreferrer"
-                        className={`inline-flex items-center gap-1 text-xs mt-1 underline ${isOwn ? 'text-blue-200' : 'text-blue-600'}`}>
+                        className={`inline-flex items-center gap-1 text-xs mt-1 underline ${isOwn ? 'text-emerald-200' : 'text-emerald-600'}`}>
                         <FileIcon className="w-3 h-3" /> {msg.attachmentName || 'Attachment'}
                       </a>
                     ) : null}
                     <p
                       className={`text-xs mt-1 ${
-                        isOwn ? "text-blue-200" : "text-gray-400"
+                        isOwn ? "text-emerald-200" : "text-gray-400"
                       }`}
                     >
                       {(() => {
@@ -228,8 +228,8 @@ export default function SupportChat() {
         {/* Input area */}
         <div className="border-t pt-3">
           {attachment && (
-            <div className="flex items-center gap-2 mb-2 bg-blue-50 rounded-lg px-3 py-2 text-sm">
-              <FileIcon className="w-4 h-4 text-blue-500" />
+            <div className="flex items-center gap-2 mb-2 bg-emerald-50 rounded-lg px-3 py-2 text-sm">
+              <FileIcon className="w-4 h-4 text-emerald-500" />
               <span className="truncate flex-1">{attachment.name}</span>
               <button onClick={() => setAttachment(null)} className="text-gray-400 hover:text-gray-600"><X className="w-4 h-4" /></button>
             </div>
@@ -254,7 +254,7 @@ export default function SupportChat() {
                 placeholder={t("support.placeholder")}
                 maxLength={5000}
                 rows={1}
-                className="w-full resize-none border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 max-h-32"
+                className="w-full resize-none border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 max-h-32"
                 style={{ minHeight: "42px" }}
               />
               {message.length > 4500 && (

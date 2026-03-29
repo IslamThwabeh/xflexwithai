@@ -1,8 +1,7 @@
 import { useState } from 'react';
-import { Link } from 'wouter';
-import { ArrowLeft, HelpCircle, ChevronDown } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { HelpCircle, ChevronDown } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
+import PublicLayout from '@/components/PublicLayout';
 
 interface FAQItem {
   qAr: string;
@@ -124,18 +123,18 @@ const faqItems: FAQItem[] = [
 
 function FAQAccordionItem({ item, isRtl, isOpen, toggle }: { item: FAQItem; isRtl: boolean; isOpen: boolean; toggle: () => void }) {
   return (
-    <div className="border border-gray-200 rounded-xl overflow-hidden transition-all hover:border-gray-300">
+    <div className="glass-card overflow-hidden transition-all hover:shadow-md">
       <button
         onClick={toggle}
-        className="w-full flex items-center justify-between gap-3 p-5 text-start bg-white hover:bg-gray-50 transition-colors"
+        className="w-full flex items-center justify-between gap-3 p-5 text-start hover:bg-white/40 transition-colors"
       >
-        <span className="font-semibold text-gray-900 text-[15px] leading-relaxed">
+        <span className="font-semibold text-xf-dark text-[15px] leading-relaxed">
           {isRtl ? item.qAr : item.qEn}
         </span>
         <ChevronDown className={`w-5 h-5 text-gray-400 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
       </button>
       {isOpen && (
-        <div className="px-5 pb-5 text-sm text-gray-600 leading-relaxed border-t border-gray-100 pt-4 bg-gray-50/50">
+        <div className="px-5 pb-5 text-sm text-gray-600 leading-relaxed border-t border-gray-100/60 pt-4">
           {isRtl ? item.aAr : item.aEn}
         </div>
       )}
@@ -149,29 +148,27 @@ export default function FAQ() {
   const [openIndex, setOpenIndex] = useState<number | null>(0);
 
   return (
-    <div className="min-h-screen bg-gray-50" dir={isRtl ? 'rtl' : 'ltr'}>
-      {/* Header */}
-      <div className="bg-gradient-to-br from-indigo-700 to-purple-800 text-white py-16">
-        <div className="container mx-auto px-4 text-center">
-          <Link href="/">
-            <Button variant="ghost" size="sm" className="text-white/70 hover:text-white mb-4">
-              <ArrowLeft className={`w-4 h-4 ${isRtl ? 'ms-2 rotate-180' : 'me-2'}`} />
-              {isRtl ? 'الرئيسية' : 'Home'}
-            </Button>
-          </Link>
-          <div className="flex items-center justify-center gap-3 mb-3">
+    <PublicLayout>
+      {/* Hero */}
+      <section className="relative overflow-hidden text-white py-20 md:py-28" style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #312e81 100%)' }}>
+        <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse 60% 50% at 50% 50%, rgba(99,102,241,0.15), transparent)' }} />
+        <div className="absolute top-10 left-10 w-72 h-72 bg-indigo-500/10 rounded-full blur-[80px]" />
+        <div className="absolute bottom-10 right-10 w-96 h-96 bg-purple-500/8 rounded-full blur-[100px]" />
+        <div className="relative container mx-auto px-4 text-center">
+          <div className="flex items-center justify-center gap-3 mb-4">
             <HelpCircle className="w-8 h-8 text-indigo-300" />
-            <h1 className="text-3xl md:text-4xl font-extrabold">
+            <h1 className="text-3xl md:text-5xl font-extrabold tracking-[-0.5px]">
               {isRtl ? 'الأسئلة الشائعة' : 'Frequently Asked Questions'}
             </h1>
           </div>
-          <p className="text-indigo-200 text-lg max-w-lg mx-auto">
+          <p className="text-indigo-200/80 text-lg max-w-lg mx-auto">
             {isRtl ? 'إجابات على أكثر الأسئلة شيوعًا حول التداول والأكاديمية' : 'Answers to the most common questions about trading and the Academy'}
           </p>
         </div>
-      </div>
+      </section>
 
-      <div className="container mx-auto px-4 py-12 max-w-3xl -mt-6">
+      {/* FAQ List */}
+      <section className="container mx-auto px-4 py-16 max-w-3xl">
         <div className="space-y-3">
           {faqItems.map((item, i) => (
             <FAQAccordionItem
@@ -185,23 +182,21 @@ export default function FAQ() {
         </div>
 
         {/* CTA */}
-        <div className="mt-12 text-center bg-white rounded-xl border p-8">
-          <h3 className="text-lg font-bold text-gray-900 mb-2">
-            {isRtl ? 'لم تجد إجابة لسؤالك؟' : "Didn't find an answer to your question?"}
+        <div className="mt-14 text-center glass-card p-10">
+          <h3 className="text-xl font-extrabold text-xf-dark mb-2">
+            {isRtl ? 'لم تجد إجابة لسؤالك؟' : "Didn't find an answer?"}
           </h3>
-          <p className="text-sm text-gray-500 mb-4">
-            {isRtl ? 'تواصل معنا وسنرد عليك في أقرب وقت' : "Contact us and we'll get back to you as soon as possible"}
+          <p className="text-sm text-gray-500 mb-6">
+            {isRtl ? 'تواصل معنا وسنرد عليك في أقرب وقت' : "Contact us and we'll get back to you soon"}
           </p>
           <div className="flex flex-wrap justify-center gap-3">
-            <Link href="/contact">
-              <Button>{isRtl ? 'تواصل معنا' : 'Contact Us'}</Button>
-            </Link>
-            <a href="https://wa.me/972597596030" target="_blank" rel="noopener noreferrer">
-              <Button variant="outline">{isRtl ? 'واتساب' : 'WhatsApp'}</Button>
+            <a href="https://wa.me/972597596030" target="_blank" rel="noopener noreferrer"
+              className="btn-primary-xf px-6 py-2.5 text-sm inline-flex items-center gap-2">
+              WhatsApp
             </a>
           </div>
         </div>
-      </div>
-    </div>
+      </section>
+    </PublicLayout>
   );
 }

@@ -32,9 +32,9 @@ export default function QuizLevels() {
       };
     } else if (level.isUnlocked) {
       return {
-        icon: <Circle className="w-6 h-6 text-blue-500" />,
+        icon: <Circle className="w-6 h-6 text-emerald-500" />,
         badge: "متاح",
-        badgeColor: "bg-blue-100 text-blue-800",
+        badgeColor: "bg-emerald-100 text-emerald-800",
         canAccess: true
       };
     } else {
@@ -50,9 +50,9 @@ export default function QuizLevels() {
   if (loading) {
     return (
       <ClientLayout>
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-[var(--color-xf-cream)] flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto"></div>
           <p className="mt-4 text-gray-600">جاري التحميل...</p>
         </div>
       </div>
@@ -102,12 +102,12 @@ export default function QuizLevels() {
 
   return (
     <ClientLayout>
-    <div className="min-h-screen bg-gray-50" dir="rtl">
+    <div className="min-h-screen bg-[var(--color-xf-cream)]" dir="rtl">
       {/* Header */}
-      <div className="bg-gradient-to-r from-blue-600 to-blue-800 text-white py-8">
+      <div className="bg-gradient-to-r from-emerald-600 to-teal-700 text-white py-8">
         <div className="container mx-auto px-4">
           <h1 className="text-3xl font-bold mb-2">اختبارات الدورة التعليمية</h1>
-          <p className="text-blue-100">أكمل جميع المستويات لإتقان التداول</p>
+          <p className="text-emerald-100">أكمل جميع المستويات لإتقان التداول</p>
           
           {/* Overall Progress */}
           <div className="mt-6 bg-white/10 rounded-lg p-4">
@@ -139,7 +139,7 @@ export default function QuizLevels() {
                 }`}
               >
                 {/* Level Header */}
-                <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white p-4">
+                <div className="bg-gradient-to-r from-emerald-500 to-teal-600 text-white p-4">
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
                       {status.icon}
@@ -193,7 +193,7 @@ export default function QuizLevels() {
                   {/* Action Button */}
                   {status.canAccess ? (
                     <Link href={`/quiz/${level.level}`}>
-                      <button className="w-full bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors">
+                      <button className="w-full bg-emerald-600 text-white py-3 rounded-lg font-medium hover:bg-emerald-700 transition-colors">
                         {level.isPassed ? "إعادة الاختبار" : level.bestScore > 0 ? "المحاولة مجددًا" : "ابدأ الاختبار"}
                       </button>
                     </Link>
@@ -210,7 +210,7 @@ export default function QuizLevels() {
                   {/* View History */}
                   {level.bestScore > 0 && (
                     <Link href={`/quiz/${level.level}/history`}>
-                      <button className="w-full mt-2 text-blue-600 text-sm py-2 hover:bg-blue-50 rounded-lg transition-colors">
+                      <button className="w-full mt-2 text-emerald-600 text-sm py-2 hover:bg-emerald-50 rounded-lg transition-colors">
                         عرض سجل المحاولات
                       </button>
                     </Link>

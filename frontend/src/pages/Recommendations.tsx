@@ -121,10 +121,10 @@ export default function Recommendations() {
       const frozenDate = frozenUntil ? new Date(frozenUntil).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US') : null;
       return (
         <ClientLayout>
-        <div className="min-h-[calc(100vh-64px)] flex items-center justify-center bg-gradient-to-br from-amber-50 to-orange-50">
+        <div className="min-h-[calc(100vh-64px)] flex items-center justify-center bg-[var(--color-xf-cream)]">
           <Card className="max-w-lg mx-4">
             <CardHeader className="text-center">
-              <div className="mx-auto w-16 h-16 bg-gradient-to-br from-amber-400 to-orange-500 rounded-full flex items-center justify-center mb-4">
+              <div className="mx-auto w-16 h-16 bg-gradient-to-br from-amber-400 to-amber-500 rounded-full flex items-center justify-center mb-4">
                 <TrendingUp className="h-8 w-8 text-white" />
               </div>
               <CardTitle className="text-2xl">
@@ -157,10 +157,10 @@ export default function Recommendations() {
     // No subscription — show standard paywall
     return (
       <ClientLayout>
-      <div className="min-h-[calc(100vh-64px)] flex items-center justify-center bg-gradient-to-br from-purple-50 to-blue-50">
+      <div className="min-h-[calc(100vh-64px)] flex items-center justify-center bg-[var(--color-xf-cream)]">
         <Card className="max-w-2xl w-full mx-4">
           <CardHeader className="text-center">
-            <div className="mx-auto w-16 h-16 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center mb-4">
+            <div className="mx-auto w-16 h-16 bg-gradient-to-br from-emerald-500 to-teal-500 rounded-full flex items-center justify-center mb-4">
               <TrendingUp className="h-8 w-8 text-white" />
             </div>
             <CardTitle className="text-3xl">
@@ -180,7 +180,7 @@ export default function Recommendations() {
           <CardContent className="space-y-6">
             <div className="grid gap-4">
               <div className="flex items-start gap-3">
-                <Bell className="h-5 w-5 text-purple-600 mt-1" />
+                <Bell className="h-5 w-5 text-emerald-600 mt-1" />
                 <div>
                   <h4 className="font-semibold">
                     {language === 'ar' ? 'تنبيهات فورية' : 'Instant Alerts'}
@@ -191,7 +191,7 @@ export default function Recommendations() {
                 </div>
               </div>
               <div className="flex items-start gap-3">
-                <TrendingUp className="h-5 w-5 text-purple-600 mt-1" />
+                <TrendingUp className="h-5 w-5 text-emerald-600 mt-1" />
                 <div>
                   <h4 className="font-semibold">
                     {language === 'ar' ? 'توصيات التداول' : 'Trading Recommendations'}
@@ -202,7 +202,7 @@ export default function Recommendations() {
                 </div>
               </div>
               <div className="flex items-start gap-3">
-                <Copy className="h-5 w-5 text-purple-600 mt-1" />
+                <Copy className="h-5 w-5 text-emerald-600 mt-1" />
                 <div>
                   <h4 className="font-semibold">
                     {language === 'ar' ? 'نسخ سريع للتنفيذ' : 'Quick Copy for Execution'}
@@ -229,7 +229,7 @@ export default function Recommendations() {
 
   return (
     <ClientLayout>
-    <div className="min-h-[calc(100vh-64px)] bg-gray-50">
+    <div className="min-h-[calc(100vh-64px)] bg-[var(--color-xf-cream)]">
       <div className="container mx-auto px-4 py-8 space-y-6">
         <div>
           <h1 className="text-3xl font-bold">{t('rec.title')}</h1>

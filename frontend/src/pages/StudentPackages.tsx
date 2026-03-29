@@ -90,7 +90,7 @@ export default function StudentPackages() {
     <ClientLayout>
       <div className="max-w-4xl mx-auto px-4 py-8">
         <div className="flex items-center gap-3 mb-8">
-          <Package className="w-6 h-6 text-blue-600" />
+          <Package className="w-6 h-6 text-emerald-600" />
           <h1 className="text-2xl font-bold">{isRtl ? 'باقتي' : 'My Package'}</h1>
         </div>
 
@@ -139,17 +139,17 @@ export default function StudentPackages() {
         )}
 
         {isBasic && (
-          <div className="bg-gradient-to-r from-blue-600 to-blue-800 text-white rounded-2xl p-6 mb-8">
+          <div className="bg-gradient-to-r from-emerald-600 to-teal-700 text-white rounded-2xl p-6 mb-8">
             <div className="flex items-center gap-3 mb-3">
               <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
                 <Package className="w-6 h-6" />
               </div>
               <div>
                 <h2 className="text-xl font-bold">{isRtl ? 'الباقة الأساسية' : 'Basic Package'}</h2>
-                <p className="text-blue-200 text-sm">{isRtl ? pkg?.nameAr : pkg?.nameEn}</p>
+                <p className="text-emerald-200 text-sm">{isRtl ? pkg?.nameAr : pkg?.nameEn}</p>
               </div>
             </div>
-            <p className="text-blue-100 mb-4">
+            <p className="text-emerald-100 mb-4">
               {isRtl
                 ? 'لديك وصول كامل للدورة التعليمية. قم بالترقية للحصول على LexAI والتوصيات الحية!'
                 : 'You have full course access. Upgrade to get LexAI and live recommendations!'}
@@ -172,15 +172,15 @@ export default function StudentPackages() {
 
         {/* Upgrade CTA for Basic */}
         {isBasic && (
-          <div className="bg-gradient-to-r from-purple-50 to-blue-50 border-2 border-purple-200 rounded-2xl p-6 mb-8">
+          <div className="bg-gradient-to-r from-emerald-50 to-teal-50 border-2 border-emerald-200 rounded-2xl p-6 mb-8">
             <div className="flex items-center justify-between flex-wrap gap-4">
               <div className="flex items-center gap-3">
-                <ArrowUpCircle className="w-8 h-8 text-purple-600" />
+                <ArrowUpCircle className="w-8 h-8 text-emerald-600" />
                 <div>
-                  <h3 className="font-bold text-lg text-purple-900">
+                  <h3 className="font-bold text-lg text-emerald-900">
                     {isRtl ? 'ترقية إلى الباقة الشاملة' : 'Upgrade to Comprehensive'}
                   </h3>
-                  <p className="text-sm text-purple-600">
+                  <p className="text-sm text-emerald-600">
                     {isRtl
                       ? 'احصل على جميع المميزات بما فيها LexAI والتوصيات والدعم المباشر'
                       : 'Get all features including LexAI, Recommendations & Live Support'}
@@ -188,7 +188,7 @@ export default function StudentPackages() {
                 </div>
               </div>
               <Link href="/upgrade">
-                <Button className="bg-purple-600 hover:bg-purple-700">
+                <Button className="bg-emerald-600 hover:bg-emerald-700">
                   <ArrowUpCircle className="w-4 h-4 me-2" />
                   {isRtl ? 'ترقية الآن' : 'Upgrade Now'}
                 </Button>
@@ -292,16 +292,16 @@ export default function StudentPackages() {
         <h2 className="text-xl font-bold mb-4">{isRtl ? 'مقارنة الباقات' : 'Package Comparison'}</h2>
         <div className="grid md:grid-cols-2 gap-6 mb-8">
           {/* Basic Package Card */}
-          <Card className={`relative ${isBasic ? 'ring-2 ring-blue-500' : ''}`}>
+          <Card className={`relative ${isBasic ? 'ring-2 ring-emerald-500' : ''}`}>
             {isBasic && (
-              <Badge className="absolute -top-2.5 start-4 bg-blue-600">
+              <Badge className="absolute -top-2.5 start-4 bg-emerald-600">
                 {isRtl ? 'باقتك الحالية' : 'Your Current Plan'}
               </Badge>
             )}
             <CardHeader>
               <CardTitle className="flex items-center justify-between">
                 <span>{isRtl ? 'الباقة الأساسية' : 'Basic Package'}</span>
-                <span className="text-2xl font-bold text-blue-600">$200</span>
+                <span className="text-2xl font-bold text-emerald-600">$200</span>
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -321,21 +321,21 @@ export default function StudentPackages() {
           </Card>
 
           {/* Comprehensive Package Card */}
-          <Card className={`relative ${isComprehensive ? 'ring-2 ring-emerald-500' : 'border-2 border-dashed border-purple-300 bg-purple-50/30'}`}>
+          <Card className={`relative ${isComprehensive ? 'ring-2 ring-emerald-500' : 'border-2 border-dashed border-emerald-300 bg-emerald-50/30'}`}>
             {isComprehensive && (
               <Badge className="absolute -top-2.5 start-4 bg-emerald-600">
                 {isRtl ? 'باقتك الحالية' : 'Your Current Plan'}
               </Badge>
             )}
             {!isComprehensive && (
-              <Badge className="absolute -top-2.5 start-4 bg-purple-600">
+              <Badge className="absolute -top-2.5 start-4 bg-amber-600">
                 {isRtl ? 'الأفضل قيمة' : 'Best Value'}
               </Badge>
             )}
             <CardHeader>
               <CardTitle className="flex items-center justify-between">
                 <span>{isRtl ? 'الباقة الشاملة' : 'Comprehensive Package'}</span>
-                <span className="text-2xl font-bold text-purple-600">$500</span>
+                <span className="text-2xl font-bold text-emerald-600">$500</span>
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -348,7 +348,7 @@ export default function StudentPackages() {
               {isBasic && (
                 <div className="pt-3 border-t mt-3">
                   <Link href="/upgrade">
-                    <Button className="w-full bg-purple-600 hover:bg-purple-700">
+                    <Button className="w-full bg-emerald-600 hover:bg-emerald-700">
                       <ArrowUpCircle className="w-4 h-4 me-2" />
                       {isRtl ? 'ترقية الآن' : 'Upgrade Now'}
                     </Button>
@@ -361,9 +361,9 @@ export default function StudentPackages() {
 
         {/* Freeze Subscription */}
         {subscriptions && subscriptions.length > 0 && subscriptions.some(s => s.isActive) && (
-          <div className="border rounded-xl p-5 bg-blue-50/50 mb-8">
+          <div className="border rounded-xl p-5 bg-emerald-50/50 mb-8">
             <div className="flex items-center gap-3 mb-2">
-              <Snowflake className="w-5 h-5 text-blue-500" />
+              <Snowflake className="w-5 h-5 text-emerald-500" />
               <h3 className="font-semibold text-gray-900">
                 {isRtl ? 'تجميد الاشتراك' : 'Freeze Subscription'}
               </h3>

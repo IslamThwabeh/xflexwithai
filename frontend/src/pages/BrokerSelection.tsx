@@ -21,7 +21,7 @@ export default function BrokerSelection() {
         {/* Header */}
         <div className="mb-6">
           <div className="flex items-center gap-3 mb-2">
-            <Building2 className="w-7 h-7 text-blue-600" />
+            <Building2 className="w-7 h-7 text-emerald-600" />
             <h1 className="text-2xl font-bold">{isRtl ? 'اختر وسيط التداول' : 'Choose Your Broker'}</h1>
           </div>
           <p className="text-gray-500 text-sm" dir={isRtl ? 'rtl' : 'ltr'}>
@@ -49,8 +49,8 @@ export default function BrokerSelection() {
                     {b.logoUrl ? (
                       <img src={b.logoUrl} alt={isRtl ? b.nameAr : b.nameEn} className="h-12 w-12 object-contain rounded-lg" />
                     ) : (
-                      <div className="h-12 w-12 rounded-lg bg-blue-100 flex items-center justify-center">
-                        <Building2 className="w-6 h-6 text-blue-600" />
+                      <div className="h-12 w-12 rounded-lg bg-emerald-100 flex items-center justify-center">
+                        <Building2 className="w-6 h-6 text-emerald-600" />
                       </div>
                     )}
                     <h2 className="text-xl font-bold">{isRtl ? b.nameAr : b.nameEn}</h2>
