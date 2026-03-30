@@ -5623,6 +5623,27 @@ export async function approveOnboardingStep(stepId: number, adminId: number, adm
     createdAt: now,
   });
 
+  // Notify student
+  const stepLabels: Record<string, [string, string]> = {
+    open_account: ['فتح الحساب', 'Account Opening'],
+    verify_account: ['توثيق الحساب', 'Account Verification'],
+    deposit: ['الإيداع', 'Deposit'],
+  };
+  const [labelAr, labelEn] = stepLabels[row.step] || [row.step, row.step];
+  await createNotification({
+    userId: row.userId,
+    type: 'success',
+    titleAr: `تمت الموافقة على خطوة ${labelAr}`,
+    titleEn: `${labelEn} Step Approved`,
+    contentAr: adminId === 0
+      ? `تم التحقق تلقائياً والموافقة على خطوة ${labelAr}. يمكنك الانتقال للخطوة التالية.`
+      : `تمت مراجعة إثبات ${labelAr} والموافقة عليه. يمكنك الانتقال للخطوة التالية.`,
+    contentEn: adminId === 0
+      ? `${labelEn} step was auto-verified and approved. You can proceed to the next step.`
+      : `Your ${labelEn.toLowerCase()} proof was reviewed and approved. You can proceed to the next step.`,
+    actionUrl: '/broker-onboarding',
+  });
+
   return { success: true };
 }
 
@@ -5654,6 +5675,23 @@ export async function rejectOnboardingStep(stepId: number, adminId: number, reje
     createdAt: now,
   });
 
+  // Notify student
+  const stepLabels: Record<string, [string, string]> = {
+    open_account: ['فتح الحساب', 'Account Opening'],
+    verify_account: ['توثيق الحساب', 'Account Verification'],
+    deposit: ['الإيداع', 'Deposit'],
+  };
+  const [labelAr, labelEn] = stepLabels[row.step] || [row.step, row.step];
+  await createNotification({
+    userId: row.userId,
+    type: 'warning',
+    titleAr: `تم رفض إثبات ${labelAr}`,
+    titleEn: `${labelEn} Proof Rejected`,
+    contentAr: `تم رفض الإثبات: ${rejectionReason}. يرجى رفع صورة جديدة.`,
+    contentEn: `Proof rejected: ${rejectionReason}. Please upload a new screenshot.`,
+    actionUrl: '/broker-onboarding',
+  });
+
   return { success: true };
 }
 
@@ -5670,12 +5708,16 @@ export async function saveOnboardingAiResult(stepId: number, aiConfidence: numbe
     updatedAt: new Date().toISOString(),
   }).where(eq(brokerOnboarding.id, stepId));
 
+  const [row] = await db.select().from(brokerOnboarding).where(eq(brokerOnboarding.id, stepId));
+  if (!row || row.status !== 'pending_review') return { success: true };
+
   // Auto-approve if confidence >= 90%
   if (aiConfidence >= 0.9) {
-    const [row] = await db.select().from(brokerOnboarding).where(eq(brokerOnboarding.id, stepId));
-    if (row && row.status === 'pending_review') {
-      await approveOnboardingStep(stepId, 0, `AI auto-approved (confidence: ${(aiConfidence * 100).toFixed(0)}%)`);
-    }
+    await approveOnboardingStep(stepId, 0, `AI auto-approved (confidence: ${(aiConfidence * 100).toFixed(0)}%)`);
+  }
+  // Auto-reject if confidence < 50% — let student re-upload immediately
+  else if (aiConfidence < 0.5) {
+    await rejectOnboardingStep(stepId, 0, aiResult || 'The uploaded image does not appear to be valid proof for this step. Please upload a clear screenshot.');
   }
 
   return { success: true };

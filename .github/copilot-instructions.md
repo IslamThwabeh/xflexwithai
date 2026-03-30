@@ -264,6 +264,9 @@ CodeGraph is set up for this project with a pre-built semantic graph of all symb
 14. **Skip course is flag-only**: `skipCourseForUser()` sets `isAdminSkipped=1` but does NOT mark episodes as watched. Student progress is preserved.
 15. **OTP email must be plain text**: Safari cannot auto-detect OTP codes from HTML emails. Never add HTML template to `sendLoginCodeEmail()`.
 16. **Date formatting**: Always pass `{ year: 'numeric', month: 'short', day: 'numeric' }` to `toLocaleDateString()` — without options the browser renders an ugly default format.
+17. **Workers async**: Cloudflare Workers kill detached promises after HTTP response. Never use fire-and-forget (`.then().catch()`, `void asyncFn()`) in route handlers — always `await` or use `ctx.waitUntil()`.
+18. **R2 uploads**: Always use `storagePutR2(env.VIDEOS_BUCKET, ...)` from `./storage-r2`. The old `storagePut` from `./storage` uses a Manus Forge API proxy that doesn't exist in Workers.
+19. **AI onboarding thresholds**: `saveOnboardingAiResult()` — ≥90% auto-approve, <50% auto-reject, 50-89% admin queue. `adminId=0` means AI action. Both approve/reject send `createNotification()`.
 
 ---
 
