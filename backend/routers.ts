@@ -4400,11 +4400,13 @@ ${qaText}`;
         if (!userId) throw new Error('Not authenticated');
         const result = await db.submitOnboardingProof(userId, input.step, input.proofUrl, input.proofType);
 
-        // Fire-and-forget AI verification (don't block the response)
+        // Run AI verification synchronously (Workers kill detached promises after response)
         if (result.stepId && ENV.openaiApiKey) {
-          verifyOnboardingProofWithAI(result.stepId, input.step, input.proofUrl).catch((err) => {
+          try {
+            await verifyOnboardingProofWithAI(result.stepId, input.step, input.proofUrl);
+          } catch (err) {
             logger.error('[Onboarding AI] Verification failed', { stepId: result.stepId, error: String(err) });
-          });
+          }
         }
 
         return result;
