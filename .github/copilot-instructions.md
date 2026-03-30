@@ -167,10 +167,12 @@ All public pages (Home, FAQ, Careers, FreeContent, Articles, Events, ArticleDeta
 
 ### Broker System
 - Table: `brokers` (id, name, nameAr, description, descriptionAr, logoUrl, websiteUrl, features, featuresAr, isActive, sortOrder, createdAt, updatedAt)
-- Admin: `AdminBrokers.tsx` — card-based CRUD with logo preview, features as comma-separated input
+- Admin: `AdminBrokersHub.tsx` — combined page with pill-style sub-tabs for Manage Brokers (`AdminBrokersContent`) + Onboarding Review (`AdminBrokerOnboardingContent`)
+- Both `AdminBrokers.tsx` and `AdminBrokerOnboarding.tsx` export `*Content` named exports for embedding in the hub
+- Both routes (`/admin/brokers` and `/admin/broker-onboarding`) render `AdminBrokersHub`
 - Student: `BrokerSelection.tsx` — broker cards with "Open Account" + "WhatsApp Support" buttons
 - Backend: `brokers` sub-router with `list`, `listActive`, `byId`, `create`, `update`, `delete`
-- Admin sidebar: Sales section. Student nav: after My Package.
+- Admin sidebar: Single "Brokers" entry in Sales section. Student nav: after My Package.
 
 ### Loyalty Points & Referral System
 - Tables: `points_transactions`, `points_rules`, `referrals` + `users.pointsBalance`, `users.referralCode`
@@ -260,6 +262,8 @@ CodeGraph is set up for this project with a pre-built semantic graph of all symb
 12. **isPendingActivation filter**: Always filter `isPendingActivation=false` when querying active LexAI/Rec subscriptions. Missing this filter caused students to get 44 days (14 pending + 30 active) instead of 30.
 13. **Hardcoded days**: Never hardcode 30 or 44 for subscription duration. Use `getUserEntitlementDays(userId)` which checks key → package → fallback 30.
 14. **Skip course is flag-only**: `skipCourseForUser()` sets `isAdminSkipped=1` but does NOT mark episodes as watched. Student progress is preserved.
+15. **OTP email must be plain text**: Safari cannot auto-detect OTP codes from HTML emails. Never add HTML template to `sendLoginCodeEmail()`.
+16. **Date formatting**: Always pass `{ year: 'numeric', month: 'short', day: 'numeric' }` to `toLocaleDateString()` — without options the browser renders an ugly default format.
 
 ---
 
