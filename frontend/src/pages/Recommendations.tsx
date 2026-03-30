@@ -220,7 +220,7 @@ export default function Recommendations() {
       return (
         <ClientLayout>
         <div className="min-h-[calc(100vh-64px)] flex items-center justify-center bg-[var(--color-xf-cream)]">
-          <Card className="max-w-lg mx-4">
+          <Card className="w-full max-w-lg md:max-w-2xl mx-4">
             <CardHeader className="text-center">
               <div className="mx-auto w-16 h-16 bg-gradient-to-br from-amber-400 to-amber-500 rounded-full flex items-center justify-center mb-4">
                 <Building2 className="h-8 w-8 text-white" />
