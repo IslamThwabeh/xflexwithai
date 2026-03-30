@@ -98,7 +98,13 @@ export function AdminBrokerOnboardingContent() {
     : records;
 
   return (
-      <div className="max-w-6xl mx-auto">
+      <div className="p-4 md:p-6 max-w-6xl mx-auto">
+        <div className="flex items-center gap-3 mb-6">
+          <FileCheck className="w-7 h-7 text-emerald-600" />
+          <h1 className="text-2xl font-bold">
+            {isAr ? 'مراجعة تسجيل الوسطاء' : 'Broker Onboarding Review'}
+          </h1>
+        </div>
 
         {/* Tabs */}
         <div className="flex gap-2 mb-4">
