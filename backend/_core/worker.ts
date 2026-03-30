@@ -3,7 +3,8 @@ import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import { appRouter } from "../routers";
 import { createWorkerContext } from "./context-worker";
 import * as db from "../db";
-import { sendFreezeExpiredEmail, sendExpiryAlertEmail } from "./orderEmails";
+import { sendFreezeExpiredEmail, sendExpiryAlertEmail, sendDripEmail, sendMilestoneEmail, sendInactivityEmail, sendOnboardingStalledEmail } from "./orderEmails";
+import { logger } from "./logger";
 
 export interface Env {
   DB: D1Database;
@@ -179,6 +180,56 @@ export default {
       if (sub.daysLeft === 7 || sub.daysLeft === 3 || sub.daysLeft === 0) {
         await sendExpiryAlertEmail(sub.email, sub.name, sub.daysLeft, sub.packageName);
       }
+    }
+
+    // --- Drip emails (day 5, 10, 20, 30 after activation) ---
+    for (const day of [5, 10, 20, 30]) {
+      try {
+        const users = await db.getUsersForDripEmail(day);
+        for (const u of users) {
+          await sendDripEmail(u.email, day, { name: u.name, packageName: u.packageName, packageNameAr: u.packageNameAr });
+          await db.logEmailSent(u.userId, `drip_day_${day}`);
+        }
+      } catch (e) {
+        logger.error(`[CRON] Drip day ${day} failed`, e);
+      }
+    }
+
+    // --- Episode milestone emails (10, 14, 27, 39) ---
+    for (const milestone of [10, 14, 27, 39]) {
+      try {
+        const users = await db.getUsersAtEpisodeMilestone(milestone);
+        for (const u of users) {
+          await sendMilestoneEmail(u.email, milestone, { name: u.name, completedCount: u.completedCount });
+          await db.logEmailSent(u.userId, `milestone_${milestone}`);
+        }
+      } catch (e) {
+        logger.error(`[CRON] Milestone ${milestone} failed`, e);
+      }
+    }
+
+    // --- Inactivity emails (7 days, 14 days) ---
+    for (const days of [7, 14]) {
+      try {
+        const users = await db.getInactiveUsers(days);
+        for (const u of users) {
+          await sendInactivityEmail(u.email, days, { name: u.name });
+          await db.logEmailSent(u.userId, `inactivity_${days}`);
+        }
+      } catch (e) {
+        logger.error(`[CRON] Inactivity ${days}d failed`, e);
+      }
+    }
+
+    // --- Onboarding stalled (3+ days pending review) ---
+    try {
+      const stalled = await db.getStalledOnboardingUsers(3);
+      for (const u of stalled) {
+        await sendOnboardingStalledEmail(u.email, { name: u.name, step: u.step, daysPending: u.daysPending });
+        await db.logEmailSent(u.userId, `onboarding_stalled_3`);
+      }
+    } catch (e) {
+      logger.error("[CRON] Onboarding stalled check failed", e);
     }
   },
 };

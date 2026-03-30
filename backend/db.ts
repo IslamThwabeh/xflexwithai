@@ -55,9 +55,12 @@ import {
   pointsRules, PointsRule, NewPointsRule,
   offerAgreements, OfferAgreement, InsertOfferAgreement,
   adminActions, AdminAction, InsertAdminAction,
+  brokerOnboarding, BrokerOnboarding, InsertBrokerOnboarding,
+  emailLog, EmailLog, InsertEmailLog,
 } from "../database/schema-sqlite.ts";
 import { ENV } from './_core/env';
 import { logger } from './_core/logger';
+import { sendWelcomeEmail, sendMilestoneEmail, sendQuizFeedbackEmail } from './_core/orderEmails';
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -2072,6 +2075,20 @@ export async function activatePackageKey(keyCode: string, email: string, userId?
     }
   }
 
+  // Send welcome / renewal email (fire-and-forget, don't block activation)
+  try {
+    const recipientUser = resolvedUserId ? await getUserById(resolvedUserId) : null;
+    sendWelcomeEmail(normalizedEmail, {
+      name: recipientUser?.name,
+      packageName: pkg.nameEn || pkg.nameAr || 'XFlex Package',
+      packageNameAr: pkg.nameAr || pkg.nameEn || 'باقة XFlex',
+      isRenewal: !!key.isRenewal,
+      includesLexai: !!pkg.includesLexai,
+    }).catch(err => logger.error('Welcome email failed', err));
+  } catch (e) {
+    logger.error('Welcome email setup failed', e);
+  }
+
   const [updated] = await db.select().from(registrationKeys).where(eq(registrationKeys.id, key.id)).limit(1);
   return {
     success: true,
@@ -2615,9 +2632,21 @@ export async function createOrUpdateEpisodeProgress(progress: InsertEpisodeProgr
         if (count > 0 && count % 5 === 0) {
           await autoAwardPoints(progress.userId, 'episode_milestone', { referenceId: progress.episodeId, referenceType: 'episode_milestone' });
         }
+        // Send milestone email at 10, 14, 27, 39 episodes
+        if ([10, 14, 27, 39].includes(count)) {
+          const emailType = `milestone_${count}`;
+          hasEmailBeenSent(progress.userId, emailType).then(async sent => {
+            if (sent) return;
+            const [u] = await db.select({ email: users.email, name: users.name })
+              .from(users).where(eq(users.id, progress.userId)).limit(1);
+            if (u) {
+              sendMilestoneEmail(u.email, count, { name: u.name, completedCount: count }).catch(() => {});
+              logEmailSent(progress.userId, emailType).catch(() => {});
+            }
+          }).catch(() => {});
+        }
       } catch {}
     }
-    return existing.id;
   } else {
     const result = await db.insert(episodeProgress).values(progress).returning({ id: episodeProgress.id });
     // Award milestone on first creation if completed
@@ -2628,6 +2657,19 @@ export async function createOrUpdateEpisodeProgress(progress: InsertEpisodeProgr
         const count = Number(completed[0]?.c ?? 0);
         if (count > 0 && count % 5 === 0) {
           await autoAwardPoints(progress.userId, 'episode_milestone', { referenceId: progress.episodeId, referenceType: 'episode_milestone' });
+        }
+        // Send milestone email at 10, 14, 27, 39 episodes
+        if ([10, 14, 27, 39].includes(count)) {
+          const emailType = `milestone_${count}`;
+          hasEmailBeenSent(progress.userId, emailType).then(async sent => {
+            if (sent) return;
+            const [u] = await db.select({ email: users.email, name: users.name })
+              .from(users).where(eq(users.id, progress.userId)).limit(1);
+            if (u) {
+              sendMilestoneEmail(u.email, count, { name: u.name, completedCount: count }).catch(() => {});
+              logEmailSent(progress.userId, emailType).catch(() => {});
+            }
+          }).catch(() => {});
         }
       } catch {}
     }
@@ -2994,6 +3036,22 @@ export async function submitEpisodeQuizAttempt(
   if (passed) {
     try { await autoAwardPoints(userId, 'quiz_pass', { referenceId: quiz.id, referenceType: 'quiz' }); } catch {}
   }
+
+  // Send post-quiz feedback email (fire-and-forget)
+  try {
+    const [quizUser] = await db.select({ email: users.email, name: users.name })
+      .from(users).where(eq(users.id, userId)).limit(1);
+    if (quizUser) {
+      sendQuizFeedbackEmail(quizUser.email, {
+        name: quizUser.name,
+        quizLevel: level,
+        score,
+        passed,
+        correctCount,
+        totalQuestions,
+      }).catch(() => {});
+    }
+  } catch {}
 
   return {
     attemptId: attempt.id,
@@ -5405,4 +5463,522 @@ export async function listOfferAgreements(offerSlug?: string) {
   return db.select().from(offerAgreements)
     .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(desc(offerAgreements.agreedAt));
+}
+
+// ── Broker Onboarding ────────────────────────────────────────
+// 4-step wizard: select_broker → open_account → verify_account → deposit
+
+const ONBOARDING_STEPS = ['select_broker', 'open_account', 'verify_account', 'deposit'] as const;
+type OnboardingStep = typeof ONBOARDING_STEPS[number];
+
+/**
+ * Get a student's full onboarding status (all steps).
+ */
+export async function getUserOnboardingStatus(userId: number) {
+  const db = await getDb();
+  if (!db) return { steps: [], isComplete: false, currentStep: 'select_broker' as OnboardingStep, brokerId: null as number | null };
+
+  const rows = await db.select().from(brokerOnboarding)
+    .where(eq(brokerOnboarding.userId, userId))
+    .orderBy(brokerOnboarding.createdAt);
+
+  // Derive current step: first non-approved step (or all done)
+  const approvedSteps = new Set(rows.filter(r => r.status === 'approved').map(r => r.step));
+  const currentStep = ONBOARDING_STEPS.find(s => !approvedSteps.has(s)) ?? null;
+  const isComplete = ONBOARDING_STEPS.every(s => approvedSteps.has(s));
+  const brokerId = rows[0]?.brokerId ?? null;
+
+  return { steps: rows, isComplete, currentStep, brokerId };
+}
+
+/**
+ * Student selects a broker (step 1 — auto-approved).
+ */
+export async function selectBrokerForOnboarding(userId: number, brokerId: number) {
+  const db = await getDb();
+  if (!db) throw new Error('DB not available');
+  const now = new Date().toISOString();
+
+  // Check broker exists and is active
+  const broker = await getBrokerById(brokerId);
+  if (!broker || !broker.isActive) throw new Error('Broker not found or inactive');
+
+  // Delete any existing onboarding rows for this user (start fresh if selecting different broker)
+  await db.delete(brokerOnboarding).where(eq(brokerOnboarding.userId, userId));
+
+  // Create select_broker step as auto-approved
+  await db.insert(brokerOnboarding).values({
+    userId,
+    brokerId,
+    step: 'select_broker',
+    status: 'approved',
+    submittedAt: now,
+    reviewedAt: now,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  // Pre-create remaining steps as not_started
+  for (const step of ['open_account', 'verify_account', 'deposit'] as const) {
+    await db.insert(brokerOnboarding).values({
+      userId,
+      brokerId,
+      step,
+      status: 'not_started',
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+
+  return { success: true };
+}
+
+/**
+ * Student submits proof for a step.
+ */
+export async function submitOnboardingProof(userId: number, step: string, proofUrl: string, proofType?: string) {
+  const db = await getDb();
+  if (!db) throw new Error('DB not available');
+  const now = new Date().toISOString();
+
+  // Validate step is valid
+  if (!ONBOARDING_STEPS.includes(step as OnboardingStep)) throw new Error('Invalid step');
+  if (step === 'select_broker') throw new Error('Broker selection does not require proof');
+
+  // Get the step row
+  const [row] = await db.select().from(brokerOnboarding)
+    .where(and(eq(brokerOnboarding.userId, userId), eq(brokerOnboarding.step, step)));
+
+  if (!row) throw new Error('Onboarding step not found — select a broker first');
+  if (row.status === 'approved') throw new Error('This step is already approved');
+
+  // Check previous step is approved
+  const stepIndex = ONBOARDING_STEPS.indexOf(step as OnboardingStep);
+  if (stepIndex > 0) {
+    const prevStep = ONBOARDING_STEPS[stepIndex - 1];
+    const [prev] = await db.select().from(brokerOnboarding)
+      .where(and(eq(brokerOnboarding.userId, userId), eq(brokerOnboarding.step, prevStep)));
+    if (!prev || prev.status !== 'approved') {
+      throw new Error('Complete the previous step first');
+    }
+  }
+
+  await db.update(brokerOnboarding).set({
+    proofUrl,
+    proofType: proofType || null,
+    status: 'pending_review',
+    submittedAt: now,
+    rejectionReason: null,  // Clear any old rejection
+    updatedAt: now,
+  }).where(eq(brokerOnboarding.id, row.id));
+
+  return { success: true };
+}
+
+/**
+ * Admin: approve an onboarding step.
+ */
+export async function approveOnboardingStep(stepId: number, adminId: number, adminNote?: string) {
+  const db = await getDb();
+  if (!db) throw new Error('DB not available');
+  const now = new Date().toISOString();
+
+  const [row] = await db.select().from(brokerOnboarding).where(eq(brokerOnboarding.id, stepId));
+  if (!row) throw new Error('Step not found');
+  if (row.status === 'approved') throw new Error('Already approved');
+
+  await db.update(brokerOnboarding).set({
+    status: 'approved',
+    adminNote: adminNote || null,
+    reviewedAt: now,
+    reviewedBy: adminId,
+    updatedAt: now,
+  }).where(eq(brokerOnboarding.id, stepId));
+
+  // If this was the last step (deposit), mark user as onboarding complete
+  if (row.step === 'deposit') {
+    const status = await getUserOnboardingStatus(row.userId);
+    if (status.isComplete) {
+      await db.update(users).set({ brokerOnboardingComplete: true })
+        .where(eq(users.id, row.userId));
+    }
+  }
+
+  // Log admin action
+  await db.insert(adminActions).values({
+    adminId,
+    userId: row.userId,
+    action: 'approve_onboarding_step',
+    details: JSON.stringify({ stepId, step: row.step, brokerId: row.brokerId }),
+    createdAt: now,
+  });
+
+  return { success: true };
+}
+
+/**
+ * Admin: reject an onboarding step (student can re-upload).
+ */
+export async function rejectOnboardingStep(stepId: number, adminId: number, rejectionReason: string) {
+  const db = await getDb();
+  if (!db) throw new Error('DB not available');
+  const now = new Date().toISOString();
+
+  const [row] = await db.select().from(brokerOnboarding).where(eq(brokerOnboarding.id, stepId));
+  if (!row) throw new Error('Step not found');
+
+  await db.update(brokerOnboarding).set({
+    status: 'rejected',
+    rejectionReason,
+    reviewedAt: now,
+    reviewedBy: adminId,
+    updatedAt: now,
+  }).where(eq(brokerOnboarding.id, stepId));
+
+  // Log admin action
+  await db.insert(adminActions).values({
+    adminId,
+    userId: row.userId,
+    action: 'reject_onboarding_step',
+    details: JSON.stringify({ stepId, step: row.step, brokerId: row.brokerId, reason: rejectionReason }),
+    createdAt: now,
+  });
+
+  return { success: true };
+}
+
+/**
+ * Admin: save AI verification result on a proof.
+ */
+export async function saveOnboardingAiResult(stepId: number, aiConfidence: number, aiResult: string) {
+  const db = await getDb();
+  if (!db) throw new Error('DB not available');
+
+  await db.update(brokerOnboarding).set({
+    aiConfidence,
+    aiResult,
+    updatedAt: new Date().toISOString(),
+  }).where(eq(brokerOnboarding.id, stepId));
+
+  // Auto-approve if confidence >= 90%
+  if (aiConfidence >= 0.9) {
+    const [row] = await db.select().from(brokerOnboarding).where(eq(brokerOnboarding.id, stepId));
+    if (row && row.status === 'pending_review') {
+      await approveOnboardingStep(stepId, 0, `AI auto-approved (confidence: ${(aiConfidence * 100).toFixed(0)}%)`);
+    }
+  }
+
+  return { success: true };
+}
+
+/**
+ * Admin: get all pending onboarding proofs for review.
+ */
+export async function getPendingOnboardingProofs() {
+  const db = await getDb();
+  if (!db) return [];
+
+  const rows = await db.select({
+    id: brokerOnboarding.id,
+    userId: brokerOnboarding.userId,
+    brokerId: brokerOnboarding.brokerId,
+    step: brokerOnboarding.step,
+    status: brokerOnboarding.status,
+    proofUrl: brokerOnboarding.proofUrl,
+    proofType: brokerOnboarding.proofType,
+    aiConfidence: brokerOnboarding.aiConfidence,
+    aiResult: brokerOnboarding.aiResult,
+    adminNote: brokerOnboarding.adminNote,
+    rejectionReason: brokerOnboarding.rejectionReason,
+    submittedAt: brokerOnboarding.submittedAt,
+    reviewedAt: brokerOnboarding.reviewedAt,
+    createdAt: brokerOnboarding.createdAt,
+    userName: users.name,
+    userEmail: users.email,
+    brokerName: brokers.nameEn,
+  }).from(brokerOnboarding)
+    .innerJoin(users, eq(users.id, brokerOnboarding.userId))
+    .innerJoin(brokers, eq(brokers.id, brokerOnboarding.brokerId))
+    .where(eq(brokerOnboarding.status, 'pending_review'))
+    .orderBy(brokerOnboarding.submittedAt);
+
+  return rows;
+}
+
+/**
+ * Admin: get all onboarding records (with filters).
+ */
+export async function getAllOnboardingRecords(filters?: { status?: string; step?: string }) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const conditions: any[] = [];
+  if (filters?.status) conditions.push(eq(brokerOnboarding.status, filters.status));
+  if (filters?.step) conditions.push(eq(brokerOnboarding.step, filters.step));
+
+  return db.select({
+    id: brokerOnboarding.id,
+    userId: brokerOnboarding.userId,
+    brokerId: brokerOnboarding.brokerId,
+    step: brokerOnboarding.step,
+    status: brokerOnboarding.status,
+    proofUrl: brokerOnboarding.proofUrl,
+    proofType: brokerOnboarding.proofType,
+    aiConfidence: brokerOnboarding.aiConfidence,
+    aiResult: brokerOnboarding.aiResult,
+    adminNote: brokerOnboarding.adminNote,
+    rejectionReason: brokerOnboarding.rejectionReason,
+    submittedAt: brokerOnboarding.submittedAt,
+    reviewedAt: brokerOnboarding.reviewedAt,
+    createdAt: brokerOnboarding.createdAt,
+    userName: users.name,
+    userEmail: users.email,
+    brokerName: brokers.nameEn,
+  }).from(brokerOnboarding)
+    .innerJoin(users, eq(users.id, brokerOnboarding.userId))
+    .innerJoin(brokers, eq(brokers.id, brokerOnboarding.brokerId))
+    .where(conditions.length ? and(...conditions) : undefined)
+    .orderBy(desc(brokerOnboarding.updatedAt));
+}
+
+/**
+ * Check if a user has completed broker onboarding.
+ * Used for gating LexAI/Recommendations access.
+ */
+export async function isUserBrokerOnboardingComplete(userId: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+
+  // Fast path: check the flag on users table
+  const [user] = await db.select({ flag: users.brokerOnboardingComplete })
+    .from(users).where(eq(users.id, userId));
+  if (user?.flag) return true;
+
+  // Fallback: check all steps approved
+  const status = await getUserOnboardingStatus(userId);
+  if (status.isComplete) {
+    // Update the flag for next time
+    await db.update(users).set({ brokerOnboardingComplete: true })
+      .where(eq(users.id, userId));
+    return true;
+  }
+  return false;
+}
+
+// ============================================================================
+// Email Log — automated email tracking (prevents duplicate sends)
+// ============================================================================
+
+export async function logEmailSent(userId: number, emailType: string, metadata?: Record<string, unknown>): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  try {
+    await db.insert(emailLog).values({
+      userId,
+      emailType,
+      metadata: metadata ? JSON.stringify(metadata) : null,
+    });
+  } catch {
+    // UNIQUE constraint = already sent, silently ignore
+  }
+}
+
+export async function hasEmailBeenSent(userId: number, emailType: string): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return true; // fail-safe: assume sent to avoid spam
+  const [row] = await db.select({ id: emailLog.id })
+    .from(emailLog)
+    .where(and(eq(emailLog.userId, userId), eq(emailLog.emailType, emailType)))
+    .limit(1);
+  return !!row;
+}
+
+/**
+ * Find active subscribers who activated exactly N days ago and haven't received drip_day_N email.
+ */
+export async function getUsersForDripEmail(dayNumber: number): Promise<Array<{
+  userId: number; email: string; name: string | null; packageName: string;
+  packageNameAr: string; includesLexai: boolean;
+}>> {
+  const db = await getDb();
+  if (!db) return [];
+  const emailType = `drip_day_${dayNumber}`;
+
+  // Find users whose packageSubscription startDate is exactly N days ago
+  const results = await db
+    .select({
+      userId: packageSubscriptions.userId,
+      email: users.email,
+      name: users.name,
+      packageName: packages.nameEn,
+      packageNameAr: packages.nameAr,
+      includesLexai: packages.includesLexai,
+    })
+    .from(packageSubscriptions)
+    .innerJoin(users, eq(packageSubscriptions.userId, users.id))
+    .innerJoin(packages, eq(packageSubscriptions.packageId, packages.id))
+    .where(and(
+      eq(packageSubscriptions.isActive, true),
+      sql`date(${packageSubscriptions.startDate}) = date('now', '-${sql.raw(String(dayNumber))} days')`,
+      eq(users.isStaff, false),
+    ));
+
+  // Filter out users who already received this drip email
+  const filtered: typeof results = [];
+  for (const r of results) {
+    const sent = await hasEmailBeenSent(r.userId, emailType);
+    if (!sent) filtered.push(r);
+  }
+  return filtered.map(r => ({
+    userId: r.userId,
+    email: r.email,
+    name: r.name,
+    packageName: r.packageName || 'XFlex Package',
+    packageNameAr: r.packageNameAr || 'باقة XFlex',
+    includesLexai: !!r.includesLexai,
+  }));
+}
+
+/**
+ * Find users inactive for N+ days who still have active subscriptions.
+ */
+export async function getInactiveUsers(inactiveDays: number): Promise<Array<{
+  userId: number; email: string; name: string | null; daysSinceActive: number;
+}>> {
+  const db = await getDb();
+  if (!db) return [];
+  const emailType = `inactivity_${inactiveDays}`;
+
+  const results = await db
+    .select({
+      userId: users.id,
+      email: users.email,
+      name: users.name,
+      lastActiveAt: users.lastActiveAt,
+    })
+    .from(users)
+    .innerJoin(packageSubscriptions, eq(users.id, packageSubscriptions.userId))
+    .where(and(
+      eq(packageSubscriptions.isActive, true),
+      eq(users.isStaff, false),
+      sql`${users.lastActiveAt} IS NOT NULL`,
+      sql`julianday('now') - julianday(${users.lastActiveAt}) >= ${inactiveDays}`,
+    ));
+
+  // Deduplicate by userId (user may have multiple active subs)
+  const seen = new Set<number>();
+  const unique = results.filter(r => {
+    if (seen.has(r.userId)) return false;
+    seen.add(r.userId);
+    return true;
+  });
+
+  const filtered: Array<{
+    userId: number; email: string; name: string | null; daysSinceActive: number;
+  }> = [];
+  for (const r of unique) {
+    const sent = await hasEmailBeenSent(r.userId, emailType);
+    if (!sent) {
+      const days = r.lastActiveAt
+        ? Math.floor((Date.now() - new Date(r.lastActiveAt).getTime()) / 86400000)
+        : inactiveDays;
+      filtered.push({ userId: r.userId, email: r.email, name: r.name, daysSinceActive: days });
+    }
+  }
+  return filtered;
+}
+
+/**
+ * Find users who have completed exactly N episodes across all courses
+ * and haven't received the milestone email yet.
+ */
+export async function getUsersAtEpisodeMilestone(milestone: number): Promise<Array<{
+  userId: number; email: string; name: string | null; completedCount: number;
+}>> {
+  const db = await getDb();
+  if (!db) return [];
+  const emailType = `milestone_${milestone}`;
+
+  const results = await db
+    .select({
+      userId: episodeProgress.userId,
+      completedCount: sql<number>`count(*)`.as('completedCount'),
+    })
+    .from(episodeProgress)
+    .where(eq(episodeProgress.isCompleted, true))
+    .groupBy(episodeProgress.userId)
+    .having(sql`count(*) >= ${milestone}`);
+
+  const filtered: Array<{
+    userId: number; email: string; name: string | null; completedCount: number;
+  }> = [];
+  for (const r of results) {
+    const sent = await hasEmailBeenSent(r.userId, emailType);
+    if (sent) continue;
+    const [user] = await db.select({ email: users.email, name: users.name, isStaff: users.isStaff })
+      .from(users).where(eq(users.id, r.userId)).limit(1);
+    if (user && !user.isStaff) {
+      filtered.push({
+        userId: r.userId,
+        email: user.email,
+        name: user.name,
+        completedCount: r.completedCount,
+      });
+    }
+  }
+  return filtered;
+}
+
+/**
+ * Find broker onboarding steps that have been pending_review for N+ days with no admin action.
+ */
+export async function getStalledOnboardingUsers(stalledDays: number): Promise<Array<{
+  userId: number; email: string; name: string | null; step: string; daysPending: number;
+}>> {
+  const db = await getDb();
+  if (!db) return [];
+  const emailType = `onboarding_stalled_${stalledDays}`;
+
+  const results = await db
+    .select({
+      userId: brokerOnboarding.userId,
+      step: brokerOnboarding.step,
+      submittedAt: brokerOnboarding.submittedAt,
+    })
+    .from(brokerOnboarding)
+    .where(and(
+      eq(brokerOnboarding.status, 'pending_review'),
+      sql`${brokerOnboarding.submittedAt} IS NOT NULL`,
+      sql`julianday('now') - julianday(${brokerOnboarding.submittedAt}) >= ${stalledDays}`,
+    ));
+
+  const filtered: Array<{
+    userId: number; email: string; name: string | null; step: string; daysPending: number;
+  }> = [];
+  for (const r of results) {
+    const sent = await hasEmailBeenSent(r.userId, emailType);
+    if (sent) continue;
+    const [user] = await db.select({ email: users.email, name: users.name })
+      .from(users).where(eq(users.id, r.userId)).limit(1);
+    if (user) {
+      const days = r.submittedAt
+        ? Math.floor((Date.now() - new Date(r.submittedAt).getTime()) / 86400000)
+        : stalledDays;
+      filtered.push({ userId: r.userId, email: user.email, name: user.name, step: r.step, daysPending: days });
+    }
+  }
+  return filtered;
+}
+
+/**
+ * Get the count of completed episodes for a user (used for milestone checks).
+ */
+export async function getCompletedEpisodeCount(userId: number): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  const [result] = await db
+    .select({ count: sql<number>`count(*)`.as('count') })
+    .from(episodeProgress)
+    .where(and(eq(episodeProgress.userId, userId), eq(episodeProgress.isCompleted, true)));
+  return result?.count ?? 0;
 }

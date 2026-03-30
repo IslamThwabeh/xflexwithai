@@ -5,6 +5,8 @@ type SendEmailInput = {
   to: string;
   subject: string;
   text: string;
+  /** Optional HTML body — when provided, providers that support it will send as HTML */
+  html?: string;
 };
 
 async function sendViaZeptoMail(input: SendEmailInput) {
@@ -35,7 +37,7 @@ async function sendViaZeptoMail(input: SendEmailInput) {
       to: [{ email_address: { address: input.to } }],
       subject: input.subject,
       textbody: input.text,
-      htmlbody: input.text.replace(/\n/g, "<br/>"),
+      htmlbody: input.html || input.text.replace(/\n/g, "<br/>"),
     }),
   });
 
@@ -64,7 +66,7 @@ async function sendViaResend(input: SendEmailInput) {
       from,
       to: [input.to],
       subject: input.subject,
-      text: input.text,
+      ...(input.html ? { html: input.html } : { text: input.text }),
     }),
   });
 
@@ -85,7 +87,9 @@ async function sendViaMailChannels(input: SendEmailInput) {
       personalizations: [{ to: [{ email: input.to }] }],
       from: { email: from, name: ENV.emailFromName || "XFlex Academy" },
       subject: input.subject,
-      content: [{ type: "text/plain", value: input.text }],
+      content: input.html
+        ? [{ type: "text/html", value: input.html }, { type: "text/plain", value: input.text }]
+        : [{ type: "text/plain", value: input.text }],
     }),
   });
 

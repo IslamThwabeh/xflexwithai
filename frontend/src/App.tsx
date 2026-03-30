@@ -35,7 +35,7 @@ const AdminOrders = lazy(() => import("./pages/AdminOrders"));
 const AdminQuizzes = lazy(() => import("./pages/AdminQuizzes"));
 const AdminCoupons = lazy(() => import("./pages/AdminCoupons"));
 const AdminTestimonials = lazy(() => import("./pages/AdminTestimonials"));
-const AdminBrokers = lazy(() => import("./pages/AdminBrokers"));
+const AdminBrokersHub = lazy(() => import("./pages/AdminBrokersHub"));
 const AdminSubscribersReport = lazy(() => import("./pages/AdminStudents"));
 const AdminRevenueReport = lazy(() => import("./pages/AdminRevenueReport"));
 const AdminExpiryReport = lazy(() => import("./pages/AdminExpiryReport"));
@@ -58,6 +58,7 @@ const OrderDetail = lazy(() => import("./pages/OrderDetail"));
 const MySubscriptions = lazy(() => import("./pages/MySubscriptions"));
 const StudentPackages = lazy(() => import("./pages/StudentPackages"));
 const BrokerSelection = lazy(() => import("./pages/BrokerSelection"));
+const BrokerOnboarding = lazy(() => import("./pages/BrokerOnboarding"));
 const Upgrade = lazy(() => import("./pages/Upgrade"));
 
 // Lazy-loaded public pages
@@ -210,9 +211,14 @@ function Router() {
           <AdminTestimonials />
         </AdminRoute>
       </Route>
-      <Route path={"/admin/brokers"}>
+      <Route path="/admin/brokers">
         <AdminRoute>
-          <AdminBrokers />
+          <AdminBrokersHub />
+        </AdminRoute>
+      </Route>
+      <Route path="/admin/broker-onboarding">
+        <AdminRoute>
+          <AdminBrokersHub />
         </AdminRoute>
       </Route>
       <Route path={"/admin/offer-agreements"}>
@@ -327,6 +333,11 @@ function Router() {
       <Route path="/brokers">
         <ProtectedRoute>
           <BrokerSelection />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/broker-onboarding">
+        <ProtectedRoute>
+          <BrokerOnboarding />
         </ProtectedRoute>
       </Route>
       <Route path="/upgrade">

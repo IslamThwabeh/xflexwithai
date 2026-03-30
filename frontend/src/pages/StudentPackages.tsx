@@ -208,8 +208,8 @@ export default function StudentPackages() {
             </div>
             <p className="text-sm text-amber-700 mb-2">
               {isRtl
-                ? `سيتم تفعيل LexAI والتوصيات تلقائياً عند إكمال الدورة أو في ${activationStatus.maxActivationDate ? new Date(activationStatus.maxActivationDate).toLocaleDateString('ar-EG') : ''}`
-                : `LexAI & Recommendations will activate automatically upon course completion or on ${activationStatus.maxActivationDate ? new Date(activationStatus.maxActivationDate).toLocaleDateString('en-US') : ''}`}
+                ? `سيتم تفعيل LexAI والتوصيات تلقائياً عند إكمال الدورة أو في ${activationStatus.maxActivationDate ? new Date(activationStatus.maxActivationDate).toLocaleDateString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric' }) : ''}`
+                : `LexAI & Recommendations will activate automatically upon course completion or on ${activationStatus.maxActivationDate ? new Date(activationStatus.maxActivationDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : ''}`}
             </p>
             <div className="flex items-center gap-2 text-sm text-amber-600">
               <span>{isRtl ? 'تقدم الدورة' : 'Course progress'}: {activationStatus.progressPercent}%</span>
@@ -233,7 +233,7 @@ export default function StudentPackages() {
                   <span>
                     LexAI — {isRtl ? 'مُجمّد' : 'Frozen'}
                     {frozenStatus.lexaiFrozenUntil && (
-                      <> {isRtl ? 'حتى' : 'until'} {new Date(frozenStatus.lexaiFrozenUntil).toLocaleDateString(isRtl ? 'ar-EG' : 'en-US')}</>
+                      <> {isRtl ? 'حتى' : 'until'} {new Date(frozenStatus.lexaiFrozenUntil).toLocaleDateString(isRtl ? 'ar-EG' : 'en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</>
                     )}
                   </span>
                 </div>
@@ -244,7 +244,7 @@ export default function StudentPackages() {
                   <span>
                     {isRtl ? 'التوصيات' : 'Recommendations'} — {isRtl ? 'مُجمّد' : 'Frozen'}
                     {frozenStatus.recFrozenUntil && (
-                      <> {isRtl ? 'حتى' : 'until'} {new Date(frozenStatus.recFrozenUntil).toLocaleDateString(isRtl ? 'ar-EG' : 'en-US')}</>
+                      <> {isRtl ? 'حتى' : 'until'} {new Date(frozenStatus.recFrozenUntil).toLocaleDateString(isRtl ? 'ar-EG' : 'en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</>
                     )}
                   </span>
                 </div>
@@ -277,8 +277,8 @@ export default function StudentPackages() {
                         </Badge>
                       </div>
                       <p className="text-sm text-gray-500">
-                        {isRtl ? 'بدأ' : 'Started'}: {new Date(sub.startDate).toLocaleDateString(isRtl ? 'ar-EG' : 'en-US')}
-                        {sub.endDate && ` • ${isRtl ? 'ينتهي' : 'Ends'}: ${new Date(sub.endDate).toLocaleDateString(isRtl ? 'ar-EG' : 'en-US')}`}
+                        {isRtl ? 'بدأ' : 'Started'}: {new Date(sub.startDate).toLocaleDateString(isRtl ? 'ar-EG' : 'en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+                        {sub.endDate && ` • ${isRtl ? 'ينتهي' : 'Ends'}: ${new Date(sub.endDate).toLocaleDateString(isRtl ? 'ar-EG' : 'en-US', { year: 'numeric', month: 'short', day: 'numeric' })}`}
                       </p>
                     </div>
                   </div>

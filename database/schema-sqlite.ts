@@ -1,4 +1,4 @@
-import { int, sqliteTable, text, integer, unique } from "drizzle-orm/sqlite-core";
+import { int, sqliteTable, text, integer, unique, real } from "drizzle-orm/sqlite-core";
 import { relations, sql } from "drizzle-orm";
 
 /**
@@ -24,6 +24,7 @@ export const users = sqliteTable("users", {
   pointsBalance: integer("points_balance").default(0).notNull(),
   referralCode: text("referralCode"),
   isStaff: integer("isStaff", { mode: 'boolean' }).default(false).notNull(),
+  brokerOnboardingComplete: integer("brokerOnboardingComplete", { mode: 'boolean' }).default(false).notNull(),
 });
 
 export type User = typeof users.$inferSelect;
@@ -1279,3 +1280,41 @@ export const pointsRules = sqliteTable("points_rules", {
 
 export type PointsRule = typeof pointsRules.$inferSelect;
 export type NewPointsRule = typeof pointsRules.$inferInsert;
+
+// ── Broker Onboarding ────────────────────────────────────
+export const brokerOnboarding = sqliteTable("broker_onboarding", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  userId: integer("userId").notNull(),
+  brokerId: integer("brokerId").notNull(),
+  step: text("step").notNull(), // select_broker | open_account | verify_account | deposit
+  status: text("status").notNull().default("not_started"), // not_started | pending_review | approved | rejected
+  proofUrl: text("proofUrl"),
+  proofType: text("proofType"),
+  aiConfidence: real("aiConfidence"),
+  aiResult: text("aiResult"),
+  adminNote: text("adminNote"),
+  rejectionReason: text("rejectionReason"),
+  submittedAt: text("submittedAt"),
+  reviewedAt: text("reviewedAt"),
+  reviewedBy: integer("reviewedBy"),
+  createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
+  updatedAt: text("updatedAt").default(sql`(datetime('now'))`).notNull(),
+});
+
+export type BrokerOnboarding = typeof brokerOnboarding.$inferSelect;
+export type InsertBrokerOnboarding = typeof brokerOnboarding.$inferInsert;
+
+// ============================================================================
+// Email Log — tracks automated emails to prevent duplicates
+// ============================================================================
+
+export const emailLog = sqliteTable("email_log", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  userId: integer("userId").notNull(),
+  emailType: text("emailType").notNull(), // drip_day_5, drip_day_10, milestone_10, inactivity_7, etc.
+  metadata: text("metadata"), // JSON for extra context
+  sentAt: text("sentAt").default(sql`(datetime('now'))`).notNull(),
+});
+
+export type EmailLog = typeof emailLog.$inferSelect;
+export type InsertEmailLog = typeof emailLog.$inferInsert;

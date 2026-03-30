@@ -40,35 +40,35 @@ export default function AdminLogin() {
   // Show loading while checking auth
   if (loading || checkingAdmin) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800">
-        <p className="text-white">Loading...</p>
+      <div className="min-h-screen flex items-center justify-center bg-[var(--color-xf-cream)]">
+        <p className="text-slate-600">Loading...</p>
       </div>
     );
   }
   
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800 p-4">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-[var(--color-xf-cream)] p-4">
       <div className="mb-8 text-center">
         <Link href="/">
           <div className="flex items-center gap-2 justify-center cursor-pointer hover:opacity-80 transition-opacity mb-4">
-            <GraduationCap className="h-10 w-10 text-emerald-500" />
-            <h1 className="text-3xl font-bold text-white">
+            <GraduationCap className="h-10 w-10 text-emerald-600" />
+            <h1 className="text-3xl font-bold text-slate-800">
               {APP_TITLE}
             </h1>
           </div>
         </Link>
-        <p className="text-slate-300">
+        <p className="text-slate-500">
           {t('auth.login.adminTitle')}
         </p>
       </div>
 
-      <div className="w-full max-w-md backdrop-blur-xl bg-white/[0.06] border border-white/[0.10] rounded-2xl shadow-2xl p-6 sm:p-8 [&_h2]:text-white [&_p]:text-white/40 [&_label]:!text-white/60 [&_input]:bg-white/[0.08] [&_input]:border-white/[0.12] [&_input]:text-white [&_input]:placeholder:text-white/25">
+      <div className="w-full max-w-md backdrop-blur-xl bg-white/80 border border-emerald-100 rounded-2xl shadow-xl p-6 sm:p-8">
         <LoginForm isAdmin={true} />
       </div>
 
       <div className="mt-6">
         <Link href="/">
-          <button className="text-slate-400 hover:text-white transition-colors">
+          <button className="text-slate-500 hover:text-emerald-600 transition-colors">
             {t('auth.page.backToHome')}
           </button>
         </Link>

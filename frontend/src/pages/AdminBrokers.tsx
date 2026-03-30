@@ -17,6 +17,14 @@ const empty = () => ({
 });
 
 export default function AdminBrokers() {
+  return (
+    <DashboardLayout>
+      <AdminBrokersContent />
+    </DashboardLayout>
+  );
+}
+
+export function AdminBrokersContent() {
   const { language } = useLanguage();
   const isRtl = language === 'ar';
   const utils = trpc.useUtils();
@@ -72,14 +80,10 @@ export default function AdminBrokers() {
   };
 
   return (
-    <DashboardLayout>
-      <div className="p-4 md:p-6">
+      <div>
         {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-          <div className="flex items-center gap-3">
-            <Building2 className="w-6 h-6 text-emerald-600" />
-            <h1 className="text-2xl font-bold">{isRtl ? 'إدارة الوسطاء' : 'Manage Brokers'}</h1>
-          </div>
+          <div />
           <Button onClick={startNew} className="gap-1.5">
             <Plus className="w-4 h-4" />
             {isRtl ? 'وسيط جديد' : 'New Broker'}
@@ -312,6 +316,5 @@ export default function AdminBrokers() {
           </div>
         )}
       </div>
-    </DashboardLayout>
   );
 }

@@ -97,10 +97,10 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
       match: "/my-packages",
     },
     {
-      href: "/brokers",
+      href: "/broker-onboarding",
       label: language === "ar" ? "الوسطاء" : "Brokers",
       icon: <Building2 className="h-4 w-4" />,
-      match: "/brokers",
+      match: "/broker",
     },
     {
       href: "/notifications",
@@ -183,13 +183,15 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
 
               {/* User Avatar — links to profile */}
               <Link href="/profile">
-                <div className="flex items-center gap-1.5 cursor-pointer hover:opacity-80 transition-opacity">
-                  <div className="w-7 h-7 rounded-full bg-gradient-to-r from-emerald-500 to-teal-600 flex items-center justify-center text-white text-xs font-semibold">
-                    {user?.name?.charAt(0).toUpperCase() || "U"}
+                <div className="cursor-pointer hover:opacity-80 transition-opacity">
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-r from-emerald-500 to-teal-600 flex items-center justify-center text-white text-xs font-semibold ring-2 ring-emerald-300/50 hover:ring-emerald-400 transition-all" title={user?.name || ''}>
+                    {(() => {
+                      const parts = (user?.name || '').trim().split(/\s+/);
+                      const f = parts[0]?.charAt(0).toUpperCase() || 'U';
+                      const l = parts.length > 1 ? parts[parts.length - 1].charAt(0).toUpperCase() : '';
+                      return f + l;
+                    })()}
                   </div>
-                  <span className="text-sm font-medium hidden md:inline max-w-[80px] truncate">
-                    {user?.name?.split(' ')[0]}
-                  </span>
                 </div>
               </Link>
 
@@ -227,8 +229,13 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
           <Link href="/profile">
             <div className="p-4 border-b bg-gray-50 cursor-pointer hover:bg-gray-100 transition" onClick={() => setMobileMenuOpen(false)}>
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-gradient-to-r from-emerald-500 to-teal-600 flex items-center justify-center text-white font-semibold">
-                  {user?.name?.charAt(0).toUpperCase() || "U"}
+                <div className="w-10 h-10 rounded-full bg-gradient-to-r from-emerald-500 to-teal-600 flex items-center justify-center text-white font-semibold ring-2 ring-emerald-300/50">
+                  {(() => {
+                    const parts = (user?.name || '').trim().split(/\s+/);
+                    const f = parts[0]?.charAt(0).toUpperCase() || 'U';
+                    const l = parts.length > 1 ? parts[parts.length - 1].charAt(0).toUpperCase() : '';
+                    return f + l;
+                  })()}
                 </div>
                 <div className="min-w-0">
                   <p className="text-sm font-medium truncate">{user?.name}</p>

@@ -4246,6 +4246,96 @@ ${qaText}`;
       }),
   }),
 
+  // ====== Broker Onboarding ======
+  onboarding: router({
+    // Student: get my onboarding status
+    getStatus: protectedProcedure.query(async ({ ctx }) => {
+      const userId = ctx.user?.id;
+      if (!userId) throw new Error('Not authenticated');
+      return db.getUserOnboardingStatus(userId);
+    }),
+
+    // Student: check if onboarding is complete (for gating)
+    isComplete: protectedProcedure.query(async ({ ctx }) => {
+      const userId = ctx.user?.id;
+      if (!userId) throw new Error('Not authenticated');
+      const complete = await db.isUserBrokerOnboardingComplete(userId);
+      return { complete };
+    }),
+
+    // Student: select a broker (step 1)
+    selectBroker: protectedProcedure
+      .input(z.object({ brokerId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const userId = ctx.user?.id;
+        if (!userId) throw new Error('Not authenticated');
+        return db.selectBrokerForOnboarding(userId, input.brokerId);
+      }),
+
+    // Student: submit proof for a step
+    submitProof: protectedProcedure
+      .input(z.object({
+        step: z.string(),
+        proofUrl: z.string().min(1),
+        proofType: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const userId = ctx.user?.id;
+        if (!userId) throw new Error('Not authenticated');
+        return db.submitOnboardingProof(userId, input.step, input.proofUrl, input.proofType);
+      }),
+
+    // Admin: get pending proofs for review
+    pendingProofs: adminProcedure.query(async () => {
+      return db.getPendingOnboardingProofs();
+    }),
+
+    // Admin: get all onboarding records
+    allRecords: adminProcedure
+      .input(z.object({
+        status: z.string().optional(),
+        step: z.string().optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        return db.getAllOnboardingRecords(input ?? undefined);
+      }),
+
+    // Admin: approve a step
+    approve: adminProcedure
+      .input(z.object({
+        stepId: z.number(),
+        adminNote: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const adminId = ctx.admin?.id ?? ctx.user?.id;
+        if (!adminId) throw new Error('Not authenticated');
+        return db.approveOnboardingStep(input.stepId, adminId, input.adminNote);
+      }),
+
+    // Admin: reject a step
+    reject: adminProcedure
+      .input(z.object({
+        stepId: z.number(),
+        rejectionReason: z.string().min(1),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const adminId = ctx.admin?.id ?? ctx.user?.id;
+        if (!adminId) throw new Error('Not authenticated');
+        return db.rejectOnboardingStep(input.stepId, adminId, input.rejectionReason);
+      }),
+
+    // Admin: save AI result on a proof
+    saveAiResult: adminProcedure
+      .input(z.object({
+        stepId: z.number(),
+        aiConfidence: z.number().min(0).max(1),
+        aiResult: z.string(),
+      }))
+      .mutation(async ({ input }) => {
+        return db.saveOnboardingAiResult(input.stepId, input.aiConfidence, input.aiResult);
+      }),
+  }),
+
   // ====== Offer Agreements ======
   offers: router({
     // Public: submit agreement (from standalone offer page)

@@ -16,7 +16,7 @@ import {
 import { FileUpload } from "@/components/FileUpload";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { trpc } from "@/lib/trpc";
-import { Sparkles, AlertCircle, Crown, CheckCircle2, ImageIcon, Trash2 } from "lucide-react";
+import { Sparkles, AlertCircle, Crown, CheckCircle2, ImageIcon, Trash2, BookOpen, MessageSquare, Building2 } from "lucide-react";
 import { useState, useRef, useEffect, useMemo } from "react";
 import { toast } from "sonner";
 import { Link } from "wouter";
@@ -127,6 +127,12 @@ export default function LexAI() {
   const { data: subscription, isLoading: subLoading } = trpc.lexai.getSubscription.useQuery();
   const { data: messages, isLoading: messagesLoading } = trpc.lexai.getMessages.useQuery();
   const { data: adminCheck, isLoading: adminLoading } = trpc.auth.isAdmin.useQuery(undefined, {
+    enabled: !!user,
+  });
+  const { data: activationStatus } = trpc.subscriptions.activationStatus.useQuery(undefined, {
+    enabled: !!user,
+  });
+  const { data: onboardingStatus } = trpc.onboarding.isComplete.useQuery(undefined, {
     enabled: !!user,
   });
 
@@ -370,6 +376,99 @@ export default function LexAI() {
               <Link href="/support">
                 <Button variant="outline" className="w-full">
                   {language === 'ar' ? 'تواصل مع الدعم' : 'Contact Support'}
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        </div>
+        </ClientLayout>
+      );
+    }
+
+    // Pending activation — student has a pending subscription (needs to complete course)
+    if (activationStatus?.hasPending) {
+      return (
+        <ClientLayout>
+        <div className="min-h-[calc(100vh-64px)] flex items-center justify-center bg-[var(--color-xf-cream)]">
+          <Card className="max-w-lg mx-4">
+            <CardHeader className="text-center">
+              <div className="mx-auto w-16 h-16 bg-gradient-to-br from-emerald-400 to-emerald-500 rounded-full flex items-center justify-center mb-4">
+                <BookOpen className="h-8 w-8 text-white" />
+              </div>
+              <CardTitle className="text-2xl">
+                {isArabic ? 'أكمل الكورس أولاً' : 'Complete the Course First'}
+              </CardTitle>
+              <CardDescription className="text-base mt-2">
+                {isArabic
+                  ? 'خدمة LexAI ستكون متاحة لك بمجرد إكمال كورس التداول بالكامل. تقدمك الحالي:'
+                  : 'LexAI will be available once you complete the trading course. Your current progress:'}
+              </CardDescription>
+              <div className="mt-4 flex items-center justify-center gap-2">
+                <div className="w-full max-w-[200px] h-3 bg-gray-200 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full transition-all"
+                    style={{ width: `${Math.min(activationStatus.progressPercent ?? 0, 100)}%` }}
+                  />
+                </div>
+                <span className="text-sm font-semibold text-emerald-700">
+                  {activationStatus.progressPercent ?? 0}%
+                </span>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Link href="/courses">
+                <Button className="w-full" size="lg">
+                  {isArabic ? 'العودة للكورس' : 'Continue Course'}
+                </Button>
+              </Link>
+              <p className="text-center text-xs text-muted-foreground">
+                {isArabic
+                  ? 'هل تعتقد أنك جاهز للبدء؟ تواصل مع الدعم لتخطي الكورس.'
+                  : "Think you're ready to start? Contact support to skip the course."}
+              </p>
+              <Link href="/support">
+                <Button variant="outline" className="w-full" size="sm">
+                  <MessageSquare className="h-4 w-4 mr-2" />
+                  {isArabic ? 'تواصل مع الدعم' : 'Contact Support'}
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        </div>
+        </ClientLayout>
+      );
+    }
+
+    // Broker onboarding not complete — student must open broker account first
+    if (onboardingStatus && !onboardingStatus.complete) {
+      return (
+        <ClientLayout>
+        <div className="min-h-[calc(100vh-64px)] flex items-center justify-center bg-[var(--color-xf-cream)]">
+          <Card className="max-w-lg mx-4">
+            <CardHeader className="text-center">
+              <div className="mx-auto w-16 h-16 bg-gradient-to-br from-amber-400 to-amber-500 rounded-full flex items-center justify-center mb-4">
+                <Building2 className="h-8 w-8 text-white" />
+              </div>
+              <CardTitle className="text-2xl">
+                {isArabic ? 'افتح حساب وسيط أولاً' : 'Open a Broker Account First'}
+              </CardTitle>
+              <CardDescription className="text-base mt-2">
+                {isArabic
+                  ? 'لاستخدام LexAI، يجب أولاً فتح حساب تداول حقيقي وإيداع مبلغ بسيط. أكمل خطوات التسجيل لدى الوسيط.'
+                  : 'To use LexAI, you need to open a real trading account and make a small deposit. Complete the broker onboarding steps.'}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Link href="/broker-onboarding">
+                <Button className="w-full btn-primary-xf" size="lg">
+                  <Building2 className="h-4 w-4 mr-2" />
+                  {isArabic ? 'ابدأ التسجيل' : 'Start Broker Onboarding'}
+                </Button>
+              </Link>
+              <Link href="/support">
+                <Button variant="outline" className="w-full" size="sm">
+                  <MessageSquare className="h-4 w-4 mr-2" />
+                  {isArabic ? 'تواصل مع الدعم' : 'Contact Support'}
                 </Button>
               </Link>
             </CardContent>

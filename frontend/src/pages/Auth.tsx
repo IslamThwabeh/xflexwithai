@@ -8,6 +8,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Loader2, ArrowLeft, Mail, KeyRound } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 
 export default function Auth() {
   const { t } = useLanguage();
@@ -19,9 +20,10 @@ export default function Auth() {
   const [otpMessage, setOtpMessage] = useState<string | null>(null);
   const [otpError, setOtpError] = useState<string | null>(null);
   const [resendCooldownSec, setResendCooldownSec] = useState(0);
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, logout } = useAuth();
   const [location, setLocation] = useLocation();
   const autoSubmitFired = useRef(false);
+  const [clearingAdmin, setClearingAdmin] = useState(false);
 
   const nextPath = useMemo(() => {
     if (typeof window === "undefined") return null;
@@ -80,17 +82,20 @@ export default function Auth() {
     refetchOnWindowFocus: false,
   });
 
+  // If an admin session is detected on the student login page, clear it
+  // so the student login form shows (admins have their own /admin/login page)
   useEffect(() => {
-    if (loading || checkingAdmin) return;
+    if (loading || checkingAdmin || clearingAdmin) return;
     if (!isAuthenticated) return;
 
     if (adminCheck?.isAdmin) {
-      setLocation("/admin/dashboard");
+      setClearingAdmin(true);
+      logout().finally(() => setClearingAdmin(false));
       return;
     }
 
     setLocation(nextPath ?? "/courses");
-  }, [adminCheck?.isAdmin, checkingAdmin, isAuthenticated, loading, nextPath, setLocation]);
+  }, [adminCheck?.isAdmin, checkingAdmin, isAuthenticated, loading, nextPath, setLocation, clearingAdmin, logout]);
 
   const requestLoginCode = trpc.auth.requestLoginCode.useMutation();
   const verifyLoginCode = trpc.auth.verifyLoginCode.useMutation();

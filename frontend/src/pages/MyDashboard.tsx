@@ -5,7 +5,7 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { getLoginUrl } from "@/const";
 import { trpc } from "@/lib/trpc";
-import { BookOpen, GraduationCap, Play, CheckCircle2, Calendar, Gift, MessageSquareQuote, Newspaper, AlertCircle, Bot, TrendingUp, Trophy } from "lucide-react";
+import { BookOpen, GraduationCap, Play, CheckCircle2, Calendar, Gift, MessageSquareQuote, Newspaper, AlertCircle, Bot, TrendingUp, Trophy, Building2, ArrowRight } from "lucide-react";
 import { Link } from "wouter";
 import { format } from "date-fns";
 import { useEffect, useRef, useState } from "react";
@@ -53,6 +53,12 @@ export default function MyDashboard() {
     { limit: 2 },
     { enabled: true }
   );
+
+  const { data: onboardingStatus } = trpc.onboarding.getStatus.useQuery(undefined, {
+    enabled: isAuthenticated,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -185,6 +191,106 @@ export default function MyDashboard() {
               {t('dashboard.subtitle')}
             </p>
           </div>
+
+          {/* JOURNEY PROGRESS — visual step tracker */}
+          {totalCourses > 0 && (() => {
+            const courseProgress = enrollments?.[0]?.progressPercentage || 0;
+            const courseComplete = allCoursesCompleted;
+            const onboardingComplete = onboardingStatus?.isComplete ?? false;
+            const onboardingStarted = !!(onboardingStatus?.steps && onboardingStatus.steps.length > 0);
+            const hasLexaiActive = lexaiSubscription && 'isActive' in lexaiSubscription;
+            const hasRecActive = recommendationsAccess?.hasSubscription;
+            const servicesUnlocked = !!(hasLexaiActive || hasRecActive);
+
+            const steps = [
+              {
+                label: isRTL ? 'أكمل الكورس' : 'Complete Course',
+                icon: BookOpen,
+                status: courseComplete ? 'done' as const : 'active' as const,
+                detail: courseComplete
+                  ? (isRTL ? 'مكتمل ✓' : 'Completed ✓')
+                  : `${courseProgress}%`,
+                href: enrollments?.[0] ? `/course/${enrollments[0].courseId}` : '/courses',
+              },
+              {
+                label: isRTL ? 'افتح حساب وسيط' : 'Open Broker Account',
+                icon: Building2,
+                status: onboardingComplete ? 'done' as const : courseComplete ? 'active' as const : 'locked' as const,
+                detail: onboardingComplete
+                  ? (isRTL ? 'مكتمل ✓' : 'Completed ✓')
+                  : onboardingStarted
+                    ? (isRTL ? 'قيد التقدم' : 'In Progress')
+                    : (isRTL ? 'لم يبدأ' : 'Not Started'),
+                href: '/broker-onboarding',
+              },
+              {
+                label: isRTL ? 'LexAI والتوصيات' : 'LexAI & Recommendations',
+                icon: Bot,
+                status: servicesUnlocked ? 'done' as const : onboardingComplete ? 'active' as const : 'locked' as const,
+                detail: servicesUnlocked
+                  ? (isRTL ? 'مفعّل ✓' : 'Active ✓')
+                  : (isRTL ? 'مقفل' : 'Locked'),
+                href: '/lexai',
+              },
+            ];
+
+            return (
+              <Card className="border-0 shadow-md overflow-hidden">
+                <div className="bg-gradient-to-r from-emerald-500 to-teal-600 px-5 py-3">
+                  <h2 className="text-white font-bold text-base flex items-center gap-2">
+                    <GraduationCap className="h-5 w-5" />
+                    {isRTL ? 'رحلتك التعليمية' : 'Your Learning Journey'}
+                  </h2>
+                </div>
+                <CardContent className="p-5">
+                  {/* Progress connector line */}
+                  <div className="relative">
+                    {/* Connector line behind circles */}
+                    <div className="absolute top-5 left-0 right-0 hidden sm:block" style={{ height: 2, zIndex: 0 }}>
+                      <div className="mx-auto" style={{ width: '66%' }}>
+                        <div className="h-0.5 bg-gray-200 w-full rounded" />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 relative z-10">
+                      {steps.map((step, i) => {
+                        const StepIcon = step.icon;
+                        const isDone = step.status === 'done';
+                        const isActive = step.status === 'active';
+                        const isLocked = step.status === 'locked';
+
+                        return (
+                          <Link key={i} href={isLocked ? '#' : step.href}>
+                            <div className={`flex flex-col items-center text-center p-3 rounded-xl transition-colors ${
+                              isDone ? 'bg-green-50' : isActive ? 'bg-emerald-50 hover:bg-emerald-100 cursor-pointer' : 'bg-gray-50 opacity-60'
+                            }`}>
+                              <div className={`w-10 h-10 rounded-full flex items-center justify-center mb-2 ${
+                                isDone ? 'bg-green-500 text-white' : isActive ? 'bg-emerald-500 text-white' : 'bg-gray-300 text-white'
+                              }`}>
+                                {isDone ? <CheckCircle2 className="h-5 w-5" /> : <StepIcon className="h-5 w-5" />}
+                              </div>
+                              <span className={`text-sm font-semibold ${
+                                isDone ? 'text-green-700' : isActive ? 'text-emerald-700' : 'text-gray-400'
+                              }`}>{step.label}</span>
+                              <span className={`text-xs mt-1 ${
+                                isDone ? 'text-green-600' : isActive ? 'text-emerald-600' : 'text-gray-400'
+                              }`}>{step.detail}</span>
+                              {isActive && !isLocked && (
+                                <span className="text-xs text-emerald-500 mt-1 flex items-center gap-1">
+                                  <ArrowRight className="h-3 w-3" />
+                                  {isRTL ? 'ابدأ الآن' : 'Start Now'}
+                                </span>
+                              )}
+                            </div>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })()}
 
           {/* ONE-TIME CONGRATS BANNER — shown only once after completion */}
           {allCoursesCompleted && showCongrats && (
