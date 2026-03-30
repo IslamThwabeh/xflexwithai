@@ -4054,6 +4054,18 @@ export async function getPendingActivationStatus(userId: number) {
   const db = await getDb();
   if (!db) return { hasPending: false, lexai: null, recommendation: null, progressPercent: 0 };
 
+  // If admin-skipped, student should not be gated by pending activation
+  const [enrollment] = await db
+    .select({ courseId: enrollments.courseId, progressPercentage: enrollments.progressPercentage, isAdminSkipped: enrollments.isAdminSkipped })
+    .from(enrollments)
+    .where(eq(enrollments.userId, userId))
+    .orderBy(desc(enrollments.enrolledAt))
+    .limit(1);
+
+  if (enrollment?.isAdminSkipped) {
+    return { hasPending: false, lexai: null, recommendation: null, progressPercent: 100 };
+  }
+
   const [lexaiSub] = await db
     .select()
     .from(lexaiSubscriptions)
@@ -4064,14 +4076,6 @@ export async function getPendingActivationStatus(userId: number) {
     .select()
     .from(recommendationSubscriptions)
     .where(and(eq(recommendationSubscriptions.userId, userId), eq(recommendationSubscriptions.isPendingActivation, true)))
-    .limit(1);
-
-  // Get course progress from the first enrolled course
-  const [enrollment] = await db
-    .select({ courseId: enrollments.courseId, progressPercentage: enrollments.progressPercentage })
-    .from(enrollments)
-    .where(eq(enrollments.userId, userId))
-    .orderBy(desc(enrollments.enrolledAt))
     .limit(1);
 
   const progressPercent = enrollment?.progressPercentage ?? 0;
@@ -4109,40 +4113,39 @@ export async function activateStudentSubscriptions(userId: number, isAutoActivat
   const entitlementDays = await getUserEntitlementDays(userId);
   const realEndDate = buildEndDateFromDays(now, entitlementDays);
 
-  const [lexaiSub] = await db
+  // Activate ALL pending subs (not just the first) to handle duplicate subscriptions
+  const pendingLexai = await db
     .select()
     .from(lexaiSubscriptions)
-    .where(and(eq(lexaiSubscriptions.userId, userId), eq(lexaiSubscriptions.isPendingActivation, true)))
-    .limit(1);
+    .where(and(eq(lexaiSubscriptions.userId, userId), eq(lexaiSubscriptions.isPendingActivation, true)));
 
-  const [recSub] = await db
+  const pendingRec = await db
     .select()
     .from(recommendationSubscriptions)
-    .where(and(eq(recommendationSubscriptions.userId, userId), eq(recommendationSubscriptions.isPendingActivation, true)))
-    .limit(1);
+    .where(and(eq(recommendationSubscriptions.userId, userId), eq(recommendationSubscriptions.isPendingActivation, true)));
 
-  if (lexaiSub) {
+  for (const sub of pendingLexai) {
     await db.update(lexaiSubscriptions).set({
       isPendingActivation: false,
       studentActivatedAt: now.toISOString(),
       startDate: now.toISOString(),
       endDate: realEndDate.toISOString(),
       updatedAt: now.toISOString(),
-    }).where(eq(lexaiSubscriptions.id, lexaiSub.id));
+    }).where(eq(lexaiSubscriptions.id, sub.id));
   }
 
-  if (recSub) {
+  for (const sub of pendingRec) {
     await db.update(recommendationSubscriptions).set({
       isPendingActivation: false,
       studentActivatedAt: now.toISOString(),
       startDate: now.toISOString(),
       endDate: realEndDate.toISOString(),
       updatedAt: now.toISOString(),
-    }).where(eq(recommendationSubscriptions.id, recSub.id));
+    }).where(eq(recommendationSubscriptions.id, sub.id));
   }
 
   return {
-    activated: !!(lexaiSub || recSub),
+    activated: !!(pendingLexai.length || pendingRec.length),
     isAutoActivation,
     endDate: realEndDate.toISOString(),
   };
@@ -5463,6 +5466,13 @@ export async function listOfferAgreements(offerSlug?: string) {
   return db.select().from(offerAgreements)
     .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(desc(offerAgreements.agreedAt));
+}
+
+export async function deleteOfferAgreement(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error('DB not available');
+  await db.delete(offerAgreements).where(eq(offerAgreements.id, id));
+  return { success: true };
 }
 
 // ── Broker Onboarding ────────────────────────────────────────

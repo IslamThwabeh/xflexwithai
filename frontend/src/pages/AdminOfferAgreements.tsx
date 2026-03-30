@@ -1,13 +1,25 @@
-import { FileCheck, Download } from 'lucide-react';
+import { FileCheck, Download, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { trpc } from '@/lib/trpc';
 import DashboardLayout from '@/components/DashboardLayout';
+import { useState } from 'react';
 
 export default function AdminOfferAgreements() {
   const { language } = useLanguage();
   const isRtl = language === 'ar';
+  const utils = trpc.useUtils();
   const { data: agreements, isLoading } = trpc.offers.listAgreements.useQuery({ offerSlug: 'eid-fitr-2026' });
+  const deleteMutation = trpc.offers.deleteAgreement.useMutation({
+    onSuccess: () => utils.offers.listAgreements.invalidate(),
+  });
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+
+  const handleDelete = (id: number, name: string) => {
+    if (!confirm(isRtl ? `هل أنت متأكد من حذف موافقة "${name}"؟` : `Delete agreement for "${name}"?`)) return;
+    setDeletingId(id);
+    deleteMutation.mutate({ id }, { onSettled: () => setDeletingId(null) });
+  };
 
   const exportCSV = () => {
     if (!agreements?.length) return;
@@ -65,15 +77,16 @@ export default function AdminOfferAgreements() {
                   <th className="px-4 py-3 text-start font-semibold">{isRtl ? 'الواتساب' : 'WhatsApp'}</th>
                   <th className="px-4 py-3 text-start font-semibold">{isRtl ? 'تاريخ الموافقة' : 'Agreed At'}</th>
                   <th className="px-4 py-3 text-start font-semibold">IP</th>
+                  <th className="px-4 py-3 text-center font-semibold">{isRtl ? 'إجراءات' : 'Actions'}</th>
                 </tr>
               </thead>
               <tbody>
                 {isLoading ? (
-                  <tr><td colSpan={6} className="px-4 py-10 text-center text-muted-foreground">
+                  <tr><td colSpan={7} className="px-4 py-10 text-center text-muted-foreground">
                     {isRtl ? 'جارٍ التحميل...' : 'Loading...'}
                   </td></tr>
                 ) : !agreements?.length ? (
-                  <tr><td colSpan={6} className="px-4 py-10 text-center text-muted-foreground">
+                  <tr><td colSpan={7} className="px-4 py-10 text-center text-muted-foreground">
                     {isRtl ? 'لا توجد موافقات بعد' : 'No agreements yet'}
                   </td></tr>
                 ) : (
@@ -95,6 +108,16 @@ export default function AdminOfferAgreements() {
                         })}
                       </td>
                       <td className="px-4 py-3 text-xs text-muted-foreground font-mono">{a.ipAddress || '—'}</td>
+                      <td className="px-4 py-3 text-center">
+                        <button
+                          onClick={() => handleDelete(a.id, a.fullName)}
+                          disabled={deletingId === a.id}
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium text-red-600 hover:bg-red-50 transition disabled:opacity-50"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          {deletingId === a.id ? '...' : (isRtl ? 'حذف' : 'Delete')}
+                        </button>
+                      </td>
                     </tr>
                   ))
                 )}

@@ -63,50 +63,28 @@
       color: #c9952a;
     }
 
-    /* Terms section */
-    .terms-section {
-      padding: 24px 28px;
+    .terms-notice {
+      text-align: center;
+      padding: 20px 28px 0;
     }
-    .terms-section h2 {
-      font-size: 20px;
-      font-weight: 800;
-      color: #1a1a2e;
-      margin-bottom: 16px;
-      padding-bottom: 8px;
-      border-bottom: 2px solid rgba(26,26,46,0.12);
-    }
-    .terms-block {
-      margin-bottom: 20px;
-    }
-    .terms-block h3 {
-      font-size: 16px;
-      font-weight: 700;
-      color: #2d2d44;
-      margin-bottom: 10px;
-    }
-    .terms-block p, .terms-block li {
-      font-size: 14px;
-      line-height: 1.9;
-      color: #4a4a5a;
-    }
-    .terms-block ul, .terms-block ol {
-      padding-right: 20px;
-      margin-top: 6px;
-    }
-    .terms-block li { margin-bottom: 6px; }
-    .warning-box {
-      background: #fef2f2;
-      border: 1px solid #fecaca;
+    .terms-notice a {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 10px 24px;
+      background: rgba(201,149,42,0.1);
+      color: #92400e;
+      border: 1.5px solid #fde68a;
       border-radius: 12px;
-      padding: 14px 18px;
-      margin-top: 10px;
+      font-size: 15px;
+      font-weight: 700;
+      text-decoration: none;
+      transition: all 0.2s;
     }
-    .warning-box p {
-      color: #991b1b;
-      font-size: 13px;
-      line-height: 1.8;
+    .terms-notice a:hover {
+      background: rgba(201,149,42,0.2);
+      border-color: #c9952a;
     }
-    .warning-box strong { color: #b91c1c; }
 
     /* Form */
     .form-section {
@@ -242,7 +220,6 @@
 
     @media (max-width: 500px) {
       .header h1 { font-size: 24px; }
-      .terms-section { padding: 20px 20px; }
       .form-section { padding: 0 20px 20px; }
     }
   </style>
@@ -258,60 +235,8 @@
 
       <div class="eid-greeting">🌙 كل عام وأنتم بخير — عيد فطر سعيد 🌙</div>
 
-      <!-- Terms & Conditions -->
-      <div class="terms-section">
-        <h2>📋 الشروط والأحكام التفصيلية</h2>
-
-        <div class="terms-block">
-          <h3>أولاً: تعريف العرض</h3>
-          <p>تقدّم أكاديمية XFlex عرضاً ترويجياً لفترة محدودة بعنوان "ضمان الاستفادة"، يتيح للمشترك الجديد تجربة الباقة لمدة عشرة (١٠) أيام تقويمية كاملة من وقت الدفع، مع إمكانية استرداد كامل المبلغ في حال استيفاء جميع الشروط الواردة أدناه.</p>
-        </div>
-
-        <div class="terms-block">
-          <h3>ثانياً: تعريف "الالتزام"</h3>
-          <p>يُعتبر المشترك ملتزماً إذا تحققت جميع الشروط التالية مجتمعة:</p>
-          <ol>
-            <li>إتمام مشاهدة <strong>٢٠ حلقة على الأقل</strong> من أصل ٣٩ حلقة خلال فترة الـ ١٠ أيام</li>
-            <li>مشاهدة <strong>٣ حلقات يومياً كحد أدنى</strong> في ٧ أيام على الأقل من أصل ١٠</li>
-            <li>عدم مشاركة المحتوى التعليمي أو بيانات الاشتراك مع أي طرف ثالث</li>
-          </ol>
-        </div>
-
-        <div class="terms-block">
-          <h3>ثالثاً: تعريف "عدم الاستفادة"</h3>
-          <p>يحق للمشترك المطالبة بعدم الاستفادة فقط في الحالات التالية:</p>
-          <ol>
-            <li>عدم اجتياز اختبار التقييم الذي تعدّه الإدارة بعد فترة الـ ١٠ أيام (بنسبة أقل من ٥٠٪)</li>
-            <li>أو تقديم شرح مكتوب مفصّل عن أسباب عدم الاستفادة، تقبله الإدارة وفق تقديرها</li>
-          </ol>
-          <div class="warning-box">
-            <p><strong>⚠️ لا يُعتبر عدم استفادة:</strong></p>
-            <p>• عدم وجود وقت كافٍ أو انشغال المشترك</p>
-            <p>• تغيّر رأي المشترك أو رغبته بعدم الاستمرار</p>
-            <p>• ادعاء عدم الاستفادة دون استيفاء شرط الالتزام (ثانياً)</p>
-          </div>
-        </div>
-
-        <div class="terms-block">
-          <h3>رابعاً: آلية طلب الاسترداد</h3>
-          <ol>
-            <li>يُقدَّم الطلب <strong>قبل انتهاء اليوم العاشر</strong> من تاريخ الدفع عبر الدردشة المباشرة في قناة التليجرام</li>
-            <li>تراجع الإدارة سجلات المتابعة للتحقق من الالتزام</li>
-            <li>يتم الرد على الطلب خلال ٥ أيام عمل</li>
-            <li>في حال الموافقة، يُحوَّل المبلغ خلال ٧-١٤ يوم عمل بنفس وسيلة الدفع الأصلية</li>
-          </ol>
-        </div>
-
-        <div class="terms-block">
-          <h3>خامساً: أحكام عامة</h3>
-          <ul>
-            <li>هذا العرض ساري لفترة محدودة ولا يُجمع مع أي عرض أو خصم آخر</li>
-            <li>يحق للإدارة تعديل أو إلغاء العرض في أي وقت دون إشعار مسبق، على ألّا يؤثر ذلك على المشتركين الحاليين</li>
-            <li>يخضع هذا الاتفاق للقوانين المعمول بها في المملكة الأردنية الهاشمية</li>
-            <li>في حال وجود نزاع، يتم حلّه ودّياً أولاً، وإلّا تختص محاكم عمّان بالنظر فيه</li>
-            <li>الاشتراك في هذا العرض يعني موافقة المشترك على جميع الشروط المذكورة أعلاه</li>
-          </ul>
-        </div>
+      <div class="terms-notice">
+        <a href="terms.html" target="_blank">📋 اقرأ الشروط والأحكام كاملة قبل الموافقة</a>
       </div>
 
       <!-- Form -->
@@ -359,7 +284,7 @@
           <div class="checkbox-row" onclick="document.getElementById('agreeCheck').click()">
             <input type="checkbox" id="agreeCheck" required onclick="event.stopPropagation()">
             <label for="agreeCheck" onclick="event.stopPropagation()">
-              أقر بأنني قرأت جميع الشروط والأحكام المذكورة أعلاه وأوافق عليها بالكامل، وأفهم أن هذا العرض مشروط بالالتزام الكامل بالشروط الواردة.
+              أقر بأنني قرأت جميع <a href="terms.html" target="_blank" style="color:#c9952a; font-weight:700; text-decoration:underline;" onclick="event.stopPropagation()">الشروط والأحكام</a> وأوافق عليها بالكامل، وأفهم أن هذا العرض مشروط بالالتزام الكامل بالشروط الواردة.
             </label>
           </div>
 

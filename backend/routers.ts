@@ -6,7 +6,6 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { logger } from "./_core/logger";
 import * as db from "./db";
-import { storagePut } from "./storage";
 import { storagePutR2, storageArchiveR2 } from "./storage-r2";
 import { analyzeLexai } from "./_core/lexai";
 import { hashPassword, verifyPassword, generateToken, isValidEmail, isValidPassword } from "./_core/auth";
@@ -1557,6 +1556,11 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         logger.info('[Upload] Uploading image', { fileName: input.fileName });
         
+        const env = getWorkerEnv();
+        if (!env?.VIDEOS_BUCKET) {
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'R2 bucket not configured' });
+        }
+
         try {
           // Generate unique file key
           const randomSuffix = Math.random().toString(36).substring(7);
@@ -1565,8 +1569,8 @@ export const appRouter = router({
           // Convert base64 to buffer
           const buffer = Buffer.from(input.fileData, 'base64');
           
-          // Upload to S3
-          const result = await storagePut(fileKey, buffer, input.contentType);
+          // Upload to R2
+          const result = await storagePutR2(env.VIDEOS_BUCKET, fileKey, buffer, input.contentType);
           
           logger.info('[Upload] Image uploaded successfully', { url: result.url });
           return { url: result.url, key: result.key };
@@ -1585,6 +1589,11 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         logger.info('[Upload] Uploading video', { fileName: input.fileName });
         
+        const env = getWorkerEnv();
+        if (!env?.VIDEOS_BUCKET) {
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'R2 bucket not configured' });
+        }
+
         try {
           // Generate unique file key
           const randomSuffix = Math.random().toString(36).substring(7);
@@ -1593,8 +1602,8 @@ export const appRouter = router({
           // Convert base64 to buffer
           const buffer = Buffer.from(input.fileData, 'base64');
           
-          // Upload to S3
-          const result = await storagePut(fileKey, buffer, input.contentType);
+          // Upload to R2
+          const result = await storagePutR2(env.VIDEOS_BUCKET, fileKey, buffer, input.contentType);
           
           logger.info('[Upload] Video uploaded successfully', { url: result.url });
           return { url: result.url, key: result.key };
@@ -4356,6 +4365,13 @@ ${qaText}`;
       .input(z.object({ offerSlug: z.string().optional() }).optional())
       .query(async ({ input }) => {
         return db.listOfferAgreements(input?.offerSlug);
+      }),
+
+    // Admin: delete agreement
+    deleteAgreement: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        return db.deleteOfferAgreement(input.id);
       }),
   }),
 });
