@@ -458,7 +458,7 @@ export default function LexAI() {
                   : 'To use LexAI, you need to open a real trading account and make a small deposit. Complete the broker onboarding steps.'}
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="flex flex-col gap-4">
               <Link href="/broker-onboarding">
                 <Button className="w-full btn-primary-xf" size="lg">
                   <Building2 className="h-4 w-4 mr-2" />
