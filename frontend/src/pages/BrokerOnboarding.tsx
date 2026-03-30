@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { Building2, CheckCircle2, Upload, Clock, XCircle, Camera, MessageSquare, Loader2, ChevronRight, ChevronLeft, ArrowRight, BookOpen, Play } from 'lucide-react';
+import { Building2, CheckCircle2, Upload, Clock, XCircle, Camera, MessageSquare, Loader2, ChevronRight, ChevronLeft, ArrowRight, BookOpen, Play, Eye, ShieldCheck } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -419,12 +419,25 @@ export default function BrokerOnboarding() {
                   {/* Pending review */}
                   {isPending && (
                     <div className="text-center py-4">
-                      <Clock className="h-8 w-8 text-amber-500 mx-auto mb-2" />
-                      <p className="text-sm text-muted-foreground">
-                        {isArabic
-                          ? 'تم رفع الإثبات وبانتظار مراجعة المسؤول'
-                          : 'Proof uploaded — waiting for admin review'}
-                      </p>
+                      {stepData.aiConfidence != null && stepData.aiConfidence >= 0.9 ? (
+                        <>
+                          <ShieldCheck className="h-8 w-8 text-emerald-500 mx-auto mb-2" />
+                          <p className="text-sm text-emerald-700 font-medium">
+                            {isArabic
+                              ? 'تم التحقق تلقائياً — جاري الاعتماد'
+                              : 'AI verified — auto-approving...'}
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <Clock className="h-8 w-8 text-amber-500 mx-auto mb-2" />
+                          <p className="text-sm text-muted-foreground">
+                            {isArabic
+                              ? 'تم رفع الإثبات — جاري المراجعة'
+                              : 'Proof uploaded — under review'}
+                          </p>
+                        </>
+                      )}
                       {stepData.proofUrl && (
                         <img
                           src={stepData.proofUrl}
@@ -443,6 +456,7 @@ export default function BrokerOnboarding() {
                         <p className="text-sm text-red-700 font-medium">{isArabic ? 'سبب الرفض:' : 'Rejection reason:'}</p>
                         <p className="text-sm text-red-600 mt-1">{stepData.rejectionReason || (isArabic ? 'لم يتم تحديد سبب' : 'No reason provided')}</p>
                       </div>
+                      <ProofSampleGuide step={step} isArabic={isArabic} />
                       <UploadButton
                         isArabic={isArabic}
                         uploading={uploading && uploadStep === step}
@@ -453,11 +467,14 @@ export default function BrokerOnboarding() {
 
                   {/* Not started or current — upload form */}
                   {(isNotStarted && isCurrent) && (
-                    <UploadButton
-                      isArabic={isArabic}
-                      uploading={uploading && uploadStep === step}
-                      onFileSelect={(file) => handleUploadProof(file, step)}
-                    />
+                    <div className="space-y-0">
+                      <ProofSampleGuide step={step} isArabic={isArabic} />
+                      <UploadButton
+                        isArabic={isArabic}
+                        uploading={uploading && uploadStep === step}
+                        onFileSelect={(file) => handleUploadProof(file, step)}
+                      />
+                    </div>
                   )}
                 </CardContent>
               </Card>
@@ -524,6 +541,88 @@ function UploadButton({ isArabic, uploading, onFileSelect }: {
       <p className="text-xs text-muted-foreground mt-2 text-center">
         {isArabic ? 'صورة واضحة (JPG, PNG) — الحد الأقصى 10 ميغابايت' : 'Clear screenshot (JPG, PNG) — max 10MB'}
       </p>
+    </div>
+  );
+}
+
+// Sample proof guide — shows a styled mockup of what valid proof looks like
+function ProofSampleGuide({ step, isArabic }: { step: StepKey; isArabic: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+
+  const guides: Record<string, { titleAr: string; titleEn: string; fields: { labelAr: string; labelEn: string; valueAr: string; valueEn: string }[]; noteAr: string; noteEn: string }> = {
+    open_account: {
+      titleAr: 'نموذج إثبات فتح الحساب',
+      titleEn: 'Account Opening Proof Example',
+      fields: [
+        { labelAr: 'الموضوع', labelEn: 'Subject', valueAr: 'ربط حسابك مع الوسيط المعرّف', valueEn: 'Link to IB Account' },
+        { labelAr: 'من', labelEn: 'From', valueAr: 'noreply@broker.com', valueEn: 'noreply@broker.com' },
+        { labelAr: 'رقم الحساب', labelEn: 'Account No.', valueAr: 'C0XXXXXXX', valueEn: 'C0XXXXXXX' },
+        { labelAr: 'الحالة', labelEn: 'Status', valueAr: 'تم ربط حساب التداول بنجاح', valueEn: 'Trading account linked successfully' },
+      ],
+      noteAr: 'ارفع صورة (سكرين شوت) للإيميل أو الرسالة التي تُثبت فتح الحساب وربطه مع الوسيط المعرّف',
+      noteEn: 'Upload a screenshot of the email or message confirming your account was opened and linked to the introducing broker',
+    },
+    verify_account: {
+      titleAr: 'نموذج إثبات التوثيق',
+      titleEn: 'Verification Proof Example',
+      fields: [
+        { labelAr: 'الموضوع', labelEn: 'Subject', valueAr: 'تم التحقق من حسابك', valueEn: 'Account Verified' },
+        { labelAr: 'الحالة', labelEn: 'Status', valueAr: 'تم التحقق من الهوية بنجاح ✓', valueEn: 'Identity verified successfully ✓' },
+        { labelAr: 'المستوى', labelEn: 'Level', valueAr: 'التحقق الكامل', valueEn: 'Fully Verified' },
+      ],
+      noteAr: 'ارفع صورة توضح أن حسابك تم توثيقه بالكامل (من صفحة الملف الشخصي أو إيميل التأكيد)',
+      noteEn: 'Upload a screenshot showing your account is fully verified (from profile page or confirmation email)',
+    },
+    deposit: {
+      titleAr: 'نموذج إثبات الإيداع',
+      titleEn: 'Deposit Proof Example',
+      fields: [
+        { labelAr: 'نوع العملية', labelEn: 'Transaction', valueAr: 'إيداع', valueEn: 'Deposit' },
+        { labelAr: 'المبلغ', labelEn: 'Amount', valueAr: '$XX.XX', valueEn: '$XX.XX' },
+        { labelAr: 'الحالة', labelEn: 'Status', valueAr: 'تمت الموافقة ✓', valueEn: 'Approved ✓' },
+        { labelAr: 'رقم الحساب', labelEn: 'Account', valueAr: 'C0XXXXXXX', valueEn: 'C0XXXXXXX' },
+      ],
+      noteAr: 'ارفع صورة تُثبت الإيداع (سجل المعاملات أو إيميل التأكيد) — الحد الأدنى $10',
+      noteEn: 'Upload a screenshot showing the deposit (transaction history or confirmation email) — minimum $10',
+    },
+  };
+
+  const guide = guides[step];
+  if (!guide) return null;
+
+  return (
+    <div className="mb-4">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center gap-2 text-sm font-medium text-emerald-700 hover:text-emerald-800 transition-colors mb-2"
+      >
+        <Eye className="h-4 w-4" />
+        {isArabic ? 'شاهد نموذج الإثبات المطلوب' : 'See what proof looks like'}
+        <ChevronRight className={`h-3 w-3 transition-transform ${expanded ? 'rotate-90' : ''}`} />
+      </button>
+
+      {expanded && (
+        <div className="rounded-xl border-2 border-dashed border-emerald-200 bg-emerald-50/30 p-4 space-y-3">
+          <div className="flex items-center gap-2 text-xs font-semibold text-emerald-600 uppercase tracking-wide">
+            <ShieldCheck className="h-4 w-4" />
+            {isArabic ? guide.titleAr : guide.titleEn}
+          </div>
+
+          {/* Mock email/screen */}
+          <div className="bg-white rounded-lg border border-gray-200 p-3 space-y-2 text-sm">
+            {guide.fields.map((f, i) => (
+              <div key={i} className="flex gap-2">
+                <span className="text-gray-400 min-w-[80px] text-xs">{isArabic ? f.labelAr : f.labelEn}:</span>
+                <span className="font-medium text-gray-700 text-xs">{isArabic ? f.valueAr : f.valueEn}</span>
+              </div>
+            ))}
+          </div>
+
+          <p className="text-xs text-emerald-700 bg-emerald-100/60 rounded-lg px-3 py-2">
+            💡 {isArabic ? guide.noteAr : guide.noteEn}
+          </p>
+        </div>
+      )}
     </div>
   );
 }

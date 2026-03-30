@@ -239,6 +239,113 @@ const ensureEpisodeUnlockedForUser = async (userId: number, courseId: number, ep
   return { episode, episodes: sortedEpisodes };
 };
 
+// ============================================================================
+// AI Proof Verification for Broker Onboarding
+// ============================================================================
+const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
+
+async function verifyOnboardingProofWithAI(stepId: number, step: string, proofUrl: string) {
+  const prompts: Record<string, string> = {
+    open_account: `You are verifying a broker onboarding proof image. The student claims they opened a real trading account with a broker.
+
+Analyze this image and determine if it is a legitimate proof of account opening. Look for:
+- Email confirmation from a broker (e.g. Equiti, XM, Exness, etc.)
+- Account number or client ID visible
+- Mention of account creation, linking, or registration
+- Official broker branding/letterhead
+
+Return a JSON object with exactly these fields:
+{"confidence": 0.0 to 1.0, "reason": "brief explanation"}
+
+confidence should be >= 0.9 if the image clearly shows a broker account opening confirmation.
+confidence should be < 0.5 if the image is unrelated, blurry, or suspicious.
+Respond ONLY with the JSON object, nothing else.`,
+
+    verify_account: `You are verifying a broker onboarding proof image. The student claims their trading account identity verification is complete.
+
+Analyze this image and determine if it shows proof of account verification. Look for:
+- Verification status showing "verified" or "approved"
+- Identity verification confirmation email or screenshot
+- Broker platform showing verified badge/status
+- Official broker branding
+
+Return a JSON object with exactly these fields:
+{"confidence": 0.0 to 1.0, "reason": "brief explanation"}
+
+confidence should be >= 0.9 if the image clearly shows verified account status.
+Respond ONLY with the JSON object, nothing else.`,
+
+    deposit: `You are verifying a broker onboarding proof image. The student claims they deposited at least $10 into their trading account.
+
+Analyze this image and determine if it shows proof of a deposit. Look for:
+- Transaction history showing a deposit
+- Deposit confirmation email
+- Amount visible (should be >= $10)
+- Account balance or equity showing funds
+- Official broker branding
+
+Return a JSON object with exactly these fields:
+{"confidence": 0.0 to 1.0, "reason": "brief explanation"}
+
+confidence should be >= 0.9 if the image clearly shows a deposit of $10 or more.
+Respond ONLY with the JSON object, nothing else.`,
+  };
+
+  const prompt = prompts[step];
+  if (!prompt) return; // No AI check for select_broker
+
+  const response = await fetch(OPENAI_API_URL, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${ENV.openaiApiKey}`,
+    },
+    body: JSON.stringify({
+      model: "gpt-4o",
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: prompt },
+            { type: "image_url", image_url: { url: proofUrl, detail: "low" } },
+          ],
+        },
+      ],
+      max_tokens: 200,
+      temperature: 0,
+    }),
+  });
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    logger.error('[Onboarding AI] OpenAI request failed', { status: response.status, detail });
+    return;
+  }
+
+  const data: any = await response.json();
+  const text = data?.choices?.[0]?.message?.content?.trim() ?? "";
+
+  // Parse JSON from response
+  let confidence = 0;
+  let reason = "AI analysis failed";
+  try {
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      confidence = Math.max(0, Math.min(1, Number(parsed.confidence) || 0));
+      reason = String(parsed.reason || "No reason provided").substring(0, 500);
+    }
+  } catch {
+    logger.error('[Onboarding AI] Failed to parse response', { text });
+    return;
+  }
+
+  logger.info('[Onboarding AI] Verification result', { stepId, step, confidence, reason });
+
+  // Save result (auto-approves if confidence >= 0.9 via saveOnboardingAiResult)
+  await db.saveOnboardingAiResult(stepId, confidence, reason);
+}
+
 export const appRouter = router({
   system: systemRouter,
   
@@ -4291,7 +4398,16 @@ ${qaText}`;
       .mutation(async ({ ctx, input }) => {
         const userId = ctx.user?.id;
         if (!userId) throw new Error('Not authenticated');
-        return db.submitOnboardingProof(userId, input.step, input.proofUrl, input.proofType);
+        const result = await db.submitOnboardingProof(userId, input.step, input.proofUrl, input.proofType);
+
+        // Fire-and-forget AI verification (don't block the response)
+        if (result.stepId && ENV.openaiApiKey) {
+          verifyOnboardingProofWithAI(result.stepId, input.step, input.proofUrl).catch((err) => {
+            logger.error('[Onboarding AI] Verification failed', { stepId: result.stepId, error: String(err) });
+          });
+        }
+
+        return result;
       }),
 
     // Admin: get pending proofs for review

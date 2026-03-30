@@ -5582,7 +5582,7 @@ export async function submitOnboardingProof(userId: number, step: string, proofU
     updatedAt: now,
   }).where(eq(brokerOnboarding.id, row.id));
 
-  return { success: true };
+  return { success: true, stepId: row.id };
 }
 
 /**
