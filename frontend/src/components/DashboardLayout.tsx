@@ -53,24 +53,35 @@ import {
   Activity,
   Building2,
   FileCheck,
+  Moon,
+  Sun,
+  ChevronDown,
+  ChevronRight,
+  BarChart3,
+  Megaphone,
+  GraduationCap,
+  ShieldCheck,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState, lazy, Suspense } from "react";
+import { useTheme } from "@/contexts/ThemeContext";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 import { Button } from "./ui/button";
 
 // Menu sections use i18n keys – resolved at render time
 type MenuItem = { icon: any; labelKey: string; path: string; descKey?: string };
-type MenuSection = { labelKey: string; items: MenuItem[] };
+type MenuSection = { icon: any; labelKey: string; items: MenuItem[] };
 
 const menuSectionsDef: MenuSection[] = [
   {
+    icon: LayoutDashboard,
     labelKey: "admin.sidebar.overview",
     items: [
       { icon: LayoutDashboard, labelKey: "admin.sidebar.dashboard", path: "/admin/dashboard" },
     ]
   },
   {
+    icon: ShoppingCart,
     labelKey: "admin.sidebar.sales",
     items: [
       { icon: ShoppingCart, labelKey: "admin.sidebar.orders", path: "/admin/orders" },
@@ -82,6 +93,7 @@ const menuSectionsDef: MenuSection[] = [
     ]
   },
   {
+    icon: GraduationCap,
     labelKey: "admin.sidebar.learning",
     items: [
       { icon: BookOpen, labelKey: "admin.sidebar.courses", path: "/admin/courses" },
@@ -89,6 +101,7 @@ const menuSectionsDef: MenuSection[] = [
     ]
   },
   {
+    icon: Megaphone,
     labelKey: "admin.sidebar.content",
     items: [
       { icon: FileText, labelKey: "admin.sidebar.articles", path: "/admin/articles" },
@@ -97,12 +110,14 @@ const menuSectionsDef: MenuSection[] = [
     ]
   },
   {
+    icon: Users,
     labelKey: "admin.sidebar.students",
     items: [
       { icon: Users, labelKey: "admin.sidebar.students", path: "/admin/students" },
     ]
   },
   {
+    icon: ShieldCheck,
     labelKey: "admin.sidebar.team",
     items: [
       { icon: Headphones, labelKey: "admin.sidebar.supportChat", path: "/admin/support" },
@@ -110,6 +125,7 @@ const menuSectionsDef: MenuSection[] = [
     ]
   },
   {
+    icon: BarChart3,
     labelKey: "admin.sidebar.reports",
     items: [
       { icon: DollarSign, labelKey: "admin.sidebar.revenue", path: "/admin/reports/revenue" },
@@ -118,6 +134,7 @@ const menuSectionsDef: MenuSection[] = [
     ]
   },
   {
+    icon: Star,
     labelKey: "admin.sidebar.moderation",
     items: [
       { icon: Star, labelKey: "admin.sidebar.reviews", path: "/admin/reviews" },
@@ -126,6 +143,7 @@ const menuSectionsDef: MenuSection[] = [
     ]
   },
   {
+    icon: Briefcase,
     labelKey: "admin.sidebar.careers",
     items: [
       { icon: Briefcase, labelKey: "admin.sidebar.jobsApplications", path: "/admin/jobs" },
@@ -173,7 +191,7 @@ export default function DashboardLayout({
 
   if (!user) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-[#faf7f2]">
+      <div className="flex items-center justify-center min-h-screen bg-[#faf7f2] dark:bg-[#0b1120]">
         <div className="flex flex-col items-center gap-8 p-8 max-w-md w-full">
           <div className="flex flex-col items-center gap-6">
             <div className="relative group">
@@ -234,6 +252,7 @@ function DashboardLayoutContent({
   const [location, setLocation] = useLocation();
   const { t, language, setLanguage, isRTL } = useLanguage();
   const { state, toggleSidebar } = useSidebar();
+  const { theme, toggleTheme } = useTheme();
   const isCollapsed = state === "collapsed";
   const [isResizing, setIsResizing] = useState(false);
   const [showAdminSearch, setShowAdminSearch] = useState(false);
@@ -244,6 +263,39 @@ function DashboardLayoutContent({
   const activeMenuItem = menuSectionsDef
     .flatMap(section => section.items)
     .find(item => item.path === location);
+
+  // Find which section contains the active item
+  const activeSectionIndex = menuSectionsDef.findIndex(section =>
+    section.items.some(item => item.path === location)
+  );
+
+  // Track which sections are expanded — auto-expand the active one
+  const [expandedSections, setExpandedSections] = useState<Set<number>>(() => {
+    const initial = new Set<number>();
+    if (activeSectionIndex >= 0) initial.add(activeSectionIndex);
+    return initial;
+  });
+
+  // Keep active section expanded when navigating
+  useEffect(() => {
+    if (activeSectionIndex >= 0) {
+      setExpandedSections(prev => {
+        if (prev.has(activeSectionIndex)) return prev;
+        const next = new Set(prev);
+        next.add(activeSectionIndex);
+        return next;
+      });
+    }
+  }, [activeSectionIndex]);
+
+  const toggleSection = (index: number) => {
+    setExpandedSections(prev => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  };
 
   useEffect(() => {
     if (isCollapsed) {
@@ -285,23 +337,23 @@ function DashboardLayoutContent({
     <div className="relative flex w-full" ref={sidebarRef} dir="ltr">
       <Sidebar
         collapsible="icon"
-        className="border-r-0 bg-white"
+        className="border-r-0"
         disableTransition={isResizing}
       >
-          <SidebarHeader className="h-16 justify-center border-b border-emerald-100/60">
+          <SidebarHeader className="h-16 justify-center border-b border-white/[0.06]">
             <div className="flex items-center gap-3 pl-2 group-data-[collapsible=icon]:px-0 transition-all w-full">
               {isCollapsed ? (
                 <div className="relative h-8 w-8 shrink-0 group">
                   <img
                     src={APP_LOGO}
-                    className="h-8 w-8 rounded-md object-cover ring-1 ring-emerald-200"
+                    className="h-8 w-8 rounded-md object-cover ring-1 ring-emerald-500/30"
                     alt="Logo"
                   />
                   <button
                     onClick={toggleSidebar}
-                    className="absolute inset-0 flex items-center justify-center bg-emerald-50 rounded-md ring-1 ring-emerald-200 opacity-0 group-hover:opacity-100 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                    className="absolute inset-0 flex items-center justify-center bg-emerald-500/10 rounded-md ring-1 ring-emerald-500/30 opacity-0 group-hover:opacity-100 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                   >
-                    <PanelLeft className="h-4 w-4 text-emerald-700" />
+                    <PanelLeft className="h-4 w-4 text-emerald-400" />
                   </button>
                 </div>
               ) : (
@@ -309,18 +361,18 @@ function DashboardLayoutContent({
                   <div className="flex items-center gap-3 min-w-0">
                     <img
                       src={APP_LOGO}
-                      className="h-8 w-8 rounded-md object-cover ring-1 ring-emerald-200 shrink-0"
-                      alt="Logo"
-                    />
-                    <span className="font-semibold tracking-tight truncate text-slate-900">
+                    className="h-8 w-8 rounded-md object-cover ring-1 ring-emerald-500/30 shrink-0"
+                    alt="Logo"
+                  />
+                    <span className="font-semibold tracking-tight truncate text-white">
                       {APP_TITLE}
                     </span>
                   </div>
                   <button
                     onClick={toggleSidebar}
-                    className="ml-auto h-8 w-8 flex items-center justify-center hover:bg-emerald-50 rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 shrink-0"
+                    className="ml-auto h-8 w-8 flex items-center justify-center hover:bg-white/[0.06] rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 shrink-0"
                   >
-                    <PanelLeft className="h-4 w-4 text-slate-500" />
+                    <PanelLeft className="h-4 w-4 text-gray-400" />
                   </button>
                 </>
               )}
@@ -328,116 +380,90 @@ function DashboardLayoutContent({
           </SidebarHeader>
 
           <SidebarContent>
-            {/* Admin Search */}
-            {!isCollapsed && (
-              <div className="px-3 pt-2 pb-1">
-                <button
-                  onClick={() => setShowAdminSearch(true)}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-500 bg-slate-50 hover:bg-emerald-50 rounded-lg transition-colors"
-                >
-                  <Search className="w-4 h-4" />
-                  <span>{t('admin.sidebar.search')}</span>
-                  <kbd className="ms-auto text-[10px] bg-white border border-slate-200 rounded px-1.5 py-0.5 text-slate-400">⌘K</kbd>
-                </button>
-              </div>
-            )}
-            {menuSectionsDef.map((section, sectionIndex) => (
-              <SidebarGroup key={sectionIndex} className="shrink-0 py-1">
-                {!isCollapsed && (
-                  <SidebarGroupLabel className="h-auto text-[11px] uppercase tracking-wider font-semibold text-slate-400 px-3 pb-1">
-                    {t(section.labelKey)}
-                  </SidebarGroupLabel>
-                )}
-                <SidebarGroupContent>
-                  <SidebarMenu>
-                    {section.items.map(item => {
-                      const isActive = location === item.path;
-                      const label = t(item.labelKey);
-                      const desc = item.descKey ? t(item.descKey) : undefined;
-                      const tooltipText = desc ? `${label} – ${desc}` : label;
-                      return (
-                        <SidebarMenuItem key={item.path}>
-                          <SidebarMenuButton
-                            isActive={isActive}
-                            onClick={() => setLocation(item.path)}
-                            tooltip={tooltipText}
-                            className={`transition-all font-normal ${
-                              isActive ? "bg-emerald-50 text-emerald-700 font-medium" : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
-                            }`}
-                          >
-                            <item.icon
-                              className={`h-4 w-4 ${isActive ? "text-emerald-600" : ""}`}
-                            />
-                            <div className="flex flex-col min-w-0">
-                              <span>{label}</span>
-                              {desc && !isCollapsed && (
-                                <span className="text-[10px] text-slate-400 truncate leading-tight">{desc}</span>
-                              )}
-                            </div>
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
-                      );
-                    })}
-                  </SidebarMenu>
-                </SidebarGroupContent>
-              </SidebarGroup>
-            ))}
+            {menuSectionsDef.map((section, sectionIndex) => {
+              const isSingleItem = section.items.length === 1;
+              const sectionHasActive = section.items.some(item => item.path === location);
+              const isExpanded = expandedSections.has(sectionIndex);
+              const SectionIcon = section.icon;
+
+              return (
+                <SidebarGroup key={sectionIndex} className="shrink-0 py-0.5 px-2">
+                  {/* Section header row — clickable */}
+                  <button
+                    onClick={() => {
+                      if (isSingleItem) {
+                        setLocation(section.items[0].path);
+                      } else {
+                        toggleSection(sectionIndex);
+                      }
+                    }}
+                    className={`flex items-center gap-3 w-full px-3 py-2 rounded-xl text-[13px] font-medium transition-all group/section ${
+                      isSingleItem && location === section.items[0].path
+                        ? "bg-gradient-to-l from-emerald-600/20 to-emerald-500/10 text-white border border-emerald-500/20"
+                        : sectionHasActive
+                          ? "text-emerald-400"
+                          : "text-gray-400 hover:text-white hover:bg-white/[0.04]"
+                    }`}
+                  >
+                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
+                      (isSingleItem && location === section.items[0].path) || sectionHasActive
+                        ? "bg-emerald-500/15"
+                        : "bg-white/[0.04] group-hover/section:bg-white/[0.06]"
+                    }`}>
+                      <SectionIcon className={`w-4 h-4 ${
+                        (isSingleItem && location === section.items[0].path) || sectionHasActive
+                          ? "text-emerald-400"
+                          : ""
+                      }`} />
+                    </div>
+                    {!isCollapsed && (
+                      <>
+                        <span className="flex-1 text-left truncate">{t(section.labelKey)}</span>
+                        {!isSingleItem && (
+                          <ChevronRight className={`w-3.5 h-3.5 text-gray-500 transition-transform duration-200 ${isExpanded ? "rotate-90" : ""}`} />
+                        )}
+                      </>
+                    )}
+                  </button>
+
+                  {/* Sub-items — collapsible */}
+                  {!isSingleItem && isExpanded && !isCollapsed && (
+                    <SidebarGroupContent className="mt-0.5">
+                      <SidebarMenu>
+                        {section.items.map(item => {
+                          const isActive = location === item.path;
+                          const label = t(item.labelKey);
+                          return (
+                            <SidebarMenuItem key={item.path}>
+                              <SidebarMenuButton
+                                isActive={isActive}
+                                onClick={() => setLocation(item.path)}
+                                tooltip={label}
+                                className={`transition-all font-normal ps-12 py-1.5 text-[13px] ${
+                                  isActive
+                                    ? "text-emerald-400 bg-emerald-500/[0.08] font-medium"
+                                    : "text-gray-500 hover:text-white hover:bg-white/[0.04]"
+                                }`}
+                              >
+                                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isActive ? "bg-emerald-400" : "bg-gray-600"}`} />
+                                <span>{label}</span>
+                              </SidebarMenuButton>
+                            </SidebarMenuItem>
+                          );
+                        })}
+                      </SidebarMenu>
+                    </SidebarGroupContent>
+                  )}
+                </SidebarGroup>
+              );
+            })}
           </SidebarContent>
 
-          <SidebarFooter className="p-3 space-y-2 border-t border-emerald-100/60">
-            {/* Language Switcher */}
-            {!isCollapsed && (
-              <button
-                onClick={() => setLanguage(language === "ar" ? "en" : "ar")}
-                className="flex items-center gap-2 w-full rounded-lg px-2 py-2 text-sm text-slate-500 hover:bg-emerald-50 hover:text-emerald-700 transition-colors"
-              >
-                <Globe className="h-4 w-4" />
-                <span>{language === "ar" ? "English" : "عربي"}</span>
-              </button>
-            )}
-            {isCollapsed && (
-              <button
-                onClick={() => setLanguage(language === "ar" ? "en" : "ar")}
-                className="flex items-center justify-center w-full rounded-lg py-2 text-sm text-slate-500 hover:bg-emerald-50 hover:text-emerald-700 transition-colors"
-                title={language === "ar" ? "English" : "عربي"}
-              >
-                <Globe className="h-4 w-4" />
-              </button>
-            )}
-
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button className="flex items-center gap-3 rounded-lg px-1 py-1 hover:bg-emerald-50 transition-colors w-full text-left group-data-[collapsible=icon]:justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500">
-                  <Avatar className="h-9 w-9 border border-emerald-200 shrink-0">
-                    <AvatarFallback className="text-xs font-medium bg-emerald-50 text-emerald-700">
-                      {user?.name?.charAt(0).toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
-                    <p className="text-sm font-medium truncate leading-none text-slate-900">
-                      {user?.name || "-"}
-                    </p>
-                    <p className="text-xs text-slate-500 truncate mt-1.5">
-                      {user?.email || "-"}
-                    </p>
-                  </div>
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem
-                  onClick={logout}
-                  className="cursor-pointer text-destructive focus:text-destructive"
-                >
-                  <LogOut className="mr-2 h-4 w-4" />
-                  <span>{t('admin.sidebar.signOut')}</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </SidebarFooter>
+          <SidebarFooter className="p-3 border-t border-white/[0.06]" />
       </Sidebar>
 
       <div
-        className={`absolute top-0 h-full cursor-col-resize hover:bg-emerald-500/20 transition-colors ${isCollapsed ? "hidden" : ""}`}
+        className={`absolute top-0 h-full cursor-col-resize hover:bg-emerald-500/30 transition-colors ${isCollapsed ? "hidden" : ""}`}
         onMouseDown={() => {
           if (isCollapsed) return;
           setIsResizing(true);
@@ -446,21 +472,104 @@ function DashboardLayoutContent({
       />
 
       <SidebarInset>
-        {isMobile && (
-          <div className="flex border-b border-emerald-100/60 h-14 items-center justify-between bg-white/95 px-2 backdrop-blur supports-[backdrop-filter]:backdrop-blur sticky top-0 z-40">
-            <div className="flex items-center gap-2">
-              <SidebarTrigger className="h-9 w-9 rounded-lg bg-white" />
-              <div className="flex items-center gap-3">
-                <div className="flex flex-col gap-1">
-                  <span className="tracking-tight text-slate-900">
-                    {activeMenuItem ? t(activeMenuItem.labelKey) : APP_TITLE}
-                  </span>
-                </div>
+        {/* ── Sticky Topbar ──────────────────────────────── */}
+        <header className="sticky top-0 z-30 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-gray-200/60 dark:border-white/[0.06]">
+          <div className="flex items-center justify-between px-4 md:px-6 h-16">
+            {/* Left: sidebar trigger + page title */}
+            <div className="flex items-center gap-3">
+              <SidebarTrigger className="h-9 w-9 rounded-xl hover:bg-gray-100 dark:hover:bg-white/[0.06] flex items-center justify-center text-gray-500 dark:text-gray-400" />
+              <div className="hidden sm:block">
+                <h1 className="text-[17px] font-bold text-slate-900 dark:text-white leading-tight">
+                  {activeMenuItem ? t(activeMenuItem.labelKey) : APP_TITLE}
+                </h1>
+                <p className="text-[11px] text-gray-400 mt-0.5">
+                  {activeMenuItem?.descKey ? t(activeMenuItem.descKey) : t('admin.topbar.welcome')}
+                </p>
               </div>
             </div>
+
+            {/* Right: grouped action buttons */}
+            <div className="flex items-center gap-1">
+              {/* ── Group 1: Utilities (Search + Dark mode) ── */}
+              <div className="flex items-center gap-0.5 bg-gray-100/70 dark:bg-white/[0.04] rounded-xl p-1">
+                <button
+                  onClick={() => setShowAdminSearch(true)}
+                  className="w-8 h-8 rounded-lg hover:bg-white dark:hover:bg-white/[0.08] flex items-center justify-center transition"
+                  title={t('admin.sidebar.search')}
+                >
+                  <Search className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                </button>
+                {toggleTheme && (
+                  <button
+                    onClick={toggleTheme}
+                    className="w-8 h-8 rounded-lg hover:bg-white dark:hover:bg-white/[0.08] flex items-center justify-center transition"
+                    title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
+                  >
+                    {theme === 'dark'
+                      ? <Sun className="w-4 h-4 text-amber-400" />
+                      : <Moon className="w-4 h-4 text-gray-500" />
+                    }
+                  </button>
+                )}
+              </div>
+
+              {/* ── Group 2: Comms (Notifications + Language) ── */}
+              <div className="flex items-center gap-0.5 bg-gray-100/70 dark:bg-white/[0.04] rounded-xl p-1">
+                <button
+                  onClick={() => setLocation('/admin/notifications')}
+                  className="relative w-8 h-8 rounded-lg hover:bg-white dark:hover:bg-white/[0.08] flex items-center justify-center transition"
+                  title={t('admin.sidebar.notifications')}
+                >
+                  <Bell className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                  <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                </button>
+                <button
+                  onClick={() => setLanguage(language === 'ar' ? 'en' : 'ar')}
+                  className="w-8 h-8 rounded-lg hover:bg-white dark:hover:bg-white/[0.08] flex items-center justify-center transition"
+                  title={language === 'ar' ? 'English' : 'عربي'}
+                >
+                  <Globe className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                </button>
+              </div>
+
+              {/* ── Divider ── */}
+              <div className="hidden md:block w-px h-7 bg-gray-200 dark:bg-white/[0.08] mx-1" />
+
+              {/* ── Group 3: Identity (Avatar + dropdown) ── */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="flex items-center gap-2 ms-0.5 hover:opacity-80 transition focus:outline-none">
+                    <Avatar className="h-9 w-9 border border-emerald-500/30 shadow-lg shadow-emerald-500/10">
+                      <AvatarFallback className="text-xs font-bold bg-gradient-to-br from-emerald-500 to-teal-600 text-white">
+                        {user?.name?.charAt(0).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="hidden md:block text-left">
+                      <p className="text-[13px] font-semibold text-slate-900 dark:text-white leading-tight">
+                        {user?.name?.split(' ')[0] || '-'}
+                      </p>
+                      <p className="text-[10px] text-gray-400">
+                        {t('admin.sidebar.admin')}
+                      </p>
+                    </div>
+                    <ChevronDown className="w-4 h-4 text-gray-400 hidden md:block" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem
+                    onClick={logout}
+                    className="cursor-pointer text-destructive focus:text-destructive"
+                  >
+                    <LogOut className="mr-2 h-4 w-4" />
+                    <span>{t('admin.sidebar.signOut')}</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
-        )}
-        <main className="flex-1 p-4 bg-[#faf7f2]" dir={isRTL ? "rtl" : "ltr"}>{children}</main>
+        </header>
+
+        <main className="flex-1 p-4 md:p-6 bg-[#faf7f2] dark:bg-[#0b1120]" dir={isRTL ? "rtl" : "ltr"}>{children}</main>
       </SidebarInset>
       {showAdminSearch && <AdminSearchDialogLazy onClose={() => setShowAdminSearch(false)} />}
     </div>

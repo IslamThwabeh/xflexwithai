@@ -378,6 +378,8 @@ const translations = {
     'admin.sidebar.notifications': 'Notifications',
     'admin.sidebar.loyaltyPoints': 'Loyalty Points',
     'admin.sidebar.search': 'Search',
+    'admin.topbar.welcome': 'Welcome to Admin Panel',
+    'admin.sidebar.admin': 'Admin',
 
     // Admin Quiz Management
     'admin.quizzes.title': 'Quiz Management',
@@ -1446,6 +1448,8 @@ const translations = {
     'admin.sidebar.notifications': 'الإشعارات',
     'admin.sidebar.loyaltyPoints': 'نقاط الولاء',
     'admin.sidebar.search': 'بحث',
+    'admin.topbar.welcome': 'مرحباً بك في لوحة الإدارة',
+    'admin.sidebar.admin': 'مدير',
 
     // Admin Quiz Management
     'admin.quizzes.title': 'إدارة الاختبارات',

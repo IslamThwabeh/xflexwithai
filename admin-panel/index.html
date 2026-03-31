@@ -1,0 +1,890 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" class="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>XFlex Trading Academy — لوحة الإدارة</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: { sans: ['IBM Plex Sans Arabic', 'sans-serif'] },
+          colors: {
+            xf: {
+              dark: '#0f172a',
+              primary: '#10b981',
+              accent: '#f59e0b',
+              cream: '#f8f9fc',
+              navy: '#1e293b',
+              slate: '#334155',
+              sidebar: '#0c1222',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'IBM Plex Sans Arabic', sans-serif; }
+
+    /* ── Sidebar ─────────────────────────────────────── */
+    #sidebar { transition: width 0.25s cubic-bezier(.4,0,.2,1); }
+    #sidebar .nav-text { transition: opacity 0.15s ease; white-space: nowrap; }
+    #sidebar.collapsed .nav-text,
+    #sidebar.collapsed .section-head,
+    #sidebar.collapsed .logo-text,
+    #sidebar.collapsed .user-info { opacity: 0; width: 0; overflow: hidden; pointer-events: none; }
+    #sidebar.collapsed .section-head { height: 0; margin: 0; padding: 0; }
+
+    /* Tooltip on collapse */
+    .nav-row { position: relative; }
+    .nav-row .tip {
+      display: none; position: absolute; right: 100%; top: 50%; transform: translateY(-50%);
+      margin-right: 10px; background: #0f172a; color: #fff; padding: 4px 12px;
+      border-radius: 8px; font-size: 11px; white-space: nowrap; z-index: 200;
+    }
+    html[dir="ltr"] .nav-row .tip { right: auto; left: 100%; margin-right: 0; margin-left: 10px; }
+    #sidebar.collapsed .nav-row:hover .tip { display: block; }
+
+    /* Scrollbar */
+    .sb-scroll::-webkit-scrollbar { width: 3px; }
+    .sb-scroll::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 4px; }
+    .sb-scroll::-webkit-scrollbar-track { background: transparent; }
+
+    /* ── Cards ────────────────────────────────────────── */
+    .card {
+      background: #fff; border: 1px solid #e5e7eb; border-radius: 16px;
+      transition: box-shadow 0.2s ease, transform 0.15s ease;
+    }
+    .card:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.06); }
+    .stat-lift:hover { transform: translateY(-2px); }
+
+    /* ── Chart bars ───────────────────────────────────── */
+    .chart-bar { transition: height 0.6s cubic-bezier(.4,0,.2,1); border-radius: 4px 4px 0 0; }
+
+    /* ── Dark mode ────────────────────────────────────── */
+    .dark body { background: #0b1120; color: #e2e8f0; }
+    .dark .card { background: #1e293b !important; border-color: #334155 !important; }
+    .dark .topbar { background: rgba(15,23,42,0.85) !important; border-color: #1e293b !important; }
+    .dark .text-xf-dark { color: #f1f5f9 !important; }
+    .dark .text-gray-500, .dark .text-gray-600 { color: #94a3b8 !important; }
+    .dark .text-gray-400 { color: #64748b !important; }
+    .dark .text-gray-700 { color: #cbd5e1 !important; }
+    .dark .bg-xf-cream { background: #0b1120 !important; }
+    .dark .bg-gray-50 { background: #0f172a !important; }
+    .dark .bg-gray-100 { background: #1e293b !important; }
+    .dark .highlight-card { background: linear-gradient(135deg, #065f46 0%, #064e3b 100%) !important; }
+    .dark .table-row:hover { background: rgba(255,255,255,0.03) !important; }
+    .dark .chart-bg { background: #0f172a !important; }
+    .dark input, .dark select { background: #0f172a !important; border-color: #334155 !important; color: #e2e8f0 !important; }
+    .dark .border-gray-100 { border-color: #334155 !important; }
+    .dark .border-gray-50 { border-color: #1e293b !important; }
+    .dark .bg-white { background: #1e293b !important; }
+
+    /* ── Table ─────────────────────────────────────────── */
+    .table-row { transition: background 0.15s ease; }
+    .table-row:hover { background: #f8fafc; }
+
+    /* ── Responsive sidebar ────────────────────────────── */
+    @media (max-width: 767px) {
+      #sidebar { transform: translateX(100%); position: fixed; z-index: 50; }
+      #sidebar.mobile-open { transform: translateX(0); }
+      #main { margin-right: 0 !important; }
+    }
+    #mobile-overlay { transition: opacity 0.25s ease; }
+
+    /* ── Badge pulse ──────────────────────────────────── */
+    @keyframes pulse-dot { 0%,100% { opacity: 1; } 50% { opacity: .5; } }
+    .badge-pulse { animation: pulse-dot 2s infinite; }
+  </style>
+</head>
+
+<body class="bg-xf-cream text-xf-dark min-h-screen">
+
+<!-- Mobile overlay -->
+<div id="mobile-overlay" class="fixed inset-0 bg-black/50 z-40 hidden" onclick="closeMobile()"></div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     SIDEBAR
+     ═══════════════════════════════════════════════════════════ -->
+<aside id="sidebar" class="fixed top-0 right-0 h-full bg-xf-sidebar flex flex-col z-50 shadow-2xl shadow-black/20" style="width:260px">
+
+  <!-- Logo -->
+  <div class="flex items-center gap-3 px-5 h-16 border-b border-white/[0.06] flex-shrink-0">
+    <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center flex-shrink-0 shadow-lg shadow-emerald-500/20">
+      <svg class="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+    </div>
+    <span class="logo-text nav-text font-bold text-[17px] text-white tracking-tight">XFlex<span class="text-emerald-400 mr-1">Admin</span></span>
+  </div>
+
+  <!-- Nav -->
+  <nav class="flex-1 overflow-y-auto sb-scroll py-3 px-3">
+
+    <!-- الرئيسية -->
+    <p class="section-head text-[10px] font-bold text-gray-500 tracking-widest uppercase px-3 pt-3 pb-2">الرئيسية</p>
+    <div class="nav-row">
+      <a href="#dashboard" data-page="dashboard" class="nav-link active flex items-center gap-3 px-3 py-[9px] rounded-xl text-[13px] font-medium text-white bg-gradient-to-l from-emerald-600/20 to-emerald-500/10 border border-emerald-500/20">
+        <div class="w-8 h-8 rounded-lg bg-emerald-500/15 flex items-center justify-center flex-shrink-0">
+          <svg class="w-[18px] h-[18px] text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v5a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v2a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zm0 7a1 1 0 011-1h4a1 1 0 011 1v5a1 1 0 01-1 1h-4a1 1 0 01-1-1v-5zm-10-2a1 1 0 011-1h4a1 1 0 011 1v5a1 1 0 01-1 1H5a1 1 0 01-1-1v-5z"/></svg>
+        </div>
+        <span class="nav-text">لوحة التحكم</span>
+      </a>
+      <span class="tip">لوحة التحكم</span>
+    </div>
+
+    <!-- إدارة المستخدمين -->
+    <p class="section-head text-[10px] font-bold text-gray-500 tracking-widest uppercase px-3 pt-5 pb-2">إدارة المستخدمين</p>
+    <div class="space-y-0.5">
+      <div class="nav-row">
+        <a href="#users" data-page="users" class="nav-link flex items-center gap-3 px-3 py-[9px] rounded-xl text-[13px] font-medium text-gray-400 hover:text-white hover:bg-white/[0.04] transition-all">
+          <div class="w-8 h-8 rounded-lg bg-white/[0.04] flex items-center justify-center flex-shrink-0">
+            <svg class="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+          </div>
+          <span class="nav-text">المستخدمون</span>
+        </a>
+        <span class="tip">المستخدمون</span>
+      </div>
+      <div class="nav-row">
+        <a href="#user-mgmt" data-page="user-mgmt" class="nav-link flex items-center gap-3 px-3 py-[9px] rounded-xl text-[13px] font-medium text-gray-400 hover:text-white hover:bg-white/[0.04] transition-all">
+          <div class="w-8 h-8 rounded-lg bg-white/[0.04] flex items-center justify-center flex-shrink-0">
+            <svg class="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+          </div>
+          <span class="nav-text">إدارة المستخدمين</span>
+        </a>
+        <span class="tip">إدارة المستخدمين</span>
+      </div>
+    </div>
+
+    <!-- إدارة الدورات -->
+    <p class="section-head text-[10px] font-bold text-gray-500 tracking-widest uppercase px-3 pt-5 pb-2">إدارة الدورات</p>
+    <div class="space-y-0.5">
+      <div class="nav-row">
+        <a href="#courses" data-page="courses" class="nav-link flex items-center gap-3 px-3 py-[9px] rounded-xl text-[13px] font-medium text-gray-400 hover:text-white hover:bg-white/[0.04] transition-all">
+          <div class="w-8 h-8 rounded-lg bg-white/[0.04] flex items-center justify-center flex-shrink-0">
+            <svg class="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+          </div>
+          <span class="nav-text">الدورات</span>
+        </a>
+        <span class="tip">الدورات</span>
+      </div>
+      <div class="nav-row">
+        <a href="#enrollments" data-page="enrollments" class="nav-link flex items-center gap-3 px-3 py-[9px] rounded-xl text-[13px] font-medium text-gray-400 hover:text-white hover:bg-white/[0.04] transition-all">
+          <div class="w-8 h-8 rounded-lg bg-white/[0.04] flex items-center justify-center flex-shrink-0">
+            <svg class="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+          </div>
+          <span class="nav-text">الدورات والطلبات</span>
+        </a>
+        <span class="tip">الدورات والطلبات</span>
+      </div>
+    </div>
+
+    <!-- الطلبات والمبيعات -->
+    <p class="section-head text-[10px] font-bold text-gray-500 tracking-widest uppercase px-3 pt-5 pb-2">الطلبات والمبيعات</p>
+    <div class="space-y-0.5">
+      <div class="nav-row">
+        <a href="#orders" data-page="orders" class="nav-link flex items-center gap-3 px-3 py-[9px] rounded-xl text-[13px] font-medium text-gray-400 hover:text-white hover:bg-white/[0.04] transition-all">
+          <div class="w-8 h-8 rounded-lg bg-white/[0.04] flex items-center justify-center flex-shrink-0">
+            <svg class="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+          </div>
+          <span class="nav-text flex-1">الطلبات</span>
+          <span class="nav-text bg-amber-500/20 text-amber-400 text-[10px] font-bold px-2 py-0.5 rounded-full">2</span>
+        </a>
+        <span class="tip">الطلبات</span>
+      </div>
+      <div class="nav-row">
+        <a href="#sales" data-page="sales" class="nav-link flex items-center gap-3 px-3 py-[9px] rounded-xl text-[13px] font-medium text-gray-400 hover:text-white hover:bg-white/[0.04] transition-all">
+          <div class="w-8 h-8 rounded-lg bg-white/[0.04] flex items-center justify-center flex-shrink-0">
+            <svg class="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          </div>
+          <span class="nav-text">المبيعات</span>
+        </a>
+        <span class="tip">المبيعات</span>
+      </div>
+    </div>
+
+    <!-- التقييم والمراجعة -->
+    <p class="section-head text-[10px] font-bold text-gray-500 tracking-widest uppercase px-3 pt-5 pb-2">التقييم والمراجعة</p>
+    <div class="space-y-0.5">
+      <div class="nav-row">
+        <a href="#reviews" data-page="reviews" class="nav-link flex items-center gap-3 px-3 py-[9px] rounded-xl text-[13px] font-medium text-gray-400 hover:text-white hover:bg-white/[0.04] transition-all">
+          <div class="w-8 h-8 rounded-lg bg-white/[0.04] flex items-center justify-center flex-shrink-0">
+            <svg class="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/></svg>
+          </div>
+          <span class="nav-text">مراجعة</span>
+        </a>
+        <span class="tip">مراجعة</span>
+      </div>
+      <div class="nav-row">
+        <a href="#evaluation" data-page="evaluation" class="nav-link flex items-center gap-3 px-3 py-[9px] rounded-xl text-[13px] font-medium text-gray-400 hover:text-white hover:bg-white/[0.04] transition-all">
+          <div class="w-8 h-8 rounded-lg bg-white/[0.04] flex items-center justify-center flex-shrink-0">
+            <svg class="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+          </div>
+          <span class="nav-text">ملفات التقييم</span>
+        </a>
+        <span class="tip">ملفات التقييم</span>
+      </div>
+    </div>
+
+    <!-- المحتوى والتعلم -->
+    <p class="section-head text-[10px] font-bold text-gray-500 tracking-widest uppercase px-3 pt-5 pb-2">المحتوى والتعلم</p>
+    <div class="space-y-0.5">
+      <div class="nav-row">
+        <a href="#learning" data-page="learning" class="nav-link flex items-center gap-3 px-3 py-[9px] rounded-xl text-[13px] font-medium text-gray-400 hover:text-white hover:bg-white/[0.04] transition-all">
+          <div class="w-8 h-8 rounded-lg bg-white/[0.04] flex items-center justify-center flex-shrink-0">
+            <svg class="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+          </div>
+          <span class="nav-text">التعلم</span>
+        </a>
+        <span class="tip">التعلم</span>
+      </div>
+      <div class="nav-row">
+        <a href="#quizzes" data-page="quizzes" class="nav-link flex items-center gap-3 px-3 py-[9px] rounded-xl text-[13px] font-medium text-gray-400 hover:text-white hover:bg-white/[0.04] transition-all">
+          <div class="w-8 h-8 rounded-lg bg-white/[0.04] flex items-center justify-center flex-shrink-0">
+            <svg class="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          </div>
+          <span class="nav-text">الاختبارات</span>
+        </a>
+        <span class="tip">الاختبارات</span>
+      </div>
+      <div class="nav-row">
+        <a href="#content" data-page="content" class="nav-link flex items-center gap-3 px-3 py-[9px] rounded-xl text-[13px] font-medium text-gray-400 hover:text-white hover:bg-white/[0.04] transition-all">
+          <div class="w-8 h-8 rounded-lg bg-white/[0.04] flex items-center justify-center flex-shrink-0">
+            <svg class="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"/></svg>
+          </div>
+          <span class="nav-text">المحتوى</span>
+        </a>
+        <span class="tip">المحتوى</span>
+      </div>
+      <div class="nav-row">
+        <a href="#articles" data-page="articles" class="nav-link flex items-center gap-3 px-3 py-[9px] rounded-xl text-[13px] font-medium text-gray-400 hover:text-white hover:bg-white/[0.04] transition-all">
+          <div class="w-8 h-8 rounded-lg bg-white/[0.04] flex items-center justify-center flex-shrink-0">
+            <svg class="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+          </div>
+          <span class="nav-text">المقالات</span>
+        </a>
+        <span class="tip">المقالات</span>
+      </div>
+    </div>
+
+    <!-- العروض -->
+    <p class="section-head text-[10px] font-bold text-gray-500 tracking-widest uppercase px-3 pt-5 pb-2">العروض</p>
+    <div class="nav-row">
+      <a href="#offers" data-page="offers" class="nav-link flex items-center gap-3 px-3 py-[9px] rounded-xl text-[13px] font-medium text-gray-400 hover:text-white hover:bg-white/[0.04] transition-all">
+        <div class="w-8 h-8 rounded-lg bg-white/[0.04] flex items-center justify-center flex-shrink-0">
+          <svg class="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/></svg>
+        </div>
+        <span class="nav-text">موافقات العروض</span>
+      </a>
+      <span class="tip">موافقات العروض</span>
+    </div>
+  </nav>
+
+  <!-- Sidebar footer -->
+  <div class="border-t border-white/[0.06] px-3 py-3 flex-shrink-0">
+    <div class="flex items-center gap-3 px-2">
+      <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0 shadow-lg shadow-emerald-600/20">م</div>
+      <div class="user-info nav-text min-w-0 flex-1">
+        <p class="text-[13px] font-semibold text-white truncate">مدير النظام</p>
+        <p class="text-[11px] text-gray-500 truncate">admin@xflex.com</p>
+      </div>
+      <button class="nav-text text-gray-500 hover:text-gray-300 transition" title="تسجيل الخروج">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+      </button>
+    </div>
+  </div>
+</aside>
+
+<!-- ═══════════════════════════════════════════════════════════
+     MAIN
+     ═══════════════════════════════════════════════════════════ -->
+<div id="main" class="transition-all duration-300" style="margin-right:260px">
+
+  <!-- Top bar -->
+  <header class="topbar sticky top-0 z-30 bg-white/80 backdrop-blur-xl border-b border-gray-200/60">
+    <div class="flex items-center justify-between px-6 h-16">
+      <div class="flex items-center gap-4">
+        <button onclick="openMobile()" class="md:hidden text-gray-600 hover:text-xf-dark">
+          <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+        <div>
+          <h1 id="topbar-title" class="text-[17px] font-bold text-xf-dark leading-tight">لوحة التحكم</h1>
+          <p id="topbar-sub" class="text-[11px] text-gray-400 mt-0.5">مرحباً بك في لوحة الإدارة</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <!-- Search -->
+        <div class="hidden lg:flex items-center gap-2 bg-gray-100 rounded-xl px-3 py-2 w-56">
+          <svg class="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+          <input type="text" placeholder="بحث..." class="bg-transparent text-sm border-none outline-none w-full text-gray-600 placeholder-gray-400" />
+        </div>
+        <!-- Dark mode -->
+        <button onclick="toggleDark()" class="w-9 h-9 rounded-xl hover:bg-gray-100 flex items-center justify-center transition" title="الوضع الداكن">
+          <svg id="dm-icon" class="w-[18px] h-[18px] text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/></svg>
+        </button>
+        <!-- Collapse -->
+        <button onclick="toggleSidebar()" class="hidden md:flex w-9 h-9 rounded-xl hover:bg-gray-100 items-center justify-center transition" title="طي القائمة">
+          <svg class="w-[18px] h-[18px] text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h8m-8 6h16"/></svg>
+        </button>
+        <!-- Notifications -->
+        <button class="relative w-9 h-9 rounded-xl hover:bg-gray-100 flex items-center justify-center transition" title="الإشعارات">
+          <svg class="w-[18px] h-[18px] text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+          <span class="absolute top-1.5 left-1.5 w-2 h-2 bg-red-500 rounded-full badge-pulse"></span>
+        </button>
+        <!-- Avatar -->
+        <div class="relative" id="avatar-wrap">
+          <button onclick="document.getElementById('av-menu').classList.toggle('hidden')" class="flex items-center gap-2 mr-1 hover:opacity-80 transition">
+            <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white text-xs font-bold shadow-lg shadow-emerald-500/15">م</div>
+            <div class="hidden sm:block text-right">
+              <p class="text-[13px] font-semibold text-xf-dark leading-tight">مدير النظام</p>
+              <p class="text-[10px] text-gray-400">مدير</p>
+            </div>
+            <svg class="w-4 h-4 text-gray-400 hidden sm:block" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+          </button>
+          <div id="av-menu" class="hidden absolute left-0 top-full mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-100 py-1.5 z-50">
+            <a href="#" class="block px-4 py-2 text-[13px] text-gray-600 hover:bg-gray-50 rounded-lg mx-1">الملف الشخصي</a>
+            <a href="#" class="block px-4 py-2 text-[13px] text-gray-600 hover:bg-gray-50 rounded-lg mx-1">الإعدادات</a>
+            <hr class="my-1.5 border-gray-100"/>
+            <a href="#" class="block px-4 py-2 text-[13px] text-red-500 hover:bg-red-50 rounded-lg mx-1">تسجيل الخروج</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Content -->
+  <main id="content" class="p-5 lg:p-6">
+
+    <!-- ═════════════════════════════════════════
+         DASHBOARD
+         ═════════════════════════════════════════ -->
+    <section id="pg-dashboard" class="page-sec">
+
+      <!-- Row 1: KPI Cards -->
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
+
+        <!-- Revenue -->
+        <div class="card stat-lift p-4 lg:p-5">
+          <div class="flex items-center justify-between mb-3">
+            <div class="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center">
+              <svg class="w-5 h-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            </div>
+            <span class="text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full flex items-center gap-1">
+              <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 10l7-7m0 0l7 7m-7-7v18"/></svg>
+              12%
+            </span>
+          </div>
+          <p class="text-[22px] lg:text-[26px] font-bold text-xf-dark leading-none">$1,100<span class="text-[15px] text-gray-400">.00</span></p>
+          <p class="text-[12px] text-gray-500 mt-1.5">إجمالي الإيرادات</p>
+          <p class="text-[10px] text-gray-400 mt-0.5">مقارنة بالشهر الماضي</p>
+        </div>
+
+        <!-- Pending -->
+        <div class="card stat-lift p-4 lg:p-5">
+          <div class="flex items-center justify-between mb-3">
+            <div class="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center">
+              <svg class="w-5 h-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            </div>
+            <span class="text-[11px] font-semibold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">تحتاج مراجعة</span>
+          </div>
+          <p class="text-[22px] lg:text-[26px] font-bold text-xf-dark leading-none">2</p>
+          <p class="text-[12px] text-gray-500 mt-1.5">طلبات معلقة</p>
+          <p class="text-[10px] text-gray-400 mt-0.5">بانتظار الموافقة</p>
+        </div>
+
+        <!-- Keys -->
+        <div class="card stat-lift p-4 lg:p-5">
+          <div class="flex items-center justify-between mb-3">
+            <div class="w-10 h-10 rounded-xl bg-teal-50 flex items-center justify-center">
+              <svg class="w-5 h-5 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
+            </div>
+          </div>
+          <p class="text-[22px] lg:text-[26px] font-bold text-xf-dark leading-none">4</p>
+          <p class="text-[12px] text-gray-500 mt-1.5">مفاتيح مفعلة</p>
+          <p class="text-[10px] text-gray-400 mt-0.5">من أصل 6 مفاتيح</p>
+        </div>
+
+        <!-- Users -->
+        <div class="card stat-lift p-4 lg:p-5">
+          <div class="flex items-center justify-between mb-3">
+            <div class="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center">
+              <svg class="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+            </div>
+            <span class="text-[11px] font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full flex items-center gap-1">
+              <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 10l7-7m0 0l7 7m-7-7v18"/></svg>
+              2 جدد
+            </span>
+          </div>
+          <p class="text-[22px] lg:text-[26px] font-bold text-xf-dark leading-none">5</p>
+          <p class="text-[12px] text-gray-500 mt-1.5">إجمالي المستخدمين</p>
+          <p class="text-[10px] text-gray-400 mt-0.5">هذا الشهر</p>
+        </div>
+      </div>
+
+      <!-- Row 2: Chart + Highlight Card -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-5">
+
+        <!-- Revenue Chart -->
+        <div class="lg:col-span-2 card p-5">
+          <div class="flex items-center justify-between mb-5">
+            <div>
+              <h3 class="text-[15px] font-bold text-xf-dark">تدفق الإيرادات</h3>
+              <p class="text-[11px] text-gray-400 mt-0.5">آخر 6 أشهر</p>
+            </div>
+            <div class="flex bg-gray-100 rounded-lg p-0.5 gap-0.5">
+              <button class="text-[11px] font-medium px-3 py-1 rounded-md bg-white shadow-sm text-xf-dark">شهري</button>
+              <button class="text-[11px] font-medium px-3 py-1 rounded-md text-gray-500 hover:text-xf-dark transition">أسبوعي</button>
+            </div>
+          </div>
+          <div class="chart-bg bg-gray-50 rounded-xl p-4 h-52 flex items-end gap-3" dir="ltr">
+            <div class="flex-1 flex flex-col items-center gap-1">
+              <div class="w-full flex gap-1 items-end justify-center h-36">
+                <div class="chart-bar w-5 bg-emerald-500" style="height:30%"></div>
+                <div class="chart-bar w-5 bg-emerald-200" style="height:18%"></div>
+              </div>
+              <span class="text-[10px] text-gray-400">Oct</span>
+            </div>
+            <div class="flex-1 flex flex-col items-center gap-1">
+              <div class="w-full flex gap-1 items-end justify-center h-36">
+                <div class="chart-bar w-5 bg-emerald-500" style="height:55%"></div>
+                <div class="chart-bar w-5 bg-emerald-200" style="height:30%"></div>
+              </div>
+              <span class="text-[10px] text-gray-400">Nov</span>
+            </div>
+            <div class="flex-1 flex flex-col items-center gap-1">
+              <div class="w-full flex gap-1 items-end justify-center h-36">
+                <div class="chart-bar w-5 bg-emerald-500" style="height:40%"></div>
+                <div class="chart-bar w-5 bg-emerald-200" style="height:25%"></div>
+              </div>
+              <span class="text-[10px] text-gray-400">Dec</span>
+            </div>
+            <div class="flex-1 flex flex-col items-center gap-1">
+              <div class="w-full flex gap-1 items-end justify-center h-36">
+                <div class="chart-bar w-5 bg-emerald-500" style="height:70%"></div>
+                <div class="chart-bar w-5 bg-emerald-200" style="height:40%"></div>
+              </div>
+              <span class="text-[10px] text-gray-400">Jan</span>
+            </div>
+            <div class="flex-1 flex flex-col items-center gap-1">
+              <div class="w-full flex gap-1 items-end justify-center h-36">
+                <div class="chart-bar w-5 bg-emerald-500" style="height:60%"></div>
+                <div class="chart-bar w-5 bg-emerald-200" style="height:35%"></div>
+              </div>
+              <span class="text-[10px] text-gray-400">Feb</span>
+            </div>
+            <div class="flex-1 flex flex-col items-center gap-1">
+              <div class="w-full flex gap-1 items-end justify-center h-36">
+                <div class="chart-bar w-5 bg-emerald-500" style="height:90%"></div>
+                <div class="chart-bar w-5 bg-emerald-200" style="height:50%"></div>
+              </div>
+              <span class="text-[10px] text-gray-400">Mar</span>
+            </div>
+          </div>
+          <div class="flex items-center gap-5 mt-3 justify-center">
+            <span class="flex items-center gap-1.5 text-[11px] text-gray-500"><span class="w-2.5 h-2.5 bg-emerald-500 rounded-sm inline-block"></span>الإيرادات</span>
+            <span class="flex items-center gap-1.5 text-[11px] text-gray-500"><span class="w-2.5 h-2.5 bg-emerald-200 rounded-sm inline-block"></span>المصاريف</span>
+          </div>
+        </div>
+
+        <!-- Highlight / Summary Column -->
+        <div class="flex flex-col gap-4">
+          <!-- Package card -->
+          <div class="highlight-card bg-gradient-to-br from-emerald-600 to-teal-700 rounded-2xl p-5 text-white relative overflow-hidden flex-1">
+            <div class="absolute top-0 left-0 w-full h-full opacity-10">
+              <svg class="w-full h-full" viewBox="0 0 200 200"><circle cx="150" cy="50" r="100" fill="white"/><circle cx="30" cy="180" r="60" fill="white"/></svg>
+            </div>
+            <div class="relative z-10">
+              <p class="text-emerald-200 text-[11px] font-medium mb-1">الباقة الأكثر مبيعاً</p>
+              <p class="text-[20px] font-bold mb-0.5">الباقة الشاملة</p>
+              <p class="text-emerald-100 text-3xl font-bold mt-2">$500</p>
+              <div class="flex items-center gap-2 mt-3">
+                <div class="bg-white/20 backdrop-blur rounded-lg px-2.5 py-1 text-[11px]">تشمل LexAI</div>
+                <div class="bg-white/20 backdrop-blur rounded-lg px-2.5 py-1 text-[11px]">التوصيات</div>
+              </div>
+            </div>
+          </div>
+          <!-- Mini stats -->
+          <div class="grid grid-cols-2 gap-3">
+            <div class="card p-4 text-center">
+              <p class="text-[22px] font-bold text-xf-dark">1</p>
+              <p class="text-[11px] text-gray-500 mt-0.5">الدورات</p>
+            </div>
+            <div class="card p-4 text-center">
+              <p class="text-[22px] font-bold text-xf-dark">4</p>
+              <p class="text-[11px] text-gray-500 mt-0.5">التسجيلات</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Row 3: Table + Side widgets -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-5">
+
+        <!-- Transactions Table -->
+        <div class="lg:col-span-2 card overflow-hidden">
+          <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+            <div>
+              <h3 class="text-[15px] font-bold text-xf-dark">آخر الطلبات</h3>
+              <p class="text-[11px] text-gray-400 mt-0.5">آخر المعاملات المالية</p>
+            </div>
+            <select class="text-[12px] text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 outline-none cursor-pointer">
+              <option>هذا الشهر</option>
+              <option>آخر 3 أشهر</option>
+              <option>الكل</option>
+            </select>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full">
+              <thead>
+                <tr class="bg-gray-50/80">
+                  <th class="text-right text-[11px] font-semibold text-gray-500 uppercase tracking-wider px-5 py-3">الطالب</th>
+                  <th class="text-right text-[11px] font-semibold text-gray-500 uppercase tracking-wider px-5 py-3">التاريخ</th>
+                  <th class="text-right text-[11px] font-semibold text-gray-500 uppercase tracking-wider px-5 py-3">المبلغ</th>
+                  <th class="text-right text-[11px] font-semibold text-gray-500 uppercase tracking-wider px-5 py-3">الباقة</th>
+                  <th class="text-right text-[11px] font-semibold text-gray-500 uppercase tracking-wider px-5 py-3">الحالة</th>
+                  <th class="px-5 py-3"></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="table-row border-b border-gray-50">
+                  <td class="px-5 py-3.5"><div class="flex items-center gap-3"><div class="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center text-blue-600 text-xs font-bold flex-shrink-0">أم</div><div><p class="text-[13px] font-medium text-xf-dark">أحمد محمد</p><p class="text-[11px] text-gray-400">ahmed@email.com</p></div></div></td>
+                  <td class="px-5 py-3.5 text-[13px] text-gray-600">٣٠ مارس ٢٠٢٦</td>
+                  <td class="px-5 py-3.5 text-[13px] font-semibold text-xf-dark">$500.00</td>
+                  <td class="px-5 py-3.5"><span class="text-[11px] font-medium bg-emerald-50 text-emerald-600 px-2.5 py-1 rounded-full">الشاملة</span></td>
+                  <td class="px-5 py-3.5"><span class="text-[11px] font-medium bg-amber-50 text-amber-600 px-2.5 py-1 rounded-full inline-flex items-center gap-1"><span class="w-1.5 h-1.5 bg-amber-500 rounded-full inline-block"></span>معلق</span></td>
+                  <td class="px-5 py-3.5"><button class="text-gray-400 hover:text-gray-600"><svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v.01M12 12v.01M12 19v.01"/></svg></button></td>
+                </tr>
+                <tr class="table-row border-b border-gray-50">
+                  <td class="px-5 py-3.5"><div class="flex items-center gap-3"><div class="w-8 h-8 rounded-lg bg-rose-100 flex items-center justify-center text-rose-600 text-xs font-bold flex-shrink-0">سع</div><div><p class="text-[13px] font-medium text-xf-dark">سارة العلي</p><p class="text-[11px] text-gray-400">sara@email.com</p></div></div></td>
+                  <td class="px-5 py-3.5 text-[13px] text-gray-600">٢٨ مارس ٢٠٢٦</td>
+                  <td class="px-5 py-3.5 text-[13px] font-semibold text-xf-dark">$200.00</td>
+                  <td class="px-5 py-3.5"><span class="text-[11px] font-medium bg-blue-50 text-blue-600 px-2.5 py-1 rounded-full">الأساسية</span></td>
+                  <td class="px-5 py-3.5"><span class="text-[11px] font-medium bg-emerald-50 text-emerald-600 px-2.5 py-1 rounded-full inline-flex items-center gap-1"><span class="w-1.5 h-1.5 bg-emerald-500 rounded-full inline-block"></span>مكتمل</span></td>
+                  <td class="px-5 py-3.5"><button class="text-gray-400 hover:text-gray-600"><svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v.01M12 12v.01M12 19v.01"/></svg></button></td>
+                </tr>
+                <tr class="table-row border-b border-gray-50">
+                  <td class="px-5 py-3.5"><div class="flex items-center gap-3"><div class="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center text-amber-600 text-xs font-bold flex-shrink-0">خي</div><div><p class="text-[13px] font-medium text-xf-dark">خالد يوسف</p><p class="text-[11px] text-gray-400">khaled@email.com</p></div></div></td>
+                  <td class="px-5 py-3.5 text-[13px] text-gray-600">٢٥ مارس ٢٠٢٦</td>
+                  <td class="px-5 py-3.5 text-[13px] font-semibold text-xf-dark">$500.00</td>
+                  <td class="px-5 py-3.5"><span class="text-[11px] font-medium bg-emerald-50 text-emerald-600 px-2.5 py-1 rounded-full">الشاملة</span></td>
+                  <td class="px-5 py-3.5"><span class="text-[11px] font-medium bg-emerald-50 text-emerald-600 px-2.5 py-1 rounded-full inline-flex items-center gap-1"><span class="w-1.5 h-1.5 bg-emerald-500 rounded-full inline-block"></span>مكتمل</span></td>
+                  <td class="px-5 py-3.5"><button class="text-gray-400 hover:text-gray-600"><svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v.01M12 12v.01M12 19v.01"/></svg></button></td>
+                </tr>
+                <tr class="table-row">
+                  <td class="px-5 py-3.5"><div class="flex items-center gap-3"><div class="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center text-purple-600 text-xs font-bold flex-shrink-0">مح</div><div><p class="text-[13px] font-medium text-xf-dark">محمد حسن</p><p class="text-[11px] text-gray-400">moh@email.com</p></div></div></td>
+                  <td class="px-5 py-3.5 text-[13px] text-gray-600">٢٠ مارس ٢٠٢٦</td>
+                  <td class="px-5 py-3.5 text-[13px] font-semibold text-xf-dark">$200.00</td>
+                  <td class="px-5 py-3.5"><span class="text-[11px] font-medium bg-blue-50 text-blue-600 px-2.5 py-1 rounded-full">الأساسية</span></td>
+                  <td class="px-5 py-3.5"><span class="text-[11px] font-medium bg-red-50 text-red-500 px-2.5 py-1 rounded-full inline-flex items-center gap-1"><span class="w-1.5 h-1.5 bg-red-500 rounded-full inline-block"></span>ملغي</span></td>
+                  <td class="px-5 py-3.5"><button class="text-gray-400 hover:text-gray-600"><svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v.01M12 12v.01M12 19v.01"/></svg></button></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="px-5 py-3 border-t border-gray-100 flex items-center justify-between">
+            <p class="text-[11px] text-gray-400">عرض 4 من 4 طلبات</p>
+            <button class="text-[12px] text-emerald-600 font-medium hover:text-emerald-700 transition">عرض الكل ←</button>
+          </div>
+        </div>
+
+        <!-- Right Column -->
+        <div class="flex flex-col gap-4">
+
+          <!-- Pending Alert -->
+          <div class="card border-amber-200 bg-gradient-to-l from-amber-50/80 to-white p-5">
+            <div class="flex items-center gap-3 mb-3">
+              <div class="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0">
+                <svg class="w-5 h-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
+              </div>
+              <div>
+                <p class="text-[13px] font-bold text-xf-dark">2 طلبات بانتظار المراجعة</p>
+                <p class="text-[11px] text-gray-500">يرجى مراجعتها في أقرب وقت</p>
+              </div>
+            </div>
+            <button class="w-full bg-gradient-to-l from-amber-500 to-orange-500 text-white text-[13px] font-semibold py-2.5 rounded-xl hover:shadow-lg hover:shadow-amber-500/25 transition-all">اضغط للمراجعة</button>
+          </div>
+
+          <!-- Package breakdown -->
+          <div class="card p-5">
+            <h3 class="text-[14px] font-bold text-xf-dark mb-4">توزيع الباقات</h3>
+            <div class="space-y-3">
+              <div>
+                <div class="flex items-center justify-between mb-1.5">
+                  <span class="text-[12px] font-medium text-gray-600">الباقة الشاملة</span>
+                  <span class="text-[12px] font-bold text-xf-dark">60%</span>
+                </div>
+                <div class="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                  <div class="h-full bg-gradient-to-l from-emerald-500 to-teal-500 rounded-full" style="width:60%"></div>
+                </div>
+              </div>
+              <div>
+                <div class="flex items-center justify-between mb-1.5">
+                  <span class="text-[12px] font-medium text-gray-600">الباقة الأساسية</span>
+                  <span class="text-[12px] font-bold text-xf-dark">40%</span>
+                </div>
+                <div class="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                  <div class="h-full bg-gradient-to-l from-blue-400 to-blue-500 rounded-full" style="width:40%"></div>
+                </div>
+              </div>
+            </div>
+            <div class="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
+              <div class="text-center flex-1">
+                <p class="text-[18px] font-bold text-emerald-600">3</p>
+                <p class="text-[10px] text-gray-500">شاملة</p>
+              </div>
+              <div class="w-px h-8 bg-gray-200"></div>
+              <div class="text-center flex-1">
+                <p class="text-[18px] font-bold text-blue-500">2</p>
+                <p class="text-[10px] text-gray-500">أساسية</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Quick Actions -->
+          <div class="card p-5">
+            <h3 class="text-[14px] font-bold text-xf-dark mb-3">إجراءات سريعة</h3>
+            <div class="grid grid-cols-2 gap-2">
+              <button class="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 transition group">
+                <div class="w-8 h-8 rounded-lg bg-emerald-500/10 group-hover:bg-emerald-500/20 flex items-center justify-center transition">
+                  <svg class="w-4 h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                </div>
+                <span class="text-[11px] font-medium text-emerald-700">مستخدم جديد</span>
+              </button>
+              <button class="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-amber-50 hover:bg-amber-100 transition group">
+                <div class="w-8 h-8 rounded-lg bg-amber-500/10 group-hover:bg-amber-500/20 flex items-center justify-center transition">
+                  <svg class="w-4 h-4 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
+                </div>
+                <span class="text-[11px] font-medium text-amber-700">مفتاح جديد</span>
+              </button>
+              <button class="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-blue-50 hover:bg-blue-100 transition group">
+                <div class="w-8 h-8 rounded-lg bg-blue-500/10 group-hover:bg-blue-500/20 flex items-center justify-center transition">
+                  <svg class="w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+                </div>
+                <span class="text-[11px] font-medium text-blue-700">إضافة دورة</span>
+              </button>
+              <button class="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-purple-50 hover:bg-purple-100 transition group">
+                <div class="w-8 h-8 rounded-lg bg-purple-500/10 group-hover:bg-purple-500/20 flex items-center justify-center transition">
+                  <svg class="w-4 h-4 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                </div>
+                <span class="text-[11px] font-medium text-purple-700">تصدير تقرير</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Row 4: Activity + Online + Revenue -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+
+        <!-- Recent Activity -->
+        <div class="card p-5">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-[15px] font-bold text-xf-dark">آخر النشاطات</h3>
+            <button class="text-[11px] text-emerald-600 font-medium hover:text-emerald-700">عرض الكل</button>
+          </div>
+          <div class="space-y-4">
+            <div class="flex items-start gap-3">
+              <div class="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center flex-shrink-0 mt-0.5"><svg class="w-4 h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div>
+              <div class="flex-1 min-w-0">
+                <p class="text-[13px] text-xf-dark leading-relaxed">تم تفعيل مفتاح لـ <span class="font-semibold">أحمد محمد</span></p>
+                <p class="text-[11px] text-gray-400 mt-0.5">منذ 5 دقائق</p>
+              </div>
+            </div>
+            <div class="flex items-start gap-3">
+              <div class="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0 mt-0.5"><svg class="w-4 h-4 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></div>
+              <div class="flex-1 min-w-0">
+                <p class="text-[13px] text-xf-dark leading-relaxed">طلب جديد — <span class="font-semibold">الباقة الشاملة</span></p>
+                <p class="text-[11px] text-gray-400 mt-0.5">منذ 12 دقيقة</p>
+              </div>
+            </div>
+            <div class="flex items-start gap-3">
+              <div class="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0 mt-0.5"><svg class="w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg></div>
+              <div class="flex-1 min-w-0">
+                <p class="text-[13px] text-xf-dark leading-relaxed">مستخدم جديد — <span class="font-semibold">سارة العلي</span></p>
+                <p class="text-[11px] text-gray-400 mt-0.5">منذ ساعة</p>
+              </div>
+            </div>
+            <div class="flex items-start gap-3">
+              <div class="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center flex-shrink-0 mt-0.5"><svg class="w-4 h-4 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></div>
+              <div class="flex-1 min-w-0">
+                <p class="text-[13px] text-xf-dark leading-relaxed">أكمل <span class="font-semibold">خالد يوسف</span> الدورة بنجاح</p>
+                <p class="text-[11px] text-gray-400 mt-0.5">منذ 3 ساعات</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Online now -->
+        <div class="card p-5">
+          <h3 class="text-[14px] font-bold text-xf-dark mb-3">المتصلون الآن</h3>
+          <div class="flex items-center gap-3 mb-4">
+            <div class="flex -space-x-2 space-x-reverse">
+              <div class="w-8 h-8 rounded-full bg-emerald-100 border-2 border-white flex items-center justify-center text-emerald-600 text-[10px] font-bold">أم</div>
+              <div class="w-8 h-8 rounded-full bg-blue-100 border-2 border-white flex items-center justify-center text-blue-600 text-[10px] font-bold">سع</div>
+              <div class="w-8 h-8 rounded-full bg-amber-100 border-2 border-white flex items-center justify-center text-amber-600 text-[10px] font-bold">خي</div>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <span class="w-2 h-2 bg-emerald-500 rounded-full badge-pulse"></span>
+              <span class="text-[12px] text-gray-600">3 متصلين</span>
+            </div>
+          </div>
+          <div class="space-y-0">
+            <div class="flex items-center justify-between py-2.5 border-b border-gray-100">
+              <div class="flex items-center gap-2"><span class="w-1.5 h-1.5 bg-emerald-500 rounded-full"></span><span class="text-[12px] text-gray-700">أحمد محمد</span></div>
+              <span class="text-[10px] text-gray-400 bg-gray-50 px-2 py-0.5 rounded-md">يشاهد الحلقة 3</span>
+            </div>
+            <div class="flex items-center justify-between py-2.5 border-b border-gray-100">
+              <div class="flex items-center gap-2"><span class="w-1.5 h-1.5 bg-emerald-500 rounded-full"></span><span class="text-[12px] text-gray-700">سارة العلي</span></div>
+              <span class="text-[10px] text-gray-400 bg-gray-50 px-2 py-0.5 rounded-md">صفحة الدورات</span>
+            </div>
+            <div class="flex items-center justify-between py-2.5">
+              <div class="flex items-center gap-2"><span class="w-1.5 h-1.5 bg-amber-500 rounded-full"></span><span class="text-[12px] text-gray-700">خالد يوسف</span></div>
+              <span class="text-[10px] text-gray-400 bg-gray-50 px-2 py-0.5 rounded-md">الاختبارات</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Revenue breakdown -->
+        <div class="card p-5">
+          <h3 class="text-[14px] font-bold text-xf-dark mb-1">إحصائيات الإيرادات</h3>
+          <p class="text-[11px] text-gray-400 mb-4">تفاصيل إيرادات هذا الشهر</p>
+          <div class="space-y-3">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-sm bg-emerald-500 inline-block"></span><span class="text-[12px] text-gray-600">الباقة الشاملة</span></div>
+              <span class="text-[13px] font-bold text-xf-dark">$1,000.00</span>
+            </div>
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-sm bg-blue-500 inline-block"></span><span class="text-[12px] text-gray-600">الباقة الأساسية</span></div>
+              <span class="text-[13px] font-bold text-xf-dark">$200.00</span>
+            </div>
+            <hr class="border-gray-100" />
+            <div class="flex items-center justify-between">
+              <span class="text-[12px] font-semibold text-gray-600">الإجمالي</span>
+              <span class="text-[15px] font-bold text-emerald-600">$1,200.00</span>
+            </div>
+            <div class="flex h-2.5 rounded-full overflow-hidden bg-gray-100 mt-1">
+              <div class="bg-emerald-500 rounded-r-full" style="width:83%"></div>
+              <div class="bg-blue-500 rounded-l-full" style="width:17%"></div>
+            </div>
+            <div class="flex justify-between text-[10px] text-gray-400 mt-1">
+              <span>83% شاملة</span>
+              <span>17% أساسية</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ═════════════════════ PLACEHOLDER PAGES ════════════════════ -->
+    <section id="pg-users" class="page-sec hidden"><div class="card p-10 text-center"><div class="w-16 h-16 mx-auto rounded-2xl bg-blue-50 flex items-center justify-center mb-4"><svg class="w-8 h-8 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg></div><h2 class="text-lg font-bold text-xf-dark mb-2">المستخدمون</h2><p class="text-sm text-gray-500">قائمة جميع المستخدمين المسجلين في المنصة</p></div></section>
+    <section id="pg-user-mgmt" class="page-sec hidden"><div class="card p-10 text-center"><div class="w-16 h-16 mx-auto rounded-2xl bg-emerald-50 flex items-center justify-center mb-4"><svg class="w-8 h-8 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg></div><h2 class="text-lg font-bold text-xf-dark mb-2">إدارة المستخدمين</h2><p class="text-sm text-gray-500">إدارة صلاحيات وأدوار المستخدمين</p></div></section>
+    <section id="pg-courses" class="page-sec hidden"><div class="card p-10 text-center"><div class="w-16 h-16 mx-auto rounded-2xl bg-teal-50 flex items-center justify-center mb-4"><svg class="w-8 h-8 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg></div><h2 class="text-lg font-bold text-xf-dark mb-2">الدورات</h2><p class="text-sm text-gray-500">إدارة الدورات التعليمية والحلقات</p></div></section>
+    <section id="pg-enrollments" class="page-sec hidden"><div class="card p-10 text-center"><div class="w-16 h-16 mx-auto rounded-2xl bg-teal-50 flex items-center justify-center mb-4"><svg class="w-8 h-8 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg></div><h2 class="text-lg font-bold text-xf-dark mb-2">الدورات والطلبات</h2><p class="text-sm text-gray-500">ربط الدورات بالطلبات وإدارتها</p></div></section>
+    <section id="pg-orders" class="page-sec hidden"><div class="card p-10 text-center"><div class="w-16 h-16 mx-auto rounded-2xl bg-amber-50 flex items-center justify-center mb-4"><svg class="w-8 h-8 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg></div><h2 class="text-lg font-bold text-xf-dark mb-2">الطلبات</h2><p class="text-sm text-gray-500">مراجعة الطلبات المعلقة والموافقة عليها</p></div></section>
+    <section id="pg-sales" class="page-sec hidden"><div class="card p-10 text-center"><div class="w-16 h-16 mx-auto rounded-2xl bg-emerald-50 flex items-center justify-center mb-4"><svg class="w-8 h-8 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></div><h2 class="text-lg font-bold text-xf-dark mb-2">المبيعات</h2><p class="text-sm text-gray-500">تقارير المبيعات والإيرادات</p></div></section>
+    <section id="pg-reviews" class="page-sec hidden"><div class="card p-10 text-center"><div class="w-16 h-16 mx-auto rounded-2xl bg-yellow-50 flex items-center justify-center mb-4"><svg class="w-8 h-8 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/></svg></div><h2 class="text-lg font-bold text-xf-dark mb-2">المراجعات</h2><p class="text-sm text-gray-500">تقييمات ومراجعات الطلاب</p></div></section>
+    <section id="pg-evaluation" class="page-sec hidden"><div class="card p-10 text-center"><div class="w-16 h-16 mx-auto rounded-2xl bg-indigo-50 flex items-center justify-center mb-4"><svg class="w-8 h-8 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg></div><h2 class="text-lg font-bold text-xf-dark mb-2">ملفات التقييم</h2><p class="text-sm text-gray-500">إدارة ملفات التقييم والاختبارات</p></div></section>
+    <section id="pg-learning" class="page-sec hidden"><div class="card p-10 text-center"><div class="w-16 h-16 mx-auto rounded-2xl bg-violet-50 flex items-center justify-center mb-4"><svg class="w-8 h-8 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg></div><h2 class="text-lg font-bold text-xf-dark mb-2">التعلم</h2><p class="text-sm text-gray-500">إدارة المحتوى التعليمي والفيديوهات</p></div></section>
+    <section id="pg-quizzes" class="page-sec hidden"><div class="card p-10 text-center"><div class="w-16 h-16 mx-auto rounded-2xl bg-pink-50 flex items-center justify-center mb-4"><svg class="w-8 h-8 text-pink-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></div><h2 class="text-lg font-bold text-xf-dark mb-2">الاختبارات</h2><p class="text-sm text-gray-500">إدارة الاختبارات والأسئلة</p></div></section>
+    <section id="pg-content" class="page-sec hidden"><div class="card p-10 text-center"><div class="w-16 h-16 mx-auto rounded-2xl bg-cyan-50 flex items-center justify-center mb-4"><svg class="w-8 h-8 text-cyan-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"/></svg></div><h2 class="text-lg font-bold text-xf-dark mb-2">المحتوى</h2><p class="text-sm text-gray-500">إدارة المحتوى المجاني والمنشورات</p></div></section>
+    <section id="pg-articles" class="page-sec hidden"><div class="card p-10 text-center"><div class="w-16 h-16 mx-auto rounded-2xl bg-emerald-50 flex items-center justify-center mb-4"><svg class="w-8 h-8 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg></div><h2 class="text-lg font-bold text-xf-dark mb-2">المقالات</h2><p class="text-sm text-gray-500">إدارة المقالات والمحتوى التعليمي</p></div></section>
+    <section id="pg-offers" class="page-sec hidden"><div class="card p-10 text-center"><div class="w-16 h-16 mx-auto rounded-2xl bg-orange-50 flex items-center justify-center mb-4"><svg class="w-8 h-8 text-orange-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/></svg></div><h2 class="text-lg font-bold text-xf-dark mb-2">موافقات العروض</h2><p class="text-sm text-gray-500">مراجعة العروض الترويجية والموافقة عليها</p></div></section>
+
+  </main>
+</div>
+
+<!-- ═══════════════════════ JAVASCRIPT ══════════════════════ -->
+<script>
+  const titles = {
+    'dashboard':   { t: 'لوحة التحكم', s: 'مرحباً بك في لوحة الإدارة' },
+    'users':       { t: 'المستخدمون', s: 'قائمة المستخدمين المسجلين' },
+    'user-mgmt':   { t: 'إدارة المستخدمين', s: 'إدارة الأدوار والصلاحيات' },
+    'courses':     { t: 'الدورات', s: 'إدارة الدورات التعليمية' },
+    'enrollments': { t: 'الدورات والطلبات', s: 'ربط الدورات بالطلبات' },
+    'orders':      { t: 'الطلبات', s: 'مراجعة الطلبات والموافقة' },
+    'sales':       { t: 'المبيعات', s: 'تقارير المبيعات والإيرادات' },
+    'reviews':     { t: 'المراجعات', s: 'تقييمات ومراجعات الطلاب' },
+    'evaluation':  { t: 'ملفات التقييم', s: 'إدارة ملفات التقييم' },
+    'learning':    { t: 'التعلم', s: 'إدارة المحتوى التعليمي' },
+    'quizzes':     { t: 'الاختبارات', s: 'إدارة الاختبارات والأسئلة' },
+    'content':     { t: 'المحتوى', s: 'إدارة المحتوى المجاني' },
+    'articles':    { t: 'المقالات', s: 'إدارة المقالات' },
+    'offers':      { t: 'موافقات العروض', s: 'مراجعة العروض الترويجية' },
+  };
+
+  let collapsed = false;
+
+  function toggleSidebar() {
+    const sb = document.getElementById('sidebar');
+    const mn = document.getElementById('main');
+    collapsed = !collapsed;
+    sb.classList.toggle('collapsed', collapsed);
+    sb.style.width = collapsed ? '72px' : '260px';
+    mn.style.marginRight = collapsed ? '72px' : '260px';
+  }
+
+  function openMobile() {
+    document.getElementById('sidebar').classList.add('mobile-open');
+    document.getElementById('mobile-overlay').classList.remove('hidden');
+  }
+  function closeMobile() {
+    document.getElementById('sidebar').classList.remove('mobile-open');
+    document.getElementById('mobile-overlay').classList.add('hidden');
+  }
+
+  document.querySelectorAll('.nav-link').forEach(el => {
+    el.addEventListener('click', e => {
+      e.preventDefault();
+      const pg = el.dataset.page;
+      document.querySelectorAll('.nav-link').forEach(n => {
+        n.className = n.className.replace(/active|text-white|bg-gradient-to-l|from-emerald-600\/20|to-emerald-500\/10|border-emerald-500\/20/g, '').trim();
+        if (!n.classList.contains('text-gray-400')) n.classList.add('text-gray-400');
+        n.classList.add('hover:text-white', 'hover:bg-white/[0.04]');
+        const ib = n.querySelector('div'); if (ib) { ib.classList.remove('bg-emerald-500/15'); ib.classList.add('bg-white/[0.04]'); }
+        const sv = n.querySelector('svg'); if (sv) sv.classList.remove('text-emerald-400');
+      });
+      el.classList.add('active', 'text-white', 'bg-gradient-to-l', 'from-emerald-600/20', 'to-emerald-500/10', 'border', 'border-emerald-500/20');
+      el.classList.remove('text-gray-400', 'hover:text-white', 'hover:bg-white/[0.04]');
+      const ib = el.querySelector('div'); if (ib) { ib.classList.add('bg-emerald-500/15'); ib.classList.remove('bg-white/[0.04]'); }
+      const sv = el.querySelector('svg'); if (sv) sv.classList.add('text-emerald-400');
+
+      document.querySelectorAll('.page-sec').forEach(s => s.classList.add('hidden'));
+      const t = document.getElementById('pg-' + pg);
+      if (t) t.classList.remove('hidden');
+      const info = titles[pg];
+      if (info) { document.getElementById('topbar-title').textContent = info.t; document.getElementById('topbar-sub').textContent = info.s; }
+      closeMobile();
+    });
+  });
+
+  function toggleDark() {
+    document.documentElement.classList.toggle('dark');
+    const i = document.getElementById('dm-icon');
+    i.innerHTML = document.documentElement.classList.contains('dark')
+      ? '<path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>'
+      : '<path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>';
+  }
+
+  document.addEventListener('click', e => {
+    const w = document.getElementById('avatar-wrap'), m = document.getElementById('av-menu');
+    if (w && !w.contains(e.target)) m.classList.add('hidden');
+  });
+
+  window.addEventListener('load', () => {
+    document.querySelectorAll('.chart-bar').forEach(b => {
+      const h = b.style.height; b.style.height = '0%';
+      requestAnimationFrame(() => { b.style.height = h; });
+    });
+  });
+</script>
+
+</body>
+</html>
