@@ -472,6 +472,7 @@ export const supportConversations = sqliteTable("supportConversations", {
   id: int("id").primaryKey({ autoIncrement: true }),
   userId: integer("userId").notNull(),
   status: text("status", { length: 20 }).default("open").notNull(), // 'open' | 'closed'
+  needsHuman: integer("needsHuman", { mode: 'boolean' }).default(false).notNull(), // student escalated to human
   assignedTo: integer("assignedTo"), // support user id handling this conversation
   createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
   updatedAt: text("updatedAt").default("CURRENT_TIMESTAMP").notNull(),
@@ -488,7 +489,7 @@ export const supportMessages = sqliteTable("supportMessages", {
   id: int("id").primaryKey({ autoIncrement: true }),
   conversationId: integer("conversationId").notNull(),
   senderId: integer("senderId").notNull(),
-  senderType: text("senderType", { length: 20 }).notNull(), // 'client' | 'support' | 'admin'
+  senderType: text("senderType", { length: 20 }).notNull(), // 'client' | 'support' | 'admin' | 'bot'
   content: text("content").notNull(),
   isRead: integer("isRead", { mode: 'boolean' }).default(false).notNull(),
   attachmentUrl: text("attachment_url"),
@@ -1286,7 +1287,7 @@ export const brokerOnboarding = sqliteTable("broker_onboarding", {
   id: int("id").primaryKey({ autoIncrement: true }),
   userId: integer("userId").notNull(),
   brokerId: integer("brokerId").notNull(),
-  step: text("step").notNull(), // select_broker | open_account | verify_account | deposit
+  step: text("step").notNull(), // select_broker | open_account | deposit
   status: text("status").notNull().default("not_started"), // not_started | pending_review | approved | rejected
   proofUrl: text("proofUrl"),
   proofType: text("proofType"),

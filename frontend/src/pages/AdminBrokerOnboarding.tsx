@@ -12,8 +12,7 @@ import { toast } from 'sonner';
 
 const STEP_LABELS: Record<string, string> = {
   select_broker: 'Select Broker',
-  open_account: 'Open Account',
-  verify_account: 'Verify Account',
+  open_account: 'Open & Verify Account',
   deposit: 'Deposit',
 };
 
@@ -157,8 +156,7 @@ export function AdminBrokerOnboardingContent() {
               className="border rounded-md px-3 py-2 text-sm bg-white"
             >
               <option value="">All Steps</option>
-              <option value="open_account">Open Account</option>
-              <option value="verify_account">Verify Account</option>
+              <option value="open_account">Open & Verify Account</option>
               <option value="deposit">Deposit</option>
             </select>
           </div>

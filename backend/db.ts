@@ -1491,7 +1491,7 @@ export async function processExpiredFreezes(): Promise<{ email: string; name: st
  * Get subscriptions expiring within a given number of days.
  * Used by the daily cron to send reminder emails.
  */
-export async function getExpiringSubscriptions(withinDays: number): Promise<{ email: string; name: string | null; daysLeft: number; packageName: string }[]> {
+export async function getExpiringSubscriptions(withinDays: number): Promise<{ userId: number; email: string; name: string | null; daysLeft: number; packageName: string }[]> {
   const db = await getDb();
   if (!db) return [];
 
@@ -1514,7 +1514,7 @@ export async function getExpiringSubscriptions(withinDays: number): Promise<{ em
       sql`date(${packageSubscriptions.endDate}) <= ${futureStr}`,
     ));
 
-  const results: { email: string; name: string | null; daysLeft: number; packageName: string }[] = [];
+  const results: { userId: number; email: string; name: string | null; daysLeft: number; packageName: string }[] = [];
   for (const sub of expiring) {
     const [user] = await db.select({ email: users.email, name: users.name }).from(users).where(eq(users.id, sub.userId)).limit(1);
     if (!user?.email) continue;
@@ -1522,6 +1522,7 @@ export async function getExpiringSubscriptions(withinDays: number): Promise<{ em
     const endMs = new Date(sub.endDate!).getTime();
     const daysLeft = Math.ceil((endMs - now.getTime()) / (1000 * 60 * 60 * 24));
     results.push({
+      userId: sub.userId,
       email: user.email,
       name: user.name,
       daysLeft: Math.max(0, daysLeft),
@@ -2087,6 +2088,25 @@ export async function activatePackageKey(keyCode: string, email: string, userId?
     }).catch(err => logger.error('Welcome email failed', err));
   } catch (e) {
     logger.error('Welcome email setup failed', e);
+  }
+
+  // In-app notification: package activated
+  if (resolvedUserId) {
+    const pkgNameEn = pkg.nameEn || pkg.nameAr || 'XFlex Package';
+    const pkgNameAr = pkg.nameAr || pkg.nameEn || 'باقة XFlex';
+    await createNotification({
+      userId: resolvedUserId,
+      type: 'success',
+      titleAr: key.isRenewal ? `تم تجديد اشتراكك بنجاح` : `مرحباً! تم تفعيل باقة ${pkgNameAr}`,
+      titleEn: key.isRenewal ? `Subscription Renewed Successfully` : `Welcome! ${pkgNameEn} Activated`,
+      contentAr: key.isRenewal
+        ? `تم تجديد باقة ${pkgNameAr} بنجاح.`
+        : `تم تفعيل باقة ${pkgNameAr}. ابدأ رحلتك الآن!`,
+      contentEn: key.isRenewal
+        ? `Your ${pkgNameEn} has been renewed.`
+        : `Your ${pkgNameEn} is now active. Start your journey!`,
+      actionUrl: '/dashboard',
+    }).catch(() => {});
   }
 
   const [updated] = await db.select().from(registrationKeys).where(eq(registrationKeys.id, key.id)).limit(1);
@@ -3706,6 +3726,7 @@ export async function getAllSupportConversations(searchQuery?: string) {
       id: supportConversations.id,
       userId: supportConversations.userId,
       status: supportConversations.status,
+      needsHuman: supportConversations.needsHuman,
       assignedTo: supportConversations.assignedTo,
       createdAt: supportConversations.createdAt,
       updatedAt: supportConversations.updatedAt,
@@ -3806,6 +3827,14 @@ export async function closeSupportConversation(conversationId: number) {
   if (!db) return;
   await db.update(supportConversations)
     .set({ status: "closed", closedAt: new Date().toISOString(), updatedAt: new Date().toISOString() })
+    .where(eq(supportConversations.id, conversationId));
+}
+
+export async function setNeedsHuman(conversationId: number, value: boolean) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(supportConversations)
+    .set({ needsHuman: value, updatedAt: new Date().toISOString() })
     .where(eq(supportConversations.id, conversationId));
 }
 
@@ -4142,6 +4171,30 @@ export async function activateStudentSubscriptions(userId: number, isAutoActivat
       endDate: realEndDate.toISOString(),
       updatedAt: now.toISOString(),
     }).where(eq(recommendationSubscriptions.id, sub.id));
+  }
+
+  // Notify student that LexAI/Rec access is now active
+  if (pendingLexai.length > 0) {
+    await createNotification({
+      userId,
+      type: 'success',
+      titleAr: 'تم تفعيل LexAI 🌟',
+      titleEn: 'LexAI Access Activated 🌟',
+      contentAr: `يمكنك الآن استخدام LexAI. اشتراكك فعّال لمدة ${entitlementDays} يوم.`,
+      contentEn: `You now have LexAI access. Your subscription is active for ${entitlementDays} days.`,
+      actionUrl: '/lexai',
+    }).catch(() => {});
+  }
+  if (pendingRec.length > 0) {
+    await createNotification({
+      userId,
+      type: 'success',
+      titleAr: 'تم تفعيل قروب التوصيات 📈',
+      titleEn: 'Recommendations Access Activated 📈',
+      contentAr: `يمكنك الآن الوصول لقروب التوصيات. اشتراكك فعّال لمدة ${entitlementDays} يوم.`,
+      contentEn: `You now have Recommendations access. Your subscription is active for ${entitlementDays} days.`,
+      actionUrl: '/recommendations',
+    }).catch(() => {});
   }
 
   return {
@@ -5476,9 +5529,9 @@ export async function deleteOfferAgreement(id: number) {
 }
 
 // ── Broker Onboarding ────────────────────────────────────────
-// 4-step wizard: select_broker → open_account → verify_account → deposit
+// 3-step wizard: select_broker → open_account (covers opening + verification) → deposit
 
-const ONBOARDING_STEPS = ['select_broker', 'open_account', 'verify_account', 'deposit'] as const;
+const ONBOARDING_STEPS = ['select_broker', 'open_account', 'deposit'] as const;
 type OnboardingStep = typeof ONBOARDING_STEPS[number];
 
 /**
@@ -5529,7 +5582,7 @@ export async function selectBrokerForOnboarding(userId: number, brokerId: number
   });
 
   // Pre-create remaining steps as not_started
-  for (const step of ['open_account', 'verify_account', 'deposit'] as const) {
+  for (const step of ['open_account', 'deposit'] as const) {
     await db.insert(brokerOnboarding).values({
       userId,
       brokerId,
@@ -5625,8 +5678,7 @@ export async function approveOnboardingStep(stepId: number, adminId: number, adm
 
   // Notify student
   const stepLabels: Record<string, [string, string]> = {
-    open_account: ['فتح الحساب', 'Account Opening'],
-    verify_account: ['توثيق الحساب', 'Account Verification'],
+    open_account: ['فتح وتوثيق الحساب', 'Account Opening & Verification'],
     deposit: ['الإيداع', 'Deposit'],
   };
   const [labelAr, labelEn] = stepLabels[row.step] || [row.step, row.step];
@@ -5677,8 +5729,7 @@ export async function rejectOnboardingStep(stepId: number, adminId: number, reje
 
   // Notify student
   const stepLabels: Record<string, [string, string]> = {
-    open_account: ['فتح الحساب', 'Account Opening'],
-    verify_account: ['توثيق الحساب', 'Account Verification'],
+    open_account: ['فتح وتوثيق الحساب', 'Account Opening & Verification'],
     deposit: ['الإيداع', 'Deposit'],
   };
   const [labelAr, labelEn] = stepLabels[row.step] || [row.step, row.step];

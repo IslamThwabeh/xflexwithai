@@ -2,7 +2,7 @@ import ClientLayout from "@/components/ClientLayout";
 import { trpc } from "@/lib/trpc";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Button } from "@/components/ui/button";
-import { Send, Headphones, Loader2, Paperclip, FileIcon, X } from "lucide-react";
+import { Send, Headphones, Loader2, Paperclip, FileIcon, X, Bot, UserRound } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { toast } from "sonner";
 import VoiceRecorder from "@/components/VoiceRecorder";
@@ -19,6 +19,11 @@ export default function SupportChat() {
     refetchInterval: 5000, // poll every 5s
   });
 
+  const { data: workingHoursData } = trpc.supportChat.isWorkingHours.useQuery(undefined, {
+    refetchInterval: 60_000, // check every minute
+  });
+  const isOnline = workingHoursData?.working ?? true;
+
   const sendMutation = trpc.supportChat.send.useMutation({
     onSuccess: () => {
       setMessage("");
@@ -27,6 +32,16 @@ export default function SupportChat() {
     },
     onError: (err) => toast.error(err.message),
   });
+
+  const requestHumanMutation = trpc.supportChat.requestHuman.useMutation({
+    onSuccess: () => {
+      toast.success(isRTL ? 'تم طلب وكيل بشري — سيتم الرد خلال ساعات العمل' : 'Human agent requested — you\'ll get a reply during working hours');
+      refetch();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const hasRequestedHuman = data?.conversation?.needsHuman === true;
 
   const uploadMutation = trpc.supportChat.uploadAttachment.useMutation();
   const [uploading, setUploading] = useState(false);
@@ -147,9 +162,50 @@ export default function SupportChat() {
           </div>
           <div>
             <h1 className="text-lg font-bold">{t("support.title")}</h1>
-            <p className="text-sm text-muted-foreground">{t("support.subtitle")}</p>
+            <div className="flex items-center gap-2">
+              <span className={`inline-block w-2 h-2 rounded-full ${isOnline ? 'bg-green-500' : 'bg-gray-400'}`} />
+              <p className="text-sm text-muted-foreground">
+                {isOnline
+                  ? (isRTL ? 'فريق الدعم متاح الآن' : 'Support team is online')
+                  : (isRTL ? 'خارج ساعات العمل — المساعد الذكي يجيبك' : 'Outside working hours — AI assistant is here')}
+              </p>
+            </div>
           </div>
+          {!isOnline && !hasRequestedHuman && messages.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="shrink-0 text-amber-600 border-amber-300 hover:bg-amber-50"
+              onClick={() => requestHumanMutation.mutate()}
+              disabled={requestHumanMutation.isPending}
+            >
+              <UserRound className="h-4 w-4 mr-1" />
+              {isRTL ? 'طلب وكيل بشري' : 'Request Human'}
+            </Button>
+          )}
         </div>
+
+        {/* AI disclaimer banner outside working hours */}
+        {!isOnline && !hasRequestedHuman && (
+          <div className="flex items-center gap-2 px-3 py-2 mb-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs">
+            <Bot className="h-4 w-4 shrink-0" />
+            <span>
+              {isRTL
+                ? 'أنت تتحدث مع المساعد الذكي. للتحدث مع شخص حقيقي، اضغط "طلب وكيل بشري".'
+                : 'You\'re chatting with our AI assistant. To speak with a human, tap "Request Human".'}
+            </span>
+          </div>
+        )}
+        {hasRequestedHuman && !isOnline && (
+          <div className="flex items-center gap-2 px-3 py-2 mb-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs">
+            <UserRound className="h-4 w-4 shrink-0" />
+            <span>
+              {isRTL
+                ? 'تم طلب وكيل بشري. سيتم الرد عليك خلال ساعات العمل (الأحد-الخميس ١٢-٨ مساءً).'
+                : 'Human agent requested. You\'ll get a reply during working hours (Sun-Thu 12-8 PM).'}
+            </span>
+          </div>
+        )}
 
         {/* Messages area */}
         <div className="flex-1 overflow-y-auto space-y-3 pb-2">
@@ -166,6 +222,7 @@ export default function SupportChat() {
           ) : (
             messages.map((msg, idx) => {
               const isOwn = msg.senderType === "client";
+              const isBot = msg.senderType === "bot";
               // Date separator logic
               const currentDate = new Date(msg.createdAt).toDateString();
               const prevDate = idx > 0 ? new Date(messages[idx - 1].createdAt).toDateString() : null;
@@ -187,12 +244,16 @@ export default function SupportChat() {
                     className={`max-w-[80%] rounded-2xl px-4 py-2.5 ${
                       isOwn
                         ? "bg-emerald-600 text-white rounded-br-md"
+                        : isBot
+                        ? "bg-amber-50 border border-amber-200 text-gray-900 rounded-bl-md"
                         : "bg-gray-100 text-gray-900 rounded-bl-md"
                     }`}
                   >
                     {!isOwn && (
-                      <p className="text-xs font-semibold mb-1 text-emerald-600">
-                        {msg.senderType === "admin" ? t("support.admin") : t("support.agent")}
+                      <p className={`text-xs font-semibold mb-1 ${isBot ? 'text-amber-600' : 'text-emerald-600'}`}>
+                        {isBot
+                          ? (isRTL ? '🤖 المساعد الذكي' : '🤖 AI Assistant')
+                          : msg.senderType === "admin" ? t("support.admin") : t("support.agent")}
                       </p>
                     )}
                     <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>

@@ -19,6 +19,9 @@ import {
   FileIcon,
   X,
   Search,
+  Sparkles,
+  AlertTriangle,
+  Bot,
 } from "lucide-react";
 import { useState, useRef, useEffect, useMemo } from "react";
 import { toast } from "sonner";
@@ -51,11 +54,17 @@ export default function AdminSupport() {
     { refetchInterval: 8000 }
   );
 
-  // Client-side status filter (applied on top of backend search results)
+  // Client-side status filter + sort escalated to top
   const filteredConversations = useMemo(() => {
     if (!conversations) return [];
-    if (statusFilter === "all") return conversations;
-    return conversations.filter(c => c.status === statusFilter);
+    let list = statusFilter === "all" ? [...conversations] : conversations.filter(c => c.status === statusFilter);
+    // Escalated (needsHuman) conversations float to top
+    list.sort((a: any, b: any) => {
+      if (a.needsHuman && !b.needsHuman) return -1;
+      if (!a.needsHuman && b.needsHuman) return 1;
+      return 0; // preserve existing order (by updatedAt desc from backend)
+    });
+    return list;
   }, [conversations, statusFilter]);
 
   const {
@@ -88,6 +97,23 @@ export default function AdminSupport() {
   const reopenMutation = trpc.supportChat.reopen.useMutation({
     onSuccess: () => {
       toast.success(isRtl ? 'تم إعادة فتح المحادثة' : 'Conversation reopened');
+      refetchConvs();
+      refetchMessages();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const suggestReplyMutation = trpc.supportChat.suggestReply.useMutation({
+    onSuccess: (data) => {
+      setReply(data.suggestion);
+      toast.success(isRtl ? 'تم توليد اقتراح الرد' : 'AI suggestion generated');
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const clearEscalationMutation = trpc.supportChat.clearEscalation.useMutation({
+    onSuccess: () => {
+      toast.success(isRtl ? 'تمت إزالة علامة التصعيد' : 'Escalation cleared');
       refetchConvs();
       refetchMessages();
     },
@@ -181,6 +207,7 @@ export default function AdminSupport() {
 
   const totalOpen = (conversations ?? []).filter((c) => c.status === "open").length;
   const totalUnread = (conversations ?? []).reduce((sum, c) => sum + (c.unreadCount ?? 0), 0);
+  const totalEscalated = (conversations ?? []).filter((c: any) => c.needsHuman).length;
   const displayedCount = filteredConversations.length;
 
   return (
@@ -196,7 +223,7 @@ export default function AdminSupport() {
         </div>
 
         {/* Summary cards */}
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-4">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm text-muted-foreground">
@@ -215,6 +242,17 @@ export default function AdminSupport() {
             </CardHeader>
             <CardContent>
               <p className="text-3xl font-bold text-red-600">{totalUnread}</p>
+            </CardContent>
+          </Card>
+          <Card className={totalEscalated > 0 ? 'border-amber-300 bg-amber-50' : ''}>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm text-muted-foreground flex items-center gap-1">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                {isRtl ? 'طلب وكيل بشري' : 'Human Requested'}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className={`text-3xl font-bold ${totalEscalated > 0 ? 'text-amber-600' : ''}`}>{totalEscalated}</p>
             </CardContent>
           </Card>
           <Card>
@@ -310,7 +348,13 @@ export default function AdminSupport() {
                             </p>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {(conv as any).needsHuman && (
+                            <Badge className="bg-amber-500 text-white text-xs animate-pulse">
+                              <AlertTriangle className="h-3 w-3 mr-0.5" />
+                              {isRtl ? 'بحاجة رد بشري' : 'Needs Human'}
+                            </Badge>
+                          )}
                           {conv.status === "open" ? (
                             <Badge variant="default" className="bg-green-100 text-green-800 text-xs">
                               {t('admin.support.open')}
@@ -329,7 +373,9 @@ export default function AdminSupport() {
                       </div>
                       {conv.lastMessage && (
                         <p className="text-xs text-muted-foreground truncate mt-1">
-                          {conv.lastMessage.senderType === "client" ? (isRtl ? 'العميل: ' : 'Client: ') : (isRtl ? 'أنت: ' : 'You: ')}
+                          {conv.lastMessage.senderType === "client" ? (isRtl ? 'العميل: ' : 'Client: ')
+                            : conv.lastMessage.senderType === "bot" ? (isRtl ? '🤖 الذكاء: ' : '🤖 AI: ')
+                            : (isRtl ? 'أنت: ' : 'You: ')}
                           {conv.lastMessage.content}
                         </p>
                       )}
@@ -379,28 +425,42 @@ export default function AdminSupport() {
                         </div>
                       </div>
                     </div>
-                    {selectedData?.conversation?.status === "open" ? (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="text-red-600"
-                        onClick={() => closeMutation.mutate({ conversationId: selectedConvId! })}
-                        disabled={closeMutation.isPending}
-                      >
-                        <XCircle className="h-4 w-4 mr-1" /> {t('admin.support.close')}
-                      </Button>
-                    ) : selectedData?.conversation?.status === "closed" ? (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="text-green-600"
-                        onClick={() => reopenMutation.mutate({ conversationId: selectedConvId! })}
-                        disabled={reopenMutation.isPending}
-                      >
-                        <PlayCircle className="h-4 w-4 mr-1" />
-                        {t('admin.support.reopen') || 'Reopen'}
-                      </Button>
-                    ) : null}
+                    <div className="flex items-center gap-2">
+                      {(selectedData?.conversation as any)?.needsHuman && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-amber-600 border-amber-300"
+                          onClick={() => clearEscalationMutation.mutate({ conversationId: selectedConvId! })}
+                          disabled={clearEscalationMutation.isPending}
+                        >
+                          <AlertTriangle className="h-4 w-4 mr-1" />
+                          {isRtl ? 'إزالة التصعيد' : 'Clear Escalation'}
+                        </Button>
+                      )}
+                      {selectedData?.conversation?.status === "open" ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-red-600"
+                          onClick={() => closeMutation.mutate({ conversationId: selectedConvId! })}
+                          disabled={closeMutation.isPending}
+                        >
+                          <XCircle className="h-4 w-4 mr-1" /> {t('admin.support.close')}
+                        </Button>
+                      ) : selectedData?.conversation?.status === "closed" ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-green-600"
+                          onClick={() => reopenMutation.mutate({ conversationId: selectedConvId! })}
+                          disabled={reopenMutation.isPending}
+                        >
+                          <PlayCircle className="h-4 w-4 mr-1" />
+                          {t('admin.support.reopen') || 'Reopen'}
+                        </Button>
+                      ) : null}
+                    </div>
                   </div>
                 </CardHeader>
 
@@ -413,25 +473,30 @@ export default function AdminSupport() {
                   ) : (
                     (selectedData?.messages ?? []).map((msg) => {
                       const isClient = msg.senderType === "client";
+                      const isBot = msg.senderType === "bot";
                       return (
                         <div
                           key={msg.id}
-                          className={`flex ${isClient ? "justify-start" : "justify-end"}`}
+                          className={`flex ${isClient ? "justify-start" : isBot ? "justify-start" : "justify-end"}`}
                         >
                           <div
                             className={`max-w-[75%] rounded-2xl px-4 py-2.5 ${
                               isClient
                                 ? "bg-gray-100 text-gray-900 rounded-bl-md"
+                                : isBot
+                                ? "bg-amber-50 border border-amber-200 text-gray-900 rounded-bl-md"
                                 : "bg-emerald-600 text-white rounded-br-md"
                             }`}
                           >
-                            {!isClient && (
+                            {(isBot || !isClient) && (
                               <p
                                 className={`text-xs font-semibold mb-1 ${
-                                  isClient ? "text-emerald-600" : "text-emerald-200"
+                                  isBot ? "text-amber-600" : isClient ? "text-emerald-600" : "text-emerald-200"
                                 }`}
                               >
-                                {msg.senderType === "admin" ? t('admin.support.admin') : t('admin.support.support')}
+                                {isBot
+                                  ? (isRtl ? '🤖 المساعد الذكي' : '🤖 AI Assistant')
+                                  : msg.senderType === "admin" ? t('admin.support.admin') : t('admin.support.support')}
                               </p>
                             )}
                             <p className="text-sm whitespace-pre-wrap break-words">
@@ -482,6 +547,20 @@ export default function AdminSupport() {
                       <Button variant="ghost" size="icon" className="rounded-xl h-[42px] w-[42px] shrink-0"
                         onClick={() => fileInputRef.current?.click()} disabled={uploading}>
                         <Paperclip className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="rounded-xl h-[42px] w-[42px] shrink-0 text-amber-500 hover:text-amber-600 hover:bg-amber-50"
+                        onClick={() => suggestReplyMutation.mutate({ conversationId: selectedConvId! })}
+                        disabled={suggestReplyMutation.isPending}
+                        title={isRtl ? 'اقتراح رد بالذكاء الاصطناعي' : 'AI Suggest Reply'}
+                      >
+                        {suggestReplyMutation.isPending ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Sparkles className="h-4 w-4" />
+                        )}
                       </Button>
                       <VoiceRecorder
                         onRecordingComplete={handleVoiceRecording}

@@ -10,20 +10,19 @@ import ClientLayout from '@/components/ClientLayout';
 import { Link } from 'wouter';
 import { toast } from 'sonner';
 
-const STEPS = ['select_broker', 'open_account', 'verify_account', 'deposit'] as const;
+const STEPS = ['select_broker', 'open_account', 'deposit'] as const;
 type StepKey = typeof STEPS[number];
 
 // YouTube video guides per step (provided by Business Owner)
 const STEP_VIDEOS: Partial<Record<StepKey, string>> = {
   open_account: 'rh6vI2ZCbhQ',
-  // verify_account and deposit can be added when BO provides separate videos
+  deposit: 'XWqtfCXfuLI',
 };
 
 function stepLabel(step: StepKey, isArabic: boolean): string {
   const labels: Record<StepKey, [string, string]> = {
     select_broker: ['اختر الوسيط', 'Select Broker'],
-    open_account: ['افتح حساب', 'Open Account'],
-    verify_account: ['وثّق حسابك', 'Verify Account'],
+    open_account: ['افتح ووثّق حسابك', 'Open & Verify Account'],
     deposit: ['أودع مبلغ', 'Make Deposit'],
   };
   return isArabic ? labels[step][0] : labels[step][1];
@@ -32,8 +31,7 @@ function stepLabel(step: StepKey, isArabic: boolean): string {
 function stepDescription(step: StepKey, isArabic: boolean): string {
   const desc: Record<StepKey, [string, string]> = {
     select_broker: ['اختر وسيط التداول المفضل لديك من القائمة', 'Choose your preferred trading broker from the list'],
-    open_account: ['افتح حساب تداول حقيقي وأرفق صورة إثبات', 'Open a real trading account and upload proof screenshot'],
-    verify_account: ['أكمل التحقق من حسابك وأرفق صورة الإثبات', 'Complete account verification and upload proof'],
+    open_account: ['افتح حساب تداول حقيقي ووثّقه وأرفق صورة إثبات', 'Open a real trading account, complete verification, and upload proof screenshot'],
     deposit: ['أودع مبلغ 10$ على الأقل وأرفق صورة الإيداع', 'Deposit at least $10 and upload deposit proof'],
   };
   return isArabic ? desc[step][0] : desc[step][1];
@@ -339,7 +337,7 @@ export default function BrokerOnboarding() {
           )}
 
           {/* Steps 2-4: Proof upload steps */}
-          {(['open_account', 'verify_account', 'deposit'] as StepKey[]).map((step) => {
+          {(['open_account', 'deposit'] as StepKey[]).map((step) => {
             const stepData = stepMap.get(step);
             if (!stepData) return null;
             const isCurrent = step === currentStepKey;
@@ -551,27 +549,16 @@ function ProofSampleGuide({ step, isArabic }: { step: StepKey; isArabic: boolean
 
   const guides: Record<string, { titleAr: string; titleEn: string; fields: { labelAr: string; labelEn: string; valueAr: string; valueEn: string }[]; noteAr: string; noteEn: string }> = {
     open_account: {
-      titleAr: 'نموذج إثبات فتح الحساب',
-      titleEn: 'Account Opening Proof Example',
+      titleAr: 'نموذج إثبات فتح وتوثيق الحساب',
+      titleEn: 'Account Opening & Verification Proof Example',
       fields: [
         { labelAr: 'الموضوع', labelEn: 'Subject', valueAr: 'ربط حسابك مع الوسيط المعرّف', valueEn: 'Link to IB Account' },
         { labelAr: 'من', labelEn: 'From', valueAr: 'noreply@broker.com', valueEn: 'noreply@broker.com' },
         { labelAr: 'رقم الحساب', labelEn: 'Account No.', valueAr: 'C0XXXXXXX', valueEn: 'C0XXXXXXX' },
-        { labelAr: 'الحالة', labelEn: 'Status', valueAr: 'تم ربط حساب التداول بنجاح', valueEn: 'Trading account linked successfully' },
+        { labelAr: 'الحالة', labelEn: 'Status', valueAr: 'تم ربط وتوثيق حساب التداول بنجاح', valueEn: 'Trading account linked and verified successfully' },
       ],
-      noteAr: 'ارفع صورة (سكرين شوت) للإيميل أو الرسالة التي تُثبت فتح الحساب وربطه مع الوسيط المعرّف',
-      noteEn: 'Upload a screenshot of the email or message confirming your account was opened and linked to the introducing broker',
-    },
-    verify_account: {
-      titleAr: 'نموذج إثبات التوثيق',
-      titleEn: 'Verification Proof Example',
-      fields: [
-        { labelAr: 'الموضوع', labelEn: 'Subject', valueAr: 'تم التحقق من حسابك', valueEn: 'Account Verified' },
-        { labelAr: 'الحالة', labelEn: 'Status', valueAr: 'تم التحقق من الهوية بنجاح ✓', valueEn: 'Identity verified successfully ✓' },
-        { labelAr: 'المستوى', labelEn: 'Level', valueAr: 'التحقق الكامل', valueEn: 'Fully Verified' },
-      ],
-      noteAr: 'ارفع صورة توضح أن حسابك تم توثيقه بالكامل (من صفحة الملف الشخصي أو إيميل التأكيد)',
-      noteEn: 'Upload a screenshot showing your account is fully verified (from profile page or confirmation email)',
+      noteAr: 'ارفع صورة (سكرين شوت) للإيميل أو الرسالة التي تُثبت فتح الحساب وتوثيقه مع الوسيط',
+      noteEn: 'Upload a screenshot of the email or confirmation showing your account was opened and verified with the broker',
     },
     deposit: {
       titleAr: 'نموذج إثبات الإيداع',

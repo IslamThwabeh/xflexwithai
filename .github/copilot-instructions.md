@@ -185,6 +185,17 @@ All public pages (Home, FAQ, Careers, FreeContent, Articles, Events, ArticleDeta
 - Student page (`LoyaltyPoints.tsx`): balance card, referral section (code+copy+share+stats), earning rules from DB, points history
 - Registration capture: `Auth.tsx` extracts `?ref=CODE` from URL, persists in localStorage, passes to `RegisterForm.tsx` which calls `points.registerReferral` after successful registration
 
+### Smart AI Support Chat
+- **Working hours**: Sun-Thu 12:00-20:00 Jordan time (Asia/Amman). `isSupportWorkingHours()` helper in `routers.ts`.
+- **AI auto-reply**: Outside working hours, GPT-4o-mini auto-replies to student messages. Sliding window of last 10 messages, 400 token max, system prompt with XFlex business context.
+- **senderType `'bot'`**: New value for `supportMessages.senderType` alongside `client`, `support`, `admin`. Bot messages styled with amber bg + 🤖 label.
+- **Escalation**: `supportConversations.needsHuman` (boolean). Student clicks "Request Human" → sets flag + bot posts escalation message. Admin sees amber "Needs Human" badge, conversations sorted to top.
+- **Auto-clear**: When admin/support replies to escalated conversation, `needsHuman` auto-clears. Manual "Clear Escalation" button in admin header.
+- **Suggest Reply**: Admin sparkle (✨) button → `suggestReply` calls GPT-4o-mini → fills reply textarea (editable). Uses same `generateSupportAIReply()` function.
+- **Migration 026**: `ALTER TABLE supportConversations ADD COLUMN needsHuman INTEGER NOT NULL DEFAULT 0`
+- Key procedures: `supportChat.isWorkingHours`, `supportChat.requestHuman`, `supportChat.suggestReply`, `supportChat.clearEscalation`
+- DB function: `setNeedsHuman(conversationId, value)` in `db.ts`
+
 ---
 
 ## Hidden Features (backend kept, UI disabled)

@@ -246,33 +246,21 @@ const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
 
 async function verifyOnboardingProofWithAI(stepId: number, step: string, proofUrl: string) {
   const prompts: Record<string, string> = {
-    open_account: `You are verifying a broker onboarding proof image. The student claims they opened a real trading account with a broker.
+    open_account: `You are verifying a broker onboarding proof image. The student claims they opened and verified a real trading account with a broker.
 
-Analyze this image and determine if it is a legitimate proof of account opening. Look for:
+Analyze this image and determine if it is a legitimate proof of account opening AND verification. Look for:
 - Email confirmation from a broker (e.g. Equiti, XM, Exness, etc.)
 - Account number or client ID visible
-- Mention of account creation, linking, or registration
+- Mention of account creation, linking, registration, or verification
+- Verification status showing "verified", "approved", or "fully verified"
+- Identity verification confirmation
 - Official broker branding/letterhead
 
 Return a JSON object with exactly these fields:
 {"confidence": 0.0 to 1.0, "reason": "brief explanation"}
 
-confidence should be >= 0.9 if the image clearly shows a broker account opening confirmation.
+confidence should be >= 0.9 if the image clearly shows a broker account opening or verification confirmation.
 confidence should be < 0.5 if the image is unrelated, blurry, or suspicious.
-Respond ONLY with the JSON object, nothing else.`,
-
-    verify_account: `You are verifying a broker onboarding proof image. The student claims their trading account identity verification is complete.
-
-Analyze this image and determine if it shows proof of account verification. Look for:
-- Verification status showing "verified" or "approved"
-- Identity verification confirmation email or screenshot
-- Broker platform showing verified badge/status
-- Official broker branding
-
-Return a JSON object with exactly these fields:
-{"confidence": 0.0 to 1.0, "reason": "brief explanation"}
-
-confidence should be >= 0.9 if the image clearly shows verified account status.
 Respond ONLY with the JSON object, nothing else.`,
 
     deposit: `You are verifying a broker onboarding proof image. The student claims they deposited at least $10 into their trading account.
@@ -344,6 +332,97 @@ Respond ONLY with the JSON object, nothing else.`,
 
   // Save result (auto-approves if confidence >= 0.9 via saveOnboardingAiResult)
   await db.saveOnboardingAiResult(stepId, confidence, reason);
+}
+
+// ============================================================================
+// Support Chat — Working Hours & AI Auto-Reply
+// ============================================================================
+
+/** Check if current Jordan time is within working hours (Sun-Thu 12:00-20:00) */
+function isSupportWorkingHours(): boolean {
+  const now = new Date();
+  // Jordan is UTC+3 (Asia/Amman). Get day/hour in Jordan time.
+  const jordanStr = now.toLocaleString('en-US', { timeZone: 'Asia/Amman', hour12: false });
+  const jordanDate = new Date(jordanStr);
+  const day = jordanDate.getDay(); // 0=Sun, 1=Mon, ..., 4=Thu, 5=Fri, 6=Sat
+  const hour = jordanDate.getHours();
+  // Working days: Sun(0)-Thu(4), hours 12:00-19:59
+  return day >= 0 && day <= 4 && hour >= 12 && hour < 20;
+}
+
+const SUPPORT_AI_SYSTEM_PROMPT = `You are the XFlex Trading Academy support assistant. You help students with questions about their courses, packages, subscriptions, and platform usage.
+
+About XFlex:
+- Online trading academy based in Jordan, teaching in Arabic and English
+- Two packages: Basic ($200) includes Trading Course + Recommendations, Comprehensive ($500) adds LexAI chatbot
+- Students activate access via package keys given after purchase
+- Platform has: video courses, quizzes, broker onboarding, trading recommendations, LexAI, loyalty points
+
+Common topics you can help with:
+- How to activate a package key (go to Dashboard, enter the key)
+- How to access courses and watch episodes
+- Quiz system (must watch episodes first, pass quizzes to earn points)
+- Broker onboarding steps (select broker → open & verify account → deposit $10+)
+- Trading recommendations (available after subscription activation)
+- LexAI access (Comprehensive package only, activates after course completion)
+- Loyalty points and referral program
+- Technical issues (video not loading, login problems)
+
+Rules:
+- Be concise and helpful. Keep responses under 150 words.
+- Respond in the same language the student uses (Arabic or English).
+- If you don't know the answer or the question requires human judgment (refunds, billing disputes, account issues), say you'll connect them with a human agent.
+- Never make up information about prices, features, or policies you're unsure about.
+- Be friendly but professional. Use the student's context when available.
+- Do NOT discuss competitor platforms or give financial/trading advice.`;
+
+/** Generate an AI auto-reply for a student message using GPT-4o-mini */
+async function generateSupportAIReply(
+  conversationMessages: Array<{ senderType: string; content: string }>,
+): Promise<string | null> {
+  if (!ENV.openaiApiKey) return null;
+
+  // Sliding window: last 10 messages for context
+  const recentMessages = conversationMessages.slice(-10);
+
+  const chatMessages: Array<{ role: string; content: string }> = [
+    { role: 'system', content: SUPPORT_AI_SYSTEM_PROMPT },
+  ];
+
+  for (const msg of recentMessages) {
+    chatMessages.push({
+      role: msg.senderType === 'client' ? 'user' : 'assistant',
+      content: msg.content,
+    });
+  }
+
+  try {
+    const response = await fetch(OPENAI_API_URL, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${ENV.openaiApiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: chatMessages,
+        max_tokens: 400,
+        temperature: 0.7,
+      }),
+    });
+
+    if (!response.ok) {
+      logger.error('[Support AI] OpenAI request failed', { status: response.status });
+      return null;
+    }
+
+    const data: any = await response.json();
+    const text = data?.choices?.[0]?.message?.content?.trim();
+    return text || null;
+  } catch (err) {
+    logger.error('[Support AI] Failed to generate reply', { error: String(err) });
+    return null;
+  }
 }
 
 export const appRouter = router({
@@ -1400,6 +1479,17 @@ export const appRouter = router({
         // At lower percentages, just check if maxActivationDate has passed (14-day deadline)
         let subscriptionActivated = false;
         if (completedEpisodes >= totalEpisodes) {
+          // Notify: course completed
+          await db.createNotification({
+            userId: ctx.user.id,
+            type: 'success',
+            titleAr: 'مبروك! أكملت الدورة بنجاح 🎉',
+            titleEn: 'Congratulations! Course Completed 🎉',
+            contentAr: 'أكملت جميع الحلقات. يمكنك الآن البدء بإعداد حساب الوسيط.',
+            contentEn: 'You completed all episodes. You can now start your broker account setup.',
+            actionUrl: '/broker-onboarding',
+          }).catch(() => {});
+
           const activation = await db.activateStudentSubscriptions(ctx.user.id, false);
           subscriptionActivated = activation.activated;
         } else if (progressPercentage >= 50) {
@@ -2058,6 +2148,27 @@ export const appRouter = router({
           createdAt: new Date().toISOString(),
         });
 
+        // In-app notification for all active subscribers
+        if (input.type === "alert" || input.type === "recommendation") {
+          const allSubs = await db.getRecommendationSubscriberDetails();
+          const symbolTag = input.symbol ? ` — ${input.symbol}` : '';
+          await Promise.allSettled(allSubs.map(sub => {
+            try {
+              const prefs = JSON.parse(sub.notificationPrefs || '{}');
+              if (prefs.recommendations === false) return Promise.resolve();
+            } catch { /* default: send */ }
+            return db.createNotification({
+              userId: sub.userId,
+              type: 'info',
+              titleAr: input.type === 'alert' ? `تنبيه جديد${symbolTag}` : `توصية جديدة${symbolTag}`,
+              titleEn: input.type === 'alert' ? `New Alert${symbolTag}` : `New Recommendation${symbolTag}`,
+              contentAr: input.content.length > 100 ? input.content.slice(0, 100) + '…' : input.content,
+              contentEn: input.content.length > 100 ? input.content.slice(0, 100) + '…' : input.content,
+              actionUrl: '/recommendations',
+            });
+          }));
+        }
+
         if (input.sendEmail && (input.type === "alert" || input.type === "recommendation")) {
           const subscribers = await db.getRecommendationSubscriberDetails();
           const onlineThreshold = new Date(Date.now() - 5 * 60 * 1000);
@@ -2219,6 +2330,12 @@ export const appRouter = router({
   // =========================================================================
   // Support Chat – real-time 1-on-1 client↔support messaging
   // =========================================================================
+
+  // ── Working-hours & AI auto-reply helpers ──────────────────────────────
+  // Jordan working hours: Sun-Thu 12:00-20:00 (Asia/Amman, UTC+3)
+  // Outside those hours, GPT-4o-mini answers automatically.
+  // ──────────────────────────────────────────────────────────────────────
+
   supportChat: router({
     // Upload attachment (file or voice note) to R2
     uploadAttachment: protectedProcedure
@@ -2282,8 +2399,45 @@ export const appRouter = router({
           attachmentType: input.attachmentType,
           attachmentDuration: input.attachmentDuration,
         });
+
+        // AI auto-reply when outside working hours and student hasn't requested human
+        if (!isSupportWorkingHours() && !conv.needsHuman) {
+          const allMessages = await db.getSupportMessages(conv.id);
+          const aiReply = await generateSupportAIReply(
+            allMessages.map(m => ({ senderType: m.senderType, content: m.content })),
+          );
+          if (aiReply) {
+            await db.createSupportMessage({
+              conversationId: conv.id,
+              senderId: 0, // bot has no real user ID
+              senderType: 'bot',
+              content: aiReply,
+            });
+          }
+        }
+
         return msg;
       }),
+
+    // Client: check if support is currently in working hours
+    isWorkingHours: protectedProcedure.query(() => {
+      return { working: isSupportWorkingHours() };
+    }),
+
+    // Client: request human agent (escalation from AI)
+    requestHuman: protectedProcedure.mutation(async ({ ctx }) => {
+      if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+      const conv = await db.getOrCreateSupportConversation(ctx.user.id);
+      await db.setNeedsHuman(conv.id, true);
+      // Add a system-style bot message so admin sees the escalation
+      await db.createSupportMessage({
+        conversationId: conv.id,
+        senderId: 0,
+        senderType: 'bot',
+        content: '⚠️ Student requested a human agent.',
+      });
+      return { success: true };
+    }),
 
     // Client: unread count badge
     unreadCount: protectedProcedure.query(async ({ ctx }) => {
@@ -2338,7 +2492,51 @@ export const appRouter = router({
           attachmentType: input.attachmentType,
           attachmentDuration: input.attachmentDuration,
         });
+
+        // Notify student when admin/support replies
+        if ((isAdmin || ctx.user.id !== conv.userId) && conv.userId) {
+          await db.createNotification({
+            userId: conv.userId,
+            type: 'info',
+            titleAr: 'رد جديد من الدعم',
+            titleEn: 'New Support Reply',
+            contentAr: input.content.length > 80 ? input.content.slice(0, 80) + '…' : input.content,
+            contentEn: input.content.length > 80 ? input.content.slice(0, 80) + '…' : input.content,
+            actionUrl: '/support',
+          }).catch(() => {});
+        }
+
+        // Auto-clear escalation flag when human replies
+        if (conv.needsHuman) {
+          await db.setNeedsHuman(input.conversationId, false);
+        }
+
         return msg;
+      }),
+
+    // Support/Admin: AI-suggested reply for a conversation
+    suggestReply: supportStaffProcedure
+      .input(z.object({ conversationId: z.number() }))
+      .mutation(async ({ input }) => {
+        const allMessages = await db.getSupportMessages(input.conversationId);
+        if (allMessages.length === 0) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'No messages in conversation' });
+        }
+        const suggestion = await generateSupportAIReply(
+          allMessages.map(m => ({ senderType: m.senderType, content: m.content })),
+        );
+        if (!suggestion) {
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'AI suggestion unavailable' });
+        }
+        return { suggestion };
+      }),
+
+    // Support/Admin: clear needsHuman flag after admin responds
+    clearEscalation: supportStaffProcedure
+      .input(z.object({ conversationId: z.number() }))
+      .mutation(async ({ input }) => {
+        await db.setNeedsHuman(input.conversationId, false);
+        return { success: true };
       }),
 
     // Support/Admin: close a conversation

@@ -179,6 +179,20 @@ export default {
       // Send alerts at exactly 7, 3, and 0 days before expiry
       if (sub.daysLeft === 7 || sub.daysLeft === 3 || sub.daysLeft === 0) {
         await sendExpiryAlertEmail(sub.email, sub.name, sub.daysLeft, sub.packageName);
+        // Dashboard notification for expiry warning
+        await db.createNotification({
+          userId: sub.userId,
+          type: sub.daysLeft === 0 ? 'warning' : 'info',
+          titleAr: sub.daysLeft === 0 ? 'انتهى اشتراكك اليوم' : `اشتراكك ينتهي خلال ${sub.daysLeft} أيام`,
+          titleEn: sub.daysLeft === 0 ? 'Your Subscription Expires Today' : `Subscription Expires in ${sub.daysLeft} Days`,
+          contentAr: sub.daysLeft === 0
+            ? 'يرجى تجديد اشتراكك للحفاظ على وصولك.'
+            : `اشتراكك ينتهي قريباً. جدّد الآن لتجنب الانقطاع.`,
+          contentEn: sub.daysLeft === 0
+            ? 'Please renew to keep your access.'
+            : `Your ${sub.packageName} expires soon. Renew now to avoid interruption.`,
+          actionUrl: '/my-packages',
+        }).catch(() => {});
       }
     }
 

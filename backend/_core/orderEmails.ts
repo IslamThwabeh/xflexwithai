@@ -501,8 +501,7 @@ export async function sendOnboardingStalledEmail(to: string, data: {
   const firstName = data.name?.split(' ')[0] || '';
 
   const stepLabels: Record<string, { ar: string; en: string }> = {
-    open_account: { ar: 'فتح حساب الوسيط', en: 'Open Broker Account' },
-    verify_account: { ar: 'توثيق الحساب', en: 'Verify Account' },
+    open_account: { ar: 'فتح وتوثيق حساب الوسيط', en: 'Open & Verify Broker Account' },
     deposit: { ar: 'إيداع المبلغ', en: 'Make a Deposit' },
   };
   const label = stepLabels[data.step] || { ar: data.step, en: data.step };
