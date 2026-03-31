@@ -3575,6 +3575,7 @@ export async function createStaffUser(data: { name: string; email: string; phone
   }
 
   // Create new staff user with dummy password (OTP login)
+  const now = new Date().toISOString();
   const result = await db.insert(users).values({
     email: data.email,
     name: data.name,
@@ -3583,7 +3584,9 @@ export async function createStaffUser(data: { name: string; email: string; phone
     emailVerified: true,
     isStaff: true,
     loginSecurityMode: 'password_or_otp',
-    createdAt: new Date().toISOString(),
+    createdAt: now,
+    updatedAt: now,
+    lastSignedIn: now,
   }).returning({ id: users.id });
 
   logger.db('Staff user created', { userId: result[0].id, email: data.email });

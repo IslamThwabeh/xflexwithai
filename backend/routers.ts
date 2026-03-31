@@ -2628,6 +2628,55 @@ export const appRouter = router({
         for (const role of input.roles) {
           await db.assignRole(userId, role, (ctx as any).admin?.id);
         }
+
+        // Send welcome email to the new staff member
+        const roleLabels: Record<string, string> = {
+          analyst: 'Analyst / محلل',
+          support: 'Support / دعم فني',
+          key_manager: 'Key Manager / مدير المفاتيح',
+          view_progress: 'View Progress / عرض التقدم',
+          view_recommendations: 'View Recommendations / عرض التوصيات',
+          view_subscriptions: 'View Subscriptions / عرض الاشتراكات',
+          view_quizzes: 'View Quizzes / عرض الاختبارات',
+          client_lookup: 'Client Lookup / بحث العملاء',
+        };
+        const rolesText = input.roles.map(r => roleLabels[r] || r).join('\n  - ');
+        try {
+          await sendEmail({
+            to: input.email,
+            subject: 'Welcome to XFlex Academy Team! | مرحباً بك في فريق أكاديمية XFlex',
+            text: [
+              `Hello ${input.name},`,
+              '',
+              'You have been added as a team member at XFlex Trading Academy!',
+              '',
+              'Your assigned roles:',
+              `  - ${rolesText}`,
+              '',
+              'To access the platform, use the login page and request an OTP code with your email:',
+              'https://xflexacademy.com/auth',
+              '',
+              '---',
+              '',
+              `مرحباً ${input.name}،`,
+              '',
+              'تمت إضافتك كعضو في فريق أكاديمية XFlex للتداول!',
+              '',
+              'الأدوار المُسندة إليك:',
+              `  - ${rolesText}`,
+              '',
+              'للدخول إلى المنصة، استخدم صفحة تسجيل الدخول واطلب رمز OTP عبر بريدك الإلكتروني:',
+              'https://xflexacademy.com/auth',
+              '',
+              'Best regards / مع أطيب التحيات,',
+              'XFlex Academy Team',
+            ].join('\n'),
+          });
+        } catch (emailErr) {
+          // Don't fail the mutation if email fails — staff is still created
+          console.error('[createStaff] Welcome email failed:', emailErr);
+        }
+
         return { success: true, userId };
       }),
 
