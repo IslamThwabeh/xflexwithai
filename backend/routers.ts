@@ -2643,6 +2643,24 @@ export const appRouter = router({
         await db.removeStaffStatus(input.userId);
         return { success: true };
       }),
+
+    // Get staff member access preview for admin impersonation/review
+    getStaffAccessPreview: adminProcedure
+      .input(z.object({ userId: z.number() }))
+      .query(async ({ input }) => {
+        const user = await db.getUserById(input.userId);
+        if (!user) throw new TRPCError({ code: 'NOT_FOUND', message: 'User not found' });
+        const roles = await db.getUserRoles(input.userId);
+        return {
+          userId: user.id,
+          name: user.name,
+          email: user.email,
+          phone: (user as any).phone,
+          isStaff: (user as any).isStaff,
+          roles: roles.map((r: any) => r.role),
+          lastSignIn: (user as any).lastSignIn,
+        };
+      }),
   }),
 
   // =========================================================================

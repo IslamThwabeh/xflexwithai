@@ -28,6 +28,7 @@ const AdminLexaiConversations = lazy(() => import("./pages/AdminLexaiConversatio
 const AdminRecommendations = lazy(() => import("./pages/AdminRecommendations"));
 const AdminSupport = lazy(() => import("./pages/AdminSupport"));
 const AdminRoles = lazy(() => import("./pages/AdminRoles"));
+const AdminStaffReview = lazy(() => import("./pages/AdminStaffReview"));
 const AdminPackages = lazy(() => import("./pages/AdminPackages"));
 const AdminEvents = lazy(() => import("./pages/AdminEvents"));
 const AdminArticles = lazy(() => import("./pages/AdminArticles"));
@@ -180,6 +181,11 @@ function Router() {
       <Route path={"/admin/roles"}>
         <AdminRoute>
           <AdminRoles />
+        </AdminRoute>
+      </Route>
+      <Route path="/admin/staff-review">
+        <AdminRoute>
+          <AdminStaffReview />
         </AdminRoute>
       </Route>      <Route path={"/admin/packages"}>
         <AdminRoute>

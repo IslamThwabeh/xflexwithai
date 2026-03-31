@@ -122,6 +122,7 @@ const menuSectionsDef: MenuSection[] = [
     items: [
       { icon: Headphones, labelKey: "admin.sidebar.supportChat", path: "/admin/support" },
       { icon: Shield, labelKey: "admin.sidebar.roles", path: "/admin/roles" },
+      { icon: Search, labelKey: "admin.sidebar.staffReview", path: "/admin/staff-review" },
     ]
   },
   {
