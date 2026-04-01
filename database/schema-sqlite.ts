@@ -1174,6 +1174,29 @@ export type AdminAction = typeof adminActions.$inferSelect;
 export type InsertAdminAction = typeof adminActions.$inferInsert;
 
 // ============================================================================
+// Plan Progress (10-Day Foundation Program)
+// ============================================================================
+
+export const planProgress = sqliteTable("plan_progress", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  email: text("email").notNull(),
+  fullName: text("fullName").notNull(),
+  phone: text("phone").default(""),
+  progress: text("progress").default("{}").notNull(),       // JSON: taskId -> boolean
+  answers: text("answers").default("{}").notNull(),          // JSON: phaseN -> text answer
+  currentPhase: integer("currentPhase").default(1).notNull(),
+  phaseApprovals: text("phaseApprovals").default("{}").notNull(), // JSON: phase -> boolean
+  adminNotes: text("adminNotes").default(""),
+  createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
+  updatedAt: text("updatedAt").default("CURRENT_TIMESTAMP").notNull(),
+}, (table) => ({
+  uniqueEmail: unique().on(table.email),
+}));
+
+export type PlanProgress = typeof planProgress.$inferSelect;
+export type InsertPlanProgress = typeof planProgress.$inferInsert;
+
+// ============================================================================
 // Loyalty Points Transactions (Phase 4)
 // ============================================================================
 

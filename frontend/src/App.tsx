@@ -83,6 +83,7 @@ const AdminNotifications = lazy(() => import("./pages/AdminNotifications"));
 const AdminPoints = lazy(() => import("./pages/AdminPoints"));
 const AdminEngagement = lazy(() => import("./pages/AdminEngagement"));
 const AdminOfferAgreements = lazy(() => import("./pages/AdminOfferAgreements"));
+const AdminPlanProgress = lazy(() => import("./pages/AdminPlanProgress"));
 const NotificationCenter = lazy(() => import("./pages/NotificationCenter"));
 const LoyaltyPoints = lazy(() => import("./pages/LoyaltyPoints"));
 const TradingCalculators = lazy(() => import("./pages/TradingCalculators"));
@@ -230,6 +231,11 @@ function Router() {
       <Route path={"/admin/offer-agreements"}>
         <AdminRoute>
           <AdminOfferAgreements />
+        </AdminRoute>
+      </Route>
+      <Route path={"/admin/plan-progress"}>
+        <AdminRoute>
+          <AdminPlanProgress />
         </AdminRoute>
       </Route>
       <Route path={"/admin/reports/subscribers"}>

@@ -1,0 +1,1148 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>الخطة التعليمية التأسيسية — أكاديمية XFlex</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Tajawal', sans-serif;
+      background: linear-gradient(135deg, #f5f0e4 0%, #ebe5d5 50%, #f0ead8 100%);
+      min-height: 100vh;
+      padding: 24px 16px;
+      color: #1a1a2e;
+    }
+    .container { max-width: 800px; margin: 0 auto; }
+
+    .card {
+      background: #fffdf7;
+      border-radius: 20px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.08);
+      overflow: hidden;
+      border: 1px solid rgba(26,26,46,0.08);
+      margin-bottom: 20px;
+    }
+
+    /* Header */
+    .header {
+      background: linear-gradient(135deg, #1a1a2e 0%, #2d2d44 50%, #1a1a2e 100%);
+      color: #f5f0e4;
+      padding: 36px 28px;
+      text-align: center;
+      position: relative;
+    }
+    .header::after {
+      content: '📚';
+      position: absolute;
+      top: 12px;
+      left: 20px;
+      font-size: 28px;
+      opacity: 0.5;
+    }
+    .header .badge {
+      display: inline-block;
+      background: rgba(16,185,129,0.25);
+      color: #6ee7b7;
+      padding: 4px 18px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 10px;
+      letter-spacing: 0.5px;
+    }
+    .header h1 { font-size: 28px; font-weight: 800; margin-bottom: 6px; }
+    .header p { font-size: 15px; opacity: 0.8; line-height: 1.8; max-width: 600px; margin: 0 auto; }
+
+    /* Login card */
+    .login-section {
+      padding: 28px;
+    }
+    .login-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: #1a1a2e;
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .field { margin-bottom: 16px; }
+    .field label {
+      display: block;
+      font-size: 14px;
+      font-weight: 600;
+      color: #4a4a5a;
+      margin-bottom: 6px;
+    }
+    .field input[type="text"],
+    .field input[type="email"],
+    .field input[type="tel"] {
+      width: 100%;
+      padding: 12px 16px;
+      border: 1.5px solid #d4d0c8;
+      border-radius: 12px;
+      font-family: 'Tajawal', sans-serif;
+      font-size: 15px;
+      background: #fff;
+      color: #1a1a2e;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .field input:focus {
+      outline: none;
+      border-color: #10b981;
+      box-shadow: 0 0 0 3px rgba(16,185,129,0.15);
+    }
+    .field input::placeholder { color: #9ca3af; }
+    .phone-row {
+      display: flex;
+      gap: 10px;
+      direction: ltr;
+    }
+    .phone-row select {
+      width: 130px;
+      flex-shrink: 0;
+      padding: 12px 8px;
+      border: 1.5px solid #d4d0c8;
+      border-radius: 12px;
+      font-family: 'Tajawal', sans-serif;
+      font-size: 15px;
+      background: #fff;
+      color: #1a1a2e;
+    }
+    .phone-row input { flex: 1; }
+
+    .submit-btn {
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      color: #fff;
+      border: none;
+      border-radius: 14px;
+      font-family: 'Tajawal', sans-serif;
+      font-size: 17px;
+      font-weight: 800;
+      cursor: pointer;
+      transition: all 0.25s;
+    }
+    .submit-btn:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 25px rgba(16,185,129,0.3);
+    }
+    .submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* Plan content */
+    .plan-content { display: none; }
+    .plan-content.active { display: block; }
+
+    .welcome-bar {
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      color: #fff;
+      padding: 16px 28px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .welcome-bar .name { font-size: 16px; font-weight: 700; }
+    .welcome-bar .phase-badge {
+      background: rgba(255,255,255,0.2);
+      padding: 4px 14px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .logout-btn {
+      background: rgba(255,255,255,0.2);
+      border: none;
+      color: #fff;
+      padding: 6px 16px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: 'Tajawal', sans-serif;
+    }
+    .logout-btn:hover { background: rgba(255,255,255,0.3); }
+
+    /* Progress bar */
+    .progress-container {
+      padding: 20px 28px;
+      background: #faf9f5;
+      border-bottom: 1px solid rgba(26,26,46,0.06);
+    }
+    .progress-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 13px;
+      font-weight: 600;
+      color: #6b7280;
+      margin-bottom: 8px;
+    }
+    .progress-bar {
+      width: 100%;
+      height: 8px;
+      background: #e5e7eb;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #10b981, #059669);
+      border-radius: 10px;
+      transition: width 0.5s ease;
+    }
+
+    /* Phase sections */
+    .phase {
+      padding: 24px 28px;
+      border-bottom: 1px solid rgba(26,26,46,0.06);
+    }
+    .phase:last-child { border-bottom: none; }
+
+    .phase-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 6px;
+      flex-wrap: wrap;
+    }
+    .phase-number {
+      background: linear-gradient(135deg, #1a1a2e, #2d2d44);
+      color: #f5f0e4;
+      width: 40px;
+      height: 40px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+    .phase-title {
+      font-size: 18px;
+      font-weight: 800;
+      color: #1a1a2e;
+    }
+    .phase-duration {
+      font-size: 13px;
+      color: #6b7280;
+      background: #f3f4f6;
+      padding: 2px 12px;
+      border-radius: 10px;
+      font-weight: 600;
+    }
+    .phase-goal {
+      font-size: 14px;
+      color: #4a4a5a;
+      line-height: 1.8;
+      margin: 8px 0 16px;
+      padding-right: 52px;
+    }
+
+    .phase-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 14px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+    .phase-status.locked { background: #f3f4f6; color: #9ca3af; }
+    .phase-status.current { background: #d1fae5; color: #065f46; }
+    .phase-status.approved { background: #ecfdf5; color: #059669; }
+    .phase-status.pending { background: #fef3c7; color: #92400e; }
+
+    /* Tasks / checkboxes */
+    .task-list { list-style: none; margin: 0 0 16px; padding: 0; }
+    .task-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 10px 14px;
+      border-radius: 12px;
+      margin-bottom: 6px;
+      transition: background 0.2s;
+      cursor: pointer;
+    }
+    .task-item:hover { background: #f9fafb; }
+    .task-item input[type="checkbox"] {
+      width: 22px;
+      height: 22px;
+      margin-top: 2px;
+      accent-color: #10b981;
+      flex-shrink: 0;
+      pointer-events: none; /* Visual only — li handles clicks */
+    }
+    .task-item span.task-label {
+      font-size: 15px;
+      color: #1a1a2e;
+      line-height: 1.7;
+      user-select: none;
+    }
+    .task-item.completed span.task-label {
+      color: #059669;
+    }
+    .task-item.completed {
+      background: #f0fdf4;
+    }
+
+    /* Sub-sections */
+    .sub-section {
+      background: #faf9f5;
+      border: 1px solid rgba(26,26,46,0.06);
+      border-radius: 14px;
+      padding: 16px 20px;
+      margin: 12px 0;
+    }
+    .sub-section h4 {
+      font-size: 15px;
+      font-weight: 700;
+      color: #1a1a2e;
+      margin-bottom: 10px;
+    }
+    .sub-section p, .sub-section li {
+      font-size: 14px;
+      color: #4a4a5a;
+      line-height: 1.8;
+    }
+    .sub-section ul, .sub-section ol {
+      padding-right: 20px;
+      margin: 8px 0;
+    }
+
+    /* Answer textarea */
+    .answer-area {
+      margin: 16px 0;
+    }
+    .answer-area label {
+      display: block;
+      font-size: 14px;
+      font-weight: 700;
+      color: #1a1a2e;
+      margin-bottom: 8px;
+    }
+    .answer-area textarea {
+      width: 100%;
+      min-height: 120px;
+      padding: 14px;
+      border: 1.5px solid #d4d0c8;
+      border-radius: 12px;
+      font-family: 'Tajawal', sans-serif;
+      font-size: 14px;
+      line-height: 1.8;
+      resize: vertical;
+      background: #fff;
+      color: #1a1a2e;
+    }
+    .answer-area textarea:focus {
+      outline: none;
+      border-color: #10b981;
+      box-shadow: 0 0 0 3px rgba(16,185,129,0.15);
+    }
+    .save-answer-btn {
+      margin-top: 8px;
+      padding: 8px 20px;
+      background: #1a1a2e;
+      color: #f5f0e4;
+      border: none;
+      border-radius: 10px;
+      font-family: 'Tajawal', sans-serif;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .save-answer-btn:hover { background: #2d2d44; }
+    .save-answer-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .save-status {
+      display: inline-block;
+      margin-right: 10px;
+      font-size: 13px;
+      color: #059669;
+      font-weight: 600;
+    }
+
+    /* Messages */
+    .msg { padding: 12px 18px; border-radius: 12px; margin-top: 14px; font-size: 14px; line-height: 1.7; text-align: center; display: none; }
+    .msg.error { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+    .msg.success { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; }
+
+    .spinner { display: inline-block; width: 18px; height: 18px; border: 2.5px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; margin-left: 6px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .footer {
+      text-align: center;
+      padding: 18px;
+      font-size: 12px;
+      color: #9ca3af;
+      border-top: 1px solid rgba(26,26,46,0.08);
+    }
+
+    .divider {
+      height: 2px;
+      background: linear-gradient(90deg, transparent, rgba(26,26,46,0.12), transparent);
+      margin: 16px 0;
+    }
+
+    @media (max-width: 500px) {
+      .header h1 { font-size: 22px; }
+      .phase { padding: 20px 18px; }
+      .phase-goal { padding-right: 0; }
+      .welcome-bar { padding: 14px 18px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <div class="header">
+        <div class="badge">برنامج الـ 10 أيام 🎓</div>
+        <h1>الخطة التعليمية التأسيسية</h1>
+        <p>برنامج تعليمي تدريجي مصمم لنقل الطالب من مرحلة الصفر إلى مرحلة الجاهزية للتداول الحقيقي</p>
+      </div>
+
+      <!-- Quick Resume (shown when returning user from same browser) -->
+      <div id="resumeSection" class="login-section" style="display:none;">
+        <div class="login-title">مرحباً بعودتك 👋</div>
+        <div style="text-align:center; margin-bottom: 16px;">
+          <div style="font-size: 18px; font-weight: 700; color: #1a1a2e; margin-bottom: 4px;" id="resumeName"></div>
+          <div style="font-size: 14px; color: #6b7280;" id="resumeEmail"></div>
+        </div>
+        <button class="submit-btn" id="resumeBtn" onclick="resumeSession()" style="margin-bottom: 12px;">متابعة الخطة التعليمية</button>
+        <button class="submit-btn" onclick="showFullLogin()" style="background: #f3f4f6; color: #4a4a5a; font-size: 14px; font-weight: 600;">تسجيل دخول بحساب آخر</button>
+      </div>
+
+      <!-- Login Form: Step 1 = email only, Step 2 = name+phone for new users -->
+      <div id="loginSection" class="login-section" style="display:none;">
+        <div class="login-title" id="loginTitle">أدخل بريدك الإلكتروني للدخول</div>
+        <form id="loginForm" autocomplete="on">
+          <div class="field">
+            <label for="email">البريد الإلكتروني</label>
+            <input type="email" id="email" name="email" placeholder="example@email.com" required autocomplete="email" dir="ltr" style="text-align:left;">
+          </div>
+          <!-- Registration fields (hidden until needed) -->
+          <div id="registrationFields" style="display:none;">
+            <div class="field">
+              <label for="fullName">الاسم الكامل</label>
+              <input type="text" id="fullName" name="fullName" placeholder="أدخل اسمك الكامل" autocomplete="name">
+            </div>
+            <div class="field">
+              <label>رقم الواتساب</label>
+              <div class="phone-row">
+                <select id="countryCode">
+                  <option value="+962">🇯🇴 +962</option>
+                  <option value="+966">🇸🇦 +966</option>
+                  <option value="+971">🇦🇪 +971</option>
+                  <option value="+973">🇧🇭 +973</option>
+                  <option value="+974">🇶🇦 +974</option>
+                  <option value="+968">🇴🇲 +968</option>
+                  <option value="+965">🇰🇼 +965</option>
+                  <option value="+961">🇱🇧 +961</option>
+                  <option value="+970">🇵🇸 +970</option>
+                  <option value="+964">🇮🇶 +964</option>
+                  <option value="+20">🇪🇬 +20</option>
+                  <option value="+212">🇲🇦 +212</option>
+                  <option value="+216">🇹🇳 +216</option>
+                  <option value="+213">🇩🇿 +213</option>
+                  <option value="+218">🇱🇾 +218</option>
+                  <option value="+249">🇸🇩 +249</option>
+                  <option value="+90">🇹🇷 +90</option>
+                  <option value="+44">🇬🇧 +44</option>
+                  <option value="+1">🇺🇸 +1</option>
+                </select>
+                <input type="tel" id="phoneNumber" placeholder="7XXXXXXXX" dir="ltr" style="text-align:left;">
+              </div>
+            </div>
+          </div>
+          <button type="submit" class="submit-btn" id="loginBtn">الدخول</button>
+          <div class="msg error" id="loginError"></div>
+        </form>
+      </div>
+
+      <!-- Plan Content (shown after login) -->
+      <div id="planContent" class="plan-content">
+        <!-- Welcome bar -->
+        <div class="welcome-bar">
+          <span class="name" id="welcomeName"></span>
+          <span class="phase-badge" id="phaseBadge"></span>
+          <button class="logout-btn" onclick="logout()">تسجيل الخروج</button>
+        </div>
+
+        <!-- Overall progress -->
+        <div class="progress-container">
+          <div class="progress-label">
+            <span>التقدم الكلي</span>
+            <span id="progressPercent">0%</span>
+          </div>
+          <div class="progress-bar">
+            <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+          </div>
+        </div>
+
+        <!-- ======================== المرحلة الأولى ======================== -->
+        <div class="phase" id="phase1">
+          <div class="phase-header">
+            <div class="phase-number">1</div>
+            <div>
+              <div class="phase-title">أساسيات التداول وفتح حساب تجريبي</div>
+              <div class="phase-duration">اليوم 1 – اليوم 2</div>
+            </div>
+          </div>
+          <div class="phase-goal">
+            تأسيس الطالب بالمفاهيم الأساسية وتعليمه كيفية فتح حساب تجريبي والبدء بالتطبيق العملي.
+          </div>
+          <div class="phase-status current" id="phase1Status">🔵 المرحلة الحالية</div>
+
+          <h4 style="font-size:15px; font-weight:700; margin-bottom:8px;">المهام المطلوبة:</h4>
+          <ul class="task-list">
+            <li class="task-item" onclick="toggleTask(this, 'p1_open_demo')">
+              <input type="checkbox" id="p1_open_demo">
+              <span class="task-label">فتح حساب تجريبي</span>
+            </li>
+            <li class="task-item" onclick="toggleTask(this, 'p1_first_trade')">
+              <input type="checkbox" id="p1_first_trade">
+              <span class="task-label">تنفيذ أول صفقة</span>
+            </li>
+            <li class="task-item" onclick="toggleTask(this, 'p1_upload_account')">
+              <input type="checkbox" id="p1_upload_account">
+              <span class="task-label">رفع صورة الحساب</span>
+            </li>
+            <li class="task-item" onclick="toggleTask(this, 'p1_upload_trade')">
+              <input type="checkbox" id="p1_upload_trade">
+              <span class="task-label">رفع صورة الصفقة</span>
+            </li>
+          </ul>
+
+          <div class="sub-section">
+            <h4>📝 مهمة المرحلة (إجبارية):</h4>
+            <p>يجب الإجابة على الأسئلة التالية وإرسالها للدعم الفني:</p>
+            <ol>
+              <li>ما الفرق بين: Balance, Equity, Free Margin, Used Margin</li>
+              <li>اكتب أنواع الأوامر التالية واشرح الفرق بينهم: Market Order, Buy Limit, Sell Limit, Buy Stop, Sell Stop</li>
+              <li>ما معنى Pip؟</li>
+              <li>كيف يتم احتساب Pip؟</li>
+            </ol>
+          </div>
+
+          <div class="answer-area">
+            <label for="answer_phase1">✍️ اكتب إجاباتك هنا:</label>
+            <textarea id="answer_phase1" placeholder="اكتب إجابات الأسئلة الأربعة هنا..."></textarea>
+            <div>
+              <button class="save-answer-btn" onclick="saveAnswer('phase1')">حفظ الإجابة</button>
+              <span class="save-status" id="saveStatus_phase1"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- ======================== المرحلة الثانية ======================== -->
+        <div class="phase" id="phase2">
+          <div class="phase-header">
+            <div class="phase-number">2</div>
+            <div>
+              <div class="phase-title">التحليل الأساسي + الاستمرار بالتطبيق</div>
+              <div class="phase-duration">اليوم 3 – اليوم 5</div>
+            </div>
+          </div>
+          <div class="phase-goal">
+            تعليم الطالب فهم الأخبار الاقتصادية وتأثيرها على السوق مع استمرار التطبيق العملي.
+          </div>
+          <div class="phase-status locked" id="phase2Status">🔒 مقفلة</div>
+
+          <h4 style="font-size:15px; font-weight:700; margin-bottom:8px;">المهام المطلوبة:</h4>
+          <ul class="task-list">
+            <li class="task-item" onclick="toggleTask(this, 'p2_follow_news')">
+              <input type="checkbox" id="p2_follow_news">
+              <span class="task-label">متابعة الأخبار الاقتصادية</span>
+            </li>
+            <li class="task-item" onclick="toggleTask(this, 'p2_execute_trades')">
+              <input type="checkbox" id="p2_execute_trades">
+              <span class="task-label">تنفيذ صفقات على الحساب التجريبي</span>
+            </li>
+            <li class="task-item" onclick="toggleTask(this, 'p2_record_results')">
+              <input type="checkbox" id="p2_record_results">
+              <span class="task-label">تسجيل نتائج الصفقات</span>
+            </li>
+          </ul>
+
+          <div class="sub-section">
+            <h4>📝 مهمة المرحلة:</h4>
+            <p>على الطالب الإجابة عن السؤال التالي:</p>
+            <p><strong>ما تأثير ارتفاع أسعار الفائدة على:</strong> الذهب، الدولار، النفط</p>
+            <p><strong>وما تأثير انخفاضها على:</strong> الذهب، الدولار، النفط</p>
+            <p>مع شرح السبب.</p>
+          </div>
+
+          <div class="answer-area">
+            <label for="answer_phase2">✍️ اكتب إجابتك هنا:</label>
+            <textarea id="answer_phase2" placeholder="اكتب تحليلك لتأثير أسعار الفائدة..."></textarea>
+            <div>
+              <button class="save-answer-btn" onclick="saveAnswer('phase2')">حفظ الإجابة</button>
+              <span class="save-status" id="saveStatus_phase2"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- ======================== المرحلة الثالثة ======================== -->
+        <div class="phase" id="phase3">
+          <div class="phase-header">
+            <div class="phase-number">3</div>
+            <div>
+              <div class="phase-title">إدارة رأس المال والمخاطر + التوصيات + العوامل النفسية</div>
+              <div class="phase-duration">اليوم 6 – اليوم 8</div>
+            </div>
+          </div>
+          <div class="phase-goal">
+            تعليم الطالب كيفية حماية رأس المال وإدارة الصفقات والانضباط النفسي أثناء التداول.
+          </div>
+          <div class="phase-status locked" id="phase3Status">🔒 مقفلة</div>
+
+          <h4 style="font-size:15px; font-weight:700; margin-bottom:8px;">محتوى المرحلة:</h4>
+          <ul class="task-list">
+            <li class="task-item" onclick="toggleTask(this, 'p3_video_capital')">
+              <input type="checkbox" id="p3_video_capital">
+              <span class="task-label">فيديو إدارة رأس المال</span>
+            </li>
+            <li class="task-item" onclick="toggleTask(this, 'p3_video_risk')">
+              <input type="checkbox" id="p3_video_risk">
+              <span class="task-label">فيديو إدارة المخاطر</span>
+            </li>
+            <li class="task-item" onclick="toggleTask(this, 'p3_video_recs')">
+              <input type="checkbox" id="p3_video_recs">
+              <span class="task-label">فيديو إدارة التوصيات</span>
+            </li>
+            <li class="task-item" onclick="toggleTask(this, 'p3_video_psychology')">
+              <input type="checkbox" id="p3_video_psychology">
+              <span class="task-label">فيديو الأخطاء النفسية</span>
+            </li>
+            <li class="task-item" onclick="toggleTask(this, 'p3_video_discipline')">
+              <input type="checkbox" id="p3_video_discipline">
+              <span class="task-label">فيديو الانضباط بالتداول</span>
+            </li>
+          </ul>
+
+          <div class="divider"></div>
+
+          <h4 style="font-size:15px; font-weight:700; margin-bottom:8px;">المهام المطلوبة:</h4>
+          <ul class="task-list">
+            <li class="task-item" onclick="toggleTask(this, 'p3_continue_trading')">
+              <input type="checkbox" id="p3_continue_trading">
+              <span class="task-label">الاستمرار بالتداول على الحساب التجريبي</span>
+            </li>
+            <li class="task-item" onclick="toggleTask(this, 'p3_risk_ratio')">
+              <input type="checkbox" id="p3_risk_ratio">
+              <span class="task-label">الالتزام بنسبة مخاطرة محددة</span>
+            </li>
+            <li class="task-item" onclick="toggleTask(this, 'p3_record_trades')">
+              <input type="checkbox" id="p3_record_trades">
+              <span class="task-label">تسجيل الصفقات</span>
+            </li>
+          </ul>
+
+          <div class="sub-section">
+            <h4>📝 مهمة المرحلة:</h4>
+            <p>يجب إرسال تقرير يتضمن <strong>5 صفقات على الأقل</strong> ويحتوي على:</p>
+            <ul>
+              <li>سعر الدخول</li>
+              <li>وقف الخسارة</li>
+              <li>الهدف</li>
+              <li>نسبة المخاطرة</li>
+              <li>سبب الدخول</li>
+            </ul>
+          </div>
+
+          <div class="answer-area">
+            <label for="answer_phase3">✍️ اكتب تقريرك هنا (5 صفقات على الأقل):</label>
+            <textarea id="answer_phase3" placeholder="الصفقة 1:&#10;سعر الدخول:&#10;وقف الخسارة:&#10;الهدف:&#10;نسبة المخاطرة:&#10;سبب الدخول:&#10;&#10;الصفقة 2:&#10;..." style="min-height:200px;"></textarea>
+            <div>
+              <button class="save-answer-btn" onclick="saveAnswer('phase3')">حفظ التقرير</button>
+              <span class="save-status" id="saveStatus_phase3"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- ======================== المرحلة الرابعة ======================== -->
+        <div class="phase" id="phase4">
+          <div class="phase-header">
+            <div class="phase-number">4</div>
+            <div>
+              <div class="phase-title">جلسة مراجعة خاصة</div>
+              <div class="phase-duration">اليوم 8</div>
+            </div>
+          </div>
+          <div class="phase-goal">
+            مراجعة أداء الطالب وتصحيح الأخطاء والإجابة على الاستفسارات.
+          </div>
+          <div class="phase-status locked" id="phase4Status">🔒 مقفلة</div>
+
+          <div class="sub-section">
+            <h4>ما تتضمنه الجلسة:</h4>
+            <ul>
+              <li>مراجعة الصفقات</li>
+              <li>تحليل الأخطاء</li>
+              <li>تصحيح إدارة المخاطر</li>
+              <li>تقييم الأداء</li>
+              <li>الإجابة على الأسئلة</li>
+            </ul>
+          </div>
+
+          <h4 style="font-size:15px; font-weight:700; margin: 12px 0 8px;">متطلبات الطالب:</h4>
+          <ul class="task-list">
+            <li class="task-item" onclick="toggleTask(this, 'p4_book_session')">
+              <input type="checkbox" id="p4_book_session">
+              <span class="task-label">حجز الجلسة</span>
+            </li>
+            <li class="task-item" onclick="toggleTask(this, 'p4_attend')">
+              <input type="checkbox" id="p4_attend">
+              <span class="task-label">حضور اللقاء</span>
+            </li>
+            <li class="task-item" onclick="toggleTask(this, 'p4_prepare_questions')">
+              <input type="checkbox" id="p4_prepare_questions">
+              <span class="task-label">تجهيز الأسئلة</span>
+            </li>
+          </ul>
+        </div>
+
+        <!-- ======================== المرحلة الخامسة ======================== -->
+        <div class="phase" id="phase5">
+          <div class="phase-header">
+            <div class="phase-number">5</div>
+            <div>
+              <div class="phase-title">كورس خطة التداول</div>
+              <div class="phase-duration">اليوم 9</div>
+            </div>
+          </div>
+          <div class="phase-goal">
+            إنشاء خطة تداول شخصية للطالب.
+          </div>
+          <div class="phase-status locked" id="phase5Status">🔒 مقفلة</div>
+
+          <div class="sub-section">
+            <h4>📝 مهمة المرحلة:</h4>
+            <p>يجب إنشاء خطة تداول تحتوي على:</p>
+            <ul>
+              <li>اسم الاستراتيجية</li>
+              <li>نسبة المخاطرة</li>
+              <li>أقصى خسارة يومية</li>
+              <li>شروط الدخول</li>
+              <li>شروط الخروج</li>
+              <li>أوقات التداول</li>
+              <li>الأزواج المسموحة</li>
+            </ul>
+          </div>
+
+          <h4 style="font-size:15px; font-weight:700; margin: 12px 0 8px;">متطلبات التسليم:</h4>
+          <ul class="task-list">
+            <li class="task-item" onclick="toggleTask(this, 'p5_write_plan')">
+              <input type="checkbox" id="p5_write_plan">
+              <span class="task-label">كتابة الخطة</span>
+            </li>
+            <li class="task-item" onclick="toggleTask(this, 'p5_send_plan')">
+              <input type="checkbox" id="p5_send_plan">
+              <span class="task-label">إرسالها للدعم</span>
+            </li>
+            <li class="task-item" onclick="toggleTask(this, 'p5_plan_approved')">
+              <input type="checkbox" id="p5_plan_approved">
+              <span class="task-label">اعتماد خطة التداول</span>
+            </li>
+          </ul>
+
+          <div class="answer-area">
+            <label for="answer_phase5">✍️ اكتب خطة التداول هنا:</label>
+            <textarea id="answer_phase5" placeholder="اسم الاستراتيجية:&#10;نسبة المخاطرة:&#10;أقصى خسارة يومية:&#10;شروط الدخول:&#10;شروط الخروج:&#10;أوقات التداول:&#10;الأزواج المسموحة:" style="min-height:200px;"></textarea>
+            <div>
+              <button class="save-answer-btn" onclick="saveAnswer('phase5')">حفظ الخطة</button>
+              <span class="save-status" id="saveStatus_phase5"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- ======================== المرحلة السادسة ======================== -->
+        <div class="phase" id="phase6">
+          <div class="phase-header">
+            <div class="phase-number">6</div>
+            <div>
+              <div class="phase-title">التحضير للحساب الحقيقي</div>
+              <div class="phase-duration">اليوم 10</div>
+            </div>
+          </div>
+          <div class="phase-goal">
+            تجهيز الطالب للانتقال للتداول الحقيقي.
+          </div>
+          <div class="phase-status locked" id="phase6Status">🔒 مقفلة</div>
+
+          <h4 style="font-size:15px; font-weight:700; margin-bottom:8px;">المهام:</h4>
+          <ul class="task-list">
+            <li class="task-item" onclick="toggleTask(this, 'p6_open_real')">
+              <input type="checkbox" id="p6_open_real">
+              <span class="task-label">فتح حساب حقيقي</span>
+            </li>
+            <li class="task-item" onclick="toggleTask(this, 'p6_verify_account')">
+              <input type="checkbox" id="p6_verify_account">
+              <span class="task-label">توثيق الحساب</span>
+            </li>
+            <li class="task-item" onclick="toggleTask(this, 'p6_review_risk')">
+              <input type="checkbox" id="p6_review_risk">
+              <span class="task-label">مراجعة خطة المخاطر</span>
+            </li>
+            <li class="task-item" onclick="toggleTask(this, 'p6_confirm_ready')">
+              <input type="checkbox" id="p6_confirm_ready">
+              <span class="task-label">تأكيد الجاهزية</span>
+            </li>
+          </ul>
+        </div>
+
+      </div><!-- /planContent -->
+
+      <div class="footer">
+        &copy; 2026 XFlex Trading Academy — جميع الحقوق محفوظة
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = 'https://api.xflexacademy.com/api/trpc';
+
+    // All task IDs grouped by phase
+    const PHASE_TASKS = {
+      1: ['p1_open_demo', 'p1_first_trade', 'p1_upload_account', 'p1_upload_trade'],
+      2: ['p2_follow_news', 'p2_execute_trades', 'p2_record_results'],
+      3: ['p3_video_capital', 'p3_video_risk', 'p3_video_recs', 'p3_video_psychology', 'p3_video_discipline', 'p3_continue_trading', 'p3_risk_ratio', 'p3_record_trades'],
+      4: ['p4_book_session', 'p4_attend', 'p4_prepare_questions'],
+      5: ['p5_write_plan', 'p5_send_plan', 'p5_plan_approved'],
+      6: ['p6_open_real', 'p6_verify_account', 'p6_review_risk', 'p6_confirm_ready'],
+    };
+    const ALL_TASKS = Object.values(PHASE_TASKS).flat();
+    const PHASES_WITH_ANSWERS = [1, 2, 3, 5];
+
+    const PHASE_NAMES = {
+      1: 'أساسيات التداول',
+      2: 'التحليل الأساسي',
+      3: 'إدارة المخاطر',
+      4: 'جلسة المراجعة',
+      5: 'خطة التداول',
+      6: 'الحساب الحقيقي',
+    };
+
+    let currentUser = null; // { email, fullName, phone }
+    let planData = null;    // server data
+
+    // ── Persistence (localStorage for quick reload) ──
+    function saveSession() {
+      if (currentUser) localStorage.setItem('xflex_plan_user', JSON.stringify(currentUser));
+    }
+    function loadSession() {
+      try { return JSON.parse(localStorage.getItem('xflex_plan_user')); } catch { return null; }
+    }
+    function clearSession() {
+      localStorage.removeItem('xflex_plan_user');
+    }
+
+    // ── API helpers ──
+    async function apiCall(procedure, input) {
+      const res = await fetch(`${API_BASE}/${procedure}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ json: input }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.error?.json?.message || err?.error?.message || 'حدث خطأ');
+      }
+      const data = await res.json();
+      return data?.result?.data?.json;
+    }
+
+    let loginMode = 'lookup'; // 'lookup' = email only, 'register' = full form
+
+    // ── Login ──
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('email').value.trim().toLowerCase();
+      if (!email || !email.includes('@')) { showLoginError('يرجى إدخال بريد إلكتروني صحيح'); return; }
+
+      const btn = document.getElementById('loginBtn');
+      btn.disabled = true;
+      btn.innerHTML = 'جارٍ التحميل... <span class="spinner"></span>';
+      document.getElementById('loginError').style.display = 'none';
+
+      try {
+        if (loginMode === 'lookup') {
+          // Step 1: Try to find existing user by email
+          const result = await apiCall('plan.lookup', { email });
+          if (result) {
+            // Existing user — go straight to plan
+            planData = result;
+            currentUser = { email, fullName: result.fullName, phone: result.phone };
+            saveSession();
+            showPlan();
+            return;
+          }
+          // New user — expand form
+          loginMode = 'register';
+          document.getElementById('registrationFields').style.display = 'block';
+          document.getElementById('loginTitle').textContent = 'مستخدم جديد — أكمل بياناتك';
+          btn.textContent = 'إنشاء حساب والدخول';
+          return;
+        }
+
+        // Step 2: Register new user
+        const fullName = document.getElementById('fullName').value.trim();
+        const countryCode = document.getElementById('countryCode').value;
+        const phoneNumber = (document.getElementById('phoneNumber').value || '').trim().replace(/\s+/g, '');
+
+        if (!fullName || fullName.length < 2) { showLoginError('يرجى إدخال الاسم الكامل'); return; }
+
+        planData = await apiCall('plan.getProgress', {
+          email,
+          fullName,
+          phone: phoneNumber ? countryCode + phoneNumber : '',
+        });
+        currentUser = { email, fullName, phone: phoneNumber ? countryCode + phoneNumber : '' };
+        saveSession();
+        showPlan();
+      } catch (err) {
+        showLoginError(err.message || 'حدث خطأ، يرجى المحاولة لاحقاً');
+      } finally {
+        btn.disabled = false;
+        if (loginMode === 'lookup') btn.textContent = 'الدخول';
+        else btn.textContent = 'إنشاء حساب والدخول';
+      }
+    });
+
+    function showLoginError(msg) {
+      const el = document.getElementById('loginError');
+      el.textContent = msg;
+      el.style.display = 'block';
+    }
+
+    function logout() {
+      clearSession();
+      currentUser = null;
+      planData = null;
+      loginMode = 'lookup';
+      document.getElementById('resumeSection').style.display = 'none';
+      document.getElementById('loginSection').style.display = 'block';
+      document.getElementById('planContent').classList.remove('active');
+      document.getElementById('registrationFields').style.display = 'none';
+      document.getElementById('loginTitle').textContent = 'أدخل بريدك الإلكتروني للدخول';
+      document.getElementById('loginBtn').textContent = 'الدخول';
+      document.getElementById('loginForm').reset();
+      document.getElementById('loginError').style.display = 'none';
+    }
+
+    // ── Initialize on page load ──
+    async function init() {
+      const saved = loadSession();
+      if (saved && saved.email) {
+        // Show quick resume UI
+        document.getElementById('resumeName').textContent = saved.fullName || '';
+        document.getElementById('resumeEmail').textContent = saved.email;
+        document.getElementById('resumeSection').style.display = 'block';
+        document.getElementById('loginSection').style.display = 'none';
+      } else {
+        // No saved session — show full login
+        document.getElementById('resumeSection').style.display = 'none';
+        document.getElementById('loginSection').style.display = 'block';
+      }
+    }
+
+    async function resumeSession() {
+      const saved = loadSession();
+      if (!saved || !saved.email) { showFullLogin(); return; }
+      const btn = document.getElementById('resumeBtn');
+      btn.disabled = true;
+      btn.innerHTML = 'جارٍ التحميل... <span class="spinner"></span>';
+      try {
+        planData = await apiCall('plan.getProgress', {
+          email: saved.email,
+          fullName: saved.fullName,
+          phone: saved.phone || '',
+        });
+        currentUser = saved;
+        showPlan();
+      } catch {
+        clearSession();
+        showFullLogin();
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'متابعة الخطة التعليمية';
+      }
+    }
+
+    function showFullLogin() {
+      loginMode = 'lookup';
+      document.getElementById('resumeSection').style.display = 'none';
+      document.getElementById('loginSection').style.display = 'block';
+      document.getElementById('registrationFields').style.display = 'none';
+      document.getElementById('loginTitle').textContent = 'أدخل بريدك الإلكتروني للدخول';
+      document.getElementById('loginBtn').textContent = 'الدخول';
+      document.getElementById('loginForm').reset();
+    }
+
+    // ── Show Plan ──
+    function showPlan() {
+      document.getElementById('loginSection').style.display = 'none';
+      document.getElementById('planContent').classList.add('active');
+      document.getElementById('welcomeName').textContent = 'مرحباً ' + (currentUser.fullName || '');
+      renderProgress();
+    }
+
+    function renderProgress() {
+      if (!planData) return;
+      const progress = JSON.parse(planData.progress || '{}');
+      const answers = JSON.parse(planData.answers || '{}');
+      const approvals = JSON.parse(planData.phaseApprovals || '{}');
+      const currentPhase = planData.currentPhase || 1;
+
+      // Determine which phases are accessible (current + all approved)
+      const accessiblePhases = new Set();
+      for (let p = 1; p <= 6; p++) {
+        if (approvals[String(p)] || p === currentPhase) accessiblePhases.add(p);
+      }
+
+      // Set checkboxes + enforce locking per phase
+      for (let p = 1; p <= 6; p++) {
+        const isAccessible = accessiblePhases.has(p);
+        const tasks = PHASE_TASKS[p] || [];
+        tasks.forEach(taskId => {
+          const cb = document.getElementById(taskId);
+          if (cb) {
+            cb.checked = !!progress[taskId];
+            cb.disabled = !isAccessible;
+            const li = cb.closest('.task-item');
+            if (li) {
+              li.classList.toggle('completed', !!progress[taskId]);
+              li.style.opacity = isAccessible ? '1' : '0.5';
+              li.style.pointerEvents = isAccessible ? 'auto' : 'none';
+            }
+          }
+        });
+
+        // Disable answer textareas + save buttons for locked phases
+        const ta = document.getElementById('answer_phase' + p);
+        if (ta) {
+          ta.disabled = !isAccessible;
+          ta.style.opacity = isAccessible ? '1' : '0.5';
+          if (answers['phase' + p]) ta.value = answers['phase' + p];
+          const btn = ta.parentElement ? ta.parentElement.querySelector('.save-answer-btn') : null;
+          if (btn) {
+            btn.disabled = !isAccessible;
+            btn.style.opacity = isAccessible ? '1' : '0.5';
+          }
+        }
+      }
+
+      // Phase badges and status
+      for (let p = 1; p <= 6; p++) {
+        const statusEl = document.getElementById('phase' + p + 'Status');
+        if (!statusEl) continue;
+        if (approvals[String(p)]) {
+          statusEl.className = 'phase-status approved';
+          statusEl.textContent = '✅ تمت الموافقة';
+        } else if (p === currentPhase) {
+          statusEl.className = 'phase-status current';
+          statusEl.textContent = '🔵 المرحلة الحالية';
+        } else if (p < currentPhase) {
+          statusEl.className = 'phase-status pending';
+          statusEl.textContent = '⏳ بانتظار الموافقة';
+        } else {
+          statusEl.className = 'phase-status locked';
+          statusEl.textContent = '🔒 مقفلة — تحتاج موافقة الدعم الفني للمرحلة السابقة';
+        }
+      }
+
+      // Phase badge in welcome bar
+      const phaseName = currentPhase > 6 ? 'مكتمل ✅' : 'المرحلة ' + currentPhase + ': ' + (PHASE_NAMES[currentPhase] || '');
+      document.getElementById('phaseBadge').textContent = phaseName;
+
+      // Overall progress bar
+      const completedCount = ALL_TASKS.filter(t => progress[t]).length;
+      const percent = Math.round((completedCount / ALL_TASKS.length) * 100);
+      document.getElementById('progressPercent').textContent = percent + '%';
+      document.getElementById('progressFill').style.width = percent + '%';
+    }
+
+    // ── Toggle task ──
+    async function toggleTask(li, taskId) {
+      if (!currentUser) return;
+      const cb = document.getElementById(taskId);
+      if (!cb || cb.disabled) return;
+
+      // Check if this task's phase is accessible
+      const approvals = JSON.parse(planData.phaseApprovals || '{}');
+      const currentPhase = planData.currentPhase || 1;
+      const phaseNum = parseInt(taskId.split('_')[0].replace('p', ''));
+      const isAccessible = !!approvals[String(phaseNum)] || phaseNum === currentPhase;
+      if (!isAccessible) return;
+      const newVal = !cb.checked;
+      cb.checked = newVal;
+      li.classList.toggle('completed', newVal);
+
+      // Update local planData
+      const progress = JSON.parse(planData.progress || '{}');
+      progress[taskId] = newVal;
+      planData.progress = JSON.stringify(progress);
+      renderProgress();
+
+      // Save to server
+      try {
+        await apiCall('plan.updateTask', {
+          email: currentUser.email,
+          taskId,
+          completed: newVal,
+        });
+      } catch (err) {
+        // Revert on error
+        cb.checked = !newVal;
+        li.classList.toggle('completed', !newVal);
+        progress[taskId] = !newVal;
+        planData.progress = JSON.stringify(progress);
+        renderProgress();
+        console.error('Failed to save task:', err);
+      }
+    }
+
+    // ── Save answer ──
+    async function saveAnswer(phaseKey) {
+      if (!currentUser) return;
+      const ta = document.getElementById('answer_' + phaseKey);
+      const statusEl = document.getElementById('saveStatus_' + phaseKey);
+      const btn = ta.parentElement.querySelector('.save-answer-btn');
+      if (!ta || !btn) return;
+
+      const answer = ta.value.trim();
+      btn.disabled = true;
+      btn.textContent = 'جارٍ الحفظ...';
+      statusEl.textContent = '';
+
+      try {
+        await apiCall('plan.updateAnswer', {
+          email: currentUser.email,
+          phaseKey,
+          answer,
+        });
+        // Update local data
+        const answers = JSON.parse(planData.answers || '{}');
+        answers[phaseKey] = answer;
+        planData.answers = JSON.stringify(answers);
+        statusEl.textContent = '✅ تم الحفظ';
+        setTimeout(() => { statusEl.textContent = ''; }, 3000);
+      } catch (err) {
+        statusEl.textContent = '';
+        alert('حدث خطأ أثناء الحفظ: ' + (err.message || ''));
+      } finally {
+        btn.disabled = false;
+        btn.textContent = phaseKey === 'phase3' ? 'حفظ التقرير' : phaseKey === 'phase5' ? 'حفظ الخطة' : 'حفظ الإجابة';
+      }
+    }
+
+    // ── Kickoff ──
+    init();
+  </script>
+</body>
+</html>

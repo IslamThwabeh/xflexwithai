@@ -32,11 +32,12 @@ export const ROLE_PAGE_ACCESS: Record<string, string[]> = {
   view_recommendations: ["/admin/students"],
   view_subscriptions: ["/admin/students"],
   view_quizzes: ["/admin/quizzes", "/admin/students"],
+  plan_manager: ["/admin/plan-progress"],
 };
 
 // All available staff roles
 export const ALL_STAFF_ROLES = [
-  "analyst", "support", "key_manager",
+  "analyst", "support", "key_manager", "plan_manager",
   "client_lookup", "view_progress", "view_recommendations", "view_subscriptions", "view_quizzes",
 ] as const;
 export type StaffRole = typeof ALL_STAFF_ROLES[number];

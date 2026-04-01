@@ -64,7 +64,7 @@ const supportStaffProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   const admin = await db.getAdminByEmail(ctx.user.email);
   if (admin) return next({ ctx: { ...ctx, admin, staffRole: 'admin' as const } });
   const isStaff = await db.hasAnyRole(ctx.user.id, [
-    'support', 'key_manager',
+    'support', 'key_manager', 'plan_manager',
     'client_lookup', 'view_progress', 'view_recommendations', 'view_subscriptions', 'view_quizzes',
   ]);
   if (!isStaff) {
@@ -2605,7 +2605,7 @@ export const appRouter = router({
     assign: adminProcedure
       .input(z.object({
         userId: z.number(),
-        role: z.enum(['analyst', 'support', 'key_manager', 'view_progress', 'view_recommendations', 'view_subscriptions', 'view_quizzes', 'client_lookup']),
+        role: z.enum(['analyst', 'support', 'key_manager', 'plan_manager', 'view_progress', 'view_recommendations', 'view_subscriptions', 'view_quizzes', 'client_lookup']),
       }))
       .mutation(async ({ ctx, input }) => {
         // Verify user exists
@@ -2620,7 +2620,7 @@ export const appRouter = router({
     remove: adminProcedure
       .input(z.object({
         userId: z.number(),
-        role: z.enum(['analyst', 'support', 'key_manager', 'view_progress', 'view_recommendations', 'view_subscriptions', 'view_quizzes', 'client_lookup']),
+        role: z.enum(['analyst', 'support', 'key_manager', 'plan_manager', 'view_progress', 'view_recommendations', 'view_subscriptions', 'view_quizzes', 'client_lookup']),
       }))
       .mutation(async ({ input }) => {
         await db.removeRole(input.userId, input.role);
@@ -2632,7 +2632,7 @@ export const appRouter = router({
     setRoles: adminProcedure
       .input(z.object({
         userId: z.number(),
-        roles: z.array(z.enum(['analyst', 'support', 'key_manager', 'view_progress', 'view_recommendations', 'view_subscriptions', 'view_quizzes', 'client_lookup'])),
+        roles: z.array(z.enum(['analyst', 'support', 'key_manager', 'plan_manager', 'view_progress', 'view_recommendations', 'view_subscriptions', 'view_quizzes', 'client_lookup'])),
       }))
       .mutation(async ({ ctx, input }) => {
         const user = await db.getUserById(input.userId);
@@ -2663,7 +2663,7 @@ export const appRouter = router({
         name: z.string().min(2),
         email: z.string().email(),
         phone: z.string().optional(),
-        roles: z.array(z.enum(['analyst', 'support', 'key_manager', 'view_progress', 'view_recommendations', 'view_subscriptions', 'view_quizzes', 'client_lookup'])).min(1),
+        roles: z.array(z.enum(['analyst', 'support', 'key_manager', 'plan_manager', 'view_progress', 'view_recommendations', 'view_subscriptions', 'view_quizzes', 'client_lookup'])).min(1),
       }))
       .mutation(async ({ ctx, input }) => {
         const userId = await db.createStaffUser({ name: input.name, email: input.email, phone: input.phone });
@@ -4798,6 +4798,104 @@ ${qaText}`;
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {
         return db.deleteOfferAgreement(input.id);
+      }),
+  }),
+
+  // ====== Foundation Plan Progress (10-Day Program) ======
+  plan: router({
+    // Public: lookup plan progress by email only (returning users)
+    lookup: publicProcedure
+      .input(z.object({ email: z.string().email().max(320) }))
+      .mutation(async ({ input }) => {
+        return db.lookupPlanProgress(input.email);
+      }),
+
+    // Public: get or create plan progress (student identifies by email)
+    getProgress: publicProcedure
+      .input(z.object({
+        email: z.string().email().max(320),
+        fullName: z.string().min(2).max(100),
+        phone: z.string().max(20).optional(),
+      }))
+      .mutation(async ({ input }) => {
+        return db.getOrCreatePlanProgress(input);
+      }),
+
+    // Public: update task checkbox (enforces phase lock)
+    updateTask: publicProcedure
+      .input(z.object({
+        email: z.string().email().max(320),
+        taskId: z.string().min(1).max(100),
+        completed: z.boolean(),
+      }))
+      .mutation(async ({ input }) => {
+        // Extract phase number from taskId (e.g. "p1_open_demo" → 1)
+        const phaseMatch = input.taskId.match(/^p(\d+)_/);
+        if (phaseMatch) {
+          const phaseNum = parseInt(phaseMatch[1]);
+          const record = await db.getOrCreatePlanProgress({ email: input.email, fullName: '' });
+          if (record) {
+            const approvals = JSON.parse(record.phaseApprovals || '{}');
+            const currentPhase = record.currentPhase || 1;
+            const isAccessible = !!approvals[String(phaseNum)] || phaseNum === currentPhase;
+            if (!isAccessible) {
+              throw new TRPCError({ code: 'FORBIDDEN', message: 'هذه المرحلة مقفلة — تحتاج موافقة الدعم الفني' });
+            }
+          }
+        }
+        return db.updatePlanTaskProgress(input.email, input.taskId, input.completed);
+      }),
+
+    // Public: update phase answer text (enforces phase lock)
+    updateAnswer: publicProcedure
+      .input(z.object({
+        email: z.string().email().max(320),
+        phaseKey: z.string().min(1).max(50),
+        answer: z.string().max(5000),
+      }))
+      .mutation(async ({ input }) => {
+        // Extract phase number from phaseKey (e.g. "phase2" → 2)
+        const phaseMatch = input.phaseKey.match(/^phase(\d+)$/);
+        if (phaseMatch) {
+          const phaseNum = parseInt(phaseMatch[1]);
+          const record = await db.getOrCreatePlanProgress({ email: input.email, fullName: '' });
+          if (record) {
+            const approvals = JSON.parse(record.phaseApprovals || '{}');
+            const currentPhase = record.currentPhase || 1;
+            const isAccessible = !!approvals[String(phaseNum)] || phaseNum === currentPhase;
+            if (!isAccessible) {
+              throw new TRPCError({ code: 'FORBIDDEN', message: 'هذه المرحلة مقفلة — تحتاج موافقة الدعم الفني' });
+            }
+          }
+        }
+        return db.updatePlanAnswer(input.email, input.phaseKey, input.answer);
+      }),
+
+    // Admin: list all student progress
+    listAll: adminOrRoleProcedure(['plan_manager', 'support'])
+      .query(async () => {
+        return db.listPlanProgress();
+      }),
+
+    // Admin: approve a phase
+    approvePhase: adminOrRoleProcedure(['plan_manager', 'support'])
+      .input(z.object({ studentId: z.number(), phase: z.number().min(1).max(6) }))
+      .mutation(async ({ input }) => {
+        return db.approvePlanPhase(input.studentId, input.phase);
+      }),
+
+    // Admin: revoke phase approval
+    revokePhase: adminOrRoleProcedure(['plan_manager', 'support'])
+      .input(z.object({ studentId: z.number(), phase: z.number().min(1).max(6) }))
+      .mutation(async ({ input }) => {
+        return db.revokePlanPhase(input.studentId, input.phase);
+      }),
+
+    // Admin: update notes
+    updateNotes: adminOrRoleProcedure(['plan_manager', 'support'])
+      .input(z.object({ studentId: z.number(), notes: z.string().max(2000) }))
+      .mutation(async ({ input }) => {
+        return db.updatePlanAdminNotes(input.studentId, input.notes);
       }),
   }),
 });

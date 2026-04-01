@@ -57,6 +57,7 @@ import {
   adminActions, AdminAction, InsertAdminAction,
   brokerOnboarding, BrokerOnboarding, InsertBrokerOnboarding,
   emailLog, EmailLog, InsertEmailLog,
+  planProgress, PlanProgress, InsertPlanProgress,
 } from "../database/schema-sqlite.ts";
 import { ENV } from './_core/env';
 import { logger } from './_core/logger';
@@ -6179,4 +6180,166 @@ export async function getCompletedEpisodeCount(userId: number): Promise<number> 
     .from(episodeProgress)
     .where(and(eq(episodeProgress.userId, userId), eq(episodeProgress.isCompleted, true)));
   return result?.count ?? 0;
+}
+
+// ============================================================================
+// Plan Progress (10-Day Foundation Program)
+// ============================================================================
+
+/** Get or create a plan progress record by email */
+/** Lookup plan progress by email only (returning users) */
+export async function lookupPlanProgress(email: string): Promise<PlanProgress | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const [row] = await db.select().from(planProgress)
+    .where(eq(planProgress.email, email.toLowerCase().trim()))
+    .limit(1);
+  return row || null;
+}
+
+export async function getOrCreatePlanProgress(data: { email: string; fullName: string; phone?: string }): Promise<PlanProgress | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const email = data.email.toLowerCase().trim();
+
+  const existing = await db.select().from(planProgress)
+    .where(eq(planProgress.email, email))
+    .limit(1);
+  if (existing.length > 0) return existing[0];
+
+  const [row] = await db.insert(planProgress).values({
+    email,
+    fullName: data.fullName.trim(),
+    phone: data.phone?.trim() || '',
+    progress: '{}',
+    answers: '{}',
+    currentPhase: 1,
+    phaseApprovals: '{}',
+    adminNotes: '',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  }).returning();
+  return row;
+}
+
+/** Update task progress (checkbox toggle) */
+export async function updatePlanTaskProgress(email: string, taskId: string, completed: boolean) {
+  const db = await getDb();
+  if (!db) throw new Error('DB not available');
+  const emailLower = email.toLowerCase().trim();
+
+  const [existing] = await db.select().from(planProgress)
+    .where(eq(planProgress.email, emailLower))
+    .limit(1);
+  if (!existing) throw new Error('Plan progress record not found');
+
+  const progress = JSON.parse(existing.progress || '{}');
+  progress[taskId] = completed;
+
+  await db.update(planProgress).set({
+    progress: JSON.stringify(progress),
+    updatedAt: new Date().toISOString(),
+  }).where(eq(planProgress.id, existing.id));
+  return { success: true };
+}
+
+/** Update phase answer text */
+export async function updatePlanAnswer(email: string, phaseKey: string, answer: string) {
+  const db = await getDb();
+  if (!db) throw new Error('DB not available');
+  const emailLower = email.toLowerCase().trim();
+
+  const [existing] = await db.select().from(planProgress)
+    .where(eq(planProgress.email, emailLower))
+    .limit(1);
+  if (!existing) throw new Error('Plan progress record not found');
+
+  const answers = JSON.parse(existing.answers || '{}');
+  answers[phaseKey] = answer;
+
+  await db.update(planProgress).set({
+    answers: JSON.stringify(answers),
+    updatedAt: new Date().toISOString(),
+  }).where(eq(planProgress.id, existing.id));
+  return { success: true };
+}
+
+/** Admin: list all plan progress records */
+export async function listPlanProgress(): Promise<PlanProgress[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(planProgress)
+    .orderBy(desc(planProgress.updatedAt));
+}
+
+/** Admin: approve a phase for a student */
+export async function approvePlanPhase(studentId: number, phase: number) {
+  const db = await getDb();
+  if (!db) throw new Error('DB not available');
+
+  const [existing] = await db.select().from(planProgress)
+    .where(eq(planProgress.id, studentId))
+    .limit(1);
+  if (!existing) throw new Error('Plan progress record not found');
+
+  const approvals = JSON.parse(existing.phaseApprovals || '{}');
+  approvals[String(phase)] = true;
+
+  // Advance currentPhase to the next unapproved phase
+  let nextPhase = existing.currentPhase;
+  for (let p = 1; p <= 6; p++) {
+    if (!approvals[String(p)]) {
+      nextPhase = p;
+      break;
+    }
+    if (p === 6) nextPhase = 7; // all done
+  }
+
+  await db.update(planProgress).set({
+    phaseApprovals: JSON.stringify(approvals),
+    currentPhase: nextPhase,
+    updatedAt: new Date().toISOString(),
+  }).where(eq(planProgress.id, existing.id));
+  return { success: true };
+}
+
+/** Admin: revoke phase approval */
+export async function revokePlanPhase(studentId: number, phase: number) {
+  const db = await getDb();
+  if (!db) throw new Error('DB not available');
+
+  const [existing] = await db.select().from(planProgress)
+    .where(eq(planProgress.id, studentId))
+    .limit(1);
+  if (!existing) throw new Error('Plan progress record not found');
+
+  const approvals = JSON.parse(existing.phaseApprovals || '{}');
+  delete approvals[String(phase)];
+
+  // Reset currentPhase to the earliest unapproved
+  let nextPhase = 1;
+  for (let p = 1; p <= 6; p++) {
+    if (!approvals[String(p)]) {
+      nextPhase = p;
+      break;
+    }
+  }
+
+  await db.update(planProgress).set({
+    phaseApprovals: JSON.stringify(approvals),
+    currentPhase: nextPhase,
+    updatedAt: new Date().toISOString(),
+  }).where(eq(planProgress.id, existing.id));
+  return { success: true };
+}
+
+/** Admin: add a note to a student's plan */
+export async function updatePlanAdminNotes(studentId: number, notes: string) {
+  const db = await getDb();
+  if (!db) throw new Error('DB not available');
+  await db.update(planProgress).set({
+    adminNotes: notes,
+    updatedAt: new Date().toISOString(),
+  }).where(eq(planProgress.id, studentId));
+  return { success: true };
 }
