@@ -1,7 +1,11 @@
 /**
  * Unified type exports
  * Import shared types from this single entry point.
+ *
+ * Note: uses `export *` instead of `export type *` for CodeGraph
+ * tree-sitter compatibility. Runtime behavior is identical since
+ * schema-sqlite.ts only exports types.
  */
 
-export type * from "../database/schema-sqlite.ts";
+export * from "../database/schema-sqlite.ts";
 export * from "./_core/errors";
