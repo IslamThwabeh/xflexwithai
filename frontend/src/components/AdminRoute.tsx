@@ -8,8 +8,8 @@ interface AdminRouteProps {
 }
 
 /**
- * Wrapper component that protects admin routes
- * Redirects to /admin/login if not authenticated or not an admin
+ * Wrapper component that protects admin routes.
+ * Allows both full admins and staff members with roles.
  */
 export default function AdminRoute({ children }: AdminRouteProps) {
   const { isAuthenticated, loading } = useAuth();
@@ -20,7 +20,7 @@ export default function AdminRoute({ children }: AdminRouteProps) {
 
   useEffect(() => {
     if (!loading && !checkingAdmin) {
-      if (!isAuthenticated || (adminCheck && !adminCheck.isAdmin)) {
+      if (!isAuthenticated || (adminCheck && !adminCheck.isAdmin && !adminCheck.isStaff)) {
         setLocation("/admin/login");
       }
     }
@@ -34,7 +34,7 @@ export default function AdminRoute({ children }: AdminRouteProps) {
     );
   }
 
-  if (!isAuthenticated || !adminCheck?.isAdmin) {
+  if (!isAuthenticated || (!adminCheck?.isAdmin && !adminCheck?.isStaff)) {
     return null;
   }
 

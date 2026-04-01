@@ -61,12 +61,15 @@ import {
   Megaphone,
   GraduationCap,
   ShieldCheck,
+  TrendingUp,
 } from "lucide-react";
-import { CSSProperties, useEffect, useRef, useState, lazy, Suspense } from "react";
+import { CSSProperties, useEffect, useRef, useState, useMemo, lazy, Suspense } from "react";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 import { Button } from "./ui/button";
+import { trpc } from "@/lib/trpc";
+import { ROLE_PAGE_ACCESS } from "@shared/const";
 
 // Menu sections use i18n keys – resolved at render time
 type MenuItem = { icon: any; labelKey: string; path: string; descKey?: string };
@@ -90,6 +93,13 @@ const menuSectionsDef: MenuSection[] = [
       { icon: Tag, labelKey: "admin.sidebar.coupons", path: "/admin/coupons" },
       { icon: Building2, labelKey: "admin.sidebar.brokers", path: "/admin/brokers" },
       { icon: FileCheck, labelKey: "admin.sidebar.offerAgreements", path: "/admin/offer-agreements" },
+    ]
+  },
+  {
+    icon: TrendingUp,
+    labelKey: "admin.sidebar.recChannel",
+    items: [
+      { icon: TrendingUp, labelKey: "admin.sidebar.recommendations", path: "/admin/recommendations" },
     ]
   },
   {
@@ -156,12 +166,6 @@ const menuSectionsDef: MenuSection[] = [
   //   items: [
   //     { icon: MessageSquare, labelKey: "admin.sidebar.conversations", path: "/admin/lexai/conversations" },
   //     { icon: Users, labelKey: "admin.sidebar.subscriptions", path: "/admin/lexai/subscriptions" },
-  //   ]
-  // },
-  // {
-  //   labelKey: "admin.sidebar.recommendations",
-  //   items: [
-  //     { icon: MessageSquare, labelKey: "admin.sidebar.groupMgmt", path: "/admin/recommendations" },
   //   ]
   // },
 ];
@@ -260,13 +264,38 @@ function DashboardLayoutContent({
   const sidebarRef = useRef<HTMLDivElement>(null);
   const isMobile = useIsMobile();
 
+  // Check admin/staff status for sidebar filtering
+  const { data: adminCheck } = trpc.auth.isAdmin.useQuery();
+
+  // Compute visible menu sections based on role
+  const visibleSections = useMemo(() => {
+    // Admin sees everything
+    if (!adminCheck || adminCheck.isAdmin) return menuSectionsDef;
+
+    // Staff: filter by role-accessible paths
+    const staffRoles: string[] = adminCheck.staffRoles ?? [];
+    const accessiblePaths = new Set<string>();
+    for (const role of staffRoles) {
+      for (const p of ROLE_PAGE_ACCESS[role] ?? []) {
+        accessiblePaths.add(p);
+      }
+    }
+
+    return menuSectionsDef
+      .map(section => ({
+        ...section,
+        items: section.items.filter(item => accessiblePaths.has(item.path)),
+      }))
+      .filter(section => section.items.length > 0);
+  }, [adminCheck]);
+
   // Find active menu item across all sections
-  const activeMenuItem = menuSectionsDef
+  const activeMenuItem = visibleSections
     .flatMap(section => section.items)
     .find(item => item.path === location);
 
   // Find which section contains the active item
-  const activeSectionIndex = menuSectionsDef.findIndex(section =>
+  const activeSectionIndex = visibleSections.findIndex(section =>
     section.items.some(item => item.path === location)
   );
 
@@ -369,19 +398,13 @@ function DashboardLayoutContent({
                       {APP_TITLE}
                     </span>
                   </div>
-                  <button
-                    onClick={toggleSidebar}
-                    className="ml-auto h-8 w-8 flex items-center justify-center hover:bg-white/[0.06] rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 shrink-0"
-                  >
-                    <PanelLeft className="h-4 w-4 text-gray-400" />
-                  </button>
                 </>
               )}
             </div>
           </SidebarHeader>
 
           <SidebarContent>
-            {menuSectionsDef.map((section, sectionIndex) => {
+            {visibleSections.map((section, sectionIndex) => {
               const isSingleItem = section.items.length === 1;
               const sectionHasActive = section.items.some(item => item.path === location);
               const isExpanded = expandedSections.has(sectionIndex);
@@ -516,6 +539,8 @@ function DashboardLayoutContent({
 
               {/* ── Group 2: Comms (Notifications + Language) ── */}
               <div className="flex items-center gap-0.5 bg-gray-100/70 dark:bg-white/[0.04] rounded-xl p-1">
+                {/* Hide notification bell from staff — only admins can send site-wide notifications */}
+                {(!adminCheck?.isStaff || adminCheck?.isAdmin) && (
                 <button
                   onClick={() => setLocation('/admin/notifications')}
                   className="relative w-8 h-8 rounded-lg hover:bg-white dark:hover:bg-white/[0.08] flex items-center justify-center transition"
@@ -524,6 +549,7 @@ function DashboardLayoutContent({
                   <Bell className="w-4 h-4 text-gray-500 dark:text-gray-400" />
                   <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
                 </button>
+                )}
                 <button
                   onClick={() => setLanguage(language === 'ar' ? 'en' : 'ar')}
                   className="w-8 h-8 rounded-lg hover:bg-white dark:hover:bg-white/[0.08] flex items-center justify-center transition"
@@ -550,7 +576,9 @@ function DashboardLayoutContent({
                         {user?.name?.split(' ')[0] || '-'}
                       </p>
                       <p className="text-[10px] text-gray-400">
-                        {t('admin.sidebar.admin')}
+                        {adminCheck?.isStaff && !adminCheck?.isAdmin
+                          ? t('admin.sidebar.staffLabel')
+                          : t('admin.sidebar.admin')}
                       </p>
                     </div>
                     <ChevronDown className="w-4 h-4 text-gray-400 hidden md:block" />

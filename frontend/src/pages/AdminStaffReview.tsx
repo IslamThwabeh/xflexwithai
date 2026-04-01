@@ -36,6 +36,7 @@ import {
   Bell,
   Award,
   UserCheck,
+  TrendingUp,
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import { ROLE_PAGE_ACCESS, ALL_STAFF_ROLES } from "@shared/const";
@@ -72,6 +73,12 @@ const FULL_SIDEBAR: SidebarSection[] = [
       { icon: Tag, labelEn: "Coupons", labelAr: "الكوبونات", path: "/admin/coupons" },
       { icon: Building2, labelEn: "Brokers", labelAr: "الوسطاء", path: "/admin/brokers" },
       { icon: FileCheck, labelEn: "Offer Agreements", labelAr: "اتفاقيات العروض", path: "/admin/offer-agreements" },
+    ],
+  },
+  {
+    icon: TrendingUp, labelEn: "Recommendations", labelAr: "قناة التوصيات",
+    items: [
+      { icon: TrendingUp, labelEn: "Recommendations", labelAr: "التوصيات", path: "/admin/recommendations" },
     ],
   },
   {
@@ -129,12 +136,15 @@ const FULL_SIDEBAR: SidebarSection[] = [
 // ── Backend endpoint access definition ────────────────────────────────
 type EndpointDef = { endpoint: string; descEn: string; descAr: string; requiredRoles: string[] | "admin-only" };
 
+const SUPPORT_STAFF_ROLES: string[] = ["support", "key_manager", "client_lookup", "view_progress", "view_recommendations", "view_subscriptions", "view_quizzes"];
+
 const ENDPOINT_ACCESS: EndpointDef[] = [
-  { endpoint: "supportChat.listAll",     descEn: "List support conversations",   descAr: "عرض محادثات الدعم",          requiredRoles: [...ALL_STAFF_ROLES] },
-  { endpoint: "supportChat.getMessages", descEn: "Read support messages",        descAr: "قراءة رسائل الدعم",          requiredRoles: [...ALL_STAFF_ROLES] },
-  { endpoint: "supportChat.reply",       descEn: "Reply to support messages",    descAr: "الرد على رسائل الدعم",       requiredRoles: [...ALL_STAFF_ROLES] },
-  { endpoint: "supportChat.suggestReply", descEn: "AI suggest reply",            descAr: "اقتراح رد بالذكاء الاصطناعي", requiredRoles: [...ALL_STAFF_ROLES] },
-  { endpoint: "supportChat.clearEscalation", descEn: "Clear escalation flag",    descAr: "إلغاء علامة التصعيد",        requiredRoles: [...ALL_STAFF_ROLES] },
+  { endpoint: "supportChat.listAll",     descEn: "List support conversations",   descAr: "عرض محادثات الدعم",          requiredRoles: [...SUPPORT_STAFF_ROLES] },
+  { endpoint: "supportChat.getMessages", descEn: "Read support messages",        descAr: "قراءة رسائل الدعم",          requiredRoles: [...SUPPORT_STAFF_ROLES] },
+  { endpoint: "supportChat.reply",       descEn: "Reply to support messages",    descAr: "الرد على رسائل الدعم",       requiredRoles: [...SUPPORT_STAFF_ROLES] },
+  { endpoint: "supportChat.suggestReply", descEn: "AI suggest reply",            descAr: "اقتراح رد بالذكاء الاصطناعي", requiredRoles: [...SUPPORT_STAFF_ROLES] },
+  { endpoint: "supportChat.clearEscalation", descEn: "Clear escalation flag",    descAr: "إلغاء علامة التصعيد",        requiredRoles: [...SUPPORT_STAFF_ROLES] },
+  { endpoint: "recommendations.postMessage", descEn: "Post recommendations",     descAr: "نشر التوصيات",               requiredRoles: ["analyst"] },
   { endpoint: "enrollments.skipCourse",  descEn: "Skip course for student",      descAr: "تخطي الدورة للطالب",         requiredRoles: ["key_manager", "support"] },
   { endpoint: "enrollments.rollbackSkip", descEn: "Rollback course skip",        descAr: "التراجع عن تخطي الدورة",     requiredRoles: ["key_manager", "support"] },
   { endpoint: "supportDashboard.searchClients", descEn: "Search clients",        descAr: "البحث عن العملاء",           requiredRoles: ["client_lookup", "support"] },
@@ -438,7 +448,7 @@ export default function AdminStaffReview() {
                   <CardHeader>
                     <CardTitle className="text-base flex items-center gap-2">
                       <ShieldCheck className="w-4 h-4 text-emerald-500" />
-                      {isRtl ? "صلاحيات الواجهة البرمجية" : "API Endpoint Access"}
+                      {isRtl ? "صلاحيات الموظف" : "Staff Permissions"}
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
@@ -447,10 +457,7 @@ export default function AdminStaffReview() {
                         <thead>
                           <tr className="border-b border-gray-200 dark:border-white/10">
                             <th className="text-start py-2 text-xs font-medium text-gray-500 uppercase">
-                              {isRtl ? "النقطة" : "Endpoint"}
-                            </th>
-                            <th className="text-start py-2 text-xs font-medium text-gray-500 uppercase">
-                              {isRtl ? "الوصف" : "Description"}
+                              {isRtl ? "الوصف" : "Permission"}
                             </th>
                             <th className="text-center py-2 text-xs font-medium text-gray-500 uppercase">
                               {isRtl ? "الحالة" : "Status"}
@@ -463,8 +470,7 @@ export default function AdminStaffReview() {
                             const isAdminOnly = ep.requiredRoles === "admin-only";
                             return (
                               <tr key={i} className="border-b border-gray-100 dark:border-white/5 last:border-none">
-                                <td className="py-2.5 font-mono text-xs text-gray-700 dark:text-gray-300">{ep.endpoint}</td>
-                                <td className="py-2.5 text-gray-500 dark:text-gray-400">{isRtl ? ep.descAr : ep.descEn}</td>
+                                <td className="py-2.5 text-gray-700 dark:text-gray-300 text-sm">{isRtl ? ep.descAr : ep.descEn}</td>
                                 <td className="py-2.5 text-center">
                                   {isAdminOnly ? (
                                     <Badge variant="outline" className="text-xs text-gray-400 border-gray-300 dark:border-white/10">

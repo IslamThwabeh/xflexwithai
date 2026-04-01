@@ -314,6 +314,7 @@ export const recommendationMessages = sqliteTable("recommendationMessages", {
   takeProfit1: text("takeProfit1", { length: 50 }),
   takeProfit2: text("takeProfit2", { length: 50 }),
   riskPercent: text("riskPercent", { length: 20 }),
+  parentId: integer("parentId"),  // links result to original recommendation
   createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
 });
 

@@ -6,6 +6,8 @@ import { Users, BookOpen, GraduationCap, TrendingUp, Key, Library, ShoppingCart,
 import { Button } from "@/components/ui/button";
 import { useLocation } from "wouter";
 import { formatDistanceToNow } from "date-fns";
+import { getStaffLandingPage } from "@shared/const";
+import { useEffect } from "react";
 
 function formatSafeDistanceToNow(value: string | number | Date | null | undefined) {
   if (!value) return "N/A";
@@ -18,6 +20,17 @@ export default function AdminDashboard() {
   const [, setLocation] = useLocation();
   const { t, language } = useLanguage();
   const isRtl = language === 'ar';
+
+  // Staff users cannot view the admin dashboard — redirect to their landing page
+  const { data: adminCheck, isLoading: adminCheckLoading } = trpc.auth.isAdmin.useQuery();
+  useEffect(() => {
+    if (adminCheckLoading || !adminCheck) return;
+    if (adminCheck.isStaff && !adminCheck.isAdmin) {
+      const landing = getStaffLandingPage(adminCheck.staffRoles ?? []);
+      setLocation(landing);
+    }
+  }, [adminCheck, adminCheckLoading, setLocation]);
+
   const { data: stats, isLoading: statsLoading } = trpc.dashboard.stats.useQuery();
   const { data: recentEnrollments, isLoading: enrollmentsLoading } = trpc.dashboard.recentEnrollments.useQuery();
 

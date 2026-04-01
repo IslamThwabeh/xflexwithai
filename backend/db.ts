@@ -1327,6 +1327,24 @@ export async function getActiveRecommendationSubscription(userId: number) {
   return rows[0];
 }
 
+/** Returns ANY existing Recommendation subscription for the user (including pending), for create-or-update logic. */
+export async function getAnyRecommendationSubscription(userId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db
+    .select()
+    .from(recommendationSubscriptions)
+    .where(
+      and(
+        eq(recommendationSubscriptions.userId, userId),
+        eq(recommendationSubscriptions.isActive, true),
+      )
+    )
+    .orderBy(desc(recommendationSubscriptions.endDate))
+    .limit(1);
+  return rows[0];
+}
+
 /** Returns the frozen (paused) Recommendation subscription if one exists, or undefined. */
 export async function getFrozenRecommendationSubscription(userId: number) {
   const db = await getDb();
@@ -1644,6 +1662,29 @@ export async function createRecommendationMessage(message: InsertRecommendationM
   if (!db) throw new Error("Database not available");
   const result = await db.insert(recommendationMessages).values(message).returning({ id: recommendationMessages.id });
   return result[0].id;
+}
+
+export async function deleteRecommendationMessage(messageId: number, userId: number, isAdmin: boolean = false) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const existing = await db
+    .select({ id: recommendationMessages.id, ownerId: recommendationMessages.userId })
+    .from(recommendationMessages)
+    .where(eq(recommendationMessages.id, messageId))
+    .limit(1);
+
+  const target = existing[0];
+  if (!target) {
+    throw new Error("Recommendation message not found");
+  }
+
+  if (!isAdmin && target.ownerId !== userId) {
+    throw new Error("You can only delete your own recommendation messages");
+  }
+
+  await db.delete(recommendationMessages).where(eq(recommendationMessages.id, messageId));
+  await db.delete(recommendationMessages).where(eq(recommendationMessages.parentId, messageId));
 }
 
 export async function getRecommendationMessagesFeed(userId: number, limit: number = 200) {
@@ -2163,7 +2204,7 @@ export async function renewPackageEntitlements(
 
   // --- LexAI subscription ---
   if (pkg.includesLexai) {
-    const current = await getActiveLexaiSubscription(userId);
+    const current = await getAnyLexaiSubscription(userId);
     if (current) {
       const base = current.endDate && new Date(current.endDate) > now ? new Date(current.endDate) : now;
       const newEnd = buildEndDateFromDays(base, entitlementDays);
@@ -2200,7 +2241,7 @@ export async function renewPackageEntitlements(
 
   // --- Recommendation subscription ---
   if (pkg.includesRecommendations) {
-    const current = await getActiveRecommendationSubscription(userId);
+    const current = await getAnyRecommendationSubscription(userId);
     if (current) {
       const base = current.endDate && new Date(current.endDate) > now ? new Date(current.endDate) : now;
       const newEnd = buildEndDateFromDays(base, entitlementDays);
@@ -2321,7 +2362,7 @@ export async function fulfillPackageEntitlements(
 
   // If package includes LexAI, grant subscription
   if (pkg.includesLexai) {
-    const current = await getActiveLexaiSubscription(userId);
+    const current = await getAnyLexaiSubscription(userId);
     if (current) {
       if (isRenewal) {
         // Renewal student (100% progress) — activate immediately, no deferred
@@ -2384,7 +2425,7 @@ export async function fulfillPackageEntitlements(
 
   // If package includes recommendations, grant subscription
   if (pkg.includesRecommendations) {
-    const current = await getActiveRecommendationSubscription(userId);
+    const current = await getAnyRecommendationSubscription(userId);
     if (current) {
       if (isRenewal) {
         // Renewal student (100% progress) — activate immediately
@@ -3167,6 +3208,20 @@ export async function getUserLexaiSubscription(userId: number) {
       eq(lexaiSubscriptions.isPaused, false),
       eq(lexaiSubscriptions.isPendingActivation, false),
       sql`${lexaiSubscriptions.endDate} >= ${nowIso}`
+    ))
+    .orderBy(desc(lexaiSubscriptions.endDate), desc(lexaiSubscriptions.createdAt))
+    .limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+/** Returns ANY existing LexAI subscription for the user (including pending), for create-or-update logic. */
+export async function getAnyLexaiSubscription(userId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(lexaiSubscriptions)
+    .where(and(
+      eq(lexaiSubscriptions.userId, userId),
+      eq(lexaiSubscriptions.isActive, true),
     ))
     .orderBy(desc(lexaiSubscriptions.endDate), desc(lexaiSubscriptions.createdAt))
     .limit(1);

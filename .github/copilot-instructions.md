@@ -97,8 +97,17 @@ vatAmount = totalAmount * 0.16
 ### Staff System
 - `users.isStaff` (boolean) separates staff from students — staff are excluded from student reports/stats
 - Staff accounts created from AdminRoles page → `createStaffUser()` in db.ts (sets `isStaff=true`, dummy password, OTP login)
+- Staff log in via `/auth` (OTP), NOT `/admin/login`
+- `auth.isAdmin` returns `{ isAdmin, isStaff, staffRoles }` so frontend can distinguish admins from staff
+- `verifyLoginCode` returns `isStaff` + `staffRoles`; `Auth.tsx` redirects staff with `getStaffLandingPage()` in `shared/const.ts`
+- `AdminRoute` allows both admins and staff; `AdminDashboard` redirects staff away from `/admin/dashboard` to their landing page
+- `DashboardLayout.tsx` filters sidebar items via `ROLE_PAGE_ACCESS` and shows a staff label for staff accounts
 - Role assignment is the single source of truth for permissions — no separate `canPublishRecommendations` column (removed)
 - `recommendations.setAnalyst` uses `assignRole()`/`removeRole()` directly
+- `supportStaffProcedure` does NOT include `analyst` role — analysts cannot access support chat
+- `ROLE_PAGE_ACCESS` for analyst: `[/admin/recommendations]` only
+- `AdminRecommendations.tsx` is dual-mode: admin sees `Management` + `Channel` tabs; analyst sees `Channel` only
+- Recommendation delete rule: admins can delete any message/result; analysts can only delete their own messages
 - Backend: `roles.createStaff`, `roles.listStaff`, `roles.removeStaff` (admin-only)
 - `getSubscribersReport()` excludes `isStaff=true` users
 
@@ -158,12 +167,13 @@ All public pages (Home, FAQ, Careers, FreeContent, Articles, Events, ArticleDeta
 - **Mobile-first**: Business owner tests on mobile frequently — always verify mobile layout
 - **WhatsAppFloat**: Whitelist approach — only shows on known public paths (`/`, `/checkout`, `/articles`, `/events`, `/careers`, `/about`, `/refund-policy`, `/terms`, `/privacy`). Hidden everywhere else.
 - **KeyActivationPrompt**: Dialog on `MyDashboard` when user has no enrollments — dismissed via `sessionStorage`
-- **Admin sidebar sections**: Overview → Sales → Learning → Content → Students → Team → Reports → Moderation → Careers
+- **Admin sidebar sections**: Overview → Sales → Recommendations → Learning → Content → Students → Team → Reports → Moderation → Careers
 - Student nav items: Dashboard, LexAI, Recommendations, Support, Quizzes, My Package, Brokers, Notifications, Points, Calculators
 - **Removed from nav**: Orders (page kept), Subscriptions (redirects to `/my-packages`), Profile (accessible via avatar click)
 - **StudentPackages.tsx**: Merged "My Package" + "My Subscriptions" into one page — package status, subscription history, freeze, upgrade CTA, feature badges
 - **Episode duration**: DB stores seconds (e.g., 182 = ~3 min). Display: `Math.floor(duration / 60)` min. Watch requirement: `duration * 0.7` seconds.
 - **Notification system**: `user_notifications` table + `users.lastActiveAt` + `users.notificationPrefs` (JSON). Email suppression when user is online (active < 5 min). Notification prefs UI in Profile.tsx.
+- **Recommendations UI**: Results are created only from `Add Result` on an existing recommendation; standalone `Result` publish type is removed from the form
 
 ### Broker System
 - Table: `brokers` (id, name, nameAr, description, descriptionAr, logoUrl, websiteUrl, features, featuresAr, isActive, sortOrder, createdAt, updatedAt)
@@ -278,6 +288,8 @@ CodeGraph is set up for this project with a pre-built semantic graph of all symb
 17. **Workers async**: Cloudflare Workers kill detached promises after HTTP response. Never use fire-and-forget (`.then().catch()`, `void asyncFn()`) in route handlers — always `await` or use `ctx.waitUntil()`.
 18. **R2 uploads**: Always use `storagePutR2(env.VIDEOS_BUCKET, ...)` from `./storage-r2`. The old `storagePut` from `./storage` uses a Manus Forge API proxy that doesn't exist in Workers.
 19. **AI onboarding thresholds**: `saveOnboardingAiResult()` — ≥90% auto-approve, <50% auto-reject, 50-89% admin queue. `adminId=0` means AI action. Both approve/reject send `createNotification()`.
+20. **Duplicate pending subs**: `getActiveRecommendationSubscription()` / `getActiveLexaiSubscription()` exclude pending rows. Never use them for create-or-update entitlement flows; use `getAnyRecommendationSubscription()` / `getAnyLexaiSubscription()` there or you will create duplicate subscriptions.
+21. **Recommendation delete UX**: Do not show delete buttons unless the current user owns the message or is an admin. Backend delete requires `isAdmin` to delete another user's recommendation.
 
 ---
 

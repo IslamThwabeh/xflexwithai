@@ -24,7 +24,7 @@ export const ROLE_PAGE_ACCESS: Record<string, string[]> = {
   // Core roles
   support: ["/admin/support", "/admin/students"],
   key_manager: ["/admin/package-keys", "/admin/students", "/admin/orders"],
-  analyst: ["/admin/support"], // can publish recommendations via support-level access
+  analyst: ["/admin/recommendations"], // analyst only posts recommendations
 
   // Support permissions (view-only, grant read access to specific data)
   client_lookup: ["/admin/students"],
@@ -40,3 +40,12 @@ export const ALL_STAFF_ROLES = [
   "client_lookup", "view_progress", "view_recommendations", "view_subscriptions", "view_quizzes",
 ] as const;
 export type StaffRole = typeof ALL_STAFF_ROLES[number];
+
+/** Given a list of staff roles, return the best admin page to land on. */
+export function getStaffLandingPage(roles: string[]): string {
+  for (const role of roles) {
+    const pages = ROLE_PAGE_ACCESS[role];
+    if (pages && pages.length > 0) return pages[0];
+  }
+  return "/admin/recommendations"; // fallback
+}

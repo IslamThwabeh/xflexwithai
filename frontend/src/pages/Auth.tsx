@@ -9,6 +9,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Loader2, ArrowLeft, Mail, KeyRound } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { getStaffLandingPage } from "@shared/const";
 
 export default function Auth() {
   const { t } = useLanguage();
@@ -94,6 +95,14 @@ export default function Auth() {
       return;
     }
 
+    // Staff users go to admin panel (role-filtered sidebar)
+    if (adminCheck?.isStaff) {
+      const staffRoles: string[] = adminCheck.staffRoles ?? [];
+      const landing = getStaffLandingPage(staffRoles);
+      window.location.href = landing;
+      return;
+    }
+
     setLocation(nextPath ?? "/courses");
   }, [adminCheck?.isAdmin, checkingAdmin, isAuthenticated, loading, nextPath, setLocation, clearingAdmin, logout]);
 
@@ -147,8 +156,13 @@ export default function Auth() {
     }
 
     try {
-      await verifyLoginCode.mutateAsync({ email, code });
-      window.location.href = nextPath ?? "/courses";
+      const result = await verifyLoginCode.mutateAsync({ email, code });
+      // Staff users redirect to their first accessible admin page
+      if (result.isStaff) {
+        window.location.href = getStaffLandingPage(result.staffRoles ?? []);
+      } else {
+        window.location.href = nextPath ?? "/courses";
+      }
     } catch (e: any) {
       autoSubmitFired.current = false;
       setOtpError(e?.message || t('auth.page.code.invalid'));

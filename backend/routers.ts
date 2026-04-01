@@ -64,7 +64,7 @@ const supportStaffProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   const admin = await db.getAdminByEmail(ctx.user.email);
   if (admin) return next({ ctx: { ...ctx, admin, staffRole: 'admin' as const } });
   const isStaff = await db.hasAnyRole(ctx.user.id, [
-    'support', 'key_manager', 'analyst',
+    'support', 'key_manager',
     'client_lookup', 'view_progress', 'view_recommendations', 'view_subscriptions', 'view_quizzes',
   ]);
   if (!isStaff) {
@@ -431,11 +431,18 @@ export const appRouter = router({
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
     
-    // Check if current user is an admin
+    // Check if current user is an admin or staff member
     isAdmin: protectedProcedure.query(async ({ ctx }) => {
-      if (!ctx.user) return { isAdmin: false, admin: null };
+      if (!ctx.user) return { isAdmin: false, isStaff: false, staffRoles: [], admin: null };
       const admin = await db.getAdminByEmail(ctx.user.email);
-      return { isAdmin: !!admin, admin };
+      if (admin) return { isAdmin: true, isStaff: false, staffRoles: [], admin };
+      // Check if staff
+      const isStaff = !!(ctx.user as any).isStaff;
+      if (isStaff) {
+        const roles = await db.getUserRoles(ctx.user.id);
+        return { isAdmin: false, isStaff: true, staffRoles: roles.map((r: any) => r.role), admin: null };
+      }
+      return { isAdmin: false, isStaff: false, staffRoles: [], admin: null };
     }),
     
     // User registration
@@ -698,7 +705,14 @@ export const appRouter = router({
           logger.warn("[AUTH] Failed syncing entitlements after OTP login", { userId: user.id, email });
         }
 
-        return { success: true };
+        // Return staff info for frontend redirect
+        let staffRoles: string[] = [];
+        if (user.isStaff) {
+          const roles = await db.getUserRoles(user.id);
+          staffRoles = roles.map(r => r.role);
+        }
+
+        return { success: true, isStaff: !!user.isStaff, staffRoles };
       }),
     
     // User login
@@ -2100,6 +2114,7 @@ export const appRouter = router({
     me: protectedProcedure.query(async ({ ctx }) => {
       const access = await db.getUserRecommendationsAccess(ctx.user.id);
       return {
+        userId: ctx.user.id,
         canPublish: access.canPublish,
         hasSubscription: access.hasSubscription,
         subscription: access.subscription,
@@ -2128,6 +2143,7 @@ export const appRouter = router({
           takeProfit1: z.string().max(50).optional(),
           takeProfit2: z.string().max(50).optional(),
           riskPercent: z.string().max(20).optional(),
+          parentId: z.number().optional(),
           sendEmail: z.boolean().optional(),
         })
       )
@@ -2145,6 +2161,7 @@ export const appRouter = router({
           takeProfit1: input.takeProfit1,
           takeProfit2: input.takeProfit2,
           riskPercent: input.riskPercent,
+          parentId: input.parentId,
           createdAt: new Date().toISOString(),
         });
 
@@ -2214,6 +2231,16 @@ export const appRouter = router({
       .mutation(async ({ ctx, input }) => {
         await ensureRecommendationReadAccess(ctx);
         await db.setRecommendationReaction(input.messageId, ctx.user.id, input.reaction);
+        return { success: true };
+      }),
+
+    deleteMessage: protectedProcedure
+      .input(z.object({ messageId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        await ensureRecommendationPublishAccess(ctx);
+        // If admin, allow deleting any message
+        const isAdmin = !!ctx.admin;
+        await db.deleteRecommendationMessage(input.messageId, ctx.user.id, isAdmin);
         return { success: true };
       }),
 
