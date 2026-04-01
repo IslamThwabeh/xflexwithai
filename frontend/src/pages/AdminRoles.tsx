@@ -49,9 +49,9 @@ export default function AdminRoles() {
   const [newPhone, setNewPhone] = useState("");
   const [selectedRoles, setSelectedRoles] = useState<RoleKey[]>([]);
 
-  // Assign role to existing staff
+  // Assign role to existing staff — checkbox-based editor
   const [assignStaffId, setAssignStaffId] = useState("");
-  const [assignRole, setAssignNewRole] = useState<string>("analyst");
+  const [editingRoles, setEditingRoles] = useState<RoleKey[]>([]);
 
   const { t, language } = useLanguage();
   const isRtl = language === 'ar';
@@ -79,13 +79,14 @@ export default function AdminRoles() {
     onError: (err) => toast.error(err.message),
   });
 
-  const assignMutation = trpc.roles.assign.useMutation({
+  const setRolesMutation = trpc.roles.setRoles.useMutation({
     onSuccess: () => {
-      toast.success(isRtl ? 'تم تعيين الدور بنجاح' : 'Role assigned successfully');
+      toast.success(isRtl ? 'تم تحديث الأدوار بنجاح' : 'Roles updated successfully');
       refetchStaff();
       refetchRoles();
       setShowAssignRole(false);
       setAssignStaffId("");
+      setEditingRoles([]);
     },
     onError: (err) => toast.error(err.message),
   });
@@ -129,13 +130,23 @@ export default function AdminRoles() {
     });
   }
 
-  function handleAssignRole() {
+  function handleSaveRoles() {
     const id = parseInt(assignStaffId, 10);
     if (!id) return;
-    assignMutation.mutate({
-      userId: id,
-      role: assignRole as RoleKey,
-    });
+    setRolesMutation.mutate({ userId: id, roles: editingRoles });
+  }
+
+  function toggleEditRole(role: RoleKey) {
+    setEditingRoles(prev =>
+      prev.includes(role) ? prev.filter(r => r !== role) : [...prev, role]
+    );
+  }
+
+  // When staff member changes in the edit dialog, pre-fill their current roles
+  function onSelectStaffForEdit(staffId: string) {
+    setAssignStaffId(staffId);
+    const member = (staffMembers ?? []).find(s => String(s.id) === staffId);
+    setEditingRoles(member ? (member.roles as RoleKey[]) : []);
   }
 
   // Filtered staff members
@@ -158,11 +169,6 @@ export default function AdminRoles() {
 
   const totalStaff = staffMembers?.length ?? 0;
 
-  // Staff who don't have the selected assign role yet
-  const staffForAssign = (staffMembers ?? []).filter(s => {
-    return !s.roles.includes(assignRole);
-  });
-
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -177,69 +183,104 @@ export default function AdminRoles() {
             </p>
           </div>
           <div className="flex gap-2">
-            {/* Assign Role to Existing Staff */}
-            <Dialog open={showAssignRole} onOpenChange={setShowAssignRole}>
+            {/* Edit Roles for Existing Staff */}
+            <Dialog open={showAssignRole} onOpenChange={(open) => { setShowAssignRole(open); if (!open) { setAssignStaffId(""); setEditingRoles([]); } }}>
               <DialogTrigger asChild>
                 <Button variant="outline" size="sm">
                   <Plus className={`h-4 w-4 ${isRtl ? 'ml-1' : 'mr-1'}`} />
-                  <span className="hidden sm:inline">{t('admin.roles.assignRole')}</span>
-                  <span className="sm:hidden">{isRtl ? 'دور' : 'Role'}</span>
+                  <span className="hidden sm:inline">{isRtl ? 'تعديل الأدوار' : 'Edit Roles'}</span>
+                  <span className="sm:hidden">{isRtl ? 'أدوار' : 'Roles'}</span>
                 </Button>
               </DialogTrigger>
-              <DialogContent>
+              <DialogContent className="max-w-md">
                 <DialogHeader>
-                  <DialogTitle>{t('admin.roles.assignToUser')}</DialogTitle>
+                  <DialogTitle>{isRtl ? 'تعديل أدوار الموظف' : 'Edit Staff Roles'}</DialogTitle>
                 </DialogHeader>
                 <div className="space-y-4 pt-2">
-                  <div>
-                    <label className="text-sm font-medium mb-1 block">{t('admin.roles.selectRole')}</label>
-                    <select
-                      value={assignRole}
-                      onChange={(e) => setAssignNewRole(e.target.value)}
-                      className="w-full border rounded-md px-3 py-2 text-sm"
-                    >
-                      <optgroup label={t('admin.roles.coreRoles')}>
-                        {Object.entries(ROLE_LABELS).filter(([, v]) => v.group === "Core Roles").map(([key, val]) => (
-                          <option key={key} value={key}>{t(val.labelKey)}</option>
-                        ))}
-                      </optgroup>
-                      <optgroup label={t('admin.roles.supportPerms')}>
-                        {Object.entries(ROLE_LABELS).filter(([, v]) => v.group === "Support Permissions").map(([key, val]) => (
-                          <option key={key} value={key}>{t(val.labelKey)}</option>
-                        ))}
-                      </optgroup>
-                    </select>
-                  </div>
+                  {/* Step 1: Select staff member */}
                   <div>
                     <label className="text-sm font-medium mb-1 block">
                       {isRtl ? 'اختر الموظف' : 'Select Staff Member'}
                     </label>
                     <select
                       value={assignStaffId}
-                      onChange={(e) => setAssignStaffId(e.target.value)}
+                      onChange={(e) => onSelectStaffForEdit(e.target.value)}
                       className="w-full border rounded-md px-3 py-2 text-sm"
                     >
                       <option value="">{isRtl ? 'اختر...' : 'Select...'}</option>
-                      {staffForAssign.map(s => (
+                      {(staffMembers ?? []).map(s => (
                         <option key={s.id} value={s.id}>
                           {s.name || s.email} ({s.email})
                         </option>
                       ))}
                     </select>
-                    {staffForAssign.length === 0 && (
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {isRtl ? 'جميع الموظفين لديهم هذا الدور بالفعل' : 'All staff already have this role'}
-                      </p>
-                    )}
                   </div>
+
+                  {/* Step 2: Checkbox role grid (visible after selecting staff) */}
+                  {assignStaffId && (
+                    <div className="space-y-3">
+                      {/* Core Roles */}
+                      <div>
+                        <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">
+                          {isRtl ? 'الأدوار الأساسية' : 'Core Roles'}
+                        </p>
+                        <div className="space-y-2">
+                          {Object.entries(ROLE_LABELS).filter(([, v]) => v.group === "Core Roles").map(([key, val]) => (
+                            <label key={key} className="flex items-center gap-3 p-2 rounded-lg border cursor-pointer hover:bg-muted/50 transition-colors">
+                              <input
+                                type="checkbox"
+                                checked={editingRoles.includes(key as RoleKey)}
+                                onChange={() => toggleEditRole(key as RoleKey)}
+                                className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 h-4 w-4"
+                              />
+                              <div className="flex items-center gap-2">
+                                <Badge variant="secondary" className={`text-xs ${val.color}`}>
+                                  {t(val.labelKey)}
+                                </Badge>
+                              </div>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Support Permissions */}
+                      <div>
+                        <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">
+                          {isRtl ? 'صلاحيات الدعم' : 'Support Permissions'}
+                        </p>
+                        <div className="space-y-2">
+                          {Object.entries(ROLE_LABELS).filter(([, v]) => v.group === "Support Permissions").map(([key, val]) => (
+                            <label key={key} className="flex items-center gap-3 p-2 rounded-lg border cursor-pointer hover:bg-muted/50 transition-colors">
+                              <input
+                                type="checkbox"
+                                checked={editingRoles.includes(key as RoleKey)}
+                                onChange={() => toggleEditRole(key as RoleKey)}
+                                className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 h-4 w-4"
+                              />
+                              <Badge variant="secondary" className={`text-xs ${val.color}`}>
+                                {t(val.labelKey)}
+                              </Badge>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+
+                      {editingRoles.length > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          {isRtl ? `${editingRoles.length} أدوار محددة` : `${editingRoles.length} role(s) selected`}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
                   <Button
-                    onClick={handleAssignRole}
-                    disabled={assignMutation.isPending || !assignStaffId}
+                    onClick={handleSaveRoles}
+                    disabled={setRolesMutation.isPending || !assignStaffId}
                     className="w-full"
                   >
-                    {assignMutation.isPending
-                      ? (isRtl ? 'جار التعيين...' : 'Assigning...')
-                      : t('admin.roles.assignRole')
+                    {setRolesMutation.isPending
+                      ? (isRtl ? 'جار الحفظ...' : 'Saving...')
+                      : (isRtl ? 'حفظ الأدوار' : 'Save Roles')
                     }
                   </Button>
                 </div>

@@ -3573,6 +3573,34 @@ export async function removeRole(userId: number, role: string) {
   );
 }
 
+/**
+ * Replace all roles for a user with the given set.
+ * Diffs current vs desired to minimize DB writes.
+ */
+export async function setUserRoles(userId: number, desiredRoles: string[], assignedBy?: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const current = await getUserRoles(userId);
+  const currentSet = new Set(current.map(r => r.role));
+  const desiredSet = new Set(desiredRoles);
+
+  // Remove roles no longer desired
+  for (const r of current) {
+    if (!desiredSet.has(r.role)) {
+      await removeRole(userId, r.role);
+    }
+  }
+  // Add new roles
+  for (const role of desiredRoles) {
+    if (!currentSet.has(role)) {
+      await assignRole(userId, role, assignedBy);
+    }
+  }
+
+  logger.db('User roles updated', { userId, roles: desiredRoles });
+}
+
 export async function getUsersWithRole(role: string) {
   const db = await getDb();
   if (!db) return [];
@@ -3675,6 +3703,15 @@ export async function getStaffMembers() {
     ...u,
     roles: allRoles.filter(r => r.userId === u.id).map(r => r.role),
   }));
+}
+
+/**
+ * Mark a user as staff (sets isStaff=true). No-op if already staff.
+ */
+export async function markUserAsStaff(userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(users).set({ isStaff: true }).where(eq(users.id, userId));
 }
 
 /**

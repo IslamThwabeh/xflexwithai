@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
-import { PauseCircle, PlayCircle, UserCog, Bell, TrendingUp, BarChart3, Copy, Trash2, ArrowDown, ArrowUp, Plus } from "lucide-react";
+import { PauseCircle, PlayCircle, UserCog, Bell, TrendingUp, Copy, Trash2, ArrowDown, ArrowUp, Plus } from "lucide-react";
 import { useDataTable, DataTablePagination, zebraRow } from "@/components/DataTable";
 
 type RecommendationType = "alert" | "recommendation" | "result";
@@ -52,7 +52,7 @@ function AnalystView() {
   const { data: adminCheck } = trpc.auth.isAdmin.useQuery();
   const { data: feed = [], isLoading: feedLoading } = trpc.recommendations.feed.useQuery(
     { limit: 200 },
-    { enabled: !!me?.canPublish }
+    { enabled: !!me?.canPublish || !!adminCheck?.isAdmin }
   );
 
   const postMessageMutation = trpc.recommendations.postMessage.useMutation({
@@ -415,25 +415,12 @@ function AnalystView() {
 
 /* ─── Admin view: analyst management + subscription management ─── */
 function AdminView() {
-  const [search, setSearch] = useState("");
   const { t, isRTL } = useLanguage();
 
   const utils = trpc.useUtils();
 
-  const { data: users = [] } = trpc.users.list.useQuery();
   const { data: analysts = [] } = trpc.recommendationAdmin.listAnalysts.useQuery();
   const { data: subscriptions = [] } = trpc.recommendationAdmin.subscriptions.list.useQuery();
-
-  const analystIds = useMemo(() => new Set(analysts.map((a: any) => a.id)), [analysts]);
-
-  const setAnalystMutation = trpc.recommendationAdmin.setAnalyst.useMutation({
-    onSuccess: () => {
-      toast.success("تم تحديث صلاحية المحلل");
-      utils.recommendationAdmin.listAnalysts.invalidate();
-      utils.users.list.invalidate();
-    },
-    onError: (error) => toast.error(error.message),
-  });
 
   const pauseSubscriptionMutation = trpc.recommendationAdmin.subscriptions.pause.useMutation({
     onSuccess: () => {
@@ -451,12 +438,6 @@ function AdminView() {
     onError: (error) => toast.error(error.message),
   });
 
-  const filteredUsers = users.filter((user: any) => {
-    const value = search.toLowerCase();
-    return (user.name || "").toLowerCase().includes(value) || (user.email || "").toLowerCase().includes(value);
-  });
-
-  const userTable = useDataTable(filteredUsers, undefined, 10);
   const subTable = useDataTable(subscriptions as any[], undefined, 10);
 
   return (
@@ -466,41 +447,28 @@ function AdminView() {
         <p className="text-muted-foreground">{t('admin.rec.subtitle')}</p>
       </div>
 
+        {/* Active analysts summary */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><UserCog className="h-5 w-5" /> {t('admin.rec.assignAnalyst')}</CardTitle>
-            <CardDescription>{t('admin.rec.subtitle')}</CardDescription>
+            <CardTitle className="flex items-center gap-2"><UserCog className="h-5 w-5" /> {isRTL ? 'المحللون النشطون' : 'Active Analysts'}</CardTitle>
+            <CardDescription>{isRTL ? 'المحللون المعينون حالياً — لتعديل الأدوار اذهب إلى صفحة الأدوار' : 'Currently assigned analysts — to manage roles go to the Roles page'}</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
-            <Input placeholder={t('admin.rec.searchUser')} value={search} onChange={(e) => setSearch(e.target.value)} />
-            <div className="space-y-2">
-              {userTable.paged.map((user: any) => {
-                const isAnalyst = analystIds.has(user.id);
-                return (
-                  <div key={user.id} className="flex items-center justify-between border rounded p-3">
+          <CardContent>
+            {analysts.length === 0 ? (
+              <p className="text-sm text-muted-foreground">{isRTL ? 'لا يوجد محللون' : 'No analysts assigned'}</p>
+            ) : (
+              <div className="space-y-2">
+                {analysts.map((a: any) => (
+                  <div key={a.id} className="flex items-center justify-between border rounded p-3">
                     <div>
-                      <p className="font-medium">{user.name || "-"}</p>
-                      <p className="text-xs text-muted-foreground">{user.email}</p>
+                      <p className="font-medium">{a.name || "-"}</p>
+                      <p className="text-xs text-muted-foreground">{a.email}</p>
                     </div>
-                    <Button
-                      variant={isAnalyst ? "destructive" : "default"}
-                      onClick={() => setAnalystMutation.mutate({ userId: user.id, enabled: !isAnalyst })}
-                    >
-                      {isAnalyst ? t('admin.rec.removeAnalyst') : t('admin.rec.setAnalyst')}
-                    </Button>
+                    <Badge className="bg-emerald-100 text-emerald-800">{isRTL ? 'محلل' : 'Analyst'}</Badge>
                   </div>
-                );
-              })}
-            </div>
-            <DataTablePagination
-              page={userTable.page}
-              pageSize={userTable.pageSize}
-              totalPages={userTable.totalPages}
-              totalItems={userTable.totalItems}
-              setPage={userTable.setPage}
-              changePageSize={userTable.changePageSize}
-              isRtl={isRTL}
-            />
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 

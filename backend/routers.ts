@@ -2238,8 +2238,8 @@ export const appRouter = router({
       .input(z.object({ messageId: z.number() }))
       .mutation(async ({ ctx, input }) => {
         await ensureRecommendationPublishAccess(ctx);
-        // If admin, allow deleting any message
-        const isAdmin = !!ctx.admin;
+        // Check admin status via DB lookup (ctx.admin only exists on adminProcedure)
+        const isAdmin = !!(ctx.user?.email && await db.getAdminByEmail(ctx.user.email));
         await db.deleteRecommendationMessage(input.messageId, ctx.user.id, isAdmin);
         return { success: true };
       }),
@@ -2273,6 +2273,8 @@ export const appRouter = router({
       .input(z.object({ userId: z.number(), enabled: z.boolean() }))
       .mutation(async ({ ctx, input }) => {
         if (input.enabled) {
+          // Ensure user is marked as staff so they appear in Admin Roles page
+          await db.markUserAsStaff(input.userId);
           await db.assignRole(input.userId, 'analyst', (ctx as any).admin?.id);
         } else {
           await db.removeRole(input.userId, 'analyst');
@@ -2623,6 +2625,20 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         await db.removeRole(input.userId, input.role);
 
+        return { success: true };
+      }),
+
+    // Bulk update: set all roles for a user at once
+    setRoles: adminProcedure
+      .input(z.object({
+        userId: z.number(),
+        roles: z.array(z.enum(['analyst', 'support', 'key_manager', 'view_progress', 'view_recommendations', 'view_subscriptions', 'view_quizzes', 'client_lookup'])),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const user = await db.getUserById(input.userId);
+        if (!user) throw new TRPCError({ code: 'NOT_FOUND', message: 'User not found' });
+        if (!(user as any).isStaff) throw new TRPCError({ code: 'BAD_REQUEST', message: 'User must be a staff member' });
+        await db.setUserRoles(input.userId, input.roles, (ctx as any).admin?.id);
         return { success: true };
       }),
 
@@ -3134,8 +3150,8 @@ export const appRouter = router({
         });
       }),
 
-    // Admin: list all orders
-    adminList: adminProcedure
+    // Admin/Key Manager: list all orders
+    adminList: adminOrRoleProcedure(['key_manager'])
       .input(z.object({
         status: z.string().optional(),
       }).optional())
@@ -3143,8 +3159,8 @@ export const appRouter = router({
         return db.getAllOrders(input?.status);
       }),
 
-    // Admin: update order status (approve/reject bank transfer, mark as paid from PayPal)
-    adminUpdateStatus: adminProcedure
+    // Admin/Key Manager: update order status
+    adminUpdateStatus: adminOrRoleProcedure(['key_manager'])
       .input(z.object({
         orderId: z.number(),
         status: z.enum(['pending', 'awaiting_confirmation', 'paid', 'completed', 'cancelled', 'refunded']),
@@ -3351,20 +3367,20 @@ export const appRouter = router({
   // ADMIN QUIZ MANAGEMENT
   // =============================================
   adminQuiz: router({
-    // List all quizzes (admin)
-    list: adminProcedure.query(async () => {
+    // List all quizzes (admin or staff with view_quizzes)
+    list: adminOrRoleProcedure(['view_quizzes']).query(async () => {
       return db.getAllQuizzes();
     }),
 
     // Get quiz with questions + options
-    getById: adminProcedure
+    getById: adminOrRoleProcedure(['view_quizzes'])
       .input(z.object({ id: z.number() }))
       .query(async ({ input }) => {
         return db.getQuizWithQuestionsAndOptions(input.id);
       }),
 
     // Get quiz stats
-    stats: adminProcedure
+    stats: adminOrRoleProcedure(['view_quizzes'])
       .input(z.object({ id: z.number() }))
       .query(async ({ input }) => {
         return db.getQuizStats(input.id);
@@ -3542,8 +3558,8 @@ export const appRouter = router({
         return order;
       }),
 
-    // Admin: process/approve an upgrade after payment confirmed
-    process: adminProcedure
+    // Admin/Key Manager: process/approve an upgrade after payment confirmed
+    process: adminOrRoleProcedure(['key_manager'])
       .input(z.object({ orderId: z.number() }))
       .mutation(async ({ input }) => {
         const order = await db.getOrderById(input.orderId);
@@ -3964,7 +3980,7 @@ export const appRouter = router({
   // Admin Reports
   // ============================================================================
   reports: router({
-    subscribers: adminProcedure.query(async () => {
+    subscribers: supportStaffProcedure.query(async () => {
       return db.getSubscribersReport();
     }),
     revenue: adminProcedure.query(async () => {
