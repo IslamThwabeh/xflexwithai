@@ -32,10 +32,11 @@ export default function StudentPackages() {
   const isComprehensive = pkg?.slug === 'comprehensive';
   const hasPackage = !!pkg;
 
-  // Calculate remaining days for comprehensive package
+  // Calculate remaining days for LexAI/Recommendations (course is forever)
   const getRemainingDays = () => {
-    if (!activePackage?.endDate) return null;
-    const end = new Date(activePackage.endDate);
+    const endDateStr = (activePackage as any)?.lexaiEndDate ?? (activePackage as any)?.recEndDate;
+    if (!endDateStr) return null;
+    const end = new Date(endDateStr);
     const now = new Date();
     const diff = Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
     return diff > 0 ? diff : 0;
@@ -123,7 +124,7 @@ export default function StudentPackages() {
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm text-emerald-100 flex items-center gap-2">
                     <Clock className="w-4 h-4" />
-                    {isRtl ? 'الأيام المتبقية للتجديد' : 'Days until renewal'}
+                    {isRtl ? 'أيام متبقية (LexAI والتوصيات)' : 'Days remaining (LexAI & Recommendations)'}
                   </span>
                   <span className="text-2xl font-bold">{remainingDays}</span>
                 </div>
@@ -278,7 +279,9 @@ export default function StudentPackages() {
                       </div>
                       <p className="text-sm text-gray-500">
                         {isRtl ? 'بدأ' : 'Started'}: {new Date(sub.startDate).toLocaleDateString(isRtl ? 'ar-EG' : 'en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
-                        {sub.endDate && ` • ${isRtl ? 'ينتهي' : 'Ends'}: ${new Date(sub.endDate).toLocaleDateString(isRtl ? 'ar-EG' : 'en-US', { year: 'numeric', month: 'short', day: 'numeric' })}`}
+                        {sub.endDate
+                          ? ` • ${isRtl ? 'ينتهي' : 'Ends'}: ${new Date(sub.endDate).toLocaleDateString(isRtl ? 'ar-EG' : 'en-US', { year: 'numeric', month: 'short', day: 'numeric' })}`
+                          : ` • ${isRtl ? 'مدى الحياة' : 'Lifetime'}`}
                       </p>
                     </div>
                   </div>

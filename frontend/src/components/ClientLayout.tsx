@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/alert-dialog";
 
 import { APP_TITLE } from "@/const";
+import { trpc } from "@/lib/trpc";
 import {
   GraduationCap,
   Sparkles,
@@ -52,6 +53,9 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
   const [location] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
+
+  const { data: unreadNotifData } = trpc.notifications.unreadCount.useQuery(undefined, { refetchInterval: 30_000 });
+  const unreadNotifCount = unreadNotifData?.count ?? 0;
 
   const handleLogout = async () => {
     try { window.localStorage.removeItem("xflex_last_email"); } catch {}
@@ -107,6 +111,7 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
       label: language === "ar" ? "الإشعارات" : "Notifications",
       icon: <Bell className="h-4 w-4" />,
       match: "/notifications",
+      badge: unreadNotifCount,
     },
     {
       href: "/my-points",
@@ -164,6 +169,11 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
                     >
                       {item.icon}
                       <span>{item.label}</span>
+                      {item.badge > 0 && (
+                        <span className="min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                          {item.badge > 99 ? '99+' : item.badge}
+                        </span>
+                      )}
                     </button>
                   </Link>
                 );
@@ -262,7 +272,12 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
                     <span className={isActive ? "text-emerald-600" : "text-gray-400"}>
                       {item.icon}
                     </span>
-                    {item.label}
+                    <span className="flex-1">{item.label}</span>
+                    {item.badge > 0 && (
+                      <span className="min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                        {item.badge > 99 ? '99+' : item.badge}
+                      </span>
+                    )}
                   </button>
                 </Link>
               );

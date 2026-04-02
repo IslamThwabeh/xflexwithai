@@ -1,4 +1,4 @@
-import { eq, desc, and, or, sql, ne, inArray } from "drizzle-orm";
+import { eq, desc, and, or, sql, ne, inArray, isNotNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import type { D1Database } from "@cloudflare/workers-types";
 import {
@@ -1012,13 +1012,18 @@ export async function skipCourseForUser(userId: number, courseId: number) {
     lastAccessed: new Date().toISOString(),
   });
 
-  // Immediately activate pending subscriptions (starts the real 30-day timer)
-  const activation = await activateStudentSubscriptions(userId, false);
+  // Only activate pending subscriptions if broker onboarding is also complete
+  let activated = false;
+  const brokerComplete = await isUserBrokerOnboardingComplete(userId);
+  if (brokerComplete) {
+    const activation = await activateStudentSubscriptions(userId, false);
+    activated = activation.activated;
+  }
 
   return {
     enrollmentId: enrollment.id,
     previousProgress: enrollment.progressPercentage ?? 0,
-    activated: activation.activated,
+    activated,
   };
 }
 
@@ -1522,33 +1527,62 @@ export async function getExpiringSubscriptions(withinDays: number): Promise<{ us
   const todayStr = now.toISOString().slice(0, 10);
   const futureStr = futureDate.toISOString().slice(0, 10);
 
-  // Find package subscriptions with endDate between today and futureDate
-  const expiring = await db
+  // Find lexai/rec subscriptions with endDate between today and futureDate
+  // (packageSubscriptions have no expiry — course is forever)
+  const expiringLexai = await db
     .select({
-      userId: packageSubscriptions.userId,
-      endDate: packageSubscriptions.endDate,
-      packageId: packageSubscriptions.packageId,
+      userId: lexaiSubscriptions.userId,
+      endDate: lexaiSubscriptions.endDate,
     })
-    .from(packageSubscriptions)
+    .from(lexaiSubscriptions)
     .where(and(
-      eq(packageSubscriptions.isActive, true),
-      sql`date(${packageSubscriptions.endDate}) >= ${todayStr}`,
-      sql`date(${packageSubscriptions.endDate}) <= ${futureStr}`,
+      eq(lexaiSubscriptions.isActive, true),
+      eq(lexaiSubscriptions.isPendingActivation, false),
+      sql`date(${lexaiSubscriptions.endDate}) >= ${todayStr}`,
+      sql`date(${lexaiSubscriptions.endDate}) <= ${futureStr}`,
     ));
+
+  const expiringRec = await db
+    .select({
+      userId: recommendationSubscriptions.userId,
+      endDate: recommendationSubscriptions.endDate,
+    })
+    .from(recommendationSubscriptions)
+    .where(and(
+      eq(recommendationSubscriptions.isActive, true),
+      eq(recommendationSubscriptions.isPendingActivation, false),
+      sql`date(${recommendationSubscriptions.endDate}) >= ${todayStr}`,
+      sql`date(${recommendationSubscriptions.endDate}) <= ${futureStr}`,
+    ));
+
+  // Merge unique userIds from both tables
+  const expiringUserMap = new Map<number, { userId: number; endDate: string }>();
+  for (const sub of [...expiringLexai, ...expiringRec]) {
+    const existing = expiringUserMap.get(sub.userId);
+    if (!existing || new Date(sub.endDate) < new Date(existing.endDate)) {
+      expiringUserMap.set(sub.userId, { userId: sub.userId, endDate: sub.endDate });
+    }
+  }
+  const expiring = Array.from(expiringUserMap.values());
 
   const results: { userId: number; email: string; name: string | null; daysLeft: number; packageName: string }[] = [];
   for (const sub of expiring) {
     const [user] = await db.select({ email: users.email, name: users.name }).from(users).where(eq(users.id, sub.userId)).limit(1);
     if (!user?.email) continue;
-    const pkg = await getPackageById(sub.packageId);
-    const endMs = new Date(sub.endDate!).getTime();
+    // Look up the user's active package for display name
+    const [pkgSub] = await db.select({ packageId: packageSubscriptions.packageId })
+      .from(packageSubscriptions)
+      .where(and(eq(packageSubscriptions.userId, sub.userId), eq(packageSubscriptions.isActive, true)))
+      .limit(1);
+    const pkg = pkgSub ? await getPackageById(pkgSub.packageId) : null;
+    const endMs = new Date(sub.endDate).getTime();
     const daysLeft = Math.ceil((endMs - now.getTime()) / (1000 * 60 * 60 * 24));
     results.push({
       userId: sub.userId,
       email: user.email,
       name: user.name,
       daysLeft: Math.max(0, daysLeft),
-      packageName: pkg?.nameEn ?? `Package #${sub.packageId}`,
+      packageName: pkg?.nameEn ?? 'Subscription',
     });
   }
   return results;
@@ -2203,16 +2237,11 @@ export async function renewPackageEntitlements(
     await fulfillPackageEntitlements(userId, packageId, registrationKeyId, entitlementDays);
     return;
   }
-  const pkgBase = currentPkgSub.endDate && new Date(currentPkgSub.endDate) > now
-    ? new Date(currentPkgSub.endDate)
-    : now;
-  const pkgNewEnd = buildEndDateFromDays(pkgBase, entitlementDays);
+  // Course access is forever — just ensure active flag is set
   const dbInst = await getDb();
   if (!dbInst) return;
   await dbInst.update(packageSubscriptions).set({
     isActive: true,
-    endDate: pkgNewEnd.toISOString(),
-    renewalDueDate: pkgNewEnd.toISOString(),
     updatedAt: now.toISOString(),
   }).where(eq(packageSubscriptions.id, currentPkgSub.id));
 
@@ -2325,23 +2354,21 @@ export async function fulfillPackageEntitlements(
   if (currentPackageSubscription) {
     const db = await getDb();
     if (!db) return;
+    // Course access is forever — just ensure active flag is set
     await db.update(packageSubscriptions).set({
       isActive: true,
-      startDate: now.toISOString(),
-      endDate: serviceEndDate.toISOString(),
-      renewalDueDate: serviceEndDate.toISOString(),
-      autoRenew: false,
       updatedAt: now.toISOString(),
     }).where(eq(packageSubscriptions.id, currentPackageSubscription.id));
   } else {
+    // Course access is forever — endDate=null
     await createPackageSubscription({
       userId,
       packageId,
       orderId: orderId ?? 0,
       isActive: true,
       startDate: now.toISOString(),
-      endDate: serviceEndDate.toISOString(),
-      renewalDueDate: serviceEndDate.toISOString(),
+      endDate: null as any,
+      renewalDueDate: null as any,
       autoRenew: false,
     });
   }
@@ -4218,7 +4245,7 @@ export async function getPendingActivationStatus(userId: number) {
 
   const progressPercent = enrollment?.progressPercentage ?? 0;
 
-  // Check if max activation date has passed and auto-activate if so
+  // Auto-activate after 14 days regardless of course/broker status
   const now = new Date();
   if (lexaiSub?.maxActivationDate && new Date(lexaiSub.maxActivationDate) <= now) {
     await activateStudentSubscriptions(userId, true);
@@ -5181,7 +5208,7 @@ export async function markAllNotificationsRead(userId: number) {
 
 export async function sendBulkNotification(input: {
   userIds: number[]; type?: string; titleEn: string; titleAr: string;
-  contentEn?: string; contentAr?: string; actionUrl?: string;
+  contentEn?: string; contentAr?: string; actionUrl?: string; batchId?: string;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -5189,6 +5216,7 @@ export async function sendBulkNotification(input: {
   const values = input.userIds.map(userId => ({
     userId, type: input.type || 'info', titleEn: input.titleEn, titleAr: input.titleAr,
     contentEn: input.contentEn, contentAr: input.contentAr, actionUrl: input.actionUrl,
+    batchId: input.batchId || null,
     createdAt: now,
   }));
   if (values.length) await db.insert(userNotifications).values(values);
@@ -5209,6 +5237,7 @@ export async function getRecentSentNotifications(limit = 30) {
   const db = await getDb();
   if (!db) return [];
   return db.select({
+    batchId: userNotifications.batchId,
     titleEn: userNotifications.titleEn,
     titleAr: userNotifications.titleAr,
     contentEn: userNotifications.contentEn,
@@ -5216,10 +5245,34 @@ export async function getRecentSentNotifications(limit = 30) {
     type: userNotifications.type,
     createdAt: userNotifications.createdAt,
     recipientCount: sql<number>`COUNT(*)`,
+    emailSentCount: sql<number>`SUM(CASE WHEN ${userNotifications.emailSent} = 1 THEN 1 ELSE 0 END)`,
   }).from(userNotifications)
-    .groupBy(userNotifications.titleEn, userNotifications.titleAr, userNotifications.createdAt)
+    .where(isNotNull(userNotifications.batchId))
+    .groupBy(userNotifications.batchId)
     .orderBy(desc(userNotifications.createdAt))
     .limit(limit);
+}
+
+export async function getNotificationRecipients(batchId: string) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({
+    userId: userNotifications.userId,
+    emailSent: userNotifications.emailSent,
+    name: users.name,
+    email: users.email,
+  }).from(userNotifications)
+    .innerJoin(users, eq(userNotifications.userId, users.id))
+    .where(eq(userNotifications.batchId, batchId))
+    .orderBy(users.name);
+}
+
+export async function markNotificationEmailSent(batchId: string, userId: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(userNotifications)
+    .set({ emailSent: true })
+    .where(and(eq(userNotifications.batchId, batchId), eq(userNotifications.userId, userId)));
 }
 
 // ============================================================================
@@ -6679,7 +6732,22 @@ export async function skipBrokerOnboardingForUser(userId: number, adminId: numbe
     createdAt: now,
   });
 
-  return { success: true, brokerId: broker.id };
+  // If course is also complete/skipped, activate pending subscriptions (LexAI + Rec)
+  const [enrollment] = await db.select({
+    completedAt: enrollments.completedAt,
+    isAdminSkipped: enrollments.isAdminSkipped,
+  }).from(enrollments)
+    .where(eq(enrollments.userId, userId))
+    .orderBy(desc(enrollments.enrolledAt))
+    .limit(1);
+
+  let activated = false;
+  if (enrollment?.completedAt || enrollment?.isAdminSkipped) {
+    const activation = await activateStudentSubscriptions(userId, false);
+    activated = activation.activated;
+  }
+
+  return { success: true, brokerId: broker.id, activated };
 }
 
 /**

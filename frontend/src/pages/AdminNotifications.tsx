@@ -3,7 +3,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { trpc } from '@/lib/trpc';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Bell, Send, Loader2, Users, Inbox, CheckCheck, ExternalLink, Filter, Search, UserCheck, UserX, User, Mail, Info } from 'lucide-react';
+import { Bell, Send, Loader2, Users, Inbox, CheckCheck, ExternalLink, Filter, Search, UserCheck, UserX, User, Mail, Info, ChevronDown, ChevronUp, MailCheck, MailX } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import { toast } from 'sonner';
 import { STAFF_NOTIFICATION_EVENTS, type StaffNotificationEventType } from '@shared/const';
@@ -19,6 +19,7 @@ export default function AdminNotifications() {
   const [audience, setAudience] = useState<'all' | 'active' | 'inactive' | 'specific'>('all');
   const [selectedStudentIds, setSelectedStudentIds] = useState<number[]>([]);
   const [studentSearch, setStudentSearch] = useState('');
+  const [expandedBatch, setExpandedBatch] = useState<string | null>(null);
   const [, setLocation] = useLocation();
 
   // Staff alerts inbox
@@ -31,6 +32,11 @@ export default function AdminNotifications() {
   const { data: targetStudents } = trpc.notifications.targetStudents.useQuery(undefined, { enabled: tab === 'send' });
   // Sent history
   const { data: sentHistory, isLoading: sentLoading } = trpc.notifications.sentHistory.useQuery(undefined, { enabled: tab === 'send' });
+  // Recipients for expanded batch
+  const { data: batchRecipients, isLoading: recipientsLoading } = trpc.notifications.sentRecipients.useQuery(
+    { batchId: expandedBatch! },
+    { enabled: !!expandedBatch }
+  );
 
   const sendMut = trpc.notifications.send.useMutation({
     onSuccess: (data) => {
@@ -60,13 +66,16 @@ export default function AdminNotifications() {
     return filteredStudents.map((s: any) => s.id);
   }, [audience, filteredStudents, selectedStudentIds]);
 
-  // Search for specific student picker
+  // Search for specific student picker — show all when empty, filter as typing
   const searchResults = useMemo(() => {
-    if (!studentSearch.trim() || !targetStudents) return [];
-    const q = studentSearch.toLowerCase();
-    return targetStudents.filter((s: any) =>
-      (s.name || '').toLowerCase().includes(q) || (s.email || '').toLowerCase().includes(q)
-    ).slice(0, 10);
+    if (!targetStudents) return [];
+    const q = studentSearch.trim().toLowerCase();
+    const filtered = q
+      ? targetStudents.filter((s: any) =>
+          (s.name || '').toLowerCase().includes(q) || (s.email || '').toLowerCase().includes(q)
+        )
+      : targetStudents;
+    return filtered.slice(0, 50);
   }, [studentSearch, targetStudents]);
 
   const canSend = form.titleAr.trim() && targetUserIds.length > 0 && !sendMut.isPending;
@@ -265,6 +274,21 @@ export default function AdminNotifications() {
                     : (isRtl ? `تم اختيار ${selectedStudentIds.length} طالب` : `${selectedStudentIds.length} students selected`)
                   }
                 </p>
+
+                {/* Audience preview list for all/active/inactive */}
+                {audience !== 'specific' && filteredStudents.length > 0 && (
+                  <div className="mt-2 border rounded-lg max-h-40 overflow-y-auto divide-y dark:divide-slate-700 dark:border-slate-700">
+                    {filteredStudents.map((s: any) => (
+                      <div key={s.id} className="flex items-center gap-2 px-3 py-1.5 text-xs">
+                        <span className="truncate font-medium">{s.name || s.email}</span>
+                        <span className="text-muted-foreground ms-auto truncate max-w-[180px]">{s.email}</span>
+                        <Badge variant={s.hasActivePackage ? 'default' : 'secondary'} className="text-[10px] shrink-0">
+                          {s.hasActivePackage ? (isRtl ? 'نشط' : 'Active') : (isRtl ? 'غير نشط' : 'Inactive')}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Specific Student Picker */}
@@ -278,8 +302,8 @@ export default function AdminNotifications() {
                       value={studentSearch} onChange={e => setStudentSearch(e.target.value)}
                     />
                   </div>
-                  {studentSearch.trim() && searchResults.length > 0 && (
-                    <div className="border rounded-lg max-h-40 overflow-y-auto divide-y dark:divide-slate-700 dark:border-slate-700">
+                  {searchResults.length > 0 && (
+                    <div className="border rounded-lg max-h-48 overflow-y-auto divide-y dark:divide-slate-700 dark:border-slate-700">
                       {searchResults.map((s: any) => {
                         const checked = selectedStudentIds.includes(s.id);
                         return (
@@ -401,22 +425,75 @@ export default function AdminNotifications() {
                 <div className="text-center py-8 text-muted-foreground">{isRtl ? 'لا توجد إشعارات مرسلة' : 'No sent notifications yet'}</div>
               ) : (
                 <div className="space-y-2">
-                  {sentHistory.map((n: any, i: number) => (
-                    <div key={i} className="bg-white dark:bg-slate-800 border rounded-lg p-3 flex items-start gap-3">
-                      <Bell className={`w-4 h-4 mt-0.5 shrink-0 ${n.type === 'warning' ? 'text-amber-500' : n.type === 'success' ? 'text-green-500' : n.type === 'action' ? 'text-red-500' : 'text-emerald-500'}`} />
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium">{isRtl ? n.titleAr : n.titleEn}</p>
-                        {(isRtl ? n.contentAr : n.contentEn) && (
-                          <p className="text-xs text-muted-foreground mt-0.5">{isRtl ? n.contentAr : n.contentEn}</p>
+                  {sentHistory.map((n: any, i: number) => {
+                    const isExpanded = expandedBatch === n.batchId;
+                    return (
+                      <div key={n.batchId || i} className="bg-white dark:bg-slate-800 border rounded-lg overflow-hidden">
+                        <button
+                          onClick={() => setExpandedBatch(isExpanded ? null : n.batchId)}
+                          className="w-full p-3 flex items-start gap-3 text-start hover:bg-gray-50 dark:hover:bg-slate-700/30 transition"
+                        >
+                          <Bell className={`w-4 h-4 mt-0.5 shrink-0 ${n.type === 'warning' ? 'text-amber-500' : n.type === 'success' ? 'text-green-500' : n.type === 'action' ? 'text-red-500' : 'text-emerald-500'}`} />
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium">{isRtl ? n.titleAr : n.titleEn}</p>
+                            {(isRtl ? n.contentAr : n.contentEn) && (
+                              <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{isRtl ? n.contentAr : n.contentEn}</p>
+                            )}
+                            <div className="flex items-center gap-3 mt-1">
+                              <span className="text-xs text-muted-foreground">{new Date(n.createdAt).toLocaleString(isRtl ? 'ar-EG' : 'en-US')}</span>
+                              {n.emailSentCount > 0 && (
+                                <span className="inline-flex items-center gap-1 text-[10px] text-emerald-600">
+                                  <MailCheck className="w-3 h-3" />
+                                  {n.emailSentCount}/{n.recipientCount}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <Badge variant="secondary" className="text-xs">
+                              <Users className="w-3 h-3 me-1" />
+                              {n.recipientCount}
+                            </Badge>
+                            {isExpanded ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+                          </div>
+                        </button>
+
+                        {/* Expanded recipient list */}
+                        {isExpanded && (
+                          <div className="border-t dark:border-slate-700 bg-gray-50/50 dark:bg-slate-900/30">
+                            <div className="px-3 py-2 text-xs font-medium text-muted-foreground border-b dark:border-slate-700">
+                              {isRtl ? 'المستلمون' : 'Recipients'}
+                            </div>
+                            {recipientsLoading ? (
+                              <div className="flex justify-center py-4"><Loader2 className="w-4 h-4 animate-spin" /></div>
+                            ) : !batchRecipients?.length ? (
+                              <p className="text-xs text-muted-foreground text-center py-4">
+                                {isRtl ? 'لا توجد بيانات' : 'No data available'}
+                              </p>
+                            ) : (
+                              <div className="max-h-48 overflow-y-auto divide-y dark:divide-slate-700">
+                                {batchRecipients.map((r: any) => (
+                                  <div key={r.userId} className="flex items-center gap-2 px-3 py-2 text-xs">
+                                    <span className="font-medium truncate">{r.name || r.email}</span>
+                                    <span className="text-muted-foreground ms-auto truncate max-w-[200px]">{r.email}</span>
+                                    {r.emailSent ? (
+                                      <span className="inline-flex items-center gap-0.5 text-emerald-600 shrink-0" title={isRtl ? 'تم إرسال البريد' : 'Email sent'}>
+                                        <MailCheck className="w-3.5 h-3.5" />
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center gap-0.5 text-gray-400 shrink-0" title={isRtl ? 'لم يُرسل بريد' : 'No email sent'}>
+                                        <MailX className="w-3.5 h-3.5" />
+                                      </span>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
                         )}
-                        <p className="text-xs text-muted-foreground mt-1">{new Date(n.createdAt).toLocaleString(isRtl ? 'ar-EG' : 'en-US')}</p>
                       </div>
-                      <Badge variant="secondary" className="shrink-0 text-xs">
-                        <Users className="w-3 h-3 me-1" />
-                        {n.recipientCount}
-                      </Badge>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>

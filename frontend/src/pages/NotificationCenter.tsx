@@ -31,11 +31,11 @@ export default function NotificationCenter() {
     <div className="min-h-screen bg-[var(--color-xf-cream)]">
       <div className="max-w-2xl mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Bell className="w-6 h-6 text-emerald-500" />
-            {isRtl ? 'الإشعارات' : 'Notifications'}
+          <h1 className="text-2xl font-bold flex items-center gap-2 flex-nowrap">
+            <Bell className="w-6 h-6 text-emerald-500 shrink-0" />
+            <span>{isRtl ? 'الإشعارات' : 'Notifications'}</span>
             {unreadCount > 0 && (
-              <span className="bg-red-500 text-white text-xs rounded-full px-2 py-0.5">{unreadCount}</span>
+              <span className="bg-red-500 text-white text-xs rounded-full px-2 py-0.5 shrink-0 leading-none">{unreadCount}</span>
             )}
           </h1>
           {unreadCount > 0 && (

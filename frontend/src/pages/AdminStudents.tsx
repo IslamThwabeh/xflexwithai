@@ -592,9 +592,9 @@ export default function AdminStudents() {
                         )}
                         {s.brokerOnboardingComplete ? (
                           <>
-                            <Badge variant="outline" className="text-blue-600 border-blue-300 bg-blue-50 text-xs">
+                            <Badge variant="outline" className="text-amber-600 border-amber-300 bg-amber-50 text-xs">
                               <Building2 className="w-3 h-3 me-1" />
-                              {isRtl ? "وسيط مكتمل" : "Broker Done"}
+                              {isRtl ? "تم تخطي الوسيط" : "Broker Skipped"}
                             </Badge>
                             <Button
                               variant="outline"
@@ -603,7 +603,7 @@ export default function AdminStudents() {
                               onClick={() => setRollbackBrokerConfirm({ id: s.id, name: s.name || s.email })}
                             >
                               <Undo2 className="w-3 h-3" />
-                              {isRtl ? "تراجع وسيط" : "Undo Broker"}
+                              {isRtl ? "تراجع" : "Undo"}
                             </Button>
                           </>
                         ) : (
@@ -613,7 +613,7 @@ export default function AdminStudents() {
                             className="text-xs gap-1"
                             onClick={() => setSkipBrokerConfirm({ id: s.id, name: s.name || s.email })}
                           >
-                            <Building2 className="w-3 h-3" />
+                            <FastForward className="w-3 h-3" />
                             {isRtl ? "تخطي الوسيط" : "Skip Broker"}
                           </Button>
                         )}
@@ -801,7 +801,7 @@ export default function AdminStudents() {
                               )}
                               {s.brokerOnboardingComplete ? (
                                 <div className="flex items-center gap-1">
-                                  <Badge variant="outline" className="text-blue-600 border-blue-300 bg-blue-50 text-xs">
+                                  <Badge variant="outline" className="text-amber-600 border-amber-300 bg-amber-50 text-xs">
                                     <Building2 className="w-3 h-3 me-0.5" />
                                     {isRtl ? "وسيط" : "Broker"}
                                   </Badge>
@@ -821,7 +821,7 @@ export default function AdminStudents() {
                                   className="text-xs gap-1 h-7"
                                   onClick={() => setSkipBrokerConfirm({ id: s.id, name: s.name || s.email })}
                                 >
-                                  <Building2 className="w-3 h-3" />
+                                  <FastForward className="w-3 h-3" />
                                   {isRtl ? "وسيط" : "Broker"}
                                 </Button>
                               )}

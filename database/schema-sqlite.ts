@@ -1145,6 +1145,8 @@ export const userNotifications = sqliteTable("user_notifications", {
   contentAr: text("content_ar"),
   actionUrl: text("action_url"),
   isRead: integer("is_read", { mode: 'boolean' }).default(false).notNull(),
+  batchId: text("batch_id"),
+  emailSent: integer("email_sent", { mode: 'boolean' }).default(false).notNull(),
   createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
 });
 

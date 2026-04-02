@@ -1504,8 +1504,12 @@ export const appRouter = router({
             actionUrl: '/broker-onboarding',
           }).catch(() => {});
 
-          const activation = await db.activateStudentSubscriptions(ctx.user.id, false);
-          subscriptionActivated = activation.activated;
+          // Only activate subscriptions if broker onboarding is also complete
+          const brokerDone = await db.isUserBrokerOnboardingComplete(ctx.user.id);
+          if (brokerDone) {
+            const activation = await db.activateStudentSubscriptions(ctx.user.id, false);
+            subscriptionActivated = activation.activated;
+          }
 
           // Notify admin of course completion
           db.notifyStaffByEvent('course_completion', {
@@ -3282,7 +3286,15 @@ export const appRouter = router({
     // User: get active package (most recent active)
     myActivePackage: protectedProcedure.query(async ({ ctx }) => {
       if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
-      return db.getUserActivePackage(ctx.user.id);
+      const pkg = await db.getUserActivePackage(ctx.user.id);
+      // Include LexAI/Rec endDate for remaining days display (course is forever)
+      const lexaiSub = await db.getUserLexaiSubscription(ctx.user.id);
+      const recSub = await db.getActiveRecommendationSubscription(ctx.user.id);
+      return {
+        ...pkg,
+        lexaiEndDate: lexaiSub?.endDate ?? null,
+        recEndDate: recSub?.endDate ?? null,
+      };
     }),
 
     // User: check if subscriptions are pending activation + course progress
@@ -4506,9 +4518,11 @@ ${qaText}`;
         // Fallback: if English title is empty, use Arabic
         const titleEn = input.titleEn?.trim() || input.titleAr;
         const contentEn = input.contentEn?.trim() || input.contentAr;
-        await db.sendBulkNotification({ ...input, titleEn, contentEn });
+        const batchId = `batch_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        await db.sendBulkNotification({ ...input, titleEn, contentEn, batchId });
 
         // Send branded HTML emails if requested
+        let emailsSent = 0;
         if (input.sendEmail) {
           const users = await db.getAllUsers();
           const emailMap = new Map(users.map((u: any) => [u.id, u.email]));
@@ -4516,19 +4530,25 @@ ${qaText}`;
           for (const userId of input.userIds) {
             const email = emailMap.get(userId);
             if (email) {
-              await sendAnnouncementEmail(email, {
-                subject,
-                titleAr: input.titleAr,
-                contentAr: input.contentAr || '',
-                titleEn: input.titleEn?.trim() || undefined,
-                contentEn: input.contentEn?.trim() || undefined,
-                actionUrl: input.actionUrl || undefined,
-              });
+              try {
+                await sendAnnouncementEmail(email, {
+                  subject,
+                  titleAr: input.titleAr,
+                  contentAr: input.contentAr || '',
+                  titleEn: input.titleEn?.trim() || undefined,
+                  contentEn: input.contentEn?.trim() || undefined,
+                  actionUrl: input.actionUrl || undefined,
+                });
+                await db.markNotificationEmailSent(batchId, userId);
+                emailsSent++;
+              } catch (err) {
+                console.error(`Failed to send email to user ${userId}:`, err);
+              }
             }
           }
         }
 
-        return { success: true, count: input.userIds.length };
+        return { success: true, count: input.userIds.length, emailsSent };
       }),
 
     // Admin: get students grouped by active/inactive for targeting
@@ -4540,6 +4560,13 @@ ${qaText}`;
     sentHistory: adminProcedure.query(async () => {
       return db.getRecentSentNotifications();
     }),
+
+    // Admin: get recipients for a specific sent batch
+    sentRecipients: adminProcedure
+      .input(z.object({ batchId: z.string() }))
+      .query(async ({ input }) => {
+        return db.getNotificationRecipients(input.batchId);
+      }),
   }),
 
   // ============================================================================
