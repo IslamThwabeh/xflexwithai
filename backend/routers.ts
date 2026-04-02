@@ -10,7 +10,7 @@ import { storagePutR2, storageArchiveR2 } from "./storage-r2";
 import { analyzeLexai } from "./_core/lexai";
 import { hashPassword, verifyPassword, generateToken, isValidEmail, isValidPassword } from "./_core/auth";
 import { sendEmail, sendLoginCodeEmail } from "./_core/email";
-import { sendOrderConfirmationEmail, sendPaymentReceivedEmail, sendAdminNewOrderNotification } from "./_core/orderEmails";
+import { sendOrderConfirmationEmail, sendPaymentReceivedEmail, sendAdminNewOrderNotification, sendAnnouncementEmail } from "./_core/orderEmails";
 import { ENV } from "./_core/env";
 import { generateNumericCode, generateSaltBase64, normalizeEmail, sha256Base64 } from "./_core/otp";
 // FlexAI routes are registered in server/_core/index.ts
@@ -4490,19 +4490,44 @@ ${qaText}`;
       return { success: true };
     }),
 
-    // Admin: send notification to specific users
+    // Admin: send notification to specific users (+ optional email)
     send: adminProcedure
       .input(z.object({
         userIds: z.array(z.number()).min(1).max(1000),
         type: z.string().optional(),
-        titleEn: z.string().min(1).max(200),
+        titleEn: z.string().max(200).optional(),
         titleAr: z.string().min(1).max(200),
         contentEn: z.string().max(2000).optional(),
         contentAr: z.string().max(2000).optional(),
         actionUrl: z.string().max(500).optional(),
+        sendEmail: z.boolean().optional(),
       }))
       .mutation(async ({ input }) => {
-        await db.sendBulkNotification(input);
+        // Fallback: if English title is empty, use Arabic
+        const titleEn = input.titleEn?.trim() || input.titleAr;
+        const contentEn = input.contentEn?.trim() || input.contentAr;
+        await db.sendBulkNotification({ ...input, titleEn, contentEn });
+
+        // Send branded HTML emails if requested
+        if (input.sendEmail) {
+          const users = await db.getAllUsers();
+          const emailMap = new Map(users.map((u: any) => [u.id, u.email]));
+          const subject = input.titleAr; // Arabic subject
+          for (const userId of input.userIds) {
+            const email = emailMap.get(userId);
+            if (email) {
+              await sendAnnouncementEmail(email, {
+                subject,
+                titleAr: input.titleAr,
+                contentAr: input.contentAr || '',
+                titleEn: input.titleEn?.trim() || undefined,
+                contentEn: input.contentEn?.trim() || undefined,
+                actionUrl: input.actionUrl || undefined,
+              });
+            }
+          }
+        }
+
         return { success: true, count: input.userIds.length };
       }),
 

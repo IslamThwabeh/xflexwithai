@@ -630,3 +630,35 @@ export async function sendStaffAlertEmail(data: {
     logger.warn("[STAFF_ALERT_EMAIL] Failed", { to: data.to, eventType: data.eventType, error: String(e) });
   }
 }
+
+/** Send branded HTML announcement email to a student */
+export async function sendAnnouncementEmail(to: string, data: {
+  subject: string;
+  titleAr: string;
+  contentAr: string;
+  titleEn?: string;
+  contentEn?: string;
+  actionUrl?: string;
+  actionLabel?: string;
+}) {
+  const body = `
+    <h2 style="margin:0 0 16px;color:#111;font-size:20px;text-align:right;">${data.titleAr}</h2>
+    <div style="color:#555;line-height:1.8;font-size:15px;text-align:right;white-space:pre-line;">${data.contentAr}</div>
+    ${data.titleEn ? `
+    <hr style="margin:24px 0;border:none;border-top:1px solid #e5e7eb;" />
+    <h2 style="margin:0 0 16px;color:#111;font-size:20px;">${data.titleEn}</h2>
+    <div style="color:#555;line-height:1.8;font-size:15px;white-space:pre-line;">${data.contentEn || ''}</div>
+    ` : ''}
+    ${data.actionUrl ? `
+    <div style="text-align:center;margin-top:28px;">
+      <a href="${data.actionUrl.startsWith('http') ? data.actionUrl : `https://xflexacademy.com${data.actionUrl}`}" style="display:inline-block;background:#059669;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:bold;">
+        ${data.actionLabel || 'زيارة الموقع'}
+      </a>
+    </div>` : ''}`;
+
+  try {
+    await sendBrandedEmail(to, data.subject, body);
+  } catch (e) {
+    logger.warn("[ANNOUNCEMENT_EMAIL] Failed", { to, error: String(e) });
+  }
+}

@@ -3,7 +3,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { trpc } from '@/lib/trpc';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Bell, Send, Loader2, Users, Inbox, CheckCheck, ExternalLink, Filter, Search, UserCheck, UserX, User } from 'lucide-react';
+import { Bell, Send, Loader2, Users, Inbox, CheckCheck, ExternalLink, Filter, Search, UserCheck, UserX, User, Mail, Info } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import { toast } from 'sonner';
 import { STAFF_NOTIFICATION_EVENTS, type StaffNotificationEventType } from '@shared/const';
@@ -14,6 +14,7 @@ export default function AdminNotifications() {
   const isRtl = language === 'ar';
   const [tab, setTab] = useState<'alerts' | 'send'>('alerts');
   const [form, setForm] = useState({ titleEn: '', titleAr: '', contentEn: '', contentAr: '', type: 'info' as string, actionUrl: '' });
+  const [sendEmail, setSendEmail] = useState(true);
   const [eventFilter, setEventFilter] = useState<StaffNotificationEventType | 'all'>('all');
   const [audience, setAudience] = useState<'all' | 'active' | 'inactive' | 'specific'>('all');
   const [selectedStudentIds, setSelectedStudentIds] = useState<number[]>([]);
@@ -37,6 +38,7 @@ export default function AdminNotifications() {
       setForm({ titleEn: '', titleAr: '', contentEn: '', contentAr: '', type: 'info', actionUrl: '' });
       setSelectedStudentIds([]);
       setAudience('all');
+      setSendEmail(true);
       utils.notifications.sentHistory.invalidate();
     },
     onError: (e) => toast.error(e.message),
@@ -67,7 +69,7 @@ export default function AdminNotifications() {
     ).slice(0, 10);
   }, [studentSearch, targetStudents]);
 
-  const canSend = form.titleEn.trim() && form.titleAr.trim() && targetUserIds.length > 0 && !sendMut.isPending;
+  const canSend = form.titleAr.trim() && targetUserIds.length > 0 && !sendMut.isPending;
 
   const filteredAlerts = (staffAlerts ?? []).filter((a: any) =>
     eventFilter === 'all' || a.eventType === eventFilter
@@ -224,21 +226,37 @@ export default function AdminNotifications() {
                 <label className="text-sm font-medium mb-2 block">{isRtl ? 'الجمهور المستهدف' : 'Target Audience'}</label>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                   {([
-                    { value: 'all', icon: Users, labelEn: 'All Students', labelAr: 'جميع الطلاب' },
-                    { value: 'active', icon: UserCheck, labelEn: 'Active Students', labelAr: 'الطلاب النشطين' },
-                    { value: 'inactive', icon: UserX, labelEn: 'Inactive Students', labelAr: 'الطلاب غير النشطين' },
-                    { value: 'specific', icon: User, labelEn: 'Specific Student', labelAr: 'طالب محدد' },
+                    { value: 'all', icon: Users, labelEn: 'All Students', labelAr: 'جميع الطلاب',
+                      tipEn: 'Sends to every registered student (excludes staff members)',
+                      tipAr: 'يرسل لجميع الطلاب المسجلين (لا يشمل فريق العمل)' },
+                    { value: 'active', icon: UserCheck, labelEn: 'Active Students', labelAr: 'الطلاب النشطين',
+                      tipEn: 'Students who currently have an active package subscription (Basic or Comprehensive)',
+                      tipAr: 'الطلاب الذين لديهم اشتراك باقة فعّال حالياً (أساسي أو شامل)' },
+                    { value: 'inactive', icon: UserX, labelEn: 'Inactive Students', labelAr: 'الطلاب غير النشطين',
+                      tipEn: 'Students who registered but have no active package — either expired or never subscribed',
+                      tipAr: 'الطلاب المسجلون ولكن بدون باقة فعّالة — إما انتهت صلاحيتها أو لم يشتركوا' },
+                    { value: 'specific', icon: User, labelEn: 'Specific Student', labelAr: 'طالب محدد',
+                      tipEn: 'Search and select individual students by name or email',
+                      tipAr: 'ابحث واختر طلاب محددين بالاسم أو البريد الإلكتروني' },
                   ] as const).map(opt => (
-                    <button key={opt.value} onClick={() => { setAudience(opt.value); setSelectedStudentIds([]); setStudentSearch(''); }}
-                      className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium transition-all ${
-                        audience === opt.value
-                          ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-500'
-                          : 'border-gray-200 dark:border-slate-700 hover:border-gray-300 text-gray-600 dark:text-gray-400'
-                      }`}
-                    >
-                      <opt.icon className="w-4 h-4 shrink-0" />
-                      <span className="truncate">{isRtl ? opt.labelAr : opt.labelEn}</span>
-                    </button>
+                    <div key={opt.value} className="relative group">
+                      <button onClick={() => { setAudience(opt.value); setSelectedStudentIds([]); setStudentSearch(''); }}
+                        className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium transition-all ${
+                          audience === opt.value
+                            ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-500'
+                            : 'border-gray-200 dark:border-slate-700 hover:border-gray-300 text-gray-600 dark:text-gray-400'
+                        }`}
+                      >
+                        <opt.icon className="w-4 h-4 shrink-0" />
+                        <span className="truncate">{isRtl ? opt.labelAr : opt.labelEn}</span>
+                        <Info className="w-3.5 h-3.5 ms-auto shrink-0 text-gray-400 group-hover:text-gray-600" />
+                      </button>
+                      {/* Tooltip */}
+                      <div className="absolute z-20 bottom-full mb-2 start-0 end-0 px-3 py-2 bg-gray-900 dark:bg-slate-700 text-white text-xs rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all pointer-events-none shadow-lg">
+                        {isRtl ? opt.tipAr : opt.tipEn}
+                        <div className="absolute top-full start-1/2 -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900 dark:border-t-slate-700" />
+                      </div>
+                    </div>
                   ))}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1.5">
@@ -300,29 +318,39 @@ export default function AdminNotifications() {
                 </div>
               )}
 
-              {/* Form Fields */}
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <label className="text-sm font-medium">{isRtl ? 'العنوان (إنجليزي)' : 'Title (English)'} <span className="text-red-500">*</span></label>
-                  <input className="w-full mt-1 border rounded px-3 py-2 text-sm dark:bg-slate-900 dark:border-slate-700" value={form.titleEn}
-                    onChange={e => setForm(f => ({ ...f, titleEn: e.target.value }))} placeholder={isRtl ? 'مطلوب' : 'Required'} />
-                </div>
+              {/* Form Fields — Arabic first (required), English optional */}
+              <div className="space-y-4">
                 <div>
                   <label className="text-sm font-medium">{isRtl ? 'العنوان (عربي)' : 'Title (Arabic)'} <span className="text-red-500">*</span></label>
                   <input className="w-full mt-1 border rounded px-3 py-2 text-sm dark:bg-slate-900 dark:border-slate-700" dir="rtl" value={form.titleAr}
-                    onChange={e => setForm(f => ({ ...f, titleAr: e.target.value }))} placeholder={isRtl ? 'مطلوب' : 'Required'} />
+                    onChange={e => setForm(f => ({ ...f, titleAr: e.target.value }))} placeholder={isRtl ? 'عنوان الإشعار بالعربي — مطلوب' : 'Notification title in Arabic — required'} />
                 </div>
                 <div>
-                  <label className="text-sm font-medium">{isRtl ? 'المحتوى (إنجليزي)' : 'Content (English)'}</label>
-                  <textarea className="w-full mt-1 border rounded px-3 py-2 text-sm dark:bg-slate-900 dark:border-slate-700" rows={3} value={form.contentEn}
-                    onChange={e => setForm(f => ({ ...f, contentEn: e.target.value }))} />
+                  <label className="text-sm font-medium">{isRtl ? 'المحتوى (عربي)' : 'Content (Arabic)'} <span className="text-red-500">*</span></label>
+                  <textarea className="w-full mt-1 border rounded px-3 py-2 text-sm dark:bg-slate-900 dark:border-slate-700" rows={4} dir="rtl" value={form.contentAr}
+                    onChange={e => setForm(f => ({ ...f, contentAr: e.target.value }))} placeholder={isRtl ? 'نص الرسالة بالعربي...' : 'Message body in Arabic...'} />
                 </div>
-                <div>
-                  <label className="text-sm font-medium">{isRtl ? 'المحتوى (عربي)' : 'Content (Arabic)'}</label>
-                  <textarea className="w-full mt-1 border rounded px-3 py-2 text-sm dark:bg-slate-900 dark:border-slate-700" rows={3} dir="rtl" value={form.contentAr}
-                    onChange={e => setForm(f => ({ ...f, contentAr: e.target.value }))} />
-                </div>
+
+                {/* English (optional, collapsible) */}
+                <details className="border rounded-lg dark:border-slate-700">
+                  <summary className="px-3 py-2 text-sm font-medium text-gray-500 cursor-pointer hover:text-gray-700 dark:text-gray-400 select-none">
+                    {isRtl ? '🌐 إضافة نسخة إنجليزية (اختياري)' : '🌐 Add English version (optional)'}
+                  </summary>
+                  <div className="px-3 pb-3 space-y-3">
+                    <div>
+                      <label className="text-sm font-medium text-gray-500">{isRtl ? 'العنوان (إنجليزي)' : 'Title (English)'}</label>
+                      <input className="w-full mt-1 border rounded px-3 py-2 text-sm dark:bg-slate-900 dark:border-slate-700" value={form.titleEn}
+                        onChange={e => setForm(f => ({ ...f, titleEn: e.target.value }))} placeholder={isRtl ? 'اتركه فارغاً لاستخدام العربي' : 'Leave empty to use Arabic title'} />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-500">{isRtl ? 'المحتوى (إنجليزي)' : 'Content (English)'}</label>
+                      <textarea className="w-full mt-1 border rounded px-3 py-2 text-sm dark:bg-slate-900 dark:border-slate-700" rows={3} value={form.contentEn}
+                        onChange={e => setForm(f => ({ ...f, contentEn: e.target.value }))} placeholder={isRtl ? 'اتركه فارغاً لاستخدام العربي' : 'Leave empty to use Arabic content'} />
+                    </div>
+                  </div>
+                </details>
               </div>
+
               <div className="grid gap-4 md:grid-cols-2">
                 <div>
                   <label className="text-sm font-medium">{isRtl ? 'النوع' : 'Type'}</label>
@@ -340,11 +368,26 @@ export default function AdminNotifications() {
                     onChange={e => setForm(f => ({ ...f, actionUrl: e.target.value }))} placeholder="/courses/123" />
                 </div>
               </div>
+
+              {/* Email toggle */}
+              <label className="flex items-center gap-3 p-3 rounded-lg border dark:border-slate-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/30 transition">
+                <input type="checkbox" checked={sendEmail} onChange={e => setSendEmail(e.target.checked)}
+                  className="w-4 h-4 accent-emerald-500 rounded" />
+                <Mail className="w-4 h-4 text-gray-500 shrink-0" />
+                <div>
+                  <p className="text-sm font-medium">{isRtl ? 'إرسال بريد إلكتروني أيضاً' : 'Also send email'}</p>
+                  <p className="text-xs text-muted-foreground">{isRtl ? 'سيتم إرسال بريد إلكتروني مصمم بقالب XFlex لكل طالب بالإضافة للإشعار داخل المنصة' : 'Send a branded XFlex email to each student in addition to the in-app notification'}</p>
+                </div>
+              </label>
+
               <div className="flex gap-2 pt-2">
-                <Button onClick={() => sendMut.mutate({ ...form, userIds: targetUserIds })} disabled={!canSend}>
+                <Button onClick={() => sendMut.mutate({ ...form, userIds: targetUserIds, sendEmail })} disabled={!canSend}>
                   {sendMut.isPending && <Loader2 className="w-4 h-4 me-2 animate-spin" />}
                   <Send className="w-4 h-4 me-2" />
-                  {isRtl ? `إرسال (${targetUserIds.length})` : `Send (${targetUserIds.length})`}
+                  {isRtl
+                    ? `إرسال (${targetUserIds.length})${sendEmail ? ' + بريد' : ''}`
+                    : `Send (${targetUserIds.length})${sendEmail ? ' + Email' : ''}`
+                  }
                 </Button>
               </div>
             </div>
