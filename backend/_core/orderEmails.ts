@@ -585,3 +585,48 @@ export async function sendQuizFeedbackEmail(to: string, data: {
     logger.warn("[QUIZ_FEEDBACK_EMAIL] Failed", { to, error: String(e) });
   }
 }
+
+// ============================================================================
+// Staff Alert Email — sent to admin/staff for important events
+// ============================================================================
+
+const EVENT_EMOJI: Record<string, string> = {
+  new_support_message: '💬',
+  human_escalation: '🚨',
+  new_order: '🛒',
+  key_activated: '🔑',
+  offer_agreement: '📝',
+  plan_progress_update: '📊',
+  broker_proof_submitted: '📎',
+  subscription_expiring: '⏰',
+  course_completion: '🎓',
+  student_inactivity: '💤',
+};
+
+export async function sendStaffAlertEmail(data: {
+  to: string;
+  eventType: string;
+  titleEn: string;
+  contentEn: string;
+  actionUrl: string;
+}) {
+  const emoji = EVENT_EMOJI[data.eventType] || '🔔';
+  const subject = `[XFlex Staff] ${emoji} ${data.titleEn}`;
+  const fullUrl = data.actionUrl.startsWith('http') ? data.actionUrl : `https://xflexacademy.com${data.actionUrl}`;
+  const body = `
+    <h2 style="margin:0 0 12px;color:#111;">${emoji} ${data.titleEn}</h2>
+    <p style="color:#555;line-height:1.7;font-size:15px;">
+      ${data.contentEn}
+    </p>
+    <div style="text-align:center;margin-top:24px;">
+      <a href="${fullUrl}" style="display:inline-block;background:#059669;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:bold;">
+        View in Dashboard
+      </a>
+    </div>`;
+
+  try {
+    await sendBrandedEmail(data.to, subject, body);
+  } catch (e) {
+    logger.warn("[STAFF_ALERT_EMAIL] Failed", { to: data.to, eventType: data.eventType, error: String(e) });
+  }
+}

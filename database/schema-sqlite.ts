@@ -25,6 +25,7 @@ export const users = sqliteTable("users", {
   referralCode: text("referralCode"),
   isStaff: integer("isStaff", { mode: 'boolean' }).default(false).notNull(),
   brokerOnboardingComplete: integer("brokerOnboardingComplete", { mode: 'boolean' }).default(false).notNull(),
+  staffNotificationPrefs: text("staffNotificationPrefs").default("{}"),
 });
 
 export type User = typeof users.$inferSelect;
@@ -1343,3 +1344,38 @@ export const emailLog = sqliteTable("email_log", {
 
 export type EmailLog = typeof emailLog.$inferSelect;
 export type InsertEmailLog = typeof emailLog.$inferInsert;
+
+// ============================================================================
+// Staff Notifications (Admin/Staff inbox — separate from student notifications)
+// ============================================================================
+
+export const staffNotifications = sqliteTable("staff_notifications", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  userId: integer("userId").notNull(),
+  eventType: text("eventType").notNull(),
+  titleEn: text("titleEn").notNull(),
+  titleAr: text("titleAr").notNull(),
+  contentEn: text("contentEn"),
+  contentAr: text("contentAr"),
+  actionUrl: text("actionUrl"),
+  metadata: text("metadata"), // JSON
+  isRead: integer("isRead", { mode: 'boolean' }).default(false).notNull(),
+  createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
+});
+
+export type StaffNotification = typeof staffNotifications.$inferSelect;
+export type InsertStaffNotification = typeof staffNotifications.$inferInsert;
+
+// ============================================================================
+// Admin Settings (key-value store for site-wide config)
+// ============================================================================
+
+export const adminSettings = sqliteTable("admin_settings", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  settingKey: text("settingKey").notNull().unique(),
+  settingValue: text("settingValue"),
+  updatedAt: text("updatedAt").default(sql`(datetime('now'))`).notNull(),
+});
+
+export type AdminSetting = typeof adminSettings.$inferSelect;
+export type InsertAdminSetting = typeof adminSettings.$inferInsert;

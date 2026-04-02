@@ -80,6 +80,7 @@ const Careers = lazy(() => import("./pages/Careers"));
 const AdminJobs = lazy(() => import("./pages/AdminJobs"));
 const AdminReviews = lazy(() => import("./pages/AdminReviews"));
 const AdminNotifications = lazy(() => import("./pages/AdminNotifications"));
+const AdminSettings = lazy(() => import("./pages/AdminSettings"));
 const AdminPoints = lazy(() => import("./pages/AdminPoints"));
 const AdminEngagement = lazy(() => import("./pages/AdminEngagement"));
 const AdminOfferAgreements = lazy(() => import("./pages/AdminOfferAgreements"));
@@ -312,6 +313,11 @@ function Router() {
       <Route path="/admin/notifications">
         <AdminRoute>
           <AdminNotifications />
+        </AdminRoute>
+      </Route>
+      <Route path="/admin/settings">
+        <AdminRoute>
+          <AdminSettings />
         </AdminRoute>
       </Route>
       <Route path="/admin/points">

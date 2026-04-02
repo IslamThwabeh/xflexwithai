@@ -64,6 +64,7 @@ import {
   SlidersHorizontal,
   FastForward,
   Undo2,
+  Building2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -96,6 +97,8 @@ export default function AdminStudents() {
   const [packageFilter, setPackageFilter] = useState("all");
   const [skipConfirm, setSkipConfirm] = useState<{ id: number; name: string } | null>(null);
   const [rollbackConfirm, setRollbackConfirm] = useState<{ id: number; name: string } | null>(null);
+  const [skipBrokerConfirm, setSkipBrokerConfirm] = useState<{ id: number; name: string } | null>(null);
+  const [rollbackBrokerConfirm, setRollbackBrokerConfirm] = useState<{ id: number; name: string } | null>(null);
   const [confirmNameInput, setConfirmNameInput] = useState("");
 
   const skipCourseMutation = trpc.enrollments.skipCourse.useMutation({
@@ -114,6 +117,30 @@ export default function AdminStudents() {
     onSuccess: () => {
       toast.success(isRtl ? "تم التراجع عن التخطي بنجاح" : "Skip rolled back successfully");
       setRollbackConfirm(null);
+      setConfirmNameInput("");
+      utils.reports.subscribers.invalidate();
+    },
+    onError: (err) => {
+      toast.error(err.message);
+    },
+  });
+
+  const skipBrokerMutation = trpc.enrollments.skipBrokerOnboarding.useMutation({
+    onSuccess: () => {
+      toast.success(isRtl ? "تم تخطي فتح الحساب بنجاح" : "Broker onboarding skipped successfully");
+      setSkipBrokerConfirm(null);
+      setConfirmNameInput("");
+      utils.reports.subscribers.invalidate();
+    },
+    onError: (err) => {
+      toast.error(err.message);
+    },
+  });
+
+  const rollbackBrokerSkipMutation = trpc.enrollments.rollbackBrokerSkip.useMutation({
+    onSuccess: () => {
+      toast.success(isRtl ? "تم التراجع عن تخطي الوسيط بنجاح" : "Broker skip rolled back successfully");
+      setRollbackBrokerConfirm(null);
       setConfirmNameInput("");
       utils.reports.subscribers.invalidate();
     },
@@ -536,7 +563,7 @@ export default function AdminStudents() {
                       </div>
 
                       {/* Actions */}
-                      <div className="pt-2 border-t flex gap-2 items-center">
+                      <div className="pt-2 border-t flex gap-2 items-center flex-wrap">
                         {s.isAdminSkipped ? (
                           <>
                             <Badge variant="outline" className="text-amber-600 border-amber-300 bg-amber-50 text-xs">
@@ -561,6 +588,33 @@ export default function AdminStudents() {
                           >
                             <FastForward className="w-3 h-3" />
                             {isRtl ? "تخطي الدورة" : "Skip Course"}
+                          </Button>
+                        )}
+                        {s.brokerOnboardingComplete ? (
+                          <>
+                            <Badge variant="outline" className="text-blue-600 border-blue-300 bg-blue-50 text-xs">
+                              <Building2 className="w-3 h-3 me-1" />
+                              {isRtl ? "وسيط مكتمل" : "Broker Done"}
+                            </Badge>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-xs gap-1"
+                              onClick={() => setRollbackBrokerConfirm({ id: s.id, name: s.name || s.email })}
+                            >
+                              <Undo2 className="w-3 h-3" />
+                              {isRtl ? "تراجع وسيط" : "Undo Broker"}
+                            </Button>
+                          </>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-xs gap-1"
+                            onClick={() => setSkipBrokerConfirm({ id: s.id, name: s.name || s.email })}
+                          >
+                            <Building2 className="w-3 h-3" />
+                            {isRtl ? "تخطي الوسيط" : "Skip Broker"}
                           </Button>
                         )}
                       </div>
@@ -636,7 +690,7 @@ export default function AdminStudents() {
                         {visibleCols.has('lastSignIn') && <TableHead>
                           <SortableHeader label={isRtl ? "آخر دخول" : "Last Sign In"} sortKey="lastSignIn" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} />
                         </TableHead>}
-                        <TableHead className="w-[80px]">{isRtl ? "إجراءات" : "Actions"}</TableHead>
+                        <TableHead className="w-[160px]">{isRtl ? "إجراءات" : "Actions"}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -718,6 +772,7 @@ export default function AdminStudents() {
                               {fmtDate(s.lastSignedIn)}
                             </TableCell>}
                             <TableCell>
+                              <div className="flex flex-wrap items-center gap-1">
                               {s.isAdminSkipped ? (
                                 <div className="flex items-center gap-1">
                                   <Badge variant="outline" className="text-amber-600 border-amber-300 bg-amber-50 text-xs">
@@ -744,6 +799,33 @@ export default function AdminStudents() {
                                   {isRtl ? "تخطي" : "Skip"}
                                 </Button>
                               )}
+                              {s.brokerOnboardingComplete ? (
+                                <div className="flex items-center gap-1">
+                                  <Badge variant="outline" className="text-blue-600 border-blue-300 bg-blue-50 text-xs">
+                                    <Building2 className="w-3 h-3 me-0.5" />
+                                    {isRtl ? "وسيط" : "Broker"}
+                                  </Badge>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-xs gap-1 h-7"
+                                    onClick={() => setRollbackBrokerConfirm({ id: s.id, name: s.name || s.email })}
+                                  >
+                                    <Undo2 className="w-3 h-3" />
+                                  </Button>
+                                </div>
+                              ) : (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-xs gap-1 h-7"
+                                  onClick={() => setSkipBrokerConfirm({ id: s.id, name: s.name || s.email })}
+                                >
+                                  <Building2 className="w-3 h-3" />
+                                  {isRtl ? "وسيط" : "Broker"}
+                                </Button>
+                              )}
+                              </div>
                             </TableCell>
                           </TableRow>
                         ))
@@ -855,6 +937,100 @@ export default function AdminStudents() {
               disabled={rollbackSkipMutation.isPending || confirmNameInput.trim() !== rollbackConfirm?.name?.trim()}
             >
               {rollbackSkipMutation.isPending
+                ? (isRtl ? "جاري التراجع..." : "Rolling back...")
+                : (isRtl ? "تأكيد التراجع" : "Confirm Rollback")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Skip Broker Confirmation Dialog */}
+      <AlertDialog open={!!skipBrokerConfirm} onOpenChange={(open) => { if (!open) { setSkipBrokerConfirm(null); setConfirmNameInput(""); } }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {isRtl ? "تخطي فتح حساب الوسيط" : "Skip Broker Onboarding"}
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <span className="block">
+                  {isRtl
+                    ? `سيتم تخطي جميع خطوات فتح الحساب (اختيار الوسيط، فتح الحساب، الإيداع) للطالب.`
+                    : `All 3 broker onboarding steps (select broker, open account, deposit) will be marked as approved for this student.`}
+                </span>
+                <span className="block font-medium text-foreground">
+                  {isRtl
+                    ? `للتأكيد، اكتب اسم الطالب: "${skipBrokerConfirm?.name}"`
+                    : `To confirm, type the student's name: "${skipBrokerConfirm?.name}"`}
+                </span>
+                <Input
+                  value={confirmNameInput}
+                  onChange={(e) => setConfirmNameInput(e.target.value)}
+                  placeholder={skipBrokerConfirm?.name ?? ""}
+                  className="mt-1"
+                  dir="auto"
+                />
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{isRtl ? "إلغاء" : "Cancel"}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (skipBrokerConfirm) {
+                  skipBrokerMutation.mutate({ userId: skipBrokerConfirm.id });
+                }
+              }}
+              disabled={skipBrokerMutation.isPending || confirmNameInput.trim() !== skipBrokerConfirm?.name?.trim()}
+            >
+              {skipBrokerMutation.isPending
+                ? (isRtl ? "جاري التخطي..." : "Skipping...")
+                : (isRtl ? "تأكيد التخطي" : "Confirm Skip")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Rollback Broker Skip Confirmation Dialog */}
+      <AlertDialog open={!!rollbackBrokerConfirm} onOpenChange={(open) => { if (!open) { setRollbackBrokerConfirm(null); setConfirmNameInput(""); } }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {isRtl ? "التراجع عن تخطي الوسيط" : "Undo Broker Skip"}
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <span className="block">
+                  {isRtl
+                    ? `سيتم حذف جميع خطوات فتح الحساب وإعادة حالة الوسيط إلى غير مكتمل.`
+                    : `All broker onboarding steps will be removed and the status will be reset to incomplete.`}
+                </span>
+                <span className="block font-medium text-foreground">
+                  {isRtl
+                    ? `للتأكيد، اكتب اسم الطالب: "${rollbackBrokerConfirm?.name}"`
+                    : `To confirm, type the student's name: "${rollbackBrokerConfirm?.name}"`}
+                </span>
+                <Input
+                  value={confirmNameInput}
+                  onChange={(e) => setConfirmNameInput(e.target.value)}
+                  placeholder={rollbackBrokerConfirm?.name ?? ""}
+                  className="mt-1"
+                  dir="auto"
+                />
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{isRtl ? "إلغاء" : "Cancel"}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (rollbackBrokerConfirm) {
+                  rollbackBrokerSkipMutation.mutate({ userId: rollbackBrokerConfirm.id });
+                }
+              }}
+              disabled={rollbackBrokerSkipMutation.isPending || confirmNameInput.trim() !== rollbackBrokerConfirm?.name?.trim()}
+            >
+              {rollbackBrokerSkipMutation.isPending
                 ? (isRtl ? "جاري التراجع..." : "Rolling back...")
                 : (isRtl ? "تأكيد التراجع" : "Confirm Rollback")}
             </AlertDialogAction>

@@ -1506,6 +1506,15 @@ export const appRouter = router({
 
           const activation = await db.activateStudentSubscriptions(ctx.user.id, false);
           subscriptionActivated = activation.activated;
+
+          // Notify admin of course completion
+          db.notifyStaffByEvent('course_completion', {
+            titleEn: `Course completed: ${ctx.user.name || ctx.user.email}`,
+            titleAr: `تم إكمال الكورس: ${ctx.user.name || ctx.user.email}`,
+            contentEn: `Student ${ctx.user.email} completed 100% of the course.`,
+            contentAr: `الطالب ${ctx.user.email} أكمل 100% من الكورس.`,
+            metadata: { userId: ctx.user.id, courseId: input.courseId },
+          }).catch(() => {});
         } else if (progressPercentage >= 50) {
           const activationStatus = await db.getPendingActivationStatus(ctx.user.id);
           subscriptionActivated = activationStatus.hasPending === false && !activationStatus.lexai && !activationStatus.recommendation;
@@ -1583,6 +1592,22 @@ export const appRouter = router({
       }))
       .query(async ({ ctx, input }) => {
         return db.getAdminActionsForUser(input.userId, input.limit);
+      }),
+
+    // Admin: Skip broker onboarding for a user (QC testing)
+    skipBrokerOnboarding: adminProcedure
+      .input(z.object({ userId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        logger.procedure('enrollments.skipBrokerOnboarding', input, ctx.user.id);
+        return db.skipBrokerOnboardingForUser(input.userId, ctx.user.id);
+      }),
+
+    // Admin: Rollback broker onboarding skip
+    rollbackBrokerSkip: adminProcedure
+      .input(z.object({ userId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        logger.procedure('enrollments.rollbackBrokerSkip', input, ctx.user.id);
+        return db.rollbackBrokerOnboardingSkip(input.userId, ctx.user.id);
       }),
   }),
 
@@ -2445,6 +2470,15 @@ export const appRouter = router({
           }
         }
 
+        // Notify admin/support staff of new student message
+        db.notifyStaffByEvent('new_support_message', {
+          titleEn: `New support message from ${ctx.user.name || ctx.user.email}`,
+          titleAr: `رسالة دعم جديدة من ${ctx.user.name || ctx.user.email}`,
+          contentEn: input.content.slice(0, 120),
+          contentAr: input.content.slice(0, 120),
+          metadata: { userId: ctx.user.id, conversationId: conv.id },
+        }).catch(() => {});
+
         return msg;
       }),
 
@@ -2465,6 +2499,16 @@ export const appRouter = router({
         senderType: 'bot',
         content: '⚠️ Student requested a human agent.',
       });
+
+      // Notify admin/support staff of escalation
+      db.notifyStaffByEvent('human_escalation', {
+        titleEn: `Human agent requested by ${ctx.user.name || ctx.user.email}`,
+        titleAr: `طلب تحويل لموظف من ${ctx.user.name || ctx.user.email}`,
+        contentEn: 'A student has requested to speak with a human support agent.',
+        contentAr: 'طالب يطلب التحدث مع موظف دعم.',
+        metadata: { userId: ctx.user.id, conversationId: conv.id },
+      }).catch(() => {});
+
       return { success: true };
     }),
 
@@ -3107,6 +3151,15 @@ export const appRouter = router({
           orderId: order.id, userEmail: ctx.user.email, packageName, totalUsd, paymentMethod: input.paymentMethod,
         }).catch(() => {});
 
+        // Notify admin/key_manager staff of new order
+        db.notifyStaffByEvent('new_order', {
+          titleEn: `New order #${order.id} — ${packageName} ($${totalUsd.toFixed(2)})`,
+          titleAr: `طلب جديد #${order.id} — ${packageName} ($${totalUsd.toFixed(2)})`,
+          contentEn: `${ctx.user.email} placed a ${input.paymentMethod} order.`,
+          contentAr: `${ctx.user.email} قام بتقديم طلب ${input.paymentMethod}.`,
+          metadata: { orderId: order.id, userId: ctx.user.id, packageName, totalUsd },
+        }).catch(() => {});
+
         return order;
       }),
 
@@ -3553,6 +3606,15 @@ export const appRouter = router({
           orderId: order.id, userEmail: ctx.user.email,
           packageName: `UPGRADE: ${eligibility.currentPackageName} → ${eligibility.targetPackageName}`,
           totalUsd, paymentMethod: input.paymentMethod,
+        }).catch(() => {});
+
+        // Notify admin/key_manager staff of upgrade order
+        db.notifyStaffByEvent('new_order', {
+          titleEn: `Upgrade order #${order.id} — ${eligibility.currentPackageName} → ${eligibility.targetPackageName}`,
+          titleAr: `طلب ترقية #${order.id} — ${eligibility.currentPackageName} → ${eligibility.targetPackageName}`,
+          contentEn: `${ctx.user.email} requested an upgrade ($${totalUsd.toFixed(2)}).`,
+          contentAr: `${ctx.user.email} طلب ترقية ($${totalUsd.toFixed(2)}).`,
+          metadata: { orderId: order.id, userId: ctx.user.id, totalUsd },
         }).catch(() => {});
 
         return order;
@@ -4443,6 +4505,16 @@ ${qaText}`;
         await db.sendBulkNotification(input);
         return { success: true, count: input.userIds.length };
       }),
+
+    // Admin: get students grouped by active/inactive for targeting
+    targetStudents: adminProcedure.query(async () => {
+      return db.getStudentsForNotification();
+    }),
+
+    // Admin: sent notification history
+    sentHistory: adminProcedure.query(async () => {
+      return db.getRecentSentNotifications();
+    }),
   }),
 
   // ============================================================================
@@ -4708,6 +4780,15 @@ ${qaText}`;
         if (!userId) throw new Error('Not authenticated');
         const result = await db.submitOnboardingProof(userId, input.step, input.proofUrl, input.proofType);
 
+        // Notify admin/support of new proof submission
+        db.notifyStaffByEvent('broker_proof_submitted', {
+          titleEn: `Broker proof submitted: ${ctx.user.name || ctx.user.email} (${input.step})`,
+          titleAr: `تم رفع إثبات الوسيط: ${ctx.user.name || ctx.user.email} (${input.step})`,
+          contentEn: `Student uploaded proof for step "${input.step}".`,
+          contentAr: `الطالب رفع إثبات لخطوة "${input.step}".`,
+          metadata: { userId, step: input.step },
+        }).catch(() => {});
+
         // Run AI verification synchronously (Workers kill detached promises after response)
         if (result.stepId && ENV.openaiApiKey) {
           try {
@@ -4783,7 +4864,20 @@ ${qaText}`;
       }))
       .mutation(async ({ input, ctx }) => {
         const ip = getReqHeader(ctx.req, 'cf-connecting-ip') || getReqHeader(ctx.req, 'x-forwarded-for') || '';
-        return db.submitOfferAgreement({ ...input, ipAddress: ip });
+        const result = await db.submitOfferAgreement({ ...input, ipAddress: ip });
+
+        // Notify admin of new offer agreement (only if not duplicate)
+        if (!result.duplicate) {
+          db.notifyStaffByEvent('offer_agreement', {
+            titleEn: `Offer agreement signed: ${input.fullName}`,
+            titleAr: `تم توقيع اتفاقية عرض: ${input.fullName}`,
+            contentEn: `${input.email} signed the ${input.offerSlug} agreement.`,
+            contentAr: `${input.email} وقّع على اتفاقية ${input.offerSlug}.`,
+            metadata: { email: input.email, offerSlug: input.offerSlug },
+          }).catch(() => {});
+        }
+
+        return result;
       }),
 
     // Admin: list agreements
@@ -4868,7 +4962,18 @@ ${qaText}`;
             }
           }
         }
-        return db.updatePlanAnswer(input.email, input.phaseKey, input.answer);
+        const answerResult = await db.updatePlanAnswer(input.email, input.phaseKey, input.answer);
+
+        // Notify admin/plan_manager of plan answer submission
+        db.notifyStaffByEvent('plan_progress_update', {
+          titleEn: `Plan answer submitted: ${input.email} (${input.phaseKey})`,
+          titleAr: `تم إرسال إجابة الخطة: ${input.email} (${input.phaseKey})`,
+          contentEn: `Student ${input.email} submitted an answer for ${input.phaseKey}.`,
+          contentAr: `الطالب ${input.email} أرسل إجابة لـ ${input.phaseKey}.`,
+          metadata: { email: input.email, phaseKey: input.phaseKey },
+        }).catch(() => {});
+
+        return answerResult;
       }),
 
     // Admin: list all student progress
@@ -4897,6 +5002,70 @@ ${qaText}`;
       .mutation(async ({ input }) => {
         return db.updatePlanAdminNotes(input.studentId, input.notes);
       }),
+  }),
+
+  // ============================================================================
+  // Staff Notifications (Admin/Staff inbox)
+  // ============================================================================
+  staffNotifications: router({
+    list: supportStaffProcedure.query(async ({ ctx }) => {
+      return db.getStaffNotifications(ctx.user.id);
+    }),
+
+    unreadCount: supportStaffProcedure.query(async ({ ctx }) => {
+      return { count: await db.getUnreadStaffNotificationCount(ctx.user.id) };
+    }),
+
+    countByRoute: supportStaffProcedure.query(async ({ ctx }) => {
+      return db.getUnreadStaffNotificationCountByRoute(ctx.user.id);
+    }),
+
+    markRead: supportStaffProcedure
+      .input(z.object({ notificationId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        await db.markStaffNotificationRead(input.notificationId, ctx.user.id);
+        return { success: true };
+      }),
+
+    markReadByRoute: supportStaffProcedure
+      .input(z.object({ actionUrl: z.string() }))
+      .mutation(async ({ ctx, input }) => {
+        await db.markStaffNotificationsReadByRoute(ctx.user.id, input.actionUrl);
+        return { success: true };
+      }),
+
+    markAllRead: supportStaffProcedure.mutation(async ({ ctx }) => {
+      await db.markAllStaffNotificationsRead(ctx.user.id);
+      return { success: true };
+    }),
+  }),
+
+  // ============================================================================
+  // Admin Settings (site-wide config)
+  // ============================================================================
+  adminSettings: router({
+    getAll: adminProcedure.query(async () => {
+      return db.getAllAdminSettings();
+    }),
+
+    update: adminProcedure
+      .input(z.object({ key: z.string().min(1).max(100), value: z.string().max(5000) }))
+      .mutation(async ({ input }) => {
+        await db.setAdminSetting(input.key, input.value);
+        return { success: true };
+      }),
+
+    // Per-staff or admin: update own notification email preferences
+    updateNotificationPrefs: supportStaffProcedure
+      .input(z.object({ prefs: z.record(z.string(), z.boolean()) }))
+      .mutation(async ({ ctx, input }) => {
+        await db.updateStaffNotificationPrefs(ctx.user.id, input.prefs);
+        return { success: true };
+      }),
+
+    getNotificationPrefs: supportStaffProcedure.query(async ({ ctx }) => {
+      return db.getStaffNotificationPrefs(ctx.user.id);
+    }),
   }),
 });
 

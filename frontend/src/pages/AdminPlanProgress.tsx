@@ -74,6 +74,8 @@ export default function AdminPlanProgress() {
 
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [notesInput, setNotesInput] = useState<Record<number, string>>({});
+  // Two-tap confirmation: key = "studentId-phase", value = "approve" | "revoke"
+  const [confirmAction, setConfirmAction] = useState<string | null>(null);
 
   const getProgress = (student: any) => {
     const progress = JSON.parse(student.progress || '{}');
@@ -107,12 +109,25 @@ export default function AdminPlanProgress() {
   };
 
   const handleApprovePhase = (studentId: number, phase: number) => {
-    if (!confirm(isRtl ? `الموافقة على المرحلة ${phase}؟` : `Approve phase ${phase}?`)) return;
+    const key = `${studentId}-${phase}-approve`;
+    if (confirmAction !== key) {
+      setConfirmAction(key);
+      // Auto-reset after 3 seconds
+      setTimeout(() => setConfirmAction(prev => prev === key ? null : prev), 3000);
+      return;
+    }
+    setConfirmAction(null);
     approveMutation.mutate({ studentId, phase });
   };
 
   const handleRevokePhase = (studentId: number, phase: number) => {
-    if (!confirm(isRtl ? `إلغاء الموافقة على المرحلة ${phase}؟` : `Revoke phase ${phase} approval?`)) return;
+    const key = `${studentId}-${phase}-revoke`;
+    if (confirmAction !== key) {
+      setConfirmAction(key);
+      setTimeout(() => setConfirmAction(prev => prev === key ? null : prev), 3000);
+      return;
+    }
+    setConfirmAction(null);
     revokeMutation.mutate({ studentId, phase });
   };
 
@@ -253,20 +268,36 @@ export default function AdminPlanProgress() {
                               </div>
 
                               {/* Approve/Revoke button */}
-                              <div className="flex gap-2">
+                              <div className="flex gap-2 mt-1">
                                 {isApproved ? (
                                   <button
-                                    onClick={() => handleRevokePhase(student.id, phase.num)}
-                                    className="text-xs px-2 py-1 rounded bg-red-100 text-red-700 hover:bg-red-200 transition font-medium"
+                                    onClick={(e) => { e.stopPropagation(); handleRevokePhase(student.id, phase.num); }}
+                                    disabled={revokeMutation.isPending}
+                                    className={`text-sm px-3 py-2 rounded-lg font-medium transition min-h-[40px] ${
+                                      confirmAction === `${student.id}-${phase.num}-revoke`
+                                        ? 'bg-red-600 text-white animate-pulse'
+                                        : 'bg-red-100 text-red-700 hover:bg-red-200'
+                                    }`}
                                   >
-                                    {isRtl ? 'إلغاء الموافقة' : 'Revoke'}
+                                    {revokeMutation.isPending ? '...' :
+                                      confirmAction === `${student.id}-${phase.num}-revoke`
+                                        ? (isRtl ? 'اضغط مرة أخرى للتأكيد' : 'Tap again to confirm')
+                                        : (isRtl ? 'إلغاء الموافقة' : 'Revoke')}
                                   </button>
                                 ) : (
                                   <button
-                                    onClick={() => handleApprovePhase(student.id, phase.num)}
-                                    className="text-xs px-2 py-1 rounded bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition font-medium"
+                                    onClick={(e) => { e.stopPropagation(); handleApprovePhase(student.id, phase.num); }}
+                                    disabled={approveMutation.isPending}
+                                    className={`text-sm px-3 py-2 rounded-lg font-medium transition min-h-[40px] ${
+                                      confirmAction === `${student.id}-${phase.num}-approve`
+                                        ? 'bg-emerald-600 text-white animate-pulse'
+                                        : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+                                    }`}
                                   >
-                                    {isRtl ? 'موافقة ✅' : 'Approve ✅'}
+                                    {approveMutation.isPending ? '...' :
+                                      confirmAction === `${student.id}-${phase.num}-approve`
+                                        ? (isRtl ? 'اضغط مرة أخرى للتأكيد' : 'Tap again to confirm')
+                                        : (isRtl ? 'موافقة ✅' : 'Approve ✅')}
                                   </button>
                                 )}
                               </div>

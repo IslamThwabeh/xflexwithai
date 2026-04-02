@@ -179,6 +179,14 @@ export default {
       // Send alerts at exactly 7, 3, and 0 days before expiry
       if (sub.daysLeft === 7 || sub.daysLeft === 3 || sub.daysLeft === 0) {
         await sendExpiryAlertEmail(sub.email, sub.name, sub.daysLeft, sub.packageName);
+        // Staff alert for expiring subscriptions
+        db.notifyStaffByEvent('subscription_expiring', {
+          titleEn: `Subscription expiring in ${sub.daysLeft} days – ${sub.name}`,
+          titleAr: `اشتراك ينتهي خلال ${sub.daysLeft} أيام – ${sub.name}`,
+          contentEn: `${sub.name}'s ${sub.packageName} expires in ${sub.daysLeft} day(s).`,
+          contentAr: `اشتراك ${sub.name} في ${sub.packageName} ينتهي خلال ${sub.daysLeft} يوم.`,
+          metadata: { userId: sub.userId, packageName: sub.packageName, daysLeft: sub.daysLeft },
+        }).catch(() => {});
         // Dashboard notification for expiry warning
         await db.createNotification({
           userId: sub.userId,
@@ -229,6 +237,14 @@ export default {
         for (const u of users) {
           await sendInactivityEmail(u.email, days, { name: u.name });
           await db.logEmailSent(u.userId, `inactivity_${days}`);
+          // Staff alert for student inactivity
+          db.notifyStaffByEvent('student_inactivity', {
+            titleEn: `Student inactive for ${days} days – ${u.name}`,
+            titleAr: `طالب غير نشط منذ ${days} أيام – ${u.name}`,
+            contentEn: `${u.name} hasn't logged in for ${days} days.`,
+            contentAr: `${u.name} لم يسجل دخولًا منذ ${days} أيام.`,
+            metadata: { userId: (u as any).userId ?? null, name: u.name, inactiveDays: days },
+          }).catch(() => {});
         }
       } catch (e) {
         logger.error(`[CRON] Inactivity ${days}d failed`, e);

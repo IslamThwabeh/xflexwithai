@@ -62,6 +62,7 @@ import {
   GraduationCap,
   ShieldCheck,
   TrendingUp,
+  Settings2,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState, useMemo, lazy, Suspense } from "react";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -152,6 +153,7 @@ const menuSectionsDef: MenuSection[] = [
       { icon: Star, labelKey: "admin.sidebar.reviews", path: "/admin/reviews" },
       { icon: Bell, labelKey: "admin.sidebar.notifications", path: "/admin/notifications" },
       { icon: Award, labelKey: "admin.sidebar.loyaltyPoints", path: "/admin/points" },
+      { icon: Settings2, labelKey: "admin.sidebar.settings", path: "/admin/settings" },
     ]
   },
   {
@@ -267,6 +269,11 @@ function DashboardLayoutContent({
 
   // Check admin/staff status for sidebar filtering
   const { data: adminCheck } = trpc.auth.isAdmin.useQuery();
+
+  // Staff notifications — bell badge + sidebar route badges (30s polling)
+  const { data: unreadCountData } = trpc.staffNotifications.unreadCount.useQuery(undefined, { refetchInterval: 30_000 });
+  const { data: routeBadges } = trpc.staffNotifications.countByRoute.useQuery(undefined, { refetchInterval: 30_000 });
+  const markReadByRoute = trpc.staffNotifications.markReadByRoute.useMutation();
 
   // Compute visible menu sections based on role
   const visibleSections = useMemo(() => {
@@ -458,11 +465,17 @@ function DashboardLayoutContent({
                         {section.items.map(item => {
                           const isActive = location === item.path;
                           const label = t(item.labelKey);
+                          const badgeCount = routeBadges?.[item.path] ?? 0;
                           return (
                             <SidebarMenuItem key={item.path}>
                               <SidebarMenuButton
                                 isActive={isActive}
-                                onClick={() => setLocation(item.path)}
+                                onClick={() => {
+                                  setLocation(item.path);
+                                  if (badgeCount > 0) {
+                                    markReadByRoute.mutate({ actionUrl: item.path });
+                                  }
+                                }}
                                 tooltip={label}
                                 className={`transition-all font-normal ps-12 py-1.5 text-[13px] ${
                                   isActive
@@ -471,7 +484,12 @@ function DashboardLayoutContent({
                                 }`}
                               >
                                 <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isActive ? "bg-emerald-400" : "bg-gray-600"}`} />
-                                <span>{label}</span>
+                                <span className="flex-1">{label}</span>
+                                {badgeCount > 0 && (
+                                  <span className="min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                                    {badgeCount > 99 ? '99+' : badgeCount}
+                                  </span>
+                                )}
                               </SidebarMenuButton>
                             </SidebarMenuItem>
                           );
@@ -540,17 +558,19 @@ function DashboardLayoutContent({
 
               {/* ── Group 2: Comms (Notifications + Language) ── */}
               <div className="flex items-center gap-0.5 bg-gray-100/70 dark:bg-white/[0.04] rounded-xl p-1">
-                {/* Hide notification bell from staff — only admins can send site-wide notifications */}
-                {(!adminCheck?.isStaff || adminCheck?.isAdmin) && (
+                {/* Notification bell — visible to all admin/staff */}
                 <button
                   onClick={() => setLocation('/admin/notifications')}
                   className="relative w-8 h-8 rounded-lg hover:bg-white dark:hover:bg-white/[0.08] flex items-center justify-center transition"
                   title={t('admin.sidebar.notifications')}
                 >
                   <Bell className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-                  <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                  {(unreadCountData?.count ?? 0) > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center animate-pulse">
+                      {unreadCountData!.count > 99 ? '99+' : unreadCountData!.count}
+                    </span>
+                  )}
                 </button>
-                )}
                 <button
                   onClick={() => setLanguage(language === 'ar' ? 'en' : 'ar')}
                   className="w-8 h-8 rounded-lg hover:bg-white dark:hover:bg-white/[0.08] flex items-center justify-center transition"

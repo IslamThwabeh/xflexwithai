@@ -22,17 +22,17 @@ export const IDLE_TIMEOUT_ADMIN_MS = 15 * 60 * 1000;  // 15 min
 // Used by the "Staff Review" feature to preview what each employee sees.
 export const ROLE_PAGE_ACCESS: Record<string, string[]> = {
   // Core roles
-  support: ["/admin/support", "/admin/students"],
-  key_manager: ["/admin/package-keys", "/admin/students", "/admin/orders"],
-  analyst: ["/admin/recommendations"], // analyst only posts recommendations
+  support: ["/admin/support", "/admin/students", "/admin/notifications", "/admin/settings"],
+  key_manager: ["/admin/package-keys", "/admin/students", "/admin/orders", "/admin/notifications", "/admin/settings"],
+  analyst: ["/admin/recommendations", "/admin/notifications", "/admin/settings"], // analyst only posts recommendations
 
   // Support permissions (view-only, grant read access to specific data)
-  client_lookup: ["/admin/students"],
-  view_progress: ["/admin/students"],
-  view_recommendations: ["/admin/students"],
-  view_subscriptions: ["/admin/students"],
-  view_quizzes: ["/admin/quizzes", "/admin/students"],
-  plan_manager: ["/admin/plan-progress"],
+  client_lookup: ["/admin/students", "/admin/notifications", "/admin/settings"],
+  view_progress: ["/admin/students", "/admin/notifications", "/admin/settings"],
+  view_recommendations: ["/admin/students", "/admin/notifications", "/admin/settings"],
+  view_subscriptions: ["/admin/students", "/admin/notifications", "/admin/settings"],
+  view_quizzes: ["/admin/quizzes", "/admin/students", "/admin/notifications", "/admin/settings"],
+  plan_manager: ["/admin/plan-progress", "/admin/notifications", "/admin/settings"],
 };
 
 // All available staff roles
@@ -50,3 +50,19 @@ export function getStaffLandingPage(roles: string[]): string {
   }
   return "/admin/recommendations"; // fallback
 }
+
+// ── Staff Notification Events ────────────────────────────────────────
+export const STAFF_NOTIFICATION_EVENTS = {
+  new_support_message:  { labelEn: "New Support Message",       labelAr: "رسالة دعم جديدة",          roles: ["support"],      actionUrl: "/admin/support" },
+  human_escalation:     { labelEn: "Human Escalation",          labelAr: "طلب تحويل لموظف",          roles: ["support"],      actionUrl: "/admin/support" },
+  new_order:            { labelEn: "New Order",                 labelAr: "طلب جديد",                 roles: ["key_manager"],  actionUrl: "/admin/orders" },
+  key_activated:        { labelEn: "Package Key Activated",     labelAr: "تم تفعيل مفتاح",            roles: ["key_manager"],  actionUrl: "/admin/package-keys" },
+  offer_agreement:      { labelEn: "Offer Agreement Signed",    labelAr: "تم توقيع اتفاقية عرض",      roles: [],               actionUrl: "/admin/offer-agreements" },
+  plan_progress_update: { labelEn: "Plan Progress Update",      labelAr: "تحديث خطة التقدم",          roles: ["plan_manager"], actionUrl: "/admin/plan-progress" },
+  broker_proof_submitted:{ labelEn: "Broker Proof Submitted",   labelAr: "تم رفع إثبات الوسيط",       roles: ["support"],      actionUrl: "/admin/brokers" },
+  subscription_expiring:{ labelEn: "Subscription Expiring",     labelAr: "اشتراك على وشك الانتهاء",    roles: [],               actionUrl: "/admin/expiry-report" },
+  course_completion:    { labelEn: "Course Completed",          labelAr: "تم إكمال الكورس",           roles: [],               actionUrl: "/admin/students" },
+  student_inactivity:   { labelEn: "Student Inactive",          labelAr: "طالب غير نشط",             roles: [],               actionUrl: "/admin/students" },
+} as const;
+
+export type StaffNotificationEventType = keyof typeof STAFF_NOTIFICATION_EVENTS;

@@ -58,10 +58,13 @@ import {
   brokerOnboarding, BrokerOnboarding, InsertBrokerOnboarding,
   emailLog, EmailLog, InsertEmailLog,
   planProgress, PlanProgress, InsertPlanProgress,
+  staffNotifications, StaffNotification, InsertStaffNotification,
+  adminSettings, AdminSetting, InsertAdminSetting,
 } from "../database/schema-sqlite.ts";
 import { ENV } from './_core/env';
 import { logger } from './_core/logger';
-import { sendWelcomeEmail, sendMilestoneEmail, sendQuizFeedbackEmail } from './_core/orderEmails';
+import { sendWelcomeEmail, sendMilestoneEmail, sendQuizFeedbackEmail, sendStaffAlertEmail } from './_core/orderEmails';
+import { STAFF_NOTIFICATION_EVENTS, type StaffNotificationEventType } from '../shared/const';
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -2148,6 +2151,16 @@ export async function activatePackageKey(keyCode: string, email: string, userId?
         ? `Your ${pkgNameEn} has been renewed.`
         : `Your ${pkgNameEn} is now active. Start your journey!`,
       actionUrl: '/dashboard',
+    }).catch(() => {});
+
+    // Notify admin/key_manager of key activation
+    const pkgLabel = `${pkg.nameEn || pkg.nameAr}`;
+    notifyStaffByEvent('key_activated', {
+      titleEn: `Key activated: ${pkgLabel} by ${normalizedEmail}`,
+      titleAr: `تم تفعيل مفتاح: ${pkgLabel} بواسطة ${normalizedEmail}`,
+      contentEn: key.isRenewal ? `Renewal key activated for ${normalizedEmail}.` : `New key activated for ${normalizedEmail}.`,
+      contentAr: key.isRenewal ? `تم تفعيل مفتاح تجديد لـ ${normalizedEmail}.` : `تم تفعيل مفتاح جديد لـ ${normalizedEmail}.`,
+      metadata: { keyId: key.id, userId: resolvedUserId, packageName: pkgLabel, isRenewal: !!key.isRenewal },
     }).catch(() => {});
   }
 
@@ -4594,6 +4607,7 @@ export async function getSubscribersReport(): Promise<any[]> {
     createdAt: users.createdAt,
     emailVerified: users.emailVerified,
     lastSignedIn: users.lastSignedIn,
+    brokerOnboardingComplete: users.brokerOnboardingComplete,
   }).from(users).where(eq(users.isStaff, false)).orderBy(desc(users.createdAt));
 
   // Get all package subscriptions
@@ -5178,6 +5192,34 @@ export async function sendBulkNotification(input: {
     createdAt: now,
   }));
   if (values.length) await db.insert(userNotifications).values(values);
+}
+
+export async function getStudentsForNotification(): Promise<{ id: number; name: string | null; email: string; hasActivePackage: boolean }[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const students = await db.select({ id: users.id, name: users.name, email: users.email })
+    .from(users).where(eq(users.isStaff, false)).orderBy(users.name);
+  const activeSubs = await db.select({ userId: packageSubscriptions.userId })
+    .from(packageSubscriptions).where(eq(packageSubscriptions.isActive, true));
+  const activeUserIds = new Set(activeSubs.map(s => s.userId));
+  return students.map(s => ({ ...s, hasActivePackage: activeUserIds.has(s.id) }));
+}
+
+export async function getRecentSentNotifications(limit = 30) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({
+    titleEn: userNotifications.titleEn,
+    titleAr: userNotifications.titleAr,
+    contentEn: userNotifications.contentEn,
+    contentAr: userNotifications.contentAr,
+    type: userNotifications.type,
+    createdAt: userNotifications.createdAt,
+    recipientCount: sql<number>`COUNT(*)`,
+  }).from(userNotifications)
+    .groupBy(userNotifications.titleEn, userNotifications.titleAr, userNotifications.createdAt)
+    .orderBy(desc(userNotifications.createdAt))
+    .limit(limit);
 }
 
 // ============================================================================
@@ -6341,5 +6383,329 @@ export async function updatePlanAdminNotes(studentId: number, notes: string) {
     adminNotes: notes,
     updatedAt: new Date().toISOString(),
   }).where(eq(planProgress.id, studentId));
+  return { success: true };
+}
+
+// ============================================================================
+// Staff Notifications (Admin/Staff inbox)
+// ============================================================================
+
+export async function createStaffNotification(notif: {
+  userId: number; eventType: string; titleEn: string; titleAr: string;
+  contentEn?: string; contentAr?: string; actionUrl?: string; metadata?: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(staffNotifications).values({
+    ...notif, createdAt: new Date().toISOString(),
+  });
+}
+
+export async function getStaffNotifications(userId: number, limit = 50) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(staffNotifications)
+    .where(eq(staffNotifications.userId, userId))
+    .orderBy(desc(staffNotifications.createdAt))
+    .limit(limit);
+}
+
+export async function getUnreadStaffNotificationCount(userId: number): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  const [result] = await db.select({ count: sql<number>`COUNT(*)` })
+    .from(staffNotifications)
+    .where(and(eq(staffNotifications.userId, userId), eq(staffNotifications.isRead, false)));
+  return Number(result?.count ?? 0);
+}
+
+export async function getUnreadStaffNotificationCountByRoute(userId: number): Promise<Record<string, number>> {
+  const db = await getDb();
+  if (!db) return {};
+  const rows = await db
+    .select({
+      actionUrl: staffNotifications.actionUrl,
+      count: sql<number>`COUNT(*)`.as('count'),
+    })
+    .from(staffNotifications)
+    .where(and(
+      eq(staffNotifications.userId, userId),
+      eq(staffNotifications.isRead, false),
+      sql`${staffNotifications.actionUrl} IS NOT NULL`,
+    ))
+    .groupBy(staffNotifications.actionUrl);
+
+  const result: Record<string, number> = {};
+  for (const row of rows) {
+    if (row.actionUrl) result[row.actionUrl] = Number(row.count);
+  }
+  return result;
+}
+
+export async function markStaffNotificationRead(notificationId: number, userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(staffNotifications).set({ isRead: true })
+    .where(and(eq(staffNotifications.id, notificationId), eq(staffNotifications.userId, userId)));
+}
+
+export async function markStaffNotificationsReadByRoute(userId: number, actionUrl: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(staffNotifications).set({ isRead: true })
+    .where(and(
+      eq(staffNotifications.userId, userId),
+      eq(staffNotifications.isRead, false),
+      eq(staffNotifications.actionUrl, actionUrl),
+    ));
+}
+
+export async function markAllStaffNotificationsRead(userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(staffNotifications).set({ isRead: true })
+    .where(and(eq(staffNotifications.userId, userId), eq(staffNotifications.isRead, false)));
+}
+
+/**
+ * Core dispatcher: notifies relevant admin + staff by event type.
+ * Creates in-portal notifications, and sends email to offline users who have email enabled.
+ */
+export async function notifyStaffByEvent(
+  eventType: StaffNotificationEventType,
+  data: {
+    titleEn: string; titleAr: string;
+    contentEn?: string; contentAr?: string;
+    metadata?: Record<string, unknown>;
+  },
+) {
+  const db = await getDb();
+  if (!db) return;
+
+  const eventConfig = STAFF_NOTIFICATION_EVENTS[eventType];
+  if (!eventConfig) return;
+
+  const actionUrl = eventConfig.actionUrl;
+  const metadataStr = data.metadata ? JSON.stringify(data.metadata) : undefined;
+
+  // Collect target user IDs: all admins + staff with matching roles
+  const targetUserIds: number[] = [];
+
+  // All admin accounts
+  const adminRows = await db.select({ userId: admins.userId }).from(admins);
+  for (const a of adminRows) targetUserIds.push(a.userId);
+
+  // Staff with matching roles
+  if (eventConfig.roles.length > 0) {
+    const roleRows = await db.select({ userId: userRoles.userId }).from(userRoles)
+      .where(inArray(userRoles.role, eventConfig.roles));
+    for (const r of roleRows) {
+      if (!targetUserIds.includes(r.userId)) targetUserIds.push(r.userId);
+    }
+  }
+
+  if (targetUserIds.length === 0) return;
+
+  // Create in-portal notifications for each target
+  const now = new Date().toISOString();
+  const notifValues = targetUserIds.map(userId => ({
+    userId,
+    eventType,
+    titleEn: data.titleEn,
+    titleAr: data.titleAr,
+    contentEn: data.contentEn,
+    contentAr: data.contentAr,
+    actionUrl,
+    metadata: metadataStr,
+    createdAt: now,
+  }));
+  await db.insert(staffNotifications).values(notifValues);
+
+  // Send email to offline users who have email alerts enabled for this event
+  const notificationEmail = await getAdminSetting('notification_email');
+  const emailPrefsRaw = await getAdminSetting('email_alert_prefs');
+  const globalEmailPrefs: Record<string, boolean> = emailPrefsRaw ? JSON.parse(emailPrefsRaw) : {};
+
+  // Skip email entirely if this event is disabled globally
+  if (globalEmailPrefs[eventType] === false) return;
+
+  for (const userId of targetUserIds) {
+    try {
+      const online = await isUserOnline(userId);
+      if (online) continue; // Skip email for online users
+
+      // Check per-staff prefs
+      const [userRow] = await db.select({
+        email: users.email,
+        prefs: users.staffNotificationPrefs,
+        isAdmin: sql<number>`(SELECT COUNT(*) FROM admins WHERE admins.userId = ${users.id})`,
+      }).from(users).where(eq(users.id, userId)).limit(1);
+
+      if (!userRow) continue;
+
+      const staffPrefs: Record<string, boolean> = userRow.prefs ? JSON.parse(userRow.prefs as string) : {};
+      if (staffPrefs[eventType] === false) continue;
+
+      // Determine email address: admin uses configured notification_email; staff uses their own
+      const emailTo = (Number(userRow.isAdmin) > 0 && notificationEmail)
+        ? notificationEmail
+        : userRow.email;
+
+      if (!emailTo) continue;
+
+      await sendStaffAlertEmail({
+        to: emailTo,
+        eventType,
+        titleEn: data.titleEn,
+        contentEn: data.contentEn || data.titleEn,
+        actionUrl: actionUrl || '',
+      });
+    } catch (e) {
+      logger.warn(`[STAFF_NOTIF] Failed to email userId=${userId}`, { error: String(e) });
+    }
+  }
+}
+
+// ============================================================================
+// Admin Settings (key-value store)
+// ============================================================================
+
+export async function getAdminSetting(key: string): Promise<string | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const [row] = await db.select({ value: adminSettings.settingValue })
+    .from(adminSettings)
+    .where(eq(adminSettings.settingKey, key))
+    .limit(1);
+  return row?.value ?? null;
+}
+
+export async function setAdminSetting(key: string, value: string): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const now = new Date().toISOString();
+  // Upsert: try update first, insert if no rows affected
+  const result = await db.update(adminSettings)
+    .set({ settingValue: value, updatedAt: now })
+    .where(eq(adminSettings.settingKey, key));
+  if (!result.rowsAffected) {
+    await db.insert(adminSettings).values({ settingKey: key, settingValue: value, updatedAt: now });
+  }
+}
+
+export async function getAllAdminSettings(): Promise<Record<string, string>> {
+  const db = await getDb();
+  if (!db) return {};
+  const rows = await db.select().from(adminSettings);
+  const result: Record<string, string> = {};
+  for (const row of rows) result[row.settingKey] = row.settingValue ?? '';
+  return result;
+}
+
+export async function getStaffNotificationPrefs(userId: number): Promise<Record<string, boolean>> {
+  const db = await getDb();
+  if (!db) return {};
+  const [row] = await db.select({ prefs: users.staffNotificationPrefs })
+    .from(users).where(eq(users.id, userId)).limit(1);
+  return row?.prefs ? JSON.parse(row.prefs) : {};
+}
+
+export async function updateStaffNotificationPrefs(userId: number, prefs: Record<string, boolean>): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [existing] = await db.select({ prefs: users.staffNotificationPrefs })
+    .from(users).where(eq(users.id, userId)).limit(1);
+  const current = existing?.prefs ? JSON.parse(existing.prefs) : {};
+  const merged = { ...current, ...prefs };
+  await db.update(users).set({ staffNotificationPrefs: JSON.stringify(merged) })
+    .where(eq(users.id, userId));
+}
+
+// ============================================================================
+// Skip Broker Onboarding (Admin tool for QC testing)
+// ============================================================================
+
+/**
+ * Skip all broker onboarding steps for a user — creates approved rows.
+ * Uses the same audit pattern as skipCourseForUser().
+ */
+export async function skipBrokerOnboardingForUser(userId: number, adminId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // Check if already complete
+  const isComplete = await isUserBrokerOnboardingComplete(userId);
+  if (isComplete) throw new Error("Broker onboarding is already complete for this user");
+
+  // Pick first active broker
+  const [broker] = await db.select({ id: brokers.id })
+    .from(brokers)
+    .where(eq(brokers.isActive, true))
+    .orderBy(brokers.displayOrder)
+    .limit(1);
+  if (!broker) throw new Error("No active broker found");
+
+  const now = new Date().toISOString();
+
+  // Delete any existing onboarding rows for this user
+  await db.delete(brokerOnboarding).where(eq(brokerOnboarding.userId, userId));
+
+  // Insert 3 approved steps
+  for (const step of ['select_broker', 'open_account', 'deposit'] as const) {
+    await db.insert(brokerOnboarding).values({
+      userId,
+      brokerId: broker.id,
+      step,
+      status: 'approved',
+      adminNote: 'Admin skip',
+      reviewedBy: adminId,
+      reviewedAt: now,
+      submittedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+
+  // Set the fast-check flag
+  await db.update(users).set({ brokerOnboardingComplete: true })
+    .where(eq(users.id, userId));
+
+  // Audit trail
+  await db.insert(adminActions).values({
+    adminId,
+    userId,
+    action: 'skip_broker_onboarding',
+    details: JSON.stringify({ brokerId: broker.id }),
+    createdAt: now,
+  });
+
+  return { success: true, brokerId: broker.id };
+}
+
+/**
+ * Rollback a broker onboarding skip — removes the approved rows and resets the flag.
+ */
+export async function rollbackBrokerOnboardingSkip(userId: number, adminId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const now = new Date().toISOString();
+
+  // Delete broker_onboarding rows that were admin-skipped
+  await db.delete(brokerOnboarding).where(eq(brokerOnboarding.userId, userId));
+
+  // Reset the flag
+  await db.update(users).set({ brokerOnboardingComplete: false })
+    .where(eq(users.id, userId));
+
+  // Audit trail
+  await db.insert(adminActions).values({
+    adminId,
+    userId,
+    action: 'rollback_broker_skip',
+    details: JSON.stringify({}),
+    createdAt: now,
+  });
+
   return { success: true };
 }
