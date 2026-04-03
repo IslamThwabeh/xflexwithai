@@ -210,17 +210,14 @@ export default function StudentPackages() {
             </div>
             <p className="text-sm text-amber-700 mb-2">
               {isRtl
-                ? `سيتم تفعيل LexAI والتوصيات تلقائياً عند إكمال الدورة وفتح حساب الوسيط، أو في ${activationStatus.maxActivationDate ? new Date(activationStatus.maxActivationDate).toLocaleDateString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric' }) : ''}`
-                : `LexAI & Recommendations will activate automatically upon course completion and broker onboarding, or on ${activationStatus.maxActivationDate ? new Date(activationStatus.maxActivationDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : ''}`}
+                ? `سيتم تفعيل LexAI والتوصيات تلقائياً عند إكمال فتح حساب الوسيط، أو في ${activationStatus.maxActivationDate ? new Date(activationStatus.maxActivationDate).toLocaleDateString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric' }) : ''}`
+                : `LexAI & Recommendations will activate automatically upon broker onboarding completion, or on ${activationStatus.maxActivationDate ? new Date(activationStatus.maxActivationDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : ''}`}
             </p>
             <p className="text-xs text-amber-600 font-medium">
               {isRtl
-                ? '⚡ أنهِ الدورة وافتح حساب الوسيط بأسرع وقت للاستفادة القصوى من اشتراكك!'
-                : '⚡ Finish the course and open your broker account ASAP to maximize your subscription time!'}
+                ? '⚡ افتح حساب الوسيط بأسرع وقت للاستفادة القصوى من اشتراكك!'
+                : '⚡ Complete your broker onboarding ASAP to maximize your subscription time!'}
             </p>
-            <div className="flex items-center gap-2 text-sm text-amber-600 mt-2">
-              <span>{isRtl ? 'تقدم الدورة' : 'Course progress'}: {activationStatus.progressPercent}%</span>
-            </div>
           </div>
         )}
 

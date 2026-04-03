@@ -1026,18 +1026,12 @@ export async function skipCourseForUser(userId: number, courseId: number) {
     lastAccessed: new Date().toISOString(),
   });
 
-  // Only activate pending subscriptions if broker onboarding is also complete
-  let activated = false;
-  const brokerComplete = await isUserBrokerOnboardingComplete(userId);
-  if (brokerComplete) {
-    const activation = await activateStudentSubscriptions(userId, false);
-    activated = activation.activated;
-  }
+  // Course completion has ZERO effect on LexAI/Rec activation — broker is the only gate
 
   return {
     enrollmentId: enrollment.id,
     previousProgress: enrollment.progressPercentage ?? 0,
-    activated,
+    activated: false,
   };
 }
 
@@ -1060,10 +1054,7 @@ export async function rollbackSkipCourse(userId: number, courseId: number) {
     completedAt: genuinelyCompleted ? enrollment.completedAt : null,
   });
 
-  // Deactivate LexAI/Rec subscriptions back to pending (if they were activated by the skip)
-  if (!genuinelyCompleted) {
-    await deactivateStudentSubscriptions(userId);
-  }
+  // Course rollback has ZERO effect on LexAI/Rec — broker is the only gate
 
   return { enrollmentId: enrollment.id, restoredProgress: enrollment.progressPercentage ?? 0 };
 }
@@ -2366,29 +2357,15 @@ export async function fulfillPackageEntitlements(
   const db = await getDb();
   if (!db) return;
 
-  // Check if student already completed the course or was admin-skipped
-  const [existingEnrollment] = await db.select({
-    progressPercentage: enrollments.progressPercentage,
-    isAdminSkipped: enrollments.isAdminSkipped,
-    completedAt: enrollments.completedAt,
-  }).from(enrollments).where(eq(enrollments.userId, userId)).orderBy(desc(enrollments.enrolledAt)).limit(1);
-
-  const courseComplete = (existingEnrollment?.progressPercentage ?? 0) >= 100
-    || !!existingEnrollment?.completedAt
-    || !!existingEnrollment?.isAdminSkipped;
-
-  // Check broker onboarding status
+  // Only broker gate matters for immediate activation (course has zero effect)
   const [userRow] = await db.select({ brokerOnboardingComplete: users.brokerOnboardingComplete })
     .from(users).where(eq(users.id, userId)).limit(1);
   const brokerComplete = !!userRow?.brokerOnboardingComplete;
 
-  // Both gates cleared = immediate activation (renewal, upgrade, or re-activation)
-  const bothGatesCleared = courseComplete && brokerComplete;
-
-  // Determine if this is a renewal/upgrade (student has existing subs with real endDates)
+  // Determine if this is a renewal/upgrade (student has existing active subs)
   const existingLexai = await getAnyLexaiSubscription(userId);
   const existingRec = await getAnyRecommendationSubscription(userId);
-  const isRenewalOrUpgrade = bothGatesCleared || (existingLexai && !existingLexai.isPendingActivation) || (existingRec && !existingRec.isPendingActivation);
+  const isRenewalOrUpgrade = brokerComplete || (existingLexai && !existingLexai.isPendingActivation) || (existingRec && !existingRec.isPendingActivation);
 
   // Stacking helper: endDate = max(currentEndDate, now) + entitlementDays
   const getStackedEndDate = (currentEndDate: string | null): Date => {
@@ -4305,23 +4282,13 @@ export async function getPendingActivationStatus(userId: number) {
   const db = await getDb();
   if (!db) return { hasPending: false, lexai: null, recommendation: null, progressPercent: 0 };
 
-  // Check course status
-  const [enrollment] = await db
-    .select({ courseId: enrollments.courseId, progressPercentage: enrollments.progressPercentage, isAdminSkipped: enrollments.isAdminSkipped, completedAt: enrollments.completedAt })
-    .from(enrollments)
-    .where(eq(enrollments.userId, userId))
-    .orderBy(desc(enrollments.enrolledAt))
-    .limit(1);
-
-  const courseComplete = !!enrollment?.isAdminSkipped || !!enrollment?.completedAt || (enrollment?.progressPercentage ?? 0) >= 100;
-
-  // Check broker status
+  // Broker gate only — course completion has zero effect on activation
   const [userRow] = await db.select({ brokerOnboardingComplete: users.brokerOnboardingComplete })
     .from(users).where(eq(users.id, userId)).limit(1);
   const brokerComplete = !!userRow?.brokerOnboardingComplete;
 
-  // If both gates cleared, auto-activate any pending subs
-  if (courseComplete && brokerComplete) {
+  // If broker gate cleared, auto-activate any pending subs
+  if (brokerComplete) {
     const [pendingLex] = await db.select({ id: lexaiSubscriptions.id })
       .from(lexaiSubscriptions)
       .where(and(eq(lexaiSubscriptions.userId, userId), eq(lexaiSubscriptions.isPendingActivation, true)))
@@ -4348,25 +4315,23 @@ export async function getPendingActivationStatus(userId: number) {
     .where(and(eq(recommendationSubscriptions.userId, userId), eq(recommendationSubscriptions.isPendingActivation, true)))
     .limit(1);
 
-  const progressPercent = enrollment?.progressPercentage ?? 0;
-
-  // Auto-activate after study period regardless of course/broker status
+  // Auto-activate after study period regardless of broker status
   const now = new Date();
   if (lexaiSub?.maxActivationDate && new Date(lexaiSub.maxActivationDate) <= now) {
     await activateStudentSubscriptions(userId, true);
-    return { hasPending: false, lexai: null, recommendation: null, progressPercent };
+    return { hasPending: false, lexai: null, recommendation: null, progressPercent: 0 };
   }
   if (!lexaiSub && recSub?.maxActivationDate && new Date(recSub.maxActivationDate) <= now) {
     await activateStudentSubscriptions(userId, true);
-    return { hasPending: false, lexai: null, recommendation: null, progressPercent };
+    return { hasPending: false, lexai: null, recommendation: null, progressPercent: 0 };
   }
 
   return {
     hasPending: !!(lexaiSub || recSub),
     lexai: lexaiSub ?? null,
     recommendation: recSub ?? null,
-    progressPercent,
-    canActivate: progressPercent >= 100,
+    progressPercent: 0,
+    canActivate: false,
     maxActivationDate: lexaiSub?.maxActivationDate ?? recSub?.maxActivationDate ?? null,
   };
 }
@@ -4381,8 +4346,9 @@ export async function activateStudentSubscriptions(userId: number, isAutoActivat
 
   const now = new Date();
   const entitlementDays = await getUserEntitlementDays(userId);
-  const realEndDate = buildEndDateFromDays(now, entitlementDays);
-  console.log(`[activateSubs] userId=${userId} auto=${isAutoActivation} entitlementDays=${entitlementDays} endDate=${realEndDate.toISOString()}`);
+  const DAY_MS = 24 * 60 * 60 * 1000;
+
+  console.log(`[activateSubs] userId=${userId} auto=${isAutoActivation} entitlementDays=${entitlementDays}`);
 
   // Activate ALL pending subs (not just the first) to handle duplicate subscriptions
   const pendingLexai = await db
@@ -4396,10 +4362,16 @@ export async function activateStudentSubscriptions(userId: number, isAutoActivat
     .where(and(eq(recommendationSubscriptions.userId, userId), eq(recommendationSubscriptions.isPendingActivation, true)));
 
   const nowStr = now.toISOString();
-  const endStr = realEndDate.toISOString();
 
   for (const sub of pendingLexai) {
-    console.log(`[activateSubs] LexAI id=${sub.id} oldEnd=${sub.endDate} newEnd=${endStr}`);
+    // Cap: endDate = min(now + entitlementDays, maxActivationDate + entitlementDays)
+    let endDate = new Date(now.getTime() + entitlementDays * DAY_MS);
+    if (sub.maxActivationDate) {
+      const absoluteMax = new Date(new Date(sub.maxActivationDate).getTime() + entitlementDays * DAY_MS);
+      if (absoluteMax < endDate) endDate = absoluteMax;
+    }
+    const endStr = endDate.toISOString();
+    console.log(`[activateSubs] LexAI id=${sub.id} oldEnd=${sub.endDate} newEnd=${endStr} maxAct=${sub.maxActivationDate}`);
     await db.update(lexaiSubscriptions).set({
       isPendingActivation: false,
       studentActivatedAt: nowStr,
@@ -4410,7 +4382,13 @@ export async function activateStudentSubscriptions(userId: number, isAutoActivat
   }
 
   for (const sub of pendingRec) {
-    console.log(`[activateSubs] Rec id=${sub.id} oldEnd=${sub.endDate} newEnd=${endStr}`);
+    let endDate = new Date(now.getTime() + entitlementDays * DAY_MS);
+    if (sub.maxActivationDate) {
+      const absoluteMax = new Date(new Date(sub.maxActivationDate).getTime() + entitlementDays * DAY_MS);
+      if (absoluteMax < endDate) endDate = absoluteMax;
+    }
+    const endStr = endDate.toISOString();
+    console.log(`[activateSubs] Rec id=${sub.id} oldEnd=${sub.endDate} newEnd=${endStr} maxAct=${sub.maxActivationDate}`);
     await db.update(recommendationSubscriptions).set({
       isPendingActivation: false,
       studentActivatedAt: nowStr,
@@ -4447,7 +4425,7 @@ export async function activateStudentSubscriptions(userId: number, isAutoActivat
   return {
     activated: !!(pendingLexai.length || pendingRec.length),
     isAutoActivation,
-    endDate: realEndDate.toISOString(),
+    endDate: nowStr,
   };
 }
 
@@ -6991,20 +6969,9 @@ export async function skipBrokerOnboardingForUser(userId: number, adminId: numbe
     createdAt: now,
   });
 
-  // If course is also complete/skipped, activate pending subscriptions (LexAI + Rec)
-  const [enrollment] = await db.select({
-    completedAt: enrollments.completedAt,
-    isAdminSkipped: enrollments.isAdminSkipped,
-  }).from(enrollments)
-    .where(eq(enrollments.userId, userId))
-    .orderBy(desc(enrollments.enrolledAt))
-    .limit(1);
-
-  let activated = false;
-  if (enrollment?.completedAt || enrollment?.isAdminSkipped) {
-    const activation = await activateStudentSubscriptions(userId, false);
-    activated = activation.activated;
-  }
+  // Broker is the only gate — always activate pending subscriptions
+  const activation = await activateStudentSubscriptions(userId, false);
+  const activated = activation.activated;
 
   return { success: true, brokerId: broker.id, activated };
 }
