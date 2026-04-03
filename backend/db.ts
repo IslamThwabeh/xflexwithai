@@ -1830,9 +1830,24 @@ export async function syncUserEntitlementsFromKeys(userId: number, email: string
   const existingPackageSubs = await getUserPackageSubscriptions(userId);
   const activePackageIds = new Set(existingPackageSubs.filter(s => s.isActive).map(s => s.packageId));
 
+  // Also check LexAI/Rec — if already activated (non-pending), skip entirely
+  const existingLexai = await getAnyLexaiSubscription(userId);
+  const existingRec = await getAnyRecommendationSubscription(userId);
+  const hasActiveSubs = (existingLexai && !existingLexai.isPendingActivation) || (existingRec && !existingRec.isPendingActivation);
+
+  console.log(`[syncEntitlements] userId=${userId} keys=${packageKeys.length} activePkgIds=[${[...activePackageIds]}] hasActiveSubs=${hasActiveSubs}`);
+
   for (const key of packageKeys) {
     if (!key.packageId) continue;
-    if (activePackageIds.has(key.packageId)) continue; // already fulfilled
+    if (activePackageIds.has(key.packageId)) {
+      console.log(`[syncEntitlements] SKIP key ${key.id} pkgId=${key.packageId} — already has active packageSub`);
+      continue;
+    }
+    if (hasActiveSubs) {
+      console.log(`[syncEntitlements] SKIP key ${key.id} pkgId=${key.packageId} — has active LexAI/Rec (non-pending)`);
+      continue;
+    }
+    console.log(`[syncEntitlements] FULFILLING key ${key.id} pkgId=${key.packageId}`);
     await fulfillPackageEntitlements(userId, key.packageId, key.id, key.entitlementDays ?? undefined);
   }
 }
@@ -2372,6 +2387,36 @@ export async function fulfillPackageEntitlements(
   // Determine if this is a renewal/upgrade (student has existing active subs)
   const existingLexai = await getAnyLexaiSubscription(userId);
   const existingRec = await getAnyRecommendationSubscription(userId);
+
+  // ── Idempotency guard: if subs are already active & not pending, this is a no-op sync ──
+  // Only stack when there's genuinely something new (pending subs or no subs at all).
+  const lexaiAlreadyActive = existingLexai && !existingLexai.isPendingActivation && existingLexai.endDate && new Date(existingLexai.endDate) > now;
+  const recAlreadyActive = existingRec && !existingRec.isPendingActivation && existingRec.endDate && new Date(existingRec.endDate) > now;
+  const existingPackageSubscriptions = await getUserPackageSubscriptions(userId);
+  const currentPackageSubscription = existingPackageSubscriptions.find((subscription) => subscription.packageId === packageId);
+
+  if (currentPackageSubscription && (lexaiAlreadyActive || recAlreadyActive)) {
+    // User already has this package and active subs — just ensure enrollments exist, skip stacking
+    console.log(`[fulfillEntitlements] IDEMPOTENT SKIP userId=${userId} — subs already active, not stacking`);
+
+    // Still ensure course enrollments exist
+    let pkgCourses = await getPackageCourses(packageId);
+    let courseIdsToEnroll: number[] = pkgCourses.map(pc => pc.courseId);
+    if (courseIdsToEnroll.length === 0) {
+      const allPublished = await getPublishedCourses();
+      courseIdsToEnroll = allPublished.map(c => c.id);
+    }
+    for (const courseId of courseIdsToEnroll) {
+      try {
+        const existing = await getEnrollmentByUserAndCourse(userId, courseId);
+        if (!existing) {
+          await createEnrollment({ userId, courseId, paymentStatus: "completed", isSubscriptionActive: true, registrationKeyId: registrationKeyId ?? null, activatedViaKey: !!registrationKeyId });
+        }
+      } catch (e) { /* ignore */ }
+    }
+    return;
+  }
+
   const isRenewalOrUpgrade = brokerComplete || (existingLexai && !existingLexai.isPendingActivation) || (existingRec && !existingRec.isPendingActivation);
 
   // Stacking helper: endDate = max(currentEndDate, now) + entitlementDays
@@ -2381,14 +2426,14 @@ export async function fulfillPackageEntitlements(
   };
 
   // ── Package subscription (course access = forever) ──
-  const existingPackageSubscriptions = await getUserPackageSubscriptions(userId);
-  const currentPackageSubscription = existingPackageSubscriptions.find((subscription) => subscription.packageId === packageId);
+  const pkgSubs = await getUserPackageSubscriptions(userId);
+  const currentPkgSub = pkgSubs.find((subscription) => subscription.packageId === packageId);
 
-  if (currentPackageSubscription) {
+  if (currentPkgSub) {
     await db.update(packageSubscriptions).set({
       isActive: true,
       updatedAt: now.toISOString(),
-    }).where(eq(packageSubscriptions.id, currentPackageSubscription.id));
+    }).where(eq(packageSubscriptions.id, currentPkgSub.id));
   } else {
     await createPackageSubscription({
       userId,
