@@ -23,7 +23,7 @@ export default function Auth() {
   const [resendCooldownSec, setResendCooldownSec] = useState(0);
   const { isAuthenticated, loading, logout } = useAuth();
   const [location, setLocation] = useLocation();
-  const autoSubmitFired = useRef(false);
+  const lastAutoSubmittedCode = useRef("");
   const [clearingAdmin, setClearingAdmin] = useState(false);
 
   const nextPath = useMemo(() => {
@@ -174,27 +174,15 @@ export default function Auth() {
 
   useEffect(() => {
     const cleaned = otpCode.replace(/\D/g, "");
-    if (otpStep === "verify" && cleaned.length >= 6 && !autoSubmitFired.current && !verifyLoginCode.isPending) {
-      autoSubmitFired.current = true;
+    if (otpStep === "verify" && cleaned.length >= 6 && cleaned !== lastAutoSubmittedCode.current && !verifyLoginCode.isPending) {
+      lastAutoSubmittedCode.current = cleaned;
       handleVerifyCodeRef.current();
     }
   }, [otpCode, otpStep, verifyLoginCode.isPending]);
 
-  // Reset auto-submit flag when user edits the code (so re-paste / correction works)
-  const prevOtpCode = useRef(otpCode);
-  useEffect(() => {
-    if (otpCode !== prevOtpCode.current) {
-      prevOtpCode.current = otpCode;
-      // Only reset if the code actually changed (i.e. user typed/pasted new digits)
-      if (!verifyLoginCode.isPending) {
-        autoSubmitFired.current = false;
-      }
-    }
-  }, [otpCode, verifyLoginCode.isPending]);
-
   useEffect(() => {
     if (otpStep === "request") {
-      autoSubmitFired.current = false;
+      lastAutoSubmittedCode.current = "";
       setOtpCode("");
     }
   }, [otpStep]);
