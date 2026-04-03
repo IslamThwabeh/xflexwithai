@@ -69,6 +69,20 @@ import { STAFF_NOTIFICATION_EVENTS, type StaffNotificationEventType } from '../s
 let _db: ReturnType<typeof drizzle> | null = null;
 
 const DEFAULT_KEY_ENTITLEMENT_DAYS = 30;
+const DEFAULT_STUDY_PERIOD_DAYS = 14;
+
+/**
+ * Get the configurable study period (فترة التعلم) from admin settings.
+ * This is the grace period before LexAI/Rec auto-activate.
+ */
+export async function getStudyPeriodDays(): Promise<number> {
+  const val = await getAdminSetting('study_period_days');
+  if (val) {
+    const parsed = parseInt(val, 10);
+    if (Number.isFinite(parsed) && parsed > 0 && parsed <= 60) return parsed;
+  }
+  return DEFAULT_STUDY_PERIOD_DAYS;
+}
 
 function normalizePositiveInteger(value: unknown): number | null {
   const parsed = Number(value);
@@ -2322,6 +2336,12 @@ export async function renewPackageEntitlements(
 /**
  * Grant all entitlements for a package: enrollments, LexAI, recommendations.
  * Used by both key activation and order completion.
+ *
+ * Subscription lifecycle:
+ * - First-time: LexAI/Rec created with isPendingActivation=true, auto-activates after study period
+ * - Renewal/upgrade: endDate = max(currentEndDate, now) + entitlementDays (stacking)
+ * - Both gates cleared (course+broker done): activate immediately
+ * - Upgrade basic→comp: LexAI starts immediately (new feature), Rec stacks after current
  */
 export async function fulfillPackageEntitlements(
   userId: number,
@@ -2338,29 +2358,53 @@ export async function fulfillPackageEntitlements(
     ?? normalizePositiveInteger(pkg.durationDays)
     ?? DEFAULT_KEY_ENTITLEMENT_DAYS;
   const now = new Date();
-  const serviceEndDate = buildEndDateFromDays(now, entitlementDays);
-  // For deferred activation: placeholder endDate = 14 days max wait + entitlement days
-  const placeholderEndDate = buildEndDateFromDays(now, 14 + entitlementDays);
-  const maxActivationDate = buildEndDateFromDays(now, 14); // 14 days from now
+  const studyPeriodDays = await getStudyPeriodDays();
+  const placeholderEndDate = buildEndDateFromDays(now, studyPeriodDays + entitlementDays);
+  const maxActivationDate = buildEndDateFromDays(now, studyPeriodDays);
 
-  // Check if student already completed the course (100% progress) — renewals should activate immediately
-  const [existingEnrollment] = await (await getDb())!.select({ progressPercentage: enrollments.progressPercentage })
-    .from(enrollments).where(eq(enrollments.userId, userId)).orderBy(desc(enrollments.enrolledAt)).limit(1);
-  const isRenewal = (existingEnrollment?.progressPercentage ?? 0) >= 100;
+  const db = await getDb();
+  if (!db) return;
 
+  // Check if student already completed the course or was admin-skipped
+  const [existingEnrollment] = await db.select({
+    progressPercentage: enrollments.progressPercentage,
+    isAdminSkipped: enrollments.isAdminSkipped,
+    completedAt: enrollments.completedAt,
+  }).from(enrollments).where(eq(enrollments.userId, userId)).orderBy(desc(enrollments.enrolledAt)).limit(1);
+
+  const courseComplete = (existingEnrollment?.progressPercentage ?? 0) >= 100
+    || !!existingEnrollment?.completedAt
+    || !!existingEnrollment?.isAdminSkipped;
+
+  // Check broker onboarding status
+  const [userRow] = await db.select({ brokerOnboardingComplete: users.brokerOnboardingComplete })
+    .from(users).where(eq(users.id, userId)).limit(1);
+  const brokerComplete = !!userRow?.brokerOnboardingComplete;
+
+  // Both gates cleared = immediate activation (renewal, upgrade, or re-activation)
+  const bothGatesCleared = courseComplete && brokerComplete;
+
+  // Determine if this is a renewal/upgrade (student has existing subs with real endDates)
+  const existingLexai = await getAnyLexaiSubscription(userId);
+  const existingRec = await getAnyRecommendationSubscription(userId);
+  const isRenewalOrUpgrade = bothGatesCleared || (existingLexai && !existingLexai.isPendingActivation) || (existingRec && !existingRec.isPendingActivation);
+
+  // Stacking helper: endDate = max(currentEndDate, now) + entitlementDays
+  const getStackedEndDate = (currentEndDate: string | null): Date => {
+    const base = currentEndDate ? new Date(Math.max(new Date(currentEndDate).getTime(), now.getTime())) : now;
+    return buildEndDateFromDays(base, entitlementDays);
+  };
+
+  // ── Package subscription (course access = forever) ──
   const existingPackageSubscriptions = await getUserPackageSubscriptions(userId);
   const currentPackageSubscription = existingPackageSubscriptions.find((subscription) => subscription.packageId === packageId);
 
   if (currentPackageSubscription) {
-    const db = await getDb();
-    if (!db) return;
-    // Course access is forever — just ensure active flag is set
     await db.update(packageSubscriptions).set({
       isActive: true,
       updatedAt: now.toISOString(),
     }).where(eq(packageSubscriptions.id, currentPackageSubscription.id));
   } else {
-    // Course access is forever — endDate=null
     await createPackageSubscription({
       userId,
       packageId,
@@ -2373,16 +2417,13 @@ export async function fulfillPackageEntitlements(
     });
   }
 
-  // Enroll in all package courses (or all published courses if none linked)
+  // ── Enroll in all package courses ──
   let pkgCourses = await getPackageCourses(packageId);
   let courseIdsToEnroll: number[] = pkgCourses.map(pc => pc.courseId);
-
-  // Fallback: if no courses are linked to this package, enroll in ALL published courses
   if (courseIdsToEnroll.length === 0) {
     const allPublished = await getPublishedCourses();
     courseIdsToEnroll = allPublished.map(c => c.id);
   }
-
   for (const courseId of courseIdsToEnroll) {
     try {
       const existing = await getEnrollmentByUserAndCourse(userId, courseId);
@@ -2401,31 +2442,31 @@ export async function fulfillPackageEntitlements(
     }
   }
 
-  // If package includes LexAI, grant subscription
+  // ── LexAI subscription ──
   if (pkg.includesLexai) {
-    const current = await getAnyLexaiSubscription(userId);
-    if (current) {
-      if (isRenewal) {
-        // Renewal student (100% progress) — activate immediately, no deferred
-        const realEnd = buildEndDateFromDays(now, entitlementDays);
-        await updateLexaiSubscription(current.id, {
+    if (existingLexai) {
+      if (isRenewalOrUpgrade) {
+        // Stack after current endDate (or start now if expired/new)
+        const stackedEnd = getStackedEndDate(existingLexai.endDate);
+        await updateLexaiSubscription(existingLexai.id, {
           isActive: true,
           isPaused: false,
           pausedAt: null,
           pausedReason: null,
           pausedRemainingDays: null,
           isPendingActivation: false,
-          studentActivatedAt: now.toISOString(),
+          studentActivatedAt: existingLexai.studentActivatedAt || now.toISOString(),
           maxActivationDate: null,
-          startDate: now.toISOString(),
-          endDate: realEnd.toISOString(),
+          startDate: existingLexai.isPendingActivation ? now.toISOString() : existingLexai.startDate,
+          endDate: stackedEnd.toISOString(),
           paymentStatus: "completed",
           paymentAmount: 0,
           paymentCurrency: "USD",
-          messagesLimit: 100,
+          messagesLimit: (existingLexai.messagesLimit ?? 100),
         });
       } else {
-        await updateLexaiSubscription(current.id, {
+        // First-time, deferred activation
+        await updateLexaiSubscription(existingLexai.id, {
           isActive: true,
           isPaused: false,
           pausedAt: null,
@@ -2443,52 +2484,75 @@ export async function fulfillPackageEntitlements(
         });
       }
     } else {
-      await createLexaiSubscription({
-        userId,
-        isActive: true,
-        isPaused: false,
-        isPendingActivation: true,
-        studentActivatedAt: null,
-        maxActivationDate: maxActivationDate.toISOString(),
-        startDate: now.toISOString(),
-        endDate: placeholderEndDate.toISOString(),
-        paymentStatus: "completed",
-        paymentAmount: 0,
-        paymentCurrency: "USD",
-        messagesUsed: 0,
-        messagesLimit: 100,
-        pausedAt: null,
-        pausedReason: null,
-        pausedRemainingDays: null,
-      });
+      if (isRenewalOrUpgrade) {
+        // Upgrade: brand new LexAI, activate immediately (e.g. basic→comp)
+        const stackedEnd = getStackedEndDate(existingRec?.endDate ?? null); // Sync with Rec if exists
+        await createLexaiSubscription({
+          userId,
+          isActive: true,
+          isPaused: false,
+          isPendingActivation: false,
+          studentActivatedAt: now.toISOString(),
+          maxActivationDate: null,
+          startDate: now.toISOString(),
+          endDate: stackedEnd.toISOString(),
+          paymentStatus: "completed",
+          paymentAmount: 0,
+          paymentCurrency: "USD",
+          messagesUsed: 0,
+          messagesLimit: 100,
+          pausedAt: null,
+          pausedReason: null,
+          pausedRemainingDays: null,
+        });
+      } else {
+        await createLexaiSubscription({
+          userId,
+          isActive: true,
+          isPaused: false,
+          isPendingActivation: true,
+          studentActivatedAt: null,
+          maxActivationDate: maxActivationDate.toISOString(),
+          startDate: now.toISOString(),
+          endDate: placeholderEndDate.toISOString(),
+          paymentStatus: "completed",
+          paymentAmount: 0,
+          paymentCurrency: "USD",
+          messagesUsed: 0,
+          messagesLimit: 100,
+          pausedAt: null,
+          pausedReason: null,
+          pausedRemainingDays: null,
+        });
+      }
     }
   }
 
-  // If package includes recommendations, grant subscription
+  // ── Recommendation subscription ──
   if (pkg.includesRecommendations) {
-    const current = await getAnyRecommendationSubscription(userId);
-    if (current) {
-      if (isRenewal) {
-        // Renewal student (100% progress) — activate immediately
-        const realEnd = buildEndDateFromDays(now, entitlementDays);
-        await updateRecommendationSubscription(current.id, {
+    if (existingRec) {
+      if (isRenewalOrUpgrade) {
+        // Stack after current endDate
+        const stackedEnd = getStackedEndDate(existingRec.endDate);
+        await updateRecommendationSubscription(existingRec.id, {
           isActive: true,
           isPaused: false,
           pausedAt: null,
           pausedReason: null,
           pausedRemainingDays: null,
           isPendingActivation: false,
-          studentActivatedAt: now.toISOString(),
+          studentActivatedAt: existingRec.studentActivatedAt || now.toISOString(),
           maxActivationDate: null,
-          startDate: now.toISOString(),
-          endDate: realEnd.toISOString(),
+          startDate: existingRec.isPendingActivation ? now.toISOString() : existingRec.startDate,
+          endDate: stackedEnd.toISOString(),
           paymentStatus: "completed",
           paymentAmount: 0,
           paymentCurrency: "USD",
-          registrationKeyId: registrationKeyId ?? current.registrationKeyId,
+          registrationKeyId: registrationKeyId ?? existingRec.registrationKeyId,
         });
       } else {
-        await updateRecommendationSubscription(current.id, {
+        // First-time, deferred activation
+        await updateRecommendationSubscription(existingRec.id, {
           isActive: true,
           isPaused: false,
           pausedAt: null,
@@ -2502,27 +2566,48 @@ export async function fulfillPackageEntitlements(
           paymentStatus: "completed",
           paymentAmount: 0,
           paymentCurrency: "USD",
-          registrationKeyId: registrationKeyId ?? current.registrationKeyId,
+          registrationKeyId: registrationKeyId ?? existingRec.registrationKeyId,
         });
       }
     } else {
-      await createRecommendationSubscription({
-        userId,
-        registrationKeyId: registrationKeyId ?? null,
-        isActive: true,
-        isPaused: false,
-        isPendingActivation: true,
-        studentActivatedAt: null,
-        maxActivationDate: maxActivationDate.toISOString(),
-        startDate: now.toISOString(),
-        endDate: placeholderEndDate.toISOString(),
-        paymentStatus: "completed",
-        paymentAmount: 0,
-        paymentCurrency: "USD",
-        pausedAt: null,
-        pausedReason: null,
-        pausedRemainingDays: null,
-      });
+      if (isRenewalOrUpgrade) {
+        const stackedEnd = getStackedEndDate(null);
+        await createRecommendationSubscription({
+          userId,
+          registrationKeyId: registrationKeyId ?? null,
+          isActive: true,
+          isPaused: false,
+          isPendingActivation: false,
+          studentActivatedAt: now.toISOString(),
+          maxActivationDate: null,
+          startDate: now.toISOString(),
+          endDate: stackedEnd.toISOString(),
+          paymentStatus: "completed",
+          paymentAmount: 0,
+          paymentCurrency: "USD",
+          pausedAt: null,
+          pausedReason: null,
+          pausedRemainingDays: null,
+        });
+      } else {
+        await createRecommendationSubscription({
+          userId,
+          registrationKeyId: registrationKeyId ?? null,
+          isActive: true,
+          isPaused: false,
+          isPendingActivation: true,
+          studentActivatedAt: null,
+          maxActivationDate: maxActivationDate.toISOString(),
+          startDate: now.toISOString(),
+          endDate: placeholderEndDate.toISOString(),
+          paymentStatus: "completed",
+          paymentAmount: 0,
+          paymentCurrency: "USD",
+          pausedAt: null,
+          pausedReason: null,
+          pausedRemainingDays: null,
+        });
+      }
     }
   }
 }
@@ -4219,15 +4304,34 @@ export async function getPendingActivationStatus(userId: number) {
   const db = await getDb();
   if (!db) return { hasPending: false, lexai: null, recommendation: null, progressPercent: 0 };
 
-  // If admin-skipped, student should not be gated by pending activation
+  // Check course status
   const [enrollment] = await db
-    .select({ courseId: enrollments.courseId, progressPercentage: enrollments.progressPercentage, isAdminSkipped: enrollments.isAdminSkipped })
+    .select({ courseId: enrollments.courseId, progressPercentage: enrollments.progressPercentage, isAdminSkipped: enrollments.isAdminSkipped, completedAt: enrollments.completedAt })
     .from(enrollments)
     .where(eq(enrollments.userId, userId))
     .orderBy(desc(enrollments.enrolledAt))
     .limit(1);
 
-  if (enrollment?.isAdminSkipped) {
+  const courseComplete = !!enrollment?.isAdminSkipped || !!enrollment?.completedAt || (enrollment?.progressPercentage ?? 0) >= 100;
+
+  // Check broker status
+  const [userRow] = await db.select({ brokerOnboardingComplete: users.brokerOnboardingComplete })
+    .from(users).where(eq(users.id, userId)).limit(1);
+  const brokerComplete = !!userRow?.brokerOnboardingComplete;
+
+  // If both gates cleared, auto-activate any pending subs
+  if (courseComplete && brokerComplete) {
+    const [pendingLex] = await db.select({ id: lexaiSubscriptions.id })
+      .from(lexaiSubscriptions)
+      .where(and(eq(lexaiSubscriptions.userId, userId), eq(lexaiSubscriptions.isPendingActivation, true)))
+      .limit(1);
+    const [pendingRec] = await db.select({ id: recommendationSubscriptions.id })
+      .from(recommendationSubscriptions)
+      .where(and(eq(recommendationSubscriptions.userId, userId), eq(recommendationSubscriptions.isPendingActivation, true)))
+      .limit(1);
+    if (pendingLex || pendingRec) {
+      await activateStudentSubscriptions(userId, false);
+    }
     return { hasPending: false, lexai: null, recommendation: null, progressPercent: 100 };
   }
 
@@ -4245,7 +4349,7 @@ export async function getPendingActivationStatus(userId: number) {
 
   const progressPercent = enrollment?.progressPercentage ?? 0;
 
-  // Auto-activate after 14 days regardless of course/broker status
+  // Auto-activate after study period regardless of course/broker status
   const now = new Date();
   if (lexaiSub?.maxActivationDate && new Date(lexaiSub.maxActivationDate) <= now) {
     await activateStudentSubscriptions(userId, true);
@@ -4338,6 +4442,154 @@ export async function activateStudentSubscriptions(userId: number, isAutoActivat
     isAutoActivation,
     endDate: realEndDate.toISOString(),
   };
+}
+
+/**
+ * Get a student's full subscription timeline for admin troubleshooting and student visibility.
+ * Returns key events in chronological order.
+ */
+export async function getStudentTimeline(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const events: Array<{
+    date: string;
+    type: string;
+    labelEn: string;
+    labelAr: string;
+    details?: string;
+  }> = [];
+
+  // 1. Registration date
+  const [user] = await db.select({
+    createdAt: users.createdAt,
+    brokerOnboardingComplete: users.brokerOnboardingComplete,
+  }).from(users).where(eq(users.id, userId)).limit(1);
+  if (user?.createdAt) {
+    events.push({ date: user.createdAt, type: 'registration', labelEn: 'Account Created', labelAr: 'إنشاء الحساب' });
+  }
+
+  // 2. Package key activations
+  const keys = await db.select({
+    activatedAt: registrationKeys.activatedAt,
+    packageId: registrationKeys.packageId,
+  }).from(registrationKeys)
+    .where(and(
+      eq(registrationKeys.activatedBy, userId),
+      sql`${registrationKeys.activatedAt} IS NOT NULL`,
+      sql`${registrationKeys.packageId} IS NOT NULL`,
+    ))
+    .orderBy(registrationKeys.activatedAt);
+  for (const key of keys) {
+    if (key.activatedAt) {
+      const pkg = key.packageId ? await getPackageById(key.packageId) : null;
+      events.push({
+        date: key.activatedAt,
+        type: 'key_activated',
+        labelEn: `Package Key Activated: ${pkg?.nameEn ?? 'Unknown'}`,
+        labelAr: `تفعيل مفتاح الباقة: ${pkg?.nameAr ?? 'غير معروف'}`,
+      });
+    }
+  }
+
+  // 3. Course enrollment
+  const enrollmentRows = await db.select({
+    enrolledAt: enrollments.enrolledAt,
+    completedAt: enrollments.completedAt,
+    isAdminSkipped: enrollments.isAdminSkipped,
+    progressPercentage: enrollments.progressPercentage,
+  }).from(enrollments)
+    .where(eq(enrollments.userId, userId))
+    .orderBy(enrollments.enrolledAt);
+  for (const e of enrollmentRows) {
+    if (e.enrolledAt) {
+      events.push({ date: e.enrolledAt, type: 'enrolled', labelEn: 'Course Enrolled', labelAr: 'تسجيل في الدورة' });
+    }
+    if (e.completedAt) {
+      events.push({ date: e.completedAt, type: 'course_completed', labelEn: 'Course Completed', labelAr: 'إكمال الدورة' });
+    }
+    if (e.isAdminSkipped) {
+      // Find the admin action timestamp
+      const [skipAction] = await db.select({ createdAt: adminActions.createdAt })
+        .from(adminActions)
+        .where(and(eq(adminActions.userId, userId), eq(adminActions.action, 'skip_course')))
+        .orderBy(desc(adminActions.createdAt)).limit(1);
+      events.push({
+        date: skipAction?.createdAt ?? e.enrolledAt ?? new Date().toISOString(),
+        type: 'course_skipped',
+        labelEn: 'Course Skipped (Admin)',
+        labelAr: 'تخطي الدورة (مشرف)',
+      });
+    }
+  }
+
+  // 4. Broker onboarding
+  if (user?.brokerOnboardingComplete) {
+    const [skipAction] = await db.select({ createdAt: adminActions.createdAt })
+      .from(adminActions)
+      .where(and(eq(adminActions.userId, userId), eq(adminActions.action, 'skip_broker_onboarding')))
+      .orderBy(desc(adminActions.createdAt)).limit(1);
+    if (skipAction) {
+      events.push({ date: skipAction.createdAt, type: 'broker_skipped', labelEn: 'Broker Skipped (Admin)', labelAr: 'تخطي الوسيط (مشرف)' });
+    } else {
+      // Genuinely completed - get last approved step date
+      const [lastStep] = await db.select({ reviewedAt: brokerOnboarding.reviewedAt })
+        .from(brokerOnboarding)
+        .where(and(eq(brokerOnboarding.userId, userId), eq(brokerOnboarding.status, 'approved')))
+        .orderBy(desc(brokerOnboarding.reviewedAt)).limit(1);
+      if (lastStep?.reviewedAt) {
+        events.push({ date: lastStep.reviewedAt, type: 'broker_completed', labelEn: 'Broker Onboarding Completed', labelAr: 'إكمال فتح حساب الوسيط' });
+      }
+    }
+  }
+
+  // 5. LexAI subscription events
+  const [lexSub] = await db.select({
+    startDate: lexaiSubscriptions.startDate,
+    endDate: lexaiSubscriptions.endDate,
+    isPendingActivation: lexaiSubscriptions.isPendingActivation,
+    studentActivatedAt: lexaiSubscriptions.studentActivatedAt,
+  }).from(lexaiSubscriptions)
+    .where(eq(lexaiSubscriptions.userId, userId))
+    .orderBy(desc(lexaiSubscriptions.startDate)).limit(1);
+  if (lexSub) {
+    if (lexSub.isPendingActivation) {
+      events.push({ date: lexSub.startDate, type: 'lexai_pending', labelEn: 'LexAI: Pending Activation', labelAr: 'LexAI: في انتظار التفعيل' });
+    } else {
+      if (lexSub.studentActivatedAt) {
+        events.push({ date: lexSub.studentActivatedAt, type: 'lexai_activated', labelEn: 'LexAI Activated', labelAr: 'تفعيل LexAI' });
+      }
+      if (lexSub.endDate) {
+        events.push({ date: lexSub.endDate, type: 'lexai_expires', labelEn: 'LexAI Expires', labelAr: 'انتهاء LexAI' });
+      }
+    }
+  }
+
+  // 6. Recommendation subscription events
+  const [recSub] = await db.select({
+    startDate: recommendationSubscriptions.startDate,
+    endDate: recommendationSubscriptions.endDate,
+    isPendingActivation: recommendationSubscriptions.isPendingActivation,
+    studentActivatedAt: recommendationSubscriptions.studentActivatedAt,
+  }).from(recommendationSubscriptions)
+    .where(eq(recommendationSubscriptions.userId, userId))
+    .orderBy(desc(recommendationSubscriptions.startDate)).limit(1);
+  if (recSub) {
+    if (recSub.isPendingActivation) {
+      events.push({ date: recSub.startDate, type: 'rec_pending', labelEn: 'Recommendations: Pending Activation', labelAr: 'التوصيات: في انتظار التفعيل' });
+    } else {
+      if (recSub.studentActivatedAt) {
+        events.push({ date: recSub.studentActivatedAt, type: 'rec_activated', labelEn: 'Recommendations Activated', labelAr: 'تفعيل التوصيات' });
+      }
+      if (recSub.endDate) {
+        events.push({ date: recSub.endDate, type: 'rec_expires', labelEn: 'Recommendations Expires', labelAr: 'انتهاء التوصيات' });
+      }
+    }
+  }
+
+  // Sort by date
+  events.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  return events;
 }
 
 export async function getRecommendationSubscriptionsWithUsers() {

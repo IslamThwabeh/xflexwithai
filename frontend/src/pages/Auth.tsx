@@ -164,7 +164,6 @@ export default function Auth() {
         window.location.href = nextPath ?? "/courses";
       }
     } catch (e: any) {
-      autoSubmitFired.current = false;
       setOtpError(e?.message || t('auth.page.code.invalid'));
     }
   };
@@ -180,6 +179,18 @@ export default function Auth() {
       handleVerifyCodeRef.current();
     }
   }, [otpCode, otpStep, verifyLoginCode.isPending]);
+
+  // Reset auto-submit flag when user edits the code (so re-paste / correction works)
+  const prevOtpCode = useRef(otpCode);
+  useEffect(() => {
+    if (otpCode !== prevOtpCode.current) {
+      prevOtpCode.current = otpCode;
+      // Only reset if the code actually changed (i.e. user typed/pasted new digits)
+      if (!verifyLoginCode.isPending) {
+        autoSubmitFired.current = false;
+      }
+    }
+  }, [otpCode, verifyLoginCode.isPending]);
 
   useEffect(() => {
     if (otpStep === "request") {

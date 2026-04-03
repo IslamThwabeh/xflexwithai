@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'wouter';
-import { Package, CheckCircle2, X, ArrowUpCircle, Clock, Sparkles, MessageSquare, BookOpen, Shield, Snowflake, CheckCircle, AlertCircle } from 'lucide-react';
+import { Package, CheckCircle2, X, ArrowUpCircle, Clock, Sparkles, MessageSquare, BookOpen, Shield, Snowflake, CheckCircle, AlertCircle, UserPlus, Key, GraduationCap, Landmark, Bot, TrendingUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -19,6 +19,7 @@ export default function StudentPackages() {
   const { data: subscriptions, isLoading: subsLoading } = trpc.subscriptions.mySubscriptions.useQuery();
   const { data: activationStatus } = trpc.subscriptions.activationStatus.useQuery();
   const { data: frozenStatus } = trpc.subscriptions.frozenStatus.useQuery();
+  const { data: timeline } = trpc.subscriptions.myTimeline.useQuery();
   const pkg = (activePackage as any)?.package;
 
   const freezeMutation = trpc.subscriptions.requestFreeze.useMutation({
@@ -209,10 +210,15 @@ export default function StudentPackages() {
             </div>
             <p className="text-sm text-amber-700 mb-2">
               {isRtl
-                ? `سيتم تفعيل LexAI والتوصيات تلقائياً عند إكمال الدورة أو في ${activationStatus.maxActivationDate ? new Date(activationStatus.maxActivationDate).toLocaleDateString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric' }) : ''}`
-                : `LexAI & Recommendations will activate automatically upon course completion or on ${activationStatus.maxActivationDate ? new Date(activationStatus.maxActivationDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : ''}`}
+                ? `سيتم تفعيل LexAI والتوصيات تلقائياً عند إكمال الدورة وفتح حساب الوسيط، أو في ${activationStatus.maxActivationDate ? new Date(activationStatus.maxActivationDate).toLocaleDateString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric' }) : ''}`
+                : `LexAI & Recommendations will activate automatically upon course completion and broker onboarding, or on ${activationStatus.maxActivationDate ? new Date(activationStatus.maxActivationDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : ''}`}
             </p>
-            <div className="flex items-center gap-2 text-sm text-amber-600">
+            <p className="text-xs text-amber-600 font-medium">
+              {isRtl
+                ? '⚡ أنهِ الدورة وافتح حساب الوسيط بأسرع وقت للاستفادة القصوى من اشتراكك!'
+                : '⚡ Finish the course and open your broker account ASAP to maximize your subscription time!'}
+            </p>
+            <div className="flex items-center gap-2 text-sm text-amber-600 mt-2">
               <span>{isRtl ? 'تقدم الدورة' : 'Course progress'}: {activationStatus.progressPercent}%</span>
             </div>
           </div>
@@ -279,14 +285,78 @@ export default function StudentPackages() {
                       </div>
                       <p className="text-sm text-gray-500">
                         {isRtl ? 'بدأ' : 'Started'}: {new Date(sub.startDate).toLocaleDateString(isRtl ? 'ar-EG' : 'en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
-                        {sub.endDate
-                          ? ` • ${isRtl ? 'ينتهي' : 'Ends'}: ${new Date(sub.endDate).toLocaleDateString(isRtl ? 'ar-EG' : 'en-US', { year: 'numeric', month: 'short', day: 'numeric' })}`
-                          : ` • ${isRtl ? 'مدى الحياة' : 'Lifetime'}`}
+                      </p>
+                      <p className="text-xs text-emerald-600 mt-0.5">
+                        {isRtl ? '📚 الدورة التعليمية: ملكك للأبد' : '📚 Course: Yours forever'}
+                        {isComprehensive && (activePackage as any)?.lexaiEndDate && (
+                          <> • {isRtl ? '🤖 LexAI والتوصيات' : '🤖 LexAI & Recommendations'}: {remainingDays !== null && remainingDays > 0
+                            ? (isRtl ? `${remainingDays} يوم متبقي` : `${remainingDays} days left`)
+                            : (isRtl ? 'منتهي' : 'Expired')}</>
+                        )}
+                        {isBasic && (activePackage as any)?.recEndDate && (
+                          <> • {isRtl ? '📈 التوصيات' : '📈 Recommendations'}: {(() => {
+                            const recEnd = new Date((activePackage as any).recEndDate);
+                            const recDays = Math.ceil((recEnd.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                            return recDays > 0
+                              ? (isRtl ? `${recDays} يوم متبقي` : `${recDays} days left`)
+                              : (isRtl ? 'منتهي' : 'Expired');
+                          })()}</>
+                        )}
                       </p>
                     </div>
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* Timeline History */}
+        {timeline && timeline.length > 0 && (
+          <div className="mb-8">
+            <h2 className="text-xl font-bold mb-4">{isRtl ? 'سجل الأحداث' : 'Activity Timeline'}</h2>
+            <div className="relative border-s-2 border-emerald-200 ms-4">
+              {timeline.map((event: any, i: number) => {
+                const iconMap: Record<string, React.ReactNode> = {
+                  registration: <UserPlus className="w-4 h-4" />,
+                  key_activation: <Key className="w-4 h-4" />,
+                  enrollment: <BookOpen className="w-4 h-4" />,
+                  course_completed: <GraduationCap className="w-4 h-4" />,
+                  course_skipped: <GraduationCap className="w-4 h-4" />,
+                  broker_completed: <Landmark className="w-4 h-4" />,
+                  broker_skipped: <Landmark className="w-4 h-4" />,
+                  lexai_activated: <Bot className="w-4 h-4" />,
+                  lexai_expired: <Bot className="w-4 h-4" />,
+                  rec_activated: <TrendingUp className="w-4 h-4" />,
+                  rec_expired: <TrendingUp className="w-4 h-4" />,
+                };
+                const colorMap: Record<string, string> = {
+                  registration: 'bg-emerald-100 text-emerald-600',
+                  key_activation: 'bg-amber-100 text-amber-600',
+                  enrollment: 'bg-teal-100 text-teal-600',
+                  course_completed: 'bg-green-100 text-green-600',
+                  course_skipped: 'bg-amber-100 text-amber-600',
+                  broker_completed: 'bg-green-100 text-green-600',
+                  broker_skipped: 'bg-teal-100 text-teal-600',
+                  lexai_activated: 'bg-emerald-100 text-emerald-600',
+                  lexai_expired: 'bg-red-100 text-red-500',
+                  rec_activated: 'bg-emerald-100 text-emerald-600',
+                  rec_expired: 'bg-red-100 text-red-500',
+                };
+                return (
+                  <div key={i} className="mb-4 ms-6 relative">
+                    <div className={`absolute -start-[calc(1.5rem+1px)] w-8 h-8 rounded-full flex items-center justify-center ${colorMap[event.type] || 'bg-gray-100 text-gray-500'}`}>
+                      {iconMap[event.type] || <Clock className="w-4 h-4" />}
+                    </div>
+                    <div className="bg-white border rounded-lg p-3 ms-2">
+                      <p className="text-sm font-medium text-gray-900">{isRtl ? event.labelAr : event.labelEn}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {new Date(event.date).toLocaleDateString(isRtl ? 'ar-EG' : 'en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}

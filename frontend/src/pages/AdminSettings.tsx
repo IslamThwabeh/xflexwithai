@@ -1,7 +1,7 @@
 // client/src/pages/AdminSettings.tsx
 import DashboardLayout from "@/components/DashboardLayout";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { Settings, Bell, Mail, Save, Loader2 } from 'lucide-react';
+import { Settings, Bell, Mail, Save, Loader2, GraduationCap } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { trpc } from '@/lib/trpc';
@@ -37,6 +37,7 @@ export default function AdminSettings() {
   // Local state for admin email
   const [notifEmail, setNotifEmail] = useState('');
   const [emailPrefs, setEmailPrefs] = useState<Record<string, boolean>>({});
+  const [studyPeriodDays, setStudyPeriodDays] = useState(14);
 
   useEffect(() => {
     if (allSettings) {
@@ -47,6 +48,9 @@ export default function AdminSettings() {
       try {
         setEmailPrefs(ep?.settingValue ? JSON.parse(ep.settingValue) : {});
       } catch { setEmailPrefs({}); }
+
+      const spd = allSettings.find((s: any) => s.settingKey === 'study_period_days');
+      setStudyPeriodDays(spd?.settingValue ? parseInt(spd.settingValue, 10) || 14 : 14);
     }
   }, [allSettings]);
 
@@ -98,6 +102,43 @@ export default function AdminSettings() {
                 <Button
                   size="sm"
                   onClick={() => updateSetting.mutate({ key: 'notification_email', value: notifEmail })}
+                  disabled={updateSetting.isPending}
+                >
+                  {updateSetting.isPending ? <Loader2 className="w-4 h-4 me-1 animate-spin" /> : <Save className="w-4 h-4 me-1" />}
+                  {isRtl ? 'حفظ' : 'Save'}
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Study Period Setting */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <GraduationCap className="w-5 h-5 text-emerald-500" />
+                  {isRtl ? 'فترة التعلم' : 'Study Period'}
+                </CardTitle>
+                <CardDescription>
+                  {isRtl
+                    ? 'عدد الأيام المسموحة للطالب لإنهاء الدورة وفتح حساب الوسيط قبل تفعيل LexAI والتوصيات تلقائياً'
+                    : 'Number of days a student has to finish the course and broker onboarding before LexAI & Recommendations auto-activate'}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <input
+                    type="number"
+                    min={1}
+                    max={60}
+                    value={studyPeriodDays}
+                    onChange={e => setStudyPeriodDays(Math.max(1, Math.min(60, parseInt(e.target.value, 10) || 14)))}
+                    className="w-24 border rounded px-3 py-2 text-sm dark:bg-slate-900 dark:border-slate-700"
+                    dir="ltr"
+                  />
+                  <span className="text-sm text-gray-500">{isRtl ? 'يوم' : 'days'}</span>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() => updateSetting.mutate({ key: 'study_period_days', value: String(studyPeriodDays) })}
                   disabled={updateSetting.isPending}
                 >
                   {updateSetting.isPending ? <Loader2 className="w-4 h-4 me-1 animate-spin" /> : <Save className="w-4 h-4 me-1" />}

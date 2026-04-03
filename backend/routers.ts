@@ -1613,6 +1613,13 @@ export const appRouter = router({
         logger.procedure('enrollments.rollbackBrokerSkip', input, ctx.user.id);
         return db.rollbackBrokerOnboardingSkip(input.userId, ctx.user.id);
       }),
+
+    // Admin: get a student's full timeline for troubleshooting
+    studentTimeline: adminProcedure
+      .input(z.object({ userId: z.number() }))
+      .query(async ({ input }) => {
+        return db.getStudentTimeline(input.userId);
+      }),
   }),
 
   episodeQuiz: router({
@@ -3301,6 +3308,12 @@ export const appRouter = router({
     activationStatus: protectedProcedure.query(async ({ ctx }) => {
       if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
       return db.getPendingActivationStatus(ctx.user.id);
+    }),
+
+    // User: get subscription timeline history
+    myTimeline: protectedProcedure.query(async ({ ctx }) => {
+      if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+      return db.getStudentTimeline(ctx.user.id);
     }),
 
     // User: check if LexAI / Recommendations are frozen

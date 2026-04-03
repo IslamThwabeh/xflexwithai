@@ -44,6 +44,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { printReport } from "@/lib/printReport";
 import {
   useDataTable,
@@ -65,6 +71,15 @@ import {
   FastForward,
   Undo2,
   Building2,
+  Info,
+  UserPlus,
+  Key,
+  GraduationCap,
+  Landmark,
+  Bot,
+  TrendingUp,
+  BookOpen,
+  Clock,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -100,6 +115,11 @@ export default function AdminStudents() {
   const [skipBrokerConfirm, setSkipBrokerConfirm] = useState<{ id: number; name: string } | null>(null);
   const [rollbackBrokerConfirm, setRollbackBrokerConfirm] = useState<{ id: number; name: string } | null>(null);
   const [confirmNameInput, setConfirmNameInput] = useState("");
+  const [timelineUserId, setTimelineUserId] = useState<number | null>(null);
+  const { data: timelineData, isLoading: timelineLoading } = trpc.enrollments.studentTimeline.useQuery(
+    { userId: timelineUserId! },
+    { enabled: !!timelineUserId }
+  );
 
   const skipCourseMutation = trpc.enrollments.skipCourse.useMutation({
     onSuccess: () => {
@@ -567,7 +587,7 @@ export default function AdminStudents() {
                         {s.isAdminSkipped ? (
                           <>
                             <Badge variant="outline" className="text-amber-600 border-amber-300 bg-amber-50 text-xs">
-                              {isRtl ? "تم التخطي" : "Skipped"}
+                              {isRtl ? "الدورة" : "Course"}
                             </Badge>
                             <Button
                               variant="outline"
@@ -576,7 +596,7 @@ export default function AdminStudents() {
                               onClick={() => setRollbackConfirm({ id: s.id, name: s.name || s.email })}
                             >
                               <Undo2 className="w-3 h-3" />
-                              {isRtl ? "تراجع" : "Undo Skip"}
+                              {isRtl ? "تراجع" : "Undo"}
                             </Button>
                           </>
                         ) : (
@@ -592,9 +612,9 @@ export default function AdminStudents() {
                         )}
                         {s.brokerOnboardingComplete ? (
                           <>
-                            <Badge variant="outline" className="text-amber-600 border-amber-300 bg-amber-50 text-xs">
+                            <Badge variant="outline" className="text-teal-600 border-teal-300 bg-teal-50 text-xs">
                               <Building2 className="w-3 h-3 me-1" />
-                              {isRtl ? "تم تخطي الوسيط" : "Broker Skipped"}
+                              {isRtl ? "الوسيط" : "Broker"}
                             </Badge>
                             <Button
                               variant="outline"
@@ -617,6 +637,15 @@ export default function AdminStudents() {
                             {isRtl ? "تخطي الوسيط" : "Skip Broker"}
                           </Button>
                         )}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-xs gap-1"
+                          onClick={() => setTimelineUserId(s.id)}
+                        >
+                          <Info className="w-3 h-3" />
+                          {isRtl ? "السجل" : "History"}
+                        </Button>
                       </div>
                     </CardContent>
                   </Card>
@@ -776,7 +805,7 @@ export default function AdminStudents() {
                               {s.isAdminSkipped ? (
                                 <div className="flex items-center gap-1">
                                   <Badge variant="outline" className="text-amber-600 border-amber-300 bg-amber-50 text-xs">
-                                    {isRtl ? "تم التخطي" : "Skipped"}
+                                    {isRtl ? "الدورة" : "Course"}
                                   </Badge>
                                   <Button
                                     variant="ghost"
@@ -801,9 +830,9 @@ export default function AdminStudents() {
                               )}
                               {s.brokerOnboardingComplete ? (
                                 <div className="flex items-center gap-1">
-                                  <Badge variant="outline" className="text-amber-600 border-amber-300 bg-amber-50 text-xs">
+                                  <Badge variant="outline" className="text-teal-600 border-teal-300 bg-teal-50 text-xs">
                                     <Building2 className="w-3 h-3 me-0.5" />
-                                    {isRtl ? "وسيط" : "Broker"}
+                                    {isRtl ? "الوسيط" : "Broker"}
                                   </Badge>
                                   <Button
                                     variant="ghost"
@@ -812,6 +841,7 @@ export default function AdminStudents() {
                                     onClick={() => setRollbackBrokerConfirm({ id: s.id, name: s.name || s.email })}
                                   >
                                     <Undo2 className="w-3 h-3" />
+                                    {isRtl ? "تراجع" : "Undo"}
                                   </Button>
                                 </div>
                               ) : (
@@ -825,6 +855,14 @@ export default function AdminStudents() {
                                   {isRtl ? "وسيط" : "Broker"}
                                 </Button>
                               )}
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-xs gap-1 h-7"
+                                onClick={() => setTimelineUserId(s.id)}
+                              >
+                                <Info className="w-3 h-3" />
+                              </Button>
                               </div>
                             </TableCell>
                           </TableRow>
@@ -1037,6 +1075,64 @@ export default function AdminStudents() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Student Timeline Dialog */}
+      <Dialog open={!!timelineUserId} onOpenChange={(open) => { if (!open) setTimelineUserId(null); }}>
+        <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{isRtl ? "سجل أحداث الطالب" : "Student Timeline"}</DialogTitle>
+          </DialogHeader>
+          {timelineLoading ? (
+            <p className="text-sm text-muted-foreground py-4 text-center">{isRtl ? "جارٍ التحميل..." : "Loading..."}</p>
+          ) : timelineData && timelineData.length > 0 ? (
+            <div className="relative border-s-2 border-emerald-200 ms-4 py-2">
+              {timelineData.map((event: any, i: number) => {
+                const iconMap: Record<string, React.ReactNode> = {
+                  registration: <UserPlus className="w-3.5 h-3.5" />,
+                  key_activation: <Key className="w-3.5 h-3.5" />,
+                  enrollment: <BookOpen className="w-3.5 h-3.5" />,
+                  course_completed: <GraduationCap className="w-3.5 h-3.5" />,
+                  course_skipped: <GraduationCap className="w-3.5 h-3.5" />,
+                  broker_completed: <Landmark className="w-3.5 h-3.5" />,
+                  broker_skipped: <Landmark className="w-3.5 h-3.5" />,
+                  lexai_activated: <Bot className="w-3.5 h-3.5" />,
+                  lexai_expired: <Bot className="w-3.5 h-3.5" />,
+                  rec_activated: <TrendingUp className="w-3.5 h-3.5" />,
+                  rec_expired: <TrendingUp className="w-3.5 h-3.5" />,
+                };
+                const colorMap: Record<string, string> = {
+                  registration: 'bg-emerald-100 text-emerald-600',
+                  key_activation: 'bg-amber-100 text-amber-600',
+                  enrollment: 'bg-teal-100 text-teal-600',
+                  course_completed: 'bg-green-100 text-green-600',
+                  course_skipped: 'bg-amber-100 text-amber-600',
+                  broker_completed: 'bg-green-100 text-green-600',
+                  broker_skipped: 'bg-teal-100 text-teal-600',
+                  lexai_activated: 'bg-emerald-100 text-emerald-600',
+                  lexai_expired: 'bg-red-100 text-red-500',
+                  rec_activated: 'bg-emerald-100 text-emerald-600',
+                  rec_expired: 'bg-red-100 text-red-500',
+                };
+                return (
+                  <div key={i} className="mb-3 ms-5 relative">
+                    <div className={`absolute -start-[calc(1.25rem+1px)] w-6 h-6 rounded-full flex items-center justify-center ${colorMap[event.type] || 'bg-gray-100 text-gray-500'}`}>
+                      {iconMap[event.type] || <Clock className="w-3.5 h-3.5" />}
+                    </div>
+                    <div className="bg-gray-50 border rounded-lg p-2.5 ms-2">
+                      <p className="text-sm font-medium text-gray-900">{isRtl ? event.labelAr : event.labelEn}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {new Date(event.date).toLocaleDateString(isRtl ? 'ar-EG' : 'en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground py-4 text-center">{isRtl ? "لا توجد أحداث" : "No events found"}</p>
+          )}
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }
