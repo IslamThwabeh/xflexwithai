@@ -8,7 +8,7 @@ import { trpc } from "@/lib/trpc";
 import { BookOpen, GraduationCap, Play, CheckCircle2, Calendar, Gift, MessageSquareQuote, Newspaper, AlertCircle, Bot, TrendingUp, Trophy, Building2, ArrowRight } from "lucide-react";
 import { Link } from "wouter";
 import { format } from "date-fns";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import ClientLayout from "@/components/ClientLayout";
 import KeyActivationPrompt from "@/components/KeyActivationPrompt";
@@ -27,10 +27,6 @@ function formatSafeDate(
 export default function MyDashboard() {
   const { user, isAuthenticated, loading } = useAuth();
   const { t, isRTL, language } = useLanguage();
-  const utils = trpc.useUtils();
-  const didSyncRef = useRef(false);
-
-  const syncEntitlements = trpc.users.syncEntitlements.useMutation();
 
   const { data: enrollments, isLoading: enrollmentsLoading } = trpc.enrollments.myEnrollments.useQuery(
     undefined,
@@ -59,24 +55,6 @@ export default function MyDashboard() {
     retry: false,
     refetchOnWindowFocus: false,
   });
-
-  useEffect(() => {
-    if (!isAuthenticated) return;
-    if (!user?.email) return;
-    if (didSyncRef.current) return;
-
-    didSyncRef.current = true;
-    syncEntitlements
-      .mutateAsync()
-      .then(async () => {
-        await utils.enrollments.myEnrollments.invalidate();
-        await utils.lexai.getSubscription.invalidate();
-        await utils.recommendations.me.invalidate();
-      })
-      .catch(() => {
-        // best-effort
-      });
-  }, [isAuthenticated, syncEntitlements, user?.email, utils.enrollments.myEnrollments, utils.lexai.getSubscription, utils.recommendations.me]);
 
   // Computed values (safe before early returns)
   const totalCourses = enrollments?.length || 0;

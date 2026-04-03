@@ -1824,11 +1824,12 @@ export async function setRecommendationReaction(messageId: number, userId: numbe
 export async function syncUserEntitlementsFromKeys(userId: number, email: string) {
   const normalizedEmail = email.trim().toLowerCase();
   const packageKeys = await getActivatedPackageKeysByEmail(normalizedEmail);
-
-  // Only sync keys for packages the user doesn't already have an active subscription for.
-  // This prevents stacking days on every login.
-  const existingPackageSubs = await getUserPackageSubscriptions(userId);
-  const activePackageIds = new Set(existingPackageSubs.filter(s => s.isActive).map(s => s.packageId));
+  const activePackageSubs = await getUserPackageSubscriptions(userId);
+  const activePackageIds = new Set(
+    activePackageSubs
+      .map((subscription) => Number(subscription.packageId))
+      .filter((packageId) => Number.isFinite(packageId))
+  );
 
   // Also check LexAI/Rec — if already activated (non-pending), skip entirely
   const existingLexai = await getAnyLexaiSubscription(userId);
@@ -1838,8 +1839,9 @@ export async function syncUserEntitlementsFromKeys(userId: number, email: string
   console.log(`[syncEntitlements] userId=${userId} keys=${packageKeys.length} activePkgIds=[${[...activePackageIds]}] hasActiveSubs=${hasActiveSubs}`);
 
   for (const key of packageKeys) {
-    if (!key.packageId) continue;
-    if (activePackageIds.has(key.packageId)) {
+    const keyPackageId = Number(key.packageId);
+    if (!Number.isFinite(keyPackageId)) continue;
+    if (activePackageIds.has(keyPackageId)) {
       console.log(`[syncEntitlements] SKIP key ${key.id} pkgId=${key.packageId} — already has active packageSub`);
       continue;
     }
@@ -1848,7 +1850,7 @@ export async function syncUserEntitlementsFromKeys(userId: number, email: string
       continue;
     }
     console.log(`[syncEntitlements] FULFILLING key ${key.id} pkgId=${key.packageId}`);
-    await fulfillPackageEntitlements(userId, key.packageId, key.id, key.entitlementDays ?? undefined);
+    await fulfillPackageEntitlements(userId, keyPackageId, key.id, key.entitlementDays ?? undefined);
   }
 }
 
@@ -2249,6 +2251,7 @@ export async function renewPackageEntitlements(
 ) {
   const pkg = await getPackageById(packageId);
   if (!pkg) return;
+  const normalizedPackageId = Number(packageId);
 
   const entitlementDays = normalizePositiveInteger(entitlementDaysOverride)
     ?? normalizePositiveInteger(pkg.renewalPeriodDays)
@@ -2258,7 +2261,9 @@ export async function renewPackageEntitlements(
 
   // --- Package subscription ---
   const existingPackageSubs = await getUserPackageSubscriptions(userId);
-  const currentPkgSub = existingPackageSubs.find(s => s.packageId === packageId && s.isActive);
+  const currentPkgSub = existingPackageSubs.find(
+    (subscription) => Number(subscription.packageId) === normalizedPackageId && subscription.isActive
+  );
   if (!currentPkgSub) {
     // No existing sub — fall back to fresh activation
     await fulfillPackageEntitlements(userId, packageId, registrationKeyId, entitlementDays);
@@ -2365,6 +2370,7 @@ export async function fulfillPackageEntitlements(
 ) {
   const pkg = await getPackageById(packageId);
   if (!pkg) return;
+  const normalizedPackageId = Number(packageId);
 
   const entitlementDays = normalizePositiveInteger(entitlementDaysOverride)
     ?? normalizePositiveInteger(pkg.renewalPeriodDays)
@@ -2393,7 +2399,9 @@ export async function fulfillPackageEntitlements(
   const lexaiAlreadyActive = existingLexai && !existingLexai.isPendingActivation && existingLexai.endDate && new Date(existingLexai.endDate) > now;
   const recAlreadyActive = existingRec && !existingRec.isPendingActivation && existingRec.endDate && new Date(existingRec.endDate) > now;
   const existingPackageSubscriptions = await getUserPackageSubscriptions(userId);
-  const currentPackageSubscription = existingPackageSubscriptions.find((subscription) => subscription.packageId === packageId);
+  const currentPackageSubscription = existingPackageSubscriptions.find(
+    (subscription) => Number(subscription.packageId) === normalizedPackageId
+  );
 
   if (currentPackageSubscription && (lexaiAlreadyActive || recAlreadyActive)) {
     // User already has this package and active subs — just ensure enrollments exist, skip stacking
@@ -2427,7 +2435,9 @@ export async function fulfillPackageEntitlements(
 
   // ── Package subscription (course access = forever) ──
   const pkgSubs = await getUserPackageSubscriptions(userId);
-  const currentPkgSub = pkgSubs.find((subscription) => subscription.packageId === packageId);
+  const currentPkgSub = pkgSubs.find(
+    (subscription) => Number(subscription.packageId) === normalizedPackageId
+  );
 
   if (currentPkgSub) {
     await db.update(packageSubscriptions).set({
@@ -2697,7 +2707,9 @@ export async function processUpgrade(
 
   // Deactivate old subscription
   const subs = await getUserPackageSubscriptions(userId);
-  const oldSub = subs.find(s => s.packageId === fromPackageId && s.isActive);
+  const oldSub = subs.find(
+    (subscription) => Number(subscription.packageId) === Number(fromPackageId) && subscription.isActive
+  );
   if (oldSub) {
     await db.update(packageSubscriptions).set({
       isActive: false,
@@ -2710,7 +2722,9 @@ export async function processUpgrade(
 
   // Mark the new subscription as upgraded
   const newSubs = await getUserPackageSubscriptions(userId);
-  const newSub = newSubs.find(s => s.packageId === toPackageId && s.isActive);
+  const newSub = newSubs.find(
+    (subscription) => Number(subscription.packageId) === Number(toPackageId) && subscription.isActive
+  );
   if (newSub) {
     await db.update(packageSubscriptions).set({
       upgradedFromPackageId: fromPackageId,

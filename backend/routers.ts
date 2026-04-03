@@ -1157,8 +1157,9 @@ export const appRouter = router({
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'User email is required' });
       }
 
-      await db.syncUserEntitlementsFromKeys(ctx.user.id, ctx.user.email);
-      return { success: true };
+      // Disabled as an automatic dashboard command.
+      // Login/register already perform entitlement sync, and mount-driven re-entry here caused repeated expiry mutations.
+      return { success: true, skipped: true };
     }),
   }),
 
