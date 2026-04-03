@@ -1824,8 +1824,15 @@ export async function setRecommendationReaction(messageId: number, userId: numbe
 export async function syncUserEntitlementsFromKeys(userId: number, email: string) {
   const normalizedEmail = email.trim().toLowerCase();
   const packageKeys = await getActivatedPackageKeysByEmail(normalizedEmail);
+
+  // Only sync keys for packages the user doesn't already have an active subscription for.
+  // This prevents stacking days on every login.
+  const existingPackageSubs = await getUserPackageSubscriptions(userId);
+  const activePackageIds = new Set(existingPackageSubs.filter(s => s.isActive).map(s => s.packageId));
+
   for (const key of packageKeys) {
     if (!key.packageId) continue;
+    if (activePackageIds.has(key.packageId)) continue; // already fulfilled
     await fulfillPackageEntitlements(userId, key.packageId, key.id, key.entitlementDays ?? undefined);
   }
 }
@@ -6336,6 +6343,7 @@ export async function getUsersForDripEmail(dayNumber: number): Promise<Array<{
   const emailType = `drip_day_${dayNumber}`;
 
   // Find users whose packageSubscription startDate is exactly N days ago
+  // Exclude users who already completed broker onboarding (they already have LexAI/Rec active)
   const results = await db
     .select({
       userId: packageSubscriptions.userId,
@@ -6352,6 +6360,7 @@ export async function getUsersForDripEmail(dayNumber: number): Promise<Array<{
       eq(packageSubscriptions.isActive, true),
       sql`date(${packageSubscriptions.startDate}) = date('now', '-${sql.raw(String(dayNumber))} days')`,
       eq(users.isStaff, false),
+      sql`${users.brokerOnboardingComplete} IS NOT 1`,
     ));
 
   // Filter out users who already received this drip email
