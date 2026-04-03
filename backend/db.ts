@@ -2361,6 +2361,7 @@ export async function fulfillPackageEntitlements(
   const studyPeriodDays = await getStudyPeriodDays();
   const placeholderEndDate = buildEndDateFromDays(now, studyPeriodDays + entitlementDays);
   const maxActivationDate = buildEndDateFromDays(now, studyPeriodDays);
+  console.log(`[fulfillEntitlements] userId=${userId} pkgId=${packageId} entDays=${entitlementDays} studyDays=${studyPeriodDays}`);
 
   const db = await getDb();
   if (!db) return;
@@ -4381,6 +4382,7 @@ export async function activateStudentSubscriptions(userId: number, isAutoActivat
   const now = new Date();
   const entitlementDays = await getUserEntitlementDays(userId);
   const realEndDate = buildEndDateFromDays(now, entitlementDays);
+  console.log(`[activateSubs] userId=${userId} auto=${isAutoActivation} entitlementDays=${entitlementDays} endDate=${realEndDate.toISOString()}`);
 
   // Activate ALL pending subs (not just the first) to handle duplicate subscriptions
   const pendingLexai = await db
@@ -4393,23 +4395,28 @@ export async function activateStudentSubscriptions(userId: number, isAutoActivat
     .from(recommendationSubscriptions)
     .where(and(eq(recommendationSubscriptions.userId, userId), eq(recommendationSubscriptions.isPendingActivation, true)));
 
+  const nowStr = now.toISOString();
+  const endStr = realEndDate.toISOString();
+
   for (const sub of pendingLexai) {
+    console.log(`[activateSubs] LexAI id=${sub.id} oldEnd=${sub.endDate} newEnd=${endStr}`);
     await db.update(lexaiSubscriptions).set({
       isPendingActivation: false,
-      studentActivatedAt: now.toISOString(),
-      startDate: now.toISOString(),
-      endDate: realEndDate.toISOString(),
-      updatedAt: now.toISOString(),
+      studentActivatedAt: nowStr,
+      startDate: nowStr,
+      endDate: endStr,
+      updatedAt: nowStr,
     }).where(eq(lexaiSubscriptions.id, sub.id));
   }
 
   for (const sub of pendingRec) {
+    console.log(`[activateSubs] Rec id=${sub.id} oldEnd=${sub.endDate} newEnd=${endStr}`);
     await db.update(recommendationSubscriptions).set({
       isPendingActivation: false,
-      studentActivatedAt: now.toISOString(),
-      startDate: now.toISOString(),
-      endDate: realEndDate.toISOString(),
-      updatedAt: now.toISOString(),
+      studentActivatedAt: nowStr,
+      startDate: nowStr,
+      endDate: endStr,
+      updatedAt: nowStr,
     }).where(eq(recommendationSubscriptions.id, sub.id));
   }
 
