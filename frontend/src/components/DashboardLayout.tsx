@@ -94,7 +94,6 @@ const menuSectionsDef: MenuSection[] = [
       { icon: Tag, labelKey: "admin.sidebar.coupons", path: "/admin/coupons" },
       { icon: Building2, labelKey: "admin.sidebar.brokers", path: "/admin/brokers" },
       { icon: FileCheck, labelKey: "admin.sidebar.offerAgreements", path: "/admin/offer-agreements" },
-      { icon: GraduationCap, labelKey: "admin.sidebar.planProgress", path: "/admin/plan-progress" },
     ]
   },
   {
@@ -116,6 +115,7 @@ const menuSectionsDef: MenuSection[] = [
     labelKey: "admin.sidebar.learning",
     items: [
       { icon: BookOpen, labelKey: "admin.sidebar.courses", path: "/admin/courses" },
+      { icon: GraduationCap, labelKey: "admin.sidebar.planProgress", path: "/admin/plan-progress" },
       { icon: ClipboardCheck, labelKey: "admin.sidebar.quizzes", path: "/admin/quizzes" },
     ]
   },

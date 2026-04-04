@@ -147,9 +147,9 @@ export default function AdminClientProfileSheet({
       <SheetContent
         side={isRtl ? "left" : "right"}
         dir={isRtl ? "rtl" : "ltr"}
-        className="w-full border-slate-200 bg-[var(--color-xf-cream)] p-0 sm:max-w-2xl"
+        className="w-full gap-0 overflow-hidden border-slate-200 bg-[var(--color-xf-cream)] p-0 sm:max-w-2xl"
       >
-        <SheetHeader className="border-b border-emerald-100 bg-white/90">
+        <SheetHeader className="shrink-0 border-b border-emerald-100 bg-white/90">
           <SheetTitle className="flex items-center gap-2 text-xl">
             <UserRound className="h-5 w-5 text-emerald-600" />
             {isRtl ? "ملف العميل" : "Client Profile"}
@@ -182,7 +182,7 @@ export default function AdminClientProfileSheet({
             </Card>
           </div>
         ) : (
-          <ScrollArea className="flex-1">
+          <ScrollArea className="min-h-0 flex-1">
             <div className="space-y-4 p-4">
               <Card className="border-emerald-100 bg-white/95">
                 <CardHeader className="pb-3">

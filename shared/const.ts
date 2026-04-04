@@ -22,18 +22,18 @@ export const IDLE_TIMEOUT_ADMIN_MS = 15 * 60 * 1000;  // 15 min
 // Used by the "Staff Review" feature to preview what each employee sees.
 export const ROLE_PAGE_ACCESS: Record<string, string[]> = {
   // Core roles
-  support: ["/admin/support", "/admin/students", "/admin/notifications", "/admin/settings"],
-  lexai_support: ["/admin/lexai", "/admin/notifications", "/admin/settings"],
-  key_manager: ["/admin/package-keys", "/admin/students", "/admin/orders", "/admin/notifications", "/admin/settings"],
-  analyst: ["/admin/recommendations", "/admin/notifications", "/admin/settings"], // analyst only posts recommendations
+  support: ["/admin/support", "/admin/students", "/admin/notifications"],
+  lexai_support: ["/admin/lexai", "/admin/notifications"],
+  key_manager: ["/admin/package-keys", "/admin/students", "/admin/orders", "/admin/notifications"],
+  analyst: ["/admin/recommendations", "/admin/notifications"], // analyst only posts recommendations
 
   // Support permissions (view-only, grant read access to specific data)
-  client_lookup: ["/admin/students", "/admin/notifications", "/admin/settings"],
-  view_progress: ["/admin/students", "/admin/notifications", "/admin/settings"],
-  view_recommendations: ["/admin/students", "/admin/notifications", "/admin/settings"],
-  view_subscriptions: ["/admin/students", "/admin/notifications", "/admin/settings"],
-  view_quizzes: ["/admin/quizzes", "/admin/students", "/admin/notifications", "/admin/settings"],
-  plan_manager: ["/admin/plan-progress", "/admin/notifications", "/admin/settings"],
+  client_lookup: ["/admin/students", "/admin/notifications"],
+  view_progress: ["/admin/students", "/admin/notifications"],
+  view_recommendations: ["/admin/students", "/admin/notifications"],
+  view_subscriptions: ["/admin/students", "/admin/notifications"],
+  view_quizzes: ["/admin/quizzes", "/admin/students", "/admin/notifications"],
+  plan_manager: ["/admin/plan-progress", "/admin/notifications"],
 };
 
 // All available staff roles
