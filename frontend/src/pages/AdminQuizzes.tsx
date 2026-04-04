@@ -58,6 +58,8 @@ export default function AdminQuizzes() {
   const { language, t } = useLanguage();
   const isAr = language === "ar";
   const utils = trpc.useUtils();
+  const { data: adminCheck } = trpc.auth.isAdmin.useQuery();
+  const isAdmin = !!adminCheck?.isAdmin;
 
   // Queries
   const { data: quizzes, isLoading } = trpc.adminQuiz.list.useQuery();
@@ -218,14 +220,16 @@ export default function AdminQuizzes() {
             <ClipboardCheck className="w-6 h-6 text-emerald-600" />
             <h1 className="text-2xl font-bold">{t("admin.quizzes.title")}</h1>
           </div>
-          <Button onClick={() => setCreatingQuiz(true)} className="gap-1.5" disabled={creatingQuiz}>
-            <Plus className="w-4 h-4" />
-            {t("admin.quizzes.newQuiz")}
-          </Button>
+          {isAdmin && (
+            <Button onClick={() => setCreatingQuiz(true)} className="gap-1.5" disabled={creatingQuiz}>
+              <Plus className="w-4 h-4" />
+              {t("admin.quizzes.newQuiz")}
+            </Button>
+          )}
         </div>
 
         {/* Create New Quiz Form */}
-        {creatingQuiz && (
+        {isAdmin && creatingQuiz && (
           <div className="bg-white dark:bg-gray-900 border rounded-xl p-6 mb-6 shadow-sm">
             <h2 className="text-lg font-bold mb-4">{t("admin.quizzes.newQuiz")}</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -320,35 +324,37 @@ export default function AdminQuizzes() {
                     </Badge>
                     {isExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
                   </button>
-                  <div className="flex gap-1">
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => {
-                        setEditingQuizId(quiz.id);
-                        setEditQuizData({
-                          title: quiz.title,
-                          description: quiz.description || "",
-                          passingScore: quiz.passingScore,
-                          level: quiz.level,
-                        });
-                      }}
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="text-red-600 hover:text-red-700"
-                      onClick={() => handleDeleteQuiz(quiz.id)}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
+                  {isAdmin && (
+                    <div className="flex gap-1">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => {
+                          setEditingQuizId(quiz.id);
+                          setEditQuizData({
+                            title: quiz.title,
+                            description: quiz.description || "",
+                            passingScore: quiz.passingScore,
+                            level: quiz.level,
+                          });
+                        }}
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="text-red-600 hover:text-red-700"
+                        onClick={() => handleDeleteQuiz(quiz.id)}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Edit Quiz Inline */}
-                {isEditingThis && (
+                {isAdmin && isEditingThis && (
                   <div className="px-4 pb-4 border-t pt-4 bg-gray-50 dark:bg-gray-800">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <div>
@@ -433,24 +439,26 @@ export default function AdminQuizzes() {
                             </span>
                           )}
                         </h4>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            setAddingQuestionForQuiz(quiz.id);
-                            setNewQuestion({
-                              questionText: "",
-                              orderNum: (quizDetail?.questions?.length || 0) + 1,
-                            });
-                          }}
-                        >
-                          <Plus className="w-4 h-4 me-1" />
-                          {isAr ? "سؤال جديد" : "New Question"}
-                        </Button>
+                        {isAdmin && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setAddingQuestionForQuiz(quiz.id);
+                              setNewQuestion({
+                                questionText: "",
+                                orderNum: (quizDetail?.questions?.length || 0) + 1,
+                              });
+                            }}
+                          >
+                            <Plus className="w-4 h-4 me-1" />
+                            {isAr ? "سؤال جديد" : "New Question"}
+                          </Button>
+                        )}
                       </div>
 
                       {/* Add Question Form */}
-                      {addingQuestionForQuiz === quiz.id && (
+                      {isAdmin && addingQuestionForQuiz === quiz.id && (
                         <div className="border rounded-lg p-4 bg-emerald-50 dark:bg-emerald-900/20">
                           <div className="grid grid-cols-1 md:grid-cols-[1fr_120px] gap-3">
                             <div>
@@ -562,7 +570,7 @@ export default function AdminQuizzes() {
                                   <p className="font-medium">{question.questionText}</p>
                                 )}
                               </div>
-                              {!isEditingQ && (
+                              {isAdmin && !isEditingQ && (
                                 <div className="flex gap-1 shrink-0">
                                   <Button
                                     size="icon"
@@ -596,22 +604,24 @@ export default function AdminQuizzes() {
                                 <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                                   {isAr ? "الخيارات" : "Options"}
                                 </span>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="h-7 text-xs"
-                                  onClick={() => {
-                                    setAddingOptionForQuestion(question.id);
-                                    setNewOption({
-                                      optionId: nextOptionId(question.options),
-                                      optionText: "",
-                                      isCorrect: false,
-                                    });
-                                  }}
-                                >
-                                  <Plus className="w-3 h-3 me-1" />
-                                  {isAr ? "خيار" : "Option"}
-                                </Button>
+                                {isAdmin && (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-7 text-xs"
+                                    onClick={() => {
+                                      setAddingOptionForQuestion(question.id);
+                                      setNewOption({
+                                        optionId: nextOptionId(question.options),
+                                        optionText: "",
+                                        isCorrect: false,
+                                      });
+                                    }}
+                                  >
+                                    <Plus className="w-3 h-3 me-1" />
+                                    {isAr ? "خيار" : "Option"}
+                                  </Button>
+                                )}
                               </div>
 
                               {question.options.length === 0 && (
@@ -630,17 +640,23 @@ export default function AdminQuizzes() {
                                         : "bg-white dark:bg-gray-900 border"
                                     }`}
                                   >
-                                    <button
-                                      className="shrink-0"
-                                      title={isAr ? "تبديل الإجابة الصحيحة" : "Toggle correct answer"}
-                                      onClick={() => toggleCorrectOption(opt)}
-                                    >
-                                      {opt.isCorrect ? (
-                                        <CheckCircle2 className="w-5 h-5 text-green-600" />
-                                      ) : (
-                                        <Circle className="w-5 h-5 text-gray-400" />
-                                      )}
-                                    </button>
+                                    {isAdmin ? (
+                                      <button
+                                        className="shrink-0"
+                                        title={isAr ? "تبديل الإجابة الصحيحة" : "Toggle correct answer"}
+                                        onClick={() => toggleCorrectOption(opt)}
+                                      >
+                                        {opt.isCorrect ? (
+                                          <CheckCircle2 className="w-5 h-5 text-green-600" />
+                                        ) : (
+                                          <Circle className="w-5 h-5 text-gray-400" />
+                                        )}
+                                      </button>
+                                    ) : opt.isCorrect ? (
+                                      <CheckCircle2 className="w-5 h-5 shrink-0 text-green-600" />
+                                    ) : (
+                                      <Circle className="w-5 h-5 shrink-0 text-gray-400" />
+                                    )}
                                     <Badge
                                       variant="outline"
                                       className="font-mono font-bold text-xs min-w-[24px] justify-center"
@@ -648,20 +664,22 @@ export default function AdminQuizzes() {
                                       {opt.optionId}
                                     </Badge>
                                     <span className="flex-1">{opt.optionText}</span>
-                                    <Button
-                                      size="icon"
-                                      variant="ghost"
-                                      className="h-7 w-7 text-red-500 hover:text-red-600"
-                                      onClick={() => handleDeleteOption(opt.id)}
-                                    >
-                                      <Trash2 className="w-3 h-3" />
-                                    </Button>
+                                    {isAdmin && (
+                                      <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        className="h-7 w-7 text-red-500 hover:text-red-600"
+                                        onClick={() => handleDeleteOption(opt.id)}
+                                      >
+                                        <Trash2 className="w-3 h-3" />
+                                      </Button>
+                                    )}
                                   </div>
                                 ))}
                               </div>
 
                               {/* Add Option Form */}
-                              {isAddingOpt && (
+                              {isAdmin && isAddingOpt && (
                                 <div className="mt-2 border rounded-md p-3 bg-white dark:bg-gray-900">
                                   <div className="flex gap-2 items-end">
                                     <div className="w-16">

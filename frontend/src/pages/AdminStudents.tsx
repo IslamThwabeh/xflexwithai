@@ -91,6 +91,11 @@ const studentSortFns: Record<string, (a: any, b: any) => number> = {
 export default function AdminStudents() {
   const { language } = useLanguage();
   const isRtl = language === "ar";
+  const { data: adminCheck } = trpc.auth.isAdmin.useQuery();
+  const isAdmin = !!adminCheck?.isAdmin;
+  const staffRoles = adminCheck?.staffRoles ?? [];
+  const canManageCourseSkip = isAdmin || staffRoles.includes("support") || staffRoles.includes("key_manager");
+  const canManageBrokerSkip = isAdmin;
 
   const { data: students, isLoading } = trpc.reports.subscribers.useQuery();
   const utils = trpc.useUtils();
@@ -567,7 +572,7 @@ export default function AdminStudents() {
 
                       {/* Actions */}
                       <div className="pt-2 border-t flex gap-2 items-center flex-wrap">
-                        {s.isAdminSkipped ? (
+                        {canManageCourseSkip && (s.isAdminSkipped ? (
                           <>
                             <Badge variant="outline" className="text-amber-600 border-amber-300 bg-amber-50 text-xs">
                               {isRtl ? "الدورة" : "Course"}
@@ -592,8 +597,8 @@ export default function AdminStudents() {
                             <FastForward className="w-3 h-3" />
                             {isRtl ? "تخطي الدورة" : "Skip Course"}
                           </Button>
-                        )}
-                        {s.brokerOnboardingComplete ? (
+                        ))}
+                        {canManageBrokerSkip && (s.brokerOnboardingComplete ? (
                           <>
                             <Badge variant="outline" className="text-teal-600 border-teal-300 bg-teal-50 text-xs">
                               <Building2 className="w-3 h-3 me-1" />
@@ -619,7 +624,7 @@ export default function AdminStudents() {
                             <FastForward className="w-3 h-3" />
                             {isRtl ? "تخطي الوسيط" : "Skip Broker"}
                           </Button>
-                        )}
+                        ))}
                         <Button
                           variant="outline"
                           size="sm"
@@ -785,7 +790,7 @@ export default function AdminStudents() {
                             </TableCell>}
                             <TableCell>
                               <div className="flex flex-wrap items-center gap-1">
-                              {s.isAdminSkipped ? (
+                              {canManageCourseSkip && (s.isAdminSkipped ? (
                                 <div className="flex items-center gap-1">
                                   <Badge variant="outline" className="text-amber-600 border-amber-300 bg-amber-50 text-xs">
                                     {isRtl ? "الدورة" : "Course"}
@@ -810,8 +815,8 @@ export default function AdminStudents() {
                                   <FastForward className="w-3 h-3" />
                                   {isRtl ? "تخطي" : "Skip"}
                                 </Button>
-                              )}
-                              {s.brokerOnboardingComplete ? (
+                              ))}
+                              {canManageBrokerSkip && (s.brokerOnboardingComplete ? (
                                 <div className="flex items-center gap-1">
                                   <Badge variant="outline" className="text-teal-600 border-teal-300 bg-teal-50 text-xs">
                                     <Building2 className="w-3 h-3 me-0.5" />
@@ -837,7 +842,7 @@ export default function AdminStudents() {
                                   <FastForward className="w-3 h-3" />
                                   {isRtl ? "وسيط" : "Broker"}
                                 </Button>
-                              )}
+                              ))}
                               <Button
                                 variant="ghost"
                                 size="sm"
@@ -873,7 +878,7 @@ export default function AdminStudents() {
       </div>
 
       {/* Skip Course Confirmation Dialog */}
-      <AlertDialog open={!!skipConfirm} onOpenChange={(open) => { if (!open) { setSkipConfirm(null); setConfirmNameInput(""); } }}>
+      <AlertDialog open={canManageCourseSkip && !!skipConfirm} onOpenChange={(open) => { if (!open) { setSkipConfirm(null); setConfirmNameInput(""); } }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
@@ -920,7 +925,7 @@ export default function AdminStudents() {
       </AlertDialog>
 
       {/* Rollback Skip Confirmation Dialog */}
-      <AlertDialog open={!!rollbackConfirm} onOpenChange={(open) => { if (!open) { setRollbackConfirm(null); setConfirmNameInput(""); } }}>
+      <AlertDialog open={canManageCourseSkip && !!rollbackConfirm} onOpenChange={(open) => { if (!open) { setRollbackConfirm(null); setConfirmNameInput(""); } }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
@@ -967,7 +972,7 @@ export default function AdminStudents() {
       </AlertDialog>
 
       {/* Skip Broker Confirmation Dialog */}
-      <AlertDialog open={!!skipBrokerConfirm} onOpenChange={(open) => { if (!open) { setSkipBrokerConfirm(null); setConfirmNameInput(""); } }}>
+      <AlertDialog open={canManageBrokerSkip && !!skipBrokerConfirm} onOpenChange={(open) => { if (!open) { setSkipBrokerConfirm(null); setConfirmNameInput(""); } }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
@@ -1014,7 +1019,7 @@ export default function AdminStudents() {
       </AlertDialog>
 
       {/* Rollback Broker Skip Confirmation Dialog */}
-      <AlertDialog open={!!rollbackBrokerConfirm} onOpenChange={(open) => { if (!open) { setRollbackBrokerConfirm(null); setConfirmNameInput(""); } }}>
+      <AlertDialog open={canManageBrokerSkip && !!rollbackBrokerConfirm} onOpenChange={(open) => { if (!open) { setRollbackBrokerConfirm(null); setConfirmNameInput(""); } }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>

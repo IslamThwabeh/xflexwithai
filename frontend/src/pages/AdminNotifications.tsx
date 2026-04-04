@@ -8,10 +8,13 @@ import { useState, useMemo } from 'react';
 import { toast } from 'sonner';
 import { STAFF_NOTIFICATION_EVENTS, type StaffNotificationEventType } from '@shared/const';
 import { useLocation } from 'wouter';
+import { useEffect } from 'react';
 
 export default function AdminNotifications() {
   const { language } = useLanguage();
   const isRtl = language === 'ar';
+  const { data: adminCheck } = trpc.auth.isAdmin.useQuery();
+  const isAdmin = !!adminCheck?.isAdmin;
   const [tab, setTab] = useState<'alerts' | 'send'>('alerts');
   const [form, setForm] = useState({ titleEn: '', titleAr: '', contentEn: '', contentAr: '', type: 'info' as string, actionUrl: '' });
   const [sendEmail, setSendEmail] = useState(true);
@@ -29,13 +32,13 @@ export default function AdminNotifications() {
   const utils = trpc.useUtils();
 
   // Students for targeting
-  const { data: targetStudents } = trpc.notifications.targetStudents.useQuery(undefined, { enabled: tab === 'send' });
+  const { data: targetStudents } = trpc.notifications.targetStudents.useQuery(undefined, { enabled: isAdmin && tab === 'send' });
   // Sent history
-  const { data: sentHistory, isLoading: sentLoading } = trpc.notifications.sentHistory.useQuery(undefined, { enabled: tab === 'send' });
+  const { data: sentHistory, isLoading: sentLoading } = trpc.notifications.sentHistory.useQuery(undefined, { enabled: isAdmin && tab === 'send' });
   // Recipients for expanded batch
   const { data: batchRecipients, isLoading: recipientsLoading } = trpc.notifications.sentRecipients.useQuery(
     { batchId: expandedBatch! },
-    { enabled: !!expandedBatch }
+    { enabled: isAdmin && !!expandedBatch }
   );
 
   const sendMut = trpc.notifications.send.useMutation({
@@ -86,6 +89,12 @@ export default function AdminNotifications() {
 
   const unreadCount = (staffAlerts ?? []).filter((a: any) => !a.isRead).length;
 
+  useEffect(() => {
+    if (!isAdmin && tab === 'send') {
+      setTab('alerts');
+    }
+  }, [isAdmin, tab]);
+
   return (
     <DashboardLayout>
       <div className="p-4 md:p-6 space-y-6" dir={isRtl ? 'rtl' : 'ltr'}>
@@ -113,16 +122,18 @@ export default function AdminNotifications() {
               </span>
             )}
           </button>
-          <button onClick={() => setTab('send')}
-            className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors flex items-center gap-2 ${
-              tab === 'send'
-                ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 border-b-2 border-emerald-500'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            <Send className="w-4 h-4" />
-            {isRtl ? 'إرسال للطلاب' : 'Send to Students'}
-          </button>
+          {isAdmin && (
+            <button onClick={() => setTab('send')}
+              className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors flex items-center gap-2 ${
+                tab === 'send'
+                  ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 border-b-2 border-emerald-500'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <Send className="w-4 h-4" />
+              {isRtl ? 'إرسال للطلاب' : 'Send to Students'}
+            </button>
+          )}
         </div>
 
         {/* ── Tab: Staff Alerts ── */}
@@ -221,7 +232,7 @@ export default function AdminNotifications() {
         )}
 
         {/* ── Tab: Send to Students ── */}
-        {tab === 'send' && (
+        {isAdmin && tab === 'send' && (
           <div className="space-y-4">
             {/* Send Form - always visible */}
             <div className="bg-white dark:bg-slate-800 border rounded-xl p-5 space-y-4">
