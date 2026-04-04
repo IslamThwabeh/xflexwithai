@@ -180,7 +180,7 @@ export default {
       if (sub.daysLeft === 7 || sub.daysLeft === 3 || sub.daysLeft === 0) {
         await sendExpiryAlertEmail(sub.email, sub.name, sub.daysLeft, sub.packageName);
         // Staff alert for expiring subscriptions
-        db.notifyStaffByEvent('subscription_expiring', {
+        await db.notifyStaffByEvent('subscription_expiring', {
           titleEn: `Subscription expiring in ${sub.daysLeft} days – ${sub.name}`,
           titleAr: `اشتراك ينتهي خلال ${sub.daysLeft} أيام – ${sub.name}`,
           contentEn: `${sub.name}'s ${sub.packageName} expires in ${sub.daysLeft} day(s).`,
@@ -200,6 +200,30 @@ export default {
             ? 'Please renew to keep your access.'
             : `Your ${sub.packageName} expires soon. Renew now to avoid interruption.`,
           actionUrl: '/my-packages',
+        }).catch(() => {});
+      }
+    }
+
+    // Send LexAI-specific staff alerts (7 days, 3 days, and day-of)
+    const expiringLexaiWithin7 = await db.getExpiringLexaiSubscriptions(7);
+    for (const sub of expiringLexaiWithin7) {
+      if (sub.daysLeft === 7 || sub.daysLeft === 3 || sub.daysLeft === 0) {
+        const displayName = sub.name || sub.email;
+        await db.flagLexaiSupportCaseExpiry(sub.userId, sub.daysLeft);
+        await db.notifyStaffByEvent('lexai_expiry_soon', {
+          titleEn: sub.daysLeft === 0
+            ? `LexAI expires today – ${displayName}`
+            : `LexAI expires in ${sub.daysLeft} days – ${displayName}`,
+          titleAr: sub.daysLeft === 0
+            ? `ينتهي وصول LexAI اليوم – ${displayName}`
+            : `ينتهي وصول LexAI خلال ${sub.daysLeft} أيام – ${displayName}`,
+          contentEn: sub.daysLeft === 0
+            ? `${displayName}'s LexAI access expires today. Review the LexAI queue for follow-up.`
+            : `${displayName}'s LexAI access expires in ${sub.daysLeft} day(s). Review the LexAI queue for follow-up.`,
+          contentAr: sub.daysLeft === 0
+            ? `وصول LexAI للمستخدم ${displayName} ينتهي اليوم. راجع قائمة LexAI للمتابعة.`
+            : `وصول LexAI للمستخدم ${displayName} ينتهي خلال ${sub.daysLeft} يوم. راجع قائمة LexAI للمتابعة.`,
+          metadata: { userId: sub.userId, daysLeft: sub.daysLeft, endDate: sub.endDate },
         }).catch(() => {});
       }
     }

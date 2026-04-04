@@ -424,7 +424,7 @@ function AdminView() {
 
   const pauseSubscriptionMutation = trpc.recommendationAdmin.subscriptions.pause.useMutation({
     onSuccess: () => {
-      toast.success("تم إيقاف الاشتراك مؤقتاً");
+      toast.success(isRTL ? "تم تجميد الاشتراك" : "Subscription frozen");
       utils.recommendationAdmin.subscriptions.list.invalidate();
     },
     onError: (error) => toast.error(error.message),
@@ -432,7 +432,7 @@ function AdminView() {
 
   const resumeSubscriptionMutation = trpc.recommendationAdmin.subscriptions.resume.useMutation({
     onSuccess: () => {
-      toast.success("تم استئناف الاشتراك");
+      toast.success(isRTL ? "تم فك تجميد الاشتراك" : "Subscription unfrozen");
       utils.recommendationAdmin.subscriptions.list.invalidate();
     },
     onError: (error) => toast.error(error.message),
@@ -475,7 +475,7 @@ function AdminView() {
         <Card>
           <CardHeader>
             <CardTitle>{isRTL ? 'اشتراكات التوصيات' : 'Recommendation Subscriptions'}</CardTitle>
-            <CardDescription>{isRTL ? 'إيقاف أو استئناف الاشتراكات النشطة مؤقتاً' : 'Temporarily pause or resume active recommendation access'}</CardDescription>
+            <CardDescription>{isRTL ? 'تجميد أو فك تجميد الاشتراكات النشطة مؤقتاً' : 'Temporarily freeze or unfreeze active recommendation access'}</CardDescription>
           </CardHeader>
           <CardContent>
             <ResponsiveTable>
@@ -486,7 +486,7 @@ function AdminView() {
                   <TableHead>{isRTL ? 'البريد' : 'Email'}</TableHead>
                   <TableHead>{isRTL ? 'الحالة' : 'Status'}</TableHead>
                   <TableHead>{isRTL ? 'ينتهي' : 'Ends'}</TableHead>
-                  <TableHead>{isRTL ? 'المتبقي عند الإيقاف' : 'Paused balance'}</TableHead>
+                  <TableHead>{isRTL ? 'المتبقي عند التجميد' : 'Frozen balance'}</TableHead>
                   <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
@@ -497,7 +497,7 @@ function AdminView() {
                     <TableCell>{subscription.userEmail || '-'}</TableCell>
                     <TableCell>
                       <Badge variant={subscription.isPaused ? 'secondary' : 'default'}>
-                        {subscription.isPaused ? (isRTL ? 'موقوف مؤقتاً' : 'Paused') : (isRTL ? 'نشط' : 'Active')}
+                        {subscription.isPaused ? (isRTL ? 'مجمّد' : 'Frozen') : (isRTL ? 'نشط' : 'Active')}
                       </Badge>
                     </TableCell>
                     <TableCell>{subscription.endDate ? new Date(subscription.endDate).toLocaleDateString(isRTL ? 'ar-EG' : undefined) : '-'}</TableCell>
@@ -506,12 +506,12 @@ function AdminView() {
                       {subscription.isPaused ? (
                         <Button size="sm" variant="outline" onClick={() => resumeSubscriptionMutation.mutate({ subscriptionId: subscription.id })}>
                           <PlayCircle className="h-4 w-4 mr-1" />
-                          {isRTL ? 'استئناف' : 'Resume'}
+                          {isRTL ? 'فك التجميد' : 'Unfreeze'}
                         </Button>
                       ) : (
                         <Button size="sm" variant="outline" onClick={() => pauseSubscriptionMutation.mutate({ subscriptionId: subscription.id })}>
                           <PauseCircle className="h-4 w-4 mr-1" />
-                          {isRTL ? 'إيقاف مؤقت' : 'Pause'}
+                          {isRTL ? 'تجميد' : 'Freeze'}
                         </Button>
                       )}
                     </TableCell>

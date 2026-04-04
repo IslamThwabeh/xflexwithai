@@ -5,7 +5,7 @@ import {
   ChevronRight, Star, GraduationCap, BarChart3, Brain, Lightbulb,
   TrendingUp, Shield, FileText, Play, Calendar, Newspaper,
   Instagram, Facebook, Phone, ArrowUp, X, MessageCircle, Quote,
-  HelpCircle, Menu, KeyRound
+  HelpCircle, Menu, KeyRound, type LucideIcon
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -13,7 +13,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { trpc } from '@/lib/trpc';
 
 // Stage data with icons and individual prices (display only — to show package value)
-const stageData = [
+const stageData: Array<{ num: number; icon: LucideIcon; color: string; price: number; comingSoon?: boolean }> = [
   { num: 1, icon: BookOpen, color: 'from-emerald-500 to-emerald-600', price: 150 },
   { num: 2, icon: BarChart3, color: 'from-emerald-500 to-emerald-600', price: 300 },
   { num: 3, icon: TrendingUp, color: 'from-teal-500 to-teal-600', price: 200 },

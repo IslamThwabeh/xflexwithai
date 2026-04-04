@@ -119,7 +119,7 @@ export default function AdminLexaiConversations() {
           </div>
 
           {/* Messages */}
-          <Card>
+          <Card className="border-emerald-100/70 bg-white/95 shadow-sm">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <MessageSquare className="h-5 w-5" />
@@ -143,7 +143,7 @@ export default function AdminLexaiConversations() {
                         className={`p-4 rounded-lg ${
                           message.role === "user"
                             ? "bg-emerald-50 dark:bg-emerald-950/30 border-l-4 border-emerald-500"
-                            : "bg-gray-50 dark:bg-gray-800/50 border-l-4 border-gray-300"
+                            : "bg-[#faf7f2] dark:bg-slate-900/60 border-l-4 border-amber-200 dark:border-amber-900/50"
                         }`}
                       >
                         <div className="flex items-center justify-between mb-2">
@@ -206,7 +206,7 @@ export default function AdminLexaiConversations() {
         </div>
 
         {/* Users with conversations */}
-        <Card>
+        <Card className="border-emerald-100/70 bg-white/95 shadow-sm">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <User className="h-5 w-5" />
@@ -226,12 +226,12 @@ export default function AdminLexaiConversations() {
                 {conversationUsers.map((user) => (
                   <div
                     key={user.userId}
-                    className="flex items-center justify-between p-4 rounded-lg border hover:bg-accent cursor-pointer transition-colors"
+                    className="flex items-center justify-between rounded-lg border border-emerald-100/70 p-4 transition-colors hover:bg-emerald-50/60 dark:border-white/10 dark:hover:bg-emerald-950/20 cursor-pointer"
                     onClick={() => setSelectedUserId(user.userId)}
                   >
                     <div className="flex items-center gap-4">
-                      <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                        <User className="h-5 w-5 text-primary" />
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                        <User className="h-5 w-5" />
                       </div>
                       <div>
                         <p className="font-medium">{user.userName || "Unknown User"}</p>

@@ -26,6 +26,7 @@ import { toast } from "sonner";
 const ROLE_LABELS: Record<string, { labelKey: string; color: string; group: string }> = {
   analyst: { labelKey: "admin.roles.analyst", color: "bg-amber-100 text-amber-800", group: "Core Roles" },
   support: { labelKey: "admin.roles.support", color: "bg-emerald-100 text-emerald-800", group: "Core Roles" },
+  lexai_support: { labelKey: "admin.roles.lexaiSupport", color: "bg-teal-100 text-teal-800", group: "Core Roles" },
   key_manager: { labelKey: "admin.roles.keyManager", color: "bg-amber-100 text-amber-800", group: "Core Roles" },
   plan_manager: { labelKey: "admin.roles.planManager", color: "bg-teal-100 text-teal-800", group: "Core Roles" },
   view_progress: { labelKey: "admin.roles.viewProgress", color: "bg-green-100 text-green-800", group: "Support Permissions" },
@@ -36,7 +37,7 @@ const ROLE_LABELS: Record<string, { labelKey: string; color: string; group: stri
 };
 
 const ALL_ROLES = Object.keys(ROLE_LABELS) as Array<keyof typeof ROLE_LABELS>;
-type RoleKey = "analyst" | "support" | "key_manager" | "plan_manager" | "view_progress" | "view_recommendations" | "view_subscriptions" | "view_quizzes" | "client_lookup";
+type RoleKey = "analyst" | "support" | "lexai_support" | "key_manager" | "plan_manager" | "view_progress" | "view_recommendations" | "view_subscriptions" | "view_quizzes" | "client_lookup";
 
 export default function AdminRoles() {
   const [search, setSearch] = useState("");

@@ -1,4 +1,4 @@
-import { COOKIE_NAME } from "../shared/const";
+import { COOKIE_NAME, LEXAI_SUPPORT_CASE_PRIORITIES, LEXAI_SUPPORT_CASE_STATUSES } from "../shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
@@ -73,6 +73,19 @@ const supportStaffProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   return next({ ctx: { ...ctx, admin: null, staffRole: 'support' as const } });
 });
 
+const lexaiSupportProcedure = protectedProcedure.use(async ({ ctx, next }) => {
+  if (!ctx.user?.email) {
+    throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Not authenticated' });
+  }
+  const admin = await db.getAdminByEmail(ctx.user.email);
+  if (admin) return next({ ctx: { ...ctx, admin } });
+  const hasLexaiAccess = await db.hasAnyRole(ctx.user.id, ['lexai_support']);
+  if (!hasLexaiAccess) {
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'LexAI support access required' });
+  }
+  return next({ ctx: { ...ctx, admin: null } });
+});
+
 // Admin-or-role procedure factory
 const adminOrRoleProcedure = (roles: string[]) => protectedProcedure.use(async ({ ctx, next }) => {
   if (!ctx.user?.email) {
@@ -114,10 +127,6 @@ const ensureLexaiAccess = async (ctx: { user: { id: number; email?: string | nul
       await db.updateLexaiSubscription(subscription.id, { isActive: false });
       throw new TRPCError({ code: "FORBIDDEN", message: "LexAI subscription expired" });
     }
-  }
-
-  if (!admin && subscription.messagesUsed >= subscription.messagesLimit) {
-    throw new TRPCError({ code: "FORBIDDEN", message: "Monthly message limit reached" });
   }
 
   return { subscription, isAdmin: !!admin };
@@ -1576,15 +1585,14 @@ export const appRouter = router({
         await db.logAdminAction(ctx.user.id, input.userId, 'rollback_skip', {
           courseId: input.courseId,
           enrollmentId: result.enrollmentId,
-          currentProgress: result.currentProgress,
-          subscriptionsDeactivated: result.subscriptionsDeactivated,
+          restoredProgress: result.restoredProgress,
         });
 
         logger.info('Course skip rolled back by admin', {
           adminId: ctx.user.id,
           userId: input.userId,
           courseId: input.courseId,
-          subscriptionsDeactivated: result.subscriptionsDeactivated,
+          restoredProgress: result.restoredProgress,
         });
         return { success: true, ...result };
       }),
@@ -1615,10 +1623,16 @@ export const appRouter = router({
         return db.rollbackBrokerOnboardingSkip(input.userId, ctx.user.id);
       }),
 
-    // Admin: get a student's full timeline for troubleshooting
-    studentTimeline: adminProcedure
+    // Student timeline for troubleshooting (requires 'view_progress' or admin)
+    studentTimeline: supportStaffProcedure
       .input(z.object({ userId: z.number() }))
-      .query(async ({ input }) => {
+      .query(async ({ ctx, input }) => {
+        if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        const isAdmin = !!(ctx.user.email && await db.getAdminByEmail(ctx.user.email));
+        if (!isAdmin) {
+          const canView = await db.hasAnyRole(ctx.user.id, ['view_progress']);
+          if (!canView) throw new TRPCError({ code: 'FORBIDDEN', message: 'View progress permission required' });
+        }
         return db.getStudentTimeline(input.userId);
       }),
   }),
@@ -2371,6 +2385,111 @@ export const appRouter = router({
         return { success: true };
       }),
   }),
+
+  lexaiSupport: router({
+    listCases: lexaiSupportProcedure
+      .input(z.object({
+        search: z.string().max(200).optional(),
+        status: z.enum(LEXAI_SUPPORT_CASE_STATUSES).optional(),
+        assignedToMe: z.boolean().optional(),
+      }).optional())
+      .query(async ({ ctx, input }) => {
+        return db.listLexaiSupportCases({
+          search: input?.search,
+          status: input?.status,
+          assignedToUserId: input?.assignedToMe ? ctx.user.id : undefined,
+        });
+      }),
+
+    getCase: lexaiSupportProcedure
+      .input(z.object({ caseId: z.number() }))
+      .query(async ({ input }) => {
+        const supportCase = await db.getLexaiSupportCase(input.caseId);
+        if (!supportCase) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'LexAI support case not found' });
+        }
+        await db.markLexaiSupportCaseReviewed(input.caseId);
+        return supportCase;
+      }),
+
+    addNote: lexaiSupportProcedure
+      .input(z.object({
+        caseId: z.number(),
+        content: z.string().min(1).max(4000),
+        noteType: z.enum(['note', 'assignment', 'status_change', 'admin_request']).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        await db.addLexaiSupportNote({
+          caseId: input.caseId,
+          authorUserId: ctx.user.id,
+          content: input.content,
+          noteType: input.noteType,
+        });
+        return { success: true };
+      }),
+
+    notes: lexaiSupportProcedure
+      .input(z.object({ caseId: z.number() }))
+      .query(async ({ input }) => {
+        return db.getLexaiSupportNotes(input.caseId);
+      }),
+
+    assignCase: lexaiSupportProcedure
+      .input(z.object({ caseId: z.number(), assignedToUserId: z.number().nullable() }))
+      .mutation(async ({ ctx, input }) => {
+        await db.assignLexaiSupportCase(input.caseId, input.assignedToUserId, ctx.user.id, !!ctx.admin);
+        return { success: true };
+      }),
+
+    updateStatus: lexaiSupportProcedure
+      .input(z.object({
+        caseId: z.number(),
+        status: z.enum(LEXAI_SUPPORT_CASE_STATUSES),
+        note: z.string().max(1000).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        await db.updateLexaiSupportCaseStatus(input.caseId, input.status, ctx.user.id, input.note);
+        return { success: true };
+      }),
+
+    updatePriority: lexaiSupportProcedure
+      .input(z.object({
+        caseId: z.number(),
+        priority: z.enum(LEXAI_SUPPORT_CASE_PRIORITIES),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        await db.updateLexaiSupportCasePriority(input.caseId, input.priority, ctx.user.id);
+        return { success: true };
+      }),
+
+    requestFollowup: lexaiSupportProcedure
+      .input(z.object({ caseId: z.number(), note: z.string().max(1000).optional() }))
+      .mutation(async ({ ctx, input }) => {
+        await db.requestLexaiSupportFollowup(input.caseId, ctx.user.id, input.note);
+        return { success: true };
+      }),
+
+    pauseSubscription: adminProcedure
+      .input(z.object({ subscriptionId: z.number(), reason: z.string().optional() }))
+      .mutation(async ({ input }) => {
+        await db.pauseLexaiSubscription(input.subscriptionId, input.reason);
+        return { success: true };
+      }),
+
+    resumeSubscription: adminProcedure
+      .input(z.object({ subscriptionId: z.number() }))
+      .mutation(async ({ input }) => {
+        await db.resumeLexaiSubscription(input.subscriptionId);
+        return { success: true };
+      }),
+
+    deleteHistory: adminProcedure
+      .input(z.object({ userId: z.number() }))
+      .mutation(async ({ input }) => {
+        await db.deleteLexaiMessagesByUser(input.userId);
+        return { success: true };
+      }),
+  }),
   
   // Contact Support (public, sends email to admin)
   contactSupport: publicProcedure
@@ -2661,7 +2780,7 @@ export const appRouter = router({
     assign: adminProcedure
       .input(z.object({
         userId: z.number(),
-        role: z.enum(['analyst', 'support', 'key_manager', 'plan_manager', 'view_progress', 'view_recommendations', 'view_subscriptions', 'view_quizzes', 'client_lookup']),
+        role: z.enum(['analyst', 'support', 'lexai_support', 'key_manager', 'plan_manager', 'view_progress', 'view_recommendations', 'view_subscriptions', 'view_quizzes', 'client_lookup']),
       }))
       .mutation(async ({ ctx, input }) => {
         // Verify user exists
@@ -2676,7 +2795,7 @@ export const appRouter = router({
     remove: adminProcedure
       .input(z.object({
         userId: z.number(),
-        role: z.enum(['analyst', 'support', 'key_manager', 'plan_manager', 'view_progress', 'view_recommendations', 'view_subscriptions', 'view_quizzes', 'client_lookup']),
+        role: z.enum(['analyst', 'support', 'lexai_support', 'key_manager', 'plan_manager', 'view_progress', 'view_recommendations', 'view_subscriptions', 'view_quizzes', 'client_lookup']),
       }))
       .mutation(async ({ input }) => {
         await db.removeRole(input.userId, input.role);
@@ -2688,7 +2807,7 @@ export const appRouter = router({
     setRoles: adminProcedure
       .input(z.object({
         userId: z.number(),
-        roles: z.array(z.enum(['analyst', 'support', 'key_manager', 'plan_manager', 'view_progress', 'view_recommendations', 'view_subscriptions', 'view_quizzes', 'client_lookup'])),
+        roles: z.array(z.enum(['analyst', 'support', 'lexai_support', 'key_manager', 'plan_manager', 'view_progress', 'view_recommendations', 'view_subscriptions', 'view_quizzes', 'client_lookup'])),
       }))
       .mutation(async ({ ctx, input }) => {
         const user = await db.getUserById(input.userId);
@@ -2719,7 +2838,7 @@ export const appRouter = router({
         name: z.string().min(2),
         email: z.string().email(),
         phone: z.string().optional(),
-        roles: z.array(z.enum(['analyst', 'support', 'key_manager', 'plan_manager', 'view_progress', 'view_recommendations', 'view_subscriptions', 'view_quizzes', 'client_lookup'])).min(1),
+        roles: z.array(z.enum(['analyst', 'support', 'lexai_support', 'key_manager', 'plan_manager', 'view_progress', 'view_recommendations', 'view_subscriptions', 'view_quizzes', 'client_lookup'])).min(1),
       }))
       .mutation(async ({ ctx, input }) => {
         const userId = await db.createStaffUser({ name: input.name, email: input.email, phone: input.phone });
@@ -2732,6 +2851,7 @@ export const appRouter = router({
         const roleLabels: Record<string, string> = {
           analyst: 'Analyst / محلل',
           support: 'Support / دعم فني',
+          lexai_support: 'LexAI Support / دعم LexAI',
           key_manager: 'Key Manager / مدير المفاتيح',
           view_progress: 'View Progress / عرض التقدم',
           view_recommendations: 'View Recommendations / عرض التوصيات',
@@ -2910,7 +3030,7 @@ export const appRouter = router({
         return {
           isAdmin: true,
           isAnalyst: true,
-          permissions: ['support', 'analyst', 'client_lookup', 'view_progress', 'view_recommendations', 'view_subscriptions', 'view_quizzes', 'key_manager'],
+          permissions: ['support', 'lexai_support', 'analyst', 'client_lookup', 'view_progress', 'view_recommendations', 'view_subscriptions', 'view_quizzes', 'key_manager'],
         };
       }
       const roles = await db.getUserRoles(ctx.user.id);
@@ -4061,6 +4181,36 @@ export const appRouter = router({
       .input(z.object({ month: z.string().optional() }).optional())
       .query(async ({ input }) => {
         return db.getUpgradeStatistics(input?.month);
+      }),
+  }),
+
+  clientProfiles: router({
+    getProfile: adminOrRoleProcedure([
+      'support',
+      'lexai_support',
+      'key_manager',
+      'plan_manager',
+      'client_lookup',
+      'view_progress',
+      'view_recommendations',
+      'view_subscriptions',
+      'view_quizzes',
+    ])
+      .input(z.object({ userId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        if (!ctx.user) {
+          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Not authenticated' });
+        }
+
+        const canViewTimeline = !!ctx.admin || await db.hasAnyRole(ctx.user.id, ['view_progress']);
+        const profile = await db.getAdminClientProfile(input.userId, { includeTimeline: canViewTimeline });
+
+        return {
+          ...profile,
+          permissions: {
+            canViewTimeline,
+          },
+        };
       }),
   }),
 

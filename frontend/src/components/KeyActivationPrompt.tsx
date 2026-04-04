@@ -80,7 +80,7 @@ export default function KeyActivationPrompt({
       toast.error(isAr ? "لم يتم العثور على بريدك الإلكتروني" : "Email not found");
       return;
     }
-    activatePackageKey.mutate({ keyCode: keyCode.trim(), email: user.email });
+    activatePackageKey.mutate({ keyCode: keyCode.trim() });
   };
 
   const handleDismiss = () => {

@@ -23,6 +23,7 @@ export const IDLE_TIMEOUT_ADMIN_MS = 15 * 60 * 1000;  // 15 min
 export const ROLE_PAGE_ACCESS: Record<string, string[]> = {
   // Core roles
   support: ["/admin/support", "/admin/students", "/admin/notifications", "/admin/settings"],
+  lexai_support: ["/admin/lexai", "/admin/notifications", "/admin/settings"],
   key_manager: ["/admin/package-keys", "/admin/students", "/admin/orders", "/admin/notifications", "/admin/settings"],
   analyst: ["/admin/recommendations", "/admin/notifications", "/admin/settings"], // analyst only posts recommendations
 
@@ -37,10 +38,23 @@ export const ROLE_PAGE_ACCESS: Record<string, string[]> = {
 
 // All available staff roles
 export const ALL_STAFF_ROLES = [
-  "analyst", "support", "key_manager", "plan_manager",
+  "analyst", "support", "lexai_support", "key_manager", "plan_manager",
   "client_lookup", "view_progress", "view_recommendations", "view_subscriptions", "view_quizzes",
 ] as const;
 export type StaffRole = typeof ALL_STAFF_ROLES[number];
+
+export const LEXAI_SUPPORT_CASE_STATUSES = [
+  "open",
+  "waiting_student",
+  "escalated",
+  "resolved",
+] as const;
+
+export const LEXAI_SUPPORT_CASE_PRIORITIES = [
+  "normal",
+  "high",
+  "urgent",
+] as const;
 
 /** Given a list of staff roles, return the best admin page to land on. */
 export function getStaffLandingPage(roles: string[]): string {
@@ -55,6 +69,9 @@ export function getStaffLandingPage(roles: string[]): string {
 export const STAFF_NOTIFICATION_EVENTS = {
   new_support_message:  { labelEn: "New Support Message",       labelAr: "رسالة دعم جديدة",          roles: ["support"],      actionUrl: "/admin/support" },
   human_escalation:     { labelEn: "Human Escalation",          labelAr: "طلب تحويل لموظف",          roles: ["support"],      actionUrl: "/admin/support" },
+  lexai_case_assigned:  { labelEn: "LexAI Case Assigned",       labelAr: "تم تعيين حالة LexAI",      roles: ["lexai_support"], actionUrl: "/admin/lexai" },
+  lexai_followup_requested: { labelEn: "LexAI Follow-up Requested", labelAr: "تم طلب متابعة LexAI", roles: ["lexai_support"], actionUrl: "/admin/lexai" },
+  lexai_expiry_soon:    { labelEn: "LexAI Expiry Soon",         labelAr: "LexAI على وشك الانتهاء",   roles: ["lexai_support"], actionUrl: "/admin/lexai" },
   new_order:            { labelEn: "New Order",                 labelAr: "طلب جديد",                 roles: ["key_manager"],  actionUrl: "/admin/orders" },
   key_activated:        { labelEn: "Package Key Activated",     labelAr: "تم تفعيل مفتاح",            roles: ["key_manager"],  actionUrl: "/admin/package-keys" },
   offer_agreement:      { labelEn: "Offer Agreement Signed",    labelAr: "تم توقيع اتفاقية عرض",      roles: [],               actionUrl: "/admin/offer-agreements" },

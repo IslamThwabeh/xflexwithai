@@ -23,6 +23,7 @@ const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
 const AdminCourses = lazy(() => import("./pages/AdminCourses"));
 const AdminEpisodes = lazy(() => import("./pages/AdminEpisodes"));
 const AdminUsers = lazy(() => import("./pages/AdminStudents"));
+const AdminLexai = lazy(() => import("./pages/AdminLexai"));
 const AdminLexaiSubscriptions = lazy(() => import("./pages/AdminLexaiSubscriptions"));
 const AdminLexaiConversations = lazy(() => import("./pages/AdminLexaiConversations"));
 const AdminRecommendations = lazy(() => import("./pages/AdminRecommendations"));
@@ -158,6 +159,11 @@ function Router() {
       <Route path={"/admin/package-keys"}>
         <AdminRoute>
           <AdminPackageKeys />
+        </AdminRoute>
+      </Route>
+      <Route path={"/admin/lexai"}>
+        <AdminRoute>
+          <AdminLexai />
         </AdminRoute>
       </Route>
       <Route path={"/admin/lexai/subscriptions"}>

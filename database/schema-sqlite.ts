@@ -1348,6 +1348,40 @@ export type EmailLog = typeof emailLog.$inferSelect;
 export type InsertEmailLog = typeof emailLog.$inferInsert;
 
 // ============================================================================
+// LexAI Support Cases — internal workflow queue for LexAI monitoring/support
+// ============================================================================
+
+export const lexaiSupportCases = sqliteTable("lexai_support_cases", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  userId: integer("userId").notNull().unique(),
+  status: text("status").default("open").notNull(),
+  priority: text("priority").default("normal").notNull(),
+  assignedToUserId: integer("assignedToUserId"),
+  assignedByUserId: integer("assignedByUserId"),
+  lastMessageAt: text("lastMessageAt"),
+  lastReviewedAt: text("lastReviewedAt"),
+  resolvedAt: text("resolvedAt"),
+  resolvedByUserId: integer("resolvedByUserId"),
+  createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
+  updatedAt: text("updatedAt").default(sql`(datetime('now'))`).notNull(),
+});
+
+export type LexaiSupportCase = typeof lexaiSupportCases.$inferSelect;
+export type InsertLexaiSupportCase = typeof lexaiSupportCases.$inferInsert;
+
+export const lexaiSupportNotes = sqliteTable("lexai_support_notes", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  caseId: integer("caseId").notNull(),
+  authorUserId: integer("authorUserId").notNull(),
+  noteType: text("noteType").default("note").notNull(),
+  content: text("content").notNull(),
+  createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
+});
+
+export type LexaiSupportNote = typeof lexaiSupportNotes.$inferSelect;
+export type InsertLexaiSupportNote = typeof lexaiSupportNotes.$inferInsert;
+
+// ============================================================================
 // Staff Notifications (Admin/Staff inbox — separate from student notifications)
 // ============================================================================
 

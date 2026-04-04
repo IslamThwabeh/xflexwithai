@@ -593,6 +593,9 @@ export async function sendQuizFeedbackEmail(to: string, data: {
 const EVENT_EMOJI: Record<string, string> = {
   new_support_message: '💬',
   human_escalation: '🚨',
+  lexai_case_assigned: '🧠',
+  lexai_followup_requested: '📌',
+  lexai_expiry_soon: '⌛',
   new_order: '🛒',
   key_activated: '🔑',
   offer_agreement: '📝',

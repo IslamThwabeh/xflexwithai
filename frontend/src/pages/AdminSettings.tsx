@@ -41,16 +41,13 @@ export default function AdminSettings() {
 
   useEffect(() => {
     if (allSettings) {
-      const emailSetting = allSettings.find((s: any) => s.settingKey === 'notification_email');
-      setNotifEmail(emailSetting?.settingValue ?? '');
+      setNotifEmail(allSettings.notification_email ?? '');
 
-      const ep = allSettings.find((s: any) => s.settingKey === 'email_alert_prefs');
       try {
-        setEmailPrefs(ep?.settingValue ? JSON.parse(ep.settingValue) : {});
+        setEmailPrefs(allSettings.email_alert_prefs ? JSON.parse(allSettings.email_alert_prefs) : {});
       } catch { setEmailPrefs({}); }
 
-      const spd = allSettings.find((s: any) => s.settingKey === 'study_period_days');
-      setStudyPeriodDays(spd?.settingValue ? parseInt(spd.settingValue, 10) || 14 : 14);
+      setStudyPeriodDays(allSettings.study_period_days ? parseInt(allSettings.study_period_days, 10) || 14 : 14);
     }
   }, [allSettings]);
 

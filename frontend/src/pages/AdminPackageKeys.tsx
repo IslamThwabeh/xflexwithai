@@ -218,7 +218,7 @@ export default function AdminPackageKeys() {
 
   const unfreezeUser = trpc.packageKeys.unfreeze.useMutation({
     onSuccess: () => {
-      toast.success(language === 'ar' ? 'تم استئناف الاشتراكات' : 'Subscriptions resumed');
+      toast.success(language === 'ar' ? 'تم فك تجميد الاشتراكات' : 'Subscriptions unfrozen');
       keysQuery.refetch();
     },
     onError: (err) => toast.error(err.message),
@@ -886,7 +886,7 @@ export default function AdminPackageKeys() {
                           disabled={unfreezeUser.isPending}
                         >
                           <PlayCircle className="w-4 h-4" />
-                          {language === 'ar' ? 'استئناف' : 'Unfreeze'}
+                          {language === 'ar' ? 'فك التجميد' : 'Unfreeze'}
                         </Button>
                       ) : (
                         <Button
@@ -1087,7 +1087,7 @@ export default function AdminPackageKeys() {
                                 className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
                                 onClick={() => unfreezeUser.mutate({ userId: key.userId as number })}
                                 disabled={unfreezeUser.isPending}
-                                title={language === 'ar' ? 'استئناف الاشتراكات' : 'Unfreeze subscriptions'}
+                                title={language === 'ar' ? 'فك تجميد الاشتراكات' : 'Unfreeze subscriptions'}
                               >
                                 <PlayCircle className="w-4 h-4" />
                               </Button>
@@ -1363,8 +1363,8 @@ export default function AdminPackageKeys() {
             <DialogTitle>{language === 'ar' ? 'تجميد الاشتراكات' : 'Freeze Subscriptions'}</DialogTitle>
             <DialogDescription>
               {language === 'ar'
-                ? 'سيتم إيقاف اشتراكات LexAI والتوصيات مؤقتًا.'
-                : 'LexAI and recommendation subscriptions will be paused.'}
+                ? 'سيتم تجميد اشتراكات LexAI والتوصيات مؤقتًا.'
+                : 'LexAI and recommendation subscriptions will be frozen.'}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">

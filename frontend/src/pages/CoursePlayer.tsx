@@ -60,10 +60,6 @@ export default function CoursePlayer() {
     { courseId },
     { enabled: !!user }
   );
-  const { data: hasAccess } = trpc.registrationKeys.checkAccess.useQuery(
-    { email: user?.email || "", courseId },
-    { enabled: !!user?.email }
-  );
 
   // Mutations
   const updateProgress = trpc.episodeProgress.updateProgress.useMutation();
@@ -154,7 +150,7 @@ export default function CoursePlayer() {
     );
   }
 
-  if (!hasAccess?.hasAccess) {
+  if (!enrollment) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
         <Card className="max-w-md">

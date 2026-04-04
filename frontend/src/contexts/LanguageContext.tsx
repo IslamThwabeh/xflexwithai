@@ -307,7 +307,7 @@ const translations = {
     'lexai.subscribe.title': 'Subscribe to LexAI',
     'lexai.subscribe.desc': 'Get AI-powered currency analysis and trading recommendations',
     'lexai.subscribe.price': '$29.99/month',
-    'lexai.subscribe.feature1': '100 chart analyses per month',
+    'lexai.subscribe.feature1': 'Unlimited chart analyses during your active access',
     'lexai.subscribe.feature2': 'Real-time market insights',
     'lexai.subscribe.feature3': 'Trading recommendations',
     'lexai.subscribe.feature4': 'Technical analysis reports',
@@ -593,7 +593,7 @@ const translations = {
 
     // Admin Roles
     'admin.roles.title': 'Role Management',
-    'admin.roles.subtitle': 'Assign and manage user roles: Analyst, Support, Key Manager, and support permissions',
+    'admin.roles.subtitle': 'Assign and manage user roles: Analyst, Support, LexAI Support, Key Manager, and support permissions',
     'admin.roles.assignRole': 'Assign Role',
     'admin.roles.assignToUser': 'Assign Role to User',
     'admin.roles.selectUser': 'Select User',
@@ -611,6 +611,7 @@ const translations = {
     'admin.roles.usersWithRole': 'users with this role',
     'admin.roles.analyst': 'Analyst',
     'admin.roles.support': 'Support',
+    'admin.roles.lexaiSupport': 'LexAI Support',
     'admin.roles.keyManager': 'Key Manager',
     'admin.roles.planManager': 'Plan Manager',
     'admin.roles.viewProgress': 'View Progress',
@@ -1382,7 +1383,7 @@ const translations = {
     'lexai.subscribe.title': 'اشترك في ليكس إيه آي',
     'lexai.subscribe.desc': 'احصل على تحليل العملات وتوصيات التداول بالذكاء الاصطناعي',
     'lexai.subscribe.price': '$29.99/شهريًا',
-    'lexai.subscribe.feature1': '100 تحليل رسم بياني شهريًا',
+    'lexai.subscribe.feature1': 'تحليلات شارت غير محدودة طوال فترة الوصول النشط',
     'lexai.subscribe.feature2': 'رؤى السوق في الوقت الفعلي',
     'lexai.subscribe.feature3': 'توصيات التداول',
     'lexai.subscribe.feature4': 'تقارير التحليل الفني',
@@ -1668,7 +1669,7 @@ const translations = {
 
     // Admin Roles
     'admin.roles.title': 'إدارة الأدوار',
-    'admin.roles.subtitle': 'تعيين وإدارة أدوار المستخدمين: المحلل، الدعم، مدير المفاتيح، وصلاحيات الدعم',
+    'admin.roles.subtitle': 'تعيين وإدارة أدوار المستخدمين: المحلل، الدعم، دعم LexAI، مدير المفاتيح، وصلاحيات الدعم',
     'admin.roles.assignRole': 'تعيين دور',
     'admin.roles.assignToUser': 'تعيين دور لمستخدم',
     'admin.roles.selectUser': 'اختر المستخدم',
@@ -1686,6 +1687,7 @@ const translations = {
     'admin.roles.usersWithRole': 'مستخدم لديه هذا الدور',
     'admin.roles.analyst': 'المحلل',
     'admin.roles.support': 'الدعم',
+    'admin.roles.lexaiSupport': 'دعم LexAI',
     'admin.roles.keyManager': 'مدير المفاتيح',
     'admin.roles.planManager': 'مدير الخطة التعليمية',
     'admin.roles.viewProgress': 'عرض التقدم',

@@ -16,7 +16,7 @@ import {
 import { FileUpload } from "@/components/FileUpload";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { trpc } from "@/lib/trpc";
-import { Sparkles, AlertCircle, Crown, CheckCircle2, ImageIcon, Trash2, BookOpen, MessageSquare, Building2 } from "lucide-react";
+import { Sparkles, Crown, CheckCircle2, ImageIcon, Trash2, BookOpen, MessageSquare, Building2 } from "lucide-react";
 import { useState, useRef, useEffect, useMemo } from "react";
 import { toast } from "sonner";
 import { Link } from "wouter";
@@ -175,7 +175,8 @@ export default function LexAI() {
 
   const isAdmin = !!adminCheck?.isAdmin;
   const isFrozenSub = !!(subscription && 'isFrozen' in subscription && subscription.isFrozen);
-  const hasActiveSubscription = !!(subscription && !isFrozenSub && subscription.isActive);
+  const activeSubscription = subscription && !('isFrozen' in subscription) ? subscription : null;
+  const hasActiveSubscription = !!activeSubscription?.isActive;
 
   const isBusy =
     uploadImage.isPending ||
@@ -189,26 +190,19 @@ export default function LexAI() {
   const isArabicText = (value: string) => /[\u0600-\u06FF]/.test(value);
 
   const remainingDays = useMemo(() => {
-    if (!subscription) return 0;
-    if (Number(subscription.messagesUsed ?? 0) === 0) return 30;
-    const end = new Date(subscription.endDate ?? "");
+    if (!activeSubscription) return 0;
+    if (Number(activeSubscription.messagesUsed ?? 0) === 0) return 30;
+    const end = new Date(activeSubscription.endDate ?? "");
     if (Number.isNaN(end.getTime())) return 0;
     const diff = end.getTime() - Date.now();
     return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
-  }, [subscription]);
+  }, [activeSubscription]);
 
   const formatMessageDate = (value: string | number | Date | null | undefined) => {
     if (!value) return "";
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return "";
     return format(date, "MMM d, h:mm a");
-  };
-
-  const formatRenewalDate = (value: string | number | Date | null | undefined) => {
-    if (!value) return "";
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return "";
-    return format(date, "MMM d, yyyy");
   };
 
   useEffect(() => {
@@ -538,8 +532,6 @@ export default function LexAI() {
     );
   }
 
-  const messagesRemaining = subscription ? subscription.messagesLimit - subscription.messagesUsed : 0;
-
   return (
     <ClientLayout>
     <div className="min-h-[calc(100vh-64px)] md:min-h-0 bg-[var(--color-xf-cream)] flex flex-col">
@@ -621,7 +613,9 @@ export default function LexAI() {
                               src={message.imageUrl}
                               alt="Chart"
                               className="rounded-lg max-w-[120px] max-h-[90px] object-cover bg-black/5 cursor-pointer hover:opacity-80 transition-opacity"
-                              onClick={() => window.open(message.imageUrl, '_blank')}
+                              onClick={() => {
+                                if (message.imageUrl) window.open(message.imageUrl, '_blank');
+                              }}
                             />
                           </div>
                         )}
@@ -703,18 +697,6 @@ export default function LexAI() {
           {/* Bottom input area - only show when a flow is selected */}
           {guidedFlow !== "menu" && (
           <div className="border-t bg-white shrink-0">
-            {!isAdmin && messagesRemaining <= 0 && (
-              <div className="mx-3 mt-3 p-2 bg-yellow-50 border border-yellow-200 rounded-lg flex items-start gap-2">
-                <AlertCircle className="h-4 w-4 text-yellow-600 mt-0.5" />
-                <div className="text-xs">
-                  <p className="font-medium text-yellow-900">{copy.monthlyLimitReached}</p>
-                  <p className="text-yellow-700">
-                    {copy.renewOn} {formatRenewalDate(subscription?.endDate)}
-                  </p>
-                </div>
-              </div>
-            )}
-
             <div className="p-3 space-y-3 max-h-[40vh] overflow-y-auto" dir="rtl">
               {guidedFlow === "specialized_m15" && <div className="text-xs text-muted-foreground text-right">{copy.uploadM15First}</div>}
               {guidedFlow === "specialized_h4" && <div className="text-xs text-muted-foreground text-right">{copy.uploadH4Second}</div>}
@@ -752,7 +734,7 @@ export default function LexAI() {
                 <Button variant="ghost" size="sm" onClick={() => { resetInputs(); setGuidedFlow("menu"); }}>
                   {copy.cancelFlow}
                 </Button>
-                <Button size="sm" onClick={handleAnalyze} disabled={isBusy || (!isAdmin && messagesRemaining <= 0)}>
+                <Button size="sm" onClick={handleAnalyze} disabled={isBusy}>
                   {isBusy ? copy.analyzing : guidedFlow === "specialized_m15" ? copy.runM15 : guidedFlow === "specialized_h4" ? copy.runH4 : copy.runAnalysis}
                 </Button>
               </div>

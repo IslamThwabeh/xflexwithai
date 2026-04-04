@@ -105,6 +105,13 @@ const menuSectionsDef: MenuSection[] = [
     ]
   },
   {
+    icon: MessageSquare,
+    labelKey: "admin.sidebar.lexai",
+    items: [
+      { icon: MessageSquare, labelKey: "admin.sidebar.lexai", path: "/admin/lexai" },
+    ]
+  },
+  {
     icon: GraduationCap,
     labelKey: "admin.sidebar.learning",
     items: [
@@ -417,6 +424,8 @@ function DashboardLayoutContent({
               const sectionHasActive = section.items.some(item => item.path === location);
               const isExpanded = expandedSections.has(sectionIndex);
               const SectionIcon = section.icon;
+              const singleItemPath = isSingleItem ? section.items[0].path : null;
+              const singleItemBadgeCount = singleItemPath ? (routeBadges?.[singleItemPath] ?? 0) : 0;
 
               return (
                 <SidebarGroup key={sectionIndex} className="shrink-0 py-0.5 px-2">
@@ -425,6 +434,9 @@ function DashboardLayoutContent({
                     onClick={() => {
                       if (isSingleItem) {
                         setLocation(section.items[0].path);
+                        if (singleItemBadgeCount > 0) {
+                          markReadByRoute.mutate({ actionUrl: section.items[0].path });
+                        }
                       } else {
                         toggleSection(sectionIndex);
                       }
@@ -437,7 +449,7 @@ function DashboardLayoutContent({
                           : "text-gray-400 hover:text-white hover:bg-white/[0.04]"
                     }`}
                   >
-                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
+                    <div className={`relative w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
                       (isSingleItem && location === section.items[0].path) || sectionHasActive
                         ? "bg-emerald-500/15"
                         : "bg-white/[0.04] group-hover/section:bg-white/[0.06]"
@@ -447,10 +459,20 @@ function DashboardLayoutContent({
                           ? "text-emerald-400"
                           : ""
                       }`} />
+                      {singleItemBadgeCount > 0 && (
+                        <span className="absolute -end-1 -top-1 min-w-[16px] h-4 px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                          {singleItemBadgeCount > 99 ? '99+' : singleItemBadgeCount}
+                        </span>
+                      )}
                     </div>
                     {!isCollapsed && (
                       <>
                         <span className="flex-1 text-left truncate">{t(section.labelKey)}</span>
+                        {isSingleItem && singleItemBadgeCount > 0 && (
+                          <span className="min-w-[20px] h-5 px-1.5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                            {singleItemBadgeCount > 99 ? '99+' : singleItemBadgeCount}
+                          </span>
+                        )}
                         {!isSingleItem && (
                           <ChevronRight className={`w-3.5 h-3.5 text-gray-500 transition-transform duration-200 ${isExpanded ? "rotate-90" : ""}`} />
                         )}

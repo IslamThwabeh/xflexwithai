@@ -58,6 +58,8 @@ import {
   brokerOnboarding, BrokerOnboarding, InsertBrokerOnboarding,
   emailLog, EmailLog, InsertEmailLog,
   planProgress, PlanProgress, InsertPlanProgress,
+  lexaiSupportCases, LexaiSupportCase, InsertLexaiSupportCase,
+  lexaiSupportNotes, LexaiSupportNote, InsertLexaiSupportNote,
   staffNotifications, StaffNotification, InsertStaffNotification,
   adminSettings, AdminSetting, InsertAdminSetting,
 } from "../database/schema-sqlite.ts";
@@ -164,6 +166,82 @@ function getRemainingDaysUntil(endDateInput: string | Date, fromDate: Date = new
   if (millisecondsRemaining <= 0) return 0;
 
   return Math.max(1, Math.ceil(millisecondsRemaining / (1000 * 60 * 60 * 24)));
+}
+
+type TimedServiceSubscriptionSnapshot = {
+  isActive: boolean;
+  isPaused: boolean;
+  isPendingActivation: boolean;
+  endDate: string | null;
+  pausedRemainingDays: number | null;
+  maxActivationDate?: string | null;
+};
+
+function getTimedServiceSubscriptionState(subscription?: TimedServiceSubscriptionSnapshot | null) {
+  if (!subscription) return "no_subscription";
+  if (subscription.isPendingActivation) return "pending_activation";
+  if (subscription.isPaused) return "paused";
+  if (!subscription.isActive) return "inactive";
+  if (subscription.endDate && new Date(subscription.endDate).getTime() < Date.now()) return "expired";
+  return "active";
+}
+
+function getTimedServiceRemainingDays(subscription?: TimedServiceSubscriptionSnapshot | null) {
+  if (!subscription) return 0;
+  if (subscription.isPaused) {
+    return normalizePositiveInteger(subscription.pausedRemainingDays) ?? 0;
+  }
+  if (!subscription.endDate) return 0;
+  return getRemainingDaysUntil(subscription.endDate);
+}
+
+function getTimedServiceActivationDeadlineDays(subscription?: TimedServiceSubscriptionSnapshot | null) {
+  if (!subscription?.maxActivationDate || !subscription.isPendingActivation) return 0;
+  return getRemainingDaysUntil(subscription.maxActivationDate);
+}
+
+type LexaiSupportCaseStatus = "open" | "waiting_student" | "escalated" | "resolved";
+type LexaiSupportCasePriority = "normal" | "high" | "urgent";
+
+type LexaiSupportSubscriptionSnapshot = {
+  id: number;
+  isActive: boolean;
+  isPaused: boolean;
+  isPendingActivation: boolean;
+  endDate: string | null;
+  pausedRemainingDays: number | null;
+  pausedReason: string | null;
+  maxActivationDate: string | null;
+  messagesUsed: number;
+};
+
+function getLexaiSupportSubscriptionState(subscription?: LexaiSupportSubscriptionSnapshot | null) {
+  return getTimedServiceSubscriptionState(subscription);
+}
+
+function getLexaiSupportRemainingDays(subscription?: LexaiSupportSubscriptionSnapshot | null) {
+  return getTimedServiceRemainingDays(subscription);
+}
+
+function getLexaiSupportActivationDeadlineDays(subscription?: LexaiSupportSubscriptionSnapshot | null) {
+  return getTimedServiceActivationDeadlineDays(subscription);
+}
+
+function getLexaiSupportPriorityRank(priority: LexaiSupportCasePriority) {
+  switch (priority) {
+    case "urgent":
+      return 3;
+    case "high":
+      return 2;
+    default:
+      return 1;
+  }
+}
+
+function getLexaiSupportPriorityForExpiry(daysLeft: number): LexaiSupportCasePriority {
+  if (daysLeft <= 0) return "urgent";
+  if (daysLeft <= 3) return "high";
+  return "normal";
 }
 
 /**
@@ -1007,12 +1085,15 @@ export async function skipCourseForUser(userId: number, courseId: number) {
   // Get or create enrollment
   let enrollment = await getEnrollment(userId, courseId);
   if (!enrollment) {
-    const id = await createEnrollment({
+    await createEnrollment({
       userId,
       courseId,
       paymentStatus: 'completed',
     });
-    enrollment = { id, progressPercentage: 0, completedEpisodes: 0 } as any;
+    enrollment = await getEnrollment(userId, courseId);
+    if (!enrollment) {
+      throw new Error("Failed to create enrollment for skip action");
+    }
   }
 
   if (enrollment.isAdminSkipped) {
@@ -1593,6 +1674,76 @@ export async function getExpiringSubscriptions(withinDays: number): Promise<{ us
   return results;
 }
 
+/**
+ * Get active, non-paused LexAI subscriptions expiring within a given number of days.
+ * Used by the daily cron to route LexAI-specific support alerts.
+ */
+export async function getExpiringLexaiSubscriptions(withinDays: number): Promise<Array<{
+  userId: number;
+  email: string;
+  name: string | null;
+  endDate: string;
+  daysLeft: number;
+}>> {
+  const db = await getDb();
+  if (!db) return [];
+
+  const now = new Date();
+  const futureDate = new Date(now.getTime() + withinDays * 24 * 60 * 60 * 1000);
+  const todayStr = now.toISOString().slice(0, 10);
+  const futureStr = futureDate.toISOString().slice(0, 10);
+
+  const rows = await db
+    .select({
+      userId: lexaiSubscriptions.userId,
+      email: users.email,
+      name: users.name,
+      endDate: lexaiSubscriptions.endDate,
+    })
+    .from(lexaiSubscriptions)
+    .innerJoin(users, eq(lexaiSubscriptions.userId, users.id))
+    .where(and(
+      eq(lexaiSubscriptions.isActive, true),
+      eq(lexaiSubscriptions.isPaused, false),
+      eq(lexaiSubscriptions.isPendingActivation, false),
+      eq(users.isStaff, false),
+      sql`date(${lexaiSubscriptions.endDate}) >= ${todayStr}`,
+      sql`date(${lexaiSubscriptions.endDate}) <= ${futureStr}`,
+    ))
+    .orderBy(lexaiSubscriptions.endDate);
+
+  const earliestByUser = new Map<number, typeof rows[number]>();
+  for (const row of rows) {
+    const existing = earliestByUser.get(row.userId);
+    if (!existing || new Date(row.endDate).getTime() < new Date(existing.endDate).getTime()) {
+      earliestByUser.set(row.userId, row);
+    }
+  }
+
+  const results: Array<{
+    userId: number;
+    email: string;
+    name: string | null;
+    endDate: string;
+    daysLeft: number;
+  }> = [];
+
+  for (const row of earliestByUser.values()) {
+    if (!row.email) continue;
+    const endMs = new Date(row.endDate).getTime();
+    const daysLeft = Math.ceil((endMs - now.getTime()) / (1000 * 60 * 60 * 24));
+    results.push({
+      userId: row.userId,
+      email: row.email,
+      name: row.name,
+      endDate: row.endDate,
+      daysLeft: Math.max(0, daysLeft),
+    });
+  }
+
+  return results;
+}
+
 export async function getRecommendationPublishers() {
   const db = await getDb();
   if (!db) return [];
@@ -1952,8 +2103,8 @@ export async function getComprehensivePackageHolders() {
     if (!holder.userId) {
       return {
         ...holder,
-        lexaiSubId: null, lexaiIsPaused: null as 0 | 1 | null, lexaiEndDate: null, lexaiPausedRemainingDays: null,
-        recSubId: null, recIsPaused: null as 0 | 1 | null, recEndDate: null, recPausedRemainingDays: null,
+        lexaiSubId: null, lexaiIsPaused: null as boolean | null, lexaiEndDate: null, lexaiPausedRemainingDays: null,
+        recSubId: null, recIsPaused: null as boolean | null, recEndDate: null, recPausedRemainingDays: null,
       };
     }
     const [lexaiSub] = await db.select({
@@ -1981,11 +2132,11 @@ export async function getComprehensivePackageHolders() {
     return {
       ...holder,
       lexaiSubId: lexaiSub?.id ?? null,
-      lexaiIsPaused: (lexaiSub?.isPaused ?? null) as 0 | 1 | null,
+      lexaiIsPaused: lexaiSub?.isPaused ?? null,
       lexaiEndDate: lexaiSub?.endDate ?? null,
       lexaiPausedRemainingDays: lexaiSub?.pausedRemainingDays ?? null,
       recSubId: recSub?.id ?? null,
-      recIsPaused: (recSub?.isPaused ?? null) as 0 | 1 | null,
+      recIsPaused: recSub?.isPaused ?? null,
       recEndDate: recSub?.endDate ?? null,
       recPausedRemainingDays: recSub?.pausedRemainingDays ?? null,
     };
@@ -2193,9 +2344,9 @@ export async function activatePackageKey(keyCode: string, email: string, userId?
       packageNameAr: pkg.nameAr || pkg.nameEn || 'باقة XFlex',
       isRenewal: !!key.isRenewal,
       includesLexai: !!pkg.includesLexai,
-    }).catch(err => logger.error('Welcome email failed', err));
+    }).catch((error) => logger.error('Welcome email failed', { error }));
   } catch (e) {
-    logger.error('Welcome email setup failed', e);
+    logger.error('Welcome email setup failed', { error: e });
   }
 
   // In-app notification: package activated
@@ -3522,13 +3673,15 @@ export async function getUserLexaiMessages(userId: number, limit: number = 50) {
 export async function createLexaiMessage(message: InsertLexaiMessage) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
+  const createdAt = new Date().toISOString();
   const result = await db
     .insert(lexaiMessages)
     .values({
       ...message,
-      createdAt: new Date().toISOString(),
+      createdAt,
     } as InsertLexaiMessage)
     .returning({ id: lexaiMessages.id });
+  await touchLexaiSupportCaseMessage(message.userId, createdAt);
   return result[0].id;
 }
 
@@ -3605,6 +3758,599 @@ export async function getLexaiStats() {
     activeSubscriptions: Number(activeSubs?.count ?? 0),
     totalMessages: Number(totalMessages?.count ?? 0),
   };
+}
+
+export async function getLexaiSupportCaseByUserId(userId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const [row] = await db.select().from(lexaiSupportCases)
+    .where(eq(lexaiSupportCases.userId, userId))
+    .limit(1);
+  return row ?? null;
+}
+
+export async function ensureLexaiSupportCase(userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const existing = await getLexaiSupportCaseByUserId(userId);
+  if (existing) return existing;
+
+  const [latestMessage] = await db.select({ createdAt: lexaiMessages.createdAt })
+    .from(lexaiMessages)
+    .where(eq(lexaiMessages.userId, userId))
+    .orderBy(desc(lexaiMessages.createdAt))
+    .limit(1);
+
+  const now = new Date().toISOString();
+  await db.insert(lexaiSupportCases).values({
+    userId,
+    status: "open",
+    priority: "normal",
+    lastMessageAt: latestMessage?.createdAt ?? null,
+    createdAt: now,
+    updatedAt: now,
+  } as InsertLexaiSupportCase).onConflictDoNothing();
+
+  const created = await getLexaiSupportCaseByUserId(userId);
+  if (!created) throw new Error("Failed to create LexAI support case");
+  return created;
+}
+
+export async function touchLexaiSupportCaseMessage(userId: number, messageCreatedAt?: string) {
+  const db = await getDb();
+  if (!db) return;
+  const supportCase = await ensureLexaiSupportCase(userId);
+  const timestamp = messageCreatedAt ?? new Date().toISOString();
+
+  await db.update(lexaiSupportCases).set({
+    lastMessageAt: timestamp,
+    updatedAt: timestamp,
+  }).where(eq(lexaiSupportCases.id, supportCase.id));
+}
+
+export async function flagLexaiSupportCaseExpiry(userId: number, daysLeft: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const supportCase = await ensureLexaiSupportCase(userId);
+  const suggestedPriority = getLexaiSupportPriorityForExpiry(daysLeft);
+  const currentPriority = (supportCase.priority as LexaiSupportCasePriority) || "normal";
+  const nextPriority = supportCase.status === "resolved"
+    ? suggestedPriority
+    : getLexaiSupportPriorityRank(currentPriority) >= getLexaiSupportPriorityRank(suggestedPriority)
+      ? currentPriority
+      : suggestedPriority;
+
+  const now = new Date().toISOString();
+  await db.update(lexaiSupportCases).set({
+    status: supportCase.status === "resolved" ? "open" : supportCase.status,
+    priority: nextPriority,
+    updatedAt: now,
+  }).where(eq(lexaiSupportCases.id, supportCase.id));
+
+  return supportCase.id;
+}
+
+export async function listLexaiSupportCases(filters?: {
+  search?: string;
+  status?: LexaiSupportCaseStatus;
+  assignedToUserId?: number | null;
+}) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const conditions = [];
+  if (filters?.status) {
+    conditions.push(eq(lexaiSupportCases.status, filters.status));
+  }
+  if (typeof filters?.assignedToUserId === "number") {
+    conditions.push(eq(lexaiSupportCases.assignedToUserId, filters.assignedToUserId));
+  }
+  if (filters?.search?.trim()) {
+    const search = `%${filters.search.trim()}%`;
+    conditions.push(or(
+      sql`LOWER(COALESCE(${users.name}, '')) LIKE LOWER(${search})`,
+      sql`LOWER(COALESCE(${users.email}, '')) LIKE LOWER(${search})`
+    ));
+  }
+
+  const baseQuery = db.select({
+    id: lexaiSupportCases.id,
+    userId: lexaiSupportCases.userId,
+    status: lexaiSupportCases.status,
+    priority: lexaiSupportCases.priority,
+    assignedToUserId: lexaiSupportCases.assignedToUserId,
+    assignedToName: sql<string | null>`CASE
+      WHEN ${lexaiSupportCases.assignedToUserId} < 0 THEN (SELECT a.name FROM admins a WHERE a.id = ABS(${lexaiSupportCases.assignedToUserId}) LIMIT 1)
+      ELSE (SELECT u.name FROM users u WHERE u.id = ${lexaiSupportCases.assignedToUserId} LIMIT 1)
+    END`,
+    lastMessageAt: lexaiSupportCases.lastMessageAt,
+    lastReviewedAt: lexaiSupportCases.lastReviewedAt,
+    resolvedAt: lexaiSupportCases.resolvedAt,
+    createdAt: lexaiSupportCases.createdAt,
+    updatedAt: lexaiSupportCases.updatedAt,
+    userName: users.name,
+    userEmail: users.email,
+  }).from(lexaiSupportCases)
+    .leftJoin(users, eq(lexaiSupportCases.userId, users.id));
+
+  const whereClause = conditions.length === 0
+    ? null
+    : conditions.length === 1
+      ? conditions[0]
+      : and(...conditions);
+
+  const baseRows = whereClause
+    ? await baseQuery.where(whereClause).orderBy(desc(lexaiSupportCases.updatedAt))
+    : await baseQuery.orderBy(desc(lexaiSupportCases.updatedAt));
+
+  const userIds = Array.from(new Set(baseRows.map((row) => row.userId)));
+  if (userIds.length === 0) return [];
+
+  const messageStatsRows = await db.select({
+    userId: lexaiMessages.userId,
+    count: sql<number>`COUNT(*)`,
+    lastMessageAt: sql<string>`MAX(${lexaiMessages.createdAt})`,
+  }).from(lexaiMessages)
+    .where(inArray(lexaiMessages.userId, userIds))
+    .groupBy(lexaiMessages.userId);
+
+  const latestMessageRows = await db.select({
+    userId: lexaiMessages.userId,
+    analysisType: lexaiMessages.analysisType,
+    createdAt: lexaiMessages.createdAt,
+  }).from(lexaiMessages)
+    .where(inArray(lexaiMessages.userId, userIds))
+    .orderBy(desc(lexaiMessages.createdAt));
+
+  const subscriptionRows = await db.select({
+    userId: lexaiSubscriptions.userId,
+    id: lexaiSubscriptions.id,
+    isActive: lexaiSubscriptions.isActive,
+    isPaused: lexaiSubscriptions.isPaused,
+    isPendingActivation: lexaiSubscriptions.isPendingActivation,
+    endDate: lexaiSubscriptions.endDate,
+    pausedRemainingDays: lexaiSubscriptions.pausedRemainingDays,
+    pausedReason: lexaiSubscriptions.pausedReason,
+    maxActivationDate: lexaiSubscriptions.maxActivationDate,
+    messagesUsed: lexaiSubscriptions.messagesUsed,
+    createdAt: lexaiSubscriptions.createdAt,
+  }).from(lexaiSubscriptions)
+    .where(inArray(lexaiSubscriptions.userId, userIds))
+    .orderBy(desc(lexaiSubscriptions.createdAt));
+
+  const supportRows = await db.select({
+    userId: supportConversations.userId,
+    id: supportConversations.id,
+    status: supportConversations.status,
+    needsHuman: supportConversations.needsHuman,
+    updatedAt: supportConversations.updatedAt,
+  }).from(supportConversations)
+    .where(inArray(supportConversations.userId, userIds))
+    .orderBy(desc(supportConversations.updatedAt));
+
+  const messageStatsMap = new Map(messageStatsRows.map((row) => [row.userId, row]));
+  const latestMessageMap = new Map<number, typeof latestMessageRows[number]>();
+  for (const row of latestMessageRows) {
+    if (!latestMessageMap.has(row.userId)) latestMessageMap.set(row.userId, row);
+  }
+
+  const subscriptionMap = new Map<number, LexaiSupportSubscriptionSnapshot>();
+  for (const row of subscriptionRows) {
+    if (!subscriptionMap.has(row.userId)) {
+      subscriptionMap.set(row.userId, {
+        id: row.id,
+        isActive: !!row.isActive,
+        isPaused: !!row.isPaused,
+        isPendingActivation: !!row.isPendingActivation,
+        endDate: row.endDate,
+        pausedRemainingDays: row.pausedRemainingDays,
+        pausedReason: row.pausedReason,
+        maxActivationDate: row.maxActivationDate,
+        messagesUsed: Number(row.messagesUsed ?? 0),
+      });
+    }
+  }
+
+  const supportMap = new Map<number, typeof supportRows[number]>();
+  for (const row of supportRows) {
+    if (!supportMap.has(row.userId)) supportMap.set(row.userId, row);
+  }
+
+  return baseRows.map((row) => {
+    const messageStats = messageStatsMap.get(row.userId);
+    const latestMessage = latestMessageMap.get(row.userId);
+    const subscription = subscriptionMap.get(row.userId);
+    const supportConversation = supportMap.get(row.userId);
+
+    return {
+      ...row,
+      messageCount: Number(messageStats?.count ?? 0),
+      lastMessageAt: row.lastMessageAt ?? messageStats?.lastMessageAt ?? latestMessage?.createdAt ?? null,
+      lastAnalysisType: latestMessage?.analysisType ?? null,
+      lexaiSubscriptionId: subscription?.id ?? null,
+      lexaiSubscriptionState: getLexaiSupportSubscriptionState(subscription),
+      remainingDays: getLexaiSupportRemainingDays(subscription),
+      activationDeadlineDays: getLexaiSupportActivationDeadlineDays(subscription),
+      pausedReason: subscription?.pausedReason ?? null,
+      messagesUsed: Number(subscription?.messagesUsed ?? 0),
+      supportConversationId: supportConversation?.id ?? null,
+      supportConversationStatus: supportConversation?.status ?? null,
+      supportNeedsHuman: !!supportConversation?.needsHuman,
+    };
+  });
+}
+
+export async function getLexaiSupportNotes(caseId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({
+    id: lexaiSupportNotes.id,
+    caseId: lexaiSupportNotes.caseId,
+    authorUserId: lexaiSupportNotes.authorUserId,
+    authorName: sql<string | null>`CASE
+      WHEN ${lexaiSupportNotes.authorUserId} < 0 THEN (SELECT a.name FROM admins a WHERE a.id = ABS(${lexaiSupportNotes.authorUserId}) LIMIT 1)
+      ELSE (SELECT u.name FROM users u WHERE u.id = ${lexaiSupportNotes.authorUserId} LIMIT 1)
+    END`,
+    authorEmail: sql<string | null>`CASE
+      WHEN ${lexaiSupportNotes.authorUserId} < 0 THEN (SELECT a.email FROM admins a WHERE a.id = ABS(${lexaiSupportNotes.authorUserId}) LIMIT 1)
+      ELSE (SELECT u.email FROM users u WHERE u.id = ${lexaiSupportNotes.authorUserId} LIMIT 1)
+    END`,
+    noteType: lexaiSupportNotes.noteType,
+    content: lexaiSupportNotes.content,
+    createdAt: lexaiSupportNotes.createdAt,
+  }).from(lexaiSupportNotes)
+    .where(eq(lexaiSupportNotes.caseId, caseId))
+    .orderBy(desc(lexaiSupportNotes.createdAt));
+}
+
+export async function addLexaiSupportNote(input: {
+  caseId: number;
+  authorUserId: number;
+  noteType?: string;
+  content: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const now = new Date().toISOString();
+  await db.insert(lexaiSupportNotes).values({
+    caseId: input.caseId,
+    authorUserId: input.authorUserId,
+    noteType: input.noteType ?? "note",
+    content: input.content,
+    createdAt: now,
+  } as InsertLexaiSupportNote);
+
+  await db.update(lexaiSupportCases).set({ updatedAt: now })
+    .where(eq(lexaiSupportCases.id, input.caseId));
+}
+
+export async function markLexaiSupportCaseReviewed(caseId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const now = new Date().toISOString();
+  await db.update(lexaiSupportCases).set({
+    lastReviewedAt: now,
+    updatedAt: now,
+  }).where(eq(lexaiSupportCases.id, caseId));
+}
+
+async function getSharedClientServiceContext(userId: number, options?: { includeTimeline?: boolean }) {
+  const db = await getDb();
+  if (!db) {
+    return {
+      lexaiCase: null,
+      lexaiSubscription: null,
+      recommendationSubscription: null,
+      supportConversation: null,
+      timeline: [],
+    };
+  }
+
+  const includeTimeline = options?.includeTimeline !== false;
+
+  const [lexaiCase, rawLexaiSubscription, rawRecommendationSubscription, supportConversation, timeline] = await Promise.all([
+    getLexaiSupportCaseByUserId(userId),
+    getAnyLexaiSubscription(userId),
+    getAnyRecommendationSubscription(userId),
+    db.select({
+      id: supportConversations.id,
+      userId: supportConversations.userId,
+      status: supportConversations.status,
+      needsHuman: supportConversations.needsHuman,
+      assignedTo: supportConversations.assignedTo,
+      updatedAt: supportConversations.updatedAt,
+      closedAt: supportConversations.closedAt,
+    }).from(supportConversations)
+      .where(eq(supportConversations.userId, userId))
+      .orderBy(desc(supportConversations.updatedAt), desc(supportConversations.id))
+      .limit(1)
+      .then((rows) => rows[0] ?? null),
+    includeTimeline ? getStudentTimeline(userId) : Promise.resolve([]),
+  ]);
+
+  const lexaiSnapshot = rawLexaiSubscription ? {
+    isActive: !!rawLexaiSubscription.isActive,
+    isPaused: !!rawLexaiSubscription.isPaused,
+    isPendingActivation: !!rawLexaiSubscription.isPendingActivation,
+    endDate: rawLexaiSubscription.endDate,
+    pausedRemainingDays: rawLexaiSubscription.pausedRemainingDays,
+    maxActivationDate: rawLexaiSubscription.maxActivationDate,
+  } satisfies TimedServiceSubscriptionSnapshot : null;
+
+  const recommendationSnapshot = rawRecommendationSubscription ? {
+    isActive: !!rawRecommendationSubscription.isActive,
+    isPaused: !!rawRecommendationSubscription.isPaused,
+    isPendingActivation: !!rawRecommendationSubscription.isPendingActivation,
+    endDate: rawRecommendationSubscription.endDate,
+    pausedRemainingDays: rawRecommendationSubscription.pausedRemainingDays,
+    maxActivationDate: rawRecommendationSubscription.maxActivationDate,
+  } satisfies TimedServiceSubscriptionSnapshot : null;
+
+  return {
+    lexaiCase: lexaiCase
+      ? {
+          id: lexaiCase.id,
+          status: lexaiCase.status,
+          priority: lexaiCase.priority,
+          lastMessageAt: lexaiCase.lastMessageAt,
+          updatedAt: lexaiCase.updatedAt,
+        }
+      : null,
+    lexaiSubscription: rawLexaiSubscription
+      ? {
+          ...rawLexaiSubscription,
+          messagesUsed: Number(rawLexaiSubscription.messagesUsed ?? 0),
+          subscriptionState: getTimedServiceSubscriptionState(lexaiSnapshot),
+          remainingDays: getTimedServiceRemainingDays(lexaiSnapshot),
+          activationDeadlineDays: getTimedServiceActivationDeadlineDays(lexaiSnapshot),
+        }
+      : null,
+    recommendationSubscription: rawRecommendationSubscription
+      ? {
+          ...rawRecommendationSubscription,
+          subscriptionState: getTimedServiceSubscriptionState(recommendationSnapshot),
+          remainingDays: getTimedServiceRemainingDays(recommendationSnapshot),
+          activationDeadlineDays: getTimedServiceActivationDeadlineDays(recommendationSnapshot),
+        }
+      : null,
+    supportConversation,
+    timeline,
+  };
+}
+
+export async function getAdminClientProfile(userId: number, options?: { includeTimeline?: boolean }) {
+  const [user, activePackageSubs, serviceContext] = await Promise.all([
+    getUserById(userId),
+    getUserPackageSubscriptions(userId),
+    getSharedClientServiceContext(userId, options),
+  ]);
+
+  const activePackages = await Promise.all(
+    activePackageSubs.map(async (subscription) => {
+      const pkg = await getPackageById(subscription.packageId);
+      return {
+        subscriptionId: subscription.id,
+        packageId: subscription.packageId,
+        nameEn: pkg?.nameEn ?? `Package #${subscription.packageId}`,
+        nameAr: pkg?.nameAr ?? pkg?.nameEn ?? `Package #${subscription.packageId}`,
+        startDate: subscription.startDate,
+        renewalDueDate: subscription.renewalDueDate ?? null,
+      };
+    }),
+  );
+
+  return {
+    user: {
+      id: userId,
+      name: user?.name ?? null,
+      email: user?.email ?? null,
+      phone: user?.phone ?? null,
+      city: user?.city ?? null,
+      country: user?.country ?? null,
+      createdAt: user?.createdAt ?? null,
+      lastSignedIn: user?.lastSignedIn ?? null,
+      emailVerified: !!user?.emailVerified,
+      brokerOnboardingComplete: !!user?.brokerOnboardingComplete,
+      isDeleted: !user,
+    },
+    packageSummary: {
+      activePackages,
+    },
+    ...serviceContext,
+  };
+}
+
+export async function getLexaiSupportCase(caseId: number) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const [supportCase] = await db.select({
+    id: lexaiSupportCases.id,
+    userId: lexaiSupportCases.userId,
+    status: lexaiSupportCases.status,
+    priority: lexaiSupportCases.priority,
+    assignedToUserId: lexaiSupportCases.assignedToUserId,
+    assignedByUserId: lexaiSupportCases.assignedByUserId,
+    assignedToName: sql<string | null>`CASE
+      WHEN ${lexaiSupportCases.assignedToUserId} < 0 THEN (SELECT a.name FROM admins a WHERE a.id = ABS(${lexaiSupportCases.assignedToUserId}) LIMIT 1)
+      ELSE (SELECT u.name FROM users u WHERE u.id = ${lexaiSupportCases.assignedToUserId} LIMIT 1)
+    END`,
+    assignedByName: sql<string | null>`CASE
+      WHEN ${lexaiSupportCases.assignedByUserId} < 0 THEN (SELECT a.name FROM admins a WHERE a.id = ABS(${lexaiSupportCases.assignedByUserId}) LIMIT 1)
+      ELSE (SELECT u.name FROM users u WHERE u.id = ${lexaiSupportCases.assignedByUserId} LIMIT 1)
+    END`,
+    resolvedByName: sql<string | null>`CASE
+      WHEN ${lexaiSupportCases.resolvedByUserId} < 0 THEN (SELECT a.name FROM admins a WHERE a.id = ABS(${lexaiSupportCases.resolvedByUserId}) LIMIT 1)
+      ELSE (SELECT u.name FROM users u WHERE u.id = ${lexaiSupportCases.resolvedByUserId} LIMIT 1)
+    END`,
+    lastMessageAt: lexaiSupportCases.lastMessageAt,
+    lastReviewedAt: lexaiSupportCases.lastReviewedAt,
+    resolvedAt: lexaiSupportCases.resolvedAt,
+    resolvedByUserId: lexaiSupportCases.resolvedByUserId,
+    createdAt: lexaiSupportCases.createdAt,
+    updatedAt: lexaiSupportCases.updatedAt,
+    userName: users.name,
+    userEmail: users.email,
+  }).from(lexaiSupportCases)
+    .leftJoin(users, eq(lexaiSupportCases.userId, users.id))
+    .where(eq(lexaiSupportCases.id, caseId))
+    .limit(1);
+
+  if (!supportCase) return null;
+  const messages = await getLexaiMessagesByUser(supportCase.userId, 200);
+  const notes = await getLexaiSupportNotes(caseId);
+  const serviceContext = await getSharedClientServiceContext(supportCase.userId, { includeTimeline: true });
+
+  return {
+    ...supportCase,
+    messages,
+    notes,
+    timeline: serviceContext.timeline,
+    lexaiSubscription: serviceContext.lexaiSubscription,
+    recommendationSubscription: serviceContext.recommendationSubscription,
+    supportConversation: serviceContext.supportConversation,
+  };
+}
+
+export async function assignLexaiSupportCase(
+  caseId: number,
+  assignedToUserId: number | null,
+  actorUserId: number,
+  actorIsAdmin: boolean,
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  if (!actorIsAdmin && assignedToUserId !== actorUserId && assignedToUserId !== null) {
+    throw new Error("You can only assign LexAI cases to yourself");
+  }
+
+  const supportCase = await getLexaiSupportCase(caseId);
+  if (!supportCase) throw new Error("LexAI support case not found");
+
+  const actor = await getUserById(actorUserId);
+  const assignee = assignedToUserId ? await getUserById(assignedToUserId) : null;
+  const now = new Date().toISOString();
+
+  await db.update(lexaiSupportCases).set({
+    assignedToUserId,
+    assignedByUserId: actorUserId,
+    updatedAt: now,
+  }).where(eq(lexaiSupportCases.id, caseId));
+
+  const actorLabel = actor?.name || actor?.email || `User #${actorUserId}`;
+  const assigneeLabel = assignee?.name || assignee?.email || (assignedToUserId ? `User #${assignedToUserId}` : null);
+  const studentLabel = supportCase.userName || supportCase.userEmail || `User #${supportCase.userId}`;
+
+  await addLexaiSupportNote({
+    caseId,
+    authorUserId: actorUserId,
+    noteType: "assignment",
+    content: assignedToUserId
+      ? `${actorLabel} assigned this case to ${assigneeLabel}.`
+      : `${actorLabel} unassigned this case.`,
+  });
+
+  if (assignedToUserId) {
+    await notifyStaffByEvent('lexai_case_assigned', {
+      titleEn: `LexAI case assigned: ${studentLabel}`,
+      titleAr: `تم تعيين حالة LexAI: ${studentLabel}`,
+      contentEn: assigneeLabel
+        ? `${actorLabel} assigned this LexAI case to ${assigneeLabel}.`
+        : `${actorLabel} assigned a LexAI case.`,
+      contentAr: assigneeLabel
+        ? `${actorLabel} قام بتعيين حالة LexAI إلى ${assigneeLabel}.`
+        : `${actorLabel} قام بتعيين حالة LexAI.`,
+      metadata: { caseId, userId: supportCase.userId, assignedToUserId },
+    });
+  }
+}
+
+export async function updateLexaiSupportCaseStatus(
+  caseId: number,
+  status: LexaiSupportCaseStatus,
+  actorUserId: number,
+  note?: string,
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const supportCase = await getLexaiSupportCase(caseId);
+  if (!supportCase) throw new Error("LexAI support case not found");
+
+  const actor = await getUserById(actorUserId);
+  const actorLabel = actor?.name || actor?.email || `User #${actorUserId}`;
+  const now = new Date().toISOString();
+
+  await db.update(lexaiSupportCases).set({
+    status,
+    resolvedAt: status === "resolved" ? now : null,
+    resolvedByUserId: status === "resolved" ? actorUserId : null,
+    updatedAt: now,
+  }).where(eq(lexaiSupportCases.id, caseId));
+
+  await addLexaiSupportNote({
+    caseId,
+    authorUserId: actorUserId,
+    noteType: "status_change",
+    content: note?.trim()
+      ? `${actorLabel} set the case to ${status}. ${note.trim()}`
+      : `${actorLabel} set the case to ${status}.`,
+  });
+}
+
+export async function updateLexaiSupportCasePriority(
+  caseId: number,
+  priority: LexaiSupportCasePriority,
+  actorUserId: number,
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const supportCase = await getLexaiSupportCase(caseId);
+  if (!supportCase) throw new Error("LexAI support case not found");
+
+  const actor = await getUserById(actorUserId);
+  const actorLabel = actor?.name || actor?.email || `User #${actorUserId}`;
+  const now = new Date().toISOString();
+
+  await db.update(lexaiSupportCases).set({
+    priority,
+    updatedAt: now,
+  }).where(eq(lexaiSupportCases.id, caseId));
+
+  await addLexaiSupportNote({
+    caseId,
+    authorUserId: actorUserId,
+    noteType: "status_change",
+    content: `${actorLabel} set the case priority to ${priority}.`,
+  });
+}
+
+export async function requestLexaiSupportFollowup(caseId: number, actorUserId: number, note?: string) {
+  const supportCase = await getLexaiSupportCase(caseId);
+  if (!supportCase) throw new Error("LexAI support case not found");
+
+  await updateLexaiSupportCaseStatus(caseId, "escalated", actorUserId, note);
+
+  const actor = await getUserById(actorUserId);
+  const actorLabel = actor?.name || actor?.email || `User #${actorUserId}`;
+  const studentLabel = supportCase.userName || supportCase.userEmail || `User #${supportCase.userId}`;
+
+  await notifyStaffByEvent('lexai_followup_requested', {
+    titleEn: `LexAI follow-up requested: ${studentLabel}`,
+    titleAr: `تم طلب متابعة LexAI: ${studentLabel}`,
+    contentEn: note?.trim()
+      ? `${actorLabel} requested LexAI follow-up. ${note.trim()}`
+      : `${actorLabel} requested LexAI follow-up for this case.`,
+    contentAr: note?.trim()
+      ? `${actorLabel} طلب متابعة LexAI. ${note.trim()}`
+      : `${actorLabel} طلب متابعة LexAI لهذه الحالة.`,
+    metadata: { caseId, userId: supportCase.userId },
+  });
 }
 
 // ============================================================================
@@ -4514,6 +5260,7 @@ export async function getStudentTimeline(userId: number) {
   // 1. Registration date
   const [user] = await db.select({
     createdAt: users.createdAt,
+    email: users.email,
     brokerOnboardingComplete: users.brokerOnboardingComplete,
   }).from(users).where(eq(users.id, userId)).limit(1);
   if (user?.createdAt) {
@@ -4521,16 +5268,18 @@ export async function getStudentTimeline(userId: number) {
   }
 
   // 2. Package key activations
-  const keys = await db.select({
-    activatedAt: registrationKeys.activatedAt,
-    packageId: registrationKeys.packageId,
-  }).from(registrationKeys)
-    .where(and(
-      eq(registrationKeys.activatedBy, userId),
-      sql`${registrationKeys.activatedAt} IS NOT NULL`,
-      sql`${registrationKeys.packageId} IS NOT NULL`,
-    ))
-    .orderBy(registrationKeys.activatedAt);
+  const keys = user?.email
+    ? await db.select({
+        activatedAt: registrationKeys.activatedAt,
+        packageId: registrationKeys.packageId,
+      }).from(registrationKeys)
+        .where(and(
+          sql`LOWER(${registrationKeys.email}) = LOWER(${user.email})`,
+          sql`${registrationKeys.activatedAt} IS NOT NULL`,
+          sql`${registrationKeys.packageId} IS NOT NULL`,
+        ))
+        .orderBy(registrationKeys.activatedAt)
+    : [];
   for (const key of keys) {
     if (key.activatedAt) {
       const pkg = key.packageId ? await getPackageById(key.packageId) : null;
@@ -6850,8 +7599,13 @@ export async function notifyStaffByEvent(
   const targetUserIds: number[] = [];
 
   // All admin accounts
-  const adminRows = await db.select({ userId: admins.userId }).from(admins);
-  for (const a of adminRows) targetUserIds.push(a.userId);
+  const adminRows = await db.select({ id: admins.id }).from(admins);
+  for (const adminRow of adminRows) {
+    const adminNotificationUserId = -Number(adminRow.id);
+    if (!targetUserIds.includes(adminNotificationUserId)) {
+      targetUserIds.push(adminNotificationUserId);
+    }
+  }
 
   // Staff with matching roles
   if (eventConfig.roles.length > 0) {

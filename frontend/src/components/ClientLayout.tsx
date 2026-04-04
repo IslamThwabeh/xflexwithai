@@ -158,6 +158,7 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
             <nav className="hidden lg:flex items-center gap-1">
               {navItems.map((item) => {
                 const isActive = location.startsWith(item.match);
+                const badgeCount = item.badge ?? 0;
                 return (
                   <Link key={item.href} href={item.href}>
                     <button
@@ -169,9 +170,9 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
                     >
                       {item.icon}
                       <span>{item.label}</span>
-                      {item.badge > 0 && (
+                      {badgeCount > 0 && (
                         <span className="min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-                          {item.badge > 99 ? '99+' : item.badge}
+                          {badgeCount > 99 ? '99+' : badgeCount}
                         </span>
                       )}
                     </button>
@@ -259,6 +260,7 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
           <nav className="flex-1 overflow-y-auto p-2">
             {navItems.map((item) => {
               const isActive = location.startsWith(item.match);
+              const badgeCount = item.badge ?? 0;
               return (
                 <Link key={item.href} href={item.href}>
                   <button
@@ -273,9 +275,9 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
                       {item.icon}
                     </span>
                     <span className="flex-1">{item.label}</span>
-                    {item.badge > 0 && (
+                    {badgeCount > 0 && (
                       <span className="min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-                        {item.badge > 99 ? '99+' : item.badge}
+                        {badgeCount > 99 ? '99+' : badgeCount}
                       </span>
                     )}
                   </button>

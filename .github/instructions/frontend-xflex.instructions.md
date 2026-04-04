@@ -13,7 +13,10 @@ applyTo: "frontend/src/**"
 - `ClientLayout` header stays `dir="ltr"`; content containers switch with `dir={isRTL ? "rtl" : "ltr"}`.
 - In Arabic, do not end a sentence with the word `XFlex`; rephrase so the sentence ends with Arabic text.
 - Student navigation order: Dashboard, LexAI, Recommendations, Support, Quizzes, My Package, Brokers, Notifications, Points, Calculators.
-- Admin sidebar sections: Overview -> Sales -> Recommendations -> Learning -> Content -> Students -> Team -> Reports -> Moderation -> Careers.
+- Admin sidebar sections: Overview -> Sales -> Recommendations -> LexAI -> Learning -> Content -> Students -> Team -> Reports -> Moderation -> Careers.
+- Standalone admin services like Recommendations and LexAI should live as their own top-level sidebar sections instead of being nested under Team.
+- `AdminClientProfileSheet.tsx` is the shared client-context surface for `AdminStudents`, `AdminSupport`, and `AdminLexai`; do not duplicate large service-context cards across those pages.
+- `/admin/lexai` should stay conversation-first: queue + conversation + compact client snapshot, with deeper service/timeline context opened from the shared client profile.
 - `StudentPackages.tsx` is the merged package + subscriptions page; subscriptions should redirect there rather than creating a separate nav item.
 - `WhatsAppFloat` only appears on the approved public-path whitelist.
 - Display episode duration with `Math.floor(duration / 60)` because the DB stores seconds.

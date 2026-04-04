@@ -1,3 +1,4 @@
+import AdminClientProfileSheet from "@/components/admin/AdminClientProfileSheet";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,17 +28,27 @@ import { useState, useRef, useEffect, useMemo } from "react";
 import { toast } from "sonner";
 import VoiceRecorder from "@/components/VoiceRecorder";
 import AudioPlayer from "@/components/AudioPlayer";
+import { useLocation } from "wouter";
 
 export default function AdminSupport() {
+  const [, setLocation] = useLocation();
   const [selectedConvId, setSelectedConvId] = useState<number | null>(null);
+  const [profileUserId, setProfileUserId] = useState<number | null>(null);
   const [reply, setReply] = useState("");
   const [attachment, setAttachment] = useState<{ name: string; file: File; size: number } | null>(null);
   const [uploading, setUploading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const didSyncQueryRef = useRef(false);
   const [searchInput, setSearchInput] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "open" | "closed">("all");
+
+  const replaceSupportUrl = (conversationId: number | null) => {
+    if (typeof window === "undefined") return;
+    const nextUrl = conversationId ? `/admin/support?conversationId=${conversationId}` : "/admin/support";
+    window.history.replaceState(window.history.state, "", nextUrl);
+  };
 
   // Debounce search input (300ms)
   useEffect(() => {
@@ -66,6 +77,42 @@ export default function AdminSupport() {
     });
     return list;
   }, [conversations, statusFilter]);
+
+  const selectedConversationSummary = useMemo(
+    () => conversations?.find((conversation) => conversation.id === selectedConvId) ?? null,
+    [conversations, selectedConvId],
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !conversations) return;
+    const rawConversationId = new URLSearchParams(window.location.search).get("conversationId");
+    if (!rawConversationId) return;
+
+    const requestedConversationId = Number(rawConversationId);
+    if (!Number.isFinite(requestedConversationId) || requestedConversationId <= 0) {
+      replaceSupportUrl(null);
+      return;
+    }
+
+    if (conversations.some((conversation) => conversation.id === requestedConversationId)) {
+      if (selectedConvId !== requestedConversationId) {
+        setSelectedConvId(requestedConversationId);
+      }
+      return;
+    }
+
+    if (selectedConvId == null) {
+      replaceSupportUrl(null);
+    }
+  }, [conversations, selectedConvId]);
+
+  useEffect(() => {
+    if (!didSyncQueryRef.current) {
+      didSyncQueryRef.current = true;
+      return;
+    }
+    replaceSupportUrl(selectedConvId);
+  }, [selectedConvId]);
 
   const {
     data: selectedData,
@@ -121,6 +168,7 @@ export default function AdminSupport() {
   });
 
   const uploadMutation = trpc.supportChat.uploadAttachment.useMutation();
+  const selectedConversationUserId = selectedData?.conversation?.userId ?? selectedConversationSummary?.userId ?? null;
 
   const uploadFileToR2 = async (file: File | Blob, fileName: string, contentType: string, attachmentType: 'file' | 'voice') => {
     const buffer = await file.arrayBuffer();
@@ -426,6 +474,15 @@ export default function AdminSupport() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => selectedConversationUserId && setProfileUserId(selectedConversationUserId)}
+                        disabled={!selectedConversationUserId}
+                      >
+                        <User className="h-4 w-4 mr-1" />
+                        {isRtl ? 'ملف العميل' : 'Client Profile'}
+                      </Button>
                       {(selectedData?.conversation as any)?.needsHuman && (
                         <Button
                           variant="outline"
@@ -605,6 +662,27 @@ export default function AdminSupport() {
           </Card>
         </div>
       </div>
+
+      <AdminClientProfileSheet
+        userId={profileUserId}
+        open={!!profileUserId}
+        onOpenChange={(open) => {
+          if (!open) setProfileUserId(null);
+        }}
+        onOpenLexai={(caseId) => {
+          setProfileUserId(null);
+          setLocation(caseId ? `/admin/lexai?caseId=${caseId}` : "/admin/lexai");
+        }}
+        onOpenSupport={(conversationId) => {
+          setProfileUserId(null);
+          if (conversationId) {
+            setSelectedConvId(conversationId);
+            replaceSupportUrl(conversationId);
+            return;
+          }
+          replaceSupportUrl(selectedConvId);
+        }}
+      />
     </DashboardLayout>
   );
 }
