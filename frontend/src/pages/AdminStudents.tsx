@@ -94,8 +94,9 @@ export default function AdminStudents() {
   const { data: adminCheck } = trpc.auth.isAdmin.useQuery();
   const isAdmin = !!adminCheck?.isAdmin;
   const staffRoles = adminCheck?.staffRoles ?? [];
-  const canManageCourseSkip = isAdmin || staffRoles.includes("support") || staffRoles.includes("key_manager");
+  const canManageCourseSkip = isAdmin || staffRoles.includes("key_manager");
   const canManageBrokerSkip = isAdmin;
+  const canViewFinancials = isAdmin || staffRoles.includes("key_manager");
 
   const { data: students, isLoading } = trpc.reports.subscribers.useQuery();
   const utils = trpc.useUtils();
@@ -239,10 +240,10 @@ export default function AdminStudents() {
     (s: any) => (s.activePackages || []).length > 0
   ).length || 0;
   const inactiveStudents = totalStudents - activeStudents;
-  const totalRevenue = students?.reduce(
+  const totalRevenue = canViewFinancials ? (students?.reduce(
     (sum: number, s: any) => sum + (s.totalSpent || 0),
     0
-  ) || 0;
+  ) || 0) : 0;
 
   const copyEmail = (email: string) => {
     navigator.clipboard.writeText(email);
@@ -260,7 +261,7 @@ export default function AdminStudents() {
       "Registered",
       "Last Sign In",
       "Active Packages",
-      "Spent ($)",
+      ...(canViewFinancials ? ["Spent ($)"] : []),
       "Renewals",
     ];
     const rows = filtered.map((s: any) => [
@@ -274,7 +275,7 @@ export default function AdminStudents() {
         ? new Date(s.lastSignedIn).toLocaleDateString("en-US")
         : "",
       (s.activePackages || []).join("; "),
-      s.totalSpent || 0,
+      ...(canViewFinancials ? [s.totalSpent || 0] : []),
       s.renewalCount || 0,
     ]);
     const csv = [
@@ -344,48 +345,33 @@ export default function AdminStudents() {
           </div>
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <Card>
-            <CardContent className="pt-4 pb-3 text-center">
-              <p className="text-2xl font-bold text-emerald-600">
-                {totalStudents}
-              </p>
-              <p className="text-xs text-gray-500">
-                {isRtl ? "الإجمالي" : "Total"}
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-4 pb-3 text-center">
-              <p className="text-2xl font-bold text-green-600">
-                {activeStudents}
-              </p>
-              <p className="text-xs text-gray-500">
-                {isRtl ? "نشط" : "Active"}
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-4 pb-3 text-center">
-              <p className="text-2xl font-bold text-gray-500">
-                {inactiveStudents}
-              </p>
-              <p className="text-xs text-gray-500">
-                {isRtl ? "بدون باقة" : "No Package"}
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-4 pb-3 text-center">
-              <p className="text-2xl font-bold text-emerald-600">
-                ${totalRevenue}
-              </p>
-              <p className="text-xs text-gray-500">
-                {isRtl ? "إجمالي الإيرادات" : "Total Revenue"}
-              </p>
-            </CardContent>
-          </Card>
+        {/* Stats — clickable to filter */}
+        <div className={`grid ${canViewFinancials ? 'grid-cols-2 md:grid-cols-4' : 'grid-cols-3'} gap-2`}>
+          <button
+            onClick={() => setPackageFilter("all")}
+            className={`rounded-lg border px-3 py-2 text-center transition hover:shadow-sm ${packageFilter === "all" ? "ring-2 ring-emerald-400 bg-emerald-50" : "bg-white"}`}
+          >
+            <p className="text-lg font-bold text-emerald-600">{totalStudents}</p>
+            <p className="text-[11px] text-gray-500 leading-tight">{isRtl ? "الإجمالي" : "Total"}</p>
+          </button>
+          <button
+            onClick={() => setPackageFilter("active")}
+            className={`rounded-lg border px-3 py-2 text-center transition hover:shadow-sm ${packageFilter === "active" ? "ring-2 ring-emerald-400 bg-emerald-50" : "bg-white"}`}
+          >
+            <p className="text-lg font-bold text-green-600">{activeStudents}</p>
+            <p className="text-[11px] text-gray-500 leading-tight">{isRtl ? "نشط" : "Active"}</p>
+          </button>
+          <button
+            onClick={() => setPackageFilter("none")}
+            className={`rounded-lg border px-3 py-2 text-center transition hover:shadow-sm ${packageFilter === "none" ? "ring-2 ring-emerald-400 bg-emerald-50" : "bg-white"}`}
+          >
+            <p className="text-lg font-bold text-gray-500">{inactiveStudents}</p>
+            <p className="text-[11px] text-gray-500 leading-tight">{isRtl ? "بدون باقة" : "No Package"}</p>
+          </button>
+          {canViewFinancials && <div className="rounded-lg border px-3 py-2 text-center bg-white">
+            <p className="text-lg font-bold text-emerald-600">${totalRevenue}</p>
+            <p className="text-[11px] text-gray-500 leading-tight">{isRtl ? "إجمالي الإيرادات" : "Total Revenue"}</p>
+          </div>}
         </div>
 
         {/* Filters */}
@@ -544,14 +530,14 @@ export default function AdminStudents() {
                             </span>
                           </div>
                         )}
-                        <div>
+                        {canViewFinancials && <div>
                           <span className="text-gray-400 block">
                             {isRtl ? "الإنفاق" : "Spent"}
                           </span>
                           <span className="font-medium text-emerald-600">
                             {s.totalSpent > 0 ? `$${s.totalSpent}` : "—"}
                           </span>
-                        </div>
+                        </div>}
                         <div>
                           <span className="text-gray-400 block">
                             {isRtl ? "التسجيل" : "Registered"}
@@ -695,7 +681,7 @@ export default function AdminStudents() {
                         {visibleCols.has('package') && <TableHead>
                           <SortableHeader label={isRtl ? "الباقة" : "Package"} sortKey="package" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} />
                         </TableHead>}
-                        {visibleCols.has('spent') && <TableHead>
+                        {canViewFinancials && visibleCols.has('spent') && <TableHead>
                           <SortableHeader label={isRtl ? "الإنفاق" : "Spent"} sortKey="spent" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} />
                         </TableHead>}
                         {visibleCols.has('renewals') && <TableHead>
@@ -770,7 +756,7 @@ export default function AdminStudents() {
                                 </span>
                               )}
                             </TableCell>}
-                            {visibleCols.has('spent') && <TableCell className="text-sm font-medium text-emerald-600">
+                            {canViewFinancials && visibleCols.has('spent') && <TableCell className="text-sm font-medium text-emerald-600">
                               {s.totalSpent > 0 ? `$${s.totalSpent}` : "—"}
                             </TableCell>}
                             {visibleCols.has('renewals') && <TableCell className="text-center">

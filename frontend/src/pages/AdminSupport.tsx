@@ -10,7 +10,6 @@ import {
   Headphones,
   Send,
   Loader2,
-  ArrowLeft,
   MessageCircle,
   Clock,
   User,
@@ -23,6 +22,10 @@ import {
   Sparkles,
   AlertTriangle,
   Bot,
+  Pencil,
+  Trash2,
+  MoreVertical,
+  Check,
 } from "lucide-react";
 import { useState, useRef, useEffect, useMemo } from "react";
 import { toast } from "sonner";
@@ -39,15 +42,25 @@ export default function AdminSupport() {
   const [uploading, setUploading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const didHydrateConversationRef = useRef(false);
   const didSyncQueryRef = useRef(false);
   const [searchInput, setSearchInput] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "open" | "closed">("all");
+  const [activeMenuMsgId, setActiveMenuMsgId] = useState<number | null>(null);
+  const [editingMsgId, setEditingMsgId] = useState<number | null>(null);
+  const [editContent, setEditContent] = useState("");
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const replaceSupportUrl = (conversationId: number | null) => {
     if (typeof window === "undefined") return;
     const nextUrl = conversationId ? `/admin/support?conversationId=${conversationId}` : "/admin/support";
     window.history.replaceState(window.history.state, "", nextUrl);
+  };
+
+  const clearSelectedConversation = () => {
+    replaceSupportUrl(null);
+    setSelectedConvId(null);
   };
 
   // Debounce search input (300ms)
@@ -84,7 +97,9 @@ export default function AdminSupport() {
   );
 
   useEffect(() => {
-    if (typeof window === "undefined" || !conversations) return;
+    if (didHydrateConversationRef.current || typeof window === "undefined" || !conversations) return;
+    didHydrateConversationRef.current = true;
+
     const rawConversationId = new URLSearchParams(window.location.search).get("conversationId");
     if (!rawConversationId) return;
 
@@ -95,16 +110,12 @@ export default function AdminSupport() {
     }
 
     if (conversations.some((conversation) => conversation.id === requestedConversationId)) {
-      if (selectedConvId !== requestedConversationId) {
-        setSelectedConvId(requestedConversationId);
-      }
+      setSelectedConvId(requestedConversationId);
       return;
     }
 
-    if (selectedConvId == null) {
-      replaceSupportUrl(null);
-    }
-  }, [conversations, selectedConvId]);
+    replaceSupportUrl(null);
+  }, [conversations]);
 
   useEffect(() => {
     if (!didSyncQueryRef.current) {
@@ -135,7 +146,7 @@ export default function AdminSupport() {
   const closeMutation = trpc.supportChat.close.useMutation({
     onSuccess: () => {
       toast.success(isRtl ? 'تم إغلاق المحادثة' : 'Conversation closed');
-      setSelectedConvId(null);
+      clearSelectedConversation();
       refetchConvs();
     },
     onError: (err) => toast.error(err.message),
@@ -167,6 +178,23 @@ export default function AdminSupport() {
     onError: (err) => toast.error(err.message),
   });
 
+  const editMessageMutation = trpc.supportChat.editMessage.useMutation({
+    onSuccess: () => {
+      setEditingMsgId(null);
+      setEditContent("");
+      refetchMessages();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const deleteMessageMutation = trpc.supportChat.deleteMessage.useMutation({
+    onSuccess: () => {
+      setActiveMenuMsgId(null);
+      refetchMessages();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
   const uploadMutation = trpc.supportChat.uploadAttachment.useMutation();
   const selectedConversationUserId = selectedData?.conversation?.userId ?? selectedConversationSummary?.userId ?? null;
 
@@ -188,15 +216,33 @@ export default function AdminSupport() {
   };
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const container = messagesEndRef.current?.parentElement;
+    if (!container) return;
+
+    container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
   };
 
   useEffect(() => {
+    if (!selectedConvId || !selectedData?.messages?.length) return;
     scrollToBottom();
-  }, [selectedData?.messages]);
+  }, [selectedConvId, selectedData?.messages]);
 
   const { t, language } = useLanguage();
   const isRtl = language === 'ar';
+
+  // Date separator helper for grouping chat messages by day
+  const getDateLabel = (dateStr: string) => {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return '';
+    const today = new Date();
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const sameDay = (a: Date, b: Date) =>
+      a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+    if (sameDay(d, today)) return isRtl ? 'اليوم' : 'Today';
+    if (sameDay(d, yesterday)) return isRtl ? 'أمس' : 'Yesterday';
+    return d.toLocaleDateString(isRtl ? 'ar-EG' : 'en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  };
 
   const handleSendReply = async () => {
     const trimmed = reply.trim();
@@ -260,62 +306,52 @@ export default function AdminSupport() {
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
+      <div className="space-y-4">
         <div>
-          <h1 className="text-3xl font-bold flex items-center gap-2">
-            <Headphones className="h-8 w-8" /> {t('admin.support.title')}
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <Headphones className="h-6 w-6" /> {t('admin.support.title')}
           </h1>
-          <p className="text-muted-foreground">
+          <p className="text-sm text-muted-foreground">
             {t('admin.support.subtitle')}
           </p>
         </div>
 
-        {/* Summary cards */}
-        <div className="grid gap-4 md:grid-cols-4">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm text-muted-foreground">
-                {t('admin.support.openConvos')}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-3xl font-bold">{totalOpen}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm text-muted-foreground">
-                {t('admin.support.unread')}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-3xl font-bold text-red-600">{totalUnread}</p>
-            </CardContent>
-          </Card>
-          <Card className={totalEscalated > 0 ? 'border-amber-300 bg-amber-50' : ''}>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm text-muted-foreground flex items-center gap-1">
-                <AlertTriangle className="h-3.5 w-3.5" />
-                {isRtl ? 'طلب وكيل بشري' : 'Human Requested'}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className={`text-3xl font-bold ${totalEscalated > 0 ? 'text-amber-600' : ''}`}>{totalEscalated}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm text-muted-foreground">
-                {t('admin.support.totalConvos')}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-3xl font-bold">{(conversations ?? []).length}</p>
-            </CardContent>
-          </Card>
+        {/* Summary cards — clickable to filter */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          <button
+            onClick={() => setStatusFilter("open")}
+            className={`rounded-lg border px-3 py-2 text-center transition hover:shadow-sm ${statusFilter === "open" ? "ring-2 ring-inset ring-emerald-400 bg-emerald-50" : "bg-white"}`}
+          >
+            <p className="text-lg font-bold">{totalOpen}</p>
+            <p className="text-[11px] text-muted-foreground leading-tight">{t('admin.support.openConvos')}</p>
+          </button>
+          <button
+            onClick={() => { setStatusFilter("all"); /* unread has no direct filter — show all */ }}
+            className={`rounded-lg border px-3 py-2 text-center transition hover:shadow-sm bg-white`}
+          >
+            <p className={`text-lg font-bold ${totalUnread > 0 ? 'text-red-600' : ''}`}>{totalUnread}</p>
+            <p className="text-[11px] text-muted-foreground leading-tight">{t('admin.support.unread')}</p>
+          </button>
+          <button
+            onClick={() => setStatusFilter("all")}
+            className={`rounded-lg border px-3 py-2 text-center transition hover:shadow-sm ${totalEscalated > 0 ? "border-amber-300 bg-amber-50" : "bg-white"}`}
+          >
+            <p className={`text-lg font-bold ${totalEscalated > 0 ? 'text-amber-600' : ''}`}>{totalEscalated}</p>
+            <p className="text-[11px] text-muted-foreground leading-tight flex items-center justify-center gap-1">
+              <AlertTriangle className="h-3 w-3" />
+              {isRtl ? 'طلب وكيل بشري' : 'Escalated'}
+            </p>
+          </button>
+          <button
+            onClick={() => setStatusFilter("all")}
+            className={`rounded-lg border px-3 py-2 text-center transition hover:shadow-sm ${statusFilter === "all" ? "ring-2 ring-inset ring-emerald-400 bg-emerald-50" : "bg-white"}`}
+          >
+            <p className="text-lg font-bold">{(conversations ?? []).length}</p>
+            <p className="text-[11px] text-muted-foreground leading-tight">{t('admin.support.totalConvos')}</p>
+          </button>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           {/* Conversation list — hidden on mobile when a conversation is selected */}
           <Card className={`lg:col-span-1 ${selectedConvId ? 'hidden lg:block' : ''}`}>
             <CardHeader className="pb-3 space-y-3">
@@ -378,7 +414,7 @@ export default function AdminSupport() {
                     <button
                       key={conv.id}
                       onClick={() => setSelectedConvId(conv.id)}
-                      className={`w-full text-left p-4 hover:bg-gray-50 transition ${
+                      className={`w-full text-left p-3 hover:bg-gray-50 transition ${
                         selectedConvId === conv.id ? "bg-emerald-50 border-r-2 border-emerald-600" : ""
                       }`}
                     >
@@ -450,101 +486,141 @@ export default function AdminSupport() {
             ) : (
               <>
                 {/* Conversation header */}
-                <CardHeader className="pb-3 border-b">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setSelectedConvId(null)}
-                      >
-                        <ArrowLeft className="h-4 w-4" />
-                      </Button>
-                      <div className="flex items-center gap-2">
-                        <User className="h-5 w-5 text-muted-foreground" />
-                        <div>
-                          <p className="font-medium text-sm">
-                            {conversations?.find((c) => c.id === selectedConvId)?.userName ??
-                              conversations?.find((c) => c.id === selectedConvId)?.userEmail}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {conversations?.find((c) => c.id === selectedConvId)?.userEmail}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
+                <CardHeader className="pb-2 border-b px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="shrink-0 h-8 w-8"
+                      type="button"
+                      onClick={clearSelectedConversation}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                    <p className="font-medium text-sm flex-1 min-w-0">
+                      {conversations?.find((c) => c.id === selectedConvId)?.userName ??
+                        conversations?.find((c) => c.id === selectedConvId)?.userEmail}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1 mt-1.5 ps-10">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs px-2"
+                      onClick={() => selectedConversationUserId && setProfileUserId(selectedConversationUserId)}
+                      disabled={!selectedConversationUserId}
+                    >
+                      <User className="h-3 w-3 me-1" />
+                      {isRtl ? 'ملف العميل' : 'Profile'}
+                    </Button>
+                    {(selectedData?.conversation as any)?.needsHuman && (
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => selectedConversationUserId && setProfileUserId(selectedConversationUserId)}
-                        disabled={!selectedConversationUserId}
+                        className="h-7 text-xs px-2 text-amber-600 border-amber-300"
+                        onClick={() => clearEscalationMutation.mutate({ conversationId: selectedConvId! })}
+                        disabled={clearEscalationMutation.isPending}
                       >
-                        <User className="h-4 w-4 mr-1" />
-                        {isRtl ? 'ملف العميل' : 'Client Profile'}
+                        <AlertTriangle className="h-3 w-3 me-1" />
+                        {isRtl ? 'إزالة' : 'Clear'}
                       </Button>
-                      {(selectedData?.conversation as any)?.needsHuman && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="text-amber-600 border-amber-300"
-                          onClick={() => clearEscalationMutation.mutate({ conversationId: selectedConvId! })}
-                          disabled={clearEscalationMutation.isPending}
-                        >
-                          <AlertTriangle className="h-4 w-4 mr-1" />
-                          {isRtl ? 'إزالة التصعيد' : 'Clear Escalation'}
-                        </Button>
-                      )}
-                      {selectedData?.conversation?.status === "open" ? (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="text-red-600"
-                          onClick={() => closeMutation.mutate({ conversationId: selectedConvId! })}
-                          disabled={closeMutation.isPending}
-                        >
-                          <XCircle className="h-4 w-4 mr-1" /> {t('admin.support.close')}
-                        </Button>
-                      ) : selectedData?.conversation?.status === "closed" ? (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="text-green-600"
-                          onClick={() => reopenMutation.mutate({ conversationId: selectedConvId! })}
-                          disabled={reopenMutation.isPending}
-                        >
-                          <PlayCircle className="h-4 w-4 mr-1" />
-                          {t('admin.support.reopen') || 'Reopen'}
-                        </Button>
-                      ) : null}
-                    </div>
+                    )}
+                    {selectedData?.conversation?.status === "open" ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs px-2 text-emerald-600 border-emerald-300 hover:bg-emerald-50"
+                        onClick={() => closeMutation.mutate({ conversationId: selectedConvId! })}
+                        disabled={closeMutation.isPending}
+                      >
+                        <Check className="h-3 w-3 me-1" /> {isRtl ? 'تم الحل' : 'Resolved'}
+                      </Button>
+                    ) : selectedData?.conversation?.status === "closed" ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs px-2 text-green-600"
+                        onClick={() => reopenMutation.mutate({ conversationId: selectedConvId! })}
+                        disabled={reopenMutation.isPending}
+                      >
+                        <PlayCircle className="h-3 w-3 me-1" />
+                        {t('admin.support.reopen') || 'Reopen'}
+                      </Button>
+                    ) : null}
                   </div>
                 </CardHeader>
 
                 {/* Messages */}
-                <CardContent className="flex-1 overflow-y-auto p-4 space-y-3">
+                <CardContent className="flex-1 overflow-y-auto p-3 space-y-3">
                   {loadingMessages ? (
                     <div className="flex items-center justify-center py-10">
                       <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                     </div>
                   ) : (
-                    (selectedData?.messages ?? []).map((msg) => {
+                    (selectedData?.messages ?? []).map((msg, idx, arr) => {
                       const isClient = msg.senderType === "client";
                       const isBot = msg.senderType === "bot";
+                      const isDeleted = !!(msg as any).deletedAt;
+                      const isEdited = !!(msg as any).editedAt;
+                      const canEdit = !isClient && !isBot && !isDeleted;
+                      const canDelete = !isClient && !isBot && !isDeleted;
+                      // Date separator logic
+                      const currentDate = new Date(msg.createdAt).toDateString();
+                      const prevDate = idx > 0 ? new Date(arr[idx - 1].createdAt).toDateString() : null;
+                      const showDateSeparator = idx === 0 || currentDate !== prevDate;
                       return (
+                        <div key={msg.id}>
+                          {showDateSeparator && (
+                            <div className="flex items-center gap-3 my-4">
+                              <div className="flex-1 h-px bg-gray-200" />
+                              <span className="text-xs text-gray-400 font-medium px-2">{getDateLabel(msg.createdAt)}</span>
+                              <div className="flex-1 h-px bg-gray-200" />
+                            </div>
+                          )}
                         <div
-                          key={msg.id}
-                          className={`flex ${isClient ? "justify-start" : isBot ? "justify-start" : "justify-end"}`}
+                          className={`group flex ${isClient ? "justify-start" : isBot ? "justify-start" : "justify-end"}`}
+                          style={{ WebkitUserSelect: 'none', userSelect: 'none', WebkitTouchCallout: 'none' } as React.CSSProperties}
+                          onTouchStart={() => {
+                            if (!canEdit && !canDelete) return;
+                            longPressTimer.current = setTimeout(() => setActiveMenuMsgId(msg.id), 500);
+                          }}
+                          onTouchEnd={() => { if (longPressTimer.current) clearTimeout(longPressTimer.current); }}
+                          onTouchMove={() => { if (longPressTimer.current) clearTimeout(longPressTimer.current); }}
                         >
+                          {/* Desktop hover actions — left side for own messages */}
+                          {!isClient && !isBot && (canEdit || canDelete) && !isDeleted && (
+                            <div className="hidden lg:flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity me-1 self-center">
+                              <button
+                                className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600"
+                                onClick={() => { setEditingMsgId(msg.id); setEditContent(msg.content); setActiveMenuMsgId(null); }}
+                                title={isRtl ? 'تعديل' : 'Edit'}
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-500"
+                                onClick={() => { if (confirm(isRtl ? 'هل تريد حذف هذه الرسالة؟' : 'Delete this message?')) deleteMessageMutation.mutate({ messageId: msg.id }); }}
+                                title={isRtl ? 'حذف' : 'Delete'}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          )}
                           <div
-                            className={`max-w-[75%] rounded-2xl px-4 py-2.5 ${
-                              isClient
+                            className={`max-w-[75%] rounded-2xl px-4 py-2.5 relative ${
+                              isDeleted
+                                ? "bg-gray-50 border border-dashed border-gray-200 text-gray-400 italic"
+                                : isClient
                                 ? "bg-gray-100 text-gray-900 rounded-bl-md"
                                 : isBot
                                 ? "bg-amber-50 border border-amber-200 text-gray-900 rounded-bl-md"
                                 : "bg-emerald-600 text-white rounded-br-md"
                             }`}
                           >
+                            {isDeleted ? (
+                              <p className="text-sm">{isRtl ? 'تم حذف هذه الرسالة' : 'This message was deleted'}</p>
+                            ) : (
+                              <>
                             {(isBot || !isClient) && (
                               <p
                                 className={`text-xs font-semibold mb-1 ${
@@ -556,9 +632,37 @@ export default function AdminSupport() {
                                   : msg.senderType === "admin" ? t('admin.support.admin') : t('admin.support.support')}
                               </p>
                             )}
-                            <p className="text-sm whitespace-pre-wrap break-words">
-                              {msg.content}
-                            </p>
+                            {editingMsgId === msg.id ? (
+                              <div className="space-y-2">
+                                <textarea
+                                  value={editContent}
+                                  onChange={(e) => setEditContent(e.target.value)}
+                                  className="w-full text-sm border rounded-lg px-2 py-1.5 text-gray-900 resize-none focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                                  rows={2}
+                                  maxLength={5000}
+                                  autoFocus
+                                />
+                                <div className="flex gap-1 justify-end">
+                                  <button
+                                    onClick={() => { setEditingMsgId(null); setEditContent(""); }}
+                                    className="p-1 rounded hover:bg-white/20 text-emerald-200"
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => editMessageMutation.mutate({ messageId: msg.id, content: editContent.trim() })}
+                                    disabled={!editContent.trim() || editMessageMutation.isPending}
+                                    className="p-1 rounded hover:bg-white/20 text-emerald-200 disabled:opacity-50"
+                                  >
+                                    {editMessageMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <p className="text-sm whitespace-pre-wrap break-words">
+                                {msg.content}
+                              </p>
+                            )}
                             {msg.attachmentUrl && (msg as any).attachmentType === 'voice' ? (
                               <div className="mt-1">
                                 <AudioPlayer src={msg.attachmentUrl} duration={(msg as any).attachmentDuration} isOwn={!isClient} />
@@ -570,17 +674,45 @@ export default function AdminSupport() {
                                 {(msg.attachmentName && msg.attachmentName !== 'attachment_name') ? msg.attachmentName : 'Attachment'}
                               </a>
                             ) : null}
-                            <p
-                              className={`text-xs mt-1 ${
-                                isClient ? "text-gray-400" : "text-emerald-200"
-                              }`}
-                            >
-                              {(() => {
-                                const d = new Date(msg.createdAt);
-                                return isNaN(d.getTime()) ? '' : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                              })()}
-                            </p>
+                            <div className={`flex items-center gap-1 mt-1 ${isClient ? "text-gray-400" : "text-emerald-200"}`}>
+                              {isEdited && <span className="text-[10px] italic">{isRtl ? 'معدّل' : 'edited'}</span>}
+                              <p className="text-xs">
+                                {(() => {
+                                  const d = new Date(msg.createdAt);
+                                  return isNaN(d.getTime()) ? '' : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                })()}
+                              </p>
+                            </div>
+                              </>
+                            )}
                           </div>
+
+                          {/* Mobile long-press action menu */}
+                          {activeMenuMsgId === msg.id && (canEdit || canDelete) && (
+                            <>
+                              <div className="fixed inset-0 z-40" onClick={() => setActiveMenuMsgId(null)} />
+                              <div className="absolute z-50 bg-white border rounded-lg shadow-lg py-1 min-w-[120px]"
+                                style={{ marginTop: '-8px' }}>
+                                {canEdit && (
+                                  <button
+                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50"
+                                    onClick={() => { setEditingMsgId(msg.id); setEditContent(msg.content); setActiveMenuMsgId(null); }}
+                                  >
+                                    <Pencil className="h-3.5 w-3.5" /> {isRtl ? 'تعديل' : 'Edit'}
+                                  </button>
+                                )}
+                                {canDelete && (
+                                  <button
+                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
+                                    onClick={() => { if (confirm(isRtl ? 'هل تريد حذف هذه الرسالة؟' : 'Delete this message?')) deleteMessageMutation.mutate({ messageId: msg.id }); setActiveMenuMsgId(null); }}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" /> {isRtl ? 'حذف' : 'Delete'}
+                                  </button>
+                                )}
+                              </div>
+                            </>
+                          )}
+                        </div>
                         </div>
                       );
                     })
@@ -590,7 +722,7 @@ export default function AdminSupport() {
 
                 {/* Reply input */}
                 {selectedData?.conversation?.status === "open" && (
-                  <div className="border-t p-4">
+                  <div className="border-t p-3">
                     {attachment && (
                       <div className="flex items-center gap-2 mb-2 bg-emerald-50 rounded-lg px-3 py-2 text-sm">
                         <FileIcon className="w-4 h-4 text-emerald-500" />
@@ -598,17 +730,18 @@ export default function AdminSupport() {
                         <button onClick={() => setAttachment(null)} className="text-gray-400 hover:text-gray-600"><X className="w-4 h-4" /></button>
                       </div>
                     )}
-                    <div className="flex items-end gap-2">
+                    {/* Action buttons row */}
+                    <div className="flex items-center gap-1 mb-2">
                       <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileSelect}
                         accept="image/*,.pdf,.doc,.docx,.txt" />
-                      <Button variant="ghost" size="icon" className="rounded-xl h-[42px] w-[42px] shrink-0"
+                      <Button variant="ghost" size="icon" className="rounded-lg h-8 w-8 shrink-0"
                         onClick={() => fileInputRef.current?.click()} disabled={uploading}>
                         <Paperclip className="h-4 w-4" />
                       </Button>
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="rounded-xl h-[42px] w-[42px] shrink-0 text-amber-500 hover:text-amber-600 hover:bg-amber-50"
+                        className="rounded-lg h-8 w-8 shrink-0 text-amber-500 hover:text-amber-600 hover:bg-amber-50"
                         onClick={() => suggestReplyMutation.mutate({ conversationId: selectedConvId! })}
                         disabled={suggestReplyMutation.isPending}
                         title={isRtl ? 'اقتراح رد بالذكاء الاصطناعي' : 'AI Suggest Reply'}
@@ -623,6 +756,9 @@ export default function AdminSupport() {
                         onRecordingComplete={handleVoiceRecording}
                         disabled={uploading || replyMutation.isPending}
                       />
+                    </div>
+                    {/* Textarea + send row */}
+                    <div className="flex items-end gap-2">
                       <div className="flex-1 relative">
                         <textarea
                           value={reply}
@@ -630,9 +766,9 @@ export default function AdminSupport() {
                           onKeyDown={handleKeyDown}
                           placeholder={t('admin.support.replyPlaceholder')}
                           maxLength={5000}
-                          rows={1}
+                          rows={2}
                           className="w-full resize-none border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 max-h-32"
-                          style={{ minHeight: "42px" }}
+                          style={{ minHeight: "60px" }}
                         />
                         {reply.length > 4500 && (
                           <span className={`absolute bottom-0.5 right-2 text-[10px] tabular-nums ${

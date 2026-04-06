@@ -557,6 +557,7 @@ function DashboardLayoutContent({
             <div className="flex items-center gap-1">
               {/* ── Group 1: Utilities (Search + Dark mode) ── */}
               <div className="flex items-center gap-0.5 bg-gray-100/70 dark:bg-white/[0.04] rounded-xl p-1">
+                {adminCheck?.isAdmin && (
                 <button
                   onClick={() => setShowAdminSearch(true)}
                   className="w-8 h-8 rounded-lg hover:bg-white dark:hover:bg-white/[0.08] flex items-center justify-center transition"
@@ -564,6 +565,7 @@ function DashboardLayoutContent({
                 >
                   <Search className="w-4 h-4 text-gray-500 dark:text-gray-400" />
                 </button>
+                )}
                 {toggleTheme && (
                   <button
                     onClick={toggleTheme}

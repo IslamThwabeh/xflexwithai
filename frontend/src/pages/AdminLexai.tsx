@@ -410,7 +410,6 @@ export default function AdminLexai() {
   const summary = useMemo(() => ({
     total: supportCases.length,
     open: supportCases.filter((item) => item.status === "open").length,
-    escalated: supportCases.filter((item) => item.status === "escalated").length,
     active: supportCases.filter((item) => item.lexaiSubscriptionState === "active").length,
   }), [supportCases]);
 
@@ -517,10 +516,9 @@ export default function AdminLexai() {
           </Button>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-3">
           <SummaryCard label={isRtl ? "إجمالي الحالات" : "Total Cases"} value={summary.total} />
           <SummaryCard label={isRtl ? "الحالات المفتوحة" : "Open Cases"} value={summary.open} />
-          <SummaryCard label={isRtl ? "المصعدة" : "Escalated"} value={summary.escalated} />
           <SummaryCard label={isRtl ? "اشتراك LexAI النشط" : "Active LexAI"} value={summary.active} />
         </div>
 

@@ -262,7 +262,6 @@ export default function AdminClientProfileSheet({
                   rows={[
                     { label: isRtl ? "الأيام المتبقية" : "Remaining Days", value: String(profile.lexaiSubscription?.remainingDays ?? 0) },
                     { label: isRtl ? "سبب التجميد" : "Freeze Reason", value: profile.lexaiSubscription?.pausedReason || "-" },
-                    { label: isRtl ? "القضية الحالية" : "Current Case", value: profile.lexaiCase ? `#${profile.lexaiCase.id}` : (isRtl ? "لا توجد" : "None") },
                   ]}
                 />
 

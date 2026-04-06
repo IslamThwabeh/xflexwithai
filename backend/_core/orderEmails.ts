@@ -634,6 +634,58 @@ export async function sendStaffAlertEmail(data: {
   }
 }
 
+/** Send branded HTML welcome email to a new staff member */
+export async function sendStaffWelcomeEmail(to: string, data: {
+  name: string;
+  roles: string[];
+  roleLabels: Record<string, string>;
+}) {
+  const subject = 'Welcome to XFlex Academy Team! | مرحباً بك في فريق أكاديمية XFlex';
+  const roleBadges = data.roles
+    .map(r => {
+      const label = data.roleLabels[r] || r;
+      return `<span style="display:inline-block;background:#ecfdf5;color:#059669;padding:4px 12px;border-radius:16px;font-size:13px;margin:3px 4px;">${label}</span>`;
+    })
+    .join(' ');
+
+  const body = `
+    <h2 style="margin:0 0 8px;color:#111;">Welcome to the Team!</h2>
+    <p style="color:#555;line-height:1.7;font-size:15px;">
+      Hello <strong>${data.name}</strong>,<br/>
+      You have been added as a team member at XFlex Trading Academy.
+    </p>
+    <div style="margin:16px 0;">
+      <p style="color:#555;font-size:14px;margin:0 0 8px;"><strong>Your assigned roles:</strong></p>
+      <div>${roleBadges}</div>
+    </div>
+    <div style="text-align:center;margin-top:24px;">
+      <a href="https://xflexacademy.com/auth" style="display:inline-block;background:#059669;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:bold;">
+        Login with OTP
+      </a>
+    </div>
+    <hr style="border:none;border-top:1px solid #e5e7eb;margin:28px 0;" />
+    <h2 style="margin:0 0 8px;color:#111;text-align:right;">!مرحباً بك في الفريق</h2>
+    <p style="color:#555;line-height:1.7;font-size:15px;text-align:right;">
+      مرحباً <strong>${data.name}</strong>،<br/>
+      تمت إضافتك كعضو في فريق أكاديمية XFlex للتداول.
+    </p>
+    <div style="margin:16px 0;text-align:right;">
+      <p style="color:#555;font-size:14px;margin:0 0 8px;"><strong>:الأدوار المُسندة إليك</strong></p>
+      <div>${roleBadges}</div>
+    </div>
+    <div style="text-align:center;margin-top:24px;">
+      <a href="https://xflexacademy.com/auth" style="display:inline-block;background:#059669;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:bold;">
+        تسجيل الدخول عبر OTP
+      </a>
+    </div>`;
+
+  try {
+    await sendBrandedEmail(to, subject, body);
+  } catch (e) {
+    logger.warn("[STAFF_WELCOME_EMAIL] Failed", { to, error: String(e) });
+  }
+}
+
 /** Send branded HTML announcement email to a student */
 export async function sendAnnouncementEmail(to: string, data: {
   subject: string;

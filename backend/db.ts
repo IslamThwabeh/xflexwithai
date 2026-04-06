@@ -4728,6 +4728,36 @@ export async function getSupportMessages(conversationId: number, limit: number =
     .limit(limit);
 }
 
+/** Edit a support message's content. Returns the updated message or null. */
+export async function editSupportMessage(messageId: number, senderId: number, newContent: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const [msg] = await db.select().from(supportMessages).where(eq(supportMessages.id, messageId)).limit(1);
+  if (!msg || msg.senderId !== senderId) return null;
+  if (msg.deletedAt) return null; // can't edit deleted
+  const [updated] = await db.update(supportMessages)
+    .set({ content: newContent, editedAt: new Date().toISOString() })
+    .where(eq(supportMessages.id, messageId))
+    .returning();
+  return updated;
+}
+
+/** Soft-delete a support message. Returns true on success. */
+export async function deleteSupportMessage(messageId: number, senderId: number, isStaff: boolean) {
+  const db = await getDb();
+  if (!db) return false;
+  const [msg] = await db.select().from(supportMessages).where(eq(supportMessages.id, messageId)).limit(1);
+  if (!msg) return false;
+  // Staff can delete any non-client message; clients can only delete their own
+  if (!isStaff && msg.senderId !== senderId) return false;
+  if (isStaff && msg.senderType === 'client') return false;
+  if (msg.deletedAt) return false; // already deleted
+  await db.update(supportMessages)
+    .set({ deletedAt: new Date().toISOString(), content: '' })
+    .where(eq(supportMessages.id, messageId));
+  return true;
+}
+
 export async function getAllSupportConversations(searchQuery?: string) {
   const db = await getDb();
   if (!db) return [];
@@ -4855,6 +4885,47 @@ export async function reopenSupportConversation(conversationId: number) {
   await db.update(supportConversations)
     .set({ status: "open", closedAt: null, updatedAt: new Date().toISOString() })
     .where(eq(supportConversations.id, conversationId));
+}
+
+/** Auto-close open conversations with no activity for `days` days. Returns count closed. */
+export async function autoCloseStaleConversations(days: number = 3): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+
+  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+  const now = new Date().toISOString();
+
+  // Find stale open conversations
+  const stale = await db.select({ id: supportConversations.id })
+    .from(supportConversations)
+    .where(
+      and(
+        eq(supportConversations.status, "open"),
+        sql`${supportConversations.updatedAt} < ${cutoff}`
+      )
+    );
+
+  if (stale.length === 0) return 0;
+
+  const ids = stale.map(c => c.id);
+
+  // Insert a system bot message in each conversation
+  for (const convId of ids) {
+    await db.insert(supportMessages).values({
+      conversationId: convId,
+      senderId: 0,
+      senderType: "bot",
+      content: "تم إغلاق هذه المحادثة تلقائيًا لعدم وجود نشاط خلال 3 أيام. يمكنك إعادة فتحها في أي وقت.\n\nThis conversation was automatically closed due to 3 days of inactivity. You can reopen it anytime.",
+      createdAt: now,
+    });
+  }
+
+  // Batch close all stale conversations
+  await db.update(supportConversations)
+    .set({ status: "closed", closedAt: now, updatedAt: now })
+    .where(inArray(supportConversations.id, ids));
+
+  return ids.length;
 }
 
 export async function getUnreadSupportCount(userId: number): Promise<number> {

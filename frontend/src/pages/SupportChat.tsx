@@ -2,7 +2,7 @@ import ClientLayout from "@/components/ClientLayout";
 import { trpc } from "@/lib/trpc";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Button } from "@/components/ui/button";
-import { Send, Headphones, Loader2, Paperclip, FileIcon, X, Bot, UserRound } from "lucide-react";
+import { Send, Headphones, Loader2, Paperclip, FileIcon, X, Bot, UserRound, Pencil, Trash2, Check } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { toast } from "sonner";
 import VoiceRecorder from "@/components/VoiceRecorder";
@@ -14,6 +14,10 @@ export default function SupportChat() {
   const [attachment, setAttachment] = useState<{ name: string; file: File; size: number } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [activeMenuMsgId, setActiveMenuMsgId] = useState<number | null>(null);
+  const [editingMsgId, setEditingMsgId] = useState<number | null>(null);
+  const [editContent, setEditContent] = useState("");
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { data, isLoading, refetch } = trpc.supportChat.myConversation.useQuery(undefined, {
     refetchInterval: 5000, // poll every 5s
@@ -45,6 +49,16 @@ export default function SupportChat() {
 
   const uploadMutation = trpc.supportChat.uploadAttachment.useMutation();
   const [uploading, setUploading] = useState(false);
+
+  const editMessageMutation = trpc.supportChat.editMessage.useMutation({
+    onSuccess: () => { setEditingMsgId(null); setEditContent(""); refetch(); },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const deleteMessageMutation = trpc.supportChat.deleteMessage.useMutation({
+    onSuccess: () => { setActiveMenuMsgId(null); refetch(); },
+    onError: (err) => toast.error(err.message),
+  });
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -223,6 +237,8 @@ export default function SupportChat() {
             messages.map((msg, idx) => {
               const isOwn = msg.senderType === "client";
               const isBot = msg.senderType === "bot";
+              const isDeleted = !!(msg as any).deletedAt;
+              const isEdited = !!(msg as any).editedAt;
               // Date separator logic
               const currentDate = new Date(msg.createdAt).toDateString();
               const prevDate = idx > 0 ? new Date(messages[idx - 1].createdAt).toDateString() : null;
@@ -238,17 +254,49 @@ export default function SupportChat() {
                     </div>
                   )}
                   <div
-                    className={`flex ${isOwn ? (isRTL ? "justify-start" : "justify-end") : (isRTL ? "justify-end" : "justify-start")}`}
+                    className={`group flex ${isOwn ? (isRTL ? "justify-start" : "justify-end") : (isRTL ? "justify-end" : "justify-start")}`}
+                    style={{ WebkitUserSelect: 'none', userSelect: 'none', WebkitTouchCallout: 'none' } as React.CSSProperties}
+                    onTouchStart={() => {
+                      if (!isOwn || isDeleted) return;
+                      longPressTimer.current = setTimeout(() => setActiveMenuMsgId(msg.id), 500);
+                    }}
+                    onTouchEnd={() => { if (longPressTimer.current) clearTimeout(longPressTimer.current); }}
+                    onTouchMove={() => { if (longPressTimer.current) clearTimeout(longPressTimer.current); }}
                   >
+                  {/* Desktop hover actions — shown next to own messages */}
+                  {isOwn && !isDeleted && (
+                    <div className="hidden lg:flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity me-1 self-center">
+                      <button
+                        className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600"
+                        onClick={() => { setEditingMsgId(msg.id); setEditContent(msg.content); setActiveMenuMsgId(null); }}
+                        title={isRTL ? 'تعديل' : 'Edit'}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-500"
+                        onClick={() => { if (confirm(isRTL ? 'هل تريد حذف هذه الرسالة؟' : 'Delete this message?')) deleteMessageMutation.mutate({ messageId: msg.id }); }}
+                        title={isRTL ? 'حذف' : 'Delete'}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  )}
                   <div
                     className={`max-w-[80%] rounded-2xl px-4 py-2.5 ${
-                      isOwn
+                      isDeleted
+                        ? "bg-gray-50 border border-dashed border-gray-200 text-gray-400 italic"
+                        : isOwn
                         ? "bg-emerald-600 text-white rounded-br-md"
                         : isBot
                         ? "bg-amber-50 border border-amber-200 text-gray-900 rounded-bl-md"
                         : "bg-gray-100 text-gray-900 rounded-bl-md"
                     }`}
                   >
+                    {isDeleted ? (
+                      <p className="text-sm">{isRTL ? 'تم حذف هذه الرسالة' : 'This message was deleted'}</p>
+                    ) : (
+                      <>
                     {!isOwn && (
                       <p className={`text-xs font-semibold mb-1 ${isBot ? 'text-amber-600' : 'text-emerald-600'}`}>
                         {isBot
@@ -256,7 +304,31 @@ export default function SupportChat() {
                           : msg.senderType === "admin" ? t("support.admin") : t("support.agent")}
                       </p>
                     )}
-                    <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
+                    {editingMsgId === msg.id ? (
+                      <div className="space-y-2">
+                        <textarea
+                          value={editContent}
+                          onChange={(e) => setEditContent(e.target.value)}
+                          className="w-full text-sm border rounded-lg px-2 py-1.5 text-gray-900 resize-none focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                          rows={2}
+                          maxLength={5000}
+                          autoFocus
+                        />
+                        <div className="flex gap-1 justify-end">
+                          <button onClick={() => { setEditingMsgId(null); setEditContent(""); }}
+                            className="p-1 rounded hover:bg-white/20 text-emerald-200"><X className="h-4 w-4" /></button>
+                          <button
+                            onClick={() => editMessageMutation.mutate({ messageId: msg.id, content: editContent.trim() })}
+                            disabled={!editContent.trim() || editMessageMutation.isPending}
+                            className="p-1 rounded hover:bg-white/20 text-emerald-200 disabled:opacity-50"
+                          >
+                            {editMessageMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
+                    )}
                     {msg.attachmentUrl && (msg as any).attachmentType === 'voice' ? (
                       <div className="mt-1">
                         <AudioPlayer src={msg.attachmentUrl} duration={(msg as any).attachmentDuration} isOwn={isOwn} />
@@ -267,17 +339,40 @@ export default function SupportChat() {
                         <FileIcon className="w-3 h-3" /> {msg.attachmentName || 'Attachment'}
                       </a>
                     ) : null}
-                    <p
-                      className={`text-xs mt-1 ${
-                        isOwn ? "text-emerald-200" : "text-gray-400"
-                      }`}
-                    >
-                      {(() => {
-                        const d = new Date(msg.createdAt);
-                        return isNaN(d.getTime()) ? '' : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                      })()}
-                    </p>
+                    <div className={`flex items-center gap-1 mt-1 ${isOwn ? "text-emerald-200" : "text-gray-400"}`}>
+                      {isEdited && <span className="text-[10px] italic">{isRTL ? 'معدّل' : 'edited'}</span>}
+                      <p className="text-xs">
+                        {(() => {
+                          const d = new Date(msg.createdAt);
+                          return isNaN(d.getTime()) ? '' : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                        })()}
+                      </p>
+                    </div>
+                      </>
+                    )}
                   </div>
+
+                  {/* Mobile long-press action menu */}
+                  {activeMenuMsgId === msg.id && isOwn && !isDeleted && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setActiveMenuMsgId(null)} />
+                      <div className="absolute z-50 bg-white border rounded-lg shadow-lg py-1 min-w-[120px]"
+                        style={{ marginTop: '-8px' }}>
+                        <button
+                          className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50"
+                          onClick={() => { setEditingMsgId(msg.id); setEditContent(msg.content); setActiveMenuMsgId(null); }}
+                        >
+                          <Pencil className="h-3.5 w-3.5" /> {isRTL ? 'تعديل' : 'Edit'}
+                        </button>
+                        <button
+                          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
+                          onClick={() => { if (confirm(isRTL ? 'هل تريد حذف هذه الرسالة؟' : 'Delete this message?')) deleteMessageMutation.mutate({ messageId: msg.id }); setActiveMenuMsgId(null); }}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" /> {isRTL ? 'حذف' : 'Delete'}
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
                 </div>
               );

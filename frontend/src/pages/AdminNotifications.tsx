@@ -141,6 +141,7 @@ export default function AdminNotifications() {
           <div className="space-y-4">
             {/* Filter + Mark All Read */}
             <div className="flex flex-wrap items-center gap-3">
+              {isAdmin && (
               <div className="flex items-center gap-2">
                 <Filter className="w-4 h-4 text-gray-400" />
                 <select
@@ -154,6 +155,7 @@ export default function AdminNotifications() {
                   ))}
                 </select>
               </div>
+              )}
               {unreadCount > 0 && (
                 <Button
                   variant="outline"

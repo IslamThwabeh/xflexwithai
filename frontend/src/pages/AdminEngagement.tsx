@@ -32,25 +32,25 @@ export default function AdminEngagement() {
         ) : (
           <>
             {/* Summary Cards */}
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
               <SummaryCard
-                icon={<Activity className="w-5 h-5 text-emerald-500" />}
-                label={isRtl ? 'الأحداث (7 أيام)' : 'Events (7 days)'}
+                icon={<Activity className="w-4 h-4 text-emerald-500" />}
+                label={isRtl ? 'الأحداث (7 أيام)' : 'Events (7d)'}
                 value={summary7?.totalEvents ?? 0}
               />
               <SummaryCard
-                icon={<TrendingUp className="w-5 h-5 text-emerald-500" />}
-                label={isRtl ? 'الأحداث (30 يوم)' : 'Events (30 days)'}
+                icon={<TrendingUp className="w-4 h-4 text-emerald-500" />}
+                label={isRtl ? 'الأحداث (30 يوم)' : 'Events (30d)'}
                 value={summary30?.totalEvents ?? 0}
               />
               <SummaryCard
-                icon={<Users className="w-5 h-5 text-amber-500" />}
-                label={isRtl ? 'أنواع (7 أيام)' : 'Types (7 days)'}
+                icon={<Users className="w-4 h-4 text-amber-500" />}
+                label={isRtl ? 'أنواع (7 أيام)' : 'Types (7d)'}
                 value={summary7?.byType?.length ?? 0}
               />
               <SummaryCard
-                icon={<Users className="w-5 h-5 text-amber-500" />}
-                label={isRtl ? 'أنواع (30 يوم)' : 'Types (30 days)'}
+                icon={<Users className="w-4 h-4 text-amber-500" />}
+                label={isRtl ? 'أنواع (30 يوم)' : 'Types (30d)'}
                 value={summary30?.byType?.length ?? 0}
               />
             </div>
@@ -79,14 +79,12 @@ export default function AdminEngagement() {
 
 function SummaryCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: number }) {
   return (
-    <div className="bg-white border rounded-xl p-4">
-      <div className="flex items-center gap-3">
+    <div className="bg-white border rounded-lg px-3 py-2 text-center">
+      <div className="flex items-center justify-center gap-1.5 mb-0.5">
         {icon}
-        <div>
-          <p className="text-xs text-muted-foreground">{label}</p>
-          <p className="text-2xl font-bold">{value.toLocaleString()}</p>
-        </div>
+        <p className="text-lg font-bold">{value.toLocaleString()}</p>
       </div>
+      <p className="text-[11px] text-muted-foreground leading-tight">{label}</p>
     </div>
   );
 }

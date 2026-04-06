@@ -10,7 +10,7 @@ import { storagePutR2, storageArchiveR2 } from "./storage-r2";
 import { analyzeLexai } from "./_core/lexai";
 import { hashPassword, verifyPassword, generateToken, isValidEmail, isValidPassword } from "./_core/auth";
 import { sendEmail, sendLoginCodeEmail } from "./_core/email";
-import { sendOrderConfirmationEmail, sendPaymentReceivedEmail, sendAdminNewOrderNotification, sendAnnouncementEmail } from "./_core/orderEmails";
+import { sendOrderConfirmationEmail, sendPaymentReceivedEmail, sendAdminNewOrderNotification, sendAnnouncementEmail, sendStaffWelcomeEmail } from "./_core/orderEmails";
 import { ENV } from "./_core/env";
 import { generateNumericCode, generateSaltBase64, normalizeEmail, sha256Base64 } from "./_core/otp";
 // FlexAI routes are registered in server/_core/index.ts
@@ -2758,6 +2758,25 @@ export const appRouter = router({
         await db.reopenSupportConversation(input.conversationId);
         return { success: true };
       }),
+
+    // Edit a message (client edits own, staff edits own)
+    editMessage: protectedProcedure
+      .input(z.object({ messageId: z.number(), content: z.string().min(1).max(5000) }))
+      .mutation(async ({ ctx, input }) => {
+        const updated = await db.editSupportMessage(input.messageId, ctx.user.id, input.content);
+        if (!updated) throw new Error("Cannot edit this message");
+        return { success: true, message: updated };
+      }),
+
+    // Delete a message (client deletes own, staff deletes staff/bot messages)
+    deleteMessage: protectedProcedure
+      .input(z.object({ messageId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const isStaff = ctx.user.role === 'admin' || (ctx.user.staffRoles ?? []).length > 0;
+        const deleted = await db.deleteSupportMessage(input.messageId, ctx.user.id, isStaff);
+        if (!deleted) throw new Error("Cannot delete this message");
+        return { success: true };
+      }),
   }),
 
   // =========================================================================
@@ -2853,43 +2872,18 @@ export const appRouter = router({
           support: 'Support / دعم فني',
           lexai_support: 'LexAI Support / دعم LexAI',
           key_manager: 'Key Manager / مدير المفاتيح',
+          plan_manager: 'Plan Manager / مدير الخطط',
           view_progress: 'View Progress / عرض التقدم',
           view_recommendations: 'View Recommendations / عرض التوصيات',
           view_subscriptions: 'View Subscriptions / عرض الاشتراكات',
           view_quizzes: 'View Quizzes / عرض الاختبارات',
           client_lookup: 'Client Lookup / بحث العملاء',
         };
-        const rolesText = input.roles.map(r => roleLabels[r] || r).join('\n  - ');
         try {
-          await sendEmail({
-            to: input.email,
-            subject: 'Welcome to XFlex Academy Team! | مرحباً بك في فريق أكاديمية XFlex',
-            text: [
-              `Hello ${input.name},`,
-              '',
-              'You have been added as a team member at XFlex Trading Academy!',
-              '',
-              'Your assigned roles:',
-              `  - ${rolesText}`,
-              '',
-              'To access the platform, use the login page and request an OTP code with your email:',
-              'https://xflexacademy.com/auth',
-              '',
-              '---',
-              '',
-              `مرحباً ${input.name}،`,
-              '',
-              'تمت إضافتك كعضو في فريق أكاديمية XFlex للتداول!',
-              '',
-              'الأدوار المُسندة إليك:',
-              `  - ${rolesText}`,
-              '',
-              'للدخول إلى المنصة، استخدم صفحة تسجيل الدخول واطلب رمز OTP عبر بريدك الإلكتروني:',
-              'https://xflexacademy.com/auth',
-              '',
-              'Best regards / مع أطيب التحيات,',
-              'XFlex Academy Team',
-            ].join('\n'),
+          await sendStaffWelcomeEmail(input.email, {
+            name: input.name,
+            roles: input.roles,
+            roleLabels,
           });
         } catch (emailErr) {
           // Don't fail the mutation if email fails — staff is still created

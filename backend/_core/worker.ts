@@ -285,5 +285,15 @@ export default {
     } catch (e) {
       logger.error("[CRON] Onboarding stalled check failed", e);
     }
+
+    // --- Auto-close stale support conversations (3 days inactivity) ---
+    try {
+      const closed = await db.autoCloseStaleConversations(3);
+      if (closed > 0) {
+        logger.info(`[CRON] Auto-closed ${closed} stale support conversation(s)`);
+      }
+    } catch (e) {
+      logger.error("[CRON] Auto-close stale conversations failed", e);
+    }
   },
 };

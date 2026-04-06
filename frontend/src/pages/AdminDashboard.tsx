@@ -120,79 +120,49 @@ export default function AdminDashboard() {
           </Card>
         </div>
 
-        {/* Statistics — flat grid, no sub-headers */}
-        <div className="grid gap-3 grid-cols-2 lg:grid-cols-3">
-          <Card className="bg-gradient-to-br from-green-50 to-emerald-50 border-green-200">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-green-800">{t('admin.totalRevenue')}</CardTitle>
-              <DollarSign className="h-4 w-4 shrink-0 text-green-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-green-700">
-                ${statsLoading ? "..." : (stats?.totalRevenue || 0).toFixed(2)}
-              </div>
-            </CardContent>
-          </Card>
+        {/* Statistics — compact grid */}
+        <div className="grid gap-2 grid-cols-3 lg:grid-cols-6">
+          <div className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-lg px-3 py-2 text-center">
+            <p className="text-lg font-bold text-green-700">
+              ${statsLoading ? "..." : (stats?.totalRevenue || 0).toFixed(0)}
+            </p>
+            <p className="text-[11px] text-green-700 leading-tight">{t('admin.totalRevenue')}</p>
+          </div>
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">{isRtl ? 'مفاتيح مُفعّلة' : 'Keys Sold'}</CardTitle>
-              <Key className="h-4 w-4 shrink-0 text-teal-500" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {statsLoading ? "..." : stats?.totalKeySales || 0}
-              </div>
-            </CardContent>
-          </Card>
+          <div className="border rounded-lg px-3 py-2 text-center bg-white">
+            <p className="text-lg font-bold">
+              {statsLoading ? "..." : stats?.totalKeySales || 0}
+            </p>
+            <p className="text-[11px] text-muted-foreground leading-tight">{isRtl ? 'مفاتيح مُفعّلة' : 'Keys Sold'}</p>
+          </div>
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">{isRtl ? 'طلبات معلقة' : 'Pending Orders'}</CardTitle>
-              <Clock className="h-4 w-4 shrink-0 text-amber-500" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-amber-600">
-                {statsLoading ? "..." : stats?.pendingOrders || 0}
-              </div>
-            </CardContent>
-          </Card>
+          <div className="border rounded-lg px-3 py-2 text-center bg-white">
+            <p className="text-lg font-bold text-amber-600">
+              {statsLoading ? "..." : stats?.pendingOrders || 0}
+            </p>
+            <p className="text-[11px] text-muted-foreground leading-tight">{isRtl ? 'طلبات معلقة' : 'Pending'}</p>
+          </div>
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">{t('admin.totalUsers')}</CardTitle>
-              <Users className="h-4 w-4 shrink-0 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {statsLoading ? "..." : stats?.totalUsers || 0}
-              </div>
-            </CardContent>
-          </Card>
+          <div className="border rounded-lg px-3 py-2 text-center bg-white">
+            <p className="text-lg font-bold">
+              {statsLoading ? "..." : stats?.totalUsers || 0}
+            </p>
+            <p className="text-[11px] text-muted-foreground leading-tight">{t('admin.totalUsers')}</p>
+          </div>
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">{t('admin.totalCourses')}</CardTitle>
-              <BookOpen className="h-4 w-4 shrink-0 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {statsLoading ? "..." : stats?.totalCourses || 0}
-              </div>
-            </CardContent>
-          </Card>
+          <div className="border rounded-lg px-3 py-2 text-center bg-white">
+            <p className="text-lg font-bold">
+              {statsLoading ? "..." : stats?.totalCourses || 0}
+            </p>
+            <p className="text-[11px] text-muted-foreground leading-tight">{t('admin.totalCourses')}</p>
+          </div>
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">{t('admin.totalEnrollments')}</CardTitle>
-              <GraduationCap className="h-4 w-4 shrink-0 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {statsLoading ? "..." : stats?.totalEnrollments || 0}
-              </div>
-            </CardContent>
-          </Card>
+          <div className="border rounded-lg px-3 py-2 text-center bg-white">
+            <p className="text-lg font-bold">
+              {statsLoading ? "..." : stats?.totalEnrollments || 0}
+            </p>
+            <p className="text-[11px] text-muted-foreground leading-tight">{t('admin.totalEnrollments')}</p>
+          </div>
         </div>
 
         {/* Recent Enrollments */}
