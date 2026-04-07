@@ -116,6 +116,9 @@ importers:
       bcryptjs:
         specifier: ^3.0.3
         version: 3.0.3
+      better-sqlite3:
+        specifier: ^12.8.0
+        version: 12.8.0
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -139,7 +142,7 @@ importers:
         version: 17.2.4
       drizzle-orm:
         specifier: ^0.44.5
-        version: 0.44.7(@cloudflare/workers-types@4.20260207.0)(@libsql/client@0.17.0)(better-sqlite3@12.6.2)(postgres@3.4.8)
+        version: 0.44.7(@cloudflare/workers-types@4.20260207.0)(@libsql/client@0.17.0)(better-sqlite3@12.8.0)(postgres@3.4.8)
       embla-carousel-react:
         specifier: ^8.6.0
         version: 8.6.0(react@19.2.4)
@@ -2708,8 +2711,8 @@ packages:
     resolution: {integrity: sha512-GlF5wPWnSa/X5LKM1o0wz0suXIINz1iHRLvTS+sLyi7XPbe5ycmYI3DlZqVGZZtDgl4DmasFg7gOB3JYbphV5g==}
     hasBin: true
 
-  better-sqlite3@12.6.2:
-    resolution: {integrity: sha512-8VYKM3MjCa9WcaSAI3hzwhmyHVlH8tiGFwf0RlTsZPWJ1I5MkzjiudCo4KC4DxOaL/53A5B1sI/IbldNFDbsKA==}
+  better-sqlite3@12.8.0:
+    resolution: {integrity: sha512-RxD2Vd96sQDjQr20kdP+F+dK/1OUNiVOl200vKBZY8u0vTwysfolF6Hq+3ZK2+h8My9YvZhHsF+RSGZW2VYrPQ==}
     engines: {node: 20.x || 22.x || 23.x || 24.x || 25.x}
 
   bindings@1.5.0:
@@ -3651,6 +3654,7 @@ packages:
 
   libsql@0.5.22:
     resolution: {integrity: sha512-NscWthMQt7fpU8lqd7LXMvT9pi+KhhmTHAJWUB/Lj6MWa0MKFv0F2V4C6WKKpjCVZl0VwcDz4nOI3CyaT1DDiA==}
+    cpu: [x64, arm64, wasm32, arm]
     os: [darwin, linux, win32]
 
   lightningcss-android-arm64@1.30.2:
@@ -7504,30 +7508,26 @@ snapshots:
 
   bail@2.0.2: {}
 
-  base64-js@1.5.1:
-    optional: true
+  base64-js@1.5.1: {}
 
   baseline-browser-mapping@2.9.19: {}
 
   bcryptjs@3.0.3: {}
 
-  better-sqlite3@12.6.2:
+  better-sqlite3@12.8.0:
     dependencies:
       bindings: 1.5.0
       prebuild-install: 7.1.3
-    optional: true
 
   bindings@1.5.0:
     dependencies:
       file-uri-to-path: 1.0.0
-    optional: true
 
   bl@4.1.0:
     dependencies:
       buffer: 5.7.1
       inherits: 2.0.4
       readable-stream: 3.6.2
-    optional: true
 
   body-parser@1.20.4:
     dependencies:
@@ -7564,7 +7564,6 @@ snapshots:
     dependencies:
       base64-js: 1.5.1
       ieee754: 1.2.1
-    optional: true
 
   bytes@3.1.2: {}
 
@@ -7616,8 +7615,7 @@ snapshots:
       '@chevrotain/utils': 11.0.3
       lodash-es: 4.17.21
 
-  chownr@1.1.4:
-    optional: true
+  chownr@1.1.4: {}
 
   class-variance-authority@0.7.1:
     dependencies:
@@ -7903,12 +7901,10 @@ snapshots:
   decompress-response@6.0.0:
     dependencies:
       mimic-response: 3.1.0
-    optional: true
 
   deep-eql@5.0.2: {}
 
-  deep-extend@0.6.0:
-    optional: true
+  deep-extend@0.6.0: {}
 
   delaunator@5.0.1:
     dependencies:
@@ -7953,11 +7949,11 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  drizzle-orm@0.44.7(@cloudflare/workers-types@4.20260207.0)(@libsql/client@0.17.0)(better-sqlite3@12.6.2)(postgres@3.4.8):
+  drizzle-orm@0.44.7(@cloudflare/workers-types@4.20260207.0)(@libsql/client@0.17.0)(better-sqlite3@12.8.0)(postgres@3.4.8):
     optionalDependencies:
       '@cloudflare/workers-types': 4.20260207.0
       '@libsql/client': 0.17.0
-      better-sqlite3: 12.6.2
+      better-sqlite3: 12.8.0
       postgres: 3.4.8
 
   dunder-proto@1.0.1:
@@ -7991,7 +7987,6 @@ snapshots:
   end-of-stream@1.4.5:
     dependencies:
       once: 1.4.0
-    optional: true
 
   enhanced-resolve@5.19.0:
     dependencies:
@@ -8153,8 +8148,7 @@ snapshots:
 
   eventemitter3@4.0.7: {}
 
-  expand-template@2.0.3:
-    optional: true
+  expand-template@2.0.3: {}
 
   expect-type@1.3.0: {}
 
@@ -8212,8 +8206,7 @@ snapshots:
       web-streams-polyfill: 3.3.3
     optional: true
 
-  file-uri-to-path@1.0.0:
-    optional: true
+  file-uri-to-path@1.0.0: {}
 
   finalhandler@1.3.2:
     dependencies:
@@ -8264,8 +8257,7 @@ snapshots:
 
   fresh@0.5.2: {}
 
-  fs-constants@1.0.0:
-    optional: true
+  fs-constants@1.0.0: {}
 
   fsevents@2.3.3:
     optional: true
@@ -8300,8 +8292,7 @@ snapshots:
     dependencies:
       resolve-pkg-maps: 1.0.0
 
-  github-from-package@0.0.0:
-    optional: true
+  github-from-package@0.0.0: {}
 
   gopd@1.2.0: {}
 
@@ -8471,13 +8462,11 @@ snapshots:
     dependencies:
       safer-buffer: 2.1.2
 
-  ieee754@1.2.1:
-    optional: true
+  ieee754@1.2.1: {}
 
   inherits@2.0.4: {}
 
-  ini@1.3.8:
-    optional: true
+  ini@1.3.8: {}
 
   inline-style-parser@0.2.7: {}
 
@@ -9112,16 +9101,13 @@ snapshots:
 
   mime@1.6.0: {}
 
-  mimic-response@3.1.0:
-    optional: true
+  mimic-response@3.1.0: {}
 
-  minimist@1.2.8:
-    optional: true
+  minimist@1.2.8: {}
 
   mitt@3.0.1: {}
 
-  mkdirp-classic@0.5.3:
-    optional: true
+  mkdirp-classic@0.5.3: {}
 
   mlly@1.8.0:
     dependencies:
@@ -9144,8 +9130,7 @@ snapshots:
 
   nanoid@5.1.6: {}
 
-  napi-build-utils@2.0.0:
-    optional: true
+  napi-build-utils@2.0.0: {}
 
   negotiator@0.6.3: {}
 
@@ -9157,7 +9142,6 @@ snapshots:
   node-abi@3.88.0:
     dependencies:
       semver: 7.7.4
-    optional: true
 
   node-domexception@1.0.0: {}
 
@@ -9185,7 +9169,6 @@ snapshots:
   once@1.4.0:
     dependencies:
       wrappy: 1.0.2
-    optional: true
 
   oniguruma-parser@0.12.1: {}
 
@@ -9286,7 +9269,6 @@ snapshots:
       simple-get: 4.0.1
       tar-fs: 2.1.4
       tunnel-agent: 0.6.0
-    optional: true
 
   prettier@3.8.1: {}
 
@@ -9312,7 +9294,6 @@ snapshots:
     dependencies:
       end-of-stream: 1.4.5
       once: 1.4.0
-    optional: true
 
   qs@6.14.1:
     dependencies:
@@ -9333,7 +9314,6 @@ snapshots:
       ini: 1.3.8
       minimist: 1.2.8
       strip-json-comments: 2.0.1
-    optional: true
 
   react-day-picker@9.13.1(react@19.2.4):
     dependencies:
@@ -9413,7 +9393,6 @@ snapshots:
       inherits: 2.0.4
       string_decoder: 1.3.0
       util-deprecate: 1.0.2
-    optional: true
 
   recharts-scale@0.4.5:
     dependencies:
@@ -9658,15 +9637,13 @@ snapshots:
 
   siginfo@2.0.0: {}
 
-  simple-concat@1.0.1:
-    optional: true
+  simple-concat@1.0.1: {}
 
   simple-get@4.0.1:
     dependencies:
       decompress-response: 6.0.0
       once: 1.4.0
       simple-concat: 1.0.1
-    optional: true
 
   sonner@2.0.7(react-dom@19.2.4(react@19.2.4))(react@19.2.4):
     dependencies:
@@ -9725,15 +9702,13 @@ snapshots:
   string_decoder@1.3.0:
     dependencies:
       safe-buffer: 5.2.1
-    optional: true
 
   stringify-entities@4.0.4:
     dependencies:
       character-entities-html4: 2.1.0
       character-entities-legacy: 3.0.0
 
-  strip-json-comments@2.0.1:
-    optional: true
+  strip-json-comments@2.0.1: {}
 
   strnum@2.1.2: {}
 
@@ -9767,7 +9742,6 @@ snapshots:
       mkdirp-classic: 0.5.3
       pump: 3.0.4
       tar-stream: 2.2.0
-    optional: true
 
   tar-stream@2.2.0:
     dependencies:
@@ -9776,7 +9750,6 @@ snapshots:
       fs-constants: 1.0.0
       inherits: 2.0.4
       readable-stream: 3.6.2
-    optional: true
 
   tiny-invariant@1.3.3: {}
 
@@ -9819,7 +9792,6 @@ snapshots:
   tunnel-agent@0.6.0:
     dependencies:
       safe-buffer: 5.2.1
-    optional: true
 
   tw-animate-css@1.4.0: {}
 
@@ -10076,8 +10048,7 @@ snapshots:
       regexparam: 3.0.0
       use-sync-external-store: 1.6.0(react@19.2.4)
 
-  wrappy@1.0.2:
-    optional: true
+  wrappy@1.0.2: {}
 
   ws@8.19.0:
     optional: true

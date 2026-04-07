@@ -1,7 +1,8 @@
 import { parse, serialize } from "cookie";
 import type { D1Database } from "@cloudflare/workers-types";
-import { COOKIE_NAME } from "../../shared/const";
+import { COOKIE_NAME, IDLE_TIMEOUT_STAFF_MS } from "../../shared/const";
 import { verifyToken } from "./auth";
+import { getSessionCookieOptions } from "./cookies";
 import { logger } from "./logger";
 import * as db from "../db";
 import type { TrpcContext } from "./context";
@@ -10,6 +11,15 @@ export type WorkerContextOptions = {
   req: Request;
   env: { DB: D1Database };
 };
+
+function isExpiredStaffSession(user: { isStaff?: boolean; lastActiveAt?: string | null } | null | undefined) {
+  if (!user?.isStaff || !user.lastActiveAt) return false;
+
+  const lastActiveAt = new Date(user.lastActiveAt);
+  if (Number.isNaN(lastActiveAt.getTime())) return false;
+
+  return lastActiveAt.getTime() <= Date.now() - IDLE_TIMEOUT_STAFF_MS;
+}
 
 export async function createWorkerContext(
   opts: WorkerContextOptions
@@ -57,10 +67,19 @@ export async function createWorkerContext(
           };
         }
       } else {
-        user = await db.getUserById(decoded.userId);
-        // Touch last-active timestamp (non-blocking, for email suppression)
-        if (user) {
-          db.touchUserActivity(user.id).catch(() => {});
+        const regularUser = await db.getUserById(decoded.userId);
+
+        if (regularUser && isExpiredStaffSession(regularUser)) {
+          logger.info("[AUTH] Staff session expired due to inactivity", {
+            userId: regularUser.id,
+            email: regularUser.email,
+          });
+          clearCookie(COOKIE_NAME, getSessionCookieOptions(req, "user"));
+        } else {
+          user = regularUser;
+          if (user) {
+            db.touchUserActivity(user.id).catch(() => {});
+          }
         }
       }
     }

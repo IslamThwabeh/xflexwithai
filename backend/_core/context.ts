@@ -2,7 +2,8 @@ import type { CreateExpressContextOptions } from "@trpc/server/adapters/express"
 import type { User } from "../../database/schema-sqlite";
 import { logger } from "./logger";
 import { verifyToken } from "./auth";
-import { COOKIE_NAME } from "../../shared/const";
+import { COOKIE_NAME, IDLE_TIMEOUT_STAFF_MS } from "../../shared/const";
+import { getSessionCookieOptions } from "./cookies";
 import * as db from "../db";
 
 export type RequestLike = {
@@ -21,6 +22,15 @@ export type TrpcContext = {
   setCookie: (name: string, value: string, options?: any) => void;
   clearCookie: (name: string, options?: any) => void;
 };
+
+function isExpiredStaffSession(user: Pick<User, "isStaff" | "lastActiveAt"> | null | undefined) {
+  if (!user?.isStaff || !user.lastActiveAt) return false;
+
+  const lastActiveAt = new Date(user.lastActiveAt);
+  if (Number.isNaN(lastActiveAt.getTime())) return false;
+
+  return lastActiveAt.getTime() <= Date.now() - IDLE_TIMEOUT_STAFF_MS;
+}
 
 export async function createContext(
   opts: CreateExpressContextOptions
@@ -118,6 +128,16 @@ export async function createContext(
               logger.error('❌ [AUTH DEBUG] User not found in database', {
                 userId: decoded.userId,
               });
+            } else if (isExpiredStaffSession(regularUser)) {
+              logger.info('⏳ [AUTH DEBUG] Staff session expired due to inactivity', {
+                userId: regularUser.id,
+                email: regularUser.email,
+              });
+
+              opts.res.clearCookie(COOKIE_NAME, {
+                ...getSessionCookieOptions(opts.req, 'user'),
+                maxAge: -1,
+              });
             } else {
               logger.info('✅ [AUTH DEBUG] User found in database', {
                 userId: regularUser.id,
@@ -126,6 +146,7 @@ export async function createContext(
               });
 
               user = regularUser;
+              db.touchUserActivity(regularUser.id).catch(() => {});
               logger.auth('✅ User authenticated successfully', { 
                 userId: regularUser.id, 
                 email: regularUser.email 

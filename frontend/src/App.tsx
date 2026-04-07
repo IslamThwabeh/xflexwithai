@@ -84,6 +84,7 @@ const AdminNotifications = lazy(() => import("./pages/AdminNotifications"));
 const AdminSettings = lazy(() => import("./pages/AdminSettings"));
 const AdminPoints = lazy(() => import("./pages/AdminPoints"));
 const AdminEngagement = lazy(() => import("./pages/AdminEngagement"));
+const AdminMonitoring = lazy(() => import("./pages/AdminMonitoring"));
 const AdminOfferAgreements = lazy(() => import("./pages/AdminOfferAgreements"));
 const AdminPlanProgress = lazy(() => import("./pages/AdminPlanProgress"));
 const NotificationCenter = lazy(() => import("./pages/NotificationCenter"));
@@ -334,6 +335,11 @@ function Router() {
       <Route path="/admin/engagement">
         <AdminRoute>
           <AdminEngagement />
+        </AdminRoute>
+      </Route>
+      <Route path="/admin/monitoring">
+        <AdminRoute>
+          <AdminMonitoring />
         </AdminRoute>
       </Route>
       <Route path="/orders">

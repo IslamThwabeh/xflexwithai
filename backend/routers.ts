@@ -28,6 +28,193 @@ const getReqHeader = (req: any, name: string) => {
   return "";
 };
 
+const getRequestIp = (req: any) => {
+  return getReqHeader(req, "cf-connecting-ip") ||
+    (getReqHeader(req, "x-forwarded-for") || "").split(",")[0].trim() ||
+    "";
+};
+
+const getRequestUserAgent = (req: any) => getReqHeader(req, "user-agent") || "";
+
+const STAFF_ACTIVITY_QUERY_ALLOWLIST = new Set([
+  "supportDashboard.searchClients",
+  "supportDashboard.clientProgress",
+  "supportDashboard.clientSubscriptions",
+  "supportDashboard.clientQuizProgress",
+  "supportDashboard.recommendationFeed",
+  "supportChat.getMessages",
+  "lexaiSupport.getCase",
+  "plan.listAll",
+]);
+
+const STAFF_ACTIVITY_MUTATION_IGNORELIST = new Set([
+  "staffNotifications.markRead",
+  "staffNotifications.markReadByRoute",
+  "staffNotifications.markAllRead",
+]);
+
+const STAFF_ACTIVITY_RESOURCE_ID_KEYS = [
+  "conversationId",
+  "caseId",
+  "messageId",
+  "userId",
+  "subscriptionId",
+  "orderId",
+  "packageId",
+  "keyId",
+  "courseId",
+  "eventId",
+  "articleId",
+  "testimonialId",
+  "id",
+];
+
+const isSensitiveStaffActivityKey = (key: string) => {
+  const normalized = key.toLowerCase();
+  if (
+    normalized.includes("password") ||
+    normalized.includes("token") ||
+    normalized.includes("code") ||
+    normalized.includes("hash") ||
+    normalized.includes("filedata")
+  ) {
+    return true;
+  }
+
+  return ["content", "note", "details", "metadata", "proofurl"].includes(normalized);
+};
+
+const summarizeStaffActivityInput = (value: unknown, depth = 0): unknown => {
+  if (value == null) return value;
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === "string") {
+    return value.length > 120 ? `${value.slice(0, 117)}...` : value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    if (depth >= 1) {
+      return `[${value.length} items]`;
+    }
+    return value.slice(0, 5).map((entry) => summarizeStaffActivityInput(entry, depth + 1));
+  }
+  if (typeof value === "object") {
+    if (depth >= 2) {
+      return "[object]";
+    }
+
+    const summary: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+      summary[key] = isSensitiveStaffActivityKey(key)
+        ? "[redacted]"
+        : summarizeStaffActivityInput(entry, depth + 1);
+    }
+    return summary;
+  }
+
+  return String(value);
+};
+
+const getStaffActivityResourceId = (input: unknown) => {
+  if (!input || typeof input !== "object") return null;
+  const source = input as Record<string, unknown>;
+
+  for (const key of STAFF_ACTIVITY_RESOURCE_ID_KEYS) {
+    const value = source[key];
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+  }
+
+  return null;
+};
+
+const getStaffActivityResourceType = (path: string) => {
+  const [scope] = path.split(".");
+  switch (scope) {
+    case "supportDashboard":
+      return "student_profile";
+    case "supportChat":
+      return "support_conversation";
+    case "lexaiSupport":
+      return "lexai_case";
+    case "roles":
+      return "staff_role";
+    case "recommendations":
+      return "recommendation_channel";
+    case "plan":
+      return "plan_progress";
+    default:
+      return scope || "staff_action";
+  }
+};
+
+const writeStaffActivityLog = async ({
+  ctx,
+  path,
+  type,
+  input,
+  actionType,
+  resourceType,
+  resourceId,
+  details,
+}: {
+  ctx: any;
+  path: string;
+  type: "query" | "mutation";
+  input: unknown;
+  actionType?: string;
+  resourceType?: string | null;
+  resourceId?: number | null;
+  details?: Record<string, unknown>;
+}) => {
+  const user = ctx?.user;
+  const isStaffUser = !!user && user.id > 0 && !!user.isStaff;
+  const isAdmin = !!ctx?.admin;
+  if (!isStaffUser || isAdmin) return;
+
+  const summarizedInput = summarizeStaffActivityInput(input);
+  await db.logStaffAction({
+    staffUserId: user.id,
+    actionType: actionType ?? path,
+    resourceType: resourceType ?? getStaffActivityResourceType(path),
+    resourceId: resourceId ?? getStaffActivityResourceId(input),
+    details: {
+      operationType: type,
+      path,
+      input: summarizedInput,
+      ...details,
+    },
+    ipAddress: getRequestIp(ctx.req),
+  });
+};
+
+const staffActivityTrackingMiddleware = async ({ ctx, path, type, input, next }: any) => {
+  const result = await next();
+
+  if (!result.ok) {
+    return result;
+  }
+
+  const shouldTrackMutation = type === "mutation" && !STAFF_ACTIVITY_MUTATION_IGNORELIST.has(path);
+  const shouldTrackQuery = type === "query" && STAFF_ACTIVITY_QUERY_ALLOWLIST.has(path);
+  if (!shouldTrackMutation && !shouldTrackQuery) {
+    return result;
+  }
+
+  try {
+    await writeStaffActivityLog({ ctx, path, type, input });
+  } catch (error) {
+    logger.warn("[STAFF MONITORING] Failed to log staff activity", {
+      path,
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+
+  return result;
+};
+
 // Admin-only procedure - checks if user is in admins table
 const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   if (!ctx.user || !ctx.user.email) {
@@ -71,7 +258,7 @@ const supportStaffProcedure = protectedProcedure.use(async ({ ctx, next }) => {
     throw new TRPCError({ code: 'FORBIDDEN', message: 'Staff access required' });
   }
   return next({ ctx: { ...ctx, admin: null, staffRole: 'support' as const } });
-});
+}).use(staffActivityTrackingMiddleware);
 
 const lexaiSupportProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   if (!ctx.user?.email) {
@@ -84,7 +271,7 @@ const lexaiSupportProcedure = protectedProcedure.use(async ({ ctx, next }) => {
     throw new TRPCError({ code: 'FORBIDDEN', message: 'LexAI support access required' });
   }
   return next({ ctx: { ...ctx, admin: null } });
-});
+}).use(staffActivityTrackingMiddleware);
 
 // Admin-or-role procedure factory
 const adminOrRoleProcedure = (roles: string[]) => protectedProcedure.use(async ({ ctx, next }) => {
@@ -98,7 +285,7 @@ const adminOrRoleProcedure = (roles: string[]) => protectedProcedure.use(async (
     throw new TRPCError({ code: 'FORBIDDEN', message: 'Access denied' });
   }
   return next({ ctx: { ...ctx, admin: null } });
-});
+}).use(staffActivityTrackingMiddleware);
 const ensureLexaiAccess = async (ctx: { user: { id: number; email?: string | null } | null }) => {
   if (!ctx.user) {
     throw new TRPCError({ code: "UNAUTHORIZED", message: "Not authenticated" });
@@ -547,11 +734,8 @@ export const appRouter = router({
         const nowMs = Date.now();
         await db.deleteExpiredEmailOtps(nowMs);
 
-        const ip =
-          getReqHeader(ctx.req, "cf-connecting-ip") ||
-          (getReqHeader(ctx.req, "x-forwarded-for") || "").split(",")[0].trim() ||
-          "";
-        const userAgent = getReqHeader(ctx.req, "user-agent") || "";
+        const ip = getRequestIp(ctx.req);
+        const userAgent = getRequestUserAgent(ctx.req);
 
         const ipHash = ip ? await sha256Base64(`ip:${ip}`) : null;
         const userAgentHash = userAgent ? await sha256Base64(`ua:${userAgent}`) : null;
@@ -707,6 +891,7 @@ export const appRouter = router({
 
         const cookieOptions = getSessionCookieOptions(ctx.req, 'user');
         ctx.setCookie(COOKIE_NAME, token, cookieOptions);
+        await db.touchUserActivity(user.id);
 
         try {
           await db.syncUserEntitlementsFromKeys(user.id, email);
@@ -717,6 +902,24 @@ export const appRouter = router({
         // Return staff info for frontend redirect
         let staffRoles: string[] = [];
         if (user.isStaff) {
+          const ip = getRequestIp(ctx.req);
+          const userAgent = getRequestUserAgent(ctx.req);
+          await db.startStaffSession({
+            staffUserId: user.id,
+            ipAddress: ip,
+            userAgent,
+          });
+          await db.logStaffAction({
+            staffUserId: user.id,
+            actionType: 'auth.login',
+            resourceType: 'session',
+            details: {
+              operationType: 'mutation',
+              path: 'auth.verifyLoginCode',
+              authMethod: otpPurpose === 'login_stepup' ? 'password_plus_otp' : 'otp',
+            },
+            ipAddress: ip,
+          });
           const roles = await db.getUserRoles(user.id);
           staffRoles = roles.map(r => r.role);
         }
@@ -797,6 +1000,28 @@ export const appRouter = router({
         // Set cookie
         const cookieOptions = getSessionCookieOptions(ctx.req, 'user');
         ctx.setCookie(COOKIE_NAME, token, cookieOptions);
+        await db.touchUserActivity(user.id);
+
+        if (user.isStaff) {
+          const ip = getRequestIp(ctx.req);
+          const userAgent = getRequestUserAgent(ctx.req);
+          await db.startStaffSession({
+            staffUserId: user.id,
+            ipAddress: ip,
+            userAgent,
+          });
+          await db.logStaffAction({
+            staffUserId: user.id,
+            actionType: 'auth.login',
+            resourceType: 'session',
+            details: {
+              operationType: 'mutation',
+              path: 'auth.login',
+              authMethod: 'password',
+            },
+            ipAddress: ip,
+          });
+        }
 
         // Sync entitlements from any keys already assigned to this email
         try {
@@ -1024,7 +1249,31 @@ export const appRouter = router({
         return { success: true };
       }),
     
-    logout: publicProcedure.mutation(({ ctx }) => {
+    logout: publicProcedure.mutation(async ({ ctx }) => {
+      if (ctx.user && ctx.user.id > 0 && ctx.user.isStaff) {
+        const logoutAt = new Date();
+        const ip = getRequestIp(ctx.req);
+        try {
+          await db.endActiveStaffSessions(ctx.user.id, logoutAt);
+          await db.logStaffAction({
+            staffUserId: ctx.user.id,
+            actionType: 'auth.logout',
+            resourceType: 'session',
+            details: {
+              operationType: 'mutation',
+              path: 'auth.logout',
+            },
+            ipAddress: ip,
+            createdAt: logoutAt,
+          });
+        } catch (error) {
+          logger.warn('[STAFF MONITORING] Failed to close staff session on logout', {
+            userId: ctx.user.id,
+            error: error instanceof Error ? error.message : 'Unknown error',
+          });
+        }
+      }
+
       // Clear with both role maxAge values – the important thing is maxAge: -1 which deletes the cookie
       const cookieOptions = getSessionCookieOptions(ctx.req, 'user');
       ctx.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
@@ -2269,6 +2518,22 @@ export const appRouter = router({
           }
         }
 
+        const isAdmin = !!(ctx.user?.email && await db.getAdminByEmail(ctx.user.email));
+        if (ctx.user?.isStaff && !isAdmin) {
+          await writeStaffActivityLog({
+            ctx: { ...ctx, admin: null },
+            path: 'recommendations.postMessage',
+            type: 'mutation',
+            input: {
+              type: input.type,
+              symbol: input.symbol,
+              side: input.side,
+              parentId: input.parentId,
+              sendEmail: input.sendEmail,
+            },
+          });
+        }
+
         return { success: true, messageId };
       }),
 
@@ -2292,6 +2557,16 @@ export const appRouter = router({
         // Check admin status via DB lookup (ctx.admin only exists on adminProcedure)
         const isAdmin = !!(ctx.user?.email && await db.getAdminByEmail(ctx.user.email));
         await db.deleteRecommendationMessage(input.messageId, ctx.user.id, isAdmin);
+
+        if (ctx.user?.isStaff && !isAdmin) {
+          await writeStaffActivityLog({
+            ctx: { ...ctx, admin: null },
+            path: 'recommendations.deleteMessage',
+            type: 'mutation',
+            input,
+          });
+        }
+
         return { success: true };
       }),
 
@@ -2772,7 +3047,8 @@ export const appRouter = router({
     deleteMessage: protectedProcedure
       .input(z.object({ messageId: z.number() }))
       .mutation(async ({ ctx, input }) => {
-        const isStaff = ctx.user.role === 'admin' || (ctx.user.staffRoles ?? []).length > 0;
+        const isAdmin = !!(ctx.user.email && await db.getAdminByEmail(ctx.user.email));
+        const isStaff = isAdmin || !!ctx.user.isStaff;
         const deleted = await db.deleteSupportMessage(input.messageId, ctx.user.id, isStaff);
         if (!deleted) throw new Error("Cannot delete this message");
         return { success: true };
@@ -3890,8 +4166,8 @@ export const appRouter = router({
       .input(z.object({
         nameEn: z.string().min(1),
         nameAr: z.string().min(1),
-        titleEn: z.string().optional(),
-        titleAr: z.string().optional(),
+        titleEn: z.string().default(''),
+        titleAr: z.string().default(''),
         textEn: z.string().min(1),
         textAr: z.string().min(1),
         avatarUrl: z.string().optional(),
@@ -5248,6 +5524,44 @@ ${qaText}`;
       await db.markAllStaffNotificationsRead(ctx.user.id);
       return { success: true };
     }),
+  }),
+
+  monitoring: router({
+    summary: adminProcedure
+      .input(z.object({ days: z.number().min(1).max(90).optional() }).optional())
+      .query(async ({ input }) => {
+        return db.getStaffMonitoringSummary(input?.days ?? 14);
+      }),
+
+    actions: adminProcedure
+      .input(z.object({
+        days: z.number().min(1).max(90).optional(),
+        staffUserId: z.number().optional(),
+        limit: z.number().min(1).max(200).optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        return db.listStaffActionLogs({
+          days: input?.days,
+          staffUserId: input?.staffUserId,
+          limit: input?.limit,
+        });
+      }),
+
+    sessions: adminProcedure
+      .input(z.object({
+        days: z.number().min(1).max(90).optional(),
+        staffUserId: z.number().optional(),
+        limit: z.number().min(1).max(200).optional(),
+        status: z.enum(['all', 'active', 'closed']).optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        return db.listStaffSessions({
+          days: input?.days,
+          staffUserId: input?.staffUserId,
+          limit: input?.limit,
+          status: input?.status,
+        });
+      }),
   }),
 
   // ============================================================================

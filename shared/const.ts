@@ -15,6 +15,7 @@ export const COOKIE_MAX_AGE_ADMIN = 2 * 60 * 60;     // 2 h
 
 // Client-side idle timeout (ms) – auto-logout on inactivity
 export const IDLE_TIMEOUT_USER_MS  = 30 * 60 * 1000;  // 30 min
+export const IDLE_TIMEOUT_STAFF_MS = 15 * 60 * 1000;  // 15 min
 export const IDLE_TIMEOUT_ADMIN_MS = 15 * 60 * 1000;  // 15 min
 
 // ── Staff Role → Admin Page Access Mapping ───────────────────────────

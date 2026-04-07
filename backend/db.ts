@@ -1,4 +1,4 @@
-import { eq, desc, and, or, sql, ne, inArray, isNotNull } from "drizzle-orm";
+import { eq, desc, and, or, sql, ne, inArray, isNotNull, isNull, gte } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import type { D1Database } from "@cloudflare/workers-types";
 import {
@@ -62,11 +62,12 @@ import {
   lexaiSupportNotes, LexaiSupportNote, InsertLexaiSupportNote,
   staffNotifications, StaffNotification, InsertStaffNotification,
   adminSettings, AdminSetting, InsertAdminSetting,
+  staffActionLogs, staffSessions,
 } from "../database/schema-sqlite.ts";
 import { ENV } from './_core/env';
 import { logger } from './_core/logger';
 import { sendWelcomeEmail, sendMilestoneEmail, sendQuizFeedbackEmail, sendStaffAlertEmail } from './_core/orderEmails';
-import { STAFF_NOTIFICATION_EVENTS, type StaffNotificationEventType } from '../shared/const';
+import { IDLE_TIMEOUT_STAFF_MS, STAFF_NOTIFICATION_EVENTS, type StaffNotificationEventType } from '../shared/const';
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -1200,6 +1201,72 @@ async function deactivateStudentSubscriptions(userId: number) {
 // Admin Actions (Audit Trail)
 // ============================================================================
 
+function parseOptionalJson<T>(value: string | null | undefined): T | null {
+  if (!value) return null;
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return null;
+  }
+}
+
+function coerceTimestampToDate(value: unknown): Date | null {
+  if (value == null) return null;
+  if (value instanceof Date) return value;
+
+  const numeric = Number(value);
+  if (Number.isFinite(numeric)) {
+    return new Date(numeric * 1000);
+  }
+
+  const parsed = new Date(String(value));
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed;
+}
+
+function getStaffSessionLastActivityAt(loginAt: Date, lastActiveAt: unknown) {
+  const parsedLastActiveAt = coerceTimestampToDate(lastActiveAt);
+  if (!parsedLastActiveAt || parsedLastActiveAt.getTime() < loginAt.getTime()) {
+    return loginAt;
+  }
+
+  return parsedLastActiveAt;
+}
+
+function mapStaffSessionRow<T extends {
+  loginAt: unknown;
+  logoutAt: unknown;
+  durationSeconds: number | null;
+  lastActiveAt?: unknown;
+}>(row: T, now: Date = new Date()) {
+  const loginAt = coerceTimestampToDate(row.loginAt) ?? new Date(0);
+  const logoutAt = coerceTimestampToDate(row.logoutAt);
+  const lastActiveAt = getStaffSessionLastActivityAt(loginAt, row.lastActiveAt);
+  const sessionExpiresAt = logoutAt ? null : new Date(lastActiveAt.getTime() + IDLE_TIMEOUT_STAFF_MS);
+  const timedOutAt = !logoutAt && sessionExpiresAt && sessionExpiresAt.getTime() <= now.getTime()
+    ? sessionExpiresAt
+    : null;
+  const effectiveLogoutAt = logoutAt ?? timedOutAt;
+  const fallbackDurationSeconds = Math.max(
+    0,
+    Math.floor(((effectiveLogoutAt ?? now).getTime() - loginAt.getTime()) / 1000),
+  );
+  const currentDurationSeconds = Number(row.durationSeconds ?? fallbackDurationSeconds ?? 0);
+
+  return {
+    ...row,
+    loginAt,
+    logoutAt,
+    lastActiveAt,
+    sessionExpiresAt,
+    timedOutAt,
+    effectiveLogoutAt,
+    currentDurationSeconds,
+    isActive: !effectiveLogoutAt,
+    status: effectiveLogoutAt ? (logoutAt ? "closed" : "timed_out") : "active",
+  };
+}
+
 export async function logAdminAction(adminId: number, userId: number, action: string, details?: Record<string, any>) {
   const db = await getDb();
   if (!db) return;
@@ -1232,8 +1299,355 @@ export async function getAdminActionsForUser(userId: number, limit = 50) {
     .limit(limit);
   return rows.map(r => ({
     ...r,
-    details: r.details ? JSON.parse(r.details) : null,
+    details: parseOptionalJson(r.details),
   }));
+}
+
+// ============================================================================
+// Staff Monitoring
+// ============================================================================
+
+export async function logStaffAction(input: {
+  staffUserId: number;
+  actionType: string;
+  resourceType?: string | null;
+  resourceId?: number | null;
+  details?: Record<string, unknown> | null;
+  ipAddress?: string | null;
+  createdAt?: Date;
+}) {
+  const db = await getDb();
+  if (!db) return;
+
+  await db.insert(staffActionLogs).values({
+    staffUserId: input.staffUserId,
+    actionType: input.actionType,
+    resourceType: input.resourceType ?? null,
+    resourceId: input.resourceId ?? null,
+    details: input.details ? JSON.stringify(input.details) : null,
+    ipAddress: input.ipAddress?.trim() ? input.ipAddress.trim().slice(0, 255) : null,
+    createdAt: input.createdAt ?? new Date(),
+  });
+}
+
+export async function startStaffSession(input: {
+  staffUserId: number;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+  loginAt?: Date;
+}) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const loginAt = input.loginAt ?? new Date();
+  const openSessions = await db
+    .select({
+      id: staffSessions.id,
+      loginAt: staffSessions.loginAt,
+    })
+    .from(staffSessions)
+    .where(and(
+      eq(staffSessions.staffUserId, input.staffUserId),
+      isNull(staffSessions.logoutAt),
+    ))
+    .orderBy(desc(staffSessions.loginAt));
+
+  for (const openSession of openSessions) {
+    const openedAt = new Date(openSession.loginAt);
+    const durationSeconds = Math.max(
+      0,
+      Math.floor((loginAt.getTime() - openedAt.getTime()) / 1000),
+    );
+
+    await db.update(staffSessions).set({
+      logoutAt: loginAt,
+      durationSeconds,
+    }).where(eq(staffSessions.id, openSession.id));
+  }
+
+  const [session] = await db.insert(staffSessions).values({
+    staffUserId: input.staffUserId,
+    loginAt,
+    ipAddress: input.ipAddress?.trim() ? input.ipAddress.trim().slice(0, 255) : null,
+    userAgent: input.userAgent?.trim() ? input.userAgent.trim().slice(0, 1000) : null,
+  }).returning();
+
+  return session ?? null;
+}
+
+export async function endActiveStaffSessions(staffUserId: number, logoutAt: Date = new Date()) {
+  const db = await getDb();
+  if (!db) return { closedCount: 0 };
+
+  const openSessions = await db
+    .select({
+      id: staffSessions.id,
+      loginAt: staffSessions.loginAt,
+    })
+    .from(staffSessions)
+    .where(and(
+      eq(staffSessions.staffUserId, staffUserId),
+      isNull(staffSessions.logoutAt),
+    ))
+    .orderBy(desc(staffSessions.loginAt));
+
+  for (const openSession of openSessions) {
+    const openedAt = new Date(openSession.loginAt);
+    const durationSeconds = Math.max(
+      0,
+      Math.floor((logoutAt.getTime() - openedAt.getTime()) / 1000),
+    );
+
+    await db.update(staffSessions).set({
+      logoutAt,
+      durationSeconds,
+    }).where(eq(staffSessions.id, openSession.id));
+  }
+
+  return { closedCount: openSessions.length };
+}
+
+export async function listStaffActionLogs(options: {
+  limit?: number;
+  days?: number;
+  staffUserId?: number;
+} = {}) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
+  const filters = [] as any[];
+
+  if (options.days && options.days > 0) {
+    const since = new Date(Date.now() - options.days * 24 * 60 * 60 * 1000);
+    filters.push(gte(staffActionLogs.createdAt, since));
+  }
+
+  if (options.staffUserId) {
+    filters.push(eq(staffActionLogs.staffUserId, options.staffUserId));
+  }
+
+  const baseQuery = db.select({
+    id: staffActionLogs.id,
+    staffUserId: staffActionLogs.staffUserId,
+    staffName: users.name,
+    staffEmail: users.email,
+    actionType: staffActionLogs.actionType,
+    resourceType: staffActionLogs.resourceType,
+    resourceId: staffActionLogs.resourceId,
+    details: staffActionLogs.details,
+    ipAddress: staffActionLogs.ipAddress,
+    createdAt: staffActionLogs.createdAt,
+  }).from(staffActionLogs)
+    .leftJoin(users, eq(staffActionLogs.staffUserId, users.id));
+
+  const rows = filters.length > 0
+    ? await baseQuery.where(filters.length === 1 ? filters[0] : and(...filters)).orderBy(desc(staffActionLogs.createdAt)).limit(limit)
+    : await baseQuery.orderBy(desc(staffActionLogs.createdAt)).limit(limit);
+
+  return rows.map((row) => ({
+    ...row,
+    details: parseOptionalJson<Record<string, unknown>>(row.details),
+  }));
+}
+
+export async function listStaffSessions(options: {
+  limit?: number;
+  days?: number;
+  staffUserId?: number;
+  status?: "all" | "active" | "closed";
+} = {}) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
+  const filters = [] as any[];
+
+  if (options.days && options.days > 0) {
+    const since = new Date(Date.now() - options.days * 24 * 60 * 60 * 1000);
+    filters.push(gte(staffSessions.loginAt, since));
+  }
+
+  if (options.staffUserId) {
+    filters.push(eq(staffSessions.staffUserId, options.staffUserId));
+  }
+
+  const rawLimit = options.status && options.status !== "all"
+    ? Math.min(Math.max(limit * 4, 100), 800)
+    : limit;
+
+  const baseQuery = db.select({
+    id: staffSessions.id,
+    staffUserId: staffSessions.staffUserId,
+    staffName: users.name,
+    staffEmail: users.email,
+    loginAt: staffSessions.loginAt,
+    logoutAt: staffSessions.logoutAt,
+    durationSeconds: staffSessions.durationSeconds,
+    ipAddress: staffSessions.ipAddress,
+    userAgent: staffSessions.userAgent,
+    createdAt: staffSessions.createdAt,
+    lastActiveAt: users.lastActiveAt,
+  }).from(staffSessions)
+    .leftJoin(users, eq(staffSessions.staffUserId, users.id));
+
+  const rows = filters.length > 0
+    ? await baseQuery.where(filters.length === 1 ? filters[0] : and(...filters)).orderBy(desc(staffSessions.loginAt)).limit(rawLimit)
+    : await baseQuery.orderBy(desc(staffSessions.loginAt)).limit(rawLimit);
+
+  const mappedRows = rows.map((row) => mapStaffSessionRow(row));
+  const filteredRows = mappedRows.filter((row) => {
+    if (options.status === "active") return row.isActive;
+    if (options.status === "closed") return !row.isActive;
+    return true;
+  });
+
+  return filteredRows.slice(0, limit);
+}
+
+export async function getStaffMonitoringBreakdown(days = 14) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+  const [staffRows, actionRows, sessionRows] = await Promise.all([
+    getStaffMembers(),
+    db.select({
+      staffUserId: staffActionLogs.staffUserId,
+      actionCount: sql<number>`COUNT(*)`,
+      lastActionAt: sql<number | null>`MAX(${staffActionLogs.createdAt})`,
+    })
+      .from(staffActionLogs)
+      .where(gte(staffActionLogs.createdAt, since))
+      .groupBy(staffActionLogs.staffUserId),
+    db.select({
+      id: staffSessions.id,
+      staffUserId: staffSessions.staffUserId,
+      loginAt: staffSessions.loginAt,
+      logoutAt: staffSessions.logoutAt,
+      durationSeconds: staffSessions.durationSeconds,
+      lastActiveAt: users.lastActiveAt,
+    })
+      .from(staffSessions)
+      .leftJoin(users, eq(staffSessions.staffUserId, users.id))
+      .where(gte(staffSessions.loginAt, since))
+      .orderBy(desc(staffSessions.loginAt)),
+  ]);
+
+  const actionsByStaff = new Map(actionRows.map((row) => [
+    Number(row.staffUserId),
+    {
+      actionCount: Number(row.actionCount ?? 0),
+      lastActionAt: coerceTimestampToDate(row.lastActionAt),
+    },
+  ]));
+
+  const sessionsByStaff = new Map<number, {
+    sessionCount: number;
+    totalSessionSeconds: number;
+    averageSessionSeconds: number;
+    activeSessionCount: number;
+    lastLoginAt: Date | null;
+  }>();
+
+  for (const row of sessionRows.map((sessionRow) => mapStaffSessionRow(sessionRow))) {
+    const staffUserId = Number(row.staffUserId);
+    const current = sessionsByStaff.get(staffUserId) ?? {
+      sessionCount: 0,
+      totalSessionSeconds: 0,
+      averageSessionSeconds: 0,
+      activeSessionCount: 0,
+      lastLoginAt: null,
+    };
+
+    current.sessionCount += 1;
+    current.totalSessionSeconds += row.currentDurationSeconds;
+    current.activeSessionCount += row.isActive ? 1 : 0;
+    if (!current.lastLoginAt || row.loginAt.getTime() > current.lastLoginAt.getTime()) {
+      current.lastLoginAt = row.loginAt;
+    }
+
+    sessionsByStaff.set(staffUserId, current);
+  }
+
+  for (const current of sessionsByStaff.values()) {
+    current.averageSessionSeconds = current.sessionCount > 0
+      ? Math.round(current.totalSessionSeconds / current.sessionCount)
+      : 0;
+  }
+
+  return staffRows
+    .map((staff) => {
+      const actionStats = actionsByStaff.get(staff.id);
+      const sessionStats = sessionsByStaff.get(staff.id);
+
+      return {
+        staffUserId: staff.id,
+        staffName: staff.name,
+        staffEmail: staff.email,
+        roles: staff.roles,
+        actionCount: actionStats?.actionCount ?? 0,
+        sessionCount: sessionStats?.sessionCount ?? 0,
+        totalSessionSeconds: sessionStats?.totalSessionSeconds ?? 0,
+        averageSessionSeconds: sessionStats?.averageSessionSeconds ?? 0,
+        activeSessionCount: sessionStats?.activeSessionCount ?? 0,
+        isOnline: (sessionStats?.activeSessionCount ?? 0) > 0,
+        lastActionAt: actionStats?.lastActionAt ?? null,
+        lastLoginAt: sessionStats?.lastLoginAt ?? null,
+      };
+    })
+    .sort((a, b) => {
+      if (b.totalSessionSeconds !== a.totalSessionSeconds) {
+        return b.totalSessionSeconds - a.totalSessionSeconds;
+      }
+      if (b.actionCount !== a.actionCount) {
+        return b.actionCount - a.actionCount;
+      }
+      return a.staffEmail.localeCompare(b.staffEmail);
+    });
+}
+
+export async function getStaffMonitoringSummary(days = 14) {
+  const [breakdown, activeSessionRows] = await Promise.all([
+    getStaffMonitoringBreakdown(days),
+    listStaffSessions({ limit: 200, status: "active" }),
+  ]);
+
+  const totals = breakdown.reduce((acc, row) => {
+    acc.totalActions += row.actionCount;
+    acc.totalSessions += row.sessionCount;
+    acc.totalSessionSeconds += row.totalSessionSeconds;
+    if (row.actionCount > 0 || row.sessionCount > 0) {
+      acc.staffWithActivity += 1;
+    }
+    return acc;
+  }, {
+    totalActions: 0,
+    totalSessions: 0,
+    totalSessionSeconds: 0,
+    staffWithActivity: 0,
+  });
+
+  return {
+    days,
+    totalActions: totals.totalActions,
+    totalSessions: totals.totalSessions,
+    totalSessionSeconds: totals.totalSessionSeconds,
+    averageSessionSeconds: totals.totalSessions > 0
+      ? Math.round(totals.totalSessionSeconds / totals.totalSessions)
+      : 0,
+    staffWithActivity: totals.staffWithActivity,
+    currentlyOnline: activeSessionRows.length,
+    breakdown,
+    topByActions: [...breakdown]
+      .sort((a, b) => b.actionCount - a.actionCount)
+      .slice(0, 5),
+    topByTime: [...breakdown]
+      .sort((a, b) => b.totalSessionSeconds - a.totalSessionSeconds)
+      .slice(0, 5),
+    activeSessions: activeSessionRows.slice(0, 20),
+  };
 }
 
 // ============================================================================

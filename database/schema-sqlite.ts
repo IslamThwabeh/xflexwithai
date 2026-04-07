@@ -973,7 +973,7 @@ export const testimonials = sqliteTable("testimonials", {
   id: int("id").primaryKey({ autoIncrement: true }),
   nameEn: text("name_en").notNull(),
   nameAr: text("name_ar").notNull(),
-  titleEn: text("title_en"), // e.g. "Forex Trader"
+  titleEn: text("title_en"),
   titleAr: text("title_ar"),
   textEn: text("text_en").notNull(),
   textAr: text("text_ar").notNull(),
@@ -1011,7 +1011,7 @@ export type InsertJob = typeof jobs.$inferInsert;
 
 export const jobQuestions = sqliteTable("job_questions", {
   id: int("id").primaryKey({ autoIncrement: true }),
-  jobId: integer("job_id"), // null = general question for all jobs
+  jobId: integer("job_id"),
   questionAr: text("question_ar").notNull(),
   questionEn: text("question_en"),
   sortOrder: integer("sort_order").notNull().default(0),
@@ -1417,3 +1417,59 @@ export const adminSettings = sqliteTable("admin_settings", {
 
 export type AdminSetting = typeof adminSettings.$inferSelect;
 export type InsertAdminSetting = typeof adminSettings.$inferInsert;
+
+// ============================================================================
+// Staff Monitoring Tables
+// ============================================================================
+
+/**
+ * Staff Action Logs table - tracks significant actions performed by staff members.
+ */
+export const staffActionLogs = sqliteTable("staffActionLogs", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  staffUserId: integer("staffUserId").notNull().references(() => users.id),
+  actionType: text("actionType").notNull(), // e.g., 'KEY_GENERATED', 'USER_ROLE_CHANGED'
+  resourceType: text("resourceType"), // e.g., 'packageKey', 'user'
+  resourceId: integer("resourceId"),
+  details: text("details"), // JSON blob for additional context
+  ipAddress: text("ipAddress"),
+  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().default(sql`(strftime('%s', 'now'))`),
+});
+
+export type StaffActionLog = typeof staffActionLogs.$inferSelect;
+export type InsertStaffActionLog = typeof staffActionLogs.$inferInsert;
+
+/**
+ * Staff Sessions table - tracks staff member login/logout events and session durations.
+ */
+export const staffSessions = sqliteTable("staffSessions", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  staffUserId: integer("staffUserId").notNull().references(() => users.id),
+  loginAt: integer("loginAt", { mode: "timestamp" }).notNull(),
+  logoutAt: integer("logoutAt", { mode: "timestamp" }),
+  durationSeconds: integer("durationSeconds"),
+  ipAddress: text("ipAddress"),
+  userAgent: text("userAgent"),
+  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().default(sql`(strftime('%s', 'now'))`),
+});
+
+export type StaffSession = typeof staffSessions.$inferSelect;
+export type InsertStaffSession = typeof staffSessions.$inferInsert;
+
+// ============================================
+// Relations for Staff Monitoring
+// ============================================
+
+export const staffActionLogsRelations = relations(staffActionLogs, ({ one }) => ({
+  staffUser: one(users, {
+    fields: [staffActionLogs.staffUserId],
+    references: [users.id],
+  }),
+}));
+
+export const staffSessionsRelations = relations(staffSessions, ({ one }) => ({
+  staffUser: one(users, {
+    fields: [staffSessions.staffUserId],
+    references: [users.id],
+  }),
+}));
