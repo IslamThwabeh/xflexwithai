@@ -23,7 +23,7 @@ export const IDLE_TIMEOUT_ADMIN_MS = 15 * 60 * 1000;  // 15 min
 // Used by the "Staff Review" feature to preview what each employee sees.
 export const ROLE_PAGE_ACCESS: Record<string, string[]> = {
   // Core roles
-  support: ["/admin/support", "/admin/students", "/admin/notifications"],
+  support: ["/admin/support", "/admin/bug-reports", "/admin/students", "/admin/notifications"],
   lexai_support: ["/admin/lexai", "/admin/notifications"],
   key_manager: ["/admin/package-keys", "/admin/students", "/admin/orders", "/admin/notifications"],
   analyst: ["/admin/recommendations", "/admin/notifications"], // analyst only posts recommendations
@@ -43,6 +43,23 @@ export const ALL_STAFF_ROLES = [
   "client_lookup", "view_progress", "view_recommendations", "view_subscriptions", "view_quizzes",
 ] as const;
 export type StaffRole = typeof ALL_STAFF_ROLES[number];
+
+export const BUG_REPORT_STATUSES = [
+  "pending",
+  "rewarded",
+  "rejected",
+] as const;
+
+export type BugReportStatus = typeof BUG_REPORT_STATUSES[number];
+
+export const BUG_REPORT_RISK_LEVELS = [
+  "low",
+  "medium",
+  "high",
+  "critical",
+] as const;
+
+export type BugReportRiskLevel = typeof BUG_REPORT_RISK_LEVELS[number];
 
 export const LEXAI_SUPPORT_CASE_STATUSES = [
   "open",
@@ -75,6 +92,7 @@ export const STAFF_NOTIFICATION_EVENTS = {
   lexai_expiry_soon:    { labelEn: "LexAI Expiry Soon",         labelAr: "LexAI على وشك الانتهاء",   roles: ["lexai_support"], actionUrl: "/admin/lexai" },
   new_order:            { labelEn: "New Order",                 labelAr: "طلب جديد",                 roles: ["key_manager"],  actionUrl: "/admin/orders" },
   key_activated:        { labelEn: "Package Key Activated",     labelAr: "تم تفعيل مفتاح",            roles: ["key_manager"],  actionUrl: "/admin/package-keys" },
+  bug_report_submitted: { labelEn: "Bug Report Submitted",      labelAr: "تم إرسال بلاغ خطأ",         roles: ["support"],      actionUrl: "/admin/bug-reports" },
   offer_agreement:      { labelEn: "Offer Agreement Signed",    labelAr: "تم توقيع اتفاقية عرض",      roles: [],               actionUrl: "/admin/offer-agreements" },
   plan_progress_update: { labelEn: "Plan Progress Update",      labelAr: "تحديث خطة التقدم",          roles: ["plan_manager"], actionUrl: "/admin/plan-progress" },
   broker_proof_submitted:{ labelEn: "Broker Proof Submitted",   labelAr: "تم رفع إثبات الوسيط",       roles: ["support"],      actionUrl: "/admin/brokers" },

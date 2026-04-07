@@ -1,30 +1,41 @@
 import ClientLayout from "@/components/ClientLayout";
+import SupportBugReportsPanel from "@/components/SupportBugReportsPanel";
 import { trpc } from "@/lib/trpc";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Button } from "@/components/ui/button";
-import { Send, Headphones, Loader2, Paperclip, FileIcon, X, Bot, UserRound, Pencil, Trash2, Check } from "lucide-react";
+import { Send, Headphones, Loader2, Paperclip, FileIcon, X, Bot, UserRound, Pencil, Trash2, Check, Bug } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { toast } from "sonner";
 import VoiceRecorder from "@/components/VoiceRecorder";
 import AudioPlayer from "@/components/AudioPlayer";
 
+function getRequestedSupportTab() {
+  if (typeof window === "undefined") return "chat" as const;
+  const tab = new URLSearchParams(window.location.search).get("tab");
+  return tab === "bugs" ? ("bugs" as const) : ("chat" as const);
+}
+
 export default function SupportChat() {
   const { t, isRTL } = useLanguage();
   const [message, setMessage] = useState("");
   const [attachment, setAttachment] = useState<{ name: string; file: File; size: number } | null>(null);
+  const [activeTab, setActiveTab] = useState<"chat" | "bugs">(() => getRequestedSupportTab());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeMenuMsgId, setActiveMenuMsgId] = useState<number | null>(null);
   const [editingMsgId, setEditingMsgId] = useState<number | null>(null);
   const [editContent, setEditContent] = useState("");
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isChatTab = activeTab === "chat";
 
   const { data, isLoading, refetch } = trpc.supportChat.myConversation.useQuery(undefined, {
-    refetchInterval: 5000, // poll every 5s
+    enabled: isChatTab,
+    refetchInterval: isChatTab ? 5000 : false,
   });
 
   const { data: workingHoursData } = trpc.supportChat.isWorkingHours.useQuery(undefined, {
-    refetchInterval: 60_000, // check every minute
+    enabled: isChatTab,
+    refetchInterval: isChatTab ? 60_000 : false,
   });
   const isOnline = workingHoursData?.working ?? true;
 
@@ -65,8 +76,17 @@ export default function SupportChat() {
   };
 
   useEffect(() => {
-    scrollToBottom();
-  }, [data?.messages]);
+    if (isChatTab) scrollToBottom();
+  }, [data?.messages, isChatTab]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const nextUrl = activeTab === "bugs" ? "/support?tab=bugs" : "/support";
+    const currentUrl = `${window.location.pathname}${window.location.search}`;
+    if (currentUrl !== nextUrl) {
+      window.history.replaceState({}, "", nextUrl);
+    }
+  }, [activeTab]);
 
   const uploadFileToR2 = async (file: File | Blob, fileName: string, contentType: string, attachmentType: 'file' | 'voice') => {
     const buffer = await file.arrayBuffer();
@@ -168,37 +188,76 @@ export default function SupportChat() {
 
   return (
     <ClientLayout>
-      <div className="container mx-auto max-w-3xl px-4 py-6 h-[calc(100vh-80px)] flex flex-col" dir={isRTL ? "rtl" : "ltr"}>
+      <div className="container mx-auto max-w-3xl px-4 py-6" dir={isRTL ? "rtl" : "ltr"}>
         {/* Header */}
-        <div className="flex items-center gap-3 pb-4 border-b mb-4">
-          <div className="w-10 h-10 rounded-full bg-gradient-to-r from-emerald-500 to-teal-500 flex items-center justify-center">
-            <Headphones className="h-5 w-5 text-white" />
-          </div>
-          <div>
-            <h1 className="text-lg font-bold">{t("support.title")}</h1>
-            <div className="flex items-center gap-2">
-              <span className={`inline-block w-2 h-2 rounded-full ${isOnline ? 'bg-green-500' : 'bg-gray-400'}`} />
-              <p className="text-sm text-muted-foreground">
-                {isOnline
-                  ? (isRTL ? 'فريق الدعم متاح الآن' : 'Support team is online')
-                  : (isRTL ? 'خارج ساعات العمل — المساعد الذكي يجيبك' : 'Outside working hours — AI assistant is here')}
-              </p>
+        <div className="mb-4 border-b pb-4">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-r from-emerald-500 to-teal-500">
+                {isChatTab ? <Headphones className="h-5 w-5 text-white" /> : <Bug className="h-5 w-5 text-white" />}
+              </div>
+              <div>
+                <h1 className="text-lg font-bold">{isChatTab ? t("support.title") : (isRTL ? "بلاغات الأخطاء" : "Bug Reports")}</h1>
+                <div className="flex items-center gap-2">
+                  {isChatTab ? (
+                    <>
+                      <span className={`inline-block h-2 w-2 rounded-full ${isOnline ? 'bg-green-500' : 'bg-gray-400'}`} />
+                      <p className="text-sm text-muted-foreground">
+                        {isOnline
+                          ? (isRTL ? 'فريق الدعم متاح الآن' : 'Support team is online')
+                          : (isRTL ? 'خارج ساعات العمل — المساعد الذكي يجيبك' : 'Outside working hours — AI assistant is here')}
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      {isRTL
+                        ? 'أرسل وصفاً أو صورة للمشكلة، وتابع قرار الفريق وعدد النقاط المضافة.'
+                        : 'Send a description or screenshot, then track the review result and awarded points.'}
+                    </p>
+                  )}
+                </div>
+              </div>
             </div>
+            {isChatTab && !isOnline && !hasRequestedHuman && messages.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="shrink-0 text-amber-600 border-amber-300 hover:bg-amber-50"
+                onClick={() => requestHumanMutation.mutate()}
+                disabled={requestHumanMutation.isPending}
+              >
+                <UserRound className="h-4 w-4 mr-1" />
+                {isRTL ? 'طلب وكيل بشري' : 'Request Human'}
+              </Button>
+            )}
           </div>
-          {!isOnline && !hasRequestedHuman && messages.length > 0 && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="shrink-0 text-amber-600 border-amber-300 hover:bg-amber-50"
-              onClick={() => requestHumanMutation.mutate()}
-              disabled={requestHumanMutation.isPending}
+
+          <div className="mt-4 inline-flex rounded-2xl bg-slate-100 p-1">
+            <button
+              type="button"
+              onClick={() => setActiveTab("chat")}
+              className={`rounded-2xl px-4 py-2 text-sm font-medium transition ${
+                isChatTab ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"
+              }`}
             >
-              <UserRound className="h-4 w-4 mr-1" />
-              {isRTL ? 'طلب وكيل بشري' : 'Request Human'}
-            </Button>
-          )}
+              {isRTL ? 'الدردشة' : 'Chat'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("bugs")}
+              className={`rounded-2xl px-4 py-2 text-sm font-medium transition ${
+                !isChatTab ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              {isRTL ? 'بلاغات الأخطاء' : 'Bug Reports'}
+            </button>
+          </div>
         </div>
 
+        {!isChatTab ? (
+          <SupportBugReportsPanel />
+        ) : (
+          <div className="flex min-h-[65vh] flex-col">
         {/* AI disclaimer banner outside working hours */}
         {!isOnline && !hasRequestedHuman && (
           <div className="flex items-center gap-2 px-3 py-2 mb-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs">
@@ -435,6 +494,8 @@ export default function SupportChat() {
             </Button>
           </div>
         </div>
+          </div>
+        )}
       </div>
     </ClientLayout>
   );

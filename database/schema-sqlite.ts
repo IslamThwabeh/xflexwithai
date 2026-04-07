@@ -507,6 +507,28 @@ export const supportMessages = sqliteTable("supportMessages", {
 export type SupportMessage = typeof supportMessages.$inferSelect;
 export type InsertSupportMessage = typeof supportMessages.$inferInsert;
 
+/**
+ * Bug reports submitted by clients for manual review and point rewards.
+ */
+export const bugReports = sqliteTable("bug_reports", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  userId: integer("userId").notNull(),
+  description: text("description"),
+  imageUrl: text("imageUrl"),
+  status: text("status", { length: 20 }).default("pending").notNull(), // pending | rewarded | rejected
+  riskLevel: text("riskLevel", { length: 20 }), // low | medium | high | critical
+  awardedPoints: integer("awardedPoints").default(0).notNull(),
+  adminNote: text("adminNote"),
+  reviewedAt: text("reviewedAt"),
+  reviewedByType: text("reviewedByType", { length: 20 }), // admin | staff
+  reviewedById: integer("reviewedById"),
+  createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
+  updatedAt: text("updatedAt").default(sql`(datetime('now'))`).notNull(),
+});
+
+export type BugReport = typeof bugReports.$inferSelect;
+export type InsertBugReport = typeof bugReports.$inferInsert;
+
 // ============================================================================
 // Packages – subscription bundles (Basic / Comprehensive)
 // ============================================================================
@@ -872,6 +894,13 @@ export const supportMessagesRelations = relations(supportMessages, ({ one }) => 
   conversation: one(supportConversations, {
     fields: [supportMessages.conversationId],
     references: [supportConversations.id],
+  }),
+}));
+
+export const bugReportsRelations = relations(bugReports, ({ one }) => ({
+  user: one(users, {
+    fields: [bugReports.userId],
+    references: [users.id],
   }),
 }));
 

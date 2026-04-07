@@ -51,6 +51,7 @@ import {
   Bell,
   Award,
   Activity,
+  Bug,
   Building2,
   FileCheck,
   Moon,
@@ -140,6 +141,7 @@ const menuSectionsDef: MenuSection[] = [
     labelKey: "admin.sidebar.team",
     items: [
       { icon: Headphones, labelKey: "admin.sidebar.supportChat", path: "/admin/support" },
+      { icon: Bug, labelKey: "admin.sidebar.bugReports", path: "/admin/bug-reports" },
       { icon: Shield, labelKey: "admin.sidebar.roles", path: "/admin/roles" },
       { icon: Search, labelKey: "admin.sidebar.staffReview", path: "/admin/staff-review" },
     ]

@@ -1,4 +1,10 @@
-import { COOKIE_NAME, LEXAI_SUPPORT_CASE_PRIORITIES, LEXAI_SUPPORT_CASE_STATUSES } from "../shared/const";
+import {
+  BUG_REPORT_RISK_LEVELS,
+  BUG_REPORT_STATUSES,
+  COOKIE_NAME,
+  LEXAI_SUPPORT_CASE_PRIORITIES,
+  LEXAI_SUPPORT_CASE_STATUSES,
+} from "../shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
@@ -3052,6 +3058,100 @@ export const appRouter = router({
         const deleted = await db.deleteSupportMessage(input.messageId, ctx.user.id, isStaff);
         if (!deleted) throw new Error("Cannot delete this message");
         return { success: true };
+      }),
+  }),
+
+  bugReports: router({
+    uploadImage: userOnlyProcedure
+      .input(z.object({
+        fileData: z.string(),
+        fileName: z.string(),
+        contentType: z.string(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const env = getWorkerEnv();
+        if (!env?.VIDEOS_BUCKET) {
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'R2 bucket not configured' });
+        }
+
+        if (!input.contentType.startsWith('image/')) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Only image uploads are allowed' });
+        }
+
+        const buffer = Buffer.from(input.fileData, 'base64');
+        if (buffer.length > 5 * 1024 * 1024) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Image too large' });
+        }
+
+        const randomSuffix = Math.random().toString(36).substring(2, 10);
+        const key = `bug-reports/${ctx.user.id}/${Date.now()}-${randomSuffix}-${input.fileName}`;
+        const result = await storagePutR2(env.VIDEOS_BUCKET, key, buffer, input.contentType);
+
+        return { url: result.url, key: result.key, size: buffer.length };
+      }),
+
+    submit: userOnlyProcedure
+      .input(z.object({
+        description: z.string().max(3000).optional(),
+        imageUrl: z.string().max(1000).optional(),
+      }).refine(
+        (value) => Boolean(value.description?.trim() || value.imageUrl?.trim()),
+        { message: 'Description or image is required' }
+      ))
+      .mutation(async ({ ctx, input }) => {
+        const report = await db.createBugReport({
+          userId: ctx.user.id,
+          description: input.description,
+          imageUrl: input.imageUrl,
+        });
+
+        const clientLabel = ctx.user.name?.trim() || ctx.user.email;
+        const hasDescription = !!input.description?.trim();
+
+        await db.notifyStaffByEvent('bug_report_submitted', {
+          titleEn: `New bug report from ${clientLabel}`,
+          titleAr: `بلاغ خطأ جديد من ${clientLabel}`,
+          contentEn: hasDescription
+            ? input.description!.trim().slice(0, 140)
+            : 'Image-only bug report submitted.',
+          contentAr: hasDescription
+            ? input.description!.trim().slice(0, 140)
+            : 'تم إرسال بلاغ خطأ مرفق بصورة فقط.',
+          metadata: { reportId: report.id, userId: ctx.user.id },
+        });
+
+        return report;
+      }),
+
+    myList: userOnlyProcedure.query(async ({ ctx }) => {
+      return db.getMyBugReports(ctx.user.id);
+    }),
+
+    list: adminOrRoleProcedure(['support'])
+      .input(z.object({
+        status: z.enum(BUG_REPORT_STATUSES).optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        return db.listBugReports(input?.status ? { status: input.status } : undefined);
+      }),
+
+    review: adminOrRoleProcedure(['support'])
+      .input(z.object({
+        reportId: z.number(),
+        decision: z.enum(['rewarded', 'rejected']),
+        riskLevel: z.enum(BUG_REPORT_RISK_LEVELS).nullable().optional(),
+        awardedPoints: z.number().min(0).max(100000).optional(),
+        adminNote: z.string().max(1000).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        return db.reviewBugReport({
+          reportId: input.reportId,
+          reviewerContextId: ctx.user.id,
+          decision: input.decision,
+          riskLevel: input.riskLevel,
+          awardedPoints: input.awardedPoints,
+          adminNote: input.adminNote,
+        });
       }),
   }),
 

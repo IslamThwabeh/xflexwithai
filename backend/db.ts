@@ -28,6 +28,7 @@ import {
   userRoles, UserRole, InsertUserRole,
   supportConversations, SupportConversation, InsertSupportConversation,
   supportMessages, SupportMessage, InsertSupportMessage,
+  bugReports, BugReport,
   // Package system imports
   packages, Package, InsertPackage,
   packageCourses, PackageCourse, InsertPackageCourse,
@@ -67,7 +68,14 @@ import {
 import { ENV } from './_core/env';
 import { logger } from './_core/logger';
 import { sendWelcomeEmail, sendMilestoneEmail, sendQuizFeedbackEmail, sendStaffAlertEmail } from './_core/orderEmails';
-import { IDLE_TIMEOUT_STAFF_MS, STAFF_NOTIFICATION_EVENTS, type StaffNotificationEventType } from '../shared/const';
+import {
+  BUG_REPORT_RISK_LEVELS,
+  IDLE_TIMEOUT_STAFF_MS,
+  STAFF_NOTIFICATION_EVENTS,
+  type BugReportRiskLevel,
+  type BugReportStatus,
+  type StaffNotificationEventType,
+} from '../shared/const';
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -5301,6 +5309,259 @@ export async function reopenSupportConversation(conversationId: number) {
     .where(eq(supportConversations.id, conversationId));
 }
 
+const BUG_REPORT_RISK_LABELS: Record<BugReportRiskLevel, { en: string; ar: string }> = {
+  low: { en: 'Low Risk', ar: 'مخاطر منخفضة' },
+  medium: { en: 'Medium Risk', ar: 'مخاطر متوسطة' },
+  high: { en: 'High Risk', ar: 'مخاطر عالية' },
+  critical: { en: 'Critical Risk', ar: 'مخاطر حرجة' },
+};
+
+function isBugReportRiskLevel(value: string | null | undefined): value is BugReportRiskLevel {
+  return !!value && (BUG_REPORT_RISK_LEVELS as readonly string[]).includes(value);
+}
+
+function getBugReportReviewerContext(reviewerContextId: number) {
+  if (reviewerContextId < 0) {
+    return {
+      reviewedByType: 'admin' as const,
+      reviewedById: Math.abs(reviewerContextId),
+    };
+  }
+
+  return {
+    reviewedByType: 'staff' as const,
+    reviewedById: reviewerContextId,
+  };
+}
+
+async function getBugReportRewardTransaction(reportId: number) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const [row] = await db.select().from(pointsTransactions)
+    .where(and(
+      eq(pointsTransactions.referenceType, 'bug_report'),
+      eq(pointsTransactions.referenceId, reportId),
+      sql`${pointsTransactions.amount} > 0`,
+    ))
+    .orderBy(desc(pointsTransactions.createdAt))
+    .limit(1);
+
+  return row ?? null;
+}
+
+export async function createBugReport(input: {
+  userId: number;
+  description?: string | null;
+  imageUrl?: string | null;
+}): Promise<BugReport> {
+  const db = await getDb();
+  if (!db) throw new Error('Database not available');
+
+  const description = input.description?.trim() || null;
+  const imageUrl = input.imageUrl?.trim() || null;
+
+  if (!description && !imageUrl) {
+    throw new Error('Description or image is required');
+  }
+
+  const now = new Date().toISOString();
+  const [row] = await db.insert(bugReports).values({
+    userId: input.userId,
+    description,
+    imageUrl,
+    status: 'pending',
+    awardedPoints: 0,
+    createdAt: now,
+    updatedAt: now,
+  }).returning();
+
+  return row;
+}
+
+export async function getMyBugReports(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  return db.select().from(bugReports)
+    .where(eq(bugReports.userId, userId))
+    .orderBy(desc(bugReports.createdAt), desc(bugReports.id));
+}
+
+export async function listBugReports(filters?: { status?: BugReportStatus }) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const conditions: any[] = [];
+  if (filters?.status) conditions.push(eq(bugReports.status, filters.status));
+
+  return db.select({
+    id: bugReports.id,
+    userId: bugReports.userId,
+    description: bugReports.description,
+    imageUrl: bugReports.imageUrl,
+    status: bugReports.status,
+    riskLevel: bugReports.riskLevel,
+    awardedPoints: bugReports.awardedPoints,
+    adminNote: bugReports.adminNote,
+    reviewedAt: bugReports.reviewedAt,
+    reviewedByType: bugReports.reviewedByType,
+    reviewedById: bugReports.reviewedById,
+    createdAt: bugReports.createdAt,
+    updatedAt: bugReports.updatedAt,
+    userName: users.name,
+    userEmail: users.email,
+  }).from(bugReports)
+    .innerJoin(users, eq(users.id, bugReports.userId))
+    .where(conditions.length ? and(...conditions) : undefined)
+    .orderBy(desc(bugReports.createdAt), desc(bugReports.id));
+}
+
+export async function reviewBugReport(input: {
+  reportId: number;
+  reviewerContextId: number;
+  decision: 'rewarded' | 'rejected';
+  riskLevel?: BugReportRiskLevel | null;
+  awardedPoints?: number;
+  adminNote?: string | null;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error('Database not available');
+
+  const [report] = await db.select().from(bugReports).where(eq(bugReports.id, input.reportId)).limit(1);
+  if (!report) throw new Error('Bug report not found');
+
+  const existingReward = await getBugReportRewardTransaction(report.id);
+  const reviewer = getBugReportReviewerContext(input.reviewerContextId);
+  const now = new Date().toISOString();
+  const adminNote = input.adminNote?.trim() || null;
+
+  if (report.status !== 'pending') {
+    if (report.status === input.decision) {
+      return {
+        success: true,
+        alreadyReviewed: true,
+        reportId: report.id,
+        status: report.status,
+        awardedPoints: Number(report.awardedPoints ?? 0),
+      };
+    }
+
+    throw new Error('Bug report has already been reviewed');
+  }
+
+  if (input.decision === 'rewarded') {
+    const riskLevel = input.riskLevel;
+    const requestedPoints = Math.max(0, Math.floor(Number(input.awardedPoints ?? 0)));
+
+    if (!riskLevel || !isBugReportRiskLevel(riskLevel)) {
+      throw new Error('Risk level is required');
+    }
+
+    if (requestedPoints < 1 && !existingReward) {
+      throw new Error('Points must be at least 1');
+    }
+
+    if (existingReward && Number(existingReward.amount ?? 0) <= 0) {
+      throw new Error('Invalid existing reward transaction');
+    }
+
+    const rewardTx = existingReward ?? await addPoints({
+      userId: report.userId,
+      amount: requestedPoints,
+      type: 'bonus',
+      reasonEn: `Bug report reward (${BUG_REPORT_RISK_LABELS[riskLevel].en})`,
+      reasonAr: `مكافأة بلاغ خطأ (${BUG_REPORT_RISK_LABELS[riskLevel].ar})`,
+      referenceId: report.id,
+      referenceType: 'bug_report',
+    });
+
+    const awardedPoints = Math.max(requestedPoints, Number(rewardTx.amount ?? 0));
+
+    await db.update(bugReports).set({
+      status: 'rewarded',
+      riskLevel,
+      awardedPoints,
+      adminNote,
+      reviewedAt: now,
+      reviewedByType: reviewer.reviewedByType,
+      reviewedById: reviewer.reviewedById,
+      updatedAt: now,
+    }).where(eq(bugReports.id, report.id));
+
+    await logAdminAction(input.reviewerContextId, report.userId, 'reward_bug_report', {
+      reportId: report.id,
+      awardedPoints,
+      riskLevel,
+      reviewedByType: reviewer.reviewedByType,
+    });
+
+    await createNotification({
+      userId: report.userId,
+      type: 'success',
+      titleEn: 'Bug report accepted',
+      titleAr: 'تم قبول بلاغ الخطأ',
+      contentEn: awardedPoints > 0
+        ? `Your bug report was accepted and ${awardedPoints} points were added to your balance.`
+        : 'Your bug report was accepted.',
+      contentAr: awardedPoints > 0
+        ? `تم قبول بلاغ الخطأ وإضافة ${awardedPoints} نقطة إلى رصيدك.`
+        : 'تم قبول بلاغ الخطأ بنجاح.',
+      actionUrl: '/support?tab=bugs',
+    });
+
+    return {
+      success: true,
+      alreadyReviewed: false,
+      reportId: report.id,
+      status: 'rewarded' as const,
+      awardedPoints,
+    };
+  }
+
+  if (existingReward) {
+    throw new Error('This bug report already has a reward transaction');
+  }
+
+  await db.update(bugReports).set({
+    status: 'rejected',
+    riskLevel: null,
+    awardedPoints: 0,
+    adminNote,
+    reviewedAt: now,
+    reviewedByType: reviewer.reviewedByType,
+    reviewedById: reviewer.reviewedById,
+    updatedAt: now,
+  }).where(eq(bugReports.id, report.id));
+
+  await logAdminAction(input.reviewerContextId, report.userId, 'reject_bug_report', {
+    reportId: report.id,
+    reviewedByType: reviewer.reviewedByType,
+  });
+
+  await createNotification({
+    userId: report.userId,
+    type: 'warning',
+    titleEn: 'Bug report reviewed',
+    titleAr: 'تمت مراجعة بلاغ الخطأ',
+    contentEn: adminNote
+      ? `Your bug report was not accepted. Team note: ${adminNote}`
+      : 'Your bug report was reviewed and was not accepted this time.',
+    contentAr: adminNote
+      ? `لم يتم قبول بلاغ الخطأ. ملاحظة الفريق: ${adminNote}`
+      : 'تمت مراجعة بلاغ الخطأ ولم يتم قبوله هذه المرة.',
+    actionUrl: '/support?tab=bugs',
+  });
+
+  return {
+    success: true,
+    alreadyReviewed: false,
+    reportId: report.id,
+    status: 'rejected' as const,
+    awardedPoints: 0,
+  };
+}
+
 /** Auto-close open conversations with no activity for `days` days. Returns count closed. */
 export async function autoCloseStaleConversations(days: number = 3): Promise<number> {
   const db = await getDb();
@@ -8126,7 +8387,23 @@ export async function notifyStaffByEvent(
   // Skip email entirely if this event is disabled globally
   if (globalEmailPrefs[eventType] === false) return;
 
+  if (notificationEmail) {
+    try {
+      await sendStaffAlertEmail({
+        to: notificationEmail,
+        eventType,
+        titleEn: data.titleEn,
+        contentEn: data.contentEn || data.titleEn,
+        actionUrl: actionUrl || '',
+      });
+    } catch (e) {
+      logger.warn(`[STAFF_NOTIF] Failed to email configured admin notification address`, { error: String(e), eventType });
+    }
+  }
+
   for (const userId of targetUserIds) {
+    if (userId < 0) continue;
+
     try {
       const online = await isUserOnline(userId);
       if (online) continue; // Skip email for online users
@@ -8143,10 +8420,7 @@ export async function notifyStaffByEvent(
       const staffPrefs: Record<string, boolean> = userRow.prefs ? JSON.parse(userRow.prefs as string) : {};
       if (staffPrefs[eventType] === false) continue;
 
-      // Determine email address: admin uses configured notification_email; staff uses their own
-      const emailTo = (Number(userRow.isAdmin) > 0 && notificationEmail)
-        ? notificationEmail
-        : userRow.email;
+      const emailTo = userRow.email;
 
       if (!emailTo) continue;
 
