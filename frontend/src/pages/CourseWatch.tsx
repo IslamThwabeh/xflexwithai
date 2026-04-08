@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { APP_TITLE, getLoginUrl } from "@/const";
+import { formatPendingActivationDate, getPendingActivationDaysLeft, getPendingActivationWindow } from "@/lib/pendingActivation";
 import { trpc } from "@/lib/trpc";
 import { 
   BookOpen, 
@@ -110,6 +111,8 @@ export default function CourseWatch() {
   } | null>(null);
   const [showActivationDialog, setShowActivationDialog] = useState(false);
   const lastSyncedSecondRef = useRef<number>(0);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [liveWatchedSeconds, setLiveWatchedSeconds] = useState(0);
 
   const isLoading = courseLoading || episodesLoading;
 
@@ -152,6 +155,7 @@ export default function CourseWatch() {
     setQuizAnswers({});
     setQuizResult(null);
     lastSyncedSecondRef.current = 0;
+    setLiveWatchedSeconds(0);
   }, [selectedEpisode?.id]);
 
   const selectedEpisodeProgress = useMemo(() => {
@@ -160,6 +164,11 @@ export default function CourseWatch() {
   }, [courseEpisodeProgress, selectedEpisode]);
 
   const watchedSeconds = selectedEpisodeProgress?.watchedDuration || 0;
+  useEffect(() => {
+    setLiveWatchedSeconds((current) => Math.max(current, watchedSeconds));
+  }, [watchedSeconds]);
+
+  const effectiveWatchedSeconds = Math.max(watchedSeconds, liveWatchedSeconds);
   const completedEpisodeIds = useMemo(
     () => new Set(courseEpisodeProgress.filter((progress) => progress.isCompleted).map((progress) => progress.episodeId)),
     [courseEpisodeProgress]
@@ -183,7 +192,12 @@ export default function CourseWatch() {
   const requiredWatchSeconds = selectedEpisode?.duration && selectedEpisode.duration > 0
     ? Math.max(60, Math.floor(selectedEpisode.duration * 0.7))
     : 60;
-  const hasWatchRequirementMet = watchedSeconds >= requiredWatchSeconds;
+  const requiredWatchMinutes = Math.max(1, Math.ceil(requiredWatchSeconds / 60));
+  const hasWatchRequirementMet = effectiveWatchedSeconds >= requiredWatchSeconds;
+  const isArabic = language === 'ar';
+  const { studyPeriodDays, entitlementDays } = getPendingActivationWindow(activationStatus);
+  const activationDeadline = formatPendingActivationDate(activationStatus?.maxActivationDate, isArabic);
+  const activationDaysLeft = getPendingActivationDaysLeft(activationStatus?.maxActivationDate);
 
   const quizRequired = !!episodeQuiz?.required;
   const quizPassed = !!episodeQuiz?.passed;
@@ -198,15 +212,21 @@ export default function CourseWatch() {
     markCompleteMutation.mutate({
       courseId,
       episodeId: selectedEpisode.id,
+      watchedDuration: effectiveWatchedSeconds,
     });
-  }, [selectedEpisode, courseId, markCompleteMutation]);
+  }, [selectedEpisode, courseId, effectiveWatchedSeconds, markCompleteMutation]);
 
   const handleMarkCompleteClick = useCallback(() => {
     if (canMarkComplete) {
       handleEpisodeComplete();
       return;
     }
-    if (!hasWatchRequirementMet) return; // watch-time blocker — button already greyed
+    if (!hasWatchRequirementMet) {
+      toast.info(
+        t('course.toastWatchRequirement').replace('{minutes}', String(requiredWatchMinutes))
+      );
+      return;
+    }
     if (quizRequired && !quizPassed) {
       toast.info(
         language === 'ar'
@@ -215,12 +235,14 @@ export default function CourseWatch() {
       );
       quizSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
-  }, [canMarkComplete, hasWatchRequirementMet, quizRequired, quizPassed, language, handleEpisodeComplete]);
+  }, [canMarkComplete, hasWatchRequirementMet, quizRequired, quizPassed, language, handleEpisodeComplete, requiredWatchMinutes, t]);
 
   const handleVideoProgress = (currentTime: number) => {
     if (!selectedEpisode || !courseId) return;
     const second = Math.floor(currentTime || 0);
     if (second <= 0) return;
+
+    setLiveWatchedSeconds((current) => Math.max(current, second));
 
     if (second - lastSyncedSecondRef.current < 10) {
       return;
@@ -385,6 +407,7 @@ export default function CourseWatch() {
                       />
                     ) : (
                       <video
+                        ref={videoRef}
                         src={selectedEpisode.videoUrl}
                         controls
                         controlsList="nodownload"
@@ -393,10 +416,13 @@ export default function CourseWatch() {
                         onTimeUpdate={(event) => handleVideoProgress(event.currentTarget.currentTime)}
                         onEnded={(event) => {
                           if (!selectedEpisode || !courseId) return;
+                          const finalSecond = Math.floor(event.currentTarget.duration || event.currentTarget.currentTime || 0);
+                          setLiveWatchedSeconds((current) => Math.max(current, finalSecond));
+                          lastSyncedSecondRef.current = Math.max(lastSyncedSecondRef.current, finalSecond);
                           updateEpisodeProgressMutation.mutate({
                             episodeId: selectedEpisode.id,
                             courseId,
-                            watchedDuration: Math.max(requiredWatchSeconds, Math.floor(event.currentTarget.duration || 0)),
+                            watchedDuration: Math.max(requiredWatchSeconds, finalSecond),
                             isCompleted: false,
                           });
                         }}
@@ -433,7 +459,9 @@ export default function CourseWatch() {
                 <div className="flex gap-3">
                   <Button
                     onClick={handleMarkCompleteClick}
-                    disabled={markCompleteMutation.isPending || (!canMarkComplete && !hasWatchRequirementMet)}
+                    disabled={markCompleteMutation.isPending}
+                    aria-disabled={!canMarkComplete}
+                    className={!canMarkComplete ? 'opacity-80' : undefined}
                   >
                     <CheckCircle2 className="h-4 w-4 me-2" />
                     {t('course.markComplete')}
@@ -641,7 +669,9 @@ export default function CourseWatch() {
               {t('activation.dialogTitle')}
             </DialogTitle>
             <DialogDescription>
-              {t('activation.dialogDesc')}
+              {t('activation.dialogDesc')
+                .replace('{studyDays}', String(studyPeriodDays))
+                .replace('{serviceDays}', String(entitlementDays))}
             </DialogDescription>
           </DialogHeader>
 
@@ -652,27 +682,38 @@ export default function CourseWatch() {
                 <span className="font-semibold">{t('activation.important')}: </span>
                 {t('activation.autoActivateNote').replace(
                   '{date}',
-                  new Date(activationStatus.maxActivationDate).toLocaleDateString()
+                  activationDeadline || ''
                 )}
               </span>
             </div>
           )}
 
+          {activationDaysLeft !== null && (
+            <p className="text-sm text-amber-700">
+              {isArabic
+                ? `يتبقى لديك تقريباً ${activationDaysLeft} يوم لإكمال الكورس وإعداد حساب الوسيط.`
+                : `You have about ${activationDaysLeft} days left to finish the course and broker setup.`}
+            </p>
+          )}
+
           <DialogFooter className="flex-col gap-2 sm:flex-col">
-            <Button
-              className="w-full gap-2"
-              onClick={() => activateNowMutation.mutate()}
-              disabled={activateNowMutation.isPending}
-            >
-              <Zap className="h-4 w-4" />
-              {activateNowMutation.isPending ? t('activation.activating') : t('activation.startNow')}
+            <Button asChild className="w-full gap-2">
+              <Link href="/broker-onboarding">
+                <Zap className="h-4 w-4" />
+                {t('activation.startNow')}
+              </Link>
+            </Button>
+            <Button asChild variant="outline" className="w-full">
+              <Link href="/courses">
+                {t('activation.continueLearning')}
+              </Link>
             </Button>
             <Button
-              variant="outline"
+              variant="ghost"
               className="w-full"
               onClick={() => setShowActivationDialog(false)}
             >
-              {t('activation.continueLearning')}
+              {isArabic ? 'لاحقاً' : 'Later'}
             </Button>
           </DialogFooter>
         </DialogContent>

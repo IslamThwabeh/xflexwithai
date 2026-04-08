@@ -2,19 +2,17 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { formatPendingActivationDate, getPendingActivationDaysLeft, getPendingActivationWindow } from "@/lib/pendingActivation";
 import { trpc } from "@/lib/trpc";
 import { format } from "date-fns";
-import { BookOpen, Clock, Award, Settings, LogOut, Zap, AlertCircle } from "lucide-react";
+import { BookOpen, Clock, Award, Settings, LogOut, Zap, AlertCircle, Building2 } from "lucide-react";
 import { Link, useLocation } from "wouter";
-import { toast } from "sonner";
 
 export default function Dashboard() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const { user, logout } = useAuth();
   const [, setLocation] = useLocation();
-  const utils = trpc.useUtils();
 
   // Fetch user enrollments
   const { data: enrollments = [], isLoading: enrollmentsLoading } = trpc.users.getUserEnrollments.useQuery();
@@ -24,16 +22,10 @@ export default function Dashboard() {
 
   // Deferred activation status
   const { data: activationStatus } = trpc.subscriptions.activationStatus.useQuery();
-
-  const activateNowMutation = trpc.subscriptions.activateNow.useMutation({
-    onSuccess: () => {
-      toast.success(t('activation.activated'));
-      utils.subscriptions.activationStatus.invalidate();
-    },
-    onError: (error) => {
-      toast.error(error.message);
-    },
-  });
+  const isArabic = language === 'ar';
+  const { studyPeriodDays, entitlementDays } = getPendingActivationWindow(activationStatus);
+  const activationDeadline = formatPendingActivationDate(activationStatus?.maxActivationDate, isArabic);
+  const activationDaysLeft = getPendingActivationDaysLeft(activationStatus?.maxActivationDate);
 
   const displayName = user?.name || user?.email || "Student";
   const welcomeTitle = t("dashboard.title").replace("{name}", displayName);
@@ -73,42 +65,47 @@ export default function Dashboard() {
 
           {/* Deferred Activation Banner */}
           {activationStatus?.hasPending && (
-            <Card className={`mb-8 border-2 ${activationStatus.canActivate ? 'border-yellow-400 bg-yellow-50 dark:bg-yellow-950/20' : 'border-emerald-300 bg-emerald-50 dark:bg-emerald-950/20'}`}>
+            <Card className="mb-8 border-2 border-emerald-300 bg-emerald-50 dark:bg-emerald-950/20">
               <CardContent className="py-4 px-5">
                 <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-                  <Zap className={`h-8 w-8 shrink-0 ${activationStatus.canActivate ? 'text-yellow-500' : 'text-emerald-500'}`} />
+                  <Clock className="h-8 w-8 shrink-0 text-emerald-500" />
                   <div className="flex-1 space-y-1">
                     <p className="font-semibold text-gray-900 dark:text-white">
                       {t('activation.bannerTitle')}
                     </p>
                     <p className="text-sm text-gray-600 dark:text-gray-300">
-                      {activationStatus.canActivate
-                        ? t('activation.bannerDescReady').replace('{progress}', String(activationStatus.progressPercent ?? 0))
-                        : t('activation.bannerDescPending').replace('{progress}', String(activationStatus.progressPercent ?? 0))}
+                      {isArabic
+                        ? `لديك حتى ${studyPeriodDays} يومًا لإكمال الكورس وإعداد حساب الوسيط. وبعد التفعيل ستبقى خدمات LexAI والتوصيات متاحة لمدة ${entitlementDays} يومًا.`
+                        : `You have up to ${studyPeriodDays} days to finish the course and broker setup. After activation, LexAI and Recommendations remain available for ${entitlementDays} days.`}
                     </p>
-                    {activationStatus.canActivate && activationStatus.maxActivationDate && (
+                    {activationDeadline && (
                       <p className="text-xs text-amber-700 dark:text-amber-400 flex items-center gap-1">
                         <AlertCircle className="h-3 w-3" />
-                        {t('activation.maxDateWarning').replace(
-                          '{date}',
-                          new Date(activationStatus.maxActivationDate).toLocaleDateString()
-                        )}
+                        {t('activation.maxDateWarning').replace('{date}', activationDeadline)}
                       </p>
                     )}
-                    {!activationStatus.canActivate && (
-                      <Progress value={activationStatus.progressPercent ?? 0} className="h-2 mt-2" />
+                    {activationDaysLeft !== null && (
+                      <p className="text-xs text-gray-600 dark:text-gray-300">
+                        {isArabic
+                          ? `يتبقى تقريبًا ${activationDaysLeft} يوم لإكمال الكورس وإعداد حساب الوسيط.`
+                          : `You have about ${activationDaysLeft} days left to finish the course and broker setup.`}
+                      </p>
                     )}
                   </div>
-                  {activationStatus.canActivate && (
-                    <Button
-                      className="shrink-0 gap-2"
-                      onClick={() => activateNowMutation.mutate()}
-                      disabled={activateNowMutation.isPending}
-                    >
-                      <Zap className="h-4 w-4" />
-                      {activateNowMutation.isPending ? t('activation.activating') : t('activation.startNow')}
+                  <div className="flex gap-2 shrink-0">
+                    <Button asChild className="gap-2">
+                      <Link href="/courses">
+                        <BookOpen className="h-4 w-4" />
+                        {t('activation.continueLearning')}
+                      </Link>
                     </Button>
-                  )}
+                    <Button asChild variant="outline" className="gap-2">
+                      <Link href="/broker-onboarding">
+                        <Building2 className="h-4 w-4" />
+                        {t('activation.startNow')}
+                      </Link>
+                    </Button>
+                  </div>
                 </div>
               </CardContent>
             </Card>

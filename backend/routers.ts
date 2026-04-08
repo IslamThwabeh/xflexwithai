@@ -1678,6 +1678,7 @@ export const appRouter = router({
       .input(z.object({
         courseId: z.number(),
         episodeId: z.number(),
+        watchedDuration: z.number().min(0).optional(),
       }))
       .mutation(async ({ ctx, input }) => {
         logger.procedure('enrollments.markEpisodeComplete', input, ctx.user.id);
@@ -1699,9 +1700,12 @@ export const appRouter = router({
 
         // Enforce a minimum watch duration (70% of episode duration, minimum 60s)
         const requiredWatchSeconds = episode.duration && episode.duration > 0
-          ? Math.max(60, Math.floor(episode.duration * 60 * 0.7))
+          ? Math.max(60, Math.floor(episode.duration * 0.7))
           : 60;
-        const watchedDuration = Number(existingEpisodeProgress?.watchedDuration || 0);
+        const watchedDuration = Math.max(
+          Number(existingEpisodeProgress?.watchedDuration || 0),
+          Math.floor(Number(input.watchedDuration || 0))
+        );
         if (watchedDuration < requiredWatchSeconds) {
           throw new TRPCError({
             code: 'FORBIDDEN',

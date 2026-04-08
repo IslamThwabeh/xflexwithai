@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { FileUpload } from "@/components/FileUpload";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { formatPendingActivationDate, getPendingActivationDaysLeft, getPendingActivationWindow } from "@/lib/pendingActivation";
 import { trpc } from "@/lib/trpc";
 import { Sparkles, Crown, CheckCircle2, ImageIcon, Trash2, BookOpen, MessageSquare, Building2 } from "lucide-react";
 import { useState, useRef, useEffect, useMemo } from "react";
@@ -135,6 +136,9 @@ export default function LexAI() {
   const { data: onboardingStatus } = trpc.onboarding.isComplete.useQuery(undefined, {
     enabled: !!user,
   });
+  const { studyPeriodDays, entitlementDays } = getPendingActivationWindow(activationStatus);
+  const activationDeadline = formatPendingActivationDate(activationStatus?.maxActivationDate, isArabic);
+  const activationDaysLeft = getPendingActivationDaysLeft(activationStatus?.maxActivationDate);
 
   const uploadImage = trpc.lexai.uploadImage.useMutation();
   const analyzeM15 = trpc.lexai.analyzeM15.useMutation();
@@ -379,7 +383,7 @@ export default function LexAI() {
       );
     }
 
-    // Pending activation — student has a pending subscription (needs to complete course)
+    // Pending activation — student is still inside the learning window
     if (activationStatus?.hasPending) {
       return (
         <ClientLayout>
@@ -390,35 +394,42 @@ export default function LexAI() {
                 <BookOpen className="h-8 w-8 text-white" />
               </div>
               <CardTitle className="text-2xl">
-                {isArabic ? 'أكمل الكورس أولاً' : 'Complete the Course First'}
+                {isArabic ? 'فترة تعلم LexAI ما زالت فعالة' : 'Your LexAI Learning Window Is Active'}
               </CardTitle>
               <CardDescription className="text-base mt-2">
                 {isArabic
-                  ? 'خدمة LexAI ستكون متاحة لك بمجرد إكمال كورس التداول بالكامل. تقدمك الحالي:'
-                  : 'LexAI will be available once you complete the trading course. Your current progress:'}
+                  ? `لديك حتى ${studyPeriodDays} يومًا لإكمال الكورس وإعداد حساب الوسيط. وبعد التفعيل ستبقى خدمة LexAI متاحة لمدة ${entitlementDays} يومًا ضمن فترة اشتراكك.`
+                  : `You have up to ${studyPeriodDays} days to finish the course and broker setup. After activation, LexAI stays available for ${entitlementDays} days during your subscription period.`}
               </CardDescription>
-              <div className="mt-4 flex items-center justify-center gap-2">
-                <div className="w-full max-w-[200px] h-3 bg-gray-200 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full transition-all"
-                    style={{ width: `${Math.min(activationStatus.progressPercent ?? 0, 100)}%` }}
-                  />
-                </div>
-                <span className="text-sm font-semibold text-emerald-700">
-                  {activationStatus.progressPercent ?? 0}%
-                </span>
-              </div>
+              {activationDeadline && (
+                <p className="text-sm font-medium text-amber-700 mt-4">
+                  {isArabic ? `آخر موعد قبل بدء التفعيل: ${activationDeadline}` : `Activation deadline: ${activationDeadline}`}
+                </p>
+              )}
+              {activationDaysLeft !== null && (
+                <p className="text-xs text-muted-foreground mt-2">
+                  {isArabic
+                    ? `يتبقى تقريبًا ${activationDaysLeft} يوم لإكمال الكورس وإعداد حساب الوسيط.`
+                    : `You have about ${activationDaysLeft} days left to finish the course and broker setup.`}
+                </p>
+              )}
             </CardHeader>
             <CardContent className="space-y-3">
               <Link href="/courses">
                 <Button className="w-full" size="lg">
-                  {isArabic ? 'العودة للكورس' : 'Continue Course'}
+                  {isArabic ? 'تابع الكورس' : 'Continue Course'}
+                </Button>
+              </Link>
+              <Link href="/broker-onboarding">
+                <Button variant="outline" className="w-full" size="lg">
+                  <Building2 className="h-4 w-4 mr-2" />
+                  {isArabic ? 'ابدأ إعداد الوسيط' : 'Start Broker Setup'}
                 </Button>
               </Link>
               <p className="text-center text-xs text-muted-foreground">
                 {isArabic
-                  ? 'هل تعتقد أنك جاهز للبدء؟ تواصل مع الدعم لتخطي الكورس.'
-                  : "Think you're ready to start? Contact support to skip the course."}
+                  ? `أكمل إعداد الوسيط مبكرًا لتحصل على أقصى استفادة من فترة الـ${entitlementDays} يومًا.`
+                  : `Complete your broker setup early to maximize your ${entitlementDays}-day access window.`}
               </p>
               <Link href="/support">
                 <Button variant="outline" className="w-full" size="sm">

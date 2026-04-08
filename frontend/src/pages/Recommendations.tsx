@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { formatPendingActivationDate, getPendingActivationDaysLeft, getPendingActivationWindow } from "@/lib/pendingActivation";
 import { toast } from "sonner";
 import { Copy, Flame, Heart, Rocket, ThumbsUp, Frown, Bell, TrendingUp, BarChart3, BookOpen, MessageSquare, Building2 } from "lucide-react";
 import ClientLayout from "@/components/ClientLayout";
@@ -87,6 +88,10 @@ export default function Recommendations() {
 
   const canRead = !!me && (me.hasSubscription || me.canPublish);
   const isFrozenRec = !!me && !me.hasSubscription && !me.canPublish && me.isFrozen;
+  const isArabic = language === 'ar';
+  const { studyPeriodDays, entitlementDays } = getPendingActivationWindow(activationStatus);
+  const activationDeadline = formatPendingActivationDate(activationStatus?.maxActivationDate, isArabic);
+  const activationDaysLeft = getPendingActivationDaysLeft(activationStatus?.maxActivationDate);
   const remainingDays = useMemo(() => {
     if (!me?.subscription?.endDate) return 0;
     const end = new Date(me.subscription.endDate);
@@ -162,7 +167,7 @@ export default function Recommendations() {
       );
     }
 
-    // Pending activation — student has pending sub (needs to complete course)
+    // Pending activation — student is still inside the learning window
     if (activationStatus?.hasPending) {
       return (
         <ClientLayout>
@@ -173,40 +178,47 @@ export default function Recommendations() {
                 <BookOpen className="h-8 w-8 text-white" />
               </div>
               <CardTitle className="text-2xl">
-                {language === 'ar' ? 'أكمل الكورس أولاً' : 'Complete the Course First'}
+                {isArabic ? 'فترة تعلم قروب التوصيات ما زالت فعالة' : 'Your Recommendations Learning Window Is Active'}
               </CardTitle>
               <CardDescription className="text-base mt-2">
-                {language === 'ar'
-                  ? 'قروب التوصيات سيكون متاحاً لك بمجرد إكمال كورس التداول بالكامل. تقدمك الحالي:'
-                  : 'Recommendations will be available once you complete the trading course. Your current progress:'}
+                {isArabic
+                  ? `لديك حتى ${studyPeriodDays} يومًا لإكمال الكورس وإعداد حساب الوسيط. وبعد التفعيل سيبقى قروب التوصيات متاحًا لمدة ${entitlementDays} يومًا ضمن فترة اشتراكك.`
+                  : `You have up to ${studyPeriodDays} days to finish the course and broker setup. After activation, Recommendations stay available for ${entitlementDays} days during your subscription period.`}
               </CardDescription>
-              <div className="mt-4 flex items-center justify-center gap-2">
-                <div className="w-full max-w-[200px] h-3 bg-gray-200 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full transition-all"
-                    style={{ width: `${Math.min(activationStatus.progressPercent ?? 0, 100)}%` }}
-                  />
-                </div>
-                <span className="text-sm font-semibold text-emerald-700">
-                  {activationStatus.progressPercent ?? 0}%
-                </span>
-              </div>
+              {activationDeadline && (
+                <p className="text-sm font-medium text-amber-700 mt-4">
+                  {isArabic ? `آخر موعد قبل بدء التفعيل: ${activationDeadline}` : `Activation deadline: ${activationDeadline}`}
+                </p>
+              )}
+              {activationDaysLeft !== null && (
+                <p className="text-xs text-muted-foreground mt-2">
+                  {isArabic
+                    ? `يتبقى تقريبًا ${activationDaysLeft} يوم لإكمال الكورس وإعداد حساب الوسيط.`
+                    : `You have about ${activationDaysLeft} days left to finish the course and broker setup.`}
+                </p>
+              )}
             </CardHeader>
             <CardContent className="space-y-3">
               <Link href="/courses">
                 <Button className="w-full" size="lg">
-                  {language === 'ar' ? 'العودة للكورس' : 'Continue Course'}
+                  {isArabic ? 'تابع الكورس' : 'Continue Course'}
+                </Button>
+              </Link>
+              <Link href="/broker-onboarding">
+                <Button variant="outline" className="w-full" size="lg">
+                  <Building2 className="h-4 w-4 mr-2" />
+                  {isArabic ? 'ابدأ إعداد الوسيط' : 'Start Broker Setup'}
                 </Button>
               </Link>
               <p className="text-center text-xs text-muted-foreground">
-                {language === 'ar'
-                  ? 'هل تعتقد أنك جاهز للبدء؟ تواصل مع الدعم لتخطي الكورس.'
-                  : 'Think you\'re ready to start? Contact support to skip the course.'}
+                {isArabic
+                  ? `أكمل إعداد الوسيط مبكرًا لتحصل على أقصى استفادة من فترة الـ${entitlementDays} يومًا.`
+                  : `Complete your broker setup early to maximize your ${entitlementDays}-day access window.`}
               </p>
               <Link href="/support">
                 <Button variant="outline" className="w-full" size="sm">
                   <MessageSquare className="h-4 w-4 mr-2" />
-                  {language === 'ar' ? 'تواصل مع الدعم' : 'Contact Support'}
+                  {isArabic ? 'تواصل مع الدعم' : 'Contact Support'}
                 </Button>
               </Link>
             </CardContent>

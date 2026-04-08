@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { formatPendingActivationDate, getPendingActivationDaysLeft, getPendingActivationWindow } from '@/lib/pendingActivation';
 import { trpc } from '@/lib/trpc';
 import ClientLayout from '@/components/ClientLayout';
 import { Link } from 'wouter';
@@ -58,7 +59,7 @@ export default function BrokerOnboarding() {
 
   const { data: status, isLoading } = trpc.onboarding.getStatus.useQuery();
   const { data: brokers, isLoading: brokersLoading } = trpc.brokers.listActive.useQuery();
-  const { data: enrollments, isLoading: enrollmentsLoading } = trpc.enrollments.myEnrollments.useQuery();
+  const { data: activationStatus } = trpc.subscriptions.activationStatus.useQuery();
   const selectBroker = trpc.onboarding.selectBroker.useMutation({
     onSuccess: () => {
       toast.success(isArabic ? 'تم اختيار الوسيط بنجاح' : 'Broker selected successfully');
@@ -87,6 +88,9 @@ export default function BrokerOnboarding() {
   const currentStepIndex = STEPS.indexOf(currentStepKey);
   const isComplete = status?.isComplete ?? false;
   const selectedBrokerId = status?.brokerId ?? null;
+  const { studyPeriodDays, entitlementDays } = getPendingActivationWindow(activationStatus);
+  const activationDeadline = formatPendingActivationDate(activationStatus?.maxActivationDate, isArabic);
+  const activationDaysLeft = getPendingActivationDaysLeft(activationStatus?.maxActivationDate);
 
   const selectedBroker = brokers?.find((b: any) => b.id === selectedBrokerId);
 
@@ -134,58 +138,11 @@ export default function BrokerOnboarding() {
     }
   };
 
-  if (isLoading || brokersLoading || enrollmentsLoading) {
+  if (isLoading || brokersLoading) {
     return (
       <ClientLayout>
         <div className="min-h-[calc(100vh-64px)] flex items-center justify-center">
           <Loader2 className="h-8 w-8 animate-spin text-emerald-500" />
-        </div>
-      </ClientLayout>
-    );
-  }
-
-  // Course completion gate — student must finish all courses first
-  const totalCourses = enrollments?.length || 0;
-  const completedCourses = enrollments?.filter((e: any) => e.completedAt !== null).length || 0;
-  const allCoursesCompleted = totalCourses > 0 && completedCourses === totalCourses;
-  const bestProgress = enrollments?.reduce((max: number, e: any) => Math.max(max, e.progressPercentage || 0), 0) ?? 0;
-
-  if (!allCoursesCompleted) {
-    return (
-      <ClientLayout>
-        <div className="p-4 md:p-6 max-w-2xl mx-auto" dir={isRtl ? 'rtl' : 'ltr'}>
-          <Card className="border-amber-200 bg-amber-50/50">
-            <CardHeader className="text-center">
-              <div className="mx-auto w-20 h-20 bg-gradient-to-br from-amber-400 to-amber-600 rounded-full flex items-center justify-center mb-4">
-                <BookOpen className="h-10 w-10 text-white" />
-              </div>
-              <CardTitle className="text-2xl">
-                {isArabic ? 'أكمل الكورس أولاً' : 'Complete the Course First'}
-              </CardTitle>
-              <CardDescription className="text-base mt-2">
-                {isArabic
-                  ? 'يجب إكمال دورة التداول بالكامل قبل البدء بفتح حساب الوسيط'
-                  : 'You need to complete the trading course before starting your broker account setup'}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {totalCourses > 0 && (
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">{isArabic ? 'تقدمك الحالي' : 'Your Progress'}</span>
-                    <span className="font-medium">{bestProgress}%</span>
-                  </div>
-                  <Progress value={bestProgress} className="h-3" />
-                </div>
-              )}
-              <Link href={enrollments?.[0] ? `/course/${enrollments[0].courseId}` : '/courses'}>
-                <Button className="w-full btn-primary-xf" size="lg">
-                  <Play className="h-4 w-4 mr-2" />
-                  {isArabic ? 'تابع الكورس' : 'Continue Course'}
-                </Button>
-              </Link>
-            </CardContent>
-          </Card>
         </div>
       </ClientLayout>
     );
@@ -245,6 +202,36 @@ export default function BrokerOnboarding() {
               : 'Complete the following steps to open a real trading account and unlock LexAI & Recommendations'}
           </p>
         </div>
+
+        {activationStatus?.hasPending && (
+          <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+            <div className="flex items-start gap-3">
+              <Clock className="h-5 w-5 text-amber-600 mt-0.5" />
+              <div className="space-y-2">
+                <p className="text-sm font-semibold text-amber-900">
+                  {isArabic ? 'أنهِ الكورس وإعداد الوسيط خلال فترة التعلم' : 'Finish the course and broker setup during your learning window'}
+                </p>
+                <p className="text-sm text-amber-700">
+                  {isArabic
+                    ? `لديك حتى ${studyPeriodDays} يومًا لإكمال الكورس وإعداد حساب الوسيط. وبعد التفعيل ستبقى خدمات LexAI والتوصيات متاحة لمدة ${entitlementDays} يومًا.`
+                    : `You have up to ${studyPeriodDays} days to finish the course and broker setup. After activation, LexAI and Recommendations remain available for ${entitlementDays} days.`}
+                </p>
+                {activationDeadline && (
+                  <p className="text-xs font-medium text-amber-800">
+                    {isArabic ? `آخر موعد قبل بدء التفعيل: ${activationDeadline}` : `Activation deadline: ${activationDeadline}`}
+                  </p>
+                )}
+                {activationDaysLeft !== null && (
+                  <p className="text-xs text-amber-700">
+                    {isArabic
+                      ? `يتبقى تقريبًا ${activationDaysLeft} يوم لإكمال الخطوتين.`
+                      : `You have about ${activationDaysLeft} days left to finish both steps.`}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Progress bar */}
         <div className="mb-6">

@@ -5839,6 +5839,8 @@ export async function getAllPackageSubscriptions(): Promise<PackageSubscription[
 export async function getPendingActivationStatus(userId: number) {
   const db = await getDb();
   if (!db) return { hasPending: false, lexai: null, recommendation: null, progressPercent: 0 };
+  const studyPeriodDays = await getStudyPeriodDays();
+  const entitlementDays = await getUserEntitlementDays(userId);
 
   // Broker gate only — course completion has zero effect on activation
   const [userRow] = await db.select({ brokerOnboardingComplete: users.brokerOnboardingComplete })
@@ -5858,7 +5860,15 @@ export async function getPendingActivationStatus(userId: number) {
     if (pendingLex || pendingRec) {
       await activateStudentSubscriptions(userId, false);
     }
-    return { hasPending: false, lexai: null, recommendation: null, progressPercent: 100 };
+    return {
+      hasPending: false,
+      lexai: null,
+      recommendation: null,
+      progressPercent: 100,
+      studyPeriodDays,
+      entitlementDays,
+      maxActivationDate: null,
+    };
   }
 
   const [lexaiSub] = await db
@@ -5877,11 +5887,27 @@ export async function getPendingActivationStatus(userId: number) {
   const now = new Date();
   if (lexaiSub?.maxActivationDate && new Date(lexaiSub.maxActivationDate) <= now) {
     await activateStudentSubscriptions(userId, true);
-    return { hasPending: false, lexai: null, recommendation: null, progressPercent: 0 };
+    return {
+      hasPending: false,
+      lexai: null,
+      recommendation: null,
+      progressPercent: 0,
+      studyPeriodDays,
+      entitlementDays,
+      maxActivationDate: lexaiSub.maxActivationDate,
+    };
   }
   if (!lexaiSub && recSub?.maxActivationDate && new Date(recSub.maxActivationDate) <= now) {
     await activateStudentSubscriptions(userId, true);
-    return { hasPending: false, lexai: null, recommendation: null, progressPercent: 0 };
+    return {
+      hasPending: false,
+      lexai: null,
+      recommendation: null,
+      progressPercent: 0,
+      studyPeriodDays,
+      entitlementDays,
+      maxActivationDate: recSub.maxActivationDate,
+    };
   }
 
   return {
@@ -5890,6 +5916,8 @@ export async function getPendingActivationStatus(userId: number) {
     recommendation: recSub ?? null,
     progressPercent: 0,
     canActivate: false,
+    studyPeriodDays,
+    entitlementDays,
     maxActivationDate: lexaiSub?.maxActivationDate ?? recSub?.maxActivationDate ?? null,
   };
 }

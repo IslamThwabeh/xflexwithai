@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { formatPendingActivationDate, getPendingActivationDaysLeft, getPendingActivationWindow } from '@/lib/pendingActivation';
 import { trpc } from '@/lib/trpc';
 import ClientLayout from '@/components/ClientLayout';
 
@@ -21,6 +22,9 @@ export default function StudentPackages() {
   const { data: frozenStatus } = trpc.subscriptions.frozenStatus.useQuery();
   const { data: timeline } = trpc.subscriptions.myTimeline.useQuery();
   const pkg = (activePackage as any)?.package;
+  const { studyPeriodDays, entitlementDays } = getPendingActivationWindow(activationStatus);
+  const activationDeadline = formatPendingActivationDate(activationStatus?.maxActivationDate, isRtl);
+  const activationDaysLeft = getPendingActivationDaysLeft(activationStatus?.maxActivationDate);
 
   const freezeMutation = trpc.subscriptions.requestFreeze.useMutation({
     onSuccess: () => {
@@ -210,13 +214,25 @@ export default function StudentPackages() {
             </div>
             <p className="text-sm text-amber-700 mb-2">
               {isRtl
-                ? `سيتم تفعيل LexAI والتوصيات تلقائياً عند إكمال فتح حساب الوسيط، أو في ${activationStatus.maxActivationDate ? new Date(activationStatus.maxActivationDate).toLocaleDateString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric' }) : ''}`
-                : `LexAI & Recommendations will activate automatically upon broker onboarding completion, or on ${activationStatus.maxActivationDate ? new Date(activationStatus.maxActivationDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : ''}`}
+                ? `لديك حتى ${studyPeriodDays} يومًا لإكمال الكورس وإعداد حساب الوسيط. وبعد التفعيل سيبقى LexAI والتوصيات متاحين لمدة ${entitlementDays} يومًا.`
+                : `You have up to ${studyPeriodDays} days to finish the course and broker setup. After activation, LexAI and Recommendations remain available for ${entitlementDays} days.`}
             </p>
+            {activationDeadline && (
+              <p className="text-xs text-amber-700 font-medium mb-2">
+                {isRtl ? `آخر موعد قبل بدء التفعيل: ${activationDeadline}` : `Activation deadline: ${activationDeadline}`}
+              </p>
+            )}
+            {activationDaysLeft !== null && (
+              <p className="text-xs text-amber-700 mb-2">
+                {isRtl
+                  ? `يتبقى تقريبًا ${activationDaysLeft} يوم لإكمال الكورس وإعداد حساب الوسيط.`
+                  : `You have about ${activationDaysLeft} days left to finish the course and broker setup.`}
+              </p>
+            )}
             <p className="text-xs text-amber-600 font-medium">
               {isRtl
-                ? '⚡ افتح حساب الوسيط بأسرع وقت للاستفادة القصوى من اشتراكك!'
-                : '⚡ Complete your broker onboarding ASAP to maximize your subscription time!'}
+                ? `⚡ أكمل إعداد الوسيط مبكرًا لتحصل على أقصى استفادة من فترة الـ${entitlementDays} يومًا.`
+                : `⚡ Complete your broker setup early to maximize your ${entitlementDays}-day access window!`}
             </p>
           </div>
         )}

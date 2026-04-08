@@ -193,7 +193,7 @@ export default function MyDashboard() {
               {
                 label: isRTL ? 'افتح حساب وسيط' : 'Open Broker Account',
                 icon: Building2,
-                status: onboardingComplete ? 'done' as const : courseComplete ? 'active' as const : 'locked' as const,
+                status: onboardingComplete ? 'done' as const : 'active' as const,
                 detail: onboardingComplete
                   ? (isRTL ? 'مكتمل ✓' : 'Completed ✓')
                   : onboardingStarted
