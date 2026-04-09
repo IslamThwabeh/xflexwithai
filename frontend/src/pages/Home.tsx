@@ -9,8 +9,10 @@ import {
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import TestimonialProofCard from '@/components/TestimonialProofCard';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { trpc } from '@/lib/trpc';
+import { DEFAULT_TESTIMONIAL_PROOFS } from '@/lib/defaultTestimonialProofs';
 
 // Stage data with icons and individual prices (display only — to show package value)
 const stageData: Array<{ num: number; icon: LucideIcon; color: string; price: number; comingSoon?: boolean }> = [
@@ -42,6 +44,11 @@ export default function Home() {
   const { data: events } = trpc.events.list.useQuery();
   const { data: articles } = trpc.articles.list.useQuery();
   const { data: testimonials } = trpc.testimonials.list.useQuery();
+  const { data: testimonialProofs } = trpc.testimonials.listProofs.useQuery({ surface: 'home', limit: 4 });
+
+  const homeProofItems = testimonialProofs && testimonialProofs.length > 0
+    ? testimonialProofs
+    : DEFAULT_TESTIMONIAL_PROOFS.filter((item) => item.showProofOnHome).slice(0, 4);
 
   const handleContactSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -86,7 +93,7 @@ export default function Home() {
     const elements = document.querySelectorAll('.fade-up');
     elements.forEach((el) => observer.observe(el));
     return () => observer.disconnect();
-  }, [events, articles, testimonials]);
+  }, [events, articles, testimonials, testimonialProofs]);
 
   const scrollToSection = (id: string) => {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
@@ -668,6 +675,39 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      {homeProofItems.length > 0 && (
+        <section
+          className="py-24"
+          style={{ background: 'linear-gradient(180deg, rgba(255,255,255,1), rgba(250,247,242,0.78))' }}
+        >
+          <div className="container mx-auto px-4">
+            <div className="text-center mb-14 fade-up">
+              <div className="mb-4 flex justify-center">
+                <Badge variant="outline" className="border-emerald-200 bg-white/90 px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-emerald-700">
+                  {language === 'ar' ? 'أدلة حقيقية' : 'Real Proof'}
+                </Badge>
+              </div>
+              <h2 className="text-3xl md:text-4xl font-extrabold text-xf-dark tracking-[-0.5px] heading-accent">
+                {language === 'ar' ? 'لقطات حقيقية من الطلاب' : 'Real Student Screenshots'}
+              </h2>
+              <p className="text-gray-500 text-lg mt-6 max-w-3xl mx-auto">
+                {language === 'ar'
+                  ? 'أربع لقطات مختارة بعناية من محادثات حقيقية توضح أسلوب الشرح والمتابعة والدعم الذي يصفه طلابنا داخل الأكاديمية.'
+                  : 'Four carefully selected snapshots from real student conversations that show the teaching style, follow-up, and support students keep describing.'}
+              </p>
+            </div>
+
+            <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4 max-w-7xl mx-auto">
+              {homeProofItems.map((item) => (
+                <div key={item.id} className="fade-up">
+                  <TestimonialProofCard item={item} isRTL={isRTL} />
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* ======== TESTIMONIALS SECTION ======== */}
       {testimonials && testimonials.length > 0 && (

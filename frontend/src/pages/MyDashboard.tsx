@@ -12,6 +12,8 @@ import { useEffect, useState } from "react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import ClientLayout from "@/components/ClientLayout";
 import KeyActivationPrompt from "@/components/KeyActivationPrompt";
+import TestimonialProofCard from "@/components/TestimonialProofCard";
+import { DEFAULT_TESTIMONIAL_PROOFS } from "@/lib/defaultTestimonialProofs";
 
 function formatSafeDate(
   value: string | number | Date | null | undefined,
@@ -50,6 +52,11 @@ export default function MyDashboard() {
     { enabled: true }
   );
 
+  const { data: testimonialProofs } = trpc.testimonials.listProofs.useQuery(
+    { surface: "dashboard", limit: 2 },
+    { enabled: true }
+  );
+
   const { data: onboardingStatus } = trpc.onboarding.getStatus.useQuery(undefined, {
     enabled: isAuthenticated,
     retry: false,
@@ -73,6 +80,10 @@ export default function MyDashboard() {
     if (congratsKey) localStorage.setItem(congratsKey, '1');
     setShowCongrats(false);
   };
+
+  const dashboardProofItems = testimonialProofs && testimonialProofs.length > 0
+    ? testimonialProofs
+    : DEFAULT_TESTIMONIAL_PROOFS.filter((item) => item.showProofOnDashboard).slice(0, 2);
 
   if (loading || enrollmentsLoading) {
     return (
@@ -598,18 +609,36 @@ export default function MyDashboard() {
               <CardDescription>{isRTL ? "آراء حقيقية من متداولين يتعلمون معنا." : "Real feedback from traders learning with us."}</CardDescription>
             </CardHeader>
             <CardContent>
-              {!highlightedTestimonials || highlightedTestimonials.length === 0 ? (
-                <p className="text-sm text-muted-foreground">{isRTL ? "لا توجد شهادات متاحة حالياً." : "No testimonials available yet."}</p>
-              ) : (
-                <div className="grid gap-4 md:grid-cols-2">
-                  {highlightedTestimonials.map((item) => (
-                    <div key={item.id} className="rounded-lg border p-4 bg-white">
-                      <p className="text-sm text-gray-700 mb-3">"{isRTL ? item.textAr : item.textEn}"</p>
-                      <p className="text-xs text-muted-foreground">{isRTL ? item.nameAr : item.nameEn}</p>
+              {dashboardProofItems.length > 0 && (
+                <div className="mb-5">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">{isRTL ? "لقطات سريعة من تجارب الطلاب" : "Quick proof snapshots"}</p>
+                      <p className="text-xs text-muted-foreground">{isRTL ? "يمكنك فتح أي لقطة لعرضها بوضوح أكبر." : "Open any snapshot for a closer look."}</p>
                     </div>
-                  ))}
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {dashboardProofItems.map((item) => (
+                      <TestimonialProofCard key={item.id} item={item} isRTL={isRTL} compact />
+                    ))}
+                  </div>
                 </div>
               )}
+
+              <div className={dashboardProofItems.length > 0 ? "border-t pt-5" : ""}>
+                {!highlightedTestimonials || highlightedTestimonials.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">{isRTL ? "لا توجد شهادات متاحة حالياً." : "No testimonials available yet."}</p>
+                ) : (
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {highlightedTestimonials.map((item) => (
+                      <div key={item.id} className="rounded-lg border p-4 bg-white">
+                        <p className="text-sm text-gray-700 mb-3">"{isRTL ? item.textAr : item.textEn}"</p>
+                        <p className="text-xs text-muted-foreground">{isRTL ? item.nameAr : item.nameEn}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
 

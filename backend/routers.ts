@@ -4260,10 +4260,57 @@ export const appRouter = router({
         });
       }),
 
+    // Public: proof-backed testimonials for specific surfaces
+    listProofs: publicProcedure
+      .input(z.object({
+        surface: z.enum(['home', 'dashboard']),
+        packageSlug: z.string().optional(),
+        courseId: z.number().optional(),
+        serviceKey: z.string().optional(),
+        limit: z.number().min(1).max(30).optional(),
+      }))
+      .query(async ({ input }) => {
+        return db.getTestimonialProofs({
+          surface: input.surface,
+          packageSlug: input.packageSlug,
+          courseId: input.courseId,
+          serviceKey: input.serviceKey,
+          limit: input.limit,
+        });
+      }),
+
     // Admin: all testimonials
     adminList: adminProcedure.query(async () => {
       return db.getAllTestimonials(false);
     }),
+
+    uploadProofImage: adminProcedure
+      .input(z.object({
+        fileName: z.string(),
+        fileData: z.string(),
+        contentType: z.string(),
+      }))
+      .mutation(async ({ input }) => {
+        const env = getWorkerEnv();
+        if (!env?.VIDEOS_BUCKET) {
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'R2 bucket not configured' });
+        }
+
+        if (!input.contentType.startsWith('image/')) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Only image uploads are allowed' });
+        }
+
+        const buffer = Buffer.from(input.fileData, 'base64');
+        if (buffer.length > 5 * 1024 * 1024) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Image too large' });
+        }
+
+        const randomSuffix = Math.random().toString(36).substring(2, 10);
+        const key = `testimonials/proofs/${Date.now()}-${randomSuffix}-${input.fileName}`;
+        const result = await storagePutR2(env.VIDEOS_BUCKET, key, buffer, input.contentType);
+
+        return { url: result.url, key: result.key, size: buffer.length };
+      }),
 
     // Admin: create testimonial
     create: adminProcedure
@@ -4275,11 +4322,14 @@ export const appRouter = router({
         textEn: z.string().min(1),
         textAr: z.string().min(1),
         avatarUrl: z.string().optional(),
+        proofImageUrl: z.string().default(''),
         rating: z.number().min(1).max(5).default(5),
         packageSlug: z.string().optional(),
         courseId: z.number().optional(),
         serviceKey: z.string().optional(),
         displayOrder: z.number().default(0),
+        showProofOnHome: z.boolean().default(false),
+        showProofOnDashboard: z.boolean().default(false),
         isPublished: z.boolean().default(true),
       }))
       .mutation(async ({ input }) => {
@@ -4297,11 +4347,14 @@ export const appRouter = router({
         textEn: z.string().optional(),
         textAr: z.string().optional(),
         avatarUrl: z.string().optional(),
+        proofImageUrl: z.string().optional(),
         rating: z.number().min(1).max(5).optional(),
         packageSlug: z.string().optional(),
         courseId: z.number().optional(),
         serviceKey: z.string().optional(),
         displayOrder: z.number().optional(),
+        showProofOnHome: z.boolean().optional(),
+        showProofOnDashboard: z.boolean().optional(),
         isPublished: z.boolean().optional(),
       }))
       .mutation(async ({ input }) => {

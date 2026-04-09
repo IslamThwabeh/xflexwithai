@@ -6418,6 +6418,50 @@ export async function getTestimonialsByContext(input: {
   return db.select().from(testimonials).orderBy(testimonials.displayOrder);
 }
 
+export async function getTestimonialProofs(input: {
+  surface: 'home' | 'dashboard';
+  packageSlug?: string;
+  courseId?: number;
+  serviceKey?: string;
+  limit?: number;
+}): Promise<Testimonial[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  const surfaceColumn = input.surface === 'home'
+    ? testimonials.showProofOnHome
+    : testimonials.showProofOnDashboard;
+
+  const conditions = [
+    eq(testimonials.isPublished, true),
+    eq(surfaceColumn, true),
+    isNotNull(testimonials.proofImageUrl),
+    ne(testimonials.proofImageUrl, ''),
+  ];
+
+  if (input.packageSlug) {
+    conditions.push(eq(testimonials.packageSlug, input.packageSlug));
+  }
+  if (typeof input.courseId === 'number') {
+    conditions.push(eq(testimonials.courseId, input.courseId));
+  }
+  if (input.serviceKey) {
+    conditions.push(eq(testimonials.serviceKey, input.serviceKey));
+  }
+
+  const query = db
+    .select()
+    .from(testimonials)
+    .where(and(...conditions))
+    .orderBy(testimonials.displayOrder);
+
+  if (typeof input.limit === 'number' && input.limit > 0) {
+    return query.limit(input.limit);
+  }
+
+  return query;
+}
+
 export async function createTestimonial(input: Omit<InsertTestimonial, 'id'>): Promise<Testimonial | null> {
   const db = await getDb();
   if (!db) return null;

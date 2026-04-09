@@ -1007,11 +1007,14 @@ export const testimonials = sqliteTable("testimonials", {
   textEn: text("text_en").notNull(),
   textAr: text("text_ar").notNull(),
   avatarUrl: text("avatar_url"),
+  proofImageUrl: text("proof_image_url"),
   rating: integer("rating").notNull().default(5), // 1-5 stars
   packageSlug: text("package_slug"),
   courseId: integer("course_id"),
   serviceKey: text("service_key", { length: 40 }), // lexai | recommendations | courses | community
   displayOrder: integer("display_order").notNull().default(0),
+  showProofOnHome: integer("show_proof_on_home", { mode: 'boolean' }).notNull().default(false),
+  showProofOnDashboard: integer("show_proof_on_dashboard", { mode: 'boolean' }).notNull().default(false),
   isPublished: integer("is_published", { mode: 'boolean' }).notNull().default(true),
   createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
 });

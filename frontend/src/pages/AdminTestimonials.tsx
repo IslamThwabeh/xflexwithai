@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { MessageSquareQuote, Plus, Edit2, Trash2, Save, X, Star, Eye, EyeOff } from 'lucide-react';
+import { useState, type ChangeEvent } from 'react';
+import { MessageSquareQuote, Plus, Edit2, Trash2, Save, X, Star, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -10,19 +10,26 @@ import { toast } from 'sonner';
 
 const empty = () => ({
   nameEn: '', nameAr: '', titleEn: '', titleAr: '', textEn: '', textAr: '',
-  avatarUrl: '', rating: 5, packageSlug: '', courseId: undefined as number | undefined, serviceKey: '', displayOrder: 0, isPublished: true,
+  avatarUrl: '', proofImageUrl: '', rating: 5, packageSlug: '', courseId: undefined as number | undefined, serviceKey: '', displayOrder: 0, showProofOnHome: false, showProofOnDashboard: false, isPublished: true,
 });
 
 export default function AdminTestimonials() {
   const { language } = useLanguage();
   const isRtl = language === 'ar';
   const utils = trpc.useUtils();
+  const invalidateTestimonials = () => {
+    utils.testimonials.adminList.invalidate();
+    utils.testimonials.list.invalidate();
+    utils.testimonials.listWithContext.invalidate();
+    utils.testimonials.listProofs.invalidate();
+  };
   const { data: testimonials, isLoading } = trpc.testimonials.adminList.useQuery();
   const { data: packages } = trpc.packages.adminList.useQuery();
   const { data: courses } = trpc.courses.listAll.useQuery();
-  const createMut = trpc.testimonials.create.useMutation({ onSuccess: () => { utils.testimonials.adminList.invalidate(); setEditing(null); toast.success(isRtl ? 'تمت الإضافة' : 'Added'); } });
-  const updateMut = trpc.testimonials.update.useMutation({ onSuccess: () => { utils.testimonials.adminList.invalidate(); setEditing(null); toast.success(isRtl ? 'تم التحديث' : 'Updated'); } });
-  const deleteMut = trpc.testimonials.delete.useMutation({ onSuccess: () => utils.testimonials.adminList.invalidate() });
+  const createMut = trpc.testimonials.create.useMutation({ onSuccess: () => { invalidateTestimonials(); setEditing(null); toast.success(isRtl ? 'تمت الإضافة' : 'Added'); } });
+  const updateMut = trpc.testimonials.update.useMutation({ onSuccess: () => { invalidateTestimonials(); setEditing(null); toast.success(isRtl ? 'تم التحديث' : 'Updated'); } });
+  const deleteMut = trpc.testimonials.delete.useMutation({ onSuccess: () => invalidateTestimonials() });
+  const uploadProofImage = trpc.testimonials.uploadProofImage.useMutation();
 
   const [editing, setEditing] = useState<any>(null);
   const [isNew, setIsNew] = useState(false);
@@ -32,11 +39,16 @@ export default function AdminTestimonials() {
 
   const handleSave = async () => {
     if (!editing) return;
+    const proofImageUrl = editing.proofImageUrl?.trim() || undefined;
     const payload = {
       ...editing,
+      avatarUrl: editing.avatarUrl?.trim() || undefined,
+      proofImageUrl,
       packageSlug: editing.packageSlug?.trim() || undefined,
       serviceKey: editing.serviceKey?.trim() || undefined,
       courseId: editing.courseId ? Number(editing.courseId) : undefined,
+      showProofOnHome: Boolean(proofImageUrl && editing.showProofOnHome),
+      showProofOnDashboard: Boolean(proofImageUrl && editing.showProofOnDashboard),
     };
     if (isNew) { await createMut.mutateAsync(payload); }
     else { await updateMut.mutateAsync(payload); }
@@ -49,6 +61,39 @@ export default function AdminTestimonials() {
 
   const togglePublish = async (t: any) => {
     await updateMut.mutateAsync({ id: t.id, isPublished: !t.isPublished });
+  };
+
+  const handleProofUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !editing) return;
+
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const base64 = reader.result?.toString().split(',')[1];
+      if (!base64) {
+        toast.error(isRtl ? 'فشل في قراءة الملف' : 'Failed to read file');
+        return;
+      }
+
+      try {
+        const result = await uploadProofImage.mutateAsync({
+          fileName: file.name,
+          fileData: base64,
+          contentType: file.type,
+        });
+        setEditing({
+          ...editing,
+          proofImageUrl: result.url,
+          showProofOnHome: editing.showProofOnHome || true,
+        });
+        toast.success(isRtl ? 'تم رفع صورة الإثبات' : 'Proof image uploaded');
+      } catch (error: any) {
+        toast.error(error.message || (isRtl ? 'فشل في رفع الصورة' : 'Upload failed'));
+      }
+    };
+    reader.onerror = () => toast.error(isRtl ? 'فشل في قراءة الملف' : 'Failed to read file');
+    reader.readAsDataURL(file);
+    event.target.value = '';
   };
 
   return (
@@ -103,6 +148,64 @@ export default function AdminTestimonials() {
                     </button>
                   ))}
                 </div>
+              </div>
+              <div className="md:col-span-2 rounded-xl border border-emerald-100 bg-emerald-50/40 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">{isRtl ? 'صورة إثبات للشهادة' : 'Proof image for testimonial'}</label>
+                    <p className="text-xs text-gray-500">
+                      {isRtl ? 'ارفع لقطة شاشة مناسبة للعرض على الصفحة الرئيسية أو لوحة الطالب.' : 'Upload a polished screenshot for the homepage or student dashboard.'}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="inline-flex cursor-pointer items-center rounded-md border border-emerald-200 bg-white px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50">
+                      <input type="file" accept="image/*" className="hidden" onChange={handleProofUpload} />
+                      {uploadProofImage.isPending ? (
+                        <span className="inline-flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" />{isRtl ? 'جارٍ الرفع...' : 'Uploading...'}</span>
+                      ) : (
+                        <span>{isRtl ? 'رفع صورة' : 'Upload image'}</span>
+                      )}
+                    </label>
+                    {editing.proofImageUrl ? (
+                      <Button type="button" variant="outline" onClick={() => setEditing({ ...editing, proofImageUrl: '', showProofOnHome: false, showProofOnDashboard: false })}>
+                        {isRtl ? 'إزالة' : 'Remove'}
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+
+                {editing.proofImageUrl ? (
+                  <div className="grid gap-4 md:grid-cols-[200px_1fr]">
+                    <div className="overflow-hidden rounded-xl border bg-slate-950 p-2">
+                      <img src={editing.proofImageUrl} alt="" className="w-full aspect-[9/15] object-contain object-center rounded-lg" />
+                    </div>
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2">
+                        <input
+                          id="show-proof-home"
+                          type="checkbox"
+                          checked={editing.showProofOnHome}
+                          onChange={(e) => setEditing({ ...editing, showProofOnHome: e.target.checked })}
+                        />
+                        <label htmlFor="show-proof-home" className="text-sm text-gray-700">{isRtl ? 'إظهار في قسم الإثباتات بالصفحة الرئيسية' : 'Show in homepage proof gallery'}</label>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          id="show-proof-dashboard"
+                          type="checkbox"
+                          checked={editing.showProofOnDashboard}
+                          onChange={(e) => setEditing({ ...editing, showProofOnDashboard: e.target.checked })}
+                        />
+                        <label htmlFor="show-proof-dashboard" className="text-sm text-gray-700">{isRtl ? 'إظهار في لوحة الطالب' : 'Show on student dashboard'}</label>
+                      </div>
+                      <p className="text-xs text-gray-500">
+                        {isRtl ? 'استخدم لقطات مرتبة وواضحة فقط. الصور التي تحتوي على شريط الصور أو لوحة المفاتيح أو قصّ غير متوازن يجب تنظيفها قبل النشر.' : 'Use only clean, balanced screenshots. Images with camera-roll strips, keyboards, or awkward framing should be cleaned before publishing.'}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500">{isRtl ? 'لا توجد صورة إثبات مرفوعة بعد.' : 'No proof image uploaded yet.'}</p>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{isRtl ? 'الباقة المرتبطة (اختياري)' : 'Linked Package (optional)'}</label>
@@ -186,6 +289,11 @@ export default function AdminTestimonials() {
                     {t.isPublished ? (isRtl ? 'منشورة' : 'Published') : (isRtl ? 'مسودة' : 'Draft')}
                   </Badge>
                 </div>
+                {t.proofImageUrl ? (
+                  <div className="mb-3 overflow-hidden rounded-xl border bg-slate-950 p-2">
+                    <img src={t.proofImageUrl} alt="" className="w-full aspect-[9/15] object-contain object-center rounded-lg" />
+                  </div>
+                ) : null}
                 <div className="flex gap-0.5 mb-2">
                   {[1, 2, 3, 4, 5].map((n) => (
                     <Star key={n} className={`w-3.5 h-3.5 ${n <= t.rating ? 'fill-yellow-400 text-yellow-400' : 'text-gray-200'}`} />
@@ -195,6 +303,8 @@ export default function AdminTestimonials() {
                   {t.packageSlug && <Badge variant="outline" className="text-[10px]">{isRtl ? 'باقة' : 'Package'}: {t.packageSlug}</Badge>}
                   {t.courseId && <Badge variant="outline" className="text-[10px]">{isRtl ? 'دورة' : 'Course'} #{t.courseId}</Badge>}
                   {t.serviceKey && <Badge variant="outline" className="text-[10px]">{isRtl ? 'خدمة' : 'Service'}: {t.serviceKey}</Badge>}
+                  {t.showProofOnHome ? <Badge variant="outline" className="text-[10px] border-emerald-200 text-emerald-700">{isRtl ? 'إثبات الرئيسية' : 'Home Proof'}</Badge> : null}
+                  {t.showProofOnDashboard ? <Badge variant="outline" className="text-[10px] border-amber-200 text-amber-700">{isRtl ? 'إثبات الطالب' : 'Dashboard Proof'}</Badge> : null}
                 </div>
                 <p className="text-sm text-gray-600 line-clamp-3 mb-3">"{isRtl ? t.textAr : t.textEn}"</p>
                 <div className="flex gap-1.5 border-t pt-3">
