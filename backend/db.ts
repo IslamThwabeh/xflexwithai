@@ -7719,41 +7719,43 @@ export async function createReferral(referrerId: number, refereeId: number) {
   if (existing.length > 0) return null; // already referred
   // Don't allow self-referral
   if (referrerId === refereeId) return null;
-  const [createdReferral] = await db.insert(referrals).values({
+  await db.insert(referrals).values({
     referrerId,
     refereeId,
     status: 'pending',
     createdAt: new Date().toISOString(),
-  }).returning({ id: referrals.id });
+  });
 
   let refereePts = 0;
-  if (createdReferral?.id) {
-    try {
-      const refereeRule = await getActivePointsRule('referral_referee');
-      refereePts = refereeRule?.points ?? 50;
+  try {
+    const refereeRule = await getActivePointsRule('referral_referee');
+    refereePts = refereeRule?.points ?? 50;
 
-      if (refereePts > 0) {
-        await addPoints({
-          userId: refereeId,
-          amount: refereePts,
-          type: 'bonus',
-          reasonEn: 'Welcome bonus - you signed up via a referral!',
-          reasonAr: 'مكافأة ترحيبية - سجلت عبر إحالة!',
-          referenceId: referrerId,
-          referenceType: 'referral',
-        });
-
-        await db.update(referrals).set({
-          refereePoints: refereePts,
-        }).where(eq(referrals.id, createdReferral.id));
-      }
-    } catch (error) {
-      logger.warn('Failed awarding referral sign-up bonus', {
-        referrerId,
-        refereeId,
-        error: error instanceof Error ? error.message : 'Unknown error',
+    if (refereePts > 0) {
+      await addPoints({
+        userId: refereeId,
+        amount: refereePts,
+        type: 'bonus',
+        reasonEn: 'Welcome bonus - you signed up via a referral!',
+        reasonAr: 'مكافأة ترحيبية - سجلت عبر إحالة!',
+        referenceId: referrerId,
+        referenceType: 'referral',
       });
+
+      await db.update(referrals).set({
+        refereePoints: refereePts,
+      }).where(and(
+        eq(referrals.referrerId, referrerId),
+        eq(referrals.refereeId, refereeId),
+        eq(referrals.status, 'pending'),
+      ));
     }
+  } catch (error) {
+    logger.warn('Failed awarding referral sign-up bonus', {
+      referrerId,
+      refereeId,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
   }
 
   return { success: true, refereePoints: refereePts };
