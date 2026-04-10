@@ -47,6 +47,15 @@ interface ClientLayoutProps {
   subHeader?: ReactNode;
 }
 
+function getPreferredLanguageFromNotificationPrefs(notificationPrefs: string | null | undefined): "ar" | "en" | null {
+  try {
+    const prefs = JSON.parse(notificationPrefs || "{}");
+    return prefs.language === "en" || prefs.language === "ar" ? prefs.language : null;
+  } catch {
+    return null;
+  }
+}
+
 export default function ClientLayout({ children, subHeader }: ClientLayoutProps) {
   const { user, logout } = useAuth();
   const { t, language, setLanguage, isRTL } = useLanguage();
@@ -54,10 +63,30 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
   const lastInteractionAtRef = useRef(0);
+  const hydratedLanguageForUserIdRef = useRef<number | null>(null);
 
   const { data: unreadNotifData } = trpc.notifications.unreadCount.useQuery(undefined, { refetchInterval: 30_000 });
   const touchInteractionMutation = trpc.users.touchInteraction.useMutation();
+  const updateNotificationPrefsMutation = trpc.users.updateNotificationPrefs.useMutation();
   const unreadNotifCount = unreadNotifData?.count ?? 0;
+
+  useEffect(() => {
+    if (!user?.id) {
+      hydratedLanguageForUserIdRef.current = null;
+      return;
+    }
+
+    if (hydratedLanguageForUserIdRef.current === user.id) {
+      return;
+    }
+
+    const preferredLanguage = getPreferredLanguageFromNotificationPrefs((user as any)?.notificationPrefs);
+    if (preferredLanguage && preferredLanguage !== language) {
+      setLanguage(preferredLanguage);
+    }
+
+    hydratedLanguageForUserIdRef.current = user.id;
+  }, [language, setLanguage, user]);
 
   useEffect(() => {
     if (!user) return;
@@ -96,6 +125,15 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
     try { window.localStorage.removeItem("xflex_last_email"); } catch {}
     await logout();
     window.location.href = "/";
+  };
+
+  const toggleLanguagePreference = () => {
+    const nextLanguage = language === "ar" ? "en" : "ar";
+    setLanguage(nextLanguage);
+
+    if (user) {
+      updateNotificationPrefsMutation.mutate({ language: nextLanguage });
+    }
   };
 
   const navItems = [
@@ -220,7 +258,7 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
             <div className="flex items-center gap-1.5 sm:gap-2">
               {/* Language Toggle */}
               <button
-                onClick={() => setLanguage(language === "ar" ? "en" : "ar")}
+                onClick={toggleLanguagePreference}
                 className="flex items-center gap-1 px-1.5 sm:px-2 py-1.5 rounded-full text-xs font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition"
               >
                 <Globe className="w-3.5 h-3.5" />
@@ -324,7 +362,7 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
           {/* Footer actions */}
           <div className="border-t p-3 space-y-2">
             <button
-              onClick={() => { setLanguage(language === "ar" ? "en" : "ar"); setMobileMenuOpen(false); }}
+              onClick={() => { toggleLanguagePreference(); setMobileMenuOpen(false); }}
               className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-100 transition"
             >
               <Globe className="h-4 w-4 text-gray-400" />

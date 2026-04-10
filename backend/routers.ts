@@ -16,6 +16,7 @@ import { storagePutR2, storageArchiveR2 } from "./storage-r2";
 import { analyzeLexai } from "./_core/lexai";
 import { hashPassword, verifyPassword, generateToken, isValidEmail, isValidPassword } from "./_core/auth";
 import { sendEmail, sendLoginCodeEmail } from "./_core/email";
+import { buildRecommendationAlertEmail } from "./_core/recommendationEmails";
 import { sendOrderConfirmationEmail, sendPaymentReceivedEmail, sendAdminNewOrderNotification, sendAnnouncementEmail, sendStaffWelcomeEmail } from "./_core/orderEmails";
 import { ENV } from "./_core/env";
 import { generateNumericCode, generateSaltBase64, normalizeEmail, sha256Base64 } from "./_core/otp";
@@ -382,13 +383,30 @@ const buildRecommendationPlainText = (payload: {
   return lines.join("\n");
 };
 
-const recommendationNotificationsEnabled = (notificationPrefs: string | null | undefined) => {
+type UserNotificationPrefs = {
+  support_replies?: boolean;
+  recommendations?: boolean;
+  course_updates?: boolean;
+  admin_announcements?: boolean;
+  language?: "ar" | "en";
+};
+
+const parseNotificationPrefs = (notificationPrefs: string | null | undefined): UserNotificationPrefs => {
   try {
-    const prefs = JSON.parse(notificationPrefs || '{}');
-    return prefs.recommendations !== false;
+    return JSON.parse(notificationPrefs || '{}') as UserNotificationPrefs;
   } catch {
-    return true;
+    return {};
   }
+};
+
+const recommendationNotificationsEnabled = (notificationPrefs: string | null | undefined) => {
+  const prefs = parseNotificationPrefs(notificationPrefs);
+  return prefs.recommendations !== false;
+};
+
+const getPreferredNotificationLanguage = (notificationPrefs: string | null | undefined): "ar" | "en" => {
+  const prefs = parseNotificationPrefs(notificationPrefs);
+  return prefs.language === "en" ? "en" : "ar";
 };
 
 const isRecommendationEmailCandidate = (
@@ -404,28 +422,9 @@ const isRecommendationEmailCandidate = (
 const buildRecommendationAlertNotificationCopy = () => ({
   titleEn: 'Recommendations channel alert',
   titleAr: 'تنبيه قناة التوصيات',
-  contentEn: `Our analyst is about to send recommendations in the next few minutes. Wait about ${RECOMMENDATION_ALERT_UNLOCK_SECONDS} seconds, then open the channel.`,
-  contentAr: `المحلل على وشك إرسال توصيات خلال الدقائق القادمة. انتظر حوالي ${RECOMMENDATION_ALERT_UNLOCK_SECONDS} ثانية، ثم افتح القناة.`,
-  emailSubject: 'Recommendations alert — the channel opens in about 1 minute',
+  contentEn: `Be ready and open your trading app. The analyst is about to post a new recommendation in about ${RECOMMENDATION_ALERT_UNLOCK_SECONDS} seconds.`,
+  contentAr: `كن مستعداً وافتح تطبيق التداول. المحلل على وشك نشر توصية جديدة خلال حوالي ${RECOMMENDATION_ALERT_UNLOCK_SECONDS} ثانية.`,
 });
-
-const buildRecommendationAlertEmailText = () => {
-  const lines = [
-    'XFlex - Recommendations Alert',
-    '------------------------------',
-    'The analyst is about to send recommendations in the next few minutes.',
-    `Wait about ${RECOMMENDATION_ALERT_UNLOCK_SECONDS} seconds, then open the recommendations channel.`,
-    '',
-    'If the analyst goes silent for 15 minutes, another alert will be required before the next new message.',
-    '',
-    'تحضير جلسة توصيات جديدة',
-    '------------------------------',
-    'المحلل على وشك إرسال توصيات خلال الدقائق القادمة.',
-    `انتظر حوالي ${RECOMMENDATION_ALERT_UNLOCK_SECONDS} ثانية، ثم افتح قناة التوصيات.`,
-  ];
-
-  return lines.join('\n');
-};
 
 const ensureRecommendationReadAccess = async (ctx: { user: { id: number; email?: string | null } | null }) => {
   if (!ctx.user) {
@@ -1394,6 +1393,7 @@ export const appRouter = router({
         recommendations: z.boolean().optional(),
         course_updates: z.boolean().optional(),
         admin_announcements: z.boolean().optional(),
+        language: z.enum(["ar", "en"]).optional(),
       }))
       .mutation(async ({ input, ctx }) => {
         if (!ctx.user) {
@@ -2541,10 +2541,15 @@ export const appRouter = router({
         const emailCandidates = recipients.filter((sub) => isRecommendationEmailCandidate(sub.lastInteractiveAt, inactivityThreshold));
         const emailResults = await Promise.allSettled(
           emailCandidates.map(async (sub) => {
+            const emailCopy = buildRecommendationAlertEmail({
+              language: getPreferredNotificationLanguage(sub.notificationPrefs),
+              unlockSeconds: RECOMMENDATION_ALERT_UNLOCK_SECONDS,
+            });
             await sendEmail({
               to: sub.email,
-              subject: copy.emailSubject,
-              text: buildRecommendationAlertEmailText(),
+              subject: emailCopy.subject,
+              text: emailCopy.text,
+              html: emailCopy.html,
             });
             await db.markNotificationEmailSent(batchId, sub.userId);
             return sub.userId;
@@ -2663,6 +2668,9 @@ export const appRouter = router({
             takeProfit2: input.takeProfit2,
             riskPercent: input.riskPercent,
             parentId: null,
+            threadStatus: 'open',
+            closedAt: null,
+            closedByUserId: null,
             createdAt: new Date().toISOString(),
           });
 
@@ -2691,7 +2699,7 @@ export const appRouter = router({
             throw new TRPCError({ code: 'NOT_FOUND', message: 'Parent recommendation not found.' });
           }
           if (parentMessage.type !== 'recommendation') {
-            throw new TRPCError({ code: 'BAD_REQUEST', message: 'Updates and results can only be added to an existing recommendation.' });
+            throw new TRPCError({ code: 'BAD_REQUEST', message: 'Replies and results can only be added to an existing recommendation.' });
           }
 
           const normalizedSymbol = input.symbol?.trim().toUpperCase();
@@ -2736,6 +2744,42 @@ export const appRouter = router({
         }
 
         return { success: true, messageId };
+      }),
+
+    closeThread: protectedProcedure
+      .input(z.object({ messageId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        await ensureRecommendationPublishAccess(ctx);
+
+        const rootMessage = await db.getRecommendationMessageById(input.messageId);
+        if (!rootMessage) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Recommendation thread not found.' });
+        }
+        if (rootMessage.parentId || rootMessage.type !== 'recommendation') {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Only top-level recommendations can be closed.' });
+        }
+        if (rootMessage.threadStatus === 'closed') {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'This recommendation thread is already closed.' });
+        }
+
+        const hasResultChild = await db.hasRecommendationResultChild(rootMessage.id);
+        if (!hasResultChild) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Add a result before closing this recommendation thread.' });
+        }
+
+        const isAdmin = !!(ctx.user?.email && await db.getAdminByEmail(ctx.user.email));
+        await db.closeRecommendationThread(rootMessage.id, ctx.user.id);
+
+        if (ctx.user?.isStaff && !isAdmin) {
+          await writeStaffActivityLog({
+            ctx: { ...ctx, admin: null },
+            path: 'recommendations.closeThread',
+            type: 'mutation',
+            input,
+          });
+        }
+
+        return { success: true };
       }),
 
     react: protectedProcedure

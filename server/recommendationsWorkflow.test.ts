@@ -20,6 +20,8 @@ vi.mock("../backend/db", async () => {
     createRecommendationMessage: vi.fn(),
     extendRecommendationAlertActivity: vi.fn().mockResolvedValue(undefined),
     getRecommendationMessageById: vi.fn(),
+    hasRecommendationResultChild: vi.fn(),
+    closeRecommendationThread: vi.fn().mockResolvedValue(undefined),
     cancelRecommendationAlert: vi.fn().mockResolvedValue(undefined),
   };
 });
@@ -61,6 +63,8 @@ describe("recommendations workflow", () => {
   const createRecommendationMessage = vi.mocked(db.createRecommendationMessage);
   const extendRecommendationAlertActivity = vi.mocked(db.extendRecommendationAlertActivity);
   const getRecommendationMessageById = vi.mocked(db.getRecommendationMessageById);
+  const hasRecommendationResultChild = vi.mocked(db.hasRecommendationResultChild);
+  const closeRecommendationThread = vi.mocked(db.closeRecommendationThread);
   const mockedSendEmail = vi.mocked(sendEmail);
 
   beforeEach(() => {
@@ -98,7 +102,10 @@ describe("recommendations workflow", () => {
       id: 901,
       type: "recommendation",
       symbol: "XAUUSD",
+      parentId: null,
+      threadStatus: "open",
     } as any);
+    hasRecommendationResultChild.mockResolvedValue(true);
   });
 
   it("emails only inactive recommendation recipients during notify", async () => {
@@ -123,24 +130,42 @@ describe("recommendations workflow", () => {
         notificationPrefs: JSON.stringify({ recommendations: false }),
         lastInteractiveAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
       },
+      {
+        userId: 4,
+        email: "english@example.com",
+        notificationPrefs: JSON.stringify({ language: "en" }),
+        lastInteractiveAt: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
+      },
     ] as any);
 
     const result = await caller.recommendations.notifyClients({});
 
-    expect(result).toMatchObject({ success: true, recipientCount: 2, emailCount: 1 });
+    expect(result).toMatchObject({ success: true, recipientCount: 3, emailCount: 2 });
     expect(sendBulkNotification).toHaveBeenCalledWith(
       expect.objectContaining({
-        userIds: [1, 2],
+        userIds: [1, 2, 4],
         actionUrl: "/recommendations",
       })
     );
-    expect(mockedSendEmail).toHaveBeenCalledTimes(1);
-    expect(mockedSendEmail).toHaveBeenCalledWith(
+    expect(mockedSendEmail).toHaveBeenCalledTimes(2);
+    expect(mockedSendEmail).toHaveBeenNthCalledWith(
+      1,
       expect.objectContaining({
         to: "inactive@example.com",
+        subject: "تنبيه التوصيات: جهّز تطبيق التداول، توصية جديدة قريبة",
+        html: expect.stringContaining("افتح القناة الآن"),
+      })
+    );
+    expect(mockedSendEmail).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        to: "english@example.com",
+        subject: "Recommendations alert: be ready, a new recommendation is coming",
+        html: expect.stringContaining("Open Channel Now"),
       })
     );
     expect(markNotificationEmailSent).toHaveBeenCalledWith(expect.any(String), 1);
+    expect(markNotificationEmailSent).toHaveBeenCalledWith(expect.any(String), 4);
   });
 
   it("blocks a new recommendation until clients have been notified", async () => {
@@ -303,5 +328,28 @@ describe("recommendations workflow", () => {
       code: "FORBIDDEN",
       message: "The chat paused after 15 minutes of analyst silence. Notify clients again before sending a new message.",
     } satisfies Partial<TRPCError>);
+  });
+
+  it("requires a result before closing a recommendation thread", async () => {
+    const caller = createAuthedCaller();
+
+    hasRecommendationResultChild.mockResolvedValue(false);
+
+    await expect(
+      caller.recommendations.closeThread({ messageId: 901 })
+    ).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      message: "Add a result before closing this recommendation thread.",
+    } satisfies Partial<TRPCError>);
+  });
+
+  it("closes a recommendation thread after a result exists", async () => {
+    const caller = createAuthedCaller();
+
+    const result = await caller.recommendations.closeThread({ messageId: 901 });
+
+    expect(result).toMatchObject({ success: true });
+    expect(hasRecommendationResultChild).toHaveBeenCalledWith(901);
+    expect(closeRecommendationThread).toHaveBeenCalledWith(901, 123);
   });
 });

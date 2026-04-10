@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { ResponsiveTable } from "@/components/ui/responsive-table";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -14,6 +14,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { toast } from "sonner";
 import { PauseCircle, PlayCircle, UserCog, Bell, TrendingUp, Copy, Trash2, ArrowDown, ArrowUp, Plus, Clock3, Megaphone, XCircle, Info } from "lucide-react";
 import { useDataTable, DataTablePagination, zebraRow } from "@/components/DataTable";
+import { buildRecommendationThreads, groupRecommendationThreadsByDay } from "@/lib/recommendationThreads";
 
 type RecommendationType = "recommendation" | "update" | "result";
 
@@ -85,6 +86,57 @@ function getMessageTypeClass(type: string) {
   return "border-emerald-300 text-emerald-700 dark:text-emerald-400";
 }
 
+function formatMessageTimestamp(value: unknown, language: string) {
+  if (!value) return "-";
+  const parsed = new Date(String(value));
+  if (Number.isNaN(parsed.getTime())) return "-";
+  return parsed.toLocaleString(language === "ar" ? "ar-EG" : "en-US");
+}
+
+function getThreadContainerClass(paletteIndex: number, isClosed: boolean) {
+  const base = paletteIndex % 2 === 0
+    ? "border-slate-200 bg-white"
+    : "border-slate-300 bg-slate-50/90";
+
+  return isClosed
+    ? `${base} shadow-sm`
+    : `${base} ring-1 ring-emerald-200/80 shadow-sm shadow-emerald-100/60 dark:ring-emerald-800/30 dark:shadow-none`;
+}
+
+function getThreadRootPanelClass(paletteIndex: number, isClosed: boolean) {
+  if (isClosed) {
+    return paletteIndex % 2 === 0
+      ? "border-slate-200 bg-slate-50/85"
+      : "border-slate-200 bg-slate-100/70";
+  }
+
+  return paletteIndex % 2 === 0
+    ? "border-slate-200 bg-white/90"
+    : "border-slate-200 bg-white/75";
+}
+
+function getThreadChildPanelClass(type: string, paletteIndex: number) {
+  if (type === "result") {
+    return paletteIndex % 2 === 0
+      ? "border-teal-200 bg-teal-50/85 dark:border-teal-800/40 dark:bg-teal-900/10"
+      : "border-teal-200 bg-teal-100/65 dark:border-teal-800/40 dark:bg-teal-900/15";
+  }
+
+  return paletteIndex % 2 === 0
+    ? "border-amber-200 bg-amber-50/85 dark:border-amber-800/40 dark:bg-amber-900/10"
+    : "border-amber-200 bg-amber-100/65 dark:border-amber-800/40 dark:bg-amber-900/15";
+}
+
+function getThreadStatusLabel(isClosed: boolean, isRTL: boolean) {
+  return isClosed ? (isRTL ? "مغلقة" : "Closed") : (isRTL ? "مفتوحة" : "Open");
+}
+
+function getThreadStatusClass(isClosed: boolean) {
+  return isClosed
+    ? "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+    : "bg-emerald-600 text-white";
+}
+
 function buildCopyBlock(message: any, t: (key: string) => string) {
   const lines: string[] = [];
   if (message.symbol) lines.push(`${t('rec.copySymbol')}: ${message.symbol}`);
@@ -120,8 +172,8 @@ function formatRecommendationUiError(message: string, isRTL: boolean) {
         return "التوصية الجديدة يجب أن تكون رسالة رئيسية، وليست داخل سلسلة قائمة.";
       case "Parent recommendation not found.":
         return "تعذر العثور على التوصية الأم. حدّث الصفحة ثم اختر التوصية من جديد.";
-      case "Updates and results can only be added to an existing recommendation.":
-        return "يمكن إضافة التحديثات والنتائج فقط داخل توصية موجودة بالفعل.";
+      case "Replies and results can only be added to an existing recommendation.":
+        return "يمكن إضافة الردود والنتائج فقط داخل توصية موجودة بالفعل.";
       case "Same-trade updates must stay on the original recommendation symbol.":
         return "تحديثات نفس الصفقة يجب أن تبقى على نفس زوج التوصية الأصلية.";
       case "There is already an active chat session. Wait for it to pause or cancel it before starting a new one.":
@@ -166,6 +218,8 @@ function AnalystView() {
   const [takeProfit2, setTakeProfit2] = useState("");
   const [riskPercent, setRiskPercent] = useState("");
   const [parentMessage, setParentMessage] = useState<any | null>(null);
+  const [showTradeDetails, setShowTradeDetails] = useState(false);
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
 
   const { data: me } = trpc.recommendations.me.useQuery();
   const { data: adminCheck } = trpc.auth.isAdmin.useQuery();
@@ -211,7 +265,7 @@ function AnalystView() {
         type === "result"
           ? (isRTL ? "تم نشر النتيجة" : "Result published")
           : type === "update"
-            ? (isRTL ? "تم نشر التحديث" : "Update published")
+            ? (isRTL ? "تم إرسال الرد" : "Reply sent")
             : (isRTL ? "تم نشر التوصية" : "Recommendation published")
       );
       setContent("");
@@ -221,6 +275,7 @@ function AnalystView() {
       setTakeProfit1("");
       setTakeProfit2("");
       setRiskPercent("");
+      setShowTradeDetails(false);
       setParentMessage(null);
       setType("recommendation");
       if (type === "recommendation") {
@@ -239,6 +294,14 @@ function AnalystView() {
       utils.recommendations.feed.invalidate();
     },
     onError: (error) => toast.error(error.message),
+  });
+
+  const closeThreadMutation = trpc.recommendations.closeThread.useMutation({
+    onSuccess: () => {
+      toast.success(isRTL ? "تم إغلاق الصفقة" : "Thread closed");
+      utils.recommendations.feed.invalidate();
+    },
+    onError: (error) => toast.error(formatRecommendationUiError(error.message, isRTL)),
   });
 
   const normalizedSymbol = symbol.trim().toUpperCase();
@@ -281,6 +344,16 @@ function AnalystView() {
           ? `يمكنك الآن الإرسال بشكل طبيعي. كل رسالة جديدة من المحلل تمدد المهلة 15 دقيقة إضافية، ويتبقى ${formatCountdown(publishState?.secondsUntilExpiry ?? 0)} قبل أن تتوقف الدردشة إذا لم تُرسل شيئاً.`
           : `You can send normally now. Every new analyst message extends the chat for another 15 minutes. ${formatCountdown(publishState?.secondsUntilExpiry ?? 0)} remains before the chat pauses if you stop sending.`);
 
+  useEffect(() => {
+    if (!showComposerFields || type === "recommendation") return;
+
+    const frame = window.requestAnimationFrame(() => {
+      composerRef.current?.focus();
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [showComposerFields, type, parentMessage]);
+
   const onNotifyClients = () => {
     notifyClientsMutation.mutate({});
   };
@@ -315,6 +388,7 @@ function AnalystView() {
     setType("update");
     setParentMessage(parent);
     setContent("");
+    setShowTradeDetails(false);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -322,24 +396,178 @@ function AnalystView() {
     setType("result");
     setParentMessage(parentMessage);
     setContent("");
+    setShowTradeDetails(false);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  // Group results under their parent messages
-  const { rootMessages, childrenMap } = useMemo(() => {
-    const childrenMap = new Map<number, any[]>();
-    const rootMessages: any[] = [];
-    for (const msg of feed) {
-      if (msg.parentId) {
-        const children = childrenMap.get(msg.parentId) || [];
-        children.push(msg);
-        childrenMap.set(msg.parentId, children);
-      } else {
-        rootMessages.push(msg);
-      }
-    }
-    return { rootMessages, childrenMap };
-  }, [feed]);
+  const threads = useMemo(() => buildRecommendationThreads(feed, { openFirst: true }), [feed]);
+  const openThreadGroups = useMemo(
+    () => groupRecommendationThreadsByDay(threads.filter((thread) => !thread.isClosed), language),
+    [threads, language],
+  );
+  const closedThreadGroups = useMemo(
+    () => groupRecommendationThreadsByDay(threads.filter((thread) => thread.isClosed), language),
+    [threads, language],
+  );
+  const openThreadCount = threads.filter((thread) => !thread.isClosed).length;
+  const closedThreadCount = threads.filter((thread) => thread.isClosed).length;
+
+  const renderThreadGroups = (groups: any[], isClosedSection: boolean) => (
+    <div className="space-y-4">
+      {groups.map((group: any) => (
+        <section key={`${isClosedSection ? "closed" : "open"}-${group.key}`} className="space-y-3">
+          <div className="px-1">
+            <p className="text-xs font-semibold tracking-[0.18em] text-slate-500 uppercase dark:text-slate-400">
+              {group.label}
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            {group.threads.map((thread: any) => {
+              const message = thread.root;
+              const children = thread.children;
+              const canDeleteMessage = !!adminCheck?.isAdmin || message.userId === me?.userId;
+
+              return (
+                <div key={message.id} className={`rounded-2xl border p-3 space-y-3 sm:p-4 ${getThreadContainerClass(thread.paletteIndex, thread.isClosed)}`}>
+                  <div className={`rounded-xl border p-4 space-y-3 ${getThreadRootPanelClass(thread.paletteIndex, thread.isClosed)}`}>
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="space-y-2">
+                        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                          <Badge variant="outline" className={getMessageTypeClass(message.type)}>
+                            {getMessageTypeLabel(message.type, isRTL)}
+                          </Badge>
+                          <Badge className={getThreadStatusClass(thread.isClosed)}>
+                            {getThreadStatusLabel(thread.isClosed, isRTL)}
+                          </Badge>
+                          {message.symbol && <Badge className="bg-slate-100 dark:bg-white/10 text-slate-700 dark:text-slate-200 text-xs">{message.symbol}</Badge>}
+                          {message.side && (
+                            <Badge className={message.side === "BUY" ? "bg-emerald-100 text-emerald-700 text-xs" : "bg-red-100 text-red-700 text-xs"}>
+                              {message.side === "BUY" ? "↑ BUY" : "↓ SELL"}
+                            </Badge>
+                          )}
+                          <Badge variant="secondary" className="bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-300 text-xs">
+                            #{message.id}
+                          </Badge>
+                          {children.length > 0 && (
+                            <Badge variant="secondary" className="bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-300 text-xs">
+                              {isRTL
+                                ? `${children.length} ${children.length === 1 ? 'متابعة' : 'متابعات'}`
+                                : `${children.length} ${children.length === 1 ? 'update' : 'updates'}`}
+                            </Badge>
+                          )}
+                        </div>
+
+                        {children.length > 0 && thread.latestActivityAt !== message.createdAt && (
+                          <p className="text-xs text-muted-foreground">
+                            {isRTL
+                              ? `بدأت الصفقة ${formatMessageTimestamp(message.createdAt, language)} وآخر تحديث كان ${formatMessageTimestamp(thread.latestActivityAt, language)}`
+                              : `Trade opened ${formatMessageTimestamp(message.createdAt, language)} and was last updated ${formatMessageTimestamp(thread.latestActivityAt, language)}`}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="text-[11px] text-muted-foreground sm:text-xs lg:text-right">
+                        {formatMessageTimestamp(thread.latestActivityAt, language)}
+                      </div>
+                    </div>
+
+                    {(message.entryPrice || message.stopLoss || message.takeProfit1 || message.takeProfit2 || message.riskPercent) && (
+                      <div className="grid grid-cols-1 gap-2 rounded-xl border bg-gray-50 p-3 text-xs sm:grid-cols-2 xl:grid-cols-4 dark:bg-white/5">
+                        {message.entryPrice && <div><span className="text-muted-foreground">{isRTL ? "دخول:" : "Entry:"}</span> <span className="font-mono font-medium">{message.entryPrice}</span></div>}
+                        {message.stopLoss && <div><span className="text-muted-foreground">{isRTL ? "وقف:" : "SL:"}</span> <span className="font-mono font-medium text-red-600">{message.stopLoss}</span></div>}
+                        {message.takeProfit1 && <div><span className="text-muted-foreground">{isRTL ? "هدف 1:" : "TP1:"}</span> <span className="font-mono font-medium text-emerald-600">{message.takeProfit1}</span></div>}
+                        {message.takeProfit2 && <div><span className="text-muted-foreground">{isRTL ? "هدف 2:" : "TP2:"}</span> <span className="font-mono font-medium text-emerald-600">{message.takeProfit2}</span></div>}
+                        {message.riskPercent && <div><span className="text-muted-foreground">{isRTL ? "مخاطرة:" : "Risk:"}</span> <span className="font-mono font-medium">{message.riskPercent}</span></div>}
+                      </div>
+                    )}
+
+                    <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Button size="sm" variant="outline" onClick={() => copyMessage(message)}>
+                        <Copy className="h-3.5 w-3.5 me-1" /> {t('rec.copy')}
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => startAddUpdate(message)} className="text-amber-600 border-amber-200 hover:bg-amber-50 dark:border-amber-800 dark:hover:bg-amber-900/20">
+                        <Bell className="h-3.5 w-3.5 me-1" /> {isRTL ? "رد" : "Reply"}
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => startAddResult(message)} className="text-teal-700 border-teal-200 hover:bg-teal-50 dark:border-teal-800 dark:text-teal-300 dark:hover:bg-teal-900/20">
+                        <Plus className="h-3.5 w-3.5 me-1" /> {isRTL ? "إضافة نتيجة" : "Add Result"}
+                      </Button>
+                      {!thread.isClosed && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={!thread.hasResultChild || closeThreadMutation.isPending}
+                          onClick={() => {
+                            if (confirm(isRTL ? "إغلاق هذه الصفقة؟" : "Close this thread?")) {
+                              closeThreadMutation.mutate({ messageId: message.id });
+                            }
+                          }}
+                          className="border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-900/20"
+                        >
+                          <Clock3 className="h-3.5 w-3.5 me-1" /> {isRTL ? "إغلاق الصفقة" : "Close Thread"}
+                        </Button>
+                      )}
+                      {canDeleteMessage && (
+                        <Button
+                          size="sm" variant="ghost"
+                          onClick={() => { if (confirm(isRTL ? "هل تريد حذف هذه الرسالة؟" : "Delete this message?")) deleteMessageMutation.mutate({ messageId: message.id }); }}
+                          className="text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                    </div>
+
+                    {!thread.isClosed && !thread.hasResultChild && (
+                      <div className="rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2 text-xs text-amber-900 dark:border-amber-800/40 dark:bg-amber-900/10 dark:text-amber-100">
+                        {isRTL
+                          ? "أرسل نتيجة واحدة على الأقل داخل هذه الصفقة قبل إغلاقها."
+                          : "Send at least one result inside this trade before closing it."}
+                      </div>
+                    )}
+                  </div>
+
+                  {children.length > 0 && (
+                    <div className="space-y-2">
+                      {children.map((child: any) => (
+                        <div key={child.id} className={`rounded-xl border p-3 space-y-2 ${getThreadChildPanelClass(child.type, thread.paletteIndex)}`}>
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                              <Badge variant="outline" className={getMessageTypeClass(child.type) + " text-xs"}>
+                                {getMessageTypeLabel(child.type, isRTL)}
+                              </Badge>
+                              <span className="text-xs text-muted-foreground">#{child.id}</span>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-[11px] text-muted-foreground sm:text-xs">
+                                {formatMessageTimestamp(child.createdAt, language)}
+                              </span>
+                              {(!!adminCheck?.isAdmin || child.userId === me?.userId) && (
+                                <Button
+                                  size="sm" variant="ghost"
+                                  onClick={() => { if (confirm(isRTL ? "حذف النتيجة؟" : "Delete result?")) deleteMessageMutation.mutate({ messageId: child.id }); }}
+                                  className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                          <p className="text-sm whitespace-pre-wrap">{child.content}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
 
   return (
     <div className="space-y-6">
@@ -380,50 +608,83 @@ function AnalystView() {
           </Alert>
 
           {showComposerFields && (
-          <div>
-            <label className="text-sm font-medium text-muted-foreground mb-2 block">
-              {isRTL ? "نوع الرسالة" : "Message Type"}
-            </label>
-            <div className="flex gap-2 flex-wrap">
-              <Button
-                size="sm"
-                variant={type === "recommendation" ? "default" : "outline"}
-                onClick={() => { setType("recommendation"); setParentMessage(null); }}
-                className={type === "recommendation" ? "bg-emerald-600 hover:bg-emerald-700 text-white" : ""}
-              >
-                <TrendingUp className="h-4 w-4 me-1" /> {isRTL ? "توصية جديدة" : "New Recommendation"}
-              </Button>
-              <Button
-                size="sm"
-                variant={type === "update" ? "default" : "outline"}
-                onClick={() => { setType("update"); }}
-                className={type === "update" ? "bg-amber-500 hover:bg-amber-600 text-white" : ""}
-              >
-                <Bell className="h-4 w-4 me-1" /> {isRTL ? "رد / تحديث" : "Reply / Update"}
-              </Button>
-              <Button
-                size="sm"
-                variant={type === "result" ? "default" : "outline"}
-                onClick={() => { setType("result"); }}
-                className={type === "result" ? "bg-teal-600 hover:bg-teal-700 text-white" : ""}
-              >
-                <Plus className="h-4 w-4 me-1" /> {isRTL ? "نتيجة" : "Result"}
-              </Button>
-            </div>
-            {parentMessage && type !== "recommendation" && (
-              <div className="mt-2 flex items-center gap-2">
-                <Badge variant="outline" className="text-xs border-teal-300 text-teal-700 dark:text-teal-300">
-                  {isRTL ? `مرتبطة بالتوصية #${parentMessage.id}` : `Linked to Rec #${parentMessage.id}`}
-                </Badge>
-                <button
-                  onClick={() => { setParentMessage(null); setType("recommendation"); }}
-                  className="text-xs text-red-500 hover:underline"
-                >
-                  {isRTL ? "إلغاء الربط" : "Unlink"}
-                </button>
+            <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-900/40">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                    {type === "recommendation"
+                      ? (isRTL ? "التوصية الرئيسية" : "Main recommendation")
+                      : type === "result"
+                        ? (isRTL ? `نتيجة للتوصية #${parentMessage?.id}` : `Result for recommendation #${parentMessage?.id}`)
+                        : (isRTL ? `رد على التوصية #${parentMessage?.id}` : `Reply to recommendation #${parentMessage?.id}`)}
+                  </p>
+                  <p className="text-xs text-slate-600 dark:text-slate-300">
+                    {type === "recommendation"
+                      ? (isRTL
+                          ? "ابدأ برسالة التوصية الرئيسية. للمتابعة السريعة استخدم زر رد أسفل أي توصية موجودة."
+                          : "Start with the main recommendation. For fast follow-ups, use Reply on any recommendation below.")
+                      : type === "result"
+                        ? (isRTL
+                            ? "اكتب النتيجة النهائية أو المرحلية مباشرة داخل نفس الصفقة."
+                            : "Post the outcome directly inside the same trade thread.")
+                        : (isRTL
+                            ? "هذا الرد مرتبط بنفس الصفقة، لذلك يكفي نص قصير وواضح."
+                            : "This reply stays on the same trade, so a short clear message is enough.")}
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant={type === "recommendation" ? "default" : "outline"}
+                    onClick={() => { setType("recommendation"); setParentMessage(null); }}
+                    className={type === "recommendation" ? "bg-emerald-600 hover:bg-emerald-700 text-white" : ""}
+                  >
+                    <TrendingUp className="h-4 w-4 me-1" /> {isRTL ? "توصية جديدة" : "New Recommendation"}
+                  </Button>
+
+                  {parentMessage && (
+                    <>
+                      <Button
+                        size="sm"
+                        variant={type === "update" ? "default" : "outline"}
+                        onClick={() => setType("update")}
+                        className={type === "update" ? "bg-amber-500 hover:bg-amber-600 text-white" : ""}
+                      >
+                        <Bell className="h-4 w-4 me-1" /> {isRTL ? "رد" : "Reply"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={type === "result" ? "default" : "outline"}
+                        onClick={() => setType("result")}
+                        className={type === "result" ? "bg-teal-600 hover:bg-teal-700 text-white" : ""}
+                      >
+                        <Plus className="h-4 w-4 me-1" /> {isRTL ? "نتيجة" : "Result"}
+                      </Button>
+                    </>
+                  )}
+                </div>
               </div>
-            )}
-          </div>
+
+              {parentMessage && type !== "recommendation" && (
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <Badge variant="outline" className="text-xs border-teal-300 text-teal-700 dark:text-teal-300">
+                    {isRTL ? `مرتبطة بالتوصية #${parentMessage.id}` : `Linked to Rec #${parentMessage.id}`}
+                  </Badge>
+                  {parentMessage.symbol && (
+                    <Badge className="bg-white text-slate-700 dark:bg-white/10 dark:text-slate-200 text-xs">
+                      {parentMessage.symbol}
+                    </Badge>
+                  )}
+                  <button
+                    onClick={() => { setParentMessage(null); setType("recommendation"); }}
+                    className="text-xs text-red-500 hover:underline"
+                  >
+                    {isRTL ? "إلغاء الربط" : "Unlink"}
+                  </button>
+                </div>
+              )}
+            </div>
           )}
 
           {showComposerFields && type === "recommendation" && (
@@ -490,32 +751,54 @@ function AnalystView() {
           )}
 
           {showComposerFields && type === "recommendation" && (
-            <div>
-              <label className="text-sm font-medium text-muted-foreground mb-2 block">
-                {isRTL ? "تفاصيل الصفقة" : "Trade Details"}
-              </label>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                <div>
-                  <span className="text-xs text-muted-foreground">{isRTL ? "سعر الدخول" : "Entry"}</span>
-                  <Input value={entryPrice} onChange={(e) => setEntryPrice(e.target.value)} placeholder="0.00" disabled={isWaitingForUnlock} />
+            <div className="rounded-xl border border-slate-200 bg-white/80 p-3 dark:border-slate-800 dark:bg-slate-950/30">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                    {isRTL ? "تفاصيل إضافية اختيارية" : "Optional trade levels"}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {isRTL
+                      ? "أضف الدخول ووقف الخسارة والأهداف فقط عندما تحتاجها. ليست مطلوبة للنشر السريع."
+                      : "Add entry, stop loss, and targets only when you need them. They are not required for the fast posting flow."}
+                  </p>
                 </div>
-                <div>
-                  <span className="text-xs text-muted-foreground">{isRTL ? "وقف الخسارة" : "Stop Loss"}</span>
-                  <Input value={stopLoss} onChange={(e) => setStopLoss(e.target.value)} placeholder="0.00" disabled={isWaitingForUnlock} />
-                </div>
-                <div>
-                  <span className="text-xs text-muted-foreground">{isRTL ? "هدف 1" : "Target 1"}</span>
-                  <Input value={takeProfit1} onChange={(e) => setTakeProfit1(e.target.value)} placeholder="0.00" disabled={isWaitingForUnlock} />
-                </div>
-                <div>
-                  <span className="text-xs text-muted-foreground">{isRTL ? "هدف 2" : "Target 2"}</span>
-                  <Input value={takeProfit2} onChange={(e) => setTakeProfit2(e.target.value)} placeholder="0.00" disabled={isWaitingForUnlock} />
-                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setShowTradeDetails((current) => !current)}
+                >
+                  {showTradeDetails
+                    ? (isRTL ? "إخفاء المستويات" : "Hide levels")
+                    : (isRTL ? "إضافة مستويات" : "Add levels")}
+                </Button>
               </div>
-              <div className="mt-2 max-w-[200px]">
-                <span className="text-xs text-muted-foreground">{isRTL ? "نسبة المخاطرة" : "Risk %"}</span>
-                <Input value={riskPercent} onChange={(e) => setRiskPercent(e.target.value)} placeholder="1%" disabled={isWaitingForUnlock} />
-              </div>
+
+              {showTradeDetails && (
+                <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                  <div>
+                    <span className="text-xs text-muted-foreground">{isRTL ? "سعر الدخول" : "Entry"}</span>
+                    <Input value={entryPrice} onChange={(e) => setEntryPrice(e.target.value)} placeholder="0.00" disabled={isWaitingForUnlock} />
+                  </div>
+                  <div>
+                    <span className="text-xs text-muted-foreground">{isRTL ? "وقف الخسارة" : "Stop Loss"}</span>
+                    <Input value={stopLoss} onChange={(e) => setStopLoss(e.target.value)} placeholder="0.00" disabled={isWaitingForUnlock} />
+                  </div>
+                  <div>
+                    <span className="text-xs text-muted-foreground">{isRTL ? "هدف 1" : "Target 1"}</span>
+                    <Input value={takeProfit1} onChange={(e) => setTakeProfit1(e.target.value)} placeholder="0.00" disabled={isWaitingForUnlock} />
+                  </div>
+                  <div>
+                    <span className="text-xs text-muted-foreground">{isRTL ? "هدف 2" : "Target 2"}</span>
+                    <Input value={takeProfit2} onChange={(e) => setTakeProfit2(e.target.value)} placeholder="0.00" disabled={isWaitingForUnlock} />
+                  </div>
+                  <div className="sm:max-w-[220px]">
+                    <span className="text-xs text-muted-foreground">{isRTL ? "نسبة المخاطرة" : "Risk %"}</span>
+                    <Input value={riskPercent} onChange={(e) => setRiskPercent(e.target.value)} placeholder="1%" disabled={isWaitingForUnlock} />
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -632,6 +915,7 @@ function AnalystView() {
               {isRTL ? "اكتب الرسالة" : "Type Message"}
             </label>
             <Textarea
+              ref={composerRef}
               value={content}
               onChange={(e) => setContent(e.target.value)}
               disabled={isWaitingForUnlock}
@@ -639,8 +923,10 @@ function AnalystView() {
                 ? (isRTL ? "انتظر انتهاء الدقيقة أولاً" : "Wait for the 1-minute unlock first")
                 : type === "recommendation"
                   ? (isRTL ? "اكتب التوصية الرئيسية هنا" : "Write the main recommendation here")
-                  : (isRTL ? "اكتب الرد السريع أو التحديث هنا" : "Write the quick reply or update here")}
-              rows={4}
+                  : type === "result"
+                    ? (isRTL ? "اكتب النتيجة هنا" : "Write the result here")
+                    : (isRTL ? "اكتب الرد السريع هنا" : "Write the quick reply here")}
+              rows={3}
             />
           </div>
           )}
@@ -703,107 +989,38 @@ function AnalystView() {
         <CardContent className="space-y-3">
           {feedLoading ? (
             <p className="text-sm text-muted-foreground">{t('rec.loadingMessages')}</p>
-          ) : rootMessages.length === 0 ? (
+          ) : threads.length === 0 ? (
             <p className="text-sm text-muted-foreground">{t('rec.noMessages')}</p>
           ) : (
-            rootMessages.map((message: any) => {
-              const children = childrenMap.get(message.id) || [];
-              const canDeleteMessage = !!adminCheck?.isAdmin || message.userId === me?.userId;
-              return (
-                <div key={message.id} className="space-y-2">
-                  <div className={`rounded-lg border p-4 space-y-3 ${
-                    message.type === "alert" ? "bg-amber-50/50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800/30" :
-                    message.type === "result" ? "bg-teal-50/50 dark:bg-teal-900/10 border-teal-200 dark:border-teal-800/30" :
-                    "bg-white dark:bg-slate-900/50"
-                  }`}>
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className={getMessageTypeClass(message.type)}>
-                          {getMessageTypeLabel(message.type, isRTL)}
-                        </Badge>
-                        {message.symbol && <Badge className="bg-gray-100 dark:bg-white/10 text-gray-700 dark:text-gray-300 text-xs">{message.symbol}</Badge>}
-                        {message.side && (
-                          <Badge className={message.side === "BUY" ? "bg-emerald-100 text-emerald-700 text-xs" : "bg-red-100 text-red-700 text-xs"}>
-                            {message.side === "BUY" ? "↑ BUY" : "↓ SELL"}
-                          </Badge>
-                        )}
-                        {message.isAnalyst && <Badge className="bg-emerald-600 text-white text-xs">{t('rec.analyst')}</Badge>}
-                        <span className="text-xs text-muted-foreground">#{message.id}</span>
-                      </div>
-                      <div className="text-xs text-muted-foreground whitespace-nowrap">
-                        {message.createdAt ? new Date(message.createdAt).toLocaleString(language === 'ar' ? "ar-EG" : "en-US") : "-"}
-                      </div>
-                    </div>
-                    {(message.entryPrice || message.stopLoss || message.takeProfit1) && (
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs p-3 rounded-lg bg-gray-50 dark:bg-white/5 border">
-                        {message.entryPrice && <div><span className="text-muted-foreground">{isRTL ? "دخول:" : "Entry:"}</span> <span className="font-mono font-medium">{message.entryPrice}</span></div>}
-                        {message.stopLoss && <div><span className="text-muted-foreground">{isRTL ? "وقف:" : "SL:"}</span> <span className="font-mono font-medium text-red-600">{message.stopLoss}</span></div>}
-                        {message.takeProfit1 && <div><span className="text-muted-foreground">{isRTL ? "هدف 1:" : "TP1:"}</span> <span className="font-mono font-medium text-emerald-600">{message.takeProfit1}</span></div>}
-                        {message.takeProfit2 && <div><span className="text-muted-foreground">{isRTL ? "هدف 2:" : "TP2:"}</span> <span className="font-mono font-medium text-emerald-600">{message.takeProfit2}</span></div>}
-                        {message.riskPercent && <div><span className="text-muted-foreground">{isRTL ? "مخاطرة:" : "Risk:"}</span> <span className="font-mono font-medium">{message.riskPercent}</span></div>}
-                      </div>
-                    )}
-                    <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Button size="sm" variant="outline" onClick={() => copyMessage(message)}>
-                        <Copy className="h-3.5 w-3.5 me-1" /> {t('rec.copy')}
-                      </Button>
-                      {message.type === "recommendation" && (
-                        <Button size="sm" variant="outline" onClick={() => startAddUpdate(message)} className="text-amber-600 border-amber-200 hover:bg-amber-50 dark:border-amber-800 dark:hover:bg-amber-900/20">
-                          <Bell className="h-3.5 w-3.5 me-1" /> {isRTL ? "رد" : "Reply"}
-                        </Button>
-                      )}
-                      {message.type === "recommendation" && (
-                        <Button size="sm" variant="outline" onClick={() => startAddResult(message)} className="text-teal-700 border-teal-200 hover:bg-teal-50 dark:border-teal-800 dark:text-teal-300 dark:hover:bg-teal-900/20">
-                          <Plus className="h-3.5 w-3.5 me-1" /> {isRTL ? "إضافة نتيجة" : "Add Result"}
-                        </Button>
-                      )}
-                      {canDeleteMessage && (
-                        <Button
-                          size="sm" variant="ghost"
-                          onClick={() => { if (confirm(isRTL ? "هل تريد حذف هذه الرسالة؟" : "Delete this message?")) deleteMessageMutation.mutate({ messageId: message.id }); }}
-                          className="text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-
-                  {children.length > 0 && (
-                    <div className={`space-y-2 ${isRTL ? "border-r-2 border-teal-300 dark:border-teal-700 pr-4 mr-4" : "border-l-2 border-teal-300 dark:border-teal-700 pl-4 ml-4"}`}>
-                      {children.map((child: any) => (
-                        <div key={child.id} className={`rounded-lg border p-3 space-y-2 ${child.type === "result" ? "bg-teal-50/50 dark:bg-teal-900/10 border-teal-200 dark:border-teal-800/30" : "bg-amber-50/50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800/30"}`}>
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-2">
-                              <Badge variant="outline" className={getMessageTypeClass(child.type) + " text-xs"}>
-                                {getMessageTypeLabel(child.type, isRTL)}
-                              </Badge>
-                              <span className="text-xs text-muted-foreground">#{child.id}</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs text-muted-foreground">
-                                {child.createdAt ? new Date(child.createdAt).toLocaleString(language === 'ar' ? "ar-EG" : "en-US") : "-"}
-                              </span>
-                              {(!!adminCheck?.isAdmin || child.userId === me?.userId) && (
-                                <Button
-                                  size="sm" variant="ghost"
-                                  onClick={() => { if (confirm(isRTL ? "حذف النتيجة؟" : "Delete result?")) deleteMessageMutation.mutate({ messageId: child.id }); }}
-                                  className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
-                                >
-                                  <Trash2 className="h-3 w-3" />
-                                </Button>
-                              )}
-                            </div>
-                          </div>
-                          <p className="text-sm whitespace-pre-wrap">{child.content}</p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+            <div className="space-y-6">
+              <section className="space-y-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                    {isRTL ? "الصفقات المفتوحة" : "Open Threads"}
+                  </h3>
+                  <Badge className="bg-emerald-600 text-white">{openThreadCount}</Badge>
                 </div>
-              );
-            })
+                {openThreadGroups.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    {isRTL ? "لا توجد صفقات مفتوحة حالياً." : "No open threads right now."}
+                  </p>
+                ) : renderThreadGroups(openThreadGroups, false)}
+              </section>
+
+              <section className="space-y-4 border-t pt-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                    {isRTL ? "الصفقات المغلقة" : "Closed Threads"}
+                  </h3>
+                  <Badge className="bg-slate-700 text-white dark:bg-slate-200 dark:text-slate-900">{closedThreadCount}</Badge>
+                </div>
+                {closedThreadGroups.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    {isRTL ? "لا توجد صفقات مغلقة بعد." : "No closed threads yet."}
+                  </p>
+                ) : renderThreadGroups(closedThreadGroups, true)}
+              </section>
+            </div>
           )}
         </CardContent>
       </Card>

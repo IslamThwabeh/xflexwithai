@@ -2490,6 +2490,44 @@ export async function createRecommendationMessage(message: InsertRecommendationM
   return result[0].id;
 }
 
+export async function hasRecommendationResultChild(parentId: number) {
+  const db = await getDb();
+  if (!db) return false;
+
+  const rows = await db
+    .select({ id: recommendationMessages.id })
+    .from(recommendationMessages)
+    .where(
+      and(
+        eq(recommendationMessages.parentId, parentId),
+        eq(recommendationMessages.type, "result"),
+      )
+    )
+    .limit(1);
+
+  return rows.length > 0;
+}
+
+export async function closeRecommendationThread(messageId: number, closedByUserId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db
+    .update(recommendationMessages)
+    .set({
+      threadStatus: "closed",
+      closedAt: new Date().toISOString(),
+      closedByUserId,
+    })
+    .where(
+      and(
+        eq(recommendationMessages.id, messageId),
+        isNull(recommendationMessages.parentId),
+        eq(recommendationMessages.type, "recommendation"),
+      )
+    );
+}
+
 export async function getRecommendationMessageById(messageId: number) {
   const db = await getDb();
   if (!db) return undefined;
@@ -2565,6 +2603,7 @@ export async function getRecommendationMessagesFeed(userId: number, limit: numbe
   return orderedMessages.map((message) => {
     const author = authors.find((item) => item.id === message.userId);
     const messageReactions = reactions.filter((reaction) => reaction.messageId === message.id);
+    const isRootRecommendation = !message.parentId && message.type === "recommendation";
     const reactionCounts = {
       like: messageReactions.filter((reaction) => reaction.reaction === "like").length,
       love: messageReactions.filter((reaction) => reaction.reaction === "love").length,
@@ -2577,6 +2616,10 @@ export async function getRecommendationMessagesFeed(userId: number, limit: numbe
 
     return {
       ...message,
+      threadStatus: isRootRecommendation ? (message.threadStatus ?? "open") : null,
+      closedAt: isRootRecommendation ? (message.closedAt ?? null) : null,
+      closedByUserId: isRootRecommendation ? (message.closedByUserId ?? null) : null,
+      isClosed: isRootRecommendation && message.threadStatus === "closed",
       authorName: author?.name || author?.email || "Unknown",
       authorEmail: author?.email || null,
       isAnalyst: analystSet.has(message.userId),

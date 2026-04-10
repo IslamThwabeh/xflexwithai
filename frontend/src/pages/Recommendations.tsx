@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { ArrowUpRight, Clock3, Copy, Flame, Heart, Rocket, ThumbsUp, Frown, Bell, TrendingUp, BookOpen, MessageSquare, Building2, Megaphone } from "lucide-react";
 import ClientLayout from "@/components/ClientLayout";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { buildRecommendationThreads, groupRecommendationThreadsByDay } from "@/lib/recommendationThreads";
 import { Link } from "wouter";
 
 const reactionIcons = {
@@ -57,6 +58,37 @@ function getMessageTypeClass(type: string) {
   return "border-emerald-300 text-emerald-700 dark:text-emerald-400";
 }
 
+function formatMessageTimestamp(value: unknown, language: string) {
+  if (!value) return "-";
+  const parsed = new Date(String(value));
+  if (Number.isNaN(parsed.getTime())) return "-";
+  return parsed.toLocaleString(language === "ar" ? "ar-EG" : "en-US");
+}
+
+function getThreadContainerClass(paletteIndex: number) {
+  return paletteIndex % 2 === 0
+    ? "border-slate-200 bg-white shadow-sm"
+    : "border-slate-300 bg-slate-50/90 shadow-sm";
+}
+
+function getThreadRootPanelClass(paletteIndex: number) {
+  return paletteIndex % 2 === 0
+    ? "border-slate-200 bg-white/90"
+    : "border-slate-200 bg-white/75";
+}
+
+function getThreadChildPanelClass(type: string, paletteIndex: number) {
+  if (type === "result") {
+    return paletteIndex % 2 === 0
+      ? "border-teal-200 bg-teal-50/85 dark:border-teal-800/40 dark:bg-teal-900/10"
+      : "border-teal-200 bg-teal-100/65 dark:border-teal-800/40 dark:bg-teal-900/15";
+  }
+
+  return paletteIndex % 2 === 0
+    ? "border-amber-200 bg-amber-50/85 dark:border-amber-800/40 dark:bg-amber-900/10"
+    : "border-amber-200 bg-amber-100/65 dark:border-amber-800/40 dark:bg-amber-900/15";
+}
+
 export default function Recommendations() {
   const { user } = useAuth();
   const { t, language } = useLanguage();
@@ -98,26 +130,8 @@ export default function Recommendations() {
     return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
   }, [me?.subscription?.endDate]);
 
-  const threadedFeed = useMemo(() => {
-    const childrenMap = new Map<number, any[]>();
-    for (const message of feed) {
-      if (!message.parentId) continue;
-      const existing = childrenMap.get(message.parentId) ?? [];
-      existing.push(message);
-      childrenMap.set(message.parentId, existing);
-    }
-
-    for (const children of childrenMap.values()) {
-      children.sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime());
-    }
-
-    return feed
-      .filter((message: any) => !message.parentId)
-      .map((message: any) => ({
-        message,
-        children: childrenMap.get(message.id) ?? [],
-      }));
-  }, [feed]);
+  const threads = useMemo(() => buildRecommendationThreads(feed), [feed]);
+  const threadGroups = useMemo(() => groupRecommendationThreadsByDay(threads, language), [threads, language]);
 
   const preparationAlerts = useMemo(() => {
     return activeAlerts.filter((alert: any) => {
@@ -361,7 +375,7 @@ export default function Recommendations() {
   return (
     <ClientLayout>
     <div className="min-h-[calc(100vh-64px)] bg-[var(--color-xf-cream)]">
-      <div className="container mx-auto px-4 py-8 space-y-6">
+      <div className="container mx-auto px-3 py-6 space-y-6 sm:px-4 sm:py-8">
         <div>
           <h1 className="text-3xl font-bold">{t('rec.title')}</h1>
           <p className="text-muted-foreground">{t('rec.subtitle')}</p>
@@ -455,103 +469,142 @@ export default function Recommendations() {
             <CardContent className="space-y-3">
               {feedLoading ? (
                 <p className="text-sm text-muted-foreground">{t('rec.loadingMessages')}</p>
-              ) : threadedFeed.length === 0 ? (
+              ) : threadGroups.length === 0 ? (
                 <p className="text-sm text-muted-foreground">{t('rec.noMessages')}</p>
               ) : (
-                threadedFeed.map(({ message, children }: any) => (
-                  <div key={message.id} className="space-y-2">
-                    <div className="rounded-lg border p-4 space-y-3 bg-white">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <Badge variant="outline" className={getMessageTypeClass(message.type)}>
-                            {getMessageTypeLabel(message.type, language === 'ar')}
-                          </Badge>
-                          {message.isAnalyst && <Badge>{t('rec.analyst')}</Badge>}
-                          {message.symbol && <Badge className="bg-gray-100 text-gray-700 dark:bg-white/10 dark:text-gray-300">{message.symbol}</Badge>}
-                          {message.side && (
-                            <Badge className={message.side === 'BUY' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}>
-                              {message.side}
-                            </Badge>
-                          )}
-                        </div>
-                        <div className="text-xs text-muted-foreground whitespace-nowrap">
-                          {message.createdAt ? new Date(message.createdAt).toLocaleString(language === 'ar' ? 'ar-EG' : 'en-US') : '-'}
-                        </div>
+                <div className="space-y-5">
+                  {threadGroups.map((group) => (
+                    <section key={group.key} className="space-y-3">
+                      <div className="px-1">
+                        <p className="text-xs font-semibold tracking-[0.18em] text-slate-500 uppercase dark:text-slate-400">
+                          {group.label}
+                        </p>
                       </div>
 
-                      {(message.symbol || message.side || message.entryPrice) && (
-                        <div className="text-sm rounded border bg-muted p-3 whitespace-pre-wrap">
-                          {buildCopyBlock(message, t)}
-                        </div>
-                      )}
+                      <div className="space-y-3">
+                        {group.threads.map((thread) => {
+                          const message = thread.root;
+                          const children = thread.children;
 
-                      <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                          return (
+                            <div key={message.id} className={`rounded-2xl border p-3 space-y-3 sm:p-4 ${getThreadContainerClass(thread.paletteIndex)}`}>
+                              <div className={`rounded-xl border p-4 space-y-3 ${getThreadRootPanelClass(thread.paletteIndex)}`}>
+                                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                                  <div className="space-y-2">
+                                    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                                      <Badge variant="outline" className={getMessageTypeClass(message.type)}>
+                                        {getMessageTypeLabel(message.type, language === 'ar')}
+                                      </Badge>
+                                      {message.symbol && <Badge className="bg-slate-100 text-slate-700 dark:bg-white/10 dark:text-slate-200">{message.symbol}</Badge>}
+                                      {message.side && (
+                                        <Badge className={message.side === 'BUY' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}>
+                                          {message.side}
+                                        </Badge>
+                                      )}
+                                      {children.length > 0 && (
+                                        <Badge variant="secondary" className="bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-300">
+                                          {language === 'ar'
+                                            ? `${children.length} ${children.length === 1 ? 'متابعة' : 'متابعات'}`
+                                            : `${children.length} ${children.length === 1 ? 'update' : 'updates'}`}
+                                        </Badge>
+                                      )}
+                                    </div>
 
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <Button size="sm" variant="outline" onClick={() => copyMessage(message)}>
-                          <Copy className="h-4 w-4 me-1" /> {t('rec.copy')}
-                        </Button>
+                                    {children.length > 0 && thread.latestActivityAt !== message.createdAt && (
+                                      <p className="text-xs text-muted-foreground">
+                                        {language === 'ar'
+                                          ? `بدأت الصفقة ${formatMessageTimestamp(message.createdAt, language)} وآخر تحديث كان ${formatMessageTimestamp(thread.latestActivityAt, language)}`
+                                          : `Trade opened ${formatMessageTimestamp(message.createdAt, language)} and was last updated ${formatMessageTimestamp(thread.latestActivityAt, language)}`}
+                                      </p>
+                                    )}
+                                  </div>
 
-                        {(Object.keys(reactionIcons) as Array<keyof typeof reactionIcons>).map((reaction) => (
-                          <Button
-                            key={reaction}
-                            size="sm"
-                            variant={message.myReaction === reaction ? 'default' : 'outline'}
-                            onClick={() => reactMutation.mutate({
-                              messageId: message.id,
-                              reaction: message.myReaction === reaction ? null : reaction,
-                            })}
-                          >
-                            {reactionIcons[reaction]}
-                            <span className="ms-1">{message.reactions?.[reaction] ?? 0}</span>
-                          </Button>
-                        ))}
-                      </div>
-                    </div>
+                                  <div className="text-[11px] text-muted-foreground sm:text-xs lg:text-right">
+                                    {formatMessageTimestamp(thread.latestActivityAt, language)}
+                                  </div>
+                                </div>
 
-                    {children.length > 0 && (
-                      <div className={`space-y-2 ${language === 'ar' ? 'border-r-2 border-amber-300 pr-4 mr-4' : 'border-l-2 border-amber-300 pl-4 ml-4'}`}>
-                        {children.map((child: any) => (
-                          <div key={child.id} className={`rounded-lg border p-3 space-y-2 ${child.type === 'result' ? 'bg-teal-50/50 border-teal-200 dark:bg-teal-900/10 dark:border-teal-800/30' : 'bg-amber-50/50 border-amber-200 dark:bg-amber-900/10 dark:border-amber-800/30'}`}>
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="flex items-center gap-2">
-                                <Badge variant="outline" className={getMessageTypeClass(child.type)}>
-                                  {getMessageTypeLabel(child.type, language === 'ar')}
-                                </Badge>
-                                <span className="text-xs text-muted-foreground">#{child.id}</span>
+                                {(message.entryPrice || message.stopLoss || message.takeProfit1 || message.takeProfit2 || message.riskPercent) && (
+                                  <div className="grid grid-cols-1 gap-2 rounded-xl border bg-muted/60 p-3 text-xs sm:grid-cols-2 sm:text-sm">
+                                    {message.entryPrice && <div><span className="text-muted-foreground">{language === 'ar' ? 'دخول:' : 'Entry:'}</span> <span className="font-mono font-medium">{message.entryPrice}</span></div>}
+                                    {message.stopLoss && <div><span className="text-muted-foreground">{language === 'ar' ? 'وقف:' : 'SL:'}</span> <span className="font-mono font-medium text-red-600">{message.stopLoss}</span></div>}
+                                    {message.takeProfit1 && <div><span className="text-muted-foreground">{language === 'ar' ? 'هدف 1:' : 'TP1:'}</span> <span className="font-mono font-medium text-emerald-600">{message.takeProfit1}</span></div>}
+                                    {message.takeProfit2 && <div><span className="text-muted-foreground">{language === 'ar' ? 'هدف 2:' : 'TP2:'}</span> <span className="font-mono font-medium text-emerald-600">{message.takeProfit2}</span></div>}
+                                    {message.riskPercent && <div><span className="text-muted-foreground">{language === 'ar' ? 'مخاطرة:' : 'Risk:'}</span> <span className="font-mono font-medium">{message.riskPercent}</span></div>}
+                                  </div>
+                                )}
+
+                                <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <Button size="sm" variant="outline" onClick={() => copyMessage(message)}>
+                                    <Copy className="h-4 w-4 me-1" /> {t('rec.copy')}
+                                  </Button>
+
+                                  {(Object.keys(reactionIcons) as Array<keyof typeof reactionIcons>).map((reaction) => (
+                                    <Button
+                                      key={reaction}
+                                      size="sm"
+                                      variant={message.myReaction === reaction ? 'default' : 'outline'}
+                                      onClick={() => reactMutation.mutate({
+                                        messageId: message.id,
+                                        reaction: message.myReaction === reaction ? null : reaction,
+                                      })}
+                                    >
+                                      {reactionIcons[reaction]}
+                                      <span className="ms-1">{message.reactions?.[reaction] ?? 0}</span>
+                                    </Button>
+                                  ))}
+                                </div>
                               </div>
-                              <div className="text-xs text-muted-foreground whitespace-nowrap">
-                                {child.createdAt ? new Date(child.createdAt).toLocaleString(language === 'ar' ? 'ar-EG' : 'en-US') : '-'}
-                              </div>
-                            </div>
 
-                            <p className="text-sm whitespace-pre-wrap">{child.content}</p>
+                              {children.length > 0 && (
+                                <div className="space-y-2">
+                                  {children.map((child: any) => (
+                                    <div key={child.id} className={`rounded-xl border p-3 space-y-2 ${getThreadChildPanelClass(child.type, thread.paletteIndex)}`}>
+                                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                                          <Badge variant="outline" className={getMessageTypeClass(child.type)}>
+                                            {getMessageTypeLabel(child.type, language === 'ar')}
+                                          </Badge>
+                                        </div>
+                                        <div className="text-[11px] text-muted-foreground sm:text-xs sm:whitespace-nowrap">
+                                          {formatMessageTimestamp(child.createdAt, language)}
+                                        </div>
+                                      </div>
 
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <Button size="sm" variant="outline" onClick={() => copyMessage(child)}>
-                                <Copy className="h-4 w-4 me-1" /> {t('rec.copy')}
-                              </Button>
-                              {(Object.keys(reactionIcons) as Array<keyof typeof reactionIcons>).map((reaction) => (
-                                <Button
-                                  key={reaction}
-                                  size="sm"
-                                  variant={child.myReaction === reaction ? 'default' : 'outline'}
-                                  onClick={() => reactMutation.mutate({
-                                    messageId: child.id,
-                                    reaction: child.myReaction === reaction ? null : reaction,
-                                  })}
-                                >
-                                  {reactionIcons[reaction]}
-                                  <span className="ms-1">{child.reactions?.[reaction] ?? 0}</span>
-                                </Button>
-                              ))}
+                                      <p className="text-sm whitespace-pre-wrap">{child.content}</p>
+
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <Button size="sm" variant="outline" onClick={() => copyMessage(child)}>
+                                          <Copy className="h-4 w-4 me-1" /> {t('rec.copy')}
+                                        </Button>
+                                        {(Object.keys(reactionIcons) as Array<keyof typeof reactionIcons>).map((reaction) => (
+                                          <Button
+                                            key={reaction}
+                                            size="sm"
+                                            variant={child.myReaction === reaction ? 'default' : 'outline'}
+                                            onClick={() => reactMutation.mutate({
+                                              messageId: child.id,
+                                              reaction: child.myReaction === reaction ? null : reaction,
+                                            })}
+                                          >
+                                            {reactionIcons[reaction]}
+                                            <span className="ms-1">{child.reactions?.[reaction] ?? 0}</span>
+                                          </Button>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
-                    )}
-                  </div>
-                ))
+                    </section>
+                  ))}
+                </div>
               )}
             </CardContent>
           </Card>

@@ -336,6 +336,9 @@ export const recommendationMessages = sqliteTable("recommendationMessages", {
   takeProfit2: text("takeProfit2", { length: 50 }),
   riskPercent: text("riskPercent", { length: 20 }),
   parentId: integer("parentId"),  // links result to original recommendation
+  threadStatus: text("threadStatus", { length: 20 }), // root-only: 'open' | 'closed'
+  closedAt: text("closedAt"),
+  closedByUserId: integer("closedByUserId"),
   createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
 });
 

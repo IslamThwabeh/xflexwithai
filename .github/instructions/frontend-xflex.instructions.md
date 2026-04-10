@@ -23,5 +23,7 @@ applyTo: "frontend/src/**"
 - On all video elements, include `controlsList="nodownload"` and block the context menu.
 - LexAI image thumbnails should stay compact and open the full image in a new tab.
 - `ClientLayout.tsx` should track real user interaction with `users.touchInteraction`; passive polling like unread-count refreshes must not be treated as active presence for recommendation email suppression.
+- Student language toggles that affect backend messaging should be persisted, not left only in localStorage, so recommendation emails can follow the student's chosen language with Arabic as the fallback.
 - Recommendations UI is thread-based and chat-first: `recommendations.notifyClients` reopens the chat after a 60-second wait, while `update` and `result` render as children under the parent recommendation and each analyst message refreshes the 15-minute silence timer.
+- Recommendation cards must stay mobile-safe: badge rows should wrap or stack cleanly, child threads should use lighter indentation on phones, and trade details should not duplicate the message body.
 - Recommendations results are created only from `Add Result` on an existing recommendation; there is no standalone `Result` publish type.
