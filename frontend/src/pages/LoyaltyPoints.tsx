@@ -88,8 +88,8 @@ export default function LoyaltyPoints() {
               </div>
               <p className="text-sm text-gray-600 mb-4">
                 {isRtl
-                  ? 'شارك رابط الإحالة الخاص بك مع أصدقائك. عندما يسجلون ويفعّلون باقتهم، تكسب أنت وصديقك نقاط مكافأة!'
-                  : 'Share your referral link with friends. When they sign up and activate a package, both of you earn bonus points!'}
+                  ? 'شارك رابط الإحالة الخاص بك مع أصدقائك. صديقك يحصل على مكافأة التسجيل عند إنشاء الحساب عبر الرابط، وأنت تحصل على مكافأة الإحالة عندما يفعّل باقته.'
+                  : 'Share your referral link with friends. Your friend gets the signup bonus when they create an account through the link, and you receive the referral reward when they activate a package.'}
               </p>
 
               {/* Referral Code & Link */}

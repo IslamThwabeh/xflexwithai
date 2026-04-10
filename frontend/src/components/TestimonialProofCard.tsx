@@ -21,6 +21,8 @@ const fallbackHeadline = {
 };
 
 export default function TestimonialProofCard({ item, isRTL, compact = false }: TestimonialProofCardProps) {
+  if (!item.proofImageUrl) return null;
+
   const headline = isRTL
     ? item.proofHeadlineAr || item.titleAr || fallbackHeadline.ar
     : item.proofHeadlineEn || item.titleEn || fallbackHeadline.en;

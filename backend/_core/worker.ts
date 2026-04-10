@@ -6,6 +6,25 @@ import * as db from "../db";
 import { sendFreezeExpiredEmail, sendExpiryAlertEmail, sendDripEmail, sendMilestoneEmail, sendInactivityEmail, sendOnboardingStalledEmail } from "./orderEmails";
 import { logger } from "./logger";
 
+function appendCookieHeaders(headers: Headers, cookieHeaders: string[] | undefined) {
+  if (!cookieHeaders?.length) return;
+  for (const cookie of cookieHeaders) {
+    headers.append("Set-Cookie", cookie);
+  }
+}
+
+function jsonResponse(status: number, payload: unknown, headers?: Headers) {
+  const responseHeaders = headers ?? new Headers();
+  responseHeaders.set("Content-Type", "application/json");
+  return new Response(JSON.stringify(payload), { status, headers: responseHeaders });
+}
+
+function buildContentDisposition(type: "inline" | "attachment", fileName: string) {
+  const asciiFallback = fileName.replace(/[\\/\r\n\"]/g, "_");
+  const encoded = encodeURIComponent(fileName);
+  return `${type}; filename="${asciiFallback}"; filename*=UTF-8''${encoded}`;
+}
+
 export interface Env {
   DB: D1Database;
   VIDEOS_BUCKET: R2Bucket;
@@ -125,6 +144,83 @@ export default {
             return { headers };
           },
         });
+      }
+
+      const studentDocumentMatch = pathname.match(/^\/api\/student-documents\/(\d+)\/(view|download)$/);
+      if (studentDocumentMatch) {
+        if (request.method !== "GET" && request.method !== "HEAD") {
+          return jsonResponse(405, { status: "method_not_allowed" });
+        }
+
+        const authContext = await createWorkerContext({ req: request, env });
+        const headers = new Headers();
+        const cookieHeaders = (authContext as { cookieHeaders?: string[] }).cookieHeaders;
+
+        corsHeaders.forEach((value, key) => {
+          headers.set(key, value);
+        });
+        appendCookieHeaders(headers, cookieHeaders);
+
+        if (!authContext.user || authContext.user.id <= 0) {
+          return jsonResponse(401, {
+            status: "unauthorized",
+            message: "Please login to access student documents",
+          }, headers);
+        }
+
+        const activePackage = await db.getUserActivePackage(authContext.user.id);
+        if (!activePackage) {
+          return jsonResponse(403, {
+            status: "forbidden",
+            message: "An activated package is required to access student documents",
+          }, headers);
+        }
+
+        const documentId = Number(studentDocumentMatch[1]);
+        const action = studentDocumentMatch[2] as "view" | "download";
+        const document = await db.getPublishedStudentDocumentById(documentId);
+
+        if (!document) {
+          return jsonResponse(404, {
+            status: "not_found",
+            message: "Student document not found",
+          }, headers);
+        }
+
+        if (action === "view" && (document.isBulkArchive || document.mimeType !== "application/pdf")) {
+          return jsonResponse(400, {
+            status: "invalid_request",
+            message: "This document can only be downloaded",
+          }, headers);
+        }
+
+        const object = await env.VIDEOS_BUCKET.get(document.objectKey);
+        if (!object) {
+          return jsonResponse(404, {
+            status: "not_found",
+            message: "Document file is missing from storage",
+          }, headers);
+        }
+
+        headers.set("Content-Type", document.mimeType || "application/octet-stream");
+        headers.set(
+          "Content-Disposition",
+          buildContentDisposition(action === "view" ? "inline" : "attachment", document.originalFileName),
+        );
+        headers.set("Cache-Control", "private, no-store");
+        headers.set("X-Content-Type-Options", "nosniff");
+
+        if (document.fileSizeBytes) {
+          headers.set("Content-Length", String(document.fileSizeBytes));
+        } else if (typeof object.size === "number") {
+          headers.set("Content-Length", String(object.size));
+        }
+
+        if (request.method === "HEAD") {
+          return new Response(null, { status: 200, headers });
+        }
+
+        return new Response(object.body, { status: 200, headers });
       }
 
       if (pathname.startsWith("/api")) {

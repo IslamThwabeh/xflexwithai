@@ -71,8 +71,8 @@ export default function MySubscriptions() {
                   </h3>
                   <p className="text-sm text-amber-600">
                     {isRtl
-                      ? 'احصل على جميع المميزات بما فيها LexAI والتوصيات والدعم المباشر'
-                      : 'Get all features including LexAI, Recommendations & Live Support'}
+                      ? 'احصل على جميع المميزات بما فيها LexAI مع استمرار التوصيات والدعم المباشر'
+                      : 'Get all features including LexAI, while keeping recommendations and live support'}
                   </p>
                 </div>
               </div>

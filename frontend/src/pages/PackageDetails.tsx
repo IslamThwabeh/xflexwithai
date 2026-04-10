@@ -49,6 +49,7 @@ export default function PackageDetails() {
   const isComprehensive = pkg.slug === 'comprehensive';
   const priceFormatted = `$${(pkg.price / 100).toFixed(0)}`;
   const renewalFormatted = pkg.renewalPrice ? `$${(pkg.renewalPrice / 100).toFixed(0)}` : null;
+  const vatIncludedLabel = language === 'ar' ? 'السعر يشمل ضريبة القيمة المضافة 16%' : 'Price includes 16% VAT';
 
   const features = [
     { key: 'courses', label: t('home.packages.courses'), included: true },
@@ -217,7 +218,7 @@ export default function PackageDetails() {
 
               <div className={`border-t ${isComprehensive ? 'border-white/20' : 'border-gray-100'} pt-4 mb-4`}>
                 <p className={`text-xs ${isComprehensive ? 'text-emerald-100' : 'text-gray-500'}`}>
-                  {language === 'ar' ? 'ضريبة القيمة المضافة 16% ستُضاف عند الدفع' : 'VAT 16% will be added at checkout'}
+                  {vatIncludedLabel}
                 </p>
               </div>
 
@@ -234,12 +235,6 @@ export default function PackageDetails() {
                   {t('home.packages.choosePlan')}
                 </Button>
               </Link>
-
-              <p className={`text-center text-xs mt-3 ${isComprehensive ? 'text-emerald-200' : 'text-gray-400'}`}>
-                {language === 'ar' 
-                  ? 'ضريبة القيمة المضافة 16% ستُضاف عند الدفع'
-                  : 'VAT 16% will be applied at checkout'}
-              </p>
             </div>
           </div>
         </div>

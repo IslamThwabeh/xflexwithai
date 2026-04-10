@@ -8,7 +8,7 @@ export type TestimonialProofItem = {
   textAr?: string | null;
   rating?: number | null;
   serviceKey?: string | null;
-  proofImageUrl: string;
+  proofImageUrl: string | null;
   showProofOnHome?: boolean | null;
   showProofOnDashboard?: boolean | null;
   proofHeadlineEn?: string;

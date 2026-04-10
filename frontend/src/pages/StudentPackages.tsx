@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'wouter';
-import { Package, CheckCircle2, X, ArrowUpCircle, Clock, Sparkles, MessageSquare, BookOpen, Shield, Snowflake, CheckCircle, AlertCircle, UserPlus, Key, GraduationCap, Landmark, Bot, TrendingUp } from 'lucide-react';
+import { Package, CheckCircle2, X, ArrowUpCircle, Clock, Sparkles, MessageSquare, BookOpen, Shield, Snowflake, CheckCircle, AlertCircle, UserPlus, Key, GraduationCap, Landmark, Bot, TrendingUp, FileText, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -8,6 +8,7 @@ import { Progress } from '@/components/ui/progress';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { formatPendingActivationDate, getPendingActivationDaysLeft, getPendingActivationWindow } from '@/lib/pendingActivation';
 import { trpc } from '@/lib/trpc';
+import { withApiBase } from '@/lib/apiBase';
 import ClientLayout from '@/components/ClientLayout';
 
 export default function StudentPackages() {
@@ -17,11 +18,17 @@ export default function StudentPackages() {
   const [freezeRequested, setFreezeRequested] = useState(false);
 
   const { data: activePackage, isLoading } = trpc.subscriptions.myActivePackage.useQuery();
+  const pkg = (activePackage as any)?.package;
+  const isBasic = pkg?.slug === 'basic';
+  const isComprehensive = pkg?.slug === 'comprehensive';
+  const hasPackage = !!pkg;
+  const { data: documentLibrary } = trpc.documents.myLibrary.useQuery(undefined, {
+    enabled: hasPackage,
+  });
   const { data: subscriptions, isLoading: subsLoading } = trpc.subscriptions.mySubscriptions.useQuery();
   const { data: activationStatus } = trpc.subscriptions.activationStatus.useQuery();
   const { data: frozenStatus } = trpc.subscriptions.frozenStatus.useQuery();
   const { data: timeline } = trpc.subscriptions.myTimeline.useQuery();
-  const pkg = (activePackage as any)?.package;
   const { studyPeriodDays, entitlementDays } = getPendingActivationWindow(activationStatus);
   const activationDeadline = formatPendingActivationDate(activationStatus?.maxActivationDate, isRtl);
   const activationDaysLeft = getPendingActivationDaysLeft(activationStatus?.maxActivationDate);
@@ -32,10 +39,6 @@ export default function StudentPackages() {
       setTimeout(() => setLocation('/support'), 1500);
     },
   });
-
-  const isBasic = pkg?.slug === 'basic';
-  const isComprehensive = pkg?.slug === 'comprehensive';
-  const hasPackage = !!pkg;
 
   // Calculate remaining days for LexAI/Recommendations (course is forever)
   const getRemainingDays = () => {
@@ -67,7 +70,7 @@ export default function StudentPackages() {
       en: 'Live Recommendations (1 Month)',
       ar: 'التوصيات الحية (شهر واحد)',
       icon: <MessageSquare className="w-4 h-4" />,
-      basic: false,
+      basic: true,
       comprehensive: true,
     },
     {
@@ -157,8 +160,8 @@ export default function StudentPackages() {
             </div>
             <p className="text-emerald-100 mb-4">
               {isRtl
-                ? 'لديك وصول كامل للدورة التعليمية. قم بالترقية للحصول على LexAI والتوصيات الحية!'
-                : 'You have full course access. Upgrade to get LexAI and live recommendations!'}
+                ? 'لديك وصول كامل للدورة التعليمية والتوصيات الحية. قم بالترقية للحصول على LexAI أيضاً.'
+                : 'You have full access to the course and live recommendations. Upgrade to add LexAI too.'}
             </p>
           </div>
         )}
@@ -188,8 +191,8 @@ export default function StudentPackages() {
                   </h3>
                   <p className="text-sm text-emerald-600">
                     {isRtl
-                      ? 'احصل على جميع المميزات بما فيها LexAI والتوصيات والدعم المباشر'
-                      : 'Get all features including LexAI, Recommendations & Live Support'}
+                      ? 'احصل على جميع المميزات بما فيها LexAI مع استمرار التوصيات والدعم المباشر'
+                      : 'Get all features including LexAI, while keeping recommendations and live support'}
                   </p>
                 </div>
               </div>
@@ -276,6 +279,44 @@ export default function StudentPackages() {
                 : 'Subscriptions will resume automatically when the freeze period ends.'}
             </p>
           </div>
+        )}
+
+        {hasPackage && (
+          <Card className="mb-8 border-teal-100 bg-white">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <FileText className="w-5 h-5 text-teal-600" />
+                {isRtl ? 'مكتبة ملفات الدورة' : 'Course Documents Library'}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-gray-600">
+                {documentLibrary?.hasAccess
+                  ? (isRtl
+                    ? 'هذه الملفات متاحة لك بشكل دائم ما دام لديك باقة مفعّلة. يمكنك فتح كل ملف بصيغة PDF أو تنزيله، مع خيار تنزيل الكل مرة واحدة.'
+                    : 'These files stay available to you permanently after package activation. Open each file as PDF, download it individually, or download the full bundle once.')
+                  : (isRtl
+                    ? 'ستظهر ملفات الدورة هنا بعد تفعيل أي باقة.'
+                    : 'Course documents will appear here after you activate any package.')}
+              </p>
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <Link href="/documents">
+                  <Button variant="outline" className="w-full sm:w-auto">
+                    <FileText className="w-4 h-4" />
+                    {isRtl ? 'افتح المكتبة' : 'Open Library'}
+                  </Button>
+                </Link>
+                {documentLibrary?.bulkDownloadPath && (
+                  <Button asChild className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700">
+                    <a href={withApiBase(documentLibrary.bulkDownloadPath)}>
+                      <Download className="w-4 h-4" />
+                      {isRtl ? 'تحميل جميع الملفات' : 'Download All Documents'}
+                    </a>
+                  </Button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
         )}
 
         {/* Subscription History */}

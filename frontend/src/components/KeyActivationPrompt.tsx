@@ -157,7 +157,7 @@ export default function KeyActivationPrompt({
               </Button>
               <Button
                 variant="outline"
-                onClick={() => { handleDismiss(); setLocation("/packages/basic"); }}
+                  onClick={() => { handleDismiss(); setLocation("/#packages"); }}
                 className="w-full gap-2"
               >
                 <Package className="h-4 w-4" />

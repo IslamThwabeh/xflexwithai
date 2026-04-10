@@ -95,6 +95,20 @@ export default function Home() {
     return () => observer.disconnect();
   }, [events, articles, testimonials, testimonialProofs]);
 
+  useEffect(() => {
+    const scrollToHashSection = () => {
+      const sectionId = window.location.hash.replace('#', '');
+      if (!sectionId) return;
+      window.requestAnimationFrame(() => {
+        document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    };
+
+    scrollToHashSection();
+    window.addEventListener('hashchange', scrollToHashSection);
+    return () => window.removeEventListener('hashchange', scrollToHashSection);
+  }, []);
+
   const scrollToSection = (id: string) => {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
   };

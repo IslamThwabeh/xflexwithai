@@ -2,6 +2,7 @@ import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { Loader2 } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { isLikelyValidEmail, normalizeEmailAddress } from "@shared/emailValidation";
 
 const inputClass = "w-full px-4 py-3 rounded-xl bg-black/[0.03] border border-black/[0.08] text-[var(--color-xf-dark)] placeholder:text-black/25 focus:outline-none focus:ring-2 focus:ring-[var(--color-xf-primary)]/40 focus:border-[var(--color-xf-primary)]/40 transition-all";
 
@@ -16,20 +17,19 @@ export function RegisterForm({ onSuccess, referralCode }: { onSuccess?: () => vo
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
 
-  const registerReferralMutation = trpc.points.registerReferral.useMutation();
-
   const registerMutation = trpc.auth.register.useMutation({
     onSuccess: async () => {
       if (referralCode) {
-        try {
-          await registerReferralMutation.mutateAsync({ referralCode });
-        } catch { /* referral registration is best-effort */ }
         localStorage.removeItem("xflex_referral_code");
       }
       window.location.reload();
       onSuccess?.();
     },
     onError: (error) => {
+      if (error.message === "Invalid email format") {
+        setError(t('auth.register.invalidEmail'));
+        return;
+      }
       setError(error.message);
     },
   });
@@ -37,8 +37,14 @@ export function RegisterForm({ onSuccess, referralCode }: { onSuccess?: () => vo
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    const normalizedEmail = normalizeEmailAddress(email);
+
     if (!name || !email || !password || !phone || !city || !country) {
       setError(t('auth.register.allFieldsRequired'));
+      return;
+    }
+    if (!isLikelyValidEmail(normalizedEmail)) {
+      setError(t('auth.register.invalidEmail'));
       return;
     }
     if (password !== confirmPassword) {
@@ -49,7 +55,7 @@ export function RegisterForm({ onSuccess, referralCode }: { onSuccess?: () => vo
       setError(t('auth.register.passwordTooShort'));
       return;
     }
-    registerMutation.mutate({ name, email, password, phone, city, country });
+    registerMutation.mutate({ name, email: normalizedEmail, password, phone, city, country, referralCode: referralCode ?? undefined });
   };
 
   return (
@@ -68,7 +74,7 @@ export function RegisterForm({ onSuccess, referralCode }: { onSuccess?: () => vo
 
         <div>
           <label htmlFor="regEmail" className="block text-sm font-medium text-[var(--color-xf-dark)]/60 mb-1.5">{t('auth.register.email')}</label>
-          <input id="regEmail" name="email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t('auth.register.emailPlaceholder')} required dir="ltr" className={inputClass} />
+          <input id="regEmail" name="email" type="email" autoComplete="email" inputMode="email" autoCapitalize="none" spellCheck={false} value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t('auth.register.emailPlaceholder')} required dir="ltr" className={inputClass} />
         </div>
 
         <div>

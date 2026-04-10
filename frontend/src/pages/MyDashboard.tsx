@@ -5,7 +5,7 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { getLoginUrl } from "@/const";
 import { trpc } from "@/lib/trpc";
-import { BookOpen, GraduationCap, Play, CheckCircle2, Calendar, Gift, MessageSquareQuote, Newspaper, AlertCircle, Bot, TrendingUp, Trophy, Building2, ArrowRight } from "lucide-react";
+import { BookOpen, GraduationCap, Play, CheckCircle2, Calendar, FileText, MessageSquareQuote, Newspaper, AlertCircle, Bot, TrendingUp, Trophy, Building2, ArrowRight } from "lucide-react";
 import { Link } from "wouter";
 import { format } from "date-fns";
 import { useEffect, useState } from "react";
@@ -42,6 +42,12 @@ export default function MyDashboard() {
   });
 
   const { data: recommendationsAccess } = trpc.recommendations.me.useQuery(undefined, {
+    enabled: isAuthenticated,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+
+  const { data: activePackage } = trpc.subscriptions.myActivePackage.useQuery(undefined, {
     enabled: isAuthenticated,
     retry: false,
     refetchOnWindowFocus: false,
@@ -84,6 +90,7 @@ export default function MyDashboard() {
   const dashboardProofItems = testimonialProofs && testimonialProofs.length > 0
     ? testimonialProofs
     : DEFAULT_TESTIMONIAL_PROOFS.filter((item) => item.showProofOnDashboard).slice(0, 2);
+  const hasDocumentLibraryAccess = !!(activePackage as any)?.package;
 
   if (loading || enrollmentsLoading) {
     return (
@@ -590,13 +597,23 @@ export default function MyDashboard() {
                 </CardContent>
               </Card>
 
-              <Card className="border-pink-100">
+              <Card className="border-teal-100">
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-base flex items-center gap-2"><Gift className="h-4 w-4 text-pink-600" />{isRTL ? "هدايا الطلاب" : "Student Gifts"}</CardTitle>
+                  <CardTitle className="text-base flex items-center gap-2"><FileText className="h-4 w-4 text-teal-600" />{isRTL ? "ملفات الطلاب" : "Student Documents"}</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-sm text-muted-foreground mb-3">{isRTL ? "أدوات وقوالب وروابط مفيدة لمشتركينا." : "Tools, templates, and useful links for learners."}</p>
-                  <Link href="/gifts"><Button variant="outline" className="w-full">{isRTL ? "عرض الهدايا" : "See Gifts"}</Button></Link>
+                  <p className="text-sm text-muted-foreground mb-3">
+                    {hasDocumentLibraryAccess
+                      ? (isRTL ? "حمّل ملفات الدورة أو افتحها مباشرة بصيغة PDF." : "Open the course files in PDF or download them to your device.")
+                      : (isRTL ? "تظهر ملفات الدورة هنا بعد تفعيل أي باقة." : "Course documents appear here after you activate any package.")}
+                  </p>
+                  <Link href={hasDocumentLibraryAccess ? "/documents" : "/activate-key"}>
+                    <Button variant="outline" className="w-full">
+                      {hasDocumentLibraryAccess
+                        ? (isRTL ? "افتح الملفات" : "Open Documents")
+                        : (isRTL ? "فعّل باقتك" : "Activate Package")}
+                    </Button>
+                  </Link>
                 </CardContent>
               </Card>
             </div>

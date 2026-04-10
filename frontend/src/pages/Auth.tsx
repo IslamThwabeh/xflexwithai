@@ -11,9 +11,24 @@ import { Loader2, ArrowLeft, Mail, KeyRound } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { getStaffLandingPage } from "@shared/const";
 
+function shouldOpenRegisterByDefault() {
+  if (typeof window === "undefined") return false;
+
+  const params = new URLSearchParams(window.location.search);
+  const mode = params.get("mode");
+  const hasReferral = !!params.get("ref");
+  const path = window.location.pathname;
+
+  if (path === "/register") return true;
+  if (mode === "register") return true;
+  if (hasReferral) return true;
+
+  return false;
+}
+
 export default function Auth() {
   const { t } = useLanguage();
-  const [showLogin, setShowLogin] = useState(true);
+  const [showLogin, setShowLogin] = useState(() => !shouldOpenRegisterByDefault());
   const [loginMethod, setLoginMethod] = useState<"code" | "password">("code");
   const [otpStep, setOtpStep] = useState<"request" | "verify">("request");
   const [otpEmail, setOtpEmail] = useState("");
@@ -44,6 +59,24 @@ export default function Auth() {
       return ref;
     }
     return localStorage.getItem("xflex_referral_code");
+  }, [location]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const params = new URLSearchParams(window.location.search);
+    const mode = params.get("mode");
+    const hasReferral = !!params.get("ref");
+    const path = window.location.pathname;
+
+    if (path === "/register" || mode === "register" || hasReferral) {
+      setShowLogin(false);
+      return;
+    }
+
+    if (mode === "login") {
+      setShowLogin(true);
+    }
   }, [location]);
 
   const prefillEmail = useMemo(() => {
@@ -212,6 +245,12 @@ export default function Auth() {
 
         {/* Card */}
         <div className="backdrop-blur-xl bg-white/80 border border-black/[0.06] rounded-2xl shadow-xl overflow-hidden">
+
+      {referralCode && !showLogin ? (
+        <div className="border-b border-emerald-100 bg-emerald-50 px-6 py-3 text-sm text-emerald-700 sm:px-8">
+          {t('auth.register.title')}: {referralCode}
+        </div>
+      ) : null}
 
       {showLogin ? (
         <div className="p-6 sm:p-8">

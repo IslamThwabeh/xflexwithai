@@ -14,7 +14,7 @@ import { logger } from "./_core/logger";
 import * as db from "./db";
 import { storagePutR2, storageArchiveR2 } from "./storage-r2";
 import { analyzeLexai } from "./_core/lexai";
-import { hashPassword, verifyPassword, generateToken, isValidEmail, isValidPassword } from "./_core/auth";
+import { hashPassword, verifyPassword, generateToken, isValidEmail, isValidPassword, normalizeEmailAddress } from "./_core/auth";
 import { sendEmail, sendLoginCodeEmail } from "./_core/email";
 import { buildRecommendationAlertEmail, buildRecommendationMessageEmail } from "./_core/recommendationEmails";
 import { sendOrderConfirmationEmail, sendPaymentReceivedEmail, sendAdminNewOrderNotification, sendAnnouncementEmail, sendStaffWelcomeEmail } from "./_core/orderEmails";
@@ -731,18 +731,20 @@ export const appRouter = router({
     // User registration
     register: publicProcedure
       .input(z.object({
-        email: z.string().email(),
+        email: z.string().min(3),
         password: z.string().min(8),
         name: z.string().min(2),
         phone: z.string().min(5).optional(),
         city: z.string().min(1).optional(),
         country: z.string().min(1).optional(),
+        referralCode: z.string().min(4).max(10).optional(),
       }))
       .mutation(async ({ input, ctx }) => {
-        logger.info('[AUTH] Registration attempt', { email: input.email });
+        const normalizedEmail = normalizeEmailAddress(input.email);
+        logger.info('[AUTH] Registration attempt', { email: normalizedEmail });
         
         // Validate email format
-        if (!isValidEmail(input.email)) {
+        if (!isValidEmail(normalizedEmail)) {
           throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid email format' });
         }
         
@@ -755,7 +757,7 @@ export const appRouter = router({
         }
         
         // Check if user already exists
-        const existingUser = await db.getUserByEmail(input.email);
+        const existingUser = await db.getUserByEmail(normalizedEmail);
         if (existingUser) {
           throw new TRPCError({ code: 'CONFLICT', message: 'Email already registered' });
         }
@@ -765,18 +767,38 @@ export const appRouter = router({
         
         // Create user
         const userId = await db.createUser({
-          email: input.email,
+          email: normalizedEmail,
           passwordHash,
           name: input.name,
           phone: input.phone,
           city: input.city,
           country: input.country,
         });
+
+        if (input.referralCode) {
+          try {
+            const referrer = await db.getUserByReferralCode(input.referralCode);
+            if (referrer) {
+              await db.createReferral(referrer.id, userId);
+            } else {
+              logger.warn('[AUTH] Referral code not found during registration', {
+                email: normalizedEmail,
+                referralCode: input.referralCode,
+              });
+            }
+          } catch (error) {
+            logger.warn('[AUTH] Failed registering referral during sign-up', {
+              email: normalizedEmail,
+              referralCode: input.referralCode,
+              error: error instanceof Error ? error.message : 'Unknown error',
+            });
+          }
+        }
         
         // Generate JWT token
         const token = await generateToken({
           userId,
-          email: input.email,
+          email: normalizedEmail,
           type: 'user',
         });
         
@@ -786,12 +808,12 @@ export const appRouter = router({
 
         // Sync entitlements from any keys already assigned to this email
         try {
-          await db.syncUserEntitlementsFromKeys(userId, input.email);
+          await db.syncUserEntitlementsFromKeys(userId, normalizedEmail);
         } catch (e) {
-          logger.warn('[AUTH] Failed syncing entitlements after register', { email: input.email });
+          logger.warn('[AUTH] Failed syncing entitlements after register', { email: normalizedEmail });
         }
         
-        logger.info('[AUTH] User registered successfully', { userId, email: input.email });
+        logger.info('[AUTH] User registered successfully', { userId, email: normalizedEmail });
         
         return { success: true, userId };
       }),
@@ -4204,6 +4226,53 @@ export const appRouter = router({
     // Admin: list all subscriptions
     adminList: adminProcedure.query(async () => {
       return db.getAllPackageSubscriptions();
+    }),
+  }),
+
+  // =============================================
+  // STUDENT DOCUMENTS
+  // =============================================
+  documents: router({
+    myLibrary: protectedProcedure.query(async ({ ctx }) => {
+      if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+      const activePackage = await db.getUserActivePackage(ctx.user.id);
+      if (!activePackage) {
+        return {
+          hasAccess: false,
+          packageNameEn: null,
+          packageNameAr: null,
+          documents: [],
+          bulkDownloadPath: null,
+        };
+      }
+
+      const allDocuments = await db.listPublishedStudentDocuments();
+      const bulkArchive = allDocuments.find((document) => document.isBulkArchive);
+      const documents = allDocuments
+        .filter((document) => !document.isBulkArchive)
+        .map((document) => ({
+          id: document.id,
+          titleEn: document.titleEn,
+          titleAr: document.titleAr,
+          descriptionEn: document.descriptionEn,
+          descriptionAr: document.descriptionAr,
+          originalFileName: document.originalFileName,
+          mimeType: document.mimeType,
+          fileSizeBytes: document.fileSizeBytes,
+          viewPath: document.mimeType === 'application/pdf'
+            ? `/api/student-documents/${document.id}/view`
+            : null,
+          downloadPath: `/api/student-documents/${document.id}/download`,
+        }));
+
+      return {
+        hasAccess: true,
+        packageNameEn: activePackage.package?.nameEn ?? null,
+        packageNameAr: activePackage.package?.nameAr ?? null,
+        documents,
+        bulkDownloadPath: bulkArchive ? `/api/student-documents/${bulkArchive.id}/download` : null,
+      };
     }),
   }),
 

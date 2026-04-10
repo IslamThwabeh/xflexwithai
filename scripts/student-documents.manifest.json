@@ -1,0 +1,105 @@
+{
+  "sourceDir": "",
+  "objectPrefix": "documents/student-library",
+  "documents": [
+    {
+      "slug": "xflex-academy-overview",
+      "sourceFile": "1.XFlex Academy.docx",
+      "titleEn": "XFlex Academy Overview",
+      "titleAr": "دليل أكاديمية XFlex",
+      "descriptionEn": "A core orientation document for students starting the academy journey.",
+      "descriptionAr": "ملف تمهيدي يساعد الطالب على فهم بداية الرحلة داخل الأكاديمية.",
+      "sortOrder": 10
+    },
+    {
+      "slug": "recommendation-management-course",
+      "sourceFile": "اداره التوصيات كورس.docx",
+      "titleEn": "Recommendation Management Course",
+      "titleAr": "إدارة التوصيات",
+      "descriptionEn": "Guidance on handling recommendations with discipline, structure, and timing.",
+      "descriptionAr": "شرح لطريقة التعامل مع التوصيات بانضباط وهيكلة وتوقيت واضح.",
+      "sortOrder": 20
+    },
+    {
+      "slug": "trading-psychology-management",
+      "sourceFile": "اداره النفسيه.docx",
+      "titleEn": "Trading Psychology Management",
+      "titleAr": "إدارة النفسية",
+      "descriptionEn": "A focused guide on emotional control and decision quality while trading.",
+      "descriptionAr": "دليل مركز على التحكم بالمشاعر وجودة القرار أثناء التداول.",
+      "sortOrder": 30
+    },
+    {
+      "slug": "capital-and-risk-management-course",
+      "sourceFile": "اداره راس المال و المخاطر كورس.docx",
+      "titleEn": "Capital and Risk Management Course",
+      "titleAr": "إدارة رأس المال والمخاطر",
+      "descriptionEn": "Rules and frameworks for managing position size, exposure, and trading risk.",
+      "descriptionAr": "قواعد وأطر عملية لإدارة حجم الصفقة والانكشاف والمخاطر في التداول.",
+      "sortOrder": 40
+    },
+    {
+      "slug": "stage-1-introduction-to-trading",
+      "sourceFile": "المرحلة الاولى في الخطة التعليمية مقدمه في التداول.docx",
+      "titleEn": "Stage 1: Introduction to Trading",
+      "titleAr": "المرحلة الأولى: مقدمة في التداول",
+      "descriptionEn": "The first stage of the learning plan covering the trading fundamentals.",
+      "descriptionAr": "المرحلة الأولى من الخطة التعليمية وتركز على أساسيات التداول.",
+      "sortOrder": 50
+    },
+    {
+      "slug": "your-personal-trading-plan",
+      "sourceFile": "خطة التداول الخاصة فيك.docx",
+      "titleEn": "Your Personal Trading Plan",
+      "titleAr": "خطة التداول الخاصة بك",
+      "descriptionEn": "A structured document to help each student define a personal trading process.",
+      "descriptionAr": "ملف منظم يساعد كل طالب على بناء آلية تداول شخصية واضحة.",
+      "sortOrder": 60
+    },
+    {
+      "slug": "trading-plan-template",
+      "sourceFile": "خطه التداول.docx",
+      "titleEn": "Trading Plan Template",
+      "titleAr": "خطة التداول",
+      "descriptionEn": "A practical plan template students can follow before entering the market.",
+      "descriptionAr": "قالب عملي لخطة تداول يمكن للطالب اتباعها قبل الدخول إلى السوق.",
+      "sortOrder": 70
+    },
+    {
+      "slug": "recommendation-psychology-course",
+      "sourceFile": "كورس سيكلوجيه التوصيات.docx",
+      "titleEn": "Recommendation Psychology Course",
+      "titleAr": "سيكلوجية التوصيات",
+      "descriptionEn": "A short course on the mindset and discipline required when following recommendations.",
+      "descriptionAr": "ملف قصير عن الذهنية والانضباط المطلوبين عند العمل على التوصيات.",
+      "sortOrder": 80
+    },
+    {
+      "slug": "stage-2-contents",
+      "sourceFile": "محتويات المرحلة الثانية.docx",
+      "titleEn": "Stage 2 Contents",
+      "titleAr": "محتويات المرحلة الثانية",
+      "descriptionEn": "An outline of the second stage in the student learning path.",
+      "descriptionAr": "ملخص منظم لمحتويات المرحلة الثانية ضمن المسار التعليمي للطالب.",
+      "sortOrder": 90
+    },
+    {
+      "slug": "stage-3-contents",
+      "sourceFile": "محتويات المرحله الثالثه.docx",
+      "titleEn": "Stage 3 Contents",
+      "titleAr": "محتويات المرحلة الثالثة",
+      "descriptionEn": "An outline of the third stage in the student learning path.",
+      "descriptionAr": "ملخص منظم لمحتويات المرحلة الثالثة ضمن المسار التعليمي للطالب.",
+      "sortOrder": 100
+    }
+  ],
+  "bulkArchive": {
+    "slug": "xflex-student-documents-bundle",
+    "fileName": "xflex-student-documents-bundle.zip",
+    "titleEn": "Student Documents Bundle",
+    "titleAr": "حزمة ملفات الطلاب",
+    "descriptionEn": "A ZIP archive containing every published student document.",
+    "descriptionAr": "ملف ZIP يحتوي على جميع ملفات الطلاب المنشورة.",
+    "sortOrder": 1000
+  }
+}

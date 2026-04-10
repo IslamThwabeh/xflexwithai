@@ -2,8 +2,11 @@ import bcrypt from "bcryptjs";
 import { SignJWT, jwtVerify } from "jose";
 import type { JWTPayload as JoseJWTPayload } from "jose";
 import { ENV } from "./env";
+import { isLikelyValidEmail, normalizeEmailAddress } from "../../shared/emailValidation";
 
 import { JWT_EXPIRY_USER, JWT_EXPIRY_ADMIN } from "../../shared/const";
+
+export { normalizeEmailAddress };
 
 const SALT_ROUNDS = 10;
 const getJwtSecretKey = () => {
@@ -62,8 +65,7 @@ export async function verifyToken(token: string): Promise<JWTPayload | null> {
  * Validate email format
  */
 export function isValidEmail(email: string): boolean {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return emailRegex.test(email);
+  return isLikelyValidEmail(email);
 }
 
 /**

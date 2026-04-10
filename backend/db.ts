@@ -1,4 +1,4 @@
-import { eq, desc, and, or, sql, ne, inArray, isNotNull, isNull, gte } from "drizzle-orm";
+import { eq, desc, and, or, sql, ne, inArray, isNotNull, isNull, gte, asc } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import type { D1Database } from "@cloudflare/workers-types";
 import {
@@ -36,6 +36,7 @@ import {
   orders, Order, InsertOrder,
   orderItems, OrderItem, InsertOrderItem,
   packageSubscriptions, PackageSubscription, InsertPackageSubscription,
+  studentDocuments, StudentDocument, InsertStudentDocument,
   // Events & Articles imports
   events, Event, InsertEvent,
   articles, Article, InsertArticle,
@@ -77,6 +78,7 @@ import {
   type BugReportStatus,
   type StaffNotificationEventType,
 } from '../shared/const';
+import { normalizeEmailAddress } from '../shared/emailValidation';
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -301,10 +303,12 @@ export async function createUser(user: { email: string; passwordHash: string; na
     throw new Error("Database not available");
   }
 
+  const normalizedEmail = normalizeEmailAddress(user.email);
+
   try {
-    logger.db('Creating new user', { email: user.email });
+    logger.db('Creating new user', { email: normalizedEmail });
     const result = await db.insert(users).values({
-      email: user.email,
+      email: normalizedEmail,
       passwordHash: user.passwordHash,
       name: user.name || null,
       phone: user.phone || null,
@@ -313,7 +317,7 @@ export async function createUser(user: { email: string; passwordHash: string; na
       createdAt: new Date().toISOString(),
     }).returning({ id: users.id });
     const userId = result[0].id;
-    logger.db('User created successfully', { userId, email: user.email });
+    logger.db('User created successfully', { userId, email: normalizedEmail });
     return userId;
   } catch (error) {
     logger.error('Failed to create user', { error: error instanceof Error ? error.message : 'Unknown error' });
@@ -331,7 +335,8 @@ export async function getUserByEmail(email: string) {
     return undefined;
   }
 
-  const result = await db.select().from(users).where(eq(users.email, email)).limit(1);
+  const normalizedEmail = normalizeEmailAddress(email);
+  const result = await db.select().from(users).where(eq(users.email, normalizedEmail)).limit(1);
   return result.length > 0 ? result[0] : undefined;
 }
 
@@ -6112,6 +6117,30 @@ export async function getAllPackageSubscriptions(): Promise<PackageSubscription[
   return db.select().from(packageSubscriptions).orderBy(desc(packageSubscriptions.createdAt));
 }
 
+export async function listPublishedStudentDocuments(): Promise<StudentDocument[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  return db.select().from(studentDocuments)
+    .where(eq(studentDocuments.isPublished, true))
+    .orderBy(
+      asc(studentDocuments.isBulkArchive),
+      asc(studentDocuments.sortOrder),
+      asc(studentDocuments.id),
+    );
+}
+
+export async function getPublishedStudentDocumentById(id: number): Promise<StudentDocument | null> {
+  const db = await getDb();
+  if (!db) return null;
+
+  const rows = await db.select().from(studentDocuments)
+    .where(and(eq(studentDocuments.id, id), eq(studentDocuments.isPublished, true)))
+    .limit(1);
+
+  return rows[0] ?? null;
+}
+
 // ============================================================================
 // Deferred Activation: student chooses when to start their 30-day timer
 // ============================================================================
@@ -7690,13 +7719,44 @@ export async function createReferral(referrerId: number, refereeId: number) {
   if (existing.length > 0) return null; // already referred
   // Don't allow self-referral
   if (referrerId === refereeId) return null;
-  await db.insert(referrals).values({
+  const [createdReferral] = await db.insert(referrals).values({
     referrerId,
     refereeId,
     status: 'pending',
     createdAt: new Date().toISOString(),
-  });
-  return { success: true };
+  }).returning({ id: referrals.id });
+
+  let refereePts = 0;
+  if (createdReferral?.id) {
+    try {
+      const refereeRule = await getActivePointsRule('referral_referee');
+      refereePts = refereeRule?.points ?? 50;
+
+      if (refereePts > 0) {
+        await addPoints({
+          userId: refereeId,
+          amount: refereePts,
+          type: 'bonus',
+          reasonEn: 'Welcome bonus - you signed up via a referral!',
+          reasonAr: 'مكافأة ترحيبية - سجلت عبر إحالة!',
+          referenceId: referrerId,
+          referenceType: 'referral',
+        });
+
+        await db.update(referrals).set({
+          refereePoints: refereePts,
+        }).where(eq(referrals.id, createdReferral.id));
+      }
+    } catch (error) {
+      logger.warn('Failed awarding referral sign-up bonus', {
+        referrerId,
+        refereeId,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  }
+
+  return { success: true, refereePoints: refereePts };
 }
 
 export async function activateReferral(refereeId: number) {
@@ -7711,30 +7771,34 @@ export async function activateReferral(refereeId: number) {
   // Get reward rules
   const referrerRule = await getActivePointsRule('referral_referrer');
   const refereeRule = await getActivePointsRule('referral_referee');
-  const referrerPts = referrerRule?.points ?? 200;
-  const refereePts = refereeRule?.points ?? 50;
+  const currentReferrerPts = Number(ref.referrerPoints ?? 0);
+  const currentRefereePts = Number(ref.refereePoints ?? 0);
+  const referrerPts = currentReferrerPts > 0 ? currentReferrerPts : (referrerRule?.points ?? 200);
+  const refereePts = currentRefereePts > 0 ? currentRefereePts : (refereeRule?.points ?? 50);
 
-  // Award points to referrer
-  await addPoints({
-    userId: ref.referrerId,
-    amount: referrerPts,
-    type: 'bonus',
-    reasonEn: 'Referral reward — your friend activated a package!',
-    reasonAr: 'مكافأة إحالة — صديقك فعّل باقة!',
-    referenceId: refereeId,
-    referenceType: 'referral',
-  });
+  if (currentReferrerPts < 1 && referrerPts > 0) {
+    await addPoints({
+      userId: ref.referrerId,
+      amount: referrerPts,
+      type: 'bonus',
+      reasonEn: 'Referral reward - your friend activated a package!',
+      reasonAr: 'مكافأة إحالة - صديقك فعّل باقة!',
+      referenceId: refereeId,
+      referenceType: 'referral',
+    });
+  }
 
-  // Award points to referee
-  await addPoints({
-    userId: refereeId,
-    amount: refereePts,
-    type: 'bonus',
-    reasonEn: 'Welcome bonus — you signed up via a referral!',
-    reasonAr: 'مكافأة ترحيبية — سجلت عبر إحالة!',
-    referenceId: ref.referrerId,
-    referenceType: 'referral',
-  });
+  if (currentRefereePts < 1 && refereePts > 0) {
+    await addPoints({
+      userId: refereeId,
+      amount: refereePts,
+      type: 'bonus',
+      reasonEn: 'Welcome bonus - you signed up via a referral!',
+      reasonAr: 'مكافأة ترحيبية - سجلت عبر إحالة!',
+      referenceId: ref.referrerId,
+      referenceType: 'referral',
+    });
+  }
 
   // Update referral status
   await db.update(referrals).set({

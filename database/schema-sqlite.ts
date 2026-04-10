@@ -585,6 +585,26 @@ export const packages = sqliteTable("packages", {
 export type Package = typeof packages.$inferSelect;
 export type InsertPackage = typeof packages.$inferInsert;
 
+export const studentDocuments = sqliteTable("studentDocuments", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  titleEn: text("titleEn", { length: 255 }).notNull(),
+  titleAr: text("titleAr", { length: 255 }).notNull(),
+  descriptionEn: text("descriptionEn"),
+  descriptionAr: text("descriptionAr"),
+  objectKey: text("objectKey").notNull().unique(),
+  originalFileName: text("originalFileName", { length: 255 }).notNull(),
+  mimeType: text("mimeType", { length: 120 }).notNull().default("application/pdf"),
+  fileSizeBytes: integer("fileSizeBytes"),
+  sortOrder: integer("sortOrder").default(0).notNull(),
+  isPublished: integer("isPublished", { mode: 'boolean' }).default(true).notNull(),
+  isBulkArchive: integer("isBulkArchive", { mode: 'boolean' }).default(false).notNull(),
+  createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
+  updatedAt: text("updatedAt").default("CURRENT_TIMESTAMP").notNull(),
+});
+
+export type StudentDocument = typeof studentDocuments.$inferSelect;
+export type InsertStudentDocument = typeof studentDocuments.$inferInsert;
+
 export const packageCourses = sqliteTable("packageCourses", {
   id: int("id").primaryKey({ autoIncrement: true }),
   packageId: integer("packageId").notNull(),

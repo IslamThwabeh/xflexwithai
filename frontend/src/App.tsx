@@ -59,6 +59,7 @@ const MyOrders = lazy(() => import("./pages/MyOrders"));
 const OrderDetail = lazy(() => import("./pages/OrderDetail"));
 const MySubscriptions = lazy(() => import("./pages/MySubscriptions"));
 const StudentPackages = lazy(() => import("./pages/StudentPackages"));
+const StudentDocuments = lazy(() => import("./pages/StudentDocuments"));
 const BrokerSelection = lazy(() => import("./pages/BrokerSelection"));
 const BrokerOnboarding = lazy(() => import("./pages/BrokerOnboarding"));
 const Upgrade = lazy(() => import("./pages/Upgrade"));
@@ -106,6 +107,7 @@ function Router() {
     <Suspense fallback={<PageLoader />}>
     <Switch>
       <Route path={"/auth"} component={Auth} />
+      <Route path={"/register"} component={Auth} />
       <Route path={"/admin/login"} component={AdminLogin} />
       <Route path={"/dashboard"}>
         <ProtectedRoute>
@@ -115,6 +117,11 @@ function Router() {
       <Route path={"/courses"}>
         <ProtectedRoute>
           <MyDashboard />
+        </ProtectedRoute>
+      </Route>
+      <Route path={"/documents"}>
+        <ProtectedRoute>
+          <StudentDocuments />
         </ProtectedRoute>
       </Route>
       <Route path={"/profile"}>
