@@ -618,6 +618,23 @@ export async function touchUserInteraction(userId: number): Promise<void> {
 }
 
 /**
+ * Clear the explicit interaction marker on logout so offline recommendation
+ * delivery can start immediately after the user leaves the channel.
+ */
+export async function clearUserInteraction(userId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+
+  try {
+    await db.update(users)
+      .set({ lastInteractiveAt: null })
+      .where(eq(users.id, userId));
+  } catch {
+    // Non-critical, don't throw
+  }
+}
+
+/**
  * Check if user was active in the last N minutes (for email suppression)
  */
 export async function isUserOnline(userId: number, withinMinutes = 5): Promise<boolean> {

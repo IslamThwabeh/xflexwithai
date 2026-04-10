@@ -17,53 +17,51 @@ import { useDataTable, DataTablePagination, zebraRow } from "@/components/DataTa
 import { buildRecommendationThreads, groupRecommendationThreadsByDay } from "@/lib/recommendationThreads";
 
 type RecommendationType = "recommendation" | "update" | "result";
+type FollowUpPresetGroupKey = "pips" | "management" | "outcome";
 
 const QUICK_SYMBOLS = ["XAUUSD", "EURUSD", "GBPUSD", "USDJPY", "BTCUSD", "US30"];
 
-const QUICK_REPLY_PRESETS = [
+const FOLLOW_UP_PRESET_GROUPS = [
   {
-    key: "secure",
-    labelEn: "Secure + Reserve",
-    labelAr: "تأمين + حجز",
-    value: "Running +30 Pips ✅🔥 تأمين\n\nبإمكانك الحجز",
+    key: "pips",
+    labelEn: "Pips",
+    labelAr: "النقاط",
+    modes: ["update", "result"] as RecommendationType[],
+    items: [
+      { key: "p5", labelEn: "+5", labelAr: "+5", valueEn: "+5 pips ✅", valueAr: "+5 نقاط ✅" },
+      { key: "p10", labelEn: "+10", labelAr: "+10", valueEn: "+10 pips ✅", valueAr: "+10 نقاط ✅" },
+      { key: "p15", labelEn: "+15", labelAr: "+15", valueEn: "+15 pips ✅", valueAr: "+15 نقاط ✅" },
+      { key: "p30", labelEn: "+30", labelAr: "+30", valueEn: "+30 pips ✅", valueAr: "+30 نقاط ✅" },
+      { key: "p50", labelEn: "+50", labelAr: "+50", valueEn: "+50 pips ✅", valueAr: "+50 نقاط ✅" },
+      { key: "p100", labelEn: "+100", labelAr: "+100", valueEn: "+100 pips ✅", valueAr: "+100 نقاط ✅" },
+      { key: "p150", labelEn: "+150", labelAr: "+150", valueEn: "+150 pips ✅", valueAr: "+150 نقاط ✅" },
+    ],
   },
   {
-    key: "tp1",
-    labelEn: "TP1",
-    labelAr: "هدف 1",
-    value: "TP1 +50 Pips ✅🔥",
+    key: "management",
+    labelEn: "Management",
+    labelAr: "إدارة",
+    modes: ["update"] as RecommendationType[],
+    items: [
+      { key: "secure", labelEn: "Secure", labelAr: "تأمين", valueEn: "Secure the trade ✅", valueAr: "تأمين الصفقة ✅" },
+      { key: "moveStop", labelEn: "Move SL", labelAr: "نقل الستوب", valueEn: "Move SL to entry.", valueAr: "نقل الستوب إلى الدخول." },
+      { key: "reserve", labelEn: "Reserve", labelAr: "حجز", valueEn: "Reserve part of the profit ✅", valueAr: "حجز جزء من الربح ✅" },
+      { key: "partial", labelEn: "Partial close", labelAr: "إغلاق جزئي", valueEn: "Take partial profit and hold the rest.", valueAr: "إغلاق جزء من العقد وترك الباقي." },
+    ],
   },
   {
-    key: "tp2",
-    labelEn: "TP2",
-    labelAr: "هدف 2",
-    value: "TP2 +100 Pips ✅✅🔥🔥",
+    key: "outcome",
+    labelEn: "Outcome",
+    labelAr: "النتيجة",
+    modes: ["result"] as RecommendationType[],
+    items: [
+      { key: "tp1", labelEn: "TP1", labelAr: "هدف 1", valueEn: "TP1 hit ✅", valueAr: "ضرب الهدف الأول ✅" },
+      { key: "tp2", labelEn: "TP2", labelAr: "هدف 2", valueEn: "TP2 hit ✅✅", valueAr: "ضرب الهدف الثاني ✅✅" },
+      { key: "tp3", labelEn: "TP3", labelAr: "هدف 3", valueEn: "TP3 hit ✅✅✅", valueAr: "ضرب الهدف الثالث ✅✅✅" },
+      { key: "stopped", labelEn: "Stopped", labelAr: "ستوب", valueEn: "Stopped out ❌", valueAr: "ضرب ستوب ❌" },
+    ],
   },
-  {
-    key: "tp3",
-    labelEn: "TP3",
-    labelAr: "هدف 3",
-    value: "TP3 +150 Pips ✅✅✅🔥🔥🔥",
-  },
-  {
-    key: "sl",
-    labelEn: "SL",
-    labelAr: "ستوب",
-    value: "SL ❌ -50 Pips",
-  },
-  {
-    key: "hitTarget",
-    labelEn: "First Target Hit",
-    labelAr: "ضربت هدف أول",
-    value: "ضربت هدف اول",
-  },
-  {
-    key: "stopped",
-    labelEn: "Stopped Out",
-    labelAr: "ضربت ستوب",
-    value: "ضربت ستوب",
-  },
-];
+] as const;
 
 function formatCountdown(seconds: number) {
   const safeSeconds = Math.max(0, seconds);
@@ -74,7 +72,7 @@ function formatCountdown(seconds: number) {
 
 function getMessageTypeLabel(type: string, isRTL: boolean) {
   if (type === "result") return isRTL ? "نتيجة" : "Result";
-  if (type === "update") return isRTL ? "رد" : "Reply";
+  if (type === "update") return isRTL ? "تحديث" : "Update";
   if (type === "alert") return isRTL ? "تنبيه" : "Alert";
   return isRTL ? "توصية" : "Recommendation";
 }
@@ -173,7 +171,7 @@ function formatRecommendationUiError(message: string, isRTL: boolean) {
       case "Parent recommendation not found.":
         return "تعذر العثور على التوصية الأم. حدّث الصفحة ثم اختر التوصية من جديد.";
       case "Replies and results can only be added to an existing recommendation.":
-        return "يمكن إضافة الردود والنتائج فقط داخل توصية موجودة بالفعل.";
+        return "يمكن إضافة التحديثات والنتائج فقط داخل توصية موجودة بالفعل.";
       case "Same-trade updates must stay on the original recommendation symbol.":
         return "تحديثات نفس الصفقة يجب أن تبقى على نفس زوج التوصية الأصلية.";
       case "There is already an active chat session. Wait for it to pause or cancel it before starting a new one.":
@@ -219,6 +217,7 @@ function AnalystView() {
   const [riskPercent, setRiskPercent] = useState("");
   const [parentMessage, setParentMessage] = useState<any | null>(null);
   const [showTradeDetails, setShowTradeDetails] = useState(false);
+  const [activePresetGroup, setActivePresetGroup] = useState<FollowUpPresetGroupKey>("pips");
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
 
   const { data: me } = trpc.recommendations.me.useQuery();
@@ -265,7 +264,7 @@ function AnalystView() {
         type === "result"
           ? (isRTL ? "تم نشر النتيجة" : "Result published")
           : type === "update"
-            ? (isRTL ? "تم إرسال الرد" : "Reply sent")
+            ? (isRTL ? "تم إرسال التحديث" : "Update sent")
             : (isRTL ? "تم نشر التوصية" : "Recommendation published")
       );
       setContent("");
@@ -278,6 +277,7 @@ function AnalystView() {
       setShowTradeDetails(false);
       setParentMessage(null);
       setType("recommendation");
+      setActivePresetGroup("pips");
       if (type === "recommendation") {
         setSymbol("XAUUSD");
       }
@@ -334,15 +334,15 @@ function AnalystView() {
       : (isRTL ? "الدردشة نشطة الآن" : "Chat live now");
   const sessionStatusDescription = requiresAlert
     ? (isRTL
-        ? "إذا مرّت 15 دقيقة بدون أي رسالة من المحلل، يعود زر إخطار العملاء ويُمنع إرسال أي رسالة جديدة حتى يُرسل التنبيه من جديد."
-        : "If 15 minutes pass without any analyst message, the Alert Clients button returns and no new message can be sent until that alert is sent again.")
+        ? "بعد 15 دقيقة من الصمت، اضغط إخطار العملاء لإعادة فتح القناة."
+        : "After 15 minutes of silence, alert clients to reopen the channel.")
     : isWaitingForUnlock
       ? (isRTL
-          ? `تم إخطار العملاء بنجاح. الكتابة ستفتح تلقائياً بعد ${formatCountdown(publishState?.secondsUntilUnlock ?? 0)}.`
-          : `Clients were notified successfully. Typing will unlock automatically in ${formatCountdown(publishState?.secondsUntilUnlock ?? 0)}.`)
+          ? `تم إخطار العملاء. تفتح القناة خلال ${formatCountdown(publishState?.secondsUntilUnlock ?? 0)}.`
+          : `Clients were notified. The channel unlocks in ${formatCountdown(publishState?.secondsUntilUnlock ?? 0)}.`)
       : (isRTL
-          ? `يمكنك الآن الإرسال بشكل طبيعي. كل رسالة جديدة من المحلل تمدد المهلة 15 دقيقة إضافية، ويتبقى ${formatCountdown(publishState?.secondsUntilExpiry ?? 0)} قبل أن تتوقف الدردشة إذا لم تُرسل شيئاً.`
-          : `You can send normally now. Every new analyst message extends the chat for another 15 minutes. ${formatCountdown(publishState?.secondsUntilExpiry ?? 0)} remains before the chat pauses if you stop sending.`);
+          ? `القناة تعمل الآن. كل رسالة جديدة تمدد الجلسة، ويتبقى ${formatCountdown(publishState?.secondsUntilExpiry ?? 0)} قبل قفل الصمت.`
+          : `The channel is live now. Each new message extends the session, and ${formatCountdown(publishState?.secondsUntilExpiry ?? 0)} remains before the silence lock.`);
 
   useEffect(() => {
     if (!showComposerFields || type === "recommendation") return;
@@ -384,23 +384,27 @@ function AnalystView() {
     toast.success(t('rec.toastCopied'));
   };
 
-  const startAddUpdate = (parent: any) => {
-    setType("update");
+  const startFollowUp = (parent: any, nextType: RecommendationType = "update") => {
+    setType(nextType);
     setParentMessage(parent);
     setContent("");
     setShowTradeDetails(false);
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  const startAddResult = (parentMessage: any) => {
-    setType("result");
-    setParentMessage(parentMessage);
-    setContent("");
-    setShowTradeDetails(false);
+    setActivePresetGroup(nextType === "result" ? "outcome" : "pips");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const threads = useMemo(() => buildRecommendationThreads(feed, { openFirst: true }), [feed]);
+  const availablePresetGroups = useMemo(
+    () => FOLLOW_UP_PRESET_GROUPS.filter((group) => group.modes.includes(type)),
+    [type],
+  );
+  const activePresetConfig = availablePresetGroups.find((group) => group.key === activePresetGroup) ?? availablePresetGroups[0] ?? null;
+
+  useEffect(() => {
+    if (!availablePresetGroups.some((group) => group.key === activePresetGroup)) {
+      setActivePresetGroup(type === "result" ? "outcome" : "pips");
+    }
+  }, [activePresetGroup, availablePresetGroups, type]);
   const openThreadGroups = useMemo(
     () => groupRecommendationThreadsByDay(threads.filter((thread) => !thread.isClosed), language),
     [threads, language],
@@ -453,7 +457,7 @@ function AnalystView() {
                             <Badge variant="secondary" className="bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-300 text-xs">
                               {isRTL
                                 ? `${children.length} ${children.length === 1 ? 'متابعة' : 'متابعات'}`
-                                : `${children.length} ${children.length === 1 ? 'update' : 'updates'}`}
+                                : `${children.length} ${children.length === 1 ? 'follow-up' : 'follow-ups'}`}
                             </Badge>
                           )}
                         </div>
@@ -488,11 +492,8 @@ function AnalystView() {
                       <Button size="sm" variant="outline" onClick={() => copyMessage(message)}>
                         <Copy className="h-3.5 w-3.5 me-1" /> {t('rec.copy')}
                       </Button>
-                      <Button size="sm" variant="outline" onClick={() => startAddUpdate(message)} className="text-amber-600 border-amber-200 hover:bg-amber-50 dark:border-amber-800 dark:hover:bg-amber-900/20">
-                        <Bell className="h-3.5 w-3.5 me-1" /> {isRTL ? "رد" : "Reply"}
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => startAddResult(message)} className="text-teal-700 border-teal-200 hover:bg-teal-50 dark:border-teal-800 dark:text-teal-300 dark:hover:bg-teal-900/20">
-                        <Plus className="h-3.5 w-3.5 me-1" /> {isRTL ? "إضافة نتيجة" : "Add Result"}
+                      <Button size="sm" variant="outline" onClick={() => startFollowUp(message)} className="text-amber-700 border-amber-200 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-900/20">
+                        <Plus className="h-3.5 w-3.5 me-1" /> {isRTL ? "متابعة" : "Follow-up"}
                       </Button>
                       {!thread.isClosed && (
                         <Button
@@ -547,7 +548,7 @@ function AnalystView() {
                               {(!!adminCheck?.isAdmin || child.userId === me?.userId) && (
                                 <Button
                                   size="sm" variant="ghost"
-                                  onClick={() => { if (confirm(isRTL ? "حذف النتيجة؟" : "Delete result?")) deleteMessageMutation.mutate({ messageId: child.id }); }}
+                                  onClick={() => { if (confirm(isRTL ? "حذف المتابعة؟" : "Delete follow-up?")) deleteMessageMutation.mutate({ messageId: child.id }); }}
                                   className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
                                 >
                                   <Trash2 className="h-3 w-3" />
@@ -579,20 +580,20 @@ function AnalystView() {
       <Card>
         <CardHeader>
           <CardTitle>
-            {type === "update" && parentMessage
-              ? (isRTL ? `الرد على التوصية #${parentMessage.id}` : `Reply to Recommendation #${parentMessage.id}`)
-              : type === "result" && parentMessage
-                ? (isRTL ? `إضافة نتيجة للتوصية #${parentMessage.id}` : `Add Result for Recommendation #${parentMessage.id}`)
+            {type === "recommendation"
+              ? (isRTL ? "نشر توصية جديدة" : "Publish Recommendation")
+              : parentMessage
+                ? (isRTL ? `متابعة للتوصية #${parentMessage.id}` : `Follow-up for Recommendation #${parentMessage.id}`)
                 : (isRTL ? "دردشة التوصيات" : "Recommendations Chat")}
           </CardTitle>
           <CardDescription>
             {type === "recommendation"
               ? (isRTL
-                  ? "أرسل التوصية كرسالة رئيسية، ثم تابع عليها بردود قصيرة داخل نفس السلسلة."
-                  : "Send the recommendation as the main message, then follow it with short replies in the same thread.")
+                  ? "أرسل الفكرة الرئيسية أولاً، وأضف المستويات فقط عند الحاجة."
+                  : "Send the main trade idea first, and add levels only when they are needed.")
               : (isRTL
-                  ? "اختر التوصية الأم ثم أرسل ردك أو نتيجتك مثل تيليجرام."
-                  : "Choose the parent recommendation, then send the reply or result like a Telegram follow-up.")}
+                  ? "اختر تحديثاً لإدارة الصفقة أو نتيجة لتوثيق الإغلاق النهائي."
+                  : "Choose Update for live trade management or Result for the final outcome.")}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -614,22 +615,16 @@ function AnalystView() {
                   <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
                     {type === "recommendation"
                       ? (isRTL ? "التوصية الرئيسية" : "Main recommendation")
-                      : type === "result"
-                        ? (isRTL ? `نتيجة للتوصية #${parentMessage?.id}` : `Result for recommendation #${parentMessage?.id}`)
-                        : (isRTL ? `رد على التوصية #${parentMessage?.id}` : `Reply to recommendation #${parentMessage?.id}`)}
+                      : (isRTL ? `متابعة للتوصية #${parentMessage?.id}` : `Follow-up for recommendation #${parentMessage?.id}`)}
                   </p>
                   <p className="text-xs text-slate-600 dark:text-slate-300">
                     {type === "recommendation"
                       ? (isRTL
-                          ? "ابدأ برسالة التوصية الرئيسية. للمتابعة السريعة استخدم زر رد أسفل أي توصية موجودة."
-                          : "Start with the main recommendation. For fast follow-ups, use Reply on any recommendation below.")
-                      : type === "result"
-                        ? (isRTL
-                            ? "اكتب النتيجة النهائية أو المرحلية مباشرة داخل نفس الصفقة."
-                            : "Post the outcome directly inside the same trade thread.")
-                        : (isRTL
-                            ? "هذا الرد مرتبط بنفس الصفقة، لذلك يكفي نص قصير وواضح."
-                            : "This reply stays on the same trade, so a short clear message is enough.")}
+                          ? "ابدأ بالصفقة الأساسية، ثم استخدم المتابعة لأي تحديث أو نتيجة داخل السلسلة نفسها."
+                          : "Start with the main trade, then use follow-up for any update or result inside the same thread.")
+                      : (isRTL
+                          ? "اختر نوع المتابعة ثم أرسل رسالة قصيرة وواضحة داخل نفس الصفقة."
+                          : "Choose the follow-up mode, then send a short clear message inside the same trade.")}
                   </p>
                 </div>
 
@@ -637,7 +632,7 @@ function AnalystView() {
                   <Button
                     size="sm"
                     variant={type === "recommendation" ? "default" : "outline"}
-                    onClick={() => { setType("recommendation"); setParentMessage(null); }}
+                    onClick={() => { setType("recommendation"); setParentMessage(null); setActivePresetGroup("pips"); }}
                     className={type === "recommendation" ? "bg-emerald-600 hover:bg-emerald-700 text-white" : ""}
                   >
                     <TrendingUp className="h-4 w-4 me-1" /> {isRTL ? "توصية جديدة" : "New Recommendation"}
@@ -648,15 +643,15 @@ function AnalystView() {
                       <Button
                         size="sm"
                         variant={type === "update" ? "default" : "outline"}
-                        onClick={() => setType("update")}
+                        onClick={() => { setType("update"); setActivePresetGroup("pips"); }}
                         className={type === "update" ? "bg-amber-500 hover:bg-amber-600 text-white" : ""}
                       >
-                        <Bell className="h-4 w-4 me-1" /> {isRTL ? "رد" : "Reply"}
+                        <Bell className="h-4 w-4 me-1" /> {isRTL ? "تحديث" : "Update"}
                       </Button>
                       <Button
                         size="sm"
                         variant={type === "result" ? "default" : "outline"}
-                        onClick={() => setType("result")}
+                        onClick={() => { setType("result"); setActivePresetGroup("outcome"); }}
                         className={type === "result" ? "bg-teal-600 hover:bg-teal-700 text-white" : ""}
                       >
                         <Plus className="h-4 w-4 me-1" /> {isRTL ? "نتيجة" : "Result"}
@@ -677,7 +672,7 @@ function AnalystView() {
                     </Badge>
                   )}
                   <button
-                    onClick={() => { setParentMessage(null); setType("recommendation"); }}
+                    onClick={() => { setParentMessage(null); setType("recommendation"); setActivePresetGroup("pips"); }}
                     className="text-xs text-red-500 hover:underline"
                   >
                     {isRTL ? "إلغاء الربط" : "Unlink"}
@@ -806,25 +801,30 @@ function AnalystView() {
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div className="space-y-1">
                 <p className="text-sm font-medium text-emerald-900 dark:text-emerald-100">
-                  {requiresAlert
-                    ? (isRTL ? "ابدأ الدردشة من هنا" : "Start the chat from here")
-                    : isWaitingForUnlock
-                      ? (isRTL ? "جارٍ تجهيز الدردشة" : "Chat is preparing")
-                      : (isRTL ? "الدردشة تعمل الآن" : "Chat is live now")}
+                  {isRTL ? "إجراءات الجلسة" : "Session actions"}
                 </p>
-                <p className="text-xs text-emerald-800/80 dark:text-emerald-200/80">
-                  {requiresAlert
-                    ? (isRTL
-                        ? "إذا صمت المحلل 15 دقيقة كاملة، يظهر هذا الزر من جديد. ضغطة واحدة ترسل التنبيه للعملاء، وبعد دقيقة يمكنه العودة للكتابة."
-                        : "If the analyst stays silent for 15 full minutes, this button comes back. One tap alerts clients, then typing returns one minute later.")
+                <div className="flex flex-wrap items-center gap-2 text-xs text-emerald-900/85 dark:text-emerald-100/85">
+                  <Badge className={requiresAlert
+                    ? "bg-slate-700 text-white"
                     : isWaitingForUnlock
-                      ? (isRTL
-                          ? `تم إرسال التنبيه. انتظر ${formatCountdown(publishState?.secondsUntilUnlock ?? 0)} ثم تبدأ الكتابة بشكل طبيعي.`
-                          : `The alert has been sent. Wait ${formatCountdown(publishState?.secondsUntilUnlock ?? 0)}, then typing starts normally.`)
-                      : (isRTL
-                          ? `الدردشة ستبقى مفتوحة ما دام المحلل يرسل. إذا توقف عن الإرسال، ستتوقف بعد ${formatCountdown(publishState?.secondsUntilExpiry ?? 0)}.`
-                          : `The chat stays open while the analyst keeps sending. If they stop sending, it pauses in ${formatCountdown(publishState?.secondsUntilExpiry ?? 0)}.`)}
-                </p>
+                      ? "bg-amber-500 text-white"
+                      : "bg-emerald-600 text-white"}
+                  >
+                    {requiresAlert
+                      ? (isRTL ? "متوقفة" : "Paused")
+                      : isWaitingForUnlock
+                        ? (isRTL ? "بانتظار الفتح" : "Unlocking")
+                        : (isRTL ? "مباشرة" : "Live")}
+                  </Badge>
+                  <span className="inline-flex items-center gap-1">
+                    <Clock3 className="h-3.5 w-3.5" />
+                    {requiresAlert
+                      ? (isRTL ? "يجب إخطار العملاء لإعادة الفتح" : "Alert clients to reopen the channel")
+                      : canPostMessages
+                        ? (isRTL ? `قفل الصمت بعد ${formatCountdown(publishState?.secondsUntilExpiry ?? 0)}` : `Silence lock in ${formatCountdown(publishState?.secondsUntilExpiry ?? 0)}`)
+                        : (isRTL ? `تفتح خلال ${formatCountdown(publishState?.secondsUntilUnlock ?? 0)}` : `Opens in ${formatCountdown(publishState?.secondsUntilUnlock ?? 0)}`)}
+                  </span>
+                </div>
               </div>
               <div className="flex items-center gap-2 flex-wrap">
                 <Tooltip>
@@ -844,7 +844,7 @@ function AnalystView() {
                   <TooltipContent sideOffset={8}>
                     {hasActiveAlert
                       ? (isRTL ? "الدردشة نشطة بالفعل. ألغها فقط إذا أردت إيقاف الكتابة الآن." : "The chat is already active. Cancel it only if you want to pause typing now.")
-                      : (isRTL ? "هذه ضغطة واحدة ترسل الإيميل والتنبيه للعملاء بأن المحلل سيبدأ التوصيات خلال دقائق." : "One tap sends the email and in-app alert telling clients the analyst is about to send recommendations in the next few minutes.")}
+                      : (isRTL ? "ضغطة واحدة ترسل التنبيه للعملاء، وبعد دقيقة تفتح القناة من جديد." : "One tap alerts clients, then the channel unlocks again after one minute.")}
                   </TooltipContent>
                 </Tooltip>
 
@@ -861,51 +861,54 @@ function AnalystView() {
                 )}
               </div>
             </div>
-
-            {hasActiveAlert && (
-              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-emerald-900 dark:text-emerald-100">
-                <Badge className="bg-white text-emerald-700 border border-emerald-200 dark:bg-emerald-950 dark:text-emerald-200 dark:border-emerald-800">
-                  {isWaitingForUnlock
-                    ? (isRTL ? "التنبيه مُرسل" : "Alert sent")
-                    : (isRTL ? "الدردشة مباشرة" : "Chat live")}
-                </Badge>
-                <span className="inline-flex items-center gap-1">
-                  <Clock3 className="h-3.5 w-3.5" />
-                  {canPostMessages
-                    ? (isRTL ? "تتوقف الدردشة عند الصمت بعد" : "Silence lock in")
-                    : (isRTL
-                        ? `تفتح الدردشة خلال ${formatCountdown(publishState?.secondsUntilUnlock ?? 0)}`
-                        : `Chat opens in ${formatCountdown(publishState?.secondsUntilUnlock ?? 0)}`)}
-                </span>
-                <span>
-                  {isRTL
-                    ? `${formatCountdown(publishState?.secondsUntilExpiry ?? 0)}`
-                    : `${formatCountdown(publishState?.secondsUntilExpiry ?? 0)}`}
-                </span>
-              </div>
-            )}
           </div>
 
           {showComposerFields && type !== "recommendation" && parentMessage && (
-            <div>
+            <div className="space-y-3">
               <label className="text-sm font-medium text-muted-foreground mb-2 block">
-                {isRTL ? "ردود سريعة" : "Quick Replies"}
+                {isRTL ? "متابعات سريعة" : "Quick follow-ups"}
               </label>
               <div className="flex flex-wrap gap-2">
-                {QUICK_REPLY_PRESETS.map((preset) => (
+                {availablePresetGroups.map((group) => (
                   <Button
-                    key={preset.key}
+                    key={group.key}
                     type="button"
                     size="sm"
-                    variant="outline"
+                    variant={activePresetConfig?.key === group.key ? "default" : "outline"}
                     disabled={isWaitingForUnlock}
-                    onClick={() => setContent(preset.value)}
-                    className="border-amber-200 hover:bg-amber-50 dark:border-amber-800 dark:hover:bg-amber-900/20"
+                    onClick={() => setActivePresetGroup(group.key as FollowUpPresetGroupKey)}
+                    className={activePresetConfig?.key === group.key
+                      ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                      : "border-slate-200 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-900/20"}
                   >
-                    {isRTL ? preset.labelAr : preset.labelEn}
+                    {isRTL ? group.labelAr : group.labelEn}
                   </Button>
                 ))}
               </div>
+
+              {activePresetConfig && (
+                <div className="flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3 dark:border-slate-800 dark:bg-slate-900/30">
+                  {activePresetConfig.items.map((preset) => (
+                    <Button
+                      key={preset.key}
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={isWaitingForUnlock}
+                      onClick={() => setContent(isRTL ? preset.valueAr : preset.valueEn)}
+                      className="border-amber-200 hover:bg-amber-50 dark:border-amber-800 dark:hover:bg-amber-900/20"
+                    >
+                      {isRTL ? preset.labelAr : preset.labelEn}
+                    </Button>
+                  ))}
+                </div>
+              )}
+
+              <p className="text-xs text-muted-foreground">
+                {isRTL
+                  ? "النقاط الصغيرة تبقى الأسرع للوصول، بينما القيم الأكبر موجودة داخل نفس المجموعة عند الحاجة."
+                  : "Smaller pip moves stay quickest to reach, while larger outcomes remain available inside the same group when needed."}
+              </p>
             </div>
           )}
 
@@ -925,7 +928,7 @@ function AnalystView() {
                   ? (isRTL ? "اكتب التوصية الرئيسية هنا" : "Write the main recommendation here")
                   : type === "result"
                     ? (isRTL ? "اكتب النتيجة هنا" : "Write the result here")
-                    : (isRTL ? "اكتب الرد السريع هنا" : "Write the quick reply here")}
+                    : (isRTL ? "اكتب التحديث هنا" : "Write the update here")}
               rows={3}
             />
           </div>
@@ -951,7 +954,7 @@ function AnalystView() {
                         ? (isRTL ? "إرسال التوصية" : "Send Recommendation")
                         : type === "result"
                           ? (isRTL ? "إرسال النتيجة" : "Send Result")
-                          : (isRTL ? "إرسال الرد" : "Send Reply")}
+                          : (isRTL ? "إرسال التحديث" : "Send Update")}
                   </Button>
                 </span>
               </TooltipTrigger>
@@ -960,22 +963,6 @@ function AnalystView() {
               )}
             </Tooltip>
           </div>
-          )}
-
-          {!showComposerFields && (
-            <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 px-3 py-2 text-xs text-emerald-900 dark:border-emerald-800/40 dark:bg-emerald-900/10 dark:text-emerald-100">
-              <span className="font-medium">{isRTL ? "كيف تعمل الآن:" : "How it works:"}</span>{" "}
-              {isRTL
-                ? "عندما يعود المحلل بعد 15 دقيقة من الصمت، يظهر زر إخطار العملاء فقط. بعد الضغط عليه تصلهم الرسالة فوراً، وبعد دقيقة واحدة تفتح الدردشة من جديد."
-                : "When the analyst comes back after 15 minutes of silence, only the Alert Clients button appears. After one tap, clients are warned immediately and the chat opens again one minute later."}
-            </div>
-          )}
-
-          {showComposerFields && publishDisabledReason && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2 text-xs text-amber-900 dark:border-amber-800/40 dark:bg-amber-900/10 dark:text-amber-100">
-              <span className="font-medium">{isRTL ? "معلومة مهمة:" : "Important:"}</span>{" "}
-              {publishDisabledReason}
-            </div>
           )}
         </CardContent>
       </Card>

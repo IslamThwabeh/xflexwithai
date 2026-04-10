@@ -23,6 +23,7 @@ vi.mock("../backend/db", async () => {
     hasRecommendationResultChild: vi.fn(),
     closeRecommendationThread: vi.fn().mockResolvedValue(undefined),
     cancelRecommendationAlert: vi.fn().mockResolvedValue(undefined),
+    clearUserInteraction: vi.fn().mockResolvedValue(undefined),
   };
 });
 
@@ -65,6 +66,7 @@ describe("recommendations workflow", () => {
   const getRecommendationMessageById = vi.mocked(db.getRecommendationMessageById);
   const hasRecommendationResultChild = vi.mocked(db.hasRecommendationResultChild);
   const closeRecommendationThread = vi.mocked(db.closeRecommendationThread);
+  const clearUserInteraction = vi.mocked(db.clearUserInteraction);
   const mockedSendEmail = vi.mocked(sendEmail);
 
   beforeEach(() => {
@@ -101,7 +103,13 @@ describe("recommendations workflow", () => {
     getRecommendationMessageById.mockResolvedValue({
       id: 901,
       type: "recommendation",
+      content: "Buy XAUUSD on the pullback.",
       symbol: "XAUUSD",
+      side: "BUY",
+      entryPrice: "2320",
+      stopLoss: "2314",
+      takeProfit1: "2328",
+      takeProfit2: "2336",
       parentId: null,
       threadStatus: "open",
     } as any);
@@ -261,9 +269,17 @@ describe("recommendations workflow", () => {
         batchId: "rec_live_901",
       })
     );
+    expect(mockedSendEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "subscriber@example.com",
+        subject: expect.stringContaining("التوصية الآن"),
+        html: expect.stringContaining("XAUUSD"),
+      })
+    );
+    expect(markNotificationEmailSent).toHaveBeenCalledWith("rec_live_901", 1);
   });
 
-  it("allows same-trade updates while the active window is open", async () => {
+  it("allows same-trade updates while the active window is open and emails offline clients", async () => {
     const caller = createAuthedCaller();
 
     getRecommendationPublishState.mockResolvedValue({
@@ -280,6 +296,20 @@ describe("recommendations workflow", () => {
       secondsUntilUnlock: 0,
       secondsUntilExpiry: 600,
     } as any);
+    getRecommendationSubscriberDetails.mockResolvedValue([
+      {
+        userId: 1,
+        email: "offline-update@example.com",
+        notificationPrefs: JSON.stringify({ language: "en" }),
+        lastInteractiveAt: null,
+      },
+      {
+        userId: 2,
+        email: "online-update@example.com",
+        notificationPrefs: null,
+        lastInteractiveAt: new Date().toISOString(),
+      },
+    ] as any);
 
     const result = await caller.recommendations.postMessage({
       type: "update",
@@ -298,6 +328,71 @@ describe("recommendations workflow", () => {
       })
     );
     expect(extendRecommendationAlertActivity).toHaveBeenCalledWith(55, 123);
+    expect(sendBulkNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userIds: [1, 2],
+        titleEn: "Trade Update — XAUUSD",
+        batchId: "rec_live_901",
+      })
+    );
+    expect(mockedSendEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "offline-update@example.com",
+        subject: "Trade update: XAUUSD",
+        html: expect.stringContaining("Latest update"),
+      })
+    );
+    expect(markNotificationEmailSent).toHaveBeenCalledWith("rec_live_901", 1);
+  });
+
+  it("emails offline clients when a result is posted", async () => {
+    const caller = createAuthedCaller();
+
+    getRecommendationPublishState.mockResolvedValue({
+      activeAlert: {
+        id: 55,
+        analystUserId: 123,
+        status: "pending",
+        notifiedAt: new Date().toISOString(),
+        unlockAt: new Date(Date.now() - 5_000).toISOString(),
+        expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+      },
+      canNotify: false,
+      canPostMessages: true,
+      secondsUntilUnlock: 0,
+      secondsUntilExpiry: 600,
+    } as any);
+    getRecommendationSubscriberDetails.mockResolvedValue([
+      {
+        userId: 1,
+        email: "offline-result@example.com",
+        notificationPrefs: null,
+        lastInteractiveAt: null,
+      },
+    ] as any);
+
+    const result = await caller.recommendations.postMessage({
+      type: "result",
+      content: "TP1 hit and the trade is closed in profit.",
+      parentId: 901,
+    });
+
+    expect(result).toMatchObject({ success: true, messageId: 901 });
+    expect(sendBulkNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userIds: [1],
+        titleAr: "نتيجة الصفقة — XAUUSD",
+        batchId: "rec_live_901",
+      })
+    );
+    expect(mockedSendEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "offline-result@example.com",
+        subject: "نتيجة الصفقة: XAUUSD",
+        html: expect.stringContaining("النتيجة الجديدة"),
+      })
+    );
+    expect(markNotificationEmailSent).toHaveBeenCalledWith("rec_live_901", 1);
   });
 
   it("requires a fresh alert after 15 minutes of analyst silence", async () => {
@@ -351,5 +446,35 @@ describe("recommendations workflow", () => {
     expect(result).toMatchObject({ success: true });
     expect(hasRecommendationResultChild).toHaveBeenCalledWith(901);
     expect(closeRecommendationThread).toHaveBeenCalledWith(901, 123);
+  });
+
+  it("clears the recommendation interaction marker on logout", async () => {
+    const clearCookie = vi.fn();
+    const caller = appRouter.createCaller({
+      req: {
+        headers: {},
+        method: "POST",
+        path: "/api/trpc/auth.logout",
+      },
+      user: {
+        id: 123,
+        email: "analyst@example.com",
+        passwordHash: "",
+        name: "Analyst User",
+        phone: null,
+        emailVerified: true,
+        createdAt: "",
+        updatedAt: "",
+        lastSignedIn: "",
+      },
+      setCookie: () => {},
+      clearCookie,
+    } as any);
+
+    const result = await caller.auth.logout();
+
+    expect(result).toMatchObject({ success: true });
+    expect(clearUserInteraction).toHaveBeenCalledWith(123);
+    expect(clearCookie).toHaveBeenCalled();
   });
 });

@@ -16,7 +16,7 @@ import { storagePutR2, storageArchiveR2 } from "./storage-r2";
 import { analyzeLexai } from "./_core/lexai";
 import { hashPassword, verifyPassword, generateToken, isValidEmail, isValidPassword } from "./_core/auth";
 import { sendEmail, sendLoginCodeEmail } from "./_core/email";
-import { buildRecommendationAlertEmail } from "./_core/recommendationEmails";
+import { buildRecommendationAlertEmail, buildRecommendationMessageEmail } from "./_core/recommendationEmails";
 import { sendOrderConfirmationEmail, sendPaymentReceivedEmail, sendAdminNewOrderNotification, sendAnnouncementEmail, sendStaffWelcomeEmail } from "./_core/orderEmails";
 import { ENV } from "./_core/env";
 import { generateNumericCode, generateSaltBase64, normalizeEmail, sha256Base64 } from "./_core/otp";
@@ -425,6 +425,40 @@ const buildRecommendationAlertNotificationCopy = () => ({
   contentEn: `Be ready and open your trading app. The analyst is about to post a new recommendation in about ${RECOMMENDATION_ALERT_UNLOCK_SECONDS} seconds.`,
   contentAr: `كن مستعداً وافتح تطبيق التداول. المحلل على وشك نشر توصية جديدة خلال حوالي ${RECOMMENDATION_ALERT_UNLOCK_SECONDS} ثانية.`,
 });
+
+const buildRecommendationMessageNotificationCopy = (payload: {
+  type: "recommendation" | "update" | "result";
+  symbol?: string | null;
+  content: string;
+}) => {
+  const symbolTag = payload.symbol ? ` — ${payload.symbol}` : '';
+  const preview = payload.content.length > 100 ? `${payload.content.slice(0, 100)}…` : payload.content;
+
+  if (payload.type === "result") {
+    return {
+      titleEn: `Trade Result${symbolTag}`,
+      titleAr: `نتيجة الصفقة${symbolTag}`,
+      contentEn: preview,
+      contentAr: preview,
+    };
+  }
+
+  if (payload.type === "update") {
+    return {
+      titleEn: `Trade Update${symbolTag}`,
+      titleAr: `تحديث على الصفقة${symbolTag}`,
+      contentEn: preview,
+      contentAr: preview,
+    };
+  }
+
+  return {
+    titleEn: `New Recommendation${symbolTag}`,
+    titleAr: `توصية جديدة${symbolTag}`,
+    contentEn: preview,
+    contentAr: preview,
+  };
+};
 
 const ensureRecommendationReadAccess = async (ctx: { user: { id: number; email?: string | null } | null }) => {
   if (!ctx.user) {
@@ -1321,6 +1355,17 @@ export const appRouter = router({
           });
         } catch (error) {
           logger.warn('[STAFF MONITORING] Failed to close staff session on logout', {
+            userId: ctx.user.id,
+            error: error instanceof Error ? error.message : 'Unknown error',
+          });
+        }
+      }
+
+      if (ctx.user && ctx.user.id > 0) {
+        try {
+          await db.clearUserInteraction(ctx.user.id);
+        } catch (error) {
+          logger.warn('[AUTH] Failed to clear user interaction on logout', {
             userId: ctx.user.id,
             error: error instanceof Error ? error.message : 'Unknown error',
           });
@@ -2644,6 +2689,18 @@ export const appRouter = router({
         }
 
         let messageId: number;
+        let parentMessage: Awaited<ReturnType<typeof db.getRecommendationMessageById>> | null = null;
+        let rootMessageForDelivery: {
+          content: string;
+          symbol?: string | null;
+          side?: string | null;
+          entryPrice?: string | null;
+          stopLoss?: string | null;
+          takeProfit1?: string | null;
+          takeProfit2?: string | null;
+          riskPercent?: string | null;
+        } | null = null;
+        let notificationSymbol: string | null | undefined;
         const linkedAlertId = publishState.activeAlert.id;
 
         if (input.type === 'recommendation') {
@@ -2655,6 +2712,18 @@ export const appRouter = router({
           if (!normalizedSymbol) {
             throw new TRPCError({ code: 'BAD_REQUEST', message: 'Choose the symbol first.' });
           }
+
+          rootMessageForDelivery = {
+            content: trimmedContent,
+            symbol: normalizedSymbol,
+            side: input.side?.trim() || undefined,
+            entryPrice: input.entryPrice?.trim() || undefined,
+            stopLoss: input.stopLoss?.trim() || undefined,
+            takeProfit1: input.takeProfit1?.trim() || undefined,
+            takeProfit2: input.takeProfit2?.trim() || undefined,
+            riskPercent: input.riskPercent?.trim() || undefined,
+          };
+          notificationSymbol = normalizedSymbol;
 
           messageId = await db.createRecommendationMessage({
             userId: ctx.user.id,
@@ -2673,28 +2742,12 @@ export const appRouter = router({
             closedByUserId: null,
             createdAt: new Date().toISOString(),
           });
-
-          const allSubs = await db.getRecommendationSubscriberDetails();
-          const recipients = allSubs.filter((sub) => recommendationNotificationsEnabled(sub.notificationPrefs));
-          const symbolTag = normalizedSymbol ? ` — ${normalizedSymbol}` : '';
-          if (recipients.length) {
-            await db.sendBulkNotification({
-              userIds: recipients.map((sub) => sub.userId),
-              type: 'info',
-              titleEn: `New Recommendation${symbolTag}`,
-              titleAr: `توصية جديدة${symbolTag}`,
-              contentEn: trimmedContent.length > 100 ? `${trimmedContent.slice(0, 100)}…` : trimmedContent,
-              contentAr: trimmedContent.length > 100 ? `${trimmedContent.slice(0, 100)}…` : trimmedContent,
-              actionUrl: '/recommendations',
-              batchId: `rec_live_${messageId}`,
-            });
-          }
         } else {
           if (!input.parentId) {
             throw new TRPCError({ code: 'BAD_REQUEST', message: 'Choose the parent recommendation first.' });
           }
 
-          const parentMessage = await db.getRecommendationMessageById(input.parentId);
+          parentMessage = await db.getRecommendationMessageById(input.parentId);
           if (!parentMessage) {
             throw new TRPCError({ code: 'NOT_FOUND', message: 'Parent recommendation not found.' });
           }
@@ -2709,6 +2762,18 @@ export const appRouter = router({
               message: 'Same-trade updates must stay on the original recommendation symbol.',
             });
           }
+
+          rootMessageForDelivery = {
+            content: parentMessage.content || '',
+            symbol: parentMessage.symbol ?? normalizedSymbol ?? undefined,
+            side: parentMessage.side ?? undefined,
+            entryPrice: parentMessage.entryPrice ?? undefined,
+            stopLoss: parentMessage.stopLoss ?? undefined,
+            takeProfit1: parentMessage.takeProfit1 ?? undefined,
+            takeProfit2: parentMessage.takeProfit2 ?? undefined,
+            riskPercent: parentMessage.riskPercent ?? undefined,
+          };
+          notificationSymbol = parentMessage.symbol ?? normalizedSymbol ?? undefined;
 
           messageId = await db.createRecommendationMessage({
             userId: ctx.user.id,
@@ -2727,6 +2792,51 @@ export const appRouter = router({
         }
 
         await db.extendRecommendationAlertActivity(linkedAlertId, ctx.user.id);
+
+        const allSubs = await db.getRecommendationSubscriberDetails();
+        const recipients = allSubs.filter((sub) => recommendationNotificationsEnabled(sub.notificationPrefs));
+        const batchId = `rec_live_${messageId}`;
+
+        if (recipients.length && rootMessageForDelivery) {
+          const notificationCopy = buildRecommendationMessageNotificationCopy({
+            type: input.type,
+            symbol: notificationSymbol,
+            content: trimmedContent,
+          });
+
+          await db.sendBulkNotification({
+            userIds: recipients.map((sub) => sub.userId),
+            type: 'info',
+            titleEn: notificationCopy.titleEn,
+            titleAr: notificationCopy.titleAr,
+            contentEn: notificationCopy.contentEn,
+            contentAr: notificationCopy.contentAr,
+            actionUrl: '/recommendations',
+            batchId,
+          });
+
+          const inactivityThreshold = new Date(Date.now() - RECOMMENDATION_EMAIL_INACTIVE_MINUTES * 60 * 1000);
+          await Promise.allSettled(
+            recipients
+              .filter((sub) => isRecommendationEmailCandidate(sub.lastInteractiveAt, inactivityThreshold))
+              .map(async (sub) => {
+                const emailCopy = buildRecommendationMessageEmail({
+                  language: getPreferredNotificationLanguage(sub.notificationPrefs),
+                  type: input.type,
+                  recommendation: rootMessageForDelivery!,
+                  latestMessage: input.type === 'recommendation' ? undefined : { content: trimmedContent },
+                });
+
+                await sendEmail({
+                  to: sub.email,
+                  subject: emailCopy.subject,
+                  text: emailCopy.text,
+                  html: emailCopy.html,
+                });
+                await db.markNotificationEmailSent(batchId, sub.userId);
+              })
+          );
+        }
 
         if (ctx.user?.isStaff && !isAdmin) {
           await writeStaffActivityLog({
