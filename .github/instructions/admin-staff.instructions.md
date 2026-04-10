@@ -16,6 +16,8 @@ applyTo: "frontend/src/pages/Admin*.tsx,frontend/src/components/DashboardLayout.
 - In staff-facing admin copy, call paused subscription access `Frozen` / `Freeze` / `Unfreeze` to match support-team terminology; internal API and DB names may still use `pause` / `resume` / `isPaused`.
 - Analyst access is isolated to `/admin/recommendations`; analysts should not get support chat access through `supportStaffProcedure`.
 - `AdminRecommendations.tsx` is dual-mode: admin sees `Management` + `Channel`; analyst sees `Channel` only.
+- Recommendations are now silence-gated: after 15 minutes without an analyst message, the analyst must trigger `recommendations.notifyClients`, wait 60 seconds, then the chat reopens. Each new analyst message refreshes that 15-minute timer. Do not restore the old optional email checkbox flow.
+- Same-trade follow-ups should stay child messages under the parent recommendation. Use `update` / `result` with `parentId`; they keep the chat alive and do not need a second symbol-specific alert while the analyst is still actively sending.
 - Recommendation deletion rule: admins can delete any message/result; analysts can only delete their own.
 - On `AdminStudents.tsx`, route access to `/admin/students` is broader than some detail actions. Student timeline and progress detail calls should require `view_progress` for non-admin staff and must show a friendly permission message instead of failing silently.
 - Shared client service context can be broader than progress access: the reusable client profile may be opened from Students, Support, and LexAI for allowed staff roles, but its timeline section must stay limited to admin or `view_progress`.

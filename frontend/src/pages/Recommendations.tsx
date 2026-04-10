@@ -1,14 +1,13 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { formatPendingActivationDate, getPendingActivationDaysLeft, getPendingActivationWindow } from "@/lib/pendingActivation";
 import { toast } from "sonner";
-import { Copy, Flame, Heart, Rocket, ThumbsUp, Frown, Bell, TrendingUp, BarChart3, BookOpen, MessageSquare, Building2 } from "lucide-react";
+import { ArrowUpRight, Clock3, Copy, Flame, Heart, Rocket, ThumbsUp, Frown, Bell, TrendingUp, BookOpen, MessageSquare, Building2, Megaphone } from "lucide-react";
 import ClientLayout from "@/components/ClientLayout";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Link } from "wouter";
@@ -20,8 +19,6 @@ const reactionIcons = {
   fire: <Flame className="h-4 w-4" />,
   rocket: <Rocket className="h-4 w-4" />,
 };
-
-type RecommendationType = "alert" | "recommendation" | "result";
 
 function buildCopyBlock(message: any, t: (key: string) => string) {
   const lines: string[] = [];
@@ -37,21 +34,34 @@ function buildCopyBlock(message: any, t: (key: string) => string) {
   return lines.join("\n").trim();
 }
 
+function formatCountdown(target: unknown, now: number) {
+  const timestamp = new Date(target as string).getTime();
+  if (Number.isNaN(timestamp)) return null;
+  const totalSeconds = Math.max(0, Math.ceil((timestamp - now) / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
+function getMessageTypeLabel(type: string, isArabic: boolean) {
+  if (type === "result") return isArabic ? "نتيجة" : "Result";
+  if (type === "update") return isArabic ? "رد" : "Reply";
+  if (type === "alert") return isArabic ? "تنبيه" : "Alert";
+  return isArabic ? "توصية" : "Recommendation";
+}
+
+function getMessageTypeClass(type: string) {
+  if (type === "result") return "border-teal-300 text-teal-700 dark:text-teal-300";
+  if (type === "update") return "border-amber-300 text-amber-700 dark:text-amber-300";
+  if (type === "alert") return "border-emerald-300 text-emerald-700 dark:text-emerald-300";
+  return "border-emerald-300 text-emerald-700 dark:text-emerald-400";
+}
+
 export default function Recommendations() {
   const { user } = useAuth();
   const { t, language } = useLanguage();
   const utils = trpc.useUtils();
-
-  const [type, setType] = useState<RecommendationType>("recommendation");
-  const [content, setContent] = useState("");
-  const [symbol, setSymbol] = useState("");
-  const [side, setSide] = useState("");
-  const [entryPrice, setEntryPrice] = useState("");
-  const [stopLoss, setStopLoss] = useState("");
-  const [takeProfit1, setTakeProfit1] = useState("");
-  const [takeProfit2, setTakeProfit2] = useState("");
-  const [riskPercent, setRiskPercent] = useState("");
-  const [sendEmail, setSendEmail] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
 
   const { data: me, isLoading: meLoading } = trpc.recommendations.me.useQuery();
   const { data: activationStatus } = trpc.subscriptions.activationStatus.useQuery(undefined, {
@@ -64,21 +74,9 @@ export default function Recommendations() {
     { limit: 200 },
     { enabled: !!me && (me.hasSubscription || me.canPublish) }
   );
-
-  const postMessageMutation = trpc.recommendations.postMessage.useMutation({
-    onSuccess: () => {
-      toast.success(sendEmail ? t('rec.toastPublished') : t('rec.toastPublishedNoEmail'));
-      setContent("");
-      setSymbol("");
-      setSide("");
-      setEntryPrice("");
-      setStopLoss("");
-      setTakeProfit1("");
-      setTakeProfit2("");
-      setRiskPercent("");
-      utils.recommendations.feed.invalidate();
-    },
-    onError: (error) => toast.error(error.message),
+  const { data: activeAlerts = [] } = trpc.recommendations.activeAlerts.useQuery(undefined, {
+    enabled: !!me && (me.hasSubscription || me.canPublish),
+    refetchInterval: 15_000,
   });
 
   const reactMutation = trpc.recommendations.react.useMutation({
@@ -100,25 +98,45 @@ export default function Recommendations() {
     return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
   }, [me?.subscription?.endDate]);
 
-  const onPublish = () => {
-    if (!content.trim()) {
-      toast.error(t('rec.toastWriteMessage'));
-      return;
+  const threadedFeed = useMemo(() => {
+    const childrenMap = new Map<number, any[]>();
+    for (const message of feed) {
+      if (!message.parentId) continue;
+      const existing = childrenMap.get(message.parentId) ?? [];
+      existing.push(message);
+      childrenMap.set(message.parentId, existing);
     }
 
-    postMessageMutation.mutate({
-      type,
-      content: content.trim(),
-      symbol: symbol.trim() || undefined,
-      side: side.trim() || undefined,
-      entryPrice: entryPrice.trim() || undefined,
-      stopLoss: stopLoss.trim() || undefined,
-      takeProfit1: takeProfit1.trim() || undefined,
-      takeProfit2: takeProfit2.trim() || undefined,
-      riskPercent: riskPercent.trim() || undefined,
-      sendEmail,
+    for (const children of childrenMap.values()) {
+      children.sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime());
+    }
+
+    return feed
+      .filter((message: any) => !message.parentId)
+      .map((message: any) => ({
+        message,
+        children: childrenMap.get(message.id) ?? [],
+      }));
+  }, [feed]);
+
+  const preparationAlerts = useMemo(() => {
+    return activeAlerts.filter((alert: any) => {
+      const notifiedAt = new Date(alert.notifiedAt).getTime();
+      const updatedAt = new Date(alert.updatedAt).getTime();
+
+      if (Number.isNaN(notifiedAt) || Number.isNaN(updatedAt)) {
+        return true;
+      }
+
+      return updatedAt <= notifiedAt;
     });
-  };
+  }, [activeAlerts]);
+
+  useEffect(() => {
+    if (!canRead || activeAlerts.length === 0) return;
+    const intervalId = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(intervalId);
+  }, [activeAlerts.length, canRead]);
 
   const copyMessage = (message: any) => {
     const text = buildCopyBlock(message, t);
@@ -349,7 +367,6 @@ export default function Recommendations() {
           <p className="text-muted-foreground">{t('rec.subtitle')}</p>
         </div>
 
-        {/* Status card — only shown to active subscribers */}
         <Card>
           <CardHeader>
             <CardTitle>{t('rec.accessStatus')}</CardTitle>
@@ -363,53 +380,68 @@ export default function Recommendations() {
           </CardContent>
         </Card>
 
+        {preparationAlerts.length > 0 && (
+          <Alert className="border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-800/40 dark:bg-emerald-900/10 dark:text-emerald-100">
+            <Megaphone className="h-4 w-4" />
+            <AlertTitle>{language === 'ar' ? 'المحلل يجهز توصيات جديدة' : 'The analyst is preparing new recommendations'}</AlertTitle>
+            <AlertDescription className="space-y-2">
+              <p>
+                {language === 'ar'
+                  ? 'تم إرسال تنبيه قصير لأن المحلل على وشك العودة برسائل جديدة. افتح القناة بعد حوالي دقيقة وتابع الرسائل داخل نفس الدردشة.'
+                  : 'A short alert was sent because the analyst is about to post again. Open the channel in about a minute and follow the next messages in this same chat.'}
+              </p>
+              <div className="space-y-2">
+                {preparationAlerts.map((alert: any) => {
+                  const unlockCountdown = formatCountdown(alert.unlockAt, now);
+                  const expiryCountdown = formatCountdown(alert.expiresAt, now);
+                  const unlockTime = alert.unlockAt ? new Date(alert.unlockAt).getTime() : 0;
+                  const unlocked = unlockTime > 0 && unlockTime <= now;
+                  return (
+                    <div key={alert.id} className="rounded-lg border border-emerald-200 bg-white/80 p-3 text-sm dark:border-emerald-800/50 dark:bg-emerald-950/40">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge className="bg-emerald-600 text-white">{language === 'ar' ? 'جلسة نشطة' : 'Active session'}</Badge>
+                        <span className="inline-flex items-center gap-1 font-medium">
+                          <Clock3 className="h-3.5 w-3.5" />
+                          {unlocked
+                            ? (language === 'ar' ? 'قد تبدأ الرسائل في أي لحظة' : 'Messages can start any moment now')
+                            : (language === 'ar'
+                                ? `تبدأ الرسائل خلال ${unlockCountdown ?? '0:00'}`
+                                : `Messages begin in ${unlockCountdown ?? '0:00'}`)}
+                        </span>
+                        {expiryCountdown && (
+                          <span className="text-xs text-muted-foreground">
+                            {language === 'ar' ? `يسقط التنبيه خلال ${expiryCountdown} إذا لم يبدأ المحلل الإرسال` : `This alert drops in ${expiryCountdown} if the analyst does not start sending`}
+                          </span>
+                        )}
+                      </div>
+                      {alert.note && (
+                        <p className="mt-2 text-xs text-muted-foreground whitespace-pre-wrap">{alert.note}</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
+
         {me?.canPublish && (
-          <Card>
+          <Card className="border-emerald-200 bg-emerald-50/70 dark:border-emerald-800/40 dark:bg-emerald-900/10">
             <CardHeader>
-              <CardTitle>{t('rec.publishNew')}</CardTitle>
-              <CardDescription>{t('rec.publishDesc')}</CardDescription>
+              <CardTitle>{language === 'ar' ? 'استخدم مساحة المحلل المخصصة' : 'Use the dedicated analyst workspace'}</CardTitle>
+              <CardDescription>
+                {language === 'ar'
+                  ? 'لوحة المحلل أصبحت أقرب للدردشة: تنبيه بسيط عند العودة بعد صمت طويل، ثم توصية رئيسية يتبعها ردود قصيرة داخل نفس الصفقة.'
+                  : 'The analyst workspace is now closer to a chat: one simple alert when coming back after a long silence, then a main recommendation followed by short replies in the same trade thread.'}
+              </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex gap-2 flex-wrap">
-                <div className="flex flex-col gap-1">
-                  <Button variant={type === "alert" ? "default" : "outline"} onClick={() => setType("alert")}>
-                    <Bell className="h-4 w-4 me-1" /> {t('rec.typeAlert')}
-                  </Button>
-                  <span className="text-xs text-muted-foreground px-1">{t('rec.typeAlertDesc')}</span>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <Button variant={type === "recommendation" ? "default" : "outline"} onClick={() => setType("recommendation")}>
-                    <TrendingUp className="h-4 w-4 me-1" /> {t('rec.typeRecommendation')}
-                  </Button>
-                  <span className="text-xs text-muted-foreground px-1">{t('rec.typeRecommendationDesc')}</span>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <Button variant={type === "result" ? "default" : "outline"} onClick={() => setType("result")}>
-                    <BarChart3 className="h-4 w-4 me-1" /> {t('rec.typeResult')}
-                  </Button>
-                  <span className="text-xs text-muted-foreground px-1">{t('rec.typeResultDesc')}</span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                <Input value={symbol} onChange={(e) => setSymbol(e.target.value)} placeholder={t('rec.symbolPlaceholder')} />
-                <Input value={side} onChange={(e) => setSide(e.target.value)} placeholder={t('rec.sidePlaceholder')} />
-                <Input value={entryPrice} onChange={(e) => setEntryPrice(e.target.value)} placeholder={t('rec.entryPlaceholder')} />
-                <Input value={stopLoss} onChange={(e) => setStopLoss(e.target.value)} placeholder={t('rec.slPlaceholder')} />
-                <Input value={takeProfit1} onChange={(e) => setTakeProfit1(e.target.value)} placeholder={t('rec.tp1Placeholder')} />
-                <Input value={takeProfit2} onChange={(e) => setTakeProfit2(e.target.value)} placeholder={t('rec.tp2Placeholder')} />
-                <Input value={riskPercent} onChange={(e) => setRiskPercent(e.target.value)} placeholder={t('rec.riskPlaceholder')} />
-              </div>
-
-              <Textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder={t('rec.messagePlaceholder')} rows={4} />
-
-              <div className="flex items-center gap-3 flex-wrap">
-                <Button onClick={onPublish} disabled={postMessageMutation.isPending}>{t('rec.publishBtn')}</Button>
-                <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
-                  <input type="checkbox" checked={sendEmail} onChange={(e) => setSendEmail(e.target.checked)} className="rounded border-gray-300" />
-                  {t('rec.sendEmailLabel')}
-                </label>
-              </div>
+            <CardContent>
+              <Link href="/admin/recommendations">
+                <Button className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                  <ArrowUpRight className="h-4 w-4 me-1" />
+                  {language === 'ar' ? 'افتح لوحة نشر التوصيات' : 'Open recommendation publisher'}
+                </Button>
+              </Link>
             </CardContent>
           </Card>
         )}
@@ -423,49 +455,101 @@ export default function Recommendations() {
             <CardContent className="space-y-3">
               {feedLoading ? (
                 <p className="text-sm text-muted-foreground">{t('rec.loadingMessages')}</p>
-              ) : feed.length === 0 ? (
+              ) : threadedFeed.length === 0 ? (
                 <p className="text-sm text-muted-foreground">{t('rec.noMessages')}</p>
               ) : (
-                feed.map((message: any) => (
-                  <div key={message.id} className="rounded-lg border p-4 space-y-3 bg-white">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline">{message.type}</Badge>
-                        {message.isAnalyst && <Badge>{t('rec.analyst')}</Badge>}
+                threadedFeed.map(({ message, children }: any) => (
+                  <div key={message.id} className="space-y-2">
+                    <div className="rounded-lg border p-4 space-y-3 bg-white">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Badge variant="outline" className={getMessageTypeClass(message.type)}>
+                            {getMessageTypeLabel(message.type, language === 'ar')}
+                          </Badge>
+                          {message.isAnalyst && <Badge>{t('rec.analyst')}</Badge>}
+                          {message.symbol && <Badge className="bg-gray-100 text-gray-700 dark:bg-white/10 dark:text-gray-300">{message.symbol}</Badge>}
+                          {message.side && (
+                            <Badge className={message.side === 'BUY' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}>
+                              {message.side}
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="text-xs text-muted-foreground whitespace-nowrap">
+                          {message.createdAt ? new Date(message.createdAt).toLocaleString(language === 'ar' ? 'ar-EG' : 'en-US') : '-'}
+                        </div>
                       </div>
-                      <div className="text-xs text-muted-foreground whitespace-nowrap">
-                        {message.createdAt ? new Date(message.createdAt).toLocaleString(language === 'ar' ? "ar-EG" : "en-US") : "-"}
+
+                      {(message.symbol || message.side || message.entryPrice) && (
+                        <div className="text-sm rounded border bg-muted p-3 whitespace-pre-wrap">
+                          {buildCopyBlock(message, t)}
+                        </div>
+                      )}
+
+                      <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Button size="sm" variant="outline" onClick={() => copyMessage(message)}>
+                          <Copy className="h-4 w-4 me-1" /> {t('rec.copy')}
+                        </Button>
+
+                        {(Object.keys(reactionIcons) as Array<keyof typeof reactionIcons>).map((reaction) => (
+                          <Button
+                            key={reaction}
+                            size="sm"
+                            variant={message.myReaction === reaction ? 'default' : 'outline'}
+                            onClick={() => reactMutation.mutate({
+                              messageId: message.id,
+                              reaction: message.myReaction === reaction ? null : reaction,
+                            })}
+                          >
+                            {reactionIcons[reaction]}
+                            <span className="ms-1">{message.reactions?.[reaction] ?? 0}</span>
+                          </Button>
+                        ))}
                       </div>
                     </div>
 
-                    {(message.symbol || message.side || message.entryPrice) && (
-                      <div className="text-sm rounded border bg-muted p-3 whitespace-pre-wrap">
-                        {buildCopyBlock(message, t)}
+                    {children.length > 0 && (
+                      <div className={`space-y-2 ${language === 'ar' ? 'border-r-2 border-amber-300 pr-4 mr-4' : 'border-l-2 border-amber-300 pl-4 ml-4'}`}>
+                        {children.map((child: any) => (
+                          <div key={child.id} className={`rounded-lg border p-3 space-y-2 ${child.type === 'result' ? 'bg-teal-50/50 border-teal-200 dark:bg-teal-900/10 dark:border-teal-800/30' : 'bg-amber-50/50 border-amber-200 dark:bg-amber-900/10 dark:border-amber-800/30'}`}>
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2">
+                                <Badge variant="outline" className={getMessageTypeClass(child.type)}>
+                                  {getMessageTypeLabel(child.type, language === 'ar')}
+                                </Badge>
+                                <span className="text-xs text-muted-foreground">#{child.id}</span>
+                              </div>
+                              <div className="text-xs text-muted-foreground whitespace-nowrap">
+                                {child.createdAt ? new Date(child.createdAt).toLocaleString(language === 'ar' ? 'ar-EG' : 'en-US') : '-'}
+                              </div>
+                            </div>
+
+                            <p className="text-sm whitespace-pre-wrap">{child.content}</p>
+
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <Button size="sm" variant="outline" onClick={() => copyMessage(child)}>
+                                <Copy className="h-4 w-4 me-1" /> {t('rec.copy')}
+                              </Button>
+                              {(Object.keys(reactionIcons) as Array<keyof typeof reactionIcons>).map((reaction) => (
+                                <Button
+                                  key={reaction}
+                                  size="sm"
+                                  variant={child.myReaction === reaction ? 'default' : 'outline'}
+                                  onClick={() => reactMutation.mutate({
+                                    messageId: child.id,
+                                    reaction: child.myReaction === reaction ? null : reaction,
+                                  })}
+                                >
+                                  {reactionIcons[reaction]}
+                                  <span className="ms-1">{child.reactions?.[reaction] ?? 0}</span>
+                                </Button>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     )}
-
-                    <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Button size="sm" variant="outline" onClick={() => copyMessage(message)}>
-                        <Copy className="h-4 w-4 me-1" /> {t('rec.copy')}
-                      </Button>
-
-                      {(Object.keys(reactionIcons) as Array<keyof typeof reactionIcons>).map((reaction) => (
-                        <Button
-                          key={reaction}
-                          size="sm"
-                          variant={message.myReaction === reaction ? "default" : "outline"}
-                          onClick={() => reactMutation.mutate({
-                            messageId: message.id,
-                            reaction: message.myReaction === reaction ? null : reaction,
-                          })}
-                        >
-                          {reactionIcons[reaction]}
-                          <span className="ms-1">{message.reactions?.[reaction] ?? 0}</span>
-                        </Button>
-                      ))}
-                    </div>
                   </div>
                 ))
               )}

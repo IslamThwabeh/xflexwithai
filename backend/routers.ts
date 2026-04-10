@@ -343,9 +343,12 @@ const getLatestLexaiAnalysis = async (userId: number, analysisType: string) => {
 };
 
 const RECOMMENDATION_REACTIONS = ["like", "love", "sad", "fire", "rocket"] as const;
+const RECOMMENDATION_ALERT_UNLOCK_SECONDS = 60;
+const RECOMMENDATION_ALERT_EXPIRY_MINUTES = 15;
+const RECOMMENDATION_EMAIL_INACTIVE_MINUTES = 15;
 
 const buildRecommendationPlainText = (payload: {
-  type: "alert" | "recommendation" | "result";
+  type: "alert" | "recommendation" | "update" | "result";
   content: string;
   symbol?: string;
   side?: string;
@@ -377,6 +380,51 @@ const buildRecommendationPlainText = (payload: {
   lines.push("تابع القروب الآن للتنفيذ السريع.");
 
   return lines.join("\n");
+};
+
+const recommendationNotificationsEnabled = (notificationPrefs: string | null | undefined) => {
+  try {
+    const prefs = JSON.parse(notificationPrefs || '{}');
+    return prefs.recommendations !== false;
+  } catch {
+    return true;
+  }
+};
+
+const isRecommendationEmailCandidate = (
+  lastInteractiveAt: string | null | undefined,
+  threshold: Date,
+) => {
+  if (!lastInteractiveAt) return true;
+  const parsed = new Date(lastInteractiveAt);
+  if (Number.isNaN(parsed.getTime())) return true;
+  return parsed <= threshold;
+};
+
+const buildRecommendationAlertNotificationCopy = () => ({
+  titleEn: 'Recommendations channel alert',
+  titleAr: 'تنبيه قناة التوصيات',
+  contentEn: `Our analyst is about to send recommendations in the next few minutes. Wait about ${RECOMMENDATION_ALERT_UNLOCK_SECONDS} seconds, then open the channel.`,
+  contentAr: `المحلل على وشك إرسال توصيات خلال الدقائق القادمة. انتظر حوالي ${RECOMMENDATION_ALERT_UNLOCK_SECONDS} ثانية، ثم افتح القناة.`,
+  emailSubject: 'Recommendations alert — the channel opens in about 1 minute',
+});
+
+const buildRecommendationAlertEmailText = () => {
+  const lines = [
+    'XFlex - Recommendations Alert',
+    '------------------------------',
+    'The analyst is about to send recommendations in the next few minutes.',
+    `Wait about ${RECOMMENDATION_ALERT_UNLOCK_SECONDS} seconds, then open the recommendations channel.`,
+    '',
+    'If the analyst goes silent for 15 minutes, another alert will be required before the next new message.',
+    '',
+    'تحضير جلسة توصيات جديدة',
+    '------------------------------',
+    'المحلل على وشك إرسال توصيات خلال الدقائق القادمة.',
+    `انتظر حوالي ${RECOMMENDATION_ALERT_UNLOCK_SECONDS} ثانية، ثم افتح قناة التوصيات.`,
+  ];
+
+  return lines.join('\n');
 };
 
 const ensureRecommendationReadAccess = async (ctx: { user: { id: number; email?: string | null } | null }) => {
@@ -1356,6 +1404,14 @@ export const appRouter = router({
         await db.updateUser(ctx.user.id, { notificationPrefs: JSON.stringify(updated) });
         return { success: true, prefs: updated };
       }),
+
+    touchInteraction: protectedProcedure.mutation(async ({ ctx }) => {
+      if (!ctx.user) {
+        throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Not authenticated' });
+      }
+      await db.touchUserInteraction(ctx.user.id);
+      return { success: true };
+    }),
 
     // User: Update login security mode
     updateLoginSecurity: protectedProcedure
@@ -2434,6 +2490,16 @@ export const appRouter = router({
       };
     }),
 
+    publishState: protectedProcedure.query(async ({ ctx }) => {
+      await ensureRecommendationPublishAccess(ctx);
+      return db.getRecommendationPublishState(ctx.user.id);
+    }),
+
+    activeAlerts: protectedProcedure.query(async ({ ctx }) => {
+      await ensureRecommendationReadAccess(ctx);
+      return db.listActiveRecommendationAlerts();
+    }),
+
     feed: protectedProcedure
       .input(z.object({ limit: z.number().min(20).max(500).optional() }).optional())
       .query(async ({ ctx, input }) => {
@@ -2441,10 +2507,97 @@ export const appRouter = router({
         return await db.getRecommendationMessagesFeed(ctx.user.id, input?.limit ?? 200);
       }),
 
+    notifyClients: protectedProcedure
+      .input(z.object({
+        note: z.string().max(200).optional(),
+      }).optional())
+      .mutation(async ({ ctx, input }) => {
+        await ensureRecommendationPublishAccess(ctx);
+
+        const alert = await db.createRecommendationAlert({
+          analystUserId: ctx.user.id,
+          note: input?.note,
+        });
+
+        const subscribers = await db.getRecommendationSubscriberDetails();
+        const recipients = subscribers.filter((sub) => recommendationNotificationsEnabled(sub.notificationPrefs));
+        const copy = buildRecommendationAlertNotificationCopy();
+        const batchId = `rec_alert_${alert.id}_${Date.now()}`;
+
+        if (recipients.length) {
+          await db.sendBulkNotification({
+            userIds: recipients.map((sub) => sub.userId),
+            type: 'info',
+            titleEn: copy.titleEn,
+            titleAr: copy.titleAr,
+            contentEn: copy.contentEn,
+            contentAr: copy.contentAr,
+            actionUrl: '/recommendations',
+            batchId,
+          });
+        }
+
+        const inactivityThreshold = new Date(Date.now() - RECOMMENDATION_EMAIL_INACTIVE_MINUTES * 60 * 1000);
+        const emailCandidates = recipients.filter((sub) => isRecommendationEmailCandidate(sub.lastInteractiveAt, inactivityThreshold));
+        const emailResults = await Promise.allSettled(
+          emailCandidates.map(async (sub) => {
+            await sendEmail({
+              to: sub.email,
+              subject: copy.emailSubject,
+              text: buildRecommendationAlertEmailText(),
+            });
+            await db.markNotificationEmailSent(batchId, sub.userId);
+            return sub.userId;
+          })
+        );
+
+        const emailCount = emailResults.filter((result) => result.status === 'fulfilled').length;
+
+        const isAdmin = !!(ctx.user?.email && await db.getAdminByEmail(ctx.user.email));
+        if (ctx.user?.isStaff && !isAdmin) {
+          await writeStaffActivityLog({
+            ctx: { ...ctx, admin: null },
+            path: 'recommendations.notifyClients',
+            type: 'mutation',
+            input: {
+              alertId: alert.id,
+              recipientCount: recipients.length,
+              emailCount,
+            },
+          });
+        }
+
+        return {
+          success: true,
+          alert,
+          recipientCount: recipients.length,
+          emailCount,
+        };
+      }),
+
+    cancelAlert: protectedProcedure
+      .input(z.object({ alertId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        await ensureRecommendationPublishAccess(ctx);
+        const isAdmin = !!(ctx.user?.email && await db.getAdminByEmail(ctx.user.email));
+        await db.cancelRecommendationAlert(input.alertId, ctx.user.id, isAdmin);
+
+        if (ctx.user?.isStaff && !isAdmin) {
+          await writeStaffActivityLog({
+            ctx: { ...ctx, admin: null },
+            path: 'recommendations.cancelAlert',
+            type: 'mutation',
+            input,
+          });
+        }
+
+        return { success: true };
+      }),
+
     postMessage: protectedProcedure
       .input(
         z.object({
-          type: z.enum(["alert", "recommendation", "result"]),
+          type: z.enum(["recommendation", "update", "result"]),
           content: z.string().min(3).max(4000),
           symbol: z.string().max(30).optional(),
           side: z.string().max(10).optional(),
@@ -2454,81 +2607,119 @@ export const appRouter = router({
           takeProfit2: z.string().max(50).optional(),
           riskPercent: z.string().max(20).optional(),
           parentId: z.number().optional(),
-          sendEmail: z.boolean().optional(),
         })
       )
       .mutation(async ({ ctx, input }) => {
         await ensureRecommendationPublishAccess(ctx);
 
-        const messageId = await db.createRecommendationMessage({
-          userId: ctx.user.id,
-          type: input.type,
-          content: input.content,
-          symbol: input.symbol,
-          side: input.side,
-          entryPrice: input.entryPrice,
-          stopLoss: input.stopLoss,
-          takeProfit1: input.takeProfit1,
-          takeProfit2: input.takeProfit2,
-          riskPercent: input.riskPercent,
-          parentId: input.parentId,
-          createdAt: new Date().toISOString(),
-        });
-
-        // In-app notification for all active subscribers
-        if (input.type === "alert" || input.type === "recommendation") {
-          const allSubs = await db.getRecommendationSubscriberDetails();
-          const symbolTag = input.symbol ? ` — ${input.symbol}` : '';
-          await Promise.allSettled(allSubs.map(sub => {
-            try {
-              const prefs = JSON.parse(sub.notificationPrefs || '{}');
-              if (prefs.recommendations === false) return Promise.resolve();
-            } catch { /* default: send */ }
-            return db.createNotification({
-              userId: sub.userId,
-              type: 'info',
-              titleAr: input.type === 'alert' ? `تنبيه جديد${symbolTag}` : `توصية جديدة${symbolTag}`,
-              titleEn: input.type === 'alert' ? `New Alert${symbolTag}` : `New Recommendation${symbolTag}`,
-              contentAr: input.content.length > 100 ? input.content.slice(0, 100) + '…' : input.content,
-              contentEn: input.content.length > 100 ? input.content.slice(0, 100) + '…' : input.content,
-              actionUrl: '/recommendations',
-            });
-          }));
-        }
-
-        if (input.sendEmail && (input.type === "alert" || input.type === "recommendation")) {
-          const subscribers = await db.getRecommendationSubscriberDetails();
-          const onlineThreshold = new Date(Date.now() - 5 * 60 * 1000);
-          const eligibleEmails = subscribers.filter(sub => {
-            // Skip if user opted out of recommendations
-            try {
-              const prefs = JSON.parse(sub.notificationPrefs || '{}');
-              if (prefs.recommendations === false) return false;
-            } catch { /* default: send */ }
-            // Skip if user is currently online
-            if (sub.lastActiveAt && new Date(sub.lastActiveAt) > onlineThreshold) return false;
-            return true;
-          }).map(sub => sub.email);
-
-          if (eligibleEmails.length) {
-            const subject = input.type === "alert"
-              ? "تنبيه: توصية جديدة خلال دقيقة - XFlex"
-              : "توصية جديدة في قروب التوصيات - XFlex";
-            const text = buildRecommendationPlainText(input);
-
-            await Promise.allSettled(
-              eligibleEmails.map((to) =>
-                sendEmail({
-                  to,
-                  subject,
-                  text,
-                })
-              )
-            );
-          }
+        const trimmedContent = input.content.trim();
+        if (trimmedContent.length < 3) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Please write a clear message first.' });
         }
 
         const isAdmin = !!(ctx.user?.email && await db.getAdminByEmail(ctx.user.email));
+        const publishState = await db.getRecommendationPublishState(ctx.user.id);
+        if (!publishState.activeAlert) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: 'Notify clients first, then wait one minute before sending in the recommendations channel.',
+          });
+        }
+        if (!publishState.canPostMessages) {
+          if (publishState.secondsUntilUnlock > 0) {
+            throw new TRPCError({
+              code: 'FORBIDDEN',
+              message: `Wait ${publishState.secondsUntilUnlock} more seconds before sending the next channel message.`,
+            });
+          }
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: 'The chat paused after 15 minutes of analyst silence. Notify clients again before sending a new message.',
+          });
+        }
+
+        let messageId: number;
+        const linkedAlertId = publishState.activeAlert.id;
+
+        if (input.type === 'recommendation') {
+          if (input.parentId) {
+            throw new TRPCError({ code: 'BAD_REQUEST', message: 'Top-level recommendations cannot be posted inside another thread.' });
+          }
+
+          const normalizedSymbol = input.symbol?.trim().toUpperCase();
+          if (!normalizedSymbol) {
+            throw new TRPCError({ code: 'BAD_REQUEST', message: 'Choose the symbol first.' });
+          }
+
+          messageId = await db.createRecommendationMessage({
+            userId: ctx.user.id,
+            type: input.type,
+            content: trimmedContent,
+            symbol: normalizedSymbol,
+            side: input.side,
+            entryPrice: input.entryPrice,
+            stopLoss: input.stopLoss,
+            takeProfit1: input.takeProfit1,
+            takeProfit2: input.takeProfit2,
+            riskPercent: input.riskPercent,
+            parentId: null,
+            createdAt: new Date().toISOString(),
+          });
+
+          const allSubs = await db.getRecommendationSubscriberDetails();
+          const recipients = allSubs.filter((sub) => recommendationNotificationsEnabled(sub.notificationPrefs));
+          const symbolTag = normalizedSymbol ? ` — ${normalizedSymbol}` : '';
+          if (recipients.length) {
+            await db.sendBulkNotification({
+              userIds: recipients.map((sub) => sub.userId),
+              type: 'info',
+              titleEn: `New Recommendation${symbolTag}`,
+              titleAr: `توصية جديدة${symbolTag}`,
+              contentEn: trimmedContent.length > 100 ? `${trimmedContent.slice(0, 100)}…` : trimmedContent,
+              contentAr: trimmedContent.length > 100 ? `${trimmedContent.slice(0, 100)}…` : trimmedContent,
+              actionUrl: '/recommendations',
+              batchId: `rec_live_${messageId}`,
+            });
+          }
+        } else {
+          if (!input.parentId) {
+            throw new TRPCError({ code: 'BAD_REQUEST', message: 'Choose the parent recommendation first.' });
+          }
+
+          const parentMessage = await db.getRecommendationMessageById(input.parentId);
+          if (!parentMessage) {
+            throw new TRPCError({ code: 'NOT_FOUND', message: 'Parent recommendation not found.' });
+          }
+          if (parentMessage.type !== 'recommendation') {
+            throw new TRPCError({ code: 'BAD_REQUEST', message: 'Updates and results can only be added to an existing recommendation.' });
+          }
+
+          const normalizedSymbol = input.symbol?.trim().toUpperCase();
+          if (normalizedSymbol && parentMessage.symbol && normalizedSymbol !== parentMessage.symbol) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: 'Same-trade updates must stay on the original recommendation symbol.',
+            });
+          }
+
+          messageId = await db.createRecommendationMessage({
+            userId: ctx.user.id,
+            type: input.type,
+            content: trimmedContent,
+            symbol: parentMessage.symbol ?? normalizedSymbol ?? undefined,
+            side: input.side,
+            entryPrice: input.entryPrice,
+            stopLoss: input.stopLoss,
+            takeProfit1: input.takeProfit1,
+            takeProfit2: input.takeProfit2,
+            riskPercent: input.riskPercent,
+            parentId: input.parentId,
+            createdAt: new Date().toISOString(),
+          });
+        }
+
+        await db.extendRecommendationAlertActivity(linkedAlertId, ctx.user.id);
+
         if (ctx.user?.isStaff && !isAdmin) {
           await writeStaffActivityLog({
             ctx: { ...ctx, admin: null },
@@ -2536,10 +2727,10 @@ export const appRouter = router({
             type: 'mutation',
             input: {
               type: input.type,
-              symbol: input.symbol,
+              symbol: input.symbol?.trim().toUpperCase(),
               side: input.side,
               parentId: input.parentId,
-              sendEmail: input.sendEmail,
+              alertId: linkedAlertId,
             },
           });
         }

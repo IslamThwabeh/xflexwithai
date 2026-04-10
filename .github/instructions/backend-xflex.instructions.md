@@ -14,6 +14,8 @@ applyTo: "backend/**,database/**"
 - `fulfillPackageEntitlements()` falls back to all published courses when `packageCourses` is empty.
 - Use `getUserEntitlementDays(userId)` for durations. Do not hardcode 30 or 44 days.
 - Pending subscriptions are not accessible. Active getters must filter `isPendingActivation=false`.
+- Recommendation channel publishing is silence-based: create a `recommendationAlerts` row, wait 60 seconds, then allow analyst `recommendation`, `update`, and `result` messages. Every analyst message refreshes the 15-minute inactivity timer; only after 15 minutes of silence is a new alert required.
+- Recommendation alert emails should key off `users.lastInteractiveAt`, not `lastActiveAt`, because authenticated polling traffic should not suppress inactive-user email delivery.
 - For create-or-update entitlement flows, use `getAnyRecommendationSubscription()` / `getAnyLexaiSubscription()` rather than the active-only getters, or you can create duplicates.
 - `skipCourseForUser()` is flag-only: it sets `isAdminSkipped=1`, does not mark episodes watched, and should preserve student progress.
 - Cloudflare Workers do not keep detached promises alive after the response. Always `await` async work or use `ctx.waitUntil()`.

@@ -12,6 +12,7 @@ import {
   lexaiMessages, LexaiMessage, InsertLexaiMessage,
   registrationKeys, RegistrationKey, InsertRegistrationKey,
   recommendationSubscriptions, RecommendationSubscription, InsertRecommendationSubscription,
+  recommendationAlerts, RecommendationAlert, InsertRecommendationAlert,
   recommendationMessages, RecommendationMessage, InsertRecommendationMessage,
   recommendationReactions, RecommendationReaction, InsertRecommendationReaction,
   authEmailOtps, AuthEmailOtp, InsertAuthEmailOtp,
@@ -81,6 +82,8 @@ let _db: ReturnType<typeof drizzle> | null = null;
 
 const DEFAULT_KEY_ENTITLEMENT_DAYS = 30;
 const DEFAULT_STUDY_PERIOD_DAYS = 14;
+const RECOMMENDATION_ALERT_UNLOCK_MS = 60 * 1000;
+const RECOMMENDATION_ALERT_EXPIRY_MS = 15 * 60 * 1000;
 
 /**
  * Get the configurable study period (فترة التعلم) from admin settings.
@@ -591,6 +594,23 @@ export async function touchUserActivity(userId: number): Promise<void> {
   try {
     await db.update(users)
       .set({ lastActiveAt: new Date().toISOString() })
+      .where(eq(users.id, userId));
+  } catch {
+    // Non-critical, don't throw
+  }
+}
+
+/**
+ * Touch user's last real interaction timestamp.
+ * This is separate from authenticated request activity, which may be driven by polling.
+ */
+export async function touchUserInteraction(userId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+
+  try {
+    await db.update(users)
+      .set({ lastInteractiveAt: new Date().toISOString() })
       .where(eq(users.id, userId));
   } catch {
     // Non-critical, don't throw
@@ -2238,7 +2258,15 @@ export async function getRecommendationSubscriberEmails() {
  * Get recommendation subscriber details including online status and notification prefs.
  * Used for email suppression: skip email if user is online or opted out.
  */
-export async function getRecommendationSubscriberDetails(): Promise<Array<{ userId: number; email: string; lastActiveAt: string | null; notificationPrefs: string | null }>> {
+export type RecommendationSubscriberDetail = {
+  userId: number;
+  email: string;
+  lastActiveAt: string | null;
+  lastInteractiveAt: string | null;
+  notificationPrefs: string | null;
+};
+
+export async function getRecommendationSubscriberDetails(): Promise<RecommendationSubscriberDetail[]> {
   const db = await getDb();
   if (!db) return [];
 
@@ -2263,6 +2291,7 @@ export async function getRecommendationSubscriberDetails(): Promise<Array<{ user
       id: users.id,
       email: users.email,
       lastActiveAt: users.lastActiveAt,
+      lastInteractiveAt: users.lastInteractiveAt,
       notificationPrefs: users.notificationPrefs,
     })
     .from(users)
@@ -2270,7 +2299,188 @@ export async function getRecommendationSubscriberDetails(): Promise<Array<{ user
 
   return rows
     .filter(r => r.email)
-    .map(r => ({ userId: r.id, email: r.email, lastActiveAt: r.lastActiveAt, notificationPrefs: r.notificationPrefs }));
+    .map(r => ({
+      userId: r.id,
+      email: r.email,
+      lastActiveAt: r.lastActiveAt,
+      lastInteractiveAt: r.lastInteractiveAt,
+      notificationPrefs: r.notificationPrefs,
+    }));
+}
+
+async function expireRecommendationAlertsForAnalyst(analystUserId?: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+
+  const nowIso = new Date().toISOString();
+  const filters = [
+    eq(recommendationAlerts.status, 'pending'),
+    sql`${recommendationAlerts.expiresAt} <= ${nowIso}`,
+  ];
+
+  if (analystUserId !== undefined) {
+    filters.push(eq(recommendationAlerts.analystUserId, analystUserId));
+  }
+
+  await db.update(recommendationAlerts)
+    .set({ status: 'expired', updatedAt: nowIso })
+    .where(and(...filters));
+}
+
+export async function getActiveRecommendationAlertForAnalyst(analystUserId: number): Promise<RecommendationAlert | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+
+  await expireRecommendationAlertsForAnalyst(analystUserId);
+
+  const nowIso = new Date().toISOString();
+  const rows = await db.select()
+    .from(recommendationAlerts)
+    .where(and(
+      eq(recommendationAlerts.analystUserId, analystUserId),
+      eq(recommendationAlerts.status, 'pending'),
+      sql`${recommendationAlerts.expiresAt} > ${nowIso}`,
+    ))
+    .orderBy(desc(recommendationAlerts.notifiedAt))
+    .limit(1);
+
+  return rows[0];
+}
+
+export async function createRecommendationAlert(input: {
+  analystUserId: number;
+  note?: string | null;
+}): Promise<RecommendationAlert> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const existing = await getActiveRecommendationAlertForAnalyst(input.analystUserId);
+  if (existing) {
+    throw new Error("There is already an active chat session. Wait for it to pause or cancel it before starting a new one.");
+  }
+
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const unlockAt = new Date(now.getTime() + RECOMMENDATION_ALERT_UNLOCK_MS).toISOString();
+  const expiresAt = new Date(now.getTime() + RECOMMENDATION_ALERT_EXPIRY_MS).toISOString();
+  const note = input.note?.trim() || null;
+
+  const [row] = await db.insert(recommendationAlerts).values({
+    analystUserId: input.analystUserId,
+    note,
+    notifiedAt: nowIso,
+    unlockAt,
+    expiresAt,
+    status: 'pending',
+    createdAt: nowIso,
+    updatedAt: nowIso,
+  }).returning();
+
+  return row;
+}
+
+export async function cancelRecommendationAlert(alertId: number, analystUserId: number, isAdmin: boolean = false): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const [row] = await db.select()
+    .from(recommendationAlerts)
+    .where(eq(recommendationAlerts.id, alertId))
+    .limit(1);
+
+  if (!row) {
+    throw new Error("Notification window not found");
+  }
+  if (!isAdmin && row.analystUserId !== analystUserId) {
+    throw new Error("You can only cancel your own notification window");
+  }
+  if (row.status !== 'pending') {
+    throw new Error("This notification window is no longer active");
+  }
+
+  const nowIso = new Date().toISOString();
+  await db.update(recommendationAlerts)
+    .set({
+      status: 'cancelled',
+      cancelledAt: nowIso,
+      updatedAt: nowIso,
+    })
+    .where(eq(recommendationAlerts.id, alertId));
+}
+
+export async function extendRecommendationAlertActivity(alertId: number, analystUserId: number): Promise<RecommendationAlert> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const nowIso = new Date().toISOString();
+  const expiresAt = new Date(Date.now() + RECOMMENDATION_ALERT_EXPIRY_MS).toISOString();
+
+  const [row] = await db.update(recommendationAlerts)
+    .set({
+      expiresAt,
+      updatedAt: nowIso,
+    })
+    .where(and(
+      eq(recommendationAlerts.id, alertId),
+      eq(recommendationAlerts.analystUserId, analystUserId),
+      eq(recommendationAlerts.status, 'pending'),
+    ))
+    .returning();
+
+  if (!row) {
+    throw new Error("Notification window not found");
+  }
+
+  return row;
+}
+
+export async function listActiveRecommendationAlerts(): Promise<RecommendationAlert[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  await expireRecommendationAlertsForAnalyst();
+
+  const nowIso = new Date().toISOString();
+  return db.select()
+    .from(recommendationAlerts)
+    .where(and(
+      eq(recommendationAlerts.status, 'pending'),
+      sql`${recommendationAlerts.expiresAt} > ${nowIso}`,
+    ))
+    .orderBy(desc(recommendationAlerts.notifiedAt));
+}
+
+export async function getRecommendationPublishState(analystUserId: number): Promise<{
+  activeAlert: RecommendationAlert | null;
+  canNotify: boolean;
+  canPostMessages: boolean;
+  secondsUntilUnlock: number;
+  secondsUntilExpiry: number;
+}> {
+  const activeAlert = await getActiveRecommendationAlertForAnalyst(analystUserId);
+  if (!activeAlert) {
+    return {
+      activeAlert: null,
+      canNotify: true,
+      canPostMessages: false,
+      secondsUntilUnlock: 0,
+      secondsUntilExpiry: 0,
+    };
+  }
+
+  const now = Date.now();
+  const unlockAt = new Date(activeAlert.unlockAt).getTime();
+  const expiresAt = new Date(activeAlert.expiresAt).getTime();
+  const secondsUntilUnlock = Math.max(0, Math.ceil((unlockAt - now) / 1000));
+  const secondsUntilExpiry = Math.max(0, Math.ceil((expiresAt - now) / 1000));
+
+  return {
+    activeAlert,
+    canNotify: false,
+    canPostMessages: secondsUntilUnlock === 0 && secondsUntilExpiry > 0,
+    secondsUntilUnlock,
+    secondsUntilExpiry,
+  };
 }
 
 export async function createRecommendationMessage(message: InsertRecommendationMessage) {
@@ -2278,6 +2488,18 @@ export async function createRecommendationMessage(message: InsertRecommendationM
   if (!db) throw new Error("Database not available");
   const result = await db.insert(recommendationMessages).values(message).returning({ id: recommendationMessages.id });
   return result[0].id;
+}
+
+export async function getRecommendationMessageById(messageId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+
+  const rows = await db.select()
+    .from(recommendationMessages)
+    .where(eq(recommendationMessages.id, messageId))
+    .limit(1);
+
+  return rows[0];
 }
 
 export async function deleteRecommendationMessage(messageId: number, userId: number, isAdmin: boolean = false) {
@@ -2313,8 +2535,10 @@ export async function getRecommendationMessagesFeed(userId: number, limit: numbe
     .orderBy(desc(recommendationMessages.createdAt))
     .limit(limit);
 
-  const messageIds = messages.map((message) => message.id);
-  const authorIds = Array.from(new Set(messages.map((message) => message.userId)));
+  const orderedMessages = [...messages].reverse();
+
+  const messageIds = orderedMessages.map((message) => message.id);
+  const authorIds = Array.from(new Set(orderedMessages.map((message) => message.userId)));
 
   const authors = authorIds.length
     ? await db
@@ -2338,7 +2562,7 @@ export async function getRecommendationMessagesFeed(userId: number, limit: numbe
         .where(inArray(recommendationReactions.messageId, messageIds))
     : [];
 
-  return messages.map((message) => {
+  return orderedMessages.map((message) => {
     const author = authors.find((item) => item.id === message.userId);
     const messageReactions = reactions.filter((reaction) => reaction.messageId === message.id);
     const reactionCounts = {

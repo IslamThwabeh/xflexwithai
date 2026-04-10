@@ -1,4 +1,4 @@
-import { ReactNode, useState } from "react";
+import { ReactNode, useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -53,9 +53,44 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
   const [location] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
+  const lastInteractionAtRef = useRef(0);
 
   const { data: unreadNotifData } = trpc.notifications.unreadCount.useQuery(undefined, { refetchInterval: 30_000 });
+  const touchInteractionMutation = trpc.users.touchInteraction.useMutation();
   const unreadNotifCount = unreadNotifData?.count ?? 0;
+
+  useEffect(() => {
+    if (!user) return;
+
+    const touchInteraction = () => {
+      const now = Date.now();
+      if (now - lastInteractionAtRef.current < 60_000) return;
+      lastInteractionAtRef.current = now;
+      touchInteractionMutation.mutate();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        touchInteraction();
+      }
+    };
+
+    touchInteraction();
+
+    window.addEventListener("pointerdown", touchInteraction, { passive: true });
+    window.addEventListener("keydown", touchInteraction);
+    window.addEventListener("touchstart", touchInteraction, { passive: true });
+    window.addEventListener("focus", touchInteraction);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("pointerdown", touchInteraction);
+      window.removeEventListener("keydown", touchInteraction);
+      window.removeEventListener("touchstart", touchInteraction);
+      window.removeEventListener("focus", touchInteraction);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [touchInteractionMutation, user]);
 
   const handleLogout = async () => {
     try { window.localStorage.removeItem("xflex_last_email"); } catch {}

@@ -5,17 +5,85 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
-import { PauseCircle, PlayCircle, UserCog, Bell, TrendingUp, Copy, Trash2, ArrowDown, ArrowUp, Plus } from "lucide-react";
+import { PauseCircle, PlayCircle, UserCog, Bell, TrendingUp, Copy, Trash2, ArrowDown, ArrowUp, Plus, Clock3, Megaphone, XCircle, Info } from "lucide-react";
 import { useDataTable, DataTablePagination, zebraRow } from "@/components/DataTable";
 
-type RecommendationType = "alert" | "recommendation" | "result";
+type RecommendationType = "recommendation" | "update" | "result";
 
 const QUICK_SYMBOLS = ["XAUUSD", "EURUSD", "GBPUSD", "USDJPY", "BTCUSD", "US30"];
+
+const QUICK_REPLY_PRESETS = [
+  {
+    key: "secure",
+    labelEn: "Secure + Reserve",
+    labelAr: "تأمين + حجز",
+    value: "Running +30 Pips ✅🔥 تأمين\n\nبإمكانك الحجز",
+  },
+  {
+    key: "tp1",
+    labelEn: "TP1",
+    labelAr: "هدف 1",
+    value: "TP1 +50 Pips ✅🔥",
+  },
+  {
+    key: "tp2",
+    labelEn: "TP2",
+    labelAr: "هدف 2",
+    value: "TP2 +100 Pips ✅✅🔥🔥",
+  },
+  {
+    key: "tp3",
+    labelEn: "TP3",
+    labelAr: "هدف 3",
+    value: "TP3 +150 Pips ✅✅✅🔥🔥🔥",
+  },
+  {
+    key: "sl",
+    labelEn: "SL",
+    labelAr: "ستوب",
+    value: "SL ❌ -50 Pips",
+  },
+  {
+    key: "hitTarget",
+    labelEn: "First Target Hit",
+    labelAr: "ضربت هدف أول",
+    value: "ضربت هدف اول",
+  },
+  {
+    key: "stopped",
+    labelEn: "Stopped Out",
+    labelAr: "ضربت ستوب",
+    value: "ضربت ستوب",
+  },
+];
+
+function formatCountdown(seconds: number) {
+  const safeSeconds = Math.max(0, seconds);
+  const minutes = Math.floor(safeSeconds / 60);
+  const remainingSeconds = safeSeconds % 60;
+  return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
+}
+
+function getMessageTypeLabel(type: string, isRTL: boolean) {
+  if (type === "result") return isRTL ? "نتيجة" : "Result";
+  if (type === "update") return isRTL ? "رد" : "Reply";
+  if (type === "alert") return isRTL ? "تنبيه" : "Alert";
+  return isRTL ? "توصية" : "Recommendation";
+}
+
+function getMessageTypeClass(type: string) {
+  if (type === "result") return "border-teal-300 text-teal-700 dark:text-teal-300";
+  if (type === "update") return "border-amber-300 text-amber-700 dark:text-amber-300";
+  if (type === "alert") return "border-emerald-300 text-emerald-700 dark:text-emerald-300";
+  return "border-emerald-300 text-emerald-700 dark:text-emerald-400";
+}
 
 function buildCopyBlock(message: any, t: (key: string) => string) {
   const lines: string[] = [];
@@ -29,6 +97,58 @@ function buildCopyBlock(message: any, t: (key: string) => string) {
   lines.push("");
   lines.push(message.content || "");
   return lines.join("\n").trim();
+}
+
+function formatRecommendationUiError(message: string, isRTL: boolean) {
+  const waitMatch = message.match(/^Wait (\d+) more seconds before sending the next channel message\.$/);
+
+  if (isRTL) {
+    if (waitMatch) {
+      return `هذا طبيعي: انتظر ${waitMatch[1]} ثانية إضافية قبل إرسال الرسالة التالية في القناة.`;
+    }
+
+    switch (message) {
+      case "Notify clients first, then wait one minute before sending in the recommendations channel.":
+        return "بعد 15 دقيقة من الصمت يجب أولاً الضغط على إخطار العملاء، ثم انتظار دقيقة واحدة قبل إرسال أي رسالة جديدة.";
+      case "The chat paused after 15 minutes of analyst silence. Notify clients again before sending a new message.":
+        return "توقفت الدردشة بعد 15 دقيقة من صمت المحلل. أرسل إخطاراً جديداً للعملاء قبل كتابة الرسالة التالية.";
+      case "Choose the symbol first.":
+        return "اختر الزوج أولاً قبل نشر التوصية.";
+      case "Choose the parent recommendation first.":
+        return "اختر التوصية الأم أولاً قبل إضافة تحديث أو نتيجة.";
+      case "Top-level recommendations cannot be posted inside another thread.":
+        return "التوصية الجديدة يجب أن تكون رسالة رئيسية، وليست داخل سلسلة قائمة.";
+      case "Parent recommendation not found.":
+        return "تعذر العثور على التوصية الأم. حدّث الصفحة ثم اختر التوصية من جديد.";
+      case "Updates and results can only be added to an existing recommendation.":
+        return "يمكن إضافة التحديثات والنتائج فقط داخل توصية موجودة بالفعل.";
+      case "Same-trade updates must stay on the original recommendation symbol.":
+        return "تحديثات نفس الصفقة يجب أن تبقى على نفس زوج التوصية الأصلية.";
+      case "There is already an active chat session. Wait for it to pause or cancel it before starting a new one.":
+        return "لديك دردشة نشطة بالفعل. انتظر حتى تتوقف تلقائياً أو ألغها قبل بدء جلسة جديدة.";
+      case "Notification window not found":
+        return "تعذر العثور على جلسة القناة المطلوبة.";
+      case "You can only cancel your own notification window":
+        return "يمكنك إلغاء جلسة القناة الخاصة بك فقط.";
+      case "This notification window is no longer active":
+        return "هذه الجلسة لم تعد نشطة.";
+      default:
+        return message;
+    }
+  }
+
+  if (waitMatch) {
+    return `This is expected: wait ${waitMatch[1]} more seconds before sending the next channel message.`;
+  }
+
+  switch (message) {
+    case "Notify clients first, then wait one minute before sending in the recommendations channel.":
+      return "After 15 minutes of silence, click Notify Clients first. Typing unlocks one minute later.";
+    case "The chat paused after 15 minutes of analyst silence. Notify clients again before sending a new message.":
+      return "The chat paused after 15 minutes of analyst silence. Click Notify Clients again before sending a new message.";
+    default:
+      return message;
+  }
 }
 
 /* ─── Analyst view: posting form + recent messages ─── */
@@ -45,26 +165,72 @@ function AnalystView() {
   const [takeProfit1, setTakeProfit1] = useState("");
   const [takeProfit2, setTakeProfit2] = useState("");
   const [riskPercent, setRiskPercent] = useState("");
-  const [sendEmail, setSendEmail] = useState(false);
-  const [resultParentId, setResultParentId] = useState<number | null>(null);
+  const [parentMessage, setParentMessage] = useState<any | null>(null);
 
   const { data: me } = trpc.recommendations.me.useQuery();
   const { data: adminCheck } = trpc.auth.isAdmin.useQuery();
+  const canManageChannel = !!me?.canPublish || !!adminCheck?.isAdmin;
+  const { data: publishState } = trpc.recommendations.publishState.useQuery(undefined, {
+    enabled: canManageChannel,
+    refetchInterval: canManageChannel ? 1000 : false,
+  });
   const { data: feed = [], isLoading: feedLoading } = trpc.recommendations.feed.useQuery(
     { limit: 200 },
-    { enabled: !!me?.canPublish || !!adminCheck?.isAdmin }
+    { enabled: canManageChannel }
   );
+
+  const notifyClientsMutation = trpc.recommendations.notifyClients.useMutation({
+    onSuccess: (result) => {
+      toast.success(
+        isRTL
+          ? `تم إخطار ${result.recipientCount} عميل. الكتابة ستفتح بعد دقيقة واحدة، وبعدها تبقى الدردشة مفتوحة ما دمت تستمر في الإرسال.`
+          : `Notified ${result.recipientCount} clients. Typing unlocks in one minute, and the chat stays live while you keep sending.`
+      );
+      utils.recommendations.publishState.invalidate();
+      utils.recommendations.activeAlerts.invalidate();
+    },
+    onError: (error) => toast.error(formatRecommendationUiError(error.message, isRTL)),
+  });
+
+  const cancelAlertMutation = trpc.recommendations.cancelAlert.useMutation({
+    onSuccess: () => {
+      toast.success(
+        isRTL
+          ? "تم إلغاء جلسة القناة. عند الجاهزية أرسل إخطاراً جديداً لبدء جلسة أخرى."
+          : "Channel session cancelled. When you're ready, send a new alert to start another session."
+      );
+      utils.recommendations.publishState.invalidate();
+      utils.recommendations.activeAlerts.invalidate();
+    },
+    onError: (error) => toast.error(formatRecommendationUiError(error.message, isRTL)),
+  });
 
   const postMessageMutation = trpc.recommendations.postMessage.useMutation({
     onSuccess: () => {
-      toast.success(sendEmail ? t('rec.toastPublished') : t('rec.toastPublishedNoEmail'));
-      setContent(""); setSide(""); setEntryPrice("");
-      setStopLoss(""); setTakeProfit1(""); setTakeProfit2(""); setRiskPercent("");
-      setResultParentId(null);
-      if (type === "result") setType("recommendation");
+      toast.success(
+        type === "result"
+          ? (isRTL ? "تم نشر النتيجة" : "Result published")
+          : type === "update"
+            ? (isRTL ? "تم نشر التحديث" : "Update published")
+            : (isRTL ? "تم نشر التوصية" : "Recommendation published")
+      );
+      setContent("");
+      setSide("");
+      setEntryPrice("");
+      setStopLoss("");
+      setTakeProfit1("");
+      setTakeProfit2("");
+      setRiskPercent("");
+      setParentMessage(null);
+      setType("recommendation");
+      if (type === "recommendation") {
+        setSymbol("XAUUSD");
+      }
       utils.recommendations.feed.invalidate();
+      utils.recommendations.publishState.invalidate();
+      utils.recommendations.activeAlerts.invalidate();
     },
-    onError: (error) => toast.error(error.message),
+    onError: (error) => toast.error(formatRecommendationUiError(error.message, isRTL)),
   });
 
   const deleteMessageMutation = trpc.recommendations.deleteMessage.useMutation({
@@ -75,15 +241,68 @@ function AnalystView() {
     onError: (error) => toast.error(error.message),
   });
 
+  const normalizedSymbol = symbol.trim().toUpperCase();
+  const activeAlert = publishState?.activeAlert;
+  const hasActiveAlert = !!activeAlert;
+  const canPostMessages = !!publishState?.canPostMessages;
+  const requiresAlert = !hasActiveAlert;
+  const isWaitingForUnlock = hasActiveAlert && !canPostMessages;
+  const showComposerFields = hasActiveAlert;
+  const channelDisabledReason = requiresAlert
+    ? (isRTL
+        ? "بعد 15 دقيقة من الصمت يجب أولاً الضغط على إخطار العملاء قبل كتابة رسالة جديدة."
+        : "After 15 minutes of silence, click Notify Clients before typing a new message.")
+    : canPostMessages
+      ? ""
+      : (isRTL
+          ? `تم إرسال الإخطار. يمكنك الكتابة بعد ${formatCountdown(publishState?.secondsUntilUnlock ?? 0)}.`
+          : `Alert sent. You can type in ${formatCountdown(publishState?.secondsUntilUnlock ?? 0)}.`);
+  const publishDisabledReason = type === "recommendation"
+    ? (!normalizedSymbol
+        ? (isRTL ? "اختر الزوج أولاً" : "Choose the symbol first")
+        : channelDisabledReason)
+    : (!parentMessage?.id
+        ? (isRTL ? "اختر التوصية الأم أولاً" : "Choose the parent recommendation first")
+        : channelDisabledReason);
+  const sessionStatusTitle = requiresAlert
+    ? (isRTL ? "الدردشة متوقفة مؤقتاً" : "Chat paused")
+    : isWaitingForUnlock
+      ? (isRTL ? "تم إرسال التنبيه" : "Alert sent")
+      : (isRTL ? "الدردشة نشطة الآن" : "Chat live now");
+  const sessionStatusDescription = requiresAlert
+    ? (isRTL
+        ? "إذا مرّت 15 دقيقة بدون أي رسالة من المحلل، يعود زر إخطار العملاء ويُمنع إرسال أي رسالة جديدة حتى يُرسل التنبيه من جديد."
+        : "If 15 minutes pass without any analyst message, the Alert Clients button returns and no new message can be sent until that alert is sent again.")
+    : isWaitingForUnlock
+      ? (isRTL
+          ? `تم إخطار العملاء بنجاح. الكتابة ستفتح تلقائياً بعد ${formatCountdown(publishState?.secondsUntilUnlock ?? 0)}.`
+          : `Clients were notified successfully. Typing will unlock automatically in ${formatCountdown(publishState?.secondsUntilUnlock ?? 0)}.`)
+      : (isRTL
+          ? `يمكنك الآن الإرسال بشكل طبيعي. كل رسالة جديدة من المحلل تمدد المهلة 15 دقيقة إضافية، ويتبقى ${formatCountdown(publishState?.secondsUntilExpiry ?? 0)} قبل أن تتوقف الدردشة إذا لم تُرسل شيئاً.`
+          : `You can send normally now. Every new analyst message extends the chat for another 15 minutes. ${formatCountdown(publishState?.secondsUntilExpiry ?? 0)} remains before the chat pauses if you stop sending.`);
+
+  const onNotifyClients = () => {
+    notifyClientsMutation.mutate({});
+  };
+
   const onPublish = () => {
     if (!content.trim()) { toast.error(t('rec.toastWriteMessage')); return; }
+    if (type !== "recommendation" && !parentMessage?.id) {
+      toast.error(isRTL ? "اختر التوصية الأم أولاً" : "Choose the parent recommendation first");
+      return;
+    }
+
     postMessageMutation.mutate({
-      type, content: content.trim(),
-      symbol: symbol.trim() || undefined, side: side.trim() || undefined,
-      entryPrice: entryPrice.trim() || undefined, stopLoss: stopLoss.trim() || undefined,
-      takeProfit1: takeProfit1.trim() || undefined, takeProfit2: takeProfit2.trim() || undefined,
-      riskPercent: riskPercent.trim() || undefined, sendEmail,
-      parentId: resultParentId ?? undefined,
+      type,
+      content: content.trim(),
+      symbol: type === "recommendation" ? normalizedSymbol || undefined : parentMessage?.symbol || undefined,
+      side: type === "recommendation" ? side.trim() || undefined : undefined,
+      entryPrice: type === "recommendation" ? entryPrice.trim() || undefined : undefined,
+      stopLoss: type === "recommendation" ? stopLoss.trim() || undefined : undefined,
+      takeProfit1: type === "recommendation" ? takeProfit1.trim() || undefined : undefined,
+      takeProfit2: type === "recommendation" ? takeProfit2.trim() || undefined : undefined,
+      riskPercent: type === "recommendation" ? riskPercent.trim() || undefined : undefined,
+      parentId: parentMessage?.id ?? undefined,
     });
   };
 
@@ -92,13 +311,17 @@ function AnalystView() {
     toast.success(t('rec.toastCopied'));
   };
 
+  const startAddUpdate = (parent: any) => {
+    setType("update");
+    setParentMessage(parent);
+    setContent("");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   const startAddResult = (parentMessage: any) => {
     setType("result");
-    setResultParentId(parentMessage.id);
-    setSymbol(parentMessage.symbol || "XAUUSD");
-    setSide(parentMessage.side || "");
+    setParentMessage(parentMessage);
     setContent("");
-    setEntryPrice(""); setStopLoss(""); setTakeProfit1(""); setTakeProfit2(""); setRiskPercent("");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -125,19 +348,38 @@ function AnalystView() {
         <p className="text-muted-foreground">{t('rec.publishDesc')}</p>
       </div>
 
-      {/* Posting form */}
       <Card>
         <CardHeader>
           <CardTitle>
-            {resultParentId
-              ? (isRTL ? "إضافة نتيجة لتوصية #" + resultParentId : "Add Result for Recommendation #" + resultParentId)
-              : t('rec.publishNew')
-            }
+            {type === "update" && parentMessage
+              ? (isRTL ? `الرد على التوصية #${parentMessage.id}` : `Reply to Recommendation #${parentMessage.id}`)
+              : type === "result" && parentMessage
+                ? (isRTL ? `إضافة نتيجة للتوصية #${parentMessage.id}` : `Add Result for Recommendation #${parentMessage.id}`)
+                : (isRTL ? "دردشة التوصيات" : "Recommendations Chat")}
           </CardTitle>
-          <CardDescription>{t('rec.publishDesc')}</CardDescription>
+          <CardDescription>
+            {type === "recommendation"
+              ? (isRTL
+                  ? "أرسل التوصية كرسالة رئيسية، ثم تابع عليها بردود قصيرة داخل نفس السلسلة."
+                  : "Send the recommendation as the main message, then follow it with short replies in the same thread.")
+              : (isRTL
+                  ? "اختر التوصية الأم ثم أرسل ردك أو نتيجتك مثل تيليجرام."
+                  : "Choose the parent recommendation, then send the reply or result like a Telegram follow-up.")}
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Type selector */}
+          <Alert className={!hasActiveAlert
+            ? "border-slate-200 bg-slate-50 text-slate-900 dark:border-slate-800 dark:bg-slate-900/40 dark:text-slate-100"
+            : canPostMessages
+              ? "border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-800/40 dark:bg-emerald-900/10 dark:text-emerald-100"
+              : "border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-800/40 dark:bg-amber-900/10 dark:text-amber-100"}
+          >
+            <Info className="h-4 w-4" />
+            <AlertTitle>{sessionStatusTitle}</AlertTitle>
+            <AlertDescription>{sessionStatusDescription}</AlertDescription>
+          </Alert>
+
+          {showComposerFields && (
           <div>
             <label className="text-sm font-medium text-muted-foreground mb-2 block">
               {isRTL ? "نوع الرسالة" : "Message Type"}
@@ -145,28 +387,36 @@ function AnalystView() {
             <div className="flex gap-2 flex-wrap">
               <Button
                 size="sm"
-                variant={type === "alert" ? "default" : "outline"}
-                onClick={() => { setType("alert"); setResultParentId(null); }}
-                className={type === "alert" ? "bg-amber-500 hover:bg-amber-600 text-white" : ""}
+                variant={type === "recommendation" ? "default" : "outline"}
+                onClick={() => { setType("recommendation"); setParentMessage(null); }}
+                className={type === "recommendation" ? "bg-emerald-600 hover:bg-emerald-700 text-white" : ""}
               >
-                <Bell className="h-4 w-4 me-1" /> {t('rec.typeAlert')}
+                <TrendingUp className="h-4 w-4 me-1" /> {isRTL ? "توصية جديدة" : "New Recommendation"}
               </Button>
               <Button
                 size="sm"
-                variant={type === "recommendation" ? "default" : "outline"}
-                onClick={() => { setType("recommendation"); setResultParentId(null); }}
-                className={type === "recommendation" ? "bg-emerald-600 hover:bg-emerald-700 text-white" : ""}
+                variant={type === "update" ? "default" : "outline"}
+                onClick={() => { setType("update"); }}
+                className={type === "update" ? "bg-amber-500 hover:bg-amber-600 text-white" : ""}
               >
-                <TrendingUp className="h-4 w-4 me-1" /> {t('rec.typeRecommendation')}
+                <Bell className="h-4 w-4 me-1" /> {isRTL ? "رد / تحديث" : "Reply / Update"}
+              </Button>
+              <Button
+                size="sm"
+                variant={type === "result" ? "default" : "outline"}
+                onClick={() => { setType("result"); }}
+                className={type === "result" ? "bg-teal-600 hover:bg-teal-700 text-white" : ""}
+              >
+                <Plus className="h-4 w-4 me-1" /> {isRTL ? "نتيجة" : "Result"}
               </Button>
             </div>
-            {resultParentId && (
+            {parentMessage && type !== "recommendation" && (
               <div className="mt-2 flex items-center gap-2">
-                <Badge variant="outline" className="text-xs border-blue-300 text-blue-600">
-                  {isRTL ? `مرتبطة بتوصية #${resultParentId}` : `Linked to Rec #${resultParentId}`}
+                <Badge variant="outline" className="text-xs border-teal-300 text-teal-700 dark:text-teal-300">
+                  {isRTL ? `مرتبطة بالتوصية #${parentMessage.id}` : `Linked to Rec #${parentMessage.id}`}
                 </Badge>
                 <button
-                  onClick={() => { setResultParentId(null); setType("recommendation"); }}
+                  onClick={() => { setParentMessage(null); setType("recommendation"); }}
                   className="text-xs text-red-500 hover:underline"
                 >
                   {isRTL ? "إلغاء الربط" : "Unlink"}
@@ -174,9 +424,9 @@ function AnalystView() {
               </div>
             )}
           </div>
+          )}
 
-          {/* Symbol quick-fill */}
-          {type !== "alert" && (
+          {showComposerFields && type === "recommendation" && (
             <div>
               <label className="text-sm font-medium text-muted-foreground mb-2 block">
                 {isRTL ? "الأصل / الزوج" : "Symbol / Pair"}
@@ -186,6 +436,7 @@ function AnalystView() {
                   <button
                     key={s}
                     onClick={() => setSymbol(s)}
+                    disabled={isWaitingForUnlock}
                     className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${
                       symbol === s
                         ? "bg-emerald-50 dark:bg-emerald-900/20 border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300"
@@ -199,14 +450,14 @@ function AnalystView() {
               <Input
                 value={symbol}
                 onChange={(e) => setSymbol(e.target.value)}
+                disabled={isWaitingForUnlock}
                 placeholder={t('rec.symbolPlaceholder')}
                 className="max-w-xs"
               />
             </div>
           )}
 
-          {/* Side toggle (BUY / SELL) */}
-          {type !== "alert" && (
+          {showComposerFields && type === "recommendation" && (
             <div>
               <label className="text-sm font-medium text-muted-foreground mb-2 block">
                 {isRTL ? "الاتجاه" : "Direction"}
@@ -214,6 +465,7 @@ function AnalystView() {
               <div className="flex gap-2">
                 <button
                   onClick={() => setSide("BUY")}
+                  disabled={isWaitingForUnlock}
                   className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-all border ${
                     side === "BUY"
                       ? "bg-emerald-500 text-white border-emerald-500 shadow-md shadow-emerald-500/20"
@@ -224,6 +476,7 @@ function AnalystView() {
                 </button>
                 <button
                   onClick={() => setSide("SELL")}
+                  disabled={isWaitingForUnlock}
                   className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-all border ${
                     side === "SELL"
                       ? "bg-red-500 text-white border-red-500 shadow-md shadow-red-500/20"
@@ -236,8 +489,7 @@ function AnalystView() {
             </div>
           )}
 
-          {/* Price fields */}
-          {type !== "alert" && (
+          {showComposerFields && type === "recommendation" && (
             <div>
               <label className="text-sm font-medium text-muted-foreground mb-2 block">
                 {isRTL ? "تفاصيل الصفقة" : "Trade Details"}
@@ -245,53 +497,200 @@ function AnalystView() {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                 <div>
                   <span className="text-xs text-muted-foreground">{isRTL ? "سعر الدخول" : "Entry"}</span>
-                  <Input value={entryPrice} onChange={(e) => setEntryPrice(e.target.value)} placeholder="0.00" />
+                  <Input value={entryPrice} onChange={(e) => setEntryPrice(e.target.value)} placeholder="0.00" disabled={isWaitingForUnlock} />
                 </div>
                 <div>
                   <span className="text-xs text-muted-foreground">{isRTL ? "وقف الخسارة" : "Stop Loss"}</span>
-                  <Input value={stopLoss} onChange={(e) => setStopLoss(e.target.value)} placeholder="0.00" />
+                  <Input value={stopLoss} onChange={(e) => setStopLoss(e.target.value)} placeholder="0.00" disabled={isWaitingForUnlock} />
                 </div>
                 <div>
                   <span className="text-xs text-muted-foreground">{isRTL ? "هدف 1" : "Target 1"}</span>
-                  <Input value={takeProfit1} onChange={(e) => setTakeProfit1(e.target.value)} placeholder="0.00" />
+                  <Input value={takeProfit1} onChange={(e) => setTakeProfit1(e.target.value)} placeholder="0.00" disabled={isWaitingForUnlock} />
                 </div>
                 <div>
                   <span className="text-xs text-muted-foreground">{isRTL ? "هدف 2" : "Target 2"}</span>
-                  <Input value={takeProfit2} onChange={(e) => setTakeProfit2(e.target.value)} placeholder="0.00" />
+                  <Input value={takeProfit2} onChange={(e) => setTakeProfit2(e.target.value)} placeholder="0.00" disabled={isWaitingForUnlock} />
                 </div>
               </div>
               <div className="mt-2 max-w-[200px]">
                 <span className="text-xs text-muted-foreground">{isRTL ? "نسبة المخاطرة" : "Risk %"}</span>
-                <Input value={riskPercent} onChange={(e) => setRiskPercent(e.target.value)} placeholder="1%" />
+                <Input value={riskPercent} onChange={(e) => setRiskPercent(e.target.value)} placeholder="1%" disabled={isWaitingForUnlock} />
               </div>
             </div>
           )}
 
-          {/* Message content */}
-          <div>
-            <label className="text-sm font-medium text-muted-foreground mb-2 block">
-              {isRTL ? "نص الرسالة" : "Message"}
-            </label>
-            <Textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder={t('rec.messagePlaceholder')} rows={4} />
+          <div className="rounded-xl border border-dashed border-emerald-200 bg-emerald-50/70 p-3 dark:border-emerald-800/40 dark:bg-emerald-900/10">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-emerald-900 dark:text-emerald-100">
+                  {requiresAlert
+                    ? (isRTL ? "ابدأ الدردشة من هنا" : "Start the chat from here")
+                    : isWaitingForUnlock
+                      ? (isRTL ? "جارٍ تجهيز الدردشة" : "Chat is preparing")
+                      : (isRTL ? "الدردشة تعمل الآن" : "Chat is live now")}
+                </p>
+                <p className="text-xs text-emerald-800/80 dark:text-emerald-200/80">
+                  {requiresAlert
+                    ? (isRTL
+                        ? "إذا صمت المحلل 15 دقيقة كاملة، يظهر هذا الزر من جديد. ضغطة واحدة ترسل التنبيه للعملاء، وبعد دقيقة يمكنه العودة للكتابة."
+                        : "If the analyst stays silent for 15 full minutes, this button comes back. One tap alerts clients, then typing returns one minute later.")
+                    : isWaitingForUnlock
+                      ? (isRTL
+                          ? `تم إرسال التنبيه. انتظر ${formatCountdown(publishState?.secondsUntilUnlock ?? 0)} ثم تبدأ الكتابة بشكل طبيعي.`
+                          : `The alert has been sent. Wait ${formatCountdown(publishState?.secondsUntilUnlock ?? 0)}, then typing starts normally.`)
+                      : (isRTL
+                          ? `الدردشة ستبقى مفتوحة ما دام المحلل يرسل. إذا توقف عن الإرسال، ستتوقف بعد ${formatCountdown(publishState?.secondsUntilExpiry ?? 0)}.`
+                          : `The chat stays open while the analyst keeps sending. If they stop sending, it pauses in ${formatCountdown(publishState?.secondsUntilExpiry ?? 0)}.`)}
+                </p>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span>
+                      <Button
+                        type="button"
+                        onClick={onNotifyClients}
+                        disabled={notifyClientsMutation.isPending || hasActiveAlert}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                      >
+                        <Megaphone className="h-4 w-4 me-1" />
+                        {isRTL ? "إخطار العملاء" : "Alert Clients"}
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent sideOffset={8}>
+                    {hasActiveAlert
+                      ? (isRTL ? "الدردشة نشطة بالفعل. ألغها فقط إذا أردت إيقاف الكتابة الآن." : "The chat is already active. Cancel it only if you want to pause typing now.")
+                      : (isRTL ? "هذه ضغطة واحدة ترسل الإيميل والتنبيه للعملاء بأن المحلل سيبدأ التوصيات خلال دقائق." : "One tap sends the email and in-app alert telling clients the analyst is about to send recommendations in the next few minutes.")}
+                  </TooltipContent>
+                </Tooltip>
+
+                {hasActiveAlert && activeAlert && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => cancelAlertMutation.mutate({ alertId: activeAlert.id })}
+                    disabled={cancelAlertMutation.isPending}
+                  >
+                    <XCircle className="h-4 w-4 me-1" />
+                    {isRTL ? "إلغاء الجلسة" : "Cancel Session"}
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {hasActiveAlert && (
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-emerald-900 dark:text-emerald-100">
+                <Badge className="bg-white text-emerald-700 border border-emerald-200 dark:bg-emerald-950 dark:text-emerald-200 dark:border-emerald-800">
+                  {isWaitingForUnlock
+                    ? (isRTL ? "التنبيه مُرسل" : "Alert sent")
+                    : (isRTL ? "الدردشة مباشرة" : "Chat live")}
+                </Badge>
+                <span className="inline-flex items-center gap-1">
+                  <Clock3 className="h-3.5 w-3.5" />
+                  {canPostMessages
+                    ? (isRTL ? "تتوقف الدردشة عند الصمت بعد" : "Silence lock in")
+                    : (isRTL
+                        ? `تفتح الدردشة خلال ${formatCountdown(publishState?.secondsUntilUnlock ?? 0)}`
+                        : `Chat opens in ${formatCountdown(publishState?.secondsUntilUnlock ?? 0)}`)}
+                </span>
+                <span>
+                  {isRTL
+                    ? `${formatCountdown(publishState?.secondsUntilExpiry ?? 0)}`
+                    : `${formatCountdown(publishState?.secondsUntilExpiry ?? 0)}`}
+                </span>
+              </div>
+            )}
           </div>
 
-          {/* Publish actions */}
-          <div className="flex items-center gap-3 flex-wrap pt-2 border-t">
-            <Button
-              onClick={onPublish}
-              disabled={postMessageMutation.isPending}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white"
-            >
-              {postMessageMutation.isPending
-                ? (isRTL ? "جاري النشر..." : "Publishing...")
-                : t('rec.publishBtn')
-              }
-            </Button>
-            <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
-              <input type="checkbox" checked={sendEmail} onChange={(e) => setSendEmail(e.target.checked)} className="rounded border-gray-300" />
-              {t('rec.sendEmailLabel')}
+          {showComposerFields && type !== "recommendation" && parentMessage && (
+            <div>
+              <label className="text-sm font-medium text-muted-foreground mb-2 block">
+                {isRTL ? "ردود سريعة" : "Quick Replies"}
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {QUICK_REPLY_PRESETS.map((preset) => (
+                  <Button
+                    key={preset.key}
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={isWaitingForUnlock}
+                    onClick={() => setContent(preset.value)}
+                    className="border-amber-200 hover:bg-amber-50 dark:border-amber-800 dark:hover:bg-amber-900/20"
+                  >
+                    {isRTL ? preset.labelAr : preset.labelEn}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {showComposerFields && (
+          <div>
+            <label className="text-sm font-medium text-muted-foreground mb-2 block">
+              {isRTL ? "اكتب الرسالة" : "Type Message"}
             </label>
+            <Textarea
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              disabled={isWaitingForUnlock}
+              placeholder={isWaitingForUnlock
+                ? (isRTL ? "انتظر انتهاء الدقيقة أولاً" : "Wait for the 1-minute unlock first")
+                : type === "recommendation"
+                  ? (isRTL ? "اكتب التوصية الرئيسية هنا" : "Write the main recommendation here")
+                  : (isRTL ? "اكتب الرد السريع أو التحديث هنا" : "Write the quick reply or update here")}
+              rows={4}
+            />
           </div>
+          )}
+
+          {showComposerFields && (
+          <div className="flex items-center gap-3 flex-wrap pt-2 border-t">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span>
+                  <Button
+                    onClick={onPublish}
+                    disabled={postMessageMutation.isPending || !!publishDisabledReason}
+                    className={type === "recommendation"
+                      ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                      : type === "result"
+                        ? "bg-teal-600 hover:bg-teal-700 text-white"
+                        : "bg-amber-500 hover:bg-amber-600 text-white"}
+                  >
+                    {postMessageMutation.isPending
+                      ? (isRTL ? "جاري النشر..." : "Publishing...")
+                      : type === "recommendation"
+                        ? (isRTL ? "إرسال التوصية" : "Send Recommendation")
+                        : type === "result"
+                          ? (isRTL ? "إرسال النتيجة" : "Send Result")
+                          : (isRTL ? "إرسال الرد" : "Send Reply")}
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              {publishDisabledReason && (
+                <TooltipContent sideOffset={8}>{publishDisabledReason}</TooltipContent>
+              )}
+            </Tooltip>
+          </div>
+          )}
+
+          {!showComposerFields && (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 px-3 py-2 text-xs text-emerald-900 dark:border-emerald-800/40 dark:bg-emerald-900/10 dark:text-emerald-100">
+              <span className="font-medium">{isRTL ? "كيف تعمل الآن:" : "How it works:"}</span>{" "}
+              {isRTL
+                ? "عندما يعود المحلل بعد 15 دقيقة من الصمت، يظهر زر إخطار العملاء فقط. بعد الضغط عليه تصلهم الرسالة فوراً، وبعد دقيقة واحدة تفتح الدردشة من جديد."
+                : "When the analyst comes back after 15 minutes of silence, only the Alert Clients button appears. After one tap, clients are warned immediately and the chat opens again one minute later."}
+            </div>
+          )}
+
+          {showComposerFields && publishDisabledReason && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2 text-xs text-amber-900 dark:border-amber-800/40 dark:bg-amber-900/10 dark:text-amber-100">
+              <span className="font-medium">{isRTL ? "معلومة مهمة:" : "Important:"}</span>{" "}
+              {publishDisabledReason}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -312,20 +711,15 @@ function AnalystView() {
               const canDeleteMessage = !!adminCheck?.isAdmin || message.userId === me?.userId;
               return (
                 <div key={message.id} className="space-y-2">
-                  {/* Parent message */}
                   <div className={`rounded-lg border p-4 space-y-3 ${
                     message.type === "alert" ? "bg-amber-50/50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800/30" :
-                    message.type === "result" ? "bg-blue-50/50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800/30" :
+                    message.type === "result" ? "bg-teal-50/50 dark:bg-teal-900/10 border-teal-200 dark:border-teal-800/30" :
                     "bg-white dark:bg-slate-900/50"
                   }`}>
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
-                        <Badge variant="outline" className={
-                          message.type === "alert" ? "border-amber-300 text-amber-700 dark:text-amber-400" :
-                          message.type === "result" ? "border-blue-300 text-blue-700 dark:text-blue-400" :
-                          "border-emerald-300 text-emerald-700 dark:text-emerald-400"
-                        }>
-                          {message.type === "alert" ? (isRTL ? "تنبيه" : "Alert") : message.type === "result" ? (isRTL ? "نتيجة" : "Result") : (isRTL ? "توصية" : "Recommendation")}
+                        <Badge variant="outline" className={getMessageTypeClass(message.type)}>
+                          {getMessageTypeLabel(message.type, isRTL)}
                         </Badge>
                         {message.symbol && <Badge className="bg-gray-100 dark:bg-white/10 text-gray-700 dark:text-gray-300 text-xs">{message.symbol}</Badge>}
                         {message.side && (
@@ -354,8 +748,13 @@ function AnalystView() {
                       <Button size="sm" variant="outline" onClick={() => copyMessage(message)}>
                         <Copy className="h-3.5 w-3.5 me-1" /> {t('rec.copy')}
                       </Button>
-                      {(message.type === "recommendation" || message.type === "alert") && (
-                        <Button size="sm" variant="outline" onClick={() => startAddResult(message)} className="text-blue-600 border-blue-200 hover:bg-blue-50 dark:border-blue-800 dark:hover:bg-blue-900/20">
+                      {message.type === "recommendation" && (
+                        <Button size="sm" variant="outline" onClick={() => startAddUpdate(message)} className="text-amber-600 border-amber-200 hover:bg-amber-50 dark:border-amber-800 dark:hover:bg-amber-900/20">
+                          <Bell className="h-3.5 w-3.5 me-1" /> {isRTL ? "رد" : "Reply"}
+                        </Button>
+                      )}
+                      {message.type === "recommendation" && (
+                        <Button size="sm" variant="outline" onClick={() => startAddResult(message)} className="text-teal-700 border-teal-200 hover:bg-teal-50 dark:border-teal-800 dark:text-teal-300 dark:hover:bg-teal-900/20">
                           <Plus className="h-3.5 w-3.5 me-1" /> {isRTL ? "إضافة نتيجة" : "Add Result"}
                         </Button>
                       )}
@@ -371,15 +770,14 @@ function AnalystView() {
                     </div>
                   </div>
 
-                  {/* Child results */}
                   {children.length > 0 && (
-                    <div className={`space-y-2 ${isRTL ? "border-r-2 border-blue-300 dark:border-blue-700 pr-4 mr-4" : "border-l-2 border-blue-300 dark:border-blue-700 pl-4 ml-4"}`}>
+                    <div className={`space-y-2 ${isRTL ? "border-r-2 border-teal-300 dark:border-teal-700 pr-4 mr-4" : "border-l-2 border-teal-300 dark:border-teal-700 pl-4 ml-4"}`}>
                       {children.map((child: any) => (
-                        <div key={child.id} className="rounded-lg border p-3 space-y-2 bg-blue-50/50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800/30">
+                        <div key={child.id} className={`rounded-lg border p-3 space-y-2 ${child.type === "result" ? "bg-teal-50/50 dark:bg-teal-900/10 border-teal-200 dark:border-teal-800/30" : "bg-amber-50/50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800/30"}`}>
                           <div className="flex items-center justify-between gap-2">
                             <div className="flex items-center gap-2">
-                              <Badge variant="outline" className="border-blue-300 text-blue-700 dark:text-blue-400 text-xs">
-                                {isRTL ? "نتيجة" : "Result"}
+                              <Badge variant="outline" className={getMessageTypeClass(child.type) + " text-xs"}>
+                                {getMessageTypeLabel(child.type, isRTL)}
                               </Badge>
                               <span className="text-xs text-muted-foreground">#{child.id}</span>
                             </div>

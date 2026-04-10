@@ -22,4 +22,6 @@ applyTo: "frontend/src/**"
 - Display episode duration with `Math.floor(duration / 60)` because the DB stores seconds.
 - On all video elements, include `controlsList="nodownload"` and block the context menu.
 - LexAI image thumbnails should stay compact and open the full image in a new tab.
+- `ClientLayout.tsx` should track real user interaction with `users.touchInteraction`; passive polling like unread-count refreshes must not be treated as active presence for recommendation email suppression.
+- Recommendations UI is thread-based and chat-first: `recommendations.notifyClients` reopens the chat after a 60-second wait, while `update` and `result` render as children under the parent recommendation and each analyst message refreshes the 15-minute silence timer.
 - Recommendations results are created only from `Add Result` on an existing recommendation; there is no standalone `Result` publish type.

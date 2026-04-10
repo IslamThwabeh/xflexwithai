@@ -18,6 +18,7 @@ export const users = sqliteTable("users", {
   updatedAt: text("updatedAt").default("CURRENT_TIMESTAMP").notNull(),
   lastSignedIn: text("lastSignedIn").default("CURRENT_TIMESTAMP").notNull(),
   lastActiveAt: text("lastActiveAt"),
+  lastInteractiveAt: text("lastInteractiveAt"),
   notificationPrefs: text("notificationPrefs").default("{}"),
   telegram_user_id: text("telegram_user_id").unique(),
   user_type: text("user_type", { length: 20 }).default("web"),
@@ -301,12 +302,31 @@ export type RecommendationSubscription = typeof recommendationSubscriptions.$inf
 export type InsertRecommendationSubscription = typeof recommendationSubscriptions.$inferInsert;
 
 /**
+ * Pending recommendation alert workflow
+ */
+export const recommendationAlerts = sqliteTable("recommendationAlerts", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  analystUserId: integer("analystUserId").notNull(),
+  note: text("note"),
+  notifiedAt: text("notifiedAt").notNull(),
+  unlockAt: text("unlockAt").notNull(),
+  expiresAt: text("expiresAt").notNull(),
+  status: text("status", { length: 20 }).default("pending").notNull(),
+  cancelledAt: text("cancelledAt"),
+  createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
+  updatedAt: text("updatedAt").default("CURRENT_TIMESTAMP").notNull(),
+});
+
+export type RecommendationAlert = typeof recommendationAlerts.$inferSelect;
+export type InsertRecommendationAlert = typeof recommendationAlerts.$inferInsert;
+
+/**
  * Recommendation group messages
  */
 export const recommendationMessages = sqliteTable("recommendationMessages", {
   id: int("id").primaryKey({ autoIncrement: true }),
   userId: integer("userId").notNull(),
-  type: text("type", { length: 20 }).default("recommendation").notNull(), // 'alert' | 'recommendation' | 'result'
+  type: text("type", { length: 20 }).default("recommendation").notNull(), // historical 'alert' | 'recommendation' | 'update' | 'result'
   content: text("content").notNull(),
   symbol: text("symbol", { length: 30 }),
   side: text("side", { length: 10 }), // buy/sell
@@ -797,6 +817,13 @@ export const recommendationSubscriptionsRelations = relations(recommendationSubs
   registrationKey: one(registrationKeys, {
     fields: [recommendationSubscriptions.registrationKeyId],
     references: [registrationKeys.id],
+  }),
+}));
+
+export const recommendationAlertsRelations = relations(recommendationAlerts, ({ one }) => ({
+  user: one(users, {
+    fields: [recommendationAlerts.analystUserId],
+    references: [users.id],
   }),
 }));
 

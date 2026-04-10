@@ -23,6 +23,8 @@ const ACTION_LABELS: Record<string, { en: string; ar: string }> = {
   'lexaiSupport.updateStatus': { en: 'Updated LexAI status', ar: 'حدّث حالة LexAI' },
   'lexaiSupport.updatePriority': { en: 'Updated LexAI priority', ar: 'حدّث أولوية LexAI' },
   'lexaiSupport.requestFollowup': { en: 'Requested LexAI follow-up', ar: 'طلب متابعة LexAI' },
+  'recommendations.notifyClients': { en: 'Started recommendation alert window', ar: 'بدأ نافذة إخطار التوصية' },
+  'recommendations.cancelAlert': { en: 'Cancelled recommendation alert window', ar: 'ألغى نافذة إخطار التوصية' },
   'recommendations.postMessage': { en: 'Posted recommendation update', ar: 'نشر تحديث توصيات' },
   'recommendations.deleteMessage': { en: 'Deleted recommendation message', ar: 'حذف رسالة توصية' },
 };
