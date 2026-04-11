@@ -13,6 +13,8 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import ClientLayout from "@/components/ClientLayout";
 import KeyActivationPrompt from "@/components/KeyActivationPrompt";
 import TestimonialProofCard from "@/components/TestimonialProofCard";
+import FreeLibrarySection from "@/components/FreeLibrarySection";
+import ArticlePreviewCard from "@/components/ArticlePreviewCard";
 import { DEFAULT_TESTIMONIAL_PROOFS } from "@/lib/defaultTestimonialProofs";
 
 function formatSafeDate(
@@ -68,6 +70,10 @@ export default function MyDashboard() {
     retry: false,
     refetchOnWindowFocus: false,
   });
+
+  const { data: articles } = trpc.articles.list.useQuery();
+  const { data: freeLibrary } = trpc.freeLibrary.list.useQuery();
+  const dashboardArticles = articles?.slice(0, 2) ?? [];
 
   // Computed values (safe before early returns)
   const totalCourses = enrollments?.length || 0;
@@ -563,6 +569,61 @@ export default function MyDashboard() {
             </CardContent>
           </Card>
 
+          {freeLibrary ? (
+            <Card className="border-emerald-100 bg-white shadow-sm overflow-hidden">
+              <div className="bg-gradient-to-r from-emerald-500 to-teal-600 px-5 py-3 text-white">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-100">
+                      {isRTL ? "مواد إضافية مجانية" : "Free Learning Extras"}
+                    </p>
+                    <h2 className="mt-1 text-lg font-bold">
+                      {isRTL ? "فيديوهات تمهيدية + مقالات كاملة داخل حسابك" : "Starter videos + full articles inside your account"}
+                    </h2>
+                  </div>
+                  <Link href="/free-content">
+                    <Button variant="secondary" className="bg-white/95 text-emerald-700 hover:bg-white">
+                      {isRTL ? "افتح المكتبة كاملة" : "Open Full Library"}
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+              <CardContent className="p-5 md:p-6">
+                <p className="mb-5 text-sm leading-6 text-muted-foreground">
+                  {isRTL
+                    ? "إذا أردت مراجعة فكرة بسرعة أو مشاركة مصدر تمهيدي مع صديق، ستجد هنا الفيديوهات المجانية الجديدة مع مقالات منفصلة لكل موضوع بدلاً من جمعها داخل ملف واحد."
+                    : "If you want a fast concept refresher or a starter resource to share with a friend, the new free videos now sit beside standalone articles for each topic instead of one bundled file."}
+                </p>
+                <FreeLibrarySection data={freeLibrary} isRtl={isRTL} mode="compact" />
+
+                {dashboardArticles.length > 0 ? (
+                  <div className="mt-6 border-t border-emerald-100 pt-6">
+                    <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">
+                          {isRTL ? "اقرأ أيضاً" : "Also Read"}
+                        </p>
+                        <h3 className="mt-1 text-base font-bold text-xf-dark">
+                          {isRTL ? "مقالان مختاران من المكتبة المفتوحة" : "Two selected reads from the open library"}
+                        </h3>
+                      </div>
+                      <Link href="/articles">
+                        <Button variant="outline" className="border-emerald-200 text-emerald-700 hover:bg-emerald-50">
+                          {isRTL ? "كل المقالات" : "All Articles"}
+                        </Button>
+                      </Link>
+                    </div>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      {dashboardArticles.map((article) => (
+                        <ArticlePreviewCard key={article.id} article={article} isRtl={isRTL} variant="compact" />
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </CardContent>
+            </Card>
+          ) : null}
+
           {/* Discovery Shortcuts */}
           <div>
             <h2 className="text-2xl font-bold mb-4">{isRTL ? "استكشف أكثر" : "Discover More"}</h2>
@@ -582,7 +643,7 @@ export default function MyDashboard() {
                   <CardTitle className="text-base flex items-center gap-2"><BookOpen className="h-4 w-4 text-amber-600" />{isRTL ? "المحتوى المجاني" : "Free Content"}</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-sm text-muted-foreground mb-3">{isRTL ? "دروس تمهيدية قبل الترقية للباقات الكاملة." : "Starter lessons before upgrading to full packages."}</p>
+                  <p className="text-sm text-muted-foreground mb-3">{isRTL ? "3 فيديوهات مجانية مع مقالات كاملة منفصلة لكل موضوع." : "3 free videos with standalone full articles for each topic."}</p>
                   <Link href="/free-content"><Button variant="outline" className="w-full">{isRTL ? "شاهد المجاني" : "Open Free Library"}</Button></Link>
                 </CardContent>
               </Card>

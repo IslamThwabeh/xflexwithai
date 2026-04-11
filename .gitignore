@@ -112,3 +112,4 @@ temp/
 # Generated student document artifacts
 scripts/generated/student-documents/pdf/
 scripts/generated/student-documents/*.zip
+scripts/generated/free-library/

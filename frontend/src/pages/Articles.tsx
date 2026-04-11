@@ -1,5 +1,6 @@
 import { Link } from 'wouter';
-import { FileText, Clock, Newspaper } from 'lucide-react';
+import { Newspaper } from 'lucide-react';
+import ArticlePreviewCard from '@/components/ArticlePreviewCard';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { trpc } from '@/lib/trpc';
 import PublicLayout from '@/components/PublicLayout';
@@ -20,9 +21,22 @@ export default function Articles() {
           <h1 className="text-3xl md:text-5xl font-extrabold mb-4 tracking-[-0.5px]">
             {t('articles.pageTitle')}
           </h1>
-          <p className="text-emerald-100/80 text-lg max-w-lg mx-auto">
-            {t('articles.pageSubtitle')}
+          <p className="text-emerald-100/80 text-lg max-w-2xl mx-auto">
+            {isRtl
+              ? 'مقالات مركزة تكشف الوعود الوهمية، تشرح واقع الأرباح، وتفكك طريقة عمل قنوات التوصيات قبل أن تدخل السوق بعين مغمضة.'
+              : 'Focused reads that expose deceptive promises, explain the reality behind profits, and unpack how signal channels work before you enter the market blindly.'}
           </p>
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-3 text-sm text-emerald-50/90">
+            <span className="rounded-full border border-white/15 bg-white/10 px-4 py-2 backdrop-blur-sm">
+              {isRtl ? `${articles?.length ?? 0} مقالات منشورة` : `${articles?.length ?? 0} published reads`}
+            </span>
+            <span className="rounded-full border border-white/15 bg-white/10 px-4 py-2 backdrop-blur-sm">
+              {isRtl ? 'عربي + English' : 'Arabic + English'}
+            </span>
+            <span className="rounded-full border border-white/15 bg-white/10 px-4 py-2 backdrop-blur-sm">
+              {isRtl ? 'مختصرة وواضحة' : 'Short, clear, actionable'}
+            </span>
+          </div>
         </div>
       </section>
 
@@ -47,35 +61,7 @@ export default function Articles() {
         ) : (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {articles.map((article) => (
-              <Link key={article.id} href={`/articles/${article.slug}`}>
-                <div className="glass-card overflow-hidden cursor-pointer group h-full flex flex-col hover:shadow-lg transition-all duration-300">
-                  {article.thumbnailUrl ? (
-                    <img src={article.thumbnailUrl} alt="" className="w-full h-48 object-cover group-hover:scale-105 transition-transform" />
-                  ) : (
-                    <div className="w-full h-48 bg-gradient-to-br from-emerald-50 to-emerald-100 flex items-center justify-center">
-                      <FileText className="w-12 h-12 text-emerald-300" />
-                    </div>
-                  )}
-                  <div className="p-5 flex-1 flex flex-col">
-                    <h3 className="font-extrabold text-lg text-xf-dark mb-2 group-hover:text-emerald-700 transition-colors tracking-[-0.3px]">
-                      {isRtl ? article.titleAr : article.titleEn}
-                    </h3>
-                    {(isRtl ? article.excerptAr : article.excerptEn) && (
-                      <p className="text-sm text-gray-500 line-clamp-3 mb-4 flex-1">
-                        {isRtl ? article.excerptAr : article.excerptEn}
-                      </p>
-                    )}
-                    {article.publishedAt && (
-                      <div className="flex items-center gap-1.5 text-xs text-gray-400 mt-auto">
-                        <Clock className="w-3 h-3" />
-                        {new Date(article.publishedAt).toLocaleDateString(isRtl ? 'ar-EG' : 'en-US', {
-                          year: 'numeric', month: 'long', day: 'numeric',
-                        })}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </Link>
+              <ArticlePreviewCard key={article.id} article={article} isRtl={isRtl} />
             ))}
           </div>
         )}

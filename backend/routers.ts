@@ -5,6 +5,18 @@ import {
   LEXAI_SUPPORT_CASE_PRIORITIES,
   LEXAI_SUPPORT_CASE_STATUSES,
 } from "../shared/const";
+import {
+  FREE_LIBRARY_DOCUMENTS,
+  FREE_LIBRARY_VIDEOS,
+  buildFreeLibraryDocumentPath,
+  buildFreeLibraryVideoStreamPath,
+} from "../shared/freeLibrary";
+import {
+  CURATED_ARTICLES,
+  estimateReadingTimeMinutes,
+  getCuratedArticleBySlug,
+  type PublicArticleTheme,
+} from "../shared/curatedArticles";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
@@ -15,6 +27,7 @@ import * as db from "./db";
 import { storagePutR2, storageArchiveR2 } from "./storage-r2";
 import { analyzeLexai } from "./_core/lexai";
 import { hashPassword, verifyPassword, generateToken, isValidEmail, isValidPassword, normalizeEmailAddress } from "./_core/auth";
+import { generateFreeVideoPlaybackToken } from "./_core/freeLibraryPlayback";
 import { sendEmail, sendLoginCodeEmail } from "./_core/email";
 import { buildRecommendationAlertEmail, buildRecommendationMessageEmail } from "./_core/recommendationEmails";
 import { sendOrderConfirmationEmail, sendPaymentReceivedEmail, sendAdminNewOrderNotification, sendAnnouncementEmail, sendStaffWelcomeEmail } from "./_core/orderEmails";
@@ -236,6 +249,40 @@ const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
 });
 
 const getWorkerEnv = () => (globalThis as { ENV?: { VIDEOS_BUCKET?: any } }).ENV;
+
+const PUBLIC_ARTICLE_THEMES: PublicArticleTheme[] = ["emerald", "teal", "amber"];
+
+const getDefaultPublicArticleTheme = (seed: string) => {
+  let hash = 0;
+  for (const char of seed) {
+    hash = (hash + char.charCodeAt(0)) % PUBLIC_ARTICLE_THEMES.length;
+  }
+
+  return PUBLIC_ARTICLE_THEMES[hash];
+};
+
+const toPublicArticle = (article: Awaited<ReturnType<typeof db.getAllArticles>>[number]) => ({
+  ...article,
+  isCurated: false as const,
+  subjectEn: "Market Insight",
+  subjectAr: "رؤية سوقية",
+  readingTimeMinutes: estimateReadingTimeMinutes(article.contentEn || article.contentAr),
+  theme: getDefaultPublicArticleTheme(article.slug),
+});
+
+const mergePublicArticles = (articles: Awaited<ReturnType<typeof db.getAllArticles>>) => {
+  const curatedSlugs = new Set(CURATED_ARTICLES.map((article) => article.slug));
+  const merged = [
+    ...CURATED_ARTICLES,
+    ...articles.filter((article) => !curatedSlugs.has(article.slug)).map(toPublicArticle),
+  ];
+
+  return merged.sort((left, right) => {
+    const leftDate = left.publishedAt ? new Date(left.publishedAt).getTime() : 0;
+    const rightDate = right.publishedAt ? new Date(right.publishedAt).getTime() : 0;
+    return rightDate - leftDate;
+  });
+};
 
 const userOnlyProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   if (!ctx.user?.email) {
@@ -4277,6 +4324,51 @@ export const appRouter = router({
   }),
 
   // =============================================
+  // FREE LIBRARY (public)
+  // =============================================
+  freeLibrary: router({
+    list: publicProcedure.query(async () => {
+      const videos = await Promise.all(
+        FREE_LIBRARY_VIDEOS.map(async (video) => ({
+          slug: video.slug,
+          titleEn: video.titleEn,
+          titleAr: video.titleAr,
+          descriptionEn: video.descriptionEn,
+          descriptionAr: video.descriptionAr,
+          categoryEn: video.categoryEn,
+          categoryAr: video.categoryAr,
+          originalFileName: video.originalFileName,
+          fileSizeBytes: video.fileSizeBytes,
+          tone: video.tone,
+          streamPath: buildFreeLibraryVideoStreamPath(
+            video.slug,
+            await generateFreeVideoPlaybackToken(video.slug),
+          ),
+        })),
+      );
+
+      const documents = FREE_LIBRARY_DOCUMENTS.map((document) => ({
+        slug: document.slug,
+        titleEn: document.titleEn,
+        titleAr: document.titleAr,
+        descriptionEn: document.descriptionEn,
+        descriptionAr: document.descriptionAr,
+        originalFileName: document.originalFileName,
+        fileSizeBytes: document.fileSizeBytes,
+        highlightTopicsEn: document.highlightTopicsEn,
+        highlightTopicsAr: document.highlightTopicsAr,
+        viewPath: buildFreeLibraryDocumentPath(document.slug, 'view'),
+        downloadPath: buildFreeLibraryDocumentPath(document.slug, 'download'),
+      }));
+
+      return {
+        documents,
+        videos,
+      };
+    }),
+  }),
+
+  // =============================================
   // EVENTS (public + admin)
   // =============================================
   events: router({
@@ -4787,16 +4879,22 @@ export const appRouter = router({
   articles: router({
     // Public: list published articles
     list: publicProcedure.query(async () => {
-      return db.getAllArticles(true);
+      const articles = await db.getAllArticles(true);
+      return mergePublicArticles(articles);
     }),
 
     // Public: get article by slug
     bySlug: publicProcedure
       .input(z.object({ slug: z.string() }))
       .query(async ({ input }) => {
+        const curatedArticle = getCuratedArticleBySlug(input.slug);
+        if (curatedArticle) {
+          return curatedArticle;
+        }
+
         const article = await db.getArticleBySlug(input.slug);
         if (!article) throw new TRPCError({ code: 'NOT_FOUND', message: 'Article not found' });
-        return article;
+        return toPublicArticle(article);
       }),
 
     // Public: get article by id

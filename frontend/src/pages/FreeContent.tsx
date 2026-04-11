@@ -1,14 +1,21 @@
-import { Link } from 'wouter';
-import { Play, BookOpen, Lock } from 'lucide-react';
+import { Link, useLocation } from 'wouter';
 import { Badge } from '@/components/ui/badge';
+import { BookOpen, Lock, Play, Sparkles } from 'lucide-react';
+import ArticlePreviewCard from '@/components/ArticlePreviewCard';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { trpc } from '@/lib/trpc';
 import PublicLayout from '@/components/PublicLayout';
+import FreeLibrarySection from '@/components/FreeLibrarySection';
 
 export default function FreeContent() {
   const { language, t } = useLanguage();
   const isRtl = language === 'ar';
   const { data: courses, isLoading } = trpc.courses.free.useQuery();
+  const { data: articles } = trpc.articles.list.useQuery();
+  const { data: freeLibrary, isLoading: freeLibraryLoading } = trpc.freeLibrary.list.useQuery();
+  const [location] = useLocation();
+  const selectedVideoSlug = new URLSearchParams(location.split('?')[1] ?? '').get('video');
+  const featuredArticles = articles?.slice(0, 3) ?? [];
 
   return (
     <PublicLayout>
@@ -24,7 +31,83 @@ export default function FreeContent() {
           <p className="text-amber-100/80 text-lg max-w-lg mx-auto">
             {t('freeContent.pageSubtitle')}
           </p>
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-3 text-sm text-amber-50/90">
+            <span className="rounded-full border border-white/15 bg-white/10 px-4 py-2 backdrop-blur-sm">
+              {isRtl ? '3 فيديوهات مجانية باللغة العربية' : '3 Arabic free videos'}
+            </span>
+            <span className="rounded-full border border-white/15 bg-white/10 px-4 py-2 backdrop-blur-sm">
+              {isRtl ? '3 مقالات كاملة' : '3 full articles'}
+            </span>
+            <span className="rounded-full border border-white/15 bg-white/10 px-4 py-2 backdrop-blur-sm">
+              {isRtl ? 'دون الحاجة لاشتراك' : 'No subscription required'}
+            </span>
+          </div>
         </div>
+      </section>
+
+      <section id="free-videos" className="container mx-auto max-w-6xl px-4 py-14 md:py-16">
+        <div className="mb-10 text-center">
+          <div className="mb-4 flex justify-center">
+            <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">
+              <Sparkles className="h-3.5 w-3.5" />
+              {isRtl ? 'مكتبة البداية المجانية' : 'Free Starter Library'}
+            </span>
+          </div>
+          <h2 className="text-3xl font-extrabold tracking-[-0.5px] text-xf-dark md:text-4xl">
+            {isRtl ? 'فيديوهات عملية + مقالات مفصّلة في مكان واحد' : 'Actionable videos + full articles in one place'}
+          </h2>
+          <p className="mx-auto mt-4 max-w-3xl text-base leading-7 text-gray-600 md:text-lg">
+            {isRtl
+              ? 'هذا القسم يجمع المواد المجانية الجديدة بشكل مرتب: شاهد الفيديو من داخل الصفحة، ثم افتح المقال المرتبط بالفكرة نفسها حتى تقرأها كاملة بدل الاكتفاء بملخص سريع.'
+              : 'This section brings the new free material together in a cleaner format: watch the video inside the page, then open the article tied to that idea so you can read it in full rather than settle for a quick summary.'}
+          </p>
+        </div>
+
+        {freeLibraryLoading ? (
+          <div className="grid gap-6 xl:grid-cols-[1.35fr_0.65fr]">
+            <div className="h-[420px] animate-pulse rounded-[20px] bg-white shadow-sm" />
+            <div className="space-y-3">
+              {[1, 2, 3].map((item) => (
+                <div key={item} className="h-32 animate-pulse rounded-[18px] bg-white shadow-sm" />
+              ))}
+            </div>
+          </div>
+        ) : freeLibrary ? (
+          <>
+            <FreeLibrarySection data={freeLibrary} isRtl={isRtl} initialVideoSlug={selectedVideoSlug} />
+
+            {featuredArticles.length > 0 ? (
+              <div className="mt-12">
+                <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.22em] text-amber-700">
+                      {isRtl ? 'اقرأ أكثر' : 'Read Next'}
+                    </p>
+                    <h3 className="mt-2 text-2xl font-extrabold tracking-[-0.4px] text-xf-dark">
+                      {isRtl ? 'مقالات منفصلة لكل فكرة' : 'Standalone articles for each idea'}
+                    </h3>
+                    <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-600 md:text-base">
+                      {isRtl
+                        ? 'اختر الموضوع الذي يهمك، ثم افتح القراءة الكاملة مباشرة من دون الحاجة إلى تنزيل ملف شامل.'
+                        : 'Pick the topic you care about, then open the full read directly without downloading one bundled file.'}
+                    </p>
+                  </div>
+                  <Link href="/articles">
+                    <button className="rounded-full border border-amber-200 px-5 py-2.5 text-sm font-semibold text-amber-700 transition-all hover:bg-amber-50">
+                      {isRtl ? 'عرض كل المقالات' : 'View All Articles'}
+                    </button>
+                  </Link>
+                </div>
+
+                <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+                  {featuredArticles.map((article) => (
+                    <ArticlePreviewCard key={article.id} article={article} isRtl={isRtl} variant="compact" />
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </>
+        ) : null}
       </section>
 
       {/* Courses Grid */}
@@ -35,13 +118,7 @@ export default function FreeContent() {
               <div key={i} className="glass-card h-72 animate-pulse" />
             ))}
           </div>
-        ) : !courses?.length ? (
-          <div className="text-center py-20 text-gray-400">
-            <BookOpen className="w-16 h-16 mx-auto mb-4 opacity-40" />
-            <p className="text-xl">{t('freeContent.noCourses')}</p>
-            <p className="text-sm mt-2">{t('freeContent.comingSoon')}</p>
-          </div>
-        ) : (
+        ) : !courses?.length ? null : (
           <>
             <p className="text-gray-500 mb-8">
               {isRtl

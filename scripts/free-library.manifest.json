@@ -1,0 +1,24 @@
+{
+  "sourceDir": "",
+  "document": null,
+  "videos": [
+    {
+      "slug": "build-trading-strategy",
+      "sourceFile": "المحتوى المجاني\\كيف تبني استراتيجية التداول.mp4",
+      "objectKey": "free-library/videos/build-trading-strategy.mp4",
+      "contentType": "video/mp4"
+    },
+    {
+      "slug": "recommendation-psychology",
+      "sourceFile": "المحتوى المجاني\\سيكوليجية التوصيات.mp4",
+      "objectKey": "free-library/videos/recommendation-psychology.mp4",
+      "contentType": "video/mp4"
+    },
+    {
+      "slug": "smart-chaos-course",
+      "sourceFile": "المحتوى المجاني\\كورس الفوضى الذكية.mp4",
+      "objectKey": "free-library/videos/smart-chaos-course.mp4",
+      "contentType": "video/mp4"
+    }
+  ]
+}

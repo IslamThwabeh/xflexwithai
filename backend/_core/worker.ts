@@ -3,8 +3,10 @@ import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import { appRouter } from "../routers";
 import { createWorkerContext } from "./context-worker";
 import * as db from "../db";
+import { verifyFreeVideoPlaybackToken } from "./freeLibraryPlayback";
 import { sendFreezeExpiredEmail, sendExpiryAlertEmail, sendDripEmail, sendMilestoneEmail, sendInactivityEmail, sendOnboardingStalledEmail } from "./orderEmails";
 import { logger } from "./logger";
+import { getFreeLibraryDocumentBySlug, getFreeLibraryVideoBySlug } from "../../shared/freeLibrary";
 
 function appendCookieHeaders(headers: Headers, cookieHeaders: string[] | undefined) {
   if (!cookieHeaders?.length) return;
@@ -23,6 +25,50 @@ function buildContentDisposition(type: "inline" | "attachment", fileName: string
   const asciiFallback = fileName.replace(/[\\/\r\n\"]/g, "_");
   const encoded = encodeURIComponent(fileName);
   return `${type}; filename="${asciiFallback}"; filename*=UTF-8''${encoded}`;
+}
+
+function parseRangeHeader(rangeHeader: string, totalSize: number) {
+  if (!rangeHeader.startsWith("bytes=")) {
+    return null;
+  }
+
+  const requestedRange = rangeHeader.slice(6).split(",")[0]?.trim();
+  if (!requestedRange) {
+    return null;
+  }
+
+  const [startText, endText] = requestedRange.split("-");
+  let start = 0;
+  let end = totalSize - 1;
+
+  if (!startText) {
+    const suffixLength = Number(endText);
+    if (!Number.isFinite(suffixLength) || suffixLength <= 0) {
+      return null;
+    }
+
+    const length = Math.min(suffixLength, totalSize);
+    start = totalSize - length;
+  } else {
+    start = Number(startText);
+    if (!Number.isFinite(start) || start < 0) {
+      return null;
+    }
+
+    if (endText) {
+      end = Number(endText);
+      if (!Number.isFinite(end)) {
+        return null;
+      }
+    }
+  }
+
+  if (start >= totalSize || start > end) {
+    return null;
+  }
+
+  end = Math.min(end, totalSize - 1);
+  return { start, end };
 }
 
 export interface Env {
@@ -144,6 +190,143 @@ export default {
             return { headers };
           },
         });
+      }
+
+      const freeLibraryDocumentMatch = pathname.match(/^\/api\/free-library\/documents\/([^/]+)\/(view|download)$/);
+      if (freeLibraryDocumentMatch) {
+        if (request.method !== "GET" && request.method !== "HEAD") {
+          return jsonResponse(405, { status: "method_not_allowed" });
+        }
+
+        const headers = new Headers();
+        corsHeaders.forEach((value, key) => {
+          headers.set(key, value);
+        });
+
+        const slug = decodeURIComponent(freeLibraryDocumentMatch[1]);
+        const action = freeLibraryDocumentMatch[2] as "view" | "download";
+        const document = getFreeLibraryDocumentBySlug(slug);
+
+        if (!document) {
+          return jsonResponse(404, {
+            status: "not_found",
+            message: "Free-library document not found",
+          }, headers);
+        }
+
+        const object = await env.VIDEOS_BUCKET.get(document.objectKey);
+        if (!object) {
+          return jsonResponse(404, {
+            status: "not_found",
+            message: "Document file is missing from storage",
+          }, headers);
+        }
+
+        headers.set("Content-Type", "application/pdf");
+        headers.set("Content-Disposition", buildContentDisposition(action === "view" ? "inline" : "attachment", document.originalFileName));
+        headers.set("Cache-Control", "public, max-age=3600");
+        headers.set("X-Content-Type-Options", "nosniff");
+        headers.set("X-Robots-Tag", "noindex, noarchive, nosnippet");
+
+        const contentLength = document.fileSizeBytes ?? (typeof object.size === "number" ? object.size : null);
+        if (contentLength) {
+          headers.set("Content-Length", String(contentLength));
+        }
+
+        if (request.method === "HEAD") {
+          return new Response(null, { status: 200, headers });
+        }
+
+        return new Response(object.body, { status: 200, headers });
+      }
+
+      const freeLibraryVideoMatch = pathname.match(/^\/api\/free-library\/videos\/([^/]+)\/stream$/);
+      if (freeLibraryVideoMatch) {
+        if (request.method !== "GET" && request.method !== "HEAD") {
+          return jsonResponse(405, { status: "method_not_allowed" });
+        }
+
+        const headers = new Headers();
+        corsHeaders.forEach((value, key) => {
+          headers.set(key, value);
+        });
+
+        const slug = decodeURIComponent(freeLibraryVideoMatch[1]);
+        const token = url.searchParams.get("token") ?? "";
+        const isTokenValid = token ? await verifyFreeVideoPlaybackToken(token, slug) : false;
+
+        if (!isTokenValid) {
+          return jsonResponse(401, {
+            status: "unauthorized",
+            message: "A valid playback token is required",
+          }, headers);
+        }
+
+        const video = getFreeLibraryVideoBySlug(slug);
+        if (!video) {
+          return jsonResponse(404, {
+            status: "not_found",
+            message: "Free-library video not found",
+          }, headers);
+        }
+
+        headers.set("Accept-Ranges", "bytes");
+        headers.set("Content-Type", "video/mp4");
+        headers.set("Content-Disposition", buildContentDisposition("inline", video.originalFileName));
+        headers.set("Cache-Control", "private, no-store, max-age=0");
+        headers.set("X-Content-Type-Options", "nosniff");
+        headers.set("X-Robots-Tag", "noindex, noarchive, nosnippet");
+
+        const rangeHeader = request.headers.get("range");
+        const totalSize = video.fileSizeBytes;
+
+        if (rangeHeader && totalSize > 0) {
+          const range = parseRangeHeader(rangeHeader, totalSize);
+          if (!range) {
+            headers.set("Content-Range", `bytes */${totalSize}`);
+            return new Response(null, { status: 416, headers });
+          }
+
+          const length = range.end - range.start + 1;
+          const object = await env.VIDEOS_BUCKET.get(video.objectKey, {
+            range: { offset: range.start, length },
+          } as any);
+
+          if (!object) {
+            return jsonResponse(404, {
+              status: "not_found",
+              message: "Video file is missing from storage",
+            }, headers);
+          }
+
+          headers.set("Content-Range", `bytes ${range.start}-${range.end}/${totalSize}`);
+          headers.set("Content-Length", String(length));
+
+          if (request.method === "HEAD") {
+            return new Response(null, { status: 206, headers });
+          }
+
+          return new Response(object.body, { status: 206, headers });
+        }
+
+        const object = await env.VIDEOS_BUCKET.get(video.objectKey);
+        if (!object) {
+          return jsonResponse(404, {
+            status: "not_found",
+            message: "Video file is missing from storage",
+          }, headers);
+        }
+
+        const contentLength = typeof object.size === "number" ? object.size : totalSize;
+        if (contentLength > 0) {
+          headers.set("Content-Length", String(contentLength));
+        }
+
+        if (request.method === "HEAD") {
+          return new Response(null, { status: 200, headers });
+        }
+
+        return new Response(object.body, { status: 200, headers });
       }
 
       const studentDocumentMatch = pathname.match(/^\/api\/student-documents\/(\d+)\/(view|download)$/);

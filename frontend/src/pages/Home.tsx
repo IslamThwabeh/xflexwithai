@@ -10,6 +10,8 @@ import {
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import TestimonialProofCard from '@/components/TestimonialProofCard';
+import FreeLibrarySection from '@/components/FreeLibrarySection';
+import ArticlePreviewCard from '@/components/ArticlePreviewCard';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { trpc } from '@/lib/trpc';
 import { DEFAULT_TESTIMONIAL_PROOFS } from '@/lib/defaultTestimonialProofs';
@@ -43,8 +45,10 @@ export default function Home() {
   // Fetch published events and articles
   const { data: events } = trpc.events.list.useQuery();
   const { data: articles } = trpc.articles.list.useQuery();
+  const { data: freeLibrary } = trpc.freeLibrary.list.useQuery();
   const { data: testimonials } = trpc.testimonials.list.useQuery();
   const { data: testimonialProofs } = trpc.testimonials.listProofs.useQuery({ surface: 'home', limit: 4 });
+  const featuredArticles = articles?.slice(0, 3) ?? [];
 
   const homeProofItems = testimonialProofs && testimonialProofs.length > 0
     ? testimonialProofs
@@ -93,7 +97,7 @@ export default function Home() {
     const elements = document.querySelectorAll('.fade-up');
     elements.forEach((el) => observer.observe(el));
     return () => observer.disconnect();
-  }, [events, articles, testimonials, testimonialProofs]);
+  }, [events, articles, freeLibrary, testimonials, testimonialProofs]);
 
   useEffect(() => {
     const scrollToHashSection = () => {
@@ -593,7 +597,7 @@ export default function Home() {
       )}
 
       {/* ======== ARTICLES SECTION ======== */}
-      {articles && articles.length > 0 && (
+      {featuredArticles.length > 0 && (
         <section id="articles" className="py-24 bg-[var(--color-xf-cream)]">
           <div className="container mx-auto px-4">
             <div className="text-center mb-16 fade-up">
@@ -602,45 +606,35 @@ export default function Home() {
                   {t('home.articles.title')}
                 </h2>
               </Link>
-              <p className="text-gray-500 text-lg mt-6">{t('home.articles.subtitle')}</p>
+              <p className="mx-auto mt-6 max-w-3xl text-gray-500 text-lg">
+                {isRTL
+                  ? 'ثلاث قراءات افتتاحية مرتبة بوضوح: الموضوع أولاً، ثم الفكرة، ثم زر مباشر لفتح المقال بالكامل من دون دفن المحتوى داخل ملف واحد.'
+                  : 'Three editorial reads with a cleaner structure: subject first, point of view second, and a direct path into the full article instead of hiding everything inside one file.'}
+              </p>
             </div>
 
-            <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
-              {articles.slice(0, 3).map((article) => (
-                <div key={article.id} className="fade-up glass-card overflow-hidden">
-                  {article.thumbnailUrl && (
-                    <img src={article.thumbnailUrl} alt={isRTL ? article.titleAr : article.titleEn} className="w-full h-40 object-cover" />
-                  )}
-                  <div className="p-5">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Newspaper className="w-3.5 h-3.5 text-gray-400" />
-                      {article.publishedAt && (
-                        <span className="text-xs text-gray-400">
-                          {new Date(article.publishedAt).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US', {
-                            month: 'short',
-                            day: 'numeric',
-                          })}
-                        </span>
-                      )}
-                    </div>
-                    <h3 className="font-extrabold text-xf-dark mb-2 tracking-[-0.3px]">
-                      {isRTL ? article.titleAr : article.titleEn}
-                    </h3>
-                    <p className="text-sm text-gray-500 line-clamp-2">
-                      {isRTL ? (article.excerptAr || '') : (article.excerptEn || '')}
-                    </p>
-                    <Link href={`/articles/${article.slug}`}>
-                      <span className="inline-flex items-center gap-1 text-sm text-xf-primary hover:text-xf-primary-hover mt-3 font-semibold cursor-pointer transition-colors">
-                        {t('home.articles.readMore')}
-                        <ChevronRight className="w-3.5 h-3.5" />
-                      </span>
-                    </Link>
+            <div className="mx-auto max-w-6xl">
+              {featuredArticles.length === 1 ? (
+                <div className="fade-up max-w-3xl mx-auto">
+                  <ArticlePreviewCard article={featuredArticles[0]} isRtl={isRTL} variant="feature" />
+                </div>
+              ) : (
+                <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+                  <div className="fade-up">
+                    <ArticlePreviewCard article={featuredArticles[0]} isRtl={isRTL} variant="feature" />
+                  </div>
+                  <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-1">
+                    {featuredArticles.slice(1).map((article) => (
+                      <div key={article.id} className="fade-up">
+                        <ArticlePreviewCard article={article} isRtl={isRTL} variant="compact" />
+                      </div>
+                    ))}
                   </div>
                 </div>
-              ))}
+              )}
             </div>
 
-            {articles.length > 0 && (
+            {featuredArticles.length > 0 && (
               <div className="text-center mt-10 fade-up">
                 <Link href="/articles">
                   <button className="px-6 py-2.5 rounded-full border border-gray-200 text-gray-600 hover:text-xf-dark hover:border-xf-dark/20 transition-all duration-150 text-sm font-medium">
@@ -665,7 +659,43 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="grid md:grid-cols-2 gap-8 max-w-3xl mx-auto">
+          {freeLibrary ? (
+            <div className="fade-up max-w-6xl mx-auto">
+              <div className="mb-8 rounded-[20px] border border-emerald-100 bg-gradient-to-r from-emerald-50/80 via-white to-amber-50/70 p-5 md:p-6">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="max-w-2xl">
+                    <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">
+                      {language === 'ar' ? 'جديد في المحتوى المفتوح' : 'New In Open Content'}
+                    </p>
+                    <h3 className="mt-2 text-2xl font-extrabold tracking-[-0.4px] text-xf-dark">
+                      {language === 'ar' ? 'مكتبة مجانية مرتبة: فيديوهات مركزة + مقالات كاملة' : 'A structured free library: focused videos + full articles'}
+                    </h3>
+                    <p className="mt-3 text-sm leading-6 text-gray-600 md:text-base">
+                      {language === 'ar'
+                        ? 'أضفنا المواد المجانية الجديدة داخل تجربة أوضح: شاهد الفيديو مباشرة، ثم انتقل إلى المقالات المنفصلة لقراءة الفكرة كاملة موضوعاً بموضوع.'
+                        : 'The new free material now lives in a cleaner experience: watch the video directly, then move into standalone articles so each idea has its own full read.'}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-3">
+                    <Link href="/free-content">
+                      <button className="btn-primary-xf px-6 py-3 text-sm font-semibold">
+                        {language === 'ar' ? 'افتح المكتبة المجانية' : 'Open Free Library'}
+                      </button>
+                    </Link>
+                    <Link href="/articles">
+                      <button className="rounded-full border border-amber-200 px-6 py-3 text-sm font-semibold text-amber-700 transition-all duration-150 hover:bg-amber-50">
+                        {language === 'ar' ? 'اذهب إلى المقالات' : 'Browse Articles'}
+                      </button>
+                    </Link>
+                  </div>
+                </div>
+              </div>
+
+              <FreeLibrarySection data={freeLibrary} isRtl={isRTL} mode="home" />
+            </div>
+          ) : null}
+
+          <div className="grid gap-6 md:grid-cols-2 max-w-4xl mx-auto mt-10">
             <div className="fade-up rounded-[16px] p-8 text-center" style={{ background: 'linear-gradient(135deg, rgba(16,185,129,0.06), rgba(16,185,129,0.02))' }}>
               <BookOpen className="w-10 h-10 text-xf-primary mx-auto mb-4" />
               <h3 className="text-lg font-extrabold text-xf-dark mb-2 tracking-[-0.3px]">{t('home.free.courses')}</h3>
