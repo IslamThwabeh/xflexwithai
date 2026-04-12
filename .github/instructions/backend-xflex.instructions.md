@@ -11,6 +11,7 @@ applyTo: "backend/**,database/**"
 - Production DB query pattern: `npx wrangler d1 execute xflexwithai-db --remote --command "SQL"`.
 - Package keys are the only supported entitlement mechanism for new work. Do not create or reference legacy `registrationKeys`.
 - If `courseId=0`, check `packageId` first before treating a key as LexAI.
+- Renewal package keys should reject only when the user already has in-system active `packageSubscriptions` and none match the renewal package. Imported/outside-system users with no package row yet should be allowed through the renewal flow so entitlements can be repaired.
 - `fulfillPackageEntitlements()` falls back to all published courses when `packageCourses` is empty.
 - Use `getUserEntitlementDays(userId)` for durations. Do not hardcode 30 or 44 days.
 - Pending subscriptions are not accessible. Active getters must filter `isPendingActivation=false`.

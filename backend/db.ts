@@ -70,6 +70,7 @@ import {
 import { ENV } from './_core/env';
 import { logger } from './_core/logger';
 import { sendWelcomeEmail, sendMilestoneEmail, sendQuizFeedbackEmail, sendStaffAlertEmail } from './_core/orderEmails';
+import { canRedeemRenewalPackageKey } from './services/package-key.service';
 import {
   BUG_REPORT_RISK_LEVELS,
   IDLE_TIMEOUT_STAFF_MS,
@@ -3005,13 +3006,12 @@ export async function activatePackageKey(keyCode: string, email: string, userId?
     }
   }
 
-  // 1b. For renewal keys: verify the user's current active subscription matches this package
+  // 1b. For renewal keys: reject only when there is an in-system active package and it does not match.
   if (key.isRenewal) {
     const lookupUserId = userId ?? (await getUserByEmail(normalizedEmail))?.id;
     if (lookupUserId) {
       const existingSubs = await getUserPackageSubscriptions(lookupUserId);
-      const hasMatchingSub = existingSubs.some(s => s.isActive && s.packageId === key.packageId);
-      if (!hasMatchingSub) {
+      if (!canRedeemRenewalPackageKey(existingSubs, key.packageId)) {
         return {
           success: false,
           message: "This renewal key is for a different subscription package. Please contact the support team to provide the correct renewal key for your subscription.",
