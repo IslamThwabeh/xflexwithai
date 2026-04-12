@@ -24,6 +24,7 @@ applyTo: "frontend/src/pages/Admin*.tsx,frontend/src/components/DashboardLayout.
 - On `AdminStudents.tsx`, route access to `/admin/students` is broader than some detail actions. Student timeline and progress detail calls should require `view_progress` for non-admin staff and must show a friendly permission message instead of failing silently.
 - Shared client service context can be broader than progress access: the reusable client profile may be opened from Students, Support, and LexAI for allowed staff roles, but its timeline section must stay limited to admin or `view_progress`.
 - `AdminLexai.tsx` default daily view is conversation-first. Queue workflow controls (`status`, `priority`, `ownership`, `notes`) should stay hidden behind the admin-only Ops area rather than returning to the main support-facing layout.
+- On `AdminPackageKeys.tsx`, package selection must respect the current renewal/upgrade toggle when suggesting a price. Do not silently reset a renewal key back to the full package price when the package is chosen after the toggle is enabled.
 - Prefer the bulk role path: `roles.setRoles` + `setUserRoles()` when editing multiple permissions.
 - Guard selection matters:
   - `adminProcedure` -> admin only

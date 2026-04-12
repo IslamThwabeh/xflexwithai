@@ -75,6 +75,7 @@ import {
   SortableHeader,
   zebraRow,
 } from "@/components/DataTable";
+import { getSuggestedPackageKeyPrice } from "@shared/packageKeyPricing";
 
 const keySortFns: Record<string, (a: any, b: any) => number> = {
   keyCode: (a, b) => (a.keyCode || "").localeCompare(b.keyCode || ""),
@@ -354,8 +355,12 @@ export default function AdminPackageKeys() {
           const pkgId = parseInt(v);
           setSelectedPackage(pkgId);
           const pkg = packages.find((p: any) => p.id === pkgId);
+          const nextIsUpgrade = pkg?.slug === 'basic' ? false : isUpgrade;
           if (pkg) {
-            setPrice(String(Math.round(pkg.price / 100)));
+            setPrice(String(getSuggestedPackageKeyPrice(packages, pkgId, {
+              isRenewal,
+              isUpgrade: nextIsUpgrade,
+            })));
             if (pkg.slug === 'basic') {
               setIsUpgrade(false);
               setReferredBy("");
@@ -463,20 +468,15 @@ export default function AdminPackageKeys() {
                       id="isUpgrade"
                       checked={isUpgrade}
                       onChange={(e) => {
-                        setIsUpgrade(e.target.checked);
-                        if (e.target.checked) {
+                        const nextIsUpgrade = e.target.checked;
+                        setIsUpgrade(nextIsUpgrade);
+                        if (nextIsUpgrade) {
                           setIsRenewal(false);
-                          // Upgrade price = Comprehensive minus Basic
-                          const comprehensive = packages.find((p: any) => p.includesLexai);
-                          const basic = packages.find((p: any) => !p.includesLexai);
-                          const upgradePrice = comprehensive && basic
-                            ? Math.round((comprehensive.price - basic.price) / 100)
-                            : 300;
-                          setPrice(String(upgradePrice));
-                        } else {
-                          const pkg = packages.find((p: any) => p.id === selectedPackage);
-                          setPrice(pkg ? String(Math.round(pkg.price / 100)) : '0');
                         }
+                        setPrice(String(getSuggestedPackageKeyPrice(packages, selectedPackage, {
+                          isRenewal: false,
+                          isUpgrade: nextIsUpgrade,
+                        })));
                       }}
                       className="w-4 h-4 accent-amber-600"
                     />
@@ -493,16 +493,15 @@ export default function AdminPackageKeys() {
                       id="isRenewal"
                       checked={isRenewal}
                       onChange={(e) => {
-                        setIsRenewal(e.target.checked);
-                        if (e.target.checked) {
+                        const nextIsRenewal = e.target.checked;
+                        setIsRenewal(nextIsRenewal);
+                        if (nextIsRenewal) {
                           setIsUpgrade(false);
-                          const pkg = packages.find((p: any) => p.id === selectedPackage);
-                          const isBasic = pkg && !pkg.includesLexai;
-                          setPrice(isBasic ? '50' : '100');
-                        } else {
-                          const pkg = packages.find((p: any) => p.id === selectedPackage);
-                          setPrice(pkg ? String(Math.round(pkg.price / 100)) : '0');
                         }
+                        setPrice(String(getSuggestedPackageKeyPrice(packages, selectedPackage, {
+                          isRenewal: nextIsRenewal,
+                          isUpgrade: false,
+                        })));
                       }}
                       className="w-4 h-4 accent-emerald-600"
                     />
@@ -591,20 +590,15 @@ export default function AdminPackageKeys() {
                       id="isUpgradeBulk"
                       checked={isUpgrade}
                       onChange={(e) => {
-                        setIsUpgrade(e.target.checked);
-                        if (e.target.checked) {
+                        const nextIsUpgrade = e.target.checked;
+                        setIsUpgrade(nextIsUpgrade);
+                        if (nextIsUpgrade) {
                           setIsRenewal(false);
-                          // Upgrade price = Comprehensive minus Basic
-                          const comprehensive = packages.find((p: any) => p.includesLexai);
-                          const basic = packages.find((p: any) => !p.includesLexai);
-                          const upgradePrice = comprehensive && basic
-                            ? Math.round((comprehensive.price - basic.price) / 100)
-                            : 300;
-                          setPrice(String(upgradePrice));
-                        } else {
-                          const pkg = packages.find((p: any) => p.id === selectedPackage);
-                          setPrice(pkg ? String(Math.round(pkg.price / 100)) : '0');
                         }
+                        setPrice(String(getSuggestedPackageKeyPrice(packages, selectedPackage, {
+                          isRenewal: false,
+                          isUpgrade: nextIsUpgrade,
+                        })));
                       }}
                       className="w-4 h-4 accent-amber-600"
                     />
@@ -621,16 +615,15 @@ export default function AdminPackageKeys() {
                       id="isRenewalBulk"
                       checked={isRenewal}
                       onChange={(e) => {
-                        setIsRenewal(e.target.checked);
-                        if (e.target.checked) {
+                        const nextIsRenewal = e.target.checked;
+                        setIsRenewal(nextIsRenewal);
+                        if (nextIsRenewal) {
                           setIsUpgrade(false);
-                          const pkg = packages.find((p: any) => p.id === selectedPackage);
-                          const isBasic = pkg && !pkg.includesLexai;
-                          setPrice(isBasic ? '50' : '100');
-                        } else {
-                          const pkg = packages.find((p: any) => p.id === selectedPackage);
-                          setPrice(pkg ? String(Math.round(pkg.price / 100)) : '0');
                         }
+                        setPrice(String(getSuggestedPackageKeyPrice(packages, selectedPackage, {
+                          isRenewal: nextIsRenewal,
+                          isUpgrade: false,
+                        })));
                       }}
                       className="w-4 h-4 accent-emerald-600"
                     />
