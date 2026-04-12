@@ -426,6 +426,24 @@ export default function AdminStudents() {
           </CardContent>
         </Card>
 
+        <Card className="border-amber-200 bg-amber-50/70">
+          <CardContent className="pt-4">
+            <div className="flex items-start gap-3">
+              <Info className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+              <div className="space-y-1 text-sm">
+                <p className="font-medium text-amber-900">
+                  {isRtl ? "ترتيب الترحيل المعتمد" : "Approved Migration Order"}
+                </p>
+                <p className="text-amber-800">
+                  {isRtl
+                    ? "المسار الصحيح هو: تعيين أو تفعيل المفتاح أولاً، ثم تخطي الوسيط فقط إذا أنهى العميل خطوات الوسيط خارج الموقع، ثم التأكد من الملف والملفات وLexAI والتوصيات. تخطي الدورة لا يفعّل الخدمات؛ هو فقط يعلّم الدورة كمكتملة ويحافظ على التقدم الحقيقي."
+                    : "The correct path is: assign or activate the key first, then use broker skip only if the client already completed broker steps outside the site, then verify the profile, documents, LexAI, and Recommendations. Course skip does not activate services; it only marks the course complete and preserves real progress."}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Loading */}
         {isLoading ? (
           <div className="animate-pulse space-y-3">
@@ -874,8 +892,8 @@ export default function AdminStudents() {
               <div className="space-y-3">
                 <span className="block">
                   {isRtl
-                    ? `سيتم تفعيل اشتراكات LexAI والتوصيات فوراً للطالب. تقدم الطالب الفعلي لن يتغير.`
-                    : `LexAI and Recommendations subscriptions will be activated immediately. The student's actual progress will not change.`}
+                    ? `سيتم فقط تعليم الدورة كمكتملة من جهة الإدارة مع الحفاظ على التقدم الحقيقي للطالب. هذا الإجراء لا يفعّل LexAI أو التوصيات؛ تخطي الوسيط هو بوابة التفعيل الوحيدة للخدمات الزمنية.`
+                    : `This only marks the course as completed from the admin side while preserving the student's real progress. It does not activate LexAI or Recommendations; broker skip remains the only activation gate for timed services.`}
                 </span>
                 <span className="block font-medium text-foreground">
                   {isRtl
@@ -921,8 +939,8 @@ export default function AdminStudents() {
               <div className="space-y-3">
                 <span className="block">
                   {isRtl
-                    ? `إذا لم يكمل الطالب الدورة فعلياً، سيتم إعادة اشتراكاته إلى حالة الانتظار.`
-                    : `If the student hasn't genuinely completed the course, their subscriptions will be set back to pending.`}
+                    ? `سيتم فقط إزالة علامة تخطي الدورة من جهة الإدارة. حالة LexAI والتوصيات لن تتغير هنا لأن بوابة التفعيل الوحيدة هي حالة الوسيط.`
+                    : `This only removes the admin course-skip flag. LexAI and Recommendations stay in their current state here because broker status is the only activation gate.`}
                 </span>
                 <span className="block font-medium text-foreground">
                   {isRtl
@@ -968,8 +986,8 @@ export default function AdminStudents() {
               <div className="space-y-3">
                 <span className="block">
                   {isRtl
-                    ? `سيتم تخطي جميع خطوات فتح الحساب (اختيار الوسيط، فتح الحساب، الإيداع) للطالب.`
-                    : `All 3 broker onboarding steps (select broker, open account, deposit) will be marked as approved for this student.`}
+                    ? `سيتم اعتماد جميع خطوات فتح الحساب (اختيار الوسيط، فتح الحساب، الإيداع) للطالب. إذا كانت هناك اشتراكات LexAI أو توصيات بانتظار الوسيط فسيتم تفعيلها مباشرة بعد هذه الخطوة.`
+                    : `All broker onboarding steps (select broker, open account, deposit) will be marked as approved for this student. If LexAI or Recommendations are currently waiting on broker completion, they will activate right after this step.`}
                 </span>
                 <span className="block font-medium text-foreground">
                   {isRtl
@@ -1015,8 +1033,8 @@ export default function AdminStudents() {
               <div className="space-y-3">
                 <span className="block">
                   {isRtl
-                    ? `سيتم حذف جميع خطوات فتح الحساب وإعادة حالة الوسيط إلى غير مكتمل.`
-                    : `All broker onboarding steps will be removed and the status will be reset to incomplete.`}
+                    ? `سيتم حذف جميع خطوات فتح الحساب وإعادة حالة الوسيط إلى غير مكتمل. راجع ملف العميل بعد ذلك لأن هذه العملية لا تُصلح أو تُعيد مزامنة الخدمات تلقائياً.`
+                    : `All broker onboarding steps will be removed and broker status will reset to incomplete. Review the client profile afterward because this action does not automatically repair or resync service access.`}
                 </span>
                 <span className="block font-medium text-foreground">
                   {isRtl

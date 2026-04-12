@@ -98,6 +98,42 @@ function getSecondaryLabel(profile: any, isRtl: boolean) {
   return isRtl ? "السجل الأصلي لهذا العميل لم يعد موجوداً" : "Original client record no longer exists";
 }
 
+function getLoginSecurityModeLabel(mode: string | null | undefined, isRtl: boolean) {
+  switch (mode) {
+    case "password_only":
+      return isRtl ? "كلمة المرور فقط" : "Password Only";
+    case "password_plus_otp":
+      return isRtl ? "كلمة المرور ثم رمز الدخول" : "Password + OTP";
+    case "password_or_otp":
+      return isRtl ? "كلمة المرور أو رمز الدخول" : "Password or OTP";
+    default:
+      return isRtl ? "غير معروف" : "Unknown";
+  }
+}
+
+function getUserTypeLabel(userType: string | null | undefined, isStaff: boolean, isRtl: boolean) {
+  if (isStaff) return isRtl ? "موظف" : "Staff";
+  switch (userType) {
+    case "telegram":
+      return isRtl ? "تيليجرام" : "Telegram";
+    case "web":
+      return isRtl ? "ويب" : "Web";
+    default:
+      return isRtl ? "غير محدد" : "Unspecified";
+  }
+}
+
+function getMigrationToneClasses(tone: "healthy" | "attention" | "risk") {
+  switch (tone) {
+    case "healthy":
+      return "border-emerald-200 bg-emerald-50 text-emerald-900";
+    case "risk":
+      return "border-rose-200 bg-rose-50 text-rose-900";
+    default:
+      return "border-amber-200 bg-amber-50 text-amber-900";
+  }
+}
+
 export default function AdminClientProfileSheet({
   userId,
   open,
@@ -125,6 +161,115 @@ export default function AdminClientProfileSheet({
   const packageCount = profile?.packageSummary?.activePackages?.length ?? 0;
   const lexaiCaseId = profile?.lexaiCase?.id ?? null;
   const supportConversationId = profile?.supportConversation?.id ?? null;
+  const keySummary = profile?.keySummary ?? {
+    assignedPackageKeys: 0,
+    activatedPackageKeys: 0,
+    latestActivatedAt: null,
+  };
+  const lexaiState = profile?.lexaiSubscription?.subscriptionState ?? "no_subscription";
+  const recommendationState = profile?.recommendationSubscription?.subscriptionState ?? "no_subscription";
+  const hasPendingService = lexaiState === "pending_activation" || recommendationState === "pending_activation";
+  const hasActiveService = lexaiState === "active" || recommendationState === "active";
+  const hasServiceRecord = !!profile?.lexaiSubscription || !!profile?.recommendationSubscription;
+  const migrationChecks: Array<{ title: string; detail: string; tone: "healthy" | "attention" | "risk" }> = [];
+
+  if (profile?.user?.adminEmailCollision) {
+    migrationChecks.push({
+      tone: "risk",
+      title: isRtl ? "تعارض بريد مع مسؤول" : "Admin Email Collision",
+      detail: isRtl
+        ? "نفس البريد موجود أيضاً في جدول المدراء. يجب مراجعة مسار الدخول حتى لا يضيع العميل بين /auth و /admin/login."
+        : "This email also exists in the separate admins table. Review the login path so the client is not split between /auth and /admin/login.",
+    });
+  }
+
+  if (keySummary.assignedPackageKeys === 0) {
+    migrationChecks.push({
+      tone: "attention",
+      title: isRtl ? "لا يوجد مفتاح باقة نشط" : "No Active Package Key",
+      detail: isRtl
+        ? "لم يتم ربط أي مفتاح باقة نشط بهذا البريد بعد. ابدأ بتعيين المفتاح الصحيح قبل أي خطوات أخرى."
+        : "No active package key is linked to this email yet. Assign the correct key before taking any other migration action.",
+    });
+  } else if (keySummary.activatedPackageKeys === 0) {
+    migrationChecks.push({
+      tone: "attention",
+      title: isRtl ? "المفتاح معيّن لكنه غير مفعّل" : "Key Assigned But Not Activated",
+      detail: isRtl
+        ? "يوجد مفتاح باقة لهذا البريد لكنه لم يُفعّل بعد. الخطوة التالية للعميل هي التفعيل أو التحقق من حسابه."
+        : "A package key exists for this email but has not been activated yet. The next client step is activation or account verification.",
+    });
+  } else {
+    migrationChecks.push({
+      tone: "healthy",
+      title: isRtl ? "المفتاح تم تفعيله" : "Key Activated",
+      detail: isRtl
+        ? "يوجد على الأقل مفتاح باقة مفعّل لهذا البريد."
+        : "There is at least one activated package key tied to this email.",
+    });
+  }
+
+  if (keySummary.activatedPackageKeys > 0 && packageCount === 0) {
+    migrationChecks.push({
+      tone: "risk",
+      title: isRtl ? "التفعيل موجود لكن الباقة مفقودة" : "Activation Present But Package Missing",
+      detail: isRtl
+        ? "هناك مفتاح مفعّل بدون باقة نشطة في الملف. هذا يشير غالباً إلى حاجة مزامنة أو إصلاح للـ entitlements."
+        : "There is an activated key but no active package in the profile. This usually means the entitlements need a sync or repair.",
+    });
+  } else if (packageCount > 0) {
+    migrationChecks.push({
+      tone: "healthy",
+      title: isRtl ? "الباقة النشطة موجودة" : "Active Package Present",
+      detail: isRtl
+        ? "الوصول الأساسي للدورة موجود الآن، لذلك يجب أن تُفتح الملفات ولوحة الباقة."
+        : "Core course access is present, so documents and the package area should be unlocked.",
+    });
+  }
+
+  if (profile?.user?.brokerOnboardingComplete && packageCount === 0) {
+    migrationChecks.push({
+      tone: "risk",
+      title: isRtl ? "الوسيط مكتمل بدون باقة" : "Broker Complete Without Package",
+      detail: isRtl
+        ? "تم تعليم الوسيط كمكتمل لكن لا توجد باقة نشطة. راجع ترتيب الخطوات أو أصلح entitlements أولاً."
+        : "Broker status is complete but there is no active package. Review the action order or repair entitlements first.",
+    });
+  } else if (hasPendingService && !profile?.user?.brokerOnboardingComplete) {
+    migrationChecks.push({
+      tone: "attention",
+      title: isRtl ? "الخدمات بانتظار الوسيط" : "Services Are Waiting On Broker",
+      detail: isRtl
+        ? "هناك اشتراكات بانتظار التفعيل. إذا كان العميل أنهى خطوات الوسيط خارج النظام، استخدم تخطي الوسيط لا تخطي الدورة."
+        : "Some services are pending activation. If the client already completed broker steps outside the system, use broker skip rather than course skip.",
+    });
+  } else if (profile?.user?.brokerOnboardingComplete && hasPendingService) {
+    migrationChecks.push({
+      tone: "risk",
+      title: isRtl ? "الوسيط مكتمل لكن الخدمات ما زالت معلّقة" : "Broker Complete But Services Still Pending",
+      detail: isRtl
+        ? "حالة الوسيط مكتملة بينما LexAI أو التوصيات ما زالت بانتظار التفعيل. هذا يحتاج مراجعة أو إصلاح للحالة."
+        : "Broker status is complete while LexAI or Recommendations are still pending. This needs a state review or repair.",
+    });
+  } else if (profile?.user?.brokerOnboardingComplete && hasServiceRecord && hasActiveService) {
+    migrationChecks.push({
+      tone: "healthy",
+      title: isRtl ? "الخدمات الزمنية نشطة" : "Timed Services Active",
+      detail: isRtl
+        ? "حالة الوسيط والخدمات الزمنية متطابقة حالياً."
+        : "Broker state and timed-service access currently line up.",
+    });
+  }
+
+  if (!profile?.user?.emailVerified) {
+    migrationChecks.push({
+      tone: "attention",
+      title: isRtl ? "البريد غير موثّق بعد" : "Email Not Verified Yet",
+      detail: isRtl
+        ? "هذا لا يمنع تسجيل الدخول دائماً، لكنه يعني أن العميل لم يثبت بريده بعد داخل الموقع."
+        : "This does not always block login, but it means the client has not yet verified the email inside the website.",
+    });
+  }
 
   const openLexai = () => {
     if (onOpenLexai) {
@@ -247,6 +392,64 @@ export default function AdminClientProfileSheet({
                         ))}
                       </div>
                     )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="border-amber-200 bg-white/95">
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <ShieldAlert className="h-5 w-5 text-amber-600" />
+                    {isRtl ? "جاهزية الترحيل" : "Migration Health"}
+                  </CardTitle>
+                  <CardDescription>
+                    {isRtl
+                      ? "ملخص سريع لما إذا كان العميل جاهزاً للدخول والوصول، وما هي الخطوة التالية لفريق الدعم."
+                      : "A quick summary of login and access readiness, plus the next support action for this client."}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4 text-sm">
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900">
+                    <p className="font-medium">{isRtl ? "الترتيب المعتمد" : "Approved Order"}</p>
+                    <p className="mt-1 text-xs leading-6 text-amber-800">
+                      {isRtl
+                        ? "المسار الصحيح للعملاء المرحّلين هو: المفتاح أولاً، ثم تخطي الوسيط فقط إذا كان العميل أنهى خطوات الوسيط خارج الموقع، ثم التأكد من لوحة الطالب والملفات وLexAI والتوصيات. تخطي الدورة يحدّث حالة الدورة فقط ويحافظ على التقدم الحقيقي."
+                        : "The correct path for migrated clients is: key first, then broker skip only if the client already completed broker steps outside the site, then verify the dashboard, documents, LexAI, and Recommendations. Course skip only updates the course status and preserves real progress."}
+                    </p>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <InfoLine
+                      icon={<Mail className="h-4 w-4 text-emerald-600" />}
+                      label={isRtl ? "وضع الدخول" : "Login Mode"}
+                      value={getLoginSecurityModeLabel(profile.user.loginSecurityMode, isRtl)}
+                    />
+                    <InfoLine
+                      icon={<UserRound className="h-4 w-4 text-emerald-600" />}
+                      label={isRtl ? "مصدر الحساب" : "Account Source"}
+                      value={getUserTypeLabel(profile.user.userType, profile.user.isStaff, isRtl)}
+                    />
+                    <InfoLine
+                      icon={<Package className="h-4 w-4 text-emerald-600" />}
+                      label={isRtl ? "مفاتيح الباقات" : "Package Keys"}
+                      value={isRtl
+                        ? `${keySummary.activatedPackageKeys} مفعّل من ${keySummary.assignedPackageKeys}`
+                        : `${keySummary.activatedPackageKeys} of ${keySummary.assignedPackageKeys} activated`}
+                    />
+                    <InfoLine
+                      icon={<Clock3 className="h-4 w-4 text-emerald-600" />}
+                      label={isRtl ? "آخر تفعيل مفتاح" : "Latest Key Activation"}
+                      value={formatDate(keySummary.latestActivatedAt, locale, false)}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    {migrationChecks.map((item, index) => (
+                      <div key={`${item.title}-${index}`} className={`rounded-xl border px-3 py-3 ${getMigrationToneClasses(item.tone)}`}>
+                        <p className="text-sm font-semibold">{item.title}</p>
+                        <p className="mt-1 text-xs leading-5 opacity-90">{item.detail}</p>
+                      </div>
+                    ))}
                   </div>
                 </CardContent>
               </Card>

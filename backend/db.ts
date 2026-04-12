@@ -71,6 +71,7 @@ import { ENV } from './_core/env';
 import { logger } from './_core/logger';
 import { sendWelcomeEmail, sendMilestoneEmail, sendQuizFeedbackEmail, sendStaffAlertEmail } from './_core/orderEmails';
 import { canRedeemRenewalPackageKey } from './services/package-key.service';
+import { getPendingServiceWindow, shouldAutoActivateTimedServices } from './services/timed-service-activation.service';
 import {
   BUG_REPORT_RISK_LEVELS,
   IDLE_TIMEOUT_STAFF_MS,
@@ -118,6 +119,85 @@ function buildEndDateFromDays(startDate: Date, days: number) {
   const endDate = new Date(startDate);
   endDate.setDate(endDate.getDate() + days);
   return endDate;
+}
+
+async function getRegistrationKeyActivatedAt(registrationKeyId?: number | null) {
+  if (!registrationKeyId) return null;
+
+  const db = await getDb();
+  if (!db) return null;
+
+  const [keyRow] = await db
+    .select({ activatedAt: registrationKeys.activatedAt })
+    .from(registrationKeys)
+    .where(eq(registrationKeys.id, registrationKeyId))
+    .limit(1);
+
+  return keyRow?.activatedAt ?? null;
+}
+
+async function getPendingServiceWindowForKey(
+  registrationKeyId: number | undefined,
+  studyPeriodDays: number,
+  entitlementDays: number,
+  fallbackDate: Date,
+) {
+  const registrationKeyActivatedAt = await getRegistrationKeyActivatedAt(registrationKeyId ?? null);
+  return getPendingServiceWindow({
+    fallbackDate,
+    registrationKeyActivatedAt,
+    studyPeriodDays,
+    entitlementDays,
+  });
+}
+
+async function ensureTimedServicesActivatedIfDue(userId: number) {
+  const db = await getDb();
+  if (!db) return;
+
+  const [userRow] = await db
+    .select({ brokerOnboardingComplete: users.brokerOnboardingComplete })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  const [pendingLex] = await db
+    .select({ maxActivationDate: lexaiSubscriptions.maxActivationDate })
+    .from(lexaiSubscriptions)
+    .where(and(
+      eq(lexaiSubscriptions.userId, userId),
+      eq(lexaiSubscriptions.isActive, true),
+      eq(lexaiSubscriptions.isPendingActivation, true),
+    ))
+    .limit(1);
+
+  const [pendingRec] = await db
+    .select({ maxActivationDate: recommendationSubscriptions.maxActivationDate })
+    .from(recommendationSubscriptions)
+    .where(and(
+      eq(recommendationSubscriptions.userId, userId),
+      eq(recommendationSubscriptions.isActive, true),
+      eq(recommendationSubscriptions.isPendingActivation, true),
+    ))
+    .limit(1);
+
+  if (!pendingLex && !pendingRec) {
+    return;
+  }
+
+  const brokerComplete = !!userRow?.brokerOnboardingComplete;
+  const shouldActivate = shouldAutoActivateTimedServices({
+    now: new Date(),
+    brokerComplete,
+    lexaiMaxActivationDate: pendingLex?.maxActivationDate ?? null,
+    recommendationMaxActivationDate: pendingRec?.maxActivationDate ?? null,
+  });
+
+  if (!shouldActivate) {
+    return;
+  }
+
+  await activateStudentSubscriptions(userId, !brokerComplete);
 }
 
 /**
@@ -1128,7 +1208,7 @@ export async function deleteEnrollment(id: number) {
 /**
  * Skip course for a user — sets isAdminSkipped flag WITHOUT touching episode progress.
  * The student's real progress is preserved for rollback.
- * Immediately activates pending LexAI/Rec subscriptions (starts the 30-day timer).
+ * This does not activate pending LexAI/Recommendations; broker completion remains the only gate.
  */
 export async function skipCourseForUser(userId: number, courseId: number) {
   const db = await getDb();
@@ -1169,7 +1249,7 @@ export async function skipCourseForUser(userId: number, courseId: number) {
 }
 
 /**
- * Rollback a skipped course — clears the admin-skip flag, restores pending subscriptions.
+ * Rollback a skipped course — clears the admin-skip flag without changing service activation state.
  * The student's real episode progress is untouched (preserved during skip).
  */
 export async function rollbackSkipCourse(userId: number, courseId: number) {
@@ -1865,6 +1945,8 @@ export async function reactivateRegistrationKey(id: number) {
 // ============================================================================
 
 export async function getActiveRecommendationSubscription(userId: number) {
+  await ensureTimedServicesActivatedIfDue(userId);
+
   const db = await getDb();
   if (!db) return undefined;
 
@@ -2717,6 +2799,38 @@ export async function syncUserEntitlementsFromKeys(userId: number, email: string
   }
 }
 
+async function getPackageKeySummaryByEmail(email: string) {
+  const db = await getDb();
+  if (!db) {
+    return {
+      assignedPackageKeys: 0,
+      activatedPackageKeys: 0,
+      latestActivatedAt: null as string | null,
+    };
+  }
+
+  const normalizedEmail = email.trim().toLowerCase();
+  const keys = await db
+    .select({
+      activatedAt: registrationKeys.activatedAt,
+    })
+    .from(registrationKeys)
+    .where(
+      and(
+        sql`${registrationKeys.packageId} IS NOT NULL`,
+        sql`lower(${registrationKeys.email}) = ${normalizedEmail}`,
+        eq(registrationKeys.isActive, true),
+      )
+    )
+    .orderBy(desc(registrationKeys.activatedAt), desc(registrationKeys.createdAt));
+
+  return {
+    assignedPackageKeys: keys.length,
+    activatedPackageKeys: keys.filter((key) => !!key.activatedAt).length,
+    latestActivatedAt: keys.find((key) => !!key.activatedAt)?.activatedAt ?? null,
+  };
+}
+
 /** Get all activated package keys for a given email (used by sync) */
 async function getActivatedPackageKeysByEmail(email: string) {
   const db = await getDb();
@@ -3120,6 +3234,13 @@ export async function renewPackageEntitlements(
     ?? normalizePositiveInteger(pkg.durationDays)
     ?? DEFAULT_KEY_ENTITLEMENT_DAYS;
   const now = new Date();
+  const studyPeriodDays = await getStudyPeriodDays();
+  const pendingServiceWindow = await getPendingServiceWindowForKey(
+    registrationKeyId,
+    studyPeriodDays,
+    entitlementDays,
+    now,
+  );
 
   // --- Package subscription ---
   const existingPackageSubs = await getUserPackageSubscriptions(userId);
@@ -3153,17 +3274,15 @@ export async function renewPackageEntitlements(
         paymentStatus: "completed",
       });
     } else {
-      const maxActivationDate = buildEndDateFromDays(now, 14);
-      const newEnd = buildEndDateFromDays(now, entitlementDays);
       await createLexaiSubscription({
         userId,
         isActive: true,
         isPaused: false,
         isPendingActivation: true,
         studentActivatedAt: null,
-        maxActivationDate: maxActivationDate.toISOString(),
-        startDate: now.toISOString(),
-        endDate: newEnd.toISOString(),
+        maxActivationDate: pendingServiceWindow.maxActivationDate.toISOString(),
+        startDate: pendingServiceWindow.activationAnchor.toISOString(),
+        endDate: pendingServiceWindow.placeholderEndDate.toISOString(),
         paymentStatus: "completed",
         paymentAmount: 0,
         paymentCurrency: "USD",
@@ -3190,8 +3309,6 @@ export async function renewPackageEntitlements(
         paymentStatus: "completed",
       });
     } else {
-      const maxActivationDate = buildEndDateFromDays(now, 14);
-      const newEnd = buildEndDateFromDays(now, entitlementDays);
       await createRecommendationSubscription({
         userId,
         registrationKeyId: registrationKeyId ?? null,
@@ -3199,9 +3316,9 @@ export async function renewPackageEntitlements(
         isPaused: false,
         isPendingActivation: true,
         studentActivatedAt: null,
-        maxActivationDate: maxActivationDate.toISOString(),
-        startDate: now.toISOString(),
-        endDate: newEnd.toISOString(),
+        maxActivationDate: pendingServiceWindow.maxActivationDate.toISOString(),
+        startDate: pendingServiceWindow.activationAnchor.toISOString(),
+        endDate: pendingServiceWindow.placeholderEndDate.toISOString(),
         paymentStatus: "completed",
         paymentAmount: 0,
         paymentCurrency: "USD",
@@ -3240,8 +3357,14 @@ export async function fulfillPackageEntitlements(
     ?? DEFAULT_KEY_ENTITLEMENT_DAYS;
   const now = new Date();
   const studyPeriodDays = await getStudyPeriodDays();
-  const placeholderEndDate = buildEndDateFromDays(now, studyPeriodDays + entitlementDays);
-  const maxActivationDate = buildEndDateFromDays(now, studyPeriodDays);
+  const pendingServiceWindow = await getPendingServiceWindowForKey(
+    registrationKeyId,
+    studyPeriodDays,
+    entitlementDays,
+    now,
+  );
+  const placeholderEndDate = pendingServiceWindow.placeholderEndDate;
+  const maxActivationDate = pendingServiceWindow.maxActivationDate;
   console.log(`[fulfillEntitlements] userId=${userId} pkgId=${packageId} entDays=${entitlementDays} studyDays=${studyPeriodDays}`);
 
   const db = await getDb();
@@ -3377,7 +3500,7 @@ export async function fulfillPackageEntitlements(
           isPendingActivation: true,
           studentActivatedAt: null,
           maxActivationDate: maxActivationDate.toISOString(),
-          startDate: now.toISOString(),
+          startDate: pendingServiceWindow.activationAnchor.toISOString(),
           endDate: placeholderEndDate.toISOString(),
           paymentStatus: "completed",
           paymentAmount: 0,
@@ -3415,7 +3538,7 @@ export async function fulfillPackageEntitlements(
           isPendingActivation: true,
           studentActivatedAt: null,
           maxActivationDate: maxActivationDate.toISOString(),
-          startDate: now.toISOString(),
+          startDate: pendingServiceWindow.activationAnchor.toISOString(),
           endDate: placeholderEndDate.toISOString(),
           paymentStatus: "completed",
           paymentAmount: 0,
@@ -3463,7 +3586,7 @@ export async function fulfillPackageEntitlements(
           isPendingActivation: true,
           studentActivatedAt: null,
           maxActivationDate: maxActivationDate.toISOString(),
-          startDate: now.toISOString(),
+          startDate: pendingServiceWindow.activationAnchor.toISOString(),
           endDate: placeholderEndDate.toISOString(),
           paymentStatus: "completed",
           paymentAmount: 0,
@@ -3500,7 +3623,7 @@ export async function fulfillPackageEntitlements(
           isPendingActivation: true,
           studentActivatedAt: null,
           maxActivationDate: maxActivationDate.toISOString(),
-          startDate: now.toISOString(),
+          startDate: pendingServiceWindow.activationAnchor.toISOString(),
           endDate: placeholderEndDate.toISOString(),
           paymentStatus: "completed",
           paymentAmount: 0,
@@ -4230,6 +4353,8 @@ export async function getQuizHistoryForLevel(userId: number, level: number) {
 // ============================================================================
 
 export async function getUserLexaiSubscription(userId: number) {
+  await ensureTimedServicesActivatedIfDue(userId);
+
   const db = await getDb();
   if (!db) return undefined;
   const nowIso = new Date().toISOString();
@@ -4760,6 +4885,8 @@ async function getSharedClientServiceContext(userId: number, options?: { include
     };
   }
 
+  await ensureTimedServicesActivatedIfDue(userId);
+
   const includeTimeline = options?.includeTimeline !== false;
 
   const [lexaiCase, rawLexaiSubscription, rawRecommendationSubscription, supportConversation, timeline] = await Promise.all([
@@ -4833,10 +4960,16 @@ async function getSharedClientServiceContext(userId: number, options?: { include
 }
 
 export async function getAdminClientProfile(userId: number, options?: { includeTimeline?: boolean }) {
-  const [user, activePackageSubs, serviceContext] = await Promise.all([
-    getUserById(userId),
+  const user = await getUserById(userId);
+  const normalizedEmail = user?.email?.trim().toLowerCase() ?? null;
+
+  const [activePackageSubs, serviceContext, adminEmailCollision, keySummary] = await Promise.all([
     getUserPackageSubscriptions(userId),
     getSharedClientServiceContext(userId, options),
+    normalizedEmail ? getAdminByEmail(normalizedEmail) : Promise.resolve(null),
+    normalizedEmail
+      ? getPackageKeySummaryByEmail(normalizedEmail)
+      : Promise.resolve({ assignedPackageKeys: 0, activatedPackageKeys: 0, latestActivatedAt: null as string | null }),
   ]);
 
   const activePackages = await Promise.all(
@@ -4865,11 +4998,16 @@ export async function getAdminClientProfile(userId: number, options?: { includeT
       lastSignedIn: user?.lastSignedIn ?? null,
       emailVerified: !!user?.emailVerified,
       brokerOnboardingComplete: !!user?.brokerOnboardingComplete,
+      loginSecurityMode: user?.loginSecurityMode ?? null,
+      userType: user?.user_type ?? null,
+      isStaff: !!user?.isStaff,
+      adminEmailCollision: !!adminEmailCollision,
       isDeleted: !user,
     },
     packageSummary: {
       activePackages,
     },
+    keySummary,
     ...serviceContext,
   };
 }
@@ -6152,6 +6290,7 @@ export async function getPublishedStudentDocumentById(id: number): Promise<Stude
 export async function getPendingActivationStatus(userId: number) {
   const db = await getDb();
   if (!db) return { hasPending: false, lexai: null, recommendation: null, progressPercent: 0 };
+  await ensureTimedServicesActivatedIfDue(userId);
   const studyPeriodDays = await getStudyPeriodDays();
   const entitlementDays = await getUserEntitlementDays(userId);
 

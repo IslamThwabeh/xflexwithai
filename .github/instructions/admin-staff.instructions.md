@@ -22,7 +22,9 @@ applyTo: "frontend/src/pages/Admin*.tsx,frontend/src/components/DashboardLayout.
 - Recommendation trade levels (`entryPrice`, `stopLoss`, `takeProfit1`, `takeProfit2`, `riskPercent`) are optional helpers, not mandatory posting fields. Keep them available but visually secondary.
 - Recommendation deletion rule: admins can delete any message/result; analysts can only delete their own.
 - On `AdminStudents.tsx`, route access to `/admin/students` is broader than some detail actions. Student timeline and progress detail calls should require `view_progress` for non-admin staff and must show a friendly permission message instead of failing silently.
+- On `AdminStudents.tsx`, keep migration/support copy aligned with the broker-only activation model: course skip is flag-only and must never be described as activating LexAI or Recommendations; broker skip is the admin action that activates pending timed services.
 - Shared client service context can be broader than progress access: the reusable client profile may be opened from Students, Support, and LexAI for allowed staff roles, but its timeline section must stay limited to admin or `view_progress`.
+- `AdminClientProfileSheet.tsx` is the preferred place for migration-readiness context. Keep account readiness, key state, broker state, and service-state warnings there instead of scattering separate migration cards across admin pages.
 - `AdminLexai.tsx` default daily view is conversation-first. Queue workflow controls (`status`, `priority`, `ownership`, `notes`) should stay hidden behind the admin-only Ops area rather than returning to the main support-facing layout.
 - On `AdminPackageKeys.tsx`, package selection must respect the current renewal/upgrade toggle when suggesting a price. Do not silently reset a renewal key back to the full package price when the package is chosen after the toggle is enabled.
 - Prefer the bulk role path: `roles.setRoles` + `setUserRoles()` when editing multiple permissions.

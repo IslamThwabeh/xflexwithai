@@ -13,8 +13,10 @@ applyTo: "backend/**,database/**"
 - If `courseId=0`, check `packageId` first before treating a key as LexAI.
 - Renewal package keys should reject only when the user already has in-system active `packageSubscriptions` and none match the renewal package. Imported/outside-system users with no package row yet should be allowed through the renewal flow so entitlements can be repaired.
 - `fulfillPackageEntitlements()` falls back to all published courses when `packageCourses` is empty.
+- Pending LexAI/Recommendations windows must anchor to the original package-key `activatedAt`, not to a later login-time entitlement sync or repair run.
 - Use `getUserEntitlementDays(userId)` for durations. Do not hardcode 30 or 44 days.
 - Pending subscriptions are not accessible. Active getters must filter `isPendingActivation=false`.
+- When a pending timed service is already past `maxActivationDate`, repair or access flows should auto-activate it instead of leaving it blocked until a dedicated status route happens to run.
 - Recommendation channel publishing is silence-based: create a `recommendationAlerts` row, wait 60 seconds, then allow analyst `recommendation`, `update`, and `result` messages. Every analyst message refreshes the 15-minute inactivity timer; only after 15 minutes of silence is a new alert required.
 - Recommendation alert emails should key off `users.lastInteractiveAt`, not `lastActiveAt`, because authenticated polling traffic should not suppress inactive-user email delivery.
 - Recommendation alert emails should be localized per student when possible. Use the saved student language preference if present; otherwise default to Arabic. Keep OTP/login codes as plain-text emails.
