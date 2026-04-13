@@ -67,14 +67,26 @@ function formatMessageTimestamp(value: unknown, language: string) {
 
 function getThreadContainerClass(paletteIndex: number) {
   return paletteIndex % 2 === 0
-    ? "border-slate-200 bg-white shadow-sm"
-    : "border-slate-300 bg-slate-50/90 shadow-sm";
+    ? "border-slate-200 bg-gradient-to-b from-white to-slate-50/80 shadow-[0_16px_40px_rgba(15,23,42,0.06)]"
+    : "border-slate-300 bg-gradient-to-b from-slate-50 to-white shadow-[0_18px_42px_rgba(15,23,42,0.08)]";
+}
+
+function getThreadHeaderStripClass(paletteIndex: number) {
+  return paletteIndex % 2 === 0
+    ? "border-slate-200 bg-slate-50/95"
+    : "border-slate-200 bg-white/95";
 }
 
 function getThreadRootPanelClass(paletteIndex: number) {
   return paletteIndex % 2 === 0
     ? "border-slate-200 bg-white/90"
     : "border-slate-200 bg-white/75";
+}
+
+function getThreadLaneClass(paletteIndex: number) {
+  return paletteIndex % 2 === 0
+    ? "border-slate-200"
+    : "border-slate-300/90";
 }
 
 function getThreadChildPanelClass(type: string, paletteIndex: number) {
@@ -87,6 +99,14 @@ function getThreadChildPanelClass(type: string, paletteIndex: number) {
   return paletteIndex % 2 === 0
     ? "border-amber-200 bg-amber-50/85 dark:border-amber-800/40 dark:bg-amber-900/10"
     : "border-amber-200 bg-amber-100/65 dark:border-amber-800/40 dark:bg-amber-900/15";
+}
+
+function getThreadFollowUpLabel(count: number, isArabic: boolean) {
+  if (isArabic) {
+    return `${count} ${count === 1 ? "متابعة" : "متابعات"}`;
+  }
+
+  return `${count} ${count === 1 ? "follow-up" : "follow-ups"}`;
 }
 
 function parseThreadActionFromUrl() {
@@ -522,7 +542,7 @@ export default function Recommendations() {
                         )}
                       </div>
                       {alert.note && (
-                        <p className="mt-2 text-xs text-muted-foreground whitespace-pre-wrap">{alert.note}</p>
+                        <p className="mt-2 text-xs text-muted-foreground whitespace-pre-wrap break-words">{alert.note}</p>
                       )}
                     </div>
                   );
@@ -574,31 +594,29 @@ export default function Recommendations() {
                         </p>
                       </div>
 
-                      <div className="space-y-3">
+                      <div className="space-y-4 sm:space-y-5">
                         {group.threads.map((thread) => {
                           const message = thread.root;
                           const children = thread.children;
 
                           return (
-                            <div key={message.id} className={`rounded-2xl border p-3 space-y-3 sm:p-4 ${getThreadContainerClass(thread.paletteIndex)}`}>
-                              <div className={`rounded-xl border p-4 space-y-3 ${getThreadRootPanelClass(thread.paletteIndex)}`}>
-                                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                                  <div className="space-y-2">
+                            <div key={message.id} className={`rounded-[28px] border p-3 space-y-4 sm:p-4 lg:p-5 ${getThreadContainerClass(thread.paletteIndex)}`}>
+                              <div className={`rounded-2xl border px-4 py-3 sm:px-5 sm:py-4 ${getThreadHeaderStripClass(thread.paletteIndex)}`}>
+                                <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                                  <div className="min-w-0 space-y-2">
                                     <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                                      <Badge variant="outline" className={getMessageTypeClass(message.type)}>
-                                        {getMessageTypeLabel(message.type, language === 'ar')}
-                                      </Badge>
-                                      {message.symbol && <Badge className="bg-slate-100 text-slate-700 dark:bg-white/10 dark:text-slate-200">{message.symbol}</Badge>}
+                                      <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+                                        {language === 'ar' ? 'خيط الصفقة' : 'Trade Thread'}
+                                      </span>
+                                      {message.symbol && <Badge className="bg-white text-slate-700 dark:bg-white/10 dark:text-slate-200">{message.symbol}</Badge>}
                                       {message.side && (
                                         <Badge className={message.side === 'BUY' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}>
                                           {message.side}
                                         </Badge>
                                       )}
                                       {children.length > 0 && (
-                                        <Badge variant="secondary" className="bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-300">
-                                          {language === 'ar'
-                                            ? `${children.length} ${children.length === 1 ? 'متابعة' : 'متابعات'}`
-                                            : `${children.length} ${children.length === 1 ? 'update' : 'updates'}`}
+                                        <Badge variant="secondary" className="bg-slate-100 text-slate-700 dark:bg-white/10 dark:text-slate-300">
+                                          {getThreadFollowUpLabel(children.length, language === 'ar')}
                                         </Badge>
                                       )}
                                       {message.isThreadMuted && canManageThreadNotifications && (
@@ -608,31 +626,47 @@ export default function Recommendations() {
                                       )}
                                     </div>
 
-                                    {children.length > 0 && thread.latestActivityAt !== message.createdAt && (
-                                      <p className="text-xs text-muted-foreground">
-                                        {language === 'ar'
-                                          ? `بدأت الصفقة ${formatMessageTimestamp(message.createdAt, language)} وآخر تحديث كان ${formatMessageTimestamp(thread.latestActivityAt, language)}`
-                                          : `Trade opened ${formatMessageTimestamp(message.createdAt, language)} and was last updated ${formatMessageTimestamp(thread.latestActivityAt, language)}`}
-                                      </p>
-                                    )}
+                                    <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-600 dark:text-slate-300 sm:text-xs">
+                                      <span className="rounded-full border border-white/80 bg-white/90 px-2.5 py-1 dark:border-white/10 dark:bg-white/10">
+                                        {language === 'ar' ? 'بدأت' : 'Started'} {formatMessageTimestamp(message.createdAt, language)}
+                                      </span>
+                                      {children.length > 0 && thread.latestActivityAt !== message.createdAt && (
+                                        <span className="rounded-full border border-white/80 bg-white/90 px-2.5 py-1 dark:border-white/10 dark:bg-white/10">
+                                          {language === 'ar' ? 'آخر تحديث' : 'Last update'} {formatMessageTimestamp(thread.latestActivityAt, language)}
+                                        </span>
+                                      )}
+                                    </div>
                                   </div>
 
-                                  <div className="flex flex-col items-start gap-2 text-[11px] text-muted-foreground sm:text-xs lg:items-end lg:text-right">
-                                    <div>{formatMessageTimestamp(thread.latestActivityAt, language)}</div>
-                                    {canManageThreadNotifications && (
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        className={message.isThreadMuted
-                                          ? 'border-amber-300 text-amber-800 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-200'
-                                          : 'border-slate-300 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200'}
-                                        disabled={muteThreadMutation.isPending || unmuteThreadMutation.isPending}
-                                        onClick={() => handleThreadMuteToggle(message.rootThreadId ?? message.id, !!message.isThreadMuted)}
-                                      >
-                                        {message.isThreadMuted ? <Bell className="h-4 w-4 me-1" /> : <BellOff className="h-4 w-4 me-1" />}
-                                        {message.isThreadMuted ? t('rec.threadUnmute') : t('rec.threadMute')}
-                                      </Button>
-                                    )}
+                                  {canManageThreadNotifications && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className={`w-full sm:w-auto ${message.isThreadMuted
+                                        ? 'border-amber-300 text-amber-800 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-200'
+                                        : 'border-slate-300 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200'}`}
+                                      disabled={muteThreadMutation.isPending || unmuteThreadMutation.isPending}
+                                      onClick={() => handleThreadMuteToggle(message.rootThreadId ?? message.id, !!message.isThreadMuted)}
+                                    >
+                                      {message.isThreadMuted ? <Bell className="h-4 w-4 me-1" /> : <BellOff className="h-4 w-4 me-1" />}
+                                      {message.isThreadMuted ? t('rec.threadUnmute') : t('rec.threadMute')}
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className={`rounded-2xl border p-4 space-y-3 sm:p-5 ${getThreadRootPanelClass(thread.paletteIndex)}`}>
+                                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                                  <div className="space-y-2">
+                                    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                                      <Badge variant="outline" className={getMessageTypeClass(message.type)}>
+                                        {getMessageTypeLabel(message.type, language === 'ar')}
+                                      </Badge>
+                                    </div>
+                                  </div>
+
+                                  <div className="text-[11px] text-muted-foreground sm:text-xs lg:text-right">
+                                    {formatMessageTimestamp(message.createdAt, language)}
                                   </div>
                                 </div>
 
@@ -646,7 +680,7 @@ export default function Recommendations() {
                                   </div>
                                 )}
 
-                                <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                                <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
 
                                 {message.isThreadMuted && canManageThreadNotifications && (
                                   <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-6 text-amber-900 dark:border-amber-800/40 dark:bg-amber-900/10 dark:text-amber-100">
@@ -677,43 +711,51 @@ export default function Recommendations() {
                               </div>
 
                               {children.length > 0 && (
-                                <div className="space-y-2">
-                                  {children.map((child: any) => (
-                                    <div key={child.id} className={`rounded-xl border p-3 space-y-2 ${getThreadChildPanelClass(child.type, thread.paletteIndex)}`}>
-                                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                                        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                                          <Badge variant="outline" className={getMessageTypeClass(child.type)}>
-                                            {getMessageTypeLabel(child.type, language === 'ar')}
-                                          </Badge>
-                                        </div>
-                                        <div className="text-[11px] text-muted-foreground sm:text-xs sm:whitespace-nowrap">
-                                          {formatMessageTimestamp(child.createdAt, language)}
-                                        </div>
-                                      </div>
+                                <div className="space-y-3">
+                                  <div className={`rounded-xl border border-dashed px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600 dark:text-slate-300 sm:text-xs ${getThreadHeaderStripClass(thread.paletteIndex)}`}>
+                                    {language === 'ar'
+                                      ? `مسار المتابعات ${getThreadFollowUpLabel(children.length, true)}`
+                                      : `Follow-up lane ${getThreadFollowUpLabel(children.length, false)}`}
+                                  </div>
 
-                                      <p className="text-sm whitespace-pre-wrap">{child.content}</p>
+                                  <div className={`space-y-3 border-s-2 ps-4 sm:ps-5 ${getThreadLaneClass(thread.paletteIndex)}`}>
+                                    {children.map((child: any) => (
+                                      <div key={child.id} className={`rounded-xl border p-3 space-y-2 ${getThreadChildPanelClass(child.type, thread.paletteIndex)}`}>
+                                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                                            <Badge variant="outline" className={getMessageTypeClass(child.type)}>
+                                              {getMessageTypeLabel(child.type, language === 'ar')}
+                                            </Badge>
+                                          </div>
+                                          <div className="text-[11px] text-muted-foreground sm:text-xs sm:whitespace-nowrap">
+                                            {formatMessageTimestamp(child.createdAt, language)}
+                                          </div>
+                                        </div>
 
-                                      <div className="flex items-center gap-2 flex-wrap">
-                                        <Button size="sm" variant="outline" onClick={() => copyMessage(child)}>
-                                          <Copy className="h-4 w-4 me-1" /> {t('rec.copy')}
-                                        </Button>
-                                        {(Object.keys(reactionIcons) as Array<keyof typeof reactionIcons>).map((reaction) => (
-                                          <Button
-                                            key={reaction}
-                                            size="sm"
-                                            variant={child.myReaction === reaction ? 'default' : 'outline'}
-                                            onClick={() => reactMutation.mutate({
-                                              messageId: child.id,
-                                              reaction: child.myReaction === reaction ? null : reaction,
-                                            })}
-                                          >
-                                            {reactionIcons[reaction]}
-                                            <span className="ms-1">{child.reactions?.[reaction] ?? 0}</span>
+                                        <p className="text-sm whitespace-pre-wrap break-words">{child.content}</p>
+
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                          <Button size="sm" variant="outline" onClick={() => copyMessage(child)}>
+                                            <Copy className="h-4 w-4 me-1" /> {t('rec.copy')}
                                           </Button>
-                                        ))}
+                                          {(Object.keys(reactionIcons) as Array<keyof typeof reactionIcons>).map((reaction) => (
+                                            <Button
+                                              key={reaction}
+                                              size="sm"
+                                              variant={child.myReaction === reaction ? 'default' : 'outline'}
+                                              onClick={() => reactMutation.mutate({
+                                                messageId: child.id,
+                                                reaction: child.myReaction === reaction ? null : reaction,
+                                              })}
+                                            >
+                                              {reactionIcons[reaction]}
+                                              <span className="ms-1">{child.reactions?.[reaction] ?? 0}</span>
+                                            </Button>
+                                          ))}
+                                        </div>
                                       </div>
-                                    </div>
-                                  ))}
+                                    ))}
+                                  </div>
                                 </div>
                               )}
                             </div>
