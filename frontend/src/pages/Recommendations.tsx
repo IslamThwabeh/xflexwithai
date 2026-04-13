@@ -7,11 +7,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { formatPendingActivationDate, getPendingActivationDaysLeft, getPendingActivationWindow } from "@/lib/pendingActivation";
 import { toast } from "sonner";
-import { ArrowUpRight, Clock3, Copy, Flame, Heart, Rocket, ThumbsUp, Frown, Bell, TrendingUp, BookOpen, MessageSquare, Building2, Megaphone } from "lucide-react";
+import { ArrowUpRight, Clock3, Copy, Flame, Heart, Rocket, ThumbsUp, Frown, Bell, BellOff, TrendingUp, BookOpen, MessageSquare, Building2, Megaphone } from "lucide-react";
 import ClientLayout from "@/components/ClientLayout";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { buildRecommendationThreads, groupRecommendationThreadsByDay } from "@/lib/recommendationThreads";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 
 const reactionIcons = {
   like: <ThumbsUp className="h-4 w-4" />,
@@ -89,11 +89,27 @@ function getThreadChildPanelClass(type: string, paletteIndex: number) {
     : "border-amber-200 bg-amber-100/65 dark:border-amber-800/40 dark:bg-amber-900/15";
 }
 
+function parseThreadActionFromUrl() {
+  if (typeof window === "undefined") return null;
+
+  const params = new URLSearchParams(window.location.search);
+  const threadAction = params.get("threadAction");
+  const threadId = Number(params.get("threadId"));
+
+  if (threadAction !== "unfollow" || !Number.isInteger(threadId) || threadId <= 0) {
+    return null;
+  }
+
+  return { threadRootMessageId: threadId };
+}
+
 export default function Recommendations() {
   const { user } = useAuth();
   const { t, language } = useLanguage();
   const utils = trpc.useUtils();
+  const [location] = useLocation();
   const [now, setNow] = useState(() => Date.now());
+  const [pendingThreadAction, setPendingThreadAction] = useState(() => parseThreadActionFromUrl());
 
   const { data: me, isLoading: meLoading } = trpc.recommendations.me.useQuery();
   const { data: activationStatus } = trpc.subscriptions.activationStatus.useQuery(undefined, {
@@ -115,8 +131,31 @@ export default function Recommendations() {
     onSuccess: () => utils.recommendations.feed.invalidate(),
     onError: (error) => toast.error(error.message),
   });
+  const muteThreadMutation = trpc.recommendations.muteThread.useMutation({
+    onSuccess: (result) => {
+      toast.success(result.alreadyMuted ? t('rec.toastThreadAlreadyMuted') : t('rec.toastThreadMuted'));
+      setPendingThreadAction(null);
+      void utils.recommendations.feed.invalidate();
+      if (typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search);
+        params.delete('threadAction');
+        params.delete('threadId');
+        const nextSearch = params.toString();
+        window.history.replaceState({}, '', `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}`);
+      }
+    },
+    onError: () => toast.error(t('rec.toastThreadActionFailed')),
+  });
+  const unmuteThreadMutation = trpc.recommendations.unmuteThread.useMutation({
+    onSuccess: () => {
+      toast.success(t('rec.toastThreadUnmuted'));
+      void utils.recommendations.feed.invalidate();
+    },
+    onError: () => toast.error(t('rec.toastThreadActionFailed')),
+  });
 
   const canRead = !!me && (me.hasSubscription || me.canPublish);
+  const canManageThreadNotifications = !!me?.hasSubscription;
   const isFrozenRec = !!me && !me.hasSubscription && !me.canPublish && me.isFrozen;
   const isArabic = language === 'ar';
   const { studyPeriodDays, entitlementDays } = getPendingActivationWindow(activationStatus);
@@ -132,6 +171,9 @@ export default function Recommendations() {
 
   const threads = useMemo(() => buildRecommendationThreads(feed), [feed]);
   const threadGroups = useMemo(() => groupRecommendationThreadsByDay(threads, language), [threads, language]);
+  const pendingThreadAlreadyMuted = !!pendingThreadAction && threads.some(
+    (thread) => thread.root.id === pendingThreadAction.threadRootMessageId && !!thread.root.isThreadMuted,
+  );
 
   const preparationAlerts = useMemo(() => {
     return activeAlerts.filter((alert: any) => {
@@ -152,10 +194,33 @@ export default function Recommendations() {
     return () => window.clearInterval(intervalId);
   }, [activeAlerts.length, canRead]);
 
+  useEffect(() => {
+    setPendingThreadAction(parseThreadActionFromUrl());
+  }, [location]);
+
   const copyMessage = (message: any) => {
     const text = buildCopyBlock(message, t);
     navigator.clipboard.writeText(text);
     toast.success(t('rec.toastCopied'));
+  };
+
+  const clearPendingThreadAction = () => {
+    setPendingThreadAction(null);
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    params.delete('threadAction');
+    params.delete('threadId');
+    const nextSearch = params.toString();
+    window.history.replaceState({}, '', `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}`);
+  };
+
+  const handleThreadMuteToggle = (threadRootMessageId: number, isThreadMuted: boolean) => {
+    if (isThreadMuted) {
+      unmuteThreadMutation.mutate({ threadRootMessageId });
+      return;
+    }
+
+    muteThreadMutation.mutate({ threadRootMessageId });
   };
 
   // Full-screen paywall — matches LexAI style
@@ -394,6 +459,34 @@ export default function Recommendations() {
           </CardContent>
         </Card>
 
+        {canManageThreadNotifications && pendingThreadAction && (
+          <Alert className="border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-800/40 dark:bg-amber-900/10 dark:text-amber-100">
+            <BellOff className="h-4 w-4" />
+            <AlertTitle>{t('rec.threadMuteConfirmTitle')}</AlertTitle>
+            <AlertDescription className="space-y-3">
+              <p>
+                {pendingThreadAlreadyMuted ? t('rec.threadAlreadyMutedHint') : t('rec.threadMuteConfirmDesc')}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {!pendingThreadAlreadyMuted && (
+                  <Button
+                    size="sm"
+                    className="bg-amber-600 text-white hover:bg-amber-700"
+                    disabled={muteThreadMutation.isPending}
+                    onClick={() => muteThreadMutation.mutate({ threadRootMessageId: pendingThreadAction.threadRootMessageId })}
+                  >
+                    <BellOff className="h-4 w-4 me-1" />
+                    {t('rec.threadMuteConfirmBtn')}
+                  </Button>
+                )}
+                <Button size="sm" variant="ghost" onClick={clearPendingThreadAction}>
+                  {t('rec.threadMuteCancel')}
+                </Button>
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
+
         {preparationAlerts.length > 0 && (
           <Alert className="border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-800/40 dark:bg-emerald-900/10 dark:text-emerald-100">
             <Megaphone className="h-4 w-4" />
@@ -508,6 +601,11 @@ export default function Recommendations() {
                                             : `${children.length} ${children.length === 1 ? 'update' : 'updates'}`}
                                         </Badge>
                                       )}
+                                      {message.isThreadMuted && canManageThreadNotifications && (
+                                        <Badge variant="secondary" className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
+                                          {t('rec.threadMutedBadge')}
+                                        </Badge>
+                                      )}
                                     </div>
 
                                     {children.length > 0 && thread.latestActivityAt !== message.createdAt && (
@@ -519,8 +617,22 @@ export default function Recommendations() {
                                     )}
                                   </div>
 
-                                  <div className="text-[11px] text-muted-foreground sm:text-xs lg:text-right">
-                                    {formatMessageTimestamp(thread.latestActivityAt, language)}
+                                  <div className="flex flex-col items-start gap-2 text-[11px] text-muted-foreground sm:text-xs lg:items-end lg:text-right">
+                                    <div>{formatMessageTimestamp(thread.latestActivityAt, language)}</div>
+                                    {canManageThreadNotifications && (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className={message.isThreadMuted
+                                          ? 'border-amber-300 text-amber-800 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-200'
+                                          : 'border-slate-300 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200'}
+                                        disabled={muteThreadMutation.isPending || unmuteThreadMutation.isPending}
+                                        onClick={() => handleThreadMuteToggle(message.rootThreadId ?? message.id, !!message.isThreadMuted)}
+                                      >
+                                        {message.isThreadMuted ? <Bell className="h-4 w-4 me-1" /> : <BellOff className="h-4 w-4 me-1" />}
+                                        {message.isThreadMuted ? t('rec.threadUnmute') : t('rec.threadMute')}
+                                      </Button>
+                                    )}
                                   </div>
                                 </div>
 
@@ -535,6 +647,12 @@ export default function Recommendations() {
                                 )}
 
                                 <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+
+                                {message.isThreadMuted && canManageThreadNotifications && (
+                                  <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-6 text-amber-900 dark:border-amber-800/40 dark:bg-amber-900/10 dark:text-amber-100">
+                                    {t('rec.threadMutedHint')}
+                                  </p>
+                                )}
 
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <Button size="sm" variant="outline" onClick={() => copyMessage(message)}>

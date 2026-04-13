@@ -155,6 +155,7 @@ export function buildRecommendationMessageEmail(input: {
   type: RecommendationMessageEmailType;
   recommendation: RecommendationEmailTrade;
   latestMessage?: { content: string };
+  threadUnfollowUrl?: string;
 }) {
   const isArabic = input.language !== "en";
   const subject = getRecommendationMessageEmailSubject({
@@ -181,6 +182,11 @@ export function buildRecommendationMessageEmail(input: {
     ? "تم إرسال هذا التنبيه لأن إشعارات التوصيات مفعلة على حسابك عندما تكون خارج القناة."
     : "You received this alert because recommendation notifications are enabled on your account when you are away from the channel.";
   const ctaLabel = isArabic ? "افتح القناة الآن" : "Open Channel Now";
+  const unfollowHeading = isArabic ? "هل فاتتك التوصية الأولى؟" : "Missed the first recommendation?";
+  const unfollowBody = isArabic
+    ? "يمكنك إيقاف متابعات هذه الصفقة فقط إذا لم تعد مفيدة لك. ستحتاج إلى تسجيل الدخول أولاً ثم تأكيد إلغاء المتابعة داخل صفحة التوصيات."
+    : "You can stop follow-up alerts for this trade only if the original entry is no longer useful for you. You will be asked to sign in first, then confirm the unfollow inside the Recommendations page.";
+  const unfollowLabel = isArabic ? "إلغاء متابعة هذه الصفقة" : "Unfollow This Thread";
   const recommendationDetails = buildTradeDetails(input.recommendation, isArabic);
   const latestContent = input.type === "recommendation" ? "" : (input.latestMessage?.content?.trim() || "");
 
@@ -196,6 +202,10 @@ export function buildRecommendationMessageEmail(input: {
 
   if (latestContent) {
     textLines.push("", latestHeading, latestContent);
+  }
+
+  if (input.threadUnfollowUrl) {
+    textLines.push("", unfollowHeading, unfollowBody, `${unfollowLabel}: ${input.threadUnfollowUrl}`);
   }
 
   textLines.push("", `${ctaLabel}: ${RECOMMENDATIONS_URL}`, "", footer);
@@ -220,6 +230,18 @@ export function buildRecommendationMessageEmail(input: {
           ${escapeHtml(latestHeading)}
         </div>
         <div style="font-size:15px;line-height:1.8;color:#1f2937;white-space:pre-wrap;">${escapeHtml(latestContent)}</div>
+      </div>`
+    : "";
+
+  const unfollowSection = input.threadUnfollowUrl
+    ? `<div style="margin-top:18px;padding:18px;border:1px solid #dbe4e1;border-radius:16px;background:#f8faf9;">
+        <div style="font-size:12px;letter-spacing:0.06em;text-transform:uppercase;color:#475569;margin-bottom:10px;">
+          ${escapeHtml(unfollowHeading)}
+        </div>
+        <div style="font-size:14px;line-height:1.8;color:#334155;margin-bottom:14px;">${escapeHtml(unfollowBody)}</div>
+        <a href="${input.threadUnfollowUrl}" style="display:inline-block;padding:11px 18px;border-radius:999px;border:1px solid #cbd5e1;background:#ffffff;color:#0f172a;text-decoration:none;font-weight:700;font-size:14px;">
+          ${escapeHtml(unfollowLabel)}
+        </a>
       </div>`
     : "";
 
@@ -252,6 +274,7 @@ export function buildRecommendationMessageEmail(input: {
                 ${detailGrid}
                 <div style="font-size:15px;line-height:1.85;color:#1f2937;white-space:pre-wrap;">${escapeHtml(input.recommendation.content)}</div>
                 ${latestSection}
+                ${unfollowSection}
               </div>
               <div style="text-align:center;margin:22px 0 18px;">
                 <a href="${RECOMMENDATIONS_URL}" style="display:inline-block;padding:13px 24px;border-radius:999px;background:#059669;color:#ffffff;text-decoration:none;font-weight:700;font-size:15px;">

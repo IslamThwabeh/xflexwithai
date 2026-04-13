@@ -362,6 +362,22 @@ export type RecommendationReaction = typeof recommendationReactions.$inferSelect
 export type InsertRecommendationReaction = typeof recommendationReactions.$inferInsert;
 
 /**
+ * Recommendation thread mutes
+ * Allows a student to silence follow-up notifications for a specific recommendation thread.
+ */
+export const recommendationThreadMutes = sqliteTable("recommendationThreadMutes", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  userId: integer("userId").notNull(),
+  threadRootMessageId: integer("threadRootMessageId").notNull(),
+  createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
+}, (table) => ({
+  uniqueThreadMuteByUser: unique("unique_thread_mute_by_user").on(table.userId, table.threadRootMessageId),
+}));
+
+export type RecommendationThreadMute = typeof recommendationThreadMutes.$inferSelect;
+export type InsertRecommendationThreadMute = typeof recommendationThreadMutes.$inferInsert;
+
+/**
  * Quizzes table
  */
 export const quizzes = sqliteTable("quizzes", {

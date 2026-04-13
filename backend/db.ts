@@ -15,6 +15,7 @@ import {
   recommendationAlerts, RecommendationAlert, InsertRecommendationAlert,
   recommendationMessages, RecommendationMessage, InsertRecommendationMessage,
   recommendationReactions, RecommendationReaction, InsertRecommendationReaction,
+  recommendationThreadMutes,
   authEmailOtps, AuthEmailOtp, InsertAuthEmailOtp,
   quizzes, Quiz,
   quizQuestions, QuizQuestion,
@@ -71,6 +72,7 @@ import { ENV } from './_core/env';
 import { logger } from './_core/logger';
 import { sendWelcomeEmail, sendMilestoneEmail, sendQuizFeedbackEmail, sendStaffAlertEmail } from './_core/orderEmails';
 import { canRedeemRenewalPackageKey } from './services/package-key.service';
+import { getRecommendationThreadRootId } from './services/recommendation-thread.service';
 import { getPendingServiceWindow, shouldAutoActivateTimedServices } from './services/timed-service-activation.service';
 import {
   BUG_REPORT_RISK_LEVELS,
@@ -2371,6 +2373,141 @@ export type RecommendationSubscriberDetail = {
   notificationPrefs: string | null;
 };
 
+async function getRecommendationRootThreadOrThrow(threadRootMessageId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const [thread] = await db
+    .select({
+      id: recommendationMessages.id,
+      parentId: recommendationMessages.parentId,
+      type: recommendationMessages.type,
+    })
+    .from(recommendationMessages)
+    .where(eq(recommendationMessages.id, threadRootMessageId))
+    .limit(1);
+
+  if (!thread || thread.parentId || thread.type !== "recommendation") {
+    throw new Error("Recommendation thread not found");
+  }
+
+  return thread;
+}
+
+export async function getMutedRecommendationThreadIdsForUser(
+  userId: number,
+  threadRootMessageIds?: number[],
+): Promise<number[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  const filters = [eq(recommendationThreadMutes.userId, userId)];
+  if (threadRootMessageIds?.length) {
+    filters.push(inArray(recommendationThreadMutes.threadRootMessageId, threadRootMessageIds));
+  }
+
+  const rows = await db
+    .select({ threadRootMessageId: recommendationThreadMutes.threadRootMessageId })
+    .from(recommendationThreadMutes)
+    .where(and(...filters));
+
+  return rows.map((row) => row.threadRootMessageId);
+}
+
+export async function getMutedRecommendationUserIdsForThread(
+  threadRootMessageId: number,
+  userIds: number[],
+): Promise<number[]> {
+  const db = await getDb();
+  if (!db || !userIds.length) return [];
+
+  const rows = await db
+    .select({ userId: recommendationThreadMutes.userId })
+    .from(recommendationThreadMutes)
+    .where(and(
+      eq(recommendationThreadMutes.threadRootMessageId, threadRootMessageId),
+      inArray(recommendationThreadMutes.userId, userIds),
+    ));
+
+  return rows.map((row) => row.userId);
+}
+
+export async function muteRecommendationThread(userId: number, threadRootMessageId: number): Promise<{
+  isMuted: boolean;
+  alreadyMuted: boolean;
+  threadRootMessageId: number;
+}> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await getRecommendationRootThreadOrThrow(threadRootMessageId);
+
+  const [existing] = await db
+    .select({ id: recommendationThreadMutes.id })
+    .from(recommendationThreadMutes)
+    .where(and(
+      eq(recommendationThreadMutes.userId, userId),
+      eq(recommendationThreadMutes.threadRootMessageId, threadRootMessageId),
+    ))
+    .limit(1);
+
+  if (existing) {
+    return {
+      isMuted: true,
+      alreadyMuted: true,
+      threadRootMessageId,
+    };
+  }
+
+  await db.insert(recommendationThreadMutes).values({
+    userId,
+    threadRootMessageId,
+    createdAt: new Date().toISOString(),
+  });
+
+  return {
+    isMuted: true,
+    alreadyMuted: false,
+    threadRootMessageId,
+  };
+}
+
+export async function unmuteRecommendationThread(userId: number, threadRootMessageId: number): Promise<{
+  isMuted: boolean;
+  alreadyUnmuted: boolean;
+  threadRootMessageId: number;
+}> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await getRecommendationRootThreadOrThrow(threadRootMessageId);
+
+  const [existing] = await db
+    .select({ id: recommendationThreadMutes.id })
+    .from(recommendationThreadMutes)
+    .where(and(
+      eq(recommendationThreadMutes.userId, userId),
+      eq(recommendationThreadMutes.threadRootMessageId, threadRootMessageId),
+    ))
+    .limit(1);
+
+  if (!existing) {
+    return {
+      isMuted: false,
+      alreadyUnmuted: true,
+      threadRootMessageId,
+    };
+  }
+
+  await db.delete(recommendationThreadMutes).where(eq(recommendationThreadMutes.id, existing.id));
+
+  return {
+    isMuted: false,
+    alreadyUnmuted: false,
+    threadRootMessageId,
+  };
+}
+
 export async function getRecommendationSubscriberDetails(): Promise<RecommendationSubscriberDetail[]> {
   const db = await getDb();
   if (!db) return [];
@@ -2682,6 +2819,9 @@ export async function getRecommendationMessagesFeed(userId: number, limit: numbe
 
   const messageIds = orderedMessages.map((message) => message.id);
   const authorIds = Array.from(new Set(orderedMessages.map((message) => message.userId)));
+  const rootThreadIds = orderedMessages
+    .filter((message) => !message.parentId && message.type === "recommendation")
+    .map((message) => message.id);
 
   const authors = authorIds.length
     ? await db
@@ -2705,10 +2845,20 @@ export async function getRecommendationMessagesFeed(userId: number, limit: numbe
         .where(inArray(recommendationReactions.messageId, messageIds))
     : [];
 
+  const mutedThreadIds = new Set(
+    rootThreadIds.length
+      ? await getMutedRecommendationThreadIdsForUser(userId, rootThreadIds)
+      : []
+  );
+
   return orderedMessages.map((message) => {
     const author = authors.find((item) => item.id === message.userId);
     const messageReactions = reactions.filter((reaction) => reaction.messageId === message.id);
     const isRootRecommendation = !message.parentId && message.type === "recommendation";
+    const rootThreadId = getRecommendationThreadRootId({
+      messageId: message.id,
+      parentId: message.parentId,
+    });
     const reactionCounts = {
       like: messageReactions.filter((reaction) => reaction.reaction === "like").length,
       love: messageReactions.filter((reaction) => reaction.reaction === "love").length,
@@ -2721,6 +2871,8 @@ export async function getRecommendationMessagesFeed(userId: number, limit: numbe
 
     return {
       ...message,
+      rootThreadId,
+      isThreadMuted: mutedThreadIds.has(rootThreadId),
       threadStatus: isRootRecommendation ? (message.threadStatus ?? "open") : null,
       closedAt: isRootRecommendation ? (message.closedAt ?? null) : null,
       closedByUserId: isRootRecommendation ? (message.closedByUserId ?? null) : null,

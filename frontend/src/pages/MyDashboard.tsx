@@ -366,6 +366,11 @@ export default function MyDashboard() {
                       ? "توصيات تداول يومية من فريق المحللين المحترفين."
                       : "Daily trading recommendations from our professional analyst team."}
                   </p>
+                  {recommendationsAccess?.hasSubscription && (
+                    <p className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-6 text-amber-900">
+                      {t('dashboard.recThreadHint')}
+                    </p>
+                  )}
                   <Link href="/recommendations">
                     <Button className="w-full bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700">
                       {recommendationsAccess?.hasSubscription

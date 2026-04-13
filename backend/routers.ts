@@ -24,6 +24,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { logger } from "./_core/logger";
 import * as db from "./db";
+import { filterRecipientsByMutedThreads } from "./services/recommendation-thread.service";
 import { storagePutR2, storageArchiveR2 } from "./storage-r2";
 import { analyzeLexai } from "./_core/lexai";
 import { hashPassword, verifyPassword, generateToken, isValidEmail, isValidPassword, normalizeEmailAddress } from "./_core/auth";
@@ -394,6 +395,8 @@ const RECOMMENDATION_REACTIONS = ["like", "love", "sad", "fire", "rocket"] as co
 const RECOMMENDATION_ALERT_UNLOCK_SECONDS = 60;
 const RECOMMENDATION_ALERT_EXPIRY_MINUTES = 15;
 const RECOMMENDATION_EMAIL_INACTIVE_MINUTES = 15;
+const buildRecommendationThreadUnfollowUrl = (threadRootMessageId: number) =>
+  `https://xflexacademy.com/recommendations?threadAction=unfollow&threadId=${threadRootMessageId}`;
 
 const buildRecommendationPlainText = (payload: {
   type: "alert" | "recommendation" | "update" | "result";
@@ -2621,6 +2624,20 @@ export const appRouter = router({
         return await db.getRecommendationMessagesFeed(ctx.user.id, input?.limit ?? 200);
       }),
 
+    muteThread: protectedProcedure
+      .input(z.object({ threadRootMessageId: z.number().int().positive() }))
+      .mutation(async ({ ctx, input }) => {
+        await ensureRecommendationReadAccess(ctx);
+        return await db.muteRecommendationThread(ctx.user.id, input.threadRootMessageId);
+      }),
+
+    unmuteThread: protectedProcedure
+      .input(z.object({ threadRootMessageId: z.number().int().positive() }))
+      .mutation(async ({ ctx, input }) => {
+        await ensureRecommendationReadAccess(ctx);
+        return await db.unmuteRecommendationThread(ctx.user.id, input.threadRootMessageId);
+      }),
+
     notifyClients: protectedProcedure
       .input(z.object({
         note: z.string().max(200).optional(),
@@ -2860,10 +2877,21 @@ export const appRouter = router({
           });
         }
 
+        const threadRootMessageId = parentMessage?.id ?? messageId;
+
         await db.extendRecommendationAlertActivity(linkedAlertId, ctx.user.id);
 
         const allSubs = await db.getRecommendationSubscriberDetails();
-        const recipients = allSubs.filter((sub) => recommendationNotificationsEnabled(sub.notificationPrefs));
+        const optedInRecipients = allSubs.filter((sub) => recommendationNotificationsEnabled(sub.notificationPrefs));
+        const mutedUserIds = input.type === 'recommendation'
+          ? []
+          : await db.getMutedRecommendationUserIdsForThread(
+              threadRootMessageId,
+              optedInRecipients.map((sub) => sub.userId),
+            );
+        const recipients = input.type === 'recommendation'
+          ? optedInRecipients
+          : filterRecipientsByMutedThreads(optedInRecipients, mutedUserIds);
         const batchId = `rec_live_${messageId}`;
 
         if (recipients.length && rootMessageForDelivery) {
@@ -2894,6 +2922,9 @@ export const appRouter = router({
                   type: input.type,
                   recommendation: rootMessageForDelivery!,
                   latestMessage: input.type === 'recommendation' ? undefined : { content: trimmedContent },
+                  threadUnfollowUrl: input.type === 'recommendation'
+                    ? undefined
+                    : buildRecommendationThreadUnfollowUrl(threadRootMessageId),
                 });
 
                 await sendEmail({
