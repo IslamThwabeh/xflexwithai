@@ -1954,13 +1954,13 @@ export const appRouter = router({
           }
 
           // Notify admin of course completion
-          db.notifyStaffByEvent('course_completion', {
+          await db.notifyStaffByEvent('course_completion', {
             titleEn: `Course completed: ${ctx.user.name || ctx.user.email}`,
             titleAr: `تم إكمال الكورس: ${ctx.user.name || ctx.user.email}`,
             contentEn: `Student ${ctx.user.email} completed 100% of the course.`,
             contentAr: `الطالب ${ctx.user.email} أكمل 100% من الكورس.`,
             metadata: { userId: ctx.user.id, courseId: input.courseId },
-          }).catch(() => {});
+          });
         } else if (progressPercentage >= 50) {
           const activationStatus = await db.getPendingActivationStatus(ctx.user.id);
           subscriptionActivated = activationStatus.hasPending === false && !activationStatus.lexai && !activationStatus.recommendation;
@@ -3332,13 +3332,13 @@ export const appRouter = router({
         }
 
         // Notify admin/support staff of new student message
-        db.notifyStaffByEvent('new_support_message', {
+        await db.notifyStaffByEvent('new_support_message', {
           titleEn: `New support message from ${ctx.user.name || ctx.user.email}`,
           titleAr: `رسالة دعم جديدة من ${ctx.user.name || ctx.user.email}`,
           contentEn: input.content.slice(0, 120),
           contentAr: input.content.slice(0, 120),
           metadata: { userId: ctx.user.id, conversationId: conv.id },
-        }).catch(() => {});
+        });
 
         return msg;
       }),
@@ -3362,13 +3362,13 @@ export const appRouter = router({
       });
 
       // Notify admin/support staff of escalation
-      db.notifyStaffByEvent('human_escalation', {
+      await db.notifyStaffByEvent('human_escalation', {
         titleEn: `Human agent requested by ${ctx.user.name || ctx.user.email}`,
         titleAr: `طلب تحويل لموظف من ${ctx.user.name || ctx.user.email}`,
         contentEn: 'A student has requested to speak with a human support agent.',
         contentAr: 'طالب يطلب التحدث مع موظف دعم.',
         metadata: { userId: ctx.user.id, conversationId: conv.id },
-      }).catch(() => {});
+      });
 
       return { success: true };
     }),
@@ -4103,13 +4103,13 @@ export const appRouter = router({
         }).catch(() => {});
 
         // Notify admin/key_manager staff of new order
-        db.notifyStaffByEvent('new_order', {
+        await db.notifyStaffByEvent('new_order', {
           titleEn: `New order #${order.id} — ${packageName} ($${totalUsd.toFixed(2)})`,
           titleAr: `طلب جديد #${order.id} — ${packageName} ($${totalUsd.toFixed(2)})`,
           contentEn: `${ctx.user.email} placed a ${input.paymentMethod} order.`,
           contentAr: `${ctx.user.email} قام بتقديم طلب ${input.paymentMethod}.`,
           metadata: { orderId: order.id, userId: ctx.user.id, packageName, totalUsd },
-        }).catch(() => {});
+        });
 
         return order;
       }),
@@ -4666,13 +4666,13 @@ export const appRouter = router({
         }).catch(() => {});
 
         // Notify admin/key_manager staff of upgrade order
-        db.notifyStaffByEvent('new_order', {
+        await db.notifyStaffByEvent('new_order', {
           titleEn: `Upgrade order #${order.id} — ${eligibility.currentPackageName} → ${eligibility.targetPackageName}`,
           titleAr: `طلب ترقية #${order.id} — ${eligibility.currentPackageName} → ${eligibility.targetPackageName}`,
           contentEn: `${ctx.user.email} requested an upgrade ($${totalUsd.toFixed(2)}).`,
           contentAr: `${ctx.user.email} طلب ترقية ($${totalUsd.toFixed(2)}).`,
           metadata: { orderId: order.id, userId: ctx.user.id, totalUsd },
-        }).catch(() => {});
+        });
 
         return order;
       }),
@@ -5967,13 +5967,13 @@ ${qaText}`;
         const result = await db.submitOnboardingProof(userId, input.step, input.proofUrl, input.proofType);
 
         // Notify admin/support of new proof submission
-        db.notifyStaffByEvent('broker_proof_submitted', {
+        await db.notifyStaffByEvent('broker_proof_submitted', {
           titleEn: `Broker proof submitted: ${ctx.user.name || ctx.user.email} (${input.step})`,
           titleAr: `تم رفع إثبات الوسيط: ${ctx.user.name || ctx.user.email} (${input.step})`,
           contentEn: `Student uploaded proof for step "${input.step}".`,
           contentAr: `الطالب رفع إثبات لخطوة "${input.step}".`,
           metadata: { userId, step: input.step },
-        }).catch(() => {});
+        });
 
         // Run AI verification synchronously (Workers kill detached promises after response)
         if (result.stepId && ENV.openaiApiKey) {
@@ -6054,13 +6054,13 @@ ${qaText}`;
 
         // Notify admin of new offer agreement (only if not duplicate)
         if (!result.duplicate) {
-          db.notifyStaffByEvent('offer_agreement', {
+          await db.notifyStaffByEvent('offer_agreement', {
             titleEn: `Offer agreement signed: ${input.fullName}`,
             titleAr: `تم توقيع اتفاقية عرض: ${input.fullName}`,
             contentEn: `${input.email} signed the ${input.offerSlug} agreement.`,
             contentAr: `${input.email} وقّع على اتفاقية ${input.offerSlug}.`,
             metadata: { email: input.email, offerSlug: input.offerSlug },
-          }).catch(() => {});
+          });
         }
 
         return result;
@@ -6151,13 +6151,13 @@ ${qaText}`;
         const answerResult = await db.updatePlanAnswer(input.email, input.phaseKey, input.answer);
 
         // Notify admin/plan_manager of plan answer submission
-        db.notifyStaffByEvent('plan_progress_update', {
+        await db.notifyStaffByEvent('plan_progress_update', {
           titleEn: `Plan answer submitted: ${input.email} (${input.phaseKey})`,
           titleAr: `تم إرسال إجابة الخطة: ${input.email} (${input.phaseKey})`,
           contentEn: `Student ${input.email} submitted an answer for ${input.phaseKey}.`,
           contentAr: `الطالب ${input.email} أرسل إجابة لـ ${input.phaseKey}.`,
           metadata: { email: input.email, phaseKey: input.phaseKey },
-        }).catch(() => {});
+        });
 
         return answerResult;
       }),
