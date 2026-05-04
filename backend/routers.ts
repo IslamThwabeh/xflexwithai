@@ -31,7 +31,7 @@ import { hashPassword, verifyPassword, generateToken, isValidEmail, isValidPassw
 import { generateFreeVideoPlaybackToken } from "./_core/freeLibraryPlayback";
 import { sendEmail, sendLoginCodeEmail } from "./_core/email";
 import { buildRecommendationAlertEmail, buildRecommendationMessageEmail } from "./_core/recommendationEmails";
-import { sendOrderConfirmationEmail, sendPaymentReceivedEmail, sendAdminNewOrderNotification, sendAnnouncementEmail, sendStaffWelcomeEmail } from "./_core/orderEmails";
+import { sendOrderConfirmationEmail, sendPaymentReceivedEmail, sendAdminNewOrderNotification, sendAnnouncementEmail, sendStaffWelcomeEmail, sendJobInterviewInviteEmail } from "./_core/orderEmails";
 import { ENV } from "./_core/env";
 import { generateNumericCode, generateSaltBase64, normalizeEmail, sha256Base64 } from "./_core/otp";
 // FlexAI routes are registered in server/_core/index.ts
@@ -3315,8 +3315,18 @@ export const appRouter = router({
           attachmentDuration: input.attachmentDuration,
         });
 
-        // AI auto-reply when outside working hours and student hasn't requested human
-        if (!isSupportWorkingHours() && !conv.needsHuman) {
+        // AI auto-reply when outside working hours and student hasn't requested human.
+        // If the student escalated to human but the configured delay has elapsed, auto-resume AI.
+        let effectiveNeedsHuman = conv.needsHuman;
+        if (conv.needsHuman && conv.needsHumanAt) {
+          const resumeMins = parseInt((await db.getAdminSetting('support_ai_resume_minutes')) ?? '30', 10);
+          const elapsed = Date.now() - new Date(conv.needsHumanAt).getTime();
+          if (elapsed > resumeMins * 60 * 1000) {
+            await db.setNeedsHuman(conv.id, false);
+            effectiveNeedsHuman = false;
+          }
+        }
+        if (!isSupportWorkingHours() && !effectiveNeedsHuman) {
           const allMessages = await db.getSupportMessages(conv.id);
           const aiReply = await generateSupportAIReply(
             allMessages.map(m => ({ senderType: m.senderType, content: m.content })),
@@ -3378,6 +3388,14 @@ export const appRouter = router({
       if (!ctx.user) return { count: 0 };
       const count = await db.getUnreadSupportCount(ctx.user.id);
       return { count };
+    }),
+
+    // Client: manually re-enable AI responses (clears the needsHuman escalation flag)
+    resumeAI: protectedProcedure.mutation(async ({ ctx }) => {
+      if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+      const conv = await db.getOrCreateSupportConversation(ctx.user.id);
+      await db.setNeedsHuman(conv.id, false);
+      return { success: true };
     }),
 
     // Support/Admin: list all conversations with last message & unread counts
@@ -5523,6 +5541,127 @@ ${qaText}`;
 
         return { recommendation };
       }),
+
+    // Admin: send interview invitation email to a single applicant
+    sendInterviewInvite: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const app = await db.getJobApplicationById(input.id);
+        if (!app) throw new TRPCError({ code: 'NOT_FOUND', message: 'Application not found' });
+
+        try {
+          await sendJobInterviewInviteEmail(app.email, app.applicantName);
+          await db.markInterviewInviteSent(input.id);
+          await db.createJobInviteLog({
+            jobId: app.jobId,
+            applicationId: app.id,
+            recipientEmail: app.email,
+            recipientName: app.applicantName,
+            sendType: 'single',
+            success: true,
+            sentByAdminId: ctx.admin?.id ?? null,
+          });
+          return { success: true, sentTo: app.email };
+        } catch (error) {
+          await db.createJobInviteLog({
+            jobId: app.jobId,
+            applicationId: app.id,
+            recipientEmail: app.email,
+            recipientName: app.applicantName,
+            sendType: 'single',
+            success: false,
+            errorMessage: error instanceof Error ? error.message : String(error),
+            sentByAdminId: ctx.admin?.id ?? null,
+          });
+          throw error;
+        }
+      }),
+
+    // Admin: send the same interview invite to a test inbox without touching applicant records
+    sendInterviewInviteTest: adminProcedure
+      .input(z.object({
+        email: z.string().email(),
+        applicantName: z.string().min(1).max(120).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const applicantName = input.applicantName || "مرشح تجريبي";
+        try {
+          await sendJobInterviewInviteEmail(input.email, applicantName);
+          await db.createJobInviteLog({
+            recipientEmail: input.email,
+            recipientName: applicantName,
+            sendType: 'test',
+            success: true,
+            sentByAdminId: ctx.admin?.id ?? null,
+          });
+          return { success: true, sentTo: input.email, replyToMailbox: ENV.emailFrom || "support@xflexacademy.com" };
+        } catch (error) {
+          await db.createJobInviteLog({
+            recipientEmail: input.email,
+            recipientName: applicantName,
+            sendType: 'test',
+            success: false,
+            errorMessage: error instanceof Error ? error.message : String(error),
+            sentByAdminId: ctx.admin?.id ?? null,
+          });
+          throw error;
+        }
+      }),
+
+    // Admin: send interview invitation to shortlisted applicants.
+    // If jobId is provided, only shortlisted candidates for that job are targeted.
+    sendInterviewInviteBulk: adminProcedure
+      .input(z.object({ jobId: z.number().optional() }).optional())
+      .mutation(async ({ ctx, input }) => {
+        const shortlisted = await db.getShortlistedApplicationsFiltered(input?.jobId);
+        const pending = shortlisted.filter(a => !a.interviewInviteSentAt);
+
+        const results: { id: number; email: string; success: boolean; error?: string }[] = [];
+        for (const app of pending) {
+          try {
+            await sendJobInterviewInviteEmail(app.email, app.applicantName);
+            await db.markInterviewInviteSent(app.id);
+            await db.createJobInviteLog({
+              jobId: app.jobId,
+              applicationId: app.id,
+              recipientEmail: app.email,
+              recipientName: app.applicantName,
+              sendType: 'bulk',
+              success: true,
+              sentByAdminId: ctx.admin?.id ?? null,
+            });
+            results.push({ id: app.id, email: app.email, success: true });
+          } catch (e) {
+            await db.createJobInviteLog({
+              jobId: app.jobId,
+              applicationId: app.id,
+              recipientEmail: app.email,
+              recipientName: app.applicantName,
+              sendType: 'bulk',
+              success: false,
+              errorMessage: e instanceof Error ? e.message : String(e),
+              sentByAdminId: ctx.admin?.id ?? null,
+            });
+            results.push({ id: app.id, email: app.email, success: false, error: e instanceof Error ? e.message : String(e) });
+          }
+        }
+
+        const sent = results.filter(r => r.success).length;
+        const failed = results.filter(r => !r.success).length;
+        return { sent, failed, results, scopeJobId: input?.jobId ?? null };
+      }),
+
+    inviteHistory: adminProcedure
+      .input(z.object({ limit: z.number().min(1).max(200).optional(), jobId: z.number().optional() }).optional())
+      .query(async ({ input }) => {
+        const logs = await db.getJobInviteLogs({ limit: input?.limit, jobId: input?.jobId });
+        const allJobs = await db.getAllJobs();
+        const jobMap = new Map(allJobs.map(j => [j.id, j.titleAr]));
+        return logs.map(log => ({
+          ...log,
+          jobTitle: log.jobId ? (jobMap.get(log.jobId) || '—') : (log.sendType === 'test' ? 'اختبار' : 'كل الوظائف'),
+        }));
+      }),
   }),
 
   // ============================================================================
@@ -6290,6 +6429,21 @@ ${qaText}`;
     getNotificationPrefs: supportStaffProcedure.query(async ({ ctx }) => {
       return db.getStaffNotificationPrefs(ctx.user.id);
     }),
+  }),
+
+  // Temporary admin utility: send a one-off email via the configured email provider.
+  adminEmail: router({
+    sendOne: adminProcedure
+      .input(z.object({
+        to: z.string().email(),
+        subject: z.string().min(1),
+        html: z.string().min(1),
+        text: z.string().min(1),
+      }))
+      .mutation(async ({ input }) => {
+        await sendEmail({ to: input.to, subject: input.subject, html: input.html, text: input.text });
+        return { success: true };
+      }),
   }),
 });
 

@@ -514,6 +514,7 @@ export const supportConversations = sqliteTable("supportConversations", {
   userId: integer("userId").notNull(),
   status: text("status", { length: 20 }).default("open").notNull(), // 'open' | 'closed'
   needsHuman: integer("needsHuman", { mode: 'boolean' }).default(false).notNull(), // student escalated to human
+  needsHumanAt: text("needsHumanAt"), // ISO timestamp when escalation was set, for auto-resume timer
   assignedTo: integer("assignedTo"), // support user id handling this conversation
   createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
   updatedAt: text("updatedAt").default("CURRENT_TIMESTAMP").notNull(),
@@ -1131,6 +1132,7 @@ export const jobApplications = sqliteTable("job_applications", {
   status: text("status", { length: 20 }).notNull().default("new"), // new | reviewed | shortlisted | rejected
   submittedAt: text("submitted_at").default("CURRENT_TIMESTAMP").notNull(),
   updatedAt: text("updated_at").default("CURRENT_TIMESTAMP").notNull(),
+  interviewInviteSentAt: text("interview_invite_sent_at"),
   // AI scoring fields (future)
   aiScore: integer("ai_score"),
   aiSummary: text("ai_summary"),
@@ -1149,10 +1151,28 @@ export const jobApplicationAnswers = sqliteTable("job_application_answers", {
 export type JobApplicationAnswer = typeof jobApplicationAnswers.$inferSelect;
 export type InsertJobApplicationAnswer = typeof jobApplicationAnswers.$inferInsert;
 
+export const jobInviteLogs = sqliteTable("job_invite_logs", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  jobId: integer("job_id"),
+  applicationId: integer("application_id"),
+  recipientEmail: text("recipient_email").notNull(),
+  recipientName: text("recipient_name"),
+  sendType: text("send_type", { length: 20 }).notNull(), // test | single | bulk
+  success: integer("success", { mode: "boolean" }).notNull().default(true),
+  errorMessage: text("error_message"),
+  templateKey: text("template_key").notNull().default("jobs_interview_invite_v1"),
+  sentByAdminId: integer("sent_by_admin_id"),
+  sentAt: text("sent_at").default("CURRENT_TIMESTAMP").notNull(),
+});
+
+export type JobInviteLog = typeof jobInviteLogs.$inferSelect;
+export type InsertJobInviteLog = typeof jobInviteLogs.$inferInsert;
+
 // Relations for jobs
 export const jobsRelations = relations(jobs, ({ many }) => ({
   questions: many(jobQuestions),
   applications: many(jobApplications),
+  inviteLogs: many(jobInviteLogs),
 }));
 
 export const jobQuestionsRelations = relations(jobQuestions, ({ one }) => ({
@@ -1168,6 +1188,7 @@ export const jobApplicationsRelations = relations(jobApplications, ({ one, many 
     references: [jobs.id],
   }),
   answers: many(jobApplicationAnswers),
+  inviteLogs: many(jobInviteLogs),
 }));
 
 export const jobApplicationAnswersRelations = relations(jobApplicationAnswers, ({ one }) => ({
@@ -1178,6 +1199,17 @@ export const jobApplicationAnswersRelations = relations(jobApplicationAnswers, (
   question: one(jobQuestions, {
     fields: [jobApplicationAnswers.questionId],
     references: [jobQuestions.id],
+  }),
+}));
+
+export const jobInviteLogsRelations = relations(jobInviteLogs, ({ one }) => ({
+  job: one(jobs, {
+    fields: [jobInviteLogs.jobId],
+    references: [jobs.id],
+  }),
+  application: one(jobApplications, {
+    fields: [jobInviteLogs.applicationId],
+    references: [jobApplications.id],
   }),
 }));
 

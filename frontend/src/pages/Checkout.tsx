@@ -59,8 +59,9 @@ export default function Checkout() {
   }
 
   // Prices are VAT-inclusive: extract VAT from the displayed price
+  const ILS_PRICES: Record<string, number> = { basic: 700, comprehensive: 1700 };
   const discountAmount = appliedCoupon ? appliedCoupon.discount / 100 : 0;
-  const total = pkg.price / 100 - discountAmount;
+  const total = (ILS_PRICES[pkg.slug] ?? Math.round(pkg.price / 100 * 3.5)) - discountAmount;
   const vatRate = 16;
   const vat = total * vatRate / (100 + vatRate);
   const price = total - vat;
@@ -237,21 +238,21 @@ export default function Checkout() {
               <div className="space-y-2 text-sm mb-4">
                 <div className="flex justify-between">
                   <span className="text-gray-500">{isRtl ? 'السعر' : 'Price'}</span>
-                  <span>${price.toFixed(2)}</span>
+                  <span>₪{price.toFixed(2)}</span>
                 </div>
                 {appliedCoupon && (
                   <div className="flex justify-between text-green-600">
                     <span>{isRtl ? 'خصم' : 'Discount'}</span>
-                    <span>-${discountAmount.toFixed(2)}</span>
+                    <span>-₪{discountAmount.toFixed(2)}</span>
                   </div>
                 )}
                 <div className="flex justify-between">
                   <span className="text-gray-500">VAT ({vatRate}%)</span>
-                  <span>${vat.toFixed(2)}</span>
+                  <span>₪{vat.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between font-bold text-base border-t pt-2">
                   <span>{isRtl ? 'الإجمالي' : 'Total'}</span>
-                  <span>${total.toFixed(2)}</span>
+                  <span>₪{total.toFixed(2)}</span>
                 </div>
               </div>
 

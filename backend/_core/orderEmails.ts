@@ -30,6 +30,47 @@ function sendBrandedEmail(to: string, subject: string, bodyHtml: string) {
   return sendEmail({ to, subject, text, html });
 }
 
+function escapeHtml(input: string) {
+  return String(input || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+export function buildJobInterviewInviteEmail(candidateName?: string | null) {
+  const safeName = escapeHtml(String(candidateName || "المرشح").trim() || "المرشح");
+  const subject = "دعوة للمقابلة الوظيفية – أكاديمية XFlex";
+  const body = `
+    <h2 style="margin:0 0 12px;color:#065f46;">مرحبًا ${safeName}،</h2>
+    <p style="color:#374151;line-height:1.8;">
+      نبارك لك اختيارك للانتقال إلى المرحلة التالية من عملية التوظيف لوظيفة المبيعات في أكاديمية XFlex.
+      يسعدنا اهتمامك بالانضمام إلى فريقنا، ونتطلع للتعرّف عليك بشكل أكبر خلال المقابلة.
+    </p>
+    <p style="color:#374151;line-height:1.8;">
+      يرجى العلم أنه من الضروري <strong>الرد على هذا البريد الإلكتروني</strong> لتأكيد اهتمامك بالاستمرار في عملية التوظيف،
+      حتى نتمكن من تزويدك بتفاصيل موعد وتاريخ وموقع المقابلة الوجاهية.
+    </p>
+    <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:14px;margin:16px 0;">
+      <p style="margin:0;color:#991b1b;font-weight:bold;line-height:1.8;">
+        في حال عدم الرد خلال <strong>٤٨ ساعة</strong>، لن يتم تحديد موعد للمقابلة ويُلغى ترشيحك تمامًا من فريقنا.
+      </p>
+    </div>
+    <p style="color:#374151;line-height:1.8;">بانتظار ردك في أقرب وقت.</p>
+    <p style="color:#374151;line-height:1.8;margin-top:18px;">
+      مع تمنياتنا لك بالتوفيق،<br/><strong>فريق أكاديمية XFlex</strong>
+    </p>`;
+
+  return { subject, bodyHtml: body };
+}
+
+export async function sendJobInterviewInviteEmail(to: string, candidateName?: string | null) {
+  const invite = buildJobInterviewInviteEmail(candidateName);
+  await sendBrandedEmail(to, invite.subject, invite.bodyHtml);
+  return { subject: invite.subject };
+}
+
 /** Sent when a new order is created */
 export async function sendOrderConfirmationEmail(to: string, data: {
   orderId: number;

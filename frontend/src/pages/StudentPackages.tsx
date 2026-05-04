@@ -428,7 +428,7 @@ export default function StudentPackages() {
             <CardHeader>
               <CardTitle className="flex items-center justify-between">
                 <span>{isRtl ? 'الباقة الأساسية' : 'Basic Package'}</span>
-                <span className="text-2xl font-bold text-emerald-600">$200</span>
+                <span className="text-2xl font-bold text-emerald-600">700₪</span>
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -462,7 +462,7 @@ export default function StudentPackages() {
             <CardHeader>
               <CardTitle className="flex items-center justify-between">
                 <span>{isRtl ? 'الباقة الشاملة' : 'Comprehensive Package'}</span>
-                <span className="text-2xl font-bold text-emerald-600">$500</span>
+                <span className="text-2xl font-bold text-emerald-600">1700₪</span>
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">

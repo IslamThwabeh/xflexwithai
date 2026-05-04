@@ -1,7 +1,7 @@
 // client/src/pages/AdminSettings.tsx
 import DashboardLayout from "@/components/DashboardLayout";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { Settings, Bell, Mail, Save, Loader2, GraduationCap } from 'lucide-react';
+import { Settings, Bell, Mail, Save, Loader2, GraduationCap, MessageCircle } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { trpc } from '@/lib/trpc';
@@ -38,6 +38,7 @@ export default function AdminSettings() {
   const [notifEmail, setNotifEmail] = useState('');
   const [emailPrefs, setEmailPrefs] = useState<Record<string, boolean>>({});
   const [studyPeriodDays, setStudyPeriodDays] = useState(14);
+  const [aiResumeMinutes, setAiResumeMinutes] = useState(30);
 
   useEffect(() => {
     if (allSettings) {
@@ -48,6 +49,7 @@ export default function AdminSettings() {
       } catch { setEmailPrefs({}); }
 
       setStudyPeriodDays(allSettings.study_period_days ? parseInt(allSettings.study_period_days, 10) || 14 : 14);
+      setAiResumeMinutes(allSettings.support_ai_resume_minutes ? parseInt(allSettings.support_ai_resume_minutes, 10) || 30 : 30);
     }
   }, [allSettings]);
 
@@ -136,6 +138,43 @@ export default function AdminSettings() {
                 <Button
                   size="sm"
                   onClick={() => updateSetting.mutate({ key: 'study_period_days', value: String(studyPeriodDays) })}
+                  disabled={updateSetting.isPending}
+                >
+                  {updateSetting.isPending ? <Loader2 className="w-4 h-4 me-1 animate-spin" /> : <Save className="w-4 h-4 me-1" />}
+                  {isRtl ? 'حفظ' : 'Save'}
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Support Chat Setting */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <MessageCircle className="w-5 h-5 text-emerald-500" />
+                  {isRtl ? 'إعدادات الدردشة' : 'Support Chat'}
+                </CardTitle>
+                <CardDescription>
+                  {isRtl
+                    ? 'المدة التي ينتظرها الذكاء الاصطناعي قبل استئناف الرد تلقائيًا بعد طلب موظف حقيقي'
+                    : 'Minutes to wait before AI auto-resumes replying after a student requests a human agent'}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <input
+                    type="number"
+                    min={1}
+                    max={1440}
+                    value={aiResumeMinutes}
+                    onChange={e => setAiResumeMinutes(Math.max(1, Math.min(1440, parseInt(e.target.value, 10) || 30)))}
+                    className="w-24 border rounded px-3 py-2 text-sm dark:bg-slate-900 dark:border-slate-700"
+                    dir="ltr"
+                  />
+                  <span className="text-sm text-gray-500">{isRtl ? 'دقيقة' : 'minutes'}</span>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() => updateSetting.mutate({ key: 'support_ai_resume_minutes', value: String(aiResumeMinutes) })}
                   disabled={updateSetting.isPending}
                 >
                   {updateSetting.isPending ? <Loader2 className="w-4 h-4 me-1 animate-spin" /> : <Save className="w-4 h-4 me-1" />}

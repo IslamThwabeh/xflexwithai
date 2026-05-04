@@ -75,7 +75,7 @@ const translations = {
     'home.service.rec.f3': 'Email Alerts on New Signals',
     'home.service.rec.f4': 'Interactive Reactions',
     'home.service.rec.cta': 'Subscribe Now',
-    'home.service.rec.price': '$100 / month',
+    'home.service.rec.price': '350₪ / month',
     
     // LexAI Card
     'home.service.lexai.title': 'LexAI Assistant',
@@ -85,7 +85,7 @@ const translations = {
     'home.service.lexai.f3': 'Entry & Exit Points',
     'home.service.lexai.f4': 'Risk Management Tips',
     'home.service.lexai.cta': 'Activate LexAI (30 Days)',
-    'home.service.lexai.price': '$30 / month',
+    'home.service.lexai.price': '105₪ / month',
     
     // Already Registered
     'home.alreadyRegistered': 'Already Registered?',
@@ -114,10 +114,10 @@ const translations = {
     
     // New Landing Page
     'home.heroTagline': 'The experience you won\'t regret',
-    'home.heroSubtext': 'Learn Forex trading from scratch with a comprehensive educational program built by professionals. From the basics to your own trading plan.',
-    'home.heroCta': 'Browse Packages',
+    'home.heroSubtext': "We'll teach you trading step by step in a structured way, provide expert technical and psychological support, and give you two tools to earn while you learn.\n\nWe've prepared a complete program to ensure you profit in this field.",
+    'home.heroCta': 'Learn About Our Services',
     'home.heroCtaLogin': 'Login',
-    'home.heroCtaFree': 'Try Free Content',
+    'home.heroCtaFree': 'See Student Results',
     
     // Packages Section
     'home.packages.title': 'Choose Your Package',
@@ -307,7 +307,7 @@ const translations = {
     'lexai.title': 'LexAI - AI Currency Analysis',
     'lexai.subscribe.title': 'Subscribe to LexAI',
     'lexai.subscribe.desc': 'Get AI-powered currency analysis and trading recommendations',
-    'lexai.subscribe.price': '$29.99/month',
+    'lexai.subscribe.price': '105₪/month',
     'lexai.subscribe.feature1': 'Unlimited chart analyses during your active access',
     'lexai.subscribe.feature2': 'Real-time market insights',
     'lexai.subscribe.feature3': 'Trading recommendations',
@@ -1169,7 +1169,7 @@ const translations = {
     'home.service.rec.f3': 'تنبيهات بريد إلكتروني فورية',
     'home.service.rec.f4': 'تفاعلات مباشرة',
     'home.service.rec.cta': 'اشترك الآن',
-    'home.service.rec.price': '$100 / شهرياً',
+    'home.service.rec.price': '350₪ / شهرياً',
     
     // LexAI Card
     'home.service.lexai.title': 'مساعد LexAI',
@@ -1179,7 +1179,7 @@ const translations = {
     'home.service.lexai.f3': 'نقاط الدخول والخروج',
     'home.service.lexai.f4': 'نصائح إدارة المخاطر',
     'home.service.lexai.cta': 'تفعيل LexAI (30 يوم)',
-    'home.service.lexai.price': '$30 / شهرياً',
+    'home.service.lexai.price': '105₪ / شهرياً',
     
     // Already Registered
     'home.alreadyRegistered': 'مسجل مسبقاً؟',
@@ -1208,10 +1208,10 @@ const translations = {
     
     // New Landing Page
     'home.heroTagline': 'التجربة الي مارح تندم عليها',
-    'home.heroSubtext': 'تعلم تداول الفوركس من الصفر مع برنامج تعليمي شامل مبني على يد متخصصين. من الأساسيات حتى خطة التداول الخاصة بك.',
-    'home.heroCta': 'تصفح الباقات',
+    'home.heroSubtext': 'حنعلمك التداول بشكل متسلسل و منظم و نوفرلك دعم فني نفسي خبير بالمجال و نعطيك اداتين لتقدر تربح منهم وانت تتعلم\n\nوفرنالك الان برنامج كامل لتضمن تربح بهاد المجال',
+    'home.heroCta': 'تعرف على خدماتنا',
     'home.heroCtaLogin': 'تسجيل الدخول',
-    'home.heroCtaFree': 'جرب المحتوى المجاني',
+    'home.heroCtaFree': 'شاهد نتائج طلابنا',
     
     // Packages Section
     'home.packages.title': 'اختر باقتك',
@@ -1401,7 +1401,7 @@ const translations = {
     'lexai.title': 'ليكس إيه آي - تحليل العملات بالذكاء الاصطناعي',
     'lexai.subscribe.title': 'اشترك في ليكس إيه آي',
     'lexai.subscribe.desc': 'احصل على تحليل العملات وتوصيات التداول بالذكاء الاصطناعي',
-    'lexai.subscribe.price': '$29.99/شهريًا',
+    'lexai.subscribe.price': '105₪/شهريًا',
     'lexai.subscribe.feature1': 'تحليلات شارت غير محدودة طوال فترة الوصول النشط',
     'lexai.subscribe.feature2': 'رؤى السوق في الوقت الفعلي',
     'lexai.subscribe.feature3': 'توصيات التداول',

@@ -56,6 +56,14 @@ export default function SupportChat() {
     onError: (err) => toast.error(err.message),
   });
 
+  const resumeAIMutation = trpc.supportChat.resumeAI.useMutation({
+    onSuccess: () => {
+      toast.success(isRTL ? 'تم تفعيل ردود الذكاء الاصطناعي' : 'AI responses re-enabled');
+      refetch();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
   const hasRequestedHuman = data?.conversation?.needsHuman === true;
 
   const uploadMutation = trpc.supportChat.uploadAttachment.useMutation();
@@ -270,13 +278,23 @@ export default function SupportChat() {
           </div>
         )}
         {hasRequestedHuman && !isOnline && (
-          <div className="flex items-center gap-2 px-3 py-2 mb-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs">
-            <UserRound className="h-4 w-4 shrink-0" />
-            <span>
-              {isRTL
-                ? 'تم طلب وكيل بشري. سيتم الرد عليك خلال ساعات العمل (الأحد-الخميس ١٢-٨ مساءً).'
-                : 'Human agent requested. You\'ll get a reply during working hours (Sun-Thu 12-8 PM).'}
-            </span>
+          <div className="flex flex-col gap-2 px-3 py-2 mb-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs">
+            <div className="flex items-center gap-2">
+              <UserRound className="h-4 w-4 shrink-0" />
+              <span>
+                {isRTL
+                  ? 'تم طلب وكيل بشري. سيتم الرد عليك خلال ساعات العمل (الأحد-الخميس ١٢-٨ مساءً).'
+                  : 'Human agent requested. You\'ll get a reply during working hours (Sun-Thu 12-8 PM).'}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => resumeAIMutation.mutate()}
+              disabled={resumeAIMutation.isPending}
+              className="self-start text-xs underline text-emerald-700 hover:text-emerald-900 disabled:opacity-50"
+            >
+              {isRTL ? 'السماح للذكاء الاصطناعي بالرد' : 'Let AI respond'}
+            </button>
           </div>
         )}
 

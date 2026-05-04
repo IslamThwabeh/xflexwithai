@@ -47,8 +47,12 @@ export default function PackageDetails() {
   }
 
   const isComprehensive = pkg.slug === 'comprehensive';
-  const priceFormatted = `$${(pkg.price / 100).toFixed(0)}`;
-  const renewalFormatted = pkg.renewalPrice ? `$${(pkg.renewalPrice / 100).toFixed(0)}` : null;
+  const ILS_PRICES: Record<string, number> = { basic: 700, comprehensive: 1700 };
+  const ILS_RENEWAL: Record<string, number> = { basic: 175, comprehensive: 350 };
+  const displayPrice = ILS_PRICES[pkg.slug] ?? Math.round(pkg.price / 100 * 3.5);
+  const displayRenewal = pkg.renewalPrice ? (ILS_RENEWAL[pkg.slug] ?? Math.round(pkg.renewalPrice / 100 * 3.5)) : null;
+  const priceFormatted = `${displayPrice}₪`;
+  const renewalFormatted = displayRenewal ? `${displayRenewal}₪` : null;
   const vatIncludedLabel = language === 'ar' ? 'السعر يشمل ضريبة القيمة المضافة 16%' : 'Price includes 16% VAT';
 
   const features = [

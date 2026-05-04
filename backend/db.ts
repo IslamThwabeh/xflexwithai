@@ -49,6 +49,7 @@ import {
   jobQuestions, JobQuestion, InsertJobQuestion,
   jobApplications, JobApplication, InsertJobApplication,
   jobApplicationAnswers, JobApplicationAnswer, InsertJobApplicationAnswer,
+  jobInviteLogs, JobInviteLog, InsertJobInviteLog,
   // Phase 3+4: Reviews, Notifications, Points, Engagement
   courseReviews, CourseReview, InsertCourseReview,
   userNotifications, UserNotification, InsertUserNotification,
@@ -5653,14 +5654,25 @@ export async function getOrCreateSupportConversation(userId: number): Promise<Su
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
-  // Try to find existing open conversation
+  // Find the single consolidated conversation for this user (any status), most recent first
   const [existing] = await db.select().from(supportConversations)
-    .where(and(eq(supportConversations.userId, userId), eq(supportConversations.status, "open")))
+    .where(eq(supportConversations.userId, userId))
+    .orderBy(desc(supportConversations.id))
     .limit(1);
 
-  if (existing) return existing;
+  if (existing) {
+    // If closed, silently reopen it so all history is preserved in one thread
+    if (existing.status === "closed") {
+      const now = new Date().toISOString();
+      await db.update(supportConversations)
+        .set({ status: "open", closedAt: null, updatedAt: now })
+        .where(eq(supportConversations.id, existing.id));
+      return { ...existing, status: "open", closedAt: null, updatedAt: now };
+    }
+    return existing;
+  }
 
-  // Create new conversation
+  // No conversation yet — create the first one
   const [created] = await db.insert(supportConversations)
     .values({ userId, status: "open" })
     .returning();
@@ -5875,8 +5887,13 @@ export async function closeSupportConversation(conversationId: number) {
 export async function setNeedsHuman(conversationId: number, value: boolean) {
   const db = await getDb();
   if (!db) return;
+  const now = new Date().toISOString();
   await db.update(supportConversations)
-    .set({ needsHuman: value, updatedAt: new Date().toISOString() })
+    .set({
+      needsHuman: value,
+      needsHumanAt: value ? now : null,
+      updatedAt: now,
+    })
     .where(eq(supportConversations.id, conversationId));
 }
 
@@ -7443,6 +7460,69 @@ export async function updateJobApplicationStatus(id: number, status: string) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db.update(jobApplications).set({ status, updatedAt: new Date().toISOString() }).where(eq(jobApplications.id, id));
+}
+
+export async function markInterviewInviteSent(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const now = new Date().toISOString();
+  await db.update(jobApplications).set({ interviewInviteSentAt: now, updatedAt: now }).where(eq(jobApplications.id, id));
+}
+
+export async function getShortlistedApplications() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(jobApplications).where(eq(jobApplications.status, 'shortlisted'));
+}
+
+export async function getShortlistedApplicationsFiltered(jobId?: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [eq(jobApplications.status, 'shortlisted')];
+  if (jobId) conditions.push(eq(jobApplications.jobId, jobId));
+  return db.select().from(jobApplications).where(and(...conditions));
+}
+
+export async function createJobInviteLog(input: {
+  jobId?: number | null;
+  applicationId?: number | null;
+  recipientEmail: string;
+  recipientName?: string | null;
+  sendType: 'test' | 'single' | 'bulk';
+  success: boolean;
+  errorMessage?: string | null;
+  templateKey?: string;
+  sentByAdminId?: number | null;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.insert(jobInviteLogs).values({
+    jobId: input.jobId ?? null,
+    applicationId: input.applicationId ?? null,
+    recipientEmail: input.recipientEmail,
+    recipientName: input.recipientName ?? null,
+    sendType: input.sendType,
+    success: input.success,
+    errorMessage: input.errorMessage ?? null,
+    templateKey: input.templateKey ?? 'jobs_interview_invite_v1',
+    sentByAdminId: input.sentByAdminId ?? null,
+  });
+}
+
+export async function getJobInviteLogs(filters?: { limit?: number; jobId?: number }) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const limit = Math.min(Math.max(filters?.limit ?? 30, 1), 200);
+  const conditions = [];
+  if (filters?.jobId) conditions.push(eq(jobInviteLogs.jobId, filters.jobId));
+
+  if (conditions.length > 0) {
+    return db.select().from(jobInviteLogs).where(and(...conditions)).orderBy(desc(jobInviteLogs.sentAt)).limit(limit);
+  }
+
+  return db.select().from(jobInviteLogs).orderBy(desc(jobInviteLogs.sentAt)).limit(limit);
 }
 
 export async function getJobApplicationStats() {

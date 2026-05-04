@@ -72,12 +72,12 @@ export default function Upgrade() {
     );
   }
 
-  // Prices are VAT-inclusive: extract VAT from the upgrade price
-  const total = eligibility.upgradePrice / 100;
+  // Prices are VAT-inclusive: upgrade from basic to comprehensive is ₪1000 (1700-700)
+  const total = 1000; // ILS upgrade price (1700 comprehensive - 700 basic)
   const vatRate = 16;
   const vat = total * vatRate / (100 + vatRate);
   const upgradePrice = total - vat;
-  const renewalPrice = eligibility.renewalPrice / 100;
+  const renewalPrice = 350; // ILS renewal for comprehensive
 
   return (
     <ClientLayout>
@@ -106,8 +106,8 @@ export default function Upgrade() {
           </div>
           <p className="text-emerald-100">
             {isRtl
-              ? `ادفع $${total.toFixed(0)} مرة واحدة فقط، ثم التجديد بسعر $${renewalPrice.toFixed(0)} كالمعتاد`
-              : `Pay $${total.toFixed(0)} one-time upgrade fee, then renew at $${renewalPrice.toFixed(0)} as usual`}
+              ? `ادفع ₪${total.toFixed(0)} مرة واحدة فقط، ثم التجديد بسعر ₪${renewalPrice.toFixed(0)} كالمعتاد`
+              : `Pay ₪${total.toFixed(0)} one-time upgrade fee, then renew at ₪${renewalPrice.toFixed(0)} as usual`}
           </p>
         </div>
 
@@ -179,22 +179,22 @@ export default function Upgrade() {
               <div className="space-y-2 text-sm mb-4">
                 <div className="flex justify-between">
                   <span className="text-gray-500">{isRtl ? 'رسوم الترقية' : 'Upgrade Fee'}</span>
-                  <span>${upgradePrice.toFixed(2)}</span>
+                  <span>₪{upgradePrice.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-500">VAT ({vatRate}%)</span>
-                  <span>${vat.toFixed(2)}</span>
+                  <span>₪{vat.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between font-bold text-base border-t pt-2">
                   <span>{isRtl ? 'الإجمالي' : 'Total'}</span>
-                  <span>${total.toFixed(2)}</span>
+                  <span>₪{total.toFixed(2)}</span>
                 </div>
               </div>
 
               <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 mb-4 text-xs text-emerald-700">
                 {isRtl
-                  ? `بعد الترقية، سيكون التجديد بسعر $${renewalPrice.toFixed(0)}/شهر`
-                  : `After upgrade, renewal will be $${renewalPrice.toFixed(0)}/month`}
+                  ? `بعد الترقية، سيكون التجديد بسعر ₪${renewalPrice.toFixed(0)}/شهر`
+                  : `After upgrade, renewal will be ₪${renewalPrice.toFixed(0)}/month`}
               </div>
 
               <Button

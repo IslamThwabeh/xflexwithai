@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { Link } from 'wouter';
 import {
   BookOpen, Bot, Signal, Globe, LogIn, Send, CheckCircle, Loader2,
@@ -18,14 +18,14 @@ import { DEFAULT_TESTIMONIAL_PROOFS } from '@/lib/defaultTestimonialProofs';
 
 // Stage data with icons and individual prices (display only — to show package value)
 const stageData: Array<{ num: number; icon: LucideIcon; color: string; price: number; comingSoon?: boolean }> = [
-  { num: 1, icon: BookOpen, color: 'from-emerald-500 to-emerald-600', price: 150 },
-  { num: 2, icon: BarChart3, color: 'from-emerald-500 to-emerald-600', price: 300 },
-  { num: 3, icon: TrendingUp, color: 'from-teal-500 to-teal-600', price: 200 },
-  { num: 4, icon: Lightbulb, color: 'from-amber-500 to-amber-600', price: 100 },
-  { num: 5, icon: Shield, color: 'from-emerald-500 to-emerald-600', price: 50 },
-  { num: 6, icon: Signal, color: 'from-cyan-500 to-cyan-600', price: 50 },
-  { num: 7, icon: Brain, color: 'from-rose-500 to-rose-600', price: 50 },
-  { num: 8, icon: FileText, color: 'from-teal-500 to-teal-600', price: 30 },
+  { num: 1, icon: BookOpen, color: 'from-emerald-500 to-emerald-600', price: 525 },
+  { num: 2, icon: BarChart3, color: 'from-emerald-500 to-emerald-600', price: 1050 },
+  { num: 3, icon: TrendingUp, color: 'from-teal-500 to-teal-600', price: 700 },
+  { num: 4, icon: Lightbulb, color: 'from-amber-500 to-amber-600', price: 350 },
+  { num: 5, icon: Shield, color: 'from-emerald-500 to-emerald-600', price: 175 },
+  { num: 6, icon: Signal, color: 'from-cyan-500 to-cyan-600', price: 175 },
+  { num: 7, icon: Brain, color: 'from-rose-500 to-rose-600', price: 175 },
+  { num: 8, icon: FileText, color: 'from-teal-500 to-teal-600', price: 105 },
 ];
 
 export default function Home() {
@@ -272,129 +272,26 @@ export default function Home() {
                 {t('home.heroCta')}
                 <ChevronRight className="w-4 h-4" />
               </button>
-              <Link href="/free-content">
-                <button className="w-full sm:w-auto px-10 py-3.5 rounded-full border border-white/20 text-white hover:bg-white/10 transition-all duration-300 text-base font-medium inline-flex items-center justify-center gap-2">
-                  {t('home.heroCtaFree')}
-                </button>
-              </Link>
+              <button
+                className="w-full sm:w-auto px-10 py-3.5 rounded-full border border-white/20 text-white hover:bg-white/10 transition-all duration-300 text-base font-medium inline-flex items-center justify-center gap-2"
+                onClick={() => scrollToSection('student-results')}
+              >
+                {t('home.heroCtaFree')}
+              </button>
             </div>
 
             {/* Stats */}
             <div className="mt-20 grid grid-cols-3 gap-8 max-w-md mx-auto">
               {[
-                { value: '8', label: language === 'ar' ? 'مراحل تعليمية' : 'Learning Stages' },
-                { value: '40+', label: language === 'ar' ? 'فيديو تعليمي' : 'Video Lessons' },
-                { value: 'PDF', label: language === 'ar' ? 'لكل مرحلة' : 'Per Stage' },
+                { value: '5000+', label: language === 'ar' ? 'ساعدنا اكثر من 5000 طالب يربحوا من المجال' : 'Students helped profit from the market' },
+                { value: '+8 سنوات', label: language === 'ar' ? 'خبرة بالمجال' : 'Years of field experience' },
+                { value: '69300₪', label: language === 'ar' ? 'صافي ارباح طلابنا من قناة التوصيات خلال اقل من سنة' : 'Net student profits from signals channel in under a year' },
               ].map((stat, i) => (
                 <div key={i} className="text-center">
                   <div className="text-2xl md:text-3xl font-extrabold text-white tracking-tight">{stat.value}</div>
                   <div className="text-xs md:text-sm text-emerald-200/50 mt-1 font-medium">{stat.label}</div>
                 </div>
               ))}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ======== PACKAGES SECTION ======== */}
-      <section id="packages" className="py-24 bg-[var(--color-xf-cream)]">
-        <div className="container mx-auto px-4">
-          <div className="text-center mb-16 fade-up">
-            <h2 className="text-3xl md:text-4xl font-extrabold text-xf-dark tracking-[-0.5px] heading-accent">
-              {t('home.packages.title')}
-            </h2>
-            <p className="text-gray-500 text-lg max-w-xl mx-auto mt-6">
-              {t('home.packages.subtitle')}
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
-            {/* Basic Package */}
-            <div className="fade-up glass-card p-8 flex flex-col">
-              <div className="text-center mb-6">
-                <h3 className="text-2xl font-extrabold text-xf-dark mb-1 tracking-[-0.5px]">{t('home.packages.basic')}</h3>
-                <div className="flex items-baseline justify-center gap-1 mt-3">
-                  <span className="text-5xl font-extrabold text-xf-dark">$200</span>
-                </div>
-                <p className="text-sm text-gray-500 mt-1">{t('home.packages.price')} • {t('home.packages.lifetime')}</p>
-                <p className="text-xs text-xf-primary mt-1 font-medium">
-                  {t('home.packages.renewal')}: $50{t('home.packages.perMonth')}
-                </p>
-              </div>
-
-              <div className="border-t border-gray-100 pt-6 flex-1">
-                <p className="text-sm font-bold text-gray-700 mb-4">{t('home.packages.includes')}:</p>
-                <ul className="space-y-3">
-                  {[
-                    t('home.packages.courses'),
-                    t('home.packages.pdf'),
-                    t('home.packages.introVideos'),
-                    t('home.packages.support'),
-                    t('home.packages.recommendations'),
-                  ].map((feature, i) => (
-                    <li key={i} className="flex items-start gap-2.5 text-sm text-gray-700">
-                      <CheckCircle className="w-4 h-4 text-xf-primary mt-0.5 flex-shrink-0" />
-                      {feature}
-                    </li>
-                  ))}
-                  <li className="flex items-start gap-2.5 text-sm text-gray-400">
-                    <X className="w-4 h-4 text-gray-300 mt-0.5 flex-shrink-0" />
-                    {t('home.packages.lexai')}
-                  </li>
-                </ul>
-              </div>
-
-              <Link href="/packages/basic">
-                <button className="w-full mt-6 py-3.5 rounded-full bg-xf-dark text-white font-semibold hover:bg-xf-dark-lighter transition-all duration-150 text-sm">
-                  {t('home.packages.choosePlan')}
-                </button>
-              </Link>
-            </div>
-
-            {/* Comprehensive Package */}
-            <div className="fade-up relative rounded-[16px] pt-12 pb-8 px-8 flex flex-col text-white" style={{ background: 'linear-gradient(135deg, #10b981, #059669)' ,boxShadow: '0 20px 60px rgba(16,185,129,0.2)' }}>
-              <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 z-10">
-                <Badge className="bg-yellow-400 text-yellow-900 font-bold px-4 py-1 rounded-full shadow-lg text-xs">
-                  <Star className="w-3 h-3 mr-1 fill-current" />
-                  {t('home.packages.mostPopular')}
-                </Badge>
-              </div>
-
-              <div className="text-center mb-6 mt-2">
-                <h3 className="text-2xl font-extrabold mb-1 tracking-[-0.5px]">{t('home.packages.comprehensive')}</h3>
-                <div className="flex items-baseline justify-center gap-1 mt-3">
-                  <span className="text-5xl font-extrabold">$500</span>
-                </div>
-                <p className="text-sm text-emerald-100 mt-1">{t('home.packages.price')} • {t('home.packages.lifetime')}</p>
-                <p className="text-xs text-emerald-200 mt-1">
-                  {t('home.packages.renewal')}: $100{t('home.packages.perMonth')}
-                </p>
-              </div>
-
-              <div className="border-t border-white/20 pt-6 flex-1">
-                <p className="text-sm font-bold text-emerald-100 mb-4">{t('home.packages.includes')}:</p>
-                <ul className="space-y-3">
-                  {[
-                    t('home.packages.courses'),
-                    t('home.packages.pdf'),
-                    t('home.packages.introVideos'),
-                    t('home.packages.support'),
-                    t('home.packages.recommendations'),
-                    t('home.packages.lexai'),
-                  ].map((feature, i) => (
-                    <li key={i} className="flex items-start gap-2.5 text-sm">
-                      <CheckCircle className="w-4 h-4 text-emerald-200 mt-0.5 flex-shrink-0" />
-                      {feature}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              <Link href="/packages/comprehensive">
-                <button className="w-full mt-6 py-3.5 rounded-full bg-white text-xf-primary-hover font-bold hover:bg-emerald-50 transition-all duration-150 text-sm">
-                  {t('home.packages.choosePlan')}
-                </button>
-              </Link>
             </div>
           </div>
         </div>
@@ -441,7 +338,7 @@ export default function Home() {
                   </p>
                   {stage.price > 0 && (
                     <p className="text-sm font-bold text-gray-400 line-through mt-2">
-                      ${stage.price}
+                      ₪{stage.price}
                     </p>
                   )}
                   {!stage.comingSoon && (
@@ -464,9 +361,9 @@ export default function Home() {
               {t('home.stages.everyStage')}
             </p>
             <p className="text-sm text-gray-500">
-              <span className="line-through text-gray-400">{language === 'ar' ? 'القيمة الفردية: $730' : 'Individual value: $730'}</span>
+              <span className="line-through text-gray-400">{language === 'ar' ? 'القيمة الفردية: ₪2550' : 'Individual value: ₪2550'}</span>
               {' '}
-              <span className="font-bold text-xf-primary">{language === 'ar' ? 'سعر الباقة الشاملة: $500 فقط!' : 'Comprehensive Package: Only $500!'}</span>
+              <span className="font-bold text-xf-primary">{language === 'ar' ? 'سعر الباقة الشاملة: ₪1700 فقط!' : 'Comprehensive Package: Only ₪1700!'}</span>
             </p>
           </div>
         </div>
@@ -722,6 +619,7 @@ export default function Home() {
 
       {homeProofItems.length > 0 && (
         <section
+          id="student-results"
           className="py-24"
           style={{ background: 'linear-gradient(180deg, rgba(255,255,255,1), rgba(250,247,242,0.78))' }}
         >
@@ -799,6 +697,110 @@ export default function Home() {
           </div>
         </section>
       )}
+
+      {/* ======== PACKAGES SECTION ======== */}
+      <section id="packages" className="py-24 bg-[var(--color-xf-cream)]">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-16 fade-up">
+            <h2 className="text-3xl md:text-4xl font-extrabold text-xf-dark tracking-[-0.5px] heading-accent">
+              {t('home.packages.title')}
+            </h2>
+            <p className="text-gray-500 text-lg max-w-xl mx-auto mt-6">
+              {t('home.packages.subtitle')}
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+            {/* Basic Package */}
+            <div className="fade-up glass-card p-8 flex flex-col">
+              <div className="text-center mb-6">
+                <h3 className="text-2xl font-extrabold text-xf-dark mb-1 tracking-[-0.5px]">{t('home.packages.basic')}</h3>
+                <div className="flex items-baseline justify-center gap-1 mt-3">
+                  <span className="text-5xl font-extrabold text-xf-dark">700₪</span>
+                </div>
+                <p className="text-sm text-gray-500 mt-1">{t('home.packages.price')} • {t('home.packages.lifetime')}</p>
+                <p className="text-xs text-xf-primary mt-1 font-medium">
+                  {t('home.packages.renewal')}: 175₪{t('home.packages.perMonth')}
+                </p>
+              </div>
+
+              <div className="border-t border-gray-100 pt-6 flex-1">
+                <p className="text-sm font-bold text-gray-700 mb-4">{t('home.packages.includes')}:</p>
+                <ul className="space-y-3">
+                  {[
+                    t('home.packages.courses'),
+                    t('home.packages.pdf'),
+                    t('home.packages.introVideos'),
+                    t('home.packages.support'),
+                    t('home.packages.recommendations'),
+                  ].map((feature, i) => (
+                    <li key={i} className="flex items-start gap-2.5 text-sm text-gray-700">
+                      <CheckCircle className="w-4 h-4 text-xf-primary mt-0.5 flex-shrink-0" />
+                      {feature}
+                    </li>
+                  ))}
+                  <li className="flex items-start gap-2.5 text-sm text-gray-400">
+                    <X className="w-4 h-4 text-gray-300 mt-0.5 flex-shrink-0" />
+                    {t('home.packages.lexai')}
+                  </li>
+                </ul>
+              </div>
+
+              <Link href="/packages/basic">
+                <button className="w-full mt-6 py-3.5 rounded-full bg-xf-dark text-white font-semibold hover:bg-xf-dark-lighter transition-all duration-150 text-sm">
+                  {t('home.packages.choosePlan')}
+                </button>
+              </Link>
+            </div>
+
+            {/* Comprehensive Package */}
+            <div className="fade-up relative rounded-[16px] pt-12 pb-8 px-8 flex flex-col text-white" style={{ background: 'linear-gradient(135deg, #10b981, #059669)' ,boxShadow: '0 20px 60px rgba(16,185,129,0.2)' }}>
+              <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 z-10">
+                <Badge className="bg-yellow-400 text-yellow-900 font-bold px-4 py-1 rounded-full shadow-lg text-xs">
+                  <Star className="w-3 h-3 mr-1 fill-current" />
+                  {t('home.packages.mostPopular')}
+                </Badge>
+              </div>
+
+              <div className="text-center mb-6 mt-2">
+                <h3 className="text-2xl font-extrabold mb-1 tracking-[-0.5px]">{t('home.packages.comprehensive')}</h3>
+                <div className="flex items-baseline justify-center gap-1 mt-3">
+                  <span className="text-5xl font-extrabold">1700₪</span>
+                </div>
+                <p className="text-sm text-emerald-100 mt-1">{t('home.packages.price')} • {t('home.packages.lifetime')}</p>
+                <p className="text-xs text-emerald-200 mt-1">
+                  {t('home.packages.renewal')}: 350₪{t('home.packages.perMonth')}
+                </p>
+              </div>
+
+              <div className="border-t border-white/20 pt-6 flex-1">
+                <p className="text-sm font-bold text-emerald-100 mb-4">{t('home.packages.includes')}:</p>
+                <ul className="space-y-3">
+                  {[
+                    t('home.packages.courses'),
+                    t('home.packages.pdf'),
+                    t('home.packages.introVideos'),
+                    t('home.packages.support'),
+                    t('home.packages.recommendations'),
+                    t('home.packages.lexai'),
+                  ].map((feature, i) => (
+                    <li key={i} className="flex items-start gap-2.5 text-sm">
+                      <CheckCircle className="w-4 h-4 text-emerald-200 mt-0.5 flex-shrink-0" />
+                      {feature}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <Link href="/packages/comprehensive">
+                <button className="w-full mt-6 py-3.5 rounded-full bg-white text-xf-primary-hover font-bold hover:bg-emerald-50 transition-all duration-150 text-sm">
+                  {t('home.packages.choosePlan')}
+                </button>
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>
 
       {/* ======== ABOUT SECTION ======== */}
       <section className="py-24 bg-white">

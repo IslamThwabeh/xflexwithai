@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   Briefcase, Plus, Edit2, Save, X, Eye, EyeOff, Users,
   FileText, Download, ChevronDown, ChevronUp, Search,
-  CheckCircle, Clock, XCircle, Star, MessageSquare, Sparkles, Loader2,
+  CheckCircle, Clock, XCircle, Star, MessageSquare, Sparkles, Loader2, Mail, SendHorizonal,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -76,8 +76,13 @@ function ApplicationsTab({ isRtl }: { isRtl: boolean }) {
   const { data: stats } = trpc.jobs.stats.useQuery();
   const [filterJobId, setFilterJobId] = useState<number | undefined>();
   const [filterStatus, setFilterStatus] = useState<string | undefined>();
+  const [testEmail, setTestEmail] = useState('doaa.thwabeh@gmail.com');
+  const [testName, setTestName] = useState(isRtl ? 'مرشح تجريبي' : 'Test Candidate');
   const { data: applications, isLoading } = trpc.jobs.listApplications.useQuery(
     { jobId: filterJobId, status: filterStatus } as any
+  );
+  const { data: inviteHistory, isLoading: isHistoryLoading } = trpc.jobs.inviteHistory.useQuery(
+    { limit: 40, jobId: filterJobId } as any
   );
   const updateStatusMut = trpc.jobs.updateStatus.useMutation({
     onSuccess: () => {
@@ -86,8 +91,33 @@ function ApplicationsTab({ isRtl }: { isRtl: boolean }) {
       toast.success(isRtl ? 'تم تحديث الحالة' : 'Status updated');
     },
   });
+  const bulkInviteMut = trpc.jobs.sendInterviewInviteBulk.useMutation({
+    onSuccess: (data) => {
+      utils.jobs.listApplications.invalidate();
+      utils.jobs.inviteHistory.invalidate();
+      if (data.sent > 0) toast.success(isRtl ? `تم إرسال ${data.sent} دعوة بنجاح` : `${data.sent} invite(s) sent`);
+      if (data.failed > 0) toast.error(isRtl ? `فشل إرسال ${data.failed} دعوة` : `${data.failed} invite(s) failed`);
+      if (data.sent === 0 && data.failed === 0) toast.info(isRtl ? 'لا يوجد مرشحون جدد لإرسال دعوات لهم' : 'No pending shortlisted candidates');
+    },
+    onError: () => toast.error(isRtl ? 'حدث خطأ أثناء الإرسال' : 'Bulk send failed'),
+  });
+  const testInviteMut = trpc.jobs.sendInterviewInviteTest.useMutation({
+    onSuccess: (data) => {
+      utils.jobs.inviteHistory.invalidate();
+      toast.success(isRtl ? `تم إرسال البريد التجريبي إلى ${data.sentTo}` : `Test invite sent to ${data.sentTo}`);
+      toast.info(isRtl ? `أي رد سيصل إلى ${data.replyToMailbox}` : `Replies will go to ${data.replyToMailbox}`);
+    },
+    onError: (err) => toast.error(err.message || (isRtl ? 'فشل إرسال البريد التجريبي' : 'Test email failed')),
+  });
 
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const shortlistedCount = applications?.filter(a => a.status === 'shortlisted' && !a.interviewInviteSentAt).length ?? 0;
+  const historyItems = inviteHistory ?? [];
+  const sendTestInvite = (email: string) => {
+    const normalizedEmail = email.trim();
+    if (!normalizedEmail) return;
+    testInviteMut.mutate({ email: normalizedEmail, applicantName: testName.trim() || undefined });
+  };
 
   return (
     <div>
@@ -109,8 +139,70 @@ function ApplicationsTab({ isRtl }: { isRtl: boolean }) {
         </div>
       )}
 
-      {/* Filters */}
-      <div className="flex flex-wrap gap-3 mb-4">
+      <div className="bg-white border rounded-xl p-4 md:p-5 mb-4 space-y-4">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900">{isRtl ? 'اختبار دعوة المقابلة' : 'Test Interview Invite'}</h2>
+            <p className="text-xs text-gray-500 mt-1">
+              {isRtl
+                ? 'أرسل نفس البريد إلى عناوينك أولًا للتأكد من الوصول إلى الـ Inbox وأن الردود ستظهر في صندوق support@xflexacademy.com.'
+                : 'Send the same email to your own inboxes first to verify inbox delivery and that replies land in support@xflexacademy.com.'}
+            </p>
+          </div>
+          <Badge className="bg-amber-50 text-amber-700">{isRtl ? 'تجريبي' : 'Test Only'}</Badge>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <Input
+            value={testName}
+            onChange={(e) => setTestName(e.target.value)}
+            placeholder={isRtl ? 'اسم المستلم داخل الرسالة' : 'Recipient name inside the email'}
+            dir={isRtl ? 'rtl' : 'ltr'}
+          />
+          <Input
+            value={testEmail}
+            onChange={(e) => setTestEmail(e.target.value)}
+            placeholder={isRtl ? 'البريد الإلكتروني للاختبار' : 'Test email address'}
+            dir="ltr"
+          />
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            className="gap-2"
+            onClick={() => sendTestInvite('doaa.thwabeh@gmail.com')}
+            disabled={testInviteMut.isPending}
+          >
+            <Mail className="w-4 h-4" />doaa.thwabeh@gmail.com
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="gap-2"
+            onClick={() => sendTestInvite('islam.thwabeh@gmail.com')}
+            disabled={testInviteMut.isPending}
+          >
+            <Mail className="w-4 h-4" />islam.thwabeh@gmail.com
+          </Button>
+          <Button
+            type="button"
+            className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
+            onClick={() => sendTestInvite(testEmail)}
+            disabled={testInviteMut.isPending || !testEmail.trim()}
+          >
+            {testInviteMut.isPending ? (
+              <><Loader2 className="w-4 h-4 animate-spin" />{isRtl ? 'جاري الإرسال...' : 'Sending...'}</>
+            ) : (
+              <><SendHorizonal className="w-4 h-4" />{isRtl ? 'إرسال بريد تجريبي' : 'Send Test Email'}</>
+            )}
+          </Button>
+        </div>
+      </div>
+
+      {/* Filters + Bulk Invite */}
+      <div className="flex flex-wrap gap-3 mb-4 items-center">
         <select
           className="border rounded-lg px-3 py-2 text-sm bg-white"
           value={filterJobId ?? ''}
@@ -129,6 +221,61 @@ function ApplicationsTab({ isRtl }: { isRtl: boolean }) {
             <option key={k} value={k}>{isRtl ? v.labelAr : v.label}</option>
           ))}
         </select>
+        <div className="flex-1" />
+        <Button
+          onClick={() => bulkInviteMut.mutate(filterJobId ? { jobId: filterJobId } : undefined)}
+          disabled={bulkInviteMut.isPending || shortlistedCount === 0}
+          className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
+        >
+          {bulkInviteMut.isPending ? (
+            <><Loader2 className="w-4 h-4 animate-spin" />{isRtl ? 'جاري الإرسال...' : 'Sending...'}</>
+          ) : (
+            <>
+              <SendHorizonal className="w-4 h-4" />
+              {isRtl
+                ? (filterJobId ? `إرسال دعوات المرشحين لهذه الوظيفة (${shortlistedCount})` : `إرسال دعوات المقابلة (${shortlistedCount})`)
+                : (filterJobId ? `Send Selected Job Invites (${shortlistedCount})` : `Send Interview Invites (${shortlistedCount})`)}
+            </>
+          )}
+        </Button>
+      </div>
+
+      <div className="bg-white border rounded-xl p-4 md:p-5 mb-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold text-gray-900">{isRtl ? 'سجل إرسال الدعوات' : 'Invite Delivery History'}</h3>
+          <Badge className="bg-gray-100 text-gray-700">{historyItems.length}</Badge>
+        </div>
+
+        {isHistoryLoading ? (
+          <div className="text-sm text-gray-400">{isRtl ? 'جاري تحميل السجل...' : 'Loading history...'}</div>
+        ) : historyItems.length === 0 ? (
+          <div className="text-sm text-gray-400">{isRtl ? 'لا يوجد سجل إرسال بعد' : 'No invite history yet'}</div>
+        ) : (
+          <div className="space-y-2 max-h-64 overflow-auto pr-1">
+            {historyItems.map((log: any) => (
+              <div key={log.id} className="border rounded-lg p-3 text-sm">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="font-medium text-gray-900" dir="ltr">{log.recipientEmail}</div>
+                  <Badge className={log.success ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}>
+                    {log.success ? (isRtl ? 'نجاح' : 'Success') : (isRtl ? 'فشل' : 'Failed')}
+                  </Badge>
+                </div>
+                <div className="mt-1 text-xs text-gray-500 flex flex-wrap gap-2">
+                  <span>{isRtl ? `النوع: ${log.sendType}` : `Type: ${log.sendType}`}</span>
+                  <span>{isRtl ? `الوظيفة: ${log.jobTitle || '—'}` : `Job: ${log.jobTitle || '—'}`}</span>
+                  <span>
+                    {isRtl
+                      ? `الوقت: ${new Date(log.sentAt).toLocaleString('ar-EG')}`
+                      : `Time: ${new Date(log.sentAt).toLocaleString()}`}
+                  </span>
+                </div>
+                {!log.success && log.errorMessage && (
+                  <div className="mt-2 text-xs text-red-600 bg-red-50 border border-red-100 rounded p-2">{log.errorMessage}</div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Applications List */}
@@ -170,11 +317,20 @@ function ApplicationCard({
   onToggle: () => void;
   onStatusChange: (status: string) => void;
 }) {
+  const utils = trpc.useUtils();
   const { data: detail } = trpc.jobs.getApplication.useQuery(
     { id: app.id },
     { enabled: expanded }
   );
   const aiScreenMut = trpc.jobs.aiScreen.useMutation();
+  const inviteMut = trpc.jobs.sendInterviewInvite.useMutation({
+    onSuccess: (data) => {
+      utils.jobs.listApplications.invalidate();
+      utils.jobs.inviteHistory.invalidate();
+      toast.success(isRtl ? `تم إرسال الدعوة إلى ${data.sentTo}` : `Invite sent to ${data.sentTo}`);
+    },
+    onError: (err) => toast.error(err.message || (isRtl ? 'فشل إرسال الدعوة' : 'Failed to send invite')),
+  });
   const [aiResult, setAiResult] = useState<string | null>(null);
   const statusInfo = STATUS_MAP[app.status] || STATUS_MAP.new;
   const StatusIcon = statusInfo.icon;
@@ -205,7 +361,7 @@ function ApplicationCard({
             <StatusIcon className="w-3 h-3" />
             {isRtl ? statusInfo.labelAr : statusInfo.label}
           </Badge>
-          <span className="text-xs text-gray-400">{new Date(app.submittedAt).toLocaleDateString('ar')}</span>
+          <span className="text-xs text-gray-400">{new Date(app.submittedAt).toLocaleDateString('ar-EG')}</span>
           {expanded ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
         </div>
       </div>
@@ -293,6 +449,39 @@ function ApplicationCard({
               </Button>
             ))}
           </div>
+
+          {/* Interview Invite — shown for shortlisted applicants */}
+          {app.status === 'shortlisted' && (
+            <div className="flex items-center justify-between pt-2 border-t">
+              <div className="flex items-center gap-2">
+                <Mail className="w-4 h-4 text-emerald-600" />
+                <span className="text-sm font-medium text-gray-700">
+                  {isRtl ? 'دعوة المقابلة' : 'Interview Invite'}
+                </span>
+                {app.interviewInviteSentAt && (
+                  <Badge className="bg-emerald-50 text-emerald-700 text-xs">
+                    {isRtl ? `أُرسلت ${new Date(app.interviewInviteSentAt).toLocaleDateString('ar-EG')}` : `Sent ${new Date(app.interviewInviteSentAt).toLocaleDateString()}`}
+                  </Badge>
+                )}
+              </div>
+              <Button
+                size="sm"
+                disabled={inviteMut.isPending}
+                onClick={() => inviteMut.mutate({ id: app.id })}
+                className={`gap-1.5 text-xs ${
+                  app.interviewInviteSentAt
+                    ? 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                }`}
+              >
+                {inviteMut.isPending ? (
+                  <><Loader2 className="w-3 h-3 animate-spin" />{isRtl ? 'جاري الإرسال...' : 'Sending...'}</>
+                ) : (
+                  <><Mail className="w-3 h-3" />{app.interviewInviteSentAt ? (isRtl ? 'إعادة إرسال' : 'Resend') : (isRtl ? 'إرسال دعوة المقابلة' : 'Send Invite')}</>
+                )}
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </div>

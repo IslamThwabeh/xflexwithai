@@ -74,6 +74,9 @@ const Checkout = lazy(() => import("./pages/Checkout"));
 const FreeContent = lazy(() => import("./pages/FreeContent"));
 const Gifts = lazy(() => import("./pages/Gifts"));
 const Contact = lazy(() => import("./pages/Contact"));
+const VipTradingBotPlanLanding = lazy(() => import("./pages/VipTradingBotPlanLanding"));
+const VipTradingBotPlanEnglish = lazy(() => import("./pages/VipTradingBotPlanEnglish"));
+const VipTradingBotPlanArabic = lazy(() => import("./pages/VipTradingBotPlanArabic"));
 const TermsOfService = lazy(() => import("./pages/TermsOfService"));
 const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
 const RefundPolicy = lazy(() => import("./pages/RefundPolicy"));
@@ -310,6 +313,12 @@ function Router() {
       <Route path="/free-content" component={FreeContent} />
       <Route path="/gifts" component={Gifts} />
       <Route path="/contact" component={Contact} />
+      <Route path="/business-owner/vip-trading-bot-plan" component={VipTradingBotPlanLanding} />
+      <Route path="/en/project/vip-bot-plan" component={VipTradingBotPlanEnglish} />
+      <Route path="/ar/project/vip-bot-plan" component={VipTradingBotPlanArabic} />
+      <Route path="/vip-trading-bot-plan">
+        <Redirect to="/business-owner/vip-trading-bot-plan" />
+      </Route>
       <Route path="/terms" component={TermsOfService} />
       <Route path="/privacy" component={PrivacyPolicy} />
       <Route path="/refund-policy" component={RefundPolicy} />
