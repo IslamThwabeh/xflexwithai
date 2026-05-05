@@ -168,7 +168,7 @@ const translations = {
     'home.why.communityDesc': 'Join a community of traders sharing knowledge and success',
     
     // Free Content
-    'home.free.title': 'Free Content',
+    'home.free.title': 'Gift',
     'home.free.subtitle': 'Start learning for free with our open courses and educational articles',
     'home.free.courses': 'Free Courses',
     'home.free.coursesDesc': 'Access introductory trading courses at no cost',
@@ -1262,7 +1262,7 @@ const translations = {
     'home.why.communityDesc': 'انضم لمجتمع من المتداولين يتشاركون المعرفة والنجاح',
     
     // Free Content
-    'home.free.title': 'محتوى مجاني',
+    'home.free.title': 'هدية',
     'home.free.subtitle': 'ابدأ التعلم مجاناً مع دوراتنا المفتوحة والمقالات التعليمية',
     'home.free.courses': 'دورات مجانية',
     'home.free.coursesDesc': 'الوصول لدورات تداول تمهيدية بدون أي تكلفة',

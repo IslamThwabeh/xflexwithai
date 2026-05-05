@@ -164,6 +164,17 @@ export default function Checkout() {
                 </button>
               </div>
 
+              {paymentMethod === 'paypal' && (
+                <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm">
+                  <p className="font-medium mb-1">{isRtl ? 'ملاحظة مهمة حول PayPal:' : 'Important PayPal note:'}</p>
+                  <p className="text-gray-600">
+                    {isRtl
+                      ? 'الأسعار المعروضة هنا بالشيكل (₪) هي مرجع محلي فقط. عند اختيار PayPal سيتم تحصيل الدفعة النهائية بالدولار الأمريكي (USD)، وسيتم تأكيد قيمة الدولار النهائية مع فريق الدعم بعد إنشاء الطلب.'
+                      : 'The shekel (₪) prices shown here are a local reference only. If you choose PayPal, the final PayPal charge is processed in USD, and the exact USD amount will be confirmed with the support team after the order is placed.'}
+                  </p>
+                </div>
+              )}
+
               {paymentMethod === 'bank_transfer' && (
                 <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-xl p-4 text-sm">
                   <p className="font-medium mb-1">{isRtl ? 'تعليمات التحويل البنكي:' : 'Bank Transfer Instructions:'}</p>
@@ -282,9 +293,13 @@ export default function Checkout() {
               </div>
 
               <div className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-3 text-xs text-slate-600 leading-6 mb-4">
-                {isRtl
-                  ? 'الأسعار معروضة بالشيكل (₪). سيتم تأكيد المبلغ النهائي ووسيلة الدفع مع فريق الدعم بعد إنشاء الطلب.'
-                  : 'Prices are shown in shekel (₪). The final amount and payment method will be confirmed with the support team after the order is placed.'}
+                {paymentMethod === 'paypal'
+                  ? (isRtl
+                    ? 'تم اختيار PayPal. السعر المعروض بالشيكل (₪) هو مرجع محلي، بينما تتم معالجة دفعة PayPal النهائية بالدولار الأمريكي (USD).'
+                    : 'PayPal is selected. The shekel (₪) amount shown here is a local reference, while the final PayPal payment is processed in USD.')
+                  : (isRtl
+                    ? 'الأسعار معروضة بالشيكل (₪). سيتم تأكيد المبلغ النهائي وتعليمات التحويل مع فريق الدعم بعد إنشاء الطلب.'
+                    : 'Prices are shown in shekel (₪). The final amount and transfer instructions will be confirmed with the support team after the order is placed.')}
               </div>
 
               <Button

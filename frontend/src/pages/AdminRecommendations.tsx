@@ -14,6 +14,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { toast } from "sonner";
 import { PauseCircle, PlayCircle, UserCog, Bell, TrendingUp, Copy, Trash2, ArrowDown, ArrowUp, Plus, Clock3, Megaphone, XCircle, Info } from "lucide-react";
 import { useDataTable, DataTablePagination, zebraRow } from "@/components/DataTable";
+import { formatLocalizedDate } from "@/lib/dateLocale";
 import { buildRecommendationThreads, groupRecommendationThreadsByDay } from "@/lib/recommendationThreads";
 
 type RecommendationType = "recommendation" | "update" | "result";
@@ -1102,7 +1103,7 @@ function AdminView() {
                         {subscription.isPaused ? (isRTL ? 'مجمّد' : 'Frozen') : (isRTL ? 'نشط' : 'Active')}
                       </Badge>
                     </TableCell>
-                    <TableCell>{subscription.endDate ? new Date(subscription.endDate).toLocaleDateString(isRTL ? 'ar-EG' : undefined) : '-'}</TableCell>
+                    <TableCell>{subscription.endDate ? formatLocalizedDate(subscription.endDate, language) : '-'}</TableCell>
                     <TableCell>{subscription.pausedRemainingDays ? `${subscription.pausedRemainingDays}d` : '-'}</TableCell>
                     <TableCell>
                       {subscription.isPaused ? (

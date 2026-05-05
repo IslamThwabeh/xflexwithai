@@ -3,6 +3,7 @@ import { trpc } from '@/lib/trpc';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { formatLocalizedDate } from '@/lib/dateLocale';
 import { printReport } from '@/lib/printReport';
 import { Download, Search, Users, Filter, FileText, SlidersHorizontal } from 'lucide-react';
 import DashboardLayout from '@/components/DashboardLayout';
@@ -114,7 +115,7 @@ export default function AdminSubscribersReport() {
     const headers = ['Name', 'Email', 'Phone', 'City', 'Country', 'Registered', 'Total Orders', 'Total Spent ($)', 'Active Packages', 'Renewals'];
     const rows = filtered.map((s: any) => [
       s.name || '', s.email, s.phone || '', s.city || '', s.country || '',
-      s.createdAt ? new Date(s.createdAt).toLocaleDateString() : '',
+      s.createdAt ? formatLocalizedDate(s.createdAt, language) : '',
       s.completedOrders, ((s.totalSpent || 0) / 100).toFixed(2),
       (s.activePackages || []).join('; '), s.renewalCount,
     ]);

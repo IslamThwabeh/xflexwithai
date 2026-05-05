@@ -1,6 +1,7 @@
 import { trpc } from '@/lib/trpc';
 import { printReport } from '@/lib/printReport';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { formatLocalizedDate } from '@/lib/dateLocale';
 import { Button } from '@/components/ui/button';
 import { Download, DollarSign, TrendingUp, Key, Package, FileText } from 'lucide-react';
 import DashboardLayout from '@/components/DashboardLayout';
@@ -23,7 +24,7 @@ export default function AdminRevenueReport() {
       a.keyCode, a.userName || '', a.userEmail || '',
       a.packageName || '', a.price?.toFixed(2) || '0',
       a.isUpgrade ? 'Yes' : 'No', a.isRenewal ? 'Yes' : 'No',
-      a.activatedAt ? new Date(a.activatedAt).toLocaleDateString() : '',
+      a.activatedAt ? formatLocalizedDate(a.activatedAt, language) : '',
     ]);
     const csv = [headers.join(','), ...rows.map(r => r.map((v: any) => `"${v}"`).join(','))].join('\n');
     const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });

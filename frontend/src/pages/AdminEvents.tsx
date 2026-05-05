@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { formatLocalizedDate } from '@/lib/dateLocale';
 import { trpc } from '@/lib/trpc';
 import DashboardLayout from '@/components/DashboardLayout';
 
@@ -159,7 +160,7 @@ export default function AdminEvents() {
                     <Badge variant="outline" className="text-xs">{event.eventType}</Badge>
                   </div>
                   <p className="text-sm text-gray-500">
-                    {new Date(event.eventDate).toLocaleDateString()}
+                    {formatLocalizedDate(event.eventDate, language)}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">

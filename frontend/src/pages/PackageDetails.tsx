@@ -65,7 +65,7 @@ export default function PackageDetails() {
     { key: 'support', label: t('home.packages.support'), included: !!pkg.includesSupport },
     { key: 'recommendations', label: t('home.packages.recommendations'), included: !!pkg.includesRecommendations },
     { key: 'lexai', label: t('home.packages.lexai'), included: !!pkg.includesLexai },
-  ];
+  ].filter((feature) => feature.included);
 
   return (
     <PublicLayout>
@@ -111,12 +111,8 @@ export default function PackageDetails() {
               <h2 className="text-lg font-bold text-gray-900 mb-4">{t('home.packages.includes')}:</h2>
               <ul className="space-y-3">
                 {features.map((f) => (
-                  <li key={f.key} className={`flex items-center gap-3 text-sm ${f.included ? 'text-gray-700' : 'text-gray-400'}`}>
-                    {f.included ? (
-                      <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
-                    ) : (
-                      <X className="w-5 h-5 text-gray-300 flex-shrink-0" />
-                    )}
+                  <li key={f.key} className="flex items-center gap-3 text-sm text-gray-700">
+                    <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
                     {f.label}
                   </li>
                 ))}

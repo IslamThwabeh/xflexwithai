@@ -108,6 +108,12 @@ export default function Home() {
 
   // Scroll-triggered fade-up animation
   useEffect(() => {
+    const elements = document.querySelectorAll('.fade-up');
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      elements.forEach((el) => el.classList.add('visible'));
+      return;
+    }
+
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
@@ -118,7 +124,6 @@ export default function Home() {
       },
       { threshold: 0.1, rootMargin: '0px 0px -40px 0px' }
     );
-    const elements = document.querySelectorAll('.fade-up');
     elements.forEach((el) => observer.observe(el));
     return () => observer.disconnect();
   }, [events, articles, freeLibrary, testimonials, testimonialProofs]);
@@ -368,7 +373,7 @@ export default function Home() {
                     decoding="async"
                   />
                   {/* Subtle navy-to-transparent gradient for legibility of overlay badge */}
-                  <div className="pointer-events-none absolute inset-0 rounded-[24px] bg-gradient-to-t from-[#0D172A]/35 via-transparent to-transparent" />
+                  <div className="hero-media-overlay pointer-events-none absolute inset-0 rounded-[24px]" />
                 </div>
 
                 <div className="absolute -bottom-5 left-4 hidden rounded-[20px] border border-white/15 bg-white/95 px-4 py-3 shadow-xl md:block">
@@ -898,7 +903,7 @@ export default function Home() {
             </div>
 
             {/* Comprehensive Package */}
-            <div className="fade-up relative flex flex-col rounded-[30px] border border-emerald-400/40 px-8 pb-8 pt-12 text-white" style={{ background: 'linear-gradient(135deg, #10b981, #0f766e)' , boxShadow: '0 20px 60px rgba(16,185,129,0.2)' }}>
+            <div className="fade-up relative flex flex-col rounded-[30px] border border-emerald-400/40 px-8 pb-8 pt-12 text-white" style={{ background: 'linear-gradient(135deg, var(--color-xf-primary), #0f766e)' , boxShadow: '0 20px 60px rgba(var(--color-xf-primary-rgb), 0.2)' }}>
               <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 z-10">
                 <Badge className="bg-yellow-400 text-yellow-900 font-bold px-4 py-1 rounded-full shadow-lg text-xs">
                   <Star className="w-3 h-3 mr-1 fill-current" />

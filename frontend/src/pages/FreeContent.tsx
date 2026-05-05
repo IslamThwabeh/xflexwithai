@@ -20,7 +20,7 @@ export default function FreeContent() {
   return (
     <PublicLayout>
       {/* Hero */}
-      <section className="relative overflow-hidden text-white py-20 md:py-28" style={{ background: 'linear-gradient(135deg, #0f172a 0%, #78350f 50%, #92400e 100%)' }}>
+      <section className="relative overflow-hidden text-white py-20 md:py-28" style={{ background: 'linear-gradient(135deg, var(--color-xf-dark) 0%, #78350f 50%, #92400e 100%)' }}>
         <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse 60% 50% at 50% 50%, rgba(245,158,11,0.15), transparent)' }} />
         <div className="absolute top-10 left-10 w-72 h-72 bg-amber-500/10 rounded-full blur-[80px]" />
         <div className="absolute bottom-10 right-10 w-96 h-96 bg-orange-500/8 rounded-full blur-[100px]" />
@@ -163,7 +163,7 @@ export default function FreeContent() {
             </div>
 
             {/* Upsell */}
-            <div className="mt-16 rounded-[16px] p-10 text-center text-white" style={{ background: 'linear-gradient(135deg, #0f172a, #1e3a5f)', boxShadow: '0 12px 40px rgba(15,23,42,0.2)' }}>
+            <div className="mt-16 rounded-[16px] p-10 text-center text-white" style={{ background: 'linear-gradient(135deg, var(--color-xf-dark), #1e3a5f)', boxShadow: '0 12px 40px rgba(var(--color-xf-dark-rgb), 0.2)' }}>
               <Lock className="w-10 h-10 mx-auto mb-3 opacity-80" />
               <h3 className="text-2xl font-extrabold mb-2">{t('freeContent.wantMore')}</h3>
               <p className="text-gray-300 mb-6 max-w-lg mx-auto">{t('freeContent.upgradeMsg')}</p>

@@ -3,6 +3,7 @@ import { ShoppingCart, CheckCircle, Clock, XCircle, Eye, ChevronDown, ChevronUp,
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { formatLocalizedDate } from '@/lib/dateLocale';
 import { trpc } from '@/lib/trpc';
 import DashboardLayout from '@/components/DashboardLayout';
 import { useDataTable, DataTablePagination } from '@/components/DataTable';
@@ -116,7 +117,7 @@ export default function AdminOrders() {
                       {(order as any).userEmail ? ` (${(order as any).userEmail})` : ''}
                       {' '}• ${(order.totalAmount / 100).toFixed(2)} {order.currency}
                       • {order.paymentMethod || '—'}
-                      • {(() => { const d = new Date(String(order.createdAt).replace(' ', 'T')); return isNaN(d.getTime()) ? '—' : d.toLocaleDateString(); })()}
+                      • {formatLocalizedDate(String(order.createdAt).replace(' ', 'T'), language) || '—'}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">

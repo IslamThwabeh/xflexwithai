@@ -1,5 +1,6 @@
 import DashboardLayout from '@/components/DashboardLayout';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { formatLocalizedDate } from '@/lib/dateLocale';
 import { trpc } from '@/lib/trpc';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -70,7 +71,7 @@ export default function AdminReviews() {
                     </div>
                     {review.comment && <p className="text-sm mt-2 text-gray-700">{review.comment}</p>}
                     <p className="text-xs text-muted-foreground mt-1">
-                      {new Date(review.createdAt).toLocaleDateString()}
+                      {formatLocalizedDate(review.createdAt, language)}
                     </p>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">

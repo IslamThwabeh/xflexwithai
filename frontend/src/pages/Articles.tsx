@@ -13,7 +13,7 @@ export default function Articles() {
   return (
     <PublicLayout>
       {/* Hero */}
-      <section className="relative overflow-hidden text-white py-20 md:py-28" style={{ background: 'linear-gradient(135deg, #0f172a 0%, #064e3b 50%, #065f46 100%)' }}>
+      <section className="relative overflow-hidden text-white py-20 md:py-28" style={{ background: 'linear-gradient(135deg, var(--color-xf-dark) 0%, #064e3b 50%, #065f46 100%)' }}>
         <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse 60% 50% at 50% 50%, rgba(16,185,129,0.15), transparent)' }} />
         <div className="absolute top-10 left-10 w-72 h-72 bg-emerald-500/10 rounded-full blur-[80px]" />
         <div className="absolute bottom-10 right-10 w-96 h-96 bg-green-500/8 rounded-full blur-[100px]" />

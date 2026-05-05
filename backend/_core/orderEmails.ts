@@ -92,6 +92,13 @@ export async function sendOrderConfirmationEmail(to: string, data: {
       <tr><td style="padding:8px 0;color:#888;">المبلغ / Total</td><td style="padding:8px 0;font-weight:bold;text-align:left;">$${data.totalUsd.toFixed(2)}</td></tr>
       <tr><td style="padding:8px 0;color:#888;">طريقة الدفع / Payment</td><td style="padding:8px 0;text-align:left;">${paymentLabel}</td></tr>
     </table>
+    ${data.paymentMethod === 'paypal' ? `
+    <div style="background:#fff7ed;border:1px solid #fdba74;border-radius:8px;padding:14px;margin:16px 0;">
+      <p style="margin:0;color:#9a3412;font-size:14px;line-height:1.7;">
+        ملاحظة: قد تكون الأسعار ظهرت بالشيكل (₪) في صفحة الدفع كمرجع محلي، لكن دفعة PayPal النهائية تتم بالدولار الأمريكي (USD).<br/>
+        Note: checkout may have shown a shekel (₪) amount as a local reference, but the final PayPal payment is processed in USD.
+      </p>
+    </div>` : ''}
     ${data.paymentMethod === 'bank_transfer' ? `
     <div style="background:#fef9c3;border:1px solid #fde68a;border-radius:8px;padding:14px;margin:16px 0;">
       <p style="margin:0;color:#854d0e;font-size:14px;">

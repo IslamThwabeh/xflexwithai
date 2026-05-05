@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { formatLocalizedDate } from '@/lib/dateLocale';
 import { trpc } from '@/lib/trpc';
 import DashboardLayout from '@/components/DashboardLayout';
 import { toast } from 'sonner';
@@ -144,8 +145,8 @@ export default function AdminCoupons() {
                     <td className="p-3">{c.discountType === 'percentage' ? `${c.discountValue}%` : `₪${((c.discountValue / 100) * 3.5).toFixed(2)}`}</td>
                     <td className="p-3">{c.usedCount}{c.maxUses ? ` / ${c.maxUses}` : ''}</td>
                     <td className="p-3 text-xs">
-                      {c.validFrom && <div>{isRtl ? 'من:' : 'From:'} {new Date(c.validFrom).toLocaleDateString()}</div>}
-                      {c.validUntil && <div>{isRtl ? 'حتى:' : 'Until:'} {new Date(c.validUntil).toLocaleDateString()}</div>}
+                      {c.validFrom && <div>{isRtl ? 'من:' : 'From:'} {formatLocalizedDate(c.validFrom, language)}</div>}
+                      {c.validUntil && <div>{isRtl ? 'حتى:' : 'Until:'} {formatLocalizedDate(c.validUntil, language)}</div>}
                       {!c.validFrom && !c.validUntil && <span className="text-gray-400">{isRtl ? 'دائم' : 'No limit'}</span>}
                     </td>
                     <td className="p-3"><Badge variant={c.isActive ? 'default' : 'secondary'}>{c.isActive ? (isRtl ? 'مفعل' : 'Active') : (isRtl ? 'معطل' : 'Inactive')}</Badge></td>

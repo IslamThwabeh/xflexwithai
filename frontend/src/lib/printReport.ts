@@ -2,8 +2,14 @@
  * Print-to-PDF utility for report pages.
  * Opens a styled print window with the report content.
  */
+import { formatLocalizedDate } from '@/lib/dateLocale';
+
 export function printReport(title: string) {
   // Add print-specific styles and trigger browser print
+  const printDate = formatLocalizedDate(
+    new Date(),
+    document.documentElement.lang === 'ar' ? 'ar' : 'en',
+  );
   const style = document.createElement('style');
   style.id = 'print-report-style';
   style.textContent = `
@@ -18,7 +24,7 @@ export function printReport(title: string) {
         background: #fff;
       }
       .print-title::before {
-        content: "${title} — ${new Date().toLocaleDateString()}";
+        content: "${title} — ${printDate}";
         display: block;
         font-size: 18px;
         font-weight: bold;

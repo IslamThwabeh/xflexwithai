@@ -156,6 +156,17 @@ export default function Upgrade() {
                 </button>
               </div>
 
+              {paymentMethod === 'paypal' && (
+                <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm">
+                  <p className="font-medium mb-1">{isRtl ? 'ملاحظة مهمة حول PayPal:' : 'Important PayPal note:'}</p>
+                  <p className="text-gray-600">
+                    {isRtl
+                      ? 'قيمة الترقية المعروضة بالشيكل (₪) هي مرجع محلي فقط. عند اختيار PayPal سيتم تحصيل دفعة الترقية النهائية بالدولار الأمريكي (USD)، وسيتم تأكيد قيمة الدولار النهائية مع فريق الدعم بعد إنشاء طلب الترقية.'
+                      : 'The shekel (₪) upgrade amount shown here is a local reference only. If you choose PayPal, the final upgrade charge is processed in USD, and the exact USD amount will be confirmed with the support team after the upgrade order is placed.'}
+                  </p>
+                </div>
+              )}
+
               {paymentMethod === 'bank_transfer' && (
                 <div className="mt-4 bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm">
                   <p className="font-medium mb-1">{isRtl ? 'تعليمات التحويل البنكي:' : 'Bank Transfer Instructions:'}</p>
@@ -218,9 +229,13 @@ export default function Upgrade() {
               </div>
 
               <div className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-3 text-xs text-slate-600 leading-6 mb-4">
-                {isRtl
-                  ? 'الأسعار معروضة بالشيكل (₪). سيتم تأكيد المبلغ النهائي ووسيلة الدفع مع فريق الدعم بعد إنشاء طلب الترقية.'
-                  : 'Prices are shown in shekel (₪). The final amount and payment method will be confirmed with the support team after the upgrade order is placed.'}
+                {paymentMethod === 'paypal'
+                  ? (isRtl
+                    ? 'تم اختيار PayPal. مبلغ الترقية المعروض بالشيكل (₪) هو مرجع محلي، بينما تتم معالجة دفعة PayPal النهائية بالدولار الأمريكي (USD).'
+                    : 'PayPal is selected. The shekel (₪) upgrade amount shown here is a local reference, while the final PayPal payment is processed in USD.')
+                  : (isRtl
+                    ? 'الأسعار معروضة بالشيكل (₪). سيتم تأكيد المبلغ النهائي وتعليمات التحويل مع فريق الدعم بعد إنشاء طلب الترقية.'
+                    : 'Prices are shown in shekel (₪). The final amount and transfer instructions will be confirmed with the support team after the upgrade order is placed.')}
               </div>
 
               <Button

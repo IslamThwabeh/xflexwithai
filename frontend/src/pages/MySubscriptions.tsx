@@ -4,6 +4,7 @@ import { Package, CheckCircle, Clock, AlertCircle, ArrowUpCircle, Snowflake } fr
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { formatLocalizedDate } from '@/lib/dateLocale';
 import { trpc } from '@/lib/trpc';
 import ClientLayout from '@/components/ClientLayout';
 
@@ -46,7 +47,7 @@ export default function MySubscriptions() {
               {pkg.isLifetime
                 ? (isRtl ? 'وصول مدى الحياة' : 'Lifetime Access')
                 : activePackage?.renewalDueDate
-                  ? `${isRtl ? 'التجديد' : 'Renews'}: ${new Date(activePackage.renewalDueDate).toLocaleDateString()}`
+                  ? `${isRtl ? 'التجديد' : 'Renews'}: ${formatLocalizedDate(activePackage.renewalDueDate, language)}`
                   : ''
               }
             </p>

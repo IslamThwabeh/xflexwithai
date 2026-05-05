@@ -134,6 +134,17 @@ export default function OrderDetail() {
               <span>${(order.totalAmount / 100).toFixed(2)}</span>
             </div>
           </div>
+
+          {order.paymentMethod === 'paypal' && (
+            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 leading-6">
+              <p className="font-medium mb-1">{isRtl ? 'ملاحظة حول الدفع عبر PayPal:' : 'PayPal billing note:'}</p>
+              <p>
+                {isRtl
+                  ? 'هذا الطلب عبر PayPal تتم معالجته بالدولار الأمريكي (USD). إذا ظهر لك مبلغ بالشيكل (₪) أثناء صفحة الدفع، فقد كان ذلك مرجعاً محلياً فقط.'
+                  : 'This PayPal order is processed in USD. If you saw a shekel (₪) amount during checkout, that amount was a local reference only.'}
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Upload proof for bank transfer orders */}

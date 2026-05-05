@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { formatLocalizedDate, formatLocalizedDateTime } from '@/lib/dateLocale';
 import { trpc } from '@/lib/trpc';
 import DashboardLayout from '@/components/DashboardLayout';
 import { toast } from 'sonner';
@@ -265,8 +266,8 @@ function ApplicationsTab({ isRtl }: { isRtl: boolean }) {
                   <span>{isRtl ? `الوظيفة: ${log.jobTitle || '—'}` : `Job: ${log.jobTitle || '—'}`}</span>
                   <span>
                     {isRtl
-                      ? `الوقت: ${new Date(log.sentAt).toLocaleString('ar-EG')}`
-                      : `Time: ${new Date(log.sentAt).toLocaleString()}`}
+                      ? `الوقت: ${formatLocalizedDateTime(log.sentAt, language)}`
+                      : `Time: ${formatLocalizedDateTime(log.sentAt, language)}`}
                   </span>
                 </div>
                 {!log.success && log.errorMessage && (
@@ -361,7 +362,7 @@ function ApplicationCard({
             <StatusIcon className="w-3 h-3" />
             {isRtl ? statusInfo.labelAr : statusInfo.label}
           </Badge>
-          <span className="text-xs text-gray-400">{new Date(app.submittedAt).toLocaleDateString('ar-EG')}</span>
+          <span className="text-xs text-gray-400">{formatLocalizedDate(app.submittedAt, language)}</span>
           {expanded ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
         </div>
       </div>
@@ -460,7 +461,7 @@ function ApplicationCard({
                 </span>
                 {app.interviewInviteSentAt && (
                   <Badge className="bg-emerald-50 text-emerald-700 text-xs">
-                    {isRtl ? `أُرسلت ${new Date(app.interviewInviteSentAt).toLocaleDateString('ar-EG')}` : `Sent ${new Date(app.interviewInviteSentAt).toLocaleDateString()}`}
+                    {isRtl ? `أُرسلت ${formatLocalizedDate(app.interviewInviteSentAt, language)}` : `Sent ${formatLocalizedDate(app.interviewInviteSentAt, language)}`}
                   </Badge>
                 )}
               </div>

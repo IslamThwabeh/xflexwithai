@@ -1,6 +1,7 @@
 import { useState } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { formatLocalizedDate } from "@/lib/dateLocale";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -289,12 +290,12 @@ export default function AdminPackageKeys() {
       k.email || '',
       k.activatedAt ? 'Activated' : k.isActive ? 'Unused' : 'Deactivated',
       k.entitlementDays || 'Default',
-      k.expiresAt ? new Date(k.expiresAt).toLocaleDateString() : '',
-      (k as any).subEndDate ? new Date((k as any).subEndDate).toLocaleDateString() : '',
+      k.expiresAt ? formatLocalizedDate(k.expiresAt, language) : '',
+      (k as any).subEndDate ? formatLocalizedDate((k as any).subEndDate, language) : '',
       (k as any).isRenewal ? 'Renewal' : (k as any).isUpgrade ? 'Upgrade' : 'New',
       (k as any).isUpgrade ? 'Yes' : 'No',
-      (k as any).referredBy || '',      k.createdAt ? new Date(k.createdAt).toLocaleDateString() : '',
-      k.activatedAt ? new Date(k.activatedAt).toLocaleDateString() : '',
+      (k as any).referredBy || '',      k.createdAt ? formatLocalizedDate(k.createdAt, language) : '',
+      k.activatedAt ? formatLocalizedDate(k.activatedAt, language) : '',
       k.notes || '',
     ]);
     const csv = [headers, ...rows].map(r => r.map(c => `"${c}"`).join(',')).join('\n');
