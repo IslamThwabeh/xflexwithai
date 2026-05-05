@@ -41,7 +41,7 @@ export default function PrivacyPolicy() {
               <p>نستخدم تقنيات تشفير متقدمة لحماية بياناتك الشخصية. كلمات المرور يتم تخزينها بشكل مشفر (hashed) ولا يمكن الوصول إليها. نستخدم بروتوكول HTTPS لتأمين جميع الاتصالات.</p>
 
               <h2 className="text-xl font-bold text-gray-900">4. مشاركة البيانات</h2>
-              <p>لا نبيع أو نشارك بياناتك الشخصية مع أطراف ثالثة إلا في الحالات التالية: عند الضرورة لمعالجة المدفوعات (مثل PayPal)، للامتثال للمتطلبات القانونية، أو بموافقتك الصريحة.</p>
+              <p>لا نبيع أو نشارك بياناتك الشخصية مع أطراف ثالثة إلا في الحالات التالية: عند الضرورة لمعالجة المدفوعات والتحقق من إيصالات الحوالات البنكية، للامتثال للمتطلبات القانونية، أو بموافقتك الصريحة.</p>
 
               <h2 className="text-xl font-bold text-gray-900">5. ملفات تعريف الارتباط (Cookies)</h2>
               <p>نستخدم ملفات تعريف الارتباط لتحسين تجربتك على المنصة، بما في ذلك تذكر تسجيل الدخول وتفضيلات اللغة. يمكنك التحكم في إعدادات ملفات تعريف الارتباط من خلال متصفحك.</p>
@@ -67,7 +67,7 @@ export default function PrivacyPolicy() {
               <p>We use advanced encryption technologies to protect your personal data. Passwords are stored in hashed form and cannot be accessed. We use HTTPS protocol to secure all communications.</p>
 
               <h2 className="text-xl font-bold text-gray-900">4. Data Sharing</h2>
-              <p>We do not sell or share your personal data with third parties except in the following cases: when necessary for payment processing (such as PayPal), to comply with legal requirements, or with your explicit consent.</p>
+              <p>We do not sell or share your personal data with third parties except in the following cases: when necessary to process payments and verify bank transfer receipts, to comply with legal requirements, or with your explicit consent.</p>
 
               <h2 className="text-xl font-bold text-gray-900">5. Cookies</h2>
               <p>We use cookies to improve your experience on the platform, including remembering your login and language preferences. You can control cookie settings through your browser.</p>

@@ -3,6 +3,7 @@ import { ShoppingBag, Clock, CheckCircle, XCircle, ChevronRight, ArrowLeft } fro
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { formatPaymentMethodLabel } from '@/lib/paymentMethodLabel';
 import { trpc } from '@/lib/trpc';
 import ClientLayout from '@/components/ClientLayout';
 
@@ -83,7 +84,7 @@ export default function MyOrders() {
                         </div>
                         <p className="text-sm text-gray-500">
                           {new Date(order.createdAt).toLocaleDateString(isRtl ? 'ar-EG' : 'en-US')} •{' '}
-                          {order.paymentMethod === 'paypal' ? 'PayPal' : order.paymentMethod === 'bank_transfer' ? (isRtl ? 'حوالة بنكية' : 'Bank Transfer') : '—'}
+                          {formatPaymentMethodLabel(order.paymentMethod, language)}
                         </p>
                       </div>
                     </div>

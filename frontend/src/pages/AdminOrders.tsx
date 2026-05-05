@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { formatLocalizedDate } from '@/lib/dateLocale';
+import { formatPaymentMethodLabel } from '@/lib/paymentMethodLabel';
 import { trpc } from '@/lib/trpc';
 import DashboardLayout from '@/components/DashboardLayout';
 import { useDataTable, DataTablePagination } from '@/components/DataTable';
@@ -116,7 +117,7 @@ export default function AdminOrders() {
                       {(order as any).userName || (order as any).userEmail || `User #${order.userId}`}
                       {(order as any).userEmail ? ` (${(order as any).userEmail})` : ''}
                       {' '}• ${(order.totalAmount / 100).toFixed(2)} {order.currency}
-                      • {order.paymentMethod || '—'}
+                      • {formatPaymentMethodLabel(order.paymentMethod, language)}
                       • {formatLocalizedDate(String(order.createdAt).replace(' ', 'T'), language) || '—'}
                     </p>
                   </div>
@@ -152,7 +153,7 @@ export default function AdminOrders() {
                       </div>
                       <div>
                         <span className="text-gray-500">{language === 'ar' ? 'طريقة الدفع' : 'Payment'}:</span>{' '}
-                        {order.paymentMethod || '—'}
+                        {formatPaymentMethodLabel(order.paymentMethod, language)}
                       </div>
                       {order.paymentReference && (
                         <div>

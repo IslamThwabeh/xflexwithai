@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'wouter';
-import { ArrowLeft, ArrowUpCircle, Building2, CreditCard, ShieldCheck, Loader2 } from 'lucide-react';
+import { ArrowLeft, ArrowUpCircle, Building2, ShieldCheck, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
@@ -14,7 +14,7 @@ export default function Upgrade() {
   const { language } = useLanguage();
   const isRtl = language === 'ar';
   const [, navigate] = useLocation();
-  const [paymentMethod, setPaymentMethod] = useState<'paypal' | 'bank_transfer'>('bank_transfer');
+  const paymentMethod = 'bank_transfer' as const;
   const [notes, setNotes] = useState('');
 
   // Get the comprehensive package to check eligibility
@@ -100,8 +100,8 @@ export default function Upgrade() {
                 <h1 className="text-3xl font-bold text-gray-900 md:text-4xl">{isRtl ? 'ترقية الباقة' : 'Upgrade Package'}</h1>
                 <p className="mt-3 max-w-2xl text-base leading-7 text-gray-600">
                   {isRtl
-                    ? 'أكمل الترقية من نفس الواجهة المنسقة مع الحفاظ على مسار الدفع الحالي وربط الطلب بحسابك مباشرة.'
-                    : 'Complete the upgrade inside the same branded flow while keeping the current payment process and linking the order directly to your account.'}
+                    ? 'أكمل الترقية من نفس الواجهة المنسقة مع الحفاظ على مسار الحوالة البنكية وربط الطلب بحسابك مباشرة.'
+                    : 'Complete the upgrade inside the same branded flow while keeping the bank-transfer process and linking the order directly to your account.'}
                 </p>
               </div>
               <div className="rounded-[22px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
@@ -137,46 +137,22 @@ export default function Upgrade() {
             {/* Payment Method */}
             <div className="bg-white border border-slate-200 rounded-[28px] p-6 shadow-[0_14px_36px_rgba(15,23,42,0.05)]">
               <h2 className="font-bold text-lg mb-4">{isRtl ? 'طريقة الدفع' : 'Payment Method'}</h2>
-              <div className="grid sm:grid-cols-2 gap-3">
-                <button
-                  onClick={() => setPaymentMethod('bank_transfer')}
-                  className={`border-2 rounded-xl p-4 text-start transition-all ${paymentMethod === 'bank_transfer' ? 'border-emerald-500 bg-emerald-50' : 'border-gray-200 hover:border-gray-300'}`}
-                >
+              <div className="grid gap-3">
+                <div className="border-2 rounded-xl border-emerald-500 bg-emerald-50 p-4 text-start">
                   <Building2 className="w-6 h-6 mb-2 text-emerald-600" />
                   <p className="font-bold">{isRtl ? 'حوالة بنكية' : 'Bank Transfer'}</p>
                   <p className="text-xs text-gray-500">{isRtl ? 'تحويل بنكي مع رفع إيصال' : 'Transfer & upload receipt'}</p>
-                </button>
-                <button
-                  onClick={() => setPaymentMethod('paypal')}
-                  className={`border-2 rounded-xl p-4 text-start transition-all ${paymentMethod === 'paypal' ? 'border-emerald-500 bg-emerald-50' : 'border-gray-200 hover:border-gray-300'}`}
-                >
-                  <CreditCard className="w-6 h-6 mb-2 text-emerald-600" />
-                  <p className="font-bold">PayPal</p>
-                  <p className="text-xs text-gray-500">{isRtl ? 'دفع عبر PayPal' : 'Pay with PayPal'}</p>
-                </button>
+                </div>
               </div>
 
-              {paymentMethod === 'paypal' && (
-                <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm">
-                  <p className="font-medium mb-1">{isRtl ? 'ملاحظة مهمة حول PayPal:' : 'Important PayPal note:'}</p>
-                  <p className="text-gray-600">
-                    {isRtl
-                      ? 'قيمة الترقية المعروضة بالشيكل (₪) هي مرجع محلي فقط. عند اختيار PayPal سيتم تحصيل دفعة الترقية النهائية بالدولار الأمريكي (USD)، وسيتم تأكيد قيمة الدولار النهائية مع فريق الدعم بعد إنشاء طلب الترقية.'
-                      : 'The shekel (₪) upgrade amount shown here is a local reference only. If you choose PayPal, the final upgrade charge is processed in USD, and the exact USD amount will be confirmed with the support team after the upgrade order is placed.'}
-                  </p>
-                </div>
-              )}
-
-              {paymentMethod === 'bank_transfer' && (
-                <div className="mt-4 bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm">
-                  <p className="font-medium mb-1">{isRtl ? 'تعليمات التحويل البنكي:' : 'Bank Transfer Instructions:'}</p>
-                  <p className="text-gray-600">
-                    {isRtl
-                      ? 'بعد إنشاء الطلب، قم بتحويل المبلغ المطلوب ثم ارفع صورة الإيصال في صفحة الطلب.'
-                      : 'After placing your order, transfer the required amount and upload the receipt on the order page.'}
-                  </p>
-                </div>
-              )}
+              <div className="mt-4 bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm">
+                <p className="font-medium mb-1">{isRtl ? 'تعليمات التحويل البنكي:' : 'Bank Transfer Instructions:'}</p>
+                <p className="text-gray-600">
+                  {isRtl
+                    ? 'بعد إنشاء الطلب، قم بتحويل المبلغ المطلوب ثم ارفع صورة الإيصال في صفحة الطلب.'
+                    : 'After placing your order, transfer the required amount and upload the receipt on the order page.'}
+                </p>
+              </div>
             </div>
 
             {/* Notes */}
@@ -229,13 +205,9 @@ export default function Upgrade() {
               </div>
 
               <div className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-3 text-xs text-slate-600 leading-6 mb-4">
-                {paymentMethod === 'paypal'
-                  ? (isRtl
-                    ? 'تم اختيار PayPal. مبلغ الترقية المعروض بالشيكل (₪) هو مرجع محلي، بينما تتم معالجة دفعة PayPal النهائية بالدولار الأمريكي (USD).'
-                    : 'PayPal is selected. The shekel (₪) upgrade amount shown here is a local reference, while the final PayPal payment is processed in USD.')
-                  : (isRtl
-                    ? 'الأسعار معروضة بالشيكل (₪). سيتم تأكيد المبلغ النهائي وتعليمات التحويل مع فريق الدعم بعد إنشاء طلب الترقية.'
-                    : 'Prices are shown in shekel (₪). The final amount and transfer instructions will be confirmed with the support team after the upgrade order is placed.')}
+                {isRtl
+                  ? 'الأسعار معروضة بالشيكل (₪). سيتم تأكيد المبلغ النهائي وتعليمات الحوالة البنكية مع فريق الدعم بعد إنشاء طلب الترقية.'
+                  : 'Prices are shown in shekel (₪). The final amount and bank transfer instructions will be confirmed with the support team after the upgrade order is placed.'}
               </div>
 
               <Button

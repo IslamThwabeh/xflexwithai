@@ -4030,7 +4030,7 @@ export const appRouter = router({
           packageId: z.number().optional(),
           courseId: z.number().optional(),
         })),
-        paymentMethod: z.enum(['paypal', 'bank_transfer']),
+        paymentMethod: z.literal('bank_transfer'),
         isGift: z.boolean().default(false),
         giftEmail: z.string().optional(),
         giftMessage: z.string().optional(),
@@ -4130,8 +4130,8 @@ export const appRouter = router({
         await db.notifyStaffByEvent('new_order', {
           titleEn: `New order #${order.id} — ${packageName} ($${totalUsd.toFixed(2)})`,
           titleAr: `طلب جديد #${order.id} — ${packageName} ($${totalUsd.toFixed(2)})`,
-          contentEn: `${ctx.user.email} placed a ${input.paymentMethod} order.`,
-          contentAr: `${ctx.user.email} قام بتقديم طلب ${input.paymentMethod}.`,
+          contentEn: `${ctx.user.email} placed a bank transfer order.`,
+          contentAr: `${ctx.user.email} قام بتقديم طلب حوالة بنكية.`,
           metadata: { orderId: order.id, userId: ctx.user.id, packageName, totalUsd },
         });
 
@@ -4642,7 +4642,7 @@ export const appRouter = router({
     createOrder: protectedProcedure
       .input(z.object({
         targetPackageId: z.number(),
-        paymentMethod: z.enum(['paypal', 'bank_transfer']),
+        paymentMethod: z.literal('bank_transfer'),
         notes: z.string().optional(),
       }))
       .mutation(async ({ ctx, input }) => {

@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { formatPaymentMethodLabel } from '@/lib/paymentMethodLabel';
 import { trpc } from '@/lib/trpc';
 import ClientLayout from '@/components/ClientLayout';
 import { useState } from 'react';
@@ -105,7 +106,7 @@ export default function OrderDetail() {
             </div>
             <div>
               <span className="text-gray-500">{isRtl ? 'طريقة الدفع' : 'Payment Method'}:</span>{' '}
-              {order.paymentMethod === 'paypal' ? 'PayPal' : order.paymentMethod === 'bank_transfer' ? (isRtl ? 'حوالة بنكية' : 'Bank Transfer') : '—'}
+              {formatPaymentMethodLabel(order.paymentMethod, language)}
             </div>
             {order.paymentReference && (
               <div>
@@ -134,17 +135,6 @@ export default function OrderDetail() {
               <span>${(order.totalAmount / 100).toFixed(2)}</span>
             </div>
           </div>
-
-          {order.paymentMethod === 'paypal' && (
-            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 leading-6">
-              <p className="font-medium mb-1">{isRtl ? 'ملاحظة حول الدفع عبر PayPal:' : 'PayPal billing note:'}</p>
-              <p>
-                {isRtl
-                  ? 'هذا الطلب عبر PayPal تتم معالجته بالدولار الأمريكي (USD). إذا ظهر لك مبلغ بالشيكل (₪) أثناء صفحة الدفع، فقد كان ذلك مرجعاً محلياً فقط.'
-                  : 'This PayPal order is processed in USD. If you saw a shekel (₪) amount during checkout, that amount was a local reference only.'}
-              </p>
-            </div>
-          )}
         </div>
 
         {/* Upload proof for bank transfer orders */}

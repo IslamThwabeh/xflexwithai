@@ -39,6 +39,10 @@ function escapeHtml(input: string) {
     .replace(/'/g, "&#39;");
 }
 
+function formatPaymentLabel(paymentMethod: string) {
+  return paymentMethod === 'bank_transfer' ? 'تحويل بنكي / Bank Transfer' : '—';
+}
+
 export function buildJobInterviewInviteEmail(candidateName?: string | null) {
   const safeName = escapeHtml(String(candidateName || "المرشح").trim() || "المرشح");
   const subject = "دعوة للمقابلة الوظيفية – أكاديمية XFlex";
@@ -78,7 +82,7 @@ export async function sendOrderConfirmationEmail(to: string, data: {
   totalUsd: number;
   paymentMethod: string;
 }) {
-  const paymentLabel = data.paymentMethod === 'paypal' ? 'PayPal' : 'تحويل بنكي / Bank Transfer';
+  const paymentLabel = formatPaymentLabel(data.paymentMethod);
   const subject = `[${BRAND}] تأكيد الطلب #${data.orderId} | Order Confirmation`;
   const body = `
     <h2 style="margin:0 0 12px;color:#111;">شكراً لطلبك! Thank you for your order!</h2>
@@ -92,13 +96,6 @@ export async function sendOrderConfirmationEmail(to: string, data: {
       <tr><td style="padding:8px 0;color:#888;">المبلغ / Total</td><td style="padding:8px 0;font-weight:bold;text-align:left;">$${data.totalUsd.toFixed(2)}</td></tr>
       <tr><td style="padding:8px 0;color:#888;">طريقة الدفع / Payment</td><td style="padding:8px 0;text-align:left;">${paymentLabel}</td></tr>
     </table>
-    ${data.paymentMethod === 'paypal' ? `
-    <div style="background:#fff7ed;border:1px solid #fdba74;border-radius:8px;padding:14px;margin:16px 0;">
-      <p style="margin:0;color:#9a3412;font-size:14px;line-height:1.7;">
-        ملاحظة: قد تكون الأسعار ظهرت بالشيكل (₪) في صفحة الدفع كمرجع محلي، لكن دفعة PayPal النهائية تتم بالدولار الأمريكي (USD).<br/>
-        Note: checkout may have shown a shekel (₪) amount as a local reference, but the final PayPal payment is processed in USD.
-      </p>
-    </div>` : ''}
     ${data.paymentMethod === 'bank_transfer' ? `
     <div style="background:#fef9c3;border:1px solid #fde68a;border-radius:8px;padding:14px;margin:16px 0;">
       <p style="margin:0;color:#854d0e;font-size:14px;">
@@ -158,6 +155,7 @@ export async function sendAdminNewOrderNotification(data: {
   paymentMethod: string;
 }) {
   const adminEmail = ENV.emailFrom || 'admin@xflexacademy.com';
+  const paymentLabel = formatPaymentLabel(data.paymentMethod);
   const subject = `[ADMIN] طلب جديد #${data.orderId} - ${data.userEmail}`;
   const body = `
     <h2 style="margin:0 0 12px;color:#111;">طلب جديد! New Order</h2>
@@ -166,7 +164,7 @@ export async function sendAdminNewOrderNotification(data: {
       <tr><td style="padding:8px 0;color:#888;">User</td><td style="padding:8px 0;">${data.userEmail}</td></tr>
       <tr><td style="padding:8px 0;color:#888;">Package</td><td style="padding:8px 0;font-weight:bold;">${data.packageName}</td></tr>
       <tr><td style="padding:8px 0;color:#888;">Total</td><td style="padding:8px 0;font-weight:bold;">$${data.totalUsd.toFixed(2)}</td></tr>
-      <tr><td style="padding:8px 0;color:#888;">Payment</td><td style="padding:8px 0;">${data.paymentMethod}</td></tr>
+      <tr><td style="padding:8px 0;color:#888;">Payment</td><td style="padding:8px 0;">${paymentLabel}</td></tr>
     </table>
     <div style="text-align:center;margin-top:24px;">
       <a href="https://xflexacademy.com/admin/orders" style="display:inline-block;background:#dc2626;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:bold;">

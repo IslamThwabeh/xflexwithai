@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useParams, useLocation } from 'wouter';
-import { ArrowLeft, CreditCard, Building2, ShieldCheck, Gift, Loader2, Tag, X, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Building2, ShieldCheck, Gift, Loader2, Tag, X, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -18,7 +18,7 @@ export default function Checkout() {
   const [, navigate] = useLocation();
   const { data: pkg, isLoading } = trpc.packages.bySlug.useQuery({ slug: params.slug || '' });
 
-  const [paymentMethod, setPaymentMethod] = useState<'paypal' | 'bank_transfer'>('bank_transfer');
+  const paymentMethod = 'bank_transfer' as const;
   const [isGift, setIsGift] = useState(false);
   const [giftEmail, setGiftEmail] = useState('');
   const [giftMessage, setGiftMessage] = useState('');
@@ -127,8 +127,8 @@ export default function Checkout() {
                 <h1 className="text-3xl font-bold text-gray-900">{t('checkout.title')}</h1>
                 <p className="mt-3 text-base leading-7 text-gray-600">
                   {isRtl
-                    ? 'أكمل الطلب من داخل نفس الواجهة العامة الجديدة مع الحفاظ على نفس خيارات الدفع والخصم الحالية.'
-                    : 'Complete the order inside the same branded public shell while keeping the current payment and discount flow intact.'}
+                    ? 'أكمل الطلب من داخل نفس الواجهة العامة الجديدة مع الحفاظ على مسار الحوالة البنكية والخصم الحالي.'
+                    : 'Complete the order inside the same branded public shell while keeping the current bank-transfer and discount flow intact.'}
                 </p>
               </div>
               <div className="rounded-[22px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
@@ -145,46 +145,22 @@ export default function Checkout() {
             {/* Payment Method */}
             <div className="bg-white border border-slate-200 rounded-[28px] p-6 shadow-[0_14px_36px_rgba(15,23,42,0.05)]">
               <h2 className="font-bold text-lg mb-4">{t('checkout.paymentMethod')}</h2>
-              <div className="grid sm:grid-cols-2 gap-3">
-                <button
-                  onClick={() => setPaymentMethod('bank_transfer')}
-                  className={`border-2 rounded-xl p-4 text-start transition-all ${paymentMethod === 'bank_transfer' ? 'border-emerald-500 bg-emerald-50' : 'border-gray-200 hover:border-gray-300'}`}
-                >
+              <div className="grid gap-3">
+                <div className="border-2 rounded-xl border-emerald-500 bg-emerald-50 p-4 text-start">
                   <Building2 className="w-6 h-6 mb-2 text-emerald-600" />
                   <p className="font-bold">{isRtl ? 'حوالة بنكية' : 'Bank Transfer'}</p>
                   <p className="text-xs text-gray-500">{isRtl ? 'تحويل بنكي مع رفع إيصال' : 'Transfer & upload receipt'}</p>
-                </button>
-                <button
-                  onClick={() => setPaymentMethod('paypal')}
-                  className={`border-2 rounded-xl p-4 text-start transition-all ${paymentMethod === 'paypal' ? 'border-emerald-500 bg-emerald-50' : 'border-gray-200 hover:border-gray-300'}`}
-                >
-                  <CreditCard className="w-6 h-6 mb-2 text-emerald-600" />
-                  <p className="font-bold">PayPal</p>
-                  <p className="text-xs text-gray-500">{isRtl ? 'دفع عبر PayPal' : 'Pay with PayPal'}</p>
-                </button>
+                </div>
               </div>
 
-              {paymentMethod === 'paypal' && (
-                <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm">
-                  <p className="font-medium mb-1">{isRtl ? 'ملاحظة مهمة حول PayPal:' : 'Important PayPal note:'}</p>
-                  <p className="text-gray-600">
-                    {isRtl
-                      ? 'الأسعار المعروضة هنا بالشيكل (₪) هي مرجع محلي فقط. عند اختيار PayPal سيتم تحصيل الدفعة النهائية بالدولار الأمريكي (USD)، وسيتم تأكيد قيمة الدولار النهائية مع فريق الدعم بعد إنشاء الطلب.'
-                      : 'The shekel (₪) prices shown here are a local reference only. If you choose PayPal, the final PayPal charge is processed in USD, and the exact USD amount will be confirmed with the support team after the order is placed.'}
-                  </p>
-                </div>
-              )}
-
-              {paymentMethod === 'bank_transfer' && (
-                <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-xl p-4 text-sm">
-                  <p className="font-medium mb-1">{isRtl ? 'تعليمات التحويل البنكي:' : 'Bank Transfer Instructions:'}</p>
-                  <p className="text-gray-600">
-                    {isRtl
-                      ? 'بعد إنشاء الطلب، قم بتحويل المبلغ المطلوب ثم ارفع صورة الإيصال في صفحة الطلب.'
-                      : 'After placing your order, transfer the required amount and upload the receipt on the order page.'}
-                  </p>
-                </div>
-              )}
+              <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-xl p-4 text-sm">
+                <p className="font-medium mb-1">{isRtl ? 'تعليمات التحويل البنكي:' : 'Bank Transfer Instructions:'}</p>
+                <p className="text-gray-600">
+                  {isRtl
+                    ? 'بعد إنشاء الطلب، قم بتحويل المبلغ المطلوب ثم ارفع صورة الإيصال في صفحة الطلب.'
+                    : 'After placing your order, transfer the required amount and upload the receipt on the order page.'}
+                </p>
+              </div>
             </div>
 
             {/* Gift option */}
@@ -293,13 +269,9 @@ export default function Checkout() {
               </div>
 
               <div className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-3 text-xs text-slate-600 leading-6 mb-4">
-                {paymentMethod === 'paypal'
-                  ? (isRtl
-                    ? 'تم اختيار PayPal. السعر المعروض بالشيكل (₪) هو مرجع محلي، بينما تتم معالجة دفعة PayPal النهائية بالدولار الأمريكي (USD).'
-                    : 'PayPal is selected. The shekel (₪) amount shown here is a local reference, while the final PayPal payment is processed in USD.')
-                  : (isRtl
-                    ? 'الأسعار معروضة بالشيكل (₪). سيتم تأكيد المبلغ النهائي وتعليمات التحويل مع فريق الدعم بعد إنشاء الطلب.'
-                    : 'Prices are shown in shekel (₪). The final amount and transfer instructions will be confirmed with the support team after the order is placed.')}
+                {isRtl
+                  ? 'الأسعار معروضة بالشيكل (₪). سيتم تأكيد المبلغ النهائي وتعليمات الحوالة البنكية مع فريق الدعم بعد إنشاء الطلب.'
+                  : 'Prices are shown in shekel (₪). The final amount and bank transfer instructions will be confirmed with the support team after the order is placed.'}
               </div>
 
               <Button
