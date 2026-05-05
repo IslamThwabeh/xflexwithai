@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import PublicLayout from '@/components/PublicLayout';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { formatIlsAmount, formatUsdAmount, getPackageDisplayPricing } from '@/lib/packagePricing';
+import { formatIlsAmount, getPackageDisplayPricing } from '@/lib/packagePricing';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
 
@@ -65,11 +65,15 @@ export default function Checkout() {
   }
 
   const displayPricing = getPackageDisplayPricing(pkg.slug, pkg.price, pkg.renewalPrice);
-  const discountAmount = appliedCoupon ? appliedCoupon.discount / 100 : 0;
-  const total = Math.max(displayPricing.usdPrice - discountAmount, 0);
+  // Backend coupon `discount` is returned in USD cents (matches pkg.price). Convert to ILS
+  // using the same 3.5x reference rate used by packagePricing.ts so the on-screen summary stays
+  // consistent with the marketing ILS prices.
+  const USD_TO_ILS = 3.5;
+  const discountIls = appliedCoupon ? (appliedCoupon.discount / 100) * USD_TO_ILS : 0;
+  const totalIls = Math.max(displayPricing.ilsPrice - discountIls, 0);
   const vatRate = 16;
-  const vat = total * vatRate / (100 + vatRate);
-  const subtotal = total - vat;
+  const vatIls = totalIls * vatRate / (100 + vatRate);
+  const subtotalIls = totalIls - vatIls;
 
   const handleApplyCoupon = async () => {
     if (!couponCode.trim()) return;
@@ -130,7 +134,7 @@ export default function Checkout() {
               <div className="rounded-[22px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
                 <p className="font-semibold">{isRtl ? pkg.nameAr : pkg.nameEn}</p>
                 <p className="mt-1 text-emerald-700">{pkg.isLifetime ? (isRtl ? 'وصول مدى الحياة' : 'Lifetime access') : ''}</p>
-                <p className="mt-1 text-emerald-700">{formatIlsAmount(displayPricing.ilsPrice)} / {formatUsdAmount(displayPricing.usdPrice)}</p>
+                <p className="mt-1 text-emerald-700">{formatIlsAmount(displayPricing.ilsPrice)}</p>
               </div>
             </div>
           </div>
@@ -210,7 +214,7 @@ export default function Checkout() {
                     <CheckCircle className="w-4 h-4" />
                     <span className="font-medium text-sm">{appliedCoupon.code}</span>
                     <span className="text-xs">
-                      ({appliedCoupon.discountType === 'percentage' ? `${appliedCoupon.discountValue}%` : `$${(appliedCoupon.discountValue / 100).toFixed(2)}`} {isRtl ? 'خصم' : 'off'})
+                      ({appliedCoupon.discountType === 'percentage' ? `${appliedCoupon.discountValue}%` : `${formatIlsAmount((appliedCoupon.discountValue / 100) * USD_TO_ILS, true)}`} {isRtl ? 'خصم' : 'off'})
                     </span>
                   </div>
                   <button onClick={removeCoupon} className="text-gray-400 hover:text-red-500"><X className="w-4 h-4" /></button>
@@ -258,33 +262,29 @@ export default function Checkout() {
 
               <div className="space-y-2 text-sm mb-4">
                 <div className="flex justify-between">
-                  <span className="text-gray-500">{isRtl ? 'السعر المرجعي المحلي' : 'Local price reference'}</span>
-                  <span>{formatIlsAmount(displayPricing.ilsPrice)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">{isRtl ? 'السعر المفوتر (USD)' : 'Billed price (USD)'}</span>
-                  <span>{formatUsdAmount(subtotal, true)}</span>
+                  <span className="text-gray-500">{isRtl ? 'السعر قبل الضريبة' : 'Subtotal'}</span>
+                  <span>{formatIlsAmount(subtotalIls, true)}</span>
                 </div>
                 {appliedCoupon && (
                   <div className="flex justify-between text-green-600">
-                    <span>{isRtl ? 'خصم (USD)' : 'Discount (USD)'}</span>
-                    <span>-{formatUsdAmount(discountAmount, true)}</span>
+                    <span>{isRtl ? 'خصم' : 'Discount'}</span>
+                    <span>-{formatIlsAmount(discountIls, true)}</span>
                   </div>
                 )}
                 <div className="flex justify-between">
-                  <span className="text-gray-500">VAT ({vatRate}%) USD</span>
-                  <span>{formatUsdAmount(vat, true)}</span>
+                  <span className="text-gray-500">{isRtl ? `ضريبة القيمة المضافة (${vatRate}%)` : `VAT (${vatRate}%)`}</span>
+                  <span>{formatIlsAmount(vatIls, true)}</span>
                 </div>
                 <div className="flex justify-between font-bold text-base border-t pt-2">
-                  <span>{isRtl ? 'الإجمالي المفوتر الآن (USD)' : 'Total billed now (USD)'}</span>
-                  <span>{formatUsdAmount(total, true)}</span>
+                  <span>{isRtl ? 'الإجمالي' : 'Total'}</span>
+                  <span>{formatIlsAmount(totalIls, true)}</span>
                 </div>
               </div>
 
               <div className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-3 text-xs text-slate-600 leading-6 mb-4">
                 {isRtl
-                  ? 'السعر بالشيكل معروض كمرجع محلي، بينما يتم إنشاء الطلب والفاتورة بالدولار الأمريكي حتى تبقى الخصومات والإجمالي متطابقة مع النظام.'
-                  : 'The shekel price is shown as a local reference, while the order and invoice are created in USD so discounts and totals stay aligned with the backend.'}
+                  ? 'الأسعار معروضة بالشيكل (₪). سيتم تأكيد المبلغ النهائي ووسيلة الدفع مع فريق الدعم بعد إنشاء الطلب.'
+                  : 'Prices are shown in shekel (₪). The final amount and payment method will be confirmed with the support team after the order is placed.'}
               </div>
 
               <Button

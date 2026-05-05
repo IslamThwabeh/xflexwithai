@@ -141,7 +141,7 @@ export default function AdminCoupons() {
                         </button>
                       </div>
                     </td>
-                    <td className="p-3">{c.discountType === 'percentage' ? `${c.discountValue}%` : `$${(c.discountValue / 100).toFixed(2)}`}</td>
+                    <td className="p-3">{c.discountType === 'percentage' ? `${c.discountValue}%` : `₪${((c.discountValue / 100) * 3.5).toFixed(2)}`}</td>
                     <td className="p-3">{c.usedCount}{c.maxUses ? ` / ${c.maxUses}` : ''}</td>
                     <td className="p-3 text-xs">
                       {c.validFrom && <div>{isRtl ? 'من:' : 'From:'} {new Date(c.validFrom).toLocaleDateString()}</div>}

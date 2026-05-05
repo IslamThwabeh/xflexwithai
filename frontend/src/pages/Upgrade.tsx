@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { formatIlsAmount, formatUsdAmount, getUpgradeDisplayPricing } from '@/lib/packagePricing';
+import { formatIlsAmount, getUpgradeDisplayPricing } from '@/lib/packagePricing';
 import { trpc } from '@/lib/trpc';
 import ClientLayout from '@/components/ClientLayout';
 import { toast } from 'sonner';
@@ -78,10 +78,11 @@ export default function Upgrade() {
   }
 
   const upgradePricing = getUpgradeDisplayPricing('basic', 'comprehensive', eligibility.upgradePrice, eligibility.renewalPrice);
-  const total = upgradePricing.usdPrice;
+  // Display in ILS. Backend still records the order in USD; final amount is confirmed at payment.
+  const totalIls = upgradePricing.ilsPrice;
   const vatRate = 16;
-  const vat = total * vatRate / (100 + vatRate);
-  const upgradePrice = total - vat;
+  const vatIls = totalIls * vatRate / (100 + vatRate);
+  const upgradePriceIls = totalIls - vatIls;
 
   return (
     <ClientLayout>
@@ -125,8 +126,8 @@ export default function Upgrade() {
             </div>
             <p className="text-emerald-50 leading-7">
               {isRtl
-                ? `ادفع ${formatIlsAmount(upgradePricing.ilsPrice)} كمرجع محلي أو ${formatUsdAmount(upgradePricing.usdPrice)} كقيمة مفوترة لمرة واحدة، ثم جدّد بسعر ${formatIlsAmount(upgradePricing.ilsRenewal ?? 0)} / ${formatUsdAmount(upgradePricing.usdRenewal ?? 0)} كالمعتاد.`
-                : `Pay ${formatIlsAmount(upgradePricing.ilsPrice)} as the local reference or ${formatUsdAmount(upgradePricing.usdPrice)} as the billed amount once, then renew at ${formatIlsAmount(upgradePricing.ilsRenewal ?? 0)} / ${formatUsdAmount(upgradePricing.usdRenewal ?? 0)} as usual.`}
+                ? `ادفع ${formatIlsAmount(upgradePricing.ilsPrice)} لمرة واحدة، ثم جدّد بسعر ${formatIlsAmount(upgradePricing.ilsRenewal ?? 0)} كالمعتاد.`
+                : `Pay ${formatIlsAmount(upgradePricing.ilsPrice)} once, then renew at ${formatIlsAmount(upgradePricing.ilsRenewal ?? 0)} as usual.`}
             </p>
           </div>
 
@@ -197,33 +198,29 @@ export default function Upgrade() {
 
               <div className="space-y-2 text-sm mb-4">
                 <div className="flex justify-between">
-                  <span className="text-gray-500">{isRtl ? 'السعر المرجعي المحلي' : 'Local price reference'}</span>
-                  <span>{formatIlsAmount(upgradePricing.ilsPrice)}</span>
+                  <span className="text-gray-500">{isRtl ? 'صافي الترقية' : 'Upgrade subtotal'}</span>
+                  <span>{formatIlsAmount(upgradePriceIls, true)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-500">{isRtl ? 'صافي الترقية (USD)' : 'Upgrade subtotal (USD)'}</span>
-                  <span>{formatUsdAmount(upgradePrice, true)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">VAT ({vatRate}%) USD</span>
-                  <span>{formatUsdAmount(vat, true)}</span>
+                  <span className="text-gray-500">{isRtl ? `ضريبة القيمة المضافة (${vatRate}%)` : `VAT (${vatRate}%)`}</span>
+                  <span>{formatIlsAmount(vatIls, true)}</span>
                 </div>
                 <div className="flex justify-between font-bold text-base border-t pt-2">
-                  <span>{isRtl ? 'الإجمالي المفوتر الآن (USD)' : 'Total billed now (USD)'}</span>
-                  <span>{formatUsdAmount(total, true)}</span>
+                  <span>{isRtl ? 'الإجمالي' : 'Total'}</span>
+                  <span>{formatIlsAmount(totalIls, true)}</span>
                 </div>
               </div>
 
               <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 mb-4 text-xs text-emerald-700 leading-6">
                 {isRtl
-                  ? `بعد الترقية، سيكون التجديد بسعر ${formatIlsAmount(upgradePricing.ilsRenewal ?? 0)} / ${formatUsdAmount(upgradePricing.usdRenewal ?? 0)}`
-                  : `After upgrade, renewal will be ${formatIlsAmount(upgradePricing.ilsRenewal ?? 0)} / ${formatUsdAmount(upgradePricing.usdRenewal ?? 0)}`}
+                  ? `بعد الترقية، سيكون التجديد بسعر ${formatIlsAmount(upgradePricing.ilsRenewal ?? 0)}`
+                  : `After upgrade, renewal will be ${formatIlsAmount(upgradePricing.ilsRenewal ?? 0)}`}
               </div>
 
               <div className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-3 text-xs text-slate-600 leading-6 mb-4">
                 {isRtl
-                  ? 'يظهر سعر الشيكل هنا كمرجع محلي، لكن طلب الترقية نفسه يُسجل ويُحاسب بالدولار الأمريكي ليتطابق مع النظام والفاتورة.'
-                  : 'The shekel amount is shown here as a local reference, but the upgrade order itself is recorded and billed in USD to match the backend and invoice.'}
+                  ? 'الأسعار معروضة بالشيكل (₪). سيتم تأكيد المبلغ النهائي ووسيلة الدفع مع فريق الدعم بعد إنشاء طلب الترقية.'
+                  : 'Prices are shown in shekel (₪). The final amount and payment method will be confirmed with the support team after the upgrade order is placed.'}
               </div>
 
               <Button

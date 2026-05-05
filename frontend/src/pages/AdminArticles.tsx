@@ -155,7 +155,7 @@ export default function AdminArticles() {
                   </div>
                   <p className="text-sm text-gray-500">
                     /{article.slug}
-                    {article.publishedAt && ` • ${new Date(article.publishedAt).toLocaleDateString()}`}
+                    {article.publishedAt && ` • ${new Date(article.publishedAt).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US')}`}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">

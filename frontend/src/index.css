@@ -8,11 +8,11 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
-  /* XFlex brand colors */
-  --color-xf-dark: #0f172a;
-  --color-xf-dark-lighter: #1a2744;
-  --color-xf-primary: #10b981;
-  --color-xf-primary-hover: #059669;
+  /* XFlex brand colors (exact spec from Brand Identity, May 2026) */
+  --color-xf-dark: #0D172A;          /* Brand Navy */
+  --color-xf-dark-lighter: #1A2744;
+  --color-xf-primary: #0EB67F;       /* Brand Green */
+  --color-xf-primary-hover: #0AA372;
   --color-xf-accent: #f59e0b;
   --color-xf-accent-dark: #d97706;
   --color-xf-cream: #faf7f2;
@@ -157,7 +157,7 @@
   left: 0;
   width: 0;
   height: 2px;
-  background: #10b981;
+  background: #0EB67F;
   transition: width 0.3s ease;
   border-radius: 1px;
 }
@@ -178,7 +178,7 @@
   display: block;
   width: 60px;
   height: 4px;
-  background: linear-gradient(to right, #f59e0b, #10b981);
+  background: linear-gradient(to right, #f59e0b, #0EB67F);
   margin: 16px auto 0;
   border-radius: 2px;
 }
@@ -204,7 +204,7 @@
 
 /* Pill button with gradient */
 .btn-pill-xf {
-  background: linear-gradient(135deg, #f59e0b, #10b981);
+  background: linear-gradient(135deg, #f59e0b, #0EB67F);
   color: white;
   border-radius: 50px;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
@@ -217,7 +217,7 @@
 
 /* Primary gradient button */
 .btn-primary-xf {
-  background: linear-gradient(135deg, #10b981, #059669);
+  background: linear-gradient(135deg, #0EB67F, #0AA372);
   color: white;
   border-radius: 50px;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
@@ -225,7 +225,7 @@
 }
 .btn-primary-xf:hover {
   transform: translateY(-2px);
-  box-shadow: 0 10px 40px rgba(16, 185, 129, 0.3);
+  box-shadow: 0 10px 40px rgba(14, 182, 127, 0.3);
 }
 
 @layer base {
@@ -237,6 +237,18 @@
     @apply bg-background text-foreground;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+  }
+  /* Arabic text must never inherit negative letter-spacing — it clips letterforms.
+     Force normal tracking + Noto Sans Arabic-first stack for any RTL/Arabic subtree. */
+  [dir="rtl"],
+  [lang="ar"],
+  [dir="rtl"] *,
+  [lang="ar"] * {
+    letter-spacing: normal !important;
+    font-family: 'Noto Sans Arabic', 'Inter', system-ui, -apple-system, sans-serif;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .fade-up { opacity: 1; transform: none; transition: none; }
   }
   button:not(:disabled),
   [role="button"]:not([aria-disabled="true"]),

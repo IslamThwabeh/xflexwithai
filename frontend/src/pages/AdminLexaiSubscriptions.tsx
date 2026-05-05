@@ -156,7 +156,7 @@ export default function AdminLexaiSubscriptions() {
                                   </Badge>
                                   {h.lexaiEndDate && (
                                     <div className="text-xs text-muted-foreground mt-0.5">
-                                      {new Date(h.lexaiEndDate).toLocaleDateString()}
+                                      {new Date(h.lexaiEndDate).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US')}
                                     </div>
                                   )}
                                   {lexaiPaused && h.lexaiPausedRemainingDays ? (
@@ -200,7 +200,7 @@ export default function AdminLexaiSubscriptions() {
                                   </Badge>
                                   {h.recEndDate && (
                                     <div className="text-xs text-muted-foreground mt-0.5">
-                                      {new Date(h.recEndDate).toLocaleDateString()}
+                                      {new Date(h.recEndDate).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US')}
                                     </div>
                                   )}
                                   {recPaused && h.recPausedRemainingDays ? (

@@ -14,7 +14,7 @@ import FreeLibrarySection from '@/components/FreeLibrarySection';
 import ArticlePreviewCard from '@/components/ArticlePreviewCard';
 import { APP_LOGO, APP_TITLE } from '@/const';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { formatIlsAmount, formatUsdAmount, getPackageDisplayPricing } from '@/lib/packagePricing';
+import { formatIlsAmount, getPackageDisplayPricing } from '@/lib/packagePricing';
 import { trpc } from '@/lib/trpc';
 import { DEFAULT_TESTIMONIAL_PROOFS } from '@/lib/defaultTestimonialProofs';
 
@@ -33,6 +33,7 @@ const stageData: Array<{ num: number; icon: LucideIcon; color: string; price: nu
 export default function Home() {
   const { t, language, setLanguage, isRTL } = useLanguage();
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const [headerScrolled, setHeaderScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const basicPricing = getPackageDisplayPricing('basic', 20000, 5000);
   const comprehensivePricing = getPackageDisplayPricing('comprehensive', 50000, 10000);
@@ -73,30 +74,6 @@ export default function Home() {
     },
   ];
 
-  const heroPillars: Array<{ icon: LucideIcon; title: string; description: string }> = [
-    {
-      icon: GraduationCap,
-      title: language === 'ar' ? 'منهج تدريبي متسلسل' : 'Structured learning path',
-      description: language === 'ar'
-        ? 'كل مرحلة تبني على التي قبلها حتى تصل لخطة تداول واضحة.'
-        : 'Each stage builds on the previous one until you reach a clear trading plan.',
-    },
-    {
-      icon: MessageCircle,
-      title: language === 'ar' ? 'دعم فني ونفسي فعلي' : 'Real technical and mindset support',
-      description: language === 'ar'
-        ? 'متابعة تشرح لك الخطوة القادمة وتساعدك وقت التردد.'
-        : 'Support that explains the next step and helps when confidence drops.',
-    },
-    {
-      icon: Signal,
-      title: language === 'ar' ? 'تطبيق أثناء التعلم' : 'Apply while you learn',
-      description: language === 'ar'
-        ? 'أدوات عملية تثبت المعلومة وتربط الشرح بالسوق.'
-        : 'Practical tools that connect the lessons to live market action.',
-    },
-  ];
-
   const handleContactSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!contactEmail.trim() || !contactMessage.trim()) return;
@@ -118,10 +95,14 @@ export default function Home() {
     }
   };
 
-  // Scroll to top handler
+  // Scroll to top handler + sticky-blur header state
   useEffect(() => {
-    const handleScroll = () => setShowScrollTop(window.scrollY > 600);
-    window.addEventListener('scroll', handleScroll);
+    const handleScroll = () => {
+      const y = window.scrollY;
+      setShowScrollTop(y > 600);
+      setHeaderScrolled(y > 16);
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
@@ -184,7 +165,7 @@ export default function Home() {
     <div className="min-h-screen bg-[var(--color-xf-cream)]" dir="ltr">
       {/* ======== NAVIGATION ======== */}
       <header
-        className="sticky top-0 z-[1000] border-b border-white/65 bg-white/70 shadow-[0_18px_60px_rgba(15,23,42,0.08)] backdrop-blur-2xl"
+        className={`sticky top-0 z-[1000] transition-all duration-300 ${headerScrolled ? 'border-b border-slate-200/80 bg-white/95 shadow-[0_8px_30px_rgba(13,23,42,0.08)] backdrop-blur-xl' : 'border-b border-white/65 bg-white/70 shadow-[0_18px_60px_rgba(15,23,42,0.04)] backdrop-blur-2xl'}`}
         style={{ height: '72px' }}
         dir="ltr"
       >
@@ -377,56 +358,20 @@ export default function Home() {
 
             <div className="fade-up">
               <div className="relative mx-auto max-w-xl">
-                <div className="rounded-[30px] border border-white/15 bg-white/10 p-5 shadow-[0_24px_80px_rgba(7,17,31,0.26)] backdrop-blur-2xl md:p-6">
-                  <div className="rounded-[24px] bg-white px-4 py-4 shadow-sm md:px-5">
-                    <img src={APP_LOGO} alt={APP_TITLE} className="h-12 w-auto md:h-14" />
-                  </div>
-
-                  <div className="mt-5 grid gap-3">
-                    {heroPillars.map((pillar) => {
-                      const Icon = pillar.icon;
-
-                      return (
-                        <div key={pillar.title} className="rounded-[22px] border border-white/10 bg-slate-950/18 p-4">
-                          <div className="flex items-start gap-3">
-                            <div className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/10 text-emerald-200">
-                              <Icon className="h-5 w-5" />
-                            </div>
-                            <div>
-                              <h3 className="text-base font-bold text-white">{pillar.title}</h3>
-                              <p className="mt-1 text-sm leading-6 text-emerald-50/72">{pillar.description}</p>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                    <div className="rounded-[22px] border border-white/10 bg-white/7 p-4">
-                      <p className="text-[0.72rem] font-semibold uppercase tracking-[0.24em] text-emerald-100/50">
-                        {language === 'ar' ? 'طريقة الشرح' : 'Teaching style'}
-                      </p>
-                      <p className="mt-2 text-sm leading-6 text-white/88">
-                        {language === 'ar'
-                          ? 'تعلم واضح، مرتب، ويعتمد على التطبيق لا على الحشو.'
-                          : 'Clear, structured teaching built around application, not filler.'}
-                      </p>
-                    </div>
-                    <div className="rounded-[22px] border border-white/10 bg-white/7 p-4">
-                      <p className="text-[0.72rem] font-semibold uppercase tracking-[0.24em] text-emerald-100/50">
-                        {language === 'ar' ? 'ما الذي ستخرج به' : 'What you leave with'}
-                      </p>
-                      <p className="mt-2 text-sm leading-6 text-white/88">
-                        {language === 'ar'
-                          ? 'أساس أوضح، قراءة أهدأ للسوق، وقدرة أفضل على اتخاذ القرار.'
-                          : 'A stronger foundation, calmer market reading, and better decision-making confidence.'}
-                      </p>
-                    </div>
-                  </div>
+                <div className="relative overflow-hidden rounded-[30px] border border-white/15 bg-gradient-to-br from-white/10 to-white/5 p-2 shadow-[0_24px_80px_rgba(7,17,31,0.36)] backdrop-blur-xl">
+                  <img
+                    src="/hero-trader.png"
+                    alt={language === 'ar' ? 'متداول عربي أمام شاشات التداول' : 'Arab trader at workstation with live charts'}
+                    className="w-full h-auto rounded-[24px] object-cover"
+                    style={isRTL ? { transform: 'scaleX(-1)' } : undefined}
+                    loading="eager"
+                    decoding="async"
+                  />
+                  {/* Subtle navy-to-transparent gradient for legibility of overlay badge */}
+                  <div className="pointer-events-none absolute inset-0 rounded-[24px] bg-gradient-to-t from-[#0D172A]/35 via-transparent to-transparent" />
                 </div>
 
-                <div className="absolute -bottom-5 left-4 hidden rounded-[20px] border border-white/15 bg-white/92 px-4 py-3 shadow-xl md:block">
+                <div className="absolute -bottom-5 left-4 hidden rounded-[20px] border border-white/15 bg-white/95 px-4 py-3 shadow-xl md:block">
                   <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-700/70">
                     {language === 'ar' ? 'دليل ثقة' : 'Trust signal'}
                   </p>
@@ -905,11 +850,10 @@ export default function Home() {
                 <h3 className="text-2xl font-extrabold text-xf-dark mb-1 tracking-[-0.5px]">{t('home.packages.basic')}</h3>
                 <div className="flex items-end justify-center gap-2 mt-3">
                   <span className="text-5xl font-extrabold text-xf-dark">{formatIlsAmount(basicPricing.ilsPrice)}</span>
-                  <span className="text-lg font-semibold text-slate-500 mb-1">{formatUsdAmount(basicPricing.usdPrice)}</span>
                 </div>
                 <p className="text-sm text-gray-500 mt-1">{t('home.packages.price')} • {t('home.packages.lifetime')}</p>
                 <p className="text-xs text-xf-primary mt-1 font-medium">
-                  {t('home.packages.renewal')}: {formatIlsAmount(basicPricing.ilsRenewal ?? 0)} / {formatUsdAmount(basicPricing.usdRenewal ?? 0)}{t('home.packages.perMonth')}
+                  {t('home.packages.renewal')}: {formatIlsAmount(basicPricing.ilsRenewal ?? 0)}{t('home.packages.perMonth')}
                 </p>
               </div>
 
@@ -966,11 +910,10 @@ export default function Home() {
                 <h3 className="text-2xl font-extrabold mb-1 tracking-[-0.5px]">{t('home.packages.comprehensive')}</h3>
                 <div className="flex items-end justify-center gap-2 mt-3">
                   <span className="text-5xl font-extrabold">{formatIlsAmount(comprehensivePricing.ilsPrice)}</span>
-                  <span className="text-lg font-semibold text-emerald-100 mb-1">{formatUsdAmount(comprehensivePricing.usdPrice)}</span>
                 </div>
                 <p className="text-sm text-emerald-100 mt-1">{t('home.packages.price')} • {t('home.packages.lifetime')}</p>
                 <p className="text-xs text-emerald-200 mt-1">
-                  {t('home.packages.renewal')}: {formatIlsAmount(comprehensivePricing.ilsRenewal ?? 0)} / {formatUsdAmount(comprehensivePricing.usdRenewal ?? 0)}{t('home.packages.perMonth')}
+                  {t('home.packages.renewal')}: {formatIlsAmount(comprehensivePricing.ilsRenewal ?? 0)}{t('home.packages.perMonth')}
                 </p>
               </div>
 

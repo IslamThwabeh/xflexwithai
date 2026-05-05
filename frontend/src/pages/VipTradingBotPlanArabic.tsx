@@ -27,7 +27,7 @@ const navLinks: PlanNavLink[] = [
 const heroStats = [
   {
     title: "التكلفة التشغيلية الشهرية",
-    value: "30-80 دولار",
+    value: "105-280 شيكل",
     note: "تكلفة تشغيل تقديرية لنسخة MVP خفيفة قبل رسوم التداول والانزلاق.",
     icon: Wallet,
   },
@@ -187,7 +187,7 @@ export default function VipTradingBotPlanArabic() {
           />
 
           <div className="mb-4 rounded-3xl border border-emerald-100 bg-emerald-50 p-5 text-sm leading-7 text-slate-700 md:text-base">
-            <span className="font-black text-slate-900">الخلاصة المباشرة لمالك العمل:</span> التكلفة التشغيلية الشهرية 30-80 دولار فقط. الهدف المحافظ بعد التحقق 1-2% شهرياً. القرار المقترح: موافقة مشروطة على بناء النسخة الأولى وبدء التداول الورقي فقط.
+            <span className="font-black text-slate-900">الخلاصة المباشرة لمالك العمل:</span> التكلفة التشغيلية الشهرية 105-280 شيكل فقط. الهدف المحافظ بعد التحقق 1-2% شهرياً. القرار المقترح: موافقة مشروطة على بناء النسخة الأولى وبدء التداول الورقي فقط.
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">

@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import PublicLayout from '@/components/PublicLayout';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { formatIlsAmount, formatUsdAmount, getPackageDisplayPricing } from '@/lib/packagePricing';
+import { formatIlsAmount, getPackageDisplayPricing } from '@/lib/packagePricing';
 import { trpc } from '@/lib/trpc';
 
 export default function PackageDetails() {
@@ -55,9 +55,7 @@ export default function PackageDetails() {
   const isComprehensive = pkg.slug === 'comprehensive';
   const displayPricing = getPackageDisplayPricing(pkg.slug, pkg.price, pkg.renewalPrice);
   const priceFormatted = formatIlsAmount(displayPricing.ilsPrice);
-  const priceUsdFormatted = formatUsdAmount(displayPricing.usdPrice);
   const renewalFormatted = displayPricing.ilsRenewal ? formatIlsAmount(displayPricing.ilsRenewal) : null;
-  const renewalUsdFormatted = displayPricing.usdRenewal ? formatUsdAmount(displayPricing.usdRenewal) : null;
   const vatIncludedLabel = language === 'ar' ? 'السعر يشمل ضريبة القيمة المضافة 16%' : 'Price includes 16% VAT';
 
   const features = [
@@ -203,15 +201,12 @@ export default function PackageDetails() {
             }`}>
               <div className="text-center mb-6">
                 <div className="text-4xl font-extrabold mb-1">{priceFormatted}</div>
-                <p className={`text-sm font-semibold ${isComprehensive ? 'text-emerald-100' : 'text-gray-500'}`}>
-                  {priceUsdFormatted}
-                </p>
                 <p className={`text-sm ${isComprehensive ? 'text-emerald-100' : 'text-gray-500'}`}>
                   {t('home.packages.price')} • {t('home.packages.lifetime')}
                 </p>
-                {renewalFormatted && renewalUsdFormatted && (
+                {renewalFormatted && (
                   <p className={`text-xs mt-2 ${isComprehensive ? 'text-emerald-200' : 'text-emerald-600'}`}>
-                    {t('home.packages.renewal')}: {renewalFormatted} / {renewalUsdFormatted}{t('home.packages.perMonth')}
+                    {t('home.packages.renewal')}: {renewalFormatted}{t('home.packages.perMonth')}
                   </p>
                 )}
               </div>

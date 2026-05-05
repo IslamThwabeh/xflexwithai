@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { formatPendingActivationDate, getPendingActivationDaysLeft, getPendingActivationWindow } from '@/lib/pendingActivation';
-import { formatIlsAmount, formatUsdAmount, getPackageDisplayPricing } from '@/lib/packagePricing';
+import { formatIlsAmount, getPackageDisplayPricing } from '@/lib/packagePricing';
 import { trpc } from '@/lib/trpc';
 import { withApiBase } from '@/lib/apiBase';
 import ClientLayout from '@/components/ClientLayout';
@@ -534,7 +534,6 @@ export default function StudentPackages() {
                 <span>{isRtl ? 'الباقة الأساسية' : 'Basic Package'}</span>
                 <span className="text-end">
                   <span className="block text-2xl font-bold text-emerald-600">{formatIlsAmount(basicPricing.ilsPrice)}</span>
-                  <span className="block text-xs font-semibold text-gray-500">{formatUsdAmount(basicPricing.usdPrice)}</span>
                 </span>
               </CardTitle>
             </CardHeader>
@@ -571,7 +570,6 @@ export default function StudentPackages() {
                 <span>{isRtl ? 'الباقة الشاملة' : 'Comprehensive Package'}</span>
                 <span className="text-end">
                   <span className="block text-2xl font-bold text-emerald-600">{formatIlsAmount(comprehensivePricing.ilsPrice)}</span>
-                  <span className="block text-xs font-semibold text-gray-500">{formatUsdAmount(comprehensivePricing.usdPrice)}</span>
                 </span>
               </CardTitle>
             </CardHeader>

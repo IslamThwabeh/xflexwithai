@@ -108,7 +108,7 @@ const translations = {
     'home.footer.quickLinks': 'Quick Links',
     'home.footer.home': 'Home',
     'home.footer.packages': 'Packages',
-    'home.footer.freeContent': 'Free Content',
+    'home.footer.freeContent': 'Gift',
     'home.footer.aboutUs': 'About Us',
     'home.footer.contact': 'Contact',
     
@@ -139,7 +139,7 @@ const translations = {
     'home.packages.mostPopular': 'Most Popular',
     
     // Stages Section
-    'home.stages.title': 'What You\'ll Learn',
+    'home.stages.title': 'Courses',
     'home.stages.subtitle': '8 comprehensive stages from basics to building your own trading plan',
     'home.stage1': 'Trading Basics',
     'home.stage1.desc': '14 videos — 1 hour 50 min',
@@ -178,7 +178,7 @@ const translations = {
     'home.free.browseCourses': 'View Free Courses',
     
     // Events
-    'home.events.title': 'Upcoming Events',
+    'home.events.title': 'Events',
     'home.events.subtitle': 'Live sessions, competitions, and special offers',
     'home.events.noEvents': 'No upcoming events at the moment',
     'home.events.live': 'Live Session',
@@ -188,7 +188,7 @@ const translations = {
     'home.events.viewAll': 'View All Events',
     
     // Articles
-    'home.articles.title': 'Latest Articles',
+    'home.articles.title': 'Articles',
     'home.articles.subtitle': 'Educational content and market insights',
     'home.articles.noArticles': 'No articles published yet',
     'home.articles.readMore': 'Read More',
@@ -432,7 +432,7 @@ const translations = {
     'admin.courses.titleAr': 'Title (Arabic)',
     'admin.courses.descEn': 'Description (English)',
     'admin.courses.descAr': 'Description (Arabic)',
-    'admin.courses.price': 'Price (USD)',
+    'admin.courses.price': 'Price',
     'admin.courses.level': 'Level',
     'admin.courses.status': 'Status',
     'admin.courses.thumbnail': 'Thumbnail URL',
@@ -515,7 +515,7 @@ const translations = {
     'admin.keys.selectCourse': 'Select Course',
     'admin.keys.quantity': 'Quantity',
     'admin.keys.notes': 'Notes (optional)',
-    'admin.keys.price': 'Price (USD)',
+    'admin.keys.price': 'Price',
     'admin.keys.expiresAt': 'Expires At (optional)',
     'admin.keys.generate': 'Generate',
     'admin.keys.close': 'Close',
@@ -1202,7 +1202,7 @@ const translations = {
     'home.footer.quickLinks': 'روابط سريعة',
     'home.footer.home': 'الرئيسية',
     'home.footer.packages': 'الباقات',
-    'home.footer.freeContent': 'محتوى مجاني',
+    'home.footer.freeContent': 'هدية',
     'home.footer.aboutUs': 'عن الأكاديمية',
     'home.footer.contact': 'تواصل معنا',
     
@@ -1233,7 +1233,7 @@ const translations = {
     'home.packages.mostPopular': 'الأكثر شعبية',
     
     // Stages Section
-    'home.stages.title': 'ماذا ستتعلم',
+    'home.stages.title': 'كورسات',
     'home.stages.subtitle': '8 مراحل شاملة من الأساسيات حتى بناء خطة التداول الخاصة بك',
     'home.stage1': 'أساسيات التداول',
     'home.stage1.desc': '14 فيديو — ساعة و50 دقيقة',
@@ -1272,7 +1272,7 @@ const translations = {
     'home.free.browseCourses': 'عرض الدورات المجانية',
     
     // Events
-    'home.events.title': 'الأحداث القادمة',
+    'home.events.title': 'الأحداث',
     'home.events.subtitle': 'بث مباشر ومسابقات وعروض خاصة',
     'home.events.noEvents': 'لا توجد أحداث قادمة حالياً',
     'home.events.live': 'بث مباشر',
@@ -1282,7 +1282,7 @@ const translations = {
     'home.events.viewAll': 'عرض كل الأحداث',
     
     // Articles
-    'home.articles.title': 'أحدث المقالات',
+    'home.articles.title': 'المقالات',
     'home.articles.subtitle': 'محتوى تعليمي ورؤى عن السوق',
     'home.articles.noArticles': 'لم يتم نشر مقالات بعد',
     'home.articles.readMore': 'اقرأ المزيد',
@@ -1526,7 +1526,7 @@ const translations = {
     'admin.courses.titleAr': 'العنوان (عربي)',
     'admin.courses.descEn': 'الوصف (إنجليزي)',
     'admin.courses.descAr': 'الوصف (عربي)',
-    'admin.courses.price': 'السعر (دولار)',
+    'admin.courses.price': 'السعر',
     'admin.courses.level': 'المستوى',
     'admin.courses.status': 'الحالة',
     'admin.courses.thumbnail': 'رابط الصورة',
@@ -1609,7 +1609,7 @@ const translations = {
     'admin.keys.selectCourse': 'اختر الدورة',
     'admin.keys.quantity': 'الكمية',
     'admin.keys.notes': 'ملاحظات (اختياري)',
-    'admin.keys.price': 'السعر (دولار)',
+    'admin.keys.price': 'السعر',
     'admin.keys.expiresAt': 'تاريخ الانتهاء (اختياري)',
     'admin.keys.generate': 'إنشاء',
     'admin.keys.close': 'إغلاق',

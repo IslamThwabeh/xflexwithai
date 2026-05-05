@@ -3932,14 +3932,20 @@ export async function checkUpgradeEligibility(userId: number, targetPackageId: n
   if (!targetPkg) return null;
   if (!targetPkg.upgradePrice || targetPkg.upgradePrice <= 0) return null; // no upgrade path configured
 
-  // Check user has an active subscription to a DIFFERENT (lower-tier) package
+  // Hardening: only allow Basic → Comprehensive. With only two packages today this
+  // is functionally the only valid upgrade path; making it explicit prevents any future
+  // 3rd package from being silently treated as upgradeable.
+  if (targetPkg.slug !== 'comprehensive') return null;
+
+  // Check user has an active Basic subscription
   const subs = await getUserPackageSubscriptions(userId);
   const activeSubs = subs.filter(s => s.isActive && s.packageId !== targetPackageId);
   if (activeSubs.length === 0) return null; // no active subscription to upgrade from
 
-  // Take the first active subscription as the source
+  // Resolve current package; only Basic is a valid source
   const currentSub = activeSubs[0];
   const currentPkg = await getPackageById(currentSub.packageId);
+  if (!currentPkg || currentPkg.slug !== 'basic') return null;
 
   return {
     eligible: true,
