@@ -341,6 +341,14 @@ const adminOrRoleProcedure = (roles: string[]) => protectedProcedure.use(async (
   }
   return next({ ctx: { ...ctx, admin: null } });
 }).use(staffActivityTrackingMiddleware);
+
+const hasTimedServiceExpired = (endDate?: string | null) => {
+  if (!endDate) return false;
+
+  const parsedEndDate = new Date(endDate);
+  return !Number.isNaN(parsedEndDate.getTime()) && parsedEndDate.getTime() < Date.now();
+};
+
 const ensureLexaiAccess = async (ctx: { user: { id: number; email?: string | null } | null }) => {
   if (!ctx.user) {
     throw new TRPCError({ code: "UNAUTHORIZED", message: "Not authenticated" });
@@ -362,13 +370,8 @@ const ensureLexaiAccess = async (ctx: { user: { id: number; email?: string | nul
     });
   }
 
-  if (subscription.endDate) {
-    const endDate = new Date(subscription.endDate);
-    const shouldEnforceExpiry = Number(subscription.messagesUsed ?? 0) > 0;
-    if (shouldEnforceExpiry && !Number.isNaN(endDate.getTime()) && endDate.getTime() < Date.now()) {
-      await db.updateLexaiSubscription(subscription.id, { isActive: false });
-      throw new TRPCError({ code: "FORBIDDEN", message: "LexAI subscription expired" });
-    }
+  if (hasTimedServiceExpired(subscription.endDate)) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "LexAI subscription expired" });
   }
 
   return { subscription, isAdmin: !!admin };
@@ -2319,21 +2322,24 @@ export const appRouter = router({
         // Check if subscription is frozen
         const frozen = await db.getFrozenLexaiSubscription(ctx.user.id);
         if (frozen) {
-          return { isFrozen: true, frozenUntil: frozen.frozenUntil ?? null, frozenReason: frozen.pausedReason ?? null };
+          return {
+            kind: 'frozen' as const,
+            isFrozen: true,
+            frozenUntil: frozen.frozenUntil ?? null,
+            frozenReason: frozen.pausedReason ?? null,
+          };
         }
         return null;
       }
 
-      if (subscription.endDate) {
-        const endDate = new Date(subscription.endDate);
-        const shouldEnforceExpiry = Number(subscription.messagesUsed ?? 0) > 0;
-        if (shouldEnforceExpiry && !Number.isNaN(endDate.getTime()) && endDate.getTime() < Date.now()) {
-          await db.updateLexaiSubscription(subscription.id, { isActive: false });
-          return null;
-        }
+      if (hasTimedServiceExpired(subscription.endDate)) {
+        return null;
       }
 
-      return subscription;
+      return {
+        ...subscription,
+        kind: 'active' as const,
+      };
     }),
 
     // Create new subscription
@@ -4260,6 +4266,17 @@ export const appRouter = router({
         lexaiEndDate: lexaiSub?.endDate ?? null,
         recEndDate: recSub?.endDate ?? null,
       };
+    }),
+
+    serviceAccessSummary: protectedProcedure.query(async ({ ctx }) => {
+      if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+      const [lexai, recommendation] = await Promise.all([
+        db.getLexaiServiceAccessSummary(ctx.user.id),
+        db.getRecommendationServiceAccessSummary(ctx.user.id),
+      ]);
+
+      return { lexai, recommendation };
     }),
 
     // User: check if subscriptions are pending activation + course progress

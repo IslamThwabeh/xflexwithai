@@ -107,9 +107,29 @@ export default {
         "https://eid-offer.pages.dev",
       ]);
 
+      let normalizedOrigin = "";
+      let originHost = "";
+      if (origin) {
+        try {
+          const parsedOrigin = new URL(origin);
+          normalizedOrigin = parsedOrigin.origin;
+          originHost = parsedOrigin.hostname.toLowerCase();
+        } catch {
+          normalizedOrigin = "";
+          originHost = "";
+        }
+      }
+
+      const isAllowedOrigin =
+        !!normalizedOrigin && (
+          allowedOrigins.has(normalizedOrigin) ||
+          originHost.endsWith(".xflexwithai.pages.dev") ||
+          originHost.endsWith(".xflexacademy.pages.dev")
+        );
+
       const corsHeaders = new Headers();
-      if (allowedOrigins.has(origin)) {
-        corsHeaders.set("Access-Control-Allow-Origin", origin);
+      if (isAllowedOrigin) {
+        corsHeaders.set("Access-Control-Allow-Origin", normalizedOrigin);
         corsHeaders.set("Access-Control-Allow-Credentials", "true");
         corsHeaders.set("Vary", "Origin");
       }
@@ -465,21 +485,26 @@ export default {
           contentEn: `${sub.name}'s ${sub.packageName} expires in ${sub.daysLeft} day(s).`,
           contentAr: `اشتراك ${sub.name} في ${sub.packageName} ينتهي خلال ${sub.daysLeft} يوم.`,
           metadata: { userId: sub.userId, packageName: sub.packageName, daysLeft: sub.daysLeft },
-        }).catch(() => {});
+        }).catch((e) => logger.error('[CRON] Staff notify (subscription_expiring) failed', e));
         // Dashboard notification for expiry warning
         await db.createNotification({
           userId: sub.userId,
           type: sub.daysLeft === 0 ? 'warning' : 'info',
-          titleAr: sub.daysLeft === 0 ? 'انتهى اشتراكك اليوم' : `اشتراكك ينتهي خلال ${sub.daysLeft} أيام`,
-          titleEn: sub.daysLeft === 0 ? 'Your Subscription Expires Today' : `Subscription Expires in ${sub.daysLeft} Days`,
+          titleAr: sub.daysLeft === 0 ? 'تنتهي خدماتك الشهرية اليوم' : `خدماتك الشهرية تنتهي خلال ${sub.daysLeft} أيام`,
+          titleEn: sub.daysLeft === 0 ? 'Your Monthly Services Expire Today' : `Your Monthly Services Expire in ${sub.daysLeft} Days`,
           contentAr: sub.daysLeft === 0
-            ? 'يرجى تجديد اشتراكك للحفاظ على وصولك.'
-            : `اشتراكك ينتهي قريباً. جدّد الآن لتجنب الانقطاع.`,
+            ? 'محتوى الدورة ما زال متاحاً لك، لكن الخدمات الشهرية تحتاج الآن إلى مفتاح تجديد جديد.'
+            : 'محتوى الدورة سيبقى متاحاً لك، لكن الخدمات الشهرية تنتهي قريباً. جهّز مفتاح التجديد لتجنب الانقطاع.',
           contentEn: sub.daysLeft === 0
-            ? 'Please renew to keep your access.'
-            : `Your ${sub.packageName} expires soon. Renew now to avoid interruption.`,
-          actionUrl: '/my-packages',
-        }).catch(() => {});
+            ? 'Your course content is still available, but your monthly services now need a new renewal key.'
+            : 'Your course content will remain available, but your monthly services expire soon. Prepare your renewal key to avoid interruption.',
+          actionUrl: '/my-packages?focus=renewal',
+        }).catch((error) => logger.error('[CRON] Student notification (subscription_expiring) failed', {
+          userId: sub.userId,
+          packageName: sub.packageName,
+          daysLeft: sub.daysLeft,
+          error: error instanceof Error ? error.message : String(error),
+        }));
       }
     }
 
@@ -503,7 +528,7 @@ export default {
             ? `وصول LexAI للمستخدم ${displayName} ينتهي اليوم. راجع قائمة LexAI للمتابعة.`
             : `وصول LexAI للمستخدم ${displayName} ينتهي خلال ${sub.daysLeft} يوم. راجع قائمة LexAI للمتابعة.`,
           metadata: { userId: sub.userId, daysLeft: sub.daysLeft, endDate: sub.endDate },
-        }).catch(() => {});
+        }).catch((e) => logger.error('[CRON] Staff notify (lexai_expiry_soon) failed', e));
       }
     }
 

@@ -5,11 +5,27 @@ import { httpBatchLink, TRPCClientError } from "@trpc/client";
 import { createRoot } from "react-dom/client";
 import superjson from "superjson";
 import App from "./App";
-import { getLoginUrl } from "./const";
+import { ADMIN_LOGIN_URL, getLoginUrl } from "./const";
+import { resolveTrpcUrl } from "./lib/apiBase";
 import "./index.css";
 import { LanguageProvider } from "./contexts/LanguageContext";
 
 const queryClient = new QueryClient();
+
+const buildUnauthorizedRedirectUrl = () => {
+  if (typeof window === "undefined") return null;
+
+  const { pathname, search } = window.location;
+  if (pathname.startsWith("/admin")) {
+    return pathname === ADMIN_LOGIN_URL ? null : ADMIN_LOGIN_URL;
+  }
+
+  const loginUrl = getLoginUrl();
+  if (pathname === loginUrl) return null;
+
+  const next = `${pathname}${search}`;
+  return `${loginUrl}?next=${encodeURIComponent(next)}`;
+};
 
 const redirectToLoginIfUnauthorized = (error: unknown) => {
   if (!(error instanceof TRPCClientError)) return;
@@ -19,7 +35,10 @@ const redirectToLoginIfUnauthorized = (error: unknown) => {
 
   if (!isUnauthorized) return;
 
-  window.location.href = getLoginUrl();
+  const redirectUrl = buildUnauthorizedRedirectUrl();
+  if (!redirectUrl) return;
+
+  window.location.href = redirectUrl;
 };
 
 queryClient.getQueryCache().subscribe(event => {
@@ -37,28 +56,6 @@ queryClient.getMutationCache().subscribe(event => {
     console.error("[API Mutation Error]", error);
   }
 });
-
-const resolveTrpcUrl = () => {
-  const rawUrl = import.meta.env.VITE_API_URL?.trim();
-  if (!rawUrl) {
-    if (typeof window !== "undefined") {
-      const host = window.location.hostname;
-      if (
-        host === "xflexacademy.com" ||
-        host.endsWith(".xflexacademy.com") ||
-        host === "xflexwithai.com" ||
-        host.endsWith(".xflexwithai.com")
-      ) {
-        return "https://api.xflexacademy.com/api/trpc";
-      }
-    }
-    return "/api/trpc";
-  }
-
-  if (rawUrl.includes("/trpc")) return rawUrl;
-
-  return `${rawUrl.replace(/\/$/, "")}/api/trpc`;
-};
 
 const trpcClient = trpc.createClient({
   links: [

@@ -12,7 +12,9 @@ import { Badge } from '@/components/ui/badge';
 import TestimonialProofCard from '@/components/TestimonialProofCard';
 import FreeLibrarySection from '@/components/FreeLibrarySection';
 import ArticlePreviewCard from '@/components/ArticlePreviewCard';
+import { APP_LOGO, APP_TITLE } from '@/const';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { formatIlsAmount, formatUsdAmount, getPackageDisplayPricing } from '@/lib/packagePricing';
 import { trpc } from '@/lib/trpc';
 import { DEFAULT_TESTIMONIAL_PROOFS } from '@/lib/defaultTestimonialProofs';
 
@@ -32,6 +34,8 @@ export default function Home() {
   const { t, language, setLanguage, isRTL } = useLanguage();
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const basicPricing = getPackageDisplayPricing('basic', 20000, 5000);
+  const comprehensivePricing = getPackageDisplayPricing('comprehensive', 50000, 10000);
 
   // Contact support form
   const [contactEmail, setContactEmail] = useState('');
@@ -53,6 +57,45 @@ export default function Home() {
   const homeProofItems = testimonialProofs && testimonialProofs.length > 0
     ? testimonialProofs
     : DEFAULT_TESTIMONIAL_PROOFS.filter((item) => item.showProofOnHome).slice(0, 4);
+
+  const heroStats = [
+    {
+      value: '5000+',
+      label: language === 'ar' ? 'ساعدنا اكثر من 5000 طالب يربحوا من المجال' : 'Students helped profit from the market',
+    },
+    {
+      value: '+8 سنوات',
+      label: language === 'ar' ? 'خبرة بالمجال' : 'Years of field experience',
+    },
+    {
+      value: '$69,300',
+      label: language === 'ar' ? 'صافي ارباح طلابنا من قناة التوصيات خلال اقل من سنة' : 'Net student profits from signals channel in under a year',
+    },
+  ];
+
+  const heroPillars: Array<{ icon: LucideIcon; title: string; description: string }> = [
+    {
+      icon: GraduationCap,
+      title: language === 'ar' ? 'منهج تدريبي متسلسل' : 'Structured learning path',
+      description: language === 'ar'
+        ? 'كل مرحلة تبني على التي قبلها حتى تصل لخطة تداول واضحة.'
+        : 'Each stage builds on the previous one until you reach a clear trading plan.',
+    },
+    {
+      icon: MessageCircle,
+      title: language === 'ar' ? 'دعم فني ونفسي فعلي' : 'Real technical and mindset support',
+      description: language === 'ar'
+        ? 'متابعة تشرح لك الخطوة القادمة وتساعدك وقت التردد.'
+        : 'Support that explains the next step and helps when confidence drops.',
+    },
+    {
+      icon: Signal,
+      title: language === 'ar' ? 'تطبيق أثناء التعلم' : 'Apply while you learn',
+      description: language === 'ar'
+        ? 'أدوات عملية تثبت المعلومة وتربط الشرح بالسوق.'
+        : 'Practical tools that connect the lessons to live market action.',
+    },
+  ];
 
   const handleContactSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -140,16 +183,21 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-[var(--color-xf-cream)]" dir="ltr">
       {/* ======== NAVIGATION ======== */}
-      <header className="glass sticky top-0 z-[1000]" style={{ height: '72px' }} dir="ltr">
+      <header
+        className="sticky top-0 z-[1000] border-b border-white/65 bg-white/70 shadow-[0_18px_60px_rgba(15,23,42,0.08)] backdrop-blur-2xl"
+        style={{ height: '72px' }}
+        dir="ltr"
+      >
         <div className="container mx-auto px-4 h-full flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="text-xl font-extrabold tracking-tight text-xf-dark">
-              XFlex
-            </span>
-            <span className="text-sm text-gray-500 hidden sm:inline font-medium">Trading Academy</span>
+          <div className="flex items-center gap-3 rounded-2xl border border-slate-200/70 bg-white/90 px-3 py-2 shadow-sm">
+            <img
+              src={APP_LOGO}
+              alt={APP_TITLE}
+              className="h-8 w-auto md:h-9"
+            />
           </div>
 
-          <nav className="hidden md:flex items-center gap-7 text-sm font-medium">
+          <nav className="hidden md:flex items-center gap-6 rounded-full border border-slate-200/80 bg-white/80 px-5 py-2 text-sm font-medium shadow-sm">
             <button onClick={() => scrollToSection('packages')} className="nav-link-xf">{t('home.footer.packages')}</button>
             <button onClick={() => scrollToSection('stages')} className="nav-link-xf">{t('home.stages.title')}</button>
             <Link href="/events"><span className="nav-link-xf cursor-pointer">{t('home.events.title')}</span></Link>
@@ -160,7 +208,7 @@ export default function Home() {
             <button onClick={() => scrollToSection('contact')} className="nav-link-xf">{t('home.footer.contact')}</button>
           </nav>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 rounded-full border border-slate-200/80 bg-white/80 p-1 shadow-sm">
             {/* WhatsApp in header */}
             <a
               href="https://wa.me/972597596030"
@@ -194,104 +242,199 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Mobile Dropdown Menu */}
+        {/* Mobile Side Menu */}
         {mobileMenuOpen && (
-          <nav className="md:hidden bg-white/95 backdrop-blur-xl border-t border-gray-100/50 px-4 py-3 flex flex-col gap-1 text-sm font-medium"
-            style={{ height: 'calc(100dvh - 60px)', overflowY: 'auto' }}>
-            {[
-              { action: () => { scrollToSection('packages'); setMobileMenuOpen(false); }, label: t('home.footer.packages') },
-              { action: () => { scrollToSection('stages'); setMobileMenuOpen(false); }, label: t('home.stages.title') },
-            ].map((item, i) => (
-              <button key={i} onClick={item.action} className="text-start py-3.5 px-4 rounded-xl text-gray-600 hover:text-xf-dark hover:bg-xf-cream transition-all text-[1.05rem]">
-                {item.label}
-              </button>
-            ))}
-            <Link href="/events" onClick={() => setMobileMenuOpen(false)}><span className="block py-3.5 px-4 rounded-xl text-gray-600 hover:text-xf-dark hover:bg-xf-cream transition-all cursor-pointer text-[1.05rem]">{t('home.events.title')}</span></Link>
-            <Link href="/articles" onClick={() => setMobileMenuOpen(false)}><span className="block py-3.5 px-4 rounded-xl text-gray-600 hover:text-xf-dark hover:bg-xf-cream transition-all cursor-pointer text-[1.05rem]">{t('home.articles.title')}</span></Link>
-            <Link href="/free-content" onClick={() => setMobileMenuOpen(false)}><span className="block py-3.5 px-4 rounded-xl text-gray-600 hover:text-xf-dark hover:bg-xf-cream transition-all cursor-pointer text-[1.05rem]">{t('home.footer.freeContent')}</span></Link>
-            <Link href="/faq" onClick={() => setMobileMenuOpen(false)}><span className="block py-3.5 px-4 rounded-xl text-gray-600 hover:text-xf-dark hover:bg-xf-cream transition-all cursor-pointer text-[1.05rem]">{language === 'ar' ? 'الأسئلة الشائعة' : 'FAQ'}</span></Link>
-            <Link href="/careers" onClick={() => setMobileMenuOpen(false)}><span className="block py-3.5 px-4 rounded-xl text-gray-600 hover:text-xf-dark hover:bg-xf-cream transition-all cursor-pointer text-[1.05rem]">{language === 'ar' ? 'وظائف' : 'Careers'}</span></Link>
-            <button onClick={() => { scrollToSection('contact'); setMobileMenuOpen(false); }} className="text-start py-3.5 px-4 rounded-xl text-gray-600 hover:text-xf-dark hover:bg-xf-cream transition-all text-[1.05rem]">{t('home.footer.contact')}</button>
-            <Link href="/activate-key" onClick={() => setMobileMenuOpen(false)}><span className="block py-3.5 px-4 rounded-xl text-gray-600 hover:text-xf-dark hover:bg-xf-cream transition-all cursor-pointer text-[1.05rem]">{language === 'ar' ? 'تفعيل مفتاح' : 'Activate Key'}</span></Link>
-            {/* Bottom actions */}
-            <div className="mt-auto pt-4 pb-2 border-t border-gray-100 flex flex-col gap-2">
-              <a
-                href="https://wa.me/972597596030"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full py-3 text-center text-[1.05rem] inline-flex items-center justify-center gap-2 rounded-full bg-green-500 text-white font-semibold hover:bg-green-600 transition-all"
-              >
-                <Phone className="w-4 h-4" />
-                WhatsApp
-              </a>
-              <Link href="/auth">
-                <button className="btn-primary-xf w-full py-3 text-center text-[1.05rem] inline-flex items-center justify-center gap-2">
-                  <LogIn className="w-4 h-4" />
-                  {t('home.heroCtaLogin')}
+          <>
+            <button
+              type="button"
+              aria-label={language === 'ar' ? 'إغلاق القائمة' : 'Close menu'}
+              className="fixed inset-0 z-[1090] bg-slate-950/30 backdrop-blur-sm md:hidden"
+              onClick={() => setMobileMenuOpen(false)}
+            />
+            <nav
+              className="fixed inset-y-0 right-0 z-[1100] flex w-[min(88vw,22rem)] flex-col border-l border-white/60 bg-white/96 px-4 pb-4 pt-5 shadow-[0_24px_60px_rgba(15,23,42,0.18)] backdrop-blur-2xl md:hidden"
+              style={{ overflowY: 'auto' }}
+            >
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
+                  <img src={APP_LOGO} alt={APP_TITLE} className="h-8 w-auto" />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="rounded-xl p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+                >
+                  <X className="h-5 w-5" />
                 </button>
-              </Link>
-            </div>
-          </nav>
+              </div>
+              <p className="mb-5 text-sm leading-6 text-slate-500">
+                {language === 'ar'
+                  ? 'تنقل سريع بين الأقسام المهمة مع وصول مباشر للتواصل وتسجيل الدخول.'
+                  : 'Quick access to the key sections, contact touchpoints, and login.'}
+              </p>
+              {[
+                { action: () => { scrollToSection('packages'); setMobileMenuOpen(false); }, label: t('home.footer.packages') },
+                { action: () => { scrollToSection('stages'); setMobileMenuOpen(false); }, label: t('home.stages.title') },
+              ].map((item, i) => (
+                <button key={i} onClick={item.action} className="text-start py-3.5 px-4 rounded-2xl text-gray-600 hover:text-xf-dark hover:bg-xf-cream transition-all text-[1.05rem]">
+                  {item.label}
+                </button>
+              ))}
+              <Link href="/events" onClick={() => setMobileMenuOpen(false)}><span className="block py-3.5 px-4 rounded-2xl text-gray-600 hover:text-xf-dark hover:bg-xf-cream transition-all cursor-pointer text-[1.05rem]">{t('home.events.title')}</span></Link>
+              <Link href="/articles" onClick={() => setMobileMenuOpen(false)}><span className="block py-3.5 px-4 rounded-2xl text-gray-600 hover:text-xf-dark hover:bg-xf-cream transition-all cursor-pointer text-[1.05rem]">{t('home.articles.title')}</span></Link>
+              <Link href="/free-content" onClick={() => setMobileMenuOpen(false)}><span className="block py-3.5 px-4 rounded-2xl text-gray-600 hover:text-xf-dark hover:bg-xf-cream transition-all cursor-pointer text-[1.05rem]">{t('home.footer.freeContent')}</span></Link>
+              <Link href="/faq" onClick={() => setMobileMenuOpen(false)}><span className="block py-3.5 px-4 rounded-2xl text-gray-600 hover:text-xf-dark hover:bg-xf-cream transition-all cursor-pointer text-[1.05rem]">{language === 'ar' ? 'الأسئلة الشائعة' : 'FAQ'}</span></Link>
+              <Link href="/careers" onClick={() => setMobileMenuOpen(false)}><span className="block py-3.5 px-4 rounded-2xl text-gray-600 hover:text-xf-dark hover:bg-xf-cream transition-all cursor-pointer text-[1.05rem]">{language === 'ar' ? 'وظائف' : 'Careers'}</span></Link>
+              <button onClick={() => { scrollToSection('contact'); setMobileMenuOpen(false); }} className="text-start py-3.5 px-4 rounded-2xl text-gray-600 hover:text-xf-dark hover:bg-xf-cream transition-all text-[1.05rem]">{t('home.footer.contact')}</button>
+              <Link href="/activate-key" onClick={() => setMobileMenuOpen(false)}><span className="block py-3.5 px-4 rounded-2xl text-gray-600 hover:text-xf-dark hover:bg-xf-cream transition-all cursor-pointer text-[1.05rem]">{language === 'ar' ? 'تفعيل مفتاح' : 'Activate Key'}</span></Link>
+              <div className="mt-auto pt-5 border-t border-slate-200 flex flex-col gap-2">
+                <a
+                  href="https://wa.me/972597596030"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full py-3 text-center text-[1.05rem] inline-flex items-center justify-center gap-2 rounded-full bg-green-500 text-white font-semibold hover:bg-green-600 transition-all"
+                >
+                  <Phone className="w-4 h-4" />
+                  WhatsApp
+                </a>
+                <Link href="/auth">
+                  <button className="btn-primary-xf w-full py-3 text-center text-[1.05rem] inline-flex items-center justify-center gap-2">
+                    <LogIn className="w-4 h-4" />
+                    {t('home.heroCtaLogin')}
+                  </button>
+                </Link>
+              </div>
+            </nav>
+          </>
         )}
       </header>
 
       {/* ======== HERO SECTION ======== */}
-      <section className="relative overflow-hidden text-white" style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1a2744 50%, #064e3b 100%)' }}>
-        {/* Decorative radial gradients */}
-        <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse 80% 60% at 20% 80%, rgba(16,185,129,0.15), transparent), radial-gradient(ellipse 60% 50% at 80% 20%, rgba(245,158,11,0.1), transparent)' }} />
-        <div className="absolute top-20 left-10 w-80 h-80 bg-emerald-500/10 rounded-full blur-[80px]" />
-        <div className="absolute bottom-10 right-10 w-96 h-96 bg-amber-500/8 rounded-full blur-[100px]" />
+      <section className="relative overflow-hidden border-b border-slate-900/10 text-white" style={{ background: 'linear-gradient(135deg, #07111f 0%, #10203a 44%, #0a5c45 100%)' }}>
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.08),transparent_30%),radial-gradient(circle_at_bottom_right,rgba(16,185,129,0.12),transparent_34%)]" />
+        <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.06) 1px, transparent 1px)', backgroundSize: '56px 56px' }} />
+        <div className="absolute left-[-8rem] top-16 h-72 w-72 rounded-full bg-emerald-400/12 blur-[90px]" />
+        <div className="absolute bottom-[-6rem] right-[-4rem] h-80 w-80 rounded-full bg-amber-400/10 blur-[110px]" />
 
-        <div className="relative container mx-auto px-4 py-24 md:py-36 text-center">
-          <div className="max-w-4xl mx-auto">
-            <Badge className="mb-6 bg-white/10 text-white border-white/20 px-4 py-1.5 text-sm font-medium rounded-full backdrop-blur-sm">
-              <Star className="w-3.5 h-3.5 mr-1.5 fill-yellow-400 text-yellow-400" />
-              XFlex Trading Academy
-            </Badge>
+        <div className="relative container mx-auto px-4 py-20 md:py-24 lg:py-28">
+          <div className="grid items-center gap-10 lg:grid-cols-[minmax(0,1.08fr)_minmax(320px,0.92fr)] lg:gap-14">
+            <div className="text-center lg:text-start">
+              <Badge className="mb-5 border border-white/15 bg-white/10 px-4 py-1.5 text-sm font-medium text-white backdrop-blur-sm">
+                <Star className="mr-1.5 h-3.5 w-3.5 fill-yellow-400 text-yellow-400" />
+                {language === 'ar' ? 'تعلم مرتب. دعم فعلي. نتائج ملموسة.' : 'Structured learning. Real support. Tangible results.'}
+              </Badge>
 
-            <h1 className="text-4xl md:text-6xl lg:text-7xl font-extrabold mb-2 leading-tight tracking-[-0.5px]">
-              <span className="bg-gradient-to-r from-white via-emerald-100 to-white bg-clip-text text-transparent">
-                {t('home.heroTagline')}
-              </span>
-            </h1>
-            {/* Accent bar under heading */}
-            <div className="flex justify-center mb-8">
-              <div className="w-[60px] h-1 rounded-full" style={{ background: 'linear-gradient(to right, #f59e0b, #10b981)' }} />
+              <h1 className="text-4xl font-extrabold leading-[1.05] tracking-[-0.04em] md:text-6xl lg:text-7xl">
+                <span className="bg-gradient-to-r from-white via-emerald-50 to-white bg-clip-text text-transparent">
+                  {t('home.heroTagline')}
+                </span>
+              </h1>
+
+              <div className="mt-6 h-1 w-20 rounded-full bg-gradient-to-r from-amber-400 to-emerald-400 lg:mx-0 mx-auto" />
+
+              <p className="mx-auto mt-8 max-w-2xl whitespace-pre-line text-lg font-light leading-8 text-emerald-50/78 md:text-xl lg:mx-0">
+                {t('home.heroSubtext')}
+              </p>
+
+              <div className="mt-8 flex flex-wrap justify-center gap-2.5 lg:justify-start">
+                {[
+                  language === 'ar' ? '8 مراحل مرتبة' : '8 guided stages',
+                  language === 'ar' ? 'دعم فعلي' : 'Hands-on support',
+                  language === 'ar' ? 'تطبيق عملي' : 'Practical tools',
+                ].map((item) => (
+                  <span key={item} className="rounded-full border border-white/15 bg-white/8 px-4 py-2 text-sm font-medium text-white/90 backdrop-blur-sm">
+                    {item}
+                  </span>
+                ))}
+              </div>
+
+              <div className="mt-9 flex flex-col gap-4 sm:flex-row sm:justify-center lg:justify-start">
+                <button
+                  className="btn-pill-xf inline-flex items-center justify-center gap-2 px-10 py-3.5 text-base shadow-lg"
+                  style={{ boxShadow: '0 12px 44px rgba(16,185,129,0.24)' }}
+                  onClick={() => scrollToSection('services')}
+                >
+                  {t('home.heroCta')}
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+                <button
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-white/20 px-10 py-3.5 text-base font-medium text-white transition-all duration-300 hover:bg-white/10 sm:w-auto"
+                  onClick={() => scrollToSection('student-results')}
+                >
+                  {t('home.heroCtaFree')}
+                </button>
+              </div>
+
+              <div className="mt-10 grid gap-3 sm:grid-cols-3">
+                {heroStats.map((stat) => (
+                  <div key={stat.label} className="rounded-[22px] border border-white/12 bg-white/8 px-4 py-5 text-center backdrop-blur-sm lg:text-start">
+                    <div className="text-2xl font-extrabold tracking-tight text-white md:text-3xl">{stat.value}</div>
+                    <div className="mt-2 text-xs font-medium leading-5 text-emerald-50/68 md:text-sm">{stat.label}</div>
+                  </div>
+                ))}
+              </div>
             </div>
 
-            <p className="text-lg md:text-xl text-emerald-100/70 max-w-2xl mx-auto mb-10 leading-relaxed font-light">
-              {t('home.heroSubtext')}
-            </p>
+            <div className="fade-up">
+              <div className="relative mx-auto max-w-xl">
+                <div className="rounded-[30px] border border-white/15 bg-white/10 p-5 shadow-[0_24px_80px_rgba(7,17,31,0.26)] backdrop-blur-2xl md:p-6">
+                  <div className="rounded-[24px] bg-white px-4 py-4 shadow-sm md:px-5">
+                    <img src={APP_LOGO} alt={APP_TITLE} className="h-12 w-auto md:h-14" />
+                  </div>
 
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <button
-                className="btn-pill-xf text-base px-10 py-3.5 inline-flex items-center justify-center gap-2 shadow-lg"
-                style={{ boxShadow: '0 10px 40px rgba(16,185,129,0.25)' }}
-                onClick={() => scrollToSection('packages')}
-              >
-                {t('home.heroCta')}
-                <ChevronRight className="w-4 h-4" />
-              </button>
-              <button
-                className="w-full sm:w-auto px-10 py-3.5 rounded-full border border-white/20 text-white hover:bg-white/10 transition-all duration-300 text-base font-medium inline-flex items-center justify-center gap-2"
-                onClick={() => scrollToSection('student-results')}
-              >
-                {t('home.heroCtaFree')}
-              </button>
-            </div>
+                  <div className="mt-5 grid gap-3">
+                    {heroPillars.map((pillar) => {
+                      const Icon = pillar.icon;
 
-            {/* Stats */}
-            <div className="mt-20 grid grid-cols-3 gap-8 max-w-md mx-auto">
-              {[
-                { value: '5000+', label: language === 'ar' ? 'ساعدنا اكثر من 5000 طالب يربحوا من المجال' : 'Students helped profit from the market' },
-                { value: '+8 سنوات', label: language === 'ar' ? 'خبرة بالمجال' : 'Years of field experience' },
-                { value: '69300₪', label: language === 'ar' ? 'صافي ارباح طلابنا من قناة التوصيات خلال اقل من سنة' : 'Net student profits from signals channel in under a year' },
-              ].map((stat, i) => (
-                <div key={i} className="text-center">
-                  <div className="text-2xl md:text-3xl font-extrabold text-white tracking-tight">{stat.value}</div>
-                  <div className="text-xs md:text-sm text-emerald-200/50 mt-1 font-medium">{stat.label}</div>
+                      return (
+                        <div key={pillar.title} className="rounded-[22px] border border-white/10 bg-slate-950/18 p-4">
+                          <div className="flex items-start gap-3">
+                            <div className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/10 text-emerald-200">
+                              <Icon className="h-5 w-5" />
+                            </div>
+                            <div>
+                              <h3 className="text-base font-bold text-white">{pillar.title}</h3>
+                              <p className="mt-1 text-sm leading-6 text-emerald-50/72">{pillar.description}</p>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-[22px] border border-white/10 bg-white/7 p-4">
+                      <p className="text-[0.72rem] font-semibold uppercase tracking-[0.24em] text-emerald-100/50">
+                        {language === 'ar' ? 'طريقة الشرح' : 'Teaching style'}
+                      </p>
+                      <p className="mt-2 text-sm leading-6 text-white/88">
+                        {language === 'ar'
+                          ? 'تعلم واضح، مرتب، ويعتمد على التطبيق لا على الحشو.'
+                          : 'Clear, structured teaching built around application, not filler.'}
+                      </p>
+                    </div>
+                    <div className="rounded-[22px] border border-white/10 bg-white/7 p-4">
+                      <p className="text-[0.72rem] font-semibold uppercase tracking-[0.24em] text-emerald-100/50">
+                        {language === 'ar' ? 'ما الذي ستخرج به' : 'What you leave with'}
+                      </p>
+                      <p className="mt-2 text-sm leading-6 text-white/88">
+                        {language === 'ar'
+                          ? 'أساس أوضح، قراءة أهدأ للسوق، وقدرة أفضل على اتخاذ القرار.'
+                          : 'A stronger foundation, calmer market reading, and better decision-making confidence.'}
+                      </p>
+                    </div>
+                  </div>
                 </div>
-              ))}
+
+                <div className="absolute -bottom-5 left-4 hidden rounded-[20px] border border-white/15 bg-white/92 px-4 py-3 shadow-xl md:block">
+                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-700/70">
+                    {language === 'ar' ? 'دليل ثقة' : 'Trust signal'}
+                  </p>
+                  <p className="mt-1 text-sm font-semibold text-slate-900">
+                    {language === 'ar' ? 'نتائج الطلاب قبل الضجيج التسويقي' : 'Student proof before marketing noise'}
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -370,7 +513,7 @@ export default function Home() {
       </section>
 
       {/* ======== WHY XFLEX ======== */}
-      <section className="py-24" style={{ background: 'linear-gradient(135deg, rgba(245,158,11,0.04), rgba(16,185,129,0.04))' }}>
+      <section id="services" className="py-24" style={{ background: 'linear-gradient(135deg, rgba(245,158,11,0.04), rgba(16,185,129,0.04))' }}>
         <div className="container mx-auto px-4">
           <div className="text-center mb-16 fade-up">
             <h2 className="text-3xl md:text-4xl font-extrabold text-xf-dark tracking-[-0.5px] heading-accent">
@@ -653,74 +796,131 @@ export default function Home() {
 
       {/* ======== TESTIMONIALS SECTION ======== */}
       {testimonials && testimonials.length > 0 && (
-        <section className="py-24 bg-[var(--color-xf-cream)]">
-          <div className="container mx-auto px-4">
-            <div className="text-center mb-16 fade-up">
-              <h2 className="text-3xl md:text-4xl font-extrabold text-xf-dark tracking-[-0.5px] heading-accent">
-                {language === 'ar' ? 'ماذا يقول طلابنا' : 'What Our Students Say'}
-              </h2>
-              <p className="text-gray-500 text-lg mt-6">
-                {language === 'ar' ? 'آراء حقيقية من متداولين استفادوا من الأكاديمية' : 'Real feedback from traders who benefited from the academy'}
-              </p>
-            </div>
+        <section className="relative overflow-hidden py-24 bg-[linear-gradient(180deg,rgba(250,247,242,0.84),rgba(255,255,255,1))]">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.08),transparent_24%),radial-gradient(circle_at_bottom_right,rgba(245,158,11,0.08),transparent_28%)]" />
+          <div className="relative container mx-auto px-4" dir={isRTL ? 'rtl' : 'ltr'}>
+            <div className="grid gap-10 lg:grid-cols-[0.78fr_1.22fr] lg:items-start">
+              <div className="fade-up lg:sticky lg:top-28">
+                <Badge variant="outline" className="border-emerald-200 bg-white/90 px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-emerald-700">
+                  {language === 'ar' ? 'أصوات من الداخل' : 'Inside Voices'}
+                </Badge>
+                <h2 className="mt-5 text-3xl font-extrabold tracking-[-0.5px] text-xf-dark md:text-4xl">
+                  {language === 'ar' ? 'ماذا يقول طلابنا بعد التجربة الفعلية' : 'What Students Say After the Real Experience'}
+                </h2>
+                <p className="mt-6 text-lg leading-8 text-gray-600">
+                  {language === 'ar'
+                    ? 'هنا لا نعتمد على وعود عامة. هذه رسائل وانطباعات من طلاب يصفون أسلوب الشرح، المتابعة، والدعم كما عاشوه فعلاً.'
+                    : 'This is not generic marketing language. These are student reactions describing the teaching style, follow-up, and support as they actually experienced it.'}
+                </p>
+                <div className="mt-8 space-y-3">
+                  {[
+                    language === 'ar' ? 'التركيز على وضوح الشرح لا على الإبهار الزائد.' : 'Clarity of explanation over visual hype.',
+                    language === 'ar' ? 'المتابعة تظهر كجزء أساسي من التجربة لا كإضافة جانبية.' : 'Follow-up shows up as a core part of the experience, not an afterthought.',
+                    language === 'ar' ? 'التقييم هنا مبني على تجربة طلاب دخلوا المسار فعلاً.' : 'The feedback comes from students who actually went through the path.',
+                  ].map((item) => (
+                    <div key={item} className="flex items-start gap-3 rounded-[20px] border border-white/80 bg-white/90 px-4 py-3 shadow-[0_10px_28px_rgba(15,23,42,0.05)] backdrop-blur-sm">
+                      <CheckCircle className="mt-0.5 h-4 w-4 shrink-0 text-xf-primary" />
+                      <p className="text-sm leading-6 text-gray-600">{item}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
 
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto">
-              {testimonials.slice(0, 6).map((t) => (
-                <div key={t.id} className="fade-up glass-card p-6 relative">
-                  <Quote className="w-8 h-8 text-xf-primary/10 absolute top-4 end-4" />
-                  <div className="flex gap-0.5 mb-3">
-                    {[1, 2, 3, 4, 5].map((n) => (
-                      <Star key={n} className={`w-4 h-4 ${n <= t.rating ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'}`} />
-                    ))}
-                  </div>
-                  <p className="text-sm text-gray-700 leading-relaxed mb-4">
-                    "{isRTL ? t.textAr : t.textEn}"
-                  </p>
-                  <div className="flex items-center gap-3 border-t border-gray-100 pt-3">
-                    {t.avatarUrl ? (
-                      <img src={t.avatarUrl} alt="" className="w-9 h-9 rounded-full object-cover" />
-                    ) : (
-                      <div className="w-9 h-9 rounded-full bg-emerald-50 flex items-center justify-center text-xf-primary font-bold text-xs">
-                        {(isRTL ? t.nameAr : t.nameEn).charAt(0)}
+              <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+                {testimonials.slice(0, 6).map((t) => (
+                  <div key={t.id} className="fade-up flex h-full flex-col rounded-[26px] border border-white/80 bg-white/95 p-6 shadow-[0_18px_40px_rgba(15,23,42,0.07)] backdrop-blur-sm">
+                    <div className="mb-4 flex items-start justify-between gap-4">
+                      <div className="flex gap-0.5">
+                        {[1, 2, 3, 4, 5].map((n) => (
+                          <Star key={n} className={`h-4 w-4 ${n <= t.rating ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'}`} />
+                        ))}
                       </div>
-                    )}
-                    <div>
-                      <p className="text-sm font-semibold text-xf-dark">{isRTL ? t.nameAr : t.nameEn}</p>
-                      {(t.titleAr || t.titleEn) && (
-                        <p className="text-xs text-gray-500">{isRTL ? t.titleAr : t.titleEn}</p>
+                      <span className="rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-700">
+                        {language === 'ar' ? 'تجربة طالب' : 'Student Voice'}
+                      </span>
+                    </div>
+                    <Quote className="mb-4 h-8 w-8 text-xf-primary/12" />
+                    <p className="flex-1 text-sm leading-7 text-gray-700">
+                      "{isRTL ? t.textAr : t.textEn}"
+                    </p>
+                    <div className="mt-5 flex items-center gap-3 border-t border-slate-100 pt-4">
+                      {t.avatarUrl ? (
+                        <img src={t.avatarUrl} alt="" className="h-10 w-10 rounded-full object-cover" />
+                      ) : (
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-50 text-xs font-bold text-xf-primary">
+                          {(isRTL ? t.nameAr : t.nameEn).charAt(0)}
+                        </div>
                       )}
+                      <div>
+                        <p className="text-sm font-semibold text-xf-dark">{isRTL ? t.nameAr : t.nameEn}</p>
+                        <p className="text-xs text-gray-500">
+                          {(isRTL ? t.titleAr : t.titleEn) || (language === 'ar' ? 'طالب في الأكاديمية' : 'Academy student')}
+                        </p>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </div>
         </section>
       )}
 
       {/* ======== PACKAGES SECTION ======== */}
-      <section id="packages" className="py-24 bg-[var(--color-xf-cream)]">
-        <div className="container mx-auto px-4">
-          <div className="text-center mb-16 fade-up">
-            <h2 className="text-3xl md:text-4xl font-extrabold text-xf-dark tracking-[-0.5px] heading-accent">
-              {t('home.packages.title')}
-            </h2>
-            <p className="text-gray-500 text-lg max-w-xl mx-auto mt-6">
-              {t('home.packages.subtitle')}
-            </p>
+      <section id="packages" className="relative overflow-hidden py-24 bg-white">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.07),transparent_20%),radial-gradient(circle_at_bottom_right,rgba(245,158,11,0.09),transparent_24%)]" />
+        <div className="relative container mx-auto px-4" dir={isRTL ? 'rtl' : 'ltr'}>
+          <div className="mx-auto mb-10 max-w-5xl fade-up">
+            <div className="rounded-[30px] border border-slate-200 bg-[var(--color-xf-cream)] p-6 shadow-[0_16px_40px_rgba(15,23,42,0.05)] md:p-8">
+              <div className="grid gap-6 lg:grid-cols-[1fr_auto] lg:items-center">
+                <div className="text-center lg:text-start">
+                  <h2 className="text-3xl font-extrabold tracking-[-0.5px] text-xf-dark md:text-4xl">
+                    {t('home.packages.title')}
+                  </h2>
+                  <p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-gray-600 lg:mx-0">
+                    {t('home.packages.subtitle')}
+                  </p>
+                </div>
+                <div className="rounded-[24px] border border-emerald-200 bg-white px-5 py-4 text-center shadow-sm lg:max-w-xs lg:text-start">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-700">
+                    {language === 'ar' ? 'معلومة سريعة' : 'Quick Note'}
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-gray-600">
+                    {language === 'ar'
+                      ? 'كل الأسعار هنا بالشيكل، والمسار التعليمي دائم، بينما التجديد الشهري يخص الخدمات الزمنية حسب الباقة.'
+                      : 'All prices here are in ILS. The course path is permanent, while monthly renewal applies to the timed services in each package.'}
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
 
-          <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+          <div className="grid gap-6 md:grid-cols-2 max-w-5xl mx-auto">
             {/* Basic Package */}
-            <div className="fade-up glass-card p-8 flex flex-col">
+            <div className="fade-up flex flex-col rounded-[28px] border border-slate-200 bg-white p-8 shadow-[0_18px_44px_rgba(15,23,42,0.06)]">
               <div className="text-center mb-6">
+                <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-600">
+                  {language === 'ar' ? 'للانطلاقة الواضحة' : 'For a clear start'}
+                </span>
                 <h3 className="text-2xl font-extrabold text-xf-dark mb-1 tracking-[-0.5px]">{t('home.packages.basic')}</h3>
-                <div className="flex items-baseline justify-center gap-1 mt-3">
-                  <span className="text-5xl font-extrabold text-xf-dark">700₪</span>
+                <div className="flex items-end justify-center gap-2 mt-3">
+                  <span className="text-5xl font-extrabold text-xf-dark">{formatIlsAmount(basicPricing.ilsPrice)}</span>
+                  <span className="text-lg font-semibold text-slate-500 mb-1">{formatUsdAmount(basicPricing.usdPrice)}</span>
                 </div>
                 <p className="text-sm text-gray-500 mt-1">{t('home.packages.price')} • {t('home.packages.lifetime')}</p>
                 <p className="text-xs text-xf-primary mt-1 font-medium">
-                  {t('home.packages.renewal')}: 175₪{t('home.packages.perMonth')}
+                  {t('home.packages.renewal')}: {formatIlsAmount(basicPricing.ilsRenewal ?? 0)} / {formatUsdAmount(basicPricing.usdRenewal ?? 0)}{t('home.packages.perMonth')}
+                </p>
+              </div>
+
+              <div className="mb-6 rounded-[22px] bg-emerald-50 px-4 py-4">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-700">
+                  {language === 'ar' ? 'مناسب إذا كنت تريد' : 'Best if you want'}
+                </p>
+                <p className="mt-2 text-sm leading-6 text-gray-600">
+                  {language === 'ar'
+                    ? 'مساراً تعليمياً مرتباً مع التوصيات والدعم، من دون إضافة LexAI في البداية.'
+                    : 'A structured learning path with recommendations and support, without adding LexAI at the start.'}
                 </p>
               </div>
 
@@ -754,7 +954,7 @@ export default function Home() {
             </div>
 
             {/* Comprehensive Package */}
-            <div className="fade-up relative rounded-[16px] pt-12 pb-8 px-8 flex flex-col text-white" style={{ background: 'linear-gradient(135deg, #10b981, #059669)' ,boxShadow: '0 20px 60px rgba(16,185,129,0.2)' }}>
+            <div className="fade-up relative flex flex-col rounded-[30px] border border-emerald-400/40 px-8 pb-8 pt-12 text-white" style={{ background: 'linear-gradient(135deg, #10b981, #0f766e)' , boxShadow: '0 20px 60px rgba(16,185,129,0.2)' }}>
               <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 z-10">
                 <Badge className="bg-yellow-400 text-yellow-900 font-bold px-4 py-1 rounded-full shadow-lg text-xs">
                   <Star className="w-3 h-3 mr-1 fill-current" />
@@ -764,12 +964,24 @@ export default function Home() {
 
               <div className="text-center mb-6 mt-2">
                 <h3 className="text-2xl font-extrabold mb-1 tracking-[-0.5px]">{t('home.packages.comprehensive')}</h3>
-                <div className="flex items-baseline justify-center gap-1 mt-3">
-                  <span className="text-5xl font-extrabold">1700₪</span>
+                <div className="flex items-end justify-center gap-2 mt-3">
+                  <span className="text-5xl font-extrabold">{formatIlsAmount(comprehensivePricing.ilsPrice)}</span>
+                  <span className="text-lg font-semibold text-emerald-100 mb-1">{formatUsdAmount(comprehensivePricing.usdPrice)}</span>
                 </div>
                 <p className="text-sm text-emerald-100 mt-1">{t('home.packages.price')} • {t('home.packages.lifetime')}</p>
                 <p className="text-xs text-emerald-200 mt-1">
-                  {t('home.packages.renewal')}: 350₪{t('home.packages.perMonth')}
+                  {t('home.packages.renewal')}: {formatIlsAmount(comprehensivePricing.ilsRenewal ?? 0)} / {formatUsdAmount(comprehensivePricing.usdRenewal ?? 0)}{t('home.packages.perMonth')}
+                </p>
+              </div>
+
+              <div className="mb-6 rounded-[22px] border border-white/14 bg-white/10 px-4 py-4 backdrop-blur-sm">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-100/80">
+                  {language === 'ar' ? 'مناسب إذا كنت تريد' : 'Best if you want'}
+                </p>
+                <p className="mt-2 text-sm leading-6 text-white/88">
+                  {language === 'ar'
+                    ? 'كل ما في الباقة الأساسية مع LexAI للقراءة والتحليل كجزء من التجربة الكاملة.'
+                    : 'Everything in Basic plus LexAI for reading and analysis as part of the full package experience.'}
                 </p>
               </div>
 
@@ -839,135 +1051,242 @@ export default function Home() {
       </section>
 
       {/* ======== CONTACT SECTION ======== */}
-      <section id="contact" className="py-24 bg-white">
-        <div className="container mx-auto px-4 max-w-lg">
-          <div className="text-center mb-10 fade-up">
-            <h2 className="text-3xl font-extrabold text-xf-dark tracking-[-0.5px] heading-accent">
-              {t('home.contact.title')}
-            </h2>
-            <p className="text-gray-500 mt-4">{t('home.contact.subtitle')}</p>
-          </div>
+      <section id="contact" className="py-24 bg-[var(--color-xf-cream)]">
+        <div className="container mx-auto px-4 max-w-6xl" dir={isRTL ? 'rtl' : 'ltr'}>
+          <div className="grid gap-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-start">
+            <div className="fade-up relative overflow-hidden rounded-[30px] bg-[#07111f] p-8 text-white shadow-[0_24px_70px_rgba(7,17,31,0.22)] md:p-10">
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.22),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(245,158,11,0.16),transparent_30%)]" />
+              <div className="relative">
+                <Badge className="border border-white/15 bg-white/10 px-4 py-1.5 text-sm font-medium text-white backdrop-blur-sm">
+                  {language === 'ar' ? 'تواصل واضح ومباشر' : 'Clear, direct contact'}
+                </Badge>
+                <h2 className="mt-5 text-3xl font-extrabold tracking-[-0.5px] md:text-4xl">
+                  {t('home.contact.title')}
+                </h2>
+                <p className="mt-5 text-base leading-8 text-white/78 md:text-lg">
+                  {t('home.contact.subtitle')}
+                </p>
 
-          {contactSent ? (
-            <div className="flex flex-col items-center gap-3 py-6 text-xf-primary fade-up">
-              <CheckCircle className="w-10 h-10" />
-              <p className="font-semibold">{t('home.contact.sent')}</p>
+                <div className="mt-8 space-y-3">
+                  {[
+                    {
+                      icon: HelpCircle,
+                      title: language === 'ar' ? 'استفسارات قبل الاشتراك' : 'Pre-enrollment questions',
+                      description: language === 'ar' ? 'إذا كنت متردداً بين الباقات أو تريد فهم المسار الأنسب لك.' : 'If you are deciding between packages or want the right learning path for your case.',
+                    },
+                    {
+                      icon: KeyRound,
+                      title: language === 'ar' ? 'مساعدة في التفعيل' : 'Activation help',
+                      description: language === 'ar' ? 'نوجّهك إذا كان لديك سؤال عن المفاتيح أو الوصول إلى الباقة.' : 'We can guide you if you have a question about keys or package access.',
+                    },
+                    {
+                      icon: Phone,
+                      title: language === 'ar' ? 'تواصل أسرع عند الحاجة' : 'A faster path when needed',
+                      description: language === 'ar' ? 'يمكنك التحول مباشرة إلى واتساب إذا كان سؤالك يحتاج رداً أسرع.' : 'You can switch to WhatsApp directly if the question needs a quicker back-and-forth.',
+                    },
+                  ].map((item) => {
+                    const Icon = item.icon;
+
+                    return (
+                      <div key={item.title} className="rounded-[22px] border border-white/12 bg-white/8 p-4 backdrop-blur-sm">
+                        <div className="flex items-start gap-3">
+                          <div className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/10 text-emerald-200">
+                            <Icon className="h-5 w-5" />
+                          </div>
+                          <div>
+                            <h3 className="text-sm font-bold text-white md:text-base">{item.title}</h3>
+                            <p className="mt-1 text-sm leading-6 text-white/72">{item.description}</p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="mt-8 flex flex-wrap gap-3">
+                  <a
+                    href="https://wa.me/972597596030"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 rounded-full bg-green-500 px-6 py-3 text-sm font-semibold text-white transition hover:bg-green-600"
+                  >
+                    <Phone className="h-4 w-4" />
+                    {t('home.whatsapp')}
+                  </a>
+                  <Link href="/faq">
+                    <button className="rounded-full border border-white/18 px-6 py-3 text-sm font-semibold text-white transition hover:bg-white/10">
+                      {language === 'ar' ? 'الأسئلة الشائعة' : 'FAQ'}
+                    </button>
+                  </Link>
+                </div>
+              </div>
             </div>
-          ) : (
-            <form onSubmit={handleContactSubmit} className="space-y-4 text-start fade-up">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                  {t('home.contact.email')}
-                </label>
-                <Input
-                  type="email"
-                  dir="ltr"
-                  placeholder={t('home.contact.emailPlaceholder')}
-                  value={contactEmail}
-                  onChange={(e) => setContactEmail(e.target.value)}
-                  required
-                  className="rounded-[10px] border-gray-200 focus:border-xf-primary focus:ring-xf-primary"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                  {t('home.contact.message')}
-                </label>
-                <textarea
-                  className="flex w-full rounded-[10px] border border-gray-200 bg-background px-3 py-2.5 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-xf-primary focus-visible:ring-offset-2 min-h-[120px] resize-y transition-all"
-                  placeholder={t('home.contact.messagePlaceholder')}
-                  value={contactMessage}
-                  onChange={(e) => setContactMessage(e.target.value)}
-                  required
-                />
-              </div>
-              {contactError && (
-                <p className="text-sm text-red-600">{contactError}</p>
-              )}
-              <button type="submit" className="btn-primary-xf w-full py-3.5 text-sm inline-flex items-center justify-center gap-2" disabled={contactSending}>
-                {contactSending ? (
-                  <><Loader2 className="w-4 h-4 animate-spin" />{t('home.contact.sending')}</>
-                ) : (
-                  <><Send className="w-4 h-4" />{t('home.contact.send')}</>
-                )}
-              </button>
-            </form>
-          )}
 
-          {/* WhatsApp CTA */}
-          <div className="mt-8 text-center fade-up">
-            <a
-              href="https://wa.me/972597596030"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-6 py-2.5 rounded-full bg-green-500 text-white hover:bg-green-600 transition-all duration-150 font-medium text-sm"
-              style={{ boxShadow: '0 4px 20px rgba(34,197,94,0.25)' }}
-            >
-              <Phone className="w-4 h-4" />
-              {t('home.whatsapp')}
-            </a>
+            <div className="fade-up rounded-[30px] border border-slate-200 bg-white p-6 shadow-[0_20px_52px_rgba(15,23,42,0.08)] md:p-8">
+              <div className="mb-8 text-center lg:text-start">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-700">
+                  {language === 'ar' ? 'راسلنا عبر البريد' : 'Message us by email'}
+                </p>
+                <p className="mt-3 text-sm leading-6 text-gray-500 md:text-base">
+                  {language === 'ar'
+                    ? 'اكتب سؤالك بوضوح وسنعود إليك عبر البريد الإلكتروني الذي تدخله هنا.'
+                    : 'Write your question clearly and we will reply to the email address you enter here.'}
+                </p>
+              </div>
+
+              {contactSent ? (
+                <div className="flex flex-col items-center gap-3 rounded-[24px] border border-emerald-200 bg-emerald-50/70 py-10 text-xf-primary">
+                  <CheckCircle className="h-10 w-10" />
+                  <p className="font-semibold">{t('home.contact.sent')}</p>
+                </div>
+              ) : (
+                <form onSubmit={handleContactSubmit} className="space-y-5 text-start">
+                  <div>
+                    <label className="mb-1.5 block text-sm font-semibold text-gray-700">
+                      {t('home.contact.email')}
+                    </label>
+                    <Input
+                      type="email"
+                      dir="ltr"
+                      placeholder={t('home.contact.emailPlaceholder')}
+                      value={contactEmail}
+                      onChange={(e) => setContactEmail(e.target.value)}
+                      required
+                      className="h-12 rounded-[14px] border-slate-200 focus:border-xf-primary focus:ring-xf-primary"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-semibold text-gray-700">
+                      {t('home.contact.message')}
+                    </label>
+                    <textarea
+                      className="min-h-[160px] w-full resize-y rounded-[14px] border border-slate-200 bg-background px-3 py-3 text-sm ring-offset-background transition-all placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-xf-primary focus-visible:ring-offset-2"
+                      placeholder={t('home.contact.messagePlaceholder')}
+                      value={contactMessage}
+                      onChange={(e) => setContactMessage(e.target.value)}
+                      required
+                    />
+                  </div>
+                  {contactError && (
+                    <p className="text-sm text-red-600">{contactError}</p>
+                  )}
+                  <button type="submit" className="btn-primary-xf inline-flex w-full items-center justify-center gap-2 py-3.5 text-sm" disabled={contactSending}>
+                    {contactSending ? (
+                      <><Loader2 className="h-4 w-4 animate-spin" />{t('home.contact.sending')}</>
+                    ) : (
+                      <><Send className="h-4 w-4" />{t('home.contact.send')}</>
+                    )}
+                  </button>
+                </form>
+              )}
+
+              <div className="mt-6 border-t border-slate-100 pt-5">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm leading-6 text-gray-500">
+                    {language === 'ar'
+                      ? 'إذا كنت تفضّل رسالة مباشرة وسريعة، استخدم واتساب بدلاً من النموذج.'
+                      : 'If you prefer a faster direct message, use WhatsApp instead of the form.'}
+                  </p>
+                  <a
+                    href="https://wa.me/972597596030"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center gap-2 rounded-full border border-green-200 px-5 py-2.5 text-sm font-semibold text-green-700 transition hover:bg-green-50"
+                  >
+                    <Phone className="h-4 w-4" />
+                    {t('home.whatsapp')}
+                  </a>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
       {/* ======== FOOTER ======== */}
-      <footer className="bg-xf-dark text-gray-400 py-14">
-        <div className="container mx-auto px-4">
-          <div className="grid md:grid-cols-3 gap-8 mb-10">
+      <footer className="relative overflow-hidden bg-[#07111f] py-16 text-slate-300">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.14),transparent_25%),radial-gradient(circle_at_bottom_right,rgba(245,158,11,0.1),transparent_30%)]" />
+        <div className="relative container mx-auto px-4">
+          <div className="grid gap-10 border-b border-white/10 pb-10 md:grid-cols-[1.2fr_0.85fr_0.95fr]">
             {/* Brand */}
             <div>
-              <div className="flex items-center gap-2 mb-3">
-                <span className="text-xl font-extrabold text-white tracking-tight">XFlex</span>
-                <span className="text-sm text-gray-500 font-medium">Trading Academy</span>
+              <div className="mb-4 inline-flex rounded-[24px] bg-white px-4 py-3 shadow-[0_12px_32px_rgba(7,17,31,0.18)]">
+                <img
+                  src={APP_LOGO}
+                  alt={APP_TITLE}
+                  className="h-11 w-auto"
+                />
               </div>
-              <p className="text-sm text-gray-500 leading-relaxed">
+              <p className="max-w-md text-sm leading-7 text-slate-300/75">
                 {t('home.footer.tagline')}
+              </p>
+              <p className="mt-4 max-w-md text-sm leading-7 text-emerald-100/65">
+                {language === 'ar'
+                  ? 'منصة تعليمية تركز على الوضوح، التدرج، والدعم الحقيقي حتى يشعر الطالب أن هناك من يسير معه فعلاً.'
+                  : 'A learning platform built around clarity, progression, and support that feels genuinely present.'}
               </p>
             </div>
 
             {/* Quick Links */}
             <div>
-              <h4 className="text-sm font-semibold text-gray-300 mb-4">{t('home.footer.quickLinks')}</h4>
+              <h4 className="mb-4 text-sm font-semibold text-white">{t('home.footer.quickLinks')}</h4>
               <ul className="space-y-2.5 text-sm">
-                <li><button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="hover:text-white transition-colors duration-150">{t('home.footer.home')}</button></li>
-                <li><button onClick={() => scrollToSection('packages')} className="hover:text-white transition-colors duration-150">{t('home.footer.packages')}</button></li>
-                <li><Link href="/contact"><span className="hover:text-white transition-colors duration-150 cursor-pointer">{language === 'ar' ? 'تواصل معنا' : 'Contact Us'}</span></Link></li>
-                <li><Link href="/faq"><span className="hover:text-white transition-colors duration-150 cursor-pointer">{language === 'ar' ? 'الأسئلة الشائعة' : 'FAQ'}</span></Link></li>
-                <li><Link href="/free-content"><span className="hover:text-white transition-colors duration-150 cursor-pointer">{t('home.footer.freeContent')}</span></Link></li>
-                <li><Link href="/activate-key"><span className="hover:text-white transition-colors duration-150 cursor-pointer">{language === 'ar' ? 'تفعيل مفتاح' : 'Activate Key'}</span></Link></li>
-                <li><Link href="/careers"><span className="hover:text-white transition-colors duration-150 cursor-pointer">{language === 'ar' ? 'وظائف' : 'Careers'}</span></Link></li>
-                <li><Link href="/terms"><span className="hover:text-white transition-colors duration-150 cursor-pointer">{language === 'ar' ? 'الشروط والأحكام' : 'Terms & Conditions'}</span></Link></li>
-                <li><Link href="/refund-policy"><span className="hover:text-white transition-colors duration-150 cursor-pointer">{language === 'ar' ? 'سياسة الاسترجاع' : 'Refund Policy'}</span></Link></li>
-                <li><Link href="/privacy"><span className="hover:text-white transition-colors duration-150 cursor-pointer">{language === 'ar' ? 'سياسة الخصوصية' : 'Privacy Policy'}</span></Link></li>
-                <li><Link href="/auth"><span className="hover:text-white transition-colors duration-150 cursor-pointer">{t('home.heroCtaLogin')}</span></Link></li>
+                <li><button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="transition-colors duration-150 hover:text-white">{t('home.footer.home')}</button></li>
+                <li><button onClick={() => scrollToSection('services')} className="transition-colors duration-150 hover:text-white">{language === 'ar' ? 'خدماتنا' : 'Our Services'}</button></li>
+                <li><button onClick={() => scrollToSection('packages')} className="transition-colors duration-150 hover:text-white">{t('home.footer.packages')}</button></li>
+                <li><button onClick={() => scrollToSection('student-results')} className="transition-colors duration-150 hover:text-white">{language === 'ar' ? 'نتائج الطلاب' : 'Student Results'}</button></li>
+                <li><Link href="/faq"><span className="cursor-pointer transition-colors duration-150 hover:text-white">{language === 'ar' ? 'الأسئلة الشائعة' : 'FAQ'}</span></Link></li>
+                <li><Link href="/careers"><span className="cursor-pointer transition-colors duration-150 hover:text-white">{language === 'ar' ? 'وظائف' : 'Careers'}</span></Link></li>
+                <li><Link href="/auth"><span className="cursor-pointer transition-colors duration-150 hover:text-white">{t('home.heroCtaLogin')}</span></Link></li>
               </ul>
             </div>
 
-            {/* Social */}
             <div>
-              <h4 className="text-sm font-semibold text-gray-300 mb-4">{t('home.footer.socialFollow')}</h4>
-              <div className="flex gap-3">
+              <h4 className="mb-4 text-sm font-semibold text-white">{language === 'ar' ? 'تواصل واكتشف المزيد' : 'Connect and explore more'}</h4>
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={() => scrollToSection('contact')}
+                  className="inline-flex items-center justify-center rounded-full border border-white/12 bg-white/6 px-4 py-3 text-sm font-medium text-white transition hover:bg-white/10"
+                >
+                  {language === 'ar' ? 'أرسل لنا استفسارك' : 'Send us your question'}
+                </button>
+                <a
+                  href="https://wa.me/972597596030"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center gap-2 rounded-full bg-green-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-green-600"
+                >
+                  <Phone className="h-4 w-4" />
+                  WhatsApp
+                </a>
+              </div>
+              <div className="mt-5 flex gap-3">
                 <a href="https://www.instagram.com/xflex.academy?igsh=NG9jZng1emlxM3I3" target="_blank" rel="noopener noreferrer"
-                  className="w-9 h-9 rounded-[10px] bg-white/8 hover:bg-pink-600 flex items-center justify-center transition-all duration-150">
-                  <Instagram className="w-4 h-4 text-gray-400" />
+                  className="flex h-10 w-10 items-center justify-center rounded-[12px] bg-white/8 transition-all duration-150 hover:bg-pink-600">
+                  <Instagram className="h-4 w-4 text-slate-300" />
                 </a>
                 <a href="https://www.facebook.com/share/1Aj9HNNwsv/?mibextid=wwXIfr" target="_blank" rel="noopener noreferrer"
-                  className="w-9 h-9 rounded-[10px] bg-white/8 hover:bg-emerald-600 flex items-center justify-center transition-all duration-150">
-                  <Facebook className="w-4 h-4 text-gray-400" />
+                  className="flex h-10 w-10 items-center justify-center rounded-[12px] bg-white/8 transition-all duration-150 hover:bg-emerald-600">
+                  <Facebook className="h-4 w-4 text-slate-300" />
                 </a>
                 <a href="https://t.me/+cXq1JGThuZkxNGI0" target="_blank" rel="noopener noreferrer"
-                  className="w-9 h-9 rounded-[10px] bg-white/8 hover:bg-sky-500 flex items-center justify-center transition-all duration-150">
-                  <Send className="w-4 h-4 text-gray-400" />
+                  className="flex h-10 w-10 items-center justify-center rounded-[12px] bg-white/8 transition-all duration-150 hover:bg-sky-500">
+                  <Send className="h-4 w-4 text-slate-300" />
                 </a>
                 <a href="https://wa.me/972597596030" target="_blank" rel="noopener noreferrer"
-                  className="w-9 h-9 rounded-[10px] bg-white/8 hover:bg-green-600 flex items-center justify-center transition-all duration-150">
-                  <Phone className="w-4 h-4 text-gray-400" />
+                  className="flex h-10 w-10 items-center justify-center rounded-[12px] bg-white/8 transition-all duration-150 hover:bg-green-600">
+                  <Phone className="h-4 w-4 text-slate-300" />
                 </a>
+              </div>
+              <div className="mt-5 space-y-2 text-sm text-slate-300/68">
+                <Link href="/terms"><span className="block cursor-pointer transition-colors duration-150 hover:text-white">{language === 'ar' ? 'الشروط والأحكام' : 'Terms & Conditions'}</span></Link>
+                <Link href="/refund-policy"><span className="block cursor-pointer transition-colors duration-150 hover:text-white">{language === 'ar' ? 'سياسة الاسترجاع' : 'Refund Policy'}</span></Link>
+                <Link href="/privacy"><span className="block cursor-pointer transition-colors duration-150 hover:text-white">{language === 'ar' ? 'سياسة الخصوصية' : 'Privacy Policy'}</span></Link>
               </div>
             </div>
           </div>
 
-          <div className="border-t pt-6 text-center text-xs text-gray-600" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+          <div className="pt-6 text-center text-xs text-slate-400/60">
             &copy; {new Date().getFullYear()} XFlex Trading Academy. {t('home.footer.rights')}
           </div>
         </div>

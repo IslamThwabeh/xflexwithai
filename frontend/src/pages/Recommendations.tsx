@@ -135,6 +135,9 @@ export default function Recommendations() {
   const { data: activationStatus } = trpc.subscriptions.activationStatus.useQuery(undefined, {
     enabled: !!user,
   });
+  const { data: serviceAccessSummary, isLoading: serviceAccessLoading } = trpc.subscriptions.serviceAccessSummary.useQuery(undefined, {
+    enabled: !!user,
+  });
   const { data: onboardingStatus } = trpc.onboarding.isComplete.useQuery(undefined, {
     enabled: !!user,
   });
@@ -177,6 +180,7 @@ export default function Recommendations() {
   const canRead = !!me && (me.hasSubscription || me.canPublish);
   const canManageThreadNotifications = !!me?.hasSubscription;
   const isFrozenRec = !!me && !me.hasSubscription && !me.canPublish && me.isFrozen;
+  const recommendationAccess = serviceAccessSummary?.recommendation;
   const isArabic = language === 'ar';
   const { studyPeriodDays, entitlementDays } = getPendingActivationWindow(activationStatus);
   const activationDeadline = formatPendingActivationDate(activationStatus?.maxActivationDate, isArabic);
@@ -243,8 +247,18 @@ export default function Recommendations() {
     muteThreadMutation.mutate({ threadRootMessageId });
   };
 
+  if (meLoading || serviceAccessLoading) {
+    return (
+      <ClientLayout>
+      <div className="min-h-[calc(100vh-64px)] flex items-center justify-center bg-[var(--color-xf-cream)]">
+        <p className="text-muted-foreground">{language === 'ar' ? 'جاري التحميل...' : 'Loading...'}</p>
+      </div>
+      </ClientLayout>
+    );
+  }
+
   // Full-screen paywall — matches LexAI style
-  if (!meLoading && !canRead) {
+  if (!canRead) {
     // Frozen subscription — show specific frozen message
     if (isFrozenRec) {
       const frozenUntil = me?.frozenUntil;
@@ -275,6 +289,42 @@ export default function Recommendations() {
               <Link href="/support">
                 <Button variant="outline" className="w-full">
                   {language === 'ar' ? 'تواصل مع الدعم' : 'Contact Support'}
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        </div>
+        </ClientLayout>
+      );
+    }
+
+    if (recommendationAccess?.status === 'expired') {
+      return (
+        <ClientLayout>
+        <div className="min-h-[calc(100vh-64px)] flex items-center justify-center bg-[var(--color-xf-cream)]">
+          <Card className="max-w-2xl w-full mx-4">
+            <CardHeader className="text-center">
+              <div className="mx-auto w-16 h-16 bg-gradient-to-br from-amber-500 to-orange-500 rounded-full flex items-center justify-center mb-4">
+                <TrendingUp className="h-8 w-8 text-white" />
+              </div>
+              <CardTitle className="text-3xl">
+                {language === 'ar' ? 'انتهت صلاحية قروب التوصيات' : 'Your Recommendations Access Expired'}
+              </CardTitle>
+              <CardDescription className="text-lg leading-8">
+                {language === 'ar'
+                  ? 'الدورة التعليمية ما زالت متاحة لك، لكن صلاحية قروب التوصيات انتهت وتحتاج الآن إلى مفتاح تجديد جديد لاستعادة التنبيهات والمتابعات.'
+                  : 'Your course access is still available, but your Recommendations access ended and now needs a new renewal key to restore alerts and follow-ups.'}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Link href="/activate-key">
+                <Button className="w-full bg-amber-600 hover:bg-amber-700" size="lg">
+                  {language === 'ar' ? 'أدخل مفتاح تجديد التوصيات' : 'Enter Recommendations Renewal Key'}
+                </Button>
+              </Link>
+              <Link href="/my-packages?focus=renewal">
+                <Button variant="outline" className="w-full" size="lg">
+                  {language === 'ar' ? 'عرض حالة التجديد في باقتي' : 'View Renewal Status in My Package'}
                 </Button>
               </Link>
             </CardContent>

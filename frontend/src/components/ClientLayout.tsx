@@ -20,7 +20,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-import { APP_TITLE } from "@/const";
+import { APP_LOGO, APP_TITLE } from "@/const";
 import { trpc } from "@/lib/trpc";
 import {
   GraduationCap,
@@ -219,10 +219,7 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
 
               <Link href="/courses">
                 <div className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity">
-                  <GraduationCap className="h-6 w-6 sm:h-7 sm:w-7 text-emerald-600" />
-                  <span className="text-lg sm:text-xl font-bold text-[var(--color-xf-dark)] hidden sm:inline">
-                    {APP_TITLE}
-                  </span>
+                  <img src={APP_LOGO} alt={APP_TITLE} className="h-7 sm:h-8 w-auto" />
                 </div>
               </Link>
             </div>

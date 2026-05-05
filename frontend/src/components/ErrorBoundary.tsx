@@ -23,6 +23,9 @@ class ErrorBoundary extends Component<Props, State> {
 
   render() {
     if (this.state.hasError) {
+      const isArabic = typeof document !== "undefined" && document.documentElement.lang === "ar";
+      const showDebugDetails = import.meta.env.DEV;
+
       return (
         <div className="flex items-center justify-center min-h-screen p-8 bg-background">
           <div className="flex flex-col items-center w-full max-w-2xl p-8">
@@ -31,13 +34,22 @@ class ErrorBoundary extends Component<Props, State> {
               className="text-destructive mb-6 flex-shrink-0"
             />
 
-            <h2 className="text-xl mb-4">An unexpected error occurred.</h2>
+            <h2 className="text-xl mb-3 text-center">
+              {isArabic ? 'حدث خطأ غير متوقع.' : 'An unexpected error occurred.'}
+            </h2>
+            <p className="text-sm text-muted-foreground text-center mb-6">
+              {isArabic
+                ? 'أعد تحميل الصفحة، وإذا استمرت المشكلة تواصل مع فريق الدعم.'
+                : 'Reload the page, and if the problem continues, contact support.'}
+            </p>
 
-            <div className="p-4 w-full rounded bg-muted overflow-auto mb-6">
-              <pre className="text-sm text-muted-foreground whitespace-break-spaces">
-                {this.state.error?.stack}
-              </pre>
-            </div>
+            {showDebugDetails && (
+              <div className="p-4 w-full rounded bg-muted overflow-auto mb-6">
+                <pre className="text-sm text-muted-foreground whitespace-break-spaces">
+                  {this.state.error?.stack || this.state.error?.message}
+                </pre>
+              </div>
+            )}
 
             <button
               onClick={() => window.location.reload()}
@@ -48,7 +60,7 @@ class ErrorBoundary extends Component<Props, State> {
               )}
             >
               <RotateCcw size={16} />
-              Reload Page
+              {isArabic ? 'إعادة تحميل الصفحة' : 'Reload Page'}
             </button>
           </div>
         </div>

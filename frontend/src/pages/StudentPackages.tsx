@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { formatPendingActivationDate, getPendingActivationDaysLeft, getPendingActivationWindow } from '@/lib/pendingActivation';
+import { formatIlsAmount, formatUsdAmount, getPackageDisplayPricing } from '@/lib/packagePricing';
 import { trpc } from '@/lib/trpc';
 import { withApiBase } from '@/lib/apiBase';
 import ClientLayout from '@/components/ClientLayout';
@@ -18,6 +19,7 @@ export default function StudentPackages() {
   const [freezeRequested, setFreezeRequested] = useState(false);
 
   const { data: activePackage, isLoading } = trpc.subscriptions.myActivePackage.useQuery();
+  const { data: serviceAccess, isLoading: serviceAccessLoading } = trpc.subscriptions.serviceAccessSummary.useQuery();
   const pkg = (activePackage as any)?.package;
   const isBasic = pkg?.slug === 'basic';
   const isComprehensive = pkg?.slug === 'comprehensive';
@@ -26,12 +28,40 @@ export default function StudentPackages() {
     enabled: hasPackage,
   });
   const { data: subscriptions, isLoading: subsLoading } = trpc.subscriptions.mySubscriptions.useQuery();
-  const { data: activationStatus } = trpc.subscriptions.activationStatus.useQuery();
+  const { data: activationStatus, isLoading: activationStatusLoading } = trpc.subscriptions.activationStatus.useQuery();
   const { data: frozenStatus } = trpc.subscriptions.frozenStatus.useQuery();
   const { data: timeline } = trpc.subscriptions.myTimeline.useQuery();
   const { studyPeriodDays, entitlementDays } = getPendingActivationWindow(activationStatus);
   const activationDeadline = formatPendingActivationDate(activationStatus?.maxActivationDate, isRtl);
   const activationDaysLeft = getPendingActivationDaysLeft(activationStatus?.maxActivationDate);
+  const focusRenewal = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('focus') === 'renewal';
+  const basicPricing = getPackageDisplayPricing('basic', 20000, 5000);
+  const comprehensivePricing = getPackageDisplayPricing('comprehensive', 50000, 10000);
+
+  const lexaiService = serviceAccess?.lexai;
+  const recommendationService = serviceAccess?.recommendation;
+  const relevantServices = [
+    pkg?.includesLexai
+      ? { key: 'lexai', label: 'LexAI', summary: lexaiService }
+      : null,
+    pkg?.includesRecommendations
+      ? { key: 'recommendations', label: isRtl ? 'التوصيات' : 'Recommendations', summary: recommendationService }
+      : null,
+  ].filter(Boolean) as Array<{
+    key: string;
+    label: string;
+    summary: typeof lexaiService;
+  }>;
+  const relevantServiceNames = relevantServices.map((service) => service.label);
+  const timedServicesLabel = relevantServiceNames.join(isRtl ? ' و ' : ' and ');
+  const hasExpiredTimedAccess = relevantServices.some((service) => service.summary?.status === 'expired');
+  const hasExpiringTimedAccess = !hasExpiredTimedAccess && relevantServices.some((service) => service.summary?.status === 'expiring');
+  const timedDaysLeft = relevantServices.reduce<number | null>((lowestDays, service) => {
+    if (typeof service.summary?.daysLeft !== 'number') return lowestDays;
+    if (lowestDays === null) return service.summary.daysLeft;
+    return Math.min(lowestDays, service.summary.daysLeft);
+  }, null);
+  const timedServiceWindowDays = Math.max(1, entitlementDays);
 
   const freezeMutation = trpc.subscriptions.requestFreeze.useMutation({
     onSuccess: () => {
@@ -60,15 +90,15 @@ export default function StudentPackages() {
       comprehensive: true,
     },
     {
-      en: 'LexAI Smart Assistant (1 Month)',
-      ar: 'مساعد LexAI الذكي (شهر واحد)',
+      en: 'LexAI Smart Assistant (Timed Access)',
+      ar: 'مساعد LexAI الذكي (وصول محدد المدة)',
       icon: <Sparkles className="w-4 h-4" />,
       basic: false,
       comprehensive: true,
     },
     {
-      en: 'Live Recommendations (1 Month)',
-      ar: 'التوصيات الحية (شهر واحد)',
+      en: 'Live Recommendations (Timed Access)',
+      ar: 'التوصيات الحية (وصول محدد المدة)',
       icon: <MessageSquare className="w-4 h-4" />,
       basic: true,
       comprehensive: true,
@@ -82,7 +112,7 @@ export default function StudentPackages() {
     },
   ];
 
-  if (isLoading || subsLoading) {
+  if (isLoading || subsLoading || serviceAccessLoading || activationStatusLoading) {
     return (
       <ClientLayout>
         <div className="max-w-4xl mx-auto px-4 py-8">
@@ -104,7 +134,81 @@ export default function StudentPackages() {
         </div>
 
         {/* Current Package Status */}
-        {isComprehensive && (
+        {hasPackage && hasExpiredTimedAccess && (
+          <div className={`rounded-2xl border border-amber-200 bg-gradient-to-r from-amber-50 to-orange-50 p-6 mb-8 ${focusRenewal ? 'ring-2 ring-amber-300 ring-offset-2 ring-offset-[var(--color-xf-cream)]' : ''}`}>
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center">
+                <AlertCircle className="w-6 h-6 text-amber-700" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-amber-950">
+                  {isRtl ? 'انتهت صلاحية الخدمات المحددة المدة' : 'Your Timed Services Expired'}
+                </h2>
+                <p className="text-amber-700 text-sm">{isRtl ? pkg?.nameAr : pkg?.nameEn}</p>
+              </div>
+            </div>
+            <p className="text-amber-900/80 mb-4 leading-7">
+              {isRtl
+                ? `الدورة التعليمية وملفاتك ما زالت متاحة لك، لكن صلاحية ${timedServicesLabel || 'الخدمات المحددة المدة'} انتهت. أدخل مفتاح التجديد لاستعادة الوصول دون شراء الباقة من جديد.`
+                : `Your course and documents are still available, but ${timedServicesLabel || 'your timed services'} access has expired. Enter your renewal key to restore access without buying the package again.`}
+            </p>
+            <div className="flex flex-wrap gap-2 mb-4">
+              {relevantServices.map((service) => (
+                <Badge key={service.key} className="bg-amber-100 text-amber-900 border border-amber-200 hover:bg-amber-100">
+                  {service.label}
+                </Badge>
+              ))}
+            </div>
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <Link href="/activate-key">
+                <Button className="w-full sm:w-auto bg-amber-600 hover:bg-amber-700">
+                  <Key className="w-4 h-4 me-2" />
+                  {isRtl ? 'أدخل مفتاح التجديد' : 'Enter Renewal Key'}
+                </Button>
+              </Link>
+              <Link href="/support">
+                <Button variant="outline" className="w-full sm:w-auto border-amber-200 bg-white text-amber-900 hover:bg-amber-50">
+                  {isRtl ? 'تواصل مع الدعم' : 'Contact Support'}
+                </Button>
+              </Link>
+            </div>
+          </div>
+        )}
+
+        {hasPackage && !hasExpiredTimedAccess && hasExpiringTimedAccess && (
+          <div className={`rounded-2xl border border-amber-200 bg-gradient-to-r from-amber-50 to-white p-6 mb-8 ${focusRenewal ? 'ring-2 ring-amber-300 ring-offset-2 ring-offset-[var(--color-xf-cream)]' : ''}`}>
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center">
+                <Clock className="w-6 h-6 text-amber-700" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-amber-950">
+                  {isRtl ? 'اقترب موعد انتهاء الخدمات المحددة المدة' : 'Your Timed Services Are Expiring Soon'}
+                </h2>
+                <p className="text-amber-700 text-sm">{isRtl ? pkg?.nameAr : pkg?.nameEn}</p>
+              </div>
+            </div>
+            <p className="text-amber-900/80 mb-4 leading-7">
+              {isRtl
+                ? `محتوى الدورة سيبقى متاحاً لك، لكن صلاحية ${timedServicesLabel || 'الخدمات المحددة المدة'} ستنتهي قريباً. جهّز مفتاح التجديد الآن حتى لا ينقطع الوصول.`
+                : `Your course content stays available, but ${timedServicesLabel || 'your timed services'} will expire soon. Prepare your renewal key now to avoid interruption.`}
+            </p>
+            <div className="flex items-center justify-between gap-3 rounded-xl bg-white/80 p-4 border border-amber-100 mb-4">
+              <span className="text-sm text-amber-900 font-medium">
+                {isRtl ? 'الأيام المتبقية للخدمات المحددة المدة' : 'Days left for timed services'}
+              </span>
+              <span className="text-2xl font-bold text-amber-700">{timedDaysLeft ?? '-'}</span>
+            </div>
+            <Link href="/activate-key">
+              <Button className="bg-amber-600 hover:bg-amber-700">
+                <Key className="w-4 h-4 me-2" />
+                {isRtl ? 'جهّز مفتاح التجديد' : 'Prepare Renewal Key'}
+              </Button>
+            </Link>
+          </div>
+        )}
+
+        {isComprehensive && !hasExpiredTimedAccess && !hasExpiringTimedAccess && (
           <div className="bg-gradient-to-r from-emerald-600 to-teal-700 text-white rounded-2xl p-6 mb-8">
             <div className="flex items-center gap-3 mb-3">
               <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
@@ -119,25 +223,25 @@ export default function StudentPackages() {
             </div>
             <p className="text-emerald-100 mb-4">
               {isRtl
-                ? 'استفد من جميع المميزات قبل انتهاء اشتراكك! اجمع أكبر قدر من الأرباح.'
-                : 'Make the most of all features before your subscription expires! Collect as much profit as possible.'}
+                ? 'استفد من LexAI والتوصيات خلال فترة الخدمة النشطة!'
+                : 'Make the most of your LexAI and Recommendations access during your active service period!'}
             </p>
             <div className="flex flex-wrap gap-2 mb-4">
               {pkg.includesLexai && <Badge className="bg-white/20 text-white">LexAI</Badge>}
               {pkg.includesRecommendations && <Badge className="bg-white/20 text-white">{isRtl ? 'التوصيات' : 'Recommendations'}</Badge>}
               {pkg.includesSupport && <Badge className="bg-white/20 text-white">{isRtl ? 'الدعم' : 'Support'}</Badge>}
             </div>
-            {remainingDays !== null && (
+            {timedDaysLeft !== null && (
               <div className="bg-white/10 rounded-xl p-4">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm text-emerald-100 flex items-center gap-2">
                     <Clock className="w-4 h-4" />
                     {isRtl ? 'أيام متبقية (LexAI والتوصيات)' : 'Days remaining (LexAI & Recommendations)'}
                   </span>
-                  <span className="text-2xl font-bold">{remainingDays}</span>
+                  <span className="text-2xl font-bold">{timedDaysLeft}</span>
                 </div>
-                <Progress value={Math.max(0, Math.min(100, (remainingDays / 30) * 100))} className="h-2 bg-white/20" />
-                {remainingDays <= 7 && (
+                <Progress value={Math.max(0, Math.min(100, (timedDaysLeft / timedServiceWindowDays) * 100))} className="h-2 bg-white/20" />
+                {timedDaysLeft <= 7 && (
                   <p className="text-amber-200 text-sm mt-2 font-medium">
                     {isRtl ? '⚠️ اقترب موعد التجديد! جهّز مفتاح التجديد.' : '⚠️ Renewal approaching! Prepare your renewal key.'}
                   </p>
@@ -147,7 +251,7 @@ export default function StudentPackages() {
           </div>
         )}
 
-        {isBasic && (
+        {isBasic && !hasExpiredTimedAccess && !hasExpiringTimedAccess && (
           <div className="bg-gradient-to-r from-emerald-600 to-teal-700 text-white rounded-2xl p-6 mb-8">
             <div className="flex items-center gap-3 mb-3">
               <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
@@ -426,9 +530,12 @@ export default function StudentPackages() {
               </Badge>
             )}
             <CardHeader>
-              <CardTitle className="flex items-center justify-between">
+              <CardTitle className="flex items-start justify-between gap-3">
                 <span>{isRtl ? 'الباقة الأساسية' : 'Basic Package'}</span>
-                <span className="text-2xl font-bold text-emerald-600">700₪</span>
+                <span className="text-end">
+                  <span className="block text-2xl font-bold text-emerald-600">{formatIlsAmount(basicPricing.ilsPrice)}</span>
+                  <span className="block text-xs font-semibold text-gray-500">{formatUsdAmount(basicPricing.usdPrice)}</span>
+                </span>
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -460,9 +567,12 @@ export default function StudentPackages() {
               </Badge>
             )}
             <CardHeader>
-              <CardTitle className="flex items-center justify-between">
+              <CardTitle className="flex items-start justify-between gap-3">
                 <span>{isRtl ? 'الباقة الشاملة' : 'Comprehensive Package'}</span>
-                <span className="text-2xl font-bold text-emerald-600">1700₪</span>
+                <span className="text-end">
+                  <span className="block text-2xl font-bold text-emerald-600">{formatIlsAmount(comprehensivePricing.ilsPrice)}</span>
+                  <span className="block text-xs font-semibold text-gray-500">{formatUsdAmount(comprehensivePricing.usdPrice)}</span>
+                </span>
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">

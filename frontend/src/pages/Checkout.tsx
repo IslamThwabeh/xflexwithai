@@ -5,7 +5,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import PublicLayout from '@/components/PublicLayout';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { formatIlsAmount, formatUsdAmount, getPackageDisplayPricing } from '@/lib/packagePricing';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
 
@@ -43,28 +45,31 @@ export default function Checkout() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-emerald-400 border-t-transparent rounded-full animate-spin" />
-      </div>
+      <PublicLayout>
+        <div className="min-h-[60vh] flex items-center justify-center bg-[var(--color-xf-cream)]" dir={isRtl ? 'rtl' : 'ltr'}>
+          <div className="w-8 h-8 border-4 border-emerald-400 border-t-transparent rounded-full animate-spin" />
+        </div>
+      </PublicLayout>
     );
   }
 
   if (!pkg) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-4">
-        <p className="text-gray-500">{isRtl ? 'الباقة غير موجودة' : 'Package not found'}</p>
-        <Link href="/"><Button variant="outline">{t('home')}</Button></Link>
-      </div>
+      <PublicLayout>
+        <div className="min-h-[60vh] flex flex-col items-center justify-center gap-4 bg-[var(--color-xf-cream)] px-4" dir={isRtl ? 'rtl' : 'ltr'}>
+          <p className="text-gray-500">{isRtl ? 'الباقة غير موجودة' : 'Package not found'}</p>
+          <Link href="/"><Button variant="outline">{t('home')}</Button></Link>
+        </div>
+      </PublicLayout>
     );
   }
 
-  // Prices are VAT-inclusive: extract VAT from the displayed price
-  const ILS_PRICES: Record<string, number> = { basic: 700, comprehensive: 1700 };
+  const displayPricing = getPackageDisplayPricing(pkg.slug, pkg.price, pkg.renewalPrice);
   const discountAmount = appliedCoupon ? appliedCoupon.discount / 100 : 0;
-  const total = (ILS_PRICES[pkg.slug] ?? Math.round(pkg.price / 100 * 3.5)) - discountAmount;
+  const total = Math.max(displayPricing.usdPrice - discountAmount, 0);
   const vatRate = 16;
   const vat = total * vatRate / (100 + vatRate);
-  const price = total - vat;
+  const subtotal = total - vat;
 
   const handleApplyCoupon = async () => {
     if (!couponCode.trim()) return;
@@ -103,22 +108,38 @@ export default function Checkout() {
   };
 
   return (
-    <div className={`min-h-screen bg-gray-50 ${isRtl ? 'rtl' : 'ltr'}`} dir={isRtl ? 'rtl' : 'ltr'}>
-      <div className="max-w-4xl mx-auto px-4 py-8">
-        <Link href={`/packages/${pkg.slug}`}>
-          <Button variant="ghost" size="sm" className="mb-6 text-gray-500">
-            <ArrowLeft className={`w-4 h-4 ${isRtl ? 'ms-2 rotate-180' : 'me-2'}`} />
-            {isRtl ? 'العودة' : 'Back'}
-          </Button>
-        </Link>
+    <PublicLayout>
+      <div className="bg-[var(--color-xf-cream)] py-10 md:py-14" dir={isRtl ? 'rtl' : 'ltr'}>
+        <div className="max-w-5xl mx-auto px-4">
+          <div className="mb-8 rounded-[28px] border border-slate-200 bg-white px-6 py-6 shadow-[0_16px_40px_rgba(15,23,42,0.05)] md:px-8 md:py-8">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <Link href={`/packages/${pkg.slug}`}>
+                  <Button variant="ghost" size="sm" className="mb-4 px-0 text-gray-500 hover:bg-transparent hover:text-emerald-700">
+                    <ArrowLeft className={`w-4 h-4 ${isRtl ? 'ms-2 rotate-180' : 'me-2'}`} />
+                    {isRtl ? 'العودة إلى تفاصيل الباقة' : 'Back to Package Details'}
+                  </Button>
+                </Link>
+                <h1 className="text-3xl font-bold text-gray-900">{t('checkout.title')}</h1>
+                <p className="mt-3 text-base leading-7 text-gray-600">
+                  {isRtl
+                    ? 'أكمل الطلب من داخل نفس الواجهة العامة الجديدة مع الحفاظ على نفس خيارات الدفع والخصم الحالية.'
+                    : 'Complete the order inside the same branded public shell while keeping the current payment and discount flow intact.'}
+                </p>
+              </div>
+              <div className="rounded-[22px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                <p className="font-semibold">{isRtl ? pkg.nameAr : pkg.nameEn}</p>
+                <p className="mt-1 text-emerald-700">{pkg.isLifetime ? (isRtl ? 'وصول مدى الحياة' : 'Lifetime access') : ''}</p>
+                <p className="mt-1 text-emerald-700">{formatIlsAmount(displayPricing.ilsPrice)} / {formatUsdAmount(displayPricing.usdPrice)}</p>
+              </div>
+            </div>
+          </div>
 
-        <h1 className="text-3xl font-bold mb-8">{t('checkout.title')}</h1>
-
-        <div className="grid lg:grid-cols-3 gap-8">
+          <div className="grid gap-8 lg:grid-cols-3">
           {/* Left: Form */}
           <div className="lg:col-span-2 space-y-6">
             {/* Payment Method */}
-            <div className="bg-white border rounded-2xl p-6">
+            <div className="bg-white border border-slate-200 rounded-[28px] p-6 shadow-[0_14px_36px_rgba(15,23,42,0.05)]">
               <h2 className="font-bold text-lg mb-4">{t('checkout.paymentMethod')}</h2>
               <div className="grid sm:grid-cols-2 gap-3">
                 <button
@@ -152,7 +173,7 @@ export default function Checkout() {
             </div>
 
             {/* Gift option */}
-            <div className="bg-white border rounded-2xl p-6">
+            <div className="bg-white border border-slate-200 rounded-[28px] p-6 shadow-[0_14px_36px_rgba(15,23,42,0.05)]">
               <label className="flex items-center gap-3 cursor-pointer">
                 <input
                   type="checkbox"
@@ -178,7 +199,7 @@ export default function Checkout() {
             </div>
 
             {/* Coupon Code */}
-            <div className="bg-white border rounded-2xl p-6">
+            <div className="bg-white border border-slate-200 rounded-[28px] p-6 shadow-[0_14px_36px_rgba(15,23,42,0.05)]">
               <div className="flex items-center gap-2 mb-3">
                 <Tag className="w-5 h-5 text-emerald-500" />
                 <span className="font-medium">{isRtl ? 'كوبون خصم' : 'Discount Code'}</span>
@@ -214,7 +235,7 @@ export default function Checkout() {
             </div>
 
             {/* Notes */}
-            <div className="bg-white border rounded-2xl p-6">
+            <div className="bg-white border border-slate-200 rounded-[28px] p-6 shadow-[0_14px_36px_rgba(15,23,42,0.05)]">
               <Label>{isRtl ? 'ملاحظات (اختياري)' : 'Notes (optional)'}</Label>
               <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className="mt-2" placeholder={isRtl ? 'أي ملاحظات إضافية...' : 'Any additional notes...'} />
             </div>
@@ -222,7 +243,7 @@ export default function Checkout() {
 
           {/* Right: Order Summary */}
           <div>
-            <div className="bg-white border rounded-2xl p-6 sticky top-8">
+            <div className="bg-white border border-slate-200 rounded-[28px] p-6 sticky top-24 shadow-[0_18px_40px_rgba(15,23,42,0.06)]">
               <h2 className="font-bold text-lg mb-4">{t('checkout.summary')}</h2>
 
               <div className="flex items-center gap-3 pb-4 border-b mb-4">
@@ -237,23 +258,33 @@ export default function Checkout() {
 
               <div className="space-y-2 text-sm mb-4">
                 <div className="flex justify-between">
-                  <span className="text-gray-500">{isRtl ? 'السعر' : 'Price'}</span>
-                  <span>₪{price.toFixed(2)}</span>
+                  <span className="text-gray-500">{isRtl ? 'السعر المرجعي المحلي' : 'Local price reference'}</span>
+                  <span>{formatIlsAmount(displayPricing.ilsPrice)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">{isRtl ? 'السعر المفوتر (USD)' : 'Billed price (USD)'}</span>
+                  <span>{formatUsdAmount(subtotal, true)}</span>
                 </div>
                 {appliedCoupon && (
                   <div className="flex justify-between text-green-600">
-                    <span>{isRtl ? 'خصم' : 'Discount'}</span>
-                    <span>-₪{discountAmount.toFixed(2)}</span>
+                    <span>{isRtl ? 'خصم (USD)' : 'Discount (USD)'}</span>
+                    <span>-{formatUsdAmount(discountAmount, true)}</span>
                   </div>
                 )}
                 <div className="flex justify-between">
-                  <span className="text-gray-500">VAT ({vatRate}%)</span>
-                  <span>₪{vat.toFixed(2)}</span>
+                  <span className="text-gray-500">VAT ({vatRate}%) USD</span>
+                  <span>{formatUsdAmount(vat, true)}</span>
                 </div>
                 <div className="flex justify-between font-bold text-base border-t pt-2">
-                  <span>{isRtl ? 'الإجمالي' : 'Total'}</span>
-                  <span>₪{total.toFixed(2)}</span>
+                  <span>{isRtl ? 'الإجمالي المفوتر الآن (USD)' : 'Total billed now (USD)'}</span>
+                  <span>{formatUsdAmount(total, true)}</span>
                 </div>
+              </div>
+
+              <div className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-3 text-xs text-slate-600 leading-6 mb-4">
+                {isRtl
+                  ? 'السعر بالشيكل معروض كمرجع محلي، بينما يتم إنشاء الطلب والفاتورة بالدولار الأمريكي حتى تبقى الخصومات والإجمالي متطابقة مع النظام.'
+                  : 'The shekel price is shown as a local reference, while the order and invoice are created in USD so discounts and totals stay aligned with the backend.'}
               </div>
 
               <Button
@@ -280,6 +311,7 @@ export default function Checkout() {
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </PublicLayout>
   );
 }

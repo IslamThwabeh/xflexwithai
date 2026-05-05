@@ -26,6 +26,16 @@ export default function NotificationCenter() {
     }
   };
 
+  const openNotification = (notification: any) => {
+    if (!notification.isRead) {
+      markReadMut.mutate({ notificationId: notification.id });
+    }
+
+    if (notification.actionUrl) {
+      navigate(notification.actionUrl);
+    }
+  };
+
   return (
     <ClientLayout>
     <div className="min-h-screen bg-[var(--color-xf-cream)]">
@@ -35,11 +45,17 @@ export default function NotificationCenter() {
             <Bell className="w-6 h-6 text-emerald-500 shrink-0" />
             <span>{isRtl ? 'الإشعارات' : 'Notifications'}</span>
             {unreadCount > 0 && (
-              <span className="bg-red-500 text-white text-xs rounded-full px-2 py-0.5 shrink-0 leading-none">{unreadCount}</span>
+              <span className="bg-red-500 text-white text-xs rounded-full px-2 py-0.5 shrink-0 leading-none" aria-live="polite">{unreadCount}</span>
             )}
           </h1>
           {unreadCount > 0 && (
-            <Button variant="outline" size="sm" onClick={() => markAllMut.mutate()} disabled={markAllMut.isPending}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => markAllMut.mutate()}
+              disabled={markAllMut.isPending}
+              aria-label={isRtl ? 'تحديد كل الإشعارات كمقروءة' : 'Mark all notifications as read'}
+            >
               <CheckCheck className="w-4 h-4 me-1" />
               {isRtl ? 'قراءة الكل' : 'Mark All Read'}
             </Button>
@@ -56,12 +72,26 @@ export default function NotificationCenter() {
         ) : (
           <div className="space-y-2">
             {notifications.map((n: any) => (
-              <div key={n.id}
-                className={`bg-white border rounded-lg p-4 transition-colors cursor-pointer hover:bg-gray-50 ${!n.isRead ? 'border-emerald-200 bg-emerald-50/40' : ''}`}
-                onClick={() => {
-                  if (!n.isRead) markReadMut.mutate({ notificationId: n.id });
-                  if (n.actionUrl) navigate(n.actionUrl);
-                }}>
+              <div
+                key={n.id}
+                className={`bg-white border rounded-lg p-4 transition-colors ${(!n.isRead || n.actionUrl) ? 'cursor-pointer hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2' : ''} ${!n.isRead ? 'border-emerald-200 bg-emerald-50/40' : ''}`}
+                onClick={() => openNotification(n)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    openNotification(n);
+                  }
+                }}
+                role={!n.isRead || n.actionUrl ? 'button' : undefined}
+                tabIndex={!n.isRead || n.actionUrl ? 0 : -1}
+                aria-label={
+                  n.actionUrl
+                    ? (isRtl ? `فتح الإشعار: ${n.titleAr}` : `Open notification: ${n.titleEn}`)
+                    : (!n.isRead
+                        ? (isRtl ? `تحديد الإشعار كمقروء: ${n.titleAr}` : `Mark notification as read: ${n.titleEn}`)
+                        : undefined)
+                }
+              >
                 <div className="flex items-start gap-3">
                   <Bell className={`w-4 h-4 mt-1 shrink-0 ${typeColor(n.type)}`} />
                   <div className="flex-1 min-w-0">
@@ -75,13 +105,18 @@ export default function NotificationCenter() {
                       <p className="text-xs text-muted-foreground mt-1">{isRtl ? n.contentAr : n.contentEn}</p>
                     )}
                     <div className="flex items-center gap-2 mt-2">
-                      <span className="text-xs text-muted-foreground">{new Date(n.createdAt).toLocaleString()}</span>
+                      <span className="text-xs text-muted-foreground">{new Date(n.createdAt).toLocaleString(isRtl ? 'ar-EG' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' })}</span>
                       {n.actionUrl && <ExternalLink className="w-3 h-3 text-muted-foreground" />}
                     </div>
                   </div>
                   {!n.isRead && (
-                    <Button variant="ghost" size="sm" className="shrink-0 h-7 px-2"
-                      onClick={(e) => { e.stopPropagation(); markReadMut.mutate({ notificationId: n.id }); }}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="shrink-0 h-7 px-2"
+                      aria-label={isRtl ? 'تحديد هذا الإشعار كمقروء' : 'Mark this notification as read'}
+                      onClick={(e) => { e.stopPropagation(); markReadMut.mutate({ notificationId: n.id }); }}
+                    >
                       <Check className="w-3 h-3" />
                     </Button>
                   )}

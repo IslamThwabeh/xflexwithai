@@ -17,11 +17,10 @@ import { FileUpload } from "@/components/FileUpload";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { formatPendingActivationDate, getPendingActivationDaysLeft, getPendingActivationWindow } from "@/lib/pendingActivation";
 import { trpc } from "@/lib/trpc";
-import { Sparkles, Crown, CheckCircle2, ImageIcon, Trash2, BookOpen, MessageSquare, Building2 } from "lucide-react";
+import { Sparkles, Crown, CheckCircle2, ImageIcon, Trash2, BookOpen, MessageSquare, Building2, ArrowUpCircle } from "lucide-react";
 import { useState, useRef, useEffect, useMemo } from "react";
 import { toast } from "sonner";
 import { Link } from "wouter";
-import { format } from "date-fns";
 import ClientLayout from "@/components/ClientLayout";
 
 export default function LexAI() {
@@ -130,10 +129,16 @@ export default function LexAI() {
   const { data: adminCheck, isLoading: adminLoading } = trpc.auth.isAdmin.useQuery(undefined, {
     enabled: !!user,
   });
-  const { data: activationStatus } = trpc.subscriptions.activationStatus.useQuery(undefined, {
+  const { data: serviceAccessSummary, isLoading: serviceAccessLoading } = trpc.subscriptions.serviceAccessSummary.useQuery(undefined, {
     enabled: !!user,
   });
-  const { data: onboardingStatus } = trpc.onboarding.isComplete.useQuery(undefined, {
+  const { data: activationStatus, isLoading: activationStatusLoading } = trpc.subscriptions.activationStatus.useQuery(undefined, {
+    enabled: !!user,
+  });
+  const { data: onboardingStatus, isLoading: onboardingLoading } = trpc.onboarding.isComplete.useQuery(undefined, {
+    enabled: !!user,
+  });
+  const { data: myPackageData, isLoading: myPackageLoading } = trpc.subscriptions.myActivePackage.useQuery(undefined, {
     enabled: !!user,
   });
   const { studyPeriodDays, entitlementDays } = getPendingActivationWindow(activationStatus);
@@ -178,9 +183,13 @@ export default function LexAI() {
   }, [messages]);
 
   const isAdmin = !!adminCheck?.isAdmin;
-  const isFrozenSub = !!(subscription && 'isFrozen' in subscription && subscription.isFrozen);
-  const activeSubscription = subscription && !('isFrozen' in subscription) ? subscription : null;
-  const hasActiveSubscription = !!activeSubscription?.isActive;
+  const frozenSubscription = subscription?.kind === 'frozen' ? subscription : null;
+  const isFrozenSub = !!frozenSubscription;
+  const activeSubscription = subscription?.kind === 'active' ? subscription : null;
+  const lexaiAccess = serviceAccessSummary?.lexai;
+  const hasTimedLexaiAccess = lexaiAccess?.status === 'active' || lexaiAccess?.status === 'expiring';
+  const hasActiveSubscription = hasTimedLexaiAccess && !!activeSubscription?.isActive;
+  const isBasicPackage = (myPackageData as any)?.package?.slug === 'basic';
 
   const isBusy =
     uploadImage.isPending ||
@@ -194,19 +203,22 @@ export default function LexAI() {
   const isArabicText = (value: string) => /[\u0600-\u06FF]/.test(value);
 
   const remainingDays = useMemo(() => {
+    if (typeof lexaiAccess?.daysLeft === 'number') return lexaiAccess.daysLeft;
     if (!activeSubscription) return 0;
-    if (Number(activeSubscription.messagesUsed ?? 0) === 0) return 30;
     const end = new Date(activeSubscription.endDate ?? "");
     if (Number.isNaN(end.getTime())) return 0;
     const diff = end.getTime() - Date.now();
     return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
-  }, [activeSubscription]);
+  }, [activeSubscription, lexaiAccess?.daysLeft]);
 
   const formatMessageDate = (value: string | number | Date | null | undefined) => {
     if (!value) return "";
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return "";
-    return format(date, "MMM d, h:mm a");
+    return date.toLocaleString(language === 'ar' ? 'ar-EG' : 'en-US', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    });
   };
 
   useEffect(() => {
@@ -317,7 +329,7 @@ export default function LexAI() {
     }
   };
 
-  if (authLoading || subLoading || adminLoading) {
+  if (authLoading || subLoading || adminLoading || serviceAccessLoading || activationStatusLoading || onboardingLoading || myPackageLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <p>{copy.loading}</p>
@@ -346,7 +358,7 @@ export default function LexAI() {
   if (!hasActiveSubscription) {
     // Frozen subscription — show specific frozen message
     if (isFrozenSub) {
-      const frozenUntil = (subscription as any)?.frozenUntil;
+      const frozenUntil = frozenSubscription?.frozenUntil;
       const frozenDate = frozenUntil ? new Date(frozenUntil).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US') : null;
       return (
         <ClientLayout>
@@ -374,6 +386,42 @@ export default function LexAI() {
               <Link href="/support">
                 <Button variant="outline" className="w-full">
                   {language === 'ar' ? 'تواصل مع الدعم' : 'Contact Support'}
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        </div>
+        </ClientLayout>
+      );
+    }
+
+    if (lexaiAccess?.status === 'expired') {
+      return (
+        <ClientLayout>
+        <div className="min-h-[calc(100vh-64px)] flex items-center justify-center bg-[var(--color-xf-cream)]">
+          <Card className="max-w-2xl w-full mx-4">
+            <CardHeader className="text-center">
+              <div className="mx-auto w-16 h-16 bg-gradient-to-br from-amber-500 to-orange-500 rounded-full flex items-center justify-center mb-4">
+                <Sparkles className="h-8 w-8 text-white" />
+              </div>
+              <CardTitle className="text-3xl">
+                {language === 'ar' ? 'انتهت صلاحية LexAI' : 'Your LexAI Access Expired'}
+              </CardTitle>
+              <CardDescription className="text-lg leading-8">
+                {language === 'ar'
+                  ? 'هذا لا يعني أن باقتك انتهت. الدورة التعليمية ما زالت متاحة لك، لكن خدمة LexAI الشهرية انتهت وتحتاج إلى مفتاح تجديد جديد.'
+                  : 'This does not mean your package expired. Your course access is still available, but the monthly LexAI service ended and needs a new renewal key.'}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Link href="/activate-key">
+                <Button className="w-full bg-amber-600 hover:bg-amber-700" size="lg">
+                  {language === 'ar' ? 'أدخل مفتاح تجديد LexAI' : 'Enter LexAI Renewal Key'}
+                </Button>
+              </Link>
+              <Link href="/my-packages?focus=renewal">
+                <Button variant="outline" className="w-full" size="lg">
+                  {language === 'ar' ? 'عرض حالة التجديد في باقتي' : 'View Renewal Status in My Package'}
                 </Button>
               </Link>
             </CardContent>
@@ -431,6 +479,45 @@ export default function LexAI() {
                   ? `أكمل إعداد الوسيط مبكرًا لتحصل على أقصى استفادة من فترة الـ${entitlementDays} يومًا.`
                   : `Complete your broker setup early to maximize your ${entitlementDays}-day access window.`}
               </p>
+              <Link href="/support">
+                <Button variant="outline" className="w-full" size="sm">
+                  <MessageSquare className="h-4 w-4 mr-2" />
+                  {isArabic ? 'تواصل مع الدعم' : 'Contact Support'}
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        </div>
+        </ClientLayout>
+      );
+    }
+
+    // Basic package user — LexAI not included; show upgrade CTA instead of misleading broker gate or generic paywall
+    if (isBasicPackage && lexaiAccess?.status === 'none') {
+      return (
+        <ClientLayout>
+        <div className="min-h-[calc(100vh-64px)] flex items-center justify-center bg-[var(--color-xf-cream)]">
+          <Card className="max-w-lg mx-4">
+            <CardHeader className="text-center">
+              <div className="mx-auto w-16 h-16 bg-gradient-to-br from-emerald-500 to-teal-500 rounded-full flex items-center justify-center mb-4">
+                <Crown className="h-8 w-8 text-white" />
+              </div>
+              <CardTitle className="text-2xl">
+                {isArabic ? 'LexAI متاح في الباقة الشاملة فقط' : 'LexAI Is Included in the Comprehensive Plan'}
+              </CardTitle>
+              <CardDescription className="text-base mt-2">
+                {isArabic
+                  ? 'باقتك الأساسية تشمل الدورة التعليمية والتوصيات. للحصول على تحليل LexAI بالذكاء الاصطناعي، قم بالترقية إلى الباقة الشاملة.'
+                  : 'Your Basic plan includes the course and live recommendations. Upgrade to Comprehensive to unlock AI-powered LexAI chart analysis.'}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Link href="/upgrade">
+                <Button className="w-full btn-primary-xf" size="lg">
+                  <ArrowUpCircle className="h-4 w-4 mr-2" />
+                  {isArabic ? 'ترقية إلى الباقة الشاملة' : 'Upgrade to Comprehensive'}
+                </Button>
+              </Link>
               <Link href="/support">
                 <Button variant="outline" className="w-full" size="sm">
                   <MessageSquare className="h-4 w-4 mr-2" />

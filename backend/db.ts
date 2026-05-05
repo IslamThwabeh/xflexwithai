@@ -92,6 +92,17 @@ const DEFAULT_STUDY_PERIOD_DAYS = 14;
 const RECOMMENDATION_ALERT_UNLOCK_MS = 60 * 1000;
 const RECOMMENDATION_ALERT_EXPIRY_MS = 15 * 60 * 1000;
 
+export type TimedServiceStatus = 'none' | 'pending' | 'active' | 'expiring' | 'expired' | 'frozen';
+
+export type TimedServiceAccessSummary = {
+  status: TimedServiceStatus;
+  endDate: string | null;
+  daysLeft: number | null;
+  frozenUntil: string | null;
+  pausedReason: string | null;
+  hasHistory: boolean;
+};
+
 /**
  * Get the configurable study period (فترة التعلم) from admin settings.
  * This is the grace period before LexAI/Rec auto-activate.
@@ -122,6 +133,115 @@ function buildEndDateFromDays(startDate: Date, days: number) {
   const endDate = new Date(startDate);
   endDate.setDate(endDate.getDate() + days);
   return endDate;
+}
+
+export function buildTimedServiceAccessSummary(snapshot?: {
+  endDate?: string | null;
+  isPendingActivation?: boolean | null;
+  isPaused?: boolean | null;
+  frozenUntil?: string | null;
+  pausedReason?: string | null;
+} | null): TimedServiceAccessSummary {
+  if (!snapshot) {
+    return {
+      status: 'none',
+      endDate: null,
+      daysLeft: null,
+      frozenUntil: null,
+      pausedReason: null,
+      hasHistory: false,
+    };
+  }
+
+  if (snapshot.endDate) {
+    const endDate = new Date(snapshot.endDate);
+    if (!Number.isNaN(endDate.getTime())) {
+      const daysLeft = Math.ceil((endDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+      if (daysLeft <= 0) {
+        return {
+          status: 'expired',
+          endDate: snapshot.endDate,
+          daysLeft: 0,
+          frozenUntil: snapshot.frozenUntil ?? null,
+          pausedReason: snapshot.pausedReason ?? null,
+          hasHistory: true,
+        };
+      }
+
+      if (snapshot.isPaused) {
+        return {
+          status: 'frozen',
+          endDate: snapshot.endDate,
+          daysLeft: null,
+          frozenUntil: snapshot.frozenUntil ?? null,
+          pausedReason: snapshot.pausedReason ?? null,
+          hasHistory: true,
+        };
+      }
+
+      if (snapshot.isPendingActivation) {
+        return {
+          status: 'pending',
+          endDate: snapshot.endDate,
+          daysLeft: null,
+          frozenUntil: snapshot.frozenUntil ?? null,
+          pausedReason: snapshot.pausedReason ?? null,
+          hasHistory: true,
+        };
+      }
+
+      return {
+        status: daysLeft <= 7 ? 'expiring' : 'active',
+        endDate: snapshot.endDate,
+        daysLeft,
+        frozenUntil: snapshot.frozenUntil ?? null,
+        pausedReason: snapshot.pausedReason ?? null,
+        hasHistory: true,
+      };
+    }
+  }
+
+  if (snapshot.isPaused) {
+    return {
+      status: 'frozen',
+      endDate: snapshot.endDate ?? null,
+      daysLeft: null,
+      frozenUntil: snapshot.frozenUntil ?? null,
+      pausedReason: snapshot.pausedReason ?? null,
+      hasHistory: true,
+    };
+  }
+
+  if (snapshot.isPendingActivation) {
+    return {
+      status: 'pending',
+      endDate: snapshot.endDate ?? null,
+      daysLeft: null,
+      frozenUntil: snapshot.frozenUntil ?? null,
+      pausedReason: snapshot.pausedReason ?? null,
+      hasHistory: true,
+    };
+  }
+
+  if (!snapshot.endDate) {
+    return {
+      status: 'active',
+      endDate: null,
+      daysLeft: null,
+      frozenUntil: snapshot.frozenUntil ?? null,
+      pausedReason: snapshot.pausedReason ?? null,
+      hasHistory: true,
+    };
+  }
+
+  return {
+    status: 'active',
+    endDate: snapshot.endDate,
+    daysLeft: null,
+    frozenUntil: snapshot.frozenUntil ?? null,
+    pausedReason: snapshot.pausedReason ?? null,
+    hasHistory: true,
+  };
 }
 
 async function getRegistrationKeyActivatedAt(registrationKeyId?: number | null) {
@@ -2334,6 +2454,12 @@ export async function getUserRecommendationsAccess(userId: number) {
   };
 }
 
+export async function getRecommendationServiceAccessSummary(userId: number): Promise<TimedServiceAccessSummary> {
+  await ensureTimedServicesActivatedIfDue(userId);
+  const subscription = await getAnyRecommendationSubscription(userId);
+  return buildTimedServiceAccessSummary(subscription);
+}
+
 export async function getRecommendationSubscriberEmails() {
   const db = await getDb();
   if (!db) return [];
@@ -4522,6 +4648,12 @@ export async function getUserLexaiSubscription(userId: number) {
     .orderBy(desc(lexaiSubscriptions.endDate), desc(lexaiSubscriptions.createdAt))
     .limit(1);
   return result.length > 0 ? result[0] : undefined;
+}
+
+export async function getLexaiServiceAccessSummary(userId: number): Promise<TimedServiceAccessSummary> {
+  await ensureTimedServicesActivatedIfDue(userId);
+  const subscription = await getAnyLexaiSubscription(userId);
+  return buildTimedServiceAccessSummary(subscription);
 }
 
 /** Returns ANY existing LexAI subscription for the user (including pending), for create-or-update logic. */

@@ -1,7 +1,8 @@
 # XFlex Trading Academy — Copilot Instructions
 
 ## Project Snapshot
-- XFlex is a bilingual (Arabic/English) trading academy for Jordanian students.
+- XFlex is a bilingual (Arabic/English) trading academy based in Palestine, serving students across the Arab world — Jordan and Palestine are the primary core markets.
+- Prices are displayed in USD and ILS (Israeli New Shekel / شيكل) because the academy operates in Palestine.
 - It sells only 2 package types: **Basic ($200, no LexAI)** and **Comprehensive ($500, includes LexAI)**.
 - Stack: React + TypeScript + Wouter + Tailwind/shadcn on the frontend; tRPC + Drizzle + Cloudflare D1 on the backend; Cloudflare R2 for media; JWT auth.
 

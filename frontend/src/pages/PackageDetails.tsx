@@ -1,13 +1,15 @@
 import { useParams, Link } from 'wouter';
-import { CheckCircle, ChevronRight, ArrowLeft, X, Star, BookOpen, ShoppingCart, Globe, MessageSquareQuote, Trophy } from 'lucide-react';
+import { CheckCircle, ChevronRight, ArrowLeft, X, Star, BookOpen, ShoppingCart, MessageSquareQuote, Trophy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import PublicLayout from '@/components/PublicLayout';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { formatIlsAmount, formatUsdAmount, getPackageDisplayPricing } from '@/lib/packagePricing';
 import { trpc } from '@/lib/trpc';
 
 export default function PackageDetails() {
   const { slug } = useParams<{ slug: string }>();
-  const { t, language, setLanguage, isRTL } = useLanguage();
+  const { t, language, isRTL } = useLanguage();
 
   const { data: pkg, isLoading, error } = trpc.packages.bySlug.useQuery(
     { slug: slug || '' },
@@ -26,33 +28,36 @@ export default function PackageDetails() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-white">
-        <div className="animate-pulse text-gray-400">{language === 'ar' ? 'جاري التحميل...' : 'Loading...'}</div>
-      </div>
+      <PublicLayout>
+        <div className="min-h-[60vh] flex items-center justify-center bg-[var(--color-xf-cream)]" dir={isRTL ? 'rtl' : 'ltr'}>
+          <div className="animate-pulse text-gray-400">{language === 'ar' ? 'جاري التحميل...' : 'Loading...'}</div>
+        </div>
+      </PublicLayout>
     );
   }
 
   if (error || !pkg) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-white gap-4">
-        <p className="text-gray-500">{language === 'ar' ? 'الباقة غير موجودة' : 'Package not found'}</p>
-        <Link href="/">
-          <Button variant="outline" size="sm">
-            <ArrowLeft className="w-4 h-4 me-1" />
-            {language === 'ar' ? 'الرئيسية' : 'Home'}
-          </Button>
-        </Link>
-      </div>
+      <PublicLayout>
+        <div className="min-h-[60vh] flex flex-col items-center justify-center gap-4 bg-[var(--color-xf-cream)] px-4" dir={isRTL ? 'rtl' : 'ltr'}>
+          <p className="text-gray-500">{language === 'ar' ? 'الباقة غير موجودة' : 'Package not found'}</p>
+          <Link href="/">
+            <Button variant="outline" size="sm">
+              <ArrowLeft className="w-4 h-4 me-1" />
+              {language === 'ar' ? 'الرئيسية' : 'Home'}
+            </Button>
+          </Link>
+        </div>
+      </PublicLayout>
     );
   }
 
   const isComprehensive = pkg.slug === 'comprehensive';
-  const ILS_PRICES: Record<string, number> = { basic: 700, comprehensive: 1700 };
-  const ILS_RENEWAL: Record<string, number> = { basic: 175, comprehensive: 350 };
-  const displayPrice = ILS_PRICES[pkg.slug] ?? Math.round(pkg.price / 100 * 3.5);
-  const displayRenewal = pkg.renewalPrice ? (ILS_RENEWAL[pkg.slug] ?? Math.round(pkg.renewalPrice / 100 * 3.5)) : null;
-  const priceFormatted = `${displayPrice}₪`;
-  const renewalFormatted = displayRenewal ? `${displayRenewal}₪` : null;
+  const displayPricing = getPackageDisplayPricing(pkg.slug, pkg.price, pkg.renewalPrice);
+  const priceFormatted = formatIlsAmount(displayPricing.ilsPrice);
+  const priceUsdFormatted = formatUsdAmount(displayPricing.usdPrice);
+  const renewalFormatted = displayPricing.ilsRenewal ? formatIlsAmount(displayPricing.ilsRenewal) : null;
+  const renewalUsdFormatted = displayPricing.usdRenewal ? formatUsdAmount(displayPricing.usdRenewal) : null;
   const vatIncludedLabel = language === 'ar' ? 'السعر يشمل ضريبة القيمة المضافة 16%' : 'Price includes 16% VAT';
 
   const features = [
@@ -65,58 +70,46 @@ export default function PackageDetails() {
   ];
 
   return (
-    <div className="min-h-screen bg-white" dir={isRTL ? 'rtl' : 'ltr'}>
-      {/* Nav */}
-      <header className="bg-white/95 backdrop-blur-md border-b border-gray-100 sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-3 flex items-center justify-between">
-          <Link href="/">
-            <span className="text-xl font-extrabold bg-gradient-to-r from-emerald-600 to-emerald-600 bg-clip-text text-transparent cursor-pointer">
-              XFlex
-            </span>
-          </Link>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setLanguage(language === 'ar' ? 'en' : 'ar')}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-sm text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition"
-            >
-              <Globe className="w-4 h-4" />
-              {language === 'ar' ? 'EN' : 'عربي'}
-            </button>
+    <PublicLayout>
+      <div className="bg-[var(--color-xf-cream)] py-10 md:py-14" dir={isRTL ? 'rtl' : 'ltr'}>
+        <div className="container mx-auto max-w-5xl px-4">
+          <div className="mb-8 rounded-[28px] border border-slate-200 bg-white px-6 py-6 shadow-[0_16px_40px_rgba(15,23,42,0.05)] md:px-8 md:py-8">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <div className="mb-3 flex items-center gap-2 text-sm text-gray-400">
+                  <Link href="/"><span className="cursor-pointer hover:text-emerald-600">{t('home.footer.home')}</span></Link>
+                  <ChevronRight className="h-3.5 w-3.5" />
+                  <span className="text-gray-700">{isRTL ? pkg.nameAr : pkg.nameEn}</span>
+                </div>
+                <div className="flex items-center gap-3 mb-3">
+                  {isComprehensive && (
+                    <Badge className="bg-yellow-100 text-yellow-800 font-medium">
+                      <Star className="w-3 h-3 mr-1 fill-current" />
+                      {t('home.packages.mostPopular')}
+                    </Badge>
+                  )}
+                </div>
+                <h1 className="text-3xl font-bold text-gray-900 md:text-4xl">
+                  {isRTL ? pkg.nameAr : pkg.nameEn}
+                </h1>
+                <p className="mt-3 max-w-2xl text-base leading-8 text-gray-600 md:text-lg">
+                  {isRTL ? pkg.descriptionAr : pkg.descriptionEn}
+                </p>
+              </div>
+              <Link href="/">
+                <Button variant="outline" size="sm" className="rounded-full border-slate-200 bg-white px-4">
+                  <ArrowLeft className="w-4 h-4 me-1" />
+                  {language === 'ar' ? 'العودة للرئيسية' : 'Back Home'}
+                </Button>
+              </Link>
+            </div>
           </div>
-        </div>
-      </header>
 
-      {/* Main */}
-      <div className="container mx-auto px-4 py-12 max-w-4xl">
-        {/* Breadcrumb */}
-        <div className="flex items-center gap-2 text-sm text-gray-400 mb-8">
-          <Link href="/"><span className="hover:text-emerald-600 cursor-pointer">{t('home.footer.home')}</span></Link>
-          <ChevronRight className="w-3.5 h-3.5" />
-          <span className="text-gray-700">{isRTL ? pkg.nameAr : pkg.nameEn}</span>
-        </div>
-
-        <div className="grid md:grid-cols-5 gap-10">
+          <div className="grid gap-8 md:grid-cols-5">
           {/* Package Info */}
           <div className="md:col-span-3">
-            <div className="flex items-center gap-3 mb-3">
-              {isComprehensive && (
-                <Badge className="bg-yellow-100 text-yellow-800 font-medium">
-                  <Star className="w-3 h-3 mr-1 fill-current" />
-                  {t('home.packages.mostPopular')}
-                </Badge>
-              )}
-            </div>
-
-            <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-3">
-              {isRTL ? pkg.nameAr : pkg.nameEn}
-            </h1>
-
-            <p className="text-gray-600 text-lg leading-relaxed mb-8">
-              {isRTL ? pkg.descriptionAr : pkg.descriptionEn}
-            </p>
-
             {/* Features */}
-            <div className="mb-8">
+            <div className="mb-8 rounded-[28px] border border-slate-200 bg-white p-6 shadow-[0_14px_36px_rgba(15,23,42,0.05)] md:p-8">
               <h2 className="text-lg font-bold text-gray-900 mb-4">{t('home.packages.includes')}:</h2>
               <ul className="space-y-3">
                 {features.map((f) => (
@@ -134,7 +127,7 @@ export default function PackageDetails() {
 
             {/* Courses in this package */}
             {packageCourses && packageCourses.length > 0 && (
-              <div>
+              <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-[0_14px_36px_rgba(15,23,42,0.05)] md:p-8">
                 <h2 className="text-lg font-bold text-gray-900 mb-4">
                   {language === 'ar' ? 'الدورات المشمولة' : 'Included Courses'}
                 </h2>
@@ -165,7 +158,7 @@ export default function PackageDetails() {
             )}
 
             {/* Value Angle */}
-            <div className="mt-8 p-5 rounded-xl border bg-gradient-to-br from-emerald-50 to-emerald-50">
+            <div className="mt-8 rounded-[28px] border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-6 shadow-[0_14px_36px_rgba(15,23,42,0.04)] md:p-8">
               <h2 className="text-lg font-bold text-gray-900 mb-2 flex items-center gap-2">
                 <Trophy className="w-5 h-5 text-emerald-600" />
                 {language === 'ar' ? 'لمن صممت هذه الباقة؟' : 'Who Is This Package For?'}
@@ -179,14 +172,14 @@ export default function PackageDetails() {
 
             {/* Package Testimonials */}
             {packageTestimonials && packageTestimonials.length > 0 && (
-              <div className="mt-8">
+              <div className="mt-8 rounded-[28px] border border-slate-200 bg-white p-6 shadow-[0_14px_36px_rgba(15,23,42,0.05)] md:p-8">
                 <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
                   <MessageSquareQuote className="w-5 h-5 text-emerald-600" />
                   {language === 'ar' ? 'ماذا يقول الطلاب عن هذه الباقة؟' : 'What Students Say About This Package'}
                 </h2>
                 <div className="grid gap-3 md:grid-cols-2">
                   {packageTestimonials.map((item) => (
-                    <div key={item.id} className="border rounded-xl p-4 bg-white">
+                    <div key={item.id} className="rounded-2xl border border-slate-100 bg-[var(--color-xf-cream)] p-4">
                       <div className="flex gap-0.5 mb-2">
                         {[1, 2, 3, 4, 5].map((n) => (
                           <Star key={n} className={`w-3.5 h-3.5 ${n <= item.rating ? 'fill-yellow-400 text-yellow-400' : 'text-gray-200'}`} />
@@ -210,12 +203,15 @@ export default function PackageDetails() {
             }`}>
               <div className="text-center mb-6">
                 <div className="text-4xl font-extrabold mb-1">{priceFormatted}</div>
+                <p className={`text-sm font-semibold ${isComprehensive ? 'text-emerald-100' : 'text-gray-500'}`}>
+                  {priceUsdFormatted}
+                </p>
                 <p className={`text-sm ${isComprehensive ? 'text-emerald-100' : 'text-gray-500'}`}>
                   {t('home.packages.price')} • {t('home.packages.lifetime')}
                 </p>
-                {renewalFormatted && (
+                {renewalFormatted && renewalUsdFormatted && (
                   <p className={`text-xs mt-2 ${isComprehensive ? 'text-emerald-200' : 'text-emerald-600'}`}>
-                    {t('home.packages.renewal')}: {renewalFormatted}{t('home.packages.perMonth')}
+                    {t('home.packages.renewal')}: {renewalFormatted} / {renewalUsdFormatted}{t('home.packages.perMonth')}
                   </p>
                 )}
               </div>
@@ -243,6 +239,7 @@ export default function PackageDetails() {
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </PublicLayout>
   );
 }

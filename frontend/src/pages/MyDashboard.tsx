@@ -515,9 +515,9 @@ export default function MyDashboard() {
                 {t('dashboard.courseAccess')}: {totalCourses > 0 ? t('dashboard.active') : t('dashboard.notActive')}
               </div>
               <div className="text-sm text-muted-foreground">
-                {t('dashboard.lexaiAccess')}: {lexaiSubscription && 'isActive' in lexaiSubscription
+                {t('dashboard.lexaiAccess')}: {lexaiSubscription?.kind === 'active'
                   ? t('dashboard.active')
-                  : lexaiSubscription && 'isFrozen' in lexaiSubscription
+                  : lexaiSubscription?.kind === 'frozen'
                     ? <span className="text-amber-600 font-medium">{language === 'ar' ? 'مُجمّد' : 'Frozen'}</span>
                     : t('dashboard.notActive')}
               </div>
@@ -534,7 +534,7 @@ export default function MyDashboard() {
                     <Button variant="outline">{t('dashboard.openCourses')}</Button>
                   </Link>
                 )}
-                {lexaiSubscription && 'isActive' in lexaiSubscription && (
+                {lexaiSubscription?.kind === 'active' && (
                   <Link href="/lexai">
                     <Button variant="outline">{t('dashboard.openLexai')}</Button>
                   </Link>
