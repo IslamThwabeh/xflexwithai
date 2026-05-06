@@ -3,7 +3,14 @@ import { Link } from "wouter";
 import { LogIn, Phone, X } from "lucide-react";
 
 import { APP_LOGO, APP_TITLE } from "@/const";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 
 type PublicMobileNavSheetProps = {
   open: boolean;
@@ -37,14 +44,15 @@ export default function PublicMobileNavSheet({
             <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
               <img src={APP_LOGO} alt={APP_TITLE} className="h-8 w-auto" />
             </div>
-            <button
-              type="button"
-              onClick={() => onOpenChange(false)}
-              className="rounded-xl p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
-              aria-label={language === "ar" ? "إغلاق القائمة" : "Close menu"}
-            >
-              <X className="h-5 w-5" />
-            </button>
+            <SheetClose asChild>
+              <button
+                type="button"
+                className="rounded-xl p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+                aria-label={language === "ar" ? "إغلاق القائمة" : "Close menu"}
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </SheetClose>
           </div>
           <SheetTitle className="sr-only">
             {language === "ar" ? "القائمة الرئيسية" : "Main navigation"}
