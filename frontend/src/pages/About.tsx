@@ -2,6 +2,7 @@ import { Link } from 'wouter';
 import { ChevronRight, Globe, ArrowLeft, GraduationCap, Target, Users, Award, Instagram, Facebook, Send, Phone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { getLanguageSwitchLabel } from '@/lib/languageToggle';
 
 export default function About() {
   const { t, language, setLanguage, isRTL } = useLanguage();
@@ -10,19 +11,20 @@ export default function About() {
     <div className="min-h-screen bg-white" dir={isRTL ? 'rtl' : 'ltr'}>
       {/* Nav */}
       <header className="bg-white/95 backdrop-blur-md border-b border-gray-100 sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-3 flex items-center justify-between">
+        <div className="container mx-auto flex items-center justify-between gap-3 px-4 py-3">
           <Link href="/">
-            <span className="text-xl font-extrabold bg-gradient-to-r from-emerald-600 to-emerald-600 bg-clip-text text-transparent cursor-pointer">
+            <span className="shrink-0 text-xl font-extrabold bg-gradient-to-r from-emerald-600 to-emerald-600 bg-clip-text text-transparent cursor-pointer">
               XFlex
             </span>
           </Link>
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
             <button
               onClick={() => setLanguage(language === 'ar' ? 'en' : 'ar')}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-sm text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition"
+              className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg px-2 py-1.5 text-xs text-gray-500 transition hover:bg-gray-100 hover:text-gray-800 sm:px-2.5 sm:text-sm"
+              aria-label={getLanguageSwitchLabel(language)}
             >
               <Globe className="w-4 h-4" />
-              {language === 'ar' ? 'الإنجليزية' : 'Arabic'}
+              {getLanguageSwitchLabel(language)}
             </button>
             <Link href="/">
               <Button size="sm" variant="outline" className="gap-1.5">

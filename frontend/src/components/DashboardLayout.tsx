@@ -71,6 +71,7 @@ import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 import { Button } from "./ui/button";
 import { trpc } from "@/lib/trpc";
+import { getLanguageSwitchLabel } from "@/lib/languageToggle";
 import { ROLE_PAGE_ACCESS } from "@shared/const";
 
 // Menu sections use i18n keys – resolved at render time
@@ -269,7 +270,7 @@ function DashboardLayoutContent({
   const { user, logout } = useAuth();
   const [location, setLocation] = useLocation();
   const { t, language, setLanguage, isRTL } = useLanguage();
-  const { state, toggleSidebar } = useSidebar();
+  const { state, toggleSidebar, setOpenMobile } = useSidebar();
   const { theme, toggleTheme } = useTheme();
   const isCollapsed = state === "collapsed";
   const [isResizing, setIsResizing] = useState(false);
@@ -350,6 +351,12 @@ function DashboardLayoutContent({
       setIsResizing(false);
     }
   }, [isCollapsed]);
+
+  useEffect(() => {
+    if (isMobile) {
+      setOpenMobile(false);
+    }
+  }, [isMobile, location, setOpenMobile]);
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -436,6 +443,9 @@ function DashboardLayoutContent({
                   <button
                     onClick={() => {
                       if (isSingleItem) {
+                        if (isMobile) {
+                          setOpenMobile(false);
+                        }
                         setLocation(section.items[0].path);
                         if (singleItemBadgeCount > 0) {
                           markReadByRoute.mutate({ actionUrl: section.items[0].path });
@@ -496,6 +506,9 @@ function DashboardLayoutContent({
                               <SidebarMenuButton
                                 isActive={isActive}
                                 onClick={() => {
+                                  if (isMobile) {
+                                    setOpenMobile(false);
+                                  }
                                   setLocation(item.path);
                                   if (badgeCount > 0) {
                                     markReadByRoute.mutate({ actionUrl: item.path });
@@ -601,8 +614,8 @@ function DashboardLayoutContent({
                 <button
                   onClick={() => setLanguage(language === 'ar' ? 'en' : 'ar')}
                   className="w-8 h-8 rounded-lg hover:bg-white dark:hover:bg-white/[0.08] flex items-center justify-center transition"
-                  title={language === 'ar' ? 'التبديل إلى الإنجليزية' : 'Switch to Arabic'}
-                  aria-label={language === 'ar' ? 'التبديل إلى الإنجليزية' : 'Switch to Arabic'}
+                  title={getLanguageSwitchLabel(language)}
+                  aria-label={getLanguageSwitchLabel(language)}
                 >
                   <Globe className="w-4 h-4 text-gray-500 dark:text-gray-400" />
                 </button>

@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/alert-dialog";
 
 import { APP_LOGO, APP_TITLE } from "@/const";
+import { getLanguageSwitchLabel } from "@/lib/languageToggle";
 import { trpc } from "@/lib/trpc";
 import {
   GraduationCap,
@@ -99,6 +100,10 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
       metadata: { path: location },
     });
   }, [location, track, user?.id]);
+
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [location]);
 
   useEffect(() => {
     if (!user) return;
@@ -224,7 +229,9 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
               <button
                 onClick={() => setMobileMenuOpen(true)}
                 className="lg:hidden p-1.5 rounded-md text-gray-600 hover:bg-gray-100 transition"
-                aria-label="Open menu"
+                type="button"
+                aria-label={mobileMenuOpen ? (isRTL ? "إغلاق القائمة" : "Close menu") : (isRTL ? "فتح القائمة" : "Open menu")}
+                aria-expanded={mobileMenuOpen}
               >
                 <Menu className="h-5 w-5" />
               </button>
@@ -268,10 +275,11 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
               {/* Language Toggle */}
               <button
                 onClick={toggleLanguagePreference}
-                className="flex items-center gap-1 px-1.5 sm:px-2 py-1.5 rounded-full text-xs font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition"
+                className="flex items-center gap-1 whitespace-nowrap rounded-full px-1.5 py-1.5 text-[11px] font-medium text-gray-600 transition hover:bg-gray-100 hover:text-gray-900 sm:px-2 sm:text-xs"
+                aria-label={getLanguageSwitchLabel(language)}
               >
                 <Globe className="w-3.5 h-3.5" />
-                <span>{language === "ar" ? "الإنجليزية" : "Arabic"}</span>
+                <span>{getLanguageSwitchLabel(language)}</span>
               </button>
 
               {/* User Avatar — links to profile */}
@@ -375,7 +383,7 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
               className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-100 transition"
             >
               <Globe className="h-4 w-4 text-gray-400" />
-              {language === "ar" ? "التبديل إلى الإنجليزية" : "Switch to Arabic"}
+              {getLanguageSwitchLabel(language)}
             </button>
             <button
               onClick={() => { setMobileMenuOpen(false); setShowLogoutDialog(true); }}

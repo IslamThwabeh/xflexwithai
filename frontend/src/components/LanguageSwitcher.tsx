@@ -1,6 +1,7 @@
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
 import { Languages } from 'lucide-react';
+import { getLanguageSwitchLabel } from '@/lib/languageToggle';
 
 export function LanguageSwitcher() {
   const { language, setLanguage } = useLanguage();
@@ -18,7 +19,7 @@ export function LanguageSwitcher() {
     >
       <Languages className="h-4 w-4" />
       <span className="font-medium">
-        {language === 'en' ? 'Arabic' : 'الإنجليزية'}
+        {getLanguageSwitchLabel(language)}
       </span>
     </Button>
   );

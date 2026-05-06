@@ -5,7 +5,9 @@ import {
   Instagram, Facebook,
 } from 'lucide-react';
 import { APP_LOGO, APP_TITLE } from '@/const';
+import PublicMobileNavSheet, { publicMobileNavItemClassName } from '@/components/PublicMobileNavSheet';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { getLanguageSwitchLabel } from '@/lib/languageToggle';
 
 export default function PublicLayout({ children }: { children: ReactNode }) {
   const { language, setLanguage, t } = useLanguage();
@@ -47,9 +49,9 @@ export default function PublicLayout({ children }: { children: ReactNode }) {
         style={{ height: '72px' }}
         dir="ltr"
       >
-        <div className="container mx-auto px-4 h-full flex items-center justify-between">
+        <div className="container mx-auto flex h-full items-center justify-between gap-3 px-4">
           <Link href="/">
-            <span className="flex items-center gap-3 cursor-pointer rounded-2xl border border-slate-200/70 bg-white/90 px-3 py-2 shadow-sm">
+            <span className="flex shrink-0 items-center gap-3 cursor-pointer rounded-2xl border border-slate-200/70 bg-white/90 px-3 py-2 shadow-sm">
               <img
                 src={APP_LOGO}
                 alt={APP_TITLE}
@@ -68,7 +70,7 @@ export default function PublicLayout({ children }: { children: ReactNode }) {
             ))}
           </nav>
 
-          <div className="flex items-center gap-2 rounded-full border border-slate-200/80 bg-white/80 p-1 shadow-sm">
+          <div className="flex min-w-0 items-center gap-1 sm:gap-2 rounded-full border border-slate-200/80 bg-white/80 p-0.5 sm:p-1 shadow-sm">
             <a
               href="https://wa.me/972597596030"
               target="_blank"
@@ -80,89 +82,52 @@ export default function PublicLayout({ children }: { children: ReactNode }) {
             </a>
             <button
               onClick={() => setLanguage(language === 'ar' ? 'en' : 'ar')}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-full text-sm text-gray-500 hover:text-xf-dark hover:bg-gray-100/80 transition-all duration-150"
+              className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2 py-1.5 text-xs text-gray-500 transition-all duration-150 hover:bg-gray-100/80 hover:text-xf-dark sm:px-3 sm:text-sm"
+              aria-label={getLanguageSwitchLabel(language)}
             >
               <Globe className="w-4 h-4" />
-              {language === 'ar' ? 'الإنجليزية' : 'Arabic'}
+              {getLanguageSwitchLabel(language)}
             </button>
             <Link href="/auth">
-              <button className="btn-primary-xf text-sm px-5 py-2 inline-flex items-center justify-center gap-1.5 min-w-[100px]">
+              <button className="btn-primary-xf inline-flex min-w-[86px] items-center justify-center gap-1.5 px-4 py-2 text-sm sm:min-w-[100px] sm:px-5">
                 <LogIn className="w-3.5 h-3.5" />
                 {t('home.heroCtaLogin')}
               </button>
             </Link>
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="md:hidden p-2 rounded-xl text-gray-500 hover:text-xf-dark hover:bg-gray-100/80 transition-all duration-150"
+              type="button"
+              aria-label={mobileMenuOpen ? (language === 'ar' ? 'إغلاق القائمة' : 'Close menu') : (language === 'ar' ? 'فتح القائمة' : 'Open menu')}
+              aria-expanded={mobileMenuOpen}
+              className="shrink-0 rounded-xl p-2 text-gray-500 transition-all duration-150 hover:bg-gray-100/80 hover:text-xf-dark md:hidden"
             >
               {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
           </div>
         </div>
 
-        {/* Mobile Side Menu */}
-        {mobileMenuOpen && (
-          <>
-            <button
-              type="button"
-              aria-label={language === 'ar' ? 'إغلاق القائمة' : 'Close menu'}
-              className="fixed inset-0 z-[1090] bg-slate-950/30 backdrop-blur-sm md:hidden"
-              onClick={() => setMobileMenuOpen(false)}
-            />
-            <nav
-              dir={language === 'ar' ? 'rtl' : 'ltr'}
-              className="fixed inset-y-0 right-0 z-[1100] flex w-[min(88vw,22rem)] flex-col border-l border-white/60 bg-white/96 px-4 pb-4 pt-5 shadow-[0_24px_60px_rgba(15,23,42,0.18)] backdrop-blur-2xl md:hidden"
-              style={{ overflowY: 'auto' }}
-            >
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
-                  <img src={APP_LOGO} alt={APP_TITLE} className="h-8 w-auto" />
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="rounded-xl p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-              <p className="mb-5 text-sm leading-6 text-slate-500">
-                {language === 'ar'
-                  ? 'قائمة أنظف وأوضح للوصول السريع إلى الصفحات الأساسية.'
-                  : 'A cleaner navigation drawer for quick access to the essential pages.'}
-              </p>
-              {navItems.map((item) => (
-                <Link key={item.href} href={item.href}>
-                  <span className={`block py-3.5 px-4 rounded-2xl text-gray-600 hover:text-xf-dark hover:bg-xf-cream transition-all cursor-pointer text-[1.05rem] ${isActive(item.href) ? 'text-xf-dark bg-xf-cream font-semibold' : ''}`}>
-                    {item.label}
-                  </span>
-                </Link>
-              ))}
-              <Link href="/activate-key">
-                <span className="block py-3.5 px-4 rounded-2xl text-gray-600 hover:text-xf-dark hover:bg-xf-cream transition-all cursor-pointer text-[1.05rem]">
-                  {language === 'ar' ? 'تفعيل مفتاح' : 'Activate Key'}
-                </span>
-              </Link>
-              <div className="mt-auto pt-5 border-t border-slate-200 flex flex-col gap-2">
-                <a
-                  href="https://wa.me/972597596030"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full py-3 text-center text-[1.05rem] inline-flex items-center justify-center gap-2 rounded-full bg-green-500 text-white font-semibold hover:bg-green-600 transition-all"
-                >
-                  <Phone className="w-4 h-4" />
-                  WhatsApp
-                </a>
-                <Link href="/auth">
-                  <button className="btn-primary-xf w-full py-3 text-center text-[1.05rem] inline-flex items-center justify-center gap-2">
-                    <LogIn className="w-4 h-4" />
-                    {t('home.heroCtaLogin')}
-                  </button>
-                </Link>
-              </div>
-            </nav>
-          </>
-        )}
+        <PublicMobileNavSheet
+          open={mobileMenuOpen}
+          onOpenChange={setMobileMenuOpen}
+          language={language}
+          loginLabel={t('home.heroCtaLogin')}
+          intro={language === 'ar'
+            ? 'قائمة أنظف وأوضح للوصول السريع إلى الصفحات الأساسية.'
+            : 'A cleaner navigation drawer for quick access to the essential pages.'}
+        >
+          {navItems.map((item) => (
+            <Link key={item.href} href={item.href} onClick={() => setMobileMenuOpen(false)}>
+              <span className={`${publicMobileNavItemClassName} ${isActive(item.href) ? 'bg-xf-cream font-semibold text-xf-dark' : 'cursor-pointer'}`}>
+                {item.label}
+              </span>
+            </Link>
+          ))}
+          <Link href="/activate-key" onClick={() => setMobileMenuOpen(false)}>
+            <span className={`${publicMobileNavItemClassName} cursor-pointer`}>
+              {language === 'ar' ? 'تفعيل مفتاح' : 'Activate Key'}
+            </span>
+          </Link>
+        </PublicMobileNavSheet>
       </header>
 
       {/* ======== CONTENT ======== */}
