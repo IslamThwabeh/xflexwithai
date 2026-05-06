@@ -112,7 +112,7 @@ export default function AdminTestimonials() {
             <h2 className="text-lg font-bold mb-4">{isNew ? (isRtl ? 'شهادة جديدة' : 'New Testimonial') : (isRtl ? 'تعديل الشهادة' : 'Edit Testimonial')}</h2>
             <div className="grid md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Name (English)</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{isRtl ? 'الاسم (إنجليزي)' : 'Name (English)'}</label>
                 <Input value={editing.nameEn} onChange={(e) => setEditing({ ...editing, nameEn: e.target.value })} />
               </div>
               <div>
@@ -120,15 +120,15 @@ export default function AdminTestimonials() {
                 <Input value={editing.nameAr} onChange={(e) => setEditing({ ...editing, nameAr: e.target.value })} dir="rtl" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Title (English)</label>
-                <Input value={editing.titleEn} onChange={(e) => setEditing({ ...editing, titleEn: e.target.value })} placeholder="e.g. Forex Trader" />
+                <label className="block text-sm font-medium text-gray-700 mb-1">{isRtl ? 'العنوان (إنجليزي)' : 'Title (English)'}</label>
+                <Input value={editing.titleEn} onChange={(e) => setEditing({ ...editing, titleEn: e.target.value })} placeholder={isRtl ? 'مثال: متداول فوركس' : 'e.g. Forex Trader'} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{isRtl ? 'العنوان (عربي)' : 'Title (Arabic)'}</label>
                 <Input value={editing.titleAr} onChange={(e) => setEditing({ ...editing, titleAr: e.target.value })} dir="rtl" />
               </div>
               <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Testimonial Text (English)</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{isRtl ? 'نص الشهادة (إنجليزي)' : 'Testimonial Text (English)'}</label>
                 <textarea className="w-full border rounded-md p-2 text-sm min-h-[80px]" value={editing.textEn} onChange={(e) => setEditing({ ...editing, textEn: e.target.value })} />
               </div>
               <div className="md:col-span-2">

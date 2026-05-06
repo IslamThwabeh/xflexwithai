@@ -542,7 +542,7 @@ export default function AdminRoles() {
                         <TableHead>{isRtl ? 'الأدوار' : 'Roles'}</TableHead>
                         <TableHead>{isRtl ? 'تاريخ الإضافة' : 'Added'}</TableHead>
                         <TableHead>{isRtl ? 'آخر دخول' : 'Last Login'}</TableHead>
-                        <TableHead className={isRtl ? 'text-left' : 'text-right'}>{isRtl ? 'إجراءات' : 'Actions'}</TableHead>
+                        <TableHead className="text-end">{isRtl ? 'إجراءات' : 'Actions'}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -581,7 +581,7 @@ export default function AdminRoles() {
                               : '—'
                             }
                           </TableCell>
-                          <TableCell className={isRtl ? 'text-left' : 'text-right'}>
+                          <TableCell className="text-end">
                             <Button
                               variant="ghost"
                               size="sm"

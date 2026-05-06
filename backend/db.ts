@@ -91,6 +91,7 @@ const DEFAULT_KEY_ENTITLEMENT_DAYS = 30;
 const DEFAULT_STUDY_PERIOD_DAYS = 14;
 const RECOMMENDATION_ALERT_UNLOCK_MS = 60 * 1000;
 const RECOMMENDATION_ALERT_EXPIRY_MS = 15 * 60 * 1000;
+let hasLoggedMissingEngagementEventsTable = false;
 
 export type TimedServiceStatus = 'none' | 'pending' | 'active' | 'expiring' | 'expired' | 'frozen';
 
@@ -102,6 +103,41 @@ export type TimedServiceAccessSummary = {
   pausedReason: string | null;
   hasHistory: boolean;
 };
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error ?? 'Unknown error');
+}
+
+function isMissingEngagementEventsTableError(error: unknown): boolean {
+  const message = getErrorMessage(error);
+  return message.includes('no such table') && message.includes('engagement_events');
+}
+
+function logMissingEngagementEventsTable(operation: string, error: unknown) {
+  if (hasLoggedMissingEngagementEventsTable) return;
+
+  hasLoggedMissingEngagementEventsTable = true;
+  logger.warn('Engagement analytics disabled because engagement_events is missing', {
+    operation,
+    error: getErrorMessage(error),
+  });
+}
+
+async function withOptionalEngagementEventsTable<T>(
+  operation: string,
+  fallback: T,
+  callback: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await callback();
+  } catch (error) {
+    if (isMissingEngagementEventsTableError(error)) {
+      logMissingEngagementEventsTable(operation, error);
+      return fallback;
+    }
+    throw error;
+  }
+}
 
 /**
  * Get the configurable study period (فترة التعلم) from admin settings.
@@ -8049,10 +8085,12 @@ export async function trackEngagement(input: {
 }) {
   const db = await getDb();
   if (!db) return;
-  await db.insert(engagementEvents).values({
-    userId: input.userId, eventType: input.eventType,
-    entityType: input.entityType, entityId: input.entityId,
-    metadata: input.metadata, createdAt: new Date().toISOString(),
+  await withOptionalEngagementEventsTable('track', undefined, async () => {
+    await db.insert(engagementEvents).values({
+      userId: input.userId, eventType: input.eventType,
+      entityType: input.entityType, entityId: input.entityId,
+      metadata: input.metadata, createdAt: new Date().toISOString(),
+    });
   });
 }
 
@@ -8061,52 +8099,271 @@ export async function getEngagementSummary(days = 30) {
   if (!db) return { totalEvents: 0, uniqueUsers: 0, byType: [] as any[] };
   const cutoff = new Date(Date.now() - days * 86400000).toISOString();
 
-  const [totals] = await db.select({
-    totalEvents: sql<number>`COUNT(*)`,
-    uniqueUsers: sql<number>`COUNT(DISTINCT ${engagementEvents.userId})`,
-  }).from(engagementEvents).where(sql`${engagementEvents.createdAt} >= ${cutoff}`);
+  return withOptionalEngagementEventsTable('summary', { totalEvents: 0, uniqueUsers: 0, byType: [] as any[] }, async () => {
+    const [totals] = await db.select({
+      totalEvents: sql<number>`COUNT(*)`,
+      uniqueUsers: sql<number>`COUNT(DISTINCT ${engagementEvents.userId})`,
+    }).from(engagementEvents).where(sql`${engagementEvents.createdAt} >= ${cutoff}`);
 
-  const byType = await db.select({
-    eventType: engagementEvents.eventType,
-    count: sql<number>`COUNT(*)`,
-    uniqueUsers: sql<number>`COUNT(DISTINCT ${engagementEvents.userId})`,
-  }).from(engagementEvents)
-    .where(sql`${engagementEvents.createdAt} >= ${cutoff}`)
-    .groupBy(engagementEvents.eventType)
-    .orderBy(sql`COUNT(*) DESC`);
+    const byType = await db.select({
+      eventType: engagementEvents.eventType,
+      count: sql<number>`COUNT(*)`,
+      uniqueUsers: sql<number>`COUNT(DISTINCT ${engagementEvents.userId})`,
+    }).from(engagementEvents)
+      .where(sql`${engagementEvents.createdAt} >= ${cutoff}`)
+      .groupBy(engagementEvents.eventType)
+      .orderBy(sql`COUNT(*) DESC`);
 
-  return {
-    totalEvents: Number(totals?.totalEvents ?? 0),
-    uniqueUsers: Number(totals?.uniqueUsers ?? 0),
-    byType: byType.map(r => ({ eventType: r.eventType, count: Number(r.count), uniqueUsers: Number(r.uniqueUsers) })),
-  };
+    return {
+      totalEvents: Number(totals?.totalEvents ?? 0),
+      uniqueUsers: Number(totals?.uniqueUsers ?? 0),
+      byType: byType.map(r => ({ eventType: r.eventType, count: Number(r.count), uniqueUsers: Number(r.uniqueUsers) })),
+    };
+  });
 }
 
 export async function getUserEngagementTimeline(userId: number, limit = 100) {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(engagementEvents)
-    .where(eq(engagementEvents.userId, userId))
-    .orderBy(desc(engagementEvents.createdAt))
-    .limit(limit);
+  return withOptionalEngagementEventsTable('userTimeline', [] as EngagementEvent[], async () => {
+    return db.select().from(engagementEvents)
+      .where(eq(engagementEvents.userId, userId))
+      .orderBy(desc(engagementEvents.createdAt))
+      .limit(limit);
+  });
 }
 
 export async function getEngagementByEntity(entityType: string, days = 30) {
   const db = await getDb();
   if (!db) return [];
   const cutoff = new Date(Date.now() - days * 86400000).toISOString();
-  return db.select({
-    entityId: engagementEvents.entityId,
-    count: sql<number>`COUNT(*)`,
-    uniqueUsers: sql<number>`COUNT(DISTINCT ${engagementEvents.userId})`,
-  }).from(engagementEvents)
-    .where(and(
-      eq(engagementEvents.entityType, entityType),
-      sql`${engagementEvents.createdAt} >= ${cutoff}`,
-    ))
-    .groupBy(engagementEvents.entityId)
-    .orderBy(sql`COUNT(*) DESC`)
-    .limit(30);
+  return withOptionalEngagementEventsTable('byEntity', [] as Array<{ entityId: number | null; count: number; uniqueUsers: number }>, async () => {
+    return db.select({
+      entityId: engagementEvents.entityId,
+      count: sql<number>`COUNT(*)`,
+      uniqueUsers: sql<number>`COUNT(DISTINCT ${engagementEvents.userId})`,
+    }).from(engagementEvents)
+      .where(and(
+        eq(engagementEvents.entityType, entityType),
+        sql`${engagementEvents.createdAt} >= ${cutoff}`,
+      ))
+      .groupBy(engagementEvents.entityId)
+      .orderBy(sql`COUNT(*) DESC`)
+      .limit(30);
+  });
+}
+
+export async function getRecentEngagementEvents(input?: {
+  days?: number;
+  eventType?: string;
+  limit?: number;
+}) {
+  const db = await getDb();
+  if (!db) return [] as Array<{
+    id: number;
+    userId: number;
+    userName: string | null;
+    userEmail: string | null;
+    eventType: string;
+    entityType: string | null;
+    entityId: number | null;
+    entityLabelEn: string | null;
+    entityLabelAr: string | null;
+    metadata: string | null;
+    createdAt: string;
+  }>;
+
+  const days = input?.days ?? 30;
+  const limit = input?.limit ?? 25;
+  const cutoff = new Date(Date.now() - days * 86400000).toISOString();
+
+  return withOptionalEngagementEventsTable('recentEvents', [] as Array<{
+    id: number;
+    userId: number;
+    userName: string | null;
+    userEmail: string | null;
+    eventType: string;
+    entityType: string | null;
+    entityId: number | null;
+    entityLabelEn: string | null;
+    entityLabelAr: string | null;
+    metadata: string | null;
+    createdAt: string;
+  }>, async () => {
+    const filter = input?.eventType
+      ? and(
+          sql`${engagementEvents.createdAt} >= ${cutoff}`,
+          eq(engagementEvents.eventType, input.eventType),
+        )
+      : sql`${engagementEvents.createdAt} >= ${cutoff}`;
+
+    const rows = await db.select({
+      id: engagementEvents.id,
+      userId: engagementEvents.userId,
+      userName: users.name,
+      userEmail: users.email,
+      eventType: engagementEvents.eventType,
+      entityType: engagementEvents.entityType,
+      entityId: engagementEvents.entityId,
+      metadata: engagementEvents.metadata,
+      createdAt: engagementEvents.createdAt,
+    }).from(engagementEvents)
+      .leftJoin(users, eq(engagementEvents.userId, users.id))
+      .where(filter)
+      .orderBy(desc(engagementEvents.createdAt))
+      .limit(limit);
+
+    const courseIds = Array.from(new Set(
+      rows
+        .filter((row) => row.entityType === 'course' && typeof row.entityId === 'number')
+        .map((row) => row.entityId as number),
+    ));
+
+    const episodeIds = Array.from(new Set(
+      rows
+        .filter((row) => (row.entityType === 'episode' || row.entityType === 'episode_quiz') && typeof row.entityId === 'number')
+        .map((row) => row.entityId as number),
+    ));
+
+    const quizIds = Array.from(new Set(
+      rows
+        .filter((row) => (row.entityType === 'quiz' || row.entityType === 'quiz_level') && typeof row.entityId === 'number')
+        .map((row) => row.entityId as number),
+    ));
+
+    const [courseRows, episodeRows, quizRows] = await Promise.all([
+      courseIds.length
+        ? db.select({
+            id: courses.id,
+            titleEn: courses.titleEn,
+            titleAr: courses.titleAr,
+          }).from(courses).where(inArray(courses.id, courseIds))
+        : Promise.resolve([] as Array<{ id: number; titleEn: string; titleAr: string }>),
+      episodeIds.length
+        ? db.select({
+            id: episodes.id,
+            titleEn: episodes.titleEn,
+            titleAr: episodes.titleAr,
+            courseTitleEn: courses.titleEn,
+            courseTitleAr: courses.titleAr,
+          }).from(episodes)
+          .leftJoin(courses, eq(episodes.courseId, courses.id))
+          .where(inArray(episodes.id, episodeIds))
+        : Promise.resolve([] as Array<{
+            id: number;
+            titleEn: string;
+            titleAr: string;
+            courseTitleEn: string | null;
+            courseTitleAr: string | null;
+          }>),
+      quizIds.length
+        ? db.select({
+            id: quizzes.id,
+            title: quizzes.title,
+            level: quizzes.level,
+          }).from(quizzes).where(inArray(quizzes.id, quizIds))
+        : Promise.resolve([] as Array<{ id: number; title: string; level: number }>),
+    ]);
+
+    const courseMap = new Map(courseRows.map((row) => [row.id, row]));
+    const episodeMap = new Map(episodeRows.map((row) => [row.id, row]));
+    const quizMap = new Map(quizRows.map((row) => [row.id, row]));
+
+    return rows.map((row) => {
+      const entityLabel = getEngagementEntityLabel(row, courseMap, episodeMap, quizMap);
+
+      return {
+        ...row,
+        userName: row.userName?.trim() || null,
+        userEmail: row.userEmail ?? null,
+        entityLabelEn: entityLabel.en,
+        entityLabelAr: entityLabel.ar,
+      };
+    });
+  });
+}
+
+function getEngagementEntityLabel(
+  row: { eventType: string; entityType: string | null; entityId: number | null },
+  courseMap: Map<number, { id: number; titleEn: string; titleAr: string }>,
+  episodeMap: Map<number, {
+    id: number;
+    titleEn: string;
+    titleAr: string;
+    courseTitleEn: string | null;
+    courseTitleAr: string | null;
+  }>,
+  quizMap: Map<number, { id: number; title: string; level: number }>,
+) {
+  if (typeof row.entityId !== 'number') {
+    return { en: null as string | null, ar: null as string | null };
+  }
+
+  const resolvedEntityType = row.entityType
+    ?? (row.eventType === 'course_start' ? 'course' : null)
+    ?? (row.eventType === 'lesson_complete' ? 'episode' : null)
+    ?? (row.eventType === 'quiz_attempt' ? 'quiz_or_episode_quiz' : null);
+
+  if (resolvedEntityType === 'course') {
+    const course = courseMap.get(row.entityId);
+    return {
+      en: course?.titleEn ?? null,
+      ar: course?.titleAr ?? null,
+    };
+  }
+
+  if (resolvedEntityType === 'episode' || resolvedEntityType === 'episode_quiz') {
+    const episode = episodeMap.get(row.entityId);
+    if (!episode) {
+      return { en: null, ar: null };
+    }
+
+    if (resolvedEntityType === 'episode_quiz' || row.eventType === 'quiz_attempt') {
+      return {
+        en: episode.courseTitleEn ? `Lesson Quiz: ${episode.titleEn} (${episode.courseTitleEn})` : `Lesson Quiz: ${episode.titleEn}`,
+        ar: episode.courseTitleAr ? `اختبار الدرس: ${episode.titleAr} (${episode.courseTitleAr})` : `اختبار الدرس: ${episode.titleAr}`,
+      };
+    }
+
+    return {
+      en: episode.courseTitleEn ? `${episode.titleEn} (${episode.courseTitleEn})` : episode.titleEn,
+      ar: episode.courseTitleAr ? `${episode.titleAr} (${episode.courseTitleAr})` : episode.titleAr,
+    };
+  }
+
+  if (resolvedEntityType === 'quiz_or_episode_quiz') {
+    const quiz = quizMap.get(row.entityId);
+    if (quiz) {
+      return {
+        en: quiz.title || `Level ${quiz.level} Quiz`,
+        ar: `اختبار المستوى ${quiz.level}`,
+      };
+    }
+
+    const episode = episodeMap.get(row.entityId);
+    if (episode) {
+      return {
+        en: episode.courseTitleEn ? `Lesson Quiz: ${episode.titleEn} (${episode.courseTitleEn})` : `Lesson Quiz: ${episode.titleEn}`,
+        ar: episode.courseTitleAr ? `اختبار الدرس: ${episode.titleAr} (${episode.courseTitleAr})` : `اختبار الدرس: ${episode.titleAr}`,
+      };
+    }
+
+    return { en: null, ar: null };
+  }
+
+  if (resolvedEntityType === 'quiz' || resolvedEntityType === 'quiz_level') {
+    const quiz = quizMap.get(row.entityId);
+    if (!quiz) {
+      return { en: null, ar: null };
+    }
+
+    return {
+      en: quiz.title || `Level ${quiz.level} Quiz`,
+      ar: `اختبار المستوى ${quiz.level}`,
+    };
+  }
+
+  return { en: null, ar: null };
 }
 
 // ── Broker CRUD ──────────────────────────────────────────

@@ -693,6 +693,8 @@ About XFlex:
 - Two packages: Basic ($200) includes Trading Course + Recommendations, Comprehensive ($500) adds LexAI chatbot
 - Students activate access via package keys given after purchase
 - Platform has: video courses, quizzes, broker onboarding, trading recommendations, LexAI, loyalty points
+- Rawan is the founder of XFlex Trading Academy. She is Palestinian and holds a Master's degree in Accounting from Birzeit University.
+- XFlex was founded from a genuine passion for trading education and empowering Arab traders to achieve their financial goals.
 
 Common topics you can help with:
 - How to activate a package key (go to Dashboard, enter the key)
@@ -708,6 +710,7 @@ Rules:
 - Be concise and helpful. Keep responses under 150 words.
 - Respond in the same language the student uses (Arabic or English).
 - If you don't know the answer or the question requires human judgment (refunds, billing disputes, account issues), say you'll connect them with a human agent.
+- If asked who Rawan is or what she represents to the academy, explain that she is the founder of XFlex Trading Academy using only the public bio above. Do not say you lack information about her unless the user asks for private details beyond that bio.
 - Never make up information about prices, features, or policies you're unsure about.
 - Be friendly but professional. Use the student's context when available.
 - Do NOT discuss competitor platforms or give financial/trading advice.`;
@@ -3321,7 +3324,7 @@ export const appRouter = router({
           attachmentDuration: input.attachmentDuration,
         });
 
-        // AI auto-reply when outside working hours and student hasn't requested human.
+        // AI auto-replies by default until the student explicitly requests a human.
         // If the student escalated to human but the configured delay has elapsed, auto-resume AI.
         let effectiveNeedsHuman = conv.needsHuman;
         if (conv.needsHuman && conv.needsHumanAt) {
@@ -3332,7 +3335,7 @@ export const appRouter = router({
             effectiveNeedsHuman = false;
           }
         }
-        if (!isSupportWorkingHours() && !effectiveNeedsHuman) {
+        if (!effectiveNeedsHuman) {
           const allMessages = await db.getSupportMessages(conv.id);
           const aiReply = await generateSupportAIReply(
             allMessages.map(m => ({ senderType: m.senderType, content: m.content })),
@@ -6003,6 +6006,21 @@ ${qaText}`;
       }))
       .query(async ({ input }) => {
         return db.getEngagementByEntity(input.entityType, input.days ?? 30);
+      }),
+
+    // Admin: recent events for drill-down details
+    recentEvents: adminProcedure
+      .input(z.object({
+        days: z.number().min(1).max(365).optional(),
+        eventType: z.string().min(1).max(50).optional(),
+        limit: z.number().min(1).max(100).optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        return db.getRecentEngagementEvents({
+          days: input?.days ?? 30,
+          eventType: input?.eventType,
+          limit: input?.limit ?? 20,
+        });
       }),
 
     // Admin: user timeline

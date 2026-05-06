@@ -470,7 +470,7 @@ function DashboardLayoutContent({
                     </div>
                     {!isCollapsed && (
                       <>
-                        <span className="flex-1 text-left truncate">{t(section.labelKey)}</span>
+                        <span className="flex-1 text-start truncate">{t(section.labelKey)}</span>
                         {isSingleItem && singleItemBadgeCount > 0 && (
                           <span className="min-w-[20px] h-5 px-1.5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
                             {singleItemBadgeCount > 99 ? '99+' : singleItemBadgeCount}
@@ -601,7 +601,8 @@ function DashboardLayoutContent({
                 <button
                   onClick={() => setLanguage(language === 'ar' ? 'en' : 'ar')}
                   className="w-8 h-8 rounded-lg hover:bg-white dark:hover:bg-white/[0.08] flex items-center justify-center transition"
-                  title={language === 'ar' ? 'English' : 'عربي'}
+                  title={language === 'ar' ? 'التبديل إلى الإنجليزية' : 'Switch to Arabic'}
+                  aria-label={language === 'ar' ? 'التبديل إلى الإنجليزية' : 'Switch to Arabic'}
                 >
                   <Globe className="w-4 h-4 text-gray-500 dark:text-gray-400" />
                 </button>
@@ -619,7 +620,7 @@ function DashboardLayoutContent({
                         {user?.name?.charAt(0).toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
-                    <div className="hidden md:block text-left">
+                    <div className="hidden md:block text-start">
                       <p className="text-[13px] font-semibold text-slate-900 dark:text-white leading-tight">
                         {user?.name?.split(' ')[0] || '-'}
                       </p>

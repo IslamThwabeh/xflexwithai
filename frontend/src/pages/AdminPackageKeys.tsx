@@ -76,6 +76,13 @@ import {
   SortableHeader,
   zebraRow,
 } from "@/components/DataTable";
+import {
+  formatAdminCurrencyFromUsd,
+  formatAdminCurrencyFromUsdCents,
+  formatAdminNumberInput,
+  ilsToUsd,
+  usdToIls,
+} from "@/lib/adminCurrency";
 import { getSuggestedPackageKeyPrice } from "@shared/packageKeyPricing";
 
 const keySortFns: Record<string, (a: any, b: any) => number> = {
@@ -244,11 +251,15 @@ export default function AdminPackageKeys() {
       toast.error(language === 'ar' ? 'يرجى اختيار الباقة' : 'Please select a package');
       return;
     }
+    const trimmedPrice = price.trim();
+    const numericPrice = Number(trimmedPrice);
     generateKey.mutate({
       packageId: selectedPackage,
       email: assignEmail || undefined,
       notes: notes || undefined,
-      price: parseInt(price) || undefined,
+      price: trimmedPrice && Number.isFinite(numericPrice) && numericPrice > 0
+        ? Math.round(ilsToUsd(numericPrice))
+        : undefined,
       entitlementDays: entitlementDays ? parseInt(entitlementDays, 10) : undefined,
       expiresAt: expiresAt || undefined,
       isUpgrade: isUpgrade || undefined,
@@ -262,11 +273,15 @@ export default function AdminPackageKeys() {
       toast.error(language === 'ar' ? 'يرجى اختيار الباقة' : 'Please select a package');
       return;
     }
+    const trimmedPrice = price.trim();
+    const numericPrice = Number(trimmedPrice);
     generateBulk.mutate({
       packageId: selectedPackage,
       quantity: parseInt(quantity) || 1,
       notes: notes || undefined,
-      price: parseInt(price) || undefined,
+      price: trimmedPrice && Number.isFinite(numericPrice) && numericPrice > 0
+        ? Math.round(ilsToUsd(numericPrice))
+        : undefined,
       entitlementDays: entitlementDays ? parseInt(entitlementDays, 10) : undefined,
       expiresAt: expiresAt || undefined,
       isUpgrade: isUpgrade || undefined,
@@ -283,18 +298,21 @@ export default function AdminPackageKeys() {
   const exportCSV = () => {
     const keys = filteredKeys;
     if (!keys.length) return;
-    const headers = ['Key Code', 'Package', 'Email', 'Status', 'Entitlement Days', 'Redeem By', 'Sub Expiry', 'Type', 'Upgrade', 'Referred By', 'Created', 'Activated', 'Notes'];
+    const headers = language === 'ar'
+      ? ['رمز المفتاح', 'الباقة', 'البريد الإلكتروني', 'الحالة', 'أيام الاستحقاق', 'آخر موعد للاستخدام', 'انتهاء الاشتراك', 'النوع', 'ترقية', 'تمت الإحالة بواسطة', 'تاريخ الإنشاء', 'تاريخ التفعيل', 'ملاحظات']
+      : ['Key Code', 'Package', 'Email', 'Status', 'Entitlement Days', 'Redeem By', 'Sub Expiry', 'Type', 'Upgrade', 'Referred By', 'Created', 'Activated', 'Notes'];
     const rows = keys.map(k => [
       k.keyCode,
       (k as any).packageName || '',
       k.email || '',
-      k.activatedAt ? 'Activated' : k.isActive ? 'Unused' : 'Deactivated',
-      k.entitlementDays || 'Default',
+      k.activatedAt ? (language === 'ar' ? 'مفعّل' : 'Activated') : k.isActive ? (language === 'ar' ? 'غير مستخدم' : 'Unused') : (language === 'ar' ? 'معطّل' : 'Deactivated'),
+      k.entitlementDays || (language === 'ar' ? 'الافتراضي' : 'Default'),
       k.expiresAt ? formatLocalizedDate(k.expiresAt, language) : '',
       (k as any).subEndDate ? formatLocalizedDate((k as any).subEndDate, language) : '',
-      (k as any).isRenewal ? 'Renewal' : (k as any).isUpgrade ? 'Upgrade' : 'New',
-      (k as any).isUpgrade ? 'Yes' : 'No',
-      (k as any).referredBy || '',      k.createdAt ? formatLocalizedDate(k.createdAt, language) : '',
+      (k as any).isRenewal ? (language === 'ar' ? 'تجديد' : 'Renewal') : (k as any).isUpgrade ? (language === 'ar' ? 'ترقية' : 'Upgrade') : (language === 'ar' ? 'جديد' : 'New'),
+      (k as any).isUpgrade ? (language === 'ar' ? 'نعم' : 'Yes') : (language === 'ar' ? 'لا' : 'No'),
+      (k as any).referredBy || '',
+      k.createdAt ? formatLocalizedDate(k.createdAt, language) : '',
       k.activatedAt ? formatLocalizedDate(k.activatedAt, language) : '',
       k.notes || '',
     ]);
@@ -303,7 +321,7 @@ export default function AdminPackageKeys() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `package-keys-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `${language === 'ar' ? 'مفاتيح-الباقات' : 'package-keys'}-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -347,6 +365,20 @@ export default function AdminPackageKeys() {
   const selectedPkg = packages.find((p: any) => p.id === selectedPackage);
   const isBasicPackage = selectedPkg?.slug === 'basic';
 
+  const applySuggestedPrice = (
+    packageId: number | null,
+    options?: {
+      isRenewal?: boolean;
+      isUpgrade?: boolean;
+    },
+  ) => {
+    setPrice(
+      formatAdminNumberInput(
+        usdToIls(getSuggestedPackageKeyPrice(packages, packageId, options)),
+      ),
+    );
+  };
+
   const PackageSelector = () => (
     <div className="space-y-2">
       <Label>{language === 'ar' ? 'الباقة' : 'Package'}</Label>
@@ -358,10 +390,10 @@ export default function AdminPackageKeys() {
           const pkg = packages.find((p: any) => p.id === pkgId);
           const nextIsUpgrade = pkg?.slug === 'basic' ? false : isUpgrade;
           if (pkg) {
-            setPrice(String(getSuggestedPackageKeyPrice(packages, pkgId, {
+            applySuggestedPrice(pkgId, {
               isRenewal,
               isUpgrade: nextIsUpgrade,
-            })));
+            });
             if (pkg.slug === 'basic') {
               setIsUpgrade(false);
               setReferredBy("");
@@ -378,7 +410,7 @@ export default function AdminPackageKeys() {
               <div className="flex items-center gap-2">
                 <Package className="w-4 h-4" />
                 <span>{language === 'ar' ? pkg.nameAr : pkg.nameEn}</span>
-                <span className="text-xs text-gray-500">${(pkg.price / 100).toFixed(0)}</span>
+                <span className="text-xs text-gray-500">{formatAdminCurrencyFromUsdCents(pkg.price || 0, language, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
               </div>
             </SelectItem>
           ))}
@@ -432,7 +464,7 @@ export default function AdminPackageKeys() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>{language === 'ar' ? 'السعر ($)' : 'Price ($)'}</Label>
+                    <Label>{language === 'ar' ? 'السعر (₪)' : 'Price (₪)'}</Label>
                     <Input
                       type="number"
                       value={price}
@@ -474,10 +506,10 @@ export default function AdminPackageKeys() {
                         if (nextIsUpgrade) {
                           setIsRenewal(false);
                         }
-                        setPrice(String(getSuggestedPackageKeyPrice(packages, selectedPackage, {
+                        applySuggestedPrice(selectedPackage, {
                           isRenewal: false,
                           isUpgrade: nextIsUpgrade,
-                        })));
+                        });
                       }}
                       className="w-4 h-4 accent-amber-600"
                     />
@@ -499,10 +531,10 @@ export default function AdminPackageKeys() {
                         if (nextIsRenewal) {
                           setIsUpgrade(false);
                         }
-                        setPrice(String(getSuggestedPackageKeyPrice(packages, selectedPackage, {
+                        applySuggestedPrice(selectedPackage, {
                           isRenewal: nextIsRenewal,
                           isUpgrade: false,
-                        })));
+                        });
                       }}
                       className="w-4 h-4 accent-emerald-600"
                     />
@@ -596,10 +628,10 @@ export default function AdminPackageKeys() {
                         if (nextIsUpgrade) {
                           setIsRenewal(false);
                         }
-                        setPrice(String(getSuggestedPackageKeyPrice(packages, selectedPackage, {
+                        applySuggestedPrice(selectedPackage, {
                           isRenewal: false,
                           isUpgrade: nextIsUpgrade,
-                        })));
+                        });
                       }}
                       className="w-4 h-4 accent-amber-600"
                     />
@@ -621,10 +653,10 @@ export default function AdminPackageKeys() {
                         if (nextIsRenewal) {
                           setIsUpgrade(false);
                         }
-                        setPrice(String(getSuggestedPackageKeyPrice(packages, selectedPackage, {
+                        applySuggestedPrice(selectedPackage, {
                           isRenewal: nextIsRenewal,
                           isUpgrade: false,
-                        })));
+                        });
                       }}
                       className="w-4 h-4 accent-emerald-600"
                     />
@@ -827,7 +859,7 @@ export default function AdminPackageKeys() {
                   <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
                     <div>
                       <span className="text-gray-400 block">{language === 'ar' ? 'السعر' : 'Price'}</span>
-                      <span className="font-medium">{key.price ? `$${key.price}` : '—'}</span>
+                      <span className="font-medium">{key.price ? formatAdminCurrencyFromUsd(key.price, language, { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : '—'}</span>
                     </div>
                     <div>
                       <span className="text-gray-400 block">
@@ -1049,7 +1081,7 @@ export default function AdminPackageKeys() {
                           )}
                         </TableCell>}
                         {visibleCols.has('price') && <TableCell className="text-sm font-medium">
-                          {key.price ? `$${key.price}` : '—'}
+                          {key.price ? formatAdminCurrencyFromUsd(key.price, language, { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : '—'}
                         </TableCell>}
                         {visibleCols.has('duration') && <TableCell className="text-xs">
                           {key.activatedAt

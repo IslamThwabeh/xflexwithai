@@ -2,8 +2,9 @@ import { trpc } from '@/lib/trpc';
 import { printReport } from '@/lib/printReport';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { formatLocalizedDate } from '@/lib/dateLocale';
+import { formatAdminCurrencyFromUsd } from '@/lib/adminCurrency';
 import { Button } from '@/components/ui/button';
-import { Download, DollarSign, TrendingUp, Key, Package, FileText } from 'lucide-react';
+import { Download, Wallet, TrendingUp, Key, FileText } from 'lucide-react';
 import DashboardLayout from '@/components/DashboardLayout';
 
 export default function AdminRevenueReport() {
@@ -11,7 +12,7 @@ export default function AdminRevenueReport() {
   const isRtl = language === 'ar';
   const { data, isLoading } = trpc.reports.revenue.useQuery();
 
-  const fmt = (dollars: number) => `$${dollars.toFixed(2)}`;
+  const fmt = (dollars: number) => formatAdminCurrencyFromUsd(dollars, language);
 
   const avgKeyValue = (data?.totalKeySales || 0) > 0
     ? (data?.totalRevenue || 0) / (data?.totalKeySales || 1)
@@ -19,10 +20,10 @@ export default function AdminRevenueReport() {
 
   const exportCSV = () => {
     if (!data?.recentActivations?.length) return;
-    const headers = ['Key Code', 'User', 'Email', 'Package', 'Price ($)', 'Upgrade', 'Renewal', 'Activated'];
+    const headers = ['Key Code', 'User', 'Email', 'Package', 'Price (₪)', 'Upgrade', 'Renewal', 'Activated'];
     const rows = data.recentActivations.map((a: any) => [
       a.keyCode, a.userName || '', a.userEmail || '',
-      a.packageName || '', a.price?.toFixed(2) || '0',
+      a.packageName || '', fmt(a.price || 0),
       a.isUpgrade ? 'Yes' : 'No', a.isRenewal ? 'Yes' : 'No',
       a.activatedAt ? formatLocalizedDate(a.activatedAt, language) : '',
     ]);
@@ -73,7 +74,7 @@ export default function AdminRevenueReport() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-gradient-to-br from-green-500 to-green-700 text-white rounded-xl p-5">
           <div className="flex items-center gap-2 mb-2 opacity-90">
-            <DollarSign className="w-5 h-5" />
+            <Wallet className="w-5 h-5" />
             <span className="text-sm font-medium">{isRtl ? 'إجمالي الإيرادات' : 'Total Revenue'}</span>
           </div>
           <div className="text-3xl font-bold">{fmt(data?.totalRevenue || 0)}</div>

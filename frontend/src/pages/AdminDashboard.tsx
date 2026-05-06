@@ -1,19 +1,21 @@
 import DashboardLayout from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { formatAdminCurrencyFromUsd } from "@/lib/adminCurrency";
 import { trpc } from "@/lib/trpc";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { Users, BookOpen, GraduationCap, TrendingUp, Key, Library, ShoppingCart, DollarSign, Clock, AlertCircle } from "lucide-react";
+import { Users, BookOpen, GraduationCap, TrendingUp, Key, Library, ShoppingCart, Clock, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useLocation } from "wouter";
 import { formatDistanceToNow } from "date-fns";
+import { arEG } from "date-fns/locale";
 import { getStaffLandingPage } from "@shared/const";
 import { useEffect } from "react";
 
-function formatSafeDistanceToNow(value: string | number | Date | null | undefined) {
-  if (!value) return "N/A";
+function formatSafeDistanceToNow(value: string | number | Date | null | undefined, isRtl: boolean) {
+  if (!value) return isRtl ? "غير متاح" : "N/A";
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "N/A";
-  return formatDistanceToNow(date, { addSuffix: true });
+  if (Number.isNaN(date.getTime())) return isRtl ? "غير متاح" : "N/A";
+  return formatDistanceToNow(date, { addSuffix: true, locale: isRtl ? arEG : undefined });
 }
 
 export default function AdminDashboard() {
@@ -124,7 +126,12 @@ export default function AdminDashboard() {
         <div className="grid gap-2 grid-cols-3 lg:grid-cols-6">
           <div className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-lg px-3 py-2 text-center">
             <p className="text-lg font-bold text-green-700">
-              ${statsLoading ? "..." : (stats?.totalRevenue || 0).toFixed(0)}
+              {statsLoading
+                ? "..."
+                : formatAdminCurrencyFromUsd(stats?.totalRevenue || 0, language, {
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: 0,
+                  })}
             </p>
             <p className="text-[11px] text-green-700 leading-tight">{t('admin.totalRevenue')}</p>
           </div>
@@ -180,9 +187,9 @@ export default function AdminDashboard() {
                 {recentEnrollments.map((item) => (
                   <div key={item.enrollment.id} className="flex items-center justify-between border-b pb-4 last:border-0 last:pb-0">
                     <div className="space-y-1">
-                      <p className="font-medium">{item.user?.name || "Unknown User"}</p>
+                      <p className="font-medium">{item.user?.name || (isRtl ? 'مستخدم غير معروف' : 'Unknown User')}</p>
                       <p className="text-sm text-muted-foreground">
-                        {isRtl ? (item.course?.titleAr || item.course?.titleEn) : item.course?.titleEn || "Unknown Course"}
+                        {isRtl ? (item.course?.titleAr || item.course?.titleEn || 'دورة غير معروفة') : (item.course?.titleEn || item.course?.titleAr || 'Unknown Course')}
                       </p>
                     </div>
                     <div className="text-right space-y-1">
@@ -193,7 +200,7 @@ export default function AdminDashboard() {
                         </span>
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        {formatSafeDistanceToNow(item.enrollment.enrolledAt)}
+                          {formatSafeDistanceToNow(item.enrollment.enrolledAt, isRtl)}
                       </p>
                     </div>
                   </div>

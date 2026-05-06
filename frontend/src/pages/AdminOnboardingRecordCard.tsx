@@ -4,12 +4,31 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
+import { useLanguage } from '@/contexts/LanguageContext';
 
-const STEP_LABELS: Record<string, string> = {
-  select_broker: 'Select Broker',
-  open_account: 'Open & Verify Account',
-  deposit: 'Deposit',
+const STEP_LABELS: Record<string, { ar: string; en: string }> = {
+  select_broker: { ar: 'اختيار الوسيط', en: 'Select Broker' },
+  open_account: { ar: 'فتح الحساب وتوثيقه', en: 'Open & Verify Account' },
+  deposit: { ar: 'الإيداع', en: 'Deposit' },
 };
+
+function getStepLabel(step: string, isRtl: boolean) {
+  const label = STEP_LABELS[step];
+  return label ? (isRtl ? label.ar : label.en) : step;
+}
+
+function getStatusLabel(status: string, isRtl: boolean) {
+  switch (status) {
+    case 'approved':
+      return isRtl ? 'تمت الموافقة' : 'Approved';
+    case 'pending_review':
+      return isRtl ? 'بانتظار المراجعة' : 'Pending Review';
+    case 'rejected':
+      return isRtl ? 'مرفوض' : 'Rejected';
+    default:
+      return status.replace('_', ' ');
+  }
+}
 
 function statusColor(status: string) {
   switch (status) {
@@ -56,6 +75,10 @@ export function AdminOnboardingRecordCard({
   isApproving,
   isRejecting,
 }: OnboardingRecordCardProps) {
+  const { language } = useLanguage();
+  const isRtl = language === 'ar';
+  const locale = isRtl ? 'ar-EG' : 'en-US';
+
   return (
     <Card className={`transition-all ${isExpanded ? 'ring-2 ring-emerald-500/30' : ''}`}>
       <CardContent className="p-4">
@@ -71,17 +94,17 @@ export function AdminOnboardingRecordCard({
             </div>
             <div className="flex items-center gap-2 mt-1">
               <Badge variant="outline" className="text-xs">
-                {STEP_LABELS[record.step] || record.step}
+                {getStepLabel(record.step, isRtl)}
               </Badge>
               <Badge className={`text-xs ${statusColor(record.status)}`}>
                 {statusIcon(record.status)}
-                <span className="ms-1">{record.status.replace('_', ' ')}</span>
+                <span className="ms-1">{getStatusLabel(record.status, isRtl)}</span>
               </Badge>
               <span className="text-xs text-muted-foreground">{record.brokerName}</span>
             </div>
           </div>
           <div className="text-xs text-muted-foreground">
-            {record.submittedAt ? new Date(record.submittedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}
+            {record.submittedAt ? new Date(record.submittedAt).toLocaleDateString(locale, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}
           </div>
           {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
         </div>
@@ -91,10 +114,10 @@ export function AdminOnboardingRecordCard({
           <div className="mt-4 pt-4 border-t space-y-4">
             {record.proofUrl && (
               <div>
-                <p className="text-sm font-medium mb-2">Proof Screenshot:</p>
+                <p className="text-sm font-medium mb-2">{isRtl ? 'لقطة الإثبات:' : 'Proof Screenshot:'}</p>
                 <img
                   src={record.proofUrl}
-                  alt="proof"
+                  alt={isRtl ? 'إثبات' : 'Proof'}
                   className="max-w-[300px] max-h-[200px] object-contain rounded-lg border cursor-pointer"
                   onClick={() => window.open(record.proofUrl, '_blank')}
                 />
@@ -103,14 +126,14 @@ export function AdminOnboardingRecordCard({
 
             {record.aiConfidence != null && (
               <div className="p-3 bg-blue-50 rounded-lg">
-                <p className="text-sm font-medium">AI Verification: {Math.round(record.aiConfidence * 100)}% confidence</p>
+                <p className="text-sm font-medium">{isRtl ? `التحقق بالذكاء الاصطناعي: ثقة ${Math.round(record.aiConfidence * 100)}%` : `AI Verification: ${Math.round(record.aiConfidence * 100)}% confidence`}</p>
                 {record.aiResult && <p className="text-xs text-muted-foreground mt-1">{record.aiResult}</p>}
               </div>
             )}
 
             {record.rejectionReason && (
               <div className="p-3 bg-red-50 rounded-lg border border-red-200">
-                <p className="text-sm font-medium text-red-700">Previous Rejection:</p>
+                <p className="text-sm font-medium text-red-700">{isRtl ? 'الرفض السابق:' : 'Previous Rejection:'}</p>
                 <p className="text-sm text-red-600 mt-1">{record.rejectionReason}</p>
               </div>
             )}
@@ -118,11 +141,11 @@ export function AdminOnboardingRecordCard({
             {record.status === 'pending_review' && (
               <div className="space-y-3">
                 <div>
-                  <label className="text-sm font-medium block mb-1">Admin Note (optional)</label>
+                  <label className="text-sm font-medium block mb-1">{isRtl ? 'ملاحظة المشرف (اختياري)' : 'Admin Note (optional)'}</label>
                   <Input
                     value={adminNote}
                     onChange={(e) => onAdminNoteChange(e.target.value)}
-                    placeholder="Optional note..."
+                    placeholder={isRtl ? 'ملاحظة اختيارية...' : 'Optional note...'}
                   />
                 </div>
                 <div className="flex gap-2">
@@ -132,7 +155,7 @@ export function AdminOnboardingRecordCard({
                     className="flex-1 bg-emerald-600 hover:bg-emerald-700"
                   >
                     <CheckCircle2 className="h-4 w-4 mr-1" />
-                    Approve
+                    {isRtl ? 'موافقة' : 'Approve'}
                   </Button>
                   <Button
                     variant="destructive"
@@ -141,15 +164,15 @@ export function AdminOnboardingRecordCard({
                     className="flex-1"
                   >
                     <XCircle className="h-4 w-4 mr-1" />
-                    Reject
+                    {isRtl ? 'رفض' : 'Reject'}
                   </Button>
                 </div>
                 <div>
-                  <label className="text-sm font-medium block mb-1">Rejection Reason (required to reject)</label>
+                  <label className="text-sm font-medium block mb-1">{isRtl ? 'سبب الرفض (مطلوب عند الرفض)' : 'Rejection Reason (required to reject)'}</label>
                   <Textarea
                     value={rejectReason}
                     onChange={(e) => onRejectReasonChange(e.target.value)}
-                    placeholder="Explain why the proof was rejected..."
+                    placeholder={isRtl ? 'اشرح سبب رفض الإثبات...' : 'Explain why the proof was rejected...'}
                     rows={2}
                   />
                 </div>
@@ -158,8 +181,8 @@ export function AdminOnboardingRecordCard({
 
             {record.reviewedAt && (
               <p className="text-xs text-muted-foreground">
-                Reviewed: {new Date(record.reviewedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                {record.adminNote && ` — Note: ${record.adminNote}`}
+                {isRtl ? 'تمت المراجعة' : 'Reviewed'}: {new Date(record.reviewedAt).toLocaleDateString(locale, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                {record.adminNote && `${isRtl ? ' — ملاحظة: ' : ' — Note: '}${record.adminNote}`}
               </p>
             )}
           </div>

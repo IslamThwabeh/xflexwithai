@@ -114,7 +114,7 @@ const FULL_SIDEBAR: SidebarSection[] = [
     items: [
       { icon: DollarSign, labelEn: "Revenue", labelAr: "الإيرادات", path: "/admin/reports/revenue" },
       { icon: Clock, labelEn: "Expiry", labelAr: "انتهاء الصلاحية", path: "/admin/reports/expiry" },
-      { icon: Activity, labelEn: "Engagement", labelAr: "التفاعل", path: "/admin/engagement" },
+      { icon: Activity, labelEn: "Student Engagement", labelAr: "تفاعل الطلاب", path: "/admin/engagement" },
       { icon: ShieldCheck, labelEn: "Team Monitoring", labelAr: "مراقبة الفريق", path: "/admin/monitoring" },
     ],
   },

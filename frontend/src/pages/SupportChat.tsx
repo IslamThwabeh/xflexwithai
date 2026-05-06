@@ -50,7 +50,15 @@ export default function SupportChat() {
 
   const requestHumanMutation = trpc.supportChat.requestHuman.useMutation({
     onSuccess: () => {
-      toast.success(isRTL ? 'تم طلب وكيل بشري — سيتم الرد خلال ساعات العمل' : 'Human agent requested — you\'ll get a reply during working hours');
+      toast.success(
+        isRTL
+          ? (isOnline
+              ? 'تم طلب وكيل بشري — سينضم أحد أعضاء الفريق إلى المحادثة قريباً'
+              : 'تم طلب وكيل بشري — سيتم الرد خلال ساعات العمل')
+          : (isOnline
+              ? 'Human agent requested — a team member will join the chat soon'
+              : 'Human agent requested — you\'ll get a reply during working hours'),
+      );
       refetch();
     },
     onError: (err) => toast.error(err.message),
@@ -212,8 +220,8 @@ export default function SupportChat() {
                       <span className={`inline-block h-2 w-2 rounded-full ${isOnline ? 'bg-green-500' : 'bg-gray-400'}`} />
                       <p className="text-sm text-muted-foreground">
                         {isOnline
-                          ? (isRTL ? 'فريق الدعم متاح الآن' : 'Support team is online')
-                          : (isRTL ? 'خارج ساعات العمل — المساعد الذكي يجيبك' : 'Outside working hours — AI assistant is here')}
+                          ? (isRTL ? 'فريق الدعم متاح الآن — والذكاء الاصطناعي يرد مباشرة حتى تطلب شخصاً حقيقياً' : 'Support team is online — AI replies instantly until you request a human')
+                          : (isRTL ? 'فريق الدعم خارج ساعات العمل — والذكاء الاصطناعي يرد حتى يبدأ دوام الفريق' : 'Support team is offline — AI replies until working hours resume')}
                       </p>
                     </>
                   ) : (
@@ -226,7 +234,7 @@ export default function SupportChat() {
                 </div>
               </div>
             </div>
-            {isChatTab && !isOnline && !hasRequestedHuman && messages.length > 0 && (
+            {isChatTab && !hasRequestedHuman && messages.length > 0 && (
               <Button
                 variant="outline"
                 size="sm"
@@ -266,25 +274,29 @@ export default function SupportChat() {
           <SupportBugReportsPanel />
         ) : (
           <div className="flex min-h-[65vh] flex-col">
-        {/* AI disclaimer banner outside working hours */}
-        {!isOnline && !hasRequestedHuman && (
+        {/* AI replies by default until the student explicitly requests a human */}
+        {!hasRequestedHuman && (
           <div className="flex items-center gap-2 px-3 py-2 mb-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs">
             <Bot className="h-4 w-4 shrink-0" />
             <span>
               {isRTL
-                ? 'أنت تتحدث مع المساعد الذكي. للتحدث مع شخص حقيقي، اضغط "طلب وكيل بشري".'
-                : 'You\'re chatting with our AI assistant. To speak with a human, tap "Request Human".'}
+                ? 'المساعد الذكي يرد تلقائياً هنا. إذا أردت متابعة مع شخص حقيقي، اضغط "طلب وكيل بشري".'
+                : 'Our AI assistant replies automatically here. If you want a human, tap "Request Human".'}
             </span>
           </div>
         )}
-        {hasRequestedHuman && !isOnline && (
+        {hasRequestedHuman && (
           <div className="flex flex-col gap-2 px-3 py-2 mb-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs">
             <div className="flex items-center gap-2">
               <UserRound className="h-4 w-4 shrink-0" />
               <span>
                 {isRTL
-                  ? 'تم طلب وكيل بشري. سيتم الرد عليك خلال ساعات العمل (الأحد-الخميس ١٢-٨ مساءً).'
-                  : 'Human agent requested. You\'ll get a reply during working hours (Sun-Thu 12-8 PM).'}
+                  ? (isOnline
+                      ? 'تم طلب وكيل بشري. سينضم أحد أعضاء فريق الدعم إلى المحادثة قريباً.'
+                      : 'تم طلب وكيل بشري. سيتم الرد عليك خلال ساعات العمل (الأحد-الخميس ١٢-٨ مساءً).')
+                  : (isOnline
+                      ? 'Human agent requested. A support team member will join the chat soon.'
+                      : 'Human agent requested. You\'ll get a reply during working hours (Sun-Thu 12-8 PM).')}
               </span>
             </div>
             <button

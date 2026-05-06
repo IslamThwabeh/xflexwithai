@@ -24,7 +24,7 @@ import {
 function formatSafeDate(
   value: string | number | Date | null | undefined,
   pattern: string,
-  fallback = "Unknown"
+  fallback = "-"
 ) {
   if (!value) return fallback;
   const date = new Date(value);
@@ -35,7 +35,8 @@ function formatSafeDate(
 export default function AdminLexaiConversations() {
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const utils = trpc.useUtils();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const isRtl = language === 'ar';
 
   // Get all users with conversations
   const { data: conversationUsers, isLoading: loadingUsers } = trpc.lexaiAdmin.conversationUsers.useQuery();
@@ -49,13 +50,13 @@ export default function AdminLexaiConversations() {
   // Delete user messages mutation
   const deleteMessagesMutation = trpc.lexaiAdmin.deleteUserMessages.useMutation({
     onSuccess: () => {
-      toast.success("Chat history deleted successfully");
+      toast.success(isRtl ? 'تم حذف سجل المحادثة بنجاح' : 'Chat history deleted successfully');
       utils.lexaiAdmin.conversationUsers.invalidate();
       utils.lexaiAdmin.userMessages.invalidate();
       setSelectedUserId(null);
     },
     onError: (error) => {
-      toast.error(`Failed to delete: ${error.message}`);
+      toast.error(isRtl ? `فشل الحذف: ${error.message}` : `Failed to delete: ${error.message}`);
     },
   });
 
@@ -77,7 +78,7 @@ export default function AdminLexaiConversations() {
                 {t('admin.lexai.backToUsers')}
               </Button>
               <div>
-                <h1 className="text-2xl font-bold">{selectedUser.userName || "Unknown User"}</h1>
+                <h1 className="text-2xl font-bold">{selectedUser.userName || (isRtl ? 'مستخدم غير معروف' : 'Unknown User')}</h1>
                 <p className="text-sm text-muted-foreground">{selectedUser.userEmail}</p>
               </div>
             </div>
@@ -234,8 +235,8 @@ export default function AdminLexaiConversations() {
                         <User className="h-5 w-5" />
                       </div>
                       <div>
-                        <p className="font-medium">{user.userName || "Unknown User"}</p>
-                        <p className="text-sm text-muted-foreground">{user.userEmail || `User ID: ${user.userId}`}</p>
+                        <p className="font-medium">{user.userName || (isRtl ? 'مستخدم غير معروف' : 'Unknown User')}</p>
+                        <p className="text-sm text-muted-foreground">{user.userEmail || (isRtl ? `معرّف المستخدم: ${user.userId}` : `User ID: ${user.userId}`)}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-4">

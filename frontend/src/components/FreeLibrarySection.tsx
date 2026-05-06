@@ -120,7 +120,7 @@ export default function FreeLibrarySection({ data, isRtl, mode = "full", initial
   const selectedVideo = data.videos.find((video) => video.slug === selectedVideoSlug) ?? firstVideo;
 
   return (
-    <div className={mode === "home" ? "space-y-8" : "space-y-10"}>
+    <div className={mode === "home" ? "space-y-8" : "space-y-10"} dir={isRtl ? "rtl" : "ltr"}>
       {selectedVideo ? (
         <div className={mode === "compact" ? "grid gap-4 lg:grid-cols-[1.3fr_0.7fr]" : "grid gap-6 xl:grid-cols-[1.35fr_0.65fr]"}>
           <FreeVideoPlayer selectedVideo={selectedVideo} isRtl={isRtl} compact={isCompact} />

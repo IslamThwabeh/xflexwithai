@@ -9,7 +9,8 @@ import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 
 export default function AdminLogin() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const isRtl = language === 'ar';
   const { isAuthenticated, loading } = useAuth();
   const [, setLocation] = useLocation();
   const { data: adminCheck, isLoading: checkingAdmin } = trpc.auth.isAdmin.useQuery(undefined, {
@@ -23,12 +24,12 @@ export default function AdminLogin() {
     const params = new URLSearchParams(window.location.search);
     if (params.get("reason") === "idle") {
       idleToastShown.current = true;
-      toast.warning("Session expired due to inactivity. Please log in again.");
+      toast.warning(isRtl ? 'انتهت الجلسة بسبب عدم النشاط. يرجى تسجيل الدخول مرة أخرى.' : 'Session expired due to inactivity. Please log in again.');
       params.delete("reason");
       const clean = params.toString();
       window.history.replaceState({}, "", window.location.pathname + (clean ? `?${clean}` : ""));
     }
-  }, []);
+  }, [isRtl]);
 
   // Redirect to dashboard if already authenticated as admin
   useEffect(() => {
@@ -41,7 +42,7 @@ export default function AdminLogin() {
   if (loading || checkingAdmin) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[var(--color-xf-cream)]">
-        <p className="text-slate-600">Loading...</p>
+        <p className="text-slate-600">{t('common.loading')}</p>
       </div>
     );
   }

@@ -27,7 +27,8 @@ function shouldOpenRegisterByDefault() {
 }
 
 export default function Auth() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const isRtl = language === 'ar';
   const [showLogin, setShowLogin] = useState(() => !shouldOpenRegisterByDefault());
   const [loginMethod, setLoginMethod] = useState<"code" | "password">("code");
   const [otpStep, setOtpStep] = useState<"request" | "verify">("request");
@@ -102,13 +103,13 @@ export default function Auth() {
     const params = new URLSearchParams(window.location.search);
     if (params.get("reason") === "idle") {
       idleToastShown.current = true;
-      toast.warning("Session expired due to inactivity. Please log in again.");
+      toast.warning(isRtl ? 'انتهت الجلسة بسبب عدم النشاط. يرجى تسجيل الدخول مرة أخرى.' : 'Session expired due to inactivity. Please log in again.');
       // Clean up the URL
       params.delete("reason");
       const clean = params.toString();
       window.history.replaceState({}, "", window.location.pathname + (clean ? `?${clean}` : ""));
     }
-  }, []);
+  }, [isRtl]);
 
   const { data: adminCheck, isLoading: checkingAdmin } = trpc.auth.isAdmin.useQuery(undefined, {
     enabled: isAuthenticated,

@@ -83,7 +83,7 @@ export default function PublicLayout({ children }: { children: ReactNode }) {
               className="flex items-center gap-1 px-3 py-1.5 rounded-full text-sm text-gray-500 hover:text-xf-dark hover:bg-gray-100/80 transition-all duration-150"
             >
               <Globe className="w-4 h-4" />
-              {language === 'ar' ? 'EN' : 'عربي'}
+              {language === 'ar' ? 'الإنجليزية' : 'Arabic'}
             </button>
             <Link href="/auth">
               <button className="btn-primary-xf text-sm px-5 py-2 inline-flex items-center justify-center gap-1.5 min-w-[100px]">
@@ -110,6 +110,7 @@ export default function PublicLayout({ children }: { children: ReactNode }) {
               onClick={() => setMobileMenuOpen(false)}
             />
             <nav
+              dir={language === 'ar' ? 'rtl' : 'ltr'}
               className="fixed inset-y-0 right-0 z-[1100] flex w-[min(88vw,22rem)] flex-col border-l border-white/60 bg-white/96 px-4 pb-4 pt-5 shadow-[0_24px_60px_rgba(15,23,42,0.18)] backdrop-blur-2xl md:hidden"
               style={{ overflowY: 'auto' }}
             >
@@ -165,10 +166,10 @@ export default function PublicLayout({ children }: { children: ReactNode }) {
       </header>
 
       {/* ======== CONTENT ======== */}
-      <main>{children}</main>
+      <main dir={language === 'ar' ? 'rtl' : 'ltr'}>{children}</main>
 
       {/* ======== FOOTER ======== */}
-      <footer className="relative overflow-hidden bg-[#07111f] py-16 text-slate-300">
+      <footer className="relative overflow-hidden bg-[#07111f] py-16 text-slate-300" dir={language === 'ar' ? 'rtl' : 'ltr'}>
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.14),transparent_25%),radial-gradient(circle_at_bottom_right,rgba(245,158,11,0.1),transparent_30%)]" />
         <div className="relative container mx-auto px-4">
           <div className="grid gap-10 border-b border-white/10 pb-10 md:grid-cols-[1.2fr_0.85fr_0.95fr]">

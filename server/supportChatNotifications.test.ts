@@ -7,6 +7,7 @@ vi.mock("../backend/db", async () => {
     ...actual,
     getAdminByEmail: vi.fn().mockResolvedValue(null),
     getOrCreateSupportConversation: vi.fn(),
+    getSupportMessages: vi.fn(),
     setNeedsHuman: vi.fn().mockResolvedValue(undefined),
     createSupportMessage: vi.fn(),
     notifyStaffByEvent: vi.fn(),
@@ -49,20 +50,25 @@ function createDeferred() {
 
 describe("support chat staff notifications", () => {
   const getOrCreateSupportConversation = vi.mocked(db.getOrCreateSupportConversation);
+  const getSupportMessages = vi.mocked(db.getSupportMessages);
   const setNeedsHuman = vi.mocked(db.setNeedsHuman);
   const createSupportMessage = vi.mocked(db.createSupportMessage);
   const notifyStaffByEvent = vi.mocked(db.notifyStaffByEvent);
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.useRealTimers();
+    vi.unstubAllEnvs();
     getOrCreateSupportConversation.mockResolvedValue({
       id: 10,
       userId: 123,
       status: "open",
       needsHuman: false,
     } as any);
+    getSupportMessages.mockResolvedValue([] as any);
     setNeedsHuman.mockResolvedValue(undefined as any);
     createSupportMessage.mockResolvedValue(55 as any);
+    notifyStaffByEvent.mockResolvedValue(undefined as any);
   });
 
   it("waits for the human escalation notification dispatch before returning", async () => {
@@ -133,5 +139,41 @@ describe("support chat staff notifications", () => {
     deferred.resolve();
 
     await expect(resultPromise).resolves.toMatchObject({ id: 77, conversationId: 10, content: "Need help" });
+  });
+
+  it("creates an AI reply during working hours until the client requests a human", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-04T10:00:00.000Z"));
+    vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { content: "Hello from AI" } }],
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    createSupportMessage
+      .mockResolvedValueOnce({ id: 77, conversationId: 10, content: "hi" } as any)
+      .mockResolvedValueOnce({ id: 78, conversationId: 10, content: "Hello from AI" } as any);
+    getSupportMessages.mockResolvedValue([
+      { senderType: "client", content: "hi" },
+    ] as any);
+
+    const caller = createAuthedCaller();
+    await caller.supportChat.send({ content: "hi" });
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const openAiRequest = fetchMock.mock.calls[0]?.[1];
+    const parsedBody = JSON.parse(String(openAiRequest?.body ?? "{}"));
+    expect(parsedBody.messages?.[0]?.content).toContain("Rawan is the founder of XFlex Trading Academy");
+    expect(parsedBody.messages?.[0]?.content).toContain("Birzeit University");
+    expect(createSupportMessage).toHaveBeenNthCalledWith(2, {
+      conversationId: 10,
+      senderId: 0,
+      senderType: "bot",
+      content: "Hello from AI",
+    });
   });
 });

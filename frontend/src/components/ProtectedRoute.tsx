@@ -1,4 +1,5 @@
 import { useAuth } from "@/_core/hooks/useAuth";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { trpc } from "@/lib/trpc";
 import { useEffect } from "react";
 import { useLocation } from "wouter";
@@ -12,6 +13,7 @@ interface ProtectedRouteProps {
  * Redirects to /auth if not authenticated
  */
 export default function ProtectedRoute({ children }: ProtectedRouteProps) {
+  const { t } = useLanguage();
   const { isAuthenticated, loading } = useAuth();
   const [, setLocation] = useLocation();
   const { data: adminCheck, isLoading: checkingAdmin } = trpc.auth.isAdmin.useQuery(undefined, {
@@ -41,7 +43,7 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-500 mx-auto mb-4"></div>
-          <p className="text-gray-600 dark:text-gray-300">Loading...</p>
+          <p className="text-gray-600 dark:text-gray-300">{t('common.loading')}</p>
         </div>
       </div>
     );

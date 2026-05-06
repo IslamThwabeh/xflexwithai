@@ -121,7 +121,7 @@ export default function QuizHistory() {
                         </p>
                       </div>
                     </div>
-                    <div className="text-left">
+                    <div className="text-start">
                       <div className={`text-3xl font-bold ${attempt.passed ? "text-green-600" : "text-red-600"}`}>{attempt.score}%</div>
                     </div>
                   </div>

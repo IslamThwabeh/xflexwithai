@@ -45,6 +45,36 @@ function isSecureRequest(req: CookieRequest) {
   return protoList.some(proto => proto.trim().toLowerCase() === "https");
 }
 
+function getOriginHost(req: CookieRequest) {
+  const origin = getHeader(req.headers, "origin");
+  if (!origin) return undefined;
+
+  try {
+    return new URL(origin).hostname.toLowerCase();
+  } catch {
+    return undefined;
+  }
+}
+
+function isCrossSiteCookieRequest(input: {
+  originHost?: string;
+  hostname?: string;
+  domain?: string;
+}) {
+  const { originHost, hostname, domain } = input;
+  if (!originHost) return false;
+
+  if (domain) {
+    return originHost !== domain && !originHost.endsWith(`.${domain}`);
+  }
+
+  if (hostname) {
+    return originHost !== hostname;
+  }
+
+  return false;
+}
+
 export function getSessionCookieOptions(
   req: CookieRequest,
   role: "admin" | "user" = "user"
@@ -82,14 +112,17 @@ export function getSessionCookieOptions(
   }
 
   const maxAge = role === "admin" ? COOKIE_MAX_AGE_ADMIN : COOKIE_MAX_AGE_USER;
+  const originHost = getOriginHost(req);
+  const sameSite: CookieOptions["sameSite"] =
+    secure && isCrossSiteCookieRequest({ originHost, hostname, domain }) ? "none" : "lax";
 
   return {
     domain,
     httpOnly: true,
     maxAge,
     path: "/",
-    // "lax" is fine for same-site (eTLD+1) subdomains; use "none" only for true cross-site.
-    sameSite: "lax",
+    // Hosted previews use a cross-site frontend origin, so they need SameSite=None for API auth.
+    sameSite,
     secure,
   };
 }

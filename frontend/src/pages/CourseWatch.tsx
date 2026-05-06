@@ -1,4 +1,5 @@
 import { useAuth } from "@/_core/hooks/useAuth";
+import { useEngagementTracker } from "@/_core/hooks/useEngagementTracker";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -42,6 +43,7 @@ export default function CourseWatch() {
   const { user, isAuthenticated } = useAuth();
   const { t, language } = useLanguage();
   const utils = trpc.useUtils();
+  const { track } = useEngagementTracker();
 
   const { data: course, isLoading: courseLoading } = trpc.courses.getById.useQuery(
     { id: courseId! },
@@ -66,6 +68,16 @@ export default function CourseWatch() {
 
   const markCompleteMutation = trpc.enrollments.markEpisodeComplete.useMutation({
     onSuccess: (data) => {
+      track({
+        eventType: "lesson_complete",
+        entityType: "course",
+        entityId: courseId ?? undefined,
+        metadata: {
+          courseId,
+          episodeId: selectedEpisode?.id,
+          reachedHalfway: !!data?.reachedHalfway,
+        },
+      });
       toast.success(t('course.toastCompleted'));
       utils.enrollments.getEnrollment.invalidate();
       utils.enrollments.myEnrollments.invalidate();
@@ -137,6 +149,18 @@ export default function CourseWatch() {
         toast.error(`${t('course.score')}: ${result.score}% — ${t('course.requiredScore')}: ${result.passingScore}%`);
       }
 
+      track({
+        eventType: "quiz_attempt",
+        entityType: "episode_quiz",
+        entityId: selectedEpisode?.id,
+        metadata: {
+          courseId,
+          episodeId: selectedEpisode?.id,
+          passed: result.passed,
+          score: result.score,
+        },
+      });
+
       utils.episodeQuiz.getForEpisode.invalidate();
     },
     onError: (error) => {
@@ -150,6 +174,20 @@ export default function CourseWatch() {
       setSelectedEpisode(sortedEpisodes[0]);
     }
   }, [sortedEpisodes, selectedEpisode]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !courseId || !course?.id) return;
+
+    track({
+      eventType: "course_start",
+      entityType: "course",
+      entityId: courseId,
+      metadata: {
+        courseId,
+        courseTitle: course.title,
+      },
+    });
+  }, [course?.id, course?.title, courseId, isAuthenticated, track]);
 
   useEffect(() => {
     setQuizAnswers({});
@@ -513,7 +551,7 @@ export default function CourseWatch() {
                                 key={option.id}
                                 type="button"
                                 onClick={() => handleQuizAnswerSelect(question.id, option.optionId)}
-                                className={`w-full text-left rounded border px-3 py-2 text-sm transition-colors ${
+                                className={`w-full text-start rounded border px-3 py-2 text-sm transition-colors ${
                                   quizAnswers[question.id] === option.optionId
                                     ? "border-emerald-600 bg-emerald-50"
                                     : "border-gray-200 hover:bg-gray-50"
@@ -611,7 +649,7 @@ export default function CourseWatch() {
                           setSelectedEpisode(episode);
                         }}
                         disabled={!isUnlocked}
-                        className={`w-full text-left p-4 transition-colors ${
+                        className={`w-full text-start p-4 transition-colors ${
                           isUnlocked ? 'hover:bg-gray-50' : 'opacity-60 cursor-not-allowed bg-gray-50'
                         } ${
                           isSelected ? 'bg-emerald-50 border-l-4 border-emerald-600' : ''

@@ -298,7 +298,7 @@ function ApplicationForm({ jobId, onBack }: { jobId: number; onBack: () => void 
                   onChange={(e) => setForm({ ...form, email: e.target.value })}
                   placeholder="example@email.com"
                   dir="ltr"
-                  className="text-left"
+                  className="text-start"
                 />
               </div>
               <div>
@@ -313,7 +313,7 @@ function ApplicationForm({ jobId, onBack }: { jobId: number; onBack: () => void 
                   onChange={(e) => setForm({ ...form, phone: e.target.value })}
                   placeholder="+970 5XX XXX XXX"
                   dir="ltr"
-                  className="text-left"
+                  className="text-start"
                 />
               </div>
               <div>

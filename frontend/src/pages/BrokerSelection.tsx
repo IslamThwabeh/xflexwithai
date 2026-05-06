@@ -1,7 +1,8 @@
-import { Building2, ExternalLink, MessageCircle, DollarSign } from 'lucide-react';
+import { Building2, ExternalLink, MessageCircle, Wallet } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { formatAdminCurrency } from '@/lib/adminCurrency';
 import { trpc } from '@/lib/trpc';
 import ClientLayout from '@/components/ClientLayout';
 
@@ -77,10 +78,16 @@ export default function BrokerSelection() {
                   {/* Min Deposit */}
                   {b.minDeposit != null && b.minDeposit > 0 && (
                     <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
-                      <DollarSign className="w-4 h-4" />
+                      <Wallet className="w-4 h-4" />
                       <span>
                         {isRtl ? 'الحد الأدنى للإيداع: ' : 'Min Deposit: '}
-                        <span className="font-semibold text-gray-700">${b.minDeposit}</span>
+                        <span className="font-semibold text-gray-700">
+                          {formatAdminCurrency(b.minDeposit, language, {
+                            sourceCurrency: b.minDepositCurrency,
+                            minimumFractionDigits: 0,
+                            maximumFractionDigits: 0,
+                          })}
+                        </span>
                       </span>
                     </div>
                   )}

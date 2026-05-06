@@ -3,6 +3,7 @@ import { ShoppingCart, CheckCircle, Clock, XCircle, Eye, ChevronDown, ChevronUp,
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { formatAdminCurrency } from '@/lib/adminCurrency';
 import { formatLocalizedDate } from '@/lib/dateLocale';
 import { formatPaymentMethodLabel } from '@/lib/paymentMethodLabel';
 import { trpc } from '@/lib/trpc';
@@ -116,7 +117,7 @@ export default function AdminOrders() {
                     <p className="text-sm text-gray-500">
                       {(order as any).userName || (order as any).userEmail || `User #${order.userId}`}
                       {(order as any).userEmail ? ` (${(order as any).userEmail})` : ''}
-                      {' '}• ${(order.totalAmount / 100).toFixed(2)} {order.currency}
+                      {' '}• {formatAdminCurrency(order.totalAmount, language, { sourceCurrency: order.currency, fromCents: true })}
                       • {formatPaymentMethodLabel(order.paymentMethod, language)}
                       • {formatLocalizedDate(String(order.createdAt).replace(' ', 'T'), language) || '—'}
                     </p>
@@ -141,15 +142,15 @@ export default function AdminOrders() {
                       </div>
                       <div>
                         <span className="text-gray-500">{language === 'ar' ? 'المبلغ الفرعي' : 'Subtotal'}:</span>{' '}
-                        ${(order.subtotal / 100).toFixed(2)}
+                        {formatAdminCurrency(order.subtotal, language, { sourceCurrency: order.currency, fromCents: true })}
                       </div>
                       <div>
                         <span className="text-gray-500">VAT ({order.vatRate}%):</span>{' '}
-                        ${(order.vatAmount / 100).toFixed(2)}
+                        {formatAdminCurrency(order.vatAmount, language, { sourceCurrency: order.currency, fromCents: true })}
                       </div>
                       <div>
                         <span className="text-gray-500">{language === 'ar' ? 'الإجمالي' : 'Total'}:</span>{' '}
-                        <strong>${(order.totalAmount / 100).toFixed(2)}</strong>
+                        <strong>{formatAdminCurrency(order.totalAmount, language, { sourceCurrency: order.currency, fromCents: true })}</strong>
                       </div>
                       <div>
                         <span className="text-gray-500">{language === 'ar' ? 'طريقة الدفع' : 'Payment'}:</span>{' '}

@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { formatAdminCurrencyFromUsdCents, ilsToUsdCents, usdCentsToIls } from '@/lib/adminCurrency';
 import { trpc } from '@/lib/trpc';
 import DashboardLayout from '@/components/DashboardLayout';
 
@@ -26,28 +27,26 @@ export default function AdminPackages() {
       includesLexai: 0, includesRecommendations: 0, includesSupport: 0, includesPdf: 0,
       isLifetime: 1, isPublished: 0, displayOrder: 0, upgradePrice: 0,
     });
-    // Note: for new packages, price is entered in $ and converted to cents on save
+    // Admin inputs are shown in shekel and converted back to USD cents on save.
   };
 
   const startEdit = (pkg: any) => {
     setIsNew(false);
-    // Convert cents → dollars for display
     setEditing({
       ...pkg,
-      price: (pkg.price || 0) / 100,
-      renewalPrice: (pkg.renewalPrice || 0) / 100,
-      upgradePrice: (pkg.upgradePrice || 0) / 100,
+      price: usdCentsToIls(pkg.price || 0),
+      renewalPrice: usdCentsToIls(pkg.renewalPrice || 0),
+      upgradePrice: usdCentsToIls(pkg.upgradePrice || 0),
     });
   };
 
   const handleSave = async () => {
     if (!editing) return;
-    // Convert dollars → cents for storage
     const toSave = {
       ...editing,
-      price: Math.round((editing.price || 0) * 100),
-      renewalPrice: Math.round((editing.renewalPrice || 0) * 100),
-      upgradePrice: Math.round((editing.upgradePrice || 0) * 100),
+      price: ilsToUsdCents(editing.price || 0),
+      renewalPrice: ilsToUsdCents(editing.renewalPrice || 0),
+      upgradePrice: ilsToUsdCents(editing.upgradePrice || 0),
     };
     if (isNew) {
       await createMutation.mutateAsync(toSave);
@@ -100,7 +99,7 @@ export default function AdminPackages() {
                 <Input value={editing.nameAr} onChange={(e) => setEditing({ ...editing, nameAr: e.target.value })} dir="rtl" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{language === 'ar' ? 'السعر ($)' : 'Price ($)'}</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{language === 'ar' ? 'السعر (₪)' : 'Price (₪)'}</label>
                 <Input type="number" value={editing.price} onChange={(e) => setEditing({ ...editing, price: Number(e.target.value) })} dir="ltr" />
               </div>
               <div>
@@ -114,7 +113,7 @@ export default function AdminPackages() {
                   value={editing.descriptionAr || ''} onChange={(e) => setEditing({ ...editing, descriptionAr: e.target.value })} dir="rtl" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{language === 'ar' ? 'سعر التجديد ($)' : 'Renewal Price ($)'}</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{language === 'ar' ? 'سعر التجديد (₪)' : 'Renewal Price (₪)'}</label>
                 <Input type="number" value={editing.renewalPrice || 0} onChange={(e) => setEditing({ ...editing, renewalPrice: Number(e.target.value) })} dir="ltr" />
               </div>
               <div>
@@ -122,7 +121,7 @@ export default function AdminPackages() {
                 <Input type="number" value={editing.displayOrder || 0} onChange={(e) => setEditing({ ...editing, displayOrder: Number(e.target.value) })} dir="ltr" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{language === 'ar' ? 'سعر الترقية ($)' : 'Upgrade Price ($)'}</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{language === 'ar' ? 'سعر الترقية (₪)' : 'Upgrade Price (₪)'}</label>
                 <Input type="number" value={editing.upgradePrice || 0} onChange={(e) => setEditing({ ...editing, upgradePrice: Number(e.target.value) })} dir="ltr" />
               </div>
             </div>
@@ -177,7 +176,7 @@ export default function AdminPackages() {
                     </Badge>
                   </div>
                   <p className="text-sm text-gray-500">
-                    ${(pkg.price / 100).toFixed(0)} • {pkg.slug}
+                    {formatAdminCurrencyFromUsdCents(pkg.price || 0, language, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} • {pkg.slug}
                     {pkg.includesLexai ? ' • LexAI' : ''}
                     {pkg.includesRecommendations ? (language === 'ar' ? ' • توصيات' : ' • Rec') : ''}
                   </p>

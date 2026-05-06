@@ -1,6 +1,7 @@
 import { ReactNode, useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/_core/hooks/useAuth";
+import { useEngagementTracker } from "@/_core/hooks/useEngagementTracker";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Button } from "@/components/ui/button";
 import {
@@ -58,6 +59,7 @@ function getPreferredLanguageFromNotificationPrefs(notificationPrefs: string | n
 
 export default function ClientLayout({ children, subHeader }: ClientLayoutProps) {
   const { user, logout } = useAuth();
+  const { track } = useEngagementTracker();
   const { t, language, setLanguage, isRTL } = useLanguage();
   const [location] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -87,6 +89,16 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
 
     hydratedLanguageForUserIdRef.current = user.id;
   }, [language, setLanguage, user]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    track({
+      eventType: "page_view",
+      entityType: "route",
+      metadata: { path: location },
+    });
+  }, [location, track, user?.id]);
 
   useEffect(() => {
     if (!user) return;
@@ -259,7 +271,7 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
                 className="flex items-center gap-1 px-1.5 sm:px-2 py-1.5 rounded-full text-xs font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition"
               >
                 <Globe className="w-3.5 h-3.5" />
-                <span>{language === "ar" ? "EN" : "عربي"}</span>
+                <span>{language === "ar" ? "الإنجليزية" : "Arabic"}</span>
               </button>
 
               {/* User Avatar — links to profile */}
@@ -363,7 +375,7 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
               className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-100 transition"
             >
               <Globe className="h-4 w-4 text-gray-400" />
-              {language === "ar" ? "Switch to English" : "التبديل إلى العربية"}
+              {language === "ar" ? "التبديل إلى الإنجليزية" : "Switch to Arabic"}
             </button>
             <button
               onClick={() => { setMobileMenuOpen(false); setShowLogoutDialog(true); }}

@@ -1018,7 +1018,7 @@ function AnalystView() {
 
 /* ─── Admin view: analyst management + subscription management ─── */
 function AdminView() {
-  const { t, isRTL } = useLanguage();
+  const { t, language, isRTL } = useLanguage();
 
   const utils = trpc.useUtils();
 
@@ -1144,7 +1144,7 @@ export default function AdminRecommendations() {
   const { data: adminCheck, isLoading } = trpc.auth.isAdmin.useQuery();
   const [activeTab, setActiveTab] = useState<"manage" | "channel">("manage");
 
-  if (isLoading) return <DashboardLayout><div className="p-8 text-center text-muted-foreground">Loading...</div></DashboardLayout>;
+  if (isLoading) return <DashboardLayout><div className="p-8 text-center text-muted-foreground">{t('common.loading')}</div></DashboardLayout>;
 
   const isAdmin = adminCheck?.isAdmin;
 

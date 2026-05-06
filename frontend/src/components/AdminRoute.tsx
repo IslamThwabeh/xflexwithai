@@ -1,4 +1,5 @@
 import { useAuth } from "@/_core/hooks/useAuth";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { trpc } from "@/lib/trpc";
 import { useEffect } from "react";
 import { useLocation } from "wouter";
@@ -13,6 +14,7 @@ interface AdminRouteProps {
  * Allows both full admins and staff members with roles.
  */
 export default function AdminRoute({ children }: AdminRouteProps) {
+  const { t } = useLanguage();
   const { isAuthenticated, loading } = useAuth();
   const [location, setLocation] = useLocation();
   const { data: adminCheck, isLoading: checkingAdmin } = trpc.auth.isAdmin.useQuery(undefined, {
@@ -48,7 +50,7 @@ export default function AdminRoute({ children }: AdminRouteProps) {
   if (loading || checkingAdmin) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <p className="text-muted-foreground">Loading...</p>
+        <p className="text-muted-foreground">{t('common.loading')}</p>
       </div>
     );
   }

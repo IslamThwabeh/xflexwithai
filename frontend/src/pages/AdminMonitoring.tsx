@@ -343,11 +343,11 @@ export default function AdminMonitoring() {
                   <table className="min-w-full text-sm">
                   <thead>
                     <tr className="border-b border-slate-200 text-slate-500">
-                      <th className="py-2 text-left font-medium">{isRtl ? 'الموظف' : 'Staff'}</th>
-                      <th className="py-2 text-left font-medium">{isRtl ? 'الأدوار' : 'Roles'}</th>
-                      <th className="py-2 text-left font-medium">{isRtl ? 'الإجراءات' : 'Actions'}</th>
-                      <th className="py-2 text-left font-medium">{isRtl ? 'الوقت' : 'Time'}</th>
-                      <th className="py-2 text-left font-medium">{isRtl ? 'آخر نشاط' : 'Last activity'}</th>
+                      <th className="py-2 text-start font-medium">{isRtl ? 'الموظف' : 'Staff'}</th>
+                      <th className="py-2 text-start font-medium">{isRtl ? 'الأدوار' : 'Roles'}</th>
+                      <th className="py-2 text-start font-medium">{isRtl ? 'الإجراءات' : 'Actions'}</th>
+                      <th className="py-2 text-start font-medium">{isRtl ? 'الوقت' : 'Time'}</th>
+                      <th className="py-2 text-start font-medium">{isRtl ? 'آخر نشاط' : 'Last activity'}</th>
                     </tr>
                   </thead>
                   <tbody>

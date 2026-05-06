@@ -1,6 +1,7 @@
 import { Upload, X, Loader2, CheckCircle2 } from "lucide-react";
 import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 
@@ -25,6 +26,8 @@ export function FileUpload({
   preview = "none",
   className,
 }: FileUploadProps) {
+  const { language } = useLanguage();
+  const isRtl = language === "ar";
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -38,7 +41,7 @@ export function FileUpload({
     // Validate file size
     const fileSizeMB = file.size / (1024 * 1024);
     if (fileSizeMB > maxSize) {
-      setError(`File size must be less than ${maxSize}MB`);
+      setError(isRtl ? `يجب أن يكون حجم الملف أقل من ${maxSize} MB` : `File size must be less than ${maxSize}MB`);
       return;
     }
 
@@ -71,7 +74,7 @@ export function FileUpload({
         setUploading(false);
       }, 1000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload failed");
+      setError(err instanceof Error ? err.message : (isRtl ? "فشل الرفع" : "Upload failed"));
       setUploading(false);
       setProgress(0);
     }
@@ -108,10 +111,10 @@ export function FileUpload({
         >
           <Upload className="mx-auto h-12 w-12 text-gray-400 mb-3" />
           <p className="text-sm text-gray-600 mb-1">
-            Click to upload or drag and drop
+            {isRtl ? "اضغط للرفع أو اسحب الملف هنا" : "Click to upload or drag and drop"}
           </p>
           <p className="text-xs text-gray-500">
-            {accept.split(",").join(", ")} (max {maxSize}MB)
+            {accept.split(",").join(", ")} ({isRtl ? `الحد الأقصى ${maxSize} MB` : `max ${maxSize}MB`})
           </p>
         </div>
       )}
@@ -121,7 +124,7 @@ export function FileUpload({
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Loader2 className="h-5 w-5 animate-spin text-primary" />
-              <span className="text-sm font-medium">Uploading...</span>
+              <span className="text-sm font-medium">{isRtl ? "جارٍ الرفع..." : "Uploading..."}</span>
             </div>
             <span className="text-sm text-gray-600">{progress}%</span>
           </div>
@@ -135,7 +138,7 @@ export function FileUpload({
             <div className="flex items-center gap-2">
               <CheckCircle2 className="h-5 w-5 text-green-600" />
               <span className="text-sm font-medium text-green-900">
-                Upload successful
+                {isRtl ? "تم الرفع بنجاح" : "Upload successful"}
               </span>
             </div>
             <Button
@@ -153,7 +156,7 @@ export function FileUpload({
             <div className="border rounded-lg overflow-hidden">
               <img
                 src={uploadedUrl}
-                alt="Preview"
+                alt={isRtl ? "معاينة" : "Preview"}
                 className="w-full max-h-64 object-contain bg-black/5"
               />
             </div>
@@ -186,7 +189,7 @@ export function FileUpload({
           className="w-full"
         >
           <Upload className="h-4 w-4 mr-2" />
-          {uploadedUrl ? "Change File" : "Select File"}
+          {uploadedUrl ? (isRtl ? "تغيير الملف" : "Change File") : (isRtl ? "اختيار ملف" : "Select File")}
         </Button>
       )}
     </div>

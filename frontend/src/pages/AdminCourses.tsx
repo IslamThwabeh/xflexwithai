@@ -26,6 +26,8 @@ const EMPTY_FORM: CourseFormData = {
 };
 
 export default function AdminCourses() {
+  const { t, language } = useLanguage();
+  const isRtl = language === 'ar';
   const utils = trpc.useUtils();
   const { data: courses, isLoading } = trpc.courses.listAll.useQuery();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -34,42 +36,40 @@ export default function AdminCourses() {
 
   const createMutation = trpc.courses.create.useMutation({
     onSuccess: () => {
-      toast.success("Course created successfully");
+      toast.success(isRtl ? 'تم إنشاء الدورة بنجاح' : 'Course created successfully');
       utils.courses.listAll.invalidate();
       setIsDialogOpen(false);
       setFormData({ ...EMPTY_FORM });
     },
     onError: (error) => {
-      toast.error(`Failed to create course: ${error.message}`);
+      toast.error(isRtl ? `فشل إنشاء الدورة: ${error.message}` : `Failed to create course: ${error.message}`);
     },
   });
 
   const updateMutation = trpc.courses.update.useMutation({
     onSuccess: () => {
-      toast.success("Course updated successfully");
+      toast.success(isRtl ? 'تم تحديث الدورة بنجاح' : 'Course updated successfully');
       utils.courses.listAll.invalidate();
       setIsDialogOpen(false);
       setEditingCourse(null);
       setFormData({ ...EMPTY_FORM });
     },
     onError: (error) => {
-      toast.error(`Failed to update course: ${error.message}`);
+      toast.error(isRtl ? `فشل تحديث الدورة: ${error.message}` : `Failed to update course: ${error.message}`);
     },
   });
 
   const deleteMutation = trpc.courses.delete.useMutation({
     onSuccess: () => {
-      toast.success("Course deleted successfully");
+      toast.success(isRtl ? 'تم حذف الدورة بنجاح' : 'Course deleted successfully');
       utils.courses.listAll.invalidate();
     },
     onError: (error) => {
-      toast.error(`Failed to delete course: ${error.message}`);
+      toast.error(isRtl ? `فشل حذف الدورة: ${error.message}` : `Failed to delete course: ${error.message}`);
     },
   });
 
   const uploadImage = trpc.upload.image.useMutation();
-
-  const { t } = useLanguage();
 
   const handleEdit = (course: any) => {
     setEditingCourse(course);

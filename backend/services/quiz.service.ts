@@ -6,7 +6,7 @@ import {
   quizAttempts, 
   quizAnswers,
   userQuizProgress 
-} from "../database/schema-sqlite.ts";
+} from "../../database/schema-sqlite.ts";
 import { eq, and, desc } from "drizzle-orm";
 
 export class QuizService {

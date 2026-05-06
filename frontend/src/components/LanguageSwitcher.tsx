@@ -18,7 +18,7 @@ export function LanguageSwitcher() {
     >
       <Languages className="h-4 w-4" />
       <span className="font-medium">
-        {language === 'en' ? 'عربي' : 'English'}
+        {language === 'en' ? 'Arabic' : 'الإنجليزية'}
       </span>
     </Button>
   );

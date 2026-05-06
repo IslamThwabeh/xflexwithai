@@ -210,7 +210,7 @@ export default function AdminSupport() {
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) { toast.error("File too large (max 5MB)"); return; }
+    if (file.size > 5 * 1024 * 1024) { toast.error(isRtl ? 'الملف كبير جداً (الحد الأقصى 5MB)' : 'File too large (max 5MB)'); return; }
     setAttachment({ name: file.name, file, size: file.size });
     e.target.value = '';
   };
@@ -265,7 +265,7 @@ export default function AdminSupport() {
       });
       setAttachment(null);
     } catch {
-      toast.error("Failed to upload file");
+      toast.error(isRtl ? 'فشل رفع الملف' : 'Failed to upload file');
     } finally {
       setUploading(false);
     }
@@ -279,14 +279,14 @@ export default function AdminSupport() {
       const uploaded = await uploadFileToR2(blob, `voice-note.${ext}`, blob.type, 'voice');
       replyMutation.mutate({
         conversationId: selectedConvId,
-        content: '🎤 Voice note',
+        content: isRtl ? '🎤 رسالة صوتية' : '🎤 Voice note',
         attachmentUrl: uploaded.url,
         attachmentName: `voice-note.${ext}`,
         attachmentType: 'voice',
         attachmentDuration: Math.round(durationSec),
       });
     } catch {
-      toast.error("Failed to upload voice note");
+      toast.error(isRtl ? 'فشل رفع الرسالة الصوتية' : 'Failed to upload voice note');
     } finally {
       setUploading(false);
     }
@@ -414,7 +414,7 @@ export default function AdminSupport() {
                     <button
                       key={conv.id}
                       onClick={() => setSelectedConvId(conv.id)}
-                      className={`w-full text-left p-3 hover:bg-gray-50 transition ${
+                      className={`w-full text-start p-3 hover:bg-gray-50 transition ${
                         selectedConvId === conv.id ? "bg-emerald-50 border-r-2 border-emerald-600" : ""
                       }`}
                     >

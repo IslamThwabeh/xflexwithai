@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useEngagementTracker } from "@/_core/hooks/useEngagementTracker";
 import { useRoute, useLocation } from "wouter";
 import { ArrowRight, ArrowLeft, CheckCircle, XCircle, Trophy, RotateCcw } from "lucide-react";
 import { trpc } from "@/lib/trpc";
@@ -22,6 +23,7 @@ interface QuizResult {
 export default function TakeQuiz() {
   const [, params] = useRoute("/quiz/:level");
   const [, setLocation] = useLocation();
+  const { track } = useEngagementTracker();
   const level = parseInt(params?.level || "1");
 
   const { data: quiz, isLoading: loading, error: queryError } = trpc.userQuiz.getLevel.useQuery({ level }, {
@@ -70,6 +72,16 @@ export default function TakeQuiz() {
           questionId: parseInt(questionId),
           optionId
         }))
+      });
+      track({
+        eventType: "quiz_attempt",
+        entityType: "quiz_level",
+        entityId: quiz.id,
+        metadata: {
+          level: quiz.level,
+          passed: data.passed,
+          score: data.score,
+        },
       });
       setResult(data as QuizResult);
     } catch (err: any) {

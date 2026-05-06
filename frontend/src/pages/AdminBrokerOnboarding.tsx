@@ -36,11 +36,11 @@ export function AdminBrokerOnboardingContent() {
 
   const invalidateAll = () => { utils.onboarding.pendingProofs.invalidate(); utils.onboarding.allRecords.invalidate(); };
   const approveMutation = trpc.onboarding.approve.useMutation({
-    onSuccess: () => { toast.success('Step approved'); invalidateAll(); setExpandedId(null); setAdminNote(''); },
+    onSuccess: () => { toast.success(isAr ? 'تمت الموافقة على الخطوة' : 'Step approved'); invalidateAll(); setExpandedId(null); setAdminNote(''); },
     onError: (e) => toast.error(e.message),
   });
   const rejectMutation = trpc.onboarding.reject.useMutation({
-    onSuccess: () => { toast.success('Step rejected'); invalidateAll(); setExpandedId(null); setRejectReason(''); },
+    onSuccess: () => { toast.success(isAr ? 'تم رفض الخطوة' : 'Step rejected'); invalidateAll(); setExpandedId(null); setRejectReason(''); },
     onError: (e) => toast.error(e.message),
   });
 
@@ -55,7 +55,7 @@ export function AdminBrokerOnboardingContent() {
 
   const handleApprove = (stepId: number, note?: string) => approveMutation.mutate({ stepId, adminNote: note });
   const handleReject = (stepId: number, rejectionReason: string) => {
-    if (!rejectionReason.trim()) { toast.error('Please enter a rejection reason'); return; }
+    if (!rejectionReason.trim()) { toast.error(isAr ? 'يرجى إدخال سبب الرفض' : 'Please enter a rejection reason'); return; }
     rejectMutation.mutate({ stepId, rejectionReason });
   };
 
@@ -81,7 +81,7 @@ export function AdminBrokerOnboardingContent() {
           filterStep={filterStep} onFilterStepChange={setFilterStep} isAr={isAr} />
       )}
       {isLoading ? (
-        <div className="text-center py-8 text-muted-foreground">Loading...</div>
+        <div className="text-center py-8 text-muted-foreground">{isAr ? 'جارٍ التحميل...' : 'Loading...'}</div>
       ) : filteredRecords.length === 0 ? (
         <Card><CardContent className="text-center py-12 text-muted-foreground">
           <FileCheck className="h-12 w-12 mx-auto mb-3 text-gray-300" />

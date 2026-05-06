@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { formatAdminCurrency } from '@/lib/adminCurrency';
 import { formatPendingActivationDate, getPendingActivationDaysLeft, getPendingActivationWindow } from '@/lib/pendingActivation';
 import { trpc } from '@/lib/trpc';
 import ClientLayout from '@/components/ClientLayout';
@@ -33,7 +34,7 @@ function stepDescription(step: StepKey, isArabic: boolean): string {
   const desc: Record<StepKey, [string, string]> = {
     select_broker: ['اختر وسيط التداول المفضل لديك من القائمة', 'Choose your preferred trading broker from the list'],
     open_account: ['افتح حساب تداول حقيقي ووثّقه وأرفق صورة إثبات', 'Open a real trading account, complete verification, and upload proof screenshot'],
-    deposit: ['أودع مبلغ 10$ على الأقل وأرفق صورة الإيداع', 'Deposit at least $10 and upload deposit proof'],
+    deposit: ['أودع الحد الأدنى المطلوب لدى الوسيط الذي اخترته وأرفق صورة الإيداع', 'Deposit the minimum amount required by your selected broker and upload deposit proof'],
   };
   return isArabic ? desc[step][0] : desc[step][1];
 }
@@ -294,7 +295,7 @@ export default function BrokerOnboarding() {
                       key={broker.id}
                       onClick={() => handleSelectBroker(broker.id)}
                       disabled={selectBroker.isPending}
-                      className="flex items-center gap-3 p-4 rounded-lg border-2 border-gray-200 hover:border-emerald-400 hover:bg-emerald-50/50 transition-all text-left disabled:opacity-50"
+                      className="flex items-center gap-3 p-4 rounded-lg border-2 border-gray-200 hover:border-emerald-400 hover:bg-emerald-50/50 transition-all text-start disabled:opacity-50"
                     >
                       {broker.logoUrl ? (
                         <img src={broker.logoUrl} alt={broker.nameEn} className="h-10 w-10 object-contain rounded" />
@@ -307,7 +308,12 @@ export default function BrokerOnboarding() {
                         <p className="font-semibold">{isArabic ? broker.nameAr : broker.nameEn}</p>
                         {broker.minDeposit > 0 && (
                           <p className="text-xs text-muted-foreground">
-                            {isArabic ? `الحد الأدنى: $${broker.minDeposit}` : `Min deposit: $${broker.minDeposit}`}
+                            {isArabic ? 'الحد الأدنى: ' : 'Min deposit: '}
+                            {formatAdminCurrency(broker.minDeposit, language, {
+                              sourceCurrency: broker.minDepositCurrency,
+                              minimumFractionDigits: 0,
+                              maximumFractionDigits: 0,
+                            })}
                           </p>
                         )}
                       </div>
@@ -552,12 +558,12 @@ function ProofSampleGuide({ step, isArabic }: { step: StepKey; isArabic: boolean
       titleEn: 'Deposit Proof Example',
       fields: [
         { labelAr: 'نوع العملية', labelEn: 'Transaction', valueAr: 'إيداع', valueEn: 'Deposit' },
-        { labelAr: 'المبلغ', labelEn: 'Amount', valueAr: '$XX.XX', valueEn: '$XX.XX' },
+        { labelAr: 'المبلغ', labelEn: 'Amount', valueAr: 'XX.XX', valueEn: 'XX.XX' },
         { labelAr: 'الحالة', labelEn: 'Status', valueAr: 'تمت الموافقة ✓', valueEn: 'Approved ✓' },
         { labelAr: 'رقم الحساب', labelEn: 'Account', valueAr: 'C0XXXXXXX', valueEn: 'C0XXXXXXX' },
       ],
-      noteAr: 'ارفع صورة تُثبت الإيداع (سجل المعاملات أو إيميل التأكيد) — الحد الأدنى $10',
-      noteEn: 'Upload a screenshot showing the deposit (transaction history or confirmation email) — minimum $10',
+      noteAr: 'ارفع صورة تُثبت الإيداع (سجل المعاملات أو إيميل التأكيد) — الحد الأدنى يعتمد على الوسيط الذي اخترته.',
+      noteEn: 'Upload a screenshot showing the deposit (transaction history or confirmation email) — the minimum depends on your selected broker.',
     },
   };
 

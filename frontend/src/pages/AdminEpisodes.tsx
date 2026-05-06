@@ -25,6 +25,8 @@ import { useRoute, Link } from "wouter";
 export default function AdminEpisodes() {
   const [, params] = useRoute("/admin/courses/:courseId/episodes");
   const courseId = params?.courseId ? parseInt(params.courseId) : null;
+  const { t, language } = useLanguage();
+  const isRtl = language === 'ar';
 
   const utils = trpc.useUtils();
   const { data: course } = trpc.courses.getById.useQuery(
@@ -42,42 +44,40 @@ export default function AdminEpisodes() {
 
   const createMutation = trpc.episodes.create.useMutation({
     onSuccess: () => {
-      toast.success("Episode created successfully");
+      toast.success(isRtl ? 'تم إنشاء الحلقة بنجاح' : 'Episode created successfully');
       utils.episodes.listByCourse.invalidate();
       setIsDialogOpen(false);
       resetForm();
     },
     onError: (error) => {
-      toast.error(`Failed to create episode: ${error.message}`);
+      toast.error(isRtl ? `فشل إنشاء الحلقة: ${error.message}` : `Failed to create episode: ${error.message}`);
     },
   });
 
   const updateMutation = trpc.episodes.update.useMutation({
     onSuccess: () => {
-      toast.success("Episode updated successfully");
+      toast.success(isRtl ? 'تم تحديث الحلقة بنجاح' : 'Episode updated successfully');
       utils.episodes.listByCourse.invalidate();
       setIsDialogOpen(false);
       setEditingEpisode(null);
       resetForm();
     },
     onError: (error) => {
-      toast.error(`Failed to update episode: ${error.message}`);
+      toast.error(isRtl ? `فشل تحديث الحلقة: ${error.message}` : `Failed to update episode: ${error.message}`);
     },
   });
 
   const deleteMutation = trpc.episodes.delete.useMutation({
     onSuccess: () => {
-      toast.success("Episode deleted successfully");
+      toast.success(isRtl ? 'تم حذف الحلقة بنجاح' : 'Episode deleted successfully');
       utils.episodes.listByCourse.invalidate();
     },
     onError: (error) => {
-      toast.error(`Failed to delete episode: ${error.message}`);
+      toast.error(isRtl ? `فشل حذف الحلقة: ${error.message}` : `Failed to delete episode: ${error.message}`);
     },
   });
 
   const uploadVideo = trpc.upload.video.useMutation();
-
-  const { t } = useLanguage();
 
   const [formData, setFormData] = useState({
     titleEn: "",
@@ -162,7 +162,7 @@ export default function AdminEpisodes() {
             </Button>
           </Link>
           <div className="flex-1">
-            <h1 className="text-3xl font-bold">{course?.titleEn || "Loading..."}</h1>
+            <h1 className="text-3xl font-bold">{language === 'ar' ? (course?.titleAr || course?.titleEn || t('common.loading')) : (course?.titleEn || course?.titleAr || t('common.loading'))}</h1>
             <p className="text-muted-foreground">{t('admin.episodes.subtitle')}</p>
           </div>
           <Button onClick={() => { resetForm(); setEditingEpisode(null); setIsDialogOpen(true); }}>

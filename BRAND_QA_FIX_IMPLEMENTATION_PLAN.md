@@ -6,9 +6,9 @@ This plan translates the May 2026 brand and currency QA findings into concrete i
 
 Primary audit inputs:
 
-- Production and preview live audit results in [test-results/qa-live-http.txt](test-results/qa-live-http.txt)
-- Lighthouse smoke run in [test-results/qa-lighthouse-prod.json](test-results/qa-lighthouse-prod.json)
-- CSS token counts in [test-results/qa-css-counts.txt](test-results/qa-css-counts.txt)
+- Production and preview live audit results captured during the QA pass
+- Lighthouse smoke findings captured during the QA pass
+- CSS token counts captured during the QA pass
 - Repo findings across [functions/_middleware.js](functions/_middleware.js), [frontend/src/pages/Checkout.tsx](frontend/src/pages/Checkout.tsx), [frontend/src/pages/Upgrade.tsx](frontend/src/pages/Upgrade.tsx), [frontend/src/pages/Home.tsx](frontend/src/pages/Home.tsx), [frontend/src/contexts/LanguageContext.tsx](frontend/src/contexts/LanguageContext.tsx), [frontend/src/index.css](frontend/src/index.css), [frontend/src/pages/PackageDetails.tsx](frontend/src/pages/PackageDetails.tsx), [backend/routers.ts](backend/routers.ts), and [backend/db.ts](backend/db.ts)
 
 ## Delivery Strategy
@@ -59,7 +59,7 @@ Validation:
 
 Definition of done:
 
-- [test-results/qa-live-http.txt](test-results/qa-live-http.txt) equivalent checks show non-HTML responses for both files on prod and preview.
+- Equivalent checks show non-HTML responses for both files on prod and preview.
 - Lighthouse no longer reports robots.txt invalid.
 
 ### 2. Fix PayPal billing disclosure on Checkout and Upgrade
@@ -220,7 +220,7 @@ Implementation tasks:
 Validation:
 
 1. Run npx vite build.
-2. Recompute the bundle token counts and compare with [test-results/qa-css-counts.txt](test-results/qa-css-counts.txt).
+2. Recompute the bundle token counts and compare with the QA baseline gathered for this pass.
 3. Spot-check the login button, Home CTA, heading accent, and nav underline.
 
 Definition of done:

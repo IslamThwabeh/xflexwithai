@@ -1,6 +1,7 @@
 import DashboardLayout from "@/components/DashboardLayout";
 import { ResponsiveTable } from "@/components/ui/responsive-table";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { formatAdminCurrency, formatAdminCurrencyFromUsd } from "@/lib/adminCurrency";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -13,7 +14,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { trpc } from "@/lib/trpc";
-import { Users, BookOpen, Calendar, DollarSign } from "lucide-react";
+import { Users, BookOpen, Calendar, Wallet } from "lucide-react";
 import { format } from "date-fns";
 
 function formatSafeDate(
@@ -38,10 +39,10 @@ export default function AdminUsers() {
   const totalUsers = users?.length || 0;
   const totalEnrollments = enrollments?.length || 0;
   const activeSubscriptions = enrollments?.filter(e => e.enrollment.isSubscriptionActive).length || 0;
-  // Revenue from dashboard stats (includes completed orders + key activations, amounts in cents)
-  const totalRevenue = (dashStats?.totalRevenue || 0) / 100;
+  const totalRevenue = dashStats?.totalRevenue || 0;
 
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const isRtl = language === 'ar';
 
   return (
     <DashboardLayout>
@@ -89,10 +90,10 @@ export default function AdminUsers() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">{t('admin.totalRevenue')}</CardTitle>
-              <DollarSign className="h-4 w-4 text-muted-foreground" />
+              <Wallet className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">${totalRevenue.toFixed(2)}</div>
+              <div className="text-2xl font-bold">{formatAdminCurrencyFromUsd(totalRevenue, language)}</div>
               <p className="text-xs text-muted-foreground">{t('admin.users.allTimeRevenue')}</p>
             </CardContent>
           </Card>
@@ -166,9 +167,9 @@ export default function AdminUsers() {
                   {enrollments.map((enrollment) => (
                     <TableRow key={enrollment.enrollment.id}>
                       <TableCell className="font-medium">
-                        {enrollment.user?.name || "Unknown User"}
+                        {enrollment.user?.name || (isRtl ? 'مستخدم غير معروف' : 'Unknown User')}
                       </TableCell>
-                      <TableCell>{enrollment.course?.titleEn || "Unknown Course"}</TableCell>
+                      <TableCell>{isRtl ? (enrollment.course?.titleAr || enrollment.course?.titleEn || 'دورة غير معروفة') : (enrollment.course?.titleEn || enrollment.course?.titleAr || 'Unknown Course')}</TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
@@ -185,7 +186,9 @@ export default function AdminUsers() {
                       <TableCell>
                         {(enrollment.enrollment.paymentAmount ?? 0) > 0 ? (
                           <span className="font-medium">
-                            ${enrollment.enrollment.paymentAmount!.toFixed(2)} {enrollment.enrollment.paymentCurrency}
+                            {formatAdminCurrency(enrollment.enrollment.paymentAmount!, language, {
+                              sourceCurrency: enrollment.enrollment.paymentCurrency,
+                            })}
                           </span>
                         ) : enrollment.enrollment.activatedViaKey ? (
                           <span className="text-emerald-600 font-medium">{t('admin.users.viaKey')}</span>

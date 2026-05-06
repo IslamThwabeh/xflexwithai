@@ -42,7 +42,7 @@ export default function StudentPackages() {
   const recommendationService = serviceAccess?.recommendation;
   const relevantServices = [
     pkg?.includesLexai
-      ? { key: 'lexai', label: 'LexAI', summary: lexaiService }
+      ? { key: 'lexai', label: isRtl ? 'ليكس أي آي' : 'LexAI', summary: lexaiService }
       : null,
     pkg?.includesRecommendations
       ? { key: 'recommendations', label: isRtl ? 'التوصيات' : 'Recommendations', summary: recommendationService }

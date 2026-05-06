@@ -65,7 +65,7 @@ export default function Home() {
       label: language === 'ar' ? 'ساعدنا اكثر من 5000 طالب يربحوا من المجال' : 'Students helped profit from the market',
     },
     {
-      value: '+8 سنوات',
+      value: language === 'ar' ? '+8 سنوات' : '8+ years',
       label: language === 'ar' ? 'خبرة بالمجال' : 'Years of field experience',
     },
     {
@@ -167,7 +167,7 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-[var(--color-xf-cream)]" dir="ltr">
+    <div className="min-h-screen bg-[var(--color-xf-cream)]" dir={language === 'ar' ? 'rtl' : 'ltr'}>
       {/* ======== NAVIGATION ======== */}
       <header
         className={`sticky top-0 z-[1000] transition-all duration-300 ${headerScrolled ? 'border-b border-slate-200/80 bg-white/95 shadow-[0_8px_30px_rgba(13,23,42,0.08)] backdrop-blur-xl' : 'border-b border-white/65 bg-white/70 shadow-[0_18px_60px_rgba(15,23,42,0.04)] backdrop-blur-2xl'}`}
@@ -210,7 +210,7 @@ export default function Home() {
               className="flex items-center gap-1 px-3 py-1.5 rounded-full text-sm text-gray-500 hover:text-xf-dark hover:bg-gray-100/80 transition-all duration-150"
             >
               <Globe className="w-4 h-4" />
-              {language === 'ar' ? 'EN' : 'عربي'}
+              {language === 'ar' ? 'الإنجليزية' : 'Arabic'}
             </button>
             <Link href="/auth">
               <button className="btn-primary-xf text-sm px-5 py-2 inline-flex items-center justify-center gap-1.5 min-w-[100px]">
@@ -238,6 +238,7 @@ export default function Home() {
               onClick={() => setMobileMenuOpen(false)}
             />
             <nav
+              dir={language === 'ar' ? 'rtl' : 'ltr'}
               className="fixed inset-y-0 right-0 z-[1100] flex w-[min(88vw,22rem)] flex-col border-l border-white/60 bg-white/96 px-4 pb-4 pt-5 shadow-[0_24px_60px_rgba(15,23,42,0.18)] backdrop-blur-2xl md:hidden"
               style={{ overflowY: 'auto' }}
             >

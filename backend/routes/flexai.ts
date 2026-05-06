@@ -6,7 +6,7 @@ import {
   registrationKeys, 
   flexaiSubscriptions, 
   flexaiMessages 
-} from '../database/schema-sqlite.ts';
+} from '../../database/schema-sqlite.ts';
 import { eq, and, desc } from 'drizzle-orm';
 import { OpenAIService } from '../services/openai.service';
 

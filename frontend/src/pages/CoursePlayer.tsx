@@ -230,7 +230,7 @@ export default function CoursePlayer() {
                         <button
                           key={episode.id}
                           onClick={() => handleEpisodeSelect(episode)}
-                          className={`w-full text-left p-3 hover:bg-accent transition-colors ${
+                          className={`w-full text-start p-3 hover:bg-accent transition-colors ${
                             currentEpisode?.id === episode.id
                               ? "bg-accent border-l-4 border-primary"
                               : ""

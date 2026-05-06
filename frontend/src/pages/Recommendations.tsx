@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useEngagementTracker } from "@/_core/hooks/useEngagementTracker";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -125,6 +126,7 @@ function parseThreadActionFromUrl() {
 
 export default function Recommendations() {
   const { user } = useAuth();
+  const { track } = useEngagementTracker();
   const { t, language } = useLanguage();
   const utils = trpc.useUtils();
   const [location] = useLocation();
@@ -217,6 +219,16 @@ export default function Recommendations() {
     const intervalId = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(intervalId);
   }, [activeAlerts.length, canRead]);
+
+  useEffect(() => {
+    if (!canRead) return;
+
+    track({
+      eventType: "recommendation_view",
+      entityType: "feature",
+      metadata: { path: location },
+    });
+  }, [canRead, location, track]);
 
   useEffect(() => {
     setPendingThreadAction(parseThreadActionFromUrl());

@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { formatAdminCurrencyFromUsdCents, ilsToUsdCents, usdCentsToIls } from '@/lib/adminCurrency';
 import { formatLocalizedDate } from '@/lib/dateLocale';
 import { trpc } from '@/lib/trpc';
 import DashboardLayout from '@/components/DashboardLayout';
@@ -30,14 +31,14 @@ export default function AdminCoupons() {
   const [copied, setCopied] = useState<number | null>(null);
 
   const startNew = () => { setIsNew(true); setEditing(empty()); };
-  const startEdit = (c: any) => { setIsNew(false); setEditing({ ...c, discountValue: c.discountType === 'fixed' ? c.discountValue / 100 : c.discountValue, minOrderAmount: c.minOrderAmount ? c.minOrderAmount / 100 : undefined }); };
+  const startEdit = (c: any) => { setIsNew(false); setEditing({ ...c, discountValue: c.discountType === 'fixed' ? usdCentsToIls(c.discountValue) : c.discountValue, minOrderAmount: c.minOrderAmount ? usdCentsToIls(c.minOrderAmount) : undefined }); };
 
   const handleSave = async () => {
     if (!editing) return;
     const data = {
       ...editing,
-      discountValue: editing.discountType === 'fixed' ? Math.round(editing.discountValue * 100) : editing.discountValue,
-      minOrderAmount: editing.minOrderAmount ? Math.round(editing.minOrderAmount * 100) : undefined,
+      discountValue: editing.discountType === 'fixed' ? ilsToUsdCents(editing.discountValue) : editing.discountValue,
+      minOrderAmount: editing.minOrderAmount ? ilsToUsdCents(editing.minOrderAmount) : undefined,
       validFrom: editing.validFrom || undefined,
       validUntil: editing.validUntil || undefined,
     };
@@ -79,7 +80,7 @@ export default function AdminCoupons() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">{isRtl ? 'نوع الخصم' : 'Discount Type'}</label>
                 <select className="w-full border rounded-md h-10 px-3" value={editing.discountType} onChange={(e) => setEditing({ ...editing, discountType: e.target.value })}>
                   <option value="percentage">{isRtl ? 'نسبة مئوية (%)' : 'Percentage (%)'}</option>
-                  <option value="fixed">{isRtl ? 'مبلغ ثابت ($)' : 'Fixed Amount ($)'}</option>
+                  <option value="fixed">{isRtl ? 'مبلغ ثابت (₪)' : 'Fixed Amount (₪)'}</option>
                 </select>
               </div>
               <div>
@@ -91,7 +92,7 @@ export default function AdminCoupons() {
                 <Input type="number" value={editing.maxUses ?? ''} onChange={(e) => setEditing({ ...editing, maxUses: e.target.value ? +e.target.value : undefined })} placeholder={isRtl ? 'غير محدود' : 'Unlimited'} />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{isRtl ? 'الحد الأدنى للطلب ($)' : 'Min Order Amount ($)'}</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{isRtl ? 'الحد الأدنى للطلب (₪)' : 'Min Order Amount (₪)'}</label>
                 <Input type="number" value={editing.minOrderAmount ?? ''} onChange={(e) => setEditing({ ...editing, minOrderAmount: e.target.value ? +e.target.value : undefined })} placeholder="0" />
               </div>
               <div>
@@ -142,7 +143,7 @@ export default function AdminCoupons() {
                         </button>
                       </div>
                     </td>
-                    <td className="p-3">{c.discountType === 'percentage' ? `${c.discountValue}%` : `₪${((c.discountValue / 100) * 3.5).toFixed(2)}`}</td>
+                    <td className="p-3">{c.discountType === 'percentage' ? `${c.discountValue}%` : formatAdminCurrencyFromUsdCents(c.discountValue, language)}</td>
                     <td className="p-3">{c.usedCount}{c.maxUses ? ` / ${c.maxUses}` : ''}</td>
                     <td className="p-3 text-xs">
                       {c.validFrom && <div>{isRtl ? 'من:' : 'From:'} {formatLocalizedDate(c.validFrom, language)}</div>}

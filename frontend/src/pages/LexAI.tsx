@@ -1,4 +1,5 @@
 import { useAuth } from "@/_core/hooks/useAuth";
+import { useEngagementTracker } from "@/_core/hooks/useEngagementTracker";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -25,6 +26,7 @@ import ClientLayout from "@/components/ClientLayout";
 
 export default function LexAI() {
   const { user, loading: authLoading } = useAuth();
+  const { track } = useEngagementTracker();
   const { language } = useLanguage();
   const isArabic = language === 'ar';
   const utils = trpc.useUtils();
@@ -256,6 +258,17 @@ export default function LexAI() {
     setUserAnalysis("");
   };
 
+  const trackLexAIAnalysis = (flow: string, metadata?: Record<string, unknown>) => {
+    track({
+      eventType: "lexai_chat",
+      entityType: "analysis",
+      metadata: {
+        flow,
+        ...metadata,
+      },
+    });
+  };
+
   const restartFlow = () => {
     if (!hasActiveSubscription) {
       toast.error(copy.keyRequired);
@@ -291,6 +304,7 @@ export default function LexAI() {
 
       if (guidedFlow === "specialized_m15") {
         await analyzeM15.mutateAsync({ imageUrl, language });
+        trackLexAIAnalysis("specialized_m15", { timeframe: "M15" });
         await utils.lexai.getMessages.invalidate();
         await utils.lexai.getSubscription.invalidate();
         setImageUrl("");
@@ -301,10 +315,13 @@ export default function LexAI() {
 
       if (guidedFlow === "specialized_h4") {
         await analyzeH4.mutateAsync({ imageUrl: h4ImageUrl, language });
+        trackLexAIAnalysis("specialized_h4", { timeframe: "H4" });
       } else if (guidedFlow === "single") {
         await analyzeSingle.mutateAsync({ imageUrl, language, timeframe });
+        trackLexAIAnalysis("single", { timeframe });
       } else {
         await analyzeFeedbackWithImage.mutateAsync({ userAnalysis, imageUrl, language });
+        trackLexAIAnalysis("feedback_with_image", { timeframe });
       }
 
       await utils.lexai.getMessages.invalidate();

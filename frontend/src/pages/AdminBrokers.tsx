@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { formatAdminCurrencyFromUsd, ilsToUsd, usdToIls } from '@/lib/adminCurrency';
 import { trpc } from '@/lib/trpc';
 import DashboardLayout from '@/components/DashboardLayout';
 import { toast } from 'sonner';
@@ -45,14 +46,17 @@ export function AdminBrokersContent() {
   const startNew = () => { setIsNew(true); setEditing(empty()); };
   const startEdit = (b: any) => {
     setIsNew(false);
-    setEditing({ ...b });
+    setEditing({
+      ...b,
+      minDeposit: usdToIls(b.minDeposit || 0),
+    });
   };
 
   const handleSave = async () => {
     if (!editing) return;
     const payload = {
       ...editing,
-      minDeposit: Number(editing.minDeposit) || 0,
+      minDeposit: Math.round(ilsToUsd(Number(editing.minDeposit) || 0)),
       displayOrder: Number(editing.displayOrder) || 0,
       logoUrl: editing.logoUrl?.trim() || undefined,
       descriptionEn: editing.descriptionEn?.trim() || undefined,
@@ -148,21 +152,16 @@ export function AdminBrokersContent() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{isRtl ? 'الحد الأدنى للإيداع' : 'Min Deposit'}</label>
-                <div className="flex gap-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">{isRtl ? 'الحد الأدنى للإيداع (₪)' : 'Min Deposit (₪)'}</label>
+                <div className="flex items-center gap-2">
                   <Input
                     type="number"
-                    className="w-28"
+                    className="w-32"
                     value={editing.minDeposit}
                     onChange={(e) => setEditing({ ...editing, minDeposit: Number(e.target.value) })}
                     min={0}
                   />
-                  <Input
-                    className="w-20"
-                    value={editing.minDepositCurrency}
-                    onChange={(e) => setEditing({ ...editing, minDepositCurrency: e.target.value })}
-                    placeholder="USD"
-                  />
+                  <span className="inline-flex h-10 items-center rounded-md border border-gray-200 bg-gray-50 px-3 text-sm font-medium text-gray-600">₪</span>
                 </div>
               </div>
               <div className="md:col-span-2">
@@ -287,7 +286,7 @@ export function AdminBrokersContent() {
                   {b.minDeposit != null && b.minDeposit > 0 && (
                     <p className="text-sm text-gray-500 mb-3">
                       {isRtl ? 'الحد الأدنى: ' : 'Min Deposit: '}
-                      <span className="font-semibold">${b.minDeposit} {b.minDepositCurrency}</span>
+                      <span className="font-semibold">{formatAdminCurrencyFromUsd(b.minDeposit, language, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
                     </p>
                   )}
 
