@@ -178,8 +178,8 @@ export default function AdminClientProfileSheet({
       tone: "risk",
       title: isRtl ? "تعارض بريد مع مسؤول" : "Admin Email Collision",
       detail: isRtl
-        ? "نفس البريد موجود أيضاً في جدول المدراء. يجب مراجعة مسار الدخول حتى لا يضيع العميل بين /auth و /admin/login."
-        : "This email also exists in the separate admins table. Review the login path so the client is not split between /auth and /admin/login.",
+        ? "نفس البريد موجود أيضاً في جدول المدراء. يجب مراجعة مسار الدخول حتى لا يضيع العميل بين /auth و /admin."
+        : "This email also exists in the separate admins table. Review the login path so the client is not split between /auth and /admin.",
     });
   }
 

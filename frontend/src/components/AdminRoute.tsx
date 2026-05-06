@@ -35,7 +35,7 @@ export default function AdminRoute({ children }: AdminRouteProps) {
   useEffect(() => {
     if (!loading && !checkingAdmin) {
       if (!isAuthenticated || (adminCheck && !adminCheck.isAdmin && !adminCheck.isStaff)) {
-        setLocation("/admin/login");
+        setLocation("/admin");
         return;
       }
 

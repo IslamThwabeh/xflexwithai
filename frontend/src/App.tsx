@@ -111,6 +111,7 @@ function Router() {
     <Switch>
       <Route path={"/auth"} component={Auth} />
       <Route path={"/register"} component={Auth} />
+      <Route path={"/admin"} component={AdminLogin} />
       <Route path={"/admin/login"} component={AdminLogin} />
       <Route path={"/dashboard"}>
         <ProtectedRoute>
@@ -131,11 +132,6 @@ function Router() {
         <ProtectedRoute>
           <Profile />
         </ProtectedRoute>
-      </Route>
-      <Route path={"/admin"}>
-        <AdminRoute>
-          <AdminDashboard />
-        </AdminRoute>
       </Route>
       <Route path={"/admin/dashboard"}>
         <AdminRoute>

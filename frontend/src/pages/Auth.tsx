@@ -117,7 +117,7 @@ export default function Auth() {
   });
 
   // If an admin session is detected on the student login page, clear it
-  // so the student login form shows (admins have their own /admin/login page)
+  // so the student login form shows (admins have their own /admin page)
   useEffect(() => {
     if (loading || checkingAdmin || clearingAdmin) return;
     if (!isAuthenticated) return;

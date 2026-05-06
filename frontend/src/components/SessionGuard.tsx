@@ -34,7 +34,7 @@ export default function SessionGuard() {
       // Swallow — the cookie may already be expired server-side
     }
     // Navigate to the appropriate auth page with a reason query param
-    const dest = isAdmin ? "/admin/login?reason=idle" : "/auth?reason=idle";
+    const dest = isAdmin ? "/admin?reason=idle" : "/auth?reason=idle";
     window.location.href = dest;
   }, [logout, isAdmin]);
 

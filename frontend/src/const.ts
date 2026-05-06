@@ -6,7 +6,7 @@ export const APP_LOGO = "/xflex-logo.png";
 
 // Login and registration now handled at /auth route
 export const LOGIN_URL = "/auth";
-export const ADMIN_LOGIN_URL = "/admin/login";
+export const ADMIN_LOGIN_URL = "/admin";
 
 // Helper function for backward compatibility with main.tsx
 export function getLoginUrl(): string {
