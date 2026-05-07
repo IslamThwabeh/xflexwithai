@@ -37,7 +37,8 @@ export default function PublicMobileNavSheet({
       <SheetContent
         side="right"
         dir={language === "ar" ? "rtl" : "ltr"}
-        className="flex h-full w-[min(88vw,22rem)] flex-col overflow-hidden border-l border-white/60 bg-white/96 p-0 shadow-[0_24px_60px_rgba(15,23,42,0.18)] backdrop-blur-2xl [&>button]:hidden"
+        overlayClassName="z-[1090] bg-slate-950/42"
+        className="z-[1100] flex h-full w-[min(88vw,22rem)] flex-col overflow-hidden border-l border-white/60 bg-white/96 p-0 shadow-[0_24px_60px_rgba(15,23,42,0.18)] backdrop-blur-2xl [&>button]:hidden"
       >
         <SheetHeader className="border-b border-slate-200 px-4 pb-4 pt-5 text-start">
           <div className="mb-4 flex items-center justify-between gap-3">
@@ -47,10 +48,11 @@ export default function PublicMobileNavSheet({
             <SheetClose asChild>
               <button
                 type="button"
-                className="rounded-xl p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-700 shadow-sm transition-all duration-150 hover:border-slate-300 hover:bg-white hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40 active:scale-[0.98] active:bg-slate-100 touch-manipulation"
                 aria-label={language === "ar" ? "إغلاق القائمة" : "Close menu"}
               >
-                <X className="h-5 w-5" />
+                <X className="h-4.5 w-4.5" strokeWidth={2.4} />
+                <span>{language === "ar" ? "إغلاق" : "Close"}</span>
               </button>
             </SheetClose>
           </div>

@@ -114,7 +114,8 @@ const translations = {
     
     // New Landing Page
     'home.heroTagline': 'The experience you won\'t regret',
-    'home.heroSubtext': "We'll teach you trading step by step in a structured way, provide expert technical and psychological support, and give you two tools to earn while you learn.\n\nWe've prepared a complete program to ensure you profit in this field.",
+    'home.heroTitle': 'Structured trading education with real support',
+    'home.heroSubtext': 'Learn trading through a practical step-by-step program, backed by real technical and psychological support and tools you can use while you learn.',
     'home.heroCta': 'Learn About Our Services',
     'home.heroCtaLogin': 'Login',
     'home.heroCtaFree': 'See Student Results',
@@ -1207,8 +1208,9 @@ const translations = {
     'home.footer.contact': 'تواصل معنا',
     
     // New Landing Page
-    'home.heroTagline': 'التجربة الي مارح تندم عليها',
-    'home.heroSubtext': 'حنعلمك التداول بشكل متسلسل و منظم و نوفرلك دعم فني نفسي خبير بالمجال و نعطيك اداتين لتقدر تربح منهم وانت تتعلم\n\nوفرنالك الان برنامج كامل لتضمن تربح بهاد المجال',
+    'home.heroTagline': 'التجربة اللي ما راح تندم عليها',
+    'home.heroTitle': 'تعلم التداول بشكل منظم وبدعم فعلي',
+    'home.heroSubtext': 'برنامج عملي يعلمك خطوة بخطوة، مع دعم فني ونفسي حقيقي وأدوات تساعدك على التطبيق وأنت تتعلم.',
     'home.heroCta': 'تعرف على خدماتنا',
     'home.heroCtaLogin': 'تسجيل الدخول',
     'home.heroCtaFree': 'شاهد نتائج طلابنا',

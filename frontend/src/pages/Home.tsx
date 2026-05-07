@@ -34,6 +34,7 @@ const stageData: Array<{ num: number; icon: LucideIcon; color: string; price: nu
 
 export default function Home() {
   const { t, language, setLanguage, isRTL } = useLanguage();
+  const isArabic = language === 'ar';
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [headerScrolled, setHeaderScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -64,17 +65,21 @@ export default function Home() {
   const heroStats = [
     {
       value: '5000+',
-      label: language === 'ar' ? 'ساعدنا اكثر من 5000 طالب يربحوا من المجال' : 'Students helped profit from the market',
+      label: language === 'ar' ? 'طالب استفادوا من الأكاديمية' : 'students supported across the region',
     },
     {
       value: language === 'ar' ? '+8 سنوات' : '8+ years',
-      label: language === 'ar' ? 'خبرة بالمجال' : 'Years of field experience',
+      label: language === 'ar' ? 'خبرة عملية في المجال' : 'of field experience',
     },
     {
       value: '$69,300',
-      label: language === 'ar' ? 'صافي ارباح طلابنا من قناة التوصيات خلال اقل من سنة' : 'Net student profits from signals channel in under a year',
+      label: language === 'ar' ? 'صافي أرباح طلابنا من التوصيات' : 'net student profits from signals',
     },
   ];
+
+  const heroTitleClassName = isArabic
+    ? 'mx-auto max-w-[17rem] text-[2.65rem] font-extrabold leading-[1.16] md:max-w-[26rem] md:text-[3.25rem] lg:mx-0 lg:max-w-[31rem] lg:text-[3.05rem] xl:text-[3.35rem]'
+    : 'mx-auto max-w-[17.5rem] text-[2.65rem] font-extrabold leading-[1.04] tracking-[-0.04em] md:max-w-[28rem] md:text-[3.7rem] lg:mx-0 lg:max-w-[32rem] lg:text-[3.35rem] xl:text-[3.75rem]';
 
   const handleContactSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -268,39 +273,27 @@ export default function Home() {
         <div className="absolute left-[-8rem] top-16 h-72 w-72 rounded-full bg-emerald-400/12 blur-[90px]" />
         <div className="absolute bottom-[-6rem] right-[-4rem] h-80 w-80 rounded-full bg-amber-400/10 blur-[110px]" />
 
-        <div className="relative container mx-auto px-4 py-20 md:py-24 lg:py-28">
-          <div className="grid items-center gap-10 lg:grid-cols-[minmax(0,1.08fr)_minmax(320px,0.92fr)] lg:gap-14">
+        <div className="relative container mx-auto px-4 py-16 md:py-20 lg:py-24">
+          <div className="grid items-center gap-10 lg:grid-cols-[minmax(0,0.96fr)_minmax(340px,1.04fr)] lg:gap-12">
             <div className="text-center lg:text-start">
-              <Badge className="mb-5 w-full max-w-full border border-white/15 bg-white/10 px-4 py-2 text-center text-sm font-medium leading-6 text-white backdrop-blur-sm whitespace-normal sm:w-fit sm:whitespace-nowrap">
+              <Badge className="mb-5 inline-flex max-w-full items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-center text-sm font-medium leading-6 text-white/95 backdrop-blur-sm">
                 <Star className="mr-1.5 h-3.5 w-3.5 fill-yellow-400 text-yellow-400" />
-                {language === 'ar' ? 'تعلم مرتب. دعم فعلي. نتائج ملموسة.' : 'Structured learning. Real support. Tangible results.'}
+                {t('home.heroTagline')}
               </Badge>
 
-              <h1 className="text-4xl font-extrabold leading-[1.05] tracking-[-0.04em] md:text-6xl lg:text-7xl">
+              <h1 className={heroTitleClassName}>
                 <span className="bg-gradient-to-r from-white via-emerald-50 to-white bg-clip-text text-transparent">
-                  {t('home.heroTagline')}
+                  {t('home.heroTitle')}
                 </span>
               </h1>
 
-              <div className="mt-6 h-1 w-20 rounded-full bg-gradient-to-r from-amber-400 to-emerald-400 lg:mx-0 mx-auto" />
+              <div className="mx-auto mt-5 h-1 w-16 rounded-full bg-gradient-to-r from-amber-400 to-emerald-400 lg:mx-0" />
 
-              <p className="mx-auto mt-8 max-w-2xl whitespace-pre-line text-lg font-light leading-8 text-emerald-50/78 md:text-xl lg:mx-0">
+              <p className="mx-auto mt-6 max-w-xl text-base leading-7 text-emerald-50/78 md:text-lg md:leading-8 lg:mx-0 lg:max-w-[35rem]">
                 {t('home.heroSubtext')}
               </p>
 
-              <div className="mt-8 flex flex-wrap justify-center gap-2.5 lg:justify-start">
-                {[
-                  language === 'ar' ? '8 مراحل مرتبة' : '8 guided stages',
-                  language === 'ar' ? 'دعم فعلي' : 'Hands-on support',
-                  language === 'ar' ? 'تطبيق عملي' : 'Practical tools',
-                ].map((item) => (
-                  <span key={item} className="rounded-full border border-white/15 bg-white/8 px-4 py-2 text-sm font-medium text-white/90 backdrop-blur-sm">
-                    {item}
-                  </span>
-                ))}
-              </div>
-
-              <div className="mt-9 flex flex-col gap-4 sm:flex-row sm:justify-center lg:justify-start">
+              <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:justify-center lg:justify-start">
                 <button
                   className="btn-pill-xf inline-flex items-center justify-center gap-2 px-10 py-3.5 text-base shadow-lg"
                   style={{ boxShadow: '0 12px 44px rgba(16,185,129,0.24)' }}
@@ -315,15 +308,6 @@ export default function Home() {
                 >
                   {t('home.heroCtaFree')}
                 </button>
-              </div>
-
-              <div className="mt-10 grid gap-3 sm:grid-cols-3">
-                {heroStats.map((stat) => (
-                  <div key={stat.label} className="rounded-[22px] border border-white/12 bg-white/8 px-4 py-5 text-center backdrop-blur-sm lg:text-start">
-                    <div className="text-2xl font-extrabold tracking-tight text-white md:text-3xl">{stat.value}</div>
-                    <div className="mt-2 text-xs font-medium leading-5 text-emerald-50/68 md:text-sm">{stat.label}</div>
-                  </div>
-                ))}
               </div>
             </div>
 
@@ -352,6 +336,15 @@ export default function Home() {
                 </div>
               </div>
             </div>
+          </div>
+
+          <div className="mt-10 grid gap-3 border-t border-white/10 pt-6 sm:grid-cols-3 lg:mt-12 lg:pt-7">
+            {heroStats.map((stat) => (
+              <div key={stat.label} className="rounded-[20px] border border-white/10 bg-white/[0.06] px-4 py-4 text-center backdrop-blur-sm lg:text-start">
+                <div className="text-xl font-extrabold tracking-tight text-white md:text-2xl">{stat.value}</div>
+                <div className="mt-1.5 text-xs font-medium leading-5 text-emerald-50/72 md:text-sm">{stat.label}</div>
+              </div>
+            ))}
           </div>
         </div>
       </section>
