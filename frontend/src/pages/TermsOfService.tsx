@@ -4,12 +4,14 @@ import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { TermsOfServiceAr } from './TermsOfServiceAr';
 import { TermsOfServiceEn } from './TermsOfServiceEn';
+import PublicLayout from '@/components/PublicLayout';
 
 export default function TermsOfService() {
   const { language } = useLanguage();
   const isRtl = language === 'ar';
 
   return (
+    <PublicLayout>
     <div className="min-h-screen bg-white" dir={isRtl ? 'rtl' : 'ltr'}>
       <div className="bg-gradient-to-br from-slate-800 to-slate-900 text-white py-12">
         <div className="container mx-auto px-4">
@@ -32,5 +34,6 @@ export default function TermsOfService() {
         </div>
       </div>
     </div>
+    </PublicLayout>
   );
 }

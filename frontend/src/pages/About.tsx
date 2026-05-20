@@ -1,40 +1,15 @@
 import { Link } from 'wouter';
-import { ChevronRight, Globe, ArrowLeft, GraduationCap, Target, Users, Award, Instagram, Facebook, Send, Phone } from 'lucide-react';
+import { ChevronRight, ArrowLeft, GraduationCap, Target, Users, Award, Instagram, Facebook, Send, Phone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { getLanguageSwitchLabel } from '@/lib/languageToggle';
+import PublicLayout from '@/components/PublicLayout';
 
 export default function About() {
-  const { t, language, setLanguage, isRTL } = useLanguage();
+  const { t, language, isRTL } = useLanguage();
 
   return (
+    <PublicLayout>
     <div className="min-h-screen bg-white" dir={isRTL ? 'rtl' : 'ltr'}>
-      {/* Nav */}
-      <header className="bg-white/95 backdrop-blur-md border-b border-gray-100 sticky top-0 z-50">
-        <div className="container mx-auto flex items-center justify-between gap-3 px-4 py-3">
-          <Link href="/">
-            <span className="shrink-0 text-xl font-extrabold bg-gradient-to-r from-emerald-600 to-emerald-600 bg-clip-text text-transparent cursor-pointer">
-              XFlex
-            </span>
-          </Link>
-          <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
-            <button
-              onClick={() => setLanguage(language === 'ar' ? 'en' : 'ar')}
-              className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg px-2 py-1.5 text-xs text-gray-500 transition hover:bg-gray-100 hover:text-gray-800 sm:px-2.5 sm:text-sm"
-              aria-label={getLanguageSwitchLabel(language)}
-            >
-              <Globe className="w-4 h-4" />
-              {getLanguageSwitchLabel(language)}
-            </button>
-            <Link href="/">
-              <Button size="sm" variant="outline" className="gap-1.5">
-                <ArrowLeft className="w-3.5 h-3.5" />
-                {t('home.footer.home')}
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </header>
 
       {/* Hero */}
       <section className="bg-gradient-to-br from-slate-900 via-emerald-950 to-emerald-950 text-white py-16 md:py-24">
@@ -153,13 +128,7 @@ export default function About() {
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="bg-gray-900 text-gray-400 py-8">
-        <div className="container mx-auto px-4 text-center text-sm">
-          <p className="mb-1 text-gray-300 font-medium">XFlex Trading Academy</p>
-          <p>&copy; {new Date().getFullYear()} XFlex Trading Academy. {t('home.footer.rights')}</p>
-        </div>
-      </footer>
     </div>
+    </PublicLayout>
   );
 }

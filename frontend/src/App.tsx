@@ -95,6 +95,8 @@ const AdminPlanProgress = lazy(() => import("./pages/AdminPlanProgress"));
 const NotificationCenter = lazy(() => import("./pages/NotificationCenter"));
 const LoyaltyPoints = lazy(() => import("./pages/LoyaltyPoints"));
 const TradingCalculators = lazy(() => import("./pages/TradingCalculators"));
+const TestHomePrototype = lazy(() => import("./pages/TestHomePrototype"));
+const TestHomePrototype2 = lazy(() => import("./pages/TestHomePrototype2"));
 
 // Minimal fallback spinner
 function PageLoader() {
@@ -408,6 +410,8 @@ function Router() {
           <TradingCalculators />
         </ProtectedRoute>
       </Route>
+      <Route path={"/test"} component={TestHomePrototype} />
+      <Route path={"/test2"} component={TestHomePrototype2} />
       <Route path={"/"} component={Home} />
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />

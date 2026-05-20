@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useLanguage } from "@/contexts/LanguageContext";
+import PublicLayout from "@/components/PublicLayout";
 
 const gifts = [
   {
@@ -45,6 +46,7 @@ export default function Gifts() {
   const isRtl = language === "ar";
 
   return (
+    <PublicLayout>
     <div className="min-h-screen bg-gradient-to-br from-rose-50 via-white to-orange-50" dir={isRtl ? "rtl" : "ltr"}>
       <div className="container mx-auto px-4 py-10 max-w-5xl">
         <Link href="/courses">
@@ -92,5 +94,6 @@ export default function Gifts() {
         </div>
       </div>
     </div>
+    </PublicLayout>
   );
 }

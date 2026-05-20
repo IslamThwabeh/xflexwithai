@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { trpc } from '@/lib/trpc';
+import PublicLayout from '@/components/PublicLayout';
 
 export default function Contact() {
   const { language, t } = useLanguage();
@@ -36,6 +37,7 @@ export default function Contact() {
   };
 
   return (
+    <PublicLayout>
     <div className="min-h-screen bg-gray-50" dir={isRtl ? 'rtl' : 'ltr'}>
       {/* Header */}
       <div className="bg-gradient-to-br from-emerald-600 to-teal-700 text-white py-16">
@@ -136,5 +138,6 @@ export default function Contact() {
         </div>
       </div>
     </div>
+    </PublicLayout>
   );
 }

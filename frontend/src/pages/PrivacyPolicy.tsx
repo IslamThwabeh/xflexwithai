@@ -2,12 +2,14 @@ import { Link } from 'wouter';
 import { ArrowLeft, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
+import PublicLayout from '@/components/PublicLayout';
 
 export default function PrivacyPolicy() {
   const { language } = useLanguage();
   const isRtl = language === 'ar';
 
   return (
+    <PublicLayout>
     <div className="min-h-screen bg-white" dir={isRtl ? 'rtl' : 'ltr'}>
       <div className="bg-gradient-to-br from-slate-800 to-slate-900 text-white py-12">
         <div className="container mx-auto px-4">
@@ -85,5 +87,6 @@ export default function PrivacyPolicy() {
         </div>
       </div>
     </div>
+    </PublicLayout>
   );
 }
