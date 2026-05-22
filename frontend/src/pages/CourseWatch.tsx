@@ -178,16 +178,18 @@ export default function CourseWatch() {
   useEffect(() => {
     if (!isAuthenticated || !courseId || !course?.id) return;
 
+    const courseTitle = language === "ar" ? course.titleAr : course.titleEn;
+
     track({
       eventType: "course_start",
       entityType: "course",
       entityId: courseId,
       metadata: {
         courseId,
-        courseTitle: course.title,
+        courseTitle,
       },
     });
-  }, [course?.id, course?.title, courseId, isAuthenticated, track]);
+  }, [course?.id, course?.titleAr, course?.titleEn, courseId, isAuthenticated, language, track]);
 
   useEffect(() => {
     setQuizAnswers({});

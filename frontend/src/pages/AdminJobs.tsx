@@ -72,6 +72,7 @@ export default function AdminJobs() {
 // ============================================================================
 
 function ApplicationsTab({ isRtl }: { isRtl: boolean }) {
+  const { language } = useLanguage();
   const utils = trpc.useUtils();
   const { data: jobs } = trpc.jobs.adminList.useQuery();
   const { data: stats } = trpc.jobs.stats.useQuery();
@@ -318,6 +319,7 @@ function ApplicationCard({
   onToggle: () => void;
   onStatusChange: (status: string) => void;
 }) {
+  const { language } = useLanguage();
   const utils = trpc.useUtils();
   const { data: detail } = trpc.jobs.getApplication.useQuery(
     { id: app.id },

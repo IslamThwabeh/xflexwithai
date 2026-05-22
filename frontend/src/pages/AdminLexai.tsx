@@ -111,6 +111,43 @@ function pickLabel(
   return entry ? (isRtl ? entry.ar : entry.en) : key;
 }
 
+function formatUsd(value: number, locale: string) {
+  return new Intl.NumberFormat(locale, {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value || 0);
+}
+
+function getUsageActorLabel(
+  entry: {
+    actorKey?: string | null;
+    userId?: number | null;
+    userName?: string | null;
+    userEmail?: string | null;
+    telegramUserId?: string | null;
+    customerId?: string | null;
+  },
+  isRtl: boolean,
+) {
+  if (entry.userName) return entry.userName;
+  if (entry.userEmail) return entry.userEmail;
+  if (entry.userId != null) return isRtl ? `مستخدم #${entry.userId}` : `User #${entry.userId}`;
+  if (entry.customerId) return entry.customerId;
+  if (entry.telegramUserId) return entry.telegramUserId;
+  return entry.actorKey || (isRtl ? "مستخدم غير معروف" : "Unknown actor");
+}
+
+function getUsageActionLabel(
+  entry: { featureName?: string | null; actionType?: string | null; endpoint?: string | null },
+  isRtl: boolean,
+) {
+  const primary = entry.actionType || entry.featureName || entry.endpoint;
+  if (primary) return primary;
+  return isRtl ? "إجراء غير مسمى" : "Unlabeled action";
+}
+
 type CaseIdentity = {
   userId?: number | null;
   userName?: string | null;
@@ -211,6 +248,7 @@ export default function AdminLexai() {
   const [statusDraft, setStatusDraft] = useState<(typeof LEXAI_SUPPORT_CASE_STATUSES)[number]>("open");
   const [priorityDraft, setPriorityDraft] = useState<(typeof LEXAI_SUPPORT_CASE_PRIORITIES)[number]>("normal");
   const [adminAssignee, setAdminAssignee] = useState("unassigned");
+  const [usageDays, setUsageDays] = useState("7");
   const [statusNote, setStatusNote] = useState("");
   const [noteText, setNoteText] = useState("");
   const [pauseReason, setPauseReason] = useState("");
@@ -244,6 +282,15 @@ export default function AdminLexai() {
   );
 
   const supportCases = supportCasesData ?? [];
+
+  const {
+    data: usageReport,
+    isLoading: loadingUsageReport,
+    isFetching: fetchingUsageReport,
+  } = trpc.lexaiSupport.usageReport.useQuery(
+    { days: Number(usageDays) },
+    { refetchInterval: 60_000 },
+  );
 
   const {
     data: selectedCase,
@@ -413,6 +460,14 @@ export default function AdminLexai() {
     active: supportCases.filter((item) => item.lexaiSubscriptionState === "active").length,
   }), [supportCases]);
 
+  const usageByDayPreview = useMemo(
+    () => [...(usageReport?.byDay ?? [])].slice(-5).reverse(),
+    [usageReport?.byDay],
+  );
+  const usageByUserPreview = useMemo(() => (usageReport?.byUser ?? []).slice(0, 5), [usageReport?.byUser]);
+  const usageByUserDayPreview = useMemo(() => (usageReport?.byUserDay ?? []).slice(0, 5), [usageReport?.byUserDay]);
+  const usageByActionPreview = useMemo(() => (usageReport?.byAction ?? []).slice(0, 5), [usageReport?.byAction]);
+
   const recommendationState = getSubscriptionState(selectedCase?.recommendationSubscription);
   const recommendationRemainingDays = getRemainingDays(selectedCase?.recommendationSubscription);
   const hasMessages = (selectedCase?.messages?.length ?? 0) > 0;
@@ -521,6 +576,138 @@ export default function AdminLexai() {
           <SummaryCard label={isRtl ? "الحالات المفتوحة" : "Open Cases"} value={summary.open} />
           <SummaryCard label={isRtl ? "اشتراك LexAI النشط" : "Active LexAI"} value={summary.active} />
         </div>
+
+        <Card className="border-emerald-100 bg-white">
+          <CardHeader className="gap-4 md:flex-row md:items-start md:justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Bot className="h-5 w-5 text-emerald-500" />
+                {isRtl ? "استهلاك OpenAI" : "OpenAI Usage"}
+              </CardTitle>
+              <CardDescription>
+                {isRtl
+                  ? "ملخص تشغيلي سريع للتكلفة والاستهلاك داخل LexAI والخدمات المرتبطة به."
+                  : "A compact operator view of cost and usage across LexAI and adjacent AI workflows."}
+              </CardDescription>
+            </div>
+
+            <div className="flex items-center gap-3 self-start">
+              {(loadingUsageReport || fetchingUsageReport) && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+              <Select value={usageDays} onValueChange={setUsageDays}>
+                <SelectTrigger className="w-[160px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">{isRtl ? "آخر 24 ساعة" : "Last 24 hours"}</SelectItem>
+                  <SelectItem value="7">{isRtl ? "آخر 7 أيام" : "Last 7 days"}</SelectItem>
+                  <SelectItem value="30">{isRtl ? "آخر 30 يوماً" : "Last 30 days"}</SelectItem>
+                  <SelectItem value="90">{isRtl ? "آخر 90 يوماً" : "Last 90 days"}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </CardHeader>
+
+          <CardContent className="space-y-4">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <UsageMetricCard
+                label={isRtl ? "تكلفة اليوم" : "Today's Cost"}
+                value={formatUsd(usageReport?.today.totalCostUsd ?? 0, locale)}
+                hint={isRtl
+                  ? `${usageReport?.today.totalCalls ?? 0} استدعاء اليوم`
+                  : `${usageReport?.today.totalCalls ?? 0} calls today`}
+              />
+              <UsageMetricCard
+                label={isRtl ? "تكلفة الفترة" : "Range Cost"}
+                value={formatUsd(usageReport?.totals.totalCostUsd ?? 0, locale)}
+                hint={isRtl
+                  ? `${usageReport?.totals.successfulCalls ?? 0} ناجح / ${usageReport?.totals.failedCalls ?? 0} فاشل`
+                  : `${usageReport?.totals.successfulCalls ?? 0} successful / ${usageReport?.totals.failedCalls ?? 0} failed`}
+              />
+              <UsageMetricCard
+                label={isRtl ? "إجمالي الاستدعاءات" : "Total Calls"}
+                value={new Intl.NumberFormat(locale).format(usageReport?.totals.totalCalls ?? 0)}
+                hint={isRtl
+                  ? `${new Intl.NumberFormat(locale).format(usageReport?.totals.totalTokens ?? 0)} رمز`
+                  : `${new Intl.NumberFormat(locale).format(usageReport?.totals.totalTokens ?? 0)} tokens`}
+              />
+              <UsageMetricCard
+                label={isRtl ? "المستخدمون النشطون" : "Active Users"}
+                value={new Intl.NumberFormat(locale).format(usageReport?.totals.activeUsers ?? 0)}
+                hint={isRtl
+                  ? `${usageReport?.rangeDays ?? Number(usageDays)} يوم`
+                  : `${usageReport?.rangeDays ?? Number(usageDays)} day range`}
+              />
+            </div>
+
+            <div className="grid gap-3 xl:grid-cols-4 md:grid-cols-2">
+              <UsagePanel
+                title={isRtl ? "حسب اليوم" : "By Day"}
+                description={isRtl ? "أحدث الأيام في النطاق المحدد" : "Latest days in the selected range"}
+                emptyLabel={isRtl ? "لا توجد بيانات يومية بعد" : "No daily usage yet"}
+              >
+                {usageByDayPreview.map((entry) => (
+                  <UsageRow
+                    key={entry.day}
+                    label={entry.day}
+                    value={formatUsd(entry.totalCostUsd, locale)}
+                    sublabel={isRtl
+                      ? `${entry.totalCalls} استدعاء، ${entry.activeUsers} مستخدم`
+                      : `${entry.totalCalls} calls, ${entry.activeUsers} users`}
+                  />
+                ))}
+              </UsagePanel>
+
+              <UsagePanel
+                title={isRtl ? "حسب المستخدم" : "By User"}
+                description={isRtl ? "أعلى المستهلكين في الفترة" : "Top consumers in the selected range"}
+                emptyLabel={isRtl ? "لا توجد بيانات مستخدمين بعد" : "No user usage yet"}
+              >
+                {usageByUserPreview.map((entry) => (
+                  <UsageRow
+                    key={entry.actorKey}
+                    label={getUsageActorLabel(entry, isRtl)}
+                    value={formatUsd(entry.totalCostUsd, locale)}
+                    sublabel={isRtl
+                      ? `${entry.totalCalls} استدعاء`
+                      : `${entry.totalCalls} calls`}
+                  />
+                ))}
+              </UsagePanel>
+
+              <UsagePanel
+                title={isRtl ? "مستخدم / يوم" : "User / Day"}
+                description={isRtl ? "أحدث الاستهلاك اليومي لكل مستخدم" : "Recent user-day consumption"}
+                emptyLabel={isRtl ? "لا توجد تفاصيل يومية للمستخدمين بعد" : "No user-day breakdown yet"}
+              >
+                {usageByUserDayPreview.map((entry) => (
+                  <UsageRow
+                    key={`${entry.day}-${entry.actorKey}`}
+                    label={`${entry.day} · ${getUsageActorLabel(entry, isRtl)}`}
+                    value={formatUsd(entry.totalCostUsd, locale)}
+                    sublabel={isRtl
+                      ? `${entry.totalCalls} استدعاء`
+                      : `${entry.totalCalls} calls`}
+                  />
+                ))}
+              </UsagePanel>
+
+              <UsagePanel
+                title={isRtl ? "حسب الإجراء" : "By Action"}
+                description={isRtl ? "الإنفاق حسب الميزة ونوع الإجراء" : "Spend grouped by feature and action type"}
+                emptyLabel={isRtl ? "لا توجد إجراءات مسجلة بعد" : "No action usage yet"}
+              >
+                {usageByActionPreview.map((entry, index) => (
+                  <UsageRow
+                    key={`${entry.endpoint ?? entry.featureName ?? entry.actionType ?? "action"}-${index}`}
+                    label={getUsageActionLabel(entry, isRtl)}
+                    value={formatUsd(entry.totalCostUsd, locale)}
+                    sublabel={entry.featureName || entry.endpoint || (isRtl ? "غير مصنف" : "Uncategorized")}
+                  />
+                ))}
+              </UsagePanel>
+            </div>
+          </CardContent>
+        </Card>
 
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
           <Card className={selectedCaseId ? "hidden xl:block" : ""}>
@@ -1120,6 +1307,57 @@ function SummaryCard({ label, value }: { label: string; value: number }) {
     <div className="rounded-xl border bg-white p-4">
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className="mt-2 text-3xl font-bold">{value}</p>
+    </div>
+  );
+}
+
+function UsageMetricCard({ label, value, hint }: { label: string; value: string; hint: string }) {
+  return (
+    <div className="rounded-xl border border-emerald-100 bg-emerald-50/40 p-4">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="mt-2 text-2xl font-semibold text-slate-900">{value}</p>
+      <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
+    </div>
+  );
+}
+
+function UsagePanel({
+  title,
+  description,
+  emptyLabel,
+  children,
+}: {
+  title: string;
+  description: string;
+  emptyLabel: string;
+  children: React.ReactNode;
+}) {
+  const items = Array.isArray(children) ? children.filter(Boolean) : children ? [children] : [];
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4">
+      <div className="mb-3">
+        <p className="text-sm font-semibold text-slate-900">{title}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{description}</p>
+      </div>
+
+      <div className="space-y-2">
+        {items.length > 0 ? items : <p className="text-sm text-muted-foreground">{emptyLabel}</p>}
+      </div>
+    </div>
+  );
+}
+
+function UsageRow({ label, value, sublabel }: { label: string; value: string; sublabel?: string | null }) {
+  return (
+    <div className="rounded-lg border border-white bg-white p-3 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium text-slate-900">{label}</p>
+          {sublabel ? <p className="mt-1 text-xs text-muted-foreground">{sublabel}</p> : null}
+        </div>
+        <p className="shrink-0 text-sm font-semibold text-slate-900">{value}</p>
+      </div>
     </div>
   );
 }

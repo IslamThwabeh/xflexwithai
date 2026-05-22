@@ -1381,6 +1381,42 @@ export const engagementEventsRelations = relations(engagementEvents, ({ one }) =
   }),
 }));
 
+export const openAiUsageEvents = sqliteTable("openai_usage_events", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id"),
+  telegramUserId: text("telegram_user_id"),
+  customerId: text("customer_id"),
+  endpoint: text("endpoint"),
+  featureName: text("feature_name"),
+  flowType: text("flow_type"),
+  flowId: text("flow_id"),
+  actionType: text("action_type"),
+  model: text("model"),
+  requestMode: text("request_mode"),
+  imageDetail: text("image_detail"),
+  timeframe: text("timeframe"),
+  currencyPair: text("currency_pair"),
+  requestId: text("request_id"),
+  promptTokens: integer("prompt_tokens"),
+  completionTokens: integer("completion_tokens"),
+  totalTokens: integer("total_tokens"),
+  estimatedCostUsd: real("estimated_cost_usd"),
+  success: integer("success", { mode: "boolean" }).default(true).notNull(),
+  errorMessage: text("error_message"),
+  metadata: text("metadata"),
+  createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
+});
+
+export type OpenAiUsageEvent = typeof openAiUsageEvents.$inferSelect;
+export type InsertOpenAiUsageEvent = typeof openAiUsageEvents.$inferInsert;
+
+export const openAiUsageEventsRelations = relations(openAiUsageEvents, ({ one }) => ({
+  user: one(users, {
+    fields: [openAiUsageEvents.userId],
+    references: [users.id],
+  }),
+}));
+
 // ── Brokers ──────────────────────────────────────────────
 export const brokers = sqliteTable("brokers", {
   id: int("id").primaryKey({ autoIncrement: true }),

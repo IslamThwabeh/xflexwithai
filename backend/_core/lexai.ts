@@ -1,9 +1,9 @@
 import { ENV } from "./env";
+import { invokeOpenAiChatCompletion, type OpenAiUsageContext } from "./openai";
 
 export type LexaiLanguage = "ar" | "en";
 export type LexaiFlow = "m15" | "h4" | "single" | "feedback" | "feedback_with_image";
 
-const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
 const DEFAULT_MODEL = "gpt-4o";
 const RESPONSE_CHAR_LIMIT = 1024;
 const FORCED_LEXAI_LANGUAGE: LexaiLanguage = "ar";
@@ -82,6 +82,7 @@ type AnalyzeParams = {
   imageUrl?: string;
   previousAnalysis?: string;
   userAnalysis?: string;
+  usage?: OpenAiUsageContext;
 };
 
 const looksLikeRefusal = (text: string) => {
@@ -121,14 +122,22 @@ export async function analyzeLexai(params: AnalyzeParams) {
     });
   }
 
+  const usageContext: OpenAiUsageContext = {
+    ...params.usage,
+    requestMode: params.imageUrl ? "vision" : (params.usage?.requestMode ?? "text"),
+    imageDetail: params.imageUrl ? "low" : (params.usage?.imageDetail ?? null),
+    timeframe: params.timeframe ?? params.usage?.timeframe ?? null,
+  };
+
   const requestAnalysis = async (extraInstruction?: string) => {
-    const response = await fetch(OPENAI_API_URL, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${ENV.openaiApiKey}`,
-      },
-      body: JSON.stringify({
+    return await invokeOpenAiChatCompletion<{
+      id: string;
+      choices: Array<{ message: { content?: string } }>;
+      model?: string;
+      usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+    }>({
+      usage: usageContext,
+      body: {
         model: DEFAULT_MODEL,
         messages: [
           {
@@ -150,20 +159,8 @@ export async function analyzeLexai(params: AnalyzeParams) {
         ],
         max_tokens: 700,
         temperature: 0.7,
-      }),
+      },
     });
-
-    if (!response.ok) {
-      const detail = await response.text().catch(() => "");
-      throw new Error(`OpenAI request failed (${response.status} ${response.statusText})${detail ? `: ${detail}` : ""}`);
-    }
-
-    return await response.json() as {
-      id: string;
-      choices: Array<{ message: { content?: string } }>;
-      model?: string;
-      usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
-    };
   };
 
   let data = await requestAnalysis();

@@ -55,6 +55,7 @@ import {
   userNotifications, UserNotification, InsertUserNotification,
   pointsTransactions, PointsTransaction, InsertPointsTransaction,
   engagementEvents, EngagementEvent, InsertEngagementEvent,
+  openAiUsageEvents, OpenAiUsageEvent, InsertOpenAiUsageEvent,
   brokers, Broker, NewBroker,
   referrals, Referral, NewReferral,
   pointsRules, PointsRule, NewPointsRule,
@@ -92,6 +93,7 @@ const DEFAULT_STUDY_PERIOD_DAYS = 14;
 const RECOMMENDATION_ALERT_UNLOCK_MS = 60 * 1000;
 const RECOMMENDATION_ALERT_EXPIRY_MS = 15 * 60 * 1000;
 let hasLoggedMissingEngagementEventsTable = false;
+let hasLoggedMissingOpenAiUsageEventsTable = false;
 
 export type TimedServiceStatus = 'none' | 'pending' | 'active' | 'expiring' | 'expired' | 'frozen';
 
@@ -133,6 +135,37 @@ async function withOptionalEngagementEventsTable<T>(
   } catch (error) {
     if (isMissingEngagementEventsTableError(error)) {
       logMissingEngagementEventsTable(operation, error);
+      return fallback;
+    }
+    throw error;
+  }
+}
+
+function isMissingOpenAiUsageEventsTableError(error: unknown): boolean {
+  const message = getErrorMessage(error);
+  return message.includes('no such table') && message.includes('openai_usage_events');
+}
+
+function logMissingOpenAiUsageEventsTable(operation: string, error: unknown) {
+  if (hasLoggedMissingOpenAiUsageEventsTable) return;
+
+  hasLoggedMissingOpenAiUsageEventsTable = true;
+  logger.warn('OpenAI usage tracking disabled because openai_usage_events is missing', {
+    operation,
+    error: getErrorMessage(error),
+  });
+}
+
+async function withOptionalOpenAiUsageEventsTable<T>(
+  operation: string,
+  fallback: T,
+  callback: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await callback();
+  } catch (error) {
+    if (isMissingOpenAiUsageEventsTableError(error)) {
+      logMissingOpenAiUsageEventsTable(operation, error);
       return fallback;
     }
     throw error;
@@ -8073,6 +8106,349 @@ export async function getTopPointsUsers(limit = 20) {
     .where(sql`${users.pointsBalance} > 0`)
     .orderBy(desc(users.pointsBalance))
     .limit(limit);
+}
+
+// ============================================================================
+// OpenAI Usage Tracking
+// ============================================================================
+
+export type OpenAiUsageReport = {
+  rangeDays: number;
+  today: {
+    totalCostUsd: number;
+    totalCalls: number;
+    activeUsers: number;
+  };
+  totals: {
+    totalCostUsd: number;
+    totalCalls: number;
+    activeUsers: number;
+    successfulCalls: number;
+    failedCalls: number;
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+  };
+  byDay: Array<{
+    day: string;
+    totalCostUsd: number;
+    totalCalls: number;
+    activeUsers: number;
+  }>;
+  byUser: Array<{
+    actorKey: string;
+    userId: number | null;
+    userName: string | null;
+    userEmail: string | null;
+    telegramUserId: string | null;
+    customerId: string | null;
+    totalCostUsd: number;
+    totalCalls: number;
+    totalTokens: number;
+    lastUsedAt: string | null;
+  }>;
+  byUserDay: Array<{
+    day: string;
+    actorKey: string;
+    userId: number | null;
+    userName: string | null;
+    userEmail: string | null;
+    telegramUserId: string | null;
+    customerId: string | null;
+    totalCostUsd: number;
+    totalCalls: number;
+  }>;
+  byAction: Array<{
+    featureName: string | null;
+    actionType: string | null;
+    endpoint: string | null;
+    totalCostUsd: number;
+    totalCalls: number;
+    totalTokens: number;
+  }>;
+};
+
+type RecordOpenAiUsageEventInput = {
+  userId?: number | null;
+  telegramUserId?: string | null;
+  customerId?: string | null;
+  endpoint?: string | null;
+  featureName?: string | null;
+  flowType?: string | null;
+  flowId?: string | null;
+  actionType?: string | null;
+  model?: string | null;
+  requestMode?: string | null;
+  imageDetail?: string | null;
+  timeframe?: string | null;
+  currencyPair?: string | null;
+  requestId?: string | null;
+  promptTokens?: number | null;
+  completionTokens?: number | null;
+  totalTokens?: number | null;
+  estimatedCostUsd?: number | null;
+  success?: boolean;
+  errorMessage?: string | null;
+  metadata?: string | null;
+  createdAt?: string;
+};
+
+const EMPTY_OPENAI_USAGE_REPORT: OpenAiUsageReport = {
+  rangeDays: 7,
+  today: {
+    totalCostUsd: 0,
+    totalCalls: 0,
+    activeUsers: 0,
+  },
+  totals: {
+    totalCostUsd: 0,
+    totalCalls: 0,
+    activeUsers: 0,
+    successfulCalls: 0,
+    failedCalls: 0,
+    promptTokens: 0,
+    completionTokens: 0,
+    totalTokens: 0,
+  },
+  byDay: [],
+  byUser: [],
+  byUserDay: [],
+  byAction: [],
+};
+
+function normalizeNullableText(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizeNullableInteger(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  return Math.round(value);
+}
+
+function normalizeNullableReal(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  return Number(value.toFixed(6));
+}
+
+export async function recordOpenAiUsageEvent(input: RecordOpenAiUsageEventInput) {
+  const db = await getDb();
+  if (!db) return;
+
+  await withOptionalOpenAiUsageEventsTable('track', undefined, async () => {
+    await db.insert(openAiUsageEvents).values({
+      userId: typeof input.userId === 'number' && Number.isFinite(input.userId) ? input.userId : null,
+      telegramUserId: normalizeNullableText(input.telegramUserId),
+      customerId: normalizeNullableText(input.customerId),
+      endpoint: normalizeNullableText(input.endpoint),
+      featureName: normalizeNullableText(input.featureName),
+      flowType: normalizeNullableText(input.flowType),
+      flowId: normalizeNullableText(input.flowId),
+      actionType: normalizeNullableText(input.actionType),
+      model: normalizeNullableText(input.model),
+      requestMode: normalizeNullableText(input.requestMode),
+      imageDetail: normalizeNullableText(input.imageDetail),
+      timeframe: normalizeNullableText(input.timeframe),
+      currencyPair: normalizeNullableText(input.currencyPair),
+      requestId: normalizeNullableText(input.requestId),
+      promptTokens: normalizeNullableInteger(input.promptTokens),
+      completionTokens: normalizeNullableInteger(input.completionTokens),
+      totalTokens: normalizeNullableInteger(input.totalTokens),
+      estimatedCostUsd: normalizeNullableReal(input.estimatedCostUsd),
+      success: input.success !== false,
+      errorMessage: normalizeNullableText(input.errorMessage),
+      metadata: normalizeNullableText(input.metadata),
+      createdAt: input.createdAt ?? new Date().toISOString(),
+    } as InsertOpenAiUsageEvent);
+  });
+}
+
+export async function getOpenAiUsageReport(days = 7): Promise<OpenAiUsageReport> {
+  const db = await getDb();
+  if (!db) return { ...EMPTY_OPENAI_USAGE_REPORT, rangeDays: days };
+
+  const normalizedDays = Math.max(1, Math.min(365, Math.round(days || 7)));
+  const cutoff = new Date(Date.now() - normalizedDays * 86400000).toISOString();
+  const todayStart = new Date();
+  todayStart.setUTCHours(0, 0, 0, 0);
+  const todayStartIso = todayStart.toISOString();
+
+  const actorKeyExpr = sql<string | null>`CASE
+    WHEN ${openAiUsageEvents.userId} IS NOT NULL THEN CAST(${openAiUsageEvents.userId} AS TEXT)
+    WHEN ${openAiUsageEvents.telegramUserId} IS NOT NULL THEN ${openAiUsageEvents.telegramUserId}
+    WHEN ${openAiUsageEvents.customerId} IS NOT NULL THEN ${openAiUsageEvents.customerId}
+    ELSE NULL
+  END`;
+  const dayExpr = sql<string>`substr(${openAiUsageEvents.createdAt}, 1, 10)`;
+  const totalCostExpr = sql<number>`COALESCE(SUM(${openAiUsageEvents.estimatedCostUsd}), 0)`;
+  const totalCallsExpr = sql<number>`COUNT(*)`;
+  const activeUsersExpr = sql<number>`COUNT(DISTINCT ${actorKeyExpr})`;
+  const successfulCallsExpr = sql<number>`SUM(CASE WHEN ${openAiUsageEvents.success} = 1 THEN 1 ELSE 0 END)`;
+  const failedCallsExpr = sql<number>`SUM(CASE WHEN ${openAiUsageEvents.success} = 0 THEN 1 ELSE 0 END)`;
+  const promptTokensExpr = sql<number>`COALESCE(SUM(${openAiUsageEvents.promptTokens}), 0)`;
+  const completionTokensExpr = sql<number>`COALESCE(SUM(${openAiUsageEvents.completionTokens}), 0)`;
+  const totalTokensExpr = sql<number>`COALESCE(SUM(${openAiUsageEvents.totalTokens}), 0)`;
+
+  return withOptionalOpenAiUsageEventsTable('report', { ...EMPTY_OPENAI_USAGE_REPORT, rangeDays: normalizedDays }, async () => {
+    const [todayTotals, totals, byDayRows, byUserRows, byUserDayRows, byActionRows] = await Promise.all([
+      db.select({
+        totalCostUsd: totalCostExpr,
+        totalCalls: totalCallsExpr,
+        activeUsers: activeUsersExpr,
+      }).from(openAiUsageEvents)
+        .where(sql`${openAiUsageEvents.createdAt} >= ${todayStartIso}`),
+      db.select({
+        totalCostUsd: totalCostExpr,
+        totalCalls: totalCallsExpr,
+        activeUsers: activeUsersExpr,
+        successfulCalls: successfulCallsExpr,
+        failedCalls: failedCallsExpr,
+        promptTokens: promptTokensExpr,
+        completionTokens: completionTokensExpr,
+        totalTokens: totalTokensExpr,
+      }).from(openAiUsageEvents)
+        .where(sql`${openAiUsageEvents.createdAt} >= ${cutoff}`),
+      db.select({
+        day: dayExpr,
+        totalCostUsd: totalCostExpr,
+        totalCalls: totalCallsExpr,
+        activeUsers: activeUsersExpr,
+      }).from(openAiUsageEvents)
+        .where(sql`${openAiUsageEvents.createdAt} >= ${cutoff}`)
+        .groupBy(dayExpr)
+        .orderBy(asc(dayExpr)),
+      db.select({
+        actorKey: actorKeyExpr,
+        userId: openAiUsageEvents.userId,
+        userName: users.name,
+        userEmail: users.email,
+        telegramUserId: openAiUsageEvents.telegramUserId,
+        customerId: openAiUsageEvents.customerId,
+        totalCostUsd: totalCostExpr,
+        totalCalls: totalCallsExpr,
+        totalTokens: totalTokensExpr,
+        lastUsedAt: sql<string | null>`MAX(${openAiUsageEvents.createdAt})`,
+      }).from(openAiUsageEvents)
+        .leftJoin(users, eq(openAiUsageEvents.userId, users.id))
+        .where(and(
+          sql`${openAiUsageEvents.createdAt} >= ${cutoff}`,
+          sql`${actorKeyExpr} IS NOT NULL`,
+        ))
+        .groupBy(
+          actorKeyExpr,
+          openAiUsageEvents.userId,
+          openAiUsageEvents.telegramUserId,
+          openAiUsageEvents.customerId,
+          users.name,
+          users.email,
+        )
+        .orderBy(desc(totalCostExpr), desc(totalCallsExpr))
+        .limit(20),
+      db.select({
+        day: dayExpr,
+        actorKey: actorKeyExpr,
+        userId: openAiUsageEvents.userId,
+        userName: users.name,
+        userEmail: users.email,
+        telegramUserId: openAiUsageEvents.telegramUserId,
+        customerId: openAiUsageEvents.customerId,
+        totalCostUsd: totalCostExpr,
+        totalCalls: totalCallsExpr,
+      }).from(openAiUsageEvents)
+        .leftJoin(users, eq(openAiUsageEvents.userId, users.id))
+        .where(and(
+          sql`${openAiUsageEvents.createdAt} >= ${cutoff}`,
+          sql`${actorKeyExpr} IS NOT NULL`,
+        ))
+        .groupBy(
+          dayExpr,
+          actorKeyExpr,
+          openAiUsageEvents.userId,
+          openAiUsageEvents.telegramUserId,
+          openAiUsageEvents.customerId,
+          users.name,
+          users.email,
+        )
+        .orderBy(desc(dayExpr), desc(totalCostExpr), desc(totalCallsExpr))
+        .limit(50),
+      db.select({
+        featureName: openAiUsageEvents.featureName,
+        actionType: openAiUsageEvents.actionType,
+        endpoint: openAiUsageEvents.endpoint,
+        totalCostUsd: totalCostExpr,
+        totalCalls: totalCallsExpr,
+        totalTokens: totalTokensExpr,
+      }).from(openAiUsageEvents)
+        .where(sql`${openAiUsageEvents.createdAt} >= ${cutoff}`)
+        .groupBy(
+          openAiUsageEvents.featureName,
+          openAiUsageEvents.actionType,
+          openAiUsageEvents.endpoint,
+        )
+        .orderBy(desc(totalCostExpr), desc(totalCallsExpr))
+        .limit(20),
+    ]);
+
+    const todayRow = todayTotals[0];
+    const totalsRow = totals[0];
+
+    return {
+      rangeDays: normalizedDays,
+      today: {
+        totalCostUsd: Number(todayRow?.totalCostUsd ?? 0),
+        totalCalls: Number(todayRow?.totalCalls ?? 0),
+        activeUsers: Number(todayRow?.activeUsers ?? 0),
+      },
+      totals: {
+        totalCostUsd: Number(totalsRow?.totalCostUsd ?? 0),
+        totalCalls: Number(totalsRow?.totalCalls ?? 0),
+        activeUsers: Number(totalsRow?.activeUsers ?? 0),
+        successfulCalls: Number(totalsRow?.successfulCalls ?? 0),
+        failedCalls: Number(totalsRow?.failedCalls ?? 0),
+        promptTokens: Number(totalsRow?.promptTokens ?? 0),
+        completionTokens: Number(totalsRow?.completionTokens ?? 0),
+        totalTokens: Number(totalsRow?.totalTokens ?? 0),
+      },
+      byDay: byDayRows.map((row) => ({
+        day: row.day,
+        totalCostUsd: Number(row.totalCostUsd ?? 0),
+        totalCalls: Number(row.totalCalls ?? 0),
+        activeUsers: Number(row.activeUsers ?? 0),
+      })),
+      byUser: byUserRows.map((row) => ({
+        actorKey: row.actorKey ?? row.customerId ?? row.telegramUserId ?? String(row.userId ?? "unknown"),
+        userId: row.userId ?? null,
+        userName: row.userName ?? null,
+        userEmail: row.userEmail ?? null,
+        telegramUserId: row.telegramUserId ?? null,
+        customerId: row.customerId ?? null,
+        totalCostUsd: Number(row.totalCostUsd ?? 0),
+        totalCalls: Number(row.totalCalls ?? 0),
+        totalTokens: Number(row.totalTokens ?? 0),
+        lastUsedAt: row.lastUsedAt ?? null,
+      })),
+      byUserDay: byUserDayRows.map((row) => ({
+        day: row.day,
+        actorKey: row.actorKey ?? row.customerId ?? row.telegramUserId ?? String(row.userId ?? "unknown"),
+        userId: row.userId ?? null,
+        userName: row.userName ?? null,
+        userEmail: row.userEmail ?? null,
+        telegramUserId: row.telegramUserId ?? null,
+        customerId: row.customerId ?? null,
+        totalCostUsd: Number(row.totalCostUsd ?? 0),
+        totalCalls: Number(row.totalCalls ?? 0),
+      })),
+      byAction: byActionRows.map((row) => ({
+        featureName: row.featureName ?? null,
+        actionType: row.actionType ?? null,
+        endpoint: row.endpoint ?? null,
+        totalCostUsd: Number(row.totalCostUsd ?? 0),
+        totalCalls: Number(row.totalCalls ?? 0),
+        totalTokens: Number(row.totalTokens ?? 0),
+      })),
+    };
+  });
 }
 
 // ============================================================================

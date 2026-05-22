@@ -27,6 +27,7 @@ import * as db from "./db";
 import { filterRecipientsByMutedThreads } from "./services/recommendation-thread.service";
 import { storagePutR2, storageArchiveR2 } from "./storage-r2";
 import { analyzeLexai } from "./_core/lexai";
+import { invokeOpenAiChatCompletion } from "./_core/openai";
 import { hashPassword, verifyPassword, generateToken, isValidEmail, isValidPassword, normalizeEmailAddress } from "./_core/auth";
 import { generateFreeVideoPlaybackToken } from "./_core/freeLibraryPlayback";
 import { sendEmail, sendLoginCodeEmail } from "./_core/email";
@@ -387,11 +388,59 @@ const requireActivePackage = async (userId: number) => {
   }
 };
 
-const getLatestLexaiAnalysis = async (userId: number, analysisType: string) => {
-  const messages = await db.getLexaiMessagesByUser(userId, 50);
+type LexaiMessageList = Awaited<ReturnType<typeof db.getLexaiMessagesByUser>>;
+
+const getLatestLexaiAnalysisFromMessages = (messages: LexaiMessageList, analysisType: string) => {
   return messages.find(
     message => message.role === "assistant" && message.analysisType === analysisType
   );
+};
+
+const getLatestLexaiAnalysis = async (userId: number, analysisType: string) => {
+  const messages = await db.getLexaiMessagesByUser(userId, 50);
+  return getLatestLexaiAnalysisFromMessages(messages, analysisType);
+};
+
+const getLexaiMessageTimestamp = (value: string | null | undefined) => {
+  if (!value) return null;
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) ? timestamp : null;
+};
+
+const getReusableH4Analysis = (messages: LexaiMessageList, imageUrl: string) => {
+  const latestAssistantH4 = messages.find(
+    message => message.role === "assistant" && message.analysisType === "h4"
+  );
+  const latestUserH4 = messages.find(
+    message => message.role === "user" && message.analysisType === "h4"
+  );
+  const latestAssistantM15 = getLatestLexaiAnalysisFromMessages(messages, "m15");
+
+  if (!latestAssistantH4 || !latestUserH4 || !latestAssistantM15) {
+    return null;
+  }
+
+  if (latestUserH4.imageUrl !== imageUrl) {
+    return null;
+  }
+
+  const assistantH4Timestamp = getLexaiMessageTimestamp(latestAssistantH4.createdAt);
+  const userH4Timestamp = getLexaiMessageTimestamp(latestUserH4.createdAt);
+  const latestAssistantM15Timestamp = getLexaiMessageTimestamp(latestAssistantM15.createdAt);
+
+  if (assistantH4Timestamp == null || userH4Timestamp == null || latestAssistantM15Timestamp == null) {
+    return null;
+  }
+
+  if (assistantH4Timestamp < userH4Timestamp) {
+    return null;
+  }
+
+  if (latestAssistantM15Timestamp > userH4Timestamp) {
+    return null;
+  }
+
+  return latestAssistantH4;
 };
 
 const RECOMMENDATION_REACTIONS = ["like", "love", "sad", "fire", "rocket"] as const;
@@ -578,8 +627,6 @@ const ensureEpisodeUnlockedForUser = async (userId: number, courseId: number, ep
 // ============================================================================
 // AI Proof Verification for Broker Onboarding
 // ============================================================================
-const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
-
 async function verifyOnboardingProofWithAI(stepId: number, step: string, proofUrl: string) {
   const prompts: Record<string, string> = {
     open_account: `You are verifying a broker onboarding proof image. The student claims they opened and verified a real trading account with a broker.
@@ -618,13 +665,20 @@ Respond ONLY with the JSON object, nothing else.`,
   const prompt = prompts[step];
   if (!prompt) return; // No AI check for select_broker
 
-  const response = await fetch(OPENAI_API_URL, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${ENV.openaiApiKey}`,
-    },
-    body: JSON.stringify({
+  let data: any;
+  try {
+    data = await invokeOpenAiChatCompletion({
+      usage: {
+        endpoint: "onboarding.verifyProofWithAI",
+        featureName: "broker_onboarding",
+        flowType: "onboarding",
+        flowId: `onboarding-step-${stepId}`,
+        actionType: `verify_${step}`,
+        requestMode: "vision",
+        imageDetail: "low",
+        metadata: JSON.stringify({ stepId, step }),
+      },
+      body: {
       model: "gpt-4o",
       messages: [
         {
@@ -637,16 +691,17 @@ Respond ONLY with the JSON object, nothing else.`,
       ],
       max_tokens: 200,
       temperature: 0,
-    }),
-  });
-
-  if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    logger.error('[Onboarding AI] OpenAI request failed', { status: response.status, detail });
+      },
+    });
+  } catch (error) {
+    logger.error('[Onboarding AI] OpenAI request failed', {
+      stepId,
+      step,
+      error: error instanceof Error ? error.message : String(error),
+    });
     return;
   }
 
-  const data: any = await response.json();
   const text = data?.choices?.[0]?.message?.content?.trim() ?? "";
 
   // Parse JSON from response
@@ -718,6 +773,11 @@ Rules:
 /** Generate an AI auto-reply for a student message using GPT-4o-mini */
 async function generateSupportAIReply(
   conversationMessages: Array<{ senderType: string; content: string }>,
+  usage: {
+    userId?: number | null;
+    conversationId?: number | null;
+    actionType: "support_auto_reply" | "support_suggest_reply";
+  },
 ): Promise<string | null> {
   if (!ENV.openaiApiKey) return null;
 
@@ -736,26 +796,23 @@ async function generateSupportAIReply(
   }
 
   try {
-    const response = await fetch(OPENAI_API_URL, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${ENV.openaiApiKey}`,
+    const data: any = await invokeOpenAiChatCompletion({
+      usage: {
+        userId: usage.userId ?? null,
+        endpoint: "support.generateAiReply",
+        featureName: "support_chat",
+        flowType: "support",
+        flowId: usage.conversationId != null ? `support-conversation-${usage.conversationId}` : null,
+        actionType: usage.actionType,
+        requestMode: "text",
       },
-      body: JSON.stringify({
+      body: {
         model: 'gpt-4o-mini',
         messages: chatMessages,
         max_tokens: 400,
         temperature: 0.7,
-      }),
+      },
     });
-
-    if (!response.ok) {
-      logger.error('[Support AI] OpenAI request failed', { status: response.status });
-      return null;
-    }
-
-    const data: any = await response.json();
     const text = data?.choices?.[0]?.message?.content?.trim();
     return text || null;
   } catch (err) {
@@ -2404,11 +2461,23 @@ export const appRouter = router({
       }))
       .mutation(async ({ ctx, input }) => {
         const { subscription } = await ensureLexaiAccess(ctx);
+        const flowId = `lexai-m15-${ctx.user.id}-${Date.now()}`;
         const analysis = await analyzeLexai({
           flow: "m15",
           language: "ar",
           timeframe: "M15",
           imageUrl: input.imageUrl,
+          usage: {
+            userId: ctx.user.id,
+            endpoint: "lexai.analyzeM15",
+            featureName: "lexai",
+            flowType: "specialized",
+            flowId,
+            actionType: "analyze_m15",
+            requestMode: "vision",
+            imageDetail: "low",
+            timeframe: "M15",
+          },
         });
 
         await db.createLexaiMessage({
@@ -2442,11 +2511,19 @@ export const appRouter = router({
       }))
       .mutation(async ({ ctx, input }) => {
         const { subscription } = await ensureLexaiAccess(ctx);
-        const previous = await getLatestLexaiAnalysis(ctx.user.id, "m15");
+        const recentMessages = await db.getLexaiMessagesByUser(ctx.user.id, 100);
+        const previous = getLatestLexaiAnalysisFromMessages(recentMessages, "m15");
 
         if (!previous) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "M15 analysis required before H4" });
         }
+
+        const cachedFinalAnalysis = getReusableH4Analysis(recentMessages, input.imageUrl);
+        if (cachedFinalAnalysis) {
+          return { success: true, analysis: cachedFinalAnalysis.content };
+        }
+
+        const flowId = `lexai-h4-${ctx.user.id}-${previous.id}`;
 
         const analysis = await analyzeLexai({
           flow: "h4",
@@ -2454,6 +2531,17 @@ export const appRouter = router({
           timeframe: "H4",
           imageUrl: input.imageUrl,
           previousAnalysis: previous.content,
+          usage: {
+            userId: ctx.user.id,
+            endpoint: "lexai.analyzeH4",
+            featureName: "lexai",
+            flowType: "specialized",
+            flowId,
+            actionType: "analyze_h4_final",
+            requestMode: "vision",
+            imageDetail: "low",
+            timeframe: "H4",
+          },
         });
 
         await db.createLexaiMessage({
@@ -2488,18 +2576,31 @@ export const appRouter = router({
       }))
       .mutation(async ({ ctx, input }) => {
         const { subscription } = await ensureLexaiAccess(ctx);
+        const resolvedTimeframe = input.timeframe || "M15";
+        const flowId = `lexai-single-${ctx.user.id}-${Date.now()}`;
         const analysis = await analyzeLexai({
           flow: "single",
           language: "ar",
-          timeframe: input.timeframe || "M15",
+          timeframe: resolvedTimeframe,
           imageUrl: input.imageUrl,
+          usage: {
+            userId: ctx.user.id,
+            endpoint: "lexai.analyzeSingle",
+            featureName: "lexai",
+            flowType: "single",
+            flowId,
+            actionType: "analyze_single",
+            requestMode: "vision",
+            imageDetail: "low",
+            timeframe: resolvedTimeframe,
+          },
         });
 
         await db.createLexaiMessage({
           userId: ctx.user.id,
           subscriptionId: subscription.id,
           role: "user",
-          content: input.timeframe || "M15",
+          content: resolvedTimeframe,
           imageUrl: input.imageUrl,
           analysisType: "single",
         });
@@ -2526,10 +2627,20 @@ export const appRouter = router({
       }))
       .mutation(async ({ ctx, input }) => {
         const { subscription } = await ensureLexaiAccess(ctx);
+        const flowId = `lexai-feedback-${ctx.user.id}-${Date.now()}`;
         const analysis = await analyzeLexai({
           flow: "feedback",
           language: "ar",
           userAnalysis: input.userAnalysis,
+          usage: {
+            userId: ctx.user.id,
+            endpoint: "lexai.analyzeFeedback",
+            featureName: "lexai",
+            flowType: "feedback",
+            flowId,
+            actionType: "analyze_feedback",
+            requestMode: "text",
+          },
         });
 
         await db.createLexaiMessage({
@@ -2563,11 +2674,22 @@ export const appRouter = router({
       }))
       .mutation(async ({ ctx, input }) => {
         const { subscription } = await ensureLexaiAccess(ctx);
+        const flowId = `lexai-feedback-image-${ctx.user.id}-${Date.now()}`;
         const analysis = await analyzeLexai({
           flow: "feedback_with_image",
           language: "ar",
           userAnalysis: input.userAnalysis,
           imageUrl: input.imageUrl,
+          usage: {
+            userId: ctx.user.id,
+            endpoint: "lexai.analyzeFeedbackWithImage",
+            featureName: "lexai",
+            flowType: "feedback_with_image",
+            flowId,
+            actionType: "analyze_feedback_with_image",
+            requestMode: "vision",
+            imageDetail: "low",
+          },
         });
 
         await db.createLexaiMessage({
@@ -3151,6 +3273,12 @@ export const appRouter = router({
         return supportCase;
       }),
 
+    usageReport: lexaiSupportProcedure
+      .input(z.object({ days: z.number().int().min(1).max(365).optional() }).optional())
+      .query(async ({ input }) => {
+        return db.getOpenAiUsageReport(input?.days ?? 7);
+      }),
+
     addNote: lexaiSupportProcedure
       .input(z.object({
         caseId: z.number(),
@@ -3339,6 +3467,11 @@ export const appRouter = router({
           const allMessages = await db.getSupportMessages(conv.id);
           const aiReply = await generateSupportAIReply(
             allMessages.map(m => ({ senderType: m.senderType, content: m.content })),
+            {
+              userId: ctx.user.id,
+              conversationId: conv.id,
+              actionType: "support_auto_reply",
+            },
           );
           if (aiReply) {
             await db.createSupportMessage({
@@ -3485,6 +3618,10 @@ export const appRouter = router({
         }
         const suggestion = await generateSupportAIReply(
           allMessages.map(m => ({ senderType: m.senderType, content: m.content })),
+          {
+            conversationId: input.conversationId,
+            actionType: "support_suggest_reply",
+          },
         );
         if (!suggestion) {
           throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'AI suggestion unavailable' });
@@ -5533,13 +5670,19 @@ ${qaText}`;
           throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'مفتاح OpenAI غير مُعد' });
         }
 
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${ENV.openaiApiKey}`,
-          },
-          body: JSON.stringify({
+        let data: any;
+        try {
+          data = await invokeOpenAiChatCompletion({
+            usage: {
+              endpoint: 'jobs.aiScreen',
+              featureName: 'jobs',
+              flowType: 'job_application',
+              flowId: `job-application-${app.id}`,
+              actionType: 'screen_application',
+              requestMode: 'text',
+              metadata: JSON.stringify({ jobId: app.jobId, applicationId: app.id }),
+            },
+            body: {
             model: 'gpt-4o-mini',
             messages: [
               { role: 'system', content: systemPrompt },
@@ -5547,16 +5690,16 @@ ${qaText}`;
             ],
             max_tokens: 1000,
             temperature: 0.3,
-          }),
-        });
-
-        if (!response.ok) {
-          const errText = await response.text();
-          logger.error('AI screening failed', { error: errText });
+            },
+          });
+        } catch (error) {
+          logger.error('AI screening failed', {
+            applicationId: app.id,
+            error: error instanceof Error ? error.message : String(error),
+          });
           throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'فشل تقييم الذكاء الاصطناعي' });
         }
 
-        const data = await response.json() as any;
         const recommendation = data.choices?.[0]?.message?.content || 'لا توجد نتيجة';
 
         return { recommendation };

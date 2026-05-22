@@ -15,6 +15,7 @@ vi.mock("../backend/db", async () => {
     getAdminByEmail: vi.fn().mockResolvedValue(null),
     getActiveLexaiSubscription: vi.fn(),
     getFrozenLexaiSubscription: vi.fn().mockResolvedValue(undefined),
+    getLexaiMessagesByUser: vi.fn().mockResolvedValue([]),
     updateLexaiSubscription: vi.fn().mockResolvedValue(undefined),
     createLexaiMessage: vi.fn().mockResolvedValue(undefined),
     incrementLexaiMessageCount: vi.fn().mockResolvedValue(undefined),
@@ -51,6 +52,7 @@ function createAuthedCaller() {
 describe("lexai access enforcement", () => {
   const getActiveLexaiSubscription = vi.mocked(db.getActiveLexaiSubscription);
   const getFrozenLexaiSubscription = vi.mocked(db.getFrozenLexaiSubscription);
+  const getLexaiMessagesByUser = vi.mocked(db.getLexaiMessagesByUser);
   const updateLexaiSubscription = vi.mocked(db.updateLexaiSubscription);
   const createLexaiMessage = vi.mocked(db.createLexaiMessage);
   const incrementLexaiMessageCount = vi.mocked(db.incrementLexaiMessageCount);
@@ -73,6 +75,8 @@ describe("lexai access enforcement", () => {
       createdAt: "",
       updatedAt: "",
     } as any);
+
+    getLexaiMessagesByUser.mockResolvedValue([] as any);
   });
 
   it("returns null for expired subscriptions without writing on read", async () => {
@@ -110,6 +114,64 @@ describe("lexai access enforcement", () => {
     ).rejects.toMatchObject({
       code: "FORBIDDEN",
       message: "LexAI subscription expired",
+    });
+
+    expect(mockedAnalyzeLexai).not.toHaveBeenCalled();
+    expect(createLexaiMessage).not.toHaveBeenCalled();
+    expect(incrementLexaiMessageCount).not.toHaveBeenCalled();
+  });
+
+  it("reuses the completed H4 analysis on retry instead of generating a second final analysis", async () => {
+    const caller = createAuthedCaller();
+
+    getActiveLexaiSubscription.mockResolvedValueOnce({
+      id: 77,
+      userId: 123,
+      isActive: true,
+      isPaused: false,
+      isPendingActivation: false,
+      paymentStatus: "completed",
+      messagesUsed: 2,
+      messagesLimit: 100,
+      startDate: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+      endDate: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      createdAt: "",
+      updatedAt: "",
+    } as any);
+
+    getLexaiMessagesByUser.mockResolvedValueOnce([
+      {
+        id: 13,
+        role: "assistant",
+        content: "Cached combined H4 analysis",
+        analysisType: "h4",
+        createdAt: "2026-05-22T10:02:00.000Z",
+      },
+      {
+        id: 12,
+        role: "user",
+        content: "H4",
+        imageUrl: "https://example.com/h4.png",
+        analysisType: "h4",
+        createdAt: "2026-05-22T10:01:00.000Z",
+      },
+      {
+        id: 11,
+        role: "assistant",
+        content: "Latest M15 analysis",
+        analysisType: "m15",
+        createdAt: "2026-05-22T10:00:00.000Z",
+      },
+    ] as any);
+
+    await expect(
+      caller.lexai.analyzeH4({
+        imageUrl: "https://example.com/h4.png",
+        language: "ar",
+      })
+    ).resolves.toEqual({
+      success: true,
+      analysis: "Cached combined H4 analysis",
     });
 
     expect(mockedAnalyzeLexai).not.toHaveBeenCalled();
