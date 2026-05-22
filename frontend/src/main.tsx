@@ -14,7 +14,7 @@ const normalizeCurrentPathname = () => {
   if (typeof window === "undefined") return;
 
   const { pathname, search, hash } = window.location;
-  const normalizedPathname = pathname.replace(/\/ {2,}/g, "/");
+  const normalizedPathname = pathname.replace(/\/{2,}/g, "/");
 
   if (normalizedPathname === pathname) return;
 
