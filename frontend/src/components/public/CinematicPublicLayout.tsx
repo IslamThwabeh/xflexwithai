@@ -4,7 +4,6 @@ import {
   ArrowUpRight,
   ArrowUp,
   Facebook,
-  Globe,
   Instagram,
   Menu,
   Phone,
@@ -40,25 +39,41 @@ function CinematicPublicStyles() {
       :root { --cin-public-ease: ${EASE}; }
 
       .cin-public-nav {
-        transition: background 320ms var(--cin-public-ease), border-color 320ms var(--cin-public-ease), box-shadow 320ms var(--cin-public-ease);
-        background: rgba(5, 5, 5, 0.52);
-        border-bottom: 1px solid rgba(255,255,255,0.05);
-        backdrop-filter: blur(18px);
+        transition: background 400ms var(--cin-public-ease), border-color 400ms var(--cin-public-ease), box-shadow 400ms var(--cin-public-ease);
       }
       .cin-public-nav.cin-public-nav-scrolled {
         background: rgba(5, 5, 5, 0.92);
-        border-bottom-color: rgba(255,255,255,0.09);
-        box-shadow: 0 8px 32px rgba(0,0,0,0.38);
+        border-bottom: 1px solid rgba(255,255,255,0.07);
+        backdrop-filter: blur(28px);
+        box-shadow: 0 8px 32px rgba(0,0,0,0.4);
       }
 
       .cin-public-logo {
         display: block;
-        width: clamp(150px, 14vw, 224px);
         height: auto;
         object-fit: contain;
         filter:
-          drop-shadow(0 0 14px rgba(0,193,118,0.20))
-          drop-shadow(0 0 28px rgba(0,193,118,0.16));
+          drop-shadow(0 0 12px rgba(0,193,118,0.18))
+          drop-shadow(0 0 28px rgba(0,193,118,0.12));
+      }
+      .cin-public-logo-header {
+        width: clamp(150px, 16vw, 236px);
+      }
+      .cin-public-logo-footer {
+        width: clamp(168px, 15vw, 220px);
+      }
+      @media (max-width: 767px) {
+        .cin-public-logo {
+          filter:
+            drop-shadow(0 0 14px rgba(0,193,118,0.26))
+            drop-shadow(0 0 30px rgba(0,193,118,0.18));
+        }
+        .cin-public-logo-header {
+          width: 156px;
+        }
+        .cin-public-logo-footer {
+          width: 172px;
+        }
       }
 
       .cin-public-link {
@@ -72,18 +87,31 @@ function CinematicPublicStyles() {
         position: relative;
         background: linear-gradient(135deg, #00D17F 0%, #009E63 100%);
         box-shadow:
-          0 16px 40px rgba(0,193,118,0.28),
-          0 0 0 1px rgba(0,193,118,0.32) inset,
-          0 0 24px rgba(0,193,118,0.14);
+          0 16px 40px rgba(0,193,118,0.32),
+          0 0 0 1px rgba(0,193,118,0.35) inset,
+          0 0 24px rgba(0,193,118,0.18);
         transition: transform 320ms var(--cin-public-ease), box-shadow 320ms var(--cin-public-ease);
       }
-      .cin-btn-green:hover {
-        transform: translate3d(0,-3px,0);
-        box-shadow:
-          0 24px 54px rgba(0,193,118,0.42),
-          0 0 0 1px rgba(0,193,118,0.45) inset,
-          0 0 40px rgba(0,193,118,0.24);
+      .cin-btn-green::after {
+        content: '';
+        position: absolute;
+        inset: -2px;
+        border-radius: inherit;
+        background: radial-gradient(circle at 50% 100%, rgba(0,193,118,0.55), transparent 70%);
+        opacity: 0;
+        transition: opacity 320ms var(--cin-public-ease);
+        z-index: -1;
+        filter: blur(14px);
       }
+      .cin-btn-green:hover {
+        transform: translate3d(0,-4px,0) scale(1.015);
+        box-shadow:
+          0 28px 60px rgba(0,193,118,0.50),
+          0 0 0 1px rgba(0,193,118,0.55) inset,
+          0 0 50px rgba(0,193,118,0.40);
+      }
+      .cin-btn-green:hover::after { opacity: 1; }
+      .cin-btn-green:active { transform: none; }
 
       .cin-btn-ghost {
         position: relative;
@@ -169,11 +197,6 @@ export default function CinematicPublicLayout({
     { href: '/auth', label: isArabic ? 'تسجيل الدخول' : 'Login' },
   ];
 
-  const isActive = (href: string) => {
-    if (href.startsWith('/#')) return false;
-    return location === href || location.startsWith(`${href}/`);
-  };
-
   const scrollToHomeSection = (sectionId: string) => {
     const element = document.getElementById(sectionId);
     if (!element) return false;
@@ -213,10 +236,10 @@ export default function CinematicPublicLayout({
       </div>
 
       <header className={`cin-public-nav fixed inset-x-0 top-0 z-50 ${scrolled ? 'cin-public-nav-scrolled' : ''}`}>
-        <div className="container mx-auto flex h-16 items-center justify-between gap-4 px-4 md:h-20 md:px-8" dir={isRTL ? 'rtl' : 'ltr'}>
+        <div className="container mx-auto flex h-16 items-center justify-between px-4 md:h-20 md:px-8" dir={isRTL ? 'rtl' : 'ltr'}>
           <Link href="/">
             <a className="flex shrink-0 items-center gap-2">
-              <img src={TEST2_LOGO} alt={APP_TITLE} className="cin-public-logo" />
+              <img src={TEST2_LOGO} alt={APP_TITLE} className="cin-public-logo cin-public-logo-header" />
             </a>
           </Link>
 
@@ -256,17 +279,17 @@ export default function CinematicPublicLayout({
           <button
             type="button"
             onClick={() => setMenuOpen((value) => !value)}
-            className="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/[0.04] p-2 text-white/80 transition hover:border-white/18 hover:text-white md:hidden"
+            className="text-white/70 transition hover:text-white md:hidden"
             aria-label={menuOpen ? (isArabic ? 'إغلاق القائمة' : 'Close menu') : (isArabic ? 'فتح القائمة' : 'Open menu')}
             aria-expanded={menuOpen}
           >
-            {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            {menuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
           </button>
         </div>
 
         {menuOpen ? (
-          <div className="border-t border-white/10 bg-[#0A0A0A]/96 px-4 pb-5 pt-4 backdrop-blur-2xl md:hidden" dir={isRTL ? 'rtl' : 'ltr'}>
-            <div className="flex flex-col gap-3">
+          <div className="border-t border-white/10 bg-[#0A0A0A]/96 px-4 pb-6 pt-4 backdrop-blur-2xl md:hidden" dir={isRTL ? 'rtl' : 'ltr'}>
+            <div className="flex flex-col gap-5">
               <button
                 type="button"
                 onClick={() => setLanguage(language === 'ar' ? 'en' : 'ar')}
@@ -308,11 +331,11 @@ export default function CinematicPublicLayout({
         <div className="container mx-auto px-4 md:px-8">
           <div className="flex flex-col gap-10 md:flex-row md:items-start md:justify-between">
             <div>
-              <img src={TEST2_LOGO} alt={APP_TITLE} className="cin-public-logo w-[168px] max-w-full" />
+              <img src={TEST2_LOGO} alt={APP_TITLE} className="cin-public-logo cin-public-logo-footer max-w-full" />
               <p className="mt-3 max-w-sm text-sm leading-7 text-white/42">
                 {isArabic
-                  ? 'نفس اللغة البصرية الجديدة: تعليم واضح، محتوى عملي، ومسارات وصول أنظف للصفحات العامة.'
-                  : 'The same new visual language: clear education, practical content, and cleaner paths through the public site.'}
+                  ? 'أكاديمية تداول عربية تجمع بين التعليم العملي، التحليل الواضح، والدعم المستمر للمتداول الجاد.'
+                  : 'An Arabic-first trading academy built around practical education, clear analysis, and ongoing support for serious traders.'}
               </p>
             </div>
 
@@ -369,7 +392,7 @@ export default function CinematicPublicLayout({
 
           <div className="mt-10 flex flex-col gap-2 border-t border-white/05 pt-6 text-xs text-white/26 sm:flex-row sm:items-center sm:justify-between">
             <p>© {new Date().getFullYear()} {APP_TITLE}. {isArabic ? 'جميع الحقوق محفوظة.' : 'All rights reserved.'}</p>
-            <p>{isArabic ? 'نحافظ على تجربة عامة موحدة عبر الصفحات الأساسية.' : 'We keep the public experience unified across the main site journeys.'}</p>
+            <p>{isArabic ? 'تعليم واضح. تحليل منضبط. دعم مستمر.' : 'Clear education. Disciplined analysis. Ongoing support.'}</p>
           </div>
         </div>
       </footer>

@@ -128,8 +128,8 @@ export default function Checkout() {
                 <h1 className="text-3xl font-bold text-gray-900">{t('checkout.title')}</h1>
                 <p className="mt-3 text-base leading-7 text-gray-600">
                   {isRtl
-                    ? 'أكمل الطلب من داخل نفس الواجهة العامة الجديدة مع الحفاظ على مسار الحوالة البنكية والخصم الحالي.'
-                    : 'Complete the order inside the same branded public shell while keeping the current bank-transfer and discount flow intact.'}
+                    ? 'أكمل طلبك بخطوات واضحة وآمنة، وسيتابع الفريق معك تعليمات الحوالة البنكية وتأكيد الطلب.'
+                    : 'Complete your order through a clear, secure flow, and the team will follow up with bank transfer instructions and order confirmation.'}
                 </p>
               </div>
               <div className="rounded-[22px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">

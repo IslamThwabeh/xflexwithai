@@ -221,14 +221,14 @@ export default function Auth() {
 
   const authHighlights = isRtl
     ? [
-        { icon: TrendingUp, title: "بوابة دخول واحدة", body: "الدخول والتسجيل الآن داخل نفس اللغة البصرية الجديدة حتى لا تنكسر التجربة بين الصفحة الرئيسية والحساب." },
-        { icon: ShieldCheck, title: "دخول آمن وواضح", body: "رمز تحقق أو كلمة مرور بحسب حالتك، مع الحفاظ على نفس سلوك التحويلات الحالية دون تغيير." },
-        { icon: Sparkles, title: "ضمن نفس التجربة العامة", body: "الدخول والتسجيل يتحركان الآن داخل نفس الأسلوب العام للموقع حتى تبقى الرحلة أوضح وأكثر ثباتاً." },
+        { icon: TrendingUp, title: "بوابة دخول واحدة", body: "ادخل إلى حسابك أو أنشئ حساباً جديداً بخطوات واضحة حتى تبدأ رحلتك التعليمية بثقة." },
+        { icon: ShieldCheck, title: "دخول آمن وواضح", body: "رمز تحقق أو كلمة مرور بحسب ما يناسبك، مع تجربة سريعة ومريحة على الجوال والكمبيوتر." },
+        { icon: Sparkles, title: "جاهز من أول خطوة", body: "بعد تسجيل الدخول تستطيع متابعة الدورات، التوصيات، وخدمات الباقة من مكان واحد." },
       ]
     : [
-        { icon: TrendingUp, title: "One clear entry point", body: "Login and signup now live inside the same visual language as the new homepage, so the public journey feels consistent." },
-        { icon: ShieldCheck, title: "Secure, familiar access", body: "OTP or password login stays exactly as it works now, without changing redirects or account behavior." },
-        { icon: Sparkles, title: "Inside the same public flow", body: "Login and signup now sit inside the same public-site experience so the journey stays consistent from entry to account access." },
+        { icon: TrendingUp, title: "One clear entry point", body: "Sign in or create your account through a simple flow that gets you started with confidence." },
+        { icon: ShieldCheck, title: "Secure, familiar access", body: "Use OTP or password login, whichever fits your situation, with a fast and comfortable experience on mobile and desktop." },
+        { icon: Sparkles, title: "Ready from the first step", body: "Once you sign in, you can move straight into your courses, recommendations, and package services from one place." },
       ];
 
   return (
@@ -243,12 +243,12 @@ export default function Auth() {
               </div>
 
               <h1 className="mt-6 text-4xl font-extrabold leading-[1.08] tracking-[-0.03em] text-white md:text-5xl">
-                {isRtl ? "ابدأ من نفس الجو العام الجديد." : "Start inside the new visual language."}
+                {isRtl ? "سجّل الدخول وابدأ بثقة." : "Sign in and get started with confidence."}
               </h1>
               <p className="mt-5 text-base leading-8 text-white/62 md:text-lg">
                 {isRtl
-                  ? "هذه الصفحة جزء من نفس الهوية العامة للموقع: دخول أو تسجيل من دون فقدان وضوح النموذج أو سلاسة الوصول."
-                  : "This page now sits inside the same public-site identity: login or signup without losing clarity, speed, or trust."}
+                  ? "الدخول أو إنشاء الحساب يتم بخطوات واضحة وسريعة حتى تصل إلى محتواك وخدماتك من دون تعقيد."
+                  : "Sign in or create your account through a clear, fast flow that gets you back to your content and services without friction."}
               </p>
 
               <div className="mt-8 grid gap-3">
