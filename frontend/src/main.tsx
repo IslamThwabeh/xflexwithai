@@ -10,6 +10,19 @@ import { resolveTrpcUrl } from "./lib/apiBase";
 import "./index.css";
 import { LanguageProvider } from "./contexts/LanguageContext";
 
+const normalizeCurrentPathname = () => {
+  if (typeof window === "undefined") return;
+
+  const { pathname, search, hash } = window.location;
+  const normalizedPathname = pathname.replace(/\/ {2,}/g, "/");
+
+  if (normalizedPathname === pathname) return;
+
+  window.history.replaceState(window.history.state, "", `${normalizedPathname}${search}${hash}`);
+};
+
+normalizeCurrentPathname();
+
 const queryClient = new QueryClient();
 
 const buildUnauthorizedRedirectUrl = () => {
