@@ -410,9 +410,6 @@ function Router() {
           <TradingCalculators />
         </ProtectedRoute>
       </Route>
-      <Route path="/test2">
-        <Redirect to="/" />
-      </Route>
       <Route path={"/"} component={Home} />
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />

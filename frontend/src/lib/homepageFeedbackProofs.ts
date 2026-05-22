@@ -1,4 +1,4 @@
-export type Test2FeedbackProof = {
+export type HomepageFeedbackProof = {
   id: string;
   imageSrc: string;
   eyebrowEn: string;
@@ -17,10 +17,10 @@ export type Test2FeedbackProof = {
   altAr: string;
 };
 
-export const TEST2_FEEDBACK_PROOFS: Test2FeedbackProof[] = [
+export const HOMEPAGE_FEEDBACK_PROOFS: HomepageFeedbackProof[] = [
   {
     id: 'lexai-fast-result',
-    imageSrc: '/feedbacks/test2/feedback-proof-lexai-profit-208-in-9-minutes.jpg',
+    imageSrc: '/feedbacks/homepage/feedback-proof-lexai-profit-208-in-9-minutes.jpg',
     eyebrowEn: 'LexAI proof',
     eyebrowAr: 'إثبات LexAI',
     titleEn: 'Analysis that turns quickly into action',
@@ -38,7 +38,7 @@ export const TEST2_FEEDBACK_PROOFS: Test2FeedbackProof[] = [
   },
   {
     id: 'first-trade-confidence',
-    imageSrc: '/feedbacks/test2/feedback-proof-moamen-khalil-first-trade-100.jpg',
+    imageSrc: '/feedbacks/homepage/feedback-proof-moamen-khalil-first-trade-100.jpg',
     eyebrowEn: 'Student proof',
     eyebrowAr: 'إثبات طالب',
     titleEn: 'Confidence starts with a first real win',
@@ -56,7 +56,7 @@ export const TEST2_FEEDBACK_PROOFS: Test2FeedbackProof[] = [
   },
   {
     id: 'reported-results',
-    imageSrc: '/feedbacks/test2/feedback-proof-recommendations-report-12240-in-20-days.jpg',
+    imageSrc: '/feedbacks/homepage/feedback-proof-recommendations-report-12240-in-20-days.jpg',
     eyebrowEn: 'Results proof',
     eyebrowAr: 'إثبات النتائج',
     titleEn: 'Reported performance, not vague claims',

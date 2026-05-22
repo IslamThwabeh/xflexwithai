@@ -1,1 +1,1 @@
-export { default } from './TestHomePrototype2';
+export { default } from './CinematicHomePage';

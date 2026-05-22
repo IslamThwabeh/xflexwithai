@@ -19,7 +19,7 @@ import {
 } from '@/components/public/cinematicPublicNav';
 
 const EASE = 'cubic-bezier(0.22, 1, 0.36, 1)';
-const TEST2_LOGO = '/xflex-logo-2026-transparent.png';
+const BRAND_LOGO_SRC = '/xflex-logo-2026-transparent.png';
 
 type LayoutAction = {
   href: string;
@@ -239,7 +239,7 @@ export default function CinematicPublicLayout({
         <div className="container mx-auto flex h-16 items-center justify-between px-4 md:h-20 md:px-8" dir={isRTL ? 'rtl' : 'ltr'}>
           <Link href="/">
             <a className="flex shrink-0 items-center gap-2">
-              <img src={TEST2_LOGO} alt={APP_TITLE} className="cin-public-logo cin-public-logo-header" />
+              <img src={BRAND_LOGO_SRC} alt={APP_TITLE} className="cin-public-logo cin-public-logo-header" />
             </a>
           </Link>
 
@@ -331,7 +331,7 @@ export default function CinematicPublicLayout({
         <div className="container mx-auto px-4 md:px-8">
           <div className="flex flex-col gap-10 md:flex-row md:items-start md:justify-between">
             <div>
-              <img src={TEST2_LOGO} alt={APP_TITLE} className="cin-public-logo cin-public-logo-footer max-w-full" />
+              <img src={BRAND_LOGO_SRC} alt={APP_TITLE} className="cin-public-logo cin-public-logo-footer max-w-full" />
               <p className="mt-3 max-w-sm text-sm leading-7 text-white/42">
                 {isArabic
                   ? 'أكاديمية تداول عربية تجمع بين التعليم العملي، التحليل الواضح، والدعم المستمر للمتداول الجاد.'
