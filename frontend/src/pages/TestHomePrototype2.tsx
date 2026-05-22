@@ -16,6 +16,10 @@ import { formatIlsAmount, getPackageDisplayPricing } from '@/lib/packagePricing'
 import { TEST2_FEEDBACK_PROOFS } from '@/lib/test2FeedbackProofs';
 import { trpc } from '@/lib/trpc';
 import { APP_TITLE } from '@/const';
+import {
+  CINEMATIC_PRIMARY_NAV_ITEMS,
+  DEFAULT_CINEMATIC_PRIMARY_ACTION,
+} from '@/components/public/cinematicPublicNav';
 
 // ─── Image map ────────────────────────────────────────────────────────────────
 const IMG = {
@@ -524,25 +528,27 @@ function CinematicNav({ onScrollTo }: { onScrollTo: (id: string) => void }) {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  const navLinks = isArabic
-    ? [['الباقات', 'packages'], ['المسار', 'story'], ['المدرب', 'mentor'], ['الأسئلة', 'faq']]
-    : [['Packages', 'packages'], ['Curriculum', 'story'], ['Mentor', 'mentor'], ['FAQ', 'faq']];
+  const navLinks = CINEMATIC_PRIMARY_NAV_ITEMS.map((item) => ({
+    key: item.key,
+    sectionId: item.sectionId,
+    label: isArabic ? item.labelAr : item.labelEn,
+  }));
 
   return (
     <header className={`cin-nav fixed inset-x-0 top-0 z-50 ${scrolled ? 'cin-nav-scrolled' : ''}`} dir={isRTL ? 'rtl' : 'ltr'}>
       <div className="container mx-auto flex h-16 items-center justify-between px-4 md:h-20 md:px-8">
         <Link href="/"><a className="flex shrink-0 items-center gap-2"><img src={TEST2_LOGO} alt={APP_TITLE} className="cin-logo-img cin-logo-header" /></a></Link>
         <nav className="hidden items-center gap-7 text-sm font-medium text-white/65 md:flex">
-          {navLinks.map(([label, id]) => (
-            <button key={id} type="button" onClick={() => onScrollTo(id)} className="transition-colors duration-200 hover:text-white">{label}</button>
+          {navLinks.map((item) => (
+            <button key={item.key} type="button" onClick={() => onScrollTo(item.sectionId)} className="transition-colors duration-200 hover:text-white">{item.label}</button>
           ))}
         </nav>
         <div className="hidden items-center gap-4 md:flex">
           <button type="button" onClick={() => setLanguage(language === 'ar' ? 'en' : 'ar')} className="text-xs font-semibold text-white/55 transition-colors hover:text-white">
             {getLanguageSwitchLabel(language)}
           </button>
-          <button type="button" onClick={() => onScrollTo('packages')} className="cin-btn-green inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold text-white">
-            {isArabic ? 'ابدأ الآن' : 'Get Started'}<ArrowUpRight className="h-4 w-4" />
+          <button type="button" onClick={() => onScrollTo(DEFAULT_CINEMATIC_PRIMARY_ACTION.href.slice(2))} className="cin-btn-green inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold text-white">
+            {isArabic ? DEFAULT_CINEMATIC_PRIMARY_ACTION.labelAr : DEFAULT_CINEMATIC_PRIMARY_ACTION.labelEn}<ArrowUpRight className="h-4 w-4" />
           </button>
         </div>
         <button type="button" className="text-white/70 hover:text-white md:hidden" onClick={() => setMenuOpen((v) => !v)} aria-label="Toggle menu">
@@ -560,11 +566,11 @@ function CinematicNav({ onScrollTo }: { onScrollTo: (id: string) => void }) {
               <span>{isArabic ? 'اللغة' : 'Language'}</span>
               <span className="text-[#00C176]">{getLanguageSwitchLabel(language)}</span>
             </button>
-            {navLinks.map(([label, id]) => (
-              <button key={id} type="button" onClick={() => { onScrollTo(id); setMenuOpen(false); }} className="text-start text-base font-medium text-white/70 hover:text-white">{label}</button>
+            {navLinks.map((item) => (
+              <button key={item.key} type="button" onClick={() => { onScrollTo(item.sectionId); setMenuOpen(false); }} className="text-start text-base font-medium text-white/70 hover:text-white">{item.label}</button>
             ))}
-            <button type="button" onClick={() => { onScrollTo('packages'); setMenuOpen(false); }} className="cin-btn-green mt-1 inline-flex w-full items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-semibold text-white">
-              {isArabic ? 'ابدأ الآن' : 'Get Started'}<ArrowUpRight className="h-4 w-4" />
+            <button type="button" onClick={() => { onScrollTo(DEFAULT_CINEMATIC_PRIMARY_ACTION.href.slice(2)); setMenuOpen(false); }} className="cin-btn-green mt-1 inline-flex w-full items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-semibold text-white">
+              {isArabic ? DEFAULT_CINEMATIC_PRIMARY_ACTION.labelAr : DEFAULT_CINEMATIC_PRIMARY_ACTION.labelEn}<ArrowUpRight className="h-4 w-4" />
             </button>
           </div>
         </div>

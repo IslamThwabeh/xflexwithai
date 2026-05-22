@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
-import PublicLayout from "@/components/PublicLayout";
+import CinematicPublicLayout from "@/components/public/CinematicPublicLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -66,18 +66,19 @@ export default function ActivateKey() {
 
   if (loading) {
     return (
-      <PublicLayout>
-        <div className="min-h-[60vh] flex items-center justify-center bg-[var(--color-xf-cream)]" dir={isRtl ? "rtl" : "ltr"}>
+      <CinematicPublicLayout>
+        <div className="min-h-[60vh] flex items-center justify-center bg-[#050505]" dir={isRtl ? "rtl" : "ltr"}>
           <div className="w-8 h-8 border-4 border-emerald-400 border-t-transparent rounded-full animate-spin" />
         </div>
-      </PublicLayout>
+      </CinematicPublicLayout>
     );
   }
 
   if (!user) {
     return (
-      <PublicLayout>
-        <div className="bg-[var(--color-xf-cream)] py-10 md:py-14" dir={isRtl ? "rtl" : "ltr"}>
+      <CinematicPublicLayout>
+        <div className="bg-[#050505] py-10 md:py-14" dir={isRtl ? "rtl" : "ltr"}>
+          <div className="bg-[var(--color-xf-cream)] py-10 md:py-14">
           <div className="mx-auto max-w-4xl px-4">
             <div className="mb-8 rounded-[28px] border border-slate-200 bg-white px-6 py-6 shadow-[0_16px_40px_rgba(15,23,42,0.05)] md:px-8 md:py-8">
               <div className="flex flex-wrap items-center justify-between gap-4">
@@ -127,13 +128,15 @@ export default function ActivateKey() {
             </div>
           </div>
         </div>
-      </PublicLayout>
+        </div>
+      </CinematicPublicLayout>
     );
   }
 
   return (
-    <PublicLayout>
-      <div className="bg-[var(--color-xf-cream)] py-10 md:py-14" dir={isRtl ? "rtl" : "ltr"}>
+    <CinematicPublicLayout>
+      <div className="bg-[#050505] py-10 md:py-14" dir={isRtl ? "rtl" : "ltr"}>
+        <div className="bg-[var(--color-xf-cream)] py-10 md:py-14">
         <div className="mx-auto max-w-4xl px-4">
           <div className="mb-8 rounded-[28px] border border-slate-200 bg-white px-6 py-6 shadow-[0_16px_40px_rgba(15,23,42,0.05)] md:px-8 md:py-8">
             <div className="flex flex-wrap items-center justify-between gap-4">
@@ -298,6 +301,7 @@ export default function ActivateKey() {
           </div>
         </div>
       </div>
-    </PublicLayout>
+      </div>
+    </CinematicPublicLayout>
   );
 }

@@ -2,7 +2,7 @@ import { useParams, Link } from 'wouter';
 import { CheckCircle, ChevronRight, ArrowLeft, X, Star, BookOpen, ShoppingCart, MessageSquareQuote, Trophy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import PublicLayout from '@/components/PublicLayout';
+import CinematicPublicLayout from '@/components/public/CinematicPublicLayout';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { formatIlsAmount, getPackageDisplayPricing } from '@/lib/packagePricing';
 import { trpc } from '@/lib/trpc';
@@ -28,27 +28,27 @@ export default function PackageDetails() {
 
   if (isLoading) {
     return (
-      <PublicLayout>
-        <div className="min-h-[60vh] flex items-center justify-center bg-[var(--color-xf-cream)]" dir={isRTL ? 'rtl' : 'ltr'}>
+      <CinematicPublicLayout>
+        <div className="min-h-[60vh] flex items-center justify-center bg-[#050505]" dir={isRTL ? 'rtl' : 'ltr'}>
           <div className="animate-pulse text-gray-400">{language === 'ar' ? 'جاري التحميل...' : 'Loading...'}</div>
         </div>
-      </PublicLayout>
+      </CinematicPublicLayout>
     );
   }
 
   if (error || !pkg) {
     return (
-      <PublicLayout>
-        <div className="min-h-[60vh] flex flex-col items-center justify-center gap-4 bg-[var(--color-xf-cream)] px-4" dir={isRTL ? 'rtl' : 'ltr'}>
-          <p className="text-gray-500">{language === 'ar' ? 'الباقة غير موجودة' : 'Package not found'}</p>
+      <CinematicPublicLayout>
+        <div className="min-h-[60vh] flex flex-col items-center justify-center gap-4 bg-[#050505] px-4" dir={isRTL ? 'rtl' : 'ltr'}>
+          <p className="text-white/58">{language === 'ar' ? 'الباقة غير موجودة' : 'Package not found'}</p>
           <Link href="/">
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" className="border-white/12 bg-white/[0.04] text-white hover:bg-white/[0.08] hover:text-white">
               <ArrowLeft className="w-4 h-4 me-1" />
               {language === 'ar' ? 'الرئيسية' : 'Home'}
             </Button>
           </Link>
         </div>
-      </PublicLayout>
+      </CinematicPublicLayout>
     );
   }
 
@@ -68,8 +68,8 @@ export default function PackageDetails() {
   ].filter((feature) => feature.included);
 
   return (
-    <PublicLayout>
-      <div className="bg-[var(--color-xf-cream)] py-10 md:py-14" dir={isRTL ? 'rtl' : 'ltr'}>
+    <CinematicPublicLayout>
+      <div className="bg-[#050505] py-10 md:py-14" dir={isRTL ? 'rtl' : 'ltr'}>
         <div className="container mx-auto max-w-5xl px-4">
           <div className="mb-8 rounded-[28px] border border-slate-200 bg-white px-6 py-6 shadow-[0_16px_40px_rgba(15,23,42,0.05)] md:px-8 md:py-8">
             <div className="flex flex-wrap items-center justify-between gap-4">
@@ -231,6 +231,6 @@ export default function PackageDetails() {
         </div>
       </div>
       </div>
-    </PublicLayout>
+    </CinematicPublicLayout>
   );
 }

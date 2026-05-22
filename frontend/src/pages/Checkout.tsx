@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import PublicLayout from '@/components/PublicLayout';
+import CinematicPublicLayout from '@/components/public/CinematicPublicLayout';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { formatIlsAmount, getPackageDisplayPricing } from '@/lib/packagePricing';
 import { trpc } from '@/lib/trpc';
@@ -45,22 +45,22 @@ export default function Checkout() {
 
   if (isLoading) {
     return (
-      <PublicLayout>
-        <div className="min-h-[60vh] flex items-center justify-center bg-[var(--color-xf-cream)]" dir={isRtl ? 'rtl' : 'ltr'}>
+      <CinematicPublicLayout>
+        <div className="min-h-[60vh] flex items-center justify-center bg-[#050505]" dir={isRtl ? 'rtl' : 'ltr'}>
           <div className="w-8 h-8 border-4 border-emerald-400 border-t-transparent rounded-full animate-spin" />
         </div>
-      </PublicLayout>
+      </CinematicPublicLayout>
     );
   }
 
   if (!pkg) {
     return (
-      <PublicLayout>
-        <div className="min-h-[60vh] flex flex-col items-center justify-center gap-4 bg-[var(--color-xf-cream)] px-4" dir={isRtl ? 'rtl' : 'ltr'}>
-          <p className="text-gray-500">{isRtl ? 'الباقة غير موجودة' : 'Package not found'}</p>
-          <Link href="/"><Button variant="outline">{t('home')}</Button></Link>
+      <CinematicPublicLayout>
+        <div className="min-h-[60vh] flex flex-col items-center justify-center gap-4 bg-[#050505] px-4" dir={isRtl ? 'rtl' : 'ltr'}>
+          <p className="text-white/58">{isRtl ? 'الباقة غير موجودة' : 'Package not found'}</p>
+          <Link href="/"><Button variant="outline" className="border-white/12 bg-white/[0.04] text-white hover:bg-white/[0.08] hover:text-white">{t('home')}</Button></Link>
         </div>
-      </PublicLayout>
+      </CinematicPublicLayout>
     );
   }
 
@@ -112,8 +112,9 @@ export default function Checkout() {
   };
 
   return (
-    <PublicLayout>
-      <div className="bg-[var(--color-xf-cream)] py-10 md:py-14" dir={isRtl ? 'rtl' : 'ltr'}>
+    <CinematicPublicLayout>
+      <div className="bg-[#050505] py-10 md:py-14" dir={isRtl ? 'rtl' : 'ltr'}>
+        <div className="bg-[var(--color-xf-cream)] py-10 md:py-14">
         <div className="max-w-5xl mx-auto px-4">
           <div className="mb-8 rounded-[28px] border border-slate-200 bg-white px-6 py-6 shadow-[0_16px_40px_rgba(15,23,42,0.05)] md:px-8 md:py-8">
             <div className="flex flex-wrap items-center justify-between gap-4">
@@ -299,6 +300,7 @@ export default function Checkout() {
         </div>
       </div>
       </div>
-    </PublicLayout>
+      </div>
+    </CinematicPublicLayout>
   );
 }

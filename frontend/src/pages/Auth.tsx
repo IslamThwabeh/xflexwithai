@@ -223,12 +223,12 @@ export default function Auth() {
     ? [
         { icon: TrendingUp, title: "بوابة دخول واحدة", body: "الدخول والتسجيل الآن داخل نفس اللغة البصرية الجديدة حتى لا تنكسر التجربة بين الصفحة الرئيسية والحساب." },
         { icon: ShieldCheck, title: "دخول آمن وواضح", body: "رمز تحقق أو كلمة مرور بحسب حالتك، مع الحفاظ على نفس سلوك التحويلات الحالية دون تغيير." },
-        { icon: Sparkles, title: "مهيأ للخطوات القادمة", body: "هذا هو أول تطبيق لنفس طابع test2 على الصفحات العامة قبل التوسع لبقية المسارات." },
+        { icon: Sparkles, title: "ضمن نفس التجربة العامة", body: "الدخول والتسجيل يتحركان الآن داخل نفس الأسلوب العام للموقع حتى تبقى الرحلة أوضح وأكثر ثباتاً." },
       ]
     : [
         { icon: TrendingUp, title: "One clear entry point", body: "Login and signup now live inside the same visual language as the new homepage, so the public journey feels consistent." },
         { icon: ShieldCheck, title: "Secure, familiar access", body: "OTP or password login stays exactly as it works now, without changing redirects or account behavior." },
-        { icon: Sparkles, title: "Ready for the next rollout", body: "This is the first applied slice of the test2 language before the rest of the public pages follow." },
+        { icon: Sparkles, title: "Inside the same public flow", body: "Login and signup now sit inside the same public-site experience so the journey stays consistent from entry to account access." },
       ];
 
   return (
@@ -247,8 +247,8 @@ export default function Auth() {
               </h1>
               <p className="mt-5 text-base leading-8 text-white/62 md:text-lg">
                 {isRtl
-                  ? "هذه الصفحة هي أول خطوة لتطبيق هوية test2 على المسارات العامة: دخول أو تسجيل من دون فقدان وضوح النموذج أو سلاسة الوصول."
-                  : "This page is the first applied step of the test2 identity across public journeys: login or signup without losing clarity, speed, or trust."}
+                  ? "هذه الصفحة جزء من نفس الهوية العامة للموقع: دخول أو تسجيل من دون فقدان وضوح النموذج أو سلاسة الوصول."
+                  : "This page now sits inside the same public-site identity: login or signup without losing clarity, speed, or trust."}
               </p>
 
               <div className="mt-8 grid gap-3">

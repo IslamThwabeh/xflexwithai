@@ -14,6 +14,10 @@ import {
 import { APP_TITLE } from '@/const';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { getLanguageSwitchLabel } from '@/lib/languageToggle';
+import {
+  CINEMATIC_PRIMARY_NAV_ITEMS,
+  DEFAULT_CINEMATIC_PRIMARY_ACTION,
+} from '@/components/public/cinematicPublicNav';
 
 const EASE = 'cubic-bezier(0.22, 1, 0.36, 1)';
 const TEST2_LOGO = '/xflex-logo-2026-transparent.png';
@@ -126,7 +130,7 @@ function CinematicPublicStyles() {
 
 export default function CinematicPublicLayout({
   children,
-  primaryAction = { href: '/auth', labelEn: 'Sign In', labelAr: 'سجل الدخول' },
+  primaryAction = DEFAULT_CINEMATIC_PRIMARY_ACTION,
   mainClassName = '',
 }: CinematicPublicLayoutProps) {
   const { language, setLanguage, isRTL } = useLanguage();
@@ -150,14 +154,10 @@ export default function CinematicPublicLayout({
     setMenuOpen(false);
   }, [location]);
 
-  const navItems = [
-    { href: '/#packages', label: isArabic ? 'الباقات' : 'Packages' },
-    { href: '/gifts', label: isArabic ? 'الهدايا' : 'Gifts' },
-    { href: '/articles', label: isArabic ? 'المقالات' : 'Articles' },
-    { href: '/free-content', label: isArabic ? 'المكتبة المجانية' : 'Free Content' },
-    { href: '/faq', label: isArabic ? 'الأسئلة' : 'FAQ' },
-    { href: '/contact', label: isArabic ? 'تواصل معنا' : 'Contact' },
-  ];
+  const navItems = CINEMATIC_PRIMARY_NAV_ITEMS.map((item) => ({
+    ...item,
+    label: isArabic ? item.labelAr : item.labelEn,
+  }));
 
   const footerLinks = [
     { href: '/', label: isArabic ? 'الرئيسية' : 'Home' },
@@ -172,6 +172,35 @@ export default function CinematicPublicLayout({
   const isActive = (href: string) => {
     if (href.startsWith('/#')) return false;
     return location === href || location.startsWith(`${href}/`);
+  };
+
+  const scrollToHomeSection = (sectionId: string) => {
+    const element = document.getElementById(sectionId);
+    if (!element) return false;
+
+    const headerOffset = window.innerWidth >= 768 ? 88 : 72;
+    const top = element.getBoundingClientRect().top + window.scrollY - headerOffset;
+    window.scrollTo({ top, behavior: 'smooth' });
+    return true;
+  };
+
+  const handlePrimaryNavigation = (sectionId: string, href: string) => {
+    if (location === '/' && scrollToHomeSection(sectionId)) {
+      setMenuOpen(false);
+      return;
+    }
+
+    window.location.assign(href);
+  };
+
+  const handlePrimaryAction = (href: string) => {
+    if (href.startsWith('/#')) {
+      const sectionId = href.slice(2);
+      handlePrimaryNavigation(sectionId, href);
+      return;
+    }
+
+    window.location.assign(href);
   };
 
   return (
@@ -191,41 +220,36 @@ export default function CinematicPublicLayout({
             </a>
           </Link>
 
-          <nav className="hidden items-center gap-6 text-sm font-medium text-white/62 lg:flex">
+          <nav className="hidden items-center gap-7 text-sm font-medium text-white/65 md:flex">
             {navItems.map((item) => (
-              <Link key={item.href} href={item.href}>
-                <a className={`cin-public-link ${isActive(item.href) ? 'text-white' : ''}`}>
-                  {item.label}
-                </a>
-              </Link>
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => handlePrimaryNavigation(item.sectionId, item.href)}
+                className="cin-public-link transition-colors duration-200 hover:text-white"
+              >
+                {item.label}
+              </button>
             ))}
           </nav>
 
-          <div className="hidden items-center gap-3 md:flex">
-            <a
-              href="https://wa.me/972597596030"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-medium text-white/78 transition hover:border-[#00C176]/28 hover:text-white"
-            >
-              <Phone className="h-4 w-4 text-[#00C176]" />
-              WhatsApp
-            </a>
+          <div className="hidden items-center gap-4 md:flex">
             <button
               type="button"
               onClick={() => setLanguage(language === 'ar' ? 'en' : 'ar')}
-              className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-medium text-white/78 transition hover:border-white/18 hover:text-white"
+              className="text-xs font-semibold text-white/55 transition-colors hover:text-white"
             >
-              <Globe className="h-4 w-4" />
               {getLanguageSwitchLabel(language)}
             </button>
             {primaryAction ? (
-              <Link href={primaryAction.href}>
-                <a className="cin-btn-green inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold text-white">
+              <button
+                type="button"
+                onClick={() => handlePrimaryAction(primaryAction.href)}
+                className="cin-btn-green inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold text-white"
+              >
                   {isArabic ? primaryAction.labelAr : primaryAction.labelEn}
                   <ArrowUpRight className="h-4 w-4" />
-                </a>
-              </Link>
+              </button>
             ) : null}
           </div>
 
@@ -253,30 +277,25 @@ export default function CinematicPublicLayout({
               </button>
 
               {navItems.map((item) => (
-                <Link key={item.href} href={item.href}>
-                  <a className={`rounded-2xl border px-4 py-3 text-sm font-medium transition ${isActive(item.href) ? 'border-[#00C176]/25 bg-[#00C176]/10 text-white' : 'border-white/8 bg-white/[0.03] text-white/72 hover:border-white/14 hover:text-white'}`}>
-                    {item.label}
-                  </a>
-                </Link>
+                <button
+                  key={item.key}
+                  type="button"
+                  onClick={() => handlePrimaryNavigation(item.sectionId, item.href)}
+                  className="text-start text-base font-medium text-white/70 hover:text-white"
+                >
+                  {item.label}
+                </button>
               ))}
 
-              <a
-                href="https://wa.me/972597596030"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center justify-center gap-2 rounded-full bg-green-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-green-600"
-              >
-                <Phone className="h-4 w-4" />
-                WhatsApp
-              </a>
-
               {primaryAction ? (
-                <Link href={primaryAction.href}>
-                  <a className="cin-btn-green inline-flex items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-semibold text-white">
+                <button
+                  type="button"
+                  onClick={() => handlePrimaryAction(primaryAction.href)}
+                  className="cin-btn-green mt-1 inline-flex w-full items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-semibold text-white"
+                >
                     {isArabic ? primaryAction.labelAr : primaryAction.labelEn}
                     <ArrowUpRight className="h-4 w-4" />
-                  </a>
-                </Link>
+                </button>
               ) : null}
             </div>
           </div>
@@ -350,7 +369,7 @@ export default function CinematicPublicLayout({
 
           <div className="mt-10 flex flex-col gap-2 border-t border-white/05 pt-6 text-xs text-white/26 sm:flex-row sm:items-center sm:justify-between">
             <p>© {new Date().getFullYear()} {APP_TITLE}. {isArabic ? 'جميع الحقوق محفوظة.' : 'All rights reserved.'}</p>
-            <p>{isArabic ? 'الواجهة العامة تتبنى الآن لغة test2 البصرية بشكل تدريجي.' : 'The public experience is gradually adopting the test2 visual language.'}</p>
+            <p>{isArabic ? 'نحافظ على تجربة عامة موحدة عبر الصفحات الأساسية.' : 'We keep the public experience unified across the main site journeys.'}</p>
           </div>
         </div>
       </footer>

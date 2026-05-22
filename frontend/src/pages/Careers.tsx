@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
 import { useLanguage } from '@/contexts/LanguageContext';
-import PublicLayout from '@/components/PublicLayout';
+import CinematicPublicLayout from '@/components/public/CinematicPublicLayout';
 
 // Max CV file size: 5MB
 const MAX_CV_SIZE = 5 * 1024 * 1024;
@@ -29,69 +29,67 @@ export default function Careers() {
   }
 
   return (
-    <PublicLayout>
-      {/* Hero */}
-      <section className="relative overflow-hidden text-white py-20 md:py-28" style={{ background: 'linear-gradient(135deg, var(--color-xf-dark) 0%, #1e293b 50%, #1e3a5f 100%)' }}>
-        <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse 60% 50% at 50% 50%, rgba(59,130,246,0.12), transparent)' }} />
-        <div className="absolute top-10 left-10 w-72 h-72 bg-emerald-500/10 rounded-full blur-[80px]" />
-        <div className="absolute bottom-10 right-10 w-96 h-96 bg-emerald-500/8 rounded-full blur-[100px]" />
-        <div className="relative container mx-auto px-4 text-center">
-          <Badge className="mb-4 bg-white/10 text-white border-white/20 px-4 py-1.5 text-sm font-medium">
-            <Briefcase className="w-4 h-4 mr-1.5" />
+    <CinematicPublicLayout>
+      <section className="relative overflow-hidden bg-[#050505] py-20 text-white md:py-28">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(0,193,118,0.12),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(200,169,107,0.12),transparent_28%)]" />
+        <div className="absolute left-[-3rem] top-10 h-72 w-72 rounded-full bg-emerald-500/10 blur-[90px]" />
+        <div className="absolute bottom-0 right-[-4rem] h-96 w-96 rounded-full bg-amber-400/10 blur-[120px]" />
+        <div className="relative container mx-auto px-4 text-center md:px-8">
+          <Badge className="mb-4 border-[#00C176]/20 bg-[#00C176]/10 px-4 py-1.5 text-sm font-medium text-[#00C176]">
+            <Briefcase className="me-1.5 h-4 w-4" />
             {isRtl ? 'انضم لفريقنا' : 'Join Our Team'}
           </Badge>
-          <h1 className="text-3xl md:text-5xl font-extrabold mb-4 tracking-[-0.5px]">
+          <h1 className="mb-4 text-3xl font-extrabold tracking-[-0.5px] md:text-5xl">
             {isRtl ? 'الوظائف المتاحة في أكاديمية XFlex' : 'Open Positions at XFlex Academy'}
           </h1>
-          <p className="text-lg text-emerald-100/80 max-w-2xl mx-auto">
+          <p className="mx-auto max-w-2xl text-lg text-white/66">
             {isRtl ? 'نبحث عن أشخاص موهوبين وشغوفين للانضمام لفريقنا المتنامي' : 'We are looking for talented and passionate people to join our growing team'}
           </p>
         </div>
       </section>
 
-      {/* Job Cards */}
-      <section className="container mx-auto px-4 py-16">
+      <section className="bg-[#050505] pb-16">
+        <div className="container mx-auto px-4 md:px-8">
         {isLoading ? (
           <div className="flex items-center justify-center py-20">
-            <Loader2 className="w-8 h-8 animate-spin text-xf-primary" />
+            <Loader2 className="h-8 w-8 animate-spin text-[#00C176]" />
           </div>
         ) : !jobs || jobs.length === 0 ? (
-          <div className="text-center py-20 text-gray-500">
-            <Briefcase className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+          <div className="py-20 text-center text-white/58">
+            <Briefcase className="mx-auto mb-4 h-12 w-12 text-white/24" />
             <p className="text-lg">{isRtl ? 'لا توجد وظائف متاحة حالياً' : 'No open positions at the moment'}</p>
-            <p className="text-sm mt-2">{isRtl ? 'تابعنا للحصول على آخر التحديثات' : 'Follow us for the latest updates'}</p>
+            <p className="mt-2 text-sm">{isRtl ? 'تابعنا للحصول على آخر التحديثات' : 'Follow us for the latest updates'}</p>
           </div>
         ) : (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto">
+          <div className="mx-auto grid max-w-5xl gap-6 md:grid-cols-2 lg:grid-cols-3">
             {jobs.map((job) => (
               <div
                 key={job.id}
-                className="glass-card overflow-hidden group hover:shadow-lg transition-all duration-300"
+                className="group overflow-hidden rounded-[1.8rem] border border-white/10 bg-white/[0.04] p-6 transition-all duration-300 hover:border-[#00C176]/20 hover:bg-white/[0.06]"
               >
-                <div className="p-6">
-                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center mb-4 shadow-lg shadow-emerald-500/20">
-                    <Briefcase className="w-6 h-6 text-white" />
-                  </div>
-                  <h3 className="text-xl font-extrabold text-xf-dark mb-2 group-hover:text-emerald-600 transition">
-                    {isRtl ? job.titleAr : (job.titleEn || job.titleAr)}
-                  </h3>
-                  <p className="text-gray-500 text-sm leading-relaxed mb-6 line-clamp-3">
-                    {isRtl ? job.descriptionAr : (job.descriptionEn || job.descriptionAr)}
-                  </p>
-                  <button
-                    onClick={() => setSelectedJobId(job.id)}
-                    className="btn-primary-xf w-full py-2.5 text-sm inline-flex items-center justify-center gap-2"
-                  >
-                    {isRtl ? 'تقديم على الوظيفة' : 'Apply Now'}
-                    <Send className="w-4 h-4" />
-                  </button>
+                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#00D17F_0%,#009E63_100%)] shadow-[0_18px_40px_rgba(0,193,118,0.26)]">
+                  <Briefcase className="h-6 w-6 text-white" />
                 </div>
+                <h3 className="mb-2 text-xl font-extrabold text-white transition group-hover:text-[#00C176]">
+                  {isRtl ? job.titleAr : (job.titleEn || job.titleAr)}
+                </h3>
+                <p className="mb-6 line-clamp-3 text-sm leading-relaxed text-white/58">
+                  {isRtl ? job.descriptionAr : (job.descriptionEn || job.descriptionAr)}
+                </p>
+                <button
+                  onClick={() => setSelectedJobId(job.id)}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[linear-gradient(135deg,#00D17F_0%,#009E63_100%)] py-2.5 text-sm font-semibold text-white transition hover:brightness-110"
+                >
+                  {isRtl ? 'تقديم على الوظيفة' : 'Apply Now'}
+                  <Send className="h-4 w-4" />
+                </button>
               </div>
             ))}
           </div>
         )}
+        </div>
       </section>
-    </PublicLayout>
+    </CinematicPublicLayout>
   );
 }
 
@@ -116,17 +114,75 @@ function ApplicationForm({ jobId, onBack }: { jobId: number; onBack: () => void 
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
+  const copy = isRtl
+    ? {
+        invalidCvType: 'يرجى رفع ملف بصيغة PDF أو DOC أو DOCX فقط',
+        invalidCvSize: 'حجم الملف يجب ألا يتجاوز 5 ميغابايت',
+        answerAll: 'يرجى الإجابة على جميع الأسئلة',
+        submitError: 'حدث خطأ، يرجى المحاولة مرة أخرى',
+        successTitle: 'تم إرسال طلبك بنجاح!',
+        successBody: 'شكراً لتقديمك. سنراجع طلبك ونتواصل معك قريباً.',
+        backToJobs: 'العودة للوظائف',
+        jobNotFound: 'الوظيفة غير موجودة',
+        goBack: 'العودة',
+        jobApplication: 'تقديم طلب توظيف',
+        basicInfo: 'المعلومات الأساسية',
+        fullName: 'الاسم الكامل',
+        fullNamePlaceholder: 'أدخل اسمك الكامل',
+        email: 'البريد الإلكتروني',
+        phone: 'رقم الهاتف',
+        country: 'الدولة',
+        countryPlaceholder: 'مثال: فلسطين',
+        cvLabel: 'رفع السيرة الذاتية',
+        cvHint: '(PDF / DOC / DOCX — حد أقصى 5MB)',
+        chooseCv: 'اختر ملف السيرة الذاتية',
+        jobQuestions: 'أسئلة الوظيفة',
+        generalQuestions: 'أسئلة عامة',
+        answerPlaceholder: 'اكتب إجابتك هنا...',
+        submitting: 'جاري الإرسال...',
+        submit: 'إرسال الطلب',
+        confidentiality: 'جميع البيانات سرية وتُستخدم لغرض التوظيف فقط.',
+      }
+    : {
+        invalidCvType: 'Please upload a PDF, DOC, or DOCX file only',
+        invalidCvSize: 'The file size must not exceed 5 MB',
+        answerAll: 'Please answer all questions',
+        submitError: 'Something went wrong. Please try again.',
+        successTitle: 'Application submitted successfully!',
+        successBody: 'Thank you for applying. We will review your application and contact you soon.',
+        backToJobs: 'Back to Jobs',
+        jobNotFound: 'Job not found',
+        goBack: 'Go Back',
+        jobApplication: 'Job Application',
+        basicInfo: 'Basic Information',
+        fullName: 'Full name',
+        fullNamePlaceholder: 'Enter your full name',
+        email: 'Email address',
+        phone: 'Phone number',
+        country: 'Country',
+        countryPlaceholder: 'Example: Palestine',
+        cvLabel: 'Upload CV',
+        cvHint: '(PDF / DOC / DOCX — max 5MB)',
+        chooseCv: 'Choose your CV file',
+        jobQuestions: 'Job Questions',
+        generalQuestions: 'General Questions',
+        answerPlaceholder: 'Write your answer here...',
+        submitting: 'Submitting...',
+        submit: 'Submit Application',
+        confidentiality: 'All data is confidential and used for recruitment purposes only.',
+      };
+
   const handleCvChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     if (!ALLOWED_CV_TYPES.includes(file.type)) {
-      toast.error('يرجى رفع ملف بصيغة PDF أو DOC أو DOCX فقط');
+      toast.error(copy.invalidCvType);
       e.target.value = '';
       return;
     }
     if (file.size > MAX_CV_SIZE) {
-      toast.error('حجم الملف يجب ألا يتجاوز 5 ميغابايت');
+      toast.error(copy.invalidCvSize);
       e.target.value = '';
       return;
     }
@@ -154,7 +210,7 @@ function ApplicationForm({ jobId, onBack }: { jobId: number; onBack: () => void 
     // Validate all questions answered
     const unanswered = data.questions.filter(q => !answers[q.id]?.trim());
     if (unanswered.length > 0) {
-      toast.error('يرجى الإجابة على جميع الأسئلة');
+      toast.error(copy.answerAll);
       return;
     }
 
@@ -187,7 +243,7 @@ function ApplicationForm({ jobId, onBack }: { jobId: number; onBack: () => void 
 
       setSubmitted(true);
     } catch (err: any) {
-      toast.error(err.message || 'حدث خطأ، يرجى المحاولة مرة أخرى');
+      toast.error(err.message || copy.submitError);
     } finally {
       setSubmitting(false);
     }
@@ -195,50 +251,50 @@ function ApplicationForm({ jobId, onBack }: { jobId: number; onBack: () => void 
 
   if (submitted) {
     return (
-      <PublicLayout>
-        <div className="flex items-center justify-center py-32">
+      <CinematicPublicLayout>
+        <div className="flex items-center justify-center bg-[#050505] py-32">
           <div className="text-center p-8">
-            <div className="w-20 h-20 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-6">
-              <CheckCircle className="w-10 h-10 text-green-600" />
+            <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-[#00C176]/12">
+              <CheckCircle className="h-10 w-10 text-[#00C176]" />
             </div>
-            <h2 className="text-2xl font-extrabold text-xf-dark mb-2">
-              {isRtl ? 'تم إرسال طلبك بنجاح!' : 'Application submitted successfully!'}
+            <h2 className="mb-2 text-2xl font-extrabold text-white">
+              {copy.successTitle}
             </h2>
-            <p className="text-gray-500 mb-6">
-              {isRtl ? 'شكراً لتقديمك. سنراجع طلبك ونتواصل معك قريباً.' : 'Thank you for applying. We will review your application and contact you soon.'}
+            <p className="mb-6 text-white/58">
+              {copy.successBody}
             </p>
-            <button onClick={onBack} className="px-6 py-2.5 rounded-full border border-gray-200 text-gray-600 hover:text-xf-dark hover:border-xf-dark/20 transition-all text-sm font-medium inline-flex items-center gap-2">
-              <ArrowLeft className="w-4 h-4" />
-              {isRtl ? 'العودة للوظائف' : 'Back to Jobs'}
+            <button onClick={onBack} className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/[0.04] px-6 py-2.5 text-sm font-medium text-white/76 transition-all hover:bg-white/[0.08] hover:text-white">
+              <ArrowLeft className={`h-4 w-4 ${isRtl ? 'rotate-180' : ''}`} />
+              {copy.backToJobs}
             </button>
           </div>
         </div>
-      </PublicLayout>
+      </CinematicPublicLayout>
     );
   }
 
   if (isLoading) {
     return (
-      <PublicLayout>
-        <div className="flex items-center justify-center py-32">
-          <Loader2 className="w-8 h-8 animate-spin text-xf-primary" />
+      <CinematicPublicLayout>
+        <div className="flex items-center justify-center bg-[#050505] py-32">
+          <Loader2 className="h-8 w-8 animate-spin text-[#00C176]" />
         </div>
-      </PublicLayout>
+      </CinematicPublicLayout>
     );
   }
 
   if (!data) {
     return (
-      <PublicLayout>
-        <div className="flex items-center justify-center py-32">
+      <CinematicPublicLayout>
+        <div className="flex items-center justify-center bg-[#050505] py-32">
           <div className="text-center">
-            <p className="text-gray-500 mb-4">{isRtl ? 'الوظيفة غير موجودة' : 'Job not found'}</p>
-            <button onClick={onBack} className="px-6 py-2.5 rounded-full border border-gray-200 text-gray-600 hover:text-xf-dark transition-all text-sm font-medium">
-              {isRtl ? 'العودة' : 'Go Back'}
+            <p className="mb-4 text-white/58">{copy.jobNotFound}</p>
+            <button onClick={onBack} className="rounded-full border border-white/12 bg-white/[0.04] px-6 py-2.5 text-sm font-medium text-white/76 transition-all hover:bg-white/[0.08] hover:text-white">
+              {copy.goBack}
             </button>
           </div>
         </div>
-      </PublicLayout>
+      </CinematicPublicLayout>
     );
   }
 
@@ -248,48 +304,49 @@ function ApplicationForm({ jobId, onBack }: { jobId: number; onBack: () => void 
   const generalQuestions = questions.filter(q => q.jobId === null);
 
   return (
-    <PublicLayout>
-      <section className="container mx-auto px-4 py-12 max-w-2xl">
+    <CinematicPublicLayout>
+      <section className="bg-[#050505] py-12" dir={isRtl ? 'rtl' : 'ltr'}>
+        <div className="container mx-auto max-w-2xl px-4 md:px-8">
         {/* Back button */}
         <button
           onClick={onBack}
-          className="mb-6 px-4 py-2 rounded-full text-sm text-gray-500 hover:text-xf-dark hover:bg-gray-100/80 transition-all inline-flex items-center gap-2"
+          className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/[0.04] px-4 py-2 text-sm text-white/70 transition-all hover:bg-white/[0.08] hover:text-white"
         >
-          <ArrowLeft className="w-4 h-4" />
-          {isRtl ? 'العودة للوظائف' : 'Back to Jobs'}
+          <ArrowLeft className={`h-4 w-4 ${isRtl ? 'rotate-180' : ''}`} />
+          {copy.backToJobs}
         </button>
 
         {/* Job Info */}
-        <div className="rounded-[16px] p-6 mb-8 text-white" style={{ background: 'linear-gradient(135deg, #3b82f6, #4f46e5)', boxShadow: '0 12px 40px rgba(59,130,246,0.2)' }}>
-          <Badge className="bg-white/20 text-white border-0 mb-3">{isRtl ? 'تقديم طلب توظيف' : 'Job Application'}</Badge>
-          <h1 className="text-2xl font-extrabold mb-2">{isRtl ? job.titleAr : (job.titleEn || job.titleAr)}</h1>
-          <p className="text-emerald-100/90 text-sm leading-relaxed">{isRtl ? job.descriptionAr : (job.descriptionEn || job.descriptionAr)}</p>
+        <div className="mb-8 rounded-[24px] border border-white/10 bg-[linear-gradient(135deg,#047857_0%,#0f766e_100%)] p-6 text-white shadow-[0_18px_48px_rgba(0,193,118,0.22)]">
+          <Badge className="mb-3 border-0 bg-white/20 text-white">{copy.jobApplication}</Badge>
+          <h1 className="mb-2 text-2xl font-extrabold">{isRtl ? job.titleAr : (job.titleEn || job.titleAr)}</h1>
+          <p className="text-sm leading-relaxed text-white/86">{isRtl ? job.descriptionAr : (job.descriptionEn || job.descriptionAr)}</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-8">
           {/* Basic Info Section */}
-          <div className="glass-card p-6">
-            <h2 className="text-lg font-extrabold text-xf-dark mb-4 flex items-center gap-2">
-              <User className="w-5 h-5 text-emerald-600" />
-              {isRtl ? 'المعلومات الأساسية' : 'Basic Information'}
+          <div className="rounded-[24px] border border-white/10 bg-[#F6F3EC] p-6 shadow-[0_18px_50px_rgba(15,23,42,0.18)]">
+            <h2 className="mb-4 flex items-center gap-2 text-lg font-extrabold text-xf-dark">
+              <User className="h-5 w-5 text-emerald-600" />
+              {copy.basicInfo}
             </h2>
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  الاسم الكامل <span className="text-red-500">*</span>
+                  {copy.fullName} <span className="text-red-500">*</span>
                 </label>
                 <Input
                   required
                   value={form.applicantName}
                   onChange={(e) => setForm({ ...form, applicantName: e.target.value })}
-                  placeholder="أدخل اسمك الكامل"
-                  dir="rtl"
+                  placeholder={copy.fullNamePlaceholder}
+                  dir={isRtl ? 'rtl' : 'ltr'}
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  <Mail className="w-3.5 h-3.5 inline ml-1" />
-                  البريد الإلكتروني <span className="text-red-500">*</span>
+                  <Mail className={`inline h-3.5 w-3.5 ${isRtl ? 'ml-1' : 'mr-1'}`} />
+                  {copy.email} <span className="text-red-500">*</span>
                 </label>
                 <Input
                   required
@@ -303,8 +360,8 @@ function ApplicationForm({ jobId, onBack }: { jobId: number; onBack: () => void 
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  <Phone className="w-3.5 h-3.5 inline ml-1" />
-                  رقم الهاتف <span className="text-red-500">*</span>
+                  <Phone className={`inline h-3.5 w-3.5 ${isRtl ? 'ml-1' : 'mr-1'}`} />
+                  {copy.phone} <span className="text-red-500">*</span>
                 </label>
                 <Input
                   required
@@ -318,21 +375,21 @@ function ApplicationForm({ jobId, onBack }: { jobId: number; onBack: () => void 
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  <MapPin className="w-3.5 h-3.5 inline ml-1" />
-                  الدولة
+                  <MapPin className={`inline h-3.5 w-3.5 ${isRtl ? 'ml-1' : 'mr-1'}`} />
+                  {copy.country}
                 </label>
                 <Input
                   value={form.country}
                   onChange={(e) => setForm({ ...form, country: e.target.value })}
-                  placeholder="مثال: فلسطين"
-                  dir="rtl"
+                  placeholder={copy.countryPlaceholder}
+                  dir={isRtl ? 'rtl' : 'ltr'}
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  <FileText className="w-3.5 h-3.5 inline ml-1" />
-                  رفع السيرة الذاتية
-                  <span className="text-xs text-gray-400 mr-2">(PDF / DOC / DOCX — حد أقصى 5MB)</span>
+                  <FileText className={`inline h-3.5 w-3.5 ${isRtl ? 'ml-1' : 'mr-1'}`} />
+                  {copy.cvLabel}
+                  <span className={`text-xs text-gray-400 ${isRtl ? 'mr-2' : 'ml-2'}`}>{copy.cvHint}</span>
                 </label>
                 <div className="relative">
                   <input
@@ -346,9 +403,9 @@ function ApplicationForm({ jobId, onBack }: { jobId: number; onBack: () => void 
                     htmlFor="cv-upload"
                     className="flex items-center gap-3 px-4 py-3 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-emerald-400 hover:bg-emerald-50/50 transition"
                   >
-                    <Upload className="w-5 h-5 text-gray-400" />
+                    <Upload className="h-5 w-5 text-gray-400" />
                     <span className="text-sm text-gray-500">
-                      {cvFile ? cvFile.name : 'اختر ملف السيرة الذاتية'}
+                      {cvFile ? cvFile.name : copy.chooseCv}
                     </span>
                   </label>
                 </div>
@@ -358,24 +415,24 @@ function ApplicationForm({ jobId, onBack }: { jobId: number; onBack: () => void 
 
           {/* Job-Specific Questions */}
           {jobQuestions.length > 0 && (
-            <div className="glass-card p-6">
-              <h2 className="text-lg font-extrabold text-xf-dark mb-4 flex items-center gap-2">
-                <Briefcase className="w-5 h-5 text-emerald-600" />
-                {isRtl ? 'أسئلة الوظيفة' : 'Job Questions'}
+            <div className="rounded-[24px] border border-white/10 bg-[#F6F3EC] p-6 shadow-[0_18px_50px_rgba(15,23,42,0.18)]">
+              <h2 className="mb-4 flex items-center gap-2 text-lg font-extrabold text-xf-dark">
+                <Briefcase className="h-5 w-5 text-emerald-600" />
+                {copy.jobQuestions}
               </h2>
               <div className="space-y-5">
                 {jobQuestions.map((q, idx) => (
                   <div key={q.id}>
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                      {idx + 1}. {q.questionAr} <span className="text-red-500">*</span>
+                      {idx + 1}. {isRtl ? q.questionAr : (q.questionEn || q.questionAr)} <span className="text-red-500">*</span>
                     </label>
                     <textarea
                       required
                       className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm resize-y min-h-[80px] focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 transition"
                       value={answers[q.id] || ''}
                       onChange={(e) => setAnswers({ ...answers, [q.id]: e.target.value })}
-                      placeholder="اكتب إجابتك هنا..."
-                      dir="rtl"
+                      placeholder={copy.answerPlaceholder}
+                      dir={isRtl ? 'rtl' : 'ltr'}
                     />
                   </div>
                 ))}
@@ -385,24 +442,24 @@ function ApplicationForm({ jobId, onBack }: { jobId: number; onBack: () => void 
 
           {/* General Questions */}
           {generalQuestions.length > 0 && (
-            <div className="glass-card p-6">
-              <h2 className="text-lg font-extrabold text-xf-dark mb-4 flex items-center gap-2">
-                <Briefcase className="w-5 h-5 text-emerald-600" />
-                {isRtl ? 'أسئلة عامة' : 'General Questions'}
+            <div className="rounded-[24px] border border-white/10 bg-[#F6F3EC] p-6 shadow-[0_18px_50px_rgba(15,23,42,0.18)]">
+              <h2 className="mb-4 flex items-center gap-2 text-lg font-extrabold text-xf-dark">
+                <Briefcase className="h-5 w-5 text-emerald-600" />
+                {copy.generalQuestions}
               </h2>
               <div className="space-y-5">
                 {generalQuestions.map((q, idx) => (
                   <div key={q.id}>
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                      {idx + 1}. {q.questionAr} <span className="text-red-500">*</span>
+                      {idx + 1}. {isRtl ? q.questionAr : (q.questionEn || q.questionAr)} <span className="text-red-500">*</span>
                     </label>
                     <textarea
                       required
                       className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm resize-y min-h-[80px] focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 transition"
                       value={answers[q.id] || ''}
                       onChange={(e) => setAnswers({ ...answers, [q.id]: e.target.value })}
-                      placeholder="اكتب إجابتك هنا..."
-                      dir="rtl"
+                      placeholder={copy.answerPlaceholder}
+                      dir={isRtl ? 'rtl' : 'ltr'}
                     />
                   </div>
                 ))}
@@ -413,27 +470,28 @@ function ApplicationForm({ jobId, onBack }: { jobId: number; onBack: () => void 
           {/* Submit */}
           <button
             type="submit"
-            className="btn-primary-xf w-full py-3.5 text-base inline-flex items-center justify-center gap-2"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[linear-gradient(135deg,#00D17F_0%,#009E63_100%)] py-3.5 text-base font-semibold text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
             disabled={submitting}
           >
             {submitting ? (
               <>
-                <Loader2 className="w-5 h-5 animate-spin" />
-                {isRtl ? 'جاري الإرسال...' : 'Submitting...'}
+                <Loader2 className="h-5 w-5 animate-spin" />
+                {copy.submitting}
               </>
             ) : (
               <>
-                <Send className="w-5 h-5" />
-                {isRtl ? 'إرسال الطلب' : 'Submit Application'}
+                <Send className="h-5 w-5" />
+                {copy.submit}
               </>
             )}
           </button>
         </form>
 
-        <p className="text-xs text-gray-400 text-center mt-6">
-          {isRtl ? 'جميع البيانات سرية وتُستخدم لغرض التوظيف فقط.' : 'All data is confidential and used for recruitment purposes only.'}
+        <p className="mt-6 text-center text-xs text-white/36">
+          {copy.confidentiality}
         </p>
+        </div>
       </section>
-    </PublicLayout>
+    </CinematicPublicLayout>
   );
 }
