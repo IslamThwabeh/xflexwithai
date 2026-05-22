@@ -33,7 +33,7 @@ export default function PublicLayout({ children }: { children: ReactNode }) {
     { href: '/free-content', label: t('home.footer.freeContent') },
     { href: '/faq', label: language === 'ar' ? 'الأسئلة الشائعة' : 'FAQ' },
     { href: '/careers', label: language === 'ar' ? 'وظائف' : 'Careers' },
-    { href: '/#contact', label: language === 'ar' ? 'تواصل معنا' : 'Contact' },
+    { href: '/contact', label: language === 'ar' ? 'تواصل معنا' : 'Contact' },
   ];
 
   const isActive = (href: string) => {

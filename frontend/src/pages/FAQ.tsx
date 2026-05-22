@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { HelpCircle, ChevronDown } from 'lucide-react';
+import { Link } from 'wouter';
+import { HelpCircle, ChevronDown, ArrowUpRight } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
-import PublicLayout from '@/components/PublicLayout';
+import CinematicPublicLayout from '@/components/public/CinematicPublicLayout';
 
 interface FAQItem {
   qAr: string;
@@ -123,18 +124,18 @@ const faqItems: FAQItem[] = [
 
 function FAQAccordionItem({ item, isRtl, isOpen, toggle }: { item: FAQItem; isRtl: boolean; isOpen: boolean; toggle: () => void }) {
   return (
-    <div className="glass-card overflow-hidden transition-all hover:shadow-md">
+    <div className={`overflow-hidden rounded-[1.6rem] border transition-all duration-300 ${isOpen ? 'border-[#00C176]/24 bg-white/[0.07]' : 'border-white/10 bg-white/[0.04] hover:bg-white/[0.06]'}`}>
       <button
         onClick={toggle}
-        className="w-full flex items-center justify-between gap-3 p-5 text-start hover:bg-white/40 transition-colors"
+        className="flex w-full items-center justify-between gap-3 p-5 text-start transition-colors hover:bg-white/[0.03] md:p-6"
       >
-        <span className="font-semibold text-xf-dark text-[15px] leading-relaxed">
+        <span className="text-[15px] font-semibold leading-relaxed text-white md:text-base">
           {isRtl ? item.qAr : item.qEn}
         </span>
-        <ChevronDown className={`w-5 h-5 text-gray-400 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+        <ChevronDown className={`h-5 w-5 shrink-0 text-white/42 transition-transform duration-200 ${isOpen ? 'rotate-180 text-[#00C176]' : ''}`} />
       </button>
       {isOpen && (
-        <div className="px-5 pb-5 text-sm text-gray-600 leading-relaxed border-t border-gray-100/60 pt-4">
+        <div className="border-t border-white/8 px-5 pb-5 pt-4 text-sm leading-7 text-white/62 md:px-6 md:pb-6">
           {isRtl ? item.aAr : item.aEn}
         </div>
       )}
@@ -148,28 +149,34 @@ export default function FAQ() {
   const [openIndex, setOpenIndex] = useState<number | null>(0);
 
   return (
-    <PublicLayout>
-      {/* Hero */}
-      <section className="relative overflow-hidden text-white py-20 md:py-28" style={{ background: 'linear-gradient(135deg, var(--color-xf-dark) 0%, #1e1b4b 50%, #312e81 100%)' }}>
-        <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse 60% 50% at 50% 50%, rgba(99,102,241,0.15), transparent)' }} />
-        <div className="absolute top-10 left-10 w-72 h-72 bg-emerald-500/10 rounded-full blur-[80px]" />
-        <div className="absolute bottom-10 right-10 w-96 h-96 bg-amber-500/8 rounded-full blur-[100px]" />
-        <div className="relative container mx-auto px-4 text-center">
-          <div className="flex items-center justify-center gap-3 mb-4">
-            <HelpCircle className="w-8 h-8 text-emerald-300" />
-            <h1 className="text-3xl md:text-5xl font-extrabold tracking-[-0.5px]">
-              {isRtl ? 'الأسئلة الشائعة' : 'Frequently Asked Questions'}
+    <CinematicPublicLayout>
+      <section className="relative overflow-hidden bg-[#050505] py-20 text-white md:py-28">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(0,193,118,0.12),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(200,169,107,0.10),transparent_30%)]" />
+        <div className="absolute left-[-4rem] top-10 h-72 w-72 rounded-full bg-emerald-500/10 blur-[90px]" />
+        <div className="absolute bottom-0 right-[-5rem] h-96 w-96 rounded-full bg-amber-400/10 blur-[120px]" />
+
+        <div className="relative container mx-auto max-w-5xl px-4 text-center md:px-8">
+          <div className="mx-auto inline-flex items-center gap-2 rounded-full border border-[#00C176]/24 bg-[#00C176]/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-[#00C176]">
+            <span className="h-1.5 w-1.5 rounded-full bg-[#00C176]" style={{ boxShadow: '0 0 8px #00C176' }} />
+            {isRtl ? 'الأسئلة الشائعة' : 'FAQ'}
+          </div>
+          <div className="mt-6 flex items-center justify-center gap-3">
+            <HelpCircle className="h-8 w-8 text-[#00C176] md:h-10 md:w-10" />
+            <h1 className="text-3xl font-extrabold tracking-[-0.03em] md:text-5xl">
+              {isRtl ? 'أسئلة تتكرر كثيرًا قبل البدء' : 'Questions people keep asking before they start'}
             </h1>
           </div>
-          <p className="text-emerald-200/80 text-lg max-w-lg mx-auto">
-            {isRtl ? 'إجابات على أكثر الأسئلة شيوعًا حول التداول والأكاديمية' : 'Answers to the most common questions about trading and the Academy'}
+          <p className="mx-auto mt-5 max-w-2xl text-base leading-8 text-white/62 md:text-lg">
+            {isRtl
+              ? 'جمعنا هنا الإجابات التي تختصر التردد والالتباس: ما الذي تقدمه الأكاديمية، ما الذي لا تعد به، وكيف تدخل السوق بعقلية أوضح.'
+              : 'This page collects the answers that remove hesitation and confusion: what the academy offers, what it does not promise, and how to enter the market with a clearer mindset.'}
           </p>
         </div>
       </section>
 
-      {/* FAQ List */}
-      <section className="container mx-auto px-4 py-16 max-w-3xl">
-        <div className="space-y-3">
+      <section className="bg-[#050505] pb-16">
+        <div className="container mx-auto max-w-4xl px-4 md:px-8">
+          <div className="space-y-3">
           {faqItems.map((item, i) => (
             <FAQAccordionItem
               key={i}
@@ -179,24 +186,36 @@ export default function FAQ() {
               toggle={() => setOpenIndex(openIndex === i ? null : i)}
             />
           ))}
-        </div>
+          </div>
 
-        {/* CTA */}
-        <div className="mt-14 text-center glass-card p-10">
-          <h3 className="text-xl font-extrabold text-xf-dark mb-2">
-            {isRtl ? 'لم تجد إجابة لسؤالك؟' : "Didn't find an answer?"}
-          </h3>
-          <p className="text-sm text-gray-500 mb-6">
-            {isRtl ? 'تواصل معنا وسنرد عليك في أقرب وقت' : "Contact us and we'll get back to you soon"}
-          </p>
-          <div className="flex flex-wrap justify-center gap-3">
-            <a href="https://wa.me/972597596030" target="_blank" rel="noopener noreferrer"
-              className="btn-primary-xf px-6 py-2.5 text-sm inline-flex items-center gap-2">
-              WhatsApp
-            </a>
+          <div className="mt-14 rounded-[2rem] border border-white/10 bg-white/[0.04] p-8 text-center backdrop-blur-sm md:p-10">
+            <h2 className="text-xl font-extrabold text-white md:text-2xl">
+              {isRtl ? 'لم تجد إجابة لسؤالك؟' : "Didn't find your answer?"}
+            </h2>
+            <p className="mx-auto mt-3 max-w-xl text-sm leading-7 text-white/62">
+              {isRtl
+                ? 'إذا كان سؤالك متعلقًا بالباقات أو التسجيل أو الوصول، يمكنك مراسلتنا مباشرة أو الانتقال إلى صفحة التواصل.'
+                : 'If your question is about packages, registration, or access, message us directly or continue to the contact page.'}
+            </p>
+            <div className="mt-6 flex flex-wrap justify-center gap-3">
+              <a
+                href="https://wa.me/972597596030"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-emerald-500 to-teal-600 px-6 py-3 text-sm font-semibold text-white shadow-[0_14px_36px_rgba(0,193,118,0.28)] transition hover:translate-y-[-2px]"
+              >
+                WhatsApp
+                <ArrowUpRight className="h-4 w-4" />
+              </a>
+              <Link href="/contact">
+                <a className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/[0.04] px-6 py-3 text-sm font-semibold text-white transition hover:border-[#00C176]/30 hover:bg-white/[0.08]">
+                  {isRtl ? 'اذهب إلى صفحة التواصل' : 'Go to contact page'}
+                </a>
+              </Link>
+            </div>
           </div>
         </div>
       </section>
-    </PublicLayout>
+    </CinematicPublicLayout>
   );
 }

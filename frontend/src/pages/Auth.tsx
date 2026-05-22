@@ -7,9 +7,9 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Loader2, ArrowLeft, Mail, KeyRound } from "lucide-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { ArrowLeft, KeyRound, Loader2, Mail, ShieldCheck, Sparkles, TrendingUp } from "lucide-react";
 import { getStaffLandingPage } from "@shared/const";
+import CinematicPublicLayout from "@/components/public/CinematicPublicLayout";
 
 function shouldOpenRegisterByDefault() {
   if (typeof window === "undefined") return false;
@@ -28,7 +28,7 @@ function shouldOpenRegisterByDefault() {
 
 export default function Auth() {
   const { t, language } = useLanguage();
-  const isRtl = language === 'ar';
+  const isRtl = language === "ar";
   const [showLogin, setShowLogin] = useState(() => !shouldOpenRegisterByDefault());
   const [loginMethod, setLoginMethod] = useState<"code" | "password">("code");
   const [otpStep, setOtpStep] = useState<"request" | "verify">("request");
@@ -51,7 +51,6 @@ export default function Auth() {
     return next;
   }, [location]);
 
-  // Capture referral code from URL and persist in localStorage
   const referralCode = useMemo(() => {
     if (typeof window === "undefined") return null;
     const ref = new URLSearchParams(window.location.search).get("ref");
@@ -93,18 +92,16 @@ export default function Auth() {
 
   useEffect(() => {
     if (!prefillEmail) return;
-    setOtpEmail(prev => (prev ? prev : prefillEmail));
+    setOtpEmail((prev) => (prev ? prev : prefillEmail));
   }, [prefillEmail]);
 
-  // Show toast when redirected due to idle timeout
   const idleToastShown = useRef(false);
   useEffect(() => {
     if (idleToastShown.current) return;
     const params = new URLSearchParams(window.location.search);
     if (params.get("reason") === "idle") {
       idleToastShown.current = true;
-      toast.warning(isRtl ? 'انتهت الجلسة بسبب عدم النشاط. يرجى تسجيل الدخول مرة أخرى.' : 'Session expired due to inactivity. Please log in again.');
-      // Clean up the URL
+      toast.warning(isRtl ? "انتهت الجلسة بسبب عدم النشاط. يرجى تسجيل الدخول مرة أخرى." : "Session expired due to inactivity. Please log in again.");
       params.delete("reason");
       const clean = params.toString();
       window.history.replaceState({}, "", window.location.pathname + (clean ? `?${clean}` : ""));
@@ -117,8 +114,6 @@ export default function Auth() {
     refetchOnWindowFocus: false,
   });
 
-  // If an admin session is detected on the student login page, clear it
-  // so the student login form shows (admins have their own /admin page)
   useEffect(() => {
     if (loading || checkingAdmin || clearingAdmin) return;
     if (!isAuthenticated) return;
@@ -129,7 +124,6 @@ export default function Auth() {
       return;
     }
 
-    // Staff users go to admin panel (role-filtered sidebar)
     if (adminCheck?.isStaff) {
       const staffRoles: string[] = adminCheck.staffRoles ?? [];
       const landing = getStaffLandingPage(staffRoles);
@@ -138,7 +132,7 @@ export default function Auth() {
     }
 
     setLocation(nextPath ?? "/courses");
-  }, [adminCheck?.isAdmin, checkingAdmin, isAuthenticated, loading, nextPath, setLocation, clearingAdmin, logout]);
+  }, [adminCheck?.isAdmin, adminCheck?.isStaff, adminCheck?.staffRoles, checkingAdmin, isAuthenticated, loading, nextPath, setLocation, clearingAdmin, logout]);
 
   const requestLoginCode = trpc.auth.requestLoginCode.useMutation();
   const verifyLoginCode = trpc.auth.verifyLoginCode.useMutation();
@@ -146,7 +140,7 @@ export default function Auth() {
   useEffect(() => {
     if (resendCooldownSec <= 0) return;
     const id = window.setInterval(() => {
-      setResendCooldownSec(prev => (prev > 0 ? prev - 1 : 0));
+      setResendCooldownSec((prev) => (prev > 0 ? prev - 1 : 0));
     }, 1000);
     return () => window.clearInterval(id);
   }, [resendCooldownSec]);
@@ -156,7 +150,7 @@ export default function Auth() {
     setOtpMessage(null);
     const email = otpEmail.trim();
     if (!email) {
-      setOtpError(t('auth.page.code.emailRequired'));
+      setOtpError(t("auth.page.code.emailRequired"));
       return;
     }
 
@@ -168,9 +162,9 @@ export default function Auth() {
       await requestLoginCode.mutateAsync({ email });
       setOtpStep("verify");
       setResendCooldownSec(30);
-      setOtpMessage(t('auth.page.code.sentMessage'));
+      setOtpMessage(t("auth.page.code.sentMessage"));
     } catch (e: any) {
-      setOtpError(e?.message || t('auth.page.code.sendFailed'));
+      setOtpError(e?.message || t("auth.page.code.sendFailed"));
     }
   };
 
@@ -181,28 +175,26 @@ export default function Auth() {
     const code = otpCode.trim();
 
     if (!email) {
-      setOtpError(t('auth.page.code.emailRequired'));
+      setOtpError(t("auth.page.code.emailRequired"));
       return;
     }
     if (!code) {
-      setOtpError(t('auth.page.code.codeRequired'));
+      setOtpError(t("auth.page.code.codeRequired"));
       return;
     }
 
     try {
       const result = await verifyLoginCode.mutateAsync({ email, code });
-      // Staff users redirect to their first accessible admin page
       if (result.isStaff) {
         window.location.href = getStaffLandingPage(result.staffRoles ?? []);
       } else {
         window.location.href = nextPath ?? "/courses";
       }
     } catch (e: any) {
-      setOtpError(e?.message || t('auth.page.code.invalid'));
+      setOtpError(e?.message || t("auth.page.code.invalid"));
     }
   };
 
-  /* ─── Auto-submit OTP when 6 digits filled (Safari autofill + paste) ─── */
   const handleVerifyCodeRef = useRef(handleVerifyCode);
   handleVerifyCodeRef.current = handleVerifyCode;
 
@@ -227,197 +219,256 @@ export default function Auth() {
     else handleVerifyCode();
   };
 
+  const authHighlights = isRtl
+    ? [
+        { icon: TrendingUp, title: "بوابة دخول واحدة", body: "الدخول والتسجيل الآن داخل نفس اللغة البصرية الجديدة حتى لا تنكسر التجربة بين الصفحة الرئيسية والحساب." },
+        { icon: ShieldCheck, title: "دخول آمن وواضح", body: "رمز تحقق أو كلمة مرور بحسب حالتك، مع الحفاظ على نفس سلوك التحويلات الحالية دون تغيير." },
+        { icon: Sparkles, title: "مهيأ للخطوات القادمة", body: "هذا هو أول تطبيق لنفس طابع test2 على الصفحات العامة قبل التوسع لبقية المسارات." },
+      ]
+    : [
+        { icon: TrendingUp, title: "One clear entry point", body: "Login and signup now live inside the same visual language as the new homepage, so the public journey feels consistent." },
+        { icon: ShieldCheck, title: "Secure, familiar access", body: "OTP or password login stays exactly as it works now, without changing redirects or account behavior." },
+        { icon: Sparkles, title: "Ready for the next rollout", body: "This is the first applied slice of the test2 language before the rest of the public pages follow." },
+      ];
+
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center relative overflow-hidden bg-[var(--color-xf-cream)]">
-      {/* Decorative orbs */}
-      <div className="absolute top-[-20%] left-[-10%] w-[500px] h-[500px] rounded-full opacity-[0.07] blur-3xl pointer-events-none" style={{ background: 'radial-gradient(circle, var(--color-xf-primary), transparent 70%)', animation: 'pulse 6s ease-in-out infinite' }} />
-      <div className="absolute bottom-[-20%] right-[-10%] w-[600px] h-[600px] rounded-full opacity-[0.06] blur-3xl pointer-events-none" style={{ background: 'radial-gradient(circle, var(--color-xf-accent), transparent 70%)', animation: 'pulse 6s ease-in-out infinite 3s' }} />
+    <CinematicPublicLayout primaryAction={null}>
+      <section className="relative overflow-hidden py-10 md:py-14" dir={isRtl ? "rtl" : "ltr"}>
+        <div className="container mx-auto px-4 md:px-8">
+          <div className="grid gap-10 lg:grid-cols-[0.92fr_1.08fr] lg:items-center">
+            <div className="max-w-xl">
+              <div className="inline-flex items-center gap-2 rounded-full border border-[#00C176]/25 bg-[#00C176]/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-[#00C176]">
+                <span className="h-1.5 w-1.5 rounded-full bg-[#00C176]" style={{ boxShadow: "0 0 8px #00C176" }} />
+                {isRtl ? "الدخول إلى XFlex" : "Access XFlex"}
+              </div>
 
-      <div className="relative z-10 w-full max-w-md px-4">
-        {/* Logo */}
-        <div className="mb-8 text-center">
-          <Link href="/">
-            <h1 className="text-3xl font-bold text-[var(--color-xf-dark)] cursor-pointer hover:text-[var(--color-xf-primary)] transition-colors tracking-tight">
-              {APP_TITLE}
-            </h1>
-          </Link>
-          <p className="text-[var(--color-xf-dark)]/50 mt-2 text-sm">{t('auth.page.tagline')}</p>
-        </div>
+              <h1 className="mt-6 text-4xl font-extrabold leading-[1.08] tracking-[-0.03em] text-white md:text-5xl">
+                {isRtl ? "ابدأ من نفس الجو العام الجديد." : "Start inside the new visual language."}
+              </h1>
+              <p className="mt-5 text-base leading-8 text-white/62 md:text-lg">
+                {isRtl
+                  ? "هذه الصفحة هي أول خطوة لتطبيق هوية test2 على المسارات العامة: دخول أو تسجيل من دون فقدان وضوح النموذج أو سلاسة الوصول."
+                  : "This page is the first applied step of the test2 identity across public journeys: login or signup without losing clarity, speed, or trust."}
+              </p>
 
-        {/* Card */}
-        <div className="backdrop-blur-xl bg-white/80 border border-black/[0.06] rounded-2xl shadow-xl overflow-hidden">
-
-      {referralCode && !showLogin ? (
-        <div className="border-b border-emerald-100 bg-emerald-50 px-6 py-3 text-sm text-emerald-700 sm:px-8">
-          {t('auth.register.title')}: {referralCode}
-        </div>
-      ) : null}
-
-      {showLogin ? (
-        <div className="p-6 sm:p-8">
-          {/* Login method toggle */}
-          <div className="flex gap-2 mb-6">
-            <button
-              type="button"
-              onClick={() => { setLoginMethod("code"); setOtpError(null); setOtpMessage(null); }}
-              className={`flex-1 py-2.5 px-4 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-1.5 ${
-                loginMethod === "code"
-                  ? "bg-[var(--color-xf-primary)] text-white shadow-lg shadow-emerald-500/25"
-                  : "bg-black/[0.04] text-[var(--color-xf-dark)]/50 hover:bg-black/[0.08] hover:text-[var(--color-xf-dark)]/70"
-              }`}
-            >
-              <Mail className="h-4 w-4" />
-              {t('auth.page.loginMethod.code')}
-            </button>
-            <button
-              type="button"
-              onClick={() => { setLoginMethod("password"); setOtpError(null); setOtpMessage(null); }}
-              className={`flex-1 py-2.5 px-4 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-1.5 ${
-                loginMethod === "password"
-                  ? "bg-[var(--color-xf-primary)] text-white shadow-lg shadow-emerald-500/25"
-                  : "bg-black/[0.04] text-[var(--color-xf-dark)]/50 hover:bg-black/[0.08] hover:text-[var(--color-xf-dark)]/70"
-              }`}
-            >
-              <KeyRound className="h-4 w-4" />
-              {t('auth.page.loginMethod.password')}
-            </button>
-          </div>
-
-          {loginMethod === "code" ? (
-                <form onSubmit={handleOtpFormSubmit}>
-                  <h2 className="text-xl font-semibold text-[var(--color-xf-dark)] mb-1">{t('auth.page.code.title')}</h2>
-                  <p className="text-[var(--color-xf-dark)]/40 text-sm mb-5">{t('auth.page.code.description')}</p>
-
-                  {otpError && (
-                    <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-4 text-red-700 text-sm">{otpError}</div>
-                  )}
-                  {otpMessage && (
-                    <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 mb-4 text-emerald-700 text-sm">{otpMessage}</div>
-                  )}
-
-                  <div className="space-y-4">
-                    <div>
-                      <label htmlFor="otpEmail" className="block text-sm font-medium text-[var(--color-xf-dark)]/60 mb-1.5">{t('auth.page.code.email')}</label>
-                      <input
-                        id="otpEmail"
-                        name="email"
-                        type="email"
-                        autoComplete="email"
-                        value={otpEmail}
-                        onChange={e => setOtpEmail(e.target.value)}
-                        placeholder="name@example.com"
-                        dir="ltr"
-                        className="w-full px-4 py-3 rounded-xl bg-black/[0.03] border border-black/[0.08] text-[var(--color-xf-dark)] placeholder:text-black/25 focus:outline-none focus:ring-2 focus:ring-[var(--color-xf-primary)]/40 focus:border-[var(--color-xf-primary)]/40 transition-all"
-                      />
-                    </div>
-
-                    {otpStep === "verify" && (
-                      <div>
-                        <label htmlFor="otpCode" className="block text-sm font-medium text-[var(--color-xf-dark)]/60 mb-1.5">{t('auth.page.code.code')}</label>
-                        <input
-                          id="otpCode"
-                          name="otp"
-                          inputMode="numeric"
-                          autoComplete="one-time-code"
-                          value={otpCode}
-                          onChange={e => {
-                            const val = e.target.value.replace(/\D/g, "").slice(0, 6);
-                            setOtpCode(val);
-                          }}
-                          placeholder="000000"
-                          dir="ltr"
-                          maxLength={6}
-                          autoFocus
-                          className="w-full px-4 py-3.5 rounded-xl bg-black/[0.03] border border-black/[0.08] text-[var(--color-xf-dark)] placeholder:text-black/15 focus:outline-none focus:ring-2 focus:ring-[var(--color-xf-primary)]/40 focus:border-[var(--color-xf-primary)]/40 transition-all text-center text-xl tracking-[0.35em] font-mono"
-                        />
+              <div className="mt-8 grid gap-3">
+                {authHighlights.map(({ icon: Icon, title, body }) => (
+                  <div key={title} className="rounded-[1.6rem] border border-white/10 bg-white/[0.04] p-4 backdrop-blur-sm">
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[#00C176]/12">
+                        <Icon className="h-4.5 w-4.5 text-[#00C176]" />
                       </div>
-                    )}
-
-                    <div className="flex gap-2 pt-1">
-                      {otpStep === "request" ? (
-                        <button
-                          type="submit"
-                          className="flex-1 py-3 rounded-xl bg-[var(--color-xf-primary)] text-white font-semibold hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-emerald-500/20"
-                          disabled={requestLoginCode.isPending || resendCooldownSec > 0}
-                        >
-                          {requestLoginCode.isPending ? (
-                            <Loader2 className="h-5 w-5 animate-spin mx-auto" />
-                          ) : resendCooldownSec > 0 ? (
-                            `${t('auth.page.code.send')} (${resendCooldownSec}s)`
-                          ) : (
-                            t('auth.page.code.send')
-                          )}
-                        </button>
-                      ) : (
-                        <>
-                          <button
-                            type="button"
-                            className="flex-1 py-3 rounded-xl bg-black/[0.04] text-[var(--color-xf-dark)]/60 font-medium hover:bg-black/[0.08] hover:text-[var(--color-xf-dark)]/80 transition-all disabled:opacity-40"
-                            onClick={handleSendCode}
-                            disabled={requestLoginCode.isPending || resendCooldownSec > 0}
-                          >
-                            {resendCooldownSec > 0 ? `${t('auth.page.code.resend')} (${resendCooldownSec}s)` : t('auth.page.code.resend')}
-                          </button>
-                          <button
-                            type="submit"
-                            className="flex-1 py-3 rounded-xl bg-[var(--color-xf-primary)] text-white font-semibold hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-50 shadow-lg shadow-emerald-500/20"
-                            disabled={verifyLoginCode.isPending}
-                          >
-                            {verifyLoginCode.isPending ? (
-                              <Loader2 className="h-5 w-5 animate-spin mx-auto" />
-                            ) : (
-                              t('auth.page.code.verify')
-                            )}
-                          </button>
-                        </>
-                      )}
+                      <div>
+                        <p className="text-sm font-bold text-white">{title}</p>
+                        <p className="mt-1.5 text-sm leading-6 text-white/56">{body}</p>
+                      </div>
                     </div>
                   </div>
-                </form>
-          ) : (
-            <LoginForm
-              onRequireOtp={(email, message) => {
-                setOtpEmail(email);
-                setOtpStep("verify");
-                setLoginMethod("code");
-                setOtpCode("");
-                setOtpError(null);
-                setOtpMessage(message || t('auth.page.code.stepUpFallback'));
-              }}
-            />
-          )}
-        </div>
-      ) : (
-        <div className="p-6 sm:p-8">
-          <RegisterForm referralCode={referralCode} />
-        </div>
-      )}
+                ))}
+              </div>
+            </div>
 
-        </div>
+            <div className="w-full max-w-md lg:ms-auto">
+              <div className="rounded-[2rem] border border-white/10 bg-white/[0.96] p-1 shadow-[0_28px_90px_rgba(0,0,0,0.34)] backdrop-blur-xl">
+                <div className="rounded-[1.7rem] bg-white px-4 py-6 sm:px-6 sm:py-8">
+                  <div className="mb-8 text-center">
+                    <Link href="/">
+                      <h2 className="cursor-pointer text-3xl font-bold tracking-tight text-[var(--color-xf-dark)] transition-colors hover:text-[var(--color-xf-primary)]">
+                        {APP_TITLE}
+                      </h2>
+                    </Link>
+                    <p className="mt-2 text-sm text-[var(--color-xf-dark)]/50">{t("auth.page.tagline")}</p>
+                  </div>
 
-        {/* Toggle login/register */}
-        <div className="mt-6 text-center">
-          <button
-            type="button"
-            onClick={() => setShowLogin(!showLogin)}
-            className="text-[var(--color-xf-dark)]/40 hover:text-[var(--color-xf-dark)]/70 transition-colors text-sm"
-          >
-            {showLogin ? (
-              <>{t('auth.page.switchToRegister')} <span className="font-semibold text-[var(--color-xf-primary)] ml-1">{t('auth.page.signUp')}</span></>
-            ) : (
-              <>{t('auth.page.switchToLogin')} <span className="font-semibold text-[var(--color-xf-primary)] ml-1">{t('auth.page.signIn')}</span></>
-            )}
-          </button>
-        </div>
+                  <div className="overflow-hidden rounded-[1.45rem] border border-black/[0.06] bg-white shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
+                    {referralCode && !showLogin ? (
+                      <div className="border-b border-emerald-100 bg-emerald-50 px-6 py-3 text-sm text-emerald-700 sm:px-8">
+                        {t("auth.register.title")}: {referralCode}
+                      </div>
+                    ) : null}
 
-        {/* Back to home */}
-        <div className="mt-4 text-center">
-          <Link href="/" className="inline-flex items-center gap-1.5 text-[var(--color-xf-dark)]/30 hover:text-[var(--color-xf-dark)]/60 transition-colors text-sm">
-            <ArrowLeft className="h-4 w-4" />
-            {t('auth.page.backToHome')}
-          </Link>
+                    {showLogin ? (
+                      <div className="p-6 sm:p-8">
+                        <div className="mb-6 flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setLoginMethod("code");
+                              setOtpError(null);
+                              setOtpMessage(null);
+                            }}
+                            className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-medium transition-all ${
+                              loginMethod === "code"
+                                ? "bg-[var(--color-xf-primary)] text-white shadow-lg shadow-emerald-500/25"
+                                : "bg-black/[0.04] text-[var(--color-xf-dark)]/50 hover:bg-black/[0.08] hover:text-[var(--color-xf-dark)]/70"
+                            }`}
+                          >
+                            <Mail className="h-4 w-4" />
+                            {t("auth.page.loginMethod.code")}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setLoginMethod("password");
+                              setOtpError(null);
+                              setOtpMessage(null);
+                            }}
+                            className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-medium transition-all ${
+                              loginMethod === "password"
+                                ? "bg-[var(--color-xf-primary)] text-white shadow-lg shadow-emerald-500/25"
+                                : "bg-black/[0.04] text-[var(--color-xf-dark)]/50 hover:bg-black/[0.08] hover:text-[var(--color-xf-dark)]/70"
+                            }`}
+                          >
+                            <KeyRound className="h-4 w-4" />
+                            {t("auth.page.loginMethod.password")}
+                          </button>
+                        </div>
+
+                        {loginMethod === "code" ? (
+                          <form onSubmit={handleOtpFormSubmit}>
+                            <h2 className="mb-1 text-xl font-semibold text-[var(--color-xf-dark)]">{t("auth.page.code.title")}</h2>
+                            <p className="mb-5 text-sm text-[var(--color-xf-dark)]/40">{t("auth.page.code.description")}</p>
+
+                            {otpError ? (
+                              <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{otpError}</div>
+                            ) : null}
+                            {otpMessage ? (
+                              <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{otpMessage}</div>
+                            ) : null}
+
+                            <div className="space-y-4">
+                              <div>
+                                <label htmlFor="otpEmail" className="mb-1.5 block text-sm font-medium text-[var(--color-xf-dark)]/60">
+                                  {t("auth.page.code.email")}
+                                </label>
+                                <input
+                                  id="otpEmail"
+                                  name="email"
+                                  type="email"
+                                  autoComplete="email"
+                                  value={otpEmail}
+                                  onChange={(e) => setOtpEmail(e.target.value)}
+                                  placeholder="name@example.com"
+                                  dir="ltr"
+                                  className="w-full rounded-xl border border-black/[0.08] bg-black/[0.03] px-4 py-3 text-[var(--color-xf-dark)] placeholder:text-black/25 transition-all focus:border-[var(--color-xf-primary)]/40 focus:outline-none focus:ring-2 focus:ring-[var(--color-xf-primary)]/40"
+                                />
+                              </div>
+
+                              {otpStep === "verify" ? (
+                                <div>
+                                  <label htmlFor="otpCode" className="mb-1.5 block text-sm font-medium text-[var(--color-xf-dark)]/60">
+                                    {t("auth.page.code.code")}
+                                  </label>
+                                  <input
+                                    id="otpCode"
+                                    name="otp"
+                                    inputMode="numeric"
+                                    autoComplete="one-time-code"
+                                    value={otpCode}
+                                    onChange={(e) => {
+                                      const val = e.target.value.replace(/\D/g, "").slice(0, 6);
+                                      setOtpCode(val);
+                                    }}
+                                    placeholder="000000"
+                                    dir="ltr"
+                                    maxLength={6}
+                                    autoFocus
+                                    className="w-full rounded-xl border border-black/[0.08] bg-black/[0.03] px-4 py-3.5 text-center font-mono text-xl tracking-[0.35em] text-[var(--color-xf-dark)] placeholder:text-black/15 transition-all focus:border-[var(--color-xf-primary)]/40 focus:outline-none focus:ring-2 focus:ring-[var(--color-xf-primary)]/40"
+                                  />
+                                </div>
+                              ) : null}
+
+                              <div className="flex gap-2 pt-1">
+                                {otpStep === "request" ? (
+                                  <button
+                                    type="submit"
+                                    className="flex-1 rounded-xl bg-[var(--color-xf-primary)] py-3 font-semibold text-white shadow-lg shadow-emerald-500/20 transition-all hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+                                    disabled={requestLoginCode.isPending || resendCooldownSec > 0}
+                                  >
+                                    {requestLoginCode.isPending ? (
+                                      <Loader2 className="mx-auto h-5 w-5 animate-spin" />
+                                    ) : resendCooldownSec > 0 ? (
+                                      `${t("auth.page.code.send")} (${resendCooldownSec}s)`
+                                    ) : (
+                                      t("auth.page.code.send")
+                                    )}
+                                  </button>
+                                ) : (
+                                  <>
+                                    <button
+                                      type="button"
+                                      className="flex-1 rounded-xl bg-black/[0.04] py-3 font-medium text-[var(--color-xf-dark)]/60 transition-all hover:bg-black/[0.08] hover:text-[var(--color-xf-dark)]/80 disabled:opacity-40"
+                                      onClick={handleSendCode}
+                                      disabled={requestLoginCode.isPending || resendCooldownSec > 0}
+                                    >
+                                      {resendCooldownSec > 0 ? `${t("auth.page.code.resend")} (${resendCooldownSec}s)` : t("auth.page.code.resend")}
+                                    </button>
+                                    <button
+                                      type="submit"
+                                      className="flex-1 rounded-xl bg-[var(--color-xf-primary)] py-3 font-semibold text-white shadow-lg shadow-emerald-500/20 transition-all hover:brightness-110 active:scale-[0.98] disabled:opacity-50"
+                                      disabled={verifyLoginCode.isPending}
+                                    >
+                                      {verifyLoginCode.isPending ? (
+                                        <Loader2 className="mx-auto h-5 w-5 animate-spin" />
+                                      ) : (
+                                        t("auth.page.code.verify")
+                                      )}
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </form>
+                        ) : (
+                          <LoginForm
+                            onRequireOtp={(email, message) => {
+                              setOtpEmail(email);
+                              setOtpStep("verify");
+                              setLoginMethod("code");
+                              setOtpCode("");
+                              setOtpError(null);
+                              setOtpMessage(message || t("auth.page.code.stepUpFallback"));
+                            }}
+                          />
+                        )}
+                      </div>
+                    ) : (
+                      <div className="p-6 sm:p-8">
+                        <RegisterForm referralCode={referralCode} />
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-6 text-center">
+                    <button
+                      type="button"
+                      onClick={() => setShowLogin(!showLogin)}
+                      className="text-sm text-[var(--color-xf-dark)]/40 transition-colors hover:text-[var(--color-xf-dark)]/70"
+                    >
+                      {showLogin ? (
+                        <>
+                          {t("auth.page.switchToRegister")} <span className="ml-1 font-semibold text-[var(--color-xf-primary)]">{t("auth.page.signUp")}</span>
+                        </>
+                      ) : (
+                        <>
+                          {t("auth.page.switchToLogin")} <span className="ml-1 font-semibold text-[var(--color-xf-primary)]">{t("auth.page.signIn")}</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  <div className="mt-4 text-center">
+                    <Link href="/" className="inline-flex items-center gap-1.5 text-sm text-[var(--color-xf-dark)]/30 transition-colors hover:text-[var(--color-xf-dark)]/60">
+                      <ArrowLeft className={`h-4 w-4 ${isRtl ? "rotate-180" : ""}`} />
+                      {t("auth.page.backToHome")}
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
+      </section>
+    </CinematicPublicLayout>
   );
 }

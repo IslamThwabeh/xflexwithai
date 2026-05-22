@@ -1,19 +1,19 @@
 /**
- * /test2 — Cinematic landing page with enhanced glow + premium fintech polish.
- * Layered on top of /test: ambient glow orbs, mouse spotlight, animated chart line,
- * particle field, scroll progress, trust badges, testimonial carousel, FAQ accordion.
- * Standalone — does NOT touch Home or /test.
+ * Production homepage with the cinematic XFlex landing experience.
+ * Includes the premium fintech visual system, compact Gifts/Articles bridge,
+ * testimonial proof sections, FAQ, and the current bilingual public-home flow.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'wouter';
 import {
   ArrowUpRight, Award, Bot, CheckCircle, ChevronDown, Clock3,
-  Facebook, Instagram, Phone, Lock, Menu, MessageCircle, Quote, ShieldCheck,
+  Facebook, Gift, Instagram, Newspaper, Phone, Lock, Menu, MessageCircle, Quote, ShieldCheck,
   Sparkles, Star, Target, TrendingUp, Users, X, Zap,
 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { getLanguageSwitchLabel } from '@/lib/languageToggle';
 import { formatIlsAmount, getPackageDisplayPricing } from '@/lib/packagePricing';
+import { TEST2_FEEDBACK_PROOFS } from '@/lib/test2FeedbackProofs';
 import { trpc } from '@/lib/trpc';
 import { APP_TITLE } from '@/const';
 
@@ -83,6 +83,18 @@ function useScrollReveal(ref: { readonly current: HTMLElement | null }) {
     nodes.forEach((n) => obs.observe(n));
     return () => obs.disconnect();
   });
+}
+
+function getFeedbackProofCopy(item: (typeof TEST2_FEEDBACK_PROOFS)[number], isArabic: boolean) {
+  return {
+    eyebrow: isArabic ? item.eyebrowAr : item.eyebrowEn,
+    title: isArabic ? item.titleAr : item.titleEn,
+    summary: isArabic ? item.summaryAr : item.summaryEn,
+    detail: isArabic ? item.detailAr : item.detailEn,
+    metric: isArabic ? item.metricAr : item.metricEn,
+    chips: isArabic ? item.chipsAr : item.chipsEn,
+    altText: isArabic ? item.altAr : item.altEn,
+  };
 }
 
 // ─── Global cinematic + glow styles ───────────────────────────────────────────
@@ -1054,6 +1066,10 @@ function LexAISection({ onScrollTo }: { onScrollTo: (id: string) => void }) {
   const isArabic = language === 'ar';
   const ref = useRef<HTMLElement | null>(null);
   useScrollReveal(ref);
+  const proofItem = TEST2_FEEDBACK_PROOFS.find((item) => item.id === 'lexai-fast-result');
+  const proofCopy = proofItem ? getFeedbackProofCopy(proofItem, isArabic) : null;
+  const proofOpenLabel = isArabic ? 'افتح اللقطة الكاملة' : 'Open full screenshot';
+  const proofBadge = isArabic ? 'لقطة حقيقية' : 'Real screenshot';
 
   const featureItems = isArabic
     ? [
@@ -1201,6 +1217,55 @@ function LexAISection({ onScrollTo }: { onScrollTo: (id: string) => void }) {
             </div>
           </div>
         </div>
+
+        {proofItem && proofCopy ? (
+          <div data-reveal className="mt-8 overflow-hidden rounded-[2rem] border border-white/12 bg-white/[0.04] p-4 backdrop-blur-sm md:p-5">
+            <div className="grid gap-4 lg:grid-cols-[0.72fr_1.28fr] lg:items-center">
+              <div className="overflow-hidden rounded-[1.5rem] border border-white/10 bg-black/28">
+                <div className="flex min-h-[280px] items-center justify-center p-3 sm:min-h-[340px] sm:p-4">
+                  <img
+                    src={proofItem.imageSrc}
+                    alt={proofCopy.altText}
+                    loading="lazy"
+                    className="h-full max-h-[380px] w-full object-contain object-center"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-3 py-1 text-[11px] font-semibold text-white/70">
+                    <Quote className="h-3.5 w-3.5 text-[#00C176]" />
+                    {proofBadge}
+                  </span>
+                  <span className="rounded-full border border-[#00C176]/22 bg-[#00C176]/10 px-3 py-1 text-xs font-semibold text-[#00C176]">
+                    {proofCopy.metric}
+                  </span>
+                </div>
+                <p className="mt-4 text-xs font-semibold uppercase tracking-[0.24em] text-[#00C176]">{proofCopy.eyebrow}</p>
+                <h3 className="mt-3 text-2xl font-extrabold tracking-[-0.03em] text-white md:text-[2rem]">{proofCopy.title}</h3>
+                <p className="mt-4 text-sm leading-7 text-white/66">{proofCopy.summary}</p>
+                <p className="mt-4 text-sm leading-7 text-white/58">{proofCopy.detail}</p>
+                <div className="mt-5 flex flex-wrap gap-2">
+                  {proofCopy.chips.slice(0, 3).map((chip) => (
+                    <span key={chip} className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs font-semibold text-white/64">
+                      {chip}
+                    </span>
+                  ))}
+                </div>
+                <a
+                  href={proofItem.imageSrc}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-6 inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-white transition hover:border-[#00C176]/35 hover:text-[#00C176]"
+                >
+                  {proofOpenLabel}
+                  <ArrowUpRight className="h-4 w-4" />
+                </a>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     </section>
   );
@@ -1360,6 +1425,9 @@ function ResultsSection() {
   const [countersOn, setCountersOn] = useState(false);
   const reduced = usePrefersReducedMotion();
   useScrollReveal(ref);
+  const proofItem = TEST2_FEEDBACK_PROOFS.find((item) => item.id === 'reported-results');
+  const proofCopy = proofItem ? getFeedbackProofCopy(proofItem, isArabic) : null;
+  const proofOpenLabel = isArabic ? 'افتح التقرير الكامل' : 'Open full report screenshot';
 
   type ResultStat = {
     label: string;
@@ -1420,43 +1488,61 @@ function ResultsSection() {
             </div>
           ))}
         </div>
+
+        {proofItem && proofCopy ? (
+          <div data-reveal className="mt-8 overflow-hidden rounded-[2rem] border border-white/12 bg-white/[0.04] p-4 backdrop-blur-sm md:p-5">
+            <div className="grid gap-4 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#00C176]">{proofCopy.eyebrow}</p>
+                <h3 className="mt-3 text-2xl font-extrabold tracking-[-0.03em] text-white md:text-[2rem]">{proofCopy.title}</h3>
+                <p className="mt-4 text-sm leading-7 text-white/66">{proofCopy.summary}</p>
+                <div className="mt-5 flex flex-wrap items-center gap-3">
+                  <span className="rounded-full border border-[#00C176]/22 bg-[#00C176]/10 px-3 py-1 text-xs font-semibold text-[#00C176]">
+                    {proofCopy.metric}
+                  </span>
+                  {proofCopy.chips.slice(0, 2).map((chip) => (
+                    <span key={chip} className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs font-semibold text-white/64">
+                      {chip}
+                    </span>
+                  ))}
+                </div>
+                <p className="mt-5 text-sm leading-7 text-white/58">{proofCopy.detail}</p>
+                <a
+                  href={proofItem.imageSrc}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-6 inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-white transition hover:border-[#00C176]/35 hover:text-[#00C176]"
+                >
+                  {proofOpenLabel}
+                  <ArrowUpRight className="h-4 w-4" />
+                </a>
+              </div>
+
+              <div className="overflow-hidden rounded-[1.5rem] border border-white/10 bg-black/28">
+                <div className="flex min-h-[280px] items-center justify-center p-3 sm:min-h-[340px] sm:p-4">
+                  <img
+                    src={proofItem.imageSrc}
+                    alt={proofCopy.altText}
+                    loading="lazy"
+                    className="h-full max-h-[380px] w-full object-contain object-center"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     </section>
   );
 }
 
-// ─── 10. Testimonial carousel (NEW) ───────────────────────────────────────────
-function TestimonialCarousel() {
+// ─── 10. Testimonial proof section ───────────────────────────────────────────
+function TestimonialProofSection() {
   const { language, isRTL } = useLanguage();
   const isArabic = language === 'ar';
-  const { data: testimonials } = trpc.testimonials.list.useQuery();
   const ref = useRef<HTMLElement | null>(null);
   useScrollReveal(ref);
-
-  const sanitize = (v: string) => v.replace(/[$₪]\s?\d[\d,.]*/g, '').replace(/\s{2,}/g, ' ').trim();
-
-  const items = useMemo(() => {
-    const fallback = isArabic
-      ? [
-          { id: 'a', name: 'محمد', role: 'متداول', quote: 'الشرح واضح والمتابعة حقيقية. حسيت إني مرفوق في كل خطوة.' },
-          { id: 'b', name: 'سارة', role: 'مبتدئة', quote: 'الباقة الشاملة غيرت طريقة تفكيري بالسوق — التحليل من LexAI ممتاز.' },
-          { id: 'c', name: 'أحمد', role: 'متداول جاد', quote: 'أحسن استثمار للتعلم. الفريق محترف والتوصيات دقيقة.' },
-          { id: 'd', name: 'لينا', role: 'طالبة', quote: 'بعد 8 مراحل أصبحت أتداول بثقة وبدون توتر. شكراً للأكاديمية.' },
-        ]
-      : [
-          { id: 'a', name: 'Mohammed', role: 'Trader',         quote: 'The teaching is clear and the support is real. I felt accompanied every step of the way.' },
-          { id: 'b', name: 'Sara',     role: 'Beginner',       quote: 'The Comprehensive package changed how I see the market — LexAI analysis is exceptional.' },
-          { id: 'c', name: 'Ahmad',    role: 'Serious trader', quote: 'Best learning investment I made. The team is professional and signals are precise.' },
-          { id: 'd', name: 'Lina',     role: 'Student',        quote: 'After 8 stages I trade with confidence and no anxiety. Thank you to the academy.' },
-        ];
-    if (!testimonials?.length) return fallback;
-    return testimonials.slice(0, 6).map((t) => ({
-      id: String(t.id),
-      name: (isArabic ? t.nameAr : t.nameEn) || (isArabic ? 'طالب' : 'Student'),
-      role: isArabic ? 'طالب في XFlex' : 'XFlex student',
-      quote: (() => { const q = sanitize(isArabic ? t.textAr : t.textEn); return q.length > 180 ? `${q.slice(0, 180).trim()}…` : q; })(),
-    }));
-  }, [isArabic, testimonials]);
+  const items = TEST2_FEEDBACK_PROOFS.filter((item) => item.id === 'first-trade-confidence');
 
   const [idx, setIdx] = useState(0);
   const reduced = usePrefersReducedMotion();
@@ -1468,6 +1554,14 @@ function TestimonialCarousel() {
 
   if (!items.length) return null;
   const current = items[idx];
+  const proofCopy = getFeedbackProofCopy(current, isArabic);
+  const openLabel = isArabic ? 'افتح اللقطة الكاملة' : 'Open full screenshot';
+  const sectionTitle = isArabic ? 'لقطة حقيقية من رحلة الطالب' : 'A real moment from the student journey';
+  const sectionBody = isArabic
+    ? 'هذه اللقطة المختارة تضيف بعداً إنسانياً للصفحة: ليست أرقاماً فقط، بل لحظة يشعر فيها الطالب أن التقدم أصبح ملموساً.'
+    : 'This featured screenshot gives the page a more human proof point: not only numbers, but a moment where progress feels concrete and believable.';
+  const snapshotLabel = isArabic ? 'لقطة حقيقية' : 'Real screenshot';
+  const detailLabel = isArabic ? 'لماذا هذه اللقطة مهمة' : 'Why this proof matters';
 
   return (
     <section ref={ref} className="relative overflow-hidden bg-[#0A0A0A] py-20 md:py-28" dir={isRTL ? 'rtl' : 'ltr'}>
@@ -1475,33 +1569,68 @@ function TestimonialCarousel() {
       <div className="cin-orb cin-orb-gold"  style={{ width: 380, height: 380, bottom: '-10%', right: '-5%', animationDelay: '3s' }} />
       <div className="container mx-auto px-4 md:px-8">
         <div data-reveal className="mb-12 text-center">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#00C176]">{isArabic ? 'ماذا يقول طلابنا' : 'What our students say'}</p>
-          <h2 className="mt-3 text-4xl font-extrabold tracking-[-0.03em] text-white md:text-5xl">{isArabic ? 'تجارب حقيقية' : 'Real experiences'}</h2>
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#00C176]">{isArabic ? 'إثباتات حقيقية' : 'Real proof'}</p>
+          <h2 className="mt-3 text-4xl font-extrabold tracking-[-0.03em] text-white md:text-5xl">{sectionTitle}</h2>
+          <p className="mx-auto mt-4 max-w-3xl text-base leading-8 text-white/58">{sectionBody}</p>
         </div>
 
-        <div data-reveal className="mx-auto max-w-3xl">
-          <div className="cin-glow-ring relative rounded-3xl border border-white/12 bg-white/[0.04] p-8 backdrop-blur-sm md:p-12" style={{ boxShadow: '0 24px 80px rgba(0,193,118,0.18)' }}>
-            <Quote className="mb-6 h-10 w-10 text-[#00C176]/70" style={{ filter: 'drop-shadow(0 0 12px rgba(0,193,118,0.5))' }} />
-            <p key={current.id} className="text-xl font-medium leading-9 text-white md:text-2xl" style={{ animation: 'cin-hero-in 600ms var(--cin-ease) both' }}>
-              {current.quote}
-            </p>
-            <div className="mt-8 flex items-center justify-between">
-              <div>
-                <p className="text-sm font-bold text-white">{current.name}</p>
-                <p className="mt-0.5 text-xs text-white/45">{current.role}</p>
+        <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr] lg:items-stretch">
+          <div data-reveal className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-[linear-gradient(180deg,rgba(10,18,17,0.96),rgba(6,6,6,0.98))] p-3 sm:p-4">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(0,193,118,0.12),transparent_40%),radial-gradient(circle_at_bottom,rgba(200,169,107,0.10),transparent_34%)]" />
+            <div className="relative rounded-[1.5rem] border border-white/10 bg-black/28 p-3 shadow-[0_24px_64px_rgba(0,0,0,0.35)] sm:p-4">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-3 py-1 text-[11px] font-semibold text-white/70">
+                  <Quote className="h-3.5 w-3.5 text-[#00C176]" />
+                  {snapshotLabel}
+                </div>
+                <span className="text-xs font-semibold text-[#00C176]">{proofCopy.metric}</span>
               </div>
-              <div className="flex gap-2">
-                {items.map((_, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    aria-label={`Testimonial ${i + 1}`}
-                    onClick={() => setIdx(i)}
-                    className={`h-1.5 rounded-full transition-all duration-400 ${i === idx ? 'w-8 bg-[#00C176]' : 'w-1.5 bg-white/25 hover:bg-white/40'}`}
-                    style={i === idx ? { boxShadow: '0 0 10px #00C176' } : undefined}
+
+              <div className="overflow-hidden rounded-[1.25rem] border border-white/10 bg-white/[0.03]">
+                <div className="flex min-h-[420px] items-center justify-center p-3 sm:min-h-[520px] sm:p-4">
+                  <img
+                    key={current.id}
+                    src={current.imageSrc}
+                    alt={proofCopy.altText}
+                    loading="lazy"
+                    className="h-full max-h-[560px] w-full object-contain object-center"
+                    style={{ animation: 'cin-hero-in 560ms var(--cin-ease) both' }}
                   />
-                ))}
+                </div>
               </div>
+            </div>
+          </div>
+
+          <div data-reveal className="cin-glow-ring relative rounded-[2rem] border border-white/12 bg-white/[0.04] p-6 backdrop-blur-sm md:p-8" style={{ boxShadow: '0 24px 80px rgba(0,193,118,0.18)' }}>
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="max-w-2xl">
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#00C176]">{proofCopy.eyebrow}</p>
+                <h3 className="mt-3 text-3xl font-extrabold tracking-[-0.03em] text-white md:text-[2.35rem]">{proofCopy.title}</h3>
+              </div>
+              <a
+                href={current.imageSrc}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-white transition hover:border-[#00C176]/35 hover:text-[#00C176]"
+              >
+                {openLabel}
+                <ArrowUpRight className="h-4 w-4" />
+              </a>
+            </div>
+
+            <p className="mt-6 text-base leading-8 text-white/68">{proofCopy.summary}</p>
+
+            <div className="mt-6 rounded-[1.5rem] border border-white/10 bg-black/24 p-4 sm:p-5">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/40">{detailLabel}</p>
+              <p className="mt-3 text-sm leading-7 text-white/72">{proofCopy.detail}</p>
+            </div>
+
+            <div className="mt-6 flex flex-wrap gap-2">
+              {proofCopy.chips.map((chip) => (
+                <span key={chip} className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-semibold text-white/68">
+                  {chip}
+                </span>
+              ))}
             </div>
           </div>
         </div>
@@ -1585,7 +1714,7 @@ function PackagesSection() {
           ).map((s, i) => (
             <div key={i} className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-center transition-all duration-300 hover:border-[#00C176]/30">
               <p className="text-3xl font-extrabold text-[#00C176]">
-                {'display' in s ? s.display : <AnimatedCounter value={s.value} prefix={s.prefix} suffix={s.suffix} start={countersOn} reduced={reduced} />}
+                {'display' in s ? s.display : <AnimatedCounter value={s.value} suffix={s.suffix} start={countersOn} reduced={reduced} />}
               </p>
               <p className="mt-2 text-xs text-white/45">{s.label}</p>
             </div>
@@ -1722,7 +1851,144 @@ function PackagesSection() {
   );
 }
 
-// ─── 12. FAQ accordion (NEW) ──────────────────────────────────────────────────
+// ─── 12. Compact content bridge ─────────────────────────────────────────────
+function ExploreMoreSection() {
+  const { language, isRTL } = useLanguage();
+  const isArabic = language === 'ar';
+  const ref = useRef<HTMLElement | null>(null);
+  useScrollReveal(ref);
+  const { data: articles, isLoading } = trpc.articles.list.useQuery();
+
+  const latestArticles = articles?.slice(0, 2) ?? [];
+  const giftItems = isArabic
+    ? ['قالب دفتر التداول', 'قائمة ما قبل الصفقة', 'الوصول للفعاليات المباشرة']
+    : ['Trading journal template', 'Pre-trade checklist', 'Live event access'];
+
+  return (
+    <section ref={ref} className="relative overflow-hidden bg-[#050505] py-16 md:py-20" dir={isRTL ? 'rtl' : 'ltr'}>
+      <div className="cin-orb cin-orb-green" style={{ width: 380, height: 380, top: '10%', left: '-12%', opacity: 0.34 }} />
+      <div className="cin-orb cin-orb-gold" style={{ width: 300, height: 300, bottom: '-12%', right: '-8%', animationDelay: '2.2s', opacity: 0.26 }} />
+
+      <div className="container mx-auto px-4 md:px-8">
+        <div data-reveal className="mx-auto mb-8 max-w-3xl text-center">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#00C176]">
+            {isArabic ? 'استكشف أكثر' : 'Explore more'}
+          </p>
+          <h2 className="mt-3 text-3xl font-extrabold tracking-[-0.03em] text-white md:text-4xl">
+            {isArabic ? 'الهدايا والمقالات موجودة هنا أيضاً' : 'Gifts and articles are here too'}
+          </h2>
+          <p className="mx-auto mt-4 max-w-2xl text-sm leading-7 text-white/58 md:text-base">
+            {isArabic
+              ? 'أضفنا مسارين واضحين لا يستهلكان مساحة كبيرة: الهدايا العملية للمتداول، وأحدث المقالات التي تعطيك قراءة أعمق قبل القرار.'
+              : 'Two lightweight paths, without turning this page into a long content hub: practical gifts for traders, and recent articles for deeper context before you decide.'}
+          </p>
+        </div>
+
+        <div className="mx-auto grid max-w-5xl gap-4 lg:grid-cols-2">
+          <article
+            data-reveal
+            className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 backdrop-blur-sm transition-all duration-300 hover:border-[#00C176]/30 hover:bg-[#00C176]/[0.05] md:p-6"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="inline-flex items-center gap-2 rounded-full border border-[#00C176]/20 bg-[#00C176]/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#00C176]">
+                  <Gift className="h-3.5 w-3.5" />
+                  {isArabic ? 'الهدايا' : 'Gifts'}
+                </div>
+                <h3 className="mt-4 text-2xl font-extrabold tracking-[-0.03em] text-white">
+                  {isArabic ? 'موارد عملية تبقى قريبة من يدك' : 'Practical resources kept within reach'}
+                </h3>
+                <p className="mt-3 max-w-xl text-sm leading-7 text-white/62">
+                  {isArabic
+                    ? 'صفحة مختصرة تضم أدوات تساعدك على التنظيم والانضباط والمتابعة من دون تشتيت أو ازدحام داخل الصفحة الرئيسية.'
+                    : 'A compact page with practical tools that help with structure, consistency, and follow-through without crowding the homepage itself.'}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-5 flex flex-wrap gap-2">
+              {giftItems.map((item) => (
+                <span key={item} className="rounded-full border border-white/10 bg-black/24 px-3 py-1.5 text-xs font-semibold text-white/68">
+                  {item}
+                </span>
+              ))}
+            </div>
+
+            <div className="mt-6">
+              <Link href="/gifts">
+                <a className="cin-btn-ghost inline-flex items-center gap-2 rounded-full px-5 py-3 text-sm font-semibold text-white">
+                  {isArabic ? 'افتح صفحة الهدايا' : 'Open Gifts page'}
+                  <ArrowUpRight className="h-4 w-4" />
+                </a>
+              </Link>
+            </div>
+          </article>
+
+          <article
+            data-reveal
+            className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 backdrop-blur-sm transition-all duration-300 hover:border-[#C8A96B]/30 hover:bg-white/[0.05] md:p-6"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="inline-flex items-center gap-2 rounded-full border border-[#C8A96B]/18 bg-[#C8A96B]/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#C8A96B]">
+                  <Newspaper className="h-3.5 w-3.5" />
+                  {isArabic ? 'المقالات' : 'Articles'}
+                </div>
+                <h3 className="mt-4 text-2xl font-extrabold tracking-[-0.03em] text-white">
+                  {isArabic ? 'أحدث القراءات بدون قسم كبير' : 'Recent reads without a heavy section'}
+                </h3>
+                <p className="mt-3 max-w-xl text-sm leading-7 text-white/62">
+                  {isArabic
+                    ? 'بدلاً من توسيع الصفحة، نعرض لك آخر ما نُشر ثم نعطيك طريقاً مباشراً لصفحة المقالات الكاملة.'
+                    : 'Instead of expanding the landing page, this keeps the latest reads visible and gives a direct path into the full articles library.'}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-5 space-y-2.5">
+              {isLoading ? (
+                [1, 2].map((item) => (
+                  <div key={item} className="h-14 animate-pulse rounded-2xl border border-white/8 bg-white/[0.04]" />
+                ))
+              ) : latestArticles.length > 0 ? (
+                latestArticles.map((article) => {
+                  const title = isArabic ? article.titleAr : article.titleEn;
+                  const subject = isArabic ? article.subjectAr : article.subjectEn;
+                  return (
+                    <Link key={article.slug} href={`/articles/${article.slug}`}>
+                      <a className="flex items-center justify-between gap-3 rounded-2xl border border-white/8 bg-black/22 px-4 py-3 text-sm transition-all duration-200 hover:border-[#C8A96B]/30 hover:bg-white/[0.04]">
+                        <div className="min-w-0">
+                          <p className="truncate font-semibold text-white">{title}</p>
+                          <p className="mt-1 text-xs text-white/45">{subject}</p>
+                        </div>
+                        <ArrowUpRight className="h-4 w-4 shrink-0 text-[#C8A96B]" />
+                      </a>
+                    </Link>
+                  );
+                })
+              ) : (
+                <div className="rounded-2xl border border-white/8 bg-black/22 px-4 py-4 text-sm text-white/55">
+                  {isArabic ? 'صفحة المقالات جاهزة للعرض الكامل عند المراجعة.' : 'The full articles page remains ready for a deeper browse.'}
+                </div>
+              )}
+            </div>
+
+            <div className="mt-6">
+              <Link href="/articles">
+                <a className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/[0.04] px-5 py-3 text-sm font-semibold text-white transition hover:border-[#C8A96B]/30 hover:text-[#C8A96B]">
+                  {isArabic ? 'عرض جميع المقالات' : 'View all articles'}
+                  <ArrowUpRight className="h-4 w-4" />
+                </a>
+              </Link>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ─── 13. FAQ accordion (NEW) ──────────────────────────────────────────────────
 function FAQSection() {
   const { language, isRTL } = useLanguage();
   const isArabic = language === 'ar';
@@ -1781,7 +2047,7 @@ function FAQSection() {
   );
 }
 
-// ─── 13. Final CTA ────────────────────────────────────────────────────────────
+// ─── 14. Final CTA ────────────────────────────────────────────────────────────
 function CTASection({ onScrollTo }: { onScrollTo: (id: string) => void }) {
   const { language, isRTL } = useLanguage();
   const isArabic = language === 'ar';
@@ -1892,7 +2158,7 @@ function CinematicFooter() {
 }
 
 // ─── Page root ────────────────────────────────────────────────────────────────
-export default function TestHomePrototype2() {
+export default function HomePage() {
   const scrollTo = (id: string) => {
     const el = document.getElementById(id);
     if (!el) return;
@@ -1917,8 +2183,9 @@ export default function TestHomePrototype2() {
         <MobileSection />
         <CommunitySection />
         <ResultsSection />
-        <TestimonialCarousel />
+        <TestimonialProofSection />
         <PackagesSection />
+        <ExploreMoreSection />
         <FAQSection />
         <CTASection onScrollTo={scrollTo} />
       </main>
