@@ -1435,6 +1435,11 @@ function AnalystView() {
                 <div className="rounded-xl border p-3">
                   <p className="text-xs text-muted-foreground">{isRTL ? "عقد 0.01" : "Lot 0.01 Equivalent"}</p>
                   <p className="text-lg font-semibold">{monthlyReport.summary.lotEquivalent.lot001}</p>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    {isRTL
+                      ? "تقديري فقط (مبني على قيمة نقطة فوركس قياسية)."
+                      : "Indicative only (based on standard forex pip value)."}
+                  </p>
                 </div>
               </div>
 

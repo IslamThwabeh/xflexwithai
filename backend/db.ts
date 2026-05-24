@@ -94,6 +94,8 @@ const RECOMMENDATION_ALERT_UNLOCK_MS = 60 * 1000;
 const RECOMMENDATION_ALERT_EXPIRY_MS = 15 * 60 * 1000;
 const RECOMMENDATION_MESSAGE_EDIT_WINDOW_MS = 60 * 1000;
 const RECOMMENDATION_REPORT_MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+const RECOMMENDATION_REPORT_EXPLICIT_PIPS_RE = /([+-]\d+(?:[.,]\d+)?)/;
+const RECOMMENDATION_REPORT_MAX_ABS_EXPLICIT_PIPS = 200;
 let hasLoggedMissingEngagementEventsTable = false;
 let hasLoggedMissingOpenAiUsageEventsTable = false;
 
@@ -3166,6 +3168,17 @@ function parsePrice(value: string | null | undefined): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+export function extractRecommendationExplicitSignedPips(content: string): number | null {
+  const match = content.match(RECOMMENDATION_REPORT_EXPLICIT_PIPS_RE);
+  if (!match?.[1]) return null;
+
+  const parsed = parsePrice(match[1]);
+  if (parsed === null) return null;
+  if (Math.abs(parsed) > RECOMMENDATION_REPORT_MAX_ABS_EXPLICIT_PIPS) return null;
+
+  return parsed;
+}
+
 function extractPrice(text: string, pattern: RegExp): number | null {
   const match = text.match(pattern);
   if (!match?.[1]) return null;
@@ -3193,7 +3206,6 @@ function parseSymbol(message: RecommendationMessage | null, parent: Recommendati
 
 function parseRecommendationCandidate(message: RecommendationMessage, parent: RecommendationMessage | null): RecommendationParsedCandidate {
   const content = (message.content || '').trim();
-  const normalizedContent = content.toLowerCase();
 
   const manualOutcome = message.resultOutcome === 'win' || message.resultOutcome === 'loss'
     ? message.resultOutcome
@@ -3214,8 +3226,7 @@ function parseRecommendationCandidate(message: RecommendationMessage, parent: Re
     };
   }
 
-  const explicitSignedPipsMatch = content.match(/([+-]\d+(?:[.,]\d+)?)/);
-  const explicitSignedPips = explicitSignedPipsMatch ? parsePrice(explicitSignedPipsMatch[1]) : null;
+  const explicitSignedPips = extractRecommendationExplicitSignedPips(content);
 
   let parsedOutcome: RecommendationReportOutcome | null = null;
   if (explicitSignedPips !== null) {
