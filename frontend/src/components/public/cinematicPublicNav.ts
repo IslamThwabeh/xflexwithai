@@ -1,6 +1,6 @@
 export type CinematicPrimaryNavItem = {
-  key: 'packages' | 'story' | 'mentor' | 'faq';
-  sectionId: 'packages' | 'story' | 'mentor' | 'faq';
+  key: 'packages' | 'story' | 'mentor' | 'faq' | 'login';
+  sectionId: 'packages' | 'story' | 'mentor' | 'faq' | 'auth';
   href: string;
   labelEn: string;
   labelAr: string;
@@ -34,6 +34,13 @@ export const CINEMATIC_PRIMARY_NAV_ITEMS: CinematicPrimaryNavItem[] = [
     href: '/#faq',
     labelEn: 'FAQ',
     labelAr: 'الأسئلة',
+  },
+  {
+    key: 'login',
+    sectionId: 'auth',
+    href: '/auth',
+    labelEn: 'Login',
+    labelAr: 'تسجيل الدخول',
   },
 ];
 
