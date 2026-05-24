@@ -334,7 +334,10 @@ export const recommendationMessages = sqliteTable("recommendationMessages", {
   stopLoss: text("stopLoss", { length: 50 }),
   takeProfit1: text("takeProfit1", { length: 50 }),
   takeProfit2: text("takeProfit2", { length: 50 }),
+  takeProfit3: text("takeProfit3", { length: 50 }),
   riskPercent: text("riskPercent", { length: 20 }),
+  resultOutcome: text("resultOutcome", { length: 20 }), // win | loss (manual override for reporting)
+  resultPips: real("resultPips"),
   parentId: integer("parentId"),  // links result to original recommendation
   threadStatus: text("threadStatus", { length: 20 }), // root-only: 'open' | 'closed'
   closedAt: text("closedAt"),

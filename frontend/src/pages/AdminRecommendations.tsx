@@ -12,13 +12,120 @@ import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
-import { PauseCircle, PlayCircle, UserCog, Bell, TrendingUp, Copy, Trash2, ArrowDown, ArrowUp, Plus, Clock3, Megaphone, XCircle, Info } from "lucide-react";
+import { PauseCircle, PlayCircle, UserCog, Bell, TrendingUp, Copy, Trash2, ArrowDown, ArrowUp, Plus, Clock3, Megaphone, XCircle, Info, Pencil, WandSparkles, Download } from "lucide-react";
 import { useDataTable, DataTablePagination, zebraRow } from "@/components/DataTable";
 import { formatLocalizedDate } from "@/lib/dateLocale";
 import { buildRecommendationThreads, groupRecommendationThreadsByDay } from "@/lib/recommendationThreads";
 
 type RecommendationType = "recommendation" | "update" | "result";
 type FollowUpPresetGroupKey = "pips" | "management" | "outcome";
+type TradeOutcome = "win" | "loss";
+
+type MonthlyTradeReportRow = {
+  messageId: number;
+  tradeId: number;
+  closedAt: string;
+  symbol: string;
+  side: string;
+  content: string;
+  outcome: TradeOutcome;
+  pips: number;
+  source: "manual" | "explicit" | "derived";
+};
+
+type MonthlyTradeReportUnresolvedRow = {
+  messageId: number;
+  tradeId: number;
+  closedAt: string;
+  symbol: string;
+  side: string;
+  content: string;
+  suggestedOutcome: TradeOutcome | null;
+  suggestedPips: number | null;
+  confidence: "none" | "low" | "medium" | "high";
+};
+
+type MonthlyTradeReport = {
+  month: string;
+  trades: MonthlyTradeReportRow[];
+  unresolved: MonthlyTradeReportUnresolvedRow[];
+  summary: {
+    totalTrades: number;
+    winningTrades: number;
+    losingTrades: number;
+    winRate: number;
+    totalPipsWon: number;
+    totalPipsLost: number;
+    netPips: number;
+    lotEquivalent: {
+      lot001: number;
+      lot005: number;
+      lot010: number;
+      lot100: number;
+    };
+  };
+  coverage: {
+    candidates: number;
+    finalized: number;
+    unresolved: number;
+  };
+};
+
+function getCurrentMonthValue() {
+  return new Date().toISOString().slice(0, 7);
+}
+
+function escapeCsvCell(value: unknown) {
+  const raw = String(value ?? "");
+  if (/[,"\n]/.test(raw)) {
+    return `"${raw.replace(/"/g, '""')}"`;
+  }
+  return raw;
+}
+
+function buildMonthlyReportCsv(month: string, report: MonthlyTradeReport | undefined) {
+  const lines: string[] = [];
+
+  lines.push(["Monthly Trade Summary", month].map(escapeCsvCell).join(","));
+  lines.push(["Date", "Symbol", "Side", "Outcome", "Pips", "Source", "Message ID", "Trade ID", "Content"].map(escapeCsvCell).join(","));
+  for (const trade of report?.trades || []) {
+    const date = trade.closedAt ? new Date(trade.closedAt).toISOString().slice(0, 10) : "";
+    const outcome = trade.outcome === "win" ? "WIN" : "LOSS";
+    lines.push([
+      date,
+      trade.symbol,
+      trade.side,
+      outcome,
+      trade.pips,
+      trade.source,
+      trade.messageId,
+      trade.tradeId,
+      trade.content,
+    ].map(escapeCsvCell).join(","));
+  }
+
+  lines.push("");
+  lines.push(["Monthly Performance Overview"].map(escapeCsvCell).join(","));
+  lines.push(["Total Trades", report?.summary?.totalTrades ?? 0].map(escapeCsvCell).join(","));
+  lines.push(["Winning Trades", report?.summary?.winningTrades ?? 0].map(escapeCsvCell).join(","));
+  lines.push(["Losing Trades", report?.summary?.losingTrades ?? 0].map(escapeCsvCell).join(","));
+  lines.push(["Win Rate", `${report?.summary?.winRate ?? 0}%`].map(escapeCsvCell).join(","));
+
+  lines.push("");
+  lines.push(["Pips Performance"].map(escapeCsvCell).join(","));
+  lines.push(["Total Pips Won", report?.summary?.totalPipsWon ?? 0].map(escapeCsvCell).join(","));
+  lines.push(["Total Pips Lost", report?.summary?.totalPipsLost ?? 0].map(escapeCsvCell).join(","));
+  lines.push(["Net Pips Collected", report?.summary?.netPips ?? 0].map(escapeCsvCell).join(","));
+
+  lines.push("");
+  lines.push(["Profit Equivalent"].map(escapeCsvCell).join(","));
+  lines.push(["Lot Size 0.01", report?.summary?.lotEquivalent?.lot001 ?? 0].map(escapeCsvCell).join(","));
+  lines.push(["Lot Size 0.05", report?.summary?.lotEquivalent?.lot005 ?? 0].map(escapeCsvCell).join(","));
+  lines.push(["Lot Size 0.10", report?.summary?.lotEquivalent?.lot010 ?? 0].map(escapeCsvCell).join(","));
+  lines.push(["Lot Size 1.00", report?.summary?.lotEquivalent?.lot100 ?? 0].map(escapeCsvCell).join(","));
+
+  return lines.join("\n");
+}
 
 const QUICK_SYMBOLS = ["XAUUSD", "EURUSD", "GBPUSD", "USDJPY", "BTCUSD", "US30"];
 
@@ -144,6 +251,7 @@ function buildCopyBlock(message: any, t: (key: string) => string) {
   if (message.stopLoss) lines.push(`${t('rec.copySL')}: ${message.stopLoss}`);
   if (message.takeProfit1) lines.push(`${t('rec.copyTP1')}: ${message.takeProfit1}`);
   if (message.takeProfit2) lines.push(`${t('rec.copyTP2')}: ${message.takeProfit2}`);
+  if (message.takeProfit3) lines.push(`${t('rec.copyTP3')}: ${message.takeProfit3}`);
   if (message.riskPercent) lines.push(`${t('rec.copyRisk')}: ${message.riskPercent}`);
   lines.push("");
   lines.push(message.content || "");
@@ -215,10 +323,14 @@ function AnalystView() {
   const [stopLoss, setStopLoss] = useState("");
   const [takeProfit1, setTakeProfit1] = useState("");
   const [takeProfit2, setTakeProfit2] = useState("");
+  const [takeProfit3, setTakeProfit3] = useState("");
   const [riskPercent, setRiskPercent] = useState("");
   const [parentMessage, setParentMessage] = useState<any | null>(null);
+  const [editingMessageId, setEditingMessageId] = useState<number | null>(null);
   const [showTradeDetails, setShowTradeDetails] = useState(false);
   const [activePresetGroup, setActivePresetGroup] = useState<FollowUpPresetGroupKey>("pips");
+  const [reportMonth, setReportMonth] = useState(getCurrentMonthValue());
+  const [overrideDrafts, setOverrideDrafts] = useState<Record<number, { outcome: TradeOutcome; pips: string }>>({});
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
 
   const { data: me } = trpc.recommendations.me.useQuery();
@@ -230,6 +342,14 @@ function AnalystView() {
   });
   const { data: feed = [], isLoading: feedLoading } = trpc.recommendations.feed.useQuery(
     { limit: 200 },
+    { enabled: canManageChannel }
+  );
+  const {
+    data: monthlyReport,
+    isLoading: monthlyReportLoading,
+    refetch: refetchMonthlyReport,
+  } = trpc.recommendations.monthlyTradeReport.useQuery(
+    { month: reportMonth },
     { enabled: canManageChannel }
   );
 
@@ -274,9 +394,11 @@ function AnalystView() {
       setStopLoss("");
       setTakeProfit1("");
       setTakeProfit2("");
+      setTakeProfit3("");
       setRiskPercent("");
       setShowTradeDetails(false);
       setParentMessage(null);
+      setEditingMessageId(null);
       setType("recommendation");
       setActivePresetGroup("pips");
       if (type === "recommendation") {
@@ -305,13 +427,68 @@ function AnalystView() {
     onError: (error) => toast.error(formatRecommendationUiError(error.message, isRTL)),
   });
 
+  const parseDraftMutation = trpc.recommendations.parseDraft.useMutation({
+    onSuccess: (result) => {
+      setSymbol(result.fields.symbol || symbol || "XAUUSD");
+      setSide(result.fields.side || side);
+      setEntryPrice(result.fields.entryPrice || entryPrice);
+      setStopLoss(result.fields.stopLoss || stopLoss);
+      setTakeProfit1(result.fields.takeProfit1 || takeProfit1);
+      setTakeProfit2(result.fields.takeProfit2 || takeProfit2);
+      setTakeProfit3(result.fields.takeProfit3 || takeProfit3);
+      setRiskPercent(result.fields.riskPercent || riskPercent);
+      setShowTradeDetails(true);
+
+      const sourceLabel = result.parser.source === "rule"
+        ? (isRTL ? "تحليل تلقائي" : "Rule parser")
+        : result.parser.source === "ai"
+          ? (isRTL ? "تحليل بالذكاء الاصطناعي" : "AI parser")
+          : (isRTL ? "تحليل هجين" : "Hybrid parser");
+      toast.success(
+        isRTL
+          ? `${sourceLabel} (${Math.round(result.parser.confidence * 100)}%)`
+          : `${sourceLabel} (${Math.round(result.parser.confidence * 100)}%)`
+      );
+    },
+    onError: (error) => toast.error(error.message),
+  });
+
+  const editMessageMutation = trpc.recommendations.editMessage.useMutation({
+    onSuccess: () => {
+      toast.success(isRTL ? "تم حفظ التعديل" : "Edit saved");
+      setEditingMessageId(null);
+      setParentMessage(null);
+      setType("recommendation");
+      setContent("");
+      setSide("");
+      setEntryPrice("");
+      setStopLoss("");
+      setTakeProfit1("");
+      setTakeProfit2("");
+      setTakeProfit3("");
+      setRiskPercent("");
+      setSymbol("XAUUSD");
+      setShowTradeDetails(false);
+      utils.recommendations.feed.invalidate();
+    },
+    onError: (error) => toast.error(formatRecommendationUiError(error.message, isRTL)),
+  });
+
+  const saveTradeResultMutation = trpc.recommendations.saveTradeResult.useMutation({
+    onSuccess: () => {
+      toast.success(isRTL ? "تم حفظ نتيجة الصفقة" : "Trade result saved");
+      refetchMonthlyReport();
+    },
+    onError: (error) => toast.error(error.message),
+  });
+
   const normalizedSymbol = symbol.trim().toUpperCase();
   const activeAlert = publishState?.activeAlert;
   const hasActiveAlert = !!activeAlert;
   const canPostMessages = !!publishState?.canPostMessages;
   const requiresAlert = !hasActiveAlert;
   const isWaitingForUnlock = hasActiveAlert && !canPostMessages;
-  const showComposerFields = hasActiveAlert;
+  const showComposerFields = hasActiveAlert || !!editingMessageId;
   const channelDisabledReason = requiresAlert
     ? (isRTL
         ? "بعد 15 دقيقة من الصمت يجب أولاً الضغط على إخطار العملاء قبل كتابة رسالة جديدة."
@@ -321,13 +498,17 @@ function AnalystView() {
       : (isRTL
           ? `تم إرسال الإخطار. يمكنك الكتابة بعد ${formatCountdown(publishState?.secondsUntilUnlock ?? 0)}.`
           : `Alert sent. You can type in ${formatCountdown(publishState?.secondsUntilUnlock ?? 0)}.`);
-  const publishDisabledReason = type === "recommendation"
-    ? (!normalizedSymbol
+  const publishDisabledReason = editingMessageId
+    ? (type === "recommendation" && !normalizedSymbol
         ? (isRTL ? "اختر الزوج أولاً" : "Choose the symbol first")
-        : channelDisabledReason)
-    : (!parentMessage?.id
-        ? (isRTL ? "اختر التوصية الأم أولاً" : "Choose the parent recommendation first")
-        : channelDisabledReason);
+        : "")
+    : type === "recommendation"
+      ? (!normalizedSymbol
+          ? (isRTL ? "اختر الزوج أولاً" : "Choose the symbol first")
+          : channelDisabledReason)
+      : (!parentMessage?.id
+          ? (isRTL ? "اختر التوصية الأم أولاً" : "Choose the parent recommendation first")
+          : channelDisabledReason);
   const sessionStatusTitle = requiresAlert
     ? (isRTL ? "الدردشة متوقفة مؤقتاً" : "Chat paused")
     : isWaitingForUnlock
@@ -375,9 +556,56 @@ function AnalystView() {
       stopLoss: type === "recommendation" ? stopLoss.trim() || undefined : undefined,
       takeProfit1: type === "recommendation" ? takeProfit1.trim() || undefined : undefined,
       takeProfit2: type === "recommendation" ? takeProfit2.trim() || undefined : undefined,
+      takeProfit3: type === "recommendation" ? takeProfit3.trim() || undefined : undefined,
       riskPercent: type === "recommendation" ? riskPercent.trim() || undefined : undefined,
       parentId: parentMessage?.id ?? undefined,
     });
+  };
+
+  const onParseDraft = () => {
+    if (!content.trim()) {
+      toast.error(isRTL ? "اكتب نص التوصية أولاً" : "Write the recommendation text first");
+      return;
+    }
+
+    parseDraftMutation.mutate({ rawText: content.trim() });
+  };
+
+  const onSaveEdit = () => {
+    if (!editingMessageId) return;
+    if (!content.trim()) {
+      toast.error(t('rec.toastWriteMessage'));
+      return;
+    }
+
+    editMessageMutation.mutate({
+      messageId: editingMessageId,
+      content: content.trim(),
+      symbol: type === "recommendation" ? normalizedSymbol || undefined : undefined,
+      side: type === "recommendation" ? side.trim() || undefined : undefined,
+      entryPrice: type === "recommendation" ? entryPrice.trim() || undefined : undefined,
+      stopLoss: type === "recommendation" ? stopLoss.trim() || undefined : undefined,
+      takeProfit1: type === "recommendation" ? takeProfit1.trim() || undefined : undefined,
+      takeProfit2: type === "recommendation" ? takeProfit2.trim() || undefined : undefined,
+      takeProfit3: type === "recommendation" ? takeProfit3.trim() || undefined : undefined,
+      riskPercent: type === "recommendation" ? riskPercent.trim() || undefined : undefined,
+    });
+  };
+
+  const cancelEditMode = () => {
+    setEditingMessageId(null);
+    setParentMessage(null);
+    setType("recommendation");
+    setContent("");
+    setSide("");
+    setEntryPrice("");
+    setStopLoss("");
+    setTakeProfit1("");
+    setTakeProfit2("");
+    setTakeProfit3("");
+    setRiskPercent("");
+    setSymbol("XAUUSD");
+    setShowTradeDetails(false);
   };
 
   const copyMessage = (message: any) => {
@@ -392,6 +620,86 @@ function AnalystView() {
     setShowTradeDetails(false);
     setActivePresetGroup(nextType === "result" ? "outcome" : "pips");
     window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const startEdit = (message: any) => {
+    const parent = message.parentId ? feed.find((item: any) => item.id === message.parentId) : null;
+    setEditingMessageId(message.id);
+    setType((message.type as RecommendationType) || "recommendation");
+    setParentMessage(parent ?? null);
+    setContent(message.content || "");
+    setSymbol(message.symbol || "XAUUSD");
+    setSide(message.side || "");
+    setEntryPrice(message.entryPrice || "");
+    setStopLoss(message.stopLoss || "");
+    setTakeProfit1(message.takeProfit1 || "");
+    setTakeProfit2(message.takeProfit2 || "");
+    setTakeProfit3(message.takeProfit3 || "");
+    setRiskPercent(message.riskPercent || "");
+    setShowTradeDetails(!!(message.entryPrice || message.stopLoss || message.takeProfit1 || message.takeProfit2 || message.takeProfit3 || message.riskPercent));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const canEditMessage = (message: any) => {
+    if (message.userId !== me?.userId) return false;
+    const createdAt = new Date(message.createdAt).getTime();
+    if (!Number.isFinite(createdAt)) return false;
+    return Date.now() - createdAt <= 60_000;
+  };
+
+  useEffect(() => {
+    if (!monthlyReport?.unresolved?.length) return;
+
+    setOverrideDrafts((previous) => {
+      const next = { ...previous };
+      for (const item of monthlyReport.unresolved) {
+        if (next[item.messageId]) continue;
+        next[item.messageId] = {
+          outcome: item.suggestedOutcome || "win",
+          pips: item.suggestedPips !== null ? String(Math.abs(item.suggestedPips)) : "",
+        };
+      }
+      return next;
+    });
+  }, [monthlyReport?.month, monthlyReport?.unresolved]);
+
+  const updateOverrideDraft = (messageId: number, patch: Partial<{ outcome: TradeOutcome; pips: string }>) => {
+    setOverrideDrafts((previous) => {
+      const current = previous[messageId] || { outcome: "win" as TradeOutcome, pips: "" };
+      return {
+        ...previous,
+        [messageId]: {
+          ...current,
+          ...patch,
+        },
+      };
+    });
+  };
+
+  const saveOverride = (row: MonthlyTradeReportUnresolvedRow) => {
+    const draft = overrideDrafts[row.messageId] || { outcome: row.suggestedOutcome || "win", pips: "" };
+    const parsedPips = Number(draft.pips);
+    if (!Number.isFinite(parsedPips) || parsedPips <= 0) {
+      toast.error(isRTL ? "أدخل قيمة نقاط صحيحة أكبر من صفر" : "Enter valid pips greater than zero");
+      return;
+    }
+
+    saveTradeResultMutation.mutate({
+      messageId: row.messageId,
+      outcome: draft.outcome,
+      pips: parsedPips,
+    });
+  };
+
+  const exportMonthlyReport = () => {
+    const csv = buildMonthlyReportCsv(reportMonth, monthlyReport as MonthlyTradeReport | undefined);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `recommendation-report-${reportMonth}.csv`;
+    anchor.click();
+    URL.revokeObjectURL(url);
   };
 
   const threads = useMemo(() => buildRecommendationThreads(feed, { openFirst: true }), [feed]);
@@ -477,12 +785,13 @@ function AnalystView() {
                       </div>
                     </div>
 
-                    {(message.entryPrice || message.stopLoss || message.takeProfit1 || message.takeProfit2 || message.riskPercent) && (
+                    {(message.entryPrice || message.stopLoss || message.takeProfit1 || message.takeProfit2 || message.takeProfit3 || message.riskPercent) && (
                       <div className="grid grid-cols-1 gap-2 rounded-xl border bg-gray-50 p-3 text-xs sm:grid-cols-2 xl:grid-cols-4 dark:bg-white/5">
                         {message.entryPrice && <div><span className="text-muted-foreground">{isRTL ? "دخول:" : "Entry:"}</span> <span className="font-mono font-medium">{message.entryPrice}</span></div>}
                         {message.stopLoss && <div><span className="text-muted-foreground">{isRTL ? "وقف:" : "SL:"}</span> <span className="font-mono font-medium text-red-600">{message.stopLoss}</span></div>}
                         {message.takeProfit1 && <div><span className="text-muted-foreground">{isRTL ? "هدف 1:" : "TP1:"}</span> <span className="font-mono font-medium text-emerald-600">{message.takeProfit1}</span></div>}
                         {message.takeProfit2 && <div><span className="text-muted-foreground">{isRTL ? "هدف 2:" : "TP2:"}</span> <span className="font-mono font-medium text-emerald-600">{message.takeProfit2}</span></div>}
+                        {message.takeProfit3 && <div><span className="text-muted-foreground">{isRTL ? "هدف 3:" : "TP3:"}</span> <span className="font-mono font-medium text-emerald-600">{message.takeProfit3}</span></div>}
                         {message.riskPercent && <div><span className="text-muted-foreground">{isRTL ? "مخاطرة:" : "Risk:"}</span> <span className="font-mono font-medium">{message.riskPercent}</span></div>}
                       </div>
                     )}
@@ -496,6 +805,11 @@ function AnalystView() {
                       <Button size="sm" variant="outline" onClick={() => startFollowUp(message)} className="text-amber-700 border-amber-200 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-900/20">
                         <Plus className="h-3.5 w-3.5 me-1" /> {isRTL ? "متابعة" : "Follow-up"}
                       </Button>
+                      {canEditMessage(message) && (
+                        <Button size="sm" variant="outline" onClick={() => startEdit(message)}>
+                          <Pencil className="h-3.5 w-3.5 me-1" /> {isRTL ? "تعديل" : "Edit"}
+                        </Button>
+                      )}
                       {!thread.isClosed && (
                         <Button
                           size="sm"
@@ -546,6 +860,16 @@ function AnalystView() {
                               <span className="text-[11px] text-muted-foreground sm:text-xs">
                                 {formatMessageTimestamp(child.createdAt, language)}
                               </span>
+                              {canEditMessage(child) && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => startEdit(child)}
+                                  className="h-7 px-2 text-slate-600 hover:text-slate-900"
+                                >
+                                  <Pencil className="h-3 w-3 me-1" /> {isRTL ? "تعديل" : "Edit"}
+                                </Button>
+                              )}
                               {(!!adminCheck?.isAdmin || child.userId === me?.userId) && (
                                 <Button
                                   size="sm" variant="ghost"
@@ -581,20 +905,26 @@ function AnalystView() {
       <Card>
         <CardHeader>
           <CardTitle>
-            {type === "recommendation"
-              ? (isRTL ? "نشر توصية جديدة" : "Publish Recommendation")
-              : parentMessage
-                ? (isRTL ? `متابعة للتوصية #${parentMessage.id}` : `Follow-up for Recommendation #${parentMessage.id}`)
-                : (isRTL ? "دردشة التوصيات" : "Recommendations Chat")}
+            {editingMessageId
+              ? (isRTL ? `تعديل الرسالة #${editingMessageId}` : `Edit Message #${editingMessageId}`)
+              : type === "recommendation"
+                ? (isRTL ? "نشر توصية جديدة" : "Publish Recommendation")
+                : parentMessage
+                  ? (isRTL ? `متابعة للتوصية #${parentMessage.id}` : `Follow-up for Recommendation #${parentMessage.id}`)
+                  : (isRTL ? "دردشة التوصيات" : "Recommendations Chat")}
           </CardTitle>
           <CardDescription>
-            {type === "recommendation"
+            {editingMessageId
               ? (isRTL
-                  ? "أرسل الفكرة الرئيسية أولاً، وأضف المستويات فقط عند الحاجة."
-                  : "Send the main trade idea first, and add levels only when they are needed.")
-              : (isRTL
-                  ? "اختر تحديثاً لإدارة الصفقة أو نتيجة لتوثيق الإغلاق النهائي."
-                  : "Choose Update for live trade management or Result for the final outcome.")}
+                  ? "يمكنك تعديل رسالتك خلال 60 ثانية من وقت النشر."
+                  : "You can edit your message within 60 seconds of posting.")
+              : type === "recommendation"
+                ? (isRTL
+                    ? "أرسل الفكرة الرئيسية أولاً، وأضف المستويات فقط عند الحاجة."
+                    : "Send the main trade idea first, and add levels only when they are needed.")
+                : (isRTL
+                    ? "اختر تحديثاً لإدارة الصفقة أو نتيجة لتوثيق الإغلاق النهائي."
+                    : "Choose Update for live trade management or Result for the final outcome.")}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -633,6 +963,7 @@ function AnalystView() {
                   <Button
                     size="sm"
                     variant={type === "recommendation" ? "default" : "outline"}
+                    disabled={!!editingMessageId}
                     onClick={() => { setType("recommendation"); setParentMessage(null); setActivePresetGroup("pips"); }}
                     className={type === "recommendation" ? "bg-emerald-600 hover:bg-emerald-700 text-white" : ""}
                   >
@@ -644,6 +975,7 @@ function AnalystView() {
                       <Button
                         size="sm"
                         variant={type === "update" ? "default" : "outline"}
+                        disabled={!!editingMessageId}
                         onClick={() => { setType("update"); setActivePresetGroup("pips"); }}
                         className={type === "update" ? "bg-amber-500 hover:bg-amber-600 text-white" : ""}
                       >
@@ -652,6 +984,7 @@ function AnalystView() {
                       <Button
                         size="sm"
                         variant={type === "result" ? "default" : "outline"}
+                        disabled={!!editingMessageId}
                         onClick={() => { setType("result"); setActivePresetGroup("outcome"); }}
                         className={type === "result" ? "bg-teal-600 hover:bg-teal-700 text-white" : ""}
                       >
@@ -673,6 +1006,7 @@ function AnalystView() {
                     </Badge>
                   )}
                   <button
+                    disabled={!!editingMessageId}
                     onClick={() => { setParentMessage(null); setType("recommendation"); setActivePresetGroup("pips"); }}
                     className="text-xs text-red-500 hover:underline"
                   >
@@ -788,6 +1122,10 @@ function AnalystView() {
                   <div>
                     <span className="text-xs text-muted-foreground">{isRTL ? "هدف 2" : "Target 2"}</span>
                     <Input value={takeProfit2} onChange={(e) => setTakeProfit2(e.target.value)} placeholder="0.00" disabled={isWaitingForUnlock} />
+                  </div>
+                  <div>
+                    <span className="text-xs text-muted-foreground">{isRTL ? "هدف 3" : "Target 3"}</span>
+                    <Input value={takeProfit3} onChange={(e) => setTakeProfit3(e.target.value)} placeholder="0.00" disabled={isWaitingForUnlock} />
                   </div>
                   <div className="sm:max-w-[220px]">
                     <span className="text-xs text-muted-foreground">{isRTL ? "نسبة المخاطرة" : "Risk %"}</span>
@@ -918,6 +1256,27 @@ function AnalystView() {
             <label className="text-sm font-medium text-muted-foreground mb-2 block">
               {isRTL ? "اكتب الرسالة" : "Type Message"}
             </label>
+            {type === "recommendation" && (
+              <div className="mb-2 flex items-center gap-2 flex-wrap">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={parseDraftMutation.isPending || !content.trim()}
+                  onClick={onParseDraft}
+                >
+                  <WandSparkles className="h-4 w-4 me-1" />
+                  {parseDraftMutation.isPending
+                    ? (isRTL ? "جاري التحليل..." : "Parsing...")
+                    : (isRTL ? "تحليل وتعبئة تلقائية" : "Parse & Auto-fill")}
+                </Button>
+                <span className="text-xs text-muted-foreground">
+                  {isRTL
+                    ? "اكتب التوصية بالنص الكامل وسيتم تعبئة الحقول تلقائياً."
+                    : "Write the full recommendation and fields will be auto-filled."}
+                </span>
+              </div>
+            )}
             <Textarea
               ref={composerRef}
               value={content}
@@ -937,33 +1296,266 @@ function AnalystView() {
 
           {showComposerFields && (
           <div className="flex items-center gap-3 flex-wrap pt-2 border-t">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span>
-                  <Button
-                    onClick={onPublish}
-                    disabled={postMessageMutation.isPending || !!publishDisabledReason}
-                    className={type === "recommendation"
-                      ? "bg-emerald-600 hover:bg-emerald-700 text-white"
-                      : type === "result"
-                        ? "bg-teal-600 hover:bg-teal-700 text-white"
-                        : "bg-amber-500 hover:bg-amber-600 text-white"}
-                  >
-                    {postMessageMutation.isPending
-                      ? (isRTL ? "جاري النشر..." : "Publishing...")
-                      : type === "recommendation"
-                        ? (isRTL ? "إرسال التوصية" : "Send Recommendation")
+            {editingMessageId ? (
+              <>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span>
+                      <Button
+                        onClick={onSaveEdit}
+                        disabled={editMessageMutation.isPending || !!publishDisabledReason}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                      >
+                        {editMessageMutation.isPending
+                          ? (isRTL ? "جاري الحفظ..." : "Saving...")
+                          : (isRTL ? "حفظ التعديل" : "Save Edit")}
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  {publishDisabledReason && (
+                    <TooltipContent sideOffset={8}>{publishDisabledReason}</TooltipContent>
+                  )}
+                </Tooltip>
+                <Button variant="outline" onClick={cancelEditMode} disabled={editMessageMutation.isPending}>
+                  {isRTL ? "إلغاء" : "Cancel"}
+                </Button>
+              </>
+            ) : (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span>
+                    <Button
+                      onClick={onPublish}
+                      disabled={postMessageMutation.isPending || !!publishDisabledReason}
+                      className={type === "recommendation"
+                        ? "bg-emerald-600 hover:bg-emerald-700 text-white"
                         : type === "result"
-                          ? (isRTL ? "إرسال النتيجة" : "Send Result")
-                          : (isRTL ? "إرسال التحديث" : "Send Update")}
-                  </Button>
-                </span>
-              </TooltipTrigger>
-              {publishDisabledReason && (
-                <TooltipContent sideOffset={8}>{publishDisabledReason}</TooltipContent>
-              )}
-            </Tooltip>
+                          ? "bg-teal-600 hover:bg-teal-700 text-white"
+                          : "bg-amber-500 hover:bg-amber-600 text-white"}
+                    >
+                      {postMessageMutation.isPending
+                        ? (isRTL ? "جاري النشر..." : "Publishing...")
+                        : type === "recommendation"
+                          ? (isRTL ? "إرسال التوصية" : "Send Recommendation")
+                          : type === "result"
+                            ? (isRTL ? "إرسال النتيجة" : "Send Result")
+                            : (isRTL ? "إرسال التحديث" : "Send Update")}
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                {publishDisabledReason && (
+                  <TooltipContent sideOffset={8}>{publishDisabledReason}</TooltipContent>
+                )}
+              </Tooltip>
+            )}
           </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <CardTitle>{isRTL ? "تقرير الأداء الشهري" : "Monthly Trade Report"}</CardTitle>
+              <CardDescription>
+                {isRTL
+                  ? "ملخص الربح والخسارة والنقاط مع إمكانية تعديل الصفقات غير المحسومة."
+                  : "Win/loss and pips summary with manual fixes for unresolved trade outcomes."}
+              </CardDescription>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Input
+                type="month"
+                value={reportMonth}
+                onChange={(event) => setReportMonth(event.target.value || getCurrentMonthValue())}
+                className="w-[170px]"
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => refetchMonthlyReport()}
+                disabled={monthlyReportLoading}
+              >
+                {isRTL ? "تحديث" : "Refresh"}
+              </Button>
+              <Button
+                size="sm"
+                onClick={exportMonthlyReport}
+                disabled={monthlyReportLoading || !monthlyReport?.trades?.length}
+              >
+                <Download className="h-4 w-4 me-1" />
+                {isRTL ? "تصدير CSV" : "Export CSV"}
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {monthlyReportLoading ? (
+            <p className="text-sm text-muted-foreground">{isRTL ? "جاري تحميل التقرير..." : "Loading report..."}</p>
+          ) : !monthlyReport ? (
+            <p className="text-sm text-muted-foreground">{isRTL ? "لا توجد بيانات." : "No report data found."}</p>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-xl border bg-slate-50 p-3">
+                  <p className="text-xs text-muted-foreground">{isRTL ? "إجمالي الصفقات" : "Total Trades"}</p>
+                  <p className="text-xl font-bold">{monthlyReport.summary.totalTrades}</p>
+                </div>
+                <div className="rounded-xl border bg-emerald-50 p-3">
+                  <p className="text-xs text-emerald-700">{isRTL ? "صفقات رابحة" : "Winning Trades"}</p>
+                  <p className="text-xl font-bold text-emerald-700">{monthlyReport.summary.winningTrades}</p>
+                </div>
+                <div className="rounded-xl border bg-red-50 p-3">
+                  <p className="text-xs text-red-700">{isRTL ? "صفقات خاسرة" : "Losing Trades"}</p>
+                  <p className="text-xl font-bold text-red-700">{monthlyReport.summary.losingTrades}</p>
+                </div>
+                <div className="rounded-xl border bg-teal-50 p-3">
+                  <p className="text-xs text-teal-700">{isRTL ? "نسبة النجاح" : "Win Rate"}</p>
+                  <p className="text-xl font-bold text-teal-700">{monthlyReport.summary.winRate}%</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-xl border p-3">
+                  <p className="text-xs text-muted-foreground">{isRTL ? "نقاط الربح" : "Pips Won"}</p>
+                  <p className="text-lg font-semibold text-emerald-700">+{monthlyReport.summary.totalPipsWon}</p>
+                </div>
+                <div className="rounded-xl border p-3">
+                  <p className="text-xs text-muted-foreground">{isRTL ? "نقاط الخسارة" : "Pips Lost"}</p>
+                  <p className="text-lg font-semibold text-red-700">{monthlyReport.summary.totalPipsLost}</p>
+                </div>
+                <div className="rounded-xl border p-3">
+                  <p className="text-xs text-muted-foreground">{isRTL ? "صافي النقاط" : "Net Pips"}</p>
+                  <p className={`text-lg font-semibold ${monthlyReport.summary.netPips >= 0 ? "text-emerald-700" : "text-red-700"}`}>
+                    {monthlyReport.summary.netPips}
+                  </p>
+                </div>
+                <div className="rounded-xl border p-3">
+                  <p className="text-xs text-muted-foreground">{isRTL ? "عقد 0.01" : "Lot 0.01 Equivalent"}</p>
+                  <p className="text-lg font-semibold">{monthlyReport.summary.lotEquivalent.lot001}</p>
+                </div>
+              </div>
+
+              <div className="rounded-xl border p-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <h3 className="text-sm font-semibold">{isRTL ? "خطوط الصفقات" : "Trade Lines"}</h3>
+                  <Badge variant="secondary">{monthlyReport.trades.length}</Badge>
+                </div>
+
+                {monthlyReport.trades.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">{isRTL ? "لا توجد صفقات محسومة لهذا الشهر." : "No finalized trades for this month."}</p>
+                ) : (
+                  <ResponsiveTable>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>{isRTL ? "التاريخ" : "Date"}</TableHead>
+                          <TableHead>{isRTL ? "الزوج" : "Symbol"}</TableHead>
+                          <TableHead>{isRTL ? "الاتجاه" : "Side"}</TableHead>
+                          <TableHead>{isRTL ? "النتيجة" : "Outcome"}</TableHead>
+                          <TableHead>{isRTL ? "النقاط" : "Pips"}</TableHead>
+                          <TableHead>{isRTL ? "المصدر" : "Source"}</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {monthlyReport.trades.map((trade, index) => (
+                          <TableRow key={`${trade.messageId}-${trade.tradeId}`} className={zebraRow(index)}>
+                            <TableCell>{formatMessageTimestamp(trade.closedAt, language)}</TableCell>
+                            <TableCell>{trade.symbol}</TableCell>
+                            <TableCell>{trade.side}</TableCell>
+                            <TableCell>
+                              <Badge className={trade.outcome === "win" ? "bg-emerald-600 text-white" : "bg-red-600 text-white"}>
+                                {trade.outcome === "win" ? (isRTL ? "ربح" : "Win") : (isRTL ? "خسارة" : "Loss")}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className={trade.pips >= 0 ? "text-emerald-700" : "text-red-700"}>{trade.pips}</TableCell>
+                            <TableCell>{trade.source}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </ResponsiveTable>
+                )}
+              </div>
+
+              <div className="rounded-xl border border-amber-200 bg-amber-50/40 p-3 dark:border-amber-800/40 dark:bg-amber-900/10">
+                <div className="mb-2 flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-amber-900 dark:text-amber-100">
+                    {isRTL ? "صفقات تحتاج مراجعة" : "Unresolved Trades"}
+                  </h3>
+                  <Badge className="bg-amber-500 text-white">{monthlyReport.unresolved.length}</Badge>
+                </div>
+
+                {monthlyReport.unresolved.length === 0 ? (
+                  <p className="text-sm text-amber-900/80 dark:text-amber-100/80">
+                    {isRTL ? "جميع الصفقات محسومة." : "All trades are resolved."}
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {monthlyReport.unresolved.map((row) => {
+                      const draft = overrideDrafts[row.messageId] || {
+                        outcome: row.suggestedOutcome || "win",
+                        pips: row.suggestedPips !== null ? String(Math.abs(row.suggestedPips)) : "",
+                      };
+
+                      return (
+                        <div key={row.messageId} className="rounded-lg border bg-white p-3 dark:bg-slate-950/40">
+                          <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                            <Badge variant="outline">#{row.tradeId}</Badge>
+                            <span>{row.symbol}</span>
+                            <span>{row.side}</span>
+                            <span>{formatMessageTimestamp(row.closedAt, language)}</span>
+                          </div>
+
+                          <p className="text-sm whitespace-pre-wrap">{row.content}</p>
+
+                          <div className="mt-3 flex flex-col gap-2 lg:flex-row lg:items-center">
+                            <div className="flex gap-2">
+                              <Button
+                                size="sm"
+                                variant={draft.outcome === "win" ? "default" : "outline"}
+                                onClick={() => updateOverrideDraft(row.messageId, { outcome: "win" })}
+                                className={draft.outcome === "win" ? "bg-emerald-600 hover:bg-emerald-700 text-white" : ""}
+                              >
+                                {isRTL ? "ربح" : "Win"}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant={draft.outcome === "loss" ? "default" : "outline"}
+                                onClick={() => updateOverrideDraft(row.messageId, { outcome: "loss" })}
+                                className={draft.outcome === "loss" ? "bg-red-600 hover:bg-red-700 text-white" : ""}
+                              >
+                                {isRTL ? "خسارة" : "Loss"}
+                              </Button>
+                            </div>
+                            <Input
+                              value={draft.pips}
+                              onChange={(event) => updateOverrideDraft(row.messageId, { pips: event.target.value })}
+                              placeholder={isRTL ? "النقاط" : "Pips"}
+                              className="w-[140px]"
+                            />
+                            <Button
+                              size="sm"
+                              onClick={() => saveOverride(row)}
+                              disabled={saveTradeResultMutation.isPending}
+                            >
+                              {saveTradeResultMutation.isPending
+                                ? (isRTL ? "جاري الحفظ..." : "Saving...")
+                                : (isRTL ? "حفظ" : "Save")}
+                            </Button>
+                            <span className="text-xs text-muted-foreground">
+                              {isRTL ? "ثقة التحليل:" : "Parser confidence:"} {row.confidence}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

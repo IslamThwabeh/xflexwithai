@@ -22,18 +22,14 @@ const reactionIcons = {
   rocket: <Rocket className="h-4 w-4" />,
 };
 
-function buildCopyBlock(message: any, t: (key: string) => string) {
-  const lines: string[] = [];
-  if (message.symbol) lines.push(`${t('rec.copySymbol')}: ${message.symbol}`);
-  if (message.side) lines.push(`${t('rec.copySide')}: ${message.side}`);
-  if (message.entryPrice) lines.push(`${t('rec.copyEntry')}: ${message.entryPrice}`);
-  if (message.stopLoss) lines.push(`${t('rec.copySL')}: ${message.stopLoss}`);
-  if (message.takeProfit1) lines.push(`${t('rec.copyTP1')}: ${message.takeProfit1}`);
-  if (message.takeProfit2) lines.push(`${t('rec.copyTP2')}: ${message.takeProfit2}`);
-  if (message.riskPercent) lines.push(`${t('rec.copyRisk')}: ${message.riskPercent}`);
-  lines.push("");
-  lines.push(message.content || "");
-  return lines.join("\n").trim();
+function getNumericCopyItems(message: any, t: (key: string) => string) {
+  return [
+    { key: 'entry', label: t('rec.copyEntry'), value: message.entryPrice },
+    { key: 'sl', label: t('rec.copySL'), value: message.stopLoss },
+    { key: 'tp1', label: t('rec.copyTP1'), value: message.takeProfit1 },
+    { key: 'tp2', label: t('rec.copyTP2'), value: message.takeProfit2 },
+    { key: 'tp3', label: t('rec.copyTP3'), value: message.takeProfit3 },
+  ].filter((item) => !!item.value);
 }
 
 function formatCountdown(target: unknown, now: number) {
@@ -234,9 +230,8 @@ export default function Recommendations() {
     setPendingThreadAction(parseThreadActionFromUrl());
   }, [location]);
 
-  const copyMessage = (message: any) => {
-    const text = buildCopyBlock(message, t);
-    navigator.clipboard.writeText(text);
+  const copyNumericValue = (value: string) => {
+    navigator.clipboard.writeText(String(value));
     toast.success(t('rec.toastCopied'));
   };
 
@@ -497,10 +492,10 @@ export default function Recommendations() {
                 <Copy className="h-5 w-5 text-emerald-600 mt-1" />
                 <div>
                   <h4 className="font-semibold">
-                    {language === 'ar' ? 'نسخ سريع للتنفيذ' : 'Quick Copy for Execution'}
+                    {language === 'ar' ? 'نسخ الأرقام مباشرة' : 'Copy Numbers Instantly'}
                   </h4>
                   <p className="text-sm text-muted-foreground">
-                    {language === 'ar' ? 'انسخ التوصية بضغطة واحدة للتنفيذ الفوري' : 'Copy any recommendation in one click for instant execution'}
+                    {language === 'ar' ? 'انسخ الدخول أو وقف الخسارة أو كل هدف بشكل منفصل.' : 'Copy entry, stop loss, or each target separately.'}
                   </p>
                 </div>
               </div>
@@ -732,12 +727,13 @@ export default function Recommendations() {
                                   </div>
                                 </div>
 
-                                {(message.entryPrice || message.stopLoss || message.takeProfit1 || message.takeProfit2 || message.riskPercent) && (
+                                {(message.entryPrice || message.stopLoss || message.takeProfit1 || message.takeProfit2 || message.takeProfit3 || message.riskPercent) && (
                                   <div className="grid grid-cols-1 gap-2 rounded-xl border bg-muted/60 p-3 text-xs sm:grid-cols-2 sm:text-sm">
                                     {message.entryPrice && <div><span className="text-muted-foreground">{language === 'ar' ? 'دخول:' : 'Entry:'}</span> <span className="font-mono font-medium">{message.entryPrice}</span></div>}
                                     {message.stopLoss && <div><span className="text-muted-foreground">{language === 'ar' ? 'وقف:' : 'SL:'}</span> <span className="font-mono font-medium text-red-600">{message.stopLoss}</span></div>}
                                     {message.takeProfit1 && <div><span className="text-muted-foreground">{language === 'ar' ? 'هدف 1:' : 'TP1:'}</span> <span className="font-mono font-medium text-emerald-600">{message.takeProfit1}</span></div>}
                                     {message.takeProfit2 && <div><span className="text-muted-foreground">{language === 'ar' ? 'هدف 2:' : 'TP2:'}</span> <span className="font-mono font-medium text-emerald-600">{message.takeProfit2}</span></div>}
+                                    {message.takeProfit3 && <div><span className="text-muted-foreground">{language === 'ar' ? 'هدف 3:' : 'TP3:'}</span> <span className="font-mono font-medium text-emerald-600">{message.takeProfit3}</span></div>}
                                     {message.riskPercent && <div><span className="text-muted-foreground">{language === 'ar' ? 'مخاطرة:' : 'Risk:'}</span> <span className="font-mono font-medium">{message.riskPercent}</span></div>}
                                   </div>
                                 )}
@@ -751,9 +747,11 @@ export default function Recommendations() {
                                 )}
 
                                 <div className="flex items-center gap-2 flex-wrap">
-                                  <Button size="sm" variant="outline" onClick={() => copyMessage(message)}>
-                                    <Copy className="h-4 w-4 me-1" /> {t('rec.copy')}
-                                  </Button>
+                                  {getNumericCopyItems(message, t).map((item) => (
+                                    <Button key={`${message.id}-${item.key}`} size="sm" variant="outline" onClick={() => copyNumericValue(item.value)}>
+                                      <Copy className="h-4 w-4 me-1" /> {item.label}
+                                    </Button>
+                                  ))}
 
                                   {(Object.keys(reactionIcons) as Array<keyof typeof reactionIcons>).map((reaction) => (
                                     <Button
@@ -797,9 +795,11 @@ export default function Recommendations() {
                                         <p className="text-sm whitespace-pre-wrap break-words">{child.content}</p>
 
                                         <div className="flex items-center gap-2 flex-wrap">
-                                          <Button size="sm" variant="outline" onClick={() => copyMessage(child)}>
-                                            <Copy className="h-4 w-4 me-1" /> {t('rec.copy')}
-                                          </Button>
+                                          {getNumericCopyItems(child, t).map((item) => (
+                                            <Button key={`${child.id}-${item.key}`} size="sm" variant="outline" onClick={() => copyNumericValue(item.value)}>
+                                              <Copy className="h-4 w-4 me-1" /> {item.label}
+                                            </Button>
+                                          ))}
                                           {(Object.keys(reactionIcons) as Array<keyof typeof reactionIcons>).map((reaction) => (
                                             <Button
                                               key={reaction}

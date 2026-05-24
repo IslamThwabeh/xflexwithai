@@ -25,6 +25,7 @@ import { z } from "zod";
 import { logger } from "./_core/logger";
 import * as db from "./db";
 import { filterRecipientsByMutedThreads } from "./services/recommendation-thread.service";
+import { parseRecommendationDraft } from "./services/recommendation-parser.service";
 import { storagePutR2, storageArchiveR2 } from "./storage-r2";
 import { analyzeLexai } from "./_core/lexai";
 import { invokeOpenAiChatCompletion } from "./_core/openai";
@@ -459,6 +460,7 @@ const buildRecommendationPlainText = (payload: {
   stopLoss?: string;
   takeProfit1?: string;
   takeProfit2?: string;
+  takeProfit3?: string;
   riskPercent?: string;
 }) => {
   const lines: string[] = [];
@@ -476,6 +478,7 @@ const buildRecommendationPlainText = (payload: {
   if (payload.stopLoss) lines.push(`وقف الخسارة: ${payload.stopLoss}`);
   if (payload.takeProfit1) lines.push(`هدف 1: ${payload.takeProfit1}`);
   if (payload.takeProfit2) lines.push(`هدف 2: ${payload.takeProfit2}`);
+  if (payload.takeProfit3) lines.push(`هدف 3: ${payload.takeProfit3}`);
   if (payload.riskPercent) lines.push(`نسبة المخاطرة: ${payload.riskPercent}`);
   lines.push("");
   lines.push(payload.content);
@@ -2872,6 +2875,7 @@ export const appRouter = router({
           stopLoss: z.string().max(50).optional(),
           takeProfit1: z.string().max(50).optional(),
           takeProfit2: z.string().max(50).optional(),
+          takeProfit3: z.string().max(50).optional(),
           riskPercent: z.string().max(20).optional(),
           parentId: z.number().optional(),
         })
@@ -2915,6 +2919,7 @@ export const appRouter = router({
           stopLoss?: string | null;
           takeProfit1?: string | null;
           takeProfit2?: string | null;
+          takeProfit3?: string | null;
           riskPercent?: string | null;
         } | null = null;
         let notificationSymbol: string | null | undefined;
@@ -2938,6 +2943,7 @@ export const appRouter = router({
             stopLoss: input.stopLoss?.trim() || undefined,
             takeProfit1: input.takeProfit1?.trim() || undefined,
             takeProfit2: input.takeProfit2?.trim() || undefined,
+            takeProfit3: input.takeProfit3?.trim() || undefined,
             riskPercent: input.riskPercent?.trim() || undefined,
           };
           notificationSymbol = normalizedSymbol;
@@ -2952,6 +2958,7 @@ export const appRouter = router({
             stopLoss: input.stopLoss,
             takeProfit1: input.takeProfit1,
             takeProfit2: input.takeProfit2,
+            takeProfit3: input.takeProfit3,
             riskPercent: input.riskPercent,
             parentId: null,
             threadStatus: 'open',
@@ -2988,6 +2995,7 @@ export const appRouter = router({
             stopLoss: parentMessage.stopLoss ?? undefined,
             takeProfit1: parentMessage.takeProfit1 ?? undefined,
             takeProfit2: parentMessage.takeProfit2 ?? undefined,
+            takeProfit3: parentMessage.takeProfit3 ?? undefined,
             riskPercent: parentMessage.riskPercent ?? undefined,
           };
           notificationSymbol = parentMessage.symbol ?? normalizedSymbol ?? undefined;
@@ -3002,6 +3010,7 @@ export const appRouter = router({
             stopLoss: input.stopLoss,
             takeProfit1: input.takeProfit1,
             takeProfit2: input.takeProfit2,
+            takeProfit3: input.takeProfit3,
             riskPercent: input.riskPercent,
             parentId: input.parentId,
             createdAt: new Date().toISOString(),
@@ -3085,6 +3094,155 @@ export const appRouter = router({
         }
 
         return { success: true, messageId };
+      }),
+
+    parseDraft: protectedProcedure
+      .input(z.object({ rawText: z.string().min(3).max(4000) }))
+      .mutation(async ({ ctx, input }) => {
+        await ensureRecommendationPublishAccess(ctx);
+        const result = await parseRecommendationDraft(input.rawText);
+
+        const isAdmin = !!(ctx.user?.email && await db.getAdminByEmail(ctx.user.email));
+        if (ctx.user?.isStaff && !isAdmin) {
+          await writeStaffActivityLog({
+            ctx: { ...ctx, admin: null },
+            path: 'recommendations.parseDraft',
+            type: 'mutation',
+            input: {
+              length: input.rawText.length,
+              source: result.parser.source,
+              confidence: result.parser.confidence,
+            },
+          });
+        }
+
+        return result;
+      }),
+
+    editMessage: protectedProcedure
+      .input(z.object({
+        messageId: z.number(),
+        content: z.string().min(3).max(4000),
+        symbol: z.string().max(30).optional(),
+        side: z.string().max(10).optional(),
+        entryPrice: z.string().max(50).optional(),
+        stopLoss: z.string().max(50).optional(),
+        takeProfit1: z.string().max(50).optional(),
+        takeProfit2: z.string().max(50).optional(),
+        takeProfit3: z.string().max(50).optional(),
+        riskPercent: z.string().max(20).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        await ensureRecommendationPublishAccess(ctx);
+
+        let updated: Awaited<ReturnType<typeof db.editRecommendationMessage>>;
+        try {
+          updated = await db.editRecommendationMessage({
+            messageId: input.messageId,
+            userId: ctx.user.id,
+            content: input.content,
+            symbol: input.symbol,
+            side: input.side,
+            entryPrice: input.entryPrice,
+            stopLoss: input.stopLoss,
+            takeProfit1: input.takeProfit1,
+            takeProfit2: input.takeProfit2,
+            takeProfit3: input.takeProfit3,
+            riskPercent: input.riskPercent,
+          });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Unable to edit recommendation message";
+
+          if (message === "Recommendation message not found") {
+            throw new TRPCError({ code: 'NOT_FOUND', message });
+          }
+          if (message === "You can only edit your own recommendation messages") {
+            throw new TRPCError({ code: 'FORBIDDEN', message });
+          }
+          if (message === "Recommendation edit window expired") {
+            throw new TRPCError({
+              code: 'FORBIDDEN',
+              message: 'You can edit a recommendation only within 60 seconds of posting.',
+            });
+          }
+
+          throw new TRPCError({ code: 'BAD_REQUEST', message });
+        }
+
+        const isAdmin = !!(ctx.user?.email && await db.getAdminByEmail(ctx.user.email));
+        if (ctx.user?.isStaff && !isAdmin) {
+          await writeStaffActivityLog({
+            ctx: { ...ctx, admin: null },
+            path: 'recommendations.editMessage',
+            type: 'mutation',
+            input: {
+              messageId: input.messageId,
+              hasSymbol: !!input.symbol,
+              hasStopLoss: !!input.stopLoss,
+              hasTargets: !!(input.takeProfit1 || input.takeProfit2 || input.takeProfit3),
+            },
+          });
+        }
+
+        return { success: true, message: updated };
+      }),
+
+    monthlyTradeReport: protectedProcedure
+      .input(z.object({ month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).optional() }).optional())
+      .query(async ({ ctx, input }) => {
+        await ensureRecommendationPublishAccess(ctx);
+
+        const month = input?.month || new Date().toISOString().slice(0, 7);
+        const report = await db.getRecommendationMonthlyTradeReport(month);
+
+        const isAdmin = !!(ctx.user?.email && await db.getAdminByEmail(ctx.user.email));
+        if (ctx.user?.isStaff && !isAdmin) {
+          await writeStaffActivityLog({
+            ctx: { ...ctx, admin: null },
+            path: 'recommendations.monthlyTradeReport',
+            type: 'query',
+            input: {
+              month,
+              totalTrades: report.summary.totalTrades,
+              unresolved: report.coverage.unresolved,
+            },
+          });
+        }
+
+        return report;
+      }),
+
+    saveTradeResult: protectedProcedure
+      .input(z.object({
+        messageId: z.number(),
+        outcome: z.enum(['win', 'loss']),
+        pips: z.number().positive().max(100000),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        await ensureRecommendationPublishAccess(ctx);
+
+        let updated: Awaited<ReturnType<typeof db.saveRecommendationTradeResultOverride>>;
+        try {
+          updated = await db.saveRecommendationTradeResultOverride(input);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Unable to save trade result';
+          if (message === 'Recommendation result message not found') {
+            throw new TRPCError({ code: 'NOT_FOUND', message });
+          }
+          throw new TRPCError({ code: 'BAD_REQUEST', message });
+        }
+
+        const isAdmin = !!(ctx.user?.email && await db.getAdminByEmail(ctx.user.email));
+        if (ctx.user?.isStaff && !isAdmin) {
+          await writeStaffActivityLog({
+            ctx: { ...ctx, admin: null },
+            path: 'recommendations.saveTradeResult',
+            type: 'mutation',
+            input,
+          });
+        }
+
+        return { success: true, message: updated };
       }),
 
     closeThread: protectedProcedure

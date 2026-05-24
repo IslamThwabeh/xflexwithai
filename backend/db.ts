@@ -92,8 +92,64 @@ const DEFAULT_KEY_ENTITLEMENT_DAYS = 30;
 const DEFAULT_STUDY_PERIOD_DAYS = 14;
 const RECOMMENDATION_ALERT_UNLOCK_MS = 60 * 1000;
 const RECOMMENDATION_ALERT_EXPIRY_MS = 15 * 60 * 1000;
+const RECOMMENDATION_MESSAGE_EDIT_WINDOW_MS = 60 * 1000;
+const RECOMMENDATION_REPORT_MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 let hasLoggedMissingEngagementEventsTable = false;
 let hasLoggedMissingOpenAiUsageEventsTable = false;
+
+export type RecommendationReportOutcome = 'win' | 'loss';
+
+export type RecommendationTradeReportRow = {
+  messageId: number;
+  tradeId: number;
+  closedAt: string;
+  symbol: string;
+  side: string;
+  content: string;
+  outcome: RecommendationReportOutcome;
+  pips: number;
+  source: 'manual' | 'explicit' | 'derived';
+};
+
+export type RecommendationTradeReportUnresolvedRow = {
+  messageId: number;
+  tradeId: number;
+  closedAt: string;
+  symbol: string;
+  side: string;
+  content: string;
+  suggestedOutcome: RecommendationReportOutcome | null;
+  suggestedPips: number | null;
+  confidence: 'none' | 'low' | 'medium' | 'high';
+};
+
+export type RecommendationTradeReportSummary = {
+  totalTrades: number;
+  winningTrades: number;
+  losingTrades: number;
+  winRate: number;
+  totalPipsWon: number;
+  totalPipsLost: number;
+  netPips: number;
+  lotEquivalent: {
+    lot001: number;
+    lot005: number;
+    lot010: number;
+    lot100: number;
+  };
+};
+
+export type RecommendationMonthlyTradeReport = {
+  month: string;
+  trades: RecommendationTradeReportRow[];
+  unresolved: RecommendationTradeReportUnresolvedRow[];
+  summary: RecommendationTradeReportSummary;
+  coverage: {
+    candidates: number;
+    finalized: number;
+    unresolved: number;
+  };
+};
 
 export type TimedServiceStatus = 'none' | 'pending' | 'active' | 'expiring' | 'expired' | 'frozen';
 
@@ -2999,6 +3055,460 @@ export async function deleteRecommendationMessage(messageId: number, userId: num
 
   await db.delete(recommendationMessages).where(eq(recommendationMessages.id, messageId));
   await db.delete(recommendationMessages).where(eq(recommendationMessages.parentId, messageId));
+}
+
+export async function editRecommendationMessage(input: {
+  messageId: number;
+  userId: number;
+  content: string;
+  symbol?: string;
+  side?: string;
+  entryPrice?: string;
+  stopLoss?: string;
+  takeProfit1?: string;
+  takeProfit2?: string;
+  takeProfit3?: string;
+  riskPercent?: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const existingRows = await db
+    .select()
+    .from(recommendationMessages)
+    .where(eq(recommendationMessages.id, input.messageId))
+    .limit(1);
+
+  const existing = existingRows[0];
+  if (!existing) {
+    throw new Error("Recommendation message not found");
+  }
+
+  if (existing.userId !== input.userId) {
+    throw new Error("You can only edit your own recommendation messages");
+  }
+
+  if (!["recommendation", "update", "result"].includes(existing.type)) {
+    throw new Error("Only recommendation channel messages can be edited");
+  }
+
+  const createdAtTs = new Date(existing.createdAt).getTime();
+  if (!Number.isFinite(createdAtTs) || Date.now() - createdAtTs > RECOMMENDATION_MESSAGE_EDIT_WINDOW_MS) {
+    throw new Error("Recommendation edit window expired");
+  }
+
+  const trimmedContent = input.content.trim();
+  if (trimmedContent.length < 3) {
+    throw new Error("Please write a clear message first.");
+  }
+
+  const normalizeOptional = (value?: string) => {
+    if (value === undefined) return undefined;
+    const trimmed = value.trim();
+    return trimmed.length ? trimmed : null;
+  };
+
+  const normalizedSymbol = normalizeOptional(input.symbol)?.toUpperCase() ?? undefined;
+  if (existing.type === "recommendation" && !normalizedSymbol) {
+    throw new Error("Choose the symbol first.");
+  }
+
+  const updatePayload: Partial<InsertRecommendationMessage> = {
+    content: trimmedContent,
+    symbol: normalizedSymbol,
+    side: normalizeOptional(input.side),
+    entryPrice: normalizeOptional(input.entryPrice),
+    stopLoss: normalizeOptional(input.stopLoss),
+    takeProfit1: normalizeOptional(input.takeProfit1),
+    takeProfit2: normalizeOptional(input.takeProfit2),
+    takeProfit3: normalizeOptional(input.takeProfit3),
+    riskPercent: normalizeOptional(input.riskPercent),
+  };
+
+  if (existing.type !== "recommendation") {
+    delete updatePayload.symbol;
+    delete updatePayload.side;
+    delete updatePayload.entryPrice;
+    delete updatePayload.stopLoss;
+    delete updatePayload.takeProfit1;
+    delete updatePayload.takeProfit2;
+    delete updatePayload.takeProfit3;
+    delete updatePayload.riskPercent;
+  }
+
+  const updatedRows = await db
+    .update(recommendationMessages)
+    .set(updatePayload)
+    .where(eq(recommendationMessages.id, input.messageId))
+    .returning();
+
+  return updatedRows[0] ?? null;
+}
+
+type RecommendationParsedCandidate = {
+  message: RecommendationMessage;
+  parent: RecommendationMessage | null;
+  outcome: RecommendationReportOutcome | null;
+  pips: number | null;
+  confidence: 'none' | 'low' | 'medium' | 'high';
+  source: 'manual' | 'explicit' | 'derived' | 'unknown';
+};
+
+function roundTo2(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function parsePrice(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const normalized = value.replace(/,/g, '.').trim();
+  if (!normalized) return null;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function extractPrice(text: string, pattern: RegExp): number | null {
+  const match = text.match(pattern);
+  if (!match?.[1]) return null;
+  return parsePrice(match[1]);
+}
+
+function parseSide(message: RecommendationMessage | null, parent: RecommendationMessage | null): string {
+  const direct = (message?.side || parent?.side || '').trim().toUpperCase();
+  if (direct === 'BUY' || direct === 'SELL') return direct;
+
+  const sourceText = `${parent?.content || ''}\n${message?.content || ''}`;
+  if (/\bBUY\b/i.test(sourceText)) return 'BUY';
+  if (/\bSELL\b/i.test(sourceText)) return 'SELL';
+  return '-';
+}
+
+function parseSymbol(message: RecommendationMessage | null, parent: RecommendationMessage | null): string {
+  const direct = (parent?.symbol || message?.symbol || '').trim().toUpperCase();
+  if (direct) return direct;
+
+  const sourceText = `${parent?.content || ''}\n${message?.content || ''}`;
+  const fromText = sourceText.match(/\b([A-Z]{3,10}(?:\/?[A-Z]{3,10})?)\b/);
+  return fromText?.[1]?.replace('/', '') || '-';
+}
+
+function parseRecommendationCandidate(message: RecommendationMessage, parent: RecommendationMessage | null): RecommendationParsedCandidate {
+  const content = (message.content || '').trim();
+  const normalizedContent = content.toLowerCase();
+
+  const manualOutcome = message.resultOutcome === 'win' || message.resultOutcome === 'loss'
+    ? message.resultOutcome
+    : null;
+  const manualPips = typeof message.resultPips === 'number' && Number.isFinite(message.resultPips)
+    ? roundTo2(message.resultPips)
+    : null;
+
+  if (manualOutcome && manualPips !== null) {
+    const signedPips = manualOutcome === 'loss' ? -Math.abs(manualPips) : Math.abs(manualPips);
+    return {
+      message,
+      parent,
+      outcome: manualOutcome,
+      pips: roundTo2(signedPips),
+      confidence: 'high',
+      source: 'manual',
+    };
+  }
+
+  const explicitSignedPipsMatch = content.match(/([+-]\d+(?:[.,]\d+)?)/);
+  const explicitSignedPips = explicitSignedPipsMatch ? parsePrice(explicitSignedPipsMatch[1]) : null;
+
+  let parsedOutcome: RecommendationReportOutcome | null = null;
+  if (explicitSignedPips !== null) {
+    parsedOutcome = explicitSignedPips < 0 ? 'loss' : 'win';
+  } else if (/(?:❌|stop\s*loss|stopped|loss|sl\b|خسار|ستوب)/i.test(content)) {
+    parsedOutcome = 'loss';
+  } else if (/(?:✅|tp\s*\d|tp\d|target|هدف|ربح|profit)/i.test(content)) {
+    parsedOutcome = 'win';
+  }
+
+  let parsedPips = explicitSignedPips;
+  let source: RecommendationParsedCandidate['source'] = explicitSignedPips !== null ? 'explicit' : 'unknown';
+  let confidence: RecommendationParsedCandidate['confidence'] = explicitSignedPips !== null
+    ? 'high'
+    : parsedOutcome
+      ? 'low'
+      : 'none';
+
+  if (parsedPips === null) {
+    const parentContent = parent?.content || '';
+    const entryPrice = parsePrice(parent?.entryPrice)
+      ?? extractPrice(parentContent, /(?:BUY|SELL)\s*NOW\s*([0-9]+(?:[.,][0-9]+)?)/i);
+    const stopLoss = parsePrice(parent?.stopLoss)
+      ?? extractPrice(parentContent, /(?:SL|STOP\s*LOSS)\s*[:=-]?\s*([0-9]+(?:[.,][0-9]+)?)/i);
+    const tp1 = parsePrice(parent?.takeProfit1)
+      ?? extractPrice(parentContent, /TP1\s*[:=-]?\s*([0-9]+(?:[.,][0-9]+)?)/i);
+    const tp2 = parsePrice(parent?.takeProfit2)
+      ?? extractPrice(parentContent, /TP2\s*[:=-]?\s*([0-9]+(?:[.,][0-9]+)?)/i);
+    const tp3 = parsePrice(parent?.takeProfit3)
+      ?? extractPrice(parentContent, /TP3\s*[:=-]?\s*([0-9]+(?:[.,][0-9]+)?)/i);
+
+    if (entryPrice !== null) {
+      if (/(?:tp3|target\s*3|هدف\s*3|الهدف\s*الثالث)/i.test(content) && tp3 !== null) {
+        parsedPips = roundTo2(Math.abs(tp3 - entryPrice));
+        parsedOutcome = parsedOutcome || 'win';
+        source = 'derived';
+        confidence = 'medium';
+      } else if (/(?:tp2|target\s*2|هدف\s*2|الهدف\s*الثاني)/i.test(content) && tp2 !== null) {
+        parsedPips = roundTo2(Math.abs(tp2 - entryPrice));
+        parsedOutcome = parsedOutcome || 'win';
+        source = 'derived';
+        confidence = 'medium';
+      } else if (/(?:tp1|target\s*1|هدف\s*1|الهدف\s*الأول)/i.test(content) && tp1 !== null) {
+        parsedPips = roundTo2(Math.abs(tp1 - entryPrice));
+        parsedOutcome = parsedOutcome || 'win';
+        source = 'derived';
+        confidence = 'medium';
+      } else if (/(?:❌|stop\s*loss|stopped|loss|sl\b|خسار|ستوب)/i.test(content) && stopLoss !== null) {
+        parsedPips = -roundTo2(Math.abs(entryPrice - stopLoss));
+        parsedOutcome = 'loss';
+        source = 'derived';
+        confidence = 'medium';
+      }
+    }
+  }
+
+  if (parsedPips !== null && parsedOutcome === null) {
+    parsedOutcome = parsedPips < 0 ? 'loss' : 'win';
+  }
+
+  if (parsedPips !== null && parsedOutcome !== null) {
+    if (parsedOutcome === 'win' && parsedPips < 0) parsedPips = Math.abs(parsedPips);
+    if (parsedOutcome === 'loss' && parsedPips > 0) parsedPips = -Math.abs(parsedPips);
+  }
+
+  if (source === 'unknown' && parsedOutcome !== null) {
+    source = 'explicit';
+  }
+
+  return {
+    message,
+    parent,
+    outcome: parsedOutcome,
+    pips: parsedPips !== null ? roundTo2(parsedPips) : null,
+    confidence,
+    source,
+  };
+}
+
+function rankRecommendationCandidate(candidate: RecommendationParsedCandidate): number {
+  const manualScore = candidate.source === 'manual' ? 100 : 0;
+  const typeScore = candidate.message.type === 'result' ? 20 : 10;
+  const resolvedScore = candidate.outcome && candidate.pips !== null ? 10 : 0;
+  const confidenceScore = candidate.confidence === 'high'
+    ? 4
+    : candidate.confidence === 'medium'
+      ? 3
+      : candidate.confidence === 'low'
+        ? 2
+        : 1;
+
+  return manualScore + typeScore + resolvedScore + confidenceScore;
+}
+
+function normalizeReportMonth(month: string): string {
+  if (!RECOMMENDATION_REPORT_MONTH_RE.test(month)) {
+    throw new Error('Month must be in YYYY-MM format.');
+  }
+  return month;
+}
+
+export async function getRecommendationMonthlyTradeReport(month: string): Promise<RecommendationMonthlyTradeReport> {
+  const db = await getDb();
+  if (!db) throw new Error('Database not available');
+
+  const normalizedMonth = normalizeReportMonth(month);
+
+  const messages = await db
+    .select()
+    .from(recommendationMessages)
+    .where(
+      and(
+        isNotNull(recommendationMessages.parentId),
+        inArray(recommendationMessages.type, ['result', 'update']),
+        sql`${recommendationMessages.createdAt} LIKE ${`${normalizedMonth}%`}`,
+      )
+    )
+    .orderBy(asc(recommendationMessages.createdAt));
+
+  if (!messages.length) {
+    return {
+      month: normalizedMonth,
+      trades: [],
+      unresolved: [],
+      summary: {
+        totalTrades: 0,
+        winningTrades: 0,
+        losingTrades: 0,
+        winRate: 0,
+        totalPipsWon: 0,
+        totalPipsLost: 0,
+        netPips: 0,
+        lotEquivalent: {
+          lot001: 0,
+          lot005: 0,
+          lot010: 0,
+          lot100: 0,
+        },
+      },
+      coverage: {
+        candidates: 0,
+        finalized: 0,
+        unresolved: 0,
+      },
+    };
+  }
+
+  const parentIds = Array.from(new Set(messages
+    .map((message) => message.parentId)
+    .filter((id): id is number => typeof id === 'number')));
+
+  const parents = parentIds.length
+    ? await db
+        .select()
+        .from(recommendationMessages)
+        .where(inArray(recommendationMessages.id, parentIds))
+    : [];
+
+  const parentMap = new Map<number, RecommendationMessage>();
+  for (const parent of parents) {
+    parentMap.set(parent.id, parent);
+  }
+
+  const byTrade = new Map<number, RecommendationParsedCandidate[]>();
+  for (const message of messages) {
+    if (!message.parentId) continue;
+    const parent = parentMap.get(message.parentId) ?? null;
+    const parsed = parseRecommendationCandidate(message, parent);
+    const list = byTrade.get(message.parentId) || [];
+    list.push(parsed);
+    byTrade.set(message.parentId, list);
+  }
+
+  const selectedCandidates: RecommendationParsedCandidate[] = [];
+  for (const [, candidates] of byTrade) {
+    const selected = [...candidates].sort((a, b) => {
+      const rankDiff = rankRecommendationCandidate(b) - rankRecommendationCandidate(a);
+      if (rankDiff !== 0) return rankDiff;
+      return new Date(b.message.createdAt).getTime() - new Date(a.message.createdAt).getTime();
+    })[0];
+    if (selected) selectedCandidates.push(selected);
+  }
+
+  const trades: RecommendationTradeReportRow[] = selectedCandidates
+    .filter((candidate) => candidate.outcome !== null && candidate.pips !== null)
+    .map((candidate) => ({
+      messageId: candidate.message.id,
+      tradeId: candidate.message.parentId as number,
+      closedAt: candidate.message.createdAt,
+      symbol: parseSymbol(candidate.message, candidate.parent),
+      side: parseSide(candidate.message, candidate.parent),
+      content: candidate.message.content,
+      outcome: candidate.outcome as RecommendationReportOutcome,
+      pips: candidate.pips as number,
+      source: candidate.source === 'manual' ? 'manual' : candidate.source === 'derived' ? 'derived' : 'explicit',
+    }))
+    .sort((a, b) => new Date(a.closedAt).getTime() - new Date(b.closedAt).getTime());
+
+  const unresolved: RecommendationTradeReportUnresolvedRow[] = selectedCandidates
+    .filter((candidate) => !(candidate.outcome !== null && candidate.pips !== null))
+    .map((candidate) => ({
+      messageId: candidate.message.id,
+      tradeId: candidate.message.parentId as number,
+      closedAt: candidate.message.createdAt,
+      symbol: parseSymbol(candidate.message, candidate.parent),
+      side: parseSide(candidate.message, candidate.parent),
+      content: candidate.message.content,
+      suggestedOutcome: candidate.outcome,
+      suggestedPips: candidate.pips,
+      confidence: candidate.confidence,
+    }))
+    .sort((a, b) => new Date(a.closedAt).getTime() - new Date(b.closedAt).getTime());
+
+  const winningTrades = trades.filter((trade) => trade.outcome === 'win').length;
+  const losingTrades = trades.filter((trade) => trade.outcome === 'loss').length;
+  const totalTrades = trades.length;
+  const winRate = totalTrades ? roundTo2((winningTrades * 100) / totalTrades) : 0;
+  const totalPipsWon = roundTo2(trades
+    .filter((trade) => trade.pips > 0)
+    .reduce((sum, trade) => sum + trade.pips, 0));
+  const totalPipsLost = roundTo2(trades
+    .filter((trade) => trade.pips < 0)
+    .reduce((sum, trade) => sum + trade.pips, 0));
+  const netPips = roundTo2(totalPipsWon + totalPipsLost);
+
+  return {
+    month: normalizedMonth,
+    trades,
+    unresolved,
+    summary: {
+      totalTrades,
+      winningTrades,
+      losingTrades,
+      winRate,
+      totalPipsWon,
+      totalPipsLost,
+      netPips,
+      lotEquivalent: {
+        lot001: roundTo2(netPips * 0.1),
+        lot005: roundTo2(netPips * 0.5),
+        lot010: roundTo2(netPips * 1),
+        lot100: roundTo2(netPips * 10),
+      },
+    },
+    coverage: {
+      candidates: selectedCandidates.length,
+      finalized: trades.length,
+      unresolved: unresolved.length,
+    },
+  };
+}
+
+export async function saveRecommendationTradeResultOverride(input: {
+  messageId: number;
+  outcome: RecommendationReportOutcome;
+  pips: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error('Database not available');
+
+  const existingRows = await db
+    .select()
+    .from(recommendationMessages)
+    .where(eq(recommendationMessages.id, input.messageId))
+    .limit(1);
+
+  const existing = existingRows[0];
+  if (!existing) {
+    throw new Error('Recommendation result message not found');
+  }
+  if (!existing.parentId || !['result', 'update'].includes(existing.type)) {
+    throw new Error('Only recommendation result/update replies can be adjusted for monthly reports');
+  }
+
+  const normalizedPips = input.outcome === 'loss'
+    ? -Math.abs(roundTo2(input.pips))
+    : Math.abs(roundTo2(input.pips));
+
+  await db
+    .update(recommendationMessages)
+    .set({
+      resultOutcome: input.outcome,
+      resultPips: normalizedPips,
+    })
+    .where(eq(recommendationMessages.id, input.messageId));
+
+  const updatedRows = await db
+    .select()
+    .from(recommendationMessages)
+    .where(eq(recommendationMessages.id, input.messageId))
+    .limit(1);
+
+  return updatedRows[0] ?? null;
 }
 
 export async function getRecommendationMessagesFeed(userId: number, limit: number = 200) {

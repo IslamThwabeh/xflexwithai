@@ -9,6 +9,7 @@ type RecommendationEmailTrade = {
   stopLoss?: string | null;
   takeProfit1?: string | null;
   takeProfit2?: string | null;
+  takeProfit3?: string | null;
   riskPercent?: string | null;
 };
 
@@ -120,6 +121,7 @@ function buildTradeDetails(trade: RecommendationEmailTrade, isArabic: boolean) {
     trade.stopLoss ? { label: isArabic ? "وقف الخسارة" : "Stop Loss", value: trade.stopLoss, tone: "danger" as const } : null,
     trade.takeProfit1 ? { label: isArabic ? "هدف 1" : "Target 1", value: trade.takeProfit1, tone: "success" as const } : null,
     trade.takeProfit2 ? { label: isArabic ? "هدف 2" : "Target 2", value: trade.takeProfit2, tone: "success" as const } : null,
+    trade.takeProfit3 ? { label: isArabic ? "هدف 3" : "Target 3", value: trade.takeProfit3, tone: "success" as const } : null,
     trade.riskPercent ? { label: isArabic ? "نسبة المخاطرة" : "Risk", value: trade.riskPercent, tone: "default" as const } : null,
   ].filter((item): item is { label: string; value: string; tone: "default" | "danger" | "success" } => Boolean(item));
 }

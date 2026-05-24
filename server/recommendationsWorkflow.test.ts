@@ -24,6 +24,8 @@ vi.mock("../backend/db", async () => {
     closeRecommendationThread: vi.fn().mockResolvedValue(undefined),
     cancelRecommendationAlert: vi.fn().mockResolvedValue(undefined),
     clearUserInteraction: vi.fn().mockResolvedValue(undefined),
+    getRecommendationMonthlyTradeReport: vi.fn(),
+    saveRecommendationTradeResultOverride: vi.fn(),
   };
 });
 
@@ -67,6 +69,8 @@ describe("recommendations workflow", () => {
   const hasRecommendationResultChild = vi.mocked(db.hasRecommendationResultChild);
   const closeRecommendationThread = vi.mocked(db.closeRecommendationThread);
   const clearUserInteraction = vi.mocked(db.clearUserInteraction);
+  const getRecommendationMonthlyTradeReport = vi.mocked(db.getRecommendationMonthlyTradeReport);
+  const saveRecommendationTradeResultOverride = vi.mocked(db.saveRecommendationTradeResultOverride);
   const mockedSendEmail = vi.mocked(sendEmail);
 
   beforeEach(() => {
@@ -114,6 +118,64 @@ describe("recommendations workflow", () => {
       threadStatus: "open",
     } as any);
     hasRecommendationResultChild.mockResolvedValue(true);
+    getRecommendationMonthlyTradeReport.mockResolvedValue({
+      month: "2026-05",
+      trades: [],
+      unresolved: [],
+      summary: {
+        totalTrades: 0,
+        winningTrades: 0,
+        losingTrades: 0,
+        winRate: 0,
+        totalPipsWon: 0,
+        totalPipsLost: 0,
+        netPips: 0,
+        lotEquivalent: {
+          lot001: 0,
+          lot005: 0,
+          lot010: 0,
+          lot100: 0,
+        },
+      },
+      coverage: {
+        candidates: 0,
+        finalized: 0,
+        unresolved: 0,
+      },
+    });
+    saveRecommendationTradeResultOverride.mockResolvedValue({
+      id: 902,
+      parentId: 901,
+      type: "result",
+      resultOutcome: "win",
+      resultPips: 25,
+    } as any);
+  });
+
+  it("returns monthly trade report for recommendation channel managers", async () => {
+    const caller = createAuthedCaller();
+
+    const result = await caller.recommendations.monthlyTradeReport({ month: "2026-05" });
+
+    expect(getRecommendationMonthlyTradeReport).toHaveBeenCalledWith("2026-05");
+    expect(result).toMatchObject({ month: "2026-05" });
+  });
+
+  it("saves manual trade result overrides", async () => {
+    const caller = createAuthedCaller();
+
+    const result = await caller.recommendations.saveTradeResult({
+      messageId: 902,
+      outcome: "win",
+      pips: 25,
+    });
+
+    expect(saveRecommendationTradeResultOverride).toHaveBeenCalledWith({
+      messageId: 902,
+      outcome: "win",
+      pips: 25,
+    });
+    expect(result).toMatchObject({ success: true });
   });
 
   it("emails only inactive recommendation recipients during notify", async () => {
