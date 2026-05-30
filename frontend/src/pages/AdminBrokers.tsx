@@ -372,15 +372,18 @@ export function AdminBrokersContent() {
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
             {brokers.map((b) => {
               const features = parseFeatures(isRtl ? b.featuresAr : b.featuresEn);
+              const logoNeedsDarkBg = /(?:^|[_\-/])white|vt-markets/i.test(b.logoUrl || '');
               return (
                 <div key={b.id} className={`min-w-0 overflow-hidden bg-white border rounded-xl p-5 transition-opacity ${!b.isActive ? 'opacity-60' : ''}`}>
                   {/* Header */}
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex min-w-0 items-center gap-3">
                       {b.logoUrl ? (
-                        <img src={b.logoUrl} alt={b.nameEn} className="h-10 w-10 shrink-0 object-contain rounded" />
+                        <div className={`flex h-12 shrink-0 items-center justify-center rounded-md border px-3 py-1 ${logoNeedsDarkBg ? 'border-slate-800 bg-slate-900' : 'border-gray-200 bg-white'}`}>
+                          <img src={b.logoUrl} alt={b.nameEn} className="h-7 w-auto max-w-[140px] object-contain" />
+                        </div>
                       ) : (
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-emerald-100">
+                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded bg-emerald-100">
                           <Building2 className="w-5 h-5 text-emerald-600" />
                         </div>
                       )}

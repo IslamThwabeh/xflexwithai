@@ -50,11 +50,13 @@ export default function BrokerSelection() {
               return (
                 <div key={b.id} className={`bg-white rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow flex flex-col border ${isPrimary ? 'border-emerald-300 ring-1 ring-emerald-100' : 'border-gray-200'}`}>
                   {/* Logo + Name */}
-                  <div className="flex items-center gap-3 mb-4">
+                  <div className="flex items-center gap-4 mb-4">
                     {b.logoUrl ? (
-                      <img src={b.logoUrl} alt={isRtl ? b.nameAr : b.nameEn} className="h-12 w-12 object-contain rounded-lg" />
+                      <div className={`flex h-14 shrink-0 items-center justify-center rounded-lg border px-4 py-2 ${/(?:^|[_\-/])white|vt-markets/i.test(b.logoUrl) ? 'border-slate-800 bg-slate-900' : 'border-gray-200 bg-white'}`}>
+                        <img src={b.logoUrl} alt={isRtl ? b.nameAr : b.nameEn} className="h-8 w-auto max-w-[160px] object-contain" />
+                      </div>
                     ) : (
-                      <div className="h-12 w-12 rounded-lg bg-emerald-100 flex items-center justify-center">
+                      <div className="h-14 w-14 rounded-lg bg-emerald-100 flex items-center justify-center">
                         <Building2 className="w-6 h-6 text-emerald-600" />
                       </div>
                     )}
