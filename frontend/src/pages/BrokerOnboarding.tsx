@@ -348,7 +348,7 @@ export default function BrokerOnboarding() {
                     >
                       {broker.logoUrl ? (
                         <div className={`flex h-12 shrink-0 items-center justify-center rounded-md border px-3 py-1.5 ${/(?:^|[_\-/])white|vt-markets/i.test(broker.logoUrl) ? 'border-slate-600 bg-slate-700' : 'border-gray-200 bg-white'}`}>
-                          <img src={broker.logoUrl} alt={broker.nameEn} className="h-7 w-auto object-contain" style={{ maxWidth: '180px' }} />
+                          <img src={broker.logoUrl} alt={broker.nameEn} className="h-7 w-auto object-contain" style={{ maxWidth: '180px', ...(/(?:^|[_\-/])white|vt-markets/i.test(broker.logoUrl) ? { filter: 'brightness(0) invert(1)' } : {}) }} />
                         </div>
                       ) : (
                         <div className="h-12 w-12 bg-gray-100 rounded flex items-center justify-center">
@@ -448,7 +448,7 @@ export default function BrokerOnboarding() {
                       <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
                         {selectedBroker.logoUrl && (
                           <div className={`flex h-9 items-center justify-center rounded border px-2 ${/(?:^|[_\-/])white|vt-markets/i.test(selectedBroker.logoUrl) ? 'border-slate-600 bg-slate-700' : 'border-gray-200 bg-white'}`}>
-                            <img src={selectedBroker.logoUrl} alt="" className="h-6 w-auto object-contain" style={{ maxWidth: '140px' }} />
+                            <img src={selectedBroker.logoUrl} alt="" className="h-6 w-auto object-contain" style={{ maxWidth: '140px', ...(/(?:^|[_\-/])white|vt-markets/i.test(selectedBroker.logoUrl) ? { filter: 'brightness(0) invert(1)' } : {}) }} />
                           </div>
                         )}
                         <span className="font-medium text-sm">{isArabic ? selectedBroker.nameAr : selectedBroker.nameEn}</span>

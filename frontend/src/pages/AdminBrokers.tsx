@@ -380,7 +380,7 @@ export function AdminBrokersContent() {
                     <div className="flex min-w-0 items-center gap-3">
                       {b.logoUrl ? (
                         <div className={`flex h-12 shrink-0 items-center justify-center rounded-md border px-3 py-1.5 ${logoNeedsDarkBg ? 'border-slate-600 bg-slate-700' : 'border-gray-200 bg-white'}`}>
-                          <img src={b.logoUrl} alt={b.nameEn} className="h-7 w-auto object-contain" style={{ maxWidth: '180px' }} />
+                          <img src={b.logoUrl} alt={b.nameEn} className="h-7 w-auto object-contain" style={{ maxWidth: '180px', ...(logoNeedsDarkBg ? { filter: 'brightness(0) invert(1)' } : {}) }} />
                         </div>
                       ) : (
                         <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded bg-emerald-100">

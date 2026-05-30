@@ -53,7 +53,7 @@ export default function BrokerSelection() {
                   <div className="flex items-center gap-4 mb-4">
                     {b.logoUrl ? (
                       <div className={`flex h-14 shrink-0 items-center justify-center rounded-lg border px-4 py-2 ${/(?:^|[_\-/])white|vt-markets/i.test(b.logoUrl) ? 'border-slate-600 bg-slate-700' : 'border-gray-200 bg-white'}`}>
-                        <img src={b.logoUrl} alt={isRtl ? b.nameAr : b.nameEn} className="h-8 w-auto object-contain" style={{ maxWidth: '180px' }} />
+                        <img src={b.logoUrl} alt={isRtl ? b.nameAr : b.nameEn} className="h-8 w-auto object-contain" style={{ maxWidth: '180px', ...(/(?:^|[_\-/])white|vt-markets/i.test(b.logoUrl) ? { filter: 'brightness(0) invert(1)' } : {}) }} />
                       </div>
                     ) : (
                       <div className="h-14 w-14 rounded-lg bg-emerald-100 flex items-center justify-center">
