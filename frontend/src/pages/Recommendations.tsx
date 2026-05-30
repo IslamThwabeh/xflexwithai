@@ -417,8 +417,8 @@ export default function Recommendations() {
               </CardTitle>
               <CardDescription className="text-base mt-2">
                 {language === 'ar'
-                  ? 'لاستخدام قروب التوصيات، يجب أولاً فتح حساب تداول حقيقي وإيداع مبلغ بسيط. أكمل خطوات التسجيل لدى الوسيط.'
-                  : 'To access Recommendations, you need to open a real trading account and make a small deposit. Complete the broker onboarding steps.'}
+                  ? 'لاستخدام قروب التوصيات، يجب أولاً فتح حساب تداول حقيقي وإيداع الحد الأدنى المطلوب لدى الوسيط الذي اخترته. أكمل خطوات التسجيل لدى الوسيط.'
+                  : 'To access Recommendations, you need to open a real trading account and deposit the minimum required by your selected broker. Complete the broker onboarding steps.'}
               </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">

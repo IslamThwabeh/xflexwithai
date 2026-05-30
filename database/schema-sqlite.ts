@@ -1434,6 +1434,17 @@ export const brokers = sqliteTable("brokers", {
   minDepositCurrency: text("minDepositCurrency").default("USD"),
   featuresEn: text("featuresEn"), // JSON array
   featuresAr: text("featuresAr"), // JSON array
+  offerSummaryEn: text("offerSummaryEn"),
+  offerSummaryAr: text("offerSummaryAr"),
+  supportHoursEn: text("supportHoursEn"),
+  supportHoursAr: text("supportHoursAr"),
+  fundingMethodsEn: text("fundingMethodsEn"),
+  fundingMethodsAr: text("fundingMethodsAr"),
+  accountRequirementsEn: text("accountRequirementsEn"),
+  accountRequirementsAr: text("accountRequirementsAr"),
+  videoOpenAccount: text("videoOpenAccount"),
+  videoVerify: text("videoVerify"),
+  videoDeposit: text("videoDeposit"),
   isActive: integer("isActive", { mode: "boolean" }).notNull().default(true),
   displayOrder: integer("displayOrder").notNull().default(0),
   createdAt: text("createdAt").default(sql`CURRENT_TIMESTAMP`).notNull(),

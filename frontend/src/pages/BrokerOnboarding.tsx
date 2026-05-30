@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { formatAdminCurrency } from '@/lib/adminCurrency';
+import { formatSourceCurrencyAmount } from '@/lib/adminCurrency';
 import { formatPendingActivationDate, getPendingActivationDaysLeft, getPendingActivationWindow } from '@/lib/pendingActivation';
 import { trpc } from '@/lib/trpc';
 import ClientLayout from '@/components/ClientLayout';
@@ -15,11 +15,55 @@ import { toast } from 'sonner';
 const STEPS = ['select_broker', 'open_account', 'deposit'] as const;
 type StepKey = typeof STEPS[number];
 
-// YouTube video guides per step (provided by Business Owner)
-const STEP_VIDEOS: Partial<Record<StepKey, string>> = {
+const DEFAULT_STEP_VIDEO_IDS: Partial<Record<StepKey, string>> = {
   open_account: 'rh6vI2ZCbhQ',
   deposit: 'XWqtfCXfuLI',
 };
+
+type GuideVideo =
+  | { kind: 'embed'; src: string }
+  | { kind: 'video'; src: string };
+
+function toYoutubeEmbed(urlOrId: string): string | null {
+  const trimmed = urlOrId.trim();
+  if (!trimmed) return null;
+  if (/^[a-zA-Z0-9_-]{11}$/.test(trimmed)) {
+    return `https://www.youtube-nocookie.com/embed/${trimmed}?rel=0`;
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.hostname.includes('youtu.be')) {
+      const id = parsed.pathname.replace(/^\//, '');
+      return id ? `https://www.youtube-nocookie.com/embed/${id}?rel=0` : null;
+    }
+    if (parsed.hostname.includes('youtube.com')) {
+      const id = parsed.searchParams.get('v') || parsed.pathname.split('/').filter(Boolean).pop();
+      return id ? `https://www.youtube-nocookie.com/embed/${id}?rel=0` : null;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+function getStepGuideVideo(step: StepKey, broker: any): GuideVideo | null {
+  const brokerUrl = step === 'open_account'
+    ? broker?.videoOpenAccount || broker?.videoVerify
+    : broker?.videoDeposit;
+
+  if (brokerUrl) {
+    const youtubeEmbed = toYoutubeEmbed(brokerUrl);
+    if (youtubeEmbed) {
+      return { kind: 'embed', src: youtubeEmbed };
+    }
+    return { kind: 'video', src: brokerUrl };
+  }
+
+  const fallbackId = DEFAULT_STEP_VIDEO_IDS[step];
+  return fallbackId ? { kind: 'embed', src: `https://www.youtube-nocookie.com/embed/${fallbackId}?rel=0` } : null;
+}
 
 function stepLabel(step: StepKey, isArabic: boolean): string {
   const labels: Record<StepKey, [string, string]> = {
@@ -94,6 +138,11 @@ export default function BrokerOnboarding() {
   const activationDaysLeft = getPendingActivationDaysLeft(activationStatus?.maxActivationDate);
 
   const selectedBroker = brokers?.find((b: any) => b.id === selectedBrokerId);
+  const selectedBrokerMinDeposit = Number(selectedBroker?.minDeposit ?? 0);
+  const selectedBrokerOffer = isArabic ? selectedBroker?.offerSummaryAr : selectedBroker?.offerSummaryEn;
+  const selectedBrokerSupportHours = isArabic ? selectedBroker?.supportHoursAr : selectedBroker?.supportHoursEn;
+  const selectedBrokerFundingMethods = isArabic ? selectedBroker?.fundingMethodsAr : selectedBroker?.fundingMethodsEn;
+  const selectedBrokerRequirements = isArabic ? selectedBroker?.accountRequirementsAr : selectedBroker?.accountRequirementsEn;
 
   const progressPercent = isComplete ? 100 : Math.round(((STEPS.indexOf(currentStepKey)) / STEPS.length) * 100);
 
@@ -304,16 +353,21 @@ export default function BrokerOnboarding() {
                           <Building2 className="h-5 w-5 text-gray-400" />
                         </div>
                       )}
-                      <div>
+                      <div className="min-w-0 flex-1">
                         <p className="font-semibold">{isArabic ? broker.nameAr : broker.nameEn}</p>
-                        {broker.minDeposit > 0 && (
+                        {broker.minDeposit != null && broker.minDeposit > 0 && (
                           <p className="text-xs text-muted-foreground">
                             {isArabic ? 'الحد الأدنى: ' : 'Min deposit: '}
-                            {formatAdminCurrency(broker.minDeposit, language, {
-                              sourceCurrency: broker.minDepositCurrency,
+                            {formatSourceCurrencyAmount(broker.minDeposit, language, {
+                              currency: broker.minDepositCurrency,
                               minimumFractionDigits: 0,
                               maximumFractionDigits: 0,
                             })}
+                          </p>
+                        )}
+                        {(isArabic ? broker.offerSummaryAr : broker.offerSummaryEn) && (
+                          <p className="text-xs text-amber-700 mt-1 line-clamp-2" dir={isRtl ? 'rtl' : 'ltr'}>
+                            {isArabic ? broker.offerSummaryAr : broker.offerSummaryEn}
                           </p>
                         )}
                       </div>
@@ -343,6 +397,8 @@ export default function BrokerOnboarding() {
 
             if (!isAccessible && !isApproved) return null;
 
+            const guideVideo = getStepGuideVideo(step, selectedBroker);
+
             return (
               <Card key={step} className={`transition-all ${isCurrent ? 'ring-2 ring-emerald-500/30' : ''} ${isApproved ? 'bg-emerald-50/30 border-emerald-200' : ''}`}>
                 <CardHeader>
@@ -356,40 +412,98 @@ export default function BrokerOnboarding() {
                 </CardHeader>
                 <CardContent>
                   {/* YouTube video guide (if available for this step) */}
-                  {STEP_VIDEOS[step] && !isApproved && (
+                  {guideVideo && !isApproved && (
                     <div className="mb-4">
                       <p className="text-sm font-medium text-emerald-700 mb-2">
                         {isArabic ? '📹 شاهد الفيديو التعليمي:' : '📹 Watch the guide video:'}
                       </p>
                       <div className="relative w-full rounded-xl overflow-hidden border" style={{ paddingBottom: '56.25%' }}>
-                        <iframe
-                          className="absolute inset-0 w-full h-full"
-                          src={`https://www.youtube-nocookie.com/embed/${STEP_VIDEOS[step]}?rel=0`}
-                          title="Step guide"
-                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                          allowFullScreen
-                        />
+                        {guideVideo.kind === 'embed' ? (
+                          <iframe
+                            className="absolute inset-0 w-full h-full"
+                            src={guideVideo.src}
+                            title="Step guide"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                            allowFullScreen
+                          />
+                        ) : (
+                          <video
+                            className="absolute inset-0 h-full w-full bg-black"
+                            src={guideVideo.src}
+                            controls
+                            controlsList="nodownload"
+                            onContextMenu={(event) => event.preventDefault()}
+                            preload="metadata"
+                          />
+                        )}
                       </div>
                     </div>
                   )}
 
                   {/* Show selected broker info */}
                   {step === 'open_account' && selectedBroker && (
-                    <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg mb-4">
-                      {selectedBroker.logoUrl && (
-                        <img src={selectedBroker.logoUrl} alt="" className="h-8 w-8 object-contain rounded" />
+                    <div className="space-y-3 mb-4">
+                      <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
+                        {selectedBroker.logoUrl && (
+                          <img src={selectedBroker.logoUrl} alt="" className="h-8 w-8 object-contain rounded" />
+                        )}
+                        <span className="font-medium text-sm">{isArabic ? selectedBroker.nameAr : selectedBroker.nameEn}</span>
+                        {selectedBroker.affiliateUrl && (
+                          <a
+                            href={selectedBroker.affiliateUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="ms-auto text-xs text-emerald-600 hover:underline flex items-center gap-1"
+                          >
+                            {isArabic ? 'فتح موقع الوسيط' : 'Open Broker Site'}
+                            <ChevronRight className="h-3 w-3" />
+                          </a>
+                        )}
+                      </div>
+                      {selectedBrokerOffer && (
+                        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3" dir={isRtl ? 'rtl' : 'ltr'}>
+                          <p className="text-xs font-semibold text-amber-900 mb-1">{isArabic ? 'العرض الحالي' : 'Current Offer'}</p>
+                          <p className="text-sm text-amber-700">{selectedBrokerOffer}</p>
+                        </div>
                       )}
-                      <span className="font-medium text-sm">{isArabic ? selectedBroker.nameAr : selectedBroker.nameEn}</span>
-                      {selectedBroker.affiliateUrl && (
-                        <a
-                          href={selectedBroker.affiliateUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="ms-auto text-xs text-emerald-600 hover:underline flex items-center gap-1"
-                        >
-                          {isArabic ? 'فتح موقع الوسيط' : 'Open Broker Site'}
-                          <ChevronRight className="h-3 w-3" />
-                        </a>
+                    </div>
+                  )}
+
+                  {step === 'deposit' && selectedBroker && selectedBrokerMinDeposit > 0 && (
+                    <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3" dir={isRtl ? 'rtl' : 'ltr'}>
+                      <p className="text-xs font-semibold text-emerald-900 mb-1">{isArabic ? 'الحد الأدنى المطلوب' : 'Required Minimum'}</p>
+                      <p className="text-sm text-emerald-700">
+                        {isArabic ? 'أرفق إثبات الإيداع بالمبلغ الأدنى أو أكثر: ' : 'Upload proof of the minimum deposit or above: '}
+                        <span className="font-semibold">
+                          {formatSourceCurrencyAmount(selectedBrokerMinDeposit, language, {
+                            currency: selectedBroker.minDepositCurrency,
+                            minimumFractionDigits: 0,
+                            maximumFractionDigits: 0,
+                          })}
+                        </span>
+                      </p>
+                    </div>
+                  )}
+
+                  {(selectedBrokerSupportHours || selectedBrokerFundingMethods || selectedBrokerRequirements) && !isApproved && (
+                    <div className="space-y-2 mb-4" dir={isRtl ? 'rtl' : 'ltr'}>
+                      {selectedBrokerSupportHours && (
+                        <div className="rounded-xl bg-gray-50 px-4 py-3">
+                          <p className="text-xs font-semibold text-gray-700 mb-1">{isArabic ? 'الدعم' : 'Support'}</p>
+                          <p className="text-sm text-gray-600">{selectedBrokerSupportHours}</p>
+                        </div>
+                      )}
+                      {selectedBrokerFundingMethods && (
+                        <div className="rounded-xl bg-gray-50 px-4 py-3">
+                          <p className="text-xs font-semibold text-gray-700 mb-1">{isArabic ? 'الإيداع والسحب' : 'Funding'}</p>
+                          <p className="text-sm text-gray-600">{selectedBrokerFundingMethods}</p>
+                        </div>
+                      )}
+                      {selectedBrokerRequirements && (
+                        <div className="rounded-xl bg-gray-50 px-4 py-3">
+                          <p className="text-xs font-semibold text-gray-700 mb-1">{isArabic ? 'ملاحظات مهمة' : 'Important Notes'}</p>
+                          <p className="text-sm text-gray-600">{selectedBrokerRequirements}</p>
+                        </div>
                       )}
                     </div>
                   )}

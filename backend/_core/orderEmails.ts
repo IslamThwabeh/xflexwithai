@@ -270,8 +270,8 @@ export async function sendWelcomeEmail(to: string, data: {
         <tr>
           <td style="padding:8px 4px;vertical-align:top;color:#059669;font-weight:bold;">2.</td>
           <td style="padding:8px 4px;color:#374151;">
-            افتح حساب وسيط حقيقي وأودع $10 على الأقل<br/>
-            <span style="color:#6b7280;font-size:13px;">Open a real broker account and deposit at least $10</span>
+            افتح حساب وسيط حقيقي وأودع الحد الأدنى المطلوب لدى الوسيط الذي اخترته<br/>
+            <span style="color:#6b7280;font-size:13px;">Open a real broker account and complete the minimum deposit required by your selected broker</span>
           </td>
         </tr>
         ${data.includesLexai ? `

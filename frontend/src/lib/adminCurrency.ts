@@ -95,3 +95,36 @@ export function formatAdminCurrencyFromUsdCents(
     maximumFractionDigits: options?.maximumFractionDigits,
   });
 }
+
+export function formatSourceCurrencyAmount(
+  amount: number,
+  language: string,
+  options?: {
+    currency?: string | null;
+    fromCents?: boolean;
+    minimumFractionDigits?: number;
+    maximumFractionDigits?: number;
+  },
+) {
+  const sourceAmount = options?.fromCents ? normalizeAmount(amount) / 100 : normalizeAmount(amount);
+  const rawCurrency = options?.currency?.trim().toUpperCase() || 'USD';
+  // Intl.NumberFormat requires a valid ISO 4217 code. Anything else throws RangeError
+  // and would crash the entire broker list render. Fall back to a plain decimal.
+  const currency = /^[A-Z]{3}$/.test(rawCurrency) ? rawCurrency : 'USD';
+
+  try {
+    return new Intl.NumberFormat(getLocale(language), {
+      style: 'currency',
+      currency,
+      currencyDisplay: 'narrowSymbol',
+      minimumFractionDigits: options?.minimumFractionDigits ?? 2,
+      maximumFractionDigits: options?.maximumFractionDigits ?? 2,
+    }).format(sourceAmount);
+  } catch {
+    const formatted = new Intl.NumberFormat(getLocale(language), {
+      minimumFractionDigits: options?.minimumFractionDigits ?? 2,
+      maximumFractionDigits: options?.maximumFractionDigits ?? 2,
+    }).format(sourceAmount);
+    return `${formatted} ${rawCurrency}`;
+  }
+}

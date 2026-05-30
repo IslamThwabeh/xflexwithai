@@ -3412,17 +3412,25 @@ export async function getRecommendationMonthlyTradeReport(month: string): Promis
 
   const trades: RecommendationTradeReportRow[] = selectedCandidates
     .filter((candidate) => candidate.outcome !== null && candidate.pips !== null)
-    .map((candidate) => ({
-      messageId: candidate.message.id,
-      tradeId: candidate.message.parentId as number,
-      closedAt: candidate.message.createdAt,
-      symbol: parseSymbol(candidate.message, candidate.parent),
-      side: parseSide(candidate.message, candidate.parent),
-      content: candidate.message.content,
-      outcome: candidate.outcome as RecommendationReportOutcome,
-      pips: candidate.pips as number,
-      source: candidate.source === 'manual' ? 'manual' : candidate.source === 'derived' ? 'derived' : 'explicit',
-    }))
+    .map((candidate) => {
+      const source: RecommendationTradeReportRow['source'] = candidate.source === 'manual'
+        ? 'manual'
+        : candidate.source === 'derived'
+          ? 'derived'
+          : 'explicit';
+
+      return {
+        messageId: candidate.message.id,
+        tradeId: candidate.message.parentId as number,
+        closedAt: candidate.message.createdAt,
+        symbol: parseSymbol(candidate.message, candidate.parent),
+        side: parseSide(candidate.message, candidate.parent),
+        content: candidate.message.content,
+        outcome: candidate.outcome as RecommendationReportOutcome,
+        pips: candidate.pips as number,
+        source,
+      };
+    })
     .sort((a, b) => new Date(a.closedAt).getTime() - new Date(b.closedAt).getTime());
 
   const unresolved: RecommendationTradeReportUnresolvedRow[] = selectedCandidates
@@ -9286,6 +9294,59 @@ export async function getBrokerById(id: number) {
   return rows[0] ?? null;
 }
 
+const normalizeBrokerIdentity = (value: string | null | undefined) => value?.trim().toLowerCase() || '';
+
+// Canonical form for affiliate URLs so cosmetic differences (case, www., trailing slash,
+// language flags, UTM tracking) don't let duplicates slip past the conflict check.
+const TRACKING_PARAM_RE = /^(utm_|gclid$|fbclid$|mc_|ref$|lang$|language$)/i;
+const canonicalizeAffiliateUrl = (value: string | null | undefined): string => {
+  if (!value) return '';
+  const raw = value.trim();
+  if (!raw) return '';
+  try {
+    const url = new URL(raw);
+    url.hostname = url.hostname.toLowerCase().replace(/^www\./, '');
+    url.protocol = url.protocol.toLowerCase();
+    if (url.pathname.length > 1) url.pathname = url.pathname.replace(/\/+$/, '');
+    const filtered = new URLSearchParams();
+    Array.from(url.searchParams.entries())
+      .filter(([k]) => !TRACKING_PARAM_RE.test(k))
+      .sort(([a], [b]) => a.localeCompare(b))
+      .forEach(([k, v]) => filtered.append(k, v));
+    url.search = filtered.toString();
+    url.hash = '';
+    return url.toString().toLowerCase();
+  } catch {
+    return raw.toLowerCase().replace(/\/+$/, '');
+  }
+};
+
+export async function findBrokerConflict(params: {
+  nameEn?: string | null;
+  affiliateUrl?: string | null;
+  excludeId?: number;
+}) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const normalizedNameEn = normalizeBrokerIdentity(params.nameEn);
+  const canonicalAffiliateUrl = canonicalizeAffiliateUrl(params.affiliateUrl);
+  if (!normalizedNameEn && !canonicalAffiliateUrl) return null;
+
+  const rows = await db.select({
+    id: brokers.id,
+    nameEn: brokers.nameEn,
+    affiliateUrl: brokers.affiliateUrl,
+  }).from(brokers);
+
+  return rows.find((row) => {
+    if (params.excludeId && row.id === params.excludeId) return false;
+
+    return (normalizedNameEn && normalizeBrokerIdentity(row.nameEn) === normalizedNameEn)
+      || (canonicalAffiliateUrl && canonicalizeAffiliateUrl(row.affiliateUrl) === canonicalAffiliateUrl);
+  }) ?? null;
+}
+
 export async function createBroker(data: Omit<NewBroker, 'id' | 'createdAt' | 'updatedAt'>) {
   const db = await getDb();
   if (!db) throw new Error('DB not available');
@@ -9709,7 +9770,7 @@ export async function submitOnboardingProof(userId: number, step: string, proofU
     updatedAt: now,
   }).where(eq(brokerOnboarding.id, row.id));
 
-  return { success: true, stepId: row.id };
+  return { success: true, stepId: row.id, brokerId: row.brokerId };
 }
 
 /**

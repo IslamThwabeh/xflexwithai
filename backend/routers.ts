@@ -630,17 +630,23 @@ const ensureEpisodeUnlockedForUser = async (userId: number, courseId: number, ep
 // ============================================================================
 // AI Proof Verification for Broker Onboarding
 // ============================================================================
-async function verifyOnboardingProofWithAI(stepId: number, step: string, proofUrl: string) {
+async function verifyOnboardingProofWithAI(stepId: number, step: string, proofUrl: string, brokerId?: number) {
+  const broker = brokerId ? await db.getBrokerById(brokerId) : null;
+  const brokerName = broker?.nameEn?.trim() || 'the selected broker';
+  const minimumDeposit = Number(broker?.minDeposit ?? 0) > 0 ? Number(broker?.minDeposit) : 10;
+  const depositCurrency = (broker?.minDepositCurrency || 'USD').toUpperCase();
+  const amountLabel = `${minimumDeposit} ${depositCurrency}`;
+
   const prompts: Record<string, string> = {
-    open_account: `You are verifying a broker onboarding proof image. The student claims they opened and verified a real trading account with a broker.
+    open_account: `You are verifying a broker onboarding proof image. The student claims they opened and verified a real trading account with ${brokerName}.
 
 Analyze this image and determine if it is a legitimate proof of account opening AND verification. Look for:
-- Email confirmation from a broker (e.g. Equiti, XM, Exness, etc.)
+- Email confirmation from ${brokerName} or another official broker message tied to the selected broker
 - Account number or client ID visible
 - Mention of account creation, linking, registration, or verification
 - Verification status showing "verified", "approved", or "fully verified"
 - Identity verification confirmation
-- Official broker branding/letterhead
+- Official ${brokerName} branding, letterhead, or account portal UI
 
 Return a JSON object with exactly these fields:
 {"confidence": 0.0 to 1.0, "reason": "brief explanation"}
@@ -649,19 +655,20 @@ confidence should be >= 0.9 if the image clearly shows a broker account opening 
 confidence should be < 0.5 if the image is unrelated, blurry, or suspicious.
 Respond ONLY with the JSON object, nothing else.`,
 
-    deposit: `You are verifying a broker onboarding proof image. The student claims they deposited at least $10 into their trading account.
+    deposit: `You are verifying a broker onboarding proof image. The student claims they deposited at least ${amountLabel} into their ${brokerName} trading account.
 
 Analyze this image and determine if it shows proof of a deposit. Look for:
-- Transaction history showing a deposit
-- Deposit confirmation email
-- Amount visible (should be >= $10)
-- Account balance or equity showing funds
-- Official broker branding
+- Transaction history showing a deposit into ${brokerName}
+- Deposit confirmation email or account funding confirmation
+- Amount visible (should be >= ${amountLabel}, or a clearly shown equivalent in the account currency)
+- Account balance, wallet balance, or equity showing funds at or above the minimum
+- Official ${brokerName} branding or account portal UI
 
 Return a JSON object with exactly these fields:
 {"confidence": 0.0 to 1.0, "reason": "brief explanation"}
 
-confidence should be >= 0.9 if the image clearly shows a deposit of $10 or more.
+confidence should be >= 0.9 if the image clearly shows a deposit meeting the minimum requirement for ${brokerName}.
+confidence should be < 0.5 if the image is unrelated, blurry, suspicious, or clearly below the required amount.
 Respond ONLY with the JSON object, nothing else.`,
   };
 
@@ -758,7 +765,7 @@ Common topics you can help with:
 - How to activate a package key (go to Dashboard, enter the key)
 - How to access courses and watch episodes
 - Quiz system (must watch episodes first, pass quizzes to earn points)
-- Broker onboarding steps (select broker → open & verify account → deposit $10+)
+- Broker onboarding steps (select broker → open & verify account → deposit the minimum amount required by the selected broker)
 - Trading recommendations (available after subscription activation)
 - LexAI access (Comprehensive package only, activates after course completion)
 - Loyalty points and referral program
@@ -6362,14 +6369,36 @@ ${qaText}`;
         affiliateUrl: z.string().url(),
         supportWhatsapp: z.string().optional(),
         minDeposit: z.number().min(0).default(0),
-        minDepositCurrency: z.string().default("USD"),
+        minDepositCurrency: z.string().regex(/^[A-Za-z]{3}$/, 'Currency must be a 3-letter ISO code').default("USD"),
         featuresEn: z.string().optional(),
         featuresAr: z.string().optional(),
+        offerSummaryEn: z.string().optional(),
+        offerSummaryAr: z.string().optional(),
+        supportHoursEn: z.string().optional(),
+        supportHoursAr: z.string().optional(),
+        fundingMethodsEn: z.string().optional(),
+        fundingMethodsAr: z.string().optional(),
+        accountRequirementsEn: z.string().optional(),
+        accountRequirementsAr: z.string().optional(),
+        videoOpenAccount: z.string().url().optional(),
+        videoVerify: z.string().url().optional(),
+        videoDeposit: z.string().url().optional(),
         isActive: z.boolean().default(true),
         displayOrder: z.number().default(0),
       }))
       .mutation(async ({ input }) => {
-        return db.createBroker(input);
+        const normalized = {
+          ...input,
+          minDepositCurrency: input.minDepositCurrency.toUpperCase(),
+        };
+        const conflict = await db.findBrokerConflict({
+          nameEn: normalized.nameEn,
+          affiliateUrl: normalized.affiliateUrl,
+        });
+        if (conflict) {
+          throw new TRPCError({ code: 'CONFLICT', message: 'A broker with the same English name or affiliate URL already exists.' });
+        }
+        return db.createBroker(normalized);
       }),
 
     // Admin: update broker
@@ -6384,14 +6413,43 @@ ${qaText}`;
         affiliateUrl: z.string().url().optional(),
         supportWhatsapp: z.string().optional(),
         minDeposit: z.number().min(0).optional(),
-        minDepositCurrency: z.string().optional(),
+        minDepositCurrency: z.string().regex(/^[A-Za-z]{3}$/, 'Currency must be a 3-letter ISO code').optional(),
         featuresEn: z.string().optional(),
         featuresAr: z.string().optional(),
+        offerSummaryEn: z.string().optional(),
+        offerSummaryAr: z.string().optional(),
+        supportHoursEn: z.string().optional(),
+        supportHoursAr: z.string().optional(),
+        fundingMethodsEn: z.string().optional(),
+        fundingMethodsAr: z.string().optional(),
+        accountRequirementsEn: z.string().optional(),
+        accountRequirementsAr: z.string().optional(),
+        videoOpenAccount: z.string().url().optional(),
+        videoVerify: z.string().url().optional(),
+        videoDeposit: z.string().url().optional(),
         isActive: z.boolean().optional(),
         displayOrder: z.number().optional(),
       }))
       .mutation(async ({ input }) => {
-        const { id, ...data } = input;
+        const { id, ...rest } = input;
+        const data = {
+          ...rest,
+          ...(rest.minDepositCurrency ? { minDepositCurrency: rest.minDepositCurrency.toUpperCase() } : {}),
+        };
+        const current = await db.getBrokerById(id);
+        if (!current) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Broker not found.' });
+        }
+
+        const conflict = await db.findBrokerConflict({
+          nameEn: data.nameEn ?? current.nameEn,
+          affiliateUrl: data.affiliateUrl ?? current.affiliateUrl,
+          excludeId: id,
+        });
+        if (conflict) {
+          throw new TRPCError({ code: 'CONFLICT', message: 'A broker with the same English name or affiliate URL already exists.' });
+        }
+
         return db.updateBroker(id, data);
       }),
 
@@ -6453,7 +6511,7 @@ ${qaText}`;
         // Run AI verification synchronously (Workers kill detached promises after response)
         if (result.stepId && ENV.openaiApiKey) {
           try {
-            await verifyOnboardingProofWithAI(result.stepId, input.step, input.proofUrl);
+            await verifyOnboardingProofWithAI(result.stepId, input.step, input.proofUrl, result.brokerId);
           } catch (err) {
             logger.error('[Onboarding AI] Verification failed', { stepId: result.stepId, error: String(err) });
           }

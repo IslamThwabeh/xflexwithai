@@ -1,8 +1,9 @@
-import { Building2, ExternalLink, MessageCircle, Wallet } from 'lucide-react';
+import { Building2, ExternalLink, MessageCircle, ShieldCheck, Wallet } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { formatAdminCurrency } from '@/lib/adminCurrency';
+import { formatSourceCurrencyAmount } from '@/lib/adminCurrency';
+import { parseBrokerFeatures } from '@/lib/brokerFeatures';
 import { trpc } from '@/lib/trpc';
 import ClientLayout from '@/components/ClientLayout';
 
@@ -11,10 +12,7 @@ export default function BrokerSelection() {
   const isRtl = language === 'ar';
   const { data: brokers, isLoading } = trpc.brokers.listActive.useQuery();
 
-  const parseFeatures = (json: string | null | undefined): string[] => {
-    if (!json) return [];
-    try { return JSON.parse(json); } catch { return []; }
-  };
+  const getLocalized = (broker: any, enKey: string, arKey: string) => isRtl ? broker?.[arKey] : broker?.[enKey];
 
   return (
     <ClientLayout>
@@ -40,11 +38,17 @@ export default function BrokerSelection() {
             {isRtl ? 'لا يوجد وسطاء متاحين حالياً' : 'No brokers available yet'}
           </div>
         ) : (
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {brokers.map((b) => {
-              const features = parseFeatures(isRtl ? b.featuresAr : b.featuresEn);
+          <div className="grid gap-5 lg:grid-cols-2">
+            {brokers.map((b, index) => {
+              const features = parseBrokerFeatures(isRtl ? b.featuresAr : b.featuresEn);
+              const offerSummary = getLocalized(b, 'offerSummaryEn', 'offerSummaryAr');
+              const supportHours = getLocalized(b, 'supportHoursEn', 'supportHoursAr');
+              const fundingMethods = getLocalized(b, 'fundingMethodsEn', 'fundingMethodsAr');
+              const accountRequirements = getLocalized(b, 'accountRequirementsEn', 'accountRequirementsAr');
+              const isPrimary = index === 0;
+
               return (
-                <div key={b.id} className="bg-white border rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow flex flex-col">
+                <div key={b.id} className={`bg-white rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow flex flex-col border ${isPrimary ? 'border-emerald-300 ring-1 ring-emerald-100' : 'border-gray-200'}`}>
                   {/* Logo + Name */}
                   <div className="flex items-center gap-3 mb-4">
                     {b.logoUrl ? (
@@ -54,7 +58,19 @@ export default function BrokerSelection() {
                         <Building2 className="w-6 h-6 text-emerald-600" />
                       </div>
                     )}
-                    <h2 className="text-xl font-bold">{isRtl ? b.nameAr : b.nameEn}</h2>
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h2 className="text-xl font-bold">{isRtl ? b.nameAr : b.nameEn}</h2>
+                        {isPrimary && (
+                          <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">
+                            {isRtl ? 'الخيار الأول حالياً' : 'Current lead option'}
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1" dir={isRtl ? 'rtl' : 'ltr'}>
+                        {isRtl ? 'الوسيط متاح ضمن رحلة تفعيل XFlex للطلاب' : 'Available inside the XFlex student activation flow'}
+                      </p>
+                    </div>
                   </div>
 
                   {/* Description */}
@@ -62,6 +78,16 @@ export default function BrokerSelection() {
                     <p className="text-sm text-gray-600 mb-4" dir={isRtl ? 'rtl' : 'ltr'}>
                       {isRtl ? b.descriptionAr : b.descriptionEn}
                     </p>
+                  )}
+
+                  {offerSummary && (
+                    <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 mb-4" dir={isRtl ? 'rtl' : 'ltr'}>
+                      <div className="flex items-center gap-2 mb-1 text-amber-800">
+                        <ShieldCheck className="h-4 w-4" />
+                        <p className="text-sm font-semibold">{isRtl ? 'عرض الإطلاق' : 'Launch Offer'}</p>
+                      </div>
+                      <p className="text-sm text-amber-700">{offerSummary}</p>
+                    </div>
                   )}
 
                   {/* Features */}
@@ -82,13 +108,36 @@ export default function BrokerSelection() {
                       <span>
                         {isRtl ? 'الحد الأدنى للإيداع: ' : 'Min Deposit: '}
                         <span className="font-semibold text-gray-700">
-                          {formatAdminCurrency(b.minDeposit, language, {
-                            sourceCurrency: b.minDepositCurrency,
+                          {formatSourceCurrencyAmount(b.minDeposit, language, {
+                            currency: b.minDepositCurrency,
                             minimumFractionDigits: 0,
                             maximumFractionDigits: 0,
                           })}
                         </span>
                       </span>
+                    </div>
+                  )}
+
+                  {(supportHours || fundingMethods || accountRequirements) && (
+                    <div className="space-y-3 mb-4" dir={isRtl ? 'rtl' : 'ltr'}>
+                      {supportHours && (
+                        <div className="rounded-xl bg-gray-50 px-4 py-3">
+                          <p className="text-xs font-semibold text-gray-700 mb-1">{isRtl ? 'ساعات الدعم' : 'Support Hours'}</p>
+                          <p className="text-sm text-gray-600">{supportHours}</p>
+                        </div>
+                      )}
+                      {fundingMethods && (
+                        <div className="rounded-xl bg-gray-50 px-4 py-3">
+                          <p className="text-xs font-semibold text-gray-700 mb-1">{isRtl ? 'طرق الإيداع والسحب' : 'Funding Methods'}</p>
+                          <p className="text-sm text-gray-600">{fundingMethods}</p>
+                        </div>
+                      )}
+                      {accountRequirements && (
+                        <div className="rounded-xl bg-gray-50 px-4 py-3">
+                          <p className="text-xs font-semibold text-gray-700 mb-1">{isRtl ? 'ملاحظات مهمة' : 'Important Notes'}</p>
+                          <p className="text-sm text-gray-600">{accountRequirements}</p>
+                        </div>
+                      )}
                     </div>
                   )}
 
