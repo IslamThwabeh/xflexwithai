@@ -347,8 +347,8 @@ export default function BrokerOnboarding() {
                       className="flex items-center gap-3 p-4 rounded-lg border-2 border-gray-200 hover:border-emerald-400 hover:bg-emerald-50/50 transition-all text-start disabled:opacity-50"
                     >
                       {broker.logoUrl ? (
-                        <div className={`flex h-12 shrink-0 items-center justify-center rounded-md border px-3 py-1 ${/(?:^|[_\-/])white|vt-markets/i.test(broker.logoUrl) ? 'border-slate-800 bg-slate-900' : 'border-gray-200 bg-white'}`}>
-                          <img src={broker.logoUrl} alt={broker.nameEn} className="h-7 w-auto max-w-[140px] object-contain" />
+                        <div className={`flex h-12 shrink-0 items-center justify-center rounded-md border px-3 py-1.5 ${/(?:^|[_\-/])white|vt-markets/i.test(broker.logoUrl) ? 'border-slate-600 bg-slate-700' : 'border-gray-200 bg-white'}`}>
+                          <img src={broker.logoUrl} alt={broker.nameEn} className="h-7 w-auto object-contain" style={{ maxWidth: '180px' }} />
                         </div>
                       ) : (
                         <div className="h-12 w-12 bg-gray-100 rounded flex items-center justify-center">
@@ -447,8 +447,8 @@ export default function BrokerOnboarding() {
                     <div className="space-y-3 mb-4">
                       <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
                         {selectedBroker.logoUrl && (
-                          <div className={`flex h-9 items-center justify-center rounded border px-2 ${/(?:^|[_\-/])white|vt-markets/i.test(selectedBroker.logoUrl) ? 'border-slate-800 bg-slate-900' : 'border-gray-200 bg-white'}`}>
-                            <img src={selectedBroker.logoUrl} alt="" className="h-6 w-auto max-w-[120px] object-contain" />
+                          <div className={`flex h-9 items-center justify-center rounded border px-2 ${/(?:^|[_\-/])white|vt-markets/i.test(selectedBroker.logoUrl) ? 'border-slate-600 bg-slate-700' : 'border-gray-200 bg-white'}`}>
+                            <img src={selectedBroker.logoUrl} alt="" className="h-6 w-auto object-contain" style={{ maxWidth: '140px' }} />
                           </div>
                         )}
                         <span className="font-medium text-sm">{isArabic ? selectedBroker.nameAr : selectedBroker.nameEn}</span>
