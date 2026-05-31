@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { FileUpload } from '@/components/FileUpload';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { formatPaymentMethodLabel } from '@/lib/paymentMethodLabel';
 import { trpc } from '@/lib/trpc';
@@ -34,8 +35,9 @@ export default function OrderDetail() {
     },
     onError: (e) => toast.error(e.message),
   });
-  const [proofUrl, setProofUrl] = useState('');
+  const [uploadedUrl, setUploadedUrl] = useState('');
   const [reference, setReference] = useState('');
+  const uploadPaymentProof = trpc.upload.paymentProof.useMutation();
 
   const statusLabel = (status: string) => {
     const labels: Record<string, { en: string; ar: string }> = {
@@ -72,10 +74,10 @@ export default function OrderDetail() {
   }
 
   const handleUploadProof = () => {
-    if (!proofUrl.trim()) return;
+    if (!uploadedUrl) return;
     uploadMutation.mutate({
       orderId: order.id,
-      paymentProofUrl: proofUrl.trim(),
+      paymentProofUrl: uploadedUrl,
       paymentReference: reference.trim() || undefined,
     });
   };
@@ -149,12 +151,27 @@ export default function OrderDetail() {
             </p>
             <div className="space-y-3">
               <div>
-                <Label>{isRtl ? 'رابط صورة الإيصال' : 'Receipt Image URL'}</Label>
-                <Input
-                  value={proofUrl}
-                  onChange={(e) => setProofUrl(e.target.value)}
-                  placeholder="https://..."
-                  className="mt-1"
+                <FileUpload
+                  accept="image/*"
+                  maxSize={10}
+                  preview="image"
+                  label={isRtl ? 'صورة إيصال التحويل البنكي' : 'Bank Transfer Receipt Image'}
+                  onUpload={async (file) => {
+                    const base64 = await new Promise<string>((resolve, reject) => {
+                      const reader = new FileReader();
+                      reader.onload = () => resolve((reader.result as string).split(',')[1]);
+                      reader.onerror = reject;
+                      reader.readAsDataURL(file);
+                    });
+                    const result = await uploadPaymentProof.mutateAsync({
+                      fileName: file.name,
+                      fileData: base64,
+                      contentType: file.type,
+                    });
+                    return result.url;
+                  }}
+                  onUrlChange={(url) => setUploadedUrl(url)}
+                  currentUrl={uploadedUrl}
                 />
               </div>
               <div>
@@ -166,8 +183,8 @@ export default function OrderDetail() {
                   className="mt-1"
                 />
               </div>
-              <Button onClick={handleUploadProof} disabled={!proofUrl.trim() || uploadMutation.isPending}>
-                {uploadMutation.isPending ? (isRtl ? 'جاري الرفع...' : 'Uploading...') : (isRtl ? 'رفع الإيصال' : 'Submit Proof')}
+              <Button onClick={handleUploadProof} disabled={!uploadedUrl || uploadMutation.isPending}>
+                {uploadMutation.isPending ? (isRtl ? 'جاري الإرسال...' : 'Submitting...') : (isRtl ? 'رفع الإيصال' : 'Submit Proof')}
               </Button>
             </div>
           </div>

@@ -23,6 +23,7 @@ export default function Checkout() {
   const [giftEmail, setGiftEmail] = useState('');
   const [giftMessage, setGiftMessage] = useState('');
   const [notes, setNotes] = useState('');
+  const [termsAccepted, setTermsAccepted] = useState(false);
 
   // Coupon state
   const [couponCode, setCouponCode] = useState('');
@@ -108,6 +109,8 @@ export default function Checkout() {
       giftMessage: isGift ? giftMessage : undefined,
       notes: notes || undefined,
       couponCode: appliedCoupon?.code || undefined,
+      termsAcceptedAt: new Date().toISOString(),
+      termsAcceptedVersion: 'v1',
     });
   };
 
@@ -275,9 +278,25 @@ export default function Checkout() {
                   : 'Prices are shown in shekel (₪). The final amount and bank transfer instructions will be confirmed with the support team after the order is placed.'}
               </div>
 
+              <div className="mb-4 flex items-start gap-3 text-sm text-gray-600">
+                <input
+                  id="checkout-terms"
+                  type="checkbox"
+                  checked={termsAccepted}
+                  onChange={(e) => setTermsAccepted(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                />
+                <div className="leading-6">
+                  <label htmlFor="checkout-terms" className="cursor-pointer select-none">
+                    {isRtl ? 'أوافق على ' : 'I agree to the '}
+                  </label>
+                  <Link href="/terms"><span className="cursor-pointer font-medium text-emerald-700 underline">{isRtl ? 'الشروط والأحكام' : 'Terms & Conditions'}</span></Link>
+                </div>
+              </div>
+
               <Button
                 onClick={handleSubmit}
-                disabled={createOrder.isPending || (isGift && !giftEmail)}
+                disabled={createOrder.isPending || (isGift && !giftEmail) || !termsAccepted}
                 className="w-full h-12 text-base"
                 size="lg"
               >
@@ -290,11 +309,6 @@ export default function Checkout() {
                   ? (isRtl ? 'جاري الإنشاء...' : 'Processing...')
                   : (isRtl ? 'إتمام الطلب' : 'Place Order')}
               </Button>
-
-              <p className="text-xs text-gray-400 text-center mt-3">
-                {isRtl ? 'بالضغط على إتمام الطلب، أنت توافق على ' : 'By placing your order, you agree to our '}
-                <Link href="/terms"><span className="underline cursor-pointer">{isRtl ? 'شروط الخدمة' : 'Terms of Service'}</span></Link>
-              </p>
             </div>
           </div>
         </div>

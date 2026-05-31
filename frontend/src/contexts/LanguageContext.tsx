@@ -233,6 +233,9 @@ const translations = {
     'checkout.title': 'Checkout',
     'checkout.paymentMethod': 'Payment Method',
     'checkout.summary': 'Order Summary',
+    'checkout.termsCheckbox': 'I agree to the Terms & Conditions',
+    'checkout.termsRequired': 'Please accept the terms to continue',
+    'orders.uploadReceiptHint': 'Upload a photo of your bank transfer receipt',
 
     // Free Content
     'freeContent.pageTitle': 'Free Content',
@@ -1329,6 +1332,9 @@ const translations = {
     'checkout.title': 'إتمام الطلب',
     'checkout.paymentMethod': 'طريقة الدفع',
     'checkout.summary': 'ملخص الطلب',
+    'checkout.termsCheckbox': 'أوافق على الشروط والأحكام',
+    'checkout.termsRequired': 'يرجى الموافقة على الشروط للمتابعة',
+    'orders.uploadReceiptHint': 'ارفع صورة إيصال التحويل البنكي',
 
     // Free Content
     'freeContent.pageTitle': 'المحتوى المجاني',

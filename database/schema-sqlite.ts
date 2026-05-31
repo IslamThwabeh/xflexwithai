@@ -660,6 +660,8 @@ export const orders = sqliteTable("orders", {
   notes: text("notes"),
   isUpgrade: integer("isUpgrade", { mode: 'boolean' }).default(false).notNull(),
   upgradeFromPackageId: integer("upgradeFromPackageId"),
+  termsAcceptedAt: text("termsAcceptedAt"),
+  termsAcceptedVersion: text("termsAcceptedVersion"),
   createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
   updatedAt: text("updatedAt").default("CURRENT_TIMESTAMP").notNull(),
   completedAt: text("completedAt"),

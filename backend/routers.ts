@@ -2379,6 +2379,33 @@ export const appRouter = router({
           throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to upload video' });
         }
       }),
+
+    paymentProof: protectedProcedure
+      .input(z.object({
+        fileName: z.string(),
+        fileData: z.string(), // base64 encoded
+        contentType: z.string(),
+      }))
+      .mutation(async ({ input }) => {
+        logger.info('[Upload] Uploading payment proof', { fileName: input.fileName });
+
+        const env = getWorkerEnv();
+        if (!env?.VIDEOS_BUCKET) {
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'R2 bucket not configured' });
+        }
+
+        try {
+          const randomSuffix = Math.random().toString(36).substring(7);
+          const fileKey = `payment-proofs/${Date.now()}-${randomSuffix}-${input.fileName}`;
+          const buffer = Buffer.from(input.fileData, 'base64');
+          const result = await storagePutR2(env.VIDEOS_BUCKET, fileKey, buffer, input.contentType);
+          logger.info('[Upload] Payment proof uploaded successfully', { url: result.url });
+          return { url: result.url, key: result.key };
+        } catch (error) {
+          logger.error('[Upload] Payment proof upload failed', { error });
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to upload payment proof' });
+        }
+      }),
   }),
 
   // LexAI - AI Currency Analysis Chat
@@ -4341,9 +4368,14 @@ export const appRouter = router({
         giftMessage: z.string().optional(),
         notes: z.string().optional(),
         couponCode: z.string().optional(),
+        termsAcceptedAt: z.string().optional(),
+        termsAcceptedVersion: z.string().optional(),
       }))
       .mutation(async ({ input, ctx }) => {
         if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        if (!input.termsAcceptedAt || !input.termsAcceptedVersion) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Terms acceptance is required' });
+        }
 
         // Calculate totals
         let subtotal = 0;
@@ -4394,6 +4426,8 @@ export const appRouter = router({
           giftEmail: input.giftEmail || null,
           giftMessage: input.giftMessage || null,
           notes: input.notes || null,
+          termsAcceptedAt: input.termsAcceptedAt || null,
+          termsAcceptedVersion: input.termsAcceptedVersion || null,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         });
@@ -4949,9 +4983,14 @@ export const appRouter = router({
         targetPackageId: z.number(),
         paymentMethod: z.literal('bank_transfer'),
         notes: z.string().optional(),
+        termsAcceptedAt: z.string().optional(),
+        termsAcceptedVersion: z.string().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
         if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        if (!input.termsAcceptedAt || !input.termsAcceptedVersion) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Terms acceptance is required' });
+        }
 
         const eligibility = await db.checkUpgradeEligibility(ctx.user.id, input.targetPackageId);
         if (!eligibility) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Not eligible for upgrade' });
@@ -4978,6 +5017,8 @@ export const appRouter = router({
           notes: input.notes || `Upgrade from ${eligibility.currentPackageName} to ${eligibility.targetPackageName}`,
           isUpgrade: true,
           upgradeFromPackageId: eligibility.currentPackageId,
+          termsAcceptedAt: input.termsAcceptedAt || null,
+          termsAcceptedVersion: input.termsAcceptedVersion || null,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         });
