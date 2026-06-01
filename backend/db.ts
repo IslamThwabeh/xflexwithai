@@ -6490,7 +6490,7 @@ export async function getSupportMessages(conversationId: number, limit: number =
   if (!db) return [];
   return db.select().from(supportMessages)
     .where(eq(supportMessages.conversationId, conversationId))
-    .orderBy(supportMessages.createdAt)
+    .orderBy(desc(supportMessages.createdAt))
     .limit(limit);
 }
 

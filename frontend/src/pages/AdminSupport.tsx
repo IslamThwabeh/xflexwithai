@@ -219,13 +219,13 @@ export default function AdminSupport() {
     const container = messagesEndRef.current?.parentElement;
     if (!container) return;
 
-    container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
+    container.scrollTop = container.scrollHeight;
   };
 
   useEffect(() => {
-    if (!selectedConvId || !selectedData?.messages?.length) return;
+    if (!selectedConvId || !(selectedData?.messages?.length ?? 0)) return;
     scrollToBottom();
-  }, [selectedConvId, selectedData?.messages]);
+  }, [selectedConvId, selectedData?.messages?.length]);
 
   const { t, language } = useLanguage();
   const isRtl = language === 'ar';
@@ -303,6 +303,7 @@ export default function AdminSupport() {
   const totalUnread = (conversations ?? []).reduce((sum, c) => sum + (c.unreadCount ?? 0), 0);
   const totalEscalated = (conversations ?? []).filter((c: any) => c.needsHuman).length;
   const displayedCount = filteredConversations.length;
+  const messagesForDisplay = [...(selectedData?.messages ?? [])].reverse();
 
   return (
     <DashboardLayout>
@@ -557,7 +558,7 @@ export default function AdminSupport() {
                       <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                     </div>
                   ) : (
-                    (selectedData?.messages ?? []).map((msg, idx, arr) => {
+                    messagesForDisplay.map((msg, idx, arr) => {
                       const isClient = msg.senderType === "client";
                       const isBot = msg.senderType === "bot";
                       const isDeleted = !!(msg as any).deletedAt;

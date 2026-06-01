@@ -1964,19 +1964,14 @@ export const appRouter = router({
         if (episode.order > 1) {
           const quizLevel = episode.order - 1;
           const quiz = await db.getQuizByLevel(quizLevel);
-          if (!quiz) {
-            throw new TRPCError({
-              code: 'FORBIDDEN',
-              message: 'Quiz is not configured for this episode yet.',
-            });
-          }
-
-          const hasPassedQuiz = await db.hasUserPassedQuizLevel(ctx.user.id, quizLevel);
-          if (!hasPassedQuiz) {
-            throw new TRPCError({
-              code: 'FORBIDDEN',
-              message: `Pass the episode quiz (${quiz.passingScore}% required) before continuing.`,
-            });
+          if (quiz) {
+            const hasPassedQuiz = await db.hasUserPassedQuizLevel(ctx.user.id, quizLevel);
+            if (!hasPassedQuiz) {
+              throw new TRPCError({
+                code: 'FORBIDDEN',
+                message: `Pass the episode quiz (${quiz.passingScore}% required) before continuing.`,
+              });
+            }
           }
         }
 
@@ -2164,7 +2159,7 @@ export const appRouter = router({
         const quiz = await db.getQuizForLevelWithQuestions(quizLevel);
 
         if (!quiz) {
-          return { required: true, passed: false, introEpisode: false, quiz: null };
+          return { required: false, passed: true, introEpisode: false, quiz: null };
         }
 
         const passed = await db.hasUserPassedQuizLevel(ctx.user.id, quizLevel);
