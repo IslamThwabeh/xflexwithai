@@ -22,7 +22,7 @@ import {
   quizOptions, QuizOption,
   quizAttempts,
   quizAnswers,
-  userQuizProgress,
+  userQuizProgress, UserQuizProgress,
   // FlexAI imports
   flexaiSubscriptions, FlexaiSubscription, InsertFlexaiSubscription,
   flexaiMessages, FlexaiMessage, InsertFlexaiMessage,
@@ -5171,6 +5171,35 @@ export async function submitEpisodeQuizAttempt(
  * Get a user's progress across all quiz levels.
  * Level 1 is always unlocked; other levels unlock when the previous is passed.
  */
+export function buildUserQuizProgress(allQuizzes: Quiz[], progressRows: UserQuizProgress[]) {
+  const progressByQuizId = new Map(progressRows.map((row) => [row.quizId, row]));
+  const quizByLevel = new Map(allQuizzes.map((quiz) => [quiz.level, quiz]));
+  const hasPassedQuiz = (quiz: Quiz | undefined) => {
+    if (!quiz) return false;
+    const progress = progressByQuizId.get(quiz.id);
+    if (!progress) return false;
+    const bestScore = Number(progress.bestScore || 0);
+    return Boolean(progress.isCompleted) || bestScore >= Number(quiz.passingScore || 50);
+  };
+
+  return allQuizzes.map((quiz) => {
+    const progress = progressByQuizId.get(quiz.id);
+    const previousQuiz = quizByLevel.get(quiz.level - 1);
+    const isPassed = hasPassedQuiz(quiz);
+
+    return {
+      level: quiz.level,
+      title: quiz.title,
+      description: quiz.description,
+      passingScore: Number(quiz.passingScore || 50),
+      isUnlocked: quiz.level === 1 || Boolean(progress?.isUnlocked) || hasPassedQuiz(previousQuiz),
+      isPassed,
+      bestScore: Number(progress?.bestScore ?? 0),
+      lastAttemptAt: progress?.lastAttemptAt ?? null,
+    };
+  });
+}
+
 export async function getUserQuizProgress(userId: number) {
   const db = await getDb();
   if (!db) return [];
@@ -5183,19 +5212,7 @@ export async function getUserQuizProgress(userId: number) {
     .from(userQuizProgress)
     .where(eq(userQuizProgress.userId, userId));
 
-  return allQuizzes.map((quiz) => {
-    const up = progress.find((p) => p.quizId === quiz.id);
-    return {
-      level: quiz.level,
-      title: quiz.title,
-      description: quiz.description,
-      passingScore: Number(quiz.passingScore || 50),
-      isUnlocked: up ? Boolean(up.isUnlocked) : quiz.level === 1,
-      isPassed: up ? Boolean(up.isCompleted) : false,
-      bestScore: Number(up?.bestScore ?? 0),
-      lastAttemptAt: up?.lastAttemptAt ?? null,
-    };
-  });
+  return buildUserQuizProgress(allQuizzes, progress);
 }
 
 /**

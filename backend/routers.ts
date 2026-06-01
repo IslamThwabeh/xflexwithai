@@ -2261,6 +2261,13 @@ export const appRouter = router({
       }))
       .mutation(async ({ ctx, input }) => {
         await requireActivePackage(ctx.user.id);
+        const canAccess = await db.canAccessQuizLevel(ctx.user.id, input.level);
+        if (!canAccess) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: 'هذا المستوى مقفل. أكمل المستوى السابق أولاً',
+          });
+        }
         const quiz = await db.getQuizByLevel(input.level);
         if (!quiz || quiz.id !== input.quizId) {
           throw new TRPCError({
