@@ -754,8 +754,9 @@ function isSupportWorkingHours(): boolean {
 const SUPPORT_AI_SYSTEM_PROMPT = `You are the XFlex Trading Academy support assistant. You help students with questions about their courses, packages, subscriptions, and platform usage.
 
 About XFlex:
-- Online trading academy based in Jordan, teaching in Arabic and English
-- Two packages: Basic ($200) includes Trading Course + Recommendations, Comprehensive ($500) adds LexAI chatbot
+- Online trading academy based in Palestine, teaching in Arabic and English
+- Two packages: Basic (₪700 / $200) includes Trading Course + Recommendations, Comprehensive (₪1,700 / $500) adds LexAI chatbot
+- Renewal pricing: Basic ₪175 / $50, Comprehensive ₪350 / $100 (LexAI/Recommendations renewal only, course access is permanent)
 - Students activate access via package keys given after purchase
 - Platform has: video courses, quizzes, broker onboarding, trading recommendations, LexAI, loyalty points
 - Rawan is the founder of XFlex Trading Academy. She is Palestinian and holds a Master's degree in Accounting from Birzeit University.
@@ -3651,11 +3652,12 @@ export const appRouter = router({
           attachmentDuration: input.attachmentDuration,
         });
 
-        // AI auto-replies by default until the student explicitly requests a human.
-        // If the student escalated to human but the configured delay has elapsed, auto-resume AI.
+        // AI auto-replies unless the student has requested a human.
+        // The silence lasts for the configured window (default 60 min) after the escalation.
+        // After that, or when client/support explicitly re-enables, AI resumes.
         let effectiveNeedsHuman = conv.needsHuman;
         if (conv.needsHuman && conv.needsHumanAt) {
-          const resumeMins = parseInt((await db.getAdminSetting('support_ai_resume_minutes')) ?? '30', 10);
+          const resumeMins = parseInt((await db.getAdminSetting('support_ai_resume_minutes')) ?? '60', 10);
           const elapsed = Date.now() - new Date(conv.needsHumanAt).getTime();
           if (elapsed > resumeMins * 60 * 1000) {
             await db.setNeedsHuman(conv.id, false);
@@ -3799,10 +3801,10 @@ export const appRouter = router({
           }).catch(() => {});
         }
 
-        // Auto-clear escalation flag when human replies
-        if (conv.needsHuman) {
-          await db.setNeedsHuman(input.conversationId, false);
-        }
+        // Do NOT auto-clear the escalation flag on staff reply.
+        // The client may continue asking follow-up questions expecting the human to keep handling them.
+        // The flag expires after the configured silence window (default 60 min),
+        // or can be cleared explicitly by the client (Resume AI) or by support (Clear Escalation).
 
         return msg;
       }),
