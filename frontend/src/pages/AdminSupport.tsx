@@ -40,10 +40,12 @@ export default function AdminSupport() {
   const [reply, setReply] = useState("");
   const [attachment, setAttachment] = useState<{ name: string; file: File; size: number } | null>(null);
   const [uploading, setUploading] = useState(false);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const didHydrateConversationRef = useRef(false);
   const didSyncQueryRef = useRef(false);
+  const shouldStickToBottomRef = useRef(true);
   const [searchInput, setSearchInput] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "open" | "closed">("all");
@@ -60,7 +62,13 @@ export default function AdminSupport() {
 
   const clearSelectedConversation = () => {
     replaceSupportUrl(null);
+    shouldStickToBottomRef.current = true;
     setSelectedConvId(null);
+  };
+
+  const handleConversationSelect = (conversationId: number) => {
+    shouldStickToBottomRef.current = true;
+    setSelectedConvId(conversationId);
   };
 
   // Debounce search input (300ms)
@@ -78,17 +86,10 @@ export default function AdminSupport() {
     { refetchInterval: 8000 }
   );
 
-  // Client-side status filter + sort escalated to top
+  // Client-side status filter only. Ordering is decided in the backend.
   const filteredConversations = useMemo(() => {
     if (!conversations) return [];
-    let list = statusFilter === "all" ? [...conversations] : conversations.filter(c => c.status === statusFilter);
-    // Escalated (needsHuman) conversations float to top
-    list.sort((a: any, b: any) => {
-      if (a.needsHuman && !b.needsHuman) return -1;
-      if (!a.needsHuman && b.needsHuman) return 1;
-      return 0; // preserve existing order (by updatedAt desc from backend)
-    });
-    return list;
+    return statusFilter === "all" ? conversations : conversations.filter(c => c.status === statusFilter);
   }, [conversations, statusFilter]);
 
   const selectedConversationSummary = useMemo(
@@ -215,20 +216,42 @@ export default function AdminSupport() {
     e.target.value = '';
   };
 
-  const scrollToBottom = () => {
-    const container = messagesEndRef.current?.parentElement;
-    if (!container) return;
-
-    container.scrollTop = container.scrollHeight;
+  const formatConversationSummaryTimestamp = (value?: string | null) => {
+    if (!value) return null;
+    const date = new Date(value);
+    if (isNaN(date.getTime())) return null;
+    return date.toLocaleString(isRtl ? 'ar-EG' : 'en-US');
   };
-
-  useEffect(() => {
-    if (!selectedConvId || !(selectedData?.messages?.length ?? 0)) return;
-    scrollToBottom();
-  }, [selectedConvId, selectedData?.messages?.length]);
 
   const { t, language } = useLanguage();
   const isRtl = language === 'ar';
+
+  const scrollToBottom = () => {
+    const container = messagesContainerRef.current;
+    messagesEndRef.current?.scrollIntoView({ block: 'end' });
+    if (!container) return;
+
+    container.scrollTop = container.scrollHeight;
+    shouldStickToBottomRef.current = true;
+  };
+
+  const handleMessagesScroll = () => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    shouldStickToBottomRef.current = distanceFromBottom <= 96;
+  };
+
+  useEffect(() => {
+    if (!selectedConvId || !(selectedData?.messages?.length ?? 0) || !shouldStickToBottomRef.current) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      scrollToBottom();
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [selectedConvId, selectedData?.messages?.length]);
 
   // Date separator helper for grouping chat messages by day
   const getDateLabel = (dateStr: string) => {
@@ -248,6 +271,7 @@ export default function AdminSupport() {
     const trimmed = reply.trim();
     if ((!trimmed && !attachment) || !selectedConvId) return;
     try {
+      shouldStickToBottomRef.current = true;
       setUploading(true);
       let attachmentUrl: string | undefined;
       let attachmentName: string | undefined;
@@ -274,6 +298,7 @@ export default function AdminSupport() {
   const handleVoiceRecording = async (blob: Blob, durationSec: number) => {
     if (!selectedConvId) return;
     try {
+      shouldStickToBottomRef.current = true;
       setUploading(true);
       const ext = blob.type.includes('webm') ? 'webm' : 'mp4';
       const uploaded = await uploadFileToR2(blob, `voice-note.${ext}`, blob.type, 'voice');
@@ -414,7 +439,7 @@ export default function AdminSupport() {
                   {filteredConversations.map((conv) => (
                     <button
                       key={conv.id}
-                      onClick={() => setSelectedConvId(conv.id)}
+                      onClick={() => handleConversationSelect(conv.id)}
                       className={`w-full text-start p-3 hover:bg-gray-50 transition ${
                         selectedConvId === conv.id ? "bg-emerald-50 border-r-2 border-emerald-600" : ""
                       }`}
@@ -464,10 +489,12 @@ export default function AdminSupport() {
                           {conv.lastMessage.content}
                         </p>
                       )}
-                      <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-                        <Clock className="h-3 w-3" />
-                        {new Date(conv.updatedAt).toLocaleString(isRtl ? 'ar-EG' : 'en-US')}
-                      </p>
+                      {formatConversationSummaryTimestamp(conv.summaryTimestamp) && (
+                        <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          {formatConversationSummaryTimestamp(conv.summaryTimestamp)}
+                        </p>
+                      )}
                     </button>
                   ))}
                 </div>
@@ -552,7 +579,11 @@ export default function AdminSupport() {
                 </CardHeader>
 
                 {/* Messages */}
-                <CardContent className="flex-1 overflow-y-auto p-3 space-y-3">
+                <CardContent
+                  ref={messagesContainerRef}
+                  className="flex-1 overflow-y-auto p-3 space-y-3"
+                  onScroll={handleMessagesScroll}
+                >
                   {loadingMessages ? (
                     <div className="flex items-center justify-center py-10">
                       <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />

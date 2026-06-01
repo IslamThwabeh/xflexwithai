@@ -519,8 +519,8 @@ export const supportConversations = sqliteTable("supportConversations", {
   needsHuman: integer("needsHuman", { mode: 'boolean' }).default(false).notNull(), // student escalated to human
   needsHumanAt: text("needsHumanAt"), // ISO timestamp when escalation was set, for auto-resume timer
   assignedTo: integer("assignedTo"), // support user id handling this conversation
-  createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
-  updatedAt: text("updatedAt").default("CURRENT_TIMESTAMP").notNull(),
+  createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
+  updatedAt: text("updatedAt").default(sql`(datetime('now'))`).notNull(),
   closedAt: text("closedAt"),
 });
 
@@ -544,7 +544,7 @@ export const supportMessages = sqliteTable("supportMessages", {
   attachmentDuration: integer("attachmentDuration"), // voice duration in seconds
   editedAt: text("editedAt"),   // ISO timestamp if message was edited, null otherwise
   deletedAt: text("deletedAt"), // ISO timestamp if message was soft-deleted, null otherwise
-  createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
+  createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
 });
 
 export type SupportMessage = typeof supportMessages.$inferSelect;

@@ -6403,6 +6403,64 @@ export async function removeStaffStatus(userId: number) {
 // Support Chat
 // ============================================================================
 
+type SupportConversationListShape = {
+  id: number;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  needsHuman?: boolean | null;
+  lastMessage?: {
+    createdAt?: string | null;
+  } | null;
+};
+
+function parseSupportConversationTimestamp(value?: string | null) {
+  if (!value) return null;
+
+  const timestamp = Date.parse(value);
+  return Number.isNaN(timestamp) ? null : timestamp;
+}
+
+function getSupportConversationSortTimestamp(conversation: SupportConversationListShape) {
+  return (
+    parseSupportConversationTimestamp(conversation.lastMessage?.createdAt) ??
+    parseSupportConversationTimestamp(conversation.updatedAt) ??
+    parseSupportConversationTimestamp(conversation.createdAt)
+  );
+}
+
+export function getSupportConversationSummaryTimestamp(
+  conversation: Pick<SupportConversationListShape, 'lastMessage'>,
+) {
+  const lastMessageCreatedAt = conversation.lastMessage?.createdAt;
+  return parseSupportConversationTimestamp(lastMessageCreatedAt) === null ? null : lastMessageCreatedAt ?? null;
+}
+
+export function sortSupportConversationSummaries<T extends SupportConversationListShape>(conversations: T[]) {
+  return [...conversations].sort((left, right) => {
+    const leftHasMessages = !!left.lastMessage;
+    const rightHasMessages = !!right.lastMessage;
+    if (leftHasMessages !== rightHasMessages) {
+      return leftHasMessages ? -1 : 1;
+    }
+
+    const leftNeedsHuman = left.needsHuman === true;
+    const rightNeedsHuman = right.needsHuman === true;
+    if (leftNeedsHuman !== rightNeedsHuman) {
+      return leftNeedsHuman ? -1 : 1;
+    }
+
+    const leftTimestamp = getSupportConversationSortTimestamp(left);
+    const rightTimestamp = getSupportConversationSortTimestamp(right);
+    if (leftTimestamp !== rightTimestamp) {
+      if (leftTimestamp === null) return 1;
+      if (rightTimestamp === null) return -1;
+      return rightTimestamp - leftTimestamp;
+    }
+
+    return right.id - left.id;
+  });
+}
+
 export async function getOrCreateSupportConversation(userId: number): Promise<SupportConversation> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -6426,8 +6484,9 @@ export async function getOrCreateSupportConversation(userId: number): Promise<Su
   }
 
   // No conversation yet — create the first one
+  const now = new Date().toISOString();
   const [created] = await db.insert(supportConversations)
-    .values({ userId, status: "open" })
+    .values({ userId, status: "open", createdAt: now, updatedAt: now })
     .returning();
   return created;
 }
@@ -6575,6 +6634,7 @@ export async function getAllSupportConversations(searchQuery?: string) {
       .where(eq(supportMessages.conversationId, conv.id))
       .orderBy(desc(supportMessages.createdAt))
       .limit(1);
+    const lastMessage = msgs[0] ?? null;
 
     const [unreadRow] = await db
       .select({ count: sql<number>`count(*)` })
@@ -6589,12 +6649,14 @@ export async function getAllSupportConversations(searchQuery?: string) {
 
     result.push({
       ...conv,
-      lastMessage: msgs[0] ?? null,
+      lastMessage,
       unreadCount: unreadRow?.count ?? 0,
+      hasMessages: !!lastMessage,
+      summaryTimestamp: getSupportConversationSummaryTimestamp({ lastMessage }),
     });
   }
 
-  return result;
+  return sortSupportConversationSummaries(result);
 }
 
 export async function markSupportMessagesRead(conversationId: number, readerType: 'support' | 'admin') {
