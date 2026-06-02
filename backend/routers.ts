@@ -447,7 +447,6 @@ const getReusableH4Analysis = (messages: LexaiMessageList, imageUrl: string) => 
 const RECOMMENDATION_REACTIONS = ["like", "love", "sad", "fire", "rocket"] as const;
 const RECOMMENDATION_ALERT_UNLOCK_SECONDS = 60;
 const RECOMMENDATION_ALERT_EXPIRY_MINUTES = 15;
-const RECOMMENDATION_EMAIL_INACTIVE_MINUTES = 15;
 const buildRecommendationThreadUnfollowUrl = (threadRootMessageId: number) =>
   `https://xflexacademy.com/recommendations?threadAction=unfollow&threadId=${threadRootMessageId}`;
 
@@ -512,16 +511,6 @@ const recommendationNotificationsEnabled = (notificationPrefs: string | null | u
 const getPreferredNotificationLanguage = (notificationPrefs: string | null | undefined): "ar" | "en" => {
   const prefs = parseNotificationPrefs(notificationPrefs);
   return prefs.language === "en" ? "en" : "ar";
-};
-
-const isRecommendationEmailCandidate = (
-  lastInteractiveAt: string | null | undefined,
-  threshold: Date,
-) => {
-  if (!lastInteractiveAt) return true;
-  const parsed = new Date(lastInteractiveAt);
-  if (Number.isNaN(parsed.getTime())) return true;
-  return parsed <= threshold;
 };
 
 const buildRecommendationAlertNotificationCopy = () => ({
@@ -2839,10 +2828,8 @@ export const appRouter = router({
           });
         }
 
-        const inactivityThreshold = new Date(Date.now() - RECOMMENDATION_EMAIL_INACTIVE_MINUTES * 60 * 1000);
-        const emailCandidates = recipients.filter((sub) => isRecommendationEmailCandidate(sub.lastInteractiveAt, inactivityThreshold));
         const emailResults = await Promise.allSettled(
-          emailCandidates.map(async (sub) => {
+          recipients.map(async (sub) => {
             const emailCopy = buildRecommendationAlertEmail({
               language: getPreferredNotificationLanguage(sub.notificationPrefs),
               unlockSeconds: RECOMMENDATION_ALERT_UNLOCK_SECONDS,
@@ -2852,6 +2839,17 @@ export const appRouter = router({
               subject: emailCopy.subject,
               text: emailCopy.text,
               html: emailCopy.html,
+              audit: {
+                eventType: 'recommendation_alert',
+                templateId: 'recommendation_alert',
+                recipientUserId: sub.userId,
+                metadata: {
+                  recommendationId: alert.id,
+                  type: 'alert',
+                  batchId,
+                  unlockSeconds: RECOMMENDATION_ALERT_UNLOCK_SECONDS,
+                },
+              },
             });
             await db.markNotificationEmailSent(batchId, sub.userId);
             return sub.userId;
@@ -2927,13 +2925,15 @@ export const appRouter = router({
 
         const isAdmin = !!(ctx.user?.email && await db.getAdminByEmail(ctx.user.email));
         const publishState = await db.getRecommendationPublishState(ctx.user.id);
-        if (!publishState.activeAlert) {
+        const requiresPreNotification = input.type === 'recommendation';
+
+        if (requiresPreNotification && !publishState.activeAlert) {
           throw new TRPCError({
             code: 'FORBIDDEN',
             message: 'Notify clients first, then wait one minute before sending in the recommendations channel.',
           });
         }
-        if (!publishState.canPostMessages) {
+        if (requiresPreNotification && !publishState.canPostMessages) {
           if (publishState.secondsUntilUnlock > 0) {
             throw new TRPCError({
               code: 'FORBIDDEN',
@@ -2960,7 +2960,7 @@ export const appRouter = router({
           riskPercent?: string | null;
         } | null = null;
         let notificationSymbol: string | null | undefined;
-        const linkedAlertId = publishState.activeAlert.id;
+        const linkedAlertId = publishState.activeAlert?.id ?? null;
 
         if (input.type === 'recommendation') {
           if (input.parentId) {
@@ -3056,7 +3056,9 @@ export const appRouter = router({
 
         const threadRootMessageId = parentMessage?.id ?? messageId;
 
-        await db.extendRecommendationAlertActivity(linkedAlertId, ctx.user.id);
+        if (linkedAlertId !== null) {
+          await db.extendRecommendationAlertActivity(linkedAlertId, ctx.user.id);
+        }
 
         const allSubs = await db.getRecommendationSubscriberDetails();
         const optedInRecipients = allSubs.filter((sub) => recommendationNotificationsEnabled(sub.notificationPrefs));
@@ -3089,11 +3091,8 @@ export const appRouter = router({
             batchId,
           });
 
-          const inactivityThreshold = new Date(Date.now() - RECOMMENDATION_EMAIL_INACTIVE_MINUTES * 60 * 1000);
           await Promise.allSettled(
-            recipients
-              .filter((sub) => isRecommendationEmailCandidate(sub.lastInteractiveAt, inactivityThreshold))
-              .map(async (sub) => {
+            recipients.map(async (sub) => {
                 const emailCopy = buildRecommendationMessageEmail({
                   language: getPreferredNotificationLanguage(sub.notificationPrefs),
                   type: input.type,
@@ -3109,6 +3108,24 @@ export const appRouter = router({
                   subject: emailCopy.subject,
                   text: emailCopy.text,
                   html: emailCopy.html,
+                  audit: {
+                    eventType: input.type === 'result'
+                      ? 'trade_result'
+                      : input.type === 'update'
+                        ? 'recommendation_update'
+                        : 'recommendation_new',
+                    templateId: input.type === 'recommendation'
+                      ? 'recommendation_new'
+                      : `recommendation_${input.type}`,
+                    recipientUserId: sub.userId,
+                    metadata: {
+                      recommendationId: threadRootMessageId,
+                      type: input.type,
+                      symbol: notificationSymbol || null,
+                      messageId,
+                      batchId,
+                    },
+                  },
                 });
                 await db.markNotificationEmailSent(batchId, sub.userId);
               })
@@ -3566,6 +3583,11 @@ export const appRouter = router({
           to: adminEmail,
           subject: `[XFlex Support] New message from ${input.email}`,
           text: `New support message from: ${input.email}\n\n${input.message}\n\n---\nReply directly to ${input.email}`,
+          audit: {
+            eventType: 'contact_support',
+            templateId: 'contact_support',
+            metadata: { fromEmail: input.email },
+          },
         });
       } catch (e) {
         logger.error('[CONTACT] Failed to send contact form email', { email: input.email, error: e });
@@ -6184,6 +6206,16 @@ ${qaText}`;
                   titleEn: input.titleEn?.trim() || undefined,
                   contentEn: input.contentEn?.trim() || undefined,
                   actionUrl: input.actionUrl || undefined,
+                  audit: {
+                    eventType: 'admin_bulk_notification',
+                    templateId: 'announcement',
+                    recipientUserId: userId,
+                    metadata: {
+                      batchId,
+                      notificationType: input.type || 'info',
+                      actionUrl: input.actionUrl || null,
+                    },
+                  },
                 });
                 await db.markNotificationEmailSent(batchId, userId);
                 emailsSent++;
@@ -6872,6 +6904,29 @@ ${qaText}`;
 
   // Temporary admin utility: send a one-off email via the configured email provider.
   adminEmail: router({
+    deliveryLogs: adminProcedure
+      .input(z.object({
+        limit: z.number().min(1).max(200).optional(),
+        offset: z.number().min(0).optional(),
+        recipientQuery: z.string().optional(),
+        recipientUserId: z.number().optional(),
+        eventType: z.string().optional(),
+        status: z.enum(['sent', 'failed']).optional(),
+        fromDate: z.string().optional(),
+        toDate: z.string().optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        return db.getEmailDeliveryLogs({
+          limit: input?.limit,
+          offset: input?.offset,
+          recipientQuery: input?.recipientQuery,
+          recipientUserId: input?.recipientUserId,
+          eventType: input?.eventType,
+          status: input?.status,
+          fromDate: input?.fromDate,
+          toDate: input?.toDate,
+        });
+      }),
     sendOne: adminProcedure
       .input(z.object({
         to: z.string().email(),
@@ -6880,7 +6935,16 @@ ${qaText}`;
         text: z.string().min(1),
       }))
       .mutation(async ({ input }) => {
-        await sendEmail({ to: input.to, subject: input.subject, html: input.html, text: input.text });
+        await sendEmail({
+          to: input.to,
+          subject: input.subject,
+          html: input.html,
+          text: input.text,
+          audit: {
+            eventType: 'admin_manual',
+            templateId: 'admin_manual',
+          },
+        });
         return { success: true };
       }),
   }),

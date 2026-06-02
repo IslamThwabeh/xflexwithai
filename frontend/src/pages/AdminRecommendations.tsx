@@ -486,18 +486,18 @@ function AnalystView() {
   const activeAlert = publishState?.activeAlert;
   const hasActiveAlert = !!activeAlert;
   const canPostMessages = !!publishState?.canPostMessages;
-  const requiresAlert = !hasActiveAlert;
-  const isWaitingForUnlock = hasActiveAlert && !canPostMessages;
-  const showComposerFields = hasActiveAlert || !!editingMessageId;
+  const requiresAlert = type === "recommendation" && !hasActiveAlert;
+  const isWaitingForUnlock = type === "recommendation" && hasActiveAlert && !canPostMessages;
+  const showComposerFields = type !== "recommendation" || hasActiveAlert || !!editingMessageId;
   const channelDisabledReason = requiresAlert
     ? (isRTL
         ? "بعد 15 دقيقة من الصمت يجب أولاً الضغط على إخطار العملاء قبل كتابة رسالة جديدة."
         : "After 15 minutes of silence, click Notify Clients before typing a new message.")
-    : canPostMessages
-      ? ""
-      : (isRTL
+    : isWaitingForUnlock
+      ? (isRTL
           ? `تم إرسال الإخطار. يمكنك الكتابة بعد ${formatCountdown(publishState?.secondsUntilUnlock ?? 0)}.`
-          : `Alert sent. You can type in ${formatCountdown(publishState?.secondsUntilUnlock ?? 0)}.`);
+          : `Alert sent. You can type in ${formatCountdown(publishState?.secondsUntilUnlock ?? 0)}.`)
+      : "";
   const publishDisabledReason = editingMessageId
     ? (type === "recommendation" && !normalizedSymbol
         ? (isRTL ? "اختر الزوج أولاً" : "Choose the symbol first")
@@ -508,23 +508,67 @@ function AnalystView() {
           : channelDisabledReason)
       : (!parentMessage?.id
           ? (isRTL ? "اختر التوصية الأم أولاً" : "Choose the parent recommendation first")
-          : channelDisabledReason);
-  const sessionStatusTitle = requiresAlert
-    ? (isRTL ? "الدردشة متوقفة مؤقتاً" : "Chat paused")
-    : isWaitingForUnlock
-      ? (isRTL ? "تم إرسال التنبيه" : "Alert sent")
-      : (isRTL ? "الدردشة نشطة الآن" : "Chat live now");
-  const sessionStatusDescription = requiresAlert
-    ? (isRTL
-        ? "بعد 15 دقيقة من الصمت، اضغط إخطار العملاء لإعادة فتح القناة."
-        : "After 15 minutes of silence, alert clients to reopen the channel.")
-    : isWaitingForUnlock
+          : "");
+  const sessionStatusTitle = type !== "recommendation"
+    ? (parentMessage
+        ? (isRTL ? "المتابعات متاحة فوراً" : "Follow-ups ready")
+        : (isRTL ? "اختر التوصية الأم" : "Choose a parent recommendation"))
+    : requiresAlert
+      ? (isRTL ? "الدردشة متوقفة مؤقتاً" : "Chat paused")
+      : isWaitingForUnlock
+        ? (isRTL ? "تم إرسال التنبيه" : "Alert sent")
+        : (isRTL ? "الدردشة نشطة الآن" : "Chat live now");
+  const sessionStatusDescription = type !== "recommendation"
+    ? (parentMessage
+        ? (isRTL
+            ? "يمكنك إرسال التحديثات والنتائج مباشرة على التوصية الحالية. لا تحتاج إلى انتظار دقيقة جديدة."
+            : "Updates and results can be sent immediately on the current recommendation. No extra one-minute wait is required.")
+        : (isRTL
+            ? "اختر توصية موجودة أولاً ثم أرسل تحديثاً أو نتيجة مباشرة داخل نفس الصفقة."
+            : "Choose an existing recommendation first, then send an update or result directly inside the same trade."))
+    : requiresAlert
       ? (isRTL
-          ? `تم إخطار العملاء. تفتح القناة خلال ${formatCountdown(publishState?.secondsUntilUnlock ?? 0)}.`
-          : `Clients were notified. The channel unlocks in ${formatCountdown(publishState?.secondsUntilUnlock ?? 0)}.`)
-      : (isRTL
-          ? `القناة تعمل الآن. كل رسالة جديدة تمدد الجلسة، ويتبقى ${formatCountdown(publishState?.secondsUntilExpiry ?? 0)} قبل قفل الصمت.`
-          : `The channel is live now. Each new message extends the session, and ${formatCountdown(publishState?.secondsUntilExpiry ?? 0)} remains before the silence lock.`);
+          ? "بعد 15 دقيقة من الصمت، اضغط إخطار العملاء لإعادة فتح القناة."
+          : "After 15 minutes of silence, alert clients to reopen the channel.")
+      : isWaitingForUnlock
+        ? (isRTL
+            ? `تم إخطار العملاء. تفتح القناة خلال ${formatCountdown(publishState?.secondsUntilUnlock ?? 0)}.`
+            : `Clients were notified. The channel unlocks in ${formatCountdown(publishState?.secondsUntilUnlock ?? 0)}.`)
+        : (isRTL
+            ? `القناة تعمل الآن. كل رسالة جديدة تمدد الجلسة، ويتبقى ${formatCountdown(publishState?.secondsUntilExpiry ?? 0)} قبل قفل الصمت.`
+            : `The channel is live now. Each new message extends the session, and ${formatCountdown(publishState?.secondsUntilExpiry ?? 0)} remains before the silence lock.`);
+  const sessionAlertClassName = type !== "recommendation"
+    ? (parentMessage
+        ? "border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-800/40 dark:bg-emerald-900/10 dark:text-emerald-100"
+        : "border-slate-200 bg-slate-50 text-slate-900 dark:border-slate-800 dark:bg-slate-900/40 dark:text-slate-100")
+    : !hasActiveAlert
+      ? "border-slate-200 bg-slate-50 text-slate-900 dark:border-slate-800 dark:bg-slate-900/40 dark:text-slate-100"
+      : canPostMessages
+        ? "border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-800/40 dark:bg-emerald-900/10 dark:text-emerald-100"
+        : "border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-800/40 dark:bg-amber-900/10 dark:text-amber-100";
+  const sessionBadgeClassName = type !== "recommendation"
+    ? (parentMessage ? "bg-emerald-600 text-white" : "bg-slate-700 text-white")
+    : requiresAlert
+      ? "bg-slate-700 text-white"
+      : isWaitingForUnlock
+        ? "bg-amber-500 text-white"
+        : "bg-emerald-600 text-white";
+  const sessionBadgeLabel = type !== "recommendation"
+    ? (parentMessage ? (isRTL ? "مباشرة" : "Direct") : (isRTL ? "اختر التوصية" : "Pick parent"))
+    : requiresAlert
+      ? (isRTL ? "متوقفة" : "Paused")
+      : isWaitingForUnlock
+        ? (isRTL ? "بانتظار الفتح" : "Unlocking")
+        : (isRTL ? "مباشرة" : "Live");
+  const sessionTimingText = type !== "recommendation"
+    ? (parentMessage
+        ? (isRTL ? "التحديثات والنتائج لا تحتاج إلى انتظار إضافي" : "Updates and results need no extra wait")
+        : (isRTL ? "اختر توصية قائمة أولاً" : "Choose an existing recommendation first"))
+    : requiresAlert
+      ? (isRTL ? "يجب إخطار العملاء لإعادة الفتح" : "Alert clients to reopen the channel")
+      : canPostMessages
+        ? (isRTL ? `قفل الصمت بعد ${formatCountdown(publishState?.secondsUntilExpiry ?? 0)}` : `Silence lock in ${formatCountdown(publishState?.secondsUntilExpiry ?? 0)}`)
+        : (isRTL ? `تفتح خلال ${formatCountdown(publishState?.secondsUntilUnlock ?? 0)}` : `Opens in ${formatCountdown(publishState?.secondsUntilUnlock ?? 0)}`);
 
   useEffect(() => {
     if (!showComposerFields || type === "recommendation") return;
@@ -928,12 +972,7 @@ function AnalystView() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Alert className={!hasActiveAlert
-            ? "border-slate-200 bg-slate-50 text-slate-900 dark:border-slate-800 dark:bg-slate-900/40 dark:text-slate-100"
-            : canPostMessages
-              ? "border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-800/40 dark:bg-emerald-900/10 dark:text-emerald-100"
-              : "border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-800/40 dark:bg-amber-900/10 dark:text-amber-100"}
-          >
+          <Alert className={sessionAlertClassName}>
             <Info className="h-4 w-4" />
             <AlertTitle>{sessionStatusTitle}</AlertTitle>
             <AlertDescription>{sessionStatusDescription}</AlertDescription>
@@ -1143,25 +1182,12 @@ function AnalystView() {
                   {isRTL ? "إجراءات الجلسة" : "Session actions"}
                 </p>
                 <div className="flex flex-wrap items-center gap-2 text-xs text-emerald-900/85 dark:text-emerald-100/85">
-                  <Badge className={requiresAlert
-                    ? "bg-slate-700 text-white"
-                    : isWaitingForUnlock
-                      ? "bg-amber-500 text-white"
-                      : "bg-emerald-600 text-white"}
-                  >
-                    {requiresAlert
-                      ? (isRTL ? "متوقفة" : "Paused")
-                      : isWaitingForUnlock
-                        ? (isRTL ? "بانتظار الفتح" : "Unlocking")
-                        : (isRTL ? "مباشرة" : "Live")}
+                  <Badge className={sessionBadgeClassName}>
+                    {sessionBadgeLabel}
                   </Badge>
                   <span className="inline-flex items-center gap-1">
                     <Clock3 className="h-3.5 w-3.5" />
-                    {requiresAlert
-                      ? (isRTL ? "يجب إخطار العملاء لإعادة الفتح" : "Alert clients to reopen the channel")
-                      : canPostMessages
-                        ? (isRTL ? `قفل الصمت بعد ${formatCountdown(publishState?.secondsUntilExpiry ?? 0)}` : `Silence lock in ${formatCountdown(publishState?.secondsUntilExpiry ?? 0)}`)
-                        : (isRTL ? `تفتح خلال ${formatCountdown(publishState?.secondsUntilUnlock ?? 0)}` : `Opens in ${formatCountdown(publishState?.secondsUntilUnlock ?? 0)}`)}
+                    {sessionTimingText}
                   </span>
                 </div>
               </div>
@@ -1182,8 +1208,8 @@ function AnalystView() {
                   </TooltipTrigger>
                   <TooltipContent sideOffset={8}>
                     {hasActiveAlert
-                      ? (isRTL ? "الدردشة نشطة بالفعل. ألغها فقط إذا أردت إيقاف الكتابة الآن." : "The chat is already active. Cancel it only if you want to pause typing now.")
-                      : (isRTL ? "ضغطة واحدة ترسل التنبيه للعملاء، وبعد دقيقة تفتح القناة من جديد." : "One tap alerts clients, then the channel unlocks again after one minute.")}
+                      ? (isRTL ? "الدردشة نشطة بالفعل. ألغها فقط إذا أردت إيقاف نشر التوصيات الجديدة الآن." : "The channel is already active. Cancel it only if you want to pause new recommendations now.")
+                      : (isRTL ? "ضغطة واحدة ترسل التنبيه للعملاء، وبعد دقيقة يمكن إرسال توصية جديدة." : "One tap alerts clients, then a brand-new recommendation unlocks after one minute.")}
                   </TooltipContent>
                 </Tooltip>
 

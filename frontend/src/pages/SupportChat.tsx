@@ -3,11 +3,12 @@ import SupportBugReportsPanel from "@/components/SupportBugReportsPanel";
 import { trpc } from "@/lib/trpc";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Button } from "@/components/ui/button";
-import { Send, Headphones, Loader2, Paperclip, FileIcon, X, Bot, UserRound, Pencil, Trash2, Check, Bug } from "lucide-react";
+import { Send, Headphones, Loader2, Paperclip, FileIcon, X, Bot, UserRound, Pencil, Trash2, Check, Bug, ArrowLeft } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { toast } from "sonner";
 import VoiceRecorder from "@/components/VoiceRecorder";
 import AudioPlayer from "@/components/AudioPlayer";
+import { useLocation } from "wouter";
 
 function getRequestedSupportTab() {
   if (typeof window === "undefined") return "chat" as const;
@@ -17,11 +18,15 @@ function getRequestedSupportTab() {
 
 export default function SupportChat() {
   const { t, isRTL } = useLanguage();
+  const [, setLocation] = useLocation();
   const [message, setMessage] = useState("");
   const [attachment, setAttachment] = useState<{ name: string; file: File; size: number } | null>(null);
   const [activeTab, setActiveTab] = useState<"chat" | "bugs">(() => getRequestedSupportTab());
+  const [showOlderMessages, setShowOlderMessages] = useState(false);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const shouldStickToBottomRef = useRef(true);
   const [activeMenuMsgId, setActiveMenuMsgId] = useState<number | null>(null);
   const [editingMsgId, setEditingMsgId] = useState<number | null>(null);
   const [editContent, setEditContent] = useState("");
@@ -43,7 +48,8 @@ export default function SupportChat() {
     onSuccess: () => {
       setMessage("");
       setAttachment(null);
-      refetch();
+      shouldStickToBottomRef.current = true;
+      void refetch();
     },
     onError: (err) => toast.error(err.message),
   });
@@ -88,12 +94,50 @@ export default function SupportChat() {
   });
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const container = messagesContainerRef.current;
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    if (!container) return;
+
+    container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
+    shouldStickToBottomRef.current = true;
+  };
+
+  const handleMessagesScroll = () => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    shouldStickToBottomRef.current = distanceFromBottom <= 96;
+  };
+
+  const handleMobileBack = () => {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      window.history.back();
+      return;
+    }
+
+    setLocation("/dashboard");
   };
 
   useEffect(() => {
-    if (isChatTab) scrollToBottom();
-  }, [data?.messages, isChatTab]);
+    if (!isChatTab || !latestMessageId || !shouldStickToBottomRef.current) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      scrollToBottom();
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [isChatTab, latestMessageId]);
+
+  useEffect(() => {
+    if (!isChatTab || !sendMutation.isSuccess) return;
+
+    const timer = window.setTimeout(() => {
+      scrollToBottom();
+    }, 100);
+
+    return () => window.clearTimeout(timer);
+  }, [isChatTab, sendMutation.isSuccess]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -103,6 +147,10 @@ export default function SupportChat() {
       window.history.replaceState({}, "", nextUrl);
     }
   }, [activeTab]);
+
+  useEffect(() => {
+    setShowOlderMessages(false);
+  }, [isChatTab, data?.conversation?.id]);
 
   const uploadFileToR2 = async (file: File | Blob, fileName: string, contentType: string, attachmentType: 'file' | 'voice') => {
     const buffer = await file.arrayBuffer();
@@ -122,6 +170,7 @@ export default function SupportChat() {
   const handleSend = async () => {
     const trimmed = message.trim();
     if (!trimmed && !attachment) return;
+    shouldStickToBottomRef.current = true;
 
     if (attachment && attachment.file) {
       // Upload file to R2 first, then send message
@@ -146,6 +195,7 @@ export default function SupportChat() {
   };
 
   const handleVoiceRecording = async (blob: Blob, durationSec: number) => {
+    shouldStickToBottomRef.current = true;
     setUploading(true);
     try {
       const ext = blob.type.includes('webm') ? 'webm' : 'mp4';
@@ -184,7 +234,19 @@ export default function SupportChat() {
     }
   };
 
-  const messages = data?.messages ?? [];
+  const getMessageDayKey = (value: string) => {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? "" : date.toDateString();
+  };
+
+  const rawMessages = data?.messages ?? [];
+  const allMessages = [...rawMessages].reverse();
+  const todayKey = new Date().toDateString();
+  const hasOlderMessages = allMessages.some((msg) => getMessageDayKey(msg.createdAt) !== todayKey);
+  const messages = showOlderMessages
+    ? allMessages
+    : allMessages.filter((msg) => getMessageDayKey(msg.createdAt) === todayKey);
+  const latestMessageId = rawMessages[0]?.id;
 
   // Group messages by date for date separators
   const getDateLabel = (dateStr: string) => {
@@ -234,7 +296,7 @@ export default function SupportChat() {
                 </div>
               </div>
             </div>
-            {isChatTab && !hasRequestedHuman && messages.length > 0 && (
+            {isChatTab && !hasRequestedHuman && allMessages.length > 0 && (
               <Button
                 variant="outline"
                 size="sm"
@@ -311,19 +373,39 @@ export default function SupportChat() {
         )}
 
         {/* Messages area */}
-        <div className="flex-1 overflow-y-auto space-y-3 pb-2">
+        <div
+          ref={messagesContainerRef}
+          onScroll={handleMessagesScroll}
+          className="flex-1 overflow-y-auto overscroll-contain space-y-3 pb-2 max-h-[60vh] md:max-h-[65vh]"
+        >
           {isLoading ? (
             <div className="flex items-center justify-center py-20">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
-          ) : messages.length === 0 ? (
+          ) : allMessages.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-center text-muted-foreground">
               <Headphones className="h-12 w-12 mb-3 opacity-50" />
               <p className="text-lg font-medium">{t("support.empty")}</p>
               <p className="text-sm">{t("support.emptyHint")}</p>
             </div>
           ) : (
-            messages.map((msg, idx) => {
+            <>
+              {hasOlderMessages && !showOlderMessages && (
+                <div className={`flex py-2 ${messages.length === 0 ? "min-h-[180px] items-center justify-center" : "justify-center"}`}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowOlderMessages(true)}
+                    className="border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+                    aria-label={isRTL ? 'عرض الرسائل السابقة' : 'Show previous messages'}
+                  >
+                    {isRTL ? 'عرض الرسائل السابقة' : 'Show previous messages'}
+                  </Button>
+                </div>
+              )}
+
+              {messages.map((msg, idx) => {
               const isOwn = msg.senderType === "client";
               const isBot = msg.senderType === "bot";
               const isDeleted = !!(msg as any).deletedAt;
@@ -344,7 +426,6 @@ export default function SupportChat() {
                   )}
                   <div
                     className={`group flex ${isOwn ? (isRTL ? "justify-start" : "justify-end") : (isRTL ? "justify-end" : "justify-start")}`}
-                    style={{ WebkitUserSelect: 'none', userSelect: 'none', WebkitTouchCallout: 'none' } as React.CSSProperties}
                     onTouchStart={() => {
                       if (!isOwn || isDeleted) return;
                       longPressTimer.current = setTimeout(() => setActiveMenuMsgId(msg.id), 500);
@@ -465,7 +546,8 @@ export default function SupportChat() {
                 </div>
                 </div>
               );
-            })
+              })}
+            </>
           )}
           <div ref={messagesEndRef} />
         </div>
@@ -525,6 +607,16 @@ export default function SupportChat() {
           </div>
         </div>
           </div>
+        )}
+        {isChatTab && (
+          <button
+            type="button"
+            onClick={handleMobileBack}
+            className="fixed bottom-24 right-4 z-50 rounded-full bg-gradient-to-r from-emerald-500 to-teal-600 p-3 text-white shadow-lg transition hover:from-emerald-600 hover:to-teal-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 md:hidden"
+            aria-label={isRTL ? "رجوع" : "Back"}
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
         )}
       </div>
     </ClientLayout>

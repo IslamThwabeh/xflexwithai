@@ -37,6 +37,7 @@ export default function AdminSupport() {
   const [, setLocation] = useLocation();
   const [selectedConvId, setSelectedConvId] = useState<number | null>(null);
   const [profileUserId, setProfileUserId] = useState<number | null>(null);
+  const [showOlderMessages, setShowOlderMessages] = useState(false);
   const [reply, setReply] = useState("");
   const [attachment, setAttachment] = useState<{ name: string; file: File; size: number } | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -124,6 +125,10 @@ export default function AdminSupport() {
       return;
     }
     replaceSupportUrl(selectedConvId);
+  }, [selectedConvId]);
+
+  useEffect(() => {
+    setShowOlderMessages(false);
   }, [selectedConvId]);
 
   const {
@@ -324,11 +329,21 @@ export default function AdminSupport() {
     }
   };
 
+  const getMessageDayKey = (value: string) => {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? "" : date.toDateString();
+  };
+
   const totalOpen = (conversations ?? []).filter((c) => c.status === "open").length;
   const totalUnread = (conversations ?? []).reduce((sum, c) => sum + (c.unreadCount ?? 0), 0);
   const totalEscalated = (conversations ?? []).filter((c: any) => c.needsHuman).length;
   const displayedCount = filteredConversations.length;
-  const messagesForDisplay = [...(selectedData?.messages ?? [])].reverse();
+  const allMessagesForDisplay = [...(selectedData?.messages ?? [])].reverse();
+  const todayKey = new Date().toDateString();
+  const hasOlderMessages = allMessagesForDisplay.some((msg) => getMessageDayKey(msg.createdAt) !== todayKey);
+  const messagesForDisplay = showOlderMessages
+    ? allMessagesForDisplay
+    : allMessagesForDisplay.filter((msg) => getMessageDayKey(msg.createdAt) === todayKey);
 
   return (
     <DashboardLayout>
@@ -588,8 +603,28 @@ export default function AdminSupport() {
                     <div className="flex items-center justify-center py-10">
                       <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                     </div>
+                  ) : allMessagesForDisplay.length === 0 ? (
+                    <div className="flex items-center justify-center py-10 text-sm text-muted-foreground">
+                      {isRtl ? 'لا توجد رسائل بعد' : 'No messages yet'}
+                    </div>
                   ) : (
-                    messagesForDisplay.map((msg, idx, arr) => {
+                    <>
+                      {hasOlderMessages && !showOlderMessages && (
+                        <div className={`flex py-2 ${messagesForDisplay.length === 0 ? "min-h-[180px] items-center justify-center" : "justify-center"}`}>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setShowOlderMessages(true)}
+                            className="border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+                            aria-label={isRtl ? 'عرض الرسائل السابقة' : 'Show previous messages'}
+                          >
+                            {isRtl ? 'عرض الرسائل السابقة' : 'Show previous messages'}
+                          </Button>
+                        </div>
+                      )}
+
+                      {messagesForDisplay.map((msg, idx, arr) => {
                       const isClient = msg.senderType === "client";
                       const isBot = msg.senderType === "bot";
                       const isDeleted = !!(msg as any).deletedAt;
@@ -611,7 +646,6 @@ export default function AdminSupport() {
                           )}
                         <div
                           className={`group flex ${isClient ? "justify-start" : isBot ? "justify-start" : "justify-end"}`}
-                          style={{ WebkitUserSelect: 'none', userSelect: 'none', WebkitTouchCallout: 'none' } as React.CSSProperties}
                           onTouchStart={() => {
                             if (!canEdit && !canDelete) return;
                             longPressTimer.current = setTimeout(() => setActiveMenuMsgId(msg.id), 500);
@@ -747,7 +781,8 @@ export default function AdminSupport() {
                         </div>
                         </div>
                       );
-                    })
+                      })}
+                    </>
                   )}
                   <div ref={messagesEndRef} />
                 </CardContent>

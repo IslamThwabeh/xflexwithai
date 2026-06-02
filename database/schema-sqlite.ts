@@ -1531,6 +1531,23 @@ export const emailLog = sqliteTable("email_log", {
 export type EmailLog = typeof emailLog.$inferSelect;
 export type InsertEmailLog = typeof emailLog.$inferInsert;
 
+export const emailDeliveryLogs = sqliteTable("email_delivery_logs", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  recipientEmail: text("recipient_email").notNull(),
+  recipientUserId: integer("recipient_user_id"),
+  eventType: text("event_type").notNull(),
+  templateId: text("template_id"),
+  subject: text("subject").notNull(),
+  status: text("status").notNull(),
+  provider: text("provider"),
+  errorMessage: text("error_message"),
+  metadata: text("metadata"),
+  createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
+});
+
+export type EmailDeliveryLog = typeof emailDeliveryLogs.$inferSelect;
+export type InsertEmailDeliveryLog = typeof emailDeliveryLogs.$inferInsert;
+
 // ============================================================================
 // LexAI Support Cases — internal workflow queue for LexAI monitoring/support
 // ============================================================================

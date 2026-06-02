@@ -1,4 +1,4 @@
-import { sendEmail } from "./email";
+import { sendEmail, type EmailAuditInput } from "./email";
 import { ENV } from "./env";
 import { logger } from "./logger";
 
@@ -24,10 +24,10 @@ function wrapHtml(body: string) {
 }
 
 /** Send a branded HTML email with plain-text fallback */
-function sendBrandedEmail(to: string, subject: string, bodyHtml: string) {
+function sendBrandedEmail(to: string, subject: string, bodyHtml: string, audit?: EmailAuditInput) {
   const html = wrapHtml(bodyHtml);
   const text = html.replace(/<[^>]*>/g, '').replace(/&[^;]+;/g, ' ').replace(/\s{2,}/g, '\n').trim();
-  return sendEmail({ to, subject, text, html });
+  return sendEmail({ to, subject, text, html, audit });
 }
 
 function escapeHtml(input: string) {
@@ -71,7 +71,10 @@ export function buildJobInterviewInviteEmail(candidateName?: string | null) {
 
 export async function sendJobInterviewInviteEmail(to: string, candidateName?: string | null) {
   const invite = buildJobInterviewInviteEmail(candidateName);
-  await sendBrandedEmail(to, invite.subject, invite.bodyHtml);
+  await sendBrandedEmail(to, invite.subject, invite.bodyHtml, {
+    eventType: 'job_interview_invite',
+    templateId: 'jobs_interview_invite_v1',
+  });
   return { subject: invite.subject };
 }
 
@@ -110,7 +113,11 @@ export async function sendOrderConfirmationEmail(to: string, data: {
     </div>`;
   
   try {
-    await sendBrandedEmail(to, subject, body);
+    await sendBrandedEmail(to, subject, body, {
+      eventType: 'order_confirmation',
+      templateId: 'order_confirmation',
+      metadata: { orderId: data.orderId },
+    });
   } catch (e) {
     logger.warn("[ORDER_EMAIL] Failed to send confirmation", { orderId: data.orderId, error: String(e) });
   }
@@ -140,7 +147,11 @@ export async function sendPaymentReceivedEmail(to: string, data: {
     </div>`;
   
   try {
-    await sendBrandedEmail(to, subject, body);
+    await sendBrandedEmail(to, subject, body, {
+      eventType: 'payment_received',
+      templateId: 'payment_received',
+      metadata: { orderId: data.orderId },
+    });
   } catch (e) {
     logger.warn("[ORDER_EMAIL] Failed to send payment received", { orderId: data.orderId, error: String(e) });
   }
@@ -173,7 +184,11 @@ export async function sendAdminNewOrderNotification(data: {
     </div>`;
   
   try {
-    await sendBrandedEmail(adminEmail, subject, body);
+    await sendBrandedEmail(adminEmail, subject, body, {
+      eventType: 'admin_new_order',
+      templateId: 'admin_new_order',
+      metadata: { orderId: data.orderId, userEmail: data.userEmail },
+    });
   } catch (e) {
     logger.warn("[ORDER_EMAIL] Failed to notify admin", { orderId: data.orderId, error: String(e) });
   }
@@ -198,7 +213,10 @@ export async function sendFreezeExpiredEmail(to: string, name?: string | null) {
       </a>
     </div>`;
   try {
-    await sendBrandedEmail(to, subject, body);
+    await sendBrandedEmail(to, subject, body, {
+      eventType: 'freeze_expired',
+      templateId: 'freeze_expired',
+    });
   } catch (e) {
     logger.warn("[ORDER_EMAIL] Failed to send freeze-expired notification", { to, error: String(e) });
   }
@@ -235,7 +253,11 @@ export async function sendExpiryAlertEmail(to: string, name: string | null, days
       </a>
     </div>`;
   try {
-    await sendBrandedEmail(to, subject, body);
+    await sendBrandedEmail(to, subject, body, {
+      eventType: 'subscription_expiry_alert',
+      templateId: 'subscription_expiry_alert',
+      metadata: { daysLeft, packageName },
+    });
   } catch (e) {
     logger.warn("[ORDER_EMAIL] Failed to send expiry alert", { to, daysLeft, error: String(e) });
   }
@@ -312,7 +334,11 @@ export async function sendWelcomeEmail(to: string, data: {
     </p>`;
 
   try {
-    await sendBrandedEmail(to, subject, body);
+    await sendBrandedEmail(to, subject, body, {
+      eventType: data.isRenewal ? 'welcome_renewal' : 'welcome',
+      templateId: data.isRenewal ? 'welcome_renewal' : 'welcome',
+      metadata: { packageName: data.packageName, includesLexai: !!data.includesLexai },
+    });
   } catch (e) {
     logger.warn("[WELCOME_EMAIL] Failed to send", { to, error: String(e) });
   }
@@ -398,7 +424,11 @@ export async function sendDripEmail(to: string, dayNumber: number, data: {
     </div>`;
 
   try {
-    await sendBrandedEmail(to, subject, body);
+    await sendBrandedEmail(to, subject, body, {
+      eventType: 'drip',
+      templateId: `drip_day_${dayNumber}`,
+      metadata: { dayNumber, packageName: data.packageName },
+    });
   } catch (e) {
     logger.warn(`[DRIP_EMAIL] Day ${dayNumber} failed`, { to, error: String(e) });
   }
@@ -479,7 +509,11 @@ export async function sendMilestoneEmail(to: string, milestone: number, data: {
     </div>`;
 
   try {
-    await sendBrandedEmail(to, subject, body);
+    await sendBrandedEmail(to, subject, body, {
+      eventType: 'milestone',
+      templateId: `milestone_${milestone}`,
+      metadata: { milestone, completedCount: data.completedCount },
+    });
   } catch (e) {
     logger.warn(`[MILESTONE_EMAIL] ${milestone} failed`, { to, error: String(e) });
   }
@@ -529,7 +563,11 @@ export async function sendInactivityEmail(to: string, inactiveDays: number, data
     </p>` : ''}`;
 
   try {
-    await sendBrandedEmail(to, subject, body);
+    await sendBrandedEmail(to, subject, body, {
+      eventType: 'inactivity',
+      templateId: `inactivity_${inactiveDays}`,
+      metadata: { inactiveDays },
+    });
   } catch (e) {
     logger.warn(`[INACTIVITY_EMAIL] ${inactiveDays}d failed`, { to, error: String(e) });
   }
@@ -570,7 +608,11 @@ export async function sendOnboardingStalledEmail(to: string, data: {
     </div>`;
 
   try {
-    await sendBrandedEmail(to, subject, body);
+    await sendBrandedEmail(to, subject, body, {
+      eventType: 'onboarding_stalled',
+      templateId: 'onboarding_stalled',
+      metadata: { step: data.step, daysPending: data.daysPending },
+    });
   } catch (e) {
     logger.warn("[ONBOARDING_STALLED_EMAIL] Failed", { to, error: String(e) });
   }
@@ -626,7 +668,15 @@ export async function sendQuizFeedbackEmail(to: string, data: {
     </div>`;
 
   try {
-    await sendBrandedEmail(to, subject, body);
+    await sendBrandedEmail(to, subject, body, {
+      eventType: 'quiz_feedback',
+      templateId: 'quiz_feedback',
+      metadata: {
+        quizLevel: data.quizLevel,
+        score: data.score,
+        passed: data.passed,
+      },
+    });
   } catch (e) {
     logger.warn("[QUIZ_FEEDBACK_EMAIL] Failed", { to, error: String(e) });
   }
@@ -674,7 +724,11 @@ export async function sendStaffAlertEmail(data: {
     </div>`;
 
   try {
-    await sendBrandedEmail(data.to, subject, body);
+    await sendBrandedEmail(data.to, subject, body, {
+      eventType: data.eventType || 'staff_alert',
+      templateId: 'staff_alert',
+      metadata: { actionUrl: data.actionUrl },
+    });
   } catch (e) {
     logger.warn("[STAFF_ALERT_EMAIL] Failed", { to: data.to, eventType: data.eventType, error: String(e) });
   }
@@ -726,7 +780,11 @@ export async function sendStaffWelcomeEmail(to: string, data: {
     </div>`;
 
   try {
-    await sendBrandedEmail(to, subject, body);
+    await sendBrandedEmail(to, subject, body, {
+      eventType: 'staff_welcome',
+      templateId: 'staff_welcome',
+      metadata: { roles: data.roles },
+    });
   } catch (e) {
     logger.warn("[STAFF_WELCOME_EMAIL] Failed", { to, error: String(e) });
   }
@@ -741,6 +799,7 @@ export async function sendAnnouncementEmail(to: string, data: {
   contentEn?: string;
   actionUrl?: string;
   actionLabel?: string;
+  audit?: EmailAuditInput;
 }) {
   const body = `
     <h2 style="margin:0 0 16px;color:#111;font-size:20px;text-align:right;">${data.titleAr}</h2>
@@ -758,7 +817,15 @@ export async function sendAnnouncementEmail(to: string, data: {
     </div>` : ''}`;
 
   try {
-    await sendBrandedEmail(to, data.subject, body);
+    await sendBrandedEmail(to, data.subject, body, {
+      eventType: data.audit?.eventType || 'announcement',
+      templateId: data.audit?.templateId || 'announcement',
+      recipientUserId: data.audit?.recipientUserId,
+      metadata: {
+        actionUrl: data.actionUrl || null,
+        ...(data.audit?.metadata || {}),
+      },
+    });
   } catch (e) {
     logger.warn("[ANNOUNCEMENT_EMAIL] Failed", { to, error: String(e) });
   }

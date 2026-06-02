@@ -1,13 +1,48 @@
 import { ENV } from "./env";
 import { logger } from "./logger";
 
+export type EmailAuditInput = {
+  eventType?: string;
+  templateId?: string;
+  recipientUserId?: number;
+  metadata?: Record<string, unknown>;
+};
+
 type SendEmailInput = {
   to: string;
   subject: string;
   text: string;
   /** Optional HTML body — when provided, providers that support it will send as HTML */
   html?: string;
+  audit?: EmailAuditInput;
 };
+
+async function writeEmailDeliveryAudit(input: SendEmailInput, outcome: {
+  status: 'sent' | 'failed';
+  provider?: string | null;
+  errorMessage?: string | null;
+}) {
+  try {
+    const { logEmailDeliveryAttempt } = await import("../db");
+    await logEmailDeliveryAttempt({
+      recipientEmail: input.to,
+      recipientUserId: input.audit?.recipientUserId,
+      eventType: input.audit?.eventType || 'generic',
+      templateId: input.audit?.templateId || null,
+      subject: input.subject,
+      status: outcome.status,
+      provider: outcome.provider || null,
+      errorMessage: outcome.errorMessage || null,
+      metadata: input.audit?.metadata || null,
+    });
+  } catch (error) {
+    logger.warn("[EMAIL] Failed to write delivery audit", {
+      to: input.to,
+      eventType: input.audit?.eventType || 'generic',
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
 
 async function sendViaZeptoMail(input: SendEmailInput) {
   const token = ENV.zeptoMailToken;
@@ -101,20 +136,31 @@ async function sendViaMailChannels(input: SendEmailInput) {
 
 export async function sendEmail(input: SendEmailInput) {
   const provider = ENV.emailProvider;
+  const attemptedProviders: string[] = [];
+  let providerUsed: string | null = null;
+
+  const attemptWith = async (providerName: string, sendFn: (input: SendEmailInput) => Promise<void>) => {
+    attemptedProviders.push(providerName);
+    await sendFn(input);
+    providerUsed = providerName;
+  };
 
   try {
     if (provider === "resend") {
-      await sendViaResend(input);
+      await attemptWith("resend", sendViaResend);
+      await writeEmailDeliveryAudit(input, { status: 'sent', provider: providerUsed });
       return;
     }
 
     if (provider === "zeptomail") {
-      await sendViaZeptoMail(input);
+      await attemptWith("zeptomail", sendViaZeptoMail);
+      await writeEmailDeliveryAudit(input, { status: 'sent', provider: providerUsed });
       return;
     }
 
     if (provider === "mailchannels") {
-      await sendViaMailChannels(input);
+      await attemptWith("mailchannels", sendViaMailChannels);
+      await writeEmailDeliveryAudit(input, { status: 'sent', provider: providerUsed });
       return;
     }
 
@@ -124,7 +170,8 @@ export async function sendEmail(input: SendEmailInput) {
 
     if (ENV.zeptoMailToken) {
       try {
-        await sendViaZeptoMail(input);
+        await attemptWith("zeptomail", sendViaZeptoMail);
+        await writeEmailDeliveryAudit(input, { status: 'sent', provider: providerUsed });
         return;
       } catch (e) {
         errors.push(e instanceof Error ? e.message : String(e));
@@ -133,7 +180,8 @@ export async function sendEmail(input: SendEmailInput) {
 
     if (ENV.resendApiKey) {
       try {
-        await sendViaResend(input);
+        await attemptWith("resend", sendViaResend);
+        await writeEmailDeliveryAudit(input, { status: 'sent', provider: providerUsed });
         return;
       } catch (e) {
         errors.push(e instanceof Error ? e.message : String(e));
@@ -141,7 +189,8 @@ export async function sendEmail(input: SendEmailInput) {
     }
 
     try {
-      await sendViaMailChannels(input);
+      await attemptWith("mailchannels", sendViaMailChannels);
+      await writeEmailDeliveryAudit(input, { status: 'sent', provider: providerUsed });
       return;
     } catch (e) {
       errors.push(e instanceof Error ? e.message : String(e));
@@ -149,9 +198,15 @@ export async function sendEmail(input: SendEmailInput) {
 
     throw new Error(errors.join(" | ") || "Failed to send email");
   } catch (error) {
+    const resolvedProvider = providerUsed || (provider && provider !== "auto" ? provider : attemptedProviders.join(",") || null);
+    await writeEmailDeliveryAudit(input, {
+      status: 'failed',
+      provider: resolvedProvider,
+      errorMessage: error instanceof Error ? error.message : String(error),
+    });
     logger.error("[EMAIL] Failed to send email", {
       to: input.to,
-      provider,
+      provider: resolvedProvider || provider,
       error: error instanceof Error ? error.message : "Unknown error",
     });
     throw error;
@@ -170,5 +225,9 @@ export async function sendLoginCodeEmail(input: {
     to: input.to,
     subject,
     text,
+    audit: {
+      eventType: 'login_code',
+      templateId: 'login_code',
+    },
   });
 }

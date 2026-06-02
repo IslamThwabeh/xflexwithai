@@ -1,4 +1,4 @@
-import { eq, desc, and, or, sql, ne, inArray, isNotNull, isNull, gte, asc } from "drizzle-orm";
+import { eq, desc, and, or, sql, ne, inArray, isNotNull, isNull, gte, lte, like, asc } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import type { D1Database } from "@cloudflare/workers-types";
 import {
@@ -63,6 +63,7 @@ import {
   adminActions, AdminAction, InsertAdminAction,
   brokerOnboarding, BrokerOnboarding, InsertBrokerOnboarding,
   emailLog, EmailLog, InsertEmailLog,
+  emailDeliveryLogs, EmailDeliveryLog, InsertEmailDeliveryLog,
   planProgress, PlanProgress, InsertPlanProgress,
   lexaiSupportCases, LexaiSupportCase, InsertLexaiSupportCase,
   lexaiSupportNotes, LexaiSupportNote, InsertLexaiSupportNote,
@@ -10129,6 +10130,126 @@ export async function hasEmailBeenSent(userId: number, emailType: string): Promi
     .where(and(eq(emailLog.userId, userId), eq(emailLog.emailType, emailType)))
     .limit(1);
   return !!row;
+}
+
+export async function logEmailDeliveryAttempt(input: {
+  recipientEmail: string;
+  recipientUserId?: number | null;
+  eventType: string;
+  templateId?: string | null;
+  subject: string;
+  status: 'sent' | 'failed';
+  provider?: string | null;
+  errorMessage?: string | null;
+  metadata?: Record<string, unknown> | null;
+}): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+
+  try {
+    await db.insert(emailDeliveryLogs).values({
+      recipientEmail: input.recipientEmail,
+      recipientUserId: input.recipientUserId ?? null,
+      eventType: input.eventType,
+      templateId: input.templateId ?? null,
+      subject: input.subject,
+      status: input.status,
+      provider: input.provider ?? null,
+      errorMessage: input.errorMessage ?? null,
+      metadata: input.metadata ? JSON.stringify(input.metadata) : null,
+    });
+  } catch (error) {
+    logger.warn('[EMAIL_AUDIT] Failed to persist delivery log', {
+      recipientEmail: input.recipientEmail,
+      eventType: input.eventType,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+export async function getEmailDeliveryLogs(filters?: {
+  limit?: number;
+  offset?: number;
+  recipientQuery?: string;
+  recipientUserId?: number;
+  eventType?: string;
+  status?: 'sent' | 'failed';
+  fromDate?: string;
+  toDate?: string;
+}): Promise<Array<{
+  id: number;
+  recipientEmail: string;
+  recipientUserId: number | null;
+  recipientName: string | null;
+  eventType: string;
+  templateId: string | null;
+  subject: string;
+  status: string;
+  provider: string | null;
+  errorMessage: string | null;
+  metadata: string | null;
+  createdAt: string;
+}>> {
+  const db = await getDb();
+  if (!db) return [];
+
+  const limit = Math.min(Math.max(filters?.limit ?? 100, 1), 200);
+  const offset = Math.max(filters?.offset ?? 0, 0);
+  const conditions = [] as any[];
+
+  if (filters?.recipientQuery?.trim()) {
+    const query = `%${filters.recipientQuery.trim()}%`;
+    conditions.push(or(
+      like(emailDeliveryLogs.recipientEmail, query),
+      like(users.name, query),
+    ));
+  }
+
+  if (filters?.recipientUserId) {
+    conditions.push(eq(emailDeliveryLogs.recipientUserId, filters.recipientUserId));
+  }
+
+  if (filters?.eventType?.trim()) {
+    conditions.push(eq(emailDeliveryLogs.eventType, filters.eventType.trim()));
+  }
+
+  if (filters?.status) {
+    conditions.push(eq(emailDeliveryLogs.status, filters.status));
+  }
+
+  if (filters?.fromDate) {
+    conditions.push(gte(emailDeliveryLogs.createdAt, filters.fromDate));
+  }
+
+  if (filters?.toDate) {
+    conditions.push(lte(emailDeliveryLogs.createdAt, filters.toDate));
+  }
+
+  const query = db.select({
+    id: emailDeliveryLogs.id,
+    recipientEmail: emailDeliveryLogs.recipientEmail,
+    recipientUserId: emailDeliveryLogs.recipientUserId,
+    recipientName: users.name,
+    eventType: emailDeliveryLogs.eventType,
+    templateId: emailDeliveryLogs.templateId,
+    subject: emailDeliveryLogs.subject,
+    status: emailDeliveryLogs.status,
+    provider: emailDeliveryLogs.provider,
+    errorMessage: emailDeliveryLogs.errorMessage,
+    metadata: emailDeliveryLogs.metadata,
+    createdAt: emailDeliveryLogs.createdAt,
+  })
+    .from(emailDeliveryLogs)
+    .leftJoin(users, eq(emailDeliveryLogs.recipientUserId, users.id))
+    .orderBy(desc(emailDeliveryLogs.createdAt))
+    .limit(limit)
+    .offset(offset);
+
+  if (conditions.length > 0) {
+    return query.where(and(...conditions));
+  }
+
+  return query;
 }
 
 /**

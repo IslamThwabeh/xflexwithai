@@ -15,7 +15,7 @@ export default function AdminNotifications() {
   const isRtl = language === 'ar';
   const { data: adminCheck } = trpc.auth.isAdmin.useQuery();
   const isAdmin = !!adminCheck?.isAdmin;
-  const [tab, setTab] = useState<'alerts' | 'send'>('alerts');
+  const [tab, setTab] = useState<'alerts' | 'send' | 'emailLogs'>('alerts');
   const [form, setForm] = useState({ titleEn: '', titleAr: '', contentEn: '', contentAr: '', type: 'info' as string, actionUrl: '' });
   const [sendEmail, setSendEmail] = useState(true);
   const [eventFilter, setEventFilter] = useState<StaffNotificationEventType | 'all'>('all');
@@ -23,6 +23,11 @@ export default function AdminNotifications() {
   const [selectedStudentIds, setSelectedStudentIds] = useState<number[]>([]);
   const [studentSearch, setStudentSearch] = useState('');
   const [expandedBatch, setExpandedBatch] = useState<string | null>(null);
+  const [recipientQuery, setRecipientQuery] = useState('');
+  const [deliveryStatus, setDeliveryStatus] = useState<'all' | 'sent' | 'failed'>('all');
+  const [deliveryEventType, setDeliveryEventType] = useState('');
+  const [deliveryFromDate, setDeliveryFromDate] = useState('');
+  const [deliveryToDate, setDeliveryToDate] = useState('');
   const [, setLocation] = useLocation();
 
   // Staff alerts inbox
@@ -39,6 +44,18 @@ export default function AdminNotifications() {
   const { data: batchRecipients, isLoading: recipientsLoading } = trpc.notifications.sentRecipients.useQuery(
     { batchId: expandedBatch! },
     { enabled: isAdmin && !!expandedBatch }
+  );
+  const deliveryFilters = useMemo(() => ({
+    limit: 150,
+    recipientQuery: recipientQuery.trim() || undefined,
+    status: deliveryStatus === 'all' ? undefined : deliveryStatus,
+    eventType: deliveryEventType.trim() || undefined,
+    fromDate: deliveryFromDate || undefined,
+    toDate: deliveryToDate ? `${deliveryToDate} 23:59:59` : undefined,
+  }), [recipientQuery, deliveryStatus, deliveryEventType, deliveryFromDate, deliveryToDate]);
+  const { data: deliveryLogs, isLoading: deliveryLogsLoading } = trpc.adminEmail.deliveryLogs.useQuery(
+    deliveryFilters,
+    { enabled: isAdmin && tab === 'emailLogs' }
   );
 
   const sendMut = trpc.notifications.send.useMutation({
@@ -90,7 +107,7 @@ export default function AdminNotifications() {
   const unreadCount = (staffAlerts ?? []).filter((a: any) => !a.isRead).length;
 
   useEffect(() => {
-    if (!isAdmin && tab === 'send') {
+    if (!isAdmin && tab !== 'alerts') {
       setTab('alerts');
     }
   }, [isAdmin, tab]);
@@ -122,6 +139,18 @@ export default function AdminNotifications() {
               </span>
             )}
           </button>
+          {isAdmin && (
+            <button onClick={() => setTab('emailLogs')}
+              className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors flex items-center gap-2 ${
+                tab === 'emailLogs'
+                  ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 border-b-2 border-emerald-500'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <Mail className="w-4 h-4" />
+              {isRtl ? 'سجل تسليم البريد' : 'Email Delivery Logs'}
+            </button>
+          )}
           {isAdmin && (
             <button onClick={() => setTab('send')}
               className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors flex items-center gap-2 ${
@@ -228,6 +257,170 @@ export default function AdminNotifications() {
                     </div>
                   );
                 })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {isAdmin && tab === 'emailLogs' && (
+          <div className="space-y-4">
+            <div className="bg-white dark:bg-slate-800 border rounded-xl p-5 space-y-4">
+              <div className="flex items-start justify-between gap-3 flex-wrap">
+                <div>
+                  <h3 className="font-semibold flex items-center gap-2">
+                    <Mail className="w-4 h-4" />
+                    {isRtl ? 'سجل تسليم البريد' : 'Email Delivery Logs'}
+                  </h3>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {isRtl
+                      ? 'ابحث باسم العميل أو بريده. إذا لم يظهر أي سجل، فهذا يعني أنه لم يتم تسجيل محاولة إرسال من المسارات التي تمر عبر المرسل المركزي.'
+                      : 'Search by client name or email. If no rows appear, no send attempt was recorded through the central sender path.'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                <div className="xl:col-span-2">
+                  <label className="text-sm font-medium">{isRtl ? 'بحث المستلم' : 'Recipient Search'}</label>
+                  <input
+                    value={recipientQuery}
+                    onChange={(e) => setRecipientQuery(e.target.value)}
+                    className="w-full mt-1 border rounded px-3 py-2 text-sm dark:bg-slate-900 dark:border-slate-700"
+                    placeholder={isRtl ? 'اسم العميل أو البريد الإلكتروني' : 'Client name or email'}
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">{isRtl ? 'الحالة' : 'Status'}</label>
+                  <select
+                    value={deliveryStatus}
+                    onChange={(e) => setDeliveryStatus(e.target.value as 'all' | 'sent' | 'failed')}
+                    className="w-full mt-1 border rounded px-3 py-2 text-sm dark:bg-slate-900 dark:border-slate-700"
+                  >
+                    <option value="all">{isRtl ? 'الكل' : 'All'}</option>
+                    <option value="sent">{isRtl ? 'تم الإرسال' : 'Sent'}</option>
+                    <option value="failed">{isRtl ? 'فشل' : 'Failed'}</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">{isRtl ? 'نوع الحدث' : 'Event Type'}</label>
+                  <input
+                    value={deliveryEventType}
+                    onChange={(e) => setDeliveryEventType(e.target.value)}
+                    className="w-full mt-1 border rounded px-3 py-2 text-sm dark:bg-slate-900 dark:border-slate-700"
+                    placeholder={isRtl ? 'مثال: welcome' : 'Example: welcome'}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-sm font-medium">{isRtl ? 'من' : 'From'}</label>
+                    <input
+                      type="date"
+                      value={deliveryFromDate}
+                      onChange={(e) => setDeliveryFromDate(e.target.value)}
+                      className="w-full mt-1 border rounded px-3 py-2 text-sm dark:bg-slate-900 dark:border-slate-700"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">{isRtl ? 'إلى' : 'To'}</label>
+                    <input
+                      type="date"
+                      value={deliveryToDate}
+                      onChange={(e) => setDeliveryToDate(e.target.value)}
+                      className="w-full mt-1 border rounded px-3 py-2 text-sm dark:bg-slate-900 dark:border-slate-700"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-100 space-y-1">
+                <p>{isRtl ? 'إذا لم تجد أي صف: لم تُسجَّل محاولة إرسال من هذا المسار بعد.' : 'If you find no rows: no send attempt has been logged for that flow yet.'}</p>
+                <p>{isRtl ? 'إذا كانت الحالة فشل: راجع رسالة الخطأ لمعرفة رفض ZeptoMail أو فشل المزود.' : 'If status is failed: inspect the error message for provider rejection or transport failure.'}</p>
+                <p>{isRtl ? 'إذا كانت الحالة تم الإرسال: التطبيق سلّم الرسالة للمزود، ثم افحص البريد المزعج أو لوحة المزود.' : 'If status is sent: the app handed the email to the provider, so next check spam or the provider dashboard.'}</p>
+                <p>{isRtl ? 'ملاحظة: ردود الدعم للعميل ما زالت داخل المنصة فقط حالياً، وليست بريداً تلقائياً في المسار الحالي.' : 'Note: support replies to clients are still in-app only in the current flow, not automatic emails.'}</p>
+              </div>
+            </div>
+
+            {deliveryLogsLoading ? (
+              <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin" /></div>
+            ) : !deliveryLogs?.length ? (
+              <div className="text-center py-12 text-muted-foreground bg-white dark:bg-slate-800 border rounded-xl">
+                <Mail className="w-10 h-10 mx-auto mb-3 text-gray-300" />
+                <p>{isRtl ? 'لا توجد سجلات مطابقة' : 'No matching delivery logs'}</p>
+              </div>
+            ) : (
+              <div className="bg-white dark:bg-slate-800 border rounded-xl overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-gray-50 dark:bg-slate-900/40 text-xs uppercase tracking-wide text-muted-foreground">
+                      <tr>
+                        <th className="px-4 py-3 text-start">{isRtl ? 'التاريخ' : 'Date'}</th>
+                        <th className="px-4 py-3 text-start">{isRtl ? 'المستلم' : 'Recipient'}</th>
+                        <th className="px-4 py-3 text-start">{isRtl ? 'الحدث' : 'Event'}</th>
+                        <th className="px-4 py-3 text-start">{isRtl ? 'الحالة' : 'Status'}</th>
+                        <th className="px-4 py-3 text-start">{isRtl ? 'المزود' : 'Provider'}</th>
+                        <th className="px-4 py-3 text-start">{isRtl ? 'الخطأ / البيانات' : 'Error / Metadata'}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {deliveryLogs.map((log: any) => {
+                        let metadataText = '';
+                        if (log.metadata) {
+                          try {
+                            metadataText = JSON.stringify(JSON.parse(log.metadata), null, 2);
+                          } catch {
+                            metadataText = String(log.metadata);
+                          }
+                        }
+
+                        return (
+                          <tr key={log.id} className="border-t dark:border-slate-700 align-top">
+                            <td className="px-4 py-3 whitespace-nowrap text-xs text-muted-foreground">
+                              {new Date(log.createdAt).toLocaleString(isRtl ? 'ar-EG' : 'en-US')}
+                            </td>
+                            <td className="px-4 py-3 min-w-[220px]">
+                              <div className="font-medium text-gray-900 dark:text-gray-100">{log.recipientName || log.recipientEmail}</div>
+                              {log.recipientName && (
+                                <div className="text-xs text-muted-foreground mt-0.5">{log.recipientEmail}</div>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 min-w-[180px]">
+                              <div className="font-medium">{log.eventType}</div>
+                              {log.templateId && (
+                                <div className="text-xs text-muted-foreground mt-0.5">{log.templateId}</div>
+                              )}
+                              <div className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{log.subject}</div>
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap">
+                              <Badge className={log.status === 'sent' ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-100 dark:bg-emerald-900/40 dark:text-emerald-200' : 'bg-red-100 text-red-800 hover:bg-red-100 dark:bg-red-900/40 dark:text-red-200'}>
+                                {log.status === 'sent'
+                                  ? (isRtl ? 'تم الإرسال' : 'Sent')
+                                  : (isRtl ? 'فشل' : 'Failed')}
+                              </Badge>
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap text-xs">{log.provider || '—'}</td>
+                            <td className="px-4 py-3 min-w-[260px]">
+                              {log.errorMessage ? (
+                                <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded p-2 dark:bg-red-950/20 dark:border-red-900/40 dark:text-red-300">
+                                  {log.errorMessage}
+                                </div>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">—</span>
+                              )}
+                              {metadataText && (
+                                <details className="mt-2">
+                                  <summary className="cursor-pointer text-xs text-emerald-700 dark:text-emerald-300">
+                                    {isRtl ? 'عرض البيانات' : 'View metadata'}
+                                  </summary>
+                                  <pre className="mt-2 text-[11px] whitespace-pre-wrap break-words rounded bg-gray-50 dark:bg-slate-900/40 border dark:border-slate-700 p-2 text-muted-foreground">{metadataText}</pre>
+                                </details>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
           </div>
