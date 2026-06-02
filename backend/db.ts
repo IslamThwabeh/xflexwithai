@@ -6541,6 +6541,27 @@ export async function createSupportMessage(msg: {
     .set({ updatedAt: now })
     .where(eq(supportConversations.id, msg.conversationId));
 
+  if (msg.senderType === 'client') {
+    const notificationEmail = await getAdminSetting('notification_email');
+
+    if (notificationEmail) {
+      try {
+        await sendStaffAlertEmail({
+          to: notificationEmail,
+          eventType: 'new_support_message',
+          titleEn: 'New support message',
+          contentEn: msg.content.slice(0, 120),
+          actionUrl: `/support?conversationId=${msg.conversationId}`,
+        });
+      } catch (e) {
+        logger.warn('[SUPPORT] Failed to email configured admin notification address', {
+          error: String(e),
+          conversationId: msg.conversationId,
+        });
+      }
+    }
+  }
+
   return message;
 }
 
@@ -10685,7 +10706,10 @@ export async function setAdminSetting(key: string, value: string): Promise<void>
     .set({ settingValue: value, updatedAt: now })
     .where(eq(adminSettings.settingKey, key));
   if (!result.rowsAffected) {
-    await db.insert(adminSettings).values({ settingKey: key, settingValue: value, updatedAt: now });
+    await db.run(sql`
+      INSERT OR REPLACE INTO admin_settings (settingKey, settingValue, updatedAt)
+      VALUES (${key}, ${value}, datetime('now'))
+    `);
   }
 }
 
