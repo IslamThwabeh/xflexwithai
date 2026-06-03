@@ -191,6 +191,20 @@ export function buildRecommendationMessageEmail(input: {
   const unfollowLabel = isArabic ? "إلغاء متابعة هذه الصفقة" : "Unfollow This Thread";
   const recommendationDetails = buildTradeDetails(input.recommendation, isArabic);
   const latestContent = input.type === "recommendation" ? "" : (input.latestMessage?.content?.trim() || "");
+  const copyBlockHeading = isArabic ? "نسخة سهلة للنسخ" : "Copy-friendly lines";
+  const quickNumbersLabel = isArabic ? "أرقام سريعة" : "Quick numbers";
+  const quickNumbers = [
+    input.recommendation.entryPrice ? `${isArabic ? "الدخول" : "Entry"} ${input.recommendation.entryPrice}` : null,
+    input.recommendation.stopLoss ? `${isArabic ? "وقف الخسارة" : "SL"} ${input.recommendation.stopLoss}` : null,
+    input.recommendation.takeProfit1 ? `${isArabic ? "هدف 1" : "TP1"} ${input.recommendation.takeProfit1}` : null,
+    input.recommendation.takeProfit2 ? `${isArabic ? "هدف 2" : "TP2"} ${input.recommendation.takeProfit2}` : null,
+    input.recommendation.takeProfit3 ? `${isArabic ? "هدف 3" : "TP3"} ${input.recommendation.takeProfit3}` : null,
+  ].filter((item): item is string => Boolean(item)).join(" / ");
+  const copyBlockLines = recommendationDetails.map((detail) => `${detail.label}: ${detail.value}`);
+  if (quickNumbers) {
+    copyBlockLines.push(`${quickNumbersLabel}: ${quickNumbers}`);
+  }
+  const copyBlockText = copyBlockLines.join("\n");
 
   const textLines = [
     `XFlex Academy - ${subject}`,
@@ -201,6 +215,10 @@ export function buildRecommendationMessageEmail(input: {
     ...recommendationDetails.map((detail) => `${detail.label}: ${detail.value}`),
     input.recommendation.content,
   ];
+
+  if (copyBlockText) {
+    textLines.push("", copyBlockHeading, copyBlockText);
+  }
 
   if (latestContent) {
     textLines.push("", latestHeading, latestContent);
@@ -224,6 +242,17 @@ export function buildRecommendationMessageEmail(input: {
           <div style="font-size:15px;font-weight:700;${tone}">${escapeHtml(detail.value)}</div>
         </div>`;
       }).join("")}</div>`
+    : "";
+
+  const copyBlockSection = copyBlockText
+    ? `<div style="margin:0 0 16px;padding:14px;border:1px dashed #cbd5e1;border-radius:12px;background:#ffffff;">
+        <div style="font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:#64748b;margin-bottom:8px;">
+          ${escapeHtml(copyBlockHeading)}
+        </div>
+        <div style="font-size:14px;line-height:1.7;color:#0f172a;font-family:'Courier New',monospace;white-space:pre-wrap;user-select:text;-webkit-user-select:text;">
+          ${escapeHtml(copyBlockText)}
+        </div>
+      </div>`
     : "";
 
   const latestSection = latestContent
@@ -274,6 +303,7 @@ export function buildRecommendationMessageEmail(input: {
                   ${escapeHtml(recommendationHeading)}
                 </div>
                 ${detailGrid}
+                ${copyBlockSection}
                 <div style="font-size:15px;line-height:1.85;color:#1f2937;white-space:pre-wrap;">${escapeHtml(input.recommendation.content)}</div>
                 ${latestSection}
                 ${unfollowSection}

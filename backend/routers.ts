@@ -4050,6 +4050,45 @@ export const appRouter = router({
         return msg;
       }),
 
+    // Support/Admin: start (or reopen) a conversation with a user who has not
+    // yet written in. Optionally send the first staff message in one call so
+    // the conversation appears in the queue immediately.
+    startConversationForUser: supportStaffProcedure
+      .input(z.object({
+        userId: z.number().int().positive(),
+        content: z.string().min(1).max(5000).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        const targetUser = await db.getUserById(input.userId);
+        if (!targetUser) throw new TRPCError({ code: 'NOT_FOUND', message: 'User not found' });
+
+        const conv = await db.getOrCreateSupportConversation(input.userId);
+        let firstMessage: Awaited<ReturnType<typeof db.createSupportMessage>> | null = null;
+
+        if (input.content && input.content.trim()) {
+          const isAdmin = ctx.user.email ? !!(await db.getAdminByEmail(ctx.user.email)) : false;
+          firstMessage = await db.createSupportMessage({
+            conversationId: conv.id,
+            senderId: ctx.user.id,
+            senderType: isAdmin ? 'admin' : 'support',
+            content: input.content.trim(),
+          });
+
+          await db.createNotification({
+            userId: input.userId,
+            type: 'info',
+            titleAr: 'رسالة جديدة من الدعم',
+            titleEn: 'New Support Message',
+            contentAr: input.content.length > 80 ? input.content.slice(0, 80) + '…' : input.content,
+            contentEn: input.content.length > 80 ? input.content.slice(0, 80) + '…' : input.content,
+            actionUrl: '/support',
+          }).catch(() => {});
+        }
+
+        return { conversationId: conv.id, message: firstMessage };
+      }),
+
     // Support/Admin: AI-suggested reply for a conversation
     suggestReply: supportStaffProcedure
       .input(z.object({ conversationId: z.number() }))

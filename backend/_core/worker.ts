@@ -327,6 +327,12 @@ export default {
             return new Response(null, { status: 206, headers });
           }
 
+          if (!("body" in object) || !object.body) {
+            return jsonResponse(404, {
+              status: "not_found",
+              message: "Video file is missing from storage",
+            }, headers);
+          }
           return new Response(object.body, { status: 206, headers });
         }
 
@@ -542,7 +548,7 @@ export default {
           await db.logEmailSent(u.userId, `drip_day_${day}`);
         }
       } catch (e) {
-        logger.error(`[CRON] Drip day ${day} failed`, e);
+        logger.error(`[CRON] Drip day ${day} failed`, { error: e instanceof Error ? e.message : String(e) });
       }
     }
 
@@ -555,7 +561,7 @@ export default {
           await db.logEmailSent(u.userId, `milestone_${milestone}`);
         }
       } catch (e) {
-        logger.error(`[CRON] Milestone ${milestone} failed`, e);
+        logger.error(`[CRON] Milestone ${milestone} failed`, { error: e instanceof Error ? e.message : String(e) });
       }
     }
 
@@ -576,7 +582,7 @@ export default {
           }).catch(() => {});
         }
       } catch (e) {
-        logger.error(`[CRON] Inactivity ${days}d failed`, e);
+        logger.error(`[CRON] Inactivity ${days}d failed`, { error: e instanceof Error ? e.message : String(e) });
       }
     }
 
@@ -588,7 +594,7 @@ export default {
         await db.logEmailSent(u.userId, `onboarding_stalled_3`);
       }
     } catch (e) {
-      logger.error("[CRON] Onboarding stalled check failed", e);
+      logger.error("[CRON] Onboarding stalled check failed", { error: e instanceof Error ? e.message : String(e) });
     }
 
     // --- Auto-close stale support conversations (3 days inactivity) ---
@@ -598,14 +604,14 @@ export default {
         logger.info(`[CRON] Auto-closed ${closed} stale support conversation(s)`);
       }
     } catch (e) {
-      logger.error("[CRON] Auto-close stale conversations failed", e);
+      logger.error("[CRON] Auto-close stale conversations failed", { error: e instanceof Error ? e.message : String(e) });
     }
 
     // --- Recommendation subscriber repair (moved off the hot send path) ---
     try {
       await db.runRecommendationSubscriberRepair();
     } catch (e) {
-      logger.error("[CRON] Recommendation subscriber repair failed", e);
+      logger.error("[CRON] Recommendation subscriber repair failed", { error: e instanceof Error ? e.message : String(e) });
     }
 
     // --- Recommendation delivery retry/drain ---
@@ -651,7 +657,7 @@ export default {
         }
       }
     } catch (e) {
-      logger.error("[CRON] Recommendation delivery drain failed", e);
+      logger.error("[CRON] Recommendation delivery drain failed", { error: e instanceof Error ? e.message : String(e) });
     }
 
     // --- Recommendation delivery anomaly check (rolling 24h) ---
@@ -677,7 +683,7 @@ export default {
         }).catch((e) => logger.error('[CRON] Staff notify (recommendation_delivery_anomaly) failed', e));
       }
     } catch (e) {
-      logger.error("[CRON] Recommendation delivery anomaly check failed", e);
+      logger.error("[CRON] Recommendation delivery anomaly check failed", { error: e instanceof Error ? e.message : String(e) });
     }
   },
 };

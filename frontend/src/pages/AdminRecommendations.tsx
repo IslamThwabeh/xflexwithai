@@ -1717,32 +1717,53 @@ function AdminView() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {subTable.paged.map((subscription: any, i: number) => (
-                  <TableRow key={subscription.id} className={zebraRow(i)}>
-                    <TableCell>{subscription.userName || '-'}</TableCell>
-                    <TableCell>{subscription.userEmail || '-'}</TableCell>
-                    <TableCell>
-                      <Badge variant={subscription.isPaused ? 'secondary' : 'default'}>
-                        {subscription.isPaused ? (isRTL ? 'مجمّد' : 'Frozen') : (isRTL ? 'نشط' : 'Active')}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{subscription.endDate ? formatLocalizedDate(subscription.endDate, language) : '-'}</TableCell>
-                    <TableCell>{subscription.pausedRemainingDays ? `${subscription.pausedRemainingDays}d` : '-'}</TableCell>
-                    <TableCell>
-                      {subscription.isPaused ? (
-                        <Button size="sm" variant="outline" onClick={() => resumeSubscriptionMutation.mutate({ subscriptionId: subscription.id })}>
-                          <PlayCircle className="h-4 w-4 mr-1" />
-                          {isRTL ? 'فك التجميد' : 'Unfreeze'}
-                        </Button>
-                      ) : (
-                        <Button size="sm" variant="outline" onClick={() => pauseSubscriptionMutation.mutate({ subscriptionId: subscription.id })}>
-                          <PauseCircle className="h-4 w-4 mr-1" />
-                          {isRTL ? 'تجميد' : 'Freeze'}
-                        </Button>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {subTable.paged.map((subscription: any, i: number) => {
+                  const parsedEndDate = subscription.endDate ? new Date(subscription.endDate) : null;
+                  const isExpired = !!parsedEndDate && !Number.isNaN(parsedEndDate.getTime()) && parsedEndDate.getTime() < Date.now();
+                  const isInactive = !subscription.isActive;
+                  const canToggleFreeze = !isInactive && !isExpired;
+                  const statusVariant: "default" | "secondary" | "outline" = subscription.isPaused
+                    ? "secondary"
+                    : (isInactive || isExpired ? "outline" : "default");
+                  const statusLabel = subscription.isPaused
+                    ? (isRTL ? "مجمّد" : "Frozen")
+                    : isInactive
+                      ? (isRTL ? "غير نشط" : "Inactive")
+                      : isExpired
+                        ? (isRTL ? "منتهي" : "Expired")
+                        : (isRTL ? "نشط" : "Active");
+
+                  return (
+                    <TableRow key={subscription.id} className={zebraRow(i)}>
+                      <TableCell>{subscription.userName || '-'}</TableCell>
+                      <TableCell>{subscription.userEmail || '-'}</TableCell>
+                      <TableCell>
+                        <Badge variant={statusVariant}>
+                          {statusLabel}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{subscription.endDate ? formatLocalizedDate(subscription.endDate, language) : '-'}</TableCell>
+                      <TableCell>{subscription.pausedRemainingDays ? `${subscription.pausedRemainingDays}d` : '-'}</TableCell>
+                      <TableCell>
+                        {canToggleFreeze ? (
+                          subscription.isPaused ? (
+                            <Button size="sm" variant="outline" onClick={() => resumeSubscriptionMutation.mutate({ subscriptionId: subscription.id })}>
+                              <PlayCircle className="h-4 w-4 mr-1" />
+                              {isRTL ? 'فك التجميد' : 'Unfreeze'}
+                            </Button>
+                          ) : (
+                            <Button size="sm" variant="outline" onClick={() => pauseSubscriptionMutation.mutate({ subscriptionId: subscription.id })}>
+                              <PauseCircle className="h-4 w-4 mr-1" />
+                              {isRTL ? 'تجميد' : 'Freeze'}
+                            </Button>
+                          )
+                        ) : (
+                          <span className="text-xs text-muted-foreground">-</span>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
             </ResponsiveTable>

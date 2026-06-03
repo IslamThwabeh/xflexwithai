@@ -6,6 +6,15 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { trpc } from "@/lib/trpc";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Headphones,
   Send,
@@ -27,6 +36,7 @@ import {
   Check,
   Copy,
   Reply,
+  UserPlus,
 } from "lucide-react";
 import { useState, useRef, useEffect, useMemo } from "react";
 import { toast } from "sonner";
@@ -206,6 +216,37 @@ export default function AdminSupport() {
 
   const uploadMutation = trpc.supportChat.uploadAttachment.useMutation();
   const selectedConversationUserId = selectedData?.conversation?.userId ?? selectedConversationSummary?.userId ?? null;
+
+  // --- New conversation dialog (support-initiated outreach) ---
+  const [newChatOpen, setNewChatOpen] = useState(false);
+  const [newChatSearch, setNewChatSearch] = useState("");
+  const [newChatDebounced, setNewChatDebounced] = useState("");
+  const [newChatUserId, setNewChatUserId] = useState<number | null>(null);
+  const [newChatMessage, setNewChatMessage] = useState("");
+
+  useEffect(() => {
+    const t = setTimeout(() => setNewChatDebounced(newChatSearch.trim()), 250);
+    return () => clearTimeout(t);
+  }, [newChatSearch]);
+
+  const { data: newChatResults, isFetching: newChatSearching } = trpc.supportDashboard.searchClients.useQuery(
+    { query: newChatDebounced },
+    { enabled: newChatOpen && newChatDebounced.length >= 2 },
+  );
+
+  const startConversationMutation = trpc.supportChat.startConversationForUser.useMutation({
+    onSuccess: (result) => {
+      toast.success(isRtl ? 'تم بدء المحادثة' : 'Conversation started');
+      setNewChatOpen(false);
+      setNewChatSearch("");
+      setNewChatDebounced("");
+      setNewChatUserId(null);
+      setNewChatMessage("");
+      refetchConvs();
+      setSelectedConvId(result.conversationId);
+    },
+    onError: (err) => toast.error(err.message),
+  });
 
   const uploadFileToR2 = async (file: File | Blob, fileName: string, contentType: string, attachmentType: 'file' | 'voice') => {
     const buffer = await file.arrayBuffer();
@@ -425,7 +466,19 @@ export default function AdminSupport() {
           {/* Conversation list — hidden on mobile when a conversation is selected */}
           <Card className={`lg:col-span-1 ${selectedConvId ? 'hidden lg:block' : ''}`}>
             <CardHeader className="pb-3 space-y-3">
-              <CardTitle className="text-lg">{t('admin.support.convos')}</CardTitle>
+              <div className="flex items-center justify-between gap-2">
+                <CardTitle className="text-lg">{t('admin.support.convos')}</CardTitle>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-8 px-2 text-xs"
+                  onClick={() => setNewChatOpen(true)}
+                >
+                  <UserPlus className="h-3.5 w-3.5 mr-1" />
+                  {isRtl ? 'محادثة جديدة' : 'New chat'}
+                </Button>
+              </div>
               {/* Search bar */}
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -1002,6 +1055,115 @@ export default function AdminSupport() {
           replaceSupportUrl(selectedConvId);
         }}
       />
+
+      <Dialog
+        open={newChatOpen}
+        onOpenChange={(open) => {
+          setNewChatOpen(open);
+          if (!open) {
+            setNewChatSearch("");
+            setNewChatDebounced("");
+            setNewChatUserId(null);
+            setNewChatMessage("");
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{isRtl ? 'بدء محادثة مع طالب' : 'Start a conversation with a student'}</DialogTitle>
+            <DialogDescription>
+              {isRtl
+                ? 'ابحث عن الطالب بالاسم أو البريد أو الهاتف ثم اختره لبدء محادثة، ويمكنك إرسال أول رسالة فوراً.'
+                : 'Search for the student by name, email, or phone, pick them, and optionally send the first message.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                autoFocus
+                placeholder={isRtl ? 'البحث عن طالب...' : 'Search students...'}
+                value={newChatSearch}
+                onChange={(e) => setNewChatSearch(e.target.value)}
+                className="pl-9 h-9 text-sm"
+              />
+            </div>
+
+            <div className="max-h-56 overflow-y-auto rounded-md border">
+              {newChatDebounced.length < 2 ? (
+                <p className="text-xs text-muted-foreground p-3">
+                  {isRtl ? 'اكتب حرفين على الأقل للبحث' : 'Type at least 2 characters to search.'}
+                </p>
+              ) : newChatSearching ? (
+                <p className="text-xs text-muted-foreground p-3 flex items-center gap-2">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  {isRtl ? 'جاري البحث...' : 'Searching...'}
+                </p>
+              ) : (newChatResults?.length ?? 0) === 0 ? (
+                <p className="text-xs text-muted-foreground p-3">
+                  {isRtl ? 'لا توجد نتائج' : 'No matching students.'}
+                </p>
+              ) : (
+                <ul className="divide-y">
+                  {(newChatResults ?? []).map((u) => (
+                    <li key={u.id}>
+                      <button
+                        type="button"
+                        onClick={() => setNewChatUserId(u.id)}
+                        className={`w-full text-start px-3 py-2 text-sm hover:bg-gray-50 ${
+                          newChatUserId === u.id ? 'bg-emerald-50' : ''
+                        }`}
+                      >
+                        <p className="font-medium">{u.name || u.email}</p>
+                        <p className="text-xs text-muted-foreground">{u.email}{u.phone ? ` · ${u.phone}` : ''}</p>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">
+                {isRtl ? 'أول رسالة (اختياري)' : 'First message (optional)'}
+              </label>
+              <Textarea
+                value={newChatMessage}
+                onChange={(e) => setNewChatMessage(e.target.value)}
+                rows={3}
+                placeholder={isRtl ? 'مرحباً... كيف يمكننا مساعدتك؟' : 'Hi! How can we help?'}
+                maxLength={5000}
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setNewChatOpen(false)}
+              disabled={startConversationMutation.isPending}
+            >
+              {isRtl ? 'إلغاء' : 'Cancel'}
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                if (!newChatUserId) return;
+                startConversationMutation.mutate({
+                  userId: newChatUserId,
+                  content: newChatMessage.trim() ? newChatMessage.trim() : undefined,
+                });
+              }}
+              disabled={!newChatUserId || startConversationMutation.isPending}
+            >
+              {startConversationMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              {isRtl ? 'بدء المحادثة' : 'Start conversation'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }
