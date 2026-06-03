@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { FileUpload } from '@/components/FileUpload';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { formatAdminCurrency } from '@/lib/adminCurrency';
 import { formatPaymentMethodLabel } from '@/lib/paymentMethodLabel';
 import { trpc } from '@/lib/trpc';
 import ClientLayout from '@/components/ClientLayout';
@@ -126,15 +127,15 @@ export default function OrderDetail() {
           <div className="border-t pt-4 space-y-2 text-sm">
             <div className="flex justify-between">
               <span className="text-gray-500">{isRtl ? 'المبلغ الفرعي' : 'Subtotal'}</span>
-              <span>${(order.subtotal / 100).toFixed(2)}</span>
+              <span>{formatAdminCurrency(order.subtotal, language, { sourceCurrency: order.currency, fromCents: true })}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-500">VAT ({order.vatRate}%)</span>
-              <span>${(order.vatAmount / 100).toFixed(2)}</span>
+              <span>{formatAdminCurrency(order.vatAmount, language, { sourceCurrency: order.currency, fromCents: true })}</span>
             </div>
             <div className="flex justify-between text-base font-bold border-t pt-2">
               <span>{isRtl ? 'الإجمالي' : 'Total'}</span>
-              <span>${(order.totalAmount / 100).toFixed(2)}</span>
+              <span>{formatAdminCurrency(order.totalAmount, language, { sourceCurrency: order.currency, fromCents: true })}</span>
             </div>
           </div>
         </div>

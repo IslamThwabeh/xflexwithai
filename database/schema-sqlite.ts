@@ -1543,7 +1543,7 @@ export const emailDeliveryLogs = sqliteTable("email_delivery_logs", {
   provider: text("provider"),
   errorMessage: text("error_message"),
   metadata: text("metadata"),
-  createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
 });
 
 export type EmailDeliveryLog = typeof emailDeliveryLogs.$inferSelect;

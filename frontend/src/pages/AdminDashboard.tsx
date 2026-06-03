@@ -140,7 +140,14 @@ export default function AdminDashboard() {
             <p className="text-lg font-bold">
               {statsLoading ? "..." : stats?.totalKeySales || 0}
             </p>
-            <p className="text-[11px] text-muted-foreground leading-tight">{isRtl ? 'مفاتيح مُفعّلة' : 'Keys Sold'}</p>
+            <p className="text-[11px] text-muted-foreground leading-tight">{isRtl ? 'إجمالي مفاتيح الباقات' : 'Package Keys (Total)'}</p>
+            {!statsLoading && (
+              <p className="text-[10px] text-gray-400 leading-tight">
+                {isRtl
+                  ? `${stats?.activatedPackageKeys || 0} مفعّل`
+                  : `${stats?.activatedPackageKeys || 0} activated`}
+              </p>
+            )}
           </div>
 
           <div className="border rounded-lg px-3 py-2 text-center bg-white">

@@ -10,6 +10,17 @@ import { STAFF_NOTIFICATION_EVENTS, type StaffNotificationEventType } from '@sha
 import { useLocation } from 'wouter';
 import { useEffect } from 'react';
 
+function formatDeliveryLogTimestamp(value: string | null | undefined, locale: string, fallback: string) {
+  if (!value) return fallback;
+
+  const normalized = /^\d{4}-\d{2}-\d{2} /.test(value)
+    ? value.replace(' ', 'T') + 'Z'
+    : value;
+  const parsed = new Date(normalized);
+
+  return Number.isNaN(parsed.getTime()) ? fallback : parsed.toLocaleString(locale);
+}
+
 export default function AdminNotifications() {
   const { language } = useLanguage();
   const isRtl = language === 'ar';
@@ -99,6 +110,7 @@ export default function AdminNotifications() {
   }, [studentSearch, targetStudents]);
 
   const canSend = form.titleAr.trim() && targetUserIds.length > 0 && !sendMut.isPending;
+  const unavailableDateLabel = isRtl ? 'تاريخ غير متوفر' : 'Date unavailable';
 
   const filteredAlerts = (staffAlerts ?? []).filter((a: any) =>
     eventFilter === 'all' || a.eventType === eventFilter
@@ -375,7 +387,7 @@ export default function AdminNotifications() {
                         return (
                           <tr key={log.id} className="border-t dark:border-slate-700 align-top">
                             <td className="px-4 py-3 whitespace-nowrap text-xs text-muted-foreground">
-                              {new Date(log.createdAt).toLocaleString(isRtl ? 'ar-EG' : 'en-US')}
+                              {formatDeliveryLogTimestamp(log.createdAt, isRtl ? 'ar-EG' : 'en-US', unavailableDateLabel)}
                             </td>
                             <td className="px-4 py-3 min-w-[220px]">
                               <div className="font-medium text-gray-900 dark:text-gray-100">{log.recipientName || log.recipientEmail}</div>

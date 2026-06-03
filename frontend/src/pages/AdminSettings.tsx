@@ -9,6 +9,15 @@ import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { STAFF_NOTIFICATION_EVENTS } from '@shared/const';
 
+function parseNotificationEmailList(value: string) {
+  return Array.from(new Set(
+    value
+      .split(/[\n,;]+/)
+      .map((item) => item.trim().toLowerCase())
+      .filter(Boolean),
+  ));
+}
+
 export default function AdminSettings() {
   const { t, language } = useLanguage();
   const isRtl = language === 'ar';
@@ -34,15 +43,29 @@ export default function AdminSettings() {
     onError: (e) => toast.error(e.message),
   });
 
-  // Local state for admin email
-  const [notifEmail, setNotifEmail] = useState('');
+  // Local state for admin emails
+  const [notifEmailsText, setNotifEmailsText] = useState('');
   const [emailPrefs, setEmailPrefs] = useState<Record<string, boolean>>({});
   const [studyPeriodDays, setStudyPeriodDays] = useState(14);
   const [aiResumeMinutes, setAiResumeMinutes] = useState(30);
 
   useEffect(() => {
     if (allSettings) {
-      setNotifEmail(allSettings.notification_email ?? '');
+      let parsedEmails: string[] = [];
+      if (allSettings.notification_emails_json) {
+        try {
+          const raw = JSON.parse(allSettings.notification_emails_json);
+          if (Array.isArray(raw)) {
+            parsedEmails = raw.filter((item): item is string => typeof item === 'string' && !!item.trim());
+          }
+        } catch {
+          parsedEmails = [];
+        }
+      }
+
+      setNotifEmailsText(parsedEmails.length > 0
+        ? parsedEmails.join('\n')
+        : (allSettings.notification_email ?? ''));
 
       try {
         setEmailPrefs(allSettings.email_alert_prefs ? JSON.parse(allSettings.email_alert_prefs) : {});
@@ -58,6 +81,25 @@ export default function AdminSettings() {
   useEffect(() => {
     if (myPrefs) setMyEventPrefs(myPrefs);
   }, [myPrefs]);
+
+  const saveNotificationEmails = async () => {
+    const emails = parseNotificationEmailList(notifEmailsText);
+    const invalid = emails.find((email) => !/^\S+@\S+\.\S+$/.test(email));
+    if (invalid) {
+      toast.error(isRtl ? `بريد غير صالح: ${invalid}` : `Invalid email: ${invalid}`);
+      return;
+    }
+
+    await updateSetting.mutateAsync({
+      key: 'notification_emails_json',
+      value: JSON.stringify(emails),
+    });
+
+    await updateSetting.mutateAsync({
+      key: 'notification_email',
+      value: emails[0] ?? '',
+    });
+  };
 
   return (
     <DashboardLayout>
@@ -76,31 +118,33 @@ export default function AdminSettings() {
           <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin" /></div>
         ) : (
           <>
-            {/* Global Admin Email */}
+            {/* Global Admin Emails */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Mail className="w-5 h-5 text-emerald-500" />
-                  {isRtl ? 'بريد الإشعارات الرئيسي' : 'Admin Notification Email'}
+                  {isRtl ? 'بريد إشعارات الإدارة' : 'Admin Notification Emails'}
                 </CardTitle>
                 <CardDescription>
                   {isRtl
-                    ? 'البريد الإلكتروني الذي يتلقى إشعارات المشرف (المسؤول)'
-                    : 'Email address that receives admin-level alert emails'}
+                    ? 'يمكنك إضافة أكثر من بريد. افصل بينها بسطر جديد أو فاصلة.'
+                    : 'Add one or more recipients. Separate by new line or comma.'}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
-                <input
-                  type="email"
-                  value={notifEmail}
-                  onChange={e => setNotifEmail(e.target.value)}
+                <textarea
+                  value={notifEmailsText}
+                  onChange={(e) => setNotifEmailsText(e.target.value)}
+                  rows={4}
                   className="w-full max-w-md border rounded px-3 py-2 text-sm dark:bg-slate-900 dark:border-slate-700"
-                  placeholder="admin@xflexacademy.com"
+                  placeholder={isRtl
+                    ? 'admin@xflexacademy.com\nops@xflexacademy.com'
+                    : 'admin@xflexacademy.com\nops@xflexacademy.com'}
                   dir="ltr"
                 />
                 <Button
                   size="sm"
-                  onClick={() => updateSetting.mutate({ key: 'notification_email', value: notifEmail })}
+                  onClick={saveNotificationEmails}
                   disabled={updateSetting.isPending}
                 >
                   {updateSetting.isPending ? <Loader2 className="w-4 h-4 me-1 animate-spin" /> : <Save className="w-4 h-4 me-1" />}

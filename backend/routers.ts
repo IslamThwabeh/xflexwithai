@@ -447,8 +447,18 @@ const getReusableH4Analysis = (messages: LexaiMessageList, imageUrl: string) => 
 const RECOMMENDATION_REACTIONS = ["like", "love", "sad", "fire", "rocket"] as const;
 const RECOMMENDATION_ALERT_UNLOCK_SECONDS = 60;
 const RECOMMENDATION_ALERT_EXPIRY_MINUTES = 15;
+const ADMIN_USD_TO_ILS_RATE = 3.5;
 const buildRecommendationThreadUnfollowUrl = (threadRootMessageId: number) =>
   `https://xflexacademy.com/recommendations?threadAction=unfollow&threadId=${threadRootMessageId}`;
+
+const formatAdminIlsFromUsd = (amountUsd: number, language: "ar" | "en") =>
+  new Intl.NumberFormat(language === "ar" ? "ar-EG" : "en-US", {
+    style: "currency",
+    currency: "ILS",
+    currencyDisplay: "narrowSymbol",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amountUsd * ADMIN_USD_TO_ILS_RATE);
 
 const buildRecommendationPlainText = (payload: {
   type: "alert" | "recommendation" | "update" | "result";
@@ -4486,22 +4496,39 @@ export const appRouter = router({
           }
         }
 
-        // Send email notifications (non-blocking)
+        // In Workers, detached promises can be dropped before the provider call completes.
         const totalUsd = totalAmount / 100;
-        sendOrderConfirmationEmail(ctx.user.email, {
-          orderId: order.id, packageName, totalUsd, paymentMethod: input.paymentMethod,
-        }).catch(() => {});
-        sendAdminNewOrderNotification({
-          orderId: order.id, userEmail: ctx.user.email, packageName, totalUsd, paymentMethod: input.paymentMethod,
-        }).catch(() => {});
+        const totalIlsEn = formatAdminIlsFromUsd(totalUsd, 'en');
+        const totalIlsAr = formatAdminIlsFromUsd(totalUsd, 'ar');
+        const [orderEmailResult, adminOrderEmailResult] = await Promise.allSettled([
+          sendOrderConfirmationEmail(ctx.user.email, {
+            orderId: order.id, packageName, totalUsd, paymentMethod: input.paymentMethod,
+          }),
+          sendAdminNewOrderNotification({
+            orderId: order.id, userEmail: ctx.user.email, packageName, totalUsd, paymentMethod: input.paymentMethod,
+          }),
+        ]);
+
+        if (orderEmailResult.status === 'rejected') {
+          logger.warn('[ORDER_EMAIL] Failed to send order confirmation', {
+            orderId: order.id,
+            error: orderEmailResult.reason instanceof Error ? orderEmailResult.reason.message : String(orderEmailResult.reason),
+          });
+        }
+        if (adminOrderEmailResult.status === 'rejected') {
+          logger.warn('[ORDER_EMAIL] Failed to send admin new order notification', {
+            orderId: order.id,
+            error: adminOrderEmailResult.reason instanceof Error ? adminOrderEmailResult.reason.message : String(adminOrderEmailResult.reason),
+          });
+        }
 
         // Notify admin/key_manager staff of new order
         await db.notifyStaffByEvent('new_order', {
-          titleEn: `New order #${order.id} — ${packageName} ($${totalUsd.toFixed(2)})`,
-          titleAr: `طلب جديد #${order.id} — ${packageName} ($${totalUsd.toFixed(2)})`,
+          titleEn: `New order #${order.id} — ${packageName} (${totalIlsEn})`,
+          titleAr: `طلب جديد #${order.id} — ${packageName} (${totalIlsAr})`,
           contentEn: `${ctx.user.email} placed a bank transfer order.`,
           contentAr: `${ctx.user.email} قام بتقديم طلب حوالة بنكية.`,
-          metadata: { orderId: order.id, userId: ctx.user.id, packageName, totalUsd },
+          metadata: { orderId: order.id, userId: ctx.user.id, packageName, totalUsd, totalIls: totalUsd * ADMIN_USD_TO_ILS_RATE },
         });
 
         return order;
@@ -4590,10 +4617,17 @@ export const appRouter = router({
             }
           }
 
-          // Send subscription activated email (non-blocking)
+          // In Workers, detached promises can be dropped before the provider call completes.
           const userEmail = order.isGift && order.giftEmail ? order.giftEmail : (await db.getUserById(order.userId))?.email;
           if (userEmail) {
-            sendPaymentReceivedEmail(userEmail, { orderId: order.id, packageName }).catch(() => {});
+            try {
+              await sendPaymentReceivedEmail(userEmail, { orderId: order.id, packageName });
+            } catch (error) {
+              logger.warn('[ORDER_EMAIL] Failed to send payment received email', {
+                orderId: order.id,
+                error: error instanceof Error ? error.message : String(error),
+              });
+            }
           }
         }
 
@@ -5064,25 +5098,42 @@ export const appRouter = router({
           currency: 'USD',
         });
 
-        // Send email notifications
+        // In Workers, detached promises can be dropped before the provider call completes.
         const totalUsd = totalAmount / 100;
-        sendOrderConfirmationEmail(ctx.user.email, {
-          orderId: order.id, packageName: `Upgrade: ${eligibility.targetPackageName}`,
-          totalUsd, paymentMethod: input.paymentMethod,
-        }).catch(() => {});
-        sendAdminNewOrderNotification({
-          orderId: order.id, userEmail: ctx.user.email,
-          packageName: `UPGRADE: ${eligibility.currentPackageName} → ${eligibility.targetPackageName}`,
-          totalUsd, paymentMethod: input.paymentMethod,
-        }).catch(() => {});
+        const totalIlsEn = formatAdminIlsFromUsd(totalUsd, 'en');
+        const totalIlsAr = formatAdminIlsFromUsd(totalUsd, 'ar');
+        const [upgradeOrderEmailResult, upgradeAdminEmailResult] = await Promise.allSettled([
+          sendOrderConfirmationEmail(ctx.user.email, {
+            orderId: order.id, packageName: `Upgrade: ${eligibility.targetPackageName}`,
+            totalUsd, paymentMethod: input.paymentMethod,
+          }),
+          sendAdminNewOrderNotification({
+            orderId: order.id, userEmail: ctx.user.email,
+            packageName: `UPGRADE: ${eligibility.currentPackageName} → ${eligibility.targetPackageName}`,
+            totalUsd, paymentMethod: input.paymentMethod,
+          }),
+        ]);
+
+        if (upgradeOrderEmailResult.status === 'rejected') {
+          logger.warn('[ORDER_EMAIL] Failed to send upgrade order confirmation', {
+            orderId: order.id,
+            error: upgradeOrderEmailResult.reason instanceof Error ? upgradeOrderEmailResult.reason.message : String(upgradeOrderEmailResult.reason),
+          });
+        }
+        if (upgradeAdminEmailResult.status === 'rejected') {
+          logger.warn('[ORDER_EMAIL] Failed to send upgrade admin notification', {
+            orderId: order.id,
+            error: upgradeAdminEmailResult.reason instanceof Error ? upgradeAdminEmailResult.reason.message : String(upgradeAdminEmailResult.reason),
+          });
+        }
 
         // Notify admin/key_manager staff of upgrade order
         await db.notifyStaffByEvent('new_order', {
           titleEn: `Upgrade order #${order.id} — ${eligibility.currentPackageName} → ${eligibility.targetPackageName}`,
           titleAr: `طلب ترقية #${order.id} — ${eligibility.currentPackageName} → ${eligibility.targetPackageName}`,
-          contentEn: `${ctx.user.email} requested an upgrade ($${totalUsd.toFixed(2)}).`,
-          contentAr: `${ctx.user.email} طلب ترقية ($${totalUsd.toFixed(2)}).`,
-          metadata: { orderId: order.id, userId: ctx.user.id, totalUsd },
+          contentEn: `${ctx.user.email} requested an upgrade (${totalIlsEn}).`,
+          contentAr: `${ctx.user.email} طلب ترقية (${totalIlsAr}).`,
+          metadata: { orderId: order.id, userId: ctx.user.id, totalUsd, totalIls: totalUsd * ADMIN_USD_TO_ILS_RATE },
         });
 
         return order;

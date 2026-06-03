@@ -85,7 +85,7 @@ import {
   type BugReportStatus,
   type StaffNotificationEventType,
 } from '../shared/const';
-import { normalizeEmailAddress } from '../shared/emailValidation';
+import { isLikelyValidEmail, normalizeEmailAddress } from '../shared/emailValidation';
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -2045,6 +2045,7 @@ export async function getDashboardStats() {
       totalEnrollments: 0,
       activeEnrollments: 0,
       totalKeySales: 0,
+      activatedPackageKeys: 0,
       totalRevenue: 0,
       pendingOrders: 0,
     };
@@ -2061,20 +2062,29 @@ export async function getDashboardStats() {
   // Pending orders (for attention banner)
   const [pendingOrdersResult] = await db.select({ count: sql<number>`count(*)` }).from(orders).where(eq(orders.status, 'pending'));
 
-  // Revenue = activated key sales only (the sole revenue source today)
-  const [keySalesResult] = await db.select({
-    count: sql<number>`count(*)`,
+  const packageKeyStats = await getPackageKeyStatistics();
+
+  const activatedPackageKeyFilter = and(
+    sql`${registrationKeys.packageId} IS NOT NULL`,
+    sql`${registrationKeys.activatedAt} IS NOT NULL`,
+    eq(registrationKeys.isActive, true),
+    sql`${registrationKeys.price} > 0`,
+  );
+
+  // Revenue is derived from activated paid package keys only.
+  const [keyRevenueResult] = await db.select({
     total: sql<number>`COALESCE(SUM(${registrationKeys.price}), 0)`,
   }).from(registrationKeys)
-    .where(and(sql`${registrationKeys.activatedAt} IS NOT NULL`, sql`${registrationKeys.price} > 0`));
+    .where(activatedPackageKeyFilter);
 
   return {
     totalUsers: Number(totalUsersResult?.count ?? 0),
     totalCourses: Number(totalCoursesResult?.count ?? 0),
     totalEnrollments: Number(totalEnrollmentsResult?.count ?? 0),
     activeEnrollments: Number(activeEnrollmentsResult?.count ?? 0),
-    totalKeySales: Number(keySalesResult?.count ?? 0),
-    totalRevenue: Number(keySalesResult?.total ?? 0),  // dollars (not cents)
+    totalKeySales: Number(packageKeyStats.total),
+    activatedPackageKeys: Number(packageKeyStats.activated),
+    totalRevenue: Number(keyRevenueResult?.total ?? 0),  // dollars (not cents)
     pendingOrders: Number(pendingOrdersResult?.count ?? 0),
   };
 }
@@ -2588,7 +2598,29 @@ export async function getRecommendationServiceAccessSummary(userId: number): Pro
   return buildTimedServiceAccessSummary(subscription);
 }
 
+async function repairDueRecommendationSubscriberStates() {
+  const db = await getDb();
+  if (!db) return;
+
+  const pendingRows = await db
+    .select({ userId: recommendationSubscriptions.userId })
+    .from(recommendationSubscriptions)
+    .where(
+      and(
+        eq(recommendationSubscriptions.isActive, true),
+        eq(recommendationSubscriptions.isPendingActivation, true),
+      )
+    );
+
+  const pendingUserIds = Array.from(new Set(pendingRows.map((row) => row.userId)));
+  for (const userId of pendingUserIds) {
+    await ensureTimedServicesActivatedIfDue(userId);
+  }
+}
+
 export async function getRecommendationSubscriberEmails() {
+  await repairDueRecommendationSubscriberStates();
+
   const db = await getDb();
   if (!db) return [];
 
@@ -2764,6 +2796,8 @@ export async function unmuteRecommendationThread(userId: number, threadRootMessa
 }
 
 export async function getRecommendationSubscriberDetails(): Promise<RecommendationSubscriberDetail[]> {
+  await repairDueRecommendationSubscriberStates();
+
   const db = await getDb();
   if (!db) return [];
 
@@ -4038,16 +4072,16 @@ export async function activatePackageKey(keyCode: string, email: string, userId?
     }
   }
 
-  // Send welcome / renewal email (fire-and-forget, don't block activation)
+  // In Workers, detached promises can be dropped before the provider call completes.
   try {
     const recipientUser = resolvedUserId ? await getUserById(resolvedUserId) : null;
-    sendWelcomeEmail(normalizedEmail, {
+    await sendWelcomeEmail(normalizedEmail, {
       name: recipientUser?.name,
       packageName: pkg.nameEn || pkg.nameAr || 'XFlex Package',
       packageNameAr: pkg.nameAr || pkg.nameEn || 'باقة XFlex',
       isRenewal: !!key.isRenewal,
       includesLexai: !!pkg.includesLexai,
-    }).catch((error) => logger.error('Welcome email failed', { error }));
+    });
   } catch (e) {
     logger.error('Welcome email setup failed', { error: e });
   }
@@ -4735,15 +4769,23 @@ export async function createOrUpdateEpisodeProgress(progress: InsertEpisodeProgr
         // Send milestone email at 10, 14, 27, 39 episodes
         if ([10, 14, 27, 39].includes(count)) {
           const emailType = `milestone_${count}`;
-          hasEmailBeenSent(progress.userId, emailType).then(async sent => {
-            if (sent) return;
+          const sent = await hasEmailBeenSent(progress.userId, emailType);
+          if (!sent) {
             const [u] = await db.select({ email: users.email, name: users.name })
               .from(users).where(eq(users.id, progress.userId)).limit(1);
             if (u) {
-              sendMilestoneEmail(u.email, count, { name: u.name, completedCount: count }).catch(() => {});
-              logEmailSent(progress.userId, emailType).catch(() => {});
+              try {
+                await sendMilestoneEmail(u.email, count, { name: u.name, completedCount: count });
+                await logEmailSent(progress.userId, emailType);
+              } catch (error) {
+                logger.warn('[EMAIL] Failed to send milestone email', {
+                  userId: progress.userId,
+                  milestone: count,
+                  error: error instanceof Error ? error.message : String(error),
+                });
+              }
             }
-          }).catch(() => {});
+          }
         }
       } catch {}
     }
@@ -4761,15 +4803,23 @@ export async function createOrUpdateEpisodeProgress(progress: InsertEpisodeProgr
         // Send milestone email at 10, 14, 27, 39 episodes
         if ([10, 14, 27, 39].includes(count)) {
           const emailType = `milestone_${count}`;
-          hasEmailBeenSent(progress.userId, emailType).then(async sent => {
-            if (sent) return;
+          const sent = await hasEmailBeenSent(progress.userId, emailType);
+          if (!sent) {
             const [u] = await db.select({ email: users.email, name: users.name })
               .from(users).where(eq(users.id, progress.userId)).limit(1);
             if (u) {
-              sendMilestoneEmail(u.email, count, { name: u.name, completedCount: count }).catch(() => {});
-              logEmailSent(progress.userId, emailType).catch(() => {});
+              try {
+                await sendMilestoneEmail(u.email, count, { name: u.name, completedCount: count });
+                await logEmailSent(progress.userId, emailType);
+              } catch (error) {
+                logger.warn('[EMAIL] Failed to send milestone email', {
+                  userId: progress.userId,
+                  milestone: count,
+                  error: error instanceof Error ? error.message : String(error),
+                });
+              }
             }
-          }).catch(() => {});
+          }
         }
       } catch {}
     }
@@ -5137,21 +5187,27 @@ export async function submitEpisodeQuizAttempt(
     try { await autoAwardPoints(userId, 'quiz_pass', { referenceId: quiz.id, referenceType: 'quiz' }); } catch {}
   }
 
-  // Send post-quiz feedback email (fire-and-forget)
+  // In Workers, detached promises can be dropped before the provider call completes.
   try {
     const [quizUser] = await db.select({ email: users.email, name: users.name })
       .from(users).where(eq(users.id, userId)).limit(1);
     if (quizUser) {
-      sendQuizFeedbackEmail(quizUser.email, {
+      await sendQuizFeedbackEmail(quizUser.email, {
         name: quizUser.name,
         quizLevel: level,
         score,
         passed,
         correctCount,
         totalQuestions,
-      }).catch(() => {});
+      });
     }
-  } catch {}
+  } catch (error) {
+    logger.warn('[EMAIL] Failed to send quiz feedback email', {
+      userId,
+      quizLevel: level,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 
   return {
     attemptId: attempt.id,
@@ -6545,9 +6601,9 @@ export async function createSupportMessage(msg: {
     .where(eq(supportConversations.id, msg.conversationId));
 
   if (msg.senderType === 'client') {
-    const notificationEmail = await getAdminSetting('notification_email');
+    const notificationEmails = await getConfiguredAdminNotificationEmails();
 
-    if (notificationEmail) {
+    for (const notificationEmail of notificationEmails) {
       try {
         await sendStaffAlertEmail({
           to: notificationEmail,
@@ -6560,6 +6616,7 @@ export async function createSupportMessage(msg: {
         logger.warn('[SUPPORT] Failed to email configured admin notification address', {
           error: String(e),
           conversationId: msg.conversationId,
+          notificationEmail,
         });
       }
     }
@@ -10134,6 +10191,10 @@ export async function hasEmailBeenSent(userId: number, emailType: string): Promi
   return !!row;
 }
 
+function getEmailAuditTimestamp() {
+  return new Date().toISOString().slice(0, 19).replace('T', ' ');
+}
+
 export async function logEmailDeliveryAttempt(input: {
   recipientEmail: string;
   recipientUserId?: number | null;
@@ -10159,6 +10220,7 @@ export async function logEmailDeliveryAttempt(input: {
       provider: input.provider ?? null,
       errorMessage: input.errorMessage ?? null,
       metadata: input.metadata ? JSON.stringify(input.metadata) : null,
+      createdAt: getEmailAuditTimestamp(),
     });
   } catch (error) {
     logger.warn('[EMAIL_AUDIT] Failed to persist delivery log', {
@@ -10227,6 +10289,8 @@ export async function getEmailDeliveryLogs(filters?: {
     conditions.push(lte(emailDeliveryLogs.createdAt, filters.toDate));
   }
 
+  const hasSortableTimestamp = sql<number>`case when ${emailDeliveryLogs.createdAt} like '____-__-__%' then 1 else 0 end`;
+
   const query = db.select({
     id: emailDeliveryLogs.id,
     recipientEmail: emailDeliveryLogs.recipientEmail,
@@ -10243,7 +10307,7 @@ export async function getEmailDeliveryLogs(filters?: {
   })
     .from(emailDeliveryLogs)
     .leftJoin(users, eq(emailDeliveryLogs.recipientUserId, users.id))
-    .orderBy(desc(emailDeliveryLogs.createdAt))
+    .orderBy(desc(hasSortableTimestamp), desc(emailDeliveryLogs.createdAt), desc(emailDeliveryLogs.id))
     .limit(limit)
     .offset(offset);
 
@@ -10749,14 +10813,14 @@ export async function notifyStaffByEvent(
   await db.insert(staffNotifications).values(notifValues);
 
   // Send email to offline users who have email alerts enabled for this event
-  const notificationEmail = await getAdminSetting('notification_email');
+  const notificationEmails = await getConfiguredAdminNotificationEmails();
   const emailPrefsRaw = await getAdminSetting('email_alert_prefs');
   const globalEmailPrefs: Record<string, boolean> = emailPrefsRaw ? JSON.parse(emailPrefsRaw) : {};
 
   // Skip email entirely if this event is disabled globally
   if (globalEmailPrefs[eventType] === false) return;
 
-  if (notificationEmail) {
+  for (const notificationEmail of notificationEmails) {
     try {
       await sendStaffAlertEmail({
         to: notificationEmail,
@@ -10766,7 +10830,11 @@ export async function notifyStaffByEvent(
         actionUrl: actionUrl || '',
       });
     } catch (e) {
-      logger.warn(`[STAFF_NOTIF] Failed to email configured admin notification address`, { error: String(e), eventType });
+      logger.warn(`[STAFF_NOTIF] Failed to email configured admin notification address`, {
+        error: String(e),
+        eventType,
+        notificationEmail,
+      });
     }
   }
 
@@ -10805,6 +10873,37 @@ export async function notifyStaffByEvent(
       logger.warn(`[STAFF_NOTIF] Failed to email userId=${userId}`, { error: String(e) });
     }
   }
+}
+
+async function getConfiguredAdminNotificationEmails(): Promise<string[]> {
+  const fromJson = await getAdminSetting('notification_emails_json');
+  const fromLegacy = await getAdminSetting('notification_email');
+  const candidates: string[] = [];
+
+  if (fromJson) {
+    try {
+      const parsed = JSON.parse(fromJson);
+      if (Array.isArray(parsed)) {
+        for (const value of parsed) {
+          if (typeof value === 'string') candidates.push(value);
+        }
+      }
+    } catch {
+      // Ignore malformed config and fall back to legacy key.
+    }
+  }
+
+  if (candidates.length === 0 && fromLegacy) {
+    candidates.push(fromLegacy);
+  }
+
+  const normalized = Array.from(new Set(
+    candidates
+      .map((email) => normalizeEmailAddress(email))
+      .filter((email) => isLikelyValidEmail(email)),
+  ));
+
+  return normalized;
 }
 
 // ============================================================================
