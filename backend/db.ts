@@ -11215,7 +11215,7 @@ export async function notifyStaffByEvent(
   }
 }
 
-async function getConfiguredAdminNotificationEmails(): Promise<string[]> {
+export async function getConfiguredAdminNotificationEmails(): Promise<string[]> {
   const fromJson = await getAdminSetting('notification_emails_json');
   const fromLegacy = await getAdminSetting('notification_email');
   const candidates: string[] = [];

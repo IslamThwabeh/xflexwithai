@@ -99,6 +99,8 @@ export const STAFF_NOTIFICATION_EVENTS = {
   subscription_expiring:{ labelEn: "Subscription Expiring",     labelAr: "اشتراك على وشك الانتهاء",    roles: [],               actionUrl: "/admin/expiry-report" },
   course_completion:    { labelEn: "Course Completed",          labelAr: "تم إكمال الكورس",           roles: [],               actionUrl: "/admin/students" },
   student_inactivity:   { labelEn: "Student Inactive",          labelAr: "طالب غير نشط",             roles: [],               actionUrl: "/admin/students" },
+  recommendation_delivery_anomaly: { labelEn: "Recommendation Delivery Anomaly", labelAr: "خلل في توصيل التوصيات", roles: [], actionUrl: "/admin/recommendations" },
+  recommendation_published: { labelEn: "Recommendation Published", labelAr: "تم نشر توصية", roles: [], actionUrl: "/admin/recommendations" },
 } as const;
 
 export type StaffNotificationEventType = keyof typeof STAFF_NOTIFICATION_EVENTS;

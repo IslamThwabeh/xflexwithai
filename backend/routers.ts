@@ -2928,6 +2928,33 @@ export const appRouter = router({
           });
         }
 
+        // Send a copy of the alert email to configured admin notification
+        // addresses (e.g. doaa.thwabeh@gmail.com). These addresses are global
+        // admin observability inboxes — not in the recommendation_subscribers
+        // funnel — so they need a separate send.
+        const adminCopyEmails = await db.getConfiguredAdminNotificationEmails();
+        if (adminCopyEmails.length) {
+          const adminCopy = buildRecommendationAlertEmail({
+            language: 'en',
+            unlockSeconds: RECOMMENDATION_ALERT_UNLOCK_SECONDS,
+          });
+          await Promise.allSettled(adminCopyEmails.map((to) => sendEmail({
+            to,
+            subject: `[Admin copy] ${adminCopy.subject}`,
+            text: adminCopy.text,
+            html: adminCopy.html,
+            audit: {
+              eventType: 'recommendation_alert',
+              templateId: 'recommendation_alert_admin_copy',
+              metadata: { recommendationId: alert.id, type: 'alert', batchId, adminCopy: true },
+            },
+          }).catch((err) => {
+            logger.warn('[RECOMMENDATIONS] Admin copy email failed', {
+              alertId: alert.id, to, error: err instanceof Error ? err.message : String(err),
+            });
+          })));
+        }
+
         const emailCount = emailResults.filter((result) => result.status === 'fulfilled').length;
 
         const isAdmin = !!(ctx.user?.email && await db.getAdminByEmail(ctx.user.email));
@@ -3294,6 +3321,34 @@ export const appRouter = router({
                 result.reason instanceof Error ? result.reason.message : String(result.reason)
               ),
             });
+          }
+
+          // Send a copy of the recommendation email to configured admin
+          // notification addresses so admins see exactly what students received.
+          const adminCopyEmails = await db.getConfiguredAdminNotificationEmails();
+          if (adminCopyEmails.length) {
+            const adminCopy = buildRecommendationMessageEmail({
+              language: 'en',
+              type: input.type,
+              recommendation: rootMessageForDelivery!,
+              latestMessage: input.type === 'recommendation' ? undefined : { content: trimmedContent },
+              threadUnfollowUrl: undefined,
+            });
+            await Promise.allSettled(adminCopyEmails.map((to) => sendEmail({
+              to,
+              subject: `[Admin copy] ${adminCopy.subject}`,
+              text: adminCopy.text,
+              html: adminCopy.html,
+              audit: {
+                eventType: input.type === 'result' ? 'trade_result' : input.type === 'update' ? 'recommendation_update' : 'recommendation_new',
+                templateId: `recommendation_${input.type}_admin_copy`,
+                metadata: { recommendationId: threadRootMessageId, type: input.type, symbol: notificationSymbol || null, messageId, batchId, adminCopy: true },
+              },
+            }).catch((err) => {
+              logger.warn('[RECOMMENDATIONS] Admin copy message email failed', {
+                messageId, to, error: err instanceof Error ? err.message : String(err),
+              });
+            })));
           }
         }
 
