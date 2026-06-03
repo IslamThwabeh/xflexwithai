@@ -20,16 +20,59 @@ import {
   zebraRow,
 } from '@/components/DataTable';
 
+function getTimeValue(value?: string | null) {
+  if (!value) return Number.POSITIVE_INFINITY;
+  const parsed = new Date(value).getTime();
+  return Number.isNaN(parsed) ? Number.POSITIVE_INFINITY : parsed;
+}
+
+function getExpiryStatus(subscription: any) {
+  const endDateValue = getTimeValue(subscription.endDate);
+  const now = Date.now();
+  const sevenDays = now + 7 * 24 * 60 * 60 * 1000;
+  const thirtyDays = now + 30 * 24 * 60 * 60 * 1000;
+
+  if (!Number.isFinite(endDateValue)) return 'unknown';
+  if (endDateValue < now) return 'expired';
+  if (subscription.isPaused) return 'frozen';
+  if (subscription.isPendingActivation) return 'pending';
+  if (endDateValue <= sevenDays) return 'critical';
+  if (endDateValue <= thirtyDays) return 'warning';
+  return 'active';
+}
+
+function formatStatusLabel(status: string, isRtl: boolean) {
+  switch (status) {
+    case 'active':
+      return isRtl ? 'نشط' : 'Active';
+    case 'warning':
+      return isRtl ? 'قريب الانتهاء' : 'Expiring Soon';
+    case 'critical':
+      return isRtl ? 'حرج' : 'Critical';
+    case 'expired':
+      return isRtl ? 'منتهي' : 'Expired';
+    case 'frozen':
+      return isRtl ? 'مجمّد' : 'Frozen';
+    case 'pending':
+      return isRtl ? 'بانتظار التفعيل' : 'Pending';
+    default:
+      return isRtl ? 'غير معروف' : 'Unknown';
+  }
+}
+
+function formatDateValue(value: string | null | undefined, locale: string) {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleDateString(locale);
+}
+
 const expirySortFns: Record<string, (a: any, b: any) => number> = {
   user: (a, b) => (a.userName || '').localeCompare(b.userName || ''),
   email: (a, b) => (a.userEmail || '').localeCompare(b.userEmail || ''),
   package: (a, b) => (a.subscriptionName || '').localeCompare(b.subscriptionName || ''),
   start: (a, b) => new Date(a.startDate || 0).getTime() - new Date(b.startDate || 0).getTime(),
-  end: (a, b) => {
-    if (a.endDate === 'Lifetime') return 1;
-    if (b.endDate === 'Lifetime') return -1;
-    return new Date(a.endDate || 0).getTime() - new Date(b.endDate || 0).getTime();
-  },
+  end: (a, b) => getTimeValue(a.endDate) - getTimeValue(b.endDate),
 };
 
 export default function AdminExpiryReport() {
@@ -37,19 +80,20 @@ export default function AdminExpiryReport() {
   const isRtl = language === 'ar';
   const { data: subscriptions, isLoading } = trpc.reports.expirations.useQuery();
 
-  const now = new Date().toISOString();
-  const thirtyDaysFromNow = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-  const [expiryFilter, setExpiryFilter] = useState<'all' | 'expiring' | 'expired' | 'lifetime'>('all');
+  const [expiryFilter, setExpiryFilter] = useState<'all' | 'expiring' | 'expired' | 'active'>('all');
 
   const filtered = useMemo(() => {
     if (!subscriptions) return [];
     const subs = subscriptions as any[];
     if (expiryFilter === 'all') return subs;
-    if (expiryFilter === 'lifetime') return subs.filter(s => s.endDate === 'Lifetime');
-    if (expiryFilter === 'expired') return subs.filter(s => s.endDate !== 'Lifetime' && s.endDate && s.endDate < now);
-    if (expiryFilter === 'expiring') return subs.filter(s => s.endDate !== 'Lifetime' && s.endDate && s.endDate <= thirtyDaysFromNow && s.endDate > now);
+    if (expiryFilter === 'expired') return subs.filter(s => getExpiryStatus(s) === 'expired');
+    if (expiryFilter === 'expiring') return subs.filter(s => {
+      const status = getExpiryStatus(s);
+      return status === 'warning' || status === 'critical';
+    });
+    if (expiryFilter === 'active') return subs.filter(s => getExpiryStatus(s) === 'active');
     return subs;
-  }, [subscriptions, expiryFilter, now, thirtyDaysFromNow]);
+  }, [subscriptions, expiryFilter]);
 
   // Column visibility
   const allColumns = [
@@ -57,7 +101,7 @@ export default function AdminExpiryReport() {
     { key: 'user', en: 'User', ar: 'المستخدم' },
     { key: 'email', en: 'Email', ar: 'الإيميل' },
     { key: 'phone', en: 'Phone', ar: 'الهاتف' },
-    { key: 'package', en: 'Package', ar: 'الباقة' },
+    { key: 'package', en: 'Service', ar: 'الخدمة' },
     { key: 'start', en: 'Start Date', ar: 'تاريخ البدء' },
     { key: 'end', en: 'End Date', ar: 'تاريخ الانتهاء' },
   ] as const;
@@ -78,11 +122,11 @@ export default function AdminExpiryReport() {
   };
   const visibleColCount = visibleCols.size;
 
-  // Package badge colors
-  const pkgBadgeClass = (name: string) => {
+  const serviceBadgeClass = (name: string) => {
     const lower = (name || '').toLowerCase();
-    if (lower.includes('comprehensive') || lower.includes('شامل'))
+    if (lower.includes('recommendation') || lower.includes('توصيات')) {
       return 'bg-amber-100 text-amber-800 border-amber-300';
+    }
     return 'bg-emerald-100 text-emerald-800 border-emerald-300';
   };
 
@@ -101,32 +145,24 @@ export default function AdminExpiryReport() {
 
   // Stats
   const stats = useMemo(() => {
-    if (!subscriptions) return { total: 0, expiringSoon: 0, lifetime: 0, expired: 0 };
+    if (!subscriptions) return { total: 0, expiringSoon: 0, active: 0, expired: 0 };
     const subs = subscriptions as any[];
     return {
       total: subs.length,
-      expiringSoon: subs.filter(s => s.endDate !== 'Lifetime' && s.endDate && s.endDate <= thirtyDaysFromNow && s.endDate > now).length,
-      lifetime: subs.filter(s => s.endDate === 'Lifetime').length,
-      expired: subs.filter(s => s.endDate !== 'Lifetime' && s.endDate && s.endDate < now).length,
+      expiringSoon: subs.filter(s => {
+        const status = getExpiryStatus(s);
+        return status === 'warning' || status === 'critical';
+      }).length,
+      active: subs.filter(s => getExpiryStatus(s) === 'active').length,
+      expired: subs.filter(s => getExpiryStatus(s) === 'expired').length,
     };
-  }, [subscriptions, now]);
-
-  const getExpiryStatus = (endDate: string) => {
-    if (endDate === 'Lifetime') return 'lifetime';
-    if (!endDate) return 'unknown';
-    const thirtyDays = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-    const sevenDays = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-    if (endDate < now) return 'expired';
-    if (endDate <= sevenDays) return 'critical';
-    if (endDate <= thirtyDays) return 'warning';
-    return 'active';
-  };
+  }, [subscriptions]);
 
   const exportCSV = () => {
     if (!filtered.length) return;
-    const headers = ['Status', 'User Name', 'Email', 'Phone', 'Package', 'Start Date', 'End Date'];
+    const headers = ['Status', 'User Name', 'Email', 'Phone', 'Service', 'Start Date', 'End Date'];
     const rows = filtered.map((s: any) => [
-      getExpiryStatus(s.endDate),
+      formatStatusLabel(getExpiryStatus(s), false),
       s.userName, s.userEmail, s.userPhone || '',
       s.subscriptionName, s.startDate || '', s.endDate || '',
     ]);
@@ -166,7 +202,7 @@ export default function AdminExpiryReport() {
           className={`rounded-lg border px-3 py-2 text-center transition hover:shadow-sm ${expiryFilter === 'all' ? 'ring-2 ring-emerald-400 bg-emerald-50' : 'bg-white'}`}
         >
           <p className="text-lg font-bold text-gray-900">{stats.total}</p>
-          <p className="text-[11px] text-muted-foreground leading-tight">{isRtl ? 'إجمالي الاشتراكات' : 'Total Active'}</p>
+          <p className="text-[11px] text-muted-foreground leading-tight">{isRtl ? 'إجمالي الخدمات الزمنية' : 'Total Timed Services'}</p>
         </button>
         <button
           onClick={() => setExpiryFilter('expiring')}
@@ -176,18 +212,18 @@ export default function AdminExpiryReport() {
           <p className="text-[11px] text-amber-600 leading-tight">{isRtl ? 'تنتهي خلال 30 يوم' : 'Expiring in 30d'}</p>
         </button>
         <button
+          onClick={() => setExpiryFilter('active')}
+          className={`rounded-lg border px-3 py-2 text-center transition hover:shadow-sm ${expiryFilter === 'active' ? 'ring-2 ring-emerald-400 bg-emerald-50' : 'bg-emerald-50 border-emerald-200'}`}
+        >
+          <p className="text-lg font-bold text-emerald-700">{stats.active}</p>
+          <p className="text-[11px] text-emerald-600 leading-tight">{isRtl ? 'نشطة الآن' : 'Active Now'}</p>
+        </button>
+        <button
           onClick={() => setExpiryFilter('expired')}
           className={`rounded-lg border px-3 py-2 text-center transition hover:shadow-sm ${expiryFilter === 'expired' ? 'ring-2 ring-red-400 bg-red-50' : 'bg-red-50 border-red-200'}`}
         >
           <p className="text-lg font-bold text-red-700">{stats.expired}</p>
           <p className="text-[11px] text-red-600 leading-tight">{isRtl ? 'منتهية' : 'Expired'}</p>
-        </button>
-        <button
-          onClick={() => setExpiryFilter('lifetime')}
-          className={`rounded-lg border px-3 py-2 text-center transition hover:shadow-sm ${expiryFilter === 'lifetime' ? 'ring-2 ring-green-400 bg-green-50' : 'bg-green-50 border-green-200'}`}
-        >
-          <p className="text-lg font-bold text-green-700">{stats.lifetime}</p>
-          <p className="text-[11px] text-green-600 leading-tight">{isRtl ? 'مدى الحياة' : 'Lifetime'}</p>
         </button>
       </div>
 
@@ -233,44 +269,45 @@ export default function AdminExpiryReport() {
                 {visibleCols.has('user') && <th className="px-3 py-3 text-start font-medium"><SortableHeader label={isRtl ? 'المستخدم' : 'User'} sortKey="user" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>}
                 {visibleCols.has('email') && <th className="px-3 py-3 text-start font-medium"><SortableHeader label={isRtl ? 'الإيميل' : 'Email'} sortKey="email" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>}
                 {visibleCols.has('phone') && <th className="px-3 py-3 text-start font-medium">{isRtl ? 'الهاتف' : 'Phone'}</th>}
-                {visibleCols.has('package') && <th className="px-3 py-3 text-start font-medium"><SortableHeader label={isRtl ? 'الباقة' : 'Package'} sortKey="package" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>}
+                {visibleCols.has('package') && <th className="px-3 py-3 text-start font-medium"><SortableHeader label={isRtl ? 'الخدمة' : 'Service'} sortKey="package" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>}
                 {visibleCols.has('start') && <th className="px-3 py-3 text-start font-medium"><SortableHeader label={isRtl ? 'تاريخ البدء' : 'Start'} sortKey="start" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>}
                 {visibleCols.has('end') && <th className="px-3 py-3 text-start font-medium"><SortableHeader label={isRtl ? 'تاريخ الانتهاء' : 'End'} sortKey="end" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>}
               </tr>
             </thead>
             <tbody className="divide-y">
               {paged.map((s: any, i: number) => {
-                const status = getExpiryStatus(s.endDate);
+                const status = getExpiryStatus(s);
                 return (
-                  <tr key={i} className={zebraRow(i, `hover:bg-muted/30 ${status === 'expired' ? 'bg-red-50/50' : status === 'critical' ? 'bg-amber-50/50' : ''}`)}>
+                  <tr key={`${s.type}-${s.userId}-${i}`} className={zebraRow(i, `hover:bg-muted/30 ${status === 'expired' ? 'bg-red-50/50' : status === 'critical' ? 'bg-red-50/30' : status === 'warning' ? 'bg-amber-50/50' : ''}`)}>
                     {visibleCols.has('status') && <td className="px-3 py-2.5">
-                      {status === 'lifetime' && <span className="inline-flex items-center gap-1 text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full"><CheckCircle className="w-3 h-3" />{isRtl ? 'مدى الحياة' : 'Lifetime'}</span>}
                       {status === 'active' && <span className="inline-flex items-center gap-1 text-xs bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">{isRtl ? 'نشط' : 'Active'}</span>}
                       {status === 'warning' && <span className="inline-flex items-center gap-1 text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full"><AlertTriangle className="w-3 h-3" />{isRtl ? 'قريب الانتهاء' : 'Expiring Soon'}</span>}
                       {status === 'critical' && <span className="inline-flex items-center gap-1 text-xs bg-red-100 text-red-800 px-2 py-0.5 rounded-full"><AlertTriangle className="w-3 h-3" />{isRtl ? 'حرج' : 'Critical'}</span>}
                       {status === 'expired' && <span className="inline-flex items-center gap-1 text-xs bg-red-200 text-red-900 px-2 py-0.5 rounded-full">{isRtl ? 'منتهي' : 'Expired'}</span>}
+                      {status === 'frozen' && <span className="inline-flex items-center gap-1 text-xs bg-slate-200 text-slate-800 px-2 py-0.5 rounded-full">{isRtl ? 'مجمّد' : 'Frozen'}</span>}
+                      {status === 'pending' && <span className="inline-flex items-center gap-1 text-xs bg-teal-100 text-teal-800 px-2 py-0.5 rounded-full"><Clock className="w-3 h-3" />{isRtl ? 'بانتظار التفعيل' : 'Pending'}</span>}
+                      {status === 'unknown' && <span className="inline-flex items-center gap-1 text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full">{isRtl ? 'غير معروف' : 'Unknown'}</span>}
                     </td>}
                     {visibleCols.has('user') && <td className="px-3 py-2.5 font-medium text-sm">{s.userName}</td>}
                     {visibleCols.has('email') && <td className="px-3 py-2.5 text-muted-foreground text-xs" dir="ltr">{s.userEmail}</td>}
                     {visibleCols.has('phone') && <td className="px-3 py-2.5 text-xs" dir="ltr">{s.userPhone || '—'}</td>}
                     {visibleCols.has('package') && <td className="px-3 py-2.5">
-                      <span className={`inline-block text-xs px-2 py-0.5 rounded-full border ${pkgBadgeClass(s.subscriptionName)}`}>
+                      <span className={`inline-block text-xs px-2 py-0.5 rounded-full border ${serviceBadgeClass(s.subscriptionName)}`}>
                         {isRtl ? (s.subscriptionNameAr || s.subscriptionName) : s.subscriptionName}
                       </span>
                     </td>}
                     {visibleCols.has('start') && <td className="px-3 py-2.5 text-xs text-muted-foreground">
-                      {s.startDate ? new Date(s.startDate).toLocaleDateString(isRtl ? 'ar-EG' : 'en-US') : '—'}
+                      {formatDateValue(s.startDate, isRtl ? 'ar-EG' : 'en-US')}
                     </td>}
                     {visibleCols.has('end') && <td className="px-3 py-2.5 text-xs font-medium">
-                      {s.endDate === 'Lifetime' ? (isRtl ? '∞ مدى الحياة' : '∞ Lifetime') :
-                        s.endDate ? new Date(s.endDate).toLocaleDateString(isRtl ? 'ar-EG' : 'en-US') : '—'}
+                      {formatDateValue(s.endDate, isRtl ? 'ar-EG' : 'en-US')}
                     </td>}
                   </tr>
                 );
               })}
               {paged.length === 0 && (
                 <tr><td colSpan={visibleColCount} className="px-3 py-8 text-center text-muted-foreground">
-                  {isRtl ? 'لا توجد اشتراكات' : 'No subscriptions found'}
+                  {isRtl ? 'لا توجد خدمات زمنية' : 'No timed services found'}
                 </td></tr>
               )}
             </tbody>

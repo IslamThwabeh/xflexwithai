@@ -92,6 +92,7 @@ const AdminEngagement = lazy(() => import("./pages/AdminEngagement"));
 const AdminMonitoring = lazy(() => import("./pages/AdminMonitoring"));
 const AdminOfferAgreements = lazy(() => import("./pages/AdminOfferAgreements"));
 const AdminPlanProgress = lazy(() => import("./pages/AdminPlanProgress"));
+const AdminLegacyPlanProgress = lazy(() => import("./pages/AdminLegacyPlanProgress"));
 const NotificationCenter = lazy(() => import("./pages/NotificationCenter"));
 const LoyaltyPoints = lazy(() => import("./pages/LoyaltyPoints"));
 const TradingCalculators = lazy(() => import("./pages/TradingCalculators"));
@@ -253,6 +254,11 @@ function Router() {
       <Route path={"/admin/plan-progress"}>
         <AdminRoute>
           <AdminPlanProgress />
+        </AdminRoute>
+      </Route>
+      <Route path={"/admin/plan-progress/legacy"}>
+        <AdminRoute>
+          <AdminLegacyPlanProgress />
         </AdminRoute>
       </Route>
       <Route path={"/admin/reports/subscribers"}>

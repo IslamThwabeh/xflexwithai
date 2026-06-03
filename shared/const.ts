@@ -34,7 +34,7 @@ export const ROLE_PAGE_ACCESS: Record<string, string[]> = {
   view_recommendations: ["/admin/students", "/admin/notifications"],
   view_subscriptions: ["/admin/students", "/admin/notifications"],
   view_quizzes: ["/admin/quizzes", "/admin/students", "/admin/notifications"],
-  plan_manager: ["/admin/plan-progress", "/admin/notifications"],
+  plan_manager: ["/admin/plan-progress", "/admin/plan-progress/legacy", "/admin/notifications"],
 };
 
 // All available staff roles
@@ -94,7 +94,7 @@ export const STAFF_NOTIFICATION_EVENTS = {
   key_activated:        { labelEn: "Package Key Activated",     labelAr: "تم تفعيل مفتاح",            roles: ["key_manager"],  actionUrl: "/admin/package-keys" },
   bug_report_submitted: { labelEn: "Bug Report Submitted",      labelAr: "تم إرسال بلاغ خطأ",         roles: ["support"],      actionUrl: "/admin/bug-reports" },
   offer_agreement:      { labelEn: "Offer Agreement Signed",    labelAr: "تم توقيع اتفاقية عرض",      roles: [],               actionUrl: "/admin/offer-agreements" },
-  plan_progress_update: { labelEn: "Plan Progress Update",      labelAr: "تحديث خطة التقدم",          roles: ["plan_manager"], actionUrl: "/admin/plan-progress" },
+  plan_progress_update: { labelEn: "Foundation Plan Update",   labelAr: "تحديث الخطة التأسيسية",      roles: ["plan_manager"], actionUrl: "/admin/plan-progress/legacy" },
   broker_proof_submitted:{ labelEn: "Broker Proof Submitted",   labelAr: "تم رفع إثبات الوسيط",       roles: ["support"],      actionUrl: "/admin/brokers" },
   subscription_expiring:{ labelEn: "Subscription Expiring",     labelAr: "اشتراك على وشك الانتهاء",    roles: [],               actionUrl: "/admin/expiry-report" },
   course_completion:    { labelEn: "Course Completed",          labelAr: "تم إكمال الكورس",           roles: [],               actionUrl: "/admin/students" },

@@ -8468,42 +8468,160 @@ export async function getSubscriptionExpiryReport(): Promise<any[]> {
 
   const allUsers = await db.select({ id: users.id, name: users.name, email: users.email, phone: users.phone }).from(users);
   const userMap = new Map(allUsers.map(u => [u.id, u]));
-
-  const allPackages = await db.select().from(packages);
-  const pkgMap = new Map(allPackages.map(p => [p.id, p]));
-
   const results: any[] = [];
 
-  // Package subscriptions (only — lexai/recommendations are legacy, managed via packages now)
-  const pkgSubs = await db.select().from(packageSubscriptions)
-    .where(eq(packageSubscriptions.isActive, true));
-  for (const sub of pkgSubs) {
+  const [lexaiSubs, recommendationSubs] = await Promise.all([
+    db.select({
+      userId: lexaiSubscriptions.userId,
+      startDate: lexaiSubscriptions.startDate,
+      endDate: lexaiSubscriptions.endDate,
+      isActive: lexaiSubscriptions.isActive,
+      isPaused: lexaiSubscriptions.isPaused,
+      isPendingActivation: lexaiSubscriptions.isPendingActivation,
+      frozenUntil: lexaiSubscriptions.frozenUntil,
+      pausedReason: lexaiSubscriptions.pausedReason,
+      createdAt: lexaiSubscriptions.createdAt,
+    }).from(lexaiSubscriptions).where(eq(lexaiSubscriptions.isActive, true)),
+    db.select({
+      userId: recommendationSubscriptions.userId,
+      startDate: recommendationSubscriptions.startDate,
+      endDate: recommendationSubscriptions.endDate,
+      isActive: recommendationSubscriptions.isActive,
+      isPaused: recommendationSubscriptions.isPaused,
+      isPendingActivation: recommendationSubscriptions.isPendingActivation,
+      frozenUntil: recommendationSubscriptions.frozenUntil,
+      pausedReason: recommendationSubscriptions.pausedReason,
+      createdAt: recommendationSubscriptions.createdAt,
+    }).from(recommendationSubscriptions).where(eq(recommendationSubscriptions.isActive, true)),
+  ]);
+
+  for (const sub of lexaiSubs) {
     const user = userMap.get(sub.userId);
-    const pkg = pkgMap.get(sub.packageId);
     results.push({
-      type: 'package',
+      type: 'lexai',
       userId: sub.userId,
       userName: user?.name || 'Unknown',
       userEmail: user?.email || 'Unknown',
       userPhone: user?.phone || '',
-      subscriptionName: pkg?.nameEn || `Package #${sub.packageId}`,
-      subscriptionNameAr: pkg?.nameAr || pkg?.nameEn || `Package #${sub.packageId}`,
+      subscriptionName: 'LexAI',
+      subscriptionNameAr: 'LexAI',
       startDate: sub.startDate,
-      endDate: sub.endDate || 'Lifetime',
-      renewalDueDate: sub.renewalDueDate,
+      endDate: sub.endDate,
       isActive: sub.isActive,
+      isPaused: sub.isPaused,
+      isPendingActivation: sub.isPendingActivation,
+      frozenUntil: sub.frozenUntil,
+      pausedReason: sub.pausedReason,
+      createdAt: sub.createdAt,
+    });
+  }
+
+  for (const sub of recommendationSubs) {
+    const user = userMap.get(sub.userId);
+    results.push({
+      type: 'recommendation',
+      userId: sub.userId,
+      userName: user?.name || 'Unknown',
+      userEmail: user?.email || 'Unknown',
+      userPhone: user?.phone || '',
+      subscriptionName: 'Recommendations',
+      subscriptionNameAr: 'التوصيات',
+      startDate: sub.startDate,
+      endDate: sub.endDate,
+      isActive: sub.isActive,
+      isPaused: sub.isPaused,
+      isPendingActivation: sub.isPendingActivation,
+      frozenUntil: sub.frozenUntil,
+      pausedReason: sub.pausedReason,
       createdAt: sub.createdAt,
     });
   }
 
   // Sort by endDate ascending (soonest to expire first)
   results.sort((a, b) => {
-    if (a.endDate === 'Lifetime') return 1;
-    if (b.endDate === 'Lifetime') return -1;
-    return (a.endDate || '').localeCompare(b.endDate || '');
+    const endDateCompare = (a.endDate || '').localeCompare(b.endDate || '');
+    if (endDateCompare !== 0) return endDateCompare;
+
+    const userCompare = (a.userName || '').localeCompare(b.userName || '');
+    if (userCompare !== 0) return userCompare;
+
+    return (a.subscriptionName || '').localeCompare(b.subscriptionName || '');
   });
 
   return results;
+}
+
+/**
+ * Get learning progress for the academy course experience.
+ * Returns one row per client, anchored to the client's latest enrollment when present.
+ */
+export async function getAdminLearningProgressReport(): Promise<any[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  const rows = await db.select({
+    userId: users.id,
+    userName: users.name,
+    userEmail: users.email,
+    userPhone: users.phone,
+    createdAt: users.createdAt,
+    lastSignedIn: users.lastSignedIn,
+    courseId: enrollments.courseId,
+    courseTitleEn: courses.titleEn,
+    courseTitleAr: courses.titleAr,
+    progressPercentage: enrollments.progressPercentage,
+    completedEpisodes: enrollments.completedEpisodes,
+    totalEpisodes: sql<number>`CASE WHEN ${enrollments.courseId} IS NULL THEN 0 ELSE (SELECT COUNT(*) FROM ${episodes} WHERE ${episodes.courseId} = ${enrollments.courseId}) END`,
+    enrolledAt: enrollments.enrolledAt,
+    completedAt: enrollments.completedAt,
+  })
+    .from(users)
+    .leftJoin(enrollments, eq(enrollments.userId, users.id))
+    .leftJoin(courses, eq(enrollments.courseId, courses.id))
+    .where(eq(users.isStaff, false))
+    .orderBy(desc(enrollments.enrolledAt), desc(users.createdAt));
+
+  const reportByUser = new Map<number, any>();
+
+  for (const row of rows) {
+    const hasEnrollment = row.courseId != null;
+    const existing = reportByUser.get(row.userId);
+
+    if (!existing) {
+      reportByUser.set(row.userId, {
+        userId: row.userId,
+        userName: row.userName || row.userEmail || 'Unknown',
+        userEmail: row.userEmail || 'Unknown',
+        userPhone: row.userPhone || '',
+        createdAt: row.createdAt,
+        lastSignedIn: row.lastSignedIn,
+        courseId: row.courseId ?? null,
+        courseTitleEn: row.courseTitleEn ?? null,
+        courseTitleAr: row.courseTitleAr ?? row.courseTitleEn ?? null,
+        progressPercentage: hasEnrollment ? (row.progressPercentage ?? 0) : 0,
+        completedEpisodes: hasEnrollment ? (row.completedEpisodes ?? 0) : 0,
+        totalEpisodes: hasEnrollment ? (row.totalEpisodes ?? 0) : 0,
+        enrolledAt: row.enrolledAt ?? null,
+        completedAt: row.completedAt ?? null,
+        hasEnrollment,
+        courseCount: hasEnrollment ? 1 : 0,
+      });
+      continue;
+    }
+
+    if (hasEnrollment) {
+      existing.courseCount += 1;
+    }
+  }
+
+  return Array.from(reportByUser.values()).sort((a, b) => {
+    if (a.hasEnrollment !== b.hasEnrollment) return a.hasEnrollment ? -1 : 1;
+
+    const progressDiff = (b.progressPercentage || 0) - (a.progressPercentage || 0);
+    if (progressDiff !== 0) return progressDiff;
+
+    return (a.userName || '').localeCompare(b.userName || '');
+  });
 }
 
 // ============================================================================

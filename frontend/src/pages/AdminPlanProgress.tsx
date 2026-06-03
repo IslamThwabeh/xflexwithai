@@ -1,359 +1,303 @@
-import { GraduationCap, Download, ChevronDown, ChevronUp, CheckCircle2, Clock, Lock, MessageSquare } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
+import { useMemo, useState } from 'react';
+import { Download, GraduationCap, Loader2, Search, UserRound } from 'lucide-react';
+import DashboardLayout from '@/components/DashboardLayout';
+import AdminClientProfileSheet from '@/components/admin/AdminClientProfileSheet';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { trpc } from '@/lib/trpc';
-import DashboardLayout from '@/components/DashboardLayout';
-import { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { DataTablePagination, useDataTable } from '@/components/DataTable';
 
-// Phase definitions matching the plan page
-const PHASES = [
-  { num: 1, nameAr: 'أساسيات التداول', nameEn: 'Trading Basics', days: '1–2' },
-  { num: 2, nameAr: 'التحليل الأساسي', nameEn: 'Fundamental Analysis', days: '3–5' },
-  { num: 3, nameAr: 'إدارة المخاطر', nameEn: 'Risk Management', days: '6–8' },
-  { num: 4, nameAr: 'جلسة المراجعة', nameEn: 'Review Session', days: '8' },
-  { num: 5, nameAr: 'خطة التداول', nameEn: 'Trading Plan', days: '9' },
-  { num: 6, nameAr: 'الحساب الحقيقي', nameEn: 'Live Account', days: '10' },
-];
+function formatDateValue(value: string | null | undefined, locale: string) {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleDateString(locale, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+}
 
-const PHASE_TASKS: Record<number, { id: string; labelAr: string; labelEn: string }[]> = {
-  1: [
-    { id: 'p1_open_demo', labelAr: 'فتح حساب تجريبي', labelEn: 'Open demo account' },
-    { id: 'p1_first_trade', labelAr: 'تنفيذ أول صفقة', labelEn: 'Execute first trade' },
-    { id: 'p1_upload_account', labelAr: 'رفع صورة الحساب', labelEn: 'Upload account screenshot' },
-    { id: 'p1_upload_trade', labelAr: 'رفع صورة الصفقة', labelEn: 'Upload trade screenshot' },
-  ],
-  2: [
-    { id: 'p2_follow_news', labelAr: 'متابعة الأخبار الاقتصادية', labelEn: 'Follow economic news' },
-    { id: 'p2_execute_trades', labelAr: 'تنفيذ صفقات تجريبية', labelEn: 'Execute demo trades' },
-    { id: 'p2_record_results', labelAr: 'تسجيل نتائج الصفقات', labelEn: 'Record trade results' },
-  ],
-  3: [
-    { id: 'p3_video_capital', labelAr: 'فيديو إدارة رأس المال', labelEn: 'Capital management video' },
-    { id: 'p3_video_risk', labelAr: 'فيديو إدارة المخاطر', labelEn: 'Risk management video' },
-    { id: 'p3_video_recs', labelAr: 'فيديو إدارة التوصيات', labelEn: 'Recommendations video' },
-    { id: 'p3_video_psychology', labelAr: 'فيديو الأخطاء النفسية', labelEn: 'Psychology errors video' },
-    { id: 'p3_video_discipline', labelAr: 'فيديو الانضباط', labelEn: 'Discipline video' },
-    { id: 'p3_continue_trading', labelAr: 'الاستمرار بالتداول', labelEn: 'Continue trading' },
-    { id: 'p3_risk_ratio', labelAr: 'الالتزام بنسبة مخاطرة', labelEn: 'Risk ratio adherence' },
-    { id: 'p3_record_trades', labelAr: 'تسجيل الصفقات', labelEn: 'Record trades' },
-  ],
-  4: [
-    { id: 'p4_book_session', labelAr: 'حجز الجلسة', labelEn: 'Book session' },
-    { id: 'p4_attend', labelAr: 'حضور اللقاء', labelEn: 'Attend session' },
-    { id: 'p4_prepare_questions', labelAr: 'تجهيز الأسئلة', labelEn: 'Prepare questions' },
-  ],
-  5: [
-    { id: 'p5_write_plan', labelAr: 'كتابة الخطة', labelEn: 'Write plan' },
-    { id: 'p5_send_plan', labelAr: 'إرسالها للدعم', labelEn: 'Send to support' },
-    { id: 'p5_plan_approved', labelAr: 'اعتماد الخطة', labelEn: 'Plan approved' },
-  ],
-  6: [
-    { id: 'p6_open_real', labelAr: 'فتح حساب حقيقي', labelEn: 'Open live account' },
-    { id: 'p6_verify_account', labelAr: 'توثيق الحساب', labelEn: 'Verify account' },
-    { id: 'p6_review_risk', labelAr: 'مراجعة خطة المخاطر', labelEn: 'Review risk plan' },
-    { id: 'p6_confirm_ready', labelAr: 'تأكيد الجاهزية', labelEn: 'Confirm readiness' },
-  ],
-};
+function getLearningStatus(row: any) {
+  if (!row.hasEnrollment) return 'not_enrolled';
+  if ((row.progressPercentage || 0) >= 100) return 'completed';
+  if ((row.progressPercentage || 0) > 0) return 'in_progress';
+  return 'not_started';
+}
 
-const ALL_TASK_IDS = Object.values(PHASE_TASKS).flat().map(t => t.id);
+function getStatusLabel(status: string, isRtl: boolean) {
+  switch (status) {
+    case 'completed':
+      return isRtl ? 'مكتمل' : 'Completed';
+    case 'in_progress':
+      return isRtl ? 'قيد التقدم' : 'In Progress';
+    case 'not_started':
+      return isRtl ? 'لم يبدأ' : 'Not Started';
+    default:
+      return isRtl ? 'بدون تسجيل' : 'No Enrollment';
+  }
+}
+
+function getStatusClasses(status: string) {
+  switch (status) {
+    case 'completed':
+      return 'bg-emerald-100 text-emerald-800 border-emerald-200';
+    case 'in_progress':
+      return 'bg-teal-100 text-teal-800 border-teal-200';
+    case 'not_started':
+      return 'bg-amber-100 text-amber-800 border-amber-200';
+    default:
+      return 'bg-slate-100 text-slate-700 border-slate-200';
+  }
+}
 
 export default function AdminPlanProgress() {
   const { language } = useLanguage();
   const isRtl = language === 'ar';
-  const utils = trpc.useUtils();
-  const { data: students, isLoading } = trpc.plan.listAll.useQuery();
-  const approveMutation = trpc.plan.approvePhase.useMutation({
-    onSuccess: () => utils.plan.listAll.invalidate(),
-  });
-  const revokeMutation = trpc.plan.revokePhase.useMutation({
-    onSuccess: () => utils.plan.listAll.invalidate(),
-  });
-  const notesMutation = trpc.plan.updateNotes.useMutation({
-    onSuccess: () => utils.plan.listAll.invalidate(),
-  });
+  const locale = isRtl ? 'ar-EG' : 'en-US';
+  const { data: rows, isLoading } = trpc.reports.learningProgress.useQuery();
+  const [search, setSearch] = useState('');
+  const [profileUserId, setProfileUserId] = useState<number | null>(null);
 
-  const [expandedId, setExpandedId] = useState<number | null>(null);
-  const [notesInput, setNotesInput] = useState<Record<number, string>>({});
-  // Two-tap confirmation: key = "studentId-phase", value = "approve" | "revoke"
-  const [confirmAction, setConfirmAction] = useState<string | null>(null);
+  const filtered = useMemo(() => {
+    const list = (rows as any[] | undefined) ?? [];
+    const query = search.trim().toLowerCase();
 
-  const getProgress = (student: any) => {
-    const progress = JSON.parse(student.progress || '{}');
-    const completed = ALL_TASK_IDS.filter(t => progress[t]).length;
-    return Math.round((completed / ALL_TASK_IDS.length) * 100);
-  };
+    return list
+      .filter((row) => {
+        if (!query) return true;
+        return [row.userName, row.userEmail, row.userPhone]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(query));
+      })
+      .sort((a, b) => {
+        const rank = (row: any) => {
+          switch (getLearningStatus(row)) {
+            case 'in_progress':
+              return 0;
+            case 'not_started':
+              return 1;
+            case 'completed':
+              return 2;
+            default:
+              return 3;
+          }
+        };
 
-  const getPhaseTaskCount = (student: any, phaseNum: number) => {
-    const progress = JSON.parse(student.progress || '{}');
-    const tasks = PHASE_TASKS[phaseNum] || [];
-    const done = tasks.filter(t => progress[t.id]).length;
-    return { done, total: tasks.length };
-  };
+        const rankDiff = rank(a) - rank(b);
+        if (rankDiff !== 0) return rankDiff;
+
+        const progressDiff = (b.progressPercentage || 0) - (a.progressPercentage || 0);
+        if (progressDiff !== 0) return progressDiff;
+
+        return (a.userName || '').localeCompare(b.userName || '');
+      });
+  }, [rows, search]);
+
+  const stats = useMemo(() => {
+    const list = (rows as any[] | undefined) ?? [];
+    return {
+      totalClients: list.length,
+      enrolled: list.filter((row) => row.hasEnrollment).length,
+      inProgress: list.filter((row) => getLearningStatus(row) === 'in_progress').length,
+      completed: list.filter((row) => getLearningStatus(row) === 'completed').length,
+    };
+  }, [rows]);
+
+  const {
+    paged,
+    page,
+    pageSize,
+    totalPages,
+    totalItems,
+    setPage,
+    changePageSize,
+  } = useDataTable(filtered, undefined, 12);
 
   const exportCSV = () => {
-    if (!students?.length) return;
-    const header = 'Name,Email,Phone,Current Phase,Progress %,Phase 1,Phase 2,Phase 3,Phase 4,Phase 5,Phase 6,Created,Updated';
-    const rows = students.map((s: any) => {
-      const approvals = JSON.parse(s.phaseApprovals || '{}');
-      const pct = getProgress(s);
-      return `"${s.fullName}","${s.email}","${s.phone || ''}",${s.currentPhase},${pct}%,${approvals['1'] ? 'Approved' : 'Pending'},${approvals['2'] ? 'Approved' : 'Pending'},${approvals['3'] ? 'Approved' : 'Pending'},${approvals['4'] ? 'Approved' : 'Pending'},${approvals['5'] ? 'Approved' : 'Pending'},${approvals['6'] ? 'Approved' : 'Pending'},"${s.createdAt}","${s.updatedAt}"`;
-    });
-    const csv = [header, ...rows].join('\n');
+    if (!filtered.length) return;
+    const headers = ['Client', 'Email', 'Phone', 'Status', 'Course', 'Progress %', 'Completed Lessons', 'Total Lessons', 'Enrolled At', 'Completed At', 'Last Sign In'];
+    const csv = [
+      headers.join(','),
+      ...filtered.map((row) => [
+        row.userName || '',
+        row.userEmail || '',
+        row.userPhone || '',
+        getStatusLabel(getLearningStatus(row), false),
+        row.courseTitleEn || 'No Enrollment',
+        row.progressPercentage || 0,
+        row.completedEpisodes || 0,
+        row.totalEpisodes || 0,
+        row.enrolledAt || '',
+        row.completedAt || '',
+        row.lastSignedIn || '',
+      ].map((value) => `"${String(value).replace(/"/g, '""')}"`).join(',')),
+    ].join('\n');
+
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'plan-progress.csv';
+    link.download = `learning-progress-${new Date().toISOString().slice(0, 10)}.csv`;
     link.click();
     URL.revokeObjectURL(url);
   };
 
-  const handleApprovePhase = (studentId: number, phase: number) => {
-    const key = `${studentId}-${phase}-approve`;
-    if (confirmAction !== key) {
-      setConfirmAction(key);
-      // Auto-reset after 3 seconds
-      setTimeout(() => setConfirmAction(prev => prev === key ? null : prev), 3000);
-      return;
-    }
-    setConfirmAction(null);
-    approveMutation.mutate({ studentId, phase });
-  };
-
-  const handleRevokePhase = (studentId: number, phase: number) => {
-    const key = `${studentId}-${phase}-revoke`;
-    if (confirmAction !== key) {
-      setConfirmAction(key);
-      setTimeout(() => setConfirmAction(prev => prev === key ? null : prev), 3000);
-      return;
-    }
-    setConfirmAction(null);
-    revokeMutation.mutate({ studentId, phase });
-  };
-
-  const handleSaveNotes = (studentId: number) => {
-    const notes = notesInput[studentId] ?? '';
-    notesMutation.mutate({ studentId, notes });
-  };
-
   return (
     <DashboardLayout>
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div className="flex items-center gap-3">
-            <GraduationCap className="h-7 w-7 text-emerald-500" />
-            <div>
-              <h1 className="text-2xl font-bold">{isRtl ? 'متابعة الخطة التعليمية' : 'Plan Progress'}</h1>
-              <p className="text-sm text-muted-foreground">
-                {isRtl ? 'برنامج الـ 10 أيام التأسيسي' : '10-Day Foundation Program'}
-              </p>
-            </div>
+      <div className="space-y-6 p-4 md:p-6" dir={isRtl ? 'rtl' : 'ltr'}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-900">
+              <GraduationCap className="h-6 w-6 text-emerald-600" />
+              {isRtl ? 'متابعة التعلم' : 'Learning Progress'}
+            </h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {isRtl
+                ? 'تقدم الطلاب في الدورة التعليمية الفعلية داخل المنصة'
+                : 'Real student progress across the academy learning course'}
+            </p>
           </div>
-          <div className="flex items-center gap-3">
-            <Badge variant="secondary" className="text-sm px-3 py-1">
-              {students?.length ?? 0} {isRtl ? 'طالب' : 'students'}
-            </Badge>
-            {students && students.length > 0 && (
-              <button
-                onClick={exportCSV}
-                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium bg-emerald-600 text-white hover:bg-emerald-700 transition"
-              >
-                <Download className="h-4 w-4" />
-                {isRtl ? 'تصدير CSV' : 'Export CSV'}
-              </button>
-            )}
+
+          <Button onClick={exportCSV} variant="outline" size="sm" disabled={!filtered.length}>
+            <Download className="me-2 h-4 w-4" />
+            {isRtl ? 'تصدير CSV' : 'Export CSV'}
+          </Button>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+          <div className="rounded-lg border bg-white px-3 py-3 text-center">
+            <p className="text-lg font-bold text-slate-900">{stats.totalClients}</p>
+            <p className="text-xs text-muted-foreground">{isRtl ? 'إجمالي العملاء' : 'Total Clients'}</p>
+          </div>
+          <div className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-3 text-center">
+            <p className="text-lg font-bold text-teal-700">{stats.enrolled}</p>
+            <p className="text-xs text-teal-700">{isRtl ? 'مسجلون في الدورة' : 'Enrolled'}</p>
+          </div>
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-center">
+            <p className="text-lg font-bold text-amber-700">{stats.inProgress}</p>
+            <p className="text-xs text-amber-700">{isRtl ? 'قيد التقدم' : 'In Progress'}</p>
+          </div>
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-3 text-center">
+            <p className="text-lg font-bold text-emerald-700">{stats.completed}</p>
+            <p className="text-xs text-emerald-700">{isRtl ? 'مكتملون' : 'Completed'}</p>
           </div>
         </div>
 
-        {/* Student Cards */}
+        <div className="relative">
+          <Search className="pointer-events-none absolute inset-y-0 start-3 my-auto h-4 w-4 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder={isRtl ? 'ابحث بالاسم أو الإيميل أو الهاتف' : 'Search by name, email, or phone'}
+            className="ps-9"
+          />
+        </div>
+
         {isLoading ? (
-          <div className="text-center py-16 text-muted-foreground">
-            {isRtl ? 'جارٍ التحميل...' : 'Loading...'}
+          <div className="flex min-h-[240px] items-center justify-center rounded-xl border bg-white">
+            <Loader2 className="h-6 w-6 animate-spin text-emerald-600" />
           </div>
-        ) : !students?.length ? (
-          <div className="text-center py-16 text-muted-foreground">
-            {isRtl ? 'لا توجد بيانات بعد' : 'No data yet'}
+        ) : filtered.length === 0 ? (
+          <div className="rounded-xl border bg-white px-4 py-16 text-center text-muted-foreground">
+            {search
+              ? (isRtl ? 'لا يوجد عملاء يطابقون البحث' : 'No clients match this search')
+              : (isRtl ? 'لا توجد بيانات تعلم بعد' : 'No learning data yet')}
           </div>
         ) : (
-          <div className="space-y-4">
-            {students.map((student: any) => {
-              const pct = getProgress(student);
-              const approvals = JSON.parse(student.phaseApprovals || '{}');
-              const answers = JSON.parse(student.answers || '{}');
-              const isExpanded = expandedId === student.id;
+          <div className="space-y-3">
+            {paged.map((row: any) => {
+              const status = getLearningStatus(row);
+              const progress = Math.max(0, Math.min(100, Number(row.progressPercentage) || 0));
+              const courseLabel = isRtl
+                ? (row.courseTitleAr || row.courseTitleEn || 'لا يوجد تسجيل في الدورة بعد')
+                : (row.courseTitleEn || row.courseTitleAr || 'No course enrollment yet');
 
               return (
-                <div key={student.id} className="rounded-xl border bg-card shadow-sm overflow-hidden">
-                  {/* Summary row */}
-                  <div
-                    className="flex items-center gap-4 p-4 cursor-pointer hover:bg-muted/30 transition"
-                    onClick={() => setExpandedId(isExpanded ? null : student.id)}
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-bold text-base truncate">{student.fullName}</span>
-                        <span className="text-xs text-muted-foreground font-mono">{student.email}</span>
-                        {student.phone && (
-                          <a
-                            href={`https://wa.me/${student.phone.replace(/[^0-9]/g, '')}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs text-emerald-600 hover:underline"
-                            onClick={e => e.stopPropagation()}
-                          >
-                            📱 {student.phone}
-                          </a>
+                <div key={row.userId} className="rounded-xl border bg-white p-4 shadow-sm">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div className="min-w-0 flex-1 space-y-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h2 className="truncate text-base font-semibold text-slate-900">{row.userName}</h2>
+                        <Badge variant="outline" className={getStatusClasses(status)}>
+                          {getStatusLabel(status, isRtl)}
+                        </Badge>
+                        {row.courseCount > 1 && (
+                          <Badge variant="outline" className="border-slate-200 bg-slate-50 text-slate-700">
+                            {isRtl ? `${row.courseCount} دورات` : `${row.courseCount} courses`}
+                          </Badge>
                         )}
                       </div>
-                      <div className="flex items-center gap-3 mt-2">
-                        <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden max-w-xs">
-                          <div
-                            className="h-full bg-emerald-500 rounded-full transition-all"
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
-                        <span className="text-xs font-semibold text-muted-foreground">{pct}%</span>
-                        <Badge variant={student.currentPhase > 6 ? 'default' : 'secondary'} className="text-xs">
-                          {student.currentPhase > 6
-                            ? (isRtl ? 'مكتمل ✅' : 'Complete ✅')
-                            : (isRtl ? `المرحلة ${student.currentPhase}` : `Phase ${student.currentPhase}`)}
-                        </Badge>
-                      </div>
-                    </div>
-                    {isExpanded ? <ChevronUp className="h-5 w-5 shrink-0" /> : <ChevronDown className="h-5 w-5 shrink-0" />}
-                  </div>
 
-                  {/* Expanded detail */}
-                  {isExpanded && (
-                    <div className="border-t p-4 space-y-4 bg-muted/10">
-                      {/* Phase grid */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                        {PHASES.map(phase => {
-                          const { done, total } = getPhaseTaskCount(student, phase.num);
-                          const isApproved = !!approvals[String(phase.num)];
-                          const isCurrent = phase.num === student.currentPhase;
-
-                          return (
-                            <div key={phase.num} className={`rounded-lg border p-3 ${isApproved ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800' : isCurrent ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800' : ''}`}>
-                              <div className="flex items-center justify-between mb-2">
-                                <div className="flex items-center gap-2">
-                                  {isApproved ? (
-                                    <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                                  ) : isCurrent ? (
-                                    <Clock className="h-4 w-4 text-amber-500" />
-                                  ) : (
-                                    <Lock className="h-4 w-4 text-muted-foreground" />
-                                  )}
-                                  <span className="font-bold text-sm">
-                                    {isRtl ? phase.nameAr : phase.nameEn}
-                                  </span>
-                                </div>
-                                <span className="text-xs text-muted-foreground">{done}/{total}</span>
-                              </div>
-
-                              {/* Task checkboxes (read-only for admin) */}
-                              <div className="space-y-1 mb-2">
-                                {(PHASE_TASKS[phase.num] || []).map(task => {
-                                  const progress = JSON.parse(student.progress || '{}');
-                                  return (
-                                    <div key={task.id} className="flex items-center gap-2 text-xs">
-                                      <input type="checkbox" checked={!!progress[task.id]} disabled className="h-3.5 w-3.5 accent-emerald-500" />
-                                      <span className={progress[task.id] ? 'line-through text-muted-foreground' : ''}>
-                                        {isRtl ? task.labelAr : task.labelEn}
-                                      </span>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-
-                              {/* Approve/Revoke button */}
-                              <div className="flex gap-2 mt-1">
-                                {isApproved ? (
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); handleRevokePhase(student.id, phase.num); }}
-                                    disabled={revokeMutation.isPending}
-                                    className={`text-sm px-3 py-2 rounded-lg font-medium transition min-h-[40px] ${
-                                      confirmAction === `${student.id}-${phase.num}-revoke`
-                                        ? 'bg-red-600 text-white animate-pulse'
-                                        : 'bg-red-100 text-red-700 hover:bg-red-200'
-                                    }`}
-                                  >
-                                    {revokeMutation.isPending ? '...' :
-                                      confirmAction === `${student.id}-${phase.num}-revoke`
-                                        ? (isRtl ? 'اضغط مرة أخرى للتأكيد' : 'Tap again to confirm')
-                                        : (isRtl ? 'إلغاء الموافقة' : 'Revoke')}
-                                  </button>
-                                ) : (
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); handleApprovePhase(student.id, phase.num); }}
-                                    disabled={approveMutation.isPending}
-                                    className={`text-sm px-3 py-2 rounded-lg font-medium transition min-h-[40px] ${
-                                      confirmAction === `${student.id}-${phase.num}-approve`
-                                        ? 'bg-emerald-600 text-white animate-pulse'
-                                        : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
-                                    }`}
-                                  >
-                                    {approveMutation.isPending ? '...' :
-                                      confirmAction === `${student.id}-${phase.num}-approve`
-                                        ? (isRtl ? 'اضغط مرة أخرى للتأكيد' : 'Tap again to confirm')
-                                        : (isRtl ? 'موافقة ✅' : 'Approve ✅')}
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                        <span dir="ltr">{row.userEmail}</span>
+                        {row.userPhone && <span dir="ltr">{row.userPhone}</span>}
                       </div>
 
-                      {/* Student answers */}
-                      {Object.keys(answers).length > 0 && (
-                        <div className="space-y-3">
-                          <h4 className="font-bold text-sm flex items-center gap-2">
-                            <MessageSquare className="h-4 w-4" />
-                            {isRtl ? 'إجابات الطالب' : 'Student Answers'}
-                          </h4>
-                          {Object.entries(answers).map(([key, value]: [string, any]) => (
-                            <div key={key} className="rounded-lg border p-3 bg-card">
-                              <div className="text-xs font-semibold text-muted-foreground mb-1">
-                                {key.replace('phase', isRtl ? 'المرحلة ' : 'Phase ')}
-                              </div>
-                              <p className="text-sm whitespace-pre-wrap leading-relaxed">{value}</p>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                      <div className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                        <span className="font-medium text-slate-900">{isRtl ? 'الدورة:' : 'Course:'}</span>{' '}
+                        {courseLabel}
+                      </div>
 
-                      {/* Admin notes */}
                       <div className="space-y-2">
-                        <h4 className="font-bold text-sm">{isRtl ? 'ملاحظات الإدارة' : 'Admin Notes'}</h4>
-                        <textarea
-                          className="w-full min-h-[80px] p-3 text-sm border rounded-lg resize-y bg-background"
-                          placeholder={isRtl ? 'أضف ملاحظات...' : 'Add notes...'}
-                          value={notesInput[student.id] ?? student.adminNotes ?? ''}
-                          onChange={e => setNotesInput(prev => ({ ...prev, [student.id]: e.target.value }))}
-                        />
-                        <button
-                          onClick={() => handleSaveNotes(student.id)}
-                          disabled={notesMutation.isPending}
-                          className="text-xs px-3 py-1.5 rounded-lg bg-slate-800 text-white hover:bg-slate-700 transition font-medium disabled:opacity-50"
-                        >
-                          {notesMutation.isPending ? '...' : (isRtl ? 'حفظ الملاحظات' : 'Save Notes')}
-                        </button>
+                        <div className="flex items-center justify-between text-xs font-medium text-muted-foreground">
+                          <span>{isRtl ? 'نسبة التقدم' : 'Progress'}</span>
+                          <span>{progress}%</span>
+                        </div>
+                        <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                          <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${progress}%` }} />
+                        </div>
+                        <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
+                          <span>
+                            {isRtl ? 'الدروس المكتملة:' : 'Completed lessons:'}{' '}
+                            <span className="font-semibold text-slate-900">{row.completedEpisodes || 0}</span>
+                          </span>
+                          <span>
+                            {isRtl ? 'إجمالي الدروس:' : 'Total lessons:'}{' '}
+                            <span className="font-semibold text-slate-900">{row.totalEpisodes || 0}</span>
+                          </span>
+                        </div>
                       </div>
 
-                      {/* Metadata */}
-                      <div className="text-xs text-muted-foreground flex flex-wrap gap-4">
-                        <span>{isRtl ? 'تاريخ التسجيل:' : 'Created:'} {new Date(student.createdAt).toLocaleString(isRtl ? 'ar-EG' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' })}</span>
-                        <span>{isRtl ? 'آخر تحديث:' : 'Updated:'} {new Date(student.updatedAt).toLocaleString(isRtl ? 'ar-EG' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' })}</span>
+                      <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
+                        <span>{isRtl ? 'تاريخ التسجيل:' : 'Enrolled:'} {formatDateValue(row.enrolledAt, locale)}</span>
+                        <span>{isRtl ? 'تاريخ الإكمال:' : 'Completed:'} {formatDateValue(row.completedAt, locale)}</span>
+                        <span>{isRtl ? 'آخر دخول:' : 'Last sign in:'} {formatDateValue(row.lastSignedIn, locale)}</span>
                       </div>
                     </div>
-                  )}
+
+                    <Button variant="outline" size="sm" onClick={() => setProfileUserId(row.userId)}>
+                      <UserRound className="me-2 h-4 w-4" />
+                      {isRtl ? 'فتح الملف' : 'Open Profile'}
+                    </Button>
+                  </div>
                 </div>
               );
             })}
+
+            <DataTablePagination
+              page={page}
+              pageSize={pageSize}
+              totalPages={totalPages}
+              totalItems={totalItems}
+              setPage={setPage}
+              changePageSize={changePageSize}
+              isRtl={isRtl}
+            />
           </div>
         )}
+
+        <AdminClientProfileSheet
+          userId={profileUserId}
+          open={profileUserId != null}
+          onOpenChange={(open) => {
+            if (!open) {
+              setProfileUserId(null);
+            }
+          }}
+        />
       </div>
     </DashboardLayout>
   );

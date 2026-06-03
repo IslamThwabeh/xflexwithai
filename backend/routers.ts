@@ -5908,6 +5908,10 @@ export const appRouter = router({
     expirations: adminProcedure.query(async () => {
       return db.getSubscriptionExpiryReport();
     }),
+    learningProgress: adminOrRoleProcedure(['plan_manager'])
+      .query(async () => {
+        return db.getAdminLearningProgressReport();
+      }),
   }),
 
   // ============================================================================
