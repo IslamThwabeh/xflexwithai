@@ -3878,6 +3878,9 @@ export const appRouter = router({
       .mutation(async ({ ctx, input }) => {
         if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
         const conv = await db.getOrCreateSupportConversation(ctx.user.id);
+        const normalizedAttachmentDuration = typeof input.attachmentDuration === 'number' && Number.isFinite(input.attachmentDuration)
+          ? Math.round(input.attachmentDuration)
+          : undefined;
         const msg = await db.createSupportMessage({
           conversationId: conv.id,
           senderId: ctx.user.id,
@@ -3888,7 +3891,7 @@ export const appRouter = router({
           attachmentName: input.attachmentName,
           attachmentSize: input.attachmentSize,
           attachmentType: input.attachmentType,
-          attachmentDuration: input.attachmentDuration,
+          attachmentDuration: normalizedAttachmentDuration && normalizedAttachmentDuration > 0 ? normalizedAttachmentDuration : undefined,
         });
 
         // AI auto-replies unless the student has requested a human.
@@ -4016,6 +4019,9 @@ export const appRouter = router({
         if (!conv) throw new TRPCError({ code: 'NOT_FOUND', message: 'Conversation not found' });
 
         const isAdmin = ctx.user.email ? !!(await db.getAdminByEmail(ctx.user.email)) : false;
+        const normalizedAttachmentDuration = typeof input.attachmentDuration === 'number' && Number.isFinite(input.attachmentDuration)
+          ? Math.round(input.attachmentDuration)
+          : undefined;
         const msg = await db.createSupportMessage({
           conversationId: input.conversationId,
           senderId: ctx.user.id,
@@ -4026,7 +4032,7 @@ export const appRouter = router({
           attachmentName: input.attachmentName,
           attachmentSize: input.attachmentSize,
           attachmentType: input.attachmentType,
-          attachmentDuration: input.attachmentDuration,
+          attachmentDuration: normalizedAttachmentDuration && normalizedAttachmentDuration > 0 ? normalizedAttachmentDuration : undefined,
         });
 
         // Notify student when admin/support replies

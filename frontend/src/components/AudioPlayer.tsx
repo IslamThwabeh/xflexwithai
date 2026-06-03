@@ -7,12 +7,16 @@ interface AudioPlayerProps {
   isOwn?: boolean;
 }
 
+function isUsableDuration(value?: number): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 1;
+}
+
 export default function AudioPlayer({ src, duration, isOwn }: AudioPlayerProps) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
-  const [totalDuration, setTotalDuration] = useState(duration || 0);
+  const [totalDuration, setTotalDuration] = useState(isUsableDuration(duration) ? duration : 0);
   const [playbackRate, setPlaybackRate] = useState<1 | 1.5 | 2>(1);
   const [waveformBars, setWaveformBars] = useState<number[]>([]);
 
@@ -28,19 +32,28 @@ export default function AudioPlayer({ src, duration, isOwn }: AudioPlayerProps) 
   }, [src]);
 
   useEffect(() => {
+    setPlaying(false);
+    setProgress(0);
+    setCurrentTime(0);
+    setTotalDuration(isUsableDuration(duration) ? duration : 0);
+  }, [duration, src]);
+
+  useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
+    const fallbackDuration = isUsableDuration(duration) ? duration : 0;
 
     const onTimeUpdate = () => {
       setCurrentTime(audio.currentTime);
       setPlaying(!audio.paused && !audio.ended);
-      if (audio.duration && isFinite(audio.duration)) {
-        setProgress((audio.currentTime / audio.duration) * 100);
+      const activeDuration = isUsableDuration(audio.duration) ? audio.duration : fallbackDuration;
+      if (activeDuration > 0) {
+        setProgress((audio.currentTime / activeDuration) * 100);
       }
     };
 
     const onLoadedMetadata = () => {
-      if (audio.duration && isFinite(audio.duration)) {
+      if (isUsableDuration(audio.duration)) {
         setTotalDuration(audio.duration);
       }
     };
@@ -66,7 +79,7 @@ export default function AudioPlayer({ src, duration, isOwn }: AudioPlayerProps) 
       audio.removeEventListener('pause', onPause);
       audio.removeEventListener('play', onPlay);
     };
-  }, []);
+  }, [duration]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -132,11 +145,17 @@ export default function AudioPlayer({ src, duration, isOwn }: AudioPlayerProps) 
 
   const handleBarClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const audio = audioRef.current;
-    if (!audio || !audio.duration || !isFinite(audio.duration)) return;
+    if (!audio) return;
+    const activeDuration = isUsableDuration(audio.duration)
+      ? audio.duration
+      : isUsableDuration(duration)
+        ? duration
+        : 0;
+    if (activeDuration <= 0) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const pct = x / rect.width;
-    audio.currentTime = pct * audio.duration;
+    audio.currentTime = pct * activeDuration;
   };
 
   const formatTime = (sec: number) => {
@@ -145,7 +164,11 @@ export default function AudioPlayer({ src, duration, isOwn }: AudioPlayerProps) 
     return `${m}:${s.toString().padStart(2, '0')}`;
   };
 
-  const displayDuration = totalDuration || duration || 0;
+  const displayDuration = isUsableDuration(totalDuration)
+    ? totalDuration
+    : isUsableDuration(duration)
+      ? duration
+      : 0;
   const bars = waveformBars.length ? waveformBars : fallbackWaveform;
   const activeBars = Math.round((progress / 100) * bars.length);
   const nextRate = playbackRate === 1 ? 1.5 : playbackRate === 1.5 ? 2 : 1;

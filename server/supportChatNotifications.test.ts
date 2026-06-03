@@ -176,4 +176,29 @@ describe("support chat staff notifications", () => {
       content: "Hello from AI",
     });
   });
+
+  it("normalizes voice-note duration before persisting the support message", async () => {
+    const caller = createAuthedCaller();
+
+    getOrCreateSupportConversation.mockResolvedValue({
+      id: 10,
+      userId: 123,
+      status: "open",
+      needsHuman: true,
+    } as any);
+    createSupportMessage.mockResolvedValue({ id: 91, conversationId: 10, content: "voice" } as any);
+
+    await caller.supportChat.send({
+      content: "voice",
+      attachmentType: "voice",
+      attachmentDuration: 12.6,
+    });
+
+    expect(createSupportMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        attachmentType: "voice",
+        attachmentDuration: 13,
+      }),
+    );
+  });
 });

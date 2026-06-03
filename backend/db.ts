@@ -6876,6 +6876,9 @@ export async function createSupportMessage(msg: {
   if (!db) throw new Error("Database not available");
 
   const now = new Date().toISOString();
+  const normalizedAttachmentDuration = typeof msg.attachmentDuration === "number" && Number.isFinite(msg.attachmentDuration)
+    ? Math.round(msg.attachmentDuration)
+    : null;
   const [message] = await db.insert(supportMessages).values({
     conversationId: msg.conversationId,
     senderId: msg.senderId,
@@ -6886,7 +6889,7 @@ export async function createSupportMessage(msg: {
     attachmentName: msg.attachmentName || null,
     attachmentSize: msg.attachmentSize || null,
     attachmentType: msg.attachmentType || null,
-    attachmentDuration: msg.attachmentDuration || null,
+    attachmentDuration: normalizedAttachmentDuration && normalizedAttachmentDuration > 0 ? normalizedAttachmentDuration : null,
     createdAt: now,
   }).returning();
 

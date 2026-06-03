@@ -32,16 +32,33 @@ export default function VoiceRecorder({ onRecordingComplete, disabled, isRTL }: 
 
   const startRecording = useCallback(async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: { ideal: 1 },
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          sampleRate: { ideal: 48000 },
+          sampleSize: { ideal: 16 },
+        },
+      });
       chunks.current = [];
 
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : MediaRecorder.isTypeSupported('audio/webm')
-        ? 'audio/webm'
-        : 'audio/mp4';
+      const mimeType = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/mp4',
+      ].find((candidate) => MediaRecorder.isTypeSupported(candidate));
 
-      const recorder = new MediaRecorder(stream, { mimeType });
+      let recorder: MediaRecorder;
+      try {
+        recorder = new MediaRecorder(stream, {
+          ...(mimeType ? { mimeType } : {}),
+          audioBitsPerSecond: 128000,
+        });
+      } catch {
+        recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      }
       mediaRecorder.current = recorder;
 
       recorder.ondataavailable = (e) => {
@@ -62,7 +79,7 @@ export default function VoiceRecorder({ onRecordingComplete, disabled, isRTL }: 
           return;
         }
         if (chunks.current.length > 0 && duration >= 1) {
-          const blob = new Blob(chunks.current, { type: mimeType });
+          const blob = new Blob(chunks.current, { type: recorder.mimeType || mimeType || 'audio/webm' });
           onRecordingComplete(blob, duration);
         }
         shouldDiscardRef.current = false;
@@ -71,7 +88,7 @@ export default function VoiceRecorder({ onRecordingComplete, disabled, isRTL }: 
         setElapsed(0);
       };
 
-      recorder.start(250); // collect chunks every 250ms
+      recorder.start();
       startTimeRef.current = Date.now();
       setRecording(true);
 
