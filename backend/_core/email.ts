@@ -8,6 +8,35 @@ export type EmailAuditInput = {
   metadata?: Record<string, unknown>;
 };
 
+export type EmailErrorCategory = 'timeout' | '5xx' | '4xx' | 'network' | 'config' | 'unknown';
+
+export class EmailSendError extends Error {
+  readonly category: EmailErrorCategory;
+  readonly attemptedProviders: string[];
+  readonly providerUsed: string | null;
+  constructor(message: string, opts: { category: EmailErrorCategory; attemptedProviders: string[]; providerUsed: string | null }) {
+    super(message);
+    this.name = 'EmailSendError';
+    this.category = opts.category;
+    this.attemptedProviders = opts.attemptedProviders;
+    this.providerUsed = opts.providerUsed;
+  }
+}
+
+function categorizeEmailError(error: unknown): EmailErrorCategory {
+  const msg = error instanceof Error ? error.message : String(error || '');
+  if (/not configured/i.test(msg)) return 'config';
+  const statusMatch = msg.match(/\((\d{3})/);
+  if (statusMatch) {
+    const code = Number(statusMatch[1]);
+    if (code >= 500) return '5xx';
+    if (code >= 400) return '4xx';
+  }
+  if (/timeout|timed out|ETIMEDOUT/i.test(msg)) return 'timeout';
+  if (/network|ECONN|fetch failed|ENOTFOUND|EAI_AGAIN/i.test(msg)) return 'network';
+  return 'unknown';
+}
+
 type SendEmailInput = {
   to: string;
   subject: string;
@@ -134,7 +163,7 @@ async function sendViaMailChannels(input: SendEmailInput) {
   }
 }
 
-export async function sendEmail(input: SendEmailInput) {
+export async function sendEmail(input: SendEmailInput): Promise<{ provider: string | null; attemptedProviders: string[] }> {
   const provider = ENV.emailProvider;
   const attemptedProviders: string[] = [];
   let providerUsed: string | null = null;
@@ -149,19 +178,19 @@ export async function sendEmail(input: SendEmailInput) {
     if (provider === "resend") {
       await attemptWith("resend", sendViaResend);
       await writeEmailDeliveryAudit(input, { status: 'sent', provider: providerUsed });
-      return;
+      return { provider: providerUsed, attemptedProviders: [...attemptedProviders] };
     }
 
     if (provider === "zeptomail") {
       await attemptWith("zeptomail", sendViaZeptoMail);
       await writeEmailDeliveryAudit(input, { status: 'sent', provider: providerUsed });
-      return;
+      return { provider: providerUsed, attemptedProviders: [...attemptedProviders] };
     }
 
     if (provider === "mailchannels") {
       await attemptWith("mailchannels", sendViaMailChannels);
       await writeEmailDeliveryAudit(input, { status: 'sent', provider: providerUsed });
-      return;
+      return { provider: providerUsed, attemptedProviders: [...attemptedProviders] };
     }
 
     // Auto: attempt ZeptoMail if configured, then Resend, then MailChannels.
@@ -172,7 +201,7 @@ export async function sendEmail(input: SendEmailInput) {
       try {
         await attemptWith("zeptomail", sendViaZeptoMail);
         await writeEmailDeliveryAudit(input, { status: 'sent', provider: providerUsed });
-        return;
+        return { provider: providerUsed, attemptedProviders: [...attemptedProviders] };
       } catch (e) {
         errors.push(e instanceof Error ? e.message : String(e));
       }
@@ -182,7 +211,7 @@ export async function sendEmail(input: SendEmailInput) {
       try {
         await attemptWith("resend", sendViaResend);
         await writeEmailDeliveryAudit(input, { status: 'sent', provider: providerUsed });
-        return;
+        return { provider: providerUsed, attemptedProviders: [...attemptedProviders] };
       } catch (e) {
         errors.push(e instanceof Error ? e.message : String(e));
       }
@@ -191,7 +220,7 @@ export async function sendEmail(input: SendEmailInput) {
     try {
       await attemptWith("mailchannels", sendViaMailChannels);
       await writeEmailDeliveryAudit(input, { status: 'sent', provider: providerUsed });
-      return;
+      return { provider: providerUsed, attemptedProviders: [...attemptedProviders] };
     } catch (e) {
       errors.push(e instanceof Error ? e.message : String(e));
     }
@@ -199,6 +228,7 @@ export async function sendEmail(input: SendEmailInput) {
     throw new Error(errors.join(" | ") || "Failed to send email");
   } catch (error) {
     const resolvedProvider = providerUsed || (provider && provider !== "auto" ? provider : attemptedProviders.join(",") || null);
+    const category = categorizeEmailError(error);
     await writeEmailDeliveryAudit(input, {
       status: 'failed',
       provider: resolvedProvider,
@@ -207,9 +237,14 @@ export async function sendEmail(input: SendEmailInput) {
     logger.error("[EMAIL] Failed to send email", {
       to: input.to,
       provider: resolvedProvider || provider,
+      category,
+      attemptedProviders,
       error: error instanceof Error ? error.message : "Unknown error",
     });
-    throw error;
+    throw new EmailSendError(
+      error instanceof Error ? error.message : String(error),
+      { category, attemptedProviders: [...attemptedProviders], providerUsed: providerUsed },
+    );
   }
 }
 

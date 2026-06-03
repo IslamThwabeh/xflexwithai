@@ -5,6 +5,7 @@ import { createWorkerContext } from "./context-worker";
 import * as db from "../db";
 import { verifyFreeVideoPlaybackToken } from "./freeLibraryPlayback";
 import { sendFreezeExpiredEmail, sendExpiryAlertEmail, sendDripEmail, sendMilestoneEmail, sendInactivityEmail, sendOnboardingStalledEmail } from "./orderEmails";
+import { sendEmail } from "./email";
 import { logger } from "./logger";
 import { getFreeLibraryDocumentBySlug, getFreeLibraryVideoBySlug } from "../../shared/freeLibrary";
 
@@ -598,6 +599,85 @@ export default {
       }
     } catch (e) {
       logger.error("[CRON] Auto-close stale conversations failed", e);
+    }
+
+    // --- Recommendation subscriber repair (moved off the hot send path) ---
+    try {
+      await db.runRecommendationSubscriberRepair();
+    } catch (e) {
+      logger.error("[CRON] Recommendation subscriber repair failed", e);
+    }
+
+    // --- Recommendation delivery retry/drain ---
+    // Re-send pending/failed deliveries (capped attempts; dead-letter on the
+    // final failure). The stored subject/body lets us resend without
+    // recomputing template state.
+    try {
+      const drainBatch = await db.listPendingRecommendationDeliveriesForRetry(50);
+      for (const row of drainBatch) {
+        if (!row.subject || !row.bodyText) {
+          // Legacy row without rendered body — skip; cannot rebuild safely.
+          continue;
+        }
+        try {
+          const result = await sendEmail({
+            to: row.recipientEmail,
+            subject: row.subject,
+            text: row.bodyText,
+            html: row.bodyHtml ?? undefined,
+            audit: {
+              eventType: row.eventKind === 'alert' ? 'recommendation_alert' : `recommendation_${row.eventKind}`,
+              templateId: row.eventKind === 'alert' ? 'recommendation_alert' : `recommendation_${row.eventKind}`,
+              recipientUserId: row.userId,
+              metadata: { retry: true, eventKey: row.eventKey, refId: row.refId },
+            },
+          });
+          await db.markRecommendationDeliverySent({
+            eventKey: row.eventKey,
+            userId: row.userId,
+            provider: result?.provider ?? null,
+            attemptedProviders: result?.attemptedProviders,
+          });
+        } catch (err) {
+          const category = (err as { category?: string })?.category ?? 'unknown';
+          const attempted = (err as { attemptedProviders?: string[] })?.attemptedProviders;
+          await db.markRecommendationDeliveryFailed({
+            eventKey: row.eventKey,
+            userId: row.userId,
+            errorCategory: category,
+            errorMessage: err instanceof Error ? err.message : String(err),
+            attemptedProviders: attempted,
+          });
+        }
+      }
+    } catch (e) {
+      logger.error("[CRON] Recommendation delivery drain failed", e);
+    }
+
+    // --- Recommendation delivery anomaly check (rolling 24h) ---
+    try {
+      const sinceIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const stats = await db.getRecommendationDeliveryStats(sinceIso);
+      const attempted = stats.sent + stats.failed + stats.deadLetter;
+      const failureRatio = attempted > 0 ? (stats.failed + stats.deadLetter) / attempted : 0;
+      if (stats.deadLetter > 0 || failureRatio > 0.05) {
+        await db.notifyStaffByEvent('recommendation_delivery_anomaly', {
+          titleEn: `Recommendation delivery anomaly (${stats.deadLetter} dead-lettered)`,
+          titleAr: `شذوذ في توصيل التوصيات (${stats.deadLetter} رسائل فشلت نهائياً)`,
+          contentEn: `Last 24h: ${stats.sent} sent, ${stats.failed} failed, ${stats.deadLetter} dead-lettered, ${stats.pending} still pending, ${stats.skipped} skipped.`,
+          contentAr: `آخر 24 ساعة: ${stats.sent} مرسلة، ${stats.failed} فاشلة، ${stats.deadLetter} فاشلة نهائياً، ${stats.pending} معلقة، ${stats.skipped} متخطّاة.`,
+          metadata: {
+            sent: stats.sent,
+            failed: stats.failed,
+            deadLetter: stats.deadLetter,
+            pending: stats.pending,
+            skipped: stats.skipped,
+            failureRatio: Number(failureRatio.toFixed(3)),
+          },
+        }).catch((e) => logger.error('[CRON] Staff notify (recommendation_delivery_anomaly) failed', e));
+      }
+    } catch (e) {
+      logger.error("[CRON] Recommendation delivery anomaly check failed", e);
     }
   },
 };

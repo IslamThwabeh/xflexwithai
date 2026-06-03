@@ -505,10 +505,13 @@ type UserNotificationPrefs = {
   language?: "ar" | "en";
 };
 
-const parseNotificationPrefs = (notificationPrefs: string | null | undefined): UserNotificationPrefs => {
+const parseNotificationPrefs = (notificationPrefs: string | null | undefined, context?: { userId?: number; source?: string }): UserNotificationPrefs => {
+  if (!notificationPrefs) return {};
   try {
-    return JSON.parse(notificationPrefs || '{}') as UserNotificationPrefs;
+    const parsed = JSON.parse(notificationPrefs) as UserNotificationPrefs;
+    return parsed && typeof parsed === 'object' ? parsed : {};
   } catch {
+    logger.warn('[NOTIFICATIONS] Malformed notification_prefs ignored', context ?? {});
     return {};
   }
 };
@@ -2815,28 +2818,56 @@ export const appRouter = router({
       .mutation(async ({ ctx, input }) => {
         await ensureRecommendationPublishAccess(ctx);
 
+        // Validate the audience BEFORE persisting the alert so failed sends
+        // don't leave orphan recommendationAlerts rows. Diagnostics are stored
+        // on the alert for post-hoc admin investigation.
+        const funnel = await db.getRecommendationDeliveryFunnel();
+        const recipients = funnel.eligible;
+        if (!recipients.length) {
+          logger.warn('[RECOMMENDATIONS] Alert blocked: no eligible recipients', {
+            analystUserId: ctx.user.id,
+            diagnostics: funnel.diagnostics,
+          });
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'No eligible recommendation subscribers found. Verify active subscriptions and notification preferences before sending.',
+            cause: funnel.diagnostics as unknown as Error,
+          });
+        }
+
+        const diagnosticsJson = JSON.stringify(funnel.diagnostics);
         const alert = await db.createRecommendationAlert({
           analystUserId: ctx.user.id,
           note: input?.note,
+          deliveryDiagnosticsJson: diagnosticsJson,
         });
 
-        const subscribers = await db.getRecommendationSubscriberDetails();
-        const recipients = subscribers.filter((sub) => recommendationNotificationsEnabled(sub.notificationPrefs));
         const copy = buildRecommendationAlertNotificationCopy();
         const batchId = `rec_alert_${alert.id}_${Date.now()}`;
+        const eventKey = `rec_alert:${alert.id}`;
 
-        if (recipients.length) {
-          await db.sendBulkNotification({
-            userIds: recipients.map((sub) => sub.userId),
-            type: 'info',
-            titleEn: copy.titleEn,
-            titleAr: copy.titleAr,
-            contentEn: copy.contentEn,
-            contentAr: copy.contentAr,
-            actionUrl: '/recommendations',
-            batchId,
-          });
-        }
+        await db.prepareRecommendationDeliveries({
+          eventKey,
+          eventKind: 'alert',
+          refId: alert.id,
+          recipients: recipients.map((sub) => ({
+            userId: sub.userId,
+            recipientEmail: sub.email,
+            language: getPreferredNotificationLanguage(sub.notificationPrefs),
+            metadata: { batchId, unlockSeconds: RECOMMENDATION_ALERT_UNLOCK_SECONDS },
+          })),
+        });
+
+        await db.sendBulkNotification({
+          userIds: recipients.map((sub) => sub.userId),
+          type: 'info',
+          titleEn: copy.titleEn,
+          titleAr: copy.titleAr,
+          contentEn: copy.contentEn,
+          contentAr: copy.contentAr,
+          actionUrl: '/recommendations',
+          batchId,
+        });
 
         const emailResults = await Promise.allSettled(
           recipients.map(async (sub) => {
@@ -2844,27 +2875,58 @@ export const appRouter = router({
               language: getPreferredNotificationLanguage(sub.notificationPrefs),
               unlockSeconds: RECOMMENDATION_ALERT_UNLOCK_SECONDS,
             });
-            await sendEmail({
-              to: sub.email,
-              subject: emailCopy.subject,
-              text: emailCopy.text,
-              html: emailCopy.html,
-              audit: {
-                eventType: 'recommendation_alert',
-                templateId: 'recommendation_alert',
-                recipientUserId: sub.userId,
-                metadata: {
-                  recommendationId: alert.id,
-                  type: 'alert',
-                  batchId,
-                  unlockSeconds: RECOMMENDATION_ALERT_UNLOCK_SECONDS,
+            try {
+              const result = await sendEmail({
+                to: sub.email,
+                subject: emailCopy.subject,
+                text: emailCopy.text,
+                html: emailCopy.html,
+                audit: {
+                  eventType: 'recommendation_alert',
+                  templateId: 'recommendation_alert',
+                  recipientUserId: sub.userId,
+                  metadata: {
+                    recommendationId: alert.id,
+                    type: 'alert',
+                    batchId,
+                    unlockSeconds: RECOMMENDATION_ALERT_UNLOCK_SECONDS,
+                  },
                 },
-              },
-            });
-            await db.markNotificationEmailSent(batchId, sub.userId);
-            return sub.userId;
+              });
+              await db.markRecommendationDeliverySent({
+                eventKey,
+                userId: sub.userId,
+                provider: result?.provider ?? null,
+                attemptedProviders: result?.attemptedProviders,
+              });
+              return sub.userId;
+            } catch (err) {
+              const category = (err as { category?: string })?.category ?? 'unknown';
+              const attempted = (err as { attemptedProviders?: string[] })?.attemptedProviders;
+              await db.markRecommendationDeliveryFailed({
+                eventKey,
+                userId: sub.userId,
+                errorCategory: category,
+                errorMessage: err instanceof Error ? err.message : String(err),
+                attemptedProviders: attempted,
+              });
+              throw err;
+            }
           })
         );
+
+        const failedEmailResults = emailResults.filter((result) => result.status === 'rejected') as PromiseRejectedResult[];
+        if (failedEmailResults.length) {
+          logger.warn('[RECOMMENDATIONS] Alert email delivery failures detected', {
+            alertId: alert.id,
+            batchId,
+            recipients: recipients.length,
+            failed: failedEmailResults.length,
+            errors: failedEmailResults.slice(0, 5).map((result) =>
+              result.reason instanceof Error ? result.reason.message : String(result.reason)
+            ),
+          });
+        }
 
         const emailCount = emailResults.filter((result) => result.status === 'fulfilled').length;
 
@@ -2878,6 +2940,7 @@ export const appRouter = router({
               alertId: alert.id,
               recipientCount: recipients.length,
               emailCount,
+              diagnostics: funnel.diagnostics,
             },
           });
         }
@@ -2887,6 +2950,7 @@ export const appRouter = router({
           alert,
           recipientCount: recipients.length,
           emailCount,
+          diagnostics: funnel.diagnostics,
         };
       }),
 
@@ -2935,15 +2999,19 @@ export const appRouter = router({
 
         const isAdmin = !!(ctx.user?.email && await db.getAdminByEmail(ctx.user.email));
         const publishState = await db.getRecommendationPublishState(ctx.user.id);
-        const requiresPreNotification = input.type === 'recommendation';
 
-        if (requiresPreNotification && !publishState.activeAlert) {
+        // The publish window gates apply to every channel message, not just
+        // the top-level recommendation: updates/results piggyback on the
+        // active alert, so if the analyst hasn't notified, is still in the
+        // pre-unlock minute, or the chat paused after 15min of silence, no
+        // channel message should be delivered.
+        if (!publishState.activeAlert) {
           throw new TRPCError({
             code: 'FORBIDDEN',
             message: 'Notify clients first, then wait one minute before sending in the recommendations channel.',
           });
         }
-        if (requiresPreNotification && !publishState.canPostMessages) {
+        if (!publishState.canPostMessages) {
           if (publishState.secondsUntilUnlock > 0) {
             throw new TRPCError({
               code: 'FORBIDDEN',
@@ -2972,6 +3040,12 @@ export const appRouter = router({
         let notificationSymbol: string | null | undefined;
         const linkedAlertId = publishState.activeAlert?.id ?? null;
 
+        // Compute the recipient funnel ONCE before persisting so we can refuse
+        // top-level recommendations without leaving orphan recommendationMessage rows,
+        // and capture diagnostics for admin observability.
+        const funnel = await db.getRecommendationDeliveryFunnel();
+        const funnelEligible = funnel.eligible;
+
         if (input.type === 'recommendation') {
           if (input.parentId) {
             throw new TRPCError({ code: 'BAD_REQUEST', message: 'Top-level recommendations cannot be posted inside another thread.' });
@@ -2980,6 +3054,17 @@ export const appRouter = router({
           const normalizedSymbol = input.symbol?.trim().toUpperCase();
           if (!normalizedSymbol) {
             throw new TRPCError({ code: 'BAD_REQUEST', message: 'Choose the symbol first.' });
+          }
+
+          if (!funnelEligible.length) {
+            logger.warn('[RECOMMENDATIONS] Recommendation blocked: no eligible recipients', {
+              analystUserId: ctx.user.id,
+              diagnostics: funnel.diagnostics,
+            });
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: 'No eligible recommendation subscribers found. Verify active subscriptions and notification preferences before sending.',
+            });
           }
 
           rootMessageForDelivery = {
@@ -3011,6 +3096,7 @@ export const appRouter = router({
             threadStatus: 'open',
             closedAt: null,
             closedByUserId: null,
+            deliveryDiagnosticsJson: JSON.stringify(funnel.diagnostics),
             createdAt: new Date().toISOString(),
           });
         } else {
@@ -3060,6 +3146,7 @@ export const appRouter = router({
             takeProfit3: input.takeProfit3,
             riskPercent: input.riskPercent,
             parentId: input.parentId,
+            deliveryDiagnosticsJson: JSON.stringify(funnel.diagnostics),
             createdAt: new Date().toISOString(),
           });
         }
@@ -3070,20 +3157,55 @@ export const appRouter = router({
           await db.extendRecommendationAlertActivity(linkedAlertId, ctx.user.id);
         }
 
-        const allSubs = await db.getRecommendationSubscriberDetails();
-        const optedInRecipients = allSubs.filter((sub) => recommendationNotificationsEnabled(sub.notificationPrefs));
         const mutedUserIds = input.type === 'recommendation'
           ? []
           : await db.getMutedRecommendationUserIdsForThread(
               threadRootMessageId,
-              optedInRecipients.map((sub) => sub.userId),
+              funnelEligible.map((sub) => sub.userId),
             );
         const recipients = input.type === 'recommendation'
-          ? optedInRecipients
-          : filterRecipientsByMutedThreads(optedInRecipients, mutedUserIds);
+          ? funnelEligible
+          : filterRecipientsByMutedThreads(funnelEligible, mutedUserIds);
         const batchId = `rec_live_${messageId}`;
+        const eventKey = `rec_msg:${messageId}`;
 
         if (recipients.length && rootMessageForDelivery) {
+          await db.prepareRecommendationDeliveries({
+            eventKey,
+            eventKind: input.type,
+            refId: messageId,
+            threadRootMessageId,
+            recipients: recipients.map((sub) => ({
+              userId: sub.userId,
+              recipientEmail: sub.email,
+              language: getPreferredNotificationLanguage(sub.notificationPrefs),
+              metadata: { batchId, symbol: notificationSymbol || null },
+            })),
+          });
+
+          // Record muted users as 'skipped' so admin observability shows why
+          // certain subscribers didn't receive an update/result email.
+          if (mutedUserIds.length) {
+            const mutedSet = new Set(mutedUserIds);
+            const mutedRows = funnelEligible
+              .filter((sub) => mutedSet.has(sub.userId))
+              .map((sub) => ({
+                userId: sub.userId,
+                recipientEmail: sub.email,
+                skipReason: 'thread_muted',
+                language: getPreferredNotificationLanguage(sub.notificationPrefs) as 'ar' | 'en',
+              }));
+            if (mutedRows.length) {
+              await db.insertSkippedRecommendationDeliveries({
+                eventKey,
+                eventKind: input.type,
+                refId: messageId,
+                threadRootMessageId,
+                skips: mutedRows,
+              });
+            }
+          }
+
           const notificationCopy = buildRecommendationMessageNotificationCopy({
             type: input.type,
             symbol: notificationSymbol,
@@ -3101,7 +3223,7 @@ export const appRouter = router({
             batchId,
           });
 
-          await Promise.allSettled(
+          const emailResults = await Promise.allSettled(
             recipients.map(async (sub) => {
                 const emailCopy = buildRecommendationMessageEmail({
                   language: getPreferredNotificationLanguage(sub.notificationPrefs),
@@ -3113,33 +3235,66 @@ export const appRouter = router({
                     : buildRecommendationThreadUnfollowUrl(threadRootMessageId),
                 });
 
-                await sendEmail({
-                  to: sub.email,
-                  subject: emailCopy.subject,
-                  text: emailCopy.text,
-                  html: emailCopy.html,
-                  audit: {
-                    eventType: input.type === 'result'
-                      ? 'trade_result'
-                      : input.type === 'update'
-                        ? 'recommendation_update'
-                        : 'recommendation_new',
-                    templateId: input.type === 'recommendation'
-                      ? 'recommendation_new'
-                      : `recommendation_${input.type}`,
-                    recipientUserId: sub.userId,
-                    metadata: {
-                      recommendationId: threadRootMessageId,
-                      type: input.type,
-                      symbol: notificationSymbol || null,
-                      messageId,
-                      batchId,
+                try {
+                  const result = await sendEmail({
+                    to: sub.email,
+                    subject: emailCopy.subject,
+                    text: emailCopy.text,
+                    html: emailCopy.html,
+                    audit: {
+                      eventType: input.type === 'result'
+                        ? 'trade_result'
+                        : input.type === 'update'
+                          ? 'recommendation_update'
+                          : 'recommendation_new',
+                      templateId: input.type === 'recommendation'
+                        ? 'recommendation_new'
+                        : `recommendation_${input.type}`,
+                      recipientUserId: sub.userId,
+                      metadata: {
+                        recommendationId: threadRootMessageId,
+                        type: input.type,
+                        symbol: notificationSymbol || null,
+                        messageId,
+                        batchId,
+                      },
                     },
-                  },
-                });
-                await db.markNotificationEmailSent(batchId, sub.userId);
+                  });
+                  await db.markRecommendationDeliverySent({
+                    eventKey,
+                    userId: sub.userId,
+                    provider: result?.provider ?? null,
+                    attemptedProviders: result?.attemptedProviders,
+                  });
+                } catch (err) {
+                  const category = (err as { category?: string })?.category ?? 'unknown';
+                  const attempted = (err as { attemptedProviders?: string[] })?.attemptedProviders;
+                  await db.markRecommendationDeliveryFailed({
+                    eventKey,
+                    userId: sub.userId,
+                    errorCategory: category,
+                    errorMessage: err instanceof Error ? err.message : String(err),
+                    attemptedProviders: attempted,
+                  });
+                  throw err;
+                }
               })
           );
+
+          const failedEmailResults = emailResults.filter((result) => result.status === 'rejected') as PromiseRejectedResult[];
+          if (failedEmailResults.length) {
+            logger.warn('[RECOMMENDATIONS] Message email delivery failures detected', {
+              messageId,
+              threadRootMessageId,
+              batchId,
+              type: input.type,
+              recipients: recipients.length,
+              failed: failedEmailResults.length,
+              errors: failedEmailResults.slice(0, 5).map((result) =>
+                result.reason instanceof Error ? result.reason.message : String(result.reason)
+              ),
+            });
+          }
         }
 
         if (ctx.user?.isStaff && !isAdmin) {

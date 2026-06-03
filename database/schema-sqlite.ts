@@ -313,6 +313,7 @@ export const recommendationAlerts = sqliteTable("recommendationAlerts", {
   expiresAt: text("expiresAt").notNull(),
   status: text("status", { length: 20 }).default("pending").notNull(),
   cancelledAt: text("cancelledAt"),
+  deliveryDiagnosticsJson: text("deliveryDiagnosticsJson"),
   createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
   updatedAt: text("updatedAt").default("CURRENT_TIMESTAMP").notNull(),
 });
@@ -342,11 +343,48 @@ export const recommendationMessages = sqliteTable("recommendationMessages", {
   threadStatus: text("threadStatus", { length: 20 }), // root-only: 'open' | 'closed'
   closedAt: text("closedAt"),
   closedByUserId: integer("closedByUserId"),
+  deliveryDiagnosticsJson: text("deliveryDiagnosticsJson"),
   createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
 });
 
 export type RecommendationMessage = typeof recommendationMessages.$inferSelect;
 export type InsertRecommendationMessage = typeof recommendationMessages.$inferInsert;
+
+/**
+ * Recommendation notification delivery outbox.
+ * One row per intended recipient per event (alert or message). Used to make
+ * sends idempotent (UNIQUE eventKey,userId), to enable cron-based retries,
+ * and to power per-recipient admin observability.
+ */
+export const recommendationDeliveries = sqliteTable("recommendation_deliveries", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  eventKey: text("eventKey").notNull(),
+  eventKind: text("eventKind", { length: 20 }).notNull(),
+  refId: integer("refId").notNull(),
+  threadRootMessageId: integer("threadRootMessageId"),
+  userId: integer("userId").notNull(),
+  recipientEmail: text("recipientEmail").notNull(),
+  language: text("language", { length: 5 }).default("ar").notNull(),
+  status: text("status", { length: 20 }).notNull(),
+  skipReason: text("skipReason", { length: 40 }),
+  provider: text("provider", { length: 40 }),
+  attemptedProviders: text("attemptedProviders"),
+  errorCategory: text("errorCategory", { length: 20 }),
+  errorMessage: text("errorMessage"),
+  attempts: integer("attempts").default(0).notNull(),
+  subject: text("subject"),
+  bodyText: text("bodyText"),
+  bodyHtml: text("bodyHtml"),
+  metadataJson: text("metadataJson"),
+  lastAttemptAt: text("lastAttemptAt"),
+  createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
+  updatedAt: text("updatedAt").default(sql`(datetime('now'))`).notNull(),
+}, (table) => ({
+  uniqueDeliveryByEventUser: unique("unique_rec_delivery_event_user").on(table.eventKey, table.userId),
+}));
+
+export type RecommendationDelivery = typeof recommendationDeliveries.$inferSelect;
+export type InsertRecommendationDelivery = typeof recommendationDeliveries.$inferInsert;
 
 /**
  * Recommendation message reactions

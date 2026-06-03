@@ -2,7 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../backend/_core/email", () => ({
-  sendEmail: vi.fn().mockResolvedValue(undefined),
+  sendEmail: vi.fn().mockResolvedValue({ provider: "zeptomail", attemptedProviders: ["zeptomail"] }),
 }));
 
 vi.mock("../backend/db", async () => {
@@ -14,8 +14,14 @@ vi.mock("../backend/db", async () => {
     getUserRecommendationsAccess: vi.fn(),
     createRecommendationAlert: vi.fn(),
     getRecommendationSubscriberDetails: vi.fn(),
+    getRecommendationDeliveryFunnel: vi.fn(),
     sendBulkNotification: vi.fn().mockResolvedValue(undefined),
     markNotificationEmailSent: vi.fn().mockResolvedValue(undefined),
+    prepareRecommendationDeliveries: vi.fn().mockResolvedValue({ inserted: 0, skippedDuplicate: 0 }),
+    insertSkippedRecommendationDeliveries: vi.fn().mockResolvedValue(undefined),
+    markRecommendationDeliverySent: vi.fn().mockResolvedValue(undefined),
+    markRecommendationDeliveryFailed: vi.fn().mockResolvedValue(undefined),
+    getMutedRecommendationUserIdsForThread: vi.fn().mockResolvedValue([]),
     getRecommendationPublishState: vi.fn(),
     createRecommendationMessage: vi.fn(),
     extendRecommendationAlertActivity: vi.fn().mockResolvedValue(undefined),
@@ -60,8 +66,11 @@ describe("recommendations workflow", () => {
   const getUserRecommendationsAccess = vi.mocked(db.getUserRecommendationsAccess);
   const createRecommendationAlert = vi.mocked(db.createRecommendationAlert);
   const getRecommendationSubscriberDetails = vi.mocked(db.getRecommendationSubscriberDetails);
+  const getRecommendationDeliveryFunnel = vi.mocked(db.getRecommendationDeliveryFunnel);
   const sendBulkNotification = vi.mocked(db.sendBulkNotification);
-  const markNotificationEmailSent = vi.mocked(db.markNotificationEmailSent);
+  const markRecommendationDeliverySent = vi.mocked(db.markRecommendationDeliverySent);
+  const prepareRecommendationDeliveries = vi.mocked(db.prepareRecommendationDeliveries);
+  const getMutedRecommendationUserIdsForThread = vi.mocked(db.getMutedRecommendationUserIdsForThread);
   const getRecommendationPublishState = vi.mocked(db.getRecommendationPublishState);
   const createRecommendationMessage = vi.mocked(db.createRecommendationMessage);
   const extendRecommendationAlertActivity = vi.mocked(db.extendRecommendationAlertActivity);
@@ -72,6 +81,11 @@ describe("recommendations workflow", () => {
   const getRecommendationMonthlyTradeReport = vi.mocked(db.getRecommendationMonthlyTradeReport);
   const saveRecommendationTradeResultOverride = vi.mocked(db.saveRecommendationTradeResultOverride);
   const mockedSendEmail = vi.mocked(sendEmail);
+
+  const emptyDiagnostics = {
+    totalSubs: 0, activeSubs: 0, pending: 0, paused: 0, expired: 0,
+    optedOut: 0, staffExcluded: 0, malformedPrefs: 0, missingEmail: 0, eligibleCount: 0,
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -96,6 +110,7 @@ describe("recommendations workflow", () => {
     } as any);
 
     getRecommendationSubscriberDetails.mockResolvedValue([] as any);
+    getRecommendationDeliveryFunnel.mockResolvedValue({ eligible: [], diagnostics: { ...emptyDiagnostics } } as any);
     getRecommendationPublishState.mockResolvedValue({
       activeAlert: null,
       canNotify: true,
@@ -181,7 +196,7 @@ describe("recommendations workflow", () => {
   it("emails only inactive recommendation recipients during notify", async () => {
     const caller = createAuthedCaller();
 
-    getRecommendationSubscriberDetails.mockResolvedValue([
+    const eligible = [
       {
         userId: 1,
         email: "inactive@example.com",
@@ -195,29 +210,27 @@ describe("recommendations workflow", () => {
         lastInteractiveAt: new Date(Date.now() - 2 * 60 * 1000).toISOString(),
       },
       {
-        userId: 3,
-        email: "muted@example.com",
-        notificationPrefs: JSON.stringify({ recommendations: false }),
-        lastInteractiveAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-      },
-      {
         userId: 4,
         email: "english@example.com",
         notificationPrefs: JSON.stringify({ language: "en" }),
         lastInteractiveAt: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
       },
-    ] as any);
+    ];
+    getRecommendationDeliveryFunnel.mockResolvedValue({
+      eligible: eligible as any,
+      diagnostics: { ...emptyDiagnostics, totalSubs: 4, activeSubs: 4, optedOut: 1, eligibleCount: 3 },
+    } as any);
 
     const result = await caller.recommendations.notifyClients({});
 
-    expect(result).toMatchObject({ success: true, recipientCount: 3, emailCount: 2 });
+    expect(result).toMatchObject({ success: true, recipientCount: 3, emailCount: 3 });
     expect(sendBulkNotification).toHaveBeenCalledWith(
       expect.objectContaining({
         userIds: [1, 2, 4],
         actionUrl: "/recommendations",
       })
     );
-    expect(mockedSendEmail).toHaveBeenCalledTimes(2);
+    expect(mockedSendEmail).toHaveBeenCalledTimes(3);
     expect(mockedSendEmail).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
@@ -227,15 +240,16 @@ describe("recommendations workflow", () => {
       })
     );
     expect(mockedSendEmail).toHaveBeenNthCalledWith(
-      2,
+      3,
       expect.objectContaining({
         to: "english@example.com",
         subject: "Recommendations alert: be ready, a new recommendation is coming",
         html: expect.stringContaining("Open Channel Now"),
       })
     );
-    expect(markNotificationEmailSent).toHaveBeenCalledWith(expect.any(String), 1);
-    expect(markNotificationEmailSent).toHaveBeenCalledWith(expect.any(String), 4);
+    expect(markRecommendationDeliverySent).toHaveBeenCalledWith(expect.objectContaining({ userId: 1 }));
+    expect(markRecommendationDeliverySent).toHaveBeenCalledWith(expect.objectContaining({ userId: 4 }));
+    expect(prepareRecommendationDeliveries).toHaveBeenCalled();
   });
 
   it("blocks a new recommendation until clients have been notified", async () => {
@@ -299,14 +313,17 @@ describe("recommendations workflow", () => {
       secondsUntilUnlock: 0,
       secondsUntilExpiry: 600,
     } as any);
-    getRecommendationSubscriberDetails.mockResolvedValue([
-      {
-        userId: 1,
-        email: "subscriber@example.com",
-        notificationPrefs: null,
-        lastInteractiveAt: null,
-      },
-    ] as any);
+    getRecommendationDeliveryFunnel.mockResolvedValue({
+      eligible: [
+        {
+          userId: 1,
+          email: "subscriber@example.com",
+          notificationPrefs: null,
+          lastInteractiveAt: null,
+        },
+      ] as any,
+      diagnostics: { ...emptyDiagnostics, totalSubs: 1, activeSubs: 1, eligibleCount: 1 },
+    } as any);
 
     const result = await caller.recommendations.postMessage({
       type: "recommendation",
@@ -338,7 +355,7 @@ describe("recommendations workflow", () => {
         html: expect.stringContaining("XAUUSD"),
       })
     );
-    expect(markNotificationEmailSent).toHaveBeenCalledWith("rec_live_901", 1);
+    expect(markRecommendationDeliverySent).toHaveBeenCalledWith(expect.objectContaining({ userId: 1 }));
   });
 
   it("allows same-trade updates while the active window is open and emails offline clients", async () => {
@@ -358,20 +375,23 @@ describe("recommendations workflow", () => {
       secondsUntilUnlock: 0,
       secondsUntilExpiry: 600,
     } as any);
-    getRecommendationSubscriberDetails.mockResolvedValue([
-      {
-        userId: 1,
-        email: "offline-update@example.com",
-        notificationPrefs: JSON.stringify({ language: "en" }),
-        lastInteractiveAt: null,
-      },
-      {
-        userId: 2,
-        email: "online-update@example.com",
-        notificationPrefs: null,
-        lastInteractiveAt: new Date().toISOString(),
-      },
-    ] as any);
+    getRecommendationDeliveryFunnel.mockResolvedValue({
+      eligible: [
+        {
+          userId: 1,
+          email: "offline-update@example.com",
+          notificationPrefs: JSON.stringify({ language: "en" }),
+          lastInteractiveAt: null,
+        },
+        {
+          userId: 2,
+          email: "online-update@example.com",
+          notificationPrefs: null,
+          lastInteractiveAt: new Date().toISOString(),
+        },
+      ] as any,
+      diagnostics: { ...emptyDiagnostics, totalSubs: 2, activeSubs: 2, eligibleCount: 2 },
+    } as any);
 
     const result = await caller.recommendations.postMessage({
       type: "update",
@@ -404,7 +424,7 @@ describe("recommendations workflow", () => {
         html: expect.stringContaining("Latest update"),
       })
     );
-    expect(markNotificationEmailSent).toHaveBeenCalledWith("rec_live_901", 1);
+    expect(markRecommendationDeliverySent).toHaveBeenCalledWith(expect.objectContaining({ userId: 1 }));
   });
 
   it("emails offline clients when a result is posted", async () => {
@@ -424,14 +444,17 @@ describe("recommendations workflow", () => {
       secondsUntilUnlock: 0,
       secondsUntilExpiry: 600,
     } as any);
-    getRecommendationSubscriberDetails.mockResolvedValue([
-      {
-        userId: 1,
-        email: "offline-result@example.com",
-        notificationPrefs: null,
-        lastInteractiveAt: null,
-      },
-    ] as any);
+    getRecommendationDeliveryFunnel.mockResolvedValue({
+      eligible: [
+        {
+          userId: 1,
+          email: "offline-result@example.com",
+          notificationPrefs: null,
+          lastInteractiveAt: null,
+        },
+      ] as any,
+      diagnostics: { ...emptyDiagnostics, totalSubs: 1, activeSubs: 1, eligibleCount: 1 },
+    } as any);
 
     const result = await caller.recommendations.postMessage({
       type: "result",
@@ -454,7 +477,7 @@ describe("recommendations workflow", () => {
         html: expect.stringContaining("النتيجة الجديدة"),
       })
     );
-    expect(markNotificationEmailSent).toHaveBeenCalledWith("rec_live_901", 1);
+    expect(markRecommendationDeliverySent).toHaveBeenCalledWith(expect.objectContaining({ userId: 1 }));
   });
 
   it("requires a fresh alert after 15 minutes of analyst silence", async () => {

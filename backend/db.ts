@@ -14,6 +14,7 @@ import {
   recommendationSubscriptions, RecommendationSubscription, InsertRecommendationSubscription,
   recommendationAlerts, RecommendationAlert, InsertRecommendationAlert,
   recommendationMessages, RecommendationMessage, InsertRecommendationMessage,
+  recommendationDeliveries, RecommendationDelivery, InsertRecommendationDelivery,
   recommendationReactions, RecommendationReaction, InsertRecommendationReaction,
   recommendationThreadMutes,
   authEmailOtps, AuthEmailOtp, InsertAuthEmailOtp,
@@ -2614,13 +2615,26 @@ async function repairDueRecommendationSubscriberStates() {
 
   const pendingUserIds = Array.from(new Set(pendingRows.map((row) => row.userId)));
   for (const userId of pendingUserIds) {
-    await ensureTimedServicesActivatedIfDue(userId);
+    try {
+      await ensureTimedServicesActivatedIfDue(userId);
+    } catch (error) {
+      logger.warn('[RECOMMENDATIONS] Failed to repair pending subscriber state', {
+        userId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 }
 
-export async function getRecommendationSubscriberEmails() {
+/**
+ * Public wrapper so the daily cron can drain overdue pending activations off
+ * the recommendation send hot path. Send-time queries no longer mutate state.
+ */
+export async function runRecommendationSubscriberRepair(): Promise<void> {
   await repairDueRecommendationSubscriberStates();
+}
 
+export async function getRecommendationSubscriberEmails() {
   const db = await getDb();
   if (!db) return [];
 
@@ -2796,48 +2810,123 @@ export async function unmuteRecommendationThread(userId: number, threadRootMessa
 }
 
 export async function getRecommendationSubscriberDetails(): Promise<RecommendationSubscriberDetail[]> {
-  await repairDueRecommendationSubscriberStates();
+  const funnel = await getRecommendationDeliveryFunnel();
+  return funnel.eligible;
+}
+
+export type RecommendationDeliveryDiagnostics = {
+  totalSubs: number;
+  activeSubs: number;
+  pending: number;
+  paused: number;
+  expired: number;
+  optedOut: number;
+  staffExcluded: number;
+  malformedPrefs: number;
+  missingEmail: number;
+  eligibleCount: number;
+};
+
+export type RecommendationDeliveryFunnel = {
+  eligible: RecommendationSubscriberDetail[];
+  diagnostics: RecommendationDeliveryDiagnostics;
+};
+
+const RECOMMENDATION_PREFS_KEY = 'recommendations';
+
+function parseRecommendationPrefs(raw: string | null | undefined): { optedOut: boolean; malformed: boolean; language: 'ar' | 'en' } {
+  if (!raw) return { optedOut: false, malformed: false, language: 'ar' };
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    if (!parsed || typeof parsed !== 'object') return { optedOut: false, malformed: true, language: 'ar' };
+    const optedOut = parsed[RECOMMENDATION_PREFS_KEY] === false;
+    const language = parsed.language === 'en' ? 'en' : 'ar';
+    return { optedOut, malformed: false, language };
+  } catch {
+    return { optedOut: false, malformed: true, language: 'ar' };
+  }
+}
+
+/**
+ * Compute the recommendation delivery funnel: eligible recipients plus a
+ * diagnostics bucket admin can render to explain who was filtered out.
+ * Pure read — does NOT repair pending subscriber state (the daily cron does).
+ */
+export async function getRecommendationDeliveryFunnel(): Promise<RecommendationDeliveryFunnel> {
+  const empty: RecommendationDeliveryDiagnostics = {
+    totalSubs: 0,
+    activeSubs: 0,
+    pending: 0,
+    paused: 0,
+    expired: 0,
+    optedOut: 0,
+    staffExcluded: 0,
+    malformedPrefs: 0,
+    missingEmail: 0,
+    eligibleCount: 0,
+  };
 
   const db = await getDb();
-  if (!db) return [];
+  if (!db) return { eligible: [], diagnostics: empty };
 
   const nowIso = new Date().toISOString();
-  const activeSubscriptions = await db
-    .select({ userId: recommendationSubscriptions.userId })
-    .from(recommendationSubscriptions)
-    .where(
-      and(
-        eq(recommendationSubscriptions.isActive, true),
-        eq(recommendationSubscriptions.isPaused, false),
-        eq(recommendationSubscriptions.isPendingActivation, false),
-        sql`${recommendationSubscriptions.endDate} >= ${nowIso}`
-      )
-    );
 
-  const userIds = activeSubscriptions.map((item) => item.userId);
-  if (!userIds.length) return [];
-
+  // Pull every is_active=true subscription joined to the user once; categorize
+  // in memory so we can return a complete funnel without N+1 queries.
   const rows = await db
     .select({
-      id: users.id,
+      userId: recommendationSubscriptions.userId,
+      isPaused: recommendationSubscriptions.isPaused,
+      isPendingActivation: recommendationSubscriptions.isPendingActivation,
+      endDate: recommendationSubscriptions.endDate,
       email: users.email,
       lastActiveAt: users.lastActiveAt,
       lastInteractiveAt: users.lastInteractiveAt,
       notificationPrefs: users.notificationPrefs,
+      isStaff: users.isStaff,
     })
-    .from(users)
-    .where(inArray(users.id, userIds));
+    .from(recommendationSubscriptions)
+    .leftJoin(users, eq(users.id, recommendationSubscriptions.userId))
+    .where(eq(recommendationSubscriptions.isActive, true));
 
-  return rows
-    .filter(r => r.email)
-    .map(r => ({
-      userId: r.id,
-      email: r.email,
-      lastActiveAt: r.lastActiveAt,
-      lastInteractiveAt: r.lastInteractiveAt,
-      notificationPrefs: r.notificationPrefs,
-    }));
+  const diagnostics: RecommendationDeliveryDiagnostics = { ...empty, totalSubs: rows.length };
+  const eligible: RecommendationSubscriberDetail[] = [];
+  const seenUserIds = new Set<number>();
+
+  for (const row of rows) {
+    if (row.isPaused) { diagnostics.paused += 1; continue; }
+    if (row.isPendingActivation) { diagnostics.pending += 1; continue; }
+    if (row.endDate && row.endDate < nowIso) { diagnostics.expired += 1; continue; }
+    diagnostics.activeSubs += 1;
+
+    if (row.isStaff) { diagnostics.staffExcluded += 1; continue; }
+    if (!row.email) { diagnostics.missingEmail += 1; continue; }
+
+    const prefs = parseRecommendationPrefs(row.notificationPrefs);
+    if (prefs.malformed) {
+      diagnostics.malformedPrefs += 1;
+      logger.warn('[RECOMMENDATIONS] Malformed notification_prefs ignored for delivery', { userId: row.userId });
+      continue;
+    }
+    if (prefs.optedOut) { diagnostics.optedOut += 1; continue; }
+
+    if (seenUserIds.has(row.userId)) continue;
+    seenUserIds.add(row.userId);
+
+    eligible.push({
+      userId: row.userId,
+      email: row.email,
+      lastActiveAt: row.lastActiveAt ?? null,
+      lastInteractiveAt: row.lastInteractiveAt ?? null,
+      notificationPrefs: row.notificationPrefs ?? null,
+    });
+  }
+
+  diagnostics.eligibleCount = eligible.length;
+  return { eligible, diagnostics };
 }
+
+
 
 async function expireRecommendationAlertsForAnalyst(analystUserId?: number): Promise<void> {
   const db = await getDb();
@@ -2881,6 +2970,7 @@ export async function getActiveRecommendationAlertForAnalyst(analystUserId: numb
 export async function createRecommendationAlert(input: {
   analystUserId: number;
   note?: string | null;
+  deliveryDiagnosticsJson?: string | null;
 }): Promise<RecommendationAlert> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -2903,6 +2993,7 @@ export async function createRecommendationAlert(input: {
     unlockAt,
     expiresAt,
     status: 'pending',
+    deliveryDiagnosticsJson: input.deliveryDiagnosticsJson ?? null,
     createdAt: nowIso,
     updatedAt: nowIso,
   }).returning();
@@ -3019,6 +3110,210 @@ export async function createRecommendationMessage(message: InsertRecommendationM
   if (!db) throw new Error("Database not available");
   const result = await db.insert(recommendationMessages).values(message).returning({ id: recommendationMessages.id });
   return result[0].id;
+}
+
+/* === Recommendation delivery outbox ============================================
+ * Outbox-lite: every intended recipient of an alert/message gets one row in
+ * `recommendation_deliveries`. The UNIQUE(eventKey, userId) index makes inserts
+ * idempotent so router retries cannot double-send. Cron drains failed/pending
+ * rows up to MAX_RECOMMENDATION_DELIVERY_ATTEMPTS, then marks dead_letter.
+ * ============================================================================ */
+
+export const MAX_RECOMMENDATION_DELIVERY_ATTEMPTS = 3;
+
+export type RecommendationDeliveryEventKind = 'alert' | 'recommendation' | 'update' | 'result';
+
+export type PrepareRecommendationDeliveryItem = {
+  userId: number;
+  recipientEmail: string;
+  language?: 'ar' | 'en';
+  subject?: string | null;
+  bodyText?: string | null;
+  bodyHtml?: string | null;
+  metadata?: Record<string, unknown> | null;
+};
+
+export async function prepareRecommendationDeliveries(input: {
+  eventKey: string;
+  eventKind: RecommendationDeliveryEventKind;
+  refId: number;
+  threadRootMessageId?: number | null;
+  recipients: PrepareRecommendationDeliveryItem[];
+}): Promise<{ inserted: number; skippedDuplicate: number }> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  if (!input.recipients.length) return { inserted: 0, skippedDuplicate: 0 };
+
+  const nowIso = new Date().toISOString();
+  const rows: InsertRecommendationDelivery[] = input.recipients.map((r) => ({
+    eventKey: input.eventKey,
+    eventKind: input.eventKind,
+    refId: input.refId,
+    threadRootMessageId: input.threadRootMessageId ?? null,
+    userId: r.userId,
+    recipientEmail: r.recipientEmail,
+    language: r.language ?? 'ar',
+    status: 'pending',
+    subject: r.subject ?? null,
+    bodyText: r.bodyText ?? null,
+    bodyHtml: r.bodyHtml ?? null,
+    metadataJson: r.metadata ? JSON.stringify(r.metadata) : null,
+    attempts: 0,
+    createdAt: nowIso,
+    updatedAt: nowIso,
+  }));
+
+  let inserted = 0;
+  for (const row of rows) {
+    const result = await db
+      .insert(recommendationDeliveries)
+      .values(row)
+      .onConflictDoNothing({ target: [recommendationDeliveries.eventKey, recommendationDeliveries.userId] })
+      .returning({ id: recommendationDeliveries.id });
+    if (result.length) inserted += 1;
+  }
+  return { inserted, skippedDuplicate: rows.length - inserted };
+}
+
+export async function insertSkippedRecommendationDeliveries(input: {
+  eventKey: string;
+  eventKind: RecommendationDeliveryEventKind;
+  refId: number;
+  threadRootMessageId?: number | null;
+  skips: Array<{ userId: number; recipientEmail: string; skipReason: string; language?: 'ar' | 'en' }>;
+}): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  if (!input.skips.length) return;
+  const nowIso = new Date().toISOString();
+  for (const skip of input.skips) {
+    await db
+      .insert(recommendationDeliveries)
+      .values({
+        eventKey: input.eventKey,
+        eventKind: input.eventKind,
+        refId: input.refId,
+        threadRootMessageId: input.threadRootMessageId ?? null,
+        userId: skip.userId,
+        recipientEmail: skip.recipientEmail,
+        language: skip.language ?? 'ar',
+        status: 'skipped',
+        skipReason: skip.skipReason,
+        attempts: 0,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+        lastAttemptAt: nowIso,
+      })
+      .onConflictDoNothing({ target: [recommendationDeliveries.eventKey, recommendationDeliveries.userId] });
+  }
+}
+
+export async function markRecommendationDeliverySent(args: {
+  eventKey: string;
+  userId: number;
+  provider: string | null;
+  attemptedProviders?: string[];
+}): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  const nowIso = new Date().toISOString();
+  await db
+    .update(recommendationDeliveries)
+    .set({
+      status: 'sent',
+      provider: args.provider,
+      attemptedProviders: args.attemptedProviders?.length ? args.attemptedProviders.join(',') : null,
+      errorCategory: null,
+      errorMessage: null,
+      attempts: sql`${recommendationDeliveries.attempts} + 1`,
+      lastAttemptAt: nowIso,
+      updatedAt: nowIso,
+    })
+    .where(and(
+      eq(recommendationDeliveries.eventKey, args.eventKey),
+      eq(recommendationDeliveries.userId, args.userId),
+    ));
+}
+
+export async function markRecommendationDeliveryFailed(args: {
+  eventKey: string;
+  userId: number;
+  errorCategory: string;
+  errorMessage: string;
+  attemptedProviders?: string[];
+}): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  const nowIso = new Date().toISOString();
+  const [current] = await db
+    .select({ attempts: recommendationDeliveries.attempts })
+    .from(recommendationDeliveries)
+    .where(and(
+      eq(recommendationDeliveries.eventKey, args.eventKey),
+      eq(recommendationDeliveries.userId, args.userId),
+    ))
+    .limit(1);
+  const nextAttempts = (current?.attempts ?? 0) + 1;
+  const nextStatus: 'failed' | 'dead_letter' = nextAttempts >= MAX_RECOMMENDATION_DELIVERY_ATTEMPTS ? 'dead_letter' : 'failed';
+  await db
+    .update(recommendationDeliveries)
+    .set({
+      status: nextStatus,
+      errorCategory: args.errorCategory,
+      errorMessage: args.errorMessage.slice(0, 1000),
+      attemptedProviders: args.attemptedProviders?.length ? args.attemptedProviders.join(',') : null,
+      attempts: nextAttempts,
+      lastAttemptAt: nowIso,
+      updatedAt: nowIso,
+    })
+    .where(and(
+      eq(recommendationDeliveries.eventKey, args.eventKey),
+      eq(recommendationDeliveries.userId, args.userId),
+    ));
+}
+
+export async function listPendingRecommendationDeliveriesForRetry(limit: number = 50): Promise<RecommendationDelivery[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(recommendationDeliveries)
+    .where(and(
+      inArray(recommendationDeliveries.status, ['pending', 'failed']),
+      sql`${recommendationDeliveries.attempts} < ${MAX_RECOMMENDATION_DELIVERY_ATTEMPTS}`,
+    ))
+    .orderBy(recommendationDeliveries.createdAt)
+    .limit(limit);
+}
+
+export async function getRecommendationDeliveryStats(sinceIso: string): Promise<{
+  total: number;
+  sent: number;
+  failed: number;
+  pending: number;
+  skipped: number;
+  deadLetter: number;
+}> {
+  const db = await getDb();
+  if (!db) return { total: 0, sent: 0, failed: 0, pending: 0, skipped: 0, deadLetter: 0 };
+  const rows = await db
+    .select({ status: recommendationDeliveries.status, count: sql<number>`count(*)` })
+    .from(recommendationDeliveries)
+    .where(sql`${recommendationDeliveries.createdAt} >= ${sinceIso}`)
+    .groupBy(recommendationDeliveries.status);
+  const result = { total: 0, sent: 0, failed: 0, pending: 0, skipped: 0, deadLetter: 0 };
+  for (const row of rows) {
+    const c = Number(row.count) || 0;
+    result.total += c;
+    switch (row.status) {
+      case 'sent': result.sent = c; break;
+      case 'failed': result.failed = c; break;
+      case 'pending': result.pending = c; break;
+      case 'skipped': result.skipped = c; break;
+      case 'dead_letter': result.deadLetter = c; break;
+    }
+  }
+  return result;
 }
 
 export async function hasRecommendationResultChild(parentId: number) {
@@ -8669,7 +8964,15 @@ export async function sendBulkNotification(input: {
     batchId: input.batchId || null,
     createdAt: now,
   }));
-  if (values.length) await db.insert(userNotifications).values(values);
+  // D1's SQLITE_MAX_VARIABLE_NUMBER caps bound parameters per statement at 100.
+  // user_notifications inserts use ~12 columns/row, so chunk to 8 rows (~96 params).
+  const D1_MAX_PARAMS = 100;
+  const columnsPerRow = 12;
+  const chunkSize = Math.max(1, Math.floor(D1_MAX_PARAMS / columnsPerRow));
+  for (let i = 0; i < values.length; i += chunkSize) {
+    const slice = values.slice(i, i + chunkSize);
+    if (slice.length) await db.insert(userNotifications).values(slice);
+  }
 }
 
 export async function getStudentsForNotification(): Promise<{ id: number; name: string | null; email: string; hasActivePackage: boolean }[]> {
