@@ -24,8 +24,9 @@ import {
   Bot,
   Pencil,
   Trash2,
-  MoreVertical,
   Check,
+  Copy,
+  Reply,
 } from "lucide-react";
 import { useState, useRef, useEffect, useMemo } from "react";
 import { toast } from "sonner";
@@ -53,6 +54,7 @@ export default function AdminSupport() {
   const [activeMenuMsgId, setActiveMenuMsgId] = useState<number | null>(null);
   const [editingMsgId, setEditingMsgId] = useState<number | null>(null);
   const [editContent, setEditContent] = useState("");
+  const [replyToMessageId, setReplyToMessageId] = useState<number | null>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const replaceSupportUrl = (conversationId: number | null) => {
@@ -143,6 +145,7 @@ export default function AdminSupport() {
   const replyMutation = trpc.supportChat.reply.useMutation({
     onSuccess: () => {
       setReply("");
+      setReplyToMessageId(null);
       refetchMessages();
       refetchConvs();
     },
@@ -288,6 +291,7 @@ export default function AdminSupport() {
       replyMutation.mutate({
         conversationId: selectedConvId,
         content: trimmed || (attachment ? `📎 ${attachment.name}` : ''),
+        replyToMessageId: replyToMessageId || undefined,
         attachmentUrl,
         attachmentName,
         attachmentType: attachment ? 'file' : undefined,
@@ -310,6 +314,7 @@ export default function AdminSupport() {
       replyMutation.mutate({
         conversationId: selectedConvId,
         content: isRtl ? '🎤 رسالة صوتية' : '🎤 Voice note',
+        replyToMessageId: replyToMessageId || undefined,
         attachmentUrl: uploaded.url,
         attachmentName: `voice-note.${ext}`,
         attachmentType: 'voice',
@@ -344,6 +349,30 @@ export default function AdminSupport() {
   const messagesForDisplay = showOlderMessages
     ? allMessagesForDisplay
     : allMessagesForDisplay.filter((msg) => getMessageDayKey(msg.createdAt) === todayKey);
+  const supportMessages = selectedData?.messages ?? [];
+  const messageMap = new Map(supportMessages.map((msg) => [msg.id, msg]));
+  const replyTarget = replyToMessageId ? messageMap.get(replyToMessageId) : undefined;
+
+  const formatReplyPreview = (target: typeof supportMessages[number] | undefined) => {
+    if (!target) return isRtl ? 'رسالة غير متاحة' : 'Message unavailable';
+    if ((target as any).deletedAt) return isRtl ? 'رسالة محذوفة' : 'Deleted message';
+    if ((target as any).attachmentType === 'voice') return isRtl ? 'رسالة صوتية' : 'Voice message';
+    return target.content;
+  };
+
+  const copyMessage = async (content: string) => {
+    try {
+      await navigator.clipboard.writeText(content);
+      toast.success(isRtl ? 'تم نسخ الرسالة' : 'Message copied');
+    } catch {
+      toast.error(isRtl ? 'تعذر نسخ الرسالة' : 'Failed to copy message');
+    }
+  };
+
+  const startReply = (messageId: number) => {
+    setReplyToMessageId(messageId);
+    setActiveMenuMsgId(null);
+  };
 
   return (
     <DashboardLayout>
@@ -629,12 +658,21 @@ export default function AdminSupport() {
                       const isBot = msg.senderType === "bot";
                       const isDeleted = !!(msg as any).deletedAt;
                       const isEdited = !!(msg as any).editedAt;
+                      const replyTargetMessage = (msg as any).replyToMessageId ? messageMap.get((msg as any).replyToMessageId) : undefined;
                       const canEdit = !isClient && !isBot && !isDeleted;
-                      const canDelete = !isClient && !isBot && !isDeleted;
+                      const canDelete = !isClient && !isDeleted;
+                      const canCopy = !isDeleted && !!msg.content;
+                      const canReply = !isDeleted;
                       // Date separator logic
                       const currentDate = new Date(msg.createdAt).toDateString();
                       const prevDate = idx > 0 ? new Date(arr[idx - 1].createdAt).toDateString() : null;
                       const showDateSeparator = idx === 0 || currentDate !== prevDate;
+                      const previousMessage = idx > 0 ? arr[idx - 1] : null;
+                      const showSenderLabel = (isBot || !isClient) && (
+                        !previousMessage
+                        || previousMessage.senderType !== msg.senderType
+                        || new Date(previousMessage.createdAt).toDateString() !== currentDate
+                      );
                       return (
                         <div key={msg.id}>
                           {showDateSeparator && (
@@ -647,15 +685,34 @@ export default function AdminSupport() {
                         <div
                           className={`group flex ${isClient ? "justify-start" : isBot ? "justify-start" : "justify-end"}`}
                           onTouchStart={() => {
-                            if (!canEdit && !canDelete) return;
+                            if (!canEdit && !canDelete && !canCopy && !canReply) return;
                             longPressTimer.current = setTimeout(() => setActiveMenuMsgId(msg.id), 500);
                           }}
                           onTouchEnd={() => { if (longPressTimer.current) clearTimeout(longPressTimer.current); }}
                           onTouchMove={() => { if (longPressTimer.current) clearTimeout(longPressTimer.current); }}
                         >
                           {/* Desktop hover actions — left side for own messages */}
-                          {!isClient && !isBot && (canEdit || canDelete) && !isDeleted && (
+                          {(canEdit || canDelete || canCopy || canReply) && !isDeleted && (
                             <div className="hidden lg:flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity me-1 self-center">
+                              {canReply && (
+                                <button
+                                  className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600"
+                                  onClick={() => startReply(msg.id)}
+                                  title={isRtl ? 'رد' : 'Reply'}
+                                >
+                                  <Reply className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+                              {canCopy && (
+                                <button
+                                  className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600"
+                                  onClick={() => void copyMessage(msg.content)}
+                                  title={isRtl ? 'نسخ' : 'Copy'}
+                                >
+                                  <Copy className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+                              {canEdit && (
                               <button
                                 className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600"
                                 onClick={() => { setEditingMsgId(msg.id); setEditContent(msg.content); setActiveMenuMsgId(null); }}
@@ -663,6 +720,8 @@ export default function AdminSupport() {
                               >
                                 <Pencil className="h-3.5 w-3.5" />
                               </button>
+                              )}
+                              {canDelete && (
                               <button
                                 className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-500"
                                 onClick={() => { if (confirm(isRtl ? 'هل تريد حذف هذه الرسالة؟' : 'Delete this message?')) deleteMessageMutation.mutate({ messageId: msg.id }); }}
@@ -670,6 +729,7 @@ export default function AdminSupport() {
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
                               </button>
+                              )}
                             </div>
                           )}
                           <div
@@ -687,7 +747,27 @@ export default function AdminSupport() {
                               <p className="text-sm">{isRtl ? 'تم حذف هذه الرسالة' : 'This message was deleted'}</p>
                             ) : (
                               <>
-                            {(isBot || !isClient) && (
+                            {replyTargetMessage && (
+                              <button
+                                type="button"
+                                onClick={() => startReply(replyTargetMessage.id)}
+                                className={`mb-2 block w-full rounded-xl border px-3 py-2 text-start text-xs ${
+                                  isClient ? 'border-gray-200 bg-white text-gray-500' : 'border-white/15 bg-white/10 text-emerald-100'
+                                }`}
+                              >
+                                <span className="mb-1 block font-semibold">
+                                  {replyTargetMessage.senderType === 'client'
+                                    ? (isRtl ? 'العميل' : 'Client')
+                                    : replyTargetMessage.senderType === 'bot'
+                                      ? (isRtl ? 'المساعد الذكي' : 'AI Assistant')
+                                      : replyTargetMessage.senderType === 'admin'
+                                        ? t('admin.support.admin')
+                                        : t('admin.support.support')}
+                                </span>
+                                <span className="line-clamp-2 break-words">{formatReplyPreview(replyTargetMessage)}</span>
+                              </button>
+                            )}
+                            {showSenderLabel && (
                               <p
                                 className={`text-xs font-semibold mb-1 ${
                                   isBot ? "text-amber-600" : isClient ? "text-emerald-600" : "text-emerald-200"
@@ -754,11 +834,27 @@ export default function AdminSupport() {
                           </div>
 
                           {/* Mobile long-press action menu */}
-                          {activeMenuMsgId === msg.id && (canEdit || canDelete) && (
+                          {activeMenuMsgId === msg.id && (canEdit || canDelete || canCopy || canReply) && (
                             <>
                               <div className="fixed inset-0 z-40" onClick={() => setActiveMenuMsgId(null)} />
                               <div className="absolute z-50 bg-white border rounded-lg shadow-lg py-1 min-w-[120px]"
                                 style={{ marginTop: '-8px' }}>
+                                {canReply && (
+                                  <button
+                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50"
+                                    onClick={() => startReply(msg.id)}
+                                  >
+                                    <Reply className="h-3.5 w-3.5" /> {isRtl ? 'رد' : 'Reply'}
+                                  </button>
+                                )}
+                                {canCopy && (
+                                  <button
+                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50"
+                                    onClick={() => { void copyMessage(msg.content); setActiveMenuMsgId(null); }}
+                                  >
+                                    <Copy className="h-3.5 w-3.5" /> {isRtl ? 'نسخ' : 'Copy'}
+                                  </button>
+                                )}
                                 {canEdit && (
                                   <button
                                     className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50"
@@ -790,6 +886,26 @@ export default function AdminSupport() {
                 {/* Reply input */}
                 {selectedData?.conversation?.status === "open" && (
                   <div className="border-t p-3">
+                    {replyTarget && (
+                      <div className="mb-2 flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm">
+                        <Reply className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-semibold text-emerald-700">
+                            {isRtl ? 'الرد على' : 'Replying to'} {replyTarget.senderType === 'client'
+                              ? (isRtl ? 'العميل' : 'client')
+                              : replyTarget.senderType === 'bot'
+                                ? (isRtl ? 'المساعد الذكي' : 'AI Assistant')
+                                : replyTarget.senderType === 'admin'
+                                  ? t('admin.support.admin')
+                                  : t('admin.support.support')}
+                          </p>
+                          <p className="truncate text-xs text-emerald-800">{formatReplyPreview(replyTarget)}</p>
+                        </div>
+                        <button type="button" onClick={() => setReplyToMessageId(null)} className="text-emerald-600 hover:text-emerald-800">
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    )}
                     {attachment && (
                       <div className="flex items-center gap-2 mb-2 bg-emerald-50 rounded-lg px-3 py-2 text-sm">
                         <FileIcon className="w-4 h-4 text-emerald-500" />

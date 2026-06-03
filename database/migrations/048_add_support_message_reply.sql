@@ -1,0 +1,1 @@
+ALTER TABLE supportMessages ADD COLUMN replyToMessageId INTEGER DEFAULT NULL;

@@ -6514,6 +6514,7 @@ export async function createSupportMessage(msg: {
   senderId: number;
   senderType: string;
   content: string;
+  replyToMessageId?: number;
   attachmentUrl?: string;
   attachmentName?: string;
   attachmentSize?: number;
@@ -6529,6 +6530,7 @@ export async function createSupportMessage(msg: {
     senderId: msg.senderId,
     senderType: msg.senderType,
     content: msg.content,
+    replyToMessageId: msg.replyToMessageId ?? null,
     attachmentUrl: msg.attachmentUrl || null,
     attachmentName: msg.attachmentName || null,
     attachmentSize: msg.attachmentSize || null,
@@ -10773,16 +10775,17 @@ export async function notifyStaffByEvent(
 
     try {
       const online = await isUserOnline(userId);
-      if (online) continue; // Skip email for online users
 
       // Check per-staff prefs
       const [userRow] = await db.select({
         email: users.email,
         prefs: users.staffNotificationPrefs,
-        isAdmin: sql<number>`(SELECT COUNT(*) FROM admins WHERE admins.userId = ${users.id})`,
+        isSupport: sql<boolean>`EXISTS(SELECT 1 FROM userRoles WHERE userRoles.userId = ${users.id} AND userRoles.role = 'support')`,
       }).from(users).where(eq(users.id, userId)).limit(1);
 
       if (!userRow) continue;
+
+      if (online && !userRow.isSupport) continue;
 
       const staffPrefs: Record<string, boolean> = userRow.prefs ? JSON.parse(userRow.prefs as string) : {};
       if (staffPrefs[eventType] === false) continue;

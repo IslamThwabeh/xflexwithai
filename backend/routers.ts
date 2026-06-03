@@ -3648,6 +3648,7 @@ export const appRouter = router({
     send: protectedProcedure
       .input(z.object({
         content: z.string().min(1).max(5000),
+        replyToMessageId: z.number().int().positive().optional(),
         attachmentUrl: z.string().optional(),
         attachmentName: z.string().optional(),
         attachmentSize: z.number().optional(),
@@ -3662,6 +3663,7 @@ export const appRouter = router({
           senderId: ctx.user.id,
           senderType: 'client',
           content: input.content,
+          replyToMessageId: input.replyToMessageId,
           attachmentUrl: input.attachmentUrl,
           attachmentName: input.attachmentName,
           attachmentSize: input.attachmentSize,
@@ -3781,6 +3783,7 @@ export const appRouter = router({
       .input(z.object({
         conversationId: z.number(),
         content: z.string().min(1).max(5000),
+        replyToMessageId: z.number().int().positive().optional(),
         attachmentUrl: z.string().optional(),
         attachmentName: z.string().optional(),
         attachmentSize: z.number().optional(),
@@ -3798,6 +3801,7 @@ export const appRouter = router({
           senderId: ctx.user.id,
           senderType: isAdmin ? 'admin' : 'support',
           content: input.content,
+          replyToMessageId: input.replyToMessageId,
           attachmentUrl: input.attachmentUrl,
           attachmentName: input.attachmentName,
           attachmentSize: input.attachmentSize,

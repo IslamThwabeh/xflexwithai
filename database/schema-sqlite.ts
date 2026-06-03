@@ -537,6 +537,7 @@ export const supportMessages = sqliteTable("supportMessages", {
   senderType: text("senderType", { length: 20 }).notNull(), // 'client' | 'support' | 'admin' | 'bot'
   content: text("content").notNull(),
   isRead: integer("isRead", { mode: 'boolean' }).default(false).notNull(),
+  replyToMessageId: integer("replyToMessageId"),
   attachmentUrl: text("attachment_url"),
   attachmentName: text("attachment_name"),
   attachmentSize: integer("attachment_size"),

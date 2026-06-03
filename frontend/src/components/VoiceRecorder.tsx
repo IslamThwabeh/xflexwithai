@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Mic, Square, Loader2 } from 'lucide-react';
+import { Mic, Send, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface VoiceRecorderProps {
@@ -11,10 +11,12 @@ interface VoiceRecorderProps {
 export default function VoiceRecorder({ onRecordingComplete, disabled, isRTL }: VoiceRecorderProps) {
   const [recording, setRecording] = useState(false);
   const [elapsed, setElapsed] = useState(0);
+  const [finalizing, setFinalizing] = useState(false);
   const mediaRecorder = useRef<MediaRecorder | null>(null);
   const chunks = useRef<Blob[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const startTimeRef = useRef(0);
+  const shouldDiscardRef = useRef(false);
 
   const MAX_DURATION = 120; // 2 minutes max
 
@@ -22,6 +24,7 @@ export default function VoiceRecorder({ onRecordingComplete, disabled, isRTL }: 
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
       if (mediaRecorder.current?.state === 'recording') {
+        shouldDiscardRef.current = true;
         mediaRecorder.current.stop();
       }
     };
@@ -50,10 +53,20 @@ export default function VoiceRecorder({ onRecordingComplete, disabled, isRTL }: 
         if (timerRef.current) clearInterval(timerRef.current);
 
         const duration = Math.round((Date.now() - startTimeRef.current) / 1000);
+        if (shouldDiscardRef.current) {
+          chunks.current = [];
+          shouldDiscardRef.current = false;
+          setFinalizing(false);
+          setRecording(false);
+          setElapsed(0);
+          return;
+        }
         if (chunks.current.length > 0 && duration >= 1) {
           const blob = new Blob(chunks.current, { type: mimeType });
           onRecordingComplete(blob, duration);
         }
+        shouldDiscardRef.current = false;
+        setFinalizing(false);
         setRecording(false);
         setElapsed(0);
       };
@@ -66,6 +79,7 @@ export default function VoiceRecorder({ onRecordingComplete, disabled, isRTL }: 
         const sec = Math.round((Date.now() - startTimeRef.current) / 1000);
         setElapsed(sec);
         if (sec >= MAX_DURATION) {
+          setFinalizing(true);
           recorder.stop();
         }
       }, 500);
@@ -74,8 +88,18 @@ export default function VoiceRecorder({ onRecordingComplete, disabled, isRTL }: 
     }
   }, [onRecordingComplete]);
 
-  const stopRecording = useCallback(() => {
+  const sendRecording = useCallback(() => {
     if (mediaRecorder.current?.state === 'recording') {
+      shouldDiscardRef.current = false;
+      setFinalizing(true);
+      mediaRecorder.current.stop();
+    }
+  }, []);
+
+  const cancelRecording = useCallback(() => {
+    if (mediaRecorder.current?.state === 'recording') {
+      shouldDiscardRef.current = true;
+      setFinalizing(true);
       mediaRecorder.current.stop();
     }
   }, []);
@@ -111,12 +135,25 @@ export default function VoiceRecorder({ onRecordingComplete, disabled, isRTL }: 
           </div>
         </div>
         <Button
-          variant="destructive"
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="rounded-xl h-[42px] w-[42px] shrink-0 text-red-600 hover:bg-red-50 hover:text-red-700"
+          onClick={cancelRecording}
+          disabled={finalizing}
+          title={isRTL ? 'إلغاء التسجيل' : 'Cancel recording'}
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
+        <Button
+          type="button"
           size="icon"
           className="rounded-xl h-[42px] w-[42px] shrink-0"
-          onClick={stopRecording}
+          onClick={sendRecording}
+          disabled={finalizing}
+          title={isRTL ? 'إرسال التسجيل' : 'Send recording'}
         >
-          <Square className="h-4 w-4" />
+          <Send className={`h-4 w-4 ${isRTL ? 'rotate-180' : ''}`} />
         </Button>
       </div>
     );

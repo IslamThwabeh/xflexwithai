@@ -3,7 +3,7 @@ import SupportBugReportsPanel from "@/components/SupportBugReportsPanel";
 import { trpc } from "@/lib/trpc";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Button } from "@/components/ui/button";
-import { Send, Headphones, Loader2, Paperclip, FileIcon, X, Bot, UserRound, Pencil, Trash2, Check, Bug, ArrowLeft } from "lucide-react";
+import { Send, Headphones, Loader2, Paperclip, FileIcon, X, Bot, UserRound, Pencil, Trash2, Check, Bug, ArrowLeft, Copy, Reply } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { toast } from "sonner";
 import VoiceRecorder from "@/components/VoiceRecorder";
@@ -30,6 +30,7 @@ export default function SupportChat() {
   const [activeMenuMsgId, setActiveMenuMsgId] = useState<number | null>(null);
   const [editingMsgId, setEditingMsgId] = useState<number | null>(null);
   const [editContent, setEditContent] = useState("");
+  const [replyToMessageId, setReplyToMessageId] = useState<number | null>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isChatTab = activeTab === "chat";
 
@@ -48,6 +49,7 @@ export default function SupportChat() {
     onSuccess: () => {
       setMessage("");
       setAttachment(null);
+      setReplyToMessageId(null);
       shouldStickToBottomRef.current = true;
       void refetch();
     },
@@ -79,6 +81,19 @@ export default function SupportChat() {
   });
 
   const hasRequestedHuman = data?.conversation?.needsHuman === true;
+  const getMessageDayKey = (value: string) => {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? "" : date.toDateString();
+  };
+  const rawMessages = data?.messages ?? [];
+  const messageMap = new Map(rawMessages.map((msg) => [msg.id, msg]));
+  const allMessages = [...rawMessages].reverse();
+  const todayKey = new Date().toDateString();
+  const hasOlderMessages = allMessages.some((msg) => getMessageDayKey(msg.createdAt) !== todayKey);
+  const messages = showOlderMessages
+    ? allMessages
+    : allMessages.filter((msg) => getMessageDayKey(msg.createdAt) === todayKey);
+  const latestMessageId = rawMessages[0]?.id;
 
   const uploadMutation = trpc.supportChat.uploadAttachment.useMutation();
   const [uploading, setUploading] = useState(false);
@@ -179,6 +194,7 @@ export default function SupportChat() {
         const uploaded = await uploadFileToR2(attachment.file, attachment.name, attachment.file.type, 'file');
         sendMutation.mutate({
           content: trimmed || `[${attachment.name}]`,
+          replyToMessageId: replyToMessageId || undefined,
           attachmentUrl: uploaded.url,
           attachmentName: attachment.name,
           attachmentSize: uploaded.size,
@@ -190,7 +206,7 @@ export default function SupportChat() {
         setUploading(false);
       }
     } else {
-      sendMutation.mutate({ content: trimmed });
+      sendMutation.mutate({ content: trimmed, replyToMessageId: replyToMessageId || undefined });
     }
   };
 
@@ -203,6 +219,7 @@ export default function SupportChat() {
       const uploaded = await uploadFileToR2(blob, fileName, blob.type, 'voice');
       sendMutation.mutate({
         content: isRTL ? '🎙️ رسالة صوتية' : '🎙️ Voice message',
+        replyToMessageId: replyToMessageId || undefined,
         attachmentUrl: uploaded.url,
         attachmentName: fileName,
         attachmentSize: uploaded.size,
@@ -234,20 +251,6 @@ export default function SupportChat() {
     }
   };
 
-  const getMessageDayKey = (value: string) => {
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? "" : date.toDateString();
-  };
-
-  const rawMessages = data?.messages ?? [];
-  const allMessages = [...rawMessages].reverse();
-  const todayKey = new Date().toDateString();
-  const hasOlderMessages = allMessages.some((msg) => getMessageDayKey(msg.createdAt) !== todayKey);
-  const messages = showOlderMessages
-    ? allMessages
-    : allMessages.filter((msg) => getMessageDayKey(msg.createdAt) === todayKey);
-  const latestMessageId = rawMessages[0]?.id;
-
   // Group messages by date for date separators
   const getDateLabel = (dateStr: string) => {
     const d = new Date(dateStr);
@@ -263,6 +266,29 @@ export default function SupportChat() {
     if (isSameDay(d, yesterday)) return isRTL ? 'أمس' : 'Yesterday';
     return d.toLocaleDateString(isRTL ? 'ar-EG' : 'en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   };
+
+  const formatReplyPreview = (target: typeof rawMessages[number] | undefined) => {
+    if (!target) return isRTL ? 'رسالة غير متاحة' : 'Message unavailable';
+    if ((target as any).deletedAt) return isRTL ? 'رسالة محذوفة' : 'Deleted message';
+    if ((target as any).attachmentType === 'voice') return isRTL ? 'رسالة صوتية' : 'Voice message';
+    return target.content;
+  };
+
+  const copyMessage = async (content: string) => {
+    try {
+      await navigator.clipboard.writeText(content);
+      toast.success(isRTL ? 'تم نسخ الرسالة' : 'Message copied');
+    } catch {
+      toast.error(isRTL ? 'تعذر نسخ الرسالة' : 'Failed to copy message');
+    }
+  };
+
+  const startReply = (messageId: number) => {
+    setReplyToMessageId(messageId);
+    setActiveMenuMsgId(null);
+  };
+
+  const replyTarget = replyToMessageId ? messageMap.get(replyToMessageId) : undefined;
 
   return (
     <ClientLayout>
@@ -376,7 +402,7 @@ export default function SupportChat() {
         <div
           ref={messagesContainerRef}
           onScroll={handleMessagesScroll}
-          className="flex-1 overflow-y-auto overscroll-contain space-y-3 pb-2 max-h-[60vh] md:max-h-[65vh]"
+          className="flex-1 overflow-y-auto overscroll-contain space-y-3 pb-56 md:pb-48"
         >
           {isLoading ? (
             <div className="flex items-center justify-center py-20">
@@ -410,10 +436,20 @@ export default function SupportChat() {
               const isBot = msg.senderType === "bot";
               const isDeleted = !!(msg as any).deletedAt;
               const isEdited = !!(msg as any).editedAt;
+              const replyTargetMessage = (msg as any).replyToMessageId ? messageMap.get((msg as any).replyToMessageId) : undefined;
               // Date separator logic
               const currentDate = new Date(msg.createdAt).toDateString();
               const prevDate = idx > 0 ? new Date(messages[idx - 1].createdAt).toDateString() : null;
               const showDateSeparator = idx === 0 || currentDate !== prevDate;
+              const previousMessage = idx > 0 ? messages[idx - 1] : null;
+              const showSenderLabel = !isOwn && (
+                !previousMessage
+                || previousMessage.senderType !== msg.senderType
+                || new Date(previousMessage.createdAt).toDateString() !== currentDate
+              );
+              const canCopy = !isDeleted && !!msg.content;
+              const canReply = !isDeleted;
+              const canOpenMenu = !isDeleted && (isOwn || canCopy || canReply);
 
               return (
                 <div key={msg.id}>
@@ -427,15 +463,34 @@ export default function SupportChat() {
                   <div
                     className={`group flex ${isOwn ? (isRTL ? "justify-start" : "justify-end") : (isRTL ? "justify-end" : "justify-start")}`}
                     onTouchStart={() => {
-                      if (!isOwn || isDeleted) return;
+                      if (!canOpenMenu) return;
                       longPressTimer.current = setTimeout(() => setActiveMenuMsgId(msg.id), 500);
                     }}
                     onTouchEnd={() => { if (longPressTimer.current) clearTimeout(longPressTimer.current); }}
                     onTouchMove={() => { if (longPressTimer.current) clearTimeout(longPressTimer.current); }}
                   >
                   {/* Desktop hover actions — shown next to own messages */}
-                  {isOwn && !isDeleted && (
+                  {canOpenMenu && (
                     <div className="hidden lg:flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity me-1 self-center">
+                      {canReply && (
+                        <button
+                          className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600"
+                          onClick={() => startReply(msg.id)}
+                          title={isRTL ? 'رد' : 'Reply'}
+                        >
+                          <Reply className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                      {canCopy && (
+                        <button
+                          className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600"
+                          onClick={() => void copyMessage(msg.content)}
+                          title={isRTL ? 'نسخ' : 'Copy'}
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                      {isOwn && (
                       <button
                         className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600"
                         onClick={() => { setEditingMsgId(msg.id); setEditContent(msg.content); setActiveMenuMsgId(null); }}
@@ -443,6 +498,8 @@ export default function SupportChat() {
                       >
                         <Pencil className="h-3.5 w-3.5" />
                       </button>
+                      )}
+                      {isOwn && (
                       <button
                         className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-500"
                         onClick={() => { if (confirm(isRTL ? 'هل تريد حذف هذه الرسالة؟' : 'Delete this message?')) deleteMessageMutation.mutate({ messageId: msg.id }); }}
@@ -450,6 +507,7 @@ export default function SupportChat() {
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
+                      )}
                     </div>
                   )}
                   <div
@@ -467,7 +525,27 @@ export default function SupportChat() {
                       <p className="text-sm">{isRTL ? 'تم حذف هذه الرسالة' : 'This message was deleted'}</p>
                     ) : (
                       <>
-                    {!isOwn && (
+                    {replyTargetMessage && (
+                      <button
+                        type="button"
+                        onClick={() => startReply(replyTargetMessage.id)}
+                        className={`mb-2 block w-full rounded-xl border px-3 py-2 text-start text-xs ${
+                          isOwn ? 'border-white/15 bg-white/10 text-emerald-100' : 'border-emerald-200 bg-white/70 text-gray-500'
+                        }`}
+                      >
+                        <span className="mb-1 block font-semibold">
+                          {replyTargetMessage.senderType === 'client'
+                            ? (isRTL ? 'أنت' : 'You')
+                            : replyTargetMessage.senderType === 'bot'
+                              ? (isRTL ? 'المساعد الذكي' : 'AI Assistant')
+                              : replyTargetMessage.senderType === 'admin'
+                                ? t("support.admin")
+                                : t("support.agent")}
+                        </span>
+                        <span className="line-clamp-2 break-words">{formatReplyPreview(replyTargetMessage)}</span>
+                      </button>
+                    )}
+                    {showSenderLabel && (
                       <p className={`text-xs font-semibold mb-1 ${isBot ? 'text-amber-600' : 'text-emerald-600'}`}>
                         {isBot
                           ? (isRTL ? '🤖 المساعد الذكي' : '🤖 AI Assistant')
@@ -497,7 +575,7 @@ export default function SupportChat() {
                         </div>
                       </div>
                     ) : (
-                      <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
+                      <p className="text-sm whitespace-pre-wrap break-words select-text">{msg.content}</p>
                     )}
                     {msg.attachmentUrl && (msg as any).attachmentType === 'voice' ? (
                       <div className="mt-1">
@@ -523,23 +601,43 @@ export default function SupportChat() {
                   </div>
 
                   {/* Mobile long-press action menu */}
-                  {activeMenuMsgId === msg.id && isOwn && !isDeleted && (
+                  {activeMenuMsgId === msg.id && canOpenMenu && (
                     <>
                       <div className="fixed inset-0 z-40" onClick={() => setActiveMenuMsgId(null)} />
                       <div className="absolute z-50 bg-white border rounded-lg shadow-lg py-1 min-w-[120px]"
                         style={{ marginTop: '-8px' }}>
+                        {canReply && (
+                          <button
+                            className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50"
+                            onClick={() => startReply(msg.id)}
+                          >
+                            <Reply className="h-3.5 w-3.5" /> {isRTL ? 'رد' : 'Reply'}
+                          </button>
+                        )}
+                        {canCopy && (
+                          <button
+                            className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50"
+                            onClick={() => { void copyMessage(msg.content); setActiveMenuMsgId(null); }}
+                          >
+                            <Copy className="h-3.5 w-3.5" /> {isRTL ? 'نسخ' : 'Copy'}
+                          </button>
+                        )}
+                        {isOwn && (
                         <button
                           className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50"
                           onClick={() => { setEditingMsgId(msg.id); setEditContent(msg.content); setActiveMenuMsgId(null); }}
                         >
                           <Pencil className="h-3.5 w-3.5" /> {isRTL ? 'تعديل' : 'Edit'}
                         </button>
+                        )}
+                        {isOwn && (
                         <button
                           className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
                           onClick={() => { if (confirm(isRTL ? 'هل تريد حذف هذه الرسالة؟' : 'Delete this message?')) deleteMessageMutation.mutate({ messageId: msg.id }); setActiveMenuMsgId(null); }}
                         >
                           <Trash2 className="h-3.5 w-3.5" /> {isRTL ? 'حذف' : 'Delete'}
                         </button>
+                        )}
                       </div>
                     </>
                   )}
@@ -553,7 +651,28 @@ export default function SupportChat() {
         </div>
 
         {/* Input area */}
-        <div className="border-t pt-3">
+        <div className="fixed bottom-0 left-0 right-0 z-40 border-t bg-white pt-3 shadow-lg">
+          <div className="mx-auto max-w-3xl px-4 pb-4" dir={isRTL ? "rtl" : "ltr"}>
+          {replyTarget && (
+            <div className="mb-2 flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm">
+              <Reply className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold text-emerald-700">
+                  {isRTL ? 'الرد على' : 'Replying to'} {replyTarget.senderType === 'client'
+                    ? (isRTL ? 'رسالتك' : 'your message')
+                    : replyTarget.senderType === 'bot'
+                      ? (isRTL ? 'المساعد الذكي' : 'AI Assistant')
+                      : replyTarget.senderType === 'admin'
+                        ? t("support.admin")
+                        : t("support.agent")}
+                </p>
+                <p className="truncate text-xs text-emerald-800">{formatReplyPreview(replyTarget)}</p>
+              </div>
+              <button type="button" onClick={() => setReplyToMessageId(null)} className="text-emerald-600 hover:text-emerald-800">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          )}
           {attachment && (
             <div className="flex items-center gap-2 mb-2 bg-emerald-50 rounded-lg px-3 py-2 text-sm">
               <FileIcon className="w-4 h-4 text-emerald-500" />
@@ -605,14 +724,15 @@ export default function SupportChat() {
               )}
             </Button>
           </div>
+          </div>
         </div>
           </div>
         )}
-        {isChatTab && (
+        {isChatTab && message.length === 0 && !attachment && replyToMessageId === null && editingMsgId === null && (
           <button
             type="button"
             onClick={handleMobileBack}
-            className="fixed bottom-24 right-4 z-50 rounded-full bg-gradient-to-r from-emerald-500 to-teal-600 p-3 text-white shadow-lg transition hover:from-emerald-600 hover:to-teal-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 md:hidden"
+            className="fixed bottom-36 right-4 z-30 rounded-full bg-gradient-to-r from-emerald-500 to-teal-600 p-3 text-white shadow-lg transition hover:from-emerald-600 hover:to-teal-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 md:hidden"
             aria-label={isRTL ? "رجوع" : "Back"}
           >
             <ArrowLeft className="h-5 w-5" />
