@@ -10596,6 +10596,43 @@ export async function updatePlanAnswer(email: string, phaseKey: string, answer: 
 export async function listPlanProgress(): Promise<PlanProgress[]> {
   const db = await getDb();
   if (!db) return [];
+
+  const [allStudents, existingRows] = await Promise.all([
+    db.select({
+      email: users.email,
+      fullName: users.name,
+      phone: users.phone,
+      createdAt: users.createdAt,
+    }).from(users).where(eq(users.isStaff, false)),
+    db.select().from(planProgress),
+  ]);
+
+  const existingByEmail = new Set(existingRows.map((row) => normalizeEmailAddress(row.email)));
+  const nowIso = new Date().toISOString();
+
+  const missingRows: InsertPlanProgress[] = [];
+  for (const student of allStudents) {
+    const email = normalizeEmailAddress(student.email || '');
+    if (!email || existingByEmail.has(email)) continue;
+
+    missingRows.push({
+      email,
+      fullName: (student.fullName || email).trim(),
+      phone: (student.phone || '').trim(),
+      progress: '{}',
+      answers: '{}',
+      currentPhase: 1,
+      phaseApprovals: '{}',
+      adminNotes: '',
+      createdAt: student.createdAt || nowIso,
+      updatedAt: student.createdAt || nowIso,
+    });
+  }
+
+  if (missingRows.length > 0) {
+    await db.insert(planProgress).values(missingRows).onConflictDoNothing();
+  }
+
   return db.select().from(planProgress)
     .orderBy(desc(planProgress.updatedAt));
 }
