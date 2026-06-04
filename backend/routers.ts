@@ -38,6 +38,13 @@ import { ENV } from "./_core/env";
 import { generateNumericCode, generateSaltBase64, normalizeEmail, sha256Base64 } from "./_core/otp";
 // FlexAI routes are registered in server/_core/index.ts
 
+const SUPPORT_VIDEO_MAX_SECONDS = 60;
+const SUPPORT_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+const SUPPORT_FILE_MAX_BYTES = 5 * 1024 * 1024;
+const SUPPORT_VOICE_MAX_BYTES = 2 * 1024 * 1024;
+const SUPPORT_VIDEO_MAX_BYTES = 25 * 1024 * 1024;
+const supportAttachmentTypeSchema = z.enum(['file', 'voice', 'video']);
+
 const getReqHeader = (req: any, name: string) => {
   const headers = req?.headers;
   if (!headers) return "";
@@ -3832,7 +3839,8 @@ export const appRouter = router({
         fileData: z.string(), // base64 encoded
         fileName: z.string(),
         contentType: z.string(),
-        attachmentType: z.enum(['file', 'voice']).default('file'),
+        attachmentType: supportAttachmentTypeSchema.default('file'),
+        attachmentDuration: z.number().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
         if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
@@ -3842,8 +3850,26 @@ export const appRouter = router({
         }
 
         const buffer = Buffer.from(input.fileData, 'base64');
-        // Limit: 5MB for files, 2MB for voice
-        const maxSize = input.attachmentType === 'voice' ? 2 * 1024 * 1024 : 5 * 1024 * 1024;
+        if (input.attachmentType === 'video') {
+          if (!input.contentType.startsWith('video/')) {
+            throw new TRPCError({ code: 'BAD_REQUEST', message: 'Only video uploads are allowed for video attachments' });
+          }
+          if (typeof input.attachmentDuration !== 'number' || !Number.isFinite(input.attachmentDuration) || input.attachmentDuration <= 0) {
+            throw new TRPCError({ code: 'BAD_REQUEST', message: 'Video duration is required' });
+          }
+          if (input.attachmentDuration >= SUPPORT_VIDEO_MAX_SECONDS) {
+            throw new TRPCError({ code: 'BAD_REQUEST', message: 'Video must be shorter than one minute' });
+          }
+        }
+        if (input.attachmentType === 'voice' && !input.contentType.startsWith('audio/') && !input.contentType.startsWith('video/')) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Only audio uploads are allowed for voice attachments' });
+        }
+
+        const maxSize = input.attachmentType === 'voice'
+          ? SUPPORT_VOICE_MAX_BYTES
+          : input.attachmentType === 'video'
+            ? SUPPORT_VIDEO_MAX_BYTES
+            : SUPPORT_FILE_MAX_BYTES;
         if (buffer.length > maxSize) {
           throw new TRPCError({ code: 'BAD_REQUEST', message: 'File too large' });
         }
@@ -3872,7 +3898,7 @@ export const appRouter = router({
         attachmentUrl: z.string().optional(),
         attachmentName: z.string().optional(),
         attachmentSize: z.number().optional(),
-        attachmentType: z.enum(['file', 'voice']).optional(),
+        attachmentType: supportAttachmentTypeSchema.optional(),
         attachmentDuration: z.number().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
@@ -3881,6 +3907,9 @@ export const appRouter = router({
         const normalizedAttachmentDuration = typeof input.attachmentDuration === 'number' && Number.isFinite(input.attachmentDuration)
           ? Math.round(input.attachmentDuration)
           : undefined;
+        if (input.attachmentType === 'video' && (!normalizedAttachmentDuration || normalizedAttachmentDuration >= SUPPORT_VIDEO_MAX_SECONDS)) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Video must be shorter than one minute' });
+        }
         const msg = await db.createSupportMessage({
           conversationId: conv.id,
           senderId: ctx.user.id,
@@ -4010,7 +4039,7 @@ export const appRouter = router({
         attachmentUrl: z.string().optional(),
         attachmentName: z.string().optional(),
         attachmentSize: z.number().optional(),
-        attachmentType: z.enum(['file', 'voice']).optional(),
+        attachmentType: supportAttachmentTypeSchema.optional(),
         attachmentDuration: z.number().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
@@ -4022,6 +4051,9 @@ export const appRouter = router({
         const normalizedAttachmentDuration = typeof input.attachmentDuration === 'number' && Number.isFinite(input.attachmentDuration)
           ? Math.round(input.attachmentDuration)
           : undefined;
+        if (input.attachmentType === 'video' && (!normalizedAttachmentDuration || normalizedAttachmentDuration >= SUPPORT_VIDEO_MAX_SECONDS)) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Video must be shorter than one minute' });
+        }
         const msg = await db.createSupportMessage({
           conversationId: input.conversationId,
           senderId: ctx.user.id,
@@ -4167,6 +4199,7 @@ export const appRouter = router({
         fileData: z.string(),
         fileName: z.string(),
         contentType: z.string(),
+        attachmentDuration: z.number().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
         const env = getWorkerEnv();
@@ -4174,13 +4207,24 @@ export const appRouter = router({
           throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'R2 bucket not configured' });
         }
 
-        if (!input.contentType.startsWith('image/')) {
-          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Only image uploads are allowed' });
+        const isImage = input.contentType.startsWith('image/');
+        const isVideo = input.contentType.startsWith('video/');
+        if (!isImage && !isVideo) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Only image or video uploads are allowed' });
+        }
+        if (isVideo) {
+          if (typeof input.attachmentDuration !== 'number' || !Number.isFinite(input.attachmentDuration) || input.attachmentDuration <= 0) {
+            throw new TRPCError({ code: 'BAD_REQUEST', message: 'Video duration is required' });
+          }
+          if (input.attachmentDuration >= SUPPORT_VIDEO_MAX_SECONDS) {
+            throw new TRPCError({ code: 'BAD_REQUEST', message: 'Video must be shorter than one minute' });
+          }
         }
 
         const buffer = Buffer.from(input.fileData, 'base64');
-        if (buffer.length > 5 * 1024 * 1024) {
-          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Image too large' });
+        const maxSize = isVideo ? SUPPORT_VIDEO_MAX_BYTES : SUPPORT_IMAGE_MAX_BYTES;
+        if (buffer.length > maxSize) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: isVideo ? 'Video too large' : 'Image too large' });
         }
 
         const randomSuffix = Math.random().toString(36).substring(2, 10);
@@ -4196,7 +4240,7 @@ export const appRouter = router({
         imageUrl: z.string().max(1000).optional(),
       }).refine(
         (value) => Boolean(value.description?.trim() || value.imageUrl?.trim()),
-        { message: 'Description or image is required' }
+        { message: 'Description or evidence file is required' }
       ))
       .mutation(async ({ ctx, input }) => {
         const report = await db.createBugReport({
@@ -4213,10 +4257,10 @@ export const appRouter = router({
           titleAr: `بلاغ خطأ جديد من ${clientLabel}`,
           contentEn: hasDescription
             ? input.description!.trim().slice(0, 140)
-            : 'Image-only bug report submitted.',
+            : 'Media-only bug report submitted.',
           contentAr: hasDescription
             ? input.description!.trim().slice(0, 140)
-            : 'تم إرسال بلاغ خطأ مرفق بصورة فقط.',
+            : 'تم إرسال بلاغ خطأ مرفق بملف توضيحي فقط.',
           metadata: { reportId: report.id, userId: ctx.user.id },
         });
 

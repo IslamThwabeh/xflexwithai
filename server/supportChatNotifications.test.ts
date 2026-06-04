@@ -201,4 +201,27 @@ describe("support chat staff notifications", () => {
       }),
     );
   });
+
+  it("rejects support chat videos that are one minute or longer", async () => {
+    const caller = createAuthedCaller();
+
+    getOrCreateSupportConversation.mockResolvedValue({
+      id: 10,
+      userId: 123,
+      status: "open",
+      needsHuman: true,
+    } as any);
+
+    await expect(
+      caller.supportChat.send({
+        content: "video",
+        attachmentType: "video",
+        attachmentDuration: 60,
+      }),
+    ).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+    });
+
+    expect(createSupportMessage).not.toHaveBeenCalled();
+  });
 });

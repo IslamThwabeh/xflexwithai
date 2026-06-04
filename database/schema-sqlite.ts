@@ -579,8 +579,8 @@ export const supportMessages = sqliteTable("supportMessages", {
   attachmentUrl: text("attachment_url"),
   attachmentName: text("attachment_name"),
   attachmentSize: integer("attachment_size"),
-  attachmentType: text("attachmentType"), // 'file' | 'voice' | null
-  attachmentDuration: integer("attachmentDuration"), // voice duration in seconds
+  attachmentType: text("attachmentType"), // 'file' | 'voice' | 'video' | null
+  attachmentDuration: integer("attachmentDuration"), // voice/video duration in seconds
   editedAt: text("editedAt"),   // ISO timestamp if message was edited, null otherwise
   deletedAt: text("deletedAt"), // ISO timestamp if message was soft-deleted, null otherwise
   createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),

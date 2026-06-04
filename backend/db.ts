@@ -7152,7 +7152,7 @@ export async function createBugReport(input: {
   const imageUrl = input.imageUrl?.trim() || null;
 
   if (!description && !imageUrl) {
-    throw new Error('Description or image is required');
+    throw new Error('Description or evidence file is required');
   }
 
   const now = new Date().toISOString();

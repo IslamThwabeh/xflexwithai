@@ -3,12 +3,22 @@ import SupportBugReportsPanel from "@/components/SupportBugReportsPanel";
 import { trpc } from "@/lib/trpc";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Button } from "@/components/ui/button";
-import { Send, Headphones, Loader2, Paperclip, FileIcon, X, Bot, UserRound, Pencil, Trash2, Check, Bug, ArrowLeft, Copy, Reply } from "lucide-react";
+import { Send, Headphones, Loader2, Paperclip, FileIcon, X, Bot, UserRound, Pencil, Trash2, Check, Bug, ArrowLeft, Copy, Reply, Video } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { toast } from "sonner";
 import VoiceRecorder from "@/components/VoiceRecorder";
 import AudioPlayer from "@/components/AudioPlayer";
 import { useLocation } from "wouter";
+import {
+  formatSupportFileSize,
+  getSupportMediaKind,
+  getVideoDuration,
+  MAX_SUPPORT_FILE_BYTES,
+  MAX_SUPPORT_IMAGE_BYTES,
+  MAX_SUPPORT_VIDEO_BYTES,
+  MAX_SUPPORT_VIDEO_SECONDS,
+  type SupportMediaKind,
+} from "@/lib/supportMedia";
 
 function getRequestedSupportTab() {
   if (typeof window === "undefined") return "chat" as const;
@@ -20,7 +30,7 @@ export default function SupportChat() {
   const { t, isRTL } = useLanguage();
   const [, setLocation] = useLocation();
   const [message, setMessage] = useState("");
-  const [attachment, setAttachment] = useState<{ name: string; file: File; size: number } | null>(null);
+  const [attachment, setAttachment] = useState<{ name: string; file: File; size: number; kind: SupportMediaKind; duration?: number } | null>(null);
   const [activeTab, setActiveTab] = useState<"chat" | "bugs">(() => getRequestedSupportTab());
   const [showOlderMessages, setShowOlderMessages] = useState(false);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -167,7 +177,7 @@ export default function SupportChat() {
     setShowOlderMessages(false);
   }, [isChatTab, data?.conversation?.id]);
 
-  const uploadFileToR2 = async (file: File | Blob, fileName: string, contentType: string, attachmentType: 'file' | 'voice') => {
+  const uploadFileToR2 = async (file: File | Blob, fileName: string, contentType: string, attachmentType: 'file' | 'voice' | 'video', attachmentDuration?: number) => {
     const buffer = await file.arrayBuffer();
     const bytes = new Uint8Array(buffer);
     let binary = '';
@@ -178,6 +188,7 @@ export default function SupportChat() {
       fileName,
       contentType,
       attachmentType,
+      attachmentDuration,
     });
     return result;
   };
@@ -191,14 +202,21 @@ export default function SupportChat() {
       // Upload file to R2 first, then send message
       setUploading(true);
       try {
-        const uploaded = await uploadFileToR2(attachment.file, attachment.name, attachment.file.type, 'file');
+        const uploaded = await uploadFileToR2(
+          attachment.file,
+          attachment.name,
+          attachment.file.type || "application/octet-stream",
+          attachment.kind === "video" ? "video" : "file",
+          attachment.duration,
+        );
         sendMutation.mutate({
           content: trimmed || `[${attachment.name}]`,
           replyToMessageId: replyToMessageId || undefined,
           attachmentUrl: uploaded.url,
           attachmentName: attachment.name,
           attachmentSize: uploaded.size,
-          attachmentType: 'file',
+          attachmentType: attachment.kind === "video" ? "video" : "file",
+          attachmentDuration: attachment.kind === "video" ? attachment.duration : undefined,
         });
       } catch {
         toast.error(isRTL ? 'فشل رفع الملف' : 'File upload failed');
@@ -233,15 +251,39 @@ export default function SupportChat() {
     }
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) {
+
+    const kind = getSupportMediaKind({ contentType: file.type, name: file.name });
+    if (kind === "image" && file.size > MAX_SUPPORT_IMAGE_BYTES) {
+      toast.error(isRTL ? 'حجم الصورة أكبر من 5 ميجابايت' : 'Image size exceeds 5MB');
+      return;
+    }
+    if (kind === "video") {
+      if (file.size > MAX_SUPPORT_VIDEO_BYTES) {
+        toast.error(isRTL ? 'حجم الفيديو أكبر من 25 ميجابايت' : 'Video size exceeds 25MB');
+        return;
+      }
+      try {
+        const duration = await getVideoDuration(file);
+        if (duration >= MAX_SUPPORT_VIDEO_SECONDS) {
+          toast.error(isRTL ? 'يجب أن يكون الفيديو أقل من دقيقة واحدة' : 'Video must be shorter than one minute');
+          return;
+        }
+        setAttachment({ name: file.name, file, size: file.size, kind, duration });
+      } catch {
+        toast.error(isRTL ? 'تعذر قراءة مدة الفيديو. جرّب ملف فيديو آخر.' : 'Could not read video length. Try another video file.');
+      }
+      return;
+    }
+
+    if (file.size > MAX_SUPPORT_FILE_BYTES) {
       toast.error(isRTL ? 'حجم الملف أكبر من 5 ميجابايت' : 'File size exceeds 5MB');
       return;
     }
-    setAttachment({ name: file.name, file, size: file.size });
-    e.target.value = '';
+    setAttachment({ name: file.name, file, size: file.size, kind });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -271,6 +313,7 @@ export default function SupportChat() {
     if (!target) return isRTL ? 'رسالة غير متاحة' : 'Message unavailable';
     if ((target as any).deletedAt) return isRTL ? 'رسالة محذوفة' : 'Deleted message';
     if ((target as any).attachmentType === 'voice') return isRTL ? 'رسالة صوتية' : 'Voice message';
+    if ((target as any).attachmentType === 'video') return isRTL ? 'فيديو قصير' : 'Short video';
     return target.content;
   };
 
@@ -581,6 +624,23 @@ export default function SupportChat() {
                       <div className="mt-1">
                         <AudioPlayer src={msg.attachmentUrl} duration={(msg as any).attachmentDuration} isOwn={isOwn} />
                       </div>
+                    ) : msg.attachmentUrl && ((msg as any).attachmentType === 'video' || getSupportMediaKind({ name: msg.attachmentName, url: msg.attachmentUrl }) === "video") ? (
+                      <div className="mt-2 overflow-hidden rounded-xl border border-white/15 bg-black/5">
+                        <video
+                          src={msg.attachmentUrl}
+                          controls
+                          preload="metadata"
+                          className="max-h-72 w-full bg-black object-contain"
+                        />
+                        <a
+                          href={msg.attachmentUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={`flex items-center gap-1 px-2 py-1.5 text-xs underline ${isOwn ? 'text-emerald-100' : 'text-emerald-600'}`}
+                        >
+                          <Video className="h-3 w-3" /> {msg.attachmentName || (isRTL ? "فيديو" : "Video")}
+                        </a>
+                      </div>
                     ) : msg.attachmentUrl ? (
                       <a href={msg.attachmentUrl} target="_blank" rel="noopener noreferrer"
                         className={`inline-flex items-center gap-1 text-xs mt-1 underline ${isOwn ? 'text-emerald-200' : 'text-emerald-600'}`}>
@@ -675,14 +735,28 @@ export default function SupportChat() {
           )}
           {attachment && (
             <div className="flex items-center gap-2 mb-2 bg-emerald-50 rounded-lg px-3 py-2 text-sm">
-              <FileIcon className="w-4 h-4 text-emerald-500" />
-              <span className="truncate flex-1">{attachment.name}</span>
+              {attachment.kind === "video" ? <Video className="w-4 h-4 text-emerald-500" /> : <FileIcon className="w-4 h-4 text-emerald-500" />}
+              <span className="min-w-0 flex-1 truncate">
+                {attachment.name}
+                <span className="ms-2 text-xs text-emerald-700">
+                  {formatSupportFileSize(attachment.size)}
+                  {attachment.kind === "video" && typeof attachment.duration === "number" ? ` · ${Math.round(attachment.duration)}s` : ""}
+                </span>
+              </span>
               <button onClick={() => setAttachment(null)} className="text-gray-400 hover:text-gray-600"><X className="w-4 h-4" /></button>
             </div>
           )}
+          <div className="mb-2 flex items-start gap-2 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-700">
+            <Video className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>
+              {isRTL
+                ? 'يمكنك إرفاق صورة أو فيديو قصير، ويجب أن يكون الفيديو أقل من دقيقة واحدة.'
+                : 'You can attach an image or short video. Videos must be under one minute.'}
+            </span>
+          </div>
           <div className="flex items-end gap-2">
             <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileSelect}
-              accept="image/*,.pdf,.doc,.docx,.txt" />
+              accept="image/*,video/*,.pdf,.doc,.docx,.txt" />
             <Button variant="ghost" size="icon" className="rounded-xl h-[42px] w-[42px] shrink-0"
               onClick={() => fileInputRef.current?.click()} disabled={uploading}>
               <Paperclip className="h-4 w-4" />

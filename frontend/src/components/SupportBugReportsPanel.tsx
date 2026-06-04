@@ -1,11 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertCircle, Bug, CheckCircle2, Clock3, ImagePlus, Loader2, Send, ShieldX, X } from "lucide-react";
+import { AlertCircle, Bug, CheckCircle2, Clock3, ImagePlus, Loader2, Send, ShieldX, Video, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { trpc } from "@/lib/trpc";
+import {
+  formatSupportFileSize,
+  getSupportMediaKind,
+  getVideoDuration,
+  MAX_SUPPORT_IMAGE_BYTES,
+  MAX_SUPPORT_VIDEO_BYTES,
+  MAX_SUPPORT_VIDEO_SECONDS,
+  type SupportMediaKind,
+} from "@/lib/supportMedia";
 
 type ClientBugStatus = "pending" | "rewarded" | "rejected";
 
@@ -23,7 +32,7 @@ export default function SupportBugReportsPanel() {
   const { isRTL } = useLanguage();
   const utils = trpc.useUtils();
   const [description, setDescription] = useState("");
-  const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const [selectedMedia, setSelectedMedia] = useState<{ file: File; kind: Extract<SupportMediaKind, "image" | "video">; duration?: number } | null>(null);
   const [previewUrl, setPreviewUrl] = useState("");
   const [uploading, setUploading] = useState(false);
 
@@ -32,7 +41,7 @@ export default function SupportBugReportsPanel() {
   const submitMutation = trpc.bugReports.submit.useMutation({
     onSuccess: async () => {
       setDescription("");
-      setSelectedImage(null);
+      setSelectedMedia(null);
       setPreviewUrl("");
       toast.success(isRTL ? "تم إرسال البلاغ" : "Bug report submitted");
       await utils.bugReports.myList.invalidate();
@@ -42,21 +51,21 @@ export default function SupportBugReportsPanel() {
   });
 
   useEffect(() => {
-    if (!selectedImage) {
+    if (!selectedMedia) {
       setPreviewUrl("");
       return;
     }
 
-    const objectUrl = URL.createObjectURL(selectedImage);
+    const objectUrl = URL.createObjectURL(selectedMedia.file);
     setPreviewUrl(objectUrl);
 
     return () => {
       URL.revokeObjectURL(objectUrl);
     };
-  }, [selectedImage]);
+  }, [selectedMedia]);
 
   const isSubmitting = uploading || submitMutation.isPending;
-  const hasSubmitContent = Boolean(description.trim() || selectedImage);
+  const hasSubmitContent = Boolean(description.trim() || selectedMedia);
   const sortedReports = useMemo(() => reports ?? [], [reports]);
 
   const statusMeta = (status: ClientBugStatus) => {
@@ -83,24 +92,46 @@ export default function SupportBugReportsPanel() {
     };
   };
 
-  const handleImageSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleMediaSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = "";
 
     if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      toast.error(isRTL ? "يرجى اختيار صورة فقط" : "Please select an image only");
+
+    const kind = getSupportMediaKind({ contentType: file.type, name: file.name });
+    if (kind !== "image" && kind !== "video") {
+      toast.error(isRTL ? "يرجى اختيار صورة أو فيديو فقط" : "Please select an image or video only");
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
+
+    if (kind === "image" && file.size > MAX_SUPPORT_IMAGE_BYTES) {
       toast.error(isRTL ? "حجم الصورة أكبر من 5 ميجابايت" : "Image size exceeds 5MB");
       return;
     }
 
-    setSelectedImage(file);
+    if (kind === "video") {
+      if (file.size > MAX_SUPPORT_VIDEO_BYTES) {
+        toast.error(isRTL ? "حجم الفيديو أكبر من 25 ميجابايت" : "Video size exceeds 25MB");
+        return;
+      }
+      try {
+        const duration = await getVideoDuration(file);
+        if (duration >= MAX_SUPPORT_VIDEO_SECONDS) {
+          toast.error(isRTL ? "يجب أن يكون الفيديو أقل من دقيقة واحدة" : "Video must be shorter than one minute");
+          return;
+        }
+        setSelectedMedia({ file, kind, duration });
+      } catch {
+        toast.error(isRTL ? "تعذر قراءة مدة الفيديو. جرّب ملف فيديو آخر." : "Could not read video length. Try another video file.");
+      }
+      return;
+    }
+
+    setSelectedMedia({ file, kind });
   };
 
-  const uploadImage = async (file: File) => {
+  const uploadMedia = async (media: NonNullable<typeof selectedMedia>) => {
+    const file = media.file;
     const buffer = await file.arrayBuffer();
     const bytes = new Uint8Array(buffer);
     let binary = "";
@@ -112,6 +143,7 @@ export default function SupportBugReportsPanel() {
       fileData: btoa(binary),
       fileName: file.name,
       contentType: file.type,
+      attachmentDuration: media.kind === "video" ? media.duration : undefined,
     });
 
     return result.url;
@@ -119,14 +151,14 @@ export default function SupportBugReportsPanel() {
 
   const handleSubmit = async () => {
     const trimmedDescription = description.trim();
-    if (!trimmedDescription && !selectedImage) {
-      toast.error(isRTL ? "أدخل وصفاً أو أرفق صورة على الأقل" : "Add a description or image first");
+    if (!trimmedDescription && !selectedMedia) {
+      toast.error(isRTL ? "أدخل وصفاً أو أرفق صورة/فيديو على الأقل" : "Add a description or image/video first");
       return;
     }
 
     setUploading(true);
     try {
-      const imageUrl = selectedImage ? await uploadImage(selectedImage) : undefined;
+      const imageUrl = selectedMedia ? await uploadMedia(selectedMedia) : undefined;
       await submitMutation.mutateAsync({
         description: trimmedDescription || undefined,
         imageUrl,
@@ -155,8 +187,8 @@ export default function SupportBugReportsPanel() {
             </h2>
             <p className="text-sm text-slate-600">
               {isRTL
-                ? "أرسل وصفاً واضحاً أو صورة توضح المشكلة. بعد المراجعة سيحدد الفريق عدد النقاط حسب مستوى الخطورة."
-                : "Send a clear description or a screenshot. After review, the team will assign points based on the bug risk."}
+                ? "أرسل وصفاً واضحاً أو صورة أو فيديو قصير يوضح المشكلة. بعد المراجعة سيحدد الفريق عدد النقاط حسب مستوى الخطورة."
+                : "Send a clear description, screenshot, or short video. After review, the team will assign points based on the bug risk."}
             </p>
           </div>
         </div>
@@ -185,37 +217,60 @@ export default function SupportBugReportsPanel() {
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-sm font-medium text-slate-900">
-                  {isRTL ? "صورة توضيحية" : "Screenshot"}
+                  {isRTL ? "صورة أو فيديو توضيحي" : "Screenshot or video"}
                 </p>
                 <p className="text-xs text-slate-500">
-                  {isRTL ? "اختياري، لكن يمكن الاعتماد عليها وحدها" : "Optional, but it can be submitted on its own"}
+                  {isRTL ? "اختياري، ويمكن الاعتماد عليه وحده إذا كان واضحاً" : "Optional, and it can be submitted on its own if clear"}
                 </p>
               </div>
               <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-emerald-300 hover:bg-emerald-50">
-                <ImagePlus className="h-4 w-4" />
-                {selectedImage ? (isRTL ? "تغيير الصورة" : "Change image") : (isRTL ? "اختيار صورة" : "Choose image")}
-                <input type="file" accept="image/*" className="hidden" onChange={handleImageSelect} />
+                {selectedMedia?.kind === "video" ? <Video className="h-4 w-4" /> : <ImagePlus className="h-4 w-4" />}
+                {selectedMedia ? (isRTL ? "تغيير الملف" : "Change file") : (isRTL ? "اختيار ملف" : "Choose file")}
+                <input type="file" accept="image/*,video/*" className="hidden" onChange={handleMediaSelect} />
               </label>
             </div>
 
-            {selectedImage && (
+            <div className="flex items-start gap-2 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-700">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>
+                {isRTL
+                  ? "الفيديوهات يجب أن تكون أقل من دقيقة واحدة لتقليل حجم التخزين."
+                  : "Videos must be under one minute to keep storage size controlled."}
+              </span>
+            </div>
+
+            {selectedMedia && (
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
                 <div className="mb-3 flex items-center justify-between gap-3 text-sm text-slate-600">
-                  <span className="truncate">{selectedImage.name}</span>
+                  <span className="min-w-0 flex-1 truncate">
+                    {selectedMedia.file.name}
+                    <span className="ms-2 text-xs text-slate-500">
+                      {formatSupportFileSize(selectedMedia.file.size)}
+                      {selectedMedia.kind === "video" && typeof selectedMedia.duration === "number" ? ` · ${Math.round(selectedMedia.duration)}s` : ""}
+                    </span>
+                  </span>
                   <button
                     type="button"
-                    onClick={() => setSelectedImage(null)}
+                    onClick={() => setSelectedMedia(null)}
                     className="rounded-full p-1 text-slate-400 transition hover:bg-white hover:text-slate-600"
-                    aria-label={isRTL ? "إزالة الصورة" : "Remove image"}
+                    aria-label={isRTL ? "إزالة الملف" : "Remove file"}
                   >
                     <X className="h-4 w-4" />
                   </button>
                 </div>
-                {previewUrl && (
+                {previewUrl && selectedMedia.kind === "image" && (
                   <img
                     src={previewUrl}
                     alt={isRTL ? "معاينة صورة البلاغ" : "Bug report preview"}
                     className="max-h-72 w-full rounded-xl object-contain bg-white"
+                  />
+                )}
+                {previewUrl && selectedMedia.kind === "video" && (
+                  <video
+                    src={previewUrl}
+                    controls
+                    preload="metadata"
+                    className="max-h-72 w-full rounded-xl bg-black object-contain"
                   />
                 )}
               </div>
@@ -227,8 +282,8 @@ export default function SupportBugReportsPanel() {
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
               <span>
                 {isRTL
-                  ? "يجب إدخال وصف أو رفع صورة واحدة على الأقل."
-                  : "You need at least a description or an image."}
+                  ? "يجب إدخال وصف أو رفع صورة/فيديو واحد على الأقل."
+                  : "You need at least a description or an image/video."}
               </span>
             </div>
             <Button onClick={handleSubmit} disabled={isSubmitting || !hasSubmitContent} className="h-11 rounded-xl px-5">
@@ -290,7 +345,23 @@ export default function SupportBugReportsPanel() {
                     <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">{report.description}</p>
                   )}
 
-                  {report.imageUrl && (
+                  {report.imageUrl && getSupportMediaKind({ url: report.imageUrl }) === "video" && (
+                    <a
+                      href={report.imageUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-3 block overflow-hidden rounded-2xl border border-slate-200 bg-slate-50"
+                    >
+                      <video
+                        src={report.imageUrl}
+                        controls
+                        preload="metadata"
+                        className="max-h-72 w-full bg-black object-contain"
+                      />
+                    </a>
+                  )}
+
+                  {report.imageUrl && getSupportMediaKind({ url: report.imageUrl }) !== "video" && (
                     <a
                       href={report.imageUrl}
                       target="_blank"

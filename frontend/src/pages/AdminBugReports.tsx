@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { trpc } from "@/lib/trpc";
+import { getSupportMediaKind } from "@/lib/supportMedia";
 import { BUG_REPORT_RISK_LEVELS } from "@shared/const";
 
 type FilterValue = "all" | "pending" | "rewarded" | "rejected";
@@ -239,7 +240,18 @@ export default function AdminBugReports() {
                           </div>
                         )}
 
-                        {report.imageUrl && (
+                        {report.imageUrl && getSupportMediaKind({ url: report.imageUrl }) === "video" && (
+                          <a
+                            href={report.imageUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="block overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 lg:max-w-xl"
+                          >
+                            <video src={report.imageUrl} controls preload="metadata" className="max-h-80 w-full bg-black object-contain" />
+                          </a>
+                        )}
+
+                        {report.imageUrl && getSupportMediaKind({ url: report.imageUrl }) !== "video" && (
                           <a
                             href={report.imageUrl}
                             target="_blank"
