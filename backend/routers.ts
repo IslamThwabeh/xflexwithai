@@ -42,7 +42,7 @@ const SUPPORT_VIDEO_MAX_SECONDS = 60;
 const SUPPORT_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 const SUPPORT_FILE_MAX_BYTES = 5 * 1024 * 1024;
 const SUPPORT_VOICE_MAX_BYTES = 2 * 1024 * 1024;
-const SUPPORT_VIDEO_MAX_BYTES = 50 * 1024 * 1024;
+const SUPPORT_VIDEO_MAX_BYTES = 100 * 1024 * 1024;
 const supportAttachmentTypeSchema = z.enum(['file', 'voice', 'video']);
 
 const getReqHeader = (req: any, name: string) => {
@@ -3875,7 +3875,8 @@ export const appRouter = router({
         }
 
         const randomSuffix = Math.random().toString(36).substring(2, 10);
-        const key = `support/${ctx.user.id}/${Date.now()}-${randomSuffix}-${input.fileName}`;
+        const attachmentPrefix = input.attachmentType === 'video' ? 'support/videos' : 'support';
+        const key = `${attachmentPrefix}/${ctx.user.id}/${Date.now()}-${randomSuffix}-${input.fileName}`;
         const result = await storagePutR2(env.VIDEOS_BUCKET, key, buffer, input.contentType);
         return { url: result.url, key: result.key, size: buffer.length };
       }),
@@ -4228,7 +4229,8 @@ export const appRouter = router({
         }
 
         const randomSuffix = Math.random().toString(36).substring(2, 10);
-        const key = `bug-reports/${ctx.user.id}/${Date.now()}-${randomSuffix}-${input.fileName}`;
+        const reportPrefix = isVideo ? 'bug-reports/videos' : 'bug-reports';
+        const key = `${reportPrefix}/${ctx.user.id}/${Date.now()}-${randomSuffix}-${input.fileName}`;
         const result = await storagePutR2(env.VIDEOS_BUCKET, key, buffer, input.contentType);
 
         return { url: result.url, key: result.key, size: buffer.length };

@@ -69,7 +69,9 @@ Last updated: 2026-06-04
 - Images: max 5 MB.
 - Generic chat files: max 5 MB.
 - Voice notes: max 2 MB.
-- Videos: max 50 MB and must be shorter than 60 seconds.
+- Videos: max 100 MB and must be shorter than 60 seconds.
+- New support chat videos are stored under R2 prefix `support/videos/`.
+- New bug report videos are stored under R2 prefix `bug-reports/videos/`.
 - Frontend checks video duration before upload via browser metadata.
 - Backend requires video duration metadata and rejects duration `>= 60` seconds for support chat and bug report evidence uploads.
 - Bug reports still store evidence in the existing `imageUrl` column for compatibility, but UI copy now says screenshot/video/evidence.

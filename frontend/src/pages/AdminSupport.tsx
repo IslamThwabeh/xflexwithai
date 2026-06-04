@@ -279,7 +279,7 @@ export default function AdminSupport() {
     }
     if (kind === "video") {
       if (file.size > MAX_SUPPORT_VIDEO_BYTES) {
-        toast.error(isRtl ? 'حجم الفيديو أكبر من 50 ميجابايت' : 'Video size exceeds 50MB');
+        toast.error(isRtl ? 'حجم الفيديو أكبر من 100 ميجابايت' : 'Video size exceeds 100MB');
         return;
       }
       try {

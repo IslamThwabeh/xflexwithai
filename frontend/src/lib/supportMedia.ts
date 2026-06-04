@@ -2,7 +2,7 @@ export type SupportMediaKind = "image" | "video" | "file";
 
 export const MAX_SUPPORT_IMAGE_BYTES = 5 * 1024 * 1024;
 export const MAX_SUPPORT_FILE_BYTES = 5 * 1024 * 1024;
-export const MAX_SUPPORT_VIDEO_BYTES = 50 * 1024 * 1024;
+export const MAX_SUPPORT_VIDEO_BYTES = 100 * 1024 * 1024;
 export const MAX_SUPPORT_VIDEO_SECONDS = 60;
 
 const VIDEO_EXTENSIONS = [".mp4", ".webm", ".mov", ".m4v", ".avi", ".mpeg", ".mpg"];

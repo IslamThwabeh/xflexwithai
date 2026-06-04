@@ -40,7 +40,9 @@ Last updated: 2026-06-04
 ## Support Media Rollout
 
 - Commit `80b948e` added short video upload support to client chat, admin/support chat, and bug report evidence.
-- Videos are limited to 50 MB and shorter than 60 seconds.
+- Videos are limited to 100 MB and shorter than 60 seconds.
+- New support chat videos use R2 prefix `support/videos/`.
+- New bug report videos use R2 prefix `bug-reports/videos/`.
 - Images and generic files are 5 MB. Voice notes are 2 MB.
 - Browser checks duration before upload; backend requires duration metadata and rejects `>= 60` seconds.
 - Bug evidence still uses the existing `imageUrl` column for compatibility.
