@@ -111,7 +111,7 @@ export default function SupportBugReportsPanel() {
 
     if (kind === "video") {
       if (file.size > MAX_SUPPORT_VIDEO_BYTES) {
-        toast.error(isRTL ? "حجم الفيديو أكبر من 25 ميجابايت" : "Video size exceeds 25MB");
+        toast.error(isRTL ? "حجم الفيديو أكبر من 50 ميجابايت" : "Video size exceeds 50MB");
         return;
       }
       try {
