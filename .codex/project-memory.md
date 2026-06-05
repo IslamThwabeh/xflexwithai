@@ -1,6 +1,6 @@
 # XFLEX Project Memory
 
-Last updated: 2026-06-04
+Last updated: 2026-06-05
 
 ## Project Overview
 
@@ -14,7 +14,7 @@ Last updated: 2026-06-04
 - Main router: `backend/routers.ts`.
 - Database wrapper/helpers: `backend/db.ts`.
 - SQLite schema source: `database/schema-sqlite.ts`.
-- Key tables to remember: `admin_settings`, `supportMessages`, `userRoles`, `users`, `email_delivery_logs`, `recommendationSubscriptions`.
+- Key tables to remember: `admin_settings`, `supportMessages`, `userRoles`, `users`, `email_delivery_logs`, `recommendationSubscriptions`, `lexaiSubscriptions`, `registrationKeys`, `packageSubscriptions`.
 
 ## Deployment
 
@@ -28,8 +28,10 @@ Last updated: 2026-06-04
 - D1 database binding: `xflexwithai-db`.
 - Remote production D1 query pattern:
   `npx wrangler d1 execute xflexwithai-db --remote --config wrangler-worker.toml --env production --command "SELECT ..."`
-- Latest Worker deploy completed on 2026-06-04 with version `a234c242-b9a5-455d-9eda-02c78ba24f82`.
-- Pages deploy via Wrangler failed on 2026-06-04 because Cloudflare returned `POST /pages/assets/upload -> 502 Bad Gateway`; user planned to upload `dist/public` manually from the Cloudflare dashboard.
+- Latest Worker deploy completed on 2026-06-05 with version `637f2ba6-a794-4fba-8051-f2d02a694089`.
+- Latest Pages deploy completed on 2026-06-05: `https://03762e97.xflexwithai.pages.dev`.
+- Latest production D1 migration applied on 2026-06-05: `database/migrations/050_first_package_activation_anchor.sql`.
+- Wrangler Pages deploy previously failed on 2026-06-04 because Cloudflare returned `POST /pages/assets/upload -> 502 Bad Gateway`; if it recurs, manual dashboard upload of `dist/public` is a practical fallback.
 
 ## Email And Notifications
 
@@ -52,6 +54,31 @@ Last updated: 2026-06-04
 - For support/chat changes, check both client and admin surfaces; they often implement similar behavior separately.
 - For bug report evidence, existing storage column is still `imageUrl`; avoid schema churn unless there is a strong reason.
 - Wrangler Pages deploy can fail from Cloudflare upload 502 even when the app build is valid; manual dashboard upload of `dist/public` is a practical fallback.
+- Package keys dashboard now shows student name and service expiry; backend enrichment must use explicit joins for users instead of Drizzle correlated subqueries, which previously repeated the same name across rows.
+- Renewal keys must not receive fresh-student 14-day protection when they are renewing existing active/expired timed services; they start now or stack from current active expiry.
+- Case-by-case production repairs are preferred for subscription/key issues; do not bulk repair affected users without explicit approval and an audit trail.
+
+## Package Key Lifecycle Rules
+
+- Packages are lifetime course access plus timed services:
+  - Basic: course forever + Recommendations for the key/service age.
+  - Comprehensive: course forever + Recommendations and LexAI for the key/service age.
+- Readiness for timed services is exactly:
+  `(course completed OR course admin-skipped) AND (broker completed OR broker admin-skipped)`.
+- Admin/support skip means that gate is considered ready. If both gates are ready, pending timed services should start immediately.
+- Fresh key + fresh student: course access starts immediately; timed services stay pending until readiness or the configurable study/protection deadline.
+- Fresh key + existing/old student must be blocked before consuming the key, and support/key managers/admins must be notified by in-app staff notification and email.
+- Existing/old student means any active/expired package subscription, any LexAI/Recommendations subscription history, or any previously activated package key.
+- Renewal key + existing active student: stack from current service expiry.
+- Renewal key + expired student: start from now.
+- Renewal key + new/migrated student: allow activation, but timed services remain pending until readiness/admin skip or the configurable protection deadline.
+- Basic active -> Comprehensive renewal/upgrade is allowed:
+  - LexAI gets only the new Comprehensive key age.
+  - Recommendations gets the new Comprehensive key age plus any remaining Basic Recommendation days.
+- Comprehensive active -> Basic renewal is blocked until the Comprehensive LexAI service period is no longer active/pending.
+- The protection window is configurable via `study_period_days`; do not hardcode 14 days in lifecycle code.
+- `users.firstPackageActivatedAt` stores/derives the original package activation anchor so upgrades do not reset the protection window.
+- Pending timed-service rows use `maxActivationDate` plus placeholder `endDate`; activation derives the actual service days from that pair so LexAI and Recommendations can have different durations.
 
 ## Support Media Uploads
 
@@ -79,10 +106,10 @@ Last updated: 2026-06-04
 ## Verification Run
 
 - `pnpm run check` passed.
-- `pnpm test` passed: 19 test files, 68 tests.
+- `pnpm test` passed on 2026-06-05: 21 test files, 78 tests.
 - `pnpm run build` passed.
 - `pnpm run build:worker` passed.
-- Focused tests also passed: `server/supportChatNotifications.test.ts` and `server/bugReports.test.ts`.
+- Focused lifecycle tests passed: `server/packageKeyLifecycle.test.ts`, `server/timedServiceActivation.test.ts`, `server/packageKeyRenewalEligibility.test.ts`, `server/markEpisodeComplete.test.ts`, and `server/brokerFreezeAndSkipRoutes.test.ts`.
 - Browser smoke could not be completed in Codex because the in-app browser backend reported `iab` unavailable.
 
 ## Future Hardening

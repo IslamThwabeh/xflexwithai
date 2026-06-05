@@ -92,6 +92,7 @@ export const STAFF_NOTIFICATION_EVENTS = {
   lexai_expiry_soon:    { labelEn: "LexAI Expiry Soon",         labelAr: "LexAI على وشك الانتهاء",   roles: ["lexai_support"], actionUrl: "/admin/lexai" },
   new_order:            { labelEn: "New Order",                 labelAr: "طلب جديد",                 roles: ["key_manager"],  actionUrl: "/admin/orders" },
   key_activated:        { labelEn: "Package Key Activated",     labelAr: "تم تفعيل مفتاح",            roles: ["key_manager"],  actionUrl: "/admin/package-keys" },
+  package_key_blocked:  { labelEn: "Package Key Blocked",       labelAr: "تم منع تفعيل مفتاح",        roles: ["key_manager", "support"], actionUrl: "/admin/package-keys" },
   bug_report_submitted: { labelEn: "Bug Report Submitted",      labelAr: "تم إرسال بلاغ خطأ",         roles: ["support"],      actionUrl: "/admin/bug-reports" },
   offer_agreement:      { labelEn: "Offer Agreement Signed",    labelAr: "تم توقيع اتفاقية عرض",      roles: [],               actionUrl: "/admin/offer-agreements" },
   plan_progress_update: { labelEn: "Foundation Plan Update",   labelAr: "تحديث الخطة التأسيسية",      roles: ["plan_manager"], actionUrl: "/admin/plan-progress/legacy" },

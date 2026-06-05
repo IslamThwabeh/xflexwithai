@@ -26,6 +26,7 @@ export const users = sqliteTable("users", {
   referralCode: text("referralCode"),
   isStaff: integer("isStaff", { mode: 'boolean' }).default(false).notNull(),
   brokerOnboardingComplete: integer("brokerOnboardingComplete", { mode: 'boolean' }).default(false).notNull(),
+  firstPackageActivatedAt: text("firstPackageActivatedAt"),
   staffNotificationPrefs: text("staffNotificationPrefs").default("{}"),
 });
 

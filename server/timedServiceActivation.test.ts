@@ -42,6 +42,16 @@ describe('timed service activation helpers', () => {
     })).toBe(true);
   });
 
+  it('keeps services pending when broker is complete but course is not ready', () => {
+    expect(shouldAutoActivateTimedServices({
+      now: new Date('2026-04-12T00:00:00.000Z'),
+      brokerComplete: true,
+      courseReady: false,
+      lexaiMaxActivationDate: null,
+      recommendationMaxActivationDate: null,
+    })).toBe(false);
+  });
+
   it('auto-activates when a pending service is past its deadline even if broker is incomplete', () => {
     expect(shouldAutoActivateTimedServices({
       now: new Date('2026-04-12T12:00:00.000Z'),

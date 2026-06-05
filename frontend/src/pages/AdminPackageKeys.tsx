@@ -85,23 +85,52 @@ import {
 } from "@/lib/adminCurrency";
 import { getSuggestedPackageKeyPrice } from "@shared/packageKeyPricing";
 
+const getServiceExpiryValue = (key: any): string | null => {
+  if (!key?.isActive || !key?.activatedAt) return null;
+
+  const candidates = [
+    key.lexaiIsPending ? null : key.lexaiEndDate,
+    key.recIsPending ? null : key.recEndDate,
+  ].filter(Boolean) as string[];
+
+  if (!candidates.length) return null;
+
+  return candidates.reduce((latest, candidate) => {
+    const latestTime = new Date(latest).getTime();
+    const candidateTime = new Date(candidate).getTime();
+    if (!Number.isFinite(candidateTime)) return latest;
+    if (!Number.isFinite(latestTime)) return candidate;
+    return candidateTime > latestTime ? candidate : latest;
+  });
+};
+
+const getServiceExpiryTime = (key: any): number => {
+  const value = getServiceExpiryValue(key);
+  if (!value) return 0;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? time : 0;
+};
+
 const keySortFns: Record<string, (a: any, b: any) => number> = {
   keyCode: (a, b) => (a.keyCode || "").localeCompare(b.keyCode || ""),
   package: (a, b) => (a.packageName || "").localeCompare(b.packageName || ""),
+  name: (a, b) => (a.userName || "").localeCompare(b.userName || ""),
   email: (a, b) => (a.email || "").localeCompare(b.email || ""),
   status: (a, b) => {
     const rank = (k: any) => !k.isActive ? 0 : k.activatedAt ? 2 : 1;
     return rank(a) - rank(b);
   },
   price: (a, b) => (a.price || 0) - (b.price || 0),
+  duration: (a, b) => (a.entitlementDays || 0) - (b.entitlementDays || 0),
+  serviceExpiry: (a, b) => getServiceExpiryTime(a) - getServiceExpiryTime(b),
+  keyExpiry: (a, b) =>
+    new Date(a.expiresAt || 0).getTime() - new Date(b.expiresAt || 0).getTime(),
   type: (a, b) => {
     const rank = (k: any) => k.isRenewal ? 2 : k.isUpgrade ? 1 : 0;
     return rank(a) - rank(b);
   },
   activated: (a, b) =>
     new Date(a.activatedAt || 0).getTime() - new Date(b.activatedAt || 0).getTime(),
-  created: (a, b) =>
-    new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime(),
 };
 
 export default function AdminPackageKeys() {
@@ -132,19 +161,29 @@ export default function AdminPackageKeys() {
   const allColumns = [
     { key: 'keyCode', en: 'Key Code', ar: 'المفتاح' },
     { key: 'package', en: 'Package', ar: 'الباقة' },
+    { key: 'name', en: 'Name', ar: 'الاسم' },
     { key: 'email', en: 'Email', ar: 'البريد' },
     { key: 'status', en: 'Status', ar: 'الحالة' },
     { key: 'price', en: 'Price', ar: 'السعر' },
-    { key: 'duration', en: 'Duration / Expiry', ar: 'المدة / الانتهاء' },
+    { key: 'duration', en: 'Service Days', ar: 'مدة الخدمة' },
+    { key: 'serviceExpiry', en: 'Service Expiry', ar: 'تاريخ الانتهاء' },
+    { key: 'keyExpiry', en: 'Key Redeem Deadline', ar: 'آخر موعد لاستخدام المفتاح' },
     { key: 'activated', en: 'Activated', ar: 'تاريخ التفعيل' },
-    { key: 'created', en: 'Created', ar: 'تاريخ الإنشاء' },
     { key: 'notes', en: 'Notes', ar: 'ملاحظات' },
   ] as const;
-  const defaultVisibleCols = new Set(['keyCode', 'package', 'email', 'status', 'price']);
+  const defaultVisibleCols = new Set(['keyCode', 'package', 'name', 'email', 'status', 'price', 'duration', 'serviceExpiry']);
   const [visibleCols, setVisibleCols] = useState<Set<string>>(() => {
     try {
       const saved = localStorage.getItem('adminKeys_visibleCols');
-      if (saved) return new Set(JSON.parse(saved));
+      if (saved) {
+        const parsed = new Set<string>(JSON.parse(saved));
+        parsed.add('name');
+        parsed.add('duration');
+        parsed.add('serviceExpiry');
+        parsed.delete('created');
+        localStorage.setItem('adminKeys_visibleCols', JSON.stringify([...parsed]));
+        return parsed;
+      }
     } catch {}
     return new Set(defaultVisibleCols);
   });
@@ -299,20 +338,20 @@ export default function AdminPackageKeys() {
     const keys = filteredKeys;
     if (!keys.length) return;
     const headers = language === 'ar'
-      ? ['رمز المفتاح', 'الباقة', 'البريد الإلكتروني', 'الحالة', 'أيام الاستحقاق', 'آخر موعد للاستخدام', 'انتهاء الاشتراك', 'النوع', 'ترقية', 'تمت الإحالة بواسطة', 'تاريخ الإنشاء', 'تاريخ التفعيل', 'ملاحظات']
-      : ['Key Code', 'Package', 'Email', 'Status', 'Entitlement Days', 'Redeem By', 'Sub Expiry', 'Type', 'Upgrade', 'Referred By', 'Created', 'Activated', 'Notes'];
+      ? ['رمز المفتاح', 'الباقة', 'الاسم', 'البريد الإلكتروني', 'الحالة', 'مدة الخدمة', 'تاريخ الانتهاء', 'آخر موعد لاستخدام المفتاح', 'النوع', 'ترقية', 'تمت الإحالة بواسطة', 'تاريخ التفعيل', 'ملاحظات']
+      : ['Key Code', 'Package', 'Name', 'Email', 'Status', 'Service Days', 'Service Expiry', 'Key Redeem Deadline', 'Type', 'Upgrade', 'Referred By', 'Activated', 'Notes'];
     const rows = keys.map(k => [
       k.keyCode,
       (k as any).packageName || '',
+      (k as any).userName || '',
       k.email || '',
       k.activatedAt ? (language === 'ar' ? 'مفعّل' : 'Activated') : k.isActive ? (language === 'ar' ? 'غير مستخدم' : 'Unused') : (language === 'ar' ? 'معطّل' : 'Deactivated'),
       k.entitlementDays || (language === 'ar' ? 'الافتراضي' : 'Default'),
+      getServiceExpiryValue(k) ? formatLocalizedDate(getServiceExpiryValue(k) as string, language) : '',
       k.expiresAt ? formatLocalizedDate(k.expiresAt, language) : '',
-      (k as any).subEndDate ? formatLocalizedDate((k as any).subEndDate, language) : '',
       (k as any).isRenewal ? (language === 'ar' ? 'تجديد' : 'Renewal') : (k as any).isUpgrade ? (language === 'ar' ? 'ترقية' : 'Upgrade') : (language === 'ar' ? 'جديد' : 'New'),
       (k as any).isUpgrade ? (language === 'ar' ? 'نعم' : 'Yes') : (language === 'ar' ? 'لا' : 'No'),
       (k as any).referredBy || '',
-      k.createdAt ? formatLocalizedDate(k.createdAt, language) : '',
       k.activatedAt ? formatLocalizedDate(k.activatedAt, language) : '',
       k.notes || '',
     ]);
@@ -335,10 +374,12 @@ export default function AdminPackageKeys() {
 
   // Filter keys
   const filteredKeys = keys.filter((k: any) => {
-    const matchesSearch = !searchQuery || 
-      k.keyCode.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (k.email && k.email.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (k.notes && k.notes.toLowerCase().includes(searchQuery.toLowerCase()));
+    const q = searchQuery.trim().toLowerCase();
+    const matchesSearch = !q ||
+      k.keyCode.toLowerCase().includes(q) ||
+      (k.email && k.email.toLowerCase().includes(q)) ||
+      (k.userName && k.userName.toLowerCase().includes(q)) ||
+      (k.notes && k.notes.toLowerCase().includes(q));
     const matchesPackage = filterPackage === 'all' || String(k.packageId) === filterPackage;
     let matchesStatus = true;
     if (statusFilter === 'activated') matchesStatus = !!k.isActive && !!k.activatedAt;
@@ -850,9 +891,16 @@ export default function AdminPackageKeys() {
                     )}
                   </div>
 
-                  {/* Row 3: Email */}
-                  {key.email && (
-                    <p className="text-sm text-gray-700" dir="ltr">{key.email}</p>
+                  {/* Row 3: Client */}
+                  {(key.userName || key.email) && (
+                    <div className="space-y-0.5">
+                      {key.userName && (
+                        <p className="text-sm font-medium text-gray-900">{key.userName}</p>
+                      )}
+                      {key.email && (
+                        <p className="text-sm text-gray-700" dir="ltr">{key.email}</p>
+                      )}
+                    </div>
                   )}
 
                   {/* Row 4: Key details grid — 2 columns */}
@@ -863,18 +911,12 @@ export default function AdminPackageKeys() {
                     </div>
                     <div>
                       <span className="text-gray-400 block">
-                        {key.activatedAt
-                          ? (language === 'ar' ? 'انتهاء الاشتراك' : 'Sub Expiry')
-                          : (language === 'ar' ? 'مدة الاشتراك' : 'Duration')}
+                        {language === 'ar' ? 'مدة الخدمة' : 'Service Days'}
                       </span>
                       <span className="font-medium">
-                        {key.activatedAt
-                          ? ((key as any).subEndDate
-                              ? new Date((key as any).subEndDate).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US')
-                              : '—')
-                          : (key.entitlementDays
-                              ? `${key.entitlementDays} ${language === 'ar' ? 'يوم' : 'days'}`
-                              : (language === 'ar' ? 'الافتراضي' : 'Default'))}
+                        {key.entitlementDays
+                          ? `${key.entitlementDays} ${language === 'ar' ? 'يوم' : 'days'}`
+                          : (language === 'ar' ? 'الافتراضي' : 'Default')}
                       </span>
                     </div>
                     <div>
@@ -882,8 +924,12 @@ export default function AdminPackageKeys() {
                       <span className="font-medium">{key.activatedAt ? new Date(key.activatedAt).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US') : '—'}</span>
                     </div>
                     <div>
-                      <span className="text-gray-400 block">{language === 'ar' ? 'تاريخ الإنشاء' : 'Created'}</span>
-                      <span className="font-medium">{key.createdAt ? new Date(key.createdAt).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US') : '—'}</span>
+                      <span className="text-gray-400 block">{language === 'ar' ? 'تاريخ الانتهاء' : 'Service Expiry'}</span>
+                      <span className="font-medium">
+                        {getServiceExpiryValue(key)
+                          ? new Date(getServiceExpiryValue(key) as string).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US')
+                          : '—'}
+                      </span>
                     </div>
                     {key.notes && (
                       <div>
@@ -996,12 +1042,14 @@ export default function AdminPackageKeys() {
                   <TableRow>
                     {visibleCols.has('keyCode') && <TableHead><SortableHeader label={language === 'ar' ? 'المفتاح' : 'Key Code'} sortKey="keyCode" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></TableHead>}
                     {visibleCols.has('package') && <TableHead><SortableHeader label={language === 'ar' ? 'الباقة' : 'Package'} sortKey="package" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></TableHead>}
+                    {visibleCols.has('name') && <TableHead><SortableHeader label={language === 'ar' ? 'الاسم' : 'Name'} sortKey="name" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></TableHead>}
                     {visibleCols.has('email') && <TableHead><SortableHeader label={language === 'ar' ? 'البريد' : 'Email'} sortKey="email" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></TableHead>}
                     {visibleCols.has('status') && <TableHead><SortableHeader label={language === 'ar' ? 'الحالة' : 'Status'} sortKey="status" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></TableHead>}
                     {visibleCols.has('price') && <TableHead><SortableHeader label={language === 'ar' ? 'السعر' : 'Price'} sortKey="price" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></TableHead>}
-                    {visibleCols.has('duration') && <TableHead>{language === 'ar' ? 'المدة / الانتهاء' : 'Duration / Expiry'}</TableHead>}
+                    {visibleCols.has('duration') && <TableHead><SortableHeader label={language === 'ar' ? 'مدة الخدمة' : 'Service Days'} sortKey="duration" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></TableHead>}
+                    {visibleCols.has('serviceExpiry') && <TableHead><SortableHeader label={language === 'ar' ? 'تاريخ الانتهاء' : 'Service Expiry'} sortKey="serviceExpiry" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></TableHead>}
+                    {visibleCols.has('keyExpiry') && <TableHead><SortableHeader label={language === 'ar' ? 'آخر موعد لاستخدام المفتاح' : 'Key Redeem Deadline'} sortKey="keyExpiry" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></TableHead>}
                     {visibleCols.has('activated') && <TableHead><SortableHeader label={language === 'ar' ? 'تاريخ التفعيل' : 'Activated'} sortKey="activated" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></TableHead>}
-                    {visibleCols.has('created') && <TableHead><SortableHeader label={language === 'ar' ? 'تاريخ الإنشاء' : 'Created'} sortKey="created" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></TableHead>}
                     {visibleCols.has('notes') && <TableHead>{language === 'ar' ? 'ملاحظات' : 'Notes'}</TableHead>}
                     <TableHead></TableHead>
                   </TableRow>
@@ -1034,6 +1082,13 @@ export default function AdminPackageKeys() {
                             <Package className="w-3 h-3" />
                             {language === 'ar' ? (key.packageNameAr || key.packageName) : key.packageName}
                           </Badge>
+                        </TableCell>}
+                        {visibleCols.has('name') && <TableCell>
+                          {key.userName ? (
+                            <span className="text-sm font-medium">{key.userName}</span>
+                          ) : (
+                            <span className="text-xs text-gray-400">—</span>
+                          )}
                         </TableCell>}
                         {visibleCols.has('email') && <TableCell>
                           {key.email ? (
@@ -1084,17 +1139,24 @@ export default function AdminPackageKeys() {
                           {key.price ? formatAdminCurrencyFromUsd(key.price, language, { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : '—'}
                         </TableCell>}
                         {visibleCols.has('duration') && <TableCell className="text-xs">
-                          {key.activatedAt
-                            ? ((key as any).subEndDate
-                                ? <span className="text-gray-600">{new Date((key as any).subEndDate).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US')}</span>
-                                : <span className="text-gray-400">—</span>)
-                            : <span className="text-gray-500">{key.entitlementDays ? `${key.entitlementDays} ${language === 'ar' ? 'يوم' : 'days'}` : (language === 'ar' ? 'الافتراضي' : 'Default')}</span>}
+                          <span className="text-gray-600">
+                            {key.entitlementDays
+                              ? `${key.entitlementDays} ${language === 'ar' ? 'يوم' : 'days'}`
+                            : (language === 'ar' ? 'الافتراضي' : 'Default')}
+                          </span>
+                        </TableCell>}
+                        {visibleCols.has('serviceExpiry') && <TableCell className="text-xs">
+                          {getServiceExpiryValue(key)
+                            ? <span className="text-gray-600">{new Date(getServiceExpiryValue(key) as string).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US')}</span>
+                            : <span className="text-gray-400">—</span>}
+                        </TableCell>}
+                        {visibleCols.has('keyExpiry') && <TableCell className="text-xs">
+                          {key.expiresAt
+                            ? <span className="text-gray-600">{new Date(key.expiresAt).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US')}</span>
+                            : <span className="text-gray-400">—</span>}
                         </TableCell>}
                         {visibleCols.has('activated') && <TableCell className="text-xs text-gray-500">
                           {key.activatedAt ? new Date(key.activatedAt).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US') : '—'}
-                        </TableCell>}
-                        {visibleCols.has('created') && <TableCell className="text-xs text-gray-500">
-                          {key.createdAt ? new Date(key.createdAt).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US') : '—'}
                         </TableCell>}
                         {visibleCols.has('notes') && <TableCell className="text-xs text-gray-500 max-w-[150px] truncate">
                           {key.notes || '—'}

@@ -27,10 +27,11 @@ export function getPendingServiceWindow(input: {
 export function shouldAutoActivateTimedServices(input: {
   now: Date;
   brokerComplete: boolean;
+  courseReady?: boolean;
   lexaiMaxActivationDate?: string | null;
   recommendationMaxActivationDate?: string | null;
 }) {
-  if (input.brokerComplete) {
+  if ((input.courseReady ?? true) && input.brokerComplete) {
     return true;
   }
 

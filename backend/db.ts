@@ -75,7 +75,14 @@ import {
 import { ENV } from './_core/env';
 import { logger } from './_core/logger';
 import { sendWelcomeEmail, sendMilestoneEmail, sendQuizFeedbackEmail, sendStaffAlertEmail } from './_core/orderEmails';
-import { canRedeemRenewalPackageKey } from './services/package-key.service';
+import {
+  derivePendingServiceDays,
+  getRemainingTimedServiceDays,
+  getServiceDaysForPackageTransition,
+  isStudentReadyForTimedServices,
+  shouldBlockFreshKeyForExistingStudent,
+  validateRenewalPackageTransition,
+} from './services/package-key-lifecycle.service';
 import { getRecommendationThreadRootId } from './services/recommendation-thread.service';
 import { getPendingServiceWindow, shouldAutoActivateTimedServices } from './services/timed-service-activation.service';
 import {
@@ -373,45 +380,9 @@ export function buildTimedServiceAccessSummary(snapshot?: {
   };
 }
 
-async function getRegistrationKeyActivatedAt(registrationKeyId?: number | null) {
-  if (!registrationKeyId) return null;
-
-  const db = await getDb();
-  if (!db) return null;
-
-  const [keyRow] = await db
-    .select({ activatedAt: registrationKeys.activatedAt })
-    .from(registrationKeys)
-    .where(eq(registrationKeys.id, registrationKeyId))
-    .limit(1);
-
-  return keyRow?.activatedAt ?? null;
-}
-
-async function getPendingServiceWindowForKey(
-  registrationKeyId: number | undefined,
-  studyPeriodDays: number,
-  entitlementDays: number,
-  fallbackDate: Date,
-) {
-  const registrationKeyActivatedAt = await getRegistrationKeyActivatedAt(registrationKeyId ?? null);
-  return getPendingServiceWindow({
-    fallbackDate,
-    registrationKeyActivatedAt,
-    studyPeriodDays,
-    entitlementDays,
-  });
-}
-
 async function ensureTimedServicesActivatedIfDue(userId: number) {
   const db = await getDb();
   if (!db) return;
-
-  const [userRow] = await db
-    .select({ brokerOnboardingComplete: users.brokerOnboardingComplete })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
 
   const [pendingLex] = await db
     .select({ maxActivationDate: lexaiSubscriptions.maxActivationDate })
@@ -437,10 +408,14 @@ async function ensureTimedServicesActivatedIfDue(userId: number) {
     return;
   }
 
-  const brokerComplete = !!userRow?.brokerOnboardingComplete;
+  const packageId = await getUserLatestActivatedPackageId(userId);
+  const readiness = packageId
+    ? await getUserTimedServiceReadiness(userId, packageId)
+    : { ready: false, courseReady: false, brokerReady: false };
   const shouldActivate = shouldAutoActivateTimedServices({
     now: new Date(),
-    brokerComplete,
+    brokerComplete: readiness.brokerReady,
+    courseReady: readiness.courseReady,
     lexaiMaxActivationDate: pendingLex?.maxActivationDate ?? null,
     recommendationMaxActivationDate: pendingRec?.maxActivationDate ?? null,
   });
@@ -449,7 +424,7 @@ async function ensureTimedServicesActivatedIfDue(userId: number) {
     return;
   }
 
-  await activateStudentSubscriptions(userId, !brokerComplete);
+  await activateStudentSubscriptions(userId, !readiness.ready);
 }
 
 /**
@@ -491,6 +466,33 @@ async function getUserEntitlementDays(userId: number): Promise<number> {
   }
 
   return DEFAULT_KEY_ENTITLEMENT_DAYS;
+}
+
+async function getUserLatestActivatedPackageId(userId: number): Promise<number | null> {
+  const db = await getDb();
+  if (!db) return null;
+
+  const [user] = await db.select({ email: users.email }).from(users)
+    .where(eq(users.id, userId)).limit(1);
+  if (!user?.email) return null;
+
+  const [key] = await db.select({ packageId: registrationKeys.packageId }).from(registrationKeys)
+    .where(and(
+      sql`LOWER(${registrationKeys.email}) = LOWER(${user.email})`,
+      sql`${registrationKeys.activatedAt} IS NOT NULL`,
+      sql`${registrationKeys.packageId} IS NOT NULL`,
+    ))
+    .orderBy(desc(registrationKeys.activatedAt))
+    .limit(1);
+
+  if (key?.packageId) return Number(key.packageId);
+
+  const [subscription] = await db.select({ packageId: packageSubscriptions.packageId }).from(packageSubscriptions)
+    .where(eq(packageSubscriptions.userId, userId))
+    .orderBy(desc(packageSubscriptions.createdAt))
+    .limit(1);
+
+  return subscription?.packageId ? Number(subscription.packageId) : null;
 }
 
 export function getKeyAccessEndDate(
@@ -545,6 +547,156 @@ function getTimedServiceRemainingDays(subscription?: TimedServiceSubscriptionSna
 function getTimedServiceActivationDeadlineDays(subscription?: TimedServiceSubscriptionSnapshot | null) {
   if (!subscription?.maxActivationDate || !subscription.isPendingActivation) return 0;
   return getRemainingDaysUntil(subscription.maxActivationDate);
+}
+
+async function getPackageCourseIds(packageId: number) {
+  let pkgCourses = await getPackageCourses(packageId);
+  let courseIds = pkgCourses.map((pc) => pc.courseId);
+  if (courseIds.length === 0) {
+    const allPublished = await getPublishedCourses();
+    courseIds = allPublished.map((course) => course.id);
+  }
+  return courseIds;
+}
+
+async function getUserTimedServiceReadiness(userId: number, packageId: number) {
+  const db = await getDb();
+  if (!db) {
+    return { ready: false, courseReady: false, brokerReady: false };
+  }
+
+  const [userRow] = await db.select({ brokerOnboardingComplete: users.brokerOnboardingComplete })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  const brokerReady = !!userRow?.brokerOnboardingComplete;
+
+  const courseIds = await getPackageCourseIds(packageId);
+  if (courseIds.length === 0) {
+    return {
+      ready: isStudentReadyForTimedServices({ courseCompleted: true, brokerCompleted: brokerReady }),
+      courseReady: true,
+      brokerReady,
+    };
+  }
+
+  const enrollmentRows = await db.select({
+    courseId: enrollments.courseId,
+    progressPercentage: enrollments.progressPercentage,
+    completedAt: enrollments.completedAt,
+    isAdminSkipped: enrollments.isAdminSkipped,
+  }).from(enrollments)
+    .where(and(eq(enrollments.userId, userId), inArray(enrollments.courseId, courseIds)));
+
+  const enrollmentByCourse = new Map(enrollmentRows.map((row) => [row.courseId, row]));
+  const courseReady = courseIds.every((courseId) => {
+    const enrollment = enrollmentByCourse.get(courseId);
+    return !!(
+      enrollment?.isAdminSkipped
+      || enrollment?.completedAt
+      || (enrollment?.progressPercentage ?? 0) >= 100
+    );
+  });
+
+  return {
+    ready: isStudentReadyForTimedServices({ courseCompleted: courseReady, brokerCompleted: brokerReady }),
+    courseReady,
+    brokerReady,
+  };
+}
+
+async function getExistingStudentHistoryForKey(userId: number, email: string) {
+  const db = await getDb();
+  if (!db) {
+    return { packageSubscriptionCount: 0, timedSubscriptionCount: 0, activatedPackageKeyCount: 0 };
+  }
+
+  const normalizedEmail = email.trim().toLowerCase();
+  const [packageSubCount] = await db.select({ count: sql<number>`count(*)` })
+    .from(packageSubscriptions)
+    .where(eq(packageSubscriptions.userId, userId));
+  const [lexaiCount] = await db.select({ count: sql<number>`count(*)` })
+    .from(lexaiSubscriptions)
+    .where(eq(lexaiSubscriptions.userId, userId));
+  const [recCount] = await db.select({ count: sql<number>`count(*)` })
+    .from(recommendationSubscriptions)
+    .where(eq(recommendationSubscriptions.userId, userId));
+  const [activatedKeyCount] = await db.select({ count: sql<number>`count(*)` })
+    .from(registrationKeys)
+    .where(and(
+      sql`${registrationKeys.packageId} IS NOT NULL`,
+      sql`${registrationKeys.activatedAt} IS NOT NULL`,
+      sql`lower(${registrationKeys.email}) = ${normalizedEmail}`,
+    ));
+
+  return {
+    packageSubscriptionCount: Number(packageSubCount?.count ?? 0),
+    timedSubscriptionCount: Number(lexaiCount?.count ?? 0) + Number(recCount?.count ?? 0),
+    activatedPackageKeyCount: Number(activatedKeyCount?.count ?? 0),
+  };
+}
+
+async function getFirstPackageActivationAnchor(userId: number, email: string, fallbackDate: Date) {
+  const db = await getDb();
+  if (!db) return fallbackDate.toISOString();
+
+  const [userRow] = await db.select({ firstPackageActivatedAt: users.firstPackageActivatedAt })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  if (userRow?.firstPackageActivatedAt) return userRow.firstPackageActivatedAt;
+
+  const normalizedEmail = email.trim().toLowerCase();
+  const [firstKey] = await db.select({ activatedAt: sql<string | null>`MIN(${registrationKeys.activatedAt})` })
+    .from(registrationKeys)
+    .where(and(
+      sql`${registrationKeys.packageId} IS NOT NULL`,
+      sql`${registrationKeys.activatedAt} IS NOT NULL`,
+      sql`lower(${registrationKeys.email}) = ${normalizedEmail}`,
+    ));
+
+  const anchor = firstKey?.activatedAt ?? fallbackDate.toISOString();
+  await db.update(users).set({ firstPackageActivatedAt: anchor, updatedAt: new Date().toISOString() })
+    .where(eq(users.id, userId));
+  return anchor;
+}
+
+async function ensureFirstPackageActivationAnchor(userId: number, activatedAt: string) {
+  const db = await getDb();
+  if (!db) return;
+
+  const [userRow] = await db.select({ firstPackageActivatedAt: users.firstPackageActivatedAt })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  if (userRow?.firstPackageActivatedAt) return;
+
+  await db.update(users).set({ firstPackageActivatedAt: activatedAt, updatedAt: new Date().toISOString() })
+    .where(eq(users.id, userId));
+}
+
+async function notifyBlockedPackageKeyActivation(input: {
+  email: string;
+  keyCode: string;
+  reason: string;
+  packageName: string;
+  userId?: number | null;
+}) {
+  await notifyStaffByEvent('package_key_blocked', {
+    titleEn: `Package key blocked for ${input.email}`,
+    titleAr: `تم منع تفعيل مفتاح لـ ${input.email}`,
+    contentEn: `Key ${input.keyCode} (${input.packageName}) was blocked: ${input.reason}. Please issue the correct key.`,
+    contentAr: `تم منع المفتاح ${input.keyCode} (${input.packageName}): ${input.reason}. يرجى إصدار المفتاح الصحيح.`,
+    metadata: {
+      email: input.email,
+      keyCode: input.keyCode,
+      reason: input.reason,
+      packageName: input.packageName,
+      userId: input.userId ?? null,
+    },
+  }).catch(() => {});
 }
 
 type LexaiSupportCaseStatus = "open" | "waiting_student" | "escalated" | "resolved";
@@ -1491,12 +1643,20 @@ export async function skipCourseForUser(userId: number, courseId: number) {
     lastAccessed: new Date().toISOString(),
   });
 
-  // Course completion has ZERO effect on LexAI/Rec activation — broker is the only gate
+  let activated = false;
+  const packageId = await getUserLatestActivatedPackageId(userId);
+  if (packageId) {
+    const readiness = await getUserTimedServiceReadiness(userId, packageId);
+    if (readiness.ready) {
+      const activation = await activateStudentSubscriptions(userId, false);
+      activated = activation.activated;
+    }
+  }
 
   return {
     enrollmentId: enrollment.id,
     previousProgress: enrollment.progressPercentage ?? 0,
-    activated: false,
+    activated,
   };
 }
 
@@ -1519,7 +1679,7 @@ export async function rollbackSkipCourse(userId: number, courseId: number) {
     completedAt: genuinelyCompleted ? enrollment.completedAt : null,
   });
 
-  // Course rollback has ZERO effect on LexAI/Rec — broker is the only gate
+  // Course rollback only restores course state; timed-service repairs remain explicit.
 
   return { enrollmentId: enrollment.id, restoredProgress: enrollment.progressPercentage ?? 0 };
 }
@@ -1534,8 +1694,9 @@ async function deactivateStudentSubscriptions(userId: number) {
 
   const now = new Date();
   const entitlementDays = await getUserEntitlementDays(userId);
-  const maxActivationDate = buildEndDateFromDays(now, 14).toISOString();
-  const placeholderEndDate = buildEndDateFromDays(now, 14 + entitlementDays).toISOString();
+  const studyPeriodDays = await getStudyPeriodDays();
+  const maxActivationDate = buildEndDateFromDays(now, studyPeriodDays).toISOString();
+  const placeholderEndDate = buildEndDateFromDays(now, studyPeriodDays + entitlementDays).toISOString();
 
   // Find recently activated (non-pending) LexAI sub
   const [lexaiSub] = await db.select().from(lexaiSubscriptions)
@@ -4002,7 +4163,11 @@ export async function syncUserEntitlementsFromKeys(userId: number, email: string
       continue;
     }
     console.log(`[syncEntitlements] FULFILLING key ${key.id} pkgId=${key.packageId}`);
-    await fulfillPackageEntitlements(userId, keyPackageId, key.id, key.entitlementDays ?? undefined);
+    if (key.isRenewal) {
+      await renewPackageEntitlements(userId, keyPackageId, key.id, key.entitlementDays ?? undefined);
+    } else {
+      await fulfillPackageEntitlements(userId, keyPackageId, key.id, key.entitlementDays ?? undefined);
+    }
   }
 }
 
@@ -4075,7 +4240,7 @@ export async function getAllPackageKeys() {
     .orderBy(desc(registrationKeys.createdAt));
 }
 
-// Enriched package keys list with userId + subscription pause status via correlated subqueries
+// Enriched package keys list with user + timed service state.
 export async function getAllPackageKeysEnriched() {
   const db = await getDb();
   if (!db) return [];
@@ -4096,14 +4261,20 @@ export async function getAllPackageKeysEnriched() {
     expiresAt: registrationKeys.expiresAt,
     isUpgrade: registrationKeys.isUpgrade,
     referredBy: registrationKeys.referredBy,
-    userId: sql<number | null>`(SELECT id FROM users WHERE LOWER(email) = LOWER(${registrationKeys.email}) LIMIT 1)`,
-    lexaiSubId: sql<number | null>`(SELECT ls.id FROM lexaiSubscriptions ls WHERE ls.userId = (SELECT id FROM users WHERE LOWER(email) = LOWER(${registrationKeys.email}) LIMIT 1) AND ls.isActive = 1 ORDER BY ls.createdAt DESC LIMIT 1)`,
-    lexaiIsPaused: sql<0 | 1 | null>`(SELECT ls.isPaused FROM lexaiSubscriptions ls WHERE ls.userId = (SELECT id FROM users WHERE LOWER(email) = LOWER(${registrationKeys.email}) LIMIT 1) AND ls.isActive = 1 ORDER BY ls.createdAt DESC LIMIT 1)`,
-    recSubId: sql<number | null>`(SELECT rs.id FROM recommendationSubscriptions rs WHERE rs.userId = (SELECT id FROM users WHERE LOWER(email) = LOWER(${registrationKeys.email}) LIMIT 1) AND rs.isActive = 1 ORDER BY rs.createdAt DESC LIMIT 1)`,
-    recIsPaused: sql<0 | 1 | null>`(SELECT rs.isPaused FROM recommendationSubscriptions rs WHERE rs.userId = (SELECT id FROM users WHERE LOWER(email) = LOWER(${registrationKeys.email}) LIMIT 1) AND rs.isActive = 1 ORDER BY rs.createdAt DESC LIMIT 1)`,
-    subEndDate: sql<string | null>`(SELECT ps.endDate FROM packageSubscriptions ps WHERE ps.userId = (SELECT id FROM users WHERE LOWER(email) = LOWER(${registrationKeys.email}) LIMIT 1) AND ps.packageId = ${registrationKeys.packageId} ORDER BY ps.createdAt DESC LIMIT 1)`,
+    userId: users.id,
+    userName: users.name,
+    lexaiSubId: sql<number | null>`(SELECT ls.id FROM lexaiSubscriptions ls WHERE ls.userId = ${users.id} AND ls.isActive = 1 ORDER BY ls.createdAt DESC LIMIT 1)`,
+    lexaiIsPaused: sql<0 | 1 | null>`(SELECT ls.isPaused FROM lexaiSubscriptions ls WHERE ls.userId = ${users.id} AND ls.isActive = 1 ORDER BY ls.createdAt DESC LIMIT 1)`,
+    lexaiIsPending: sql<0 | 1 | null>`(SELECT ls.isPendingActivation FROM lexaiSubscriptions ls WHERE ls.userId = ${users.id} AND ls.isActive = 1 ORDER BY ls.createdAt DESC LIMIT 1)`,
+    lexaiEndDate: sql<string | null>`(SELECT ls.endDate FROM lexaiSubscriptions ls WHERE ls.userId = ${users.id} AND ls.isActive = 1 ORDER BY ls.createdAt DESC LIMIT 1)`,
+    recSubId: sql<number | null>`(SELECT rs.id FROM recommendationSubscriptions rs WHERE rs.userId = ${users.id} AND rs.isActive = 1 ORDER BY rs.createdAt DESC LIMIT 1)`,
+    recIsPaused: sql<0 | 1 | null>`(SELECT rs.isPaused FROM recommendationSubscriptions rs WHERE rs.userId = ${users.id} AND rs.isActive = 1 ORDER BY rs.createdAt DESC LIMIT 1)`,
+    recIsPending: sql<0 | 1 | null>`(SELECT rs.isPendingActivation FROM recommendationSubscriptions rs WHERE rs.userId = ${users.id} AND rs.isActive = 1 ORDER BY rs.createdAt DESC LIMIT 1)`,
+    recEndDate: sql<string | null>`(SELECT rs.endDate FROM recommendationSubscriptions rs WHERE rs.userId = ${users.id} AND rs.isActive = 1 ORDER BY rs.createdAt DESC LIMIT 1)`,
+    subEndDate: sql<string | null>`(SELECT ps.endDate FROM packageSubscriptions ps WHERE ps.userId = ${users.id} AND ps.packageId = ${registrationKeys.packageId} ORDER BY ps.createdAt DESC LIMIT 1)`,
   })
   .from(registrationKeys)
+  .leftJoin(users, sql`LOWER(${users.email}) = LOWER(${registrationKeys.email})`)
   .where(sql`${registrationKeys.packageId} IS NOT NULL`)
   .orderBy(desc(registrationKeys.createdAt));
 }
@@ -4327,39 +4498,90 @@ export async function activatePackageKey(keyCode: string, email: string, userId?
     }
   }
 
-  // 1b. For renewal keys: reject only when there is an in-system active package and it does not match.
-  if (key.isRenewal) {
-    const lookupUserId = userId ?? (await getUserByEmail(normalizedEmail))?.id;
-    if (lookupUserId) {
-      const existingSubs = await getUserPackageSubscriptions(lookupUserId);
-      if (!canRedeemRenewalPackageKey(existingSubs, key.packageId)) {
-        return {
-          success: false,
-          message: "This renewal key is for a different subscription package. Please contact the support team to provide the correct renewal key for your subscription.",
-          messageAr: "مفتاح التجديد هذا مخصص لباقة مختلفة. يرجى التواصل مع فريق الدعم للحصول على مفتاح التجديد الصحيح لاشتراكك.",
-        };
-      }
-    }
-  }
-
-  // 2. Mark key as activated
-  await db
-    .update(registrationKeys)
-    .set({ email: normalizedEmail, activatedAt: new Date().toISOString(), isActive: true })
-    .where(eq(registrationKeys.id, key.id));
-
-  // 3. Fetch the package to know what entitlements to grant
   const pkg = await getPackageById(key.packageId);
   if (!pkg) return { success: false, message: "Package not found" };
 
-  // 4. Resolve the user ID
+  // Resolve the user ID before consuming the key so blocked attempts leave the key unused.
   let resolvedUserId = userId;
   if (!resolvedUserId) {
     const user = await getUserByEmail(normalizedEmail);
     resolvedUserId = user?.id;
   }
 
+  if (resolvedUserId && shouldBlockFreshKeyForExistingStudent({
+    isRenewal: key.isRenewal,
+    isUpgrade: key.isUpgrade,
+    history: await getExistingStudentHistoryForKey(resolvedUserId, normalizedEmail),
+  })) {
+    await notifyBlockedPackageKeyActivation({
+      email: normalizedEmail,
+      keyCode: key.keyCode,
+      packageName: pkg.nameEn || pkg.nameAr || `Package #${key.packageId}`,
+      reason: "Fresh key used by an existing student. A renewal key is required for finance/reporting accuracy.",
+      userId: resolvedUserId,
+    });
+    return {
+      success: false,
+      message: "This student already has package or service history. Please contact support to issue the correct renewal key.",
+      messageAr: "هذا الطالب لديه سجل باقة أو خدمات سابق. يرجى التواصل مع الدعم لإصدار مفتاح التجديد الصحيح.",
+    };
+  }
+
+  if (key.isRenewal && resolvedUserId) {
+    const existingSubs = await getUserPackageSubscriptions(resolvedUserId);
+    const activePackageSlugs: string[] = [];
+    for (const subscription of existingSubs.filter((sub) => sub.isActive)) {
+      const existingPackage = await getPackageById(subscription.packageId);
+      if (existingPackage?.slug) activePackageSlugs.push(existingPackage.slug);
+    }
+
+    const currentLexai = await getAnyLexaiSubscription(resolvedUserId);
+    const hasActiveLexai = !!(
+      currentLexai?.isActive
+      && (
+        currentLexai.isPendingActivation
+        || !currentLexai.endDate
+        || new Date(currentLexai.endDate) > new Date()
+      )
+    );
+    const transition = validateRenewalPackageTransition({
+      targetPackageSlug: pkg.slug,
+      activePackageSlugs,
+      hasActiveLexai,
+    });
+
+    if (!transition.allowed) {
+      const reason = transition.reason === "comprehensive_to_basic_active"
+        ? "Comprehensive service is still active; Basic renewal is blocked until LexAI expires."
+        : "Renewal key package does not match the student's current subscription.";
+      await notifyBlockedPackageKeyActivation({
+        email: normalizedEmail,
+        keyCode: key.keyCode,
+        packageName: pkg.nameEn || pkg.nameAr || `Package #${key.packageId}`,
+        reason,
+        userId: resolvedUserId,
+      });
+      return {
+        success: false,
+        message: transition.reason === "comprehensive_to_basic_active"
+          ? "A Basic renewal key can be used only after the Comprehensive LexAI period expires."
+          : "This renewal key is for a different subscription package. Please contact the support team to provide the correct renewal key for your subscription.",
+        messageAr: transition.reason === "comprehensive_to_basic_active"
+          ? "لا يمكن استخدام مفتاح تجديد الباقة الأساسية قبل انتهاء فترة LexAI في الباقة الشاملة."
+          : "مفتاح التجديد هذا مخصص لباقة مختلفة. يرجى التواصل مع فريق الدعم للحصول على مفتاح التجديد الصحيح لاشتراكك.",
+      };
+    }
+  }
+
+  // 2. Mark key as activated
+  const activatedAt = new Date().toISOString();
+  await db
+    .update(registrationKeys)
+    .set({ email: normalizedEmail, activatedAt, isActive: true })
+    .where(eq(registrationKeys.id, key.id));
+
   if (resolvedUserId) {
+    await ensureFirstPackageActivationAnchor(resolvedUserId, activatedAt);
     if (key.isRenewal) {
       await renewPackageEntitlements(resolvedUserId, key.packageId, key.id, key.entitlementDays ?? undefined);
     } else {
@@ -4424,7 +4646,8 @@ export async function activatePackageKey(keyCode: string, email: string, userId?
 
 /**
  * Renew package entitlements: extends existing subscription end dates rather than restarting.
- * If no existing subscription is found, falls back to fulfillPackageEntitlements.
+ * Renewal keys are service renewals, not fresh-student activations: they never
+ * enter the 14-day study/broker pending window.
  */
 export async function renewPackageEntitlements(
   userId: number,
@@ -4441,55 +4664,130 @@ export async function renewPackageEntitlements(
     ?? normalizePositiveInteger(pkg.durationDays)
     ?? DEFAULT_KEY_ENTITLEMENT_DAYS;
   const now = new Date();
+  const nowIso = now.toISOString();
+  const dbForAnchor = await getDb();
+  if (!dbForAnchor) return;
+  const [userRowForAnchor] = await dbForAnchor.select({ email: users.email }).from(users).where(eq(users.id, userId)).limit(1);
+  const activationAnchor = await getFirstPackageActivationAnchor(userId, userRowForAnchor?.email ?? "", now);
+  const readiness = await getUserTimedServiceReadiness(userId, packageId);
   const studyPeriodDays = await getStudyPeriodDays();
-  const pendingServiceWindow = await getPendingServiceWindowForKey(
-    registrationKeyId,
+  const pendingServiceWindow = getPendingServiceWindow({
+    fallbackDate: now,
+    registrationKeyActivatedAt: activationAnchor,
     studyPeriodDays,
     entitlementDays,
-    now,
-  );
+  });
+  const deadlineReached = pendingServiceWindow.maxActivationDate <= now;
 
   // --- Package subscription ---
   const existingPackageSubs = await getUserPackageSubscriptions(userId);
+  const activeSourcePackage = existingPackageSubs.find(
+    (subscription) => subscription.isActive && Number(subscription.packageId) !== normalizedPackageId
+  );
+  const sourcePackage = activeSourcePackage ? await getPackageById(activeSourcePackage.packageId) : null;
   const currentPkgSub = existingPackageSubs.find(
     (subscription) => Number(subscription.packageId) === normalizedPackageId && subscription.isActive
   );
   if (!currentPkgSub) {
-    // No existing sub — fall back to fresh activation
-    await fulfillPackageEntitlements(userId, packageId, registrationKeyId, entitlementDays);
-    return;
+    await createPackageSubscription({
+      userId,
+      packageId,
+      orderId: 0,
+      isActive: true,
+      startDate: nowIso,
+      endDate: null as any,
+      renewalDueDate: null as any,
+      autoRenew: false,
+    });
+  } else {
+    // Course access is forever — just ensure active flag is set
+    const dbInst = await getDb();
+    if (!dbInst) return;
+    await dbInst.update(packageSubscriptions).set({
+      isActive: true,
+      updatedAt: nowIso,
+    }).where(eq(packageSubscriptions.id, currentPkgSub.id));
   }
-  // Course access is forever — just ensure active flag is set
-  const dbInst = await getDb();
-  if (!dbInst) return;
-  await dbInst.update(packageSubscriptions).set({
-    isActive: true,
-    updatedAt: now.toISOString(),
-  }).where(eq(packageSubscriptions.id, currentPkgSub.id));
+
+  // Keep course/document access present for legacy renewal clients that may not
+  // have a package subscription/enrollment row, without marking study complete.
+  let pkgCourses = await getPackageCourses(packageId);
+  let courseIdsToEnroll: number[] = pkgCourses.map(pc => pc.courseId);
+  if (courseIdsToEnroll.length === 0) {
+    const allPublished = await getPublishedCourses();
+    courseIdsToEnroll = allPublished.map(c => c.id);
+  }
+  for (const courseId of courseIdsToEnroll) {
+    try {
+      const existing = await getEnrollmentByUserAndCourse(userId, courseId);
+      if (!existing) {
+        await createEnrollment({
+          userId,
+          courseId,
+          paymentStatus: "completed",
+          isSubscriptionActive: true,
+          registrationKeyId: registrationKeyId ?? null,
+          activatedViaKey: !!registrationKeyId,
+        });
+      }
+    } catch (e) {
+      // ignore duplicate enrollment
+    }
+  }
+
+  const currentLexaiBeforeRenewal = pkg.includesLexai ? await getAnyLexaiSubscription(userId) : undefined;
+  const currentRecBeforeRenewal = pkg.includesRecommendations ? await getAnyRecommendationSubscription(userId) : undefined;
+  const serviceDays = getServiceDaysForPackageTransition({
+    sourcePackageSlug: sourcePackage?.slug ?? null,
+    targetPackageSlug: pkg.slug,
+    keyDays: entitlementDays,
+    remainingRecommendationDays: getRemainingTimedServiceDays(currentRecBeforeRenewal?.endDate, now),
+  });
+  const hasExistingServiceHistory = Boolean(
+    (pkg.includesLexai && currentLexaiBeforeRenewal && !currentLexaiBeforeRenewal.isPendingActivation)
+      || (pkg.includesRecommendations && currentRecBeforeRenewal && !currentRecBeforeRenewal.isPendingActivation)
+  );
+  const shouldStartTimedServicesNow = readiness.ready || hasExistingServiceHistory || deadlineReached;
+
+  const getRenewalEndDate = (currentEndDate: string | null, isPendingActivation: boolean | null | undefined, days: number): Date => {
+    if (isPendingActivation || !hasExistingServiceHistory) return buildEndDateFromDays(now, days);
+    const base = currentEndDate && new Date(currentEndDate) > now ? new Date(currentEndDate) : now;
+    return buildEndDateFromDays(base, days);
+  };
 
   // --- LexAI subscription ---
   if (pkg.includesLexai) {
-    const current = await getAnyLexaiSubscription(userId);
+    const current = currentLexaiBeforeRenewal;
     if (current) {
-      const base = current.endDate && new Date(current.endDate) > now ? new Date(current.endDate) : now;
-      const newEnd = buildEndDateFromDays(base, entitlementDays);
+      const newEnd = getRenewalEndDate(current.endDate, current.isPendingActivation, serviceDays.lexaiDays);
       await updateLexaiSubscription(current.id, {
         isActive: true,
         isPaused: false,
-        isPendingActivation: false,
-        endDate: newEnd.toISOString(),
+        pausedAt: null,
+        pausedReason: null,
+        pausedRemainingDays: null,
+        isPendingActivation: shouldStartTimedServicesNow ? false : true,
+        studentActivatedAt: shouldStartTimedServicesNow ? (current.studentActivatedAt || nowIso) : null,
+        maxActivationDate: shouldStartTimedServicesNow ? null : pendingServiceWindow.maxActivationDate.toISOString(),
+        startDate: shouldStartTimedServicesNow && current.isPendingActivation ? nowIso : current.startDate,
+        endDate: shouldStartTimedServicesNow
+          ? newEnd.toISOString()
+          : buildEndDateFromDays(pendingServiceWindow.maxActivationDate, serviceDays.lexaiDays).toISOString(),
         paymentStatus: "completed",
       });
     } else {
+      const endDate = shouldStartTimedServicesNow
+        ? buildEndDateFromDays(now, serviceDays.lexaiDays)
+        : buildEndDateFromDays(pendingServiceWindow.maxActivationDate, serviceDays.lexaiDays);
       await createLexaiSubscription({
         userId,
         isActive: true,
         isPaused: false,
-        isPendingActivation: true,
-        studentActivatedAt: null,
-        maxActivationDate: pendingServiceWindow.maxActivationDate.toISOString(),
-        startDate: pendingServiceWindow.activationAnchor.toISOString(),
-        endDate: pendingServiceWindow.placeholderEndDate.toISOString(),
+        isPendingActivation: !shouldStartTimedServicesNow,
+        studentActivatedAt: shouldStartTimedServicesNow ? nowIso : null,
+        maxActivationDate: shouldStartTimedServicesNow ? null : pendingServiceWindow.maxActivationDate.toISOString(),
+        startDate: shouldStartTimedServicesNow ? nowIso : pendingServiceWindow.activationAnchor.toISOString(),
+        endDate: endDate.toISOString(),
         paymentStatus: "completed",
         paymentAmount: 0,
         paymentCurrency: "USD",
@@ -4504,28 +4802,39 @@ export async function renewPackageEntitlements(
 
   // --- Recommendation subscription ---
   if (pkg.includesRecommendations) {
-    const current = await getAnyRecommendationSubscription(userId);
+    const current = currentRecBeforeRenewal;
     if (current) {
-      const base = current.endDate && new Date(current.endDate) > now ? new Date(current.endDate) : now;
-      const newEnd = buildEndDateFromDays(base, entitlementDays);
+      const newEnd = getRenewalEndDate(current.endDate, current.isPendingActivation, serviceDays.recommendationDays);
       await updateRecommendationSubscription(current.id, {
         isActive: true,
         isPaused: false,
-        isPendingActivation: false,
-        endDate: newEnd.toISOString(),
+        pausedAt: null,
+        pausedReason: null,
+        pausedRemainingDays: null,
+        isPendingActivation: shouldStartTimedServicesNow ? false : true,
+        studentActivatedAt: shouldStartTimedServicesNow ? (current.studentActivatedAt || nowIso) : null,
+        maxActivationDate: shouldStartTimedServicesNow ? null : pendingServiceWindow.maxActivationDate.toISOString(),
+        startDate: shouldStartTimedServicesNow && current.isPendingActivation ? nowIso : current.startDate,
+        endDate: shouldStartTimedServicesNow
+          ? newEnd.toISOString()
+          : buildEndDateFromDays(pendingServiceWindow.maxActivationDate, serviceDays.recommendationDays).toISOString(),
         paymentStatus: "completed",
+        registrationKeyId: registrationKeyId ?? current.registrationKeyId,
       });
     } else {
+      const endDate = shouldStartTimedServicesNow
+        ? buildEndDateFromDays(now, serviceDays.recommendationDays)
+        : buildEndDateFromDays(pendingServiceWindow.maxActivationDate, serviceDays.recommendationDays);
       await createRecommendationSubscription({
         userId,
         registrationKeyId: registrationKeyId ?? null,
         isActive: true,
         isPaused: false,
-        isPendingActivation: true,
-        studentActivatedAt: null,
-        maxActivationDate: pendingServiceWindow.maxActivationDate.toISOString(),
-        startDate: pendingServiceWindow.activationAnchor.toISOString(),
-        endDate: pendingServiceWindow.placeholderEndDate.toISOString(),
+        isPendingActivation: !shouldStartTimedServicesNow,
+        studentActivatedAt: shouldStartTimedServicesNow ? nowIso : null,
+        maxActivationDate: shouldStartTimedServicesNow ? null : pendingServiceWindow.maxActivationDate.toISOString(),
+        startDate: shouldStartTimedServicesNow ? nowIso : pendingServiceWindow.activationAnchor.toISOString(),
+        endDate: endDate.toISOString(),
         paymentStatus: "completed",
         paymentAmount: 0,
         paymentCurrency: "USD",
@@ -4563,24 +4872,21 @@ export async function fulfillPackageEntitlements(
     ?? normalizePositiveInteger(pkg.durationDays)
     ?? DEFAULT_KEY_ENTITLEMENT_DAYS;
   const now = new Date();
-  const studyPeriodDays = await getStudyPeriodDays();
-  const pendingServiceWindow = await getPendingServiceWindowForKey(
-    registrationKeyId,
-    studyPeriodDays,
-    entitlementDays,
-    now,
-  );
-  const placeholderEndDate = pendingServiceWindow.placeholderEndDate;
-  const maxActivationDate = pendingServiceWindow.maxActivationDate;
-  console.log(`[fulfillEntitlements] userId=${userId} pkgId=${packageId} entDays=${entitlementDays} studyDays=${studyPeriodDays}`);
-
   const db = await getDb();
   if (!db) return;
-
-  // Only broker gate matters for immediate activation (course has zero effect)
-  const [userRow] = await db.select({ brokerOnboardingComplete: users.brokerOnboardingComplete })
-    .from(users).where(eq(users.id, userId)).limit(1);
-  const brokerComplete = !!userRow?.brokerOnboardingComplete;
+  const [userForAnchor] = await db.select({ email: users.email }).from(users).where(eq(users.id, userId)).limit(1);
+  const activationAnchor = await getFirstPackageActivationAnchor(userId, userForAnchor?.email ?? "", now);
+  const studyPeriodDays = await getStudyPeriodDays();
+  const pendingServiceWindow = getPendingServiceWindow({
+    fallbackDate: now,
+    registrationKeyActivatedAt: activationAnchor,
+    studyPeriodDays,
+    entitlementDays,
+  });
+  const maxActivationDate = pendingServiceWindow.maxActivationDate;
+  console.log(`[fulfillEntitlements] userId=${userId} pkgId=${packageId} entDays=${entitlementDays} studyDays=${studyPeriodDays}`);
+  const readiness = await getUserTimedServiceReadiness(userId, packageId);
+  const deadlineReached = maxActivationDate <= now;
 
   // Determine if this is a renewal/upgrade (student has existing active subs)
   const existingLexai = await getAnyLexaiSubscription(userId);
@@ -4617,12 +4923,12 @@ export async function fulfillPackageEntitlements(
     return;
   }
 
-  const isRenewalOrUpgrade = brokerComplete || (existingLexai && !existingLexai.isPendingActivation) || (existingRec && !existingRec.isPendingActivation);
+  const isRenewalOrUpgrade = readiness.ready || deadlineReached || (existingLexai && !existingLexai.isPendingActivation) || (existingRec && !existingRec.isPendingActivation);
 
   // Stacking helper: endDate = max(currentEndDate, now) + entitlementDays
-  const getStackedEndDate = (currentEndDate: string | null): Date => {
+  const getStackedEndDate = (currentEndDate: string | null, days: number): Date => {
     const base = currentEndDate ? new Date(Math.max(new Date(currentEndDate).getTime(), now.getTime())) : now;
-    return buildEndDateFromDays(base, entitlementDays);
+    return buildEndDateFromDays(base, days);
   };
 
   // ── Package subscription (course access = forever) ──
@@ -4630,6 +4936,17 @@ export async function fulfillPackageEntitlements(
   const currentPkgSub = pkgSubs.find(
     (subscription) => Number(subscription.packageId) === normalizedPackageId
   );
+  const sourcePackageSubscription = pkgSubs.find(
+    (subscription) => subscription.isActive && Number(subscription.packageId) !== normalizedPackageId
+  );
+  const sourcePackage = sourcePackageSubscription ? await getPackageById(sourcePackageSubscription.packageId) : null;
+  const inferredSourceSlug = sourcePackage?.slug ?? (pkg.slug === "comprehensive" && existingRec && !existingLexai ? "basic" : null);
+  const serviceDays = getServiceDaysForPackageTransition({
+    sourcePackageSlug: inferredSourceSlug,
+    targetPackageSlug: pkg.slug,
+    keyDays: entitlementDays,
+    remainingRecommendationDays: getRemainingTimedServiceDays(existingRec?.endDate, now),
+  });
 
   if (currentPkgSub) {
     await db.update(packageSubscriptions).set({
@@ -4679,7 +4996,7 @@ export async function fulfillPackageEntitlements(
     if (existingLexai) {
       if (isRenewalOrUpgrade) {
         // Stack after current endDate (or start now if expired/new)
-        const stackedEnd = getStackedEndDate(existingLexai.endDate);
+        const stackedEnd = getStackedEndDate(existingLexai.isPendingActivation ? null : existingLexai.endDate, serviceDays.lexaiDays);
         await updateLexaiSubscription(existingLexai.id, {
           isActive: true,
           isPaused: false,
@@ -4708,7 +5025,7 @@ export async function fulfillPackageEntitlements(
           studentActivatedAt: null,
           maxActivationDate: maxActivationDate.toISOString(),
           startDate: pendingServiceWindow.activationAnchor.toISOString(),
-          endDate: placeholderEndDate.toISOString(),
+          endDate: buildEndDateFromDays(maxActivationDate, serviceDays.lexaiDays).toISOString(),
           paymentStatus: "completed",
           paymentAmount: 0,
           paymentCurrency: "USD",
@@ -4718,7 +5035,7 @@ export async function fulfillPackageEntitlements(
     } else {
       if (isRenewalOrUpgrade) {
         // Upgrade: brand new LexAI, activate immediately (e.g. basic→comp)
-        const stackedEnd = getStackedEndDate(existingRec?.endDate ?? null); // Sync with Rec if exists
+        const stackedEnd = buildEndDateFromDays(now, serviceDays.lexaiDays);
         await createLexaiSubscription({
           userId,
           isActive: true,
@@ -4746,7 +5063,7 @@ export async function fulfillPackageEntitlements(
           studentActivatedAt: null,
           maxActivationDate: maxActivationDate.toISOString(),
           startDate: pendingServiceWindow.activationAnchor.toISOString(),
-          endDate: placeholderEndDate.toISOString(),
+          endDate: buildEndDateFromDays(maxActivationDate, serviceDays.lexaiDays).toISOString(),
           paymentStatus: "completed",
           paymentAmount: 0,
           paymentCurrency: "USD",
@@ -4765,7 +5082,7 @@ export async function fulfillPackageEntitlements(
     if (existingRec) {
       if (isRenewalOrUpgrade) {
         // Stack after current endDate
-        const stackedEnd = getStackedEndDate(existingRec.endDate);
+        const stackedEnd = getStackedEndDate(existingRec.isPendingActivation ? null : existingRec.endDate, serviceDays.recommendationDays);
         await updateRecommendationSubscription(existingRec.id, {
           isActive: true,
           isPaused: false,
@@ -4794,7 +5111,7 @@ export async function fulfillPackageEntitlements(
           studentActivatedAt: null,
           maxActivationDate: maxActivationDate.toISOString(),
           startDate: pendingServiceWindow.activationAnchor.toISOString(),
-          endDate: placeholderEndDate.toISOString(),
+          endDate: buildEndDateFromDays(maxActivationDate, serviceDays.recommendationDays).toISOString(),
           paymentStatus: "completed",
           paymentAmount: 0,
           paymentCurrency: "USD",
@@ -4803,7 +5120,7 @@ export async function fulfillPackageEntitlements(
       }
     } else {
       if (isRenewalOrUpgrade) {
-        const stackedEnd = getStackedEndDate(null);
+        const stackedEnd = getStackedEndDate(null, serviceDays.recommendationDays);
         await createRecommendationSubscription({
           userId,
           registrationKeyId: registrationKeyId ?? null,
@@ -4831,7 +5148,7 @@ export async function fulfillPackageEntitlements(
           studentActivatedAt: null,
           maxActivationDate: maxActivationDate.toISOString(),
           startDate: pendingServiceWindow.activationAnchor.toISOString(),
-          endDate: placeholderEndDate.toISOString(),
+          endDate: buildEndDateFromDays(maxActivationDate, serviceDays.recommendationDays).toISOString(),
           paymentStatus: "completed",
           paymentAmount: 0,
           paymentCurrency: "USD",
@@ -7657,13 +7974,13 @@ export async function getPendingActivationStatus(userId: number) {
   const studyPeriodDays = await getStudyPeriodDays();
   const entitlementDays = await getUserEntitlementDays(userId);
 
-  // Broker gate only — course completion has zero effect on activation
-  const [userRow] = await db.select({ brokerOnboardingComplete: users.brokerOnboardingComplete })
-    .from(users).where(eq(users.id, userId)).limit(1);
-  const brokerComplete = !!userRow?.brokerOnboardingComplete;
+  const packageId = await getUserLatestActivatedPackageId(userId);
+  const readiness = packageId
+    ? await getUserTimedServiceReadiness(userId, packageId)
+    : { ready: false, courseReady: false, brokerReady: false };
 
-  // If broker gate cleared, auto-activate any pending subs
-  if (brokerComplete) {
+  // If both readiness gates cleared, auto-activate any pending subs
+  if (readiness.ready) {
     const [pendingLex] = await db.select({ id: lexaiSubscriptions.id })
       .from(lexaiSubscriptions)
       .where(and(eq(lexaiSubscriptions.userId, userId), eq(lexaiSubscriptions.isPendingActivation, true)))
@@ -7766,9 +8083,14 @@ export async function activateStudentSubscriptions(userId: number, isAutoActivat
 
   for (const sub of pendingLexai) {
     // Cap: endDate = min(now + entitlementDays, maxActivationDate + entitlementDays)
-    let endDate = new Date(now.getTime() + entitlementDays * DAY_MS);
+    const serviceDays = derivePendingServiceDays({
+      maxActivationDate: sub.maxActivationDate,
+      placeholderEndDate: sub.endDate,
+      fallbackDays: entitlementDays,
+    });
+    let endDate = new Date(now.getTime() + serviceDays * DAY_MS);
     if (sub.maxActivationDate) {
-      const absoluteMax = new Date(new Date(sub.maxActivationDate).getTime() + entitlementDays * DAY_MS);
+      const absoluteMax = new Date(new Date(sub.maxActivationDate).getTime() + serviceDays * DAY_MS);
       if (absoluteMax < endDate) endDate = absoluteMax;
     }
     const endStr = endDate.toISOString();
@@ -7783,9 +8105,14 @@ export async function activateStudentSubscriptions(userId: number, isAutoActivat
   }
 
   for (const sub of pendingRec) {
-    let endDate = new Date(now.getTime() + entitlementDays * DAY_MS);
+    const serviceDays = derivePendingServiceDays({
+      maxActivationDate: sub.maxActivationDate,
+      placeholderEndDate: sub.endDate,
+      fallbackDays: entitlementDays,
+    });
+    let endDate = new Date(now.getTime() + serviceDays * DAY_MS);
     if (sub.maxActivationDate) {
-      const absoluteMax = new Date(new Date(sub.maxActivationDate).getTime() + entitlementDays * DAY_MS);
+      const absoluteMax = new Date(new Date(sub.maxActivationDate).getTime() + serviceDays * DAY_MS);
       if (absoluteMax < endDate) endDate = absoluteMax;
     }
     const endStr = endDate.toISOString();
@@ -10383,6 +10710,13 @@ export async function approveOnboardingStep(stepId: number, adminId: number, adm
     if (status.isComplete) {
       await db.update(users).set({ brokerOnboardingComplete: true })
         .where(eq(users.id, row.userId));
+      const packageId = await getUserLatestActivatedPackageId(row.userId);
+      if (packageId) {
+        const readiness = await getUserTimedServiceReadiness(row.userId, packageId);
+        if (readiness.ready) {
+          await activateStudentSubscriptions(row.userId, false);
+        }
+      }
     }
   }
 
@@ -11483,8 +11817,13 @@ export async function skipBrokerOnboardingForUser(userId: number, adminId: numbe
     createdAt: now,
   });
 
-  // Broker is the only gate — always activate pending subscriptions
-  const activation = await activateStudentSubscriptions(userId, false);
+  const packageId = await getUserLatestActivatedPackageId(userId);
+  const readiness = packageId
+    ? await getUserTimedServiceReadiness(userId, packageId)
+    : { ready: false };
+  const activation = readiness.ready
+    ? await activateStudentSubscriptions(userId, false)
+    : { activated: false };
   const activated = activation.activated;
 
   return { success: true, brokerId: broker.id, activated };
