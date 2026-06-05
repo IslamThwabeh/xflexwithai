@@ -24,8 +24,8 @@ Last updated: 2026-06-04
 - Remote D1 query pattern:
   `npx wrangler d1 execute xflexwithai-db --remote --config wrangler-worker.toml --env production --command "SELECT ..."`
 - Codex can inspect production D1 directly with Wrangler read-only `SELECT` queries during investigations. Production writes, repairs, migrations, or data changes require separate explicit user approval.
-- Latest successful Worker deploy from Codex: version `a234c242-b9a5-455d-9eda-02c78ba24f82` on 2026-06-04.
-- Wrangler Pages deploy failed on 2026-06-04 due Cloudflare API `502 Bad Gateway` during asset upload; user planned manual Pages upload from `dist/public`.
+- Latest successful Worker deploy from Codex: version `6d231d23-f38e-485e-8064-c3177ec840eb` on 2026-06-05.
+- Wrangler Pages deploy failed on 2026-06-05 for commit `b347e28` due Cloudflare API `POST /pages/assets/upload -> 502 Bad Gateway`; user can manually upload `dist/public`.
 
 ## Important Areas
 
