@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
-import { PauseCircle, PlayCircle, UserCog, Bell, TrendingUp, Copy, Trash2, ArrowDown, ArrowUp, Plus, Clock3, Megaphone, XCircle, Info, Pencil, WandSparkles, Download } from "lucide-react";
+import { PauseCircle, PlayCircle, UserCog, Bell, TrendingUp, Copy, Trash2, ArrowDown, ArrowUp, Plus, Clock3, Megaphone, XCircle, Info, Pencil, WandSparkles, Download, ChevronDown, ChevronUp, ListFilter } from "lucide-react";
 import { useDataTable, DataTablePagination, zebraRow } from "@/components/DataTable";
 import { formatLocalizedDate } from "@/lib/dateLocale";
 import { buildRecommendationThreads, groupRecommendationThreadsByDay } from "@/lib/recommendationThreads";
@@ -20,6 +20,7 @@ import { buildRecommendationThreads, groupRecommendationThreadsByDay } from "@/l
 type RecommendationType = "recommendation" | "update" | "result";
 type FollowUpPresetGroupKey = "pips" | "management" | "outcome";
 type TradeOutcome = "win" | "loss";
+type ThreadFilter = "open" | "needsResult" | "closed";
 
 type MonthlyTradeReportRow = {
   messageId: number;
@@ -331,6 +332,9 @@ function AnalystView() {
   const [activePresetGroup, setActivePresetGroup] = useState<FollowUpPresetGroupKey>("pips");
   const [reportMonth, setReportMonth] = useState(getCurrentMonthValue());
   const [overrideDrafts, setOverrideDrafts] = useState<Record<number, { outcome: TradeOutcome; pips: string }>>({});
+  const [showMonthlyReport, setShowMonthlyReport] = useState(false);
+  const [threadFilter, setThreadFilter] = useState<ThreadFilter>("open");
+  const [threadSearch, setThreadSearch] = useState("");
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
 
   const { data: me } = trpc.recommendations.me.useQuery();
@@ -341,8 +345,12 @@ function AnalystView() {
     refetchInterval: canManageChannel ? 1000 : false,
   });
   const { data: feed = [], isLoading: feedLoading } = trpc.recommendations.feed.useQuery(
-    { limit: 200 },
+    { limit: 500 },
     { enabled: canManageChannel }
+  );
+  const { data: openThreadFeed = [], isLoading: openThreadFeedLoading } = trpc.recommendations.openThreads.useQuery(
+    undefined,
+    { enabled: canManageChannel, refetchInterval: canManageChannel ? 30_000 : false }
   );
   const {
     data: monthlyReport,
@@ -405,6 +413,7 @@ function AnalystView() {
         setSymbol("XAUUSD");
       }
       utils.recommendations.feed.invalidate();
+      utils.recommendations.openThreads.invalidate();
       utils.recommendations.publishState.invalidate();
       utils.recommendations.activeAlerts.invalidate();
     },
@@ -415,6 +424,7 @@ function AnalystView() {
     onSuccess: () => {
       toast.success(isRTL ? "تم حذف الرسالة" : "Message deleted");
       utils.recommendations.feed.invalidate();
+      utils.recommendations.openThreads.invalidate();
     },
     onError: (error) => toast.error(error.message),
   });
@@ -423,6 +433,7 @@ function AnalystView() {
     onSuccess: () => {
       toast.success(isRTL ? "تم إغلاق الصفقة" : "Thread closed");
       utils.recommendations.feed.invalidate();
+      utils.recommendations.openThreads.invalidate();
     },
     onError: (error) => toast.error(formatRecommendationUiError(error.message, isRTL)),
   });
@@ -470,6 +481,7 @@ function AnalystView() {
       setSymbol("XAUUSD");
       setShowTradeDetails(false);
       utils.recommendations.feed.invalidate();
+      utils.recommendations.openThreads.invalidate();
     },
     onError: (error) => toast.error(formatRecommendationUiError(error.message, isRTL)),
   });
@@ -747,6 +759,7 @@ function AnalystView() {
   };
 
   const threads = useMemo(() => buildRecommendationThreads(feed, { openFirst: true }), [feed]);
+  const allOpenThreads = useMemo(() => buildRecommendationThreads(openThreadFeed, { openFirst: true }), [openThreadFeed]);
   const availablePresetGroups = useMemo(
     () => FOLLOW_UP_PRESET_GROUPS.filter((group) => group.modes.includes(type)),
     [type],
@@ -758,16 +771,33 @@ function AnalystView() {
       setActivePresetGroup(type === "result" ? "outcome" : "pips");
     }
   }, [activePresetGroup, availablePresetGroups, type]);
-  const openThreadGroups = useMemo(
-    () => groupRecommendationThreadsByDay(threads.filter((thread) => !thread.isClosed), language),
-    [threads, language],
+  const normalizedThreadSearch = threadSearch.trim().toLowerCase();
+  const closedThreads = useMemo(() => threads.filter((thread) => thread.isClosed), [threads]);
+  const workspaceThreads = useMemo(() => {
+    const source = threadFilter === "closed" ? closedThreads : allOpenThreads;
+    return source.filter((thread) => {
+      if (threadFilter === "needsResult" && thread.hasResultChild) return false;
+      if (normalizedThreadSearch) {
+        const root = thread.root;
+        const haystack = [
+          root.id,
+          root.symbol,
+          root.side,
+          root.content,
+          ...thread.children.flatMap((child) => [child.id, child.type, child.content]),
+        ].filter(Boolean).join(" ").toLowerCase();
+        if (!haystack.includes(normalizedThreadSearch)) return false;
+      }
+      return true;
+    });
+  }, [allOpenThreads, closedThreads, normalizedThreadSearch, threadFilter]);
+  const workspaceThreadGroups = useMemo(
+    () => groupRecommendationThreadsByDay(workspaceThreads, language),
+    [workspaceThreads, language],
   );
-  const closedThreadGroups = useMemo(
-    () => groupRecommendationThreadsByDay(threads.filter((thread) => thread.isClosed), language),
-    [threads, language],
-  );
-  const openThreadCount = threads.filter((thread) => !thread.isClosed).length;
-  const closedThreadCount = threads.filter((thread) => thread.isClosed).length;
+  const openThreadCount = allOpenThreads.length;
+  const needsResultThreadCount = allOpenThreads.filter((thread) => !thread.hasResultChild).length;
+  const closedThreadCount = closedThreads.length;
 
   const renderThreadGroups = (groups: any[], isClosedSection: boolean) => (
     <div className="space-y-4">
@@ -846,9 +876,16 @@ function AnalystView() {
                       <Button size="sm" variant="outline" onClick={() => copyMessage(message)}>
                         <Copy className="h-3.5 w-3.5 me-1" /> {t('rec.copy')}
                       </Button>
-                      <Button size="sm" variant="outline" onClick={() => startFollowUp(message)} className="text-amber-700 border-amber-200 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-900/20">
-                        <Plus className="h-3.5 w-3.5 me-1" /> {isRTL ? "متابعة" : "Follow-up"}
-                      </Button>
+                      {!thread.isClosed && (
+                        <>
+                          <Button size="sm" variant="outline" onClick={() => startFollowUp(message, "update")} className="text-amber-700 border-amber-200 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-900/20">
+                            <Bell className="h-3.5 w-3.5 me-1" /> {isRTL ? "تحديث" : "Update"}
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => startFollowUp(message, "result")} className="text-teal-700 border-teal-200 hover:bg-teal-50 dark:border-teal-800 dark:text-teal-300 dark:hover:bg-teal-900/20">
+                            <Plus className="h-3.5 w-3.5 me-1" /> {isRTL ? "نتيجة" : "Result"}
+                          </Button>
+                        </>
+                      )}
                       {canEditMessage(message) && (
                         <Button size="sm" variant="outline" onClick={() => startEdit(message)}>
                           <Pencil className="h-3.5 w-3.5 me-1" /> {isRTL ? "تعديل" : "Edit"}
@@ -1383,6 +1420,89 @@ function AnalystView() {
         <CardHeader>
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
+              <CardTitle className="flex items-center gap-2">
+                <ListFilter className="h-5 w-5 text-emerald-600" />
+                {isRTL ? "مساحة إدارة الصفقات" : "Trade Management Workspace"}
+              </CardTitle>
+              <CardDescription>
+                {isRTL
+                  ? "الصفقات المفتوحة تظهر هنا دائماً حتى لو كانت قديمة. أرسل تحديثاً أو نتيجة مباشرة بدون انتظار دقيقة."
+                  : "Open trades stay here even when they are old. Send updates or results directly without a one-minute wait."}
+              </CardDescription>
+            </div>
+            <Input
+              value={threadSearch}
+              onChange={(event) => setThreadSearch(event.target.value)}
+              placeholder={isRTL ? "بحث بالرقم أو الزوج أو النص" : "Search id, symbol, or text"}
+              className="max-w-sm"
+            />
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <button
+              type="button"
+              onClick={() => setThreadFilter("open")}
+              className={`rounded-xl border p-3 text-start transition ${threadFilter === "open" ? "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-100" : "bg-white hover:bg-slate-50 dark:bg-slate-950/20 dark:hover:bg-slate-900/40"}`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-medium">{isRTL ? "مفتوحة" : "Open"}</span>
+                <Badge className="bg-emerald-600 text-white">{openThreadCount}</Badge>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {isRTL ? "كل الصفقات التي يمكن متابعتها الآن" : "All trades available for follow-up"}
+              </p>
+            </button>
+            <button
+              type="button"
+              onClick={() => setThreadFilter("needsResult")}
+              className={`rounded-xl border p-3 text-start transition ${threadFilter === "needsResult" ? "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-100" : "bg-white hover:bg-slate-50 dark:bg-slate-950/20 dark:hover:bg-slate-900/40"}`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-medium">{isRTL ? "تحتاج نتيجة" : "Needs Result"}</span>
+                <Badge className="bg-amber-500 text-white">{needsResultThreadCount}</Badge>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {isRTL ? "صفقات مفتوحة لم يتم نشر نتيجة لها" : "Open trades without a result reply"}
+              </p>
+            </button>
+            <button
+              type="button"
+              onClick={() => setThreadFilter("closed")}
+              className={`rounded-xl border p-3 text-start transition ${threadFilter === "closed" ? "border-slate-400 bg-slate-100 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" : "bg-white hover:bg-slate-50 dark:bg-slate-950/20 dark:hover:bg-slate-900/40"}`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-medium">{isRTL ? "الأرشيف" : "Archive"}</span>
+                <Badge className="bg-slate-700 text-white dark:bg-slate-200 dark:text-slate-900">{closedThreadCount}</Badge>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {isRTL ? "الصفقات المغلقة من أحدث السجل" : "Closed trades from recent history"}
+              </p>
+            </button>
+          </div>
+
+          {openThreadFeedLoading && threadFilter !== "closed" ? (
+            <p className="text-sm text-muted-foreground">{isRTL ? "جاري تحميل الصفقات المفتوحة..." : "Loading open trades..."}</p>
+          ) : feedLoading && threadFilter === "closed" ? (
+            <p className="text-sm text-muted-foreground">{t('rec.loadingMessages')}</p>
+          ) : workspaceThreadGroups.length === 0 ? (
+            <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+              {threadFilter === "needsResult"
+                ? (isRTL ? "لا توجد صفقات مفتوحة تحتاج نتيجة." : "No open trades need a result.")
+                : threadFilter === "closed"
+                  ? (isRTL ? "لا توجد صفقات مغلقة في السجل الحالي." : "No closed trades in the current archive.")
+                  : (isRTL ? "لا توجد صفقات مفتوحة حالياً." : "No open trades right now.")}
+            </div>
+          ) : (
+            renderThreadGroups(workspaceThreadGroups, threadFilter === "closed")
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
               <CardTitle>{isRTL ? "تقرير الأداء الشهري" : "Monthly Trade Report"}</CardTitle>
               <CardDescription>
                 {isRTL
@@ -1414,9 +1534,43 @@ function AnalystView() {
                 <Download className="h-4 w-4 me-1" />
                 {isRTL ? "تصدير CSV" : "Export CSV"}
               </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setShowMonthlyReport((current) => !current)}
+              >
+                {showMonthlyReport ? <ChevronUp className="h-4 w-4 me-1" /> : <ChevronDown className="h-4 w-4 me-1" />}
+                {showMonthlyReport ? (isRTL ? "إخفاء" : "Collapse") : (isRTL ? "عرض" : "Expand")}
+              </Button>
             </div>
           </div>
         </CardHeader>
+        {monthlyReport && !showMonthlyReport && (
+          <CardContent>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-xl border bg-slate-50 p-3">
+                <p className="text-xs text-muted-foreground">{isRTL ? "إجمالي الصفقات" : "Total Trades"}</p>
+                <p className="text-xl font-bold">{monthlyReport.summary.totalTrades}</p>
+              </div>
+              <div className="rounded-xl border bg-teal-50 p-3">
+                <p className="text-xs text-teal-700">{isRTL ? "نسبة النجاح" : "Win Rate"}</p>
+                <p className="text-xl font-bold text-teal-700">{monthlyReport.summary.winRate}%</p>
+              </div>
+              <div className="rounded-xl border p-3">
+                <p className="text-xs text-muted-foreground">{isRTL ? "صافي النقاط" : "Net Pips"}</p>
+                <p className={`text-xl font-bold ${monthlyReport.summary.netPips >= 0 ? "text-emerald-700" : "text-red-700"}`}>
+                  {monthlyReport.summary.netPips}
+                </p>
+              </div>
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                <p className="text-xs text-amber-700">{isRTL ? "تحتاج مراجعة" : "Needs Review"}</p>
+                <p className="text-xl font-bold text-amber-700">{monthlyReport.unresolved.length}</p>
+              </div>
+            </div>
+          </CardContent>
+        )}
+        {showMonthlyReport && (
         <CardContent className="space-y-4">
           {monthlyReportLoading ? (
             <p className="text-sm text-muted-foreground">{isRTL ? "جاري تحميل التقرير..." : "Loading report..."}</p>
@@ -1589,52 +1743,9 @@ function AnalystView() {
             </>
           )}
         </CardContent>
+        )}
       </Card>
 
-      {/* Recent messages */}
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('rec.messages')}</CardTitle>
-          <CardDescription>{t('rec.messagesDesc')}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {feedLoading ? (
-            <p className="text-sm text-muted-foreground">{t('rec.loadingMessages')}</p>
-          ) : threads.length === 0 ? (
-            <p className="text-sm text-muted-foreground">{t('rec.noMessages')}</p>
-          ) : (
-            <div className="space-y-6">
-              <section className="space-y-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                    {isRTL ? "الصفقات المفتوحة" : "Open Threads"}
-                  </h3>
-                  <Badge className="bg-emerald-600 text-white">{openThreadCount}</Badge>
-                </div>
-                {openThreadGroups.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    {isRTL ? "لا توجد صفقات مفتوحة حالياً." : "No open threads right now."}
-                  </p>
-                ) : renderThreadGroups(openThreadGroups, false)}
-              </section>
-
-              <section className="space-y-4 border-t pt-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                    {isRTL ? "الصفقات المغلقة" : "Closed Threads"}
-                  </h3>
-                  <Badge className="bg-slate-700 text-white dark:bg-slate-200 dark:text-slate-900">{closedThreadCount}</Badge>
-                </div>
-                {closedThreadGroups.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    {isRTL ? "لا توجد صفقات مغلقة بعد." : "No closed threads yet."}
-                  </p>
-                ) : renderThreadGroups(closedThreadGroups, true)}
-              </section>
-            </div>
-          )}
-        </CardContent>
-      </Card>
     </div>
   );
 }

@@ -841,6 +841,38 @@ async function generateSupportAIReply(
   }
 }
 
+function buildSupportStaffEmailContent(input: {
+  clientName?: string | null;
+  clientEmail?: string | null;
+  conversationId: number;
+  latestMessage: string;
+  recentClientMessages: Array<{ content: string; createdAt?: string | null }>;
+}) {
+  const clientLabel = input.clientName?.trim() || input.clientEmail || `User #${input.conversationId}`;
+  const lines = [
+    `Client: ${clientLabel}`,
+    input.clientEmail ? `Email: ${input.clientEmail}` : null,
+    `Conversation: #${input.conversationId}`,
+    "",
+    "Latest message:",
+    input.latestMessage,
+  ].filter((line): line is string => line !== null);
+
+  const recent = input.recentClientMessages
+    .filter((message) => message.content?.trim())
+    .slice(-5);
+
+  if (recent.length > 1) {
+    lines.push("", "Recent client messages:");
+    for (const message of recent) {
+      const time = message.createdAt ? new Date(message.createdAt).toLocaleString("en-US", { timeZone: "Asia/Amman" }) : "";
+      lines.push(`- ${time ? `${time}: ` : ""}${message.content.trim()}`);
+    }
+  }
+
+  return lines.join("\n").slice(0, 1800);
+}
+
 export const appRouter = router({
   system: systemRouter,
   
@@ -2804,6 +2836,11 @@ export const appRouter = router({
         return await db.getRecommendationMessagesFeed(ctx.user.id, input?.limit ?? 200);
       }),
 
+    openThreads: protectedProcedure.query(async ({ ctx }) => {
+      await ensureRecommendationPublishAccess(ctx);
+      return await db.getOpenRecommendationMessagesFeed(ctx.user.id);
+    }),
+
     muteThread: protectedProcedure
       .input(z.object({ threadRootMessageId: z.number().int().positive() }))
       .mutation(async ({ ctx, input }) => {
@@ -2852,15 +2889,26 @@ export const appRouter = router({
         const copy = buildRecommendationAlertNotificationCopy();
         const batchId = `rec_alert_${alert.id}_${Date.now()}`;
         const eventKey = `rec_alert:${alert.id}`;
+        const emailRecipients = recipients.map((sub) => {
+          const language = getPreferredNotificationLanguage(sub.notificationPrefs);
+          const emailCopy = buildRecommendationAlertEmail({
+            language,
+            unlockSeconds: RECOMMENDATION_ALERT_UNLOCK_SECONDS,
+          });
+          return { sub, language, emailCopy };
+        });
 
         await db.prepareRecommendationDeliveries({
           eventKey,
           eventKind: 'alert',
           refId: alert.id,
-          recipients: recipients.map((sub) => ({
+          recipients: emailRecipients.map(({ sub, language, emailCopy }) => ({
             userId: sub.userId,
             recipientEmail: sub.email,
-            language: getPreferredNotificationLanguage(sub.notificationPrefs),
+            language,
+            subject: emailCopy.subject,
+            bodyText: emailCopy.text,
+            bodyHtml: emailCopy.html,
             metadata: { batchId, unlockSeconds: RECOMMENDATION_ALERT_UNLOCK_SECONDS },
           })),
         });
@@ -2877,11 +2925,7 @@ export const appRouter = router({
         });
 
         const emailResults = await Promise.allSettled(
-          recipients.map(async (sub) => {
-            const emailCopy = buildRecommendationAlertEmail({
-              language: getPreferredNotificationLanguage(sub.notificationPrefs),
-              unlockSeconds: RECOMMENDATION_ALERT_UNLOCK_SECONDS,
-            });
+          emailRecipients.map(async ({ sub, emailCopy }) => {
             try {
               const result = await sendEmail({
                 to: sub.email,
@@ -3034,18 +3078,13 @@ export const appRouter = router({
         const isAdmin = !!(ctx.user?.email && await db.getAdminByEmail(ctx.user.email));
         const publishState = await db.getRecommendationPublishState(ctx.user.id);
 
-        // The publish window gates apply to every channel message, not just
-        // the top-level recommendation: updates/results piggyback on the
-        // active alert, so if the analyst hasn't notified, is still in the
-        // pre-unlock minute, or the chat paused after 15min of silence, no
-        // channel message should be delivered.
-        if (!publishState.activeAlert) {
+        if (input.type === 'recommendation' && !publishState.activeAlert) {
           throw new TRPCError({
             code: 'FORBIDDEN',
             message: 'Notify clients first, then wait one minute before sending in the recommendations channel.',
           });
         }
-        if (!publishState.canPostMessages) {
+        if (input.type === 'recommendation' && !publishState.canPostMessages) {
           if (publishState.secondsUntilUnlock > 0) {
             throw new TRPCError({
               code: 'FORBIDDEN',
@@ -3072,12 +3111,15 @@ export const appRouter = router({
           riskPercent?: string | null;
         } | null = null;
         let notificationSymbol: string | null | undefined;
-        const linkedAlertId = publishState.activeAlert?.id ?? null;
+        const shouldNotifyRecipients = input.type === 'recommendation' || publishState.canPostMessages;
+        const linkedAlertId = publishState.canPostMessages ? publishState.activeAlert?.id ?? null : null;
 
-        // Compute the recipient funnel ONCE before persisting so we can refuse
-        // top-level recommendations without leaving orphan recommendationMessage rows,
-        // and capture diagnostics for admin observability.
-        const funnel = await db.getRecommendationDeliveryFunnel();
+        // Compute the recipient funnel only for messages that should fan out.
+        // Silent follow-ups on older open recommendations must not require an
+        // active alert and must not notify clients.
+        const funnel = shouldNotifyRecipients
+          ? await db.getRecommendationDeliveryFunnel()
+          : { eligible: [], diagnostics: null };
         const funnelEligible = funnel.eligible;
 
         if (input.type === 'recommendation') {
@@ -3145,6 +3187,9 @@ export const appRouter = router({
           if (parentMessage.type !== 'recommendation') {
             throw new TRPCError({ code: 'BAD_REQUEST', message: 'Replies and results can only be added to an existing recommendation.' });
           }
+          if (parentMessage.threadStatus === 'closed') {
+            throw new TRPCError({ code: 'BAD_REQUEST', message: 'This recommendation thread is already closed.' });
+          }
 
           const normalizedSymbol = input.symbol?.trim().toUpperCase();
           if (normalizedSymbol && parentMessage.symbol && normalizedSymbol !== parentMessage.symbol) {
@@ -3180,7 +3225,7 @@ export const appRouter = router({
             takeProfit3: input.takeProfit3,
             riskPercent: input.riskPercent,
             parentId: input.parentId,
-            deliveryDiagnosticsJson: JSON.stringify(funnel.diagnostics),
+            deliveryDiagnosticsJson: funnel.diagnostics ? JSON.stringify(funnel.diagnostics) : null,
             createdAt: new Date().toISOString(),
           });
         }
@@ -3203,16 +3248,33 @@ export const appRouter = router({
         const batchId = `rec_live_${messageId}`;
         const eventKey = `rec_msg:${messageId}`;
 
-        if (recipients.length && rootMessageForDelivery) {
+        if (shouldNotifyRecipients && recipients.length && rootMessageForDelivery) {
+          const emailRecipients = recipients.map((sub) => {
+            const language = getPreferredNotificationLanguage(sub.notificationPrefs);
+            const emailCopy = buildRecommendationMessageEmail({
+              language,
+              type: input.type,
+              recommendation: rootMessageForDelivery!,
+              latestMessage: input.type === 'recommendation' ? undefined : { content: trimmedContent },
+              threadUnfollowUrl: input.type === 'recommendation'
+                ? undefined
+                : buildRecommendationThreadUnfollowUrl(threadRootMessageId),
+            });
+            return { sub, language, emailCopy };
+          });
+
           await db.prepareRecommendationDeliveries({
             eventKey,
             eventKind: input.type,
             refId: messageId,
             threadRootMessageId,
-            recipients: recipients.map((sub) => ({
+            recipients: emailRecipients.map(({ sub, language, emailCopy }) => ({
               userId: sub.userId,
               recipientEmail: sub.email,
-              language: getPreferredNotificationLanguage(sub.notificationPrefs),
+              language,
+              subject: emailCopy.subject,
+              bodyText: emailCopy.text,
+              bodyHtml: emailCopy.html,
               metadata: { batchId, symbol: notificationSymbol || null },
             })),
           });
@@ -3258,17 +3320,7 @@ export const appRouter = router({
           });
 
           const emailResults = await Promise.allSettled(
-            recipients.map(async (sub) => {
-                const emailCopy = buildRecommendationMessageEmail({
-                  language: getPreferredNotificationLanguage(sub.notificationPrefs),
-                  type: input.type,
-                  recommendation: rootMessageForDelivery!,
-                  latestMessage: input.type === 'recommendation' ? undefined : { content: trimmedContent },
-                  threadUnfollowUrl: input.type === 'recommendation'
-                    ? undefined
-                    : buildRecommendationThreadUnfollowUrl(threadRootMessageId),
-                });
-
+            emailRecipients.map(async ({ sub, emailCopy }) => {
                 try {
                   const result = await sendEmail({
                     to: sub.email,
@@ -3957,11 +4009,26 @@ export const appRouter = router({
         }
 
         // Notify admin/support staff of new student message
+        const recentMessagesForEmail = await db.getSupportMessages(conv.id, 10);
+        const recentClientMessages = recentMessagesForEmail
+          .filter((message) => message.senderType === 'client' && !message.deletedAt)
+          .reverse()
+          .map((message) => ({ content: message.content, createdAt: message.createdAt }));
+        const supportActionUrl = `/admin/support?conversationId=${conv.id}`;
+        const supportEmailContent = buildSupportStaffEmailContent({
+          clientName: ctx.user.name,
+          clientEmail: ctx.user.email,
+          conversationId: conv.id,
+          latestMessage: input.content,
+          recentClientMessages,
+        });
+
         await db.notifyStaffByEvent('new_support_message', {
           titleEn: `New support message from ${ctx.user.name || ctx.user.email}`,
           titleAr: `رسالة دعم جديدة من ${ctx.user.name || ctx.user.email}`,
-          contentEn: input.content.slice(0, 120),
-          contentAr: input.content.slice(0, 120),
+          contentEn: supportEmailContent,
+          contentAr: supportEmailContent,
+          actionUrl: supportActionUrl,
           metadata: { userId: ctx.user.id, conversationId: conv.id },
         });
 
@@ -7271,6 +7338,7 @@ ${qaText}`;
         recipientQuery: z.string().optional(),
         recipientUserId: z.number().optional(),
         eventType: z.string().optional(),
+        eventCategory: z.enum(['recommendations', 'support', 'orders', 'login', 'system']).optional(),
         status: z.enum(['sent', 'failed']).optional(),
         fromDate: z.string().optional(),
         toDate: z.string().optional(),
@@ -7282,6 +7350,7 @@ ${qaText}`;
           recipientQuery: input?.recipientQuery,
           recipientUserId: input?.recipientUserId,
           eventType: input?.eventType,
+          eventCategory: input?.eventCategory,
           status: input?.status,
           fromDate: input?.fromDate,
           toDate: input?.toDate,

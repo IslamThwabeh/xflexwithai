@@ -249,7 +249,16 @@ describe("recommendations workflow", () => {
     );
     expect(markRecommendationDeliverySent).toHaveBeenCalledWith(expect.objectContaining({ userId: 1 }));
     expect(markRecommendationDeliverySent).toHaveBeenCalledWith(expect.objectContaining({ userId: 4 }));
-    expect(prepareRecommendationDeliveries).toHaveBeenCalled();
+    expect(prepareRecommendationDeliveries).toHaveBeenCalledWith(expect.objectContaining({
+      recipients: expect.arrayContaining([
+        expect.objectContaining({
+          userId: 1,
+          subject: "تنبيه التوصيات: جهّز تطبيق التداول، توصية جديدة قريبة",
+          bodyText: expect.stringContaining("افتح القناة الآن"),
+          bodyHtml: expect.stringContaining("افتح القناة الآن"),
+        }),
+      ]),
+    }));
   });
 
   it("blocks a new recommendation until clients have been notified", async () => {
@@ -266,7 +275,7 @@ describe("recommendations workflow", () => {
     } satisfies Partial<TRPCError>);
   });
 
-  it("keeps all channel messages locked during the one-minute wait window", async () => {
+  it("keeps new recommendations locked during the one-minute wait window", async () => {
     const caller = createAuthedCaller();
 
     getRecommendationPublishState.mockResolvedValue({
@@ -286,14 +295,39 @@ describe("recommendations workflow", () => {
 
     await expect(
       caller.recommendations.postMessage({
-        type: "update",
-        content: "Secure part of the trade.",
-        parentId: 901,
+        type: "recommendation",
+        content: "Gold looks ready for a breakout.",
       })
     ).rejects.toMatchObject({
       code: "FORBIDDEN",
       message: "Wait 25 more seconds before sending the next channel message.",
     } satisfies Partial<TRPCError>);
+  });
+
+  it("allows silent follow-ups on older open recommendations without alerting clients", async () => {
+    const caller = createAuthedCaller();
+
+    const result = await caller.recommendations.postMessage({
+      type: "update",
+      content: "Secure part of the trade.",
+      parentId: 901,
+      symbol: "XAUUSD",
+    });
+
+    expect(result).toMatchObject({ success: true, messageId: 901 });
+    expect(createRecommendationMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "update",
+        parentId: 901,
+        symbol: "XAUUSD",
+        deliveryDiagnosticsJson: null,
+      })
+    );
+    expect(getRecommendationDeliveryFunnel).not.toHaveBeenCalled();
+    expect(prepareRecommendationDeliveries).not.toHaveBeenCalled();
+    expect(sendBulkNotification).not.toHaveBeenCalled();
+    expect(mockedSendEmail).not.toHaveBeenCalled();
+    expect(extendRecommendationAlertActivity).not.toHaveBeenCalled();
   });
 
   it("publishes the recommendation once the alert window is unlocked", async () => {
@@ -355,6 +389,16 @@ describe("recommendations workflow", () => {
         html: expect.stringContaining("XAUUSD"),
       })
     );
+    expect(prepareRecommendationDeliveries).toHaveBeenCalledWith(expect.objectContaining({
+      recipients: expect.arrayContaining([
+        expect.objectContaining({
+          userId: 1,
+          subject: expect.stringContaining("التوصية الآن"),
+          bodyText: expect.stringContaining("XAUUSD"),
+          bodyHtml: expect.stringContaining("XAUUSD"),
+        }),
+      ]),
+    }));
     expect(markRecommendationDeliverySent).toHaveBeenCalledWith(expect.objectContaining({ userId: 1 }));
   });
 
@@ -480,7 +524,7 @@ describe("recommendations workflow", () => {
     expect(markRecommendationDeliverySent).toHaveBeenCalledWith(expect.objectContaining({ userId: 1 }));
   });
 
-  it("requires a fresh alert after 15 minutes of analyst silence", async () => {
+  it("requires a fresh alert for new recommendations after 15 minutes of analyst silence", async () => {
     const caller = createAuthedCaller();
 
     getRecommendationPublishState.mockResolvedValue({
@@ -500,9 +544,9 @@ describe("recommendations workflow", () => {
 
     await expect(
       caller.recommendations.postMessage({
-        type: "update",
-        content: "TP1 hit.",
-        parentId: 901,
+        type: "recommendation",
+        content: "Gold looks ready for a new breakout.",
+        symbol: "XAUUSD",
       })
     ).rejects.toMatchObject({
       code: "FORBIDDEN",

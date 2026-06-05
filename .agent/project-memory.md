@@ -23,6 +23,7 @@ Last updated: 2026-06-04
 - Production D1 binding: `xflexwithai-db`.
 - Remote D1 query pattern:
   `npx wrangler d1 execute xflexwithai-db --remote --config wrangler-worker.toml --env production --command "SELECT ..."`
+- Codex can inspect production D1 directly with Wrangler read-only `SELECT` queries during investigations. Production writes, repairs, migrations, or data changes require separate explicit user approval.
 - Latest successful Worker deploy from Codex: version `a234c242-b9a5-455d-9eda-02c78ba24f82` on 2026-06-04.
 - Wrangler Pages deploy failed on 2026-06-04 due Cloudflare API `502 Bad Gateway` during asset upload; user planned manual Pages upload from `dist/public`.
 
@@ -30,6 +31,8 @@ Last updated: 2026-06-04
 
 - Support chat client page: `frontend/src/pages/SupportChat.tsx`.
 - Admin support chat: `frontend/src/pages/AdminSupport.tsx`.
+- Admin recommendation management page: `frontend/src/pages/AdminRecommendations.tsx`.
+- Admin email log UI: `frontend/src/pages/AdminNotifications.tsx`.
 - Client bug report tab `/support?tab=bugs`: `frontend/src/components/SupportBugReportsPanel.tsx`.
 - Admin bug report queue: `frontend/src/pages/AdminBugReports.tsx`.
 - Shared support media helpers: `frontend/src/lib/supportMedia.ts`.
@@ -57,6 +60,9 @@ Last updated: 2026-06-04
 - Support chat copy/select message text fixed.
 - Recommendation emails no longer skip recently interactive users.
 - Recommendation alerts, updates, trade results, and admin bulk emails should be logged in `email_delivery_logs`.
+- Recommendation one-minute wait applies only to new top-level recommendations; updates/results on older open recommendations must remain immediate and silent unless there is an active publish window.
+- Admin recommendation workspace uses `recommendations.openThreads` to keep older open recommendations visible beyond the recent-feed cap.
+- Email delivery logs have grouped/detailed views, category filters, date presets, and offset paging; grouped rows combine the same batch sent to many recipients.
 - When changing support features, update client, admin/support, backend validation, tests, and mobile/desktop layouts together.
 
 ## Verification Baseline
@@ -71,5 +77,6 @@ Last updated: 2026-06-04
 
 - User prefers concise, low-token bug-fixing help.
 - For a new bug, ask for targeted PowerShell search results first.
+- For production-only symptoms, use read-only Wrangler D1 inspection when useful to collect evidence before proposing or applying fixes.
 - Then provide a paste-ready VS Code AI prompt with file paths, line targets, and exact requested diff.
 - Avoid long explanations unless the user asks for them.

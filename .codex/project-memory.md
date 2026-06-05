@@ -28,6 +28,7 @@ Last updated: 2026-06-05
 - D1 database binding: `xflexwithai-db`.
 - Remote production D1 query pattern:
   `npx wrangler d1 execute xflexwithai-db --remote --config wrangler-worker.toml --env production --command "SELECT ..."`
+- During investigations, Codex may inspect the production D1 database directly with Wrangler read-only `SELECT` queries to collect evidence. Any production write, repair, migration, or data change needs separate explicit user approval.
 - Latest Worker deploy completed on 2026-06-05 with version `637f2ba6-a794-4fba-8051-f2d02a694089`.
 - Latest Pages deploy completed on 2026-06-05: `https://03762e97.xflexwithai.pages.dev`.
 - Latest production D1 migration applied on 2026-06-05: `database/migrations/050_first_package_activation_anchor.sql`.
@@ -39,9 +40,11 @@ Last updated: 2026-06-05
 - Outbound automated emails are logged to `email_delivery_logs` with status, errors, and metadata.
 - Logged email flows include staff alerts, welcome/milestone emails, recommendation alerts, trade results, and admin bulk notifications.
 - Admin dashboard for email logs is in Admin Notifications -> `Email Delivery Logs` tab.
+- Email logs support grouped and detailed views, category filters, date presets, and offset paging; grouped rows intentionally combine the same email batch sent to multiple recipients.
 - Recommendation email inactivity filter was removed: recommendation alerts, updates, and trade results are sent regardless of recent `lastInteractiveAt`.
 - Recommendation email event types include `recommendation_alert`, `recommendation_update`, and `trade_result`.
 - Admin bulk email audit logs each recipient individually as `admin_bulk_notification`.
+- Recommendation delivery outbox rows store subject/body snapshots for alert, update, and result emails so audit rows remain inspectable later.
 
 ## Known Fixed Bugs / Lessons Learned
 
@@ -57,6 +60,8 @@ Last updated: 2026-06-05
 - Package keys dashboard now shows student name and service expiry; backend enrichment must use explicit joins for users instead of Drizzle correlated subqueries, which previously repeated the same name across rows.
 - Renewal keys must not receive fresh-student 14-day protection when they are renewing existing active/expired timed services; they start now or stack from current active expiry.
 - Case-by-case production repairs are preferred for subscription/key issues; do not bulk repair affected users without explicit approval and an audit trail.
+- Recommendation publish timing: the one-minute client notification wait applies only to new top-level recommendations. Older open recommendation updates/results are allowed immediately and are silent unless posted inside an active publish window.
+- Admin recommendation workspace fetches all open root recommendations through `recommendations.openThreads`, so old open trades stay visible outside the recent-feed pagination cap.
 
 ## Package Key Lifecycle Rules
 
@@ -123,6 +128,7 @@ Last updated: 2026-06-05
 
 - User is non-developer and prefers low-token, practical instructions.
 - When user reports a bug, first ask them for targeted PowerShell search output, usually with `Select-String` or concise `rg` alternatives.
+- For production-only symptoms, inspect production D1 read-only with Wrangler when useful before guessing from code.
 - Then provide a short prompt they can paste into VS Code AI/Copilot/Cursor.
 - Keep those prompts focused on file paths, line numbers, and exact code changes; avoid long explanations.
 - Preferred verification/deploy loop after fixes: build, deploy Pages, deploy Worker, then smoke test.

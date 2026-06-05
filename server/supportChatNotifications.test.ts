@@ -128,7 +128,8 @@ describe("support chat staff notifications", () => {
       expect(notifyStaffByEvent).toHaveBeenCalledWith(
         "new_support_message",
         expect.objectContaining({
-          contentEn: "Need help",
+          actionUrl: "/admin/support?conversationId=10",
+          contentEn: expect.stringContaining("Client: Student User"),
           metadata: { userId: 123, conversationId: 10 },
         }),
       );

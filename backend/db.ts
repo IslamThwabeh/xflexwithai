@@ -4021,17 +4021,9 @@ export async function saveRecommendationTradeResultOverride(input: {
   return updatedRows[0] ?? null;
 }
 
-export async function getRecommendationMessagesFeed(userId: number, limit: number = 200) {
+async function hydrateRecommendationFeedMessages(userId: number, orderedMessages: RecommendationMessage[]) {
   const db = await getDb();
   if (!db) return [];
-
-  const messages = await db
-    .select()
-    .from(recommendationMessages)
-    .orderBy(desc(recommendationMessages.createdAt))
-    .limit(limit);
-
-  const orderedMessages = [...messages].reverse();
 
   const messageIds = orderedMessages.map((message) => message.id);
   const authorIds = Array.from(new Set(orderedMessages.map((message) => message.userId)));
@@ -4100,6 +4092,51 @@ export async function getRecommendationMessagesFeed(userId: number, limit: numbe
       myReaction,
     };
   });
+}
+
+export async function getRecommendationMessagesFeed(userId: number, limit: number = 200) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const messages = await db
+    .select()
+    .from(recommendationMessages)
+    .orderBy(desc(recommendationMessages.createdAt))
+    .limit(limit);
+
+  return hydrateRecommendationFeedMessages(userId, [...messages].reverse());
+}
+
+export async function getOpenRecommendationMessagesFeed(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const openRoots = await db
+    .select({ id: recommendationMessages.id })
+    .from(recommendationMessages)
+    .where(and(
+      isNull(recommendationMessages.parentId),
+      eq(recommendationMessages.type, "recommendation"),
+      or(
+        isNull(recommendationMessages.threadStatus),
+        ne(recommendationMessages.threadStatus, "closed"),
+      ),
+    ))
+    .orderBy(desc(recommendationMessages.createdAt));
+
+  const rootIds = openRoots.map((root) => root.id);
+  if (!rootIds.length) return [];
+
+  const messages = await db
+    .select()
+    .from(recommendationMessages)
+    .where(or(
+      inArray(recommendationMessages.id, rootIds),
+      inArray(recommendationMessages.parentId, rootIds),
+    ))
+    .orderBy(recommendationMessages.createdAt);
+
+  return hydrateRecommendationFeedMessages(userId, messages);
 }
 
 export async function setRecommendationReaction(messageId: number, userId: number, reaction: string | null) {
@@ -7214,28 +7251,6 @@ export async function createSupportMessage(msg: {
   await db.update(supportConversations)
     .set({ updatedAt: now })
     .where(eq(supportConversations.id, msg.conversationId));
-
-  if (msg.senderType === 'client') {
-    const notificationEmails = await getConfiguredAdminNotificationEmails();
-
-    for (const notificationEmail of notificationEmails) {
-      try {
-        await sendStaffAlertEmail({
-          to: notificationEmail,
-          eventType: 'new_support_message',
-          titleEn: 'New support message',
-          contentEn: msg.content.slice(0, 120),
-          actionUrl: `/support?conversationId=${msg.conversationId}`,
-        });
-      } catch (e) {
-        logger.warn('[SUPPORT] Failed to email configured admin notification address', {
-          error: String(e),
-          conversationId: msg.conversationId,
-          notificationEmail,
-        });
-      }
-    }
-  }
 
   return message;
 }
@@ -10995,6 +11010,7 @@ export async function getEmailDeliveryLogs(filters?: {
   recipientQuery?: string;
   recipientUserId?: number;
   eventType?: string;
+  eventCategory?: 'recommendations' | 'support' | 'orders' | 'login' | 'system';
   status?: 'sent' | 'failed';
   fromDate?: string;
   toDate?: string;
@@ -11033,6 +11049,43 @@ export async function getEmailDeliveryLogs(filters?: {
 
   if (filters?.eventType?.trim()) {
     conditions.push(eq(emailDeliveryLogs.eventType, filters.eventType.trim()));
+  }
+
+  if (filters?.eventCategory) {
+    if (filters.eventCategory === 'recommendations') {
+      conditions.push(or(
+        like(emailDeliveryLogs.eventType, 'recommendation%'),
+        eq(emailDeliveryLogs.eventType, 'trade_result'),
+      ));
+    } else if (filters.eventCategory === 'support') {
+      conditions.push(or(
+        like(emailDeliveryLogs.eventType, '%support%'),
+        like(emailDeliveryLogs.eventType, 'lexai%'),
+        eq(emailDeliveryLogs.eventType, 'human_escalation'),
+      ));
+    } else if (filters.eventCategory === 'orders') {
+      conditions.push(or(
+        like(emailDeliveryLogs.eventType, '%order%'),
+        like(emailDeliveryLogs.eventType, '%payment%'),
+      ));
+    } else if (filters.eventCategory === 'login') {
+      conditions.push(or(
+        like(emailDeliveryLogs.eventType, '%login%'),
+        like(emailDeliveryLogs.eventType, '%otp%'),
+      ));
+    } else if (filters.eventCategory === 'system') {
+      conditions.push(and(
+        sql`${emailDeliveryLogs.eventType} NOT LIKE 'recommendation%'`,
+        ne(emailDeliveryLogs.eventType, 'trade_result'),
+        sql`${emailDeliveryLogs.eventType} NOT LIKE '%support%'`,
+        sql`${emailDeliveryLogs.eventType} NOT LIKE 'lexai%'`,
+        ne(emailDeliveryLogs.eventType, 'human_escalation'),
+        sql`${emailDeliveryLogs.eventType} NOT LIKE '%order%'`,
+        sql`${emailDeliveryLogs.eventType} NOT LIKE '%payment%'`,
+        sql`${emailDeliveryLogs.eventType} NOT LIKE '%login%'`,
+        sql`${emailDeliveryLogs.eventType} NOT LIKE '%otp%'`,
+      ));
+    }
   }
 
   if (filters?.status) {
@@ -11557,6 +11610,7 @@ export async function notifyStaffByEvent(
   data: {
     titleEn: string; titleAr: string;
     contentEn?: string; contentAr?: string;
+    actionUrl?: string;
     metadata?: Record<string, unknown>;
   },
 ) {
@@ -11566,8 +11620,23 @@ export async function notifyStaffByEvent(
   const eventConfig = STAFF_NOTIFICATION_EVENTS[eventType];
   if (!eventConfig) return;
 
-  const actionUrl = eventConfig.actionUrl;
+  const actionUrl = data.actionUrl || eventConfig.actionUrl;
   const metadataStr = data.metadata ? JSON.stringify(data.metadata) : undefined;
+  const emailThrottleMinutes = 5;
+  let shouldSendEmail = true;
+
+  if (eventType === 'new_support_message' && actionUrl) {
+    const cutoffIso = new Date(Date.now() - emailThrottleMinutes * 60 * 1000).toISOString();
+    const [recentNotification] = await db.select({ id: staffNotifications.id })
+      .from(staffNotifications)
+      .where(and(
+        eq(staffNotifications.eventType, eventType),
+        eq(staffNotifications.actionUrl, actionUrl),
+        sql`${staffNotifications.createdAt} >= ${cutoffIso}`,
+      ))
+      .limit(1);
+    shouldSendEmail = !recentNotification;
+  }
 
   // Collect target user IDs: all admins + staff with matching roles
   const targetUserIds: number[] = [];
@@ -11614,6 +11683,7 @@ export async function notifyStaffByEvent(
 
   // Skip email entirely if this event is disabled globally
   if (globalEmailPrefs[eventType] === false) return;
+  if (!shouldSendEmail) return;
 
   for (const notificationEmail of notificationEmails) {
     try {
