@@ -669,14 +669,14 @@ export default function AdminNotifications() {
                             </div>
                             <div className="flex flex-wrap gap-2 lg:justify-end">
                               <Badge className="bg-slate-100 text-slate-800 hover:bg-slate-100 dark:bg-slate-900 dark:text-slate-100">
-                                {isRtl ? `${group.recipientCount} مستلم` : `${group.recipientCount} recipients`}
+                                {isRtl ? `المستلمون ${group.recipientCount}` : `Recipients ${group.recipientCount}`}
                               </Badge>
                               <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 dark:bg-emerald-900/40 dark:text-emerald-200">
-                                {isRtl ? `${group.sentCount} مرسل` : `${group.sentCount} sent`}
+                                {isRtl ? `تم بنجاح ${group.sentCount}` : `Successful ${group.sentCount}`}
                               </Badge>
                               {group.failedCount > 0 && (
                                 <Badge className="bg-red-100 text-red-800 hover:bg-red-100 dark:bg-red-900/40 dark:text-red-200">
-                                  {isRtl ? `${group.failedCount} فشل` : `${group.failedCount} failed`}
+                                  {isRtl ? `فشل ${group.failedCount}` : `Failed ${group.failedCount}`}
                                 </Badge>
                               )}
                             </div>

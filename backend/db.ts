@@ -97,6 +97,28 @@ import { isLikelyValidEmail, normalizeEmailAddress } from '../shared/emailValida
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
+const D1_SAFE_IN_CLAUSE_SIZE = 50;
+
+function chunkValues<T>(values: T[], size: number = D1_SAFE_IN_CLAUSE_SIZE): T[][] {
+  const chunks: T[][] = [];
+  for (let index = 0; index < values.length; index += size) {
+    chunks.push(values.slice(index, index + size));
+  }
+  return chunks;
+}
+
+async function collectChunkedRows<T, R>(
+  values: T[],
+  fetchChunk: (chunk: T[]) => Promise<R[]>,
+): Promise<R[]> {
+  const rows: R[] = [];
+  const uniqueValues = Array.from(new Set(values));
+  for (const chunk of chunkValues(uniqueValues)) {
+    rows.push(...await fetchChunk(chunk));
+  }
+  return rows;
+}
+
 const DEFAULT_KEY_ENTITLEMENT_DAYS = 30;
 const DEFAULT_STUDY_PERIOD_DAYS = 14;
 const RECOMMENDATION_ALERT_UNLOCK_MS = 60 * 1000;
@@ -2863,15 +2885,18 @@ export async function getMutedRecommendationThreadIdsForUser(
   const db = await getDb();
   if (!db) return [];
 
-  const filters = [eq(recommendationThreadMutes.userId, userId)];
-  if (threadRootMessageIds?.length) {
-    filters.push(inArray(recommendationThreadMutes.threadRootMessageId, threadRootMessageIds));
-  }
-
-  const rows = await db
-    .select({ threadRootMessageId: recommendationThreadMutes.threadRootMessageId })
-    .from(recommendationThreadMutes)
-    .where(and(...filters));
+  const rows = threadRootMessageIds?.length
+    ? await collectChunkedRows(threadRootMessageIds, (chunk) => db
+        .select({ threadRootMessageId: recommendationThreadMutes.threadRootMessageId })
+        .from(recommendationThreadMutes)
+        .where(and(
+          eq(recommendationThreadMutes.userId, userId),
+          inArray(recommendationThreadMutes.threadRootMessageId, chunk),
+        )))
+    : await db
+        .select({ threadRootMessageId: recommendationThreadMutes.threadRootMessageId })
+        .from(recommendationThreadMutes)
+        .where(eq(recommendationThreadMutes.userId, userId));
 
   return rows.map((row) => row.threadRootMessageId);
 }
@@ -2883,13 +2908,13 @@ export async function getMutedRecommendationUserIdsForThread(
   const db = await getDb();
   if (!db || !userIds.length) return [];
 
-  const rows = await db
+  const rows = await collectChunkedRows(userIds, (chunk) => db
     .select({ userId: recommendationThreadMutes.userId })
     .from(recommendationThreadMutes)
     .where(and(
       eq(recommendationThreadMutes.threadRootMessageId, threadRootMessageId),
-      inArray(recommendationThreadMutes.userId, userIds),
-    ));
+      inArray(recommendationThreadMutes.userId, chunk),
+    )));
 
   return rows.map((row) => row.userId);
 }
@@ -4025,32 +4050,32 @@ async function hydrateRecommendationFeedMessages(userId: number, orderedMessages
   const db = await getDb();
   if (!db) return [];
 
-  const messageIds = orderedMessages.map((message) => message.id);
+  const messageIds = Array.from(new Set(orderedMessages.map((message) => message.id)));
   const authorIds = Array.from(new Set(orderedMessages.map((message) => message.userId)));
   const rootThreadIds = orderedMessages
     .filter((message) => !message.parentId && message.type === "recommendation")
     .map((message) => message.id);
 
   const authors = authorIds.length
-    ? await db
+    ? await collectChunkedRows(authorIds, (chunk) => db
         .select({ id: users.id, name: users.name, email: users.email })
         .from(users)
-        .where(inArray(users.id, authorIds))
+        .where(inArray(users.id, chunk)))
     : [];
 
   // Check which authors have the analyst role
   const analystRoles = authorIds.length
-    ? await db.select({ userId: userRoles.userId })
+    ? await collectChunkedRows(authorIds, (chunk) => db.select({ userId: userRoles.userId })
         .from(userRoles)
-        .where(and(inArray(userRoles.userId, authorIds), eq(userRoles.role, 'analyst')))
+        .where(and(inArray(userRoles.userId, chunk), eq(userRoles.role, 'analyst'))))
     : [];
   const analystSet = new Set(analystRoles.map(r => r.userId));
 
   const reactions = messageIds.length
-    ? await db
+    ? await collectChunkedRows(messageIds, (chunk) => db
         .select()
         .from(recommendationReactions)
-        .where(inArray(recommendationReactions.messageId, messageIds))
+        .where(inArray(recommendationReactions.messageId, chunk)))
     : [];
 
   const mutedThreadIds = new Set(
@@ -4127,14 +4152,24 @@ export async function getOpenRecommendationMessagesFeed(userId: number) {
   const rootIds = openRoots.map((root) => root.id);
   if (!rootIds.length) return [];
 
-  const messages = await db
+  const rootMessages = await collectChunkedRows(rootIds, (chunk) => db
     .select()
     .from(recommendationMessages)
-    .where(or(
-      inArray(recommendationMessages.id, rootIds),
-      inArray(recommendationMessages.parentId, rootIds),
-    ))
-    .orderBy(recommendationMessages.createdAt);
+    .where(inArray(recommendationMessages.id, chunk)));
+  const childMessages = await collectChunkedRows(rootIds, (chunk) => db
+    .select()
+    .from(recommendationMessages)
+    .where(inArray(recommendationMessages.parentId, chunk)));
+
+  const messageMap = new Map<number, RecommendationMessage>();
+  for (const message of [...rootMessages, ...childMessages]) {
+    messageMap.set(message.id, message);
+  }
+
+  const messages = Array.from(messageMap.values()).sort((left, right) => {
+    const byCreatedAt = left.createdAt.localeCompare(right.createdAt);
+    return byCreatedAt || left.id - right.id;
+  });
 
   return hydrateRecommendationFeedMessages(userId, messages);
 }
