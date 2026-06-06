@@ -2836,6 +2836,24 @@ export const appRouter = router({
         return await db.getRecommendationMessagesFeed(ctx.user.id, input?.limit ?? 200);
       }),
 
+    threadSummary: protectedProcedure.query(async ({ ctx }) => {
+      await ensureRecommendationPublishAccess(ctx);
+      return await db.getRecommendationThreadSummary();
+    }),
+
+    threadMessages: protectedProcedure
+      .input(z.object({
+        status: z.enum(['all', 'open', 'closed']).optional(),
+        limit: z.number().min(1).max(500).optional(),
+        offset: z.number().min(0).optional(),
+        search: z.string().max(200).optional(),
+        month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).optional(),
+      }).optional())
+      .query(async ({ ctx, input }) => {
+        await ensureRecommendationPublishAccess(ctx);
+        return await db.getRecommendationThreadMessagesFeed(ctx.user.id, input);
+      }),
+
     openThreads: protectedProcedure.query(async ({ ctx }) => {
       await ensureRecommendationPublishAccess(ctx);
       return await db.getOpenRecommendationMessagesFeed(ctx.user.id);
@@ -7333,12 +7351,12 @@ ${qaText}`;
   adminEmail: router({
     deliveryLogs: adminProcedure
       .input(z.object({
-        limit: z.number().min(1).max(200).optional(),
+        limit: z.number().min(1).max(500).optional(),
         offset: z.number().min(0).optional(),
         recipientQuery: z.string().optional(),
         recipientUserId: z.number().optional(),
         eventType: z.string().optional(),
-        eventCategory: z.enum(['recommendations', 'support', 'orders', 'login', 'system']).optional(),
+        eventCategory: z.enum(['recommendations', 'support', 'orders', 'login', 'lifecycle', 'system']).optional(),
         status: z.enum(['sent', 'failed']).optional(),
         fromDate: z.string().optional(),
         toDate: z.string().optional(),
@@ -7347,6 +7365,27 @@ ${qaText}`;
         return db.getEmailDeliveryLogs({
           limit: input?.limit,
           offset: input?.offset,
+          recipientQuery: input?.recipientQuery,
+          recipientUserId: input?.recipientUserId,
+          eventType: input?.eventType,
+          eventCategory: input?.eventCategory,
+          status: input?.status,
+          fromDate: input?.fromDate,
+          toDate: input?.toDate,
+        });
+      }),
+    deliveryLogSummary: adminProcedure
+      .input(z.object({
+        recipientQuery: z.string().optional(),
+        recipientUserId: z.number().optional(),
+        eventType: z.string().optional(),
+        eventCategory: z.enum(['recommendations', 'support', 'orders', 'login', 'lifecycle', 'system']).optional(),
+        status: z.enum(['sent', 'failed']).optional(),
+        fromDate: z.string().optional(),
+        toDate: z.string().optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        return db.getEmailDeliveryLogSummary({
           recipientQuery: input?.recipientQuery,
           recipientUserId: input?.recipientUserId,
           eventType: input?.eventType,

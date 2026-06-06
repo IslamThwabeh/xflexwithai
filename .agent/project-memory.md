@@ -1,6 +1,6 @@
 # XFLEX Agent Memory
 
-Last updated: 2026-06-04
+Last updated: 2026-06-06
 
 ## Project
 
@@ -62,6 +62,9 @@ Last updated: 2026-06-04
 - Recommendation alerts, updates, trade results, and admin bulk emails should be logged in `email_delivery_logs`.
 - Recommendation one-minute wait applies only to new top-level recommendations; updates/results on older open recommendations must remain immediate and silent unless there is an active publish window.
 - Admin recommendation workspace uses `recommendations.openThreads` to keep older open recommendations visible beyond the recent-feed cap.
+- Admin recommendation workspace counters should come from backend summary data, not currently loaded page rows.
+- Admin recommendation archive/history should use dedicated thread-history queries with D1-safe chunked hydration; do not depend on the recent `recommendations.feed` query for archive counts.
+- Recommendation monthly performance should score official results from `result` replies in the selected month. `update` replies are trade-management context and should not silently count in win rate/pips unless manually reviewed/converted.
 - Email delivery logs have grouped/detailed views, category filters, date presets, and offset paging; grouped rows combine the same batch sent to many recipients.
 - When changing support features, update client, admin/support, backend validation, tests, and mobile/desktop layouts together.
 

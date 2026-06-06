@@ -11,7 +11,7 @@ import { useLocation } from 'wouter';
 import { useEffect } from 'react';
 
 type DeliveryLogView = 'grouped' | 'detailed';
-type DeliveryCategory = 'all' | 'recommendations' | 'support' | 'orders' | 'login' | 'system';
+type DeliveryCategory = 'all' | 'recommendations' | 'support' | 'orders' | 'login' | 'lifecycle' | 'system';
 type DeliveryDatePreset = 'all' | 'today' | 'yesterday' | 'last7' | 'custom';
 
 const DELIVERY_CATEGORIES: Array<{ key: DeliveryCategory; labelEn: string; labelAr: string }> = [
@@ -20,6 +20,7 @@ const DELIVERY_CATEGORIES: Array<{ key: DeliveryCategory; labelEn: string; label
   { key: 'support', labelEn: 'Support', labelAr: 'الدعم' },
   { key: 'orders', labelEn: 'Orders', labelAr: 'الطلبات' },
   { key: 'login', labelEn: 'Login', labelAr: 'الدخول' },
+  { key: 'lifecycle', labelEn: 'Lifecycle', labelAr: 'الاشتراكات' },
   { key: 'system', labelEn: 'System', labelAr: 'النظام' },
 ];
 
@@ -37,9 +38,23 @@ function getAmmanDateValue(offsetDays = 0) {
 
 function getDeliveryCategory(eventType: string): DeliveryCategory {
   if (eventType.startsWith('recommendation') || eventType === 'trade_result') return 'recommendations';
-  if (eventType.includes('support') || eventType === 'human_escalation' || eventType.includes('lexai')) return 'support';
+  if (eventType.includes('support') || eventType === 'human_escalation') return 'support';
   if (eventType.includes('order') || eventType.includes('payment')) return 'orders';
   if (eventType.includes('login') || eventType.includes('otp')) return 'login';
+  if (
+    eventType.includes('expiry') ||
+    eventType.includes('expiring') ||
+    eventType.includes('subscription') ||
+    eventType.includes('renewal') ||
+    eventType.includes('welcome') ||
+    eventType.includes('drip') ||
+    eventType.includes('milestone') ||
+    eventType.includes('inactivity') ||
+    eventType.includes('onboarding') ||
+    eventType.includes('quiz') ||
+    eventType.includes('freeze') ||
+    eventType.startsWith('lexai_expiry')
+  ) return 'lifecycle';
   return 'system';
 }
 
@@ -130,12 +145,12 @@ export default function AdminNotifications() {
   const [deliveryFromDate, setDeliveryFromDate] = useState('');
   const [deliveryToDate, setDeliveryToDate] = useState('');
   const [deliveryOffset, setDeliveryOffset] = useState(0);
+  const [deliveryPageSize, setDeliveryPageSize] = useState(150);
   const [deliveryView, setDeliveryView] = useState<DeliveryLogView>('grouped');
   const [deliveryCategory, setDeliveryCategory] = useState<DeliveryCategory>('all');
   const [deliveryDatePreset, setDeliveryDatePreset] = useState<DeliveryDatePreset>('all');
   const [expandedDeliveryGroups, setExpandedDeliveryGroups] = useState<Record<string, boolean>>({});
   const [, setLocation] = useLocation();
-  const deliveryPageSize = 150;
 
   // Staff alerts inbox
   const { data: staffAlerts, isLoading: alertsLoading } = trpc.staffNotifications.list.useQuery(undefined, { refetchInterval: 30_000 });
@@ -161,12 +176,25 @@ export default function AdminNotifications() {
     eventCategory: deliveryCategory === 'all' ? undefined : deliveryCategory,
     fromDate: deliveryFromDate || undefined,
     toDate: deliveryToDate ? `${deliveryToDate} 23:59:59` : undefined,
-  }), [deliveryOffset, recipientQuery, deliveryStatus, deliveryEventType, deliveryCategory, deliveryFromDate, deliveryToDate]);
+  }), [deliveryPageSize, deliveryOffset, recipientQuery, deliveryStatus, deliveryEventType, deliveryCategory, deliveryFromDate, deliveryToDate]);
+  const deliverySummaryFilters = useMemo(() => ({
+    recipientQuery: recipientQuery.trim() || undefined,
+    status: deliveryStatus === 'all' ? undefined : deliveryStatus,
+    eventType: deliveryEventType.trim() || undefined,
+    eventCategory: deliveryCategory === 'all' ? undefined : deliveryCategory,
+    fromDate: deliveryFromDate || undefined,
+    toDate: deliveryToDate ? `${deliveryToDate} 23:59:59` : undefined,
+  }), [recipientQuery, deliveryStatus, deliveryEventType, deliveryCategory, deliveryFromDate, deliveryToDate]);
   const { data: deliveryLogs, isLoading: deliveryLogsLoading } = trpc.adminEmail.deliveryLogs.useQuery(
     deliveryFilters,
     { enabled: isAdmin && tab === 'emailLogs' }
   );
-  const hasOlderDeliveryLogs = (deliveryLogs?.length ?? 0) === deliveryPageSize;
+  const { data: deliverySummary, isLoading: deliverySummaryLoading } = trpc.adminEmail.deliveryLogSummary.useQuery(
+    deliverySummaryFilters,
+    { enabled: isAdmin && tab === 'emailLogs' }
+  );
+  const deliveryTotal = deliverySummary?.total ?? 0;
+  const hasOlderDeliveryLogs = deliveryOffset + (deliveryLogs?.length ?? 0) < deliveryTotal;
   const visibleDeliveryLogs = useMemo(
     () => (deliveryLogs ?? []).filter((log: any) => (
       deliveryCategory === 'all' || getDeliveryCategory(log.eventType) === deliveryCategory
@@ -177,12 +205,12 @@ export default function AdminNotifications() {
   const deliveryStats = useMemo(() => {
     const logs = visibleDeliveryLogs;
     return {
-      total: logs.length,
-      sent: logs.filter((log: any) => log.status === 'sent').length,
-      failed: logs.filter((log: any) => log.status === 'failed').length,
+      total: deliverySummary?.total ?? logs.length,
+      sent: deliverySummary?.sent ?? logs.filter((log: any) => log.status === 'sent').length,
+      failed: deliverySummary?.failed ?? logs.filter((log: any) => log.status === 'failed').length,
       grouped: deliveryGroups.length,
     };
-  }, [visibleDeliveryLogs, deliveryGroups.length]);
+  }, [visibleDeliveryLogs, deliveryGroups.length, deliverySummary]);
 
   const sendMut = trpc.notifications.send.useMutation({
     onSuccess: (data) => {
@@ -232,6 +260,15 @@ export default function AdminNotifications() {
   );
 
   const unreadCount = (staffAlerts ?? []).filter((a: any) => !a.isRead).length;
+  const deliveryShownStart = visibleDeliveryLogs.length ? deliveryOffset + 1 : 0;
+  const deliveryShownEnd = deliveryOffset + visibleDeliveryLogs.length;
+  const deliveryRangeLabel = deliveryTotal
+    ? isRtl
+      ? `عرض ${deliveryShownStart} - ${deliveryShownEnd} من ${deliveryTotal}`
+      : `Showing ${deliveryShownStart} - ${deliveryShownEnd} of ${deliveryTotal}`
+    : isRtl
+      ? `عرض ${deliveryShownStart} - ${deliveryShownEnd}`
+      : `Showing ${deliveryShownStart} - ${deliveryShownEnd}`;
 
   useEffect(() => {
     if (!isAdmin && tab !== 'alerts') {
@@ -241,7 +278,7 @@ export default function AdminNotifications() {
 
   useEffect(() => {
     setDeliveryOffset(0);
-  }, [recipientQuery, deliveryStatus, deliveryEventType, deliveryFromDate, deliveryToDate]);
+  }, [recipientQuery, deliveryStatus, deliveryEventType, deliveryFromDate, deliveryToDate, deliveryCategory, deliveryPageSize]);
 
   useEffect(() => {
     setExpandedDeliveryGroups({});
@@ -476,24 +513,34 @@ export default function AdminNotifications() {
                   >
                     {isRtl ? 'أقدم' : 'Older'}
                   </Button>
+                  <select
+                    value={deliveryPageSize}
+                    onChange={(event) => setDeliveryPageSize(Number(event.target.value))}
+                    className="h-9 rounded-md border bg-white px-2 text-sm dark:border-slate-700 dark:bg-slate-900"
+                    aria-label={isRtl ? 'عدد الصفوف' : 'Rows per page'}
+                  >
+                    <option value={50}>{isRtl ? '50 صف' : '50 rows'}</option>
+                    <option value={150}>{isRtl ? '150 صف' : '150 rows'}</option>
+                    <option value={500}>{isRtl ? '500 صف' : '500 rows'}</option>
+                  </select>
                 </div>
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 <div className="rounded-lg border bg-slate-50 px-3 py-2 dark:bg-slate-900/40">
-                  <p className="text-xs text-muted-foreground">{isRtl ? 'المحاولات' : 'Attempts'}</p>
-                  <p className="text-lg font-semibold">{deliveryStats.total}</p>
+                  <p className="text-xs text-muted-foreground">{isRtl ? 'المحاولات المطابقة' : 'Matching Attempts'}</p>
+                  <p className="text-lg font-semibold">{deliverySummaryLoading ? '...' : deliveryStats.total}</p>
                 </div>
                 <div className="rounded-lg border bg-emerald-50 px-3 py-2 dark:bg-emerald-900/10">
                   <p className="text-xs text-emerald-700 dark:text-emerald-300">{isRtl ? 'تم الإرسال' : 'Sent'}</p>
-                  <p className="text-lg font-semibold text-emerald-700 dark:text-emerald-300">{deliveryStats.sent}</p>
+                  <p className="text-lg font-semibold text-emerald-700 dark:text-emerald-300">{deliverySummaryLoading ? '...' : deliveryStats.sent}</p>
                 </div>
                 <div className="rounded-lg border bg-red-50 px-3 py-2 dark:bg-red-900/10">
                   <p className="text-xs text-red-700 dark:text-red-300">{isRtl ? 'فشل' : 'Failed'}</p>
-                  <p className="text-lg font-semibold text-red-700 dark:text-red-300">{deliveryStats.failed}</p>
+                  <p className="text-lg font-semibold text-red-700 dark:text-red-300">{deliverySummaryLoading ? '...' : deliveryStats.failed}</p>
                 </div>
                 <div className="rounded-lg border bg-teal-50 px-3 py-2 dark:bg-teal-900/10">
-                  <p className="text-xs text-teal-700 dark:text-teal-300">{isRtl ? 'صفوف مجمعة' : 'Grouped Rows'}</p>
+                  <p className="text-xs text-teal-700 dark:text-teal-300">{isRtl ? 'مجموعات الصفحة' : 'Page Groups'}</p>
                   <p className="text-lg font-semibold text-teal-700 dark:text-teal-300">{deliveryStats.grouped}</p>
                 </div>
               </div>
@@ -589,9 +636,17 @@ export default function AdminNotifications() {
 
               <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-100 space-y-1">
                 <p>{isRtl ? 'إذا لم تجد أي صف: لم تُسجَّل محاولة إرسال من هذا المسار بعد.' : 'If you find no rows: no send attempt has been logged for that flow yet.'}</p>
+                <p>{isRtl ? 'تنبيهات انتهاء الاشتراك، LexAI، التجديد، الترحيب، الإنجازات، والخمول موجودة تحت تصنيف الاشتراكات.' : 'Subscription expiry, LexAI expiry, renewal, welcome, milestone, and inactivity emails are under Lifecycle.'}</p>
                 <p>{isRtl ? 'إذا كانت الحالة فشل: راجع رسالة الخطأ لمعرفة رفض ZeptoMail أو فشل المزود.' : 'If status is failed: inspect the error message for provider rejection or transport failure.'}</p>
                 <p>{isRtl ? 'إذا كانت الحالة تم الإرسال: التطبيق سلّم الرسالة للمزود، ثم افحص البريد المزعج أو لوحة المزود.' : 'If status is sent: the app handed the email to the provider, so next check spam or the provider dashboard.'}</p>
                 <p>{isRtl ? 'ملاحظة: ردود الدعم للعميل ما زالت داخل المنصة فقط حالياً، وليست بريداً تلقائياً في المسار الحالي.' : 'Note: support replies to clients are still in-app only in the current flow, not automatic emails.'}</p>
+                {!!deliverySummary?.legacyTimestampCount && (
+                  <p>
+                    {isRtl
+                      ? `${deliverySummary.legacyTimestampCount} سجل قديم لديه وقت غير دقيق من مرحلة التسجيل الأولى؛ السجلات الجديدة تُحفظ بوقت فعلي.`
+                      : `${deliverySummary.legacyTimestampCount} older rows have legacy unknown timestamps from the first audit rollout; new rows are timestamped normally.`}
+                  </p>
+                )}
               </div>
             </div>
 
@@ -605,11 +660,7 @@ export default function AdminNotifications() {
             ) : (
               <div className="bg-white dark:bg-slate-800 border rounded-xl overflow-hidden">
                 <div className="flex items-center justify-between gap-3 border-b px-4 py-3 text-xs text-muted-foreground dark:border-slate-700">
-                  <span>
-                    {isRtl
-                      ? `عرض ${deliveryOffset + 1} - ${deliveryOffset + visibleDeliveryLogs.length}`
-                      : `Showing ${deliveryOffset + 1} - ${deliveryOffset + visibleDeliveryLogs.length}`}
-                  </span>
+                  <span>{deliveryRangeLabel}</span>
                   <div className="flex items-center gap-2">
                     <Button
                       type="button"

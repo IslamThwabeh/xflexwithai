@@ -1,6 +1,6 @@
 # XFLEX Project Memory
 
-Last updated: 2026-06-05
+Last updated: 2026-06-06
 
 ## Project Overview
 
@@ -62,6 +62,9 @@ Last updated: 2026-06-05
 - Case-by-case production repairs are preferred for subscription/key issues; do not bulk repair affected users without explicit approval and an audit trail.
 - Recommendation publish timing: the one-minute client notification wait applies only to new top-level recommendations. Older open recommendation updates/results are allowed immediately and are silent unless posted inside an active publish window.
 - Admin recommendation workspace fetches all open root recommendations through `recommendations.openThreads`, so old open trades stay visible outside the recent-feed pagination cap.
+- Admin recommendation workspace counters should be sourced from a backend thread summary, not from whatever rows are loaded in the current view.
+- Admin recommendation archive/history should use dedicated thread-history queries with D1-safe chunked hydration; do not use the recent `recommendations.feed` query as the archive source.
+- Recommendation monthly reports should score official results from `result` replies posted in the selected month. `update` replies are management context and should be excluded from win rate/pips unless explicitly reviewed/converted.
 
 ## Package Key Lifecycle Rules
 

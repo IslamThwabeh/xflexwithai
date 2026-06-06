@@ -1,4 +1,4 @@
-import { eq, desc, and, or, sql, ne, inArray, isNotNull, isNull, gte, lte, like, asc } from "drizzle-orm";
+import { eq, desc, and, or, sql, ne, inArray, isNotNull, isNull, gte, lte, like, asc, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import type { D1Database } from "@cloudflare/workers-types";
 import {
@@ -181,7 +181,26 @@ export type RecommendationMonthlyTradeReport = {
     candidates: number;
     finalized: number;
     unresolved: number;
+    resultMessages: number;
+    updateMessagesIgnored: number;
+    rootRecommendationsOpened: number;
+    closedRootRecommendations: number;
+    openRootRecommendations: number;
   };
+  basis: 'result_created_month';
+};
+
+export type RecommendationThreadStatusFilter = 'all' | 'open' | 'closed';
+
+export type RecommendationThreadSummary = {
+  total: number;
+  open: number;
+  needsResult: number;
+  closed: number;
+  resultMessages: number;
+  updateMessages: number;
+  oldestRecommendationAt: string | null;
+  newestRecommendationAt: string | null;
 };
 
 export type TimedServiceStatus = 'none' | 'pending' | 'active' | 'expiring' | 'expired' | 'frozen';
@@ -3844,11 +3863,68 @@ function normalizeReportMonth(month: string): string {
   return month;
 }
 
+function emptyRecommendationMonthlyTradeReport(
+  month: string,
+  coverage?: Partial<RecommendationMonthlyTradeReport['coverage']>,
+): RecommendationMonthlyTradeReport {
+  return {
+    month,
+    trades: [],
+    unresolved: [],
+    summary: {
+      totalTrades: 0,
+      winningTrades: 0,
+      losingTrades: 0,
+      winRate: 0,
+      totalPipsWon: 0,
+      totalPipsLost: 0,
+      netPips: 0,
+      lotEquivalent: {
+        lot001: 0,
+        lot005: 0,
+        lot010: 0,
+        lot100: 0,
+      },
+    },
+    coverage: {
+      candidates: 0,
+      finalized: 0,
+      unresolved: 0,
+      resultMessages: 0,
+      updateMessagesIgnored: 0,
+      rootRecommendationsOpened: 0,
+      closedRootRecommendations: 0,
+      openRootRecommendations: 0,
+      ...coverage,
+    },
+    basis: 'result_created_month',
+  };
+}
+
 export async function getRecommendationMonthlyTradeReport(month: string): Promise<RecommendationMonthlyTradeReport> {
   const db = await getDb();
   if (!db) throw new Error('Database not available');
 
   const normalizedMonth = normalizeReportMonth(month);
+
+  const [monthStats] = await db
+    .select({
+      rootRecommendationsOpened: sql<number>`SUM(CASE WHEN ${recommendationMessages.parentId} IS NULL AND ${recommendationMessages.type} = 'recommendation' THEN 1 ELSE 0 END)`,
+      closedRootRecommendations: sql<number>`SUM(CASE WHEN ${recommendationMessages.parentId} IS NULL AND ${recommendationMessages.type} = 'recommendation' AND ${recommendationMessages.threadStatus} = 'closed' THEN 1 ELSE 0 END)`,
+      openRootRecommendations: sql<number>`SUM(CASE WHEN ${recommendationMessages.parentId} IS NULL AND ${recommendationMessages.type} = 'recommendation' AND (${recommendationMessages.threadStatus} IS NULL OR ${recommendationMessages.threadStatus} <> 'closed') THEN 1 ELSE 0 END)`,
+      resultMessages: sql<number>`SUM(CASE WHEN ${recommendationMessages.parentId} IS NOT NULL AND ${recommendationMessages.type} = 'result' THEN 1 ELSE 0 END)`,
+      updateMessagesIgnored: sql<number>`SUM(CASE WHEN ${recommendationMessages.parentId} IS NOT NULL AND ${recommendationMessages.type} = 'update' THEN 1 ELSE 0 END)`,
+    })
+    .from(recommendationMessages)
+    .where(sql`${recommendationMessages.createdAt} LIKE ${`${normalizedMonth}%`}`);
+
+  const baseCoverage = {
+    resultMessages: Number(monthStats?.resultMessages ?? 0),
+    updateMessagesIgnored: Number(monthStats?.updateMessagesIgnored ?? 0),
+    rootRecommendationsOpened: Number(monthStats?.rootRecommendationsOpened ?? 0),
+    closedRootRecommendations: Number(monthStats?.closedRootRecommendations ?? 0),
+    openRootRecommendations: Number(monthStats?.openRootRecommendations ?? 0),
+  };
 
   const messages = await db
     .select()
@@ -3856,38 +3932,14 @@ export async function getRecommendationMonthlyTradeReport(month: string): Promis
     .where(
       and(
         isNotNull(recommendationMessages.parentId),
-        inArray(recommendationMessages.type, ['result', 'update']),
+        eq(recommendationMessages.type, 'result'),
         sql`${recommendationMessages.createdAt} LIKE ${`${normalizedMonth}%`}`,
       )
     )
     .orderBy(asc(recommendationMessages.createdAt));
 
   if (!messages.length) {
-    return {
-      month: normalizedMonth,
-      trades: [],
-      unresolved: [],
-      summary: {
-        totalTrades: 0,
-        winningTrades: 0,
-        losingTrades: 0,
-        winRate: 0,
-        totalPipsWon: 0,
-        totalPipsLost: 0,
-        netPips: 0,
-        lotEquivalent: {
-          lot001: 0,
-          lot005: 0,
-          lot010: 0,
-          lot100: 0,
-        },
-      },
-      coverage: {
-        candidates: 0,
-        finalized: 0,
-        unresolved: 0,
-      },
-    };
+    return emptyRecommendationMonthlyTradeReport(normalizedMonth, baseCoverage);
   }
 
   const parentIds = Array.from(new Set(messages
@@ -3895,10 +3947,10 @@ export async function getRecommendationMonthlyTradeReport(month: string): Promis
     .filter((id): id is number => typeof id === 'number')));
 
   const parents = parentIds.length
-    ? await db
+    ? await collectChunkedRows(parentIds, (chunk) => db
         .select()
         .from(recommendationMessages)
-        .where(inArray(recommendationMessages.id, parentIds))
+        .where(inArray(recommendationMessages.id, chunk)))
     : [];
 
   const parentMap = new Map<number, RecommendationMessage>();
@@ -3999,7 +4051,9 @@ export async function getRecommendationMonthlyTradeReport(month: string): Promis
       candidates: selectedCandidates.length,
       finalized: trades.length,
       unresolved: unresolved.length,
+      ...baseCoverage,
     },
+    basis: 'result_created_month',
   };
 }
 
@@ -4130,6 +4184,152 @@ export async function getRecommendationMessagesFeed(userId: number, limit: numbe
     .limit(limit);
 
   return hydrateRecommendationFeedMessages(userId, [...messages].reverse());
+}
+
+export async function getRecommendationThreadSummary(): Promise<RecommendationThreadSummary> {
+  const db = await getDb();
+  if (!db) {
+    return {
+      total: 0,
+      open: 0,
+      needsResult: 0,
+      closed: 0,
+      resultMessages: 0,
+      updateMessages: 0,
+      oldestRecommendationAt: null,
+      newestRecommendationAt: null,
+    };
+  }
+
+  const [row] = await db
+    .select({
+      total: sql<number>`SUM(CASE WHEN ${recommendationMessages.parentId} IS NULL AND ${recommendationMessages.type} = 'recommendation' THEN 1 ELSE 0 END)`,
+      open: sql<number>`SUM(CASE WHEN ${recommendationMessages.parentId} IS NULL AND ${recommendationMessages.type} = 'recommendation' AND (${recommendationMessages.threadStatus} IS NULL OR ${recommendationMessages.threadStatus} <> 'closed') THEN 1 ELSE 0 END)`,
+      needsResult: sql<number>`SUM(CASE WHEN ${recommendationMessages.parentId} IS NULL AND ${recommendationMessages.type} = 'recommendation' AND (${recommendationMessages.threadStatus} IS NULL OR ${recommendationMessages.threadStatus} <> 'closed') AND NOT EXISTS (SELECT 1 FROM recommendationMessages child WHERE child.parentId = recommendationMessages.id AND child.type = 'result') THEN 1 ELSE 0 END)`,
+      closed: sql<number>`SUM(CASE WHEN ${recommendationMessages.parentId} IS NULL AND ${recommendationMessages.type} = 'recommendation' AND ${recommendationMessages.threadStatus} = 'closed' THEN 1 ELSE 0 END)`,
+      resultMessages: sql<number>`SUM(CASE WHEN ${recommendationMessages.parentId} IS NOT NULL AND ${recommendationMessages.type} = 'result' THEN 1 ELSE 0 END)`,
+      updateMessages: sql<number>`SUM(CASE WHEN ${recommendationMessages.parentId} IS NOT NULL AND ${recommendationMessages.type} = 'update' THEN 1 ELSE 0 END)`,
+      oldestRecommendationAt: sql<string | null>`MIN(CASE WHEN ${recommendationMessages.parentId} IS NULL AND ${recommendationMessages.type} = 'recommendation' THEN ${recommendationMessages.createdAt} ELSE NULL END)`,
+      newestRecommendationAt: sql<string | null>`MAX(CASE WHEN ${recommendationMessages.parentId} IS NULL AND ${recommendationMessages.type} = 'recommendation' THEN ${recommendationMessages.createdAt} ELSE NULL END)`,
+    })
+    .from(recommendationMessages);
+
+  return {
+    total: Number(row?.total ?? 0),
+    open: Number(row?.open ?? 0),
+    needsResult: Number(row?.needsResult ?? 0),
+    closed: Number(row?.closed ?? 0),
+    resultMessages: Number(row?.resultMessages ?? 0),
+    updateMessages: Number(row?.updateMessages ?? 0),
+    oldestRecommendationAt: row?.oldestRecommendationAt ?? null,
+    newestRecommendationAt: row?.newestRecommendationAt ?? null,
+  };
+}
+
+function buildRecommendationThreadRootConditions(input?: {
+  status?: RecommendationThreadStatusFilter;
+  search?: string;
+  month?: string;
+}) {
+  const conditions: SQL[] = [
+    isNull(recommendationMessages.parentId),
+    eq(recommendationMessages.type, "recommendation"),
+  ];
+
+  if (input?.status === "open") {
+    conditions.push(or(
+      isNull(recommendationMessages.threadStatus),
+      ne(recommendationMessages.threadStatus, "closed"),
+    ) as SQL);
+  } else if (input?.status === "closed") {
+    conditions.push(eq(recommendationMessages.threadStatus, "closed"));
+  }
+
+  const normalizedSearch = input?.search?.trim();
+  if (normalizedSearch) {
+    const escaped = normalizedSearch.replace(/[\\%_]/g, (match) => `\\${match}`);
+    const pattern = `%${escaped}%`;
+    conditions.push(sql`(
+      CAST(${recommendationMessages.id} AS TEXT) LIKE ${pattern} ESCAPE '\\'
+      OR ${recommendationMessages.symbol} LIKE ${pattern} ESCAPE '\\'
+      OR ${recommendationMessages.side} LIKE ${pattern} ESCAPE '\\'
+      OR ${recommendationMessages.content} LIKE ${pattern} ESCAPE '\\'
+      OR EXISTS (
+        SELECT 1 FROM recommendationMessages child
+        WHERE child.parentId = recommendationMessages.id
+          AND child.content LIKE ${pattern} ESCAPE '\\'
+      )
+    )`);
+  }
+
+  if (input?.month && RECOMMENDATION_REPORT_MONTH_RE.test(input.month)) {
+    conditions.push(sql`${recommendationMessages.createdAt} LIKE ${`${input.month}%`}`);
+  }
+
+  return conditions;
+}
+
+export async function getRecommendationThreadMessagesFeed(
+  userId: number,
+  input?: {
+    status?: RecommendationThreadStatusFilter;
+    limit?: number;
+    offset?: number;
+    search?: string;
+    month?: string;
+  },
+) {
+  const db = await getDb();
+  if (!db) return { messages: [], total: 0, limit: input?.limit ?? 50, offset: input?.offset ?? 0 };
+
+  const limit = Math.max(1, Math.min(input?.limit ?? 50, 500));
+  const offset = Math.max(0, input?.offset ?? 0);
+  const conditions = buildRecommendationThreadRootConditions(input);
+  const whereClause = and(...conditions);
+
+  const [countRow] = await db
+    .select({ total: sql<number>`COUNT(*)` })
+    .from(recommendationMessages)
+    .where(whereClause);
+
+  const rootRows = await db
+    .select({ id: recommendationMessages.id })
+    .from(recommendationMessages)
+    .where(whereClause)
+    .orderBy(desc(recommendationMessages.createdAt), desc(recommendationMessages.id))
+    .limit(limit)
+    .offset(offset);
+
+  const rootIds = rootRows.map((root) => root.id);
+  if (!rootIds.length) {
+    return { messages: [], total: Number(countRow?.total ?? 0), limit, offset };
+  }
+
+  const rootMessages = await collectChunkedRows(rootIds, (chunk) => db
+    .select()
+    .from(recommendationMessages)
+    .where(inArray(recommendationMessages.id, chunk)));
+  const childMessages = await collectChunkedRows(rootIds, (chunk) => db
+    .select()
+    .from(recommendationMessages)
+    .where(inArray(recommendationMessages.parentId, chunk)));
+
+  const messageMap = new Map<number, RecommendationMessage>();
+  for (const message of [...rootMessages, ...childMessages]) {
+    messageMap.set(message.id, message);
+  }
+
+  const messages = Array.from(messageMap.values()).sort((left, right) => {
+    const byCreatedAt = left.createdAt.localeCompare(right.createdAt);
+    return byCreatedAt || left.id - right.id;
+  });
+
+  return {
+    messages: await hydrateRecommendationFeedMessages(userId, messages),
+    total: Number(countRow?.total ?? 0),
+    limit,
+    offset,
+  };
 }
 
 export async function getOpenRecommendationMessagesFeed(userId: number) {
@@ -11039,35 +11239,19 @@ export async function logEmailDeliveryAttempt(input: {
   }
 }
 
-export async function getEmailDeliveryLogs(filters?: {
-  limit?: number;
-  offset?: number;
+type EmailDeliveryEventCategory = 'recommendations' | 'support' | 'orders' | 'login' | 'lifecycle' | 'system';
+
+type EmailDeliveryLogFilters = {
   recipientQuery?: string;
   recipientUserId?: number;
   eventType?: string;
-  eventCategory?: 'recommendations' | 'support' | 'orders' | 'login' | 'system';
+  eventCategory?: EmailDeliveryEventCategory;
   status?: 'sent' | 'failed';
   fromDate?: string;
   toDate?: string;
-}): Promise<Array<{
-  id: number;
-  recipientEmail: string;
-  recipientUserId: number | null;
-  recipientName: string | null;
-  eventType: string;
-  templateId: string | null;
-  subject: string;
-  status: string;
-  provider: string | null;
-  errorMessage: string | null;
-  metadata: string | null;
-  createdAt: string;
-}>> {
-  const db = await getDb();
-  if (!db) return [];
+};
 
-  const limit = Math.min(Math.max(filters?.limit ?? 100, 1), 200);
-  const offset = Math.max(filters?.offset ?? 0, 0);
+function buildEmailDeliveryLogConditions(filters?: EmailDeliveryLogFilters) {
   const conditions = [] as any[];
 
   if (filters?.recipientQuery?.trim()) {
@@ -11108,6 +11292,21 @@ export async function getEmailDeliveryLogs(filters?: {
         like(emailDeliveryLogs.eventType, '%login%'),
         like(emailDeliveryLogs.eventType, '%otp%'),
       ));
+    } else if (filters.eventCategory === 'lifecycle') {
+      conditions.push(or(
+        like(emailDeliveryLogs.eventType, '%expiry%'),
+        like(emailDeliveryLogs.eventType, '%expiring%'),
+        like(emailDeliveryLogs.eventType, '%subscription%'),
+        like(emailDeliveryLogs.eventType, '%renewal%'),
+        like(emailDeliveryLogs.eventType, '%welcome%'),
+        like(emailDeliveryLogs.eventType, '%drip%'),
+        like(emailDeliveryLogs.eventType, '%milestone%'),
+        like(emailDeliveryLogs.eventType, '%inactivity%'),
+        like(emailDeliveryLogs.eventType, '%onboarding%'),
+        like(emailDeliveryLogs.eventType, '%quiz%'),
+        like(emailDeliveryLogs.eventType, '%freeze%'),
+        like(emailDeliveryLogs.eventType, 'lexai_expiry%'),
+      ));
     } else if (filters.eventCategory === 'system') {
       conditions.push(and(
         sql`${emailDeliveryLogs.eventType} NOT LIKE 'recommendation%'`,
@@ -11119,6 +11318,17 @@ export async function getEmailDeliveryLogs(filters?: {
         sql`${emailDeliveryLogs.eventType} NOT LIKE '%payment%'`,
         sql`${emailDeliveryLogs.eventType} NOT LIKE '%login%'`,
         sql`${emailDeliveryLogs.eventType} NOT LIKE '%otp%'`,
+        sql`${emailDeliveryLogs.eventType} NOT LIKE '%expiry%'`,
+        sql`${emailDeliveryLogs.eventType} NOT LIKE '%expiring%'`,
+        sql`${emailDeliveryLogs.eventType} NOT LIKE '%subscription%'`,
+        sql`${emailDeliveryLogs.eventType} NOT LIKE '%renewal%'`,
+        sql`${emailDeliveryLogs.eventType} NOT LIKE '%welcome%'`,
+        sql`${emailDeliveryLogs.eventType} NOT LIKE '%drip%'`,
+        sql`${emailDeliveryLogs.eventType} NOT LIKE '%milestone%'`,
+        sql`${emailDeliveryLogs.eventType} NOT LIKE '%inactivity%'`,
+        sql`${emailDeliveryLogs.eventType} NOT LIKE '%onboarding%'`,
+        sql`${emailDeliveryLogs.eventType} NOT LIKE '%quiz%'`,
+        sql`${emailDeliveryLogs.eventType} NOT LIKE '%freeze%'`,
       ));
     }
   }
@@ -11135,6 +11345,32 @@ export async function getEmailDeliveryLogs(filters?: {
     conditions.push(lte(emailDeliveryLogs.createdAt, filters.toDate));
   }
 
+  return conditions;
+}
+
+export async function getEmailDeliveryLogs(filters?: EmailDeliveryLogFilters & {
+  limit?: number;
+  offset?: number;
+}): Promise<Array<{
+  id: number;
+  recipientEmail: string;
+  recipientUserId: number | null;
+  recipientName: string | null;
+  eventType: string;
+  templateId: string | null;
+  subject: string;
+  status: string;
+  provider: string | null;
+  errorMessage: string | null;
+  metadata: string | null;
+  createdAt: string;
+}>> {
+  const db = await getDb();
+  if (!db) return [];
+
+  const limit = Math.min(Math.max(filters?.limit ?? 100, 1), 500);
+  const offset = Math.max(filters?.offset ?? 0, 0);
+  const conditions = buildEmailDeliveryLogConditions(filters);
   const hasSortableTimestamp = sql<number>`case when ${emailDeliveryLogs.createdAt} like '____-__-__%' then 1 else 0 end`;
 
   const query = db.select({
@@ -11162,6 +11398,63 @@ export async function getEmailDeliveryLogs(filters?: {
   }
 
   return query;
+}
+
+export async function getEmailDeliveryLogSummary(filters?: EmailDeliveryLogFilters): Promise<{
+  total: number;
+  sent: number;
+  failed: number;
+  oldestCreatedAt: string | null;
+  newestCreatedAt: string | null;
+  legacyTimestampCount: number;
+  topEventTypes: Array<{ eventType: string; templateId: string | null; count: number }>;
+}> {
+  const db = await getDb();
+  if (!db) {
+    return { total: 0, sent: 0, failed: 0, oldestCreatedAt: null, newestCreatedAt: null, legacyTimestampCount: 0, topEventTypes: [] };
+  }
+
+  const conditions = buildEmailDeliveryLogConditions(filters);
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+  const validCreatedAt = sql<string | null>`case when ${emailDeliveryLogs.createdAt} like '____-__-__%' then ${emailDeliveryLogs.createdAt} else null end`;
+
+  const summaryBase = db.select({
+    total: sql<number>`count(*)`,
+    sent: sql<number>`sum(case when ${emailDeliveryLogs.status} = 'sent' then 1 else 0 end)`,
+    failed: sql<number>`sum(case when ${emailDeliveryLogs.status} = 'failed' then 1 else 0 end)`,
+    oldestCreatedAt: sql<string | null>`min(${validCreatedAt})`,
+    newestCreatedAt: sql<string | null>`max(${validCreatedAt})`,
+    legacyTimestampCount: sql<number>`sum(case when ${emailDeliveryLogs.createdAt} not like '____-__-__%' then 1 else 0 end)`,
+  })
+    .from(emailDeliveryLogs)
+    .leftJoin(users, eq(emailDeliveryLogs.recipientUserId, users.id));
+  const [summary] = whereClause ? await summaryBase.where(whereClause) : await summaryBase;
+
+  const topEventsBase = db.select({
+    eventType: emailDeliveryLogs.eventType,
+    templateId: emailDeliveryLogs.templateId,
+    count: sql<number>`count(*)`,
+  })
+    .from(emailDeliveryLogs)
+    .leftJoin(users, eq(emailDeliveryLogs.recipientUserId, users.id))
+    .groupBy(emailDeliveryLogs.eventType, emailDeliveryLogs.templateId)
+    .orderBy(desc(sql<number>`count(*)`))
+    .limit(8);
+  const topEventTypes = whereClause ? await topEventsBase.where(whereClause) : await topEventsBase;
+
+  return {
+    total: Number(summary?.total ?? 0),
+    sent: Number(summary?.sent ?? 0),
+    failed: Number(summary?.failed ?? 0),
+    oldestCreatedAt: summary?.oldestCreatedAt ?? null,
+    newestCreatedAt: summary?.newestCreatedAt ?? null,
+    legacyTimestampCount: Number(summary?.legacyTimestampCount ?? 0),
+    topEventTypes: topEventTypes.map((row) => ({
+      eventType: row.eventType,
+      templateId: row.templateId,
+      count: Number(row.count ?? 0),
+    })),
+  };
 }
 
 /**

@@ -20,7 +20,7 @@ import { buildRecommendationThreads, groupRecommendationThreadsByDay } from "@/l
 type RecommendationType = "recommendation" | "update" | "result";
 type FollowUpPresetGroupKey = "pips" | "management" | "outcome";
 type TradeOutcome = "win" | "loss";
-type ThreadFilter = "open" | "needsResult" | "closed";
+type ThreadFilter = "open" | "needsResult" | "closed" | "all";
 
 type MonthlyTradeReportRow = {
   messageId: number;
@@ -69,7 +69,13 @@ type MonthlyTradeReport = {
     candidates: number;
     finalized: number;
     unresolved: number;
+    resultMessages: number;
+    updateMessagesIgnored: number;
+    rootRecommendationsOpened: number;
+    closedRootRecommendations: number;
+    openRootRecommendations: number;
   };
+  basis: "result_created_month";
 };
 
 function getCurrentMonthValue() {
@@ -111,6 +117,9 @@ function buildMonthlyReportCsv(month: string, report: MonthlyTradeReport | undef
   lines.push(["Winning Trades", report?.summary?.winningTrades ?? 0].map(escapeCsvCell).join(","));
   lines.push(["Losing Trades", report?.summary?.losingTrades ?? 0].map(escapeCsvCell).join(","));
   lines.push(["Win Rate", `${report?.summary?.winRate ?? 0}%`].map(escapeCsvCell).join(","));
+  lines.push(["Result Replies Used", report?.coverage?.resultMessages ?? 0].map(escapeCsvCell).join(","));
+  lines.push(["Update Replies Ignored", report?.coverage?.updateMessagesIgnored ?? 0].map(escapeCsvCell).join(","));
+  lines.push(["Root Recommendations Opened", report?.coverage?.rootRecommendationsOpened ?? 0].map(escapeCsvCell).join(","));
 
   lines.push("");
   lines.push(["Pips Performance"].map(escapeCsvCell).join(","));
@@ -335,6 +344,7 @@ function AnalystView() {
   const [showMonthlyReport, setShowMonthlyReport] = useState(false);
   const [threadFilter, setThreadFilter] = useState<ThreadFilter>("open");
   const [threadSearch, setThreadSearch] = useState("");
+  const [threadPage, setThreadPage] = useState(0);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
 
   const { data: me } = trpc.recommendations.me.useQuery();
@@ -344,13 +354,26 @@ function AnalystView() {
     enabled: canManageChannel,
     refetchInterval: canManageChannel ? 1000 : false,
   });
-  const { data: feed = [], isLoading: feedLoading } = trpc.recommendations.feed.useQuery(
-    { limit: 500 },
-    { enabled: canManageChannel }
-  );
+  const { data: threadSummary } = trpc.recommendations.threadSummary.useQuery(undefined, {
+    enabled: canManageChannel,
+    refetchInterval: canManageChannel ? 30_000 : false,
+  });
   const { data: openThreadFeed = [], isLoading: openThreadFeedLoading } = trpc.recommendations.openThreads.useQuery(
     undefined,
     { enabled: canManageChannel, refetchInterval: canManageChannel ? 30_000 : false }
+  );
+  const historyStatus = threadFilter === "closed" ? "closed" : threadFilter === "all" ? "all" : null;
+  const {
+    data: historyThreadFeed,
+    isLoading: historyThreadFeedLoading,
+  } = trpc.recommendations.threadMessages.useQuery(
+    {
+      status: historyStatus ?? "closed",
+      limit: 50,
+      offset: threadPage * 50,
+      search: threadSearch.trim() || undefined,
+    },
+    { enabled: canManageChannel && !!historyStatus }
   );
   const {
     data: monthlyReport,
@@ -412,7 +435,8 @@ function AnalystView() {
       if (type === "recommendation") {
         setSymbol("XAUUSD");
       }
-      utils.recommendations.feed.invalidate();
+      utils.recommendations.threadSummary.invalidate();
+      utils.recommendations.threadMessages.invalidate();
       utils.recommendations.openThreads.invalidate();
       utils.recommendations.publishState.invalidate();
       utils.recommendations.activeAlerts.invalidate();
@@ -423,7 +447,8 @@ function AnalystView() {
   const deleteMessageMutation = trpc.recommendations.deleteMessage.useMutation({
     onSuccess: () => {
       toast.success(isRTL ? "تم حذف الرسالة" : "Message deleted");
-      utils.recommendations.feed.invalidate();
+      utils.recommendations.threadSummary.invalidate();
+      utils.recommendations.threadMessages.invalidate();
       utils.recommendations.openThreads.invalidate();
     },
     onError: (error) => toast.error(error.message),
@@ -432,7 +457,8 @@ function AnalystView() {
   const closeThreadMutation = trpc.recommendations.closeThread.useMutation({
     onSuccess: () => {
       toast.success(isRTL ? "تم إغلاق الصفقة" : "Thread closed");
-      utils.recommendations.feed.invalidate();
+      utils.recommendations.threadSummary.invalidate();
+      utils.recommendations.threadMessages.invalidate();
       utils.recommendations.openThreads.invalidate();
     },
     onError: (error) => toast.error(formatRecommendationUiError(error.message, isRTL)),
@@ -480,7 +506,8 @@ function AnalystView() {
       setRiskPercent("");
       setSymbol("XAUUSD");
       setShowTradeDetails(false);
-      utils.recommendations.feed.invalidate();
+      utils.recommendations.threadSummary.invalidate();
+      utils.recommendations.threadMessages.invalidate();
       utils.recommendations.openThreads.invalidate();
     },
     onError: (error) => toast.error(formatRecommendationUiError(error.message, isRTL)),
@@ -679,7 +706,7 @@ function AnalystView() {
   };
 
   const startEdit = (message: any) => {
-    const parent = message.parentId ? feed.find((item: any) => item.id === message.parentId) : null;
+    const parent = message.parentId ? loadedThreadMessages.find((item: any) => item.id === message.parentId) : null;
     setEditingMessageId(message.id);
     setType((message.type as RecommendationType) || "recommendation");
     setParentMessage(parent ?? null);
@@ -758,8 +785,17 @@ function AnalystView() {
     URL.revokeObjectURL(url);
   };
 
-  const threads = useMemo(() => buildRecommendationThreads(feed, { openFirst: true }), [feed]);
+  useEffect(() => {
+    setThreadPage(0);
+  }, [threadFilter, threadSearch]);
+
+  const historyMessages = historyThreadFeed?.messages ?? [];
+  const loadedThreadMessages = useMemo(
+    () => [...openThreadFeed, ...historyMessages],
+    [openThreadFeed, historyMessages],
+  );
   const allOpenThreads = useMemo(() => buildRecommendationThreads(openThreadFeed, { openFirst: true }), [openThreadFeed]);
+  const historyThreads = useMemo(() => buildRecommendationThreads(historyMessages, { openFirst: true }), [historyMessages]);
   const availablePresetGroups = useMemo(
     () => FOLLOW_UP_PRESET_GROUPS.filter((group) => group.modes.includes(type)),
     [type],
@@ -772,9 +808,8 @@ function AnalystView() {
     }
   }, [activePresetGroup, availablePresetGroups, type]);
   const normalizedThreadSearch = threadSearch.trim().toLowerCase();
-  const closedThreads = useMemo(() => threads.filter((thread) => thread.isClosed), [threads]);
   const workspaceThreads = useMemo(() => {
-    const source = threadFilter === "closed" ? closedThreads : allOpenThreads;
+    const source = threadFilter === "closed" || threadFilter === "all" ? historyThreads : allOpenThreads;
     return source.filter((thread) => {
       if (threadFilter === "needsResult" && thread.hasResultChild) return false;
       if (normalizedThreadSearch) {
@@ -790,14 +825,19 @@ function AnalystView() {
       }
       return true;
     });
-  }, [allOpenThreads, closedThreads, normalizedThreadSearch, threadFilter]);
+  }, [allOpenThreads, historyThreads, normalizedThreadSearch, threadFilter]);
   const workspaceThreadGroups = useMemo(
     () => groupRecommendationThreadsByDay(workspaceThreads, language),
     [workspaceThreads, language],
   );
-  const openThreadCount = allOpenThreads.length;
-  const needsResultThreadCount = allOpenThreads.filter((thread) => !thread.hasResultChild).length;
-  const closedThreadCount = closedThreads.length;
+  const openThreadCount = threadSummary?.open ?? allOpenThreads.length;
+  const needsResultThreadCount = threadSummary?.needsResult ?? allOpenThreads.filter((thread) => !thread.hasResultChild).length;
+  const closedThreadCount = threadSummary?.closed ?? (threadFilter === "closed" ? historyThreadFeed?.total ?? 0 : 0);
+  const totalThreadCount = threadSummary?.total ?? (threadFilter === "all" ? historyThreadFeed?.total ?? 0 : allOpenThreads.length);
+  const historyTotal = historyThreadFeed?.total ?? (threadFilter === "closed" ? closedThreadCount : totalThreadCount);
+  const canPageHistory = threadFilter === "closed" || threadFilter === "all";
+  const historyFrom = historyTotal === 0 ? 0 : threadPage * 50 + 1;
+  const historyTo = Math.min(historyTotal, threadPage * 50 + workspaceThreads.length);
 
   const renderThreadGroups = (groups: any[], isClosedSection: boolean) => (
     <div className="space-y-4">
@@ -1439,7 +1479,7 @@ function AnalystView() {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <button
               type="button"
               onClick={() => setThreadFilter("open")}
@@ -1476,25 +1516,69 @@ function AnalystView() {
                 <Badge className="bg-slate-700 text-white dark:bg-slate-200 dark:text-slate-900">{closedThreadCount}</Badge>
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
-                {isRTL ? "الصفقات المغلقة من أحدث السجل" : "Closed trades from recent history"}
+                {isRTL ? "كل الصفقات المغلقة من السجل الكامل" : "All closed trades from full history"}
+              </p>
+            </button>
+            <button
+              type="button"
+              onClick={() => setThreadFilter("all")}
+              className={`rounded-xl border p-3 text-start transition ${threadFilter === "all" ? "border-sky-300 bg-sky-50 text-sky-900 dark:border-sky-800 dark:bg-sky-900/20 dark:text-sky-100" : "bg-white hover:bg-slate-50 dark:bg-slate-950/20 dark:hover:bg-slate-900/40"}`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-medium">{isRTL ? "كل السجل" : "All History"}</span>
+                <Badge className="bg-sky-700 text-white">{totalThreadCount}</Badge>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {isRTL ? "بحث شامل في المفتوحة والمغلقة" : "Search open and closed recommendations"}
               </p>
             </button>
           </div>
 
-          {openThreadFeedLoading && threadFilter !== "closed" ? (
+          {openThreadFeedLoading && (threadFilter === "open" || threadFilter === "needsResult") ? (
             <p className="text-sm text-muted-foreground">{isRTL ? "جاري تحميل الصفقات المفتوحة..." : "Loading open trades..."}</p>
-          ) : feedLoading && threadFilter === "closed" ? (
-            <p className="text-sm text-muted-foreground">{t('rec.loadingMessages')}</p>
+          ) : historyThreadFeedLoading && canPageHistory ? (
+            <p className="text-sm text-muted-foreground">{isRTL ? "جاري تحميل السجل..." : "Loading history..."}</p>
           ) : workspaceThreadGroups.length === 0 ? (
             <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
               {threadFilter === "needsResult"
                 ? (isRTL ? "لا توجد صفقات مفتوحة تحتاج نتيجة." : "No open trades need a result.")
                 : threadFilter === "closed"
-                  ? (isRTL ? "لا توجد صفقات مغلقة في السجل الحالي." : "No closed trades in the current archive.")
-                  : (isRTL ? "لا توجد صفقات مفتوحة حالياً." : "No open trades right now.")}
+                  ? (isRTL ? "لا توجد صفقات مغلقة في الأرشيف." : "No closed trades in the archive.")
+                  : threadFilter === "all"
+                    ? (isRTL ? "لا توجد توصيات مطابقة في السجل." : "No matching recommendations in history.")
+                    : (isRTL ? "لا توجد صفقات مفتوحة حالياً." : "No open trades right now.")}
             </div>
           ) : (
-            renderThreadGroups(workspaceThreadGroups, threadFilter === "closed")
+            <>
+              {canPageHistory && (
+                <div className="flex flex-col gap-2 rounded-xl border bg-slate-50 px-3 py-2 text-sm text-slate-700 sm:flex-row sm:items-center sm:justify-between dark:bg-slate-900/30 dark:text-slate-200">
+                  <span>
+                    {isRTL
+                      ? `عرض ${historyFrom}-${historyTo} من ${historyTotal}`
+                      : `Showing ${historyFrom}-${historyTo} of ${historyTotal}`}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={threadPage === 0 || historyThreadFeedLoading}
+                      onClick={() => setThreadPage((page) => Math.max(0, page - 1))}
+                    >
+                      {isRTL ? "الأحدث" : "Newer"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={historyTo >= historyTotal || historyThreadFeedLoading}
+                      onClick={() => setThreadPage((page) => page + 1)}
+                    >
+                      {isRTL ? "الأقدم" : "Older"}
+                    </Button>
+                  </div>
+                </div>
+              )}
+              {renderThreadGroups(workspaceThreadGroups, threadFilter === "closed")}
+            </>
           )}
         </CardContent>
       </Card>
@@ -1506,8 +1590,8 @@ function AnalystView() {
               <CardTitle>{isRTL ? "تقرير الأداء الشهري" : "Monthly Trade Report"}</CardTitle>
               <CardDescription>
                 {isRTL
-                  ? "ملخص الربح والخسارة والنقاط مع إمكانية تعديل الصفقات غير المحسومة."
-                  : "Win/loss and pips summary with manual fixes for unresolved trade outcomes."}
+                  ? "يعتمد على رسائل النتيجة المنشورة خلال الشهر. التحديثات تظهر كسياق ولا تدخل في نسبة النجاح تلقائياً."
+                  : "Based on result replies posted during the month. Updates are context and are not counted automatically."}
               </CardDescription>
             </div>
 
@@ -1550,7 +1634,7 @@ function AnalystView() {
           <CardContent>
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <div className="rounded-xl border bg-slate-50 p-3">
-                <p className="text-xs text-muted-foreground">{isRTL ? "إجمالي الصفقات" : "Total Trades"}</p>
+                <p className="text-xs text-muted-foreground">{isRTL ? "نتائج محسوبة" : "Counted Results"}</p>
                 <p className="text-xl font-bold">{monthlyReport.summary.totalTrades}</p>
               </div>
               <div className="rounded-xl border bg-teal-50 p-3">
@@ -1568,6 +1652,11 @@ function AnalystView() {
                 <p className="text-xl font-bold text-amber-700">{monthlyReport.unresolved.length}</p>
               </div>
             </div>
+            <div className="mt-3 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900 dark:border-sky-800/40 dark:bg-sky-900/10 dark:text-sky-100">
+              {isRTL
+                ? `مصدر التقرير: ${monthlyReport.coverage.resultMessages} رسائل نتيجة، وتم تجاهل ${monthlyReport.coverage.updateMessagesIgnored} تحديثات من الحساب الرسمي. توصيات افتتحت هذا الشهر: ${monthlyReport.coverage.rootRecommendationsOpened}.`
+                : `Report basis: ${monthlyReport.coverage.resultMessages} result replies, with ${monthlyReport.coverage.updateMessagesIgnored} update replies ignored from official scoring. Root recommendations opened this month: ${monthlyReport.coverage.rootRecommendationsOpened}.`}
+            </div>
           </CardContent>
         )}
         {showMonthlyReport && (
@@ -1580,7 +1669,7 @@ function AnalystView() {
             <>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 <div className="rounded-xl border bg-slate-50 p-3">
-                  <p className="text-xs text-muted-foreground">{isRTL ? "إجمالي الصفقات" : "Total Trades"}</p>
+                  <p className="text-xs text-muted-foreground">{isRTL ? "نتائج محسوبة" : "Counted Results"}</p>
                   <p className="text-xl font-bold">{monthlyReport.summary.totalTrades}</p>
                 </div>
                 <div className="rounded-xl border bg-emerald-50 p-3">
@@ -1594,6 +1683,29 @@ function AnalystView() {
                 <div className="rounded-xl border bg-teal-50 p-3">
                   <p className="text-xs text-teal-700">{isRTL ? "نسبة النجاح" : "Win Rate"}</p>
                   <p className="text-xl font-bold text-teal-700">{monthlyReport.summary.winRate}%</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                <div className="rounded-xl border border-sky-200 bg-sky-50 p-3 dark:border-sky-800/40 dark:bg-sky-900/10">
+                  <p className="text-xs text-sky-700 dark:text-sky-200">{isRTL ? "رسائل نتيجة" : "Result Replies"}</p>
+                  <p className="text-lg font-semibold text-sky-800 dark:text-sky-100">{monthlyReport.coverage.resultMessages}</p>
+                </div>
+                <div className="rounded-xl border p-3">
+                  <p className="text-xs text-muted-foreground">{isRTL ? "تحديثات غير محسوبة" : "Updates Ignored"}</p>
+                  <p className="text-lg font-semibold">{monthlyReport.coverage.updateMessagesIgnored}</p>
+                </div>
+                <div className="rounded-xl border p-3">
+                  <p className="text-xs text-muted-foreground">{isRTL ? "توصيات افتتحت" : "Opened Roots"}</p>
+                  <p className="text-lg font-semibold">{monthlyReport.coverage.rootRecommendationsOpened}</p>
+                </div>
+                <div className="rounded-xl border p-3">
+                  <p className="text-xs text-muted-foreground">{isRTL ? "مغلقة من نفس الشهر" : "Closed Roots"}</p>
+                  <p className="text-lg font-semibold">{monthlyReport.coverage.closedRootRecommendations}</p>
+                </div>
+                <div className="rounded-xl border p-3">
+                  <p className="text-xs text-muted-foreground">{isRTL ? "ما زالت مفتوحة" : "Still Open"}</p>
+                  <p className="text-lg font-semibold">{monthlyReport.coverage.openRootRecommendations}</p>
                 </div>
               </div>
 
