@@ -64,6 +64,7 @@ import {
   ShieldCheck,
   TrendingUp,
   Settings2,
+  Mail,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState, useMemo, lazy, Suspense } from "react";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -163,6 +164,7 @@ const menuSectionsDef: MenuSection[] = [
     items: [
       { icon: Star, labelKey: "admin.sidebar.reviews", path: "/admin/reviews" },
       { icon: Bell, labelKey: "admin.sidebar.notifications", path: "/admin/notifications" },
+      { icon: Mail, labelKey: "admin.sidebar.emailLogs", path: "/admin/email-logs" },
       { icon: Award, labelKey: "admin.sidebar.loyaltyPoints", path: "/admin/points" },
       { icon: Settings2, labelKey: "admin.sidebar.settings", path: "/admin/settings" },
     ]
@@ -280,10 +282,19 @@ function DashboardLayoutContent({
 
   // Check admin/staff status for sidebar filtering
   const { data: adminCheck } = trpc.auth.isAdmin.useQuery();
+  const canReadStaffNotifications = !!adminCheck?.isAdmin || !!adminCheck?.isStaff;
 
   // Staff notifications — bell badge + sidebar route badges (30s polling)
-  const { data: unreadCountData } = trpc.staffNotifications.unreadCount.useQuery(undefined, { refetchInterval: 30_000 });
-  const { data: routeBadges } = trpc.staffNotifications.countByRoute.useQuery(undefined, { refetchInterval: 30_000 });
+  const { data: unreadCountData } = trpc.staffNotifications.unreadCount.useQuery(undefined, {
+    enabled: canReadStaffNotifications,
+    refetchInterval: canReadStaffNotifications ? 30_000 : false,
+    retry: false,
+  });
+  const { data: routeBadges } = trpc.staffNotifications.countByRoute.useQuery(undefined, {
+    enabled: canReadStaffNotifications,
+    refetchInterval: canReadStaffNotifications ? 30_000 : false,
+    retry: false,
+  });
   const markReadByRoute = trpc.staffNotifications.markReadByRoute.useMutation();
 
   // Compute visible menu sections based on role

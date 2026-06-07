@@ -35,7 +35,7 @@ export default function ActivateKey() {
         setActivatedPackage(language === 'ar' ? (data.packageNameAr || data.packageName) : data.packageName || null);
         setIsUpgradeActivation(data.isUpgrade ?? false);
         toast.success(data.message);
-        setTimeout(() => setLocation("/dashboard"), 4000);
+        setTimeout(() => setLocation("/courses"), 4000);
       } else {
         const msg = (language === 'ar' && data.messageAr) ? data.messageAr : data.message;
         toast.error(msg);
@@ -272,7 +272,7 @@ export default function ActivateKey() {
                         : "Wishing you successful and profitable trading! 📈"}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {language === "ar" ? "جاري تحويلك إلى لوحة التحكم..." : "Redirecting you to your dashboard..."}
+                      {language === "ar" ? "جاري تحويلك إلى الكورسات..." : "Redirecting you to your courses..."}
                     </p>
                   </div>
                 ) : (
@@ -291,7 +291,7 @@ export default function ActivateKey() {
                         </div>
                       )}
                       <p className="text-muted-foreground mt-2">
-                        {language === "ar" ? "جاري تحويلك إلى لوحة التحكم..." : "Redirecting you to your dashboard..."}
+                        {language === "ar" ? "جاري تحويلك إلى الكورسات..." : "Redirecting you to your courses..."}
                       </p>
                     </div>
                   </div>

@@ -208,8 +208,8 @@ export async function sendFreezeExpiredEmail(to: string, name?: string | null) {
       You now have full access again.
     </p>
     <div style="text-align:center;margin-top:28px;">
-      <a href="https://xflexacademy.com/dashboard" style="display:inline-block;background:#059669;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:bold;">
-        الدخول إلى حسابي / Go to Dashboard
+      <a href="https://xflexacademy.com/courses" style="display:inline-block;background:#059669;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:bold;">
+        الدخول إلى كورساتي / Go to Courses
       </a>
     </div>`;
   try {
@@ -373,7 +373,7 @@ const DRIP_CONTENT: Record<number, {
     bodyAr: 'لقد أكملت أكثر من أسبوع. هل جربت الكويزات؟ اختبر معرفتك بعد كل مجموعة حلقات لتثبيت المعلومات.',
     bodyEn: "You've completed over a week. Have you tried the quizzes? Test your knowledge after each episode group to reinforce learning.",
     ctaAr: 'جرّب الكويزات', ctaEn: 'Try Quizzes',
-    ctaUrl: 'https://xflexacademy.com/quizzes',
+    ctaUrl: 'https://xflexacademy.com/quiz',
   },
   20: {
     subjectAr: 'قاربت على الوصول!',
@@ -392,8 +392,8 @@ const DRIP_CONTENT: Record<number, {
     headingEn: 'Congratulations on your first month!',
     bodyAr: 'لقد مضى شهر منذ انضمامك. نأمل أنك حققت تقدماً رائعاً. إذا لم تكمل الكورس بعد، لا تقلق — خذ وقتك وأنهِ ما تبقى.',
     bodyEn: "It's been a month since you joined. We hope you've made great progress. If you haven't finished the course yet, take your time and finish strong.",
-    ctaAr: 'لوحة التحكم', ctaEn: 'My Dashboard',
-    ctaUrl: 'https://xflexacademy.com/dashboard',
+    ctaAr: 'كورساتي', ctaEn: 'My Courses',
+    ctaUrl: 'https://xflexacademy.com/courses',
   },
 };
 
@@ -552,7 +552,7 @@ export async function sendInactivityEmail(to: string, inactiveDays: number, data
         : "It's been a week since your last visit. Trading education needs consistency. Pick up where you left off!"}
     </p>
     <div style="text-align:center;margin-top:20px;">
-      <a href="https://xflexacademy.com/dashboard" style="display:inline-block;background:#059669;color:#fff;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:15px;">
+      <a href="https://xflexacademy.com/courses" style="display:inline-block;background:#059669;color:#fff;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:15px;">
         عُد الآن / Come Back
       </a>
     </div>

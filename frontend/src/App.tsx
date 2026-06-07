@@ -45,7 +45,6 @@ const AdminPackageKeys = lazy(() => import("./pages/AdminPackageKeys"));
 
 // Lazy-loaded user pages
 const MyDashboard = lazy(() => import("./pages/MyDashboard"));
-const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Profile = lazy(() => import("./pages/Profile"));
 const CourseWatch = lazy(() => import("./pages/CourseWatch"));
 const ActivateKey = lazy(() => import("./pages/ActivateKey"));
@@ -85,6 +84,7 @@ const Careers = lazy(() => import("./pages/Careers"));
 const AdminJobs = lazy(() => import("./pages/AdminJobs"));
 const AdminReviews = lazy(() => import("./pages/AdminReviews"));
 const AdminNotifications = lazy(() => import("./pages/AdminNotifications"));
+const AdminEmailLogs = lazy(() => import("./pages/AdminEmailLogs"));
 const AdminSettings = lazy(() => import("./pages/AdminSettings"));
 const AdminPoints = lazy(() => import("./pages/AdminPoints"));
 const AdminBugReports = lazy(() => import("./pages/AdminBugReports"));
@@ -117,9 +117,7 @@ function Router() {
       <Route path={"/admin"} component={AdminLogin} />
       <Route path={"/admin/login"} component={AdminLogin} />
       <Route path={"/dashboard"}>
-        <ProtectedRoute>
-          <Dashboard />
-        </ProtectedRoute>
+        <Redirect to="/courses" />
       </Route>
       <Route path={"/courses"}>
         <ProtectedRoute>
@@ -343,6 +341,11 @@ function Router() {
           <AdminNotifications />
         </AdminRoute>
       </Route>
+      <Route path="/admin/email-logs">
+        <AdminRoute>
+          <AdminEmailLogs />
+        </AdminRoute>
+      </Route>
       <Route path="/admin/bug-reports">
         <AdminRoute>
           <AdminBugReports />
@@ -442,4 +445,3 @@ function App() {
 }
 
 export default App;
-

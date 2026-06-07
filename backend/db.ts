@@ -2904,18 +2904,27 @@ export async function getMutedRecommendationThreadIdsForUser(
   const db = await getDb();
   if (!db) return [];
 
-  const rows = threadRootMessageIds?.length
-    ? await collectChunkedRows(threadRootMessageIds, (chunk) => db
-        .select({ threadRootMessageId: recommendationThreadMutes.threadRootMessageId })
-        .from(recommendationThreadMutes)
-        .where(and(
-          eq(recommendationThreadMutes.userId, userId),
-          inArray(recommendationThreadMutes.threadRootMessageId, chunk),
-        )))
-    : await db
-        .select({ threadRootMessageId: recommendationThreadMutes.threadRootMessageId })
-        .from(recommendationThreadMutes)
-        .where(eq(recommendationThreadMutes.userId, userId));
+  let rows: Array<{ threadRootMessageId: number }> = [];
+  try {
+    rows = threadRootMessageIds?.length
+      ? await collectChunkedRows(threadRootMessageIds, (chunk) => db
+          .select({ threadRootMessageId: recommendationThreadMutes.threadRootMessageId })
+          .from(recommendationThreadMutes)
+          .where(and(
+            eq(recommendationThreadMutes.userId, userId),
+            inArray(recommendationThreadMutes.threadRootMessageId, chunk),
+          )))
+      : await db
+          .select({ threadRootMessageId: recommendationThreadMutes.threadRootMessageId })
+          .from(recommendationThreadMutes)
+          .where(eq(recommendationThreadMutes.userId, userId));
+  } catch (error) {
+    logger.warn('[RECOMMENDATIONS] Thread mutes unavailable while reading feed', {
+      userId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return [];
+  }
 
   return rows.map((row) => row.threadRootMessageId);
 }
@@ -2927,13 +2936,22 @@ export async function getMutedRecommendationUserIdsForThread(
   const db = await getDb();
   if (!db || !userIds.length) return [];
 
-  const rows = await collectChunkedRows(userIds, (chunk) => db
-    .select({ userId: recommendationThreadMutes.userId })
-    .from(recommendationThreadMutes)
-    .where(and(
-      eq(recommendationThreadMutes.threadRootMessageId, threadRootMessageId),
-      inArray(recommendationThreadMutes.userId, chunk),
-    )));
+  let rows: Array<{ userId: number }> = [];
+  try {
+    rows = await collectChunkedRows(userIds, (chunk) => db
+      .select({ userId: recommendationThreadMutes.userId })
+      .from(recommendationThreadMutes)
+      .where(and(
+        eq(recommendationThreadMutes.threadRootMessageId, threadRootMessageId),
+        inArray(recommendationThreadMutes.userId, chunk),
+      )));
+  } catch (error) {
+    logger.warn('[RECOMMENDATIONS] Thread mutes unavailable while filtering recipients', {
+      threadRootMessageId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return [];
+  }
 
   return rows.map((row) => row.userId);
 }
@@ -4177,13 +4195,40 @@ export async function getRecommendationMessagesFeed(userId: number, limit: numbe
   const db = await getDb();
   if (!db) return [];
 
-  const messages = await db
+  const rootLimit = Math.max(1, Math.min(limit, 500));
+  const rootRows = await db
+    .select({ id: recommendationMessages.id })
+    .from(recommendationMessages)
+    .where(and(
+      isNull(recommendationMessages.parentId),
+      eq(recommendationMessages.type, "recommendation"),
+    ))
+    .orderBy(desc(recommendationMessages.createdAt), desc(recommendationMessages.id))
+    .limit(rootLimit);
+
+  const rootIds = rootRows.map((root) => root.id);
+  if (!rootIds.length) return [];
+
+  const rootMessages = await collectChunkedRows(rootIds, (chunk) => db
     .select()
     .from(recommendationMessages)
-    .orderBy(desc(recommendationMessages.createdAt))
-    .limit(limit);
+    .where(inArray(recommendationMessages.id, chunk)));
+  const childMessages = await collectChunkedRows(rootIds, (chunk) => db
+    .select()
+    .from(recommendationMessages)
+    .where(inArray(recommendationMessages.parentId, chunk)));
 
-  return hydrateRecommendationFeedMessages(userId, [...messages].reverse());
+  const messageMap = new Map<number, RecommendationMessage>();
+  for (const message of [...rootMessages, ...childMessages]) {
+    messageMap.set(message.id, message);
+  }
+
+  const messages = Array.from(messageMap.values()).sort((left, right) => {
+    const byCreatedAt = left.createdAt.localeCompare(right.createdAt);
+    return byCreatedAt || left.id - right.id;
+  });
+
+  return hydrateRecommendationFeedMessages(userId, messages);
 }
 
 export async function getRecommendationThreadSummary(): Promise<RecommendationThreadSummary> {
@@ -4890,7 +4935,7 @@ export async function activatePackageKey(keyCode: string, email: string, userId?
       contentEn: key.isRenewal
         ? `Your ${pkgNameEn} has been renewed.`
         : `Your ${pkgNameEn} is now active. Start your journey!`,
-      actionUrl: '/dashboard',
+      actionUrl: '/courses',
     }).catch(() => {});
 
     // Notify admin/key_manager of key activation

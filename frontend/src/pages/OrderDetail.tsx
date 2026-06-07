@@ -204,8 +204,8 @@ export default function OrderDetail() {
             <CheckCircle className="w-10 h-10 text-green-500 mx-auto mb-2" />
             <p className="font-medium">{isRtl ? 'تم تأكيد الطلب!' : 'Order Confirmed!'}</p>
             <p className="text-sm text-gray-600 mb-4">{isRtl ? 'يمكنك الآن الوصول إلى محتوى الباقة' : 'You can now access your package content.'}</p>
-            <Link href="/dashboard">
-              <Button>{isRtl ? 'إلى لوحة التحكم' : 'Go to Dashboard'}</Button>
+            <Link href="/courses">
+              <Button>{isRtl ? 'إلى الكورسات' : 'Go to Courses'}</Button>
             </Link>
           </div>
         )}

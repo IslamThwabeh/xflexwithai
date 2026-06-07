@@ -141,7 +141,7 @@ export default function SupportChat() {
       return;
     }
 
-    setLocation("/dashboard");
+    setLocation("/courses");
   };
 
   useEffect(() => {
