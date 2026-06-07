@@ -2850,12 +2850,12 @@ export const appRouter = router({
         month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).optional(),
       }).optional())
       .query(async ({ ctx, input }) => {
-        await ensureRecommendationPublishAccess(ctx);
+        await ensureRecommendationReadAccess(ctx);
         return await db.getRecommendationThreadMessagesFeed(ctx.user.id, input);
       }),
 
     openThreads: protectedProcedure.query(async ({ ctx }) => {
-      await ensureRecommendationPublishAccess(ctx);
+      await ensureRecommendationReadAccess(ctx);
       return await db.getOpenRecommendationMessagesFeed(ctx.user.id);
     }),
 

@@ -14,6 +14,8 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { buildRecommendationThreads, groupRecommendationThreadsByDay } from "@/lib/recommendationThreads";
 import { Link, useLocation } from "wouter";
 
+const ARCHIVED_THREADS_PER_PAGE = 8;
+
 const reactionIcons = {
   like: <ThumbsUp className="h-4 w-4" />,
   love: <Heart className="h-4 w-4" />,
@@ -128,6 +130,7 @@ export default function Recommendations() {
   const [location] = useLocation();
   const [now, setNow] = useState(() => Date.now());
   const [pendingThreadAction, setPendingThreadAction] = useState(() => parseThreadActionFromUrl());
+  const [archivePage, setArchivePage] = useState(1);
 
   const { data: me, isLoading: meLoading } = trpc.recommendations.me.useQuery();
   const { data: activationStatus } = trpc.subscriptions.activationStatus.useQuery(undefined, {
@@ -139,8 +142,16 @@ export default function Recommendations() {
   const { data: onboardingStatus } = trpc.onboarding.isComplete.useQuery(undefined, {
     enabled: !!user,
   });
-  const { data: feed = [], isLoading: feedLoading } = trpc.recommendations.feed.useQuery(
-    { limit: 200 },
+  const { data: openThreadFeed = [], isLoading: openThreadFeedLoading } = trpc.recommendations.openThreads.useQuery(
+    undefined,
+    { enabled: !!me && (me.hasSubscription || me.canPublish) }
+  );
+  const archiveOffset = (archivePage - 1) * ARCHIVED_THREADS_PER_PAGE;
+  const {
+    data: archivedThreadFeed,
+    isLoading: archivedThreadFeedLoading,
+  } = trpc.recommendations.threadMessages.useQuery(
+    { status: 'closed', limit: ARCHIVED_THREADS_PER_PAGE, offset: archiveOffset },
     { enabled: !!me && (me.hasSubscription || me.canPublish) }
   );
   const { data: activeAlerts = [] } = trpc.recommendations.activeAlerts.useQuery(undefined, {
@@ -149,14 +160,18 @@ export default function Recommendations() {
   });
 
   const reactMutation = trpc.recommendations.react.useMutation({
-    onSuccess: () => utils.recommendations.feed.invalidate(),
+    onSuccess: () => {
+      void utils.recommendations.openThreads.invalidate();
+      void utils.recommendations.threadMessages.invalidate();
+    },
     onError: (error) => toast.error(error.message),
   });
   const muteThreadMutation = trpc.recommendations.muteThread.useMutation({
     onSuccess: (result) => {
       toast.success(result.alreadyMuted ? t('rec.toastThreadAlreadyMuted') : t('rec.toastThreadMuted'));
       setPendingThreadAction(null);
-      void utils.recommendations.feed.invalidate();
+      void utils.recommendations.openThreads.invalidate();
+      void utils.recommendations.threadMessages.invalidate();
       if (typeof window !== 'undefined') {
         const params = new URLSearchParams(window.location.search);
         params.delete('threadAction');
@@ -170,7 +185,8 @@ export default function Recommendations() {
   const unmuteThreadMutation = trpc.recommendations.unmuteThread.useMutation({
     onSuccess: () => {
       toast.success(t('rec.toastThreadUnmuted'));
-      void utils.recommendations.feed.invalidate();
+      void utils.recommendations.openThreads.invalidate();
+      void utils.recommendations.threadMessages.invalidate();
     },
     onError: () => toast.error(t('rec.toastThreadActionFailed')),
   });
@@ -191,11 +207,25 @@ export default function Recommendations() {
     return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
   }, [me?.subscription?.endDate]);
 
-  const threads = useMemo(() => buildRecommendationThreads(feed), [feed]);
-  const threadGroups = useMemo(() => groupRecommendationThreadsByDay(threads, language), [threads, language]);
-  const pendingThreadAlreadyMuted = !!pendingThreadAction && threads.some(
+  const openThreads = useMemo(() => buildRecommendationThreads(openThreadFeed), [openThreadFeed]);
+  const archivedThreads = useMemo(() => buildRecommendationThreads(archivedThreadFeed?.messages ?? []), [archivedThreadFeed?.messages]);
+  const archivedTotal = archivedThreadFeed?.total ?? 0;
+  const totalArchivePages = Math.max(1, Math.ceil(archivedTotal / ARCHIVED_THREADS_PER_PAGE));
+  const feedLoading = openThreadFeedLoading || archivedThreadFeedLoading;
+  const visibleThreads = useMemo(
+    () => archivePage === 1 ? [...openThreads, ...archivedThreads] : archivedThreads,
+    [archivePage, archivedThreads, openThreads],
+  );
+  const threadGroups = useMemo(() => groupRecommendationThreadsByDay(visibleThreads, language), [visibleThreads, language]);
+  const pendingThreadAlreadyMuted = !!pendingThreadAction && [...openThreads, ...archivedThreads].some(
     (thread) => thread.root.id === pendingThreadAction.threadRootMessageId && !!thread.root.isThreadMuted,
   );
+  const archivePageNumbers = useMemo(() => {
+    const pages = new Set<number>([1, totalArchivePages, archivePage - 1, archivePage, archivePage + 1]);
+    return Array.from(pages)
+      .filter((page) => page >= 1 && page <= totalArchivePages)
+      .sort((left, right) => left - right);
+  }, [archivePage, totalArchivePages]);
 
   const preparationAlerts = useMemo(() => {
     return activeAlerts.filter((alert: any) => {
@@ -229,6 +259,12 @@ export default function Recommendations() {
   useEffect(() => {
     setPendingThreadAction(parseThreadActionFromUrl());
   }, [location]);
+
+  useEffect(() => {
+    if (archivePage > totalArchivePages) {
+      setArchivePage(totalArchivePages);
+    }
+  }, [archivePage, totalArchivePages]);
 
   const copyNumericValue = (value: string) => {
     navigator.clipboard.writeText(String(value));
@@ -631,10 +667,41 @@ export default function Recommendations() {
         )}
 
         {canRead && (
-          <Card>
-            <CardHeader>
-              <CardTitle>{t('rec.messages')}</CardTitle>
-              <CardDescription>{t('rec.messagesDesc')}</CardDescription>
+          <Card className="border-slate-200 bg-white/95 shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
+            <CardHeader className="border-b bg-gradient-to-b from-white to-slate-50/80">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge className="bg-emerald-600 text-white">
+                      {language === 'ar' ? 'قناة العملاء' : 'Client Channel'}
+                    </Badge>
+                    {openThreads.length > 0 && (
+                      <Badge variant="outline" className="border-emerald-300 text-emerald-700">
+                        {language === 'ar' ? `${openThreads.length} صفقات مفتوحة` : `${openThreads.length} open trades`}
+                      </Badge>
+                    )}
+                    <Badge variant="outline" className="border-slate-300 text-slate-600">
+                      {language === 'ar' ? `${archivedTotal} توصية مؤرشفة` : `${archivedTotal} archived recommendations`}
+                    </Badge>
+                  </div>
+                  <CardTitle>{t('rec.messages')}</CardTitle>
+                  <CardDescription>{t('rec.messagesDesc')}</CardDescription>
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-center sm:min-w-[360px]">
+                  <div className="rounded-lg border bg-white px-3 py-2">
+                    <p className="text-[11px] text-muted-foreground">{language === 'ar' ? 'المفتوحة' : 'Open'}</p>
+                    <p className="text-lg font-semibold text-emerald-700">{openThreads.length}</p>
+                  </div>
+                  <div className="rounded-lg border bg-white px-3 py-2">
+                    <p className="text-[11px] text-muted-foreground">{language === 'ar' ? 'المؤرشفة' : 'Archived'}</p>
+                    <p className="text-lg font-semibold text-slate-800">{archivedTotal}</p>
+                  </div>
+                  <div className="rounded-lg border bg-white px-3 py-2">
+                    <p className="text-[11px] text-muted-foreground">{language === 'ar' ? 'الصفحة' : 'Page'}</p>
+                    <p className="text-lg font-semibold text-slate-800">{archivePage}/{totalArchivePages}</p>
+                  </div>
+                </div>
+              </div>
             </CardHeader>
             <CardContent className="space-y-3">
               {feedLoading ? (
@@ -665,6 +732,11 @@ export default function Recommendations() {
                                       <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
                                         {language === 'ar' ? 'خيط الصفقة' : 'Trade Thread'}
                                       </span>
+                                      <Badge className={thread.isClosed ? 'bg-slate-100 text-slate-700 dark:bg-white/10 dark:text-slate-300' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200'}>
+                                        {thread.isClosed
+                                          ? (language === 'ar' ? 'مؤرشفة' : 'Archived')
+                                          : (language === 'ar' ? 'مفتوحة' : 'Open')}
+                                      </Badge>
                                       {message.symbol && <Badge className="bg-white text-slate-700 dark:bg-white/10 dark:text-slate-200">{message.symbol}</Badge>}
                                       {message.side && (
                                         <Badge className={message.side === 'BUY' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}>
@@ -826,6 +898,54 @@ export default function Recommendations() {
                       </div>
                     </section>
                   ))}
+
+                  <div className="flex flex-col gap-3 border-t pt-5 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-sm text-muted-foreground">
+                      {language === 'ar'
+                        ? `الأرشيف: الصفحة ${archivePage} من ${totalArchivePages}`
+                        : `Archive: page ${archivePage} of ${totalArchivePages}`}
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={archivePage === 1 || archivedThreadFeedLoading}
+                        onClick={() => setArchivePage((page) => Math.max(1, page - 1))}
+                      >
+                        {language === 'ar' ? 'السابق' : 'Previous'}
+                      </Button>
+                      {archivePageNumbers.map((page, index) => {
+                        const previousPage = archivePageNumbers[index - 1];
+                        const showGap = previousPage !== undefined && page - previousPage > 1;
+
+                        return (
+                          <span key={page} className="flex items-center gap-2">
+                            {showGap && <span className="px-1 text-sm text-muted-foreground">...</span>}
+                            <Button
+                              type="button"
+                              variant={archivePage === page ? 'default' : 'outline'}
+                              size="sm"
+                              className={archivePage === page ? 'bg-slate-900 text-white hover:bg-slate-800' : 'min-w-9'}
+                              disabled={archivedThreadFeedLoading}
+                              onClick={() => setArchivePage(page)}
+                            >
+                              {page}
+                            </Button>
+                          </span>
+                        );
+                      })}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={archivePage >= totalArchivePages || archivedThreadFeedLoading}
+                        onClick={() => setArchivePage((page) => Math.min(totalArchivePages, page + 1))}
+                      >
+                        {language === 'ar' ? 'التالي' : 'Next'}
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               )}
             </CardContent>

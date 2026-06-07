@@ -19,6 +19,7 @@ const DELIVERY_CATEGORIES: Array<{ key: DeliveryCategory; labelEn: string; label
   { key: 'lifecycle', labelEn: 'Lifecycle', labelAr: 'الاشتراكات' },
   { key: 'system', labelEn: 'System', labelAr: 'النظام' },
 ];
+const DELIVERY_PAGE_SIZE = 50;
 
 function getAmmanDateValue(offsetDays = 0) {
   const formatter = new Intl.DateTimeFormat('en-CA', {
@@ -142,14 +143,13 @@ export default function AdminEmailLogs() {
   const [deliveryFromDate, setDeliveryFromDate] = useState('');
   const [deliveryToDate, setDeliveryToDate] = useState('');
   const [deliveryOffset, setDeliveryOffset] = useState(0);
-  const [deliveryPageSize, setDeliveryPageSize] = useState(150);
-  const [deliveryView, setDeliveryView] = useState<DeliveryLogView>('grouped');
+  const [deliveryView, setDeliveryView] = useState<DeliveryLogView>('detailed');
   const [deliveryCategory, setDeliveryCategory] = useState<DeliveryCategory>('all');
   const [deliveryDatePreset, setDeliveryDatePreset] = useState<DeliveryDatePreset>('all');
   const [expandedDeliveryGroups, setExpandedDeliveryGroups] = useState<Record<string, boolean>>({});
 
   const deliveryFilters = useMemo(() => ({
-    limit: deliveryPageSize,
+    limit: DELIVERY_PAGE_SIZE,
     offset: deliveryOffset,
     recipientQuery: recipientQuery.trim() || undefined,
     status: deliveryStatus === 'all' ? undefined : deliveryStatus,
@@ -157,7 +157,7 @@ export default function AdminEmailLogs() {
     eventCategory: deliveryCategory === 'all' ? undefined : deliveryCategory,
     fromDate: deliveryFromDate || undefined,
     toDate: deliveryToDate ? `${deliveryToDate} 23:59:59` : undefined,
-  }), [deliveryPageSize, deliveryOffset, recipientQuery, deliveryStatus, deliveryEventType, deliveryCategory, deliveryFromDate, deliveryToDate]);
+  }), [deliveryOffset, recipientQuery, deliveryStatus, deliveryEventType, deliveryCategory, deliveryFromDate, deliveryToDate]);
 
   const deliverySummaryFilters = useMemo(() => ({
     recipientQuery: recipientQuery.trim() || undefined,
@@ -179,6 +179,8 @@ export default function AdminEmailLogs() {
 
   const deliveryTotal = deliverySummary?.total ?? 0;
   const hasOlderDeliveryLogs = deliveryOffset + (deliveryLogs?.length ?? 0) < deliveryTotal;
+  const currentPage = Math.floor(deliveryOffset / DELIVERY_PAGE_SIZE) + 1;
+  const totalPages = Math.max(1, Math.ceil(deliveryTotal / DELIVERY_PAGE_SIZE));
   const visibleDeliveryLogs = useMemo(
     () => (deliveryLogs ?? []).filter((log: any) => (
       deliveryCategory === 'all' || getDeliveryCategory(log.eventType) === deliveryCategory
@@ -198,7 +200,7 @@ export default function AdminEmailLogs() {
 
   useEffect(() => {
     setDeliveryOffset(0);
-  }, [recipientQuery, deliveryStatus, deliveryEventType, deliveryFromDate, deliveryToDate, deliveryCategory, deliveryPageSize]);
+  }, [recipientQuery, deliveryStatus, deliveryEventType, deliveryFromDate, deliveryToDate, deliveryCategory]);
 
   useEffect(() => {
     setExpandedDeliveryGroups({});
@@ -239,6 +241,11 @@ export default function AdminEmailLogs() {
     : isRtl
       ? `عرض ${deliveryShownStart} - ${deliveryShownEnd}`
       : `Showing ${deliveryShownStart} - ${deliveryShownEnd}`;
+  const pageLabel = isRtl
+    ? `الصفحة ${currentPage} من ${totalPages}`
+    : `Page ${currentPage} of ${totalPages}`;
+  const goToPreviousPage = () => setDeliveryOffset((current) => Math.max(0, current - DELIVERY_PAGE_SIZE));
+  const goToNextPage = () => setDeliveryOffset((current) => current + DELIVERY_PAGE_SIZE);
 
   return (
     <DashboardLayout>
@@ -293,29 +300,22 @@ export default function AdminEmailLogs() {
                   variant="outline"
                   size="sm"
                   disabled={deliveryOffset === 0 || deliveryLogsLoading}
-                  onClick={() => setDeliveryOffset((current) => Math.max(0, current - deliveryPageSize))}
+                  onClick={goToPreviousPage}
                 >
-                  {isRtl ? 'الأحدث' : 'Newer'}
+                  {isRtl ? 'السابق' : 'Previous'}
                 </Button>
+                <span className="rounded-md border px-3 py-2 text-xs font-medium text-muted-foreground dark:border-slate-700">
+                  {pageLabel}
+                </span>
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
                   disabled={!hasOlderDeliveryLogs || deliveryLogsLoading}
-                  onClick={() => setDeliveryOffset((current) => current + deliveryPageSize)}
+                  onClick={goToNextPage}
                 >
-                  {isRtl ? 'أقدم' : 'Older'}
+                  {isRtl ? 'التالي' : 'Next'}
                 </Button>
-                <select
-                  value={deliveryPageSize}
-                  onChange={(event) => setDeliveryPageSize(Number(event.target.value))}
-                  className="h-9 rounded-md border bg-white px-2 text-sm dark:border-slate-700 dark:bg-slate-900"
-                  aria-label={isRtl ? 'عدد الصفوف' : 'Rows per page'}
-                >
-                  <option value={50}>{isRtl ? '50 صف' : '50 rows'}</option>
-                  <option value={150}>{isRtl ? '150 صف' : '150 rows'}</option>
-                  <option value={500}>{isRtl ? '500 صف' : '500 rows'}</option>
-                </select>
               </div>
             </div>
 
@@ -455,23 +455,26 @@ export default function AdminEmailLogs() {
               <div className="flex items-center justify-between gap-3 border-b px-4 py-3 text-xs text-muted-foreground dark:border-slate-700">
                 <span>{deliveryRangeLabel}</span>
                 <div className="flex items-center gap-2">
+                  <span className="hidden sm:inline rounded-md border px-3 py-2 font-medium dark:border-slate-700">
+                    {pageLabel}
+                  </span>
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
                     disabled={deliveryOffset === 0 || deliveryLogsLoading}
-                    onClick={() => setDeliveryOffset((current) => Math.max(0, current - deliveryPageSize))}
+                    onClick={goToPreviousPage}
                   >
-                    {isRtl ? 'الأحدث' : 'Newer'}
+                    {isRtl ? 'السابق' : 'Previous'}
                   </Button>
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
                     disabled={!hasOlderDeliveryLogs || deliveryLogsLoading}
-                    onClick={() => setDeliveryOffset((current) => current + deliveryPageSize)}
+                    onClick={goToNextPage}
                   >
-                    {isRtl ? 'أقدم' : 'Older'}
+                    {isRtl ? 'التالي' : 'Next'}
                   </Button>
                 </div>
               </div>
