@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useEngagementTracker } from "@/_core/hooks/useEngagementTracker";
 import { trpc } from "@/lib/trpc";
 import { keepPreviousData } from "@tanstack/react-query";
@@ -123,6 +123,29 @@ function parseThreadActionFromUrl() {
   return { threadRootMessageId: threadId };
 }
 
+function parseArchivePageFromUrl() {
+  if (typeof window === "undefined") return 1;
+
+  const params = new URLSearchParams(window.location.search);
+  const page = Number(params.get("archivePage"));
+  return Number.isInteger(page) && page > 0 ? page : 1;
+}
+
+function writeArchivePageToUrl(page: number) {
+  if (typeof window === "undefined") return;
+
+  const params = new URLSearchParams(window.location.search);
+  if (page <= 1) {
+    params.delete("archivePage");
+  } else {
+    params.set("archivePage", String(page));
+  }
+
+  const nextSearch = params.toString();
+  const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}`;
+  window.history.pushState({}, "", nextUrl);
+}
+
 export default function Recommendations() {
   const { user } = useAuth();
   const { track } = useEngagementTracker();
@@ -131,7 +154,15 @@ export default function Recommendations() {
   const [location] = useLocation();
   const [now, setNow] = useState(() => Date.now());
   const [pendingThreadAction, setPendingThreadAction] = useState(() => parseThreadActionFromUrl());
-  const [archivePage, setArchivePage] = useState(1);
+  const [archivePage, setArchivePageState] = useState(() => parseArchivePageFromUrl());
+  const setArchivePage = useCallback((nextPage: number | ((currentPage: number) => number)) => {
+    setArchivePageState((currentPage) => {
+      const resolvedPage = typeof nextPage === "function" ? nextPage(currentPage) : nextPage;
+      const safePage = Number.isInteger(resolvedPage) && resolvedPage > 0 ? resolvedPage : 1;
+      writeArchivePageToUrl(safePage);
+      return safePage;
+    });
+  }, []);
 
   const { data: me, isLoading: meLoading } = trpc.recommendations.me.useQuery();
   const { data: activationStatus } = trpc.subscriptions.activationStatus.useQuery(undefined, {
@@ -267,6 +298,15 @@ export default function Recommendations() {
   useEffect(() => {
     setPendingThreadAction(parseThreadActionFromUrl());
   }, [location]);
+
+  useEffect(() => {
+    const syncArchivePageFromUrl = () => {
+      setArchivePageState(parseArchivePageFromUrl());
+    };
+
+    window.addEventListener("popstate", syncArchivePageFromUrl);
+    return () => window.removeEventListener("popstate", syncArchivePageFromUrl);
+  }, []);
 
   useEffect(() => {
     if (archivedThreadFeed && archivePage > totalArchivePages) {
