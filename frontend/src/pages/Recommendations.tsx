@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useEngagementTracker } from "@/_core/hooks/useEngagementTracker";
 import { trpc } from "@/lib/trpc";
+import { keepPreviousData } from "@tanstack/react-query";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -150,9 +151,14 @@ export default function Recommendations() {
   const {
     data: archivedThreadFeed,
     isLoading: archivedThreadFeedLoading,
+    isFetching: archivedThreadFeedFetching,
+    error: archivedThreadFeedError,
   } = trpc.recommendations.threadMessages.useQuery(
     { status: 'closed', limit: ARCHIVED_THREADS_PER_PAGE, offset: archiveOffset },
-    { enabled: !!me && (me.hasSubscription || me.canPublish) }
+    {
+      enabled: !!me && (me.hasSubscription || me.canPublish),
+      placeholderData: keepPreviousData,
+    }
   );
   const { data: activeAlerts = [] } = trpc.recommendations.activeAlerts.useQuery(undefined, {
     enabled: !!me && (me.hasSubscription || me.canPublish),
@@ -210,7 +216,9 @@ export default function Recommendations() {
   const openThreads = useMemo(() => buildRecommendationThreads(openThreadFeed), [openThreadFeed]);
   const archivedThreads = useMemo(() => buildRecommendationThreads(archivedThreadFeed?.messages ?? []), [archivedThreadFeed?.messages]);
   const archivedTotal = archivedThreadFeed?.total ?? 0;
-  const totalArchivePages = Math.max(1, Math.ceil(archivedTotal / ARCHIVED_THREADS_PER_PAGE));
+  const totalArchivePages = archivedThreadFeed
+    ? Math.max(1, Math.ceil(archivedTotal / ARCHIVED_THREADS_PER_PAGE))
+    : Math.max(1, archivePage);
   const feedLoading = openThreadFeedLoading || archivedThreadFeedLoading;
   const visibleThreads = useMemo(
     () => archivePage === 1 ? [...openThreads, ...archivedThreads] : archivedThreads,
@@ -261,10 +269,10 @@ export default function Recommendations() {
   }, [location]);
 
   useEffect(() => {
-    if (archivePage > totalArchivePages) {
+    if (archivedThreadFeed && archivePage > totalArchivePages) {
       setArchivePage(totalArchivePages);
     }
-  }, [archivePage, totalArchivePages]);
+  }, [archivePage, archivedThreadFeed, totalArchivePages]);
 
   const copyNumericValue = (value: string) => {
     navigator.clipboard.writeText(String(value));
@@ -710,6 +718,17 @@ export default function Recommendations() {
                 <p className="text-sm text-muted-foreground">{t('rec.noMessages')}</p>
               ) : (
                 <div className="space-y-5">
+                  {archivedThreadFeedError && (
+                    <Alert className="border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-800/40 dark:bg-amber-900/10 dark:text-amber-100">
+                      <AlertTitle>{language === 'ar' ? 'تعذر تحميل صفحة الأرشيف' : 'Archive page could not load'}</AlertTitle>
+                      <AlertDescription>
+                        {language === 'ar'
+                          ? 'بقيت الصفحة الحالية مفتوحة. حاول مرة أخرى أو حدّث الصفحة إذا استمر الاتصال.'
+                          : 'The current page stayed in place. Try again or refresh if the connection continues failing.'}
+                      </AlertDescription>
+                    </Alert>
+                  )}
+
                   {threadGroups.map((group) => (
                     <section key={group.key} className="space-y-3">
                       <div className="px-1">
@@ -927,7 +946,7 @@ export default function Recommendations() {
                               variant={archivePage === page ? 'default' : 'outline'}
                               size="sm"
                               className={archivePage === page ? 'bg-slate-900 text-white hover:bg-slate-800' : 'min-w-9'}
-                              disabled={archivedThreadFeedLoading}
+                              disabled={archivedThreadFeedFetching}
                               onClick={() => setArchivePage(page)}
                             >
                               {page}
@@ -939,7 +958,7 @@ export default function Recommendations() {
                         type="button"
                         variant="outline"
                         size="sm"
-                        disabled={archivePage >= totalArchivePages || archivedThreadFeedLoading}
+                        disabled={archivePage >= totalArchivePages || archivedThreadFeedFetching}
                         onClick={() => setArchivePage((page) => Math.min(totalArchivePages, page + 1))}
                       >
                         {language === 'ar' ? 'التالي' : 'Next'}
