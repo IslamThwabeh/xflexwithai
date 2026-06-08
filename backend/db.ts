@@ -8149,6 +8149,8 @@ export async function getAllOrders(status?: string) {
       upgradeFromPackageId: orders.upgradeFromPackageId,
       termsAcceptedAt: orders.termsAcceptedAt,
       termsAcceptedVersion: orders.termsAcceptedVersion,
+      termsAcceptedIpAddress: orders.termsAcceptedIpAddress,
+      termsAcceptedUserAgent: orders.termsAcceptedUserAgent,
       createdAt: orders.createdAt,
       updatedAt: orders.updatedAt,
       completedAt: orders.completedAt,
@@ -8179,6 +8181,8 @@ export async function getTermsAcceptanceOrdersByUser(userId: number) {
       isUpgrade: orders.isUpgrade,
       termsAcceptedAt: orders.termsAcceptedAt,
       termsAcceptedVersion: orders.termsAcceptedVersion,
+      termsAcceptedIpAddress: orders.termsAcceptedIpAddress,
+      termsAcceptedUserAgent: orders.termsAcceptedUserAgent,
       createdAt: orders.createdAt,
       updatedAt: orders.updatedAt,
     })

@@ -702,6 +702,8 @@ export const orders = sqliteTable("orders", {
   upgradeFromPackageId: integer("upgradeFromPackageId"),
   termsAcceptedAt: text("termsAcceptedAt"),
   termsAcceptedVersion: text("termsAcceptedVersion"),
+  termsAcceptedIpAddress: text("termsAcceptedIpAddress"),
+  termsAcceptedUserAgent: text("termsAcceptedUserAgent"),
   createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
   updatedAt: text("updatedAt").default("CURRENT_TIMESTAMP").notNull(),
   completedAt: text("completedAt"),

@@ -291,6 +291,13 @@ export default function Checkout() {
                     {isRtl ? 'أوافق على ' : 'I agree to the '}
                   </label>
                   <Link href="/terms"><span className="cursor-pointer font-medium text-emerald-700 underline">{isRtl ? 'الشروط والأحكام' : 'Terms & Conditions'}</span></Link>
+                  <span>{isRtl ? ' و' : ' and '}</span>
+                  <Link href="/refund-policy"><span className="cursor-pointer font-medium text-emerald-700 underline">{isRtl ? 'سياسة الاسترداد' : 'Refund Policy'}</span></Link>
+                  <p className="mt-1 text-xs leading-5 text-gray-500">
+                    {isRtl
+                      ? 'لأغراض التحقق من الطلب وحماية الطرفين عند وجود نزاع، سيتم حفظ وقت الموافقة وعنوان IP ومعلومات المتصفح/الجهاز مع هذا الطلب.'
+                      : 'For order verification and dispute protection, we record the acceptance time, IP address, and browser/device information with this order.'}
+                  </p>
                 </div>
               </div>
 

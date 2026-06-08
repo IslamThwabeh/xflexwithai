@@ -174,7 +174,7 @@ export default function AdminOrders() {
                           {language === 'ar' ? 'دليل قبول الشروط والأحكام' : 'Terms & Conditions Acceptance Evidence'}
                         </div>
                         {order.termsAcceptedAt ? (
-                          <div className="grid gap-2 sm:grid-cols-3">
+                          <div className="grid gap-2 sm:grid-cols-2">
                             <div>
                               <span className="text-gray-500">{language === 'ar' ? 'وقت القبول' : 'Accepted at'}:</span>{' '}
                               <span className="font-semibold">
@@ -184,6 +184,14 @@ export default function AdminOrders() {
                             <div>
                               <span className="text-gray-500">{language === 'ar' ? 'نسخة الشروط' : 'Terms version'}:</span>{' '}
                               <span className="font-semibold">{order.termsAcceptedVersion || '—'}</span>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">{language === 'ar' ? 'عنوان IP' : 'IP address'}:</span>{' '}
+                              <span className="font-semibold">{order.termsAcceptedIpAddress || '—'}</span>
+                            </div>
+                            <div className="break-words">
+                              <span className="text-gray-500">{language === 'ar' ? 'المتصفح/الجهاز' : 'Browser/device'}:</span>{' '}
+                              <span className="font-semibold">{order.termsAcceptedUserAgent || '—'}</span>
                             </div>
                             <div>
                               <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-emerald-700 hover:underline">

@@ -4802,6 +4802,8 @@ export const appRouter = router({
         if (!input.termsAcceptedAt || !input.termsAcceptedVersion) {
           throw new TRPCError({ code: 'BAD_REQUEST', message: 'Terms acceptance is required' });
         }
+        const termsAcceptedIpAddress = getRequestIp(ctx.req) || null;
+        const termsAcceptedUserAgent = getRequestUserAgent(ctx.req) || null;
 
         // Calculate totals
         let subtotal = 0;
@@ -4854,6 +4856,8 @@ export const appRouter = router({
           notes: input.notes || null,
           termsAcceptedAt: input.termsAcceptedAt || null,
           termsAcceptedVersion: input.termsAcceptedVersion || null,
+          termsAcceptedIpAddress,
+          termsAcceptedUserAgent,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         });
@@ -5441,6 +5445,8 @@ export const appRouter = router({
         if (!input.termsAcceptedAt || !input.termsAcceptedVersion) {
           throw new TRPCError({ code: 'BAD_REQUEST', message: 'Terms acceptance is required' });
         }
+        const termsAcceptedIpAddress = getRequestIp(ctx.req) || null;
+        const termsAcceptedUserAgent = getRequestUserAgent(ctx.req) || null;
 
         const eligibility = await db.checkUpgradeEligibility(ctx.user.id, input.targetPackageId);
         if (!eligibility) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Not eligible for upgrade' });
@@ -5469,6 +5475,8 @@ export const appRouter = router({
           upgradeFromPackageId: eligibility.currentPackageId,
           termsAcceptedAt: input.termsAcceptedAt || null,
           termsAcceptedVersion: input.termsAcceptedVersion || null,
+          termsAcceptedIpAddress,
+          termsAcceptedUserAgent,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         });

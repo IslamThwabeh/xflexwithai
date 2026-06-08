@@ -441,6 +441,14 @@ export default function AdminClientProfileSheet({
                             label={isRtl ? "وقت إنشاء الطلب" : "Order Created"}
                             value={formatDate(order.createdAt, locale)}
                           />
+                          <InfoLine
+                            label={isRtl ? "عنوان IP" : "IP Address"}
+                            value={order.termsAcceptedIpAddress || "-"}
+                          />
+                          <InfoLine
+                            label={isRtl ? "المتصفح/الجهاز" : "Browser/Device"}
+                            value={order.termsAcceptedUserAgent || "-"}
+                          />
                         </div>
                         <div className="mt-3 flex flex-wrap gap-2">
                           <Button asChild size="sm" variant="outline">

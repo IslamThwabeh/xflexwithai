@@ -102,7 +102,7 @@ export default function AdminTermsAcceptance() {
                     </p>
                   </div>
 
-                  <div className="grid gap-2 text-sm sm:grid-cols-2 lg:min-w-[520px]">
+                  <div className="grid gap-2 text-sm sm:grid-cols-2 lg:min-w-[620px]">
                     <EvidenceLine
                       label={isRtl ? 'وقت القبول' : 'Accepted At'}
                       value={formatLocalizedDate(String(order.termsAcceptedAt).replace(' ', 'T'), language) || String(order.termsAcceptedAt)}
@@ -118,6 +118,14 @@ export default function AdminTermsAcceptance() {
                     <EvidenceLine
                       label={isRtl ? 'طريقة الدفع' : 'Payment'}
                       value={formatPaymentMethodLabel(order.paymentMethod, language)}
+                    />
+                    <EvidenceLine
+                      label={isRtl ? 'عنوان IP' : 'IP Address'}
+                      value={order.termsAcceptedIpAddress || '-'}
+                    />
+                    <EvidenceLine
+                      label={isRtl ? 'المتصفح/الجهاز' : 'Browser/Device'}
+                      value={order.termsAcceptedUserAgent || '-'}
                     />
                   </div>
                 </div>
