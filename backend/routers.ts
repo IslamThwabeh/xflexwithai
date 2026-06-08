@@ -41,7 +41,7 @@ import { generateNumericCode, generateSaltBase64, normalizeEmail, sha256Base64 }
 const SUPPORT_VIDEO_MAX_SECONDS = 60;
 const SUPPORT_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 const SUPPORT_FILE_MAX_BYTES = 5 * 1024 * 1024;
-const SUPPORT_VOICE_MAX_BYTES = 2 * 1024 * 1024;
+const SUPPORT_VOICE_MAX_BYTES = 5 * 1024 * 1024;
 const SUPPORT_VIDEO_MAX_BYTES = 100 * 1024 * 1024;
 const supportAttachmentTypeSchema = z.enum(['file', 'voice', 'video']);
 

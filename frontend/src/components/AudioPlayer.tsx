@@ -18,7 +18,6 @@ export default function AudioPlayer({ src, duration, isOwn }: AudioPlayerProps) 
   const [currentTime, setCurrentTime] = useState(0);
   const [totalDuration, setTotalDuration] = useState(isUsableDuration(duration) ? duration : 0);
   const [playbackRate, setPlaybackRate] = useState<1 | 1.5 | 2>(1);
-  const [waveformBars, setWaveformBars] = useState<number[]>([]);
 
   const fallbackWaveform = useMemo(() => {
     let seed = 0;
@@ -87,52 +86,6 @@ export default function AudioPlayer({ src, duration, isOwn }: AudioPlayerProps) 
     audio.playbackRate = playbackRate;
   }, [playbackRate]);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadWaveform = async () => {
-      try {
-        const response = await fetch(src);
-        const arrayBuffer = await response.arrayBuffer();
-        const AudioContextCtor = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-        if (!AudioContextCtor) {
-          throw new Error('AudioContext unavailable');
-        }
-
-        const audioContext = new AudioContextCtor();
-        const decoded = await audioContext.decodeAudioData(arrayBuffer.slice(0));
-        const channelData = decoded.getChannelData(0);
-        const samples = 32;
-        const blockSize = Math.floor(channelData.length / samples) || 1;
-        const bars = Array.from({ length: samples }, (_, index) => {
-          let sum = 0;
-          const start = index * blockSize;
-          const end = Math.min(start + blockSize, channelData.length);
-          for (let offset = start; offset < end; offset += 1) {
-            sum += Math.abs(channelData[offset]);
-          }
-          const average = sum / Math.max(end - start, 1);
-          return 16 + Math.round(average * 160);
-        });
-
-        if (!cancelled) {
-          setWaveformBars(bars);
-        }
-        void audioContext.close();
-      } catch {
-        if (!cancelled) {
-          setWaveformBars(fallbackWaveform);
-        }
-      }
-    };
-
-    void loadWaveform();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [fallbackWaveform, src]);
-
   const togglePlay = () => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -169,7 +122,7 @@ export default function AudioPlayer({ src, duration, isOwn }: AudioPlayerProps) 
     : isUsableDuration(duration)
       ? duration
       : 0;
-  const bars = waveformBars.length ? waveformBars : fallbackWaveform;
+  const bars = fallbackWaveform;
   const activeBars = Math.round((progress / 100) * bars.length);
   const nextRate = playbackRate === 1 ? 1.5 : playbackRate === 1.5 ? 2 : 1;
 
