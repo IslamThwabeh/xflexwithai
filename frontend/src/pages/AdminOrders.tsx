@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ShoppingCart, CheckCircle, Clock, XCircle, Eye, ChevronDown, ChevronUp, ArrowUpCircle } from 'lucide-react';
+import { ShoppingCart, CheckCircle, XCircle, Eye, ChevronDown, ChevronUp, ArrowUpCircle, FileCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -168,6 +168,41 @@ export default function AdminOrders() {
                           </a>
                         </div>
                       )}
+                      <div className="md:col-span-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
+                        <div className="mb-2 flex items-center gap-2 font-medium text-emerald-900">
+                          <FileCheck className="h-4 w-4" />
+                          {language === 'ar' ? 'دليل قبول الشروط والأحكام' : 'Terms & Conditions Acceptance Evidence'}
+                        </div>
+                        {order.termsAcceptedAt ? (
+                          <div className="grid gap-2 sm:grid-cols-3">
+                            <div>
+                              <span className="text-gray-500">{language === 'ar' ? 'وقت القبول' : 'Accepted at'}:</span>{' '}
+                              <span className="font-semibold">
+                                {formatLocalizedDate(String(order.termsAcceptedAt).replace(' ', 'T'), language) || order.termsAcceptedAt}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">{language === 'ar' ? 'نسخة الشروط' : 'Terms version'}:</span>{' '}
+                              <span className="font-semibold">{order.termsAcceptedVersion || '—'}</span>
+                            </div>
+                            <div>
+                              <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-emerald-700 hover:underline">
+                                {language === 'ar' ? 'فتح الشروط الحالية' : 'Open current terms'}
+                              </a>
+                              <span className="px-2 text-emerald-700">•</span>
+                              <a href="/refund-policy" target="_blank" rel="noopener noreferrer" className="text-emerald-700 hover:underline">
+                                {language === 'ar' ? 'سياسة الاسترداد' : 'Refund policy'}
+                              </a>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-sm text-amber-800">
+                            {language === 'ar'
+                              ? 'لا يوجد وقت قبول شروط محفوظ لهذا الطلب. قد يكون الطلب أقدم من إضافة سجل الموافقات.'
+                              : 'No saved terms acceptance timestamp for this order. This may predate the acceptance record rollout.'}
+                          </p>
+                        )}
+                      </div>
                       {order.giftEmail && (
                         <div>
                           <span className="text-gray-500">🎁 {language === 'ar' ? 'هدية إلى' : 'Gift to'}:</span> {order.giftEmail}

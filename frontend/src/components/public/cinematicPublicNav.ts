@@ -1,6 +1,6 @@
 export type CinematicPrimaryNavItem = {
-  key: 'packages' | 'story' | 'mentor' | 'faq' | 'login';
-  sectionId: 'packages' | 'story' | 'mentor' | 'faq' | 'auth';
+  key: 'packages' | 'story' | 'mentor' | 'terms' | 'refund' | 'faq' | 'login';
+  sectionId: 'packages' | 'story' | 'mentor' | 'terms' | 'refund' | 'faq' | 'auth';
   href: string;
   labelEn: string;
   labelAr: string;
@@ -27,6 +27,20 @@ export const CINEMATIC_PRIMARY_NAV_ITEMS: CinematicPrimaryNavItem[] = [
     href: '/#mentor',
     labelEn: 'Mentor',
     labelAr: 'المدرب',
+  },
+  {
+    key: 'terms',
+    sectionId: 'terms',
+    href: '/terms',
+    labelEn: 'Terms',
+    labelAr: 'الشروط',
+  },
+  {
+    key: 'refund',
+    sectionId: 'refund',
+    href: '/refund-policy',
+    labelEn: 'Refund Policy',
+    labelAr: 'سياسة الاسترداد',
   },
   {
     key: 'faq',

@@ -6855,13 +6855,14 @@ export async function getAdminClientProfile(userId: number, options?: { includeT
   const user = await getUserById(userId);
   const normalizedEmail = user?.email?.trim().toLowerCase() ?? null;
 
-  const [activePackageSubs, serviceContext, adminEmailCollision, keySummary] = await Promise.all([
+  const [activePackageSubs, serviceContext, adminEmailCollision, keySummary, termsAcceptanceOrders] = await Promise.all([
     getUserPackageSubscriptions(userId),
     getSharedClientServiceContext(userId, options),
     normalizedEmail ? getAdminByEmail(normalizedEmail) : Promise.resolve(null),
     normalizedEmail
       ? getPackageKeySummaryByEmail(normalizedEmail)
       : Promise.resolve({ assignedPackageKeys: 0, activatedPackageKeys: 0, latestActivatedAt: null as string | null }),
+    getTermsAcceptanceOrdersByUser(userId),
   ]);
 
   const activePackages = await Promise.all(
@@ -6900,6 +6901,7 @@ export async function getAdminClientProfile(userId: number, options?: { includeT
       activePackages,
     },
     keySummary,
+    termsAcceptanceOrders,
     ...serviceContext,
   };
 }
@@ -8145,6 +8147,8 @@ export async function getAllOrders(status?: string) {
       notes: orders.notes,
       isUpgrade: orders.isUpgrade,
       upgradeFromPackageId: orders.upgradeFromPackageId,
+      termsAcceptedAt: orders.termsAcceptedAt,
+      termsAcceptedVersion: orders.termsAcceptedVersion,
       createdAt: orders.createdAt,
       updatedAt: orders.updatedAt,
       completedAt: orders.completedAt,
@@ -8159,6 +8163,28 @@ export async function getAllOrders(status?: string) {
     return q.where(eq(orders.status, status));
   }
   return q;
+}
+
+export async function getTermsAcceptanceOrdersByUser(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      orderId: orders.id,
+      status: orders.status,
+      totalAmount: orders.totalAmount,
+      currency: orders.currency,
+      paymentMethod: orders.paymentMethod,
+      paymentProofUrl: orders.paymentProofUrl,
+      isUpgrade: orders.isUpgrade,
+      termsAcceptedAt: orders.termsAcceptedAt,
+      termsAcceptedVersion: orders.termsAcceptedVersion,
+      createdAt: orders.createdAt,
+      updatedAt: orders.updatedAt,
+    })
+    .from(orders)
+    .where(and(eq(orders.userId, userId), isNotNull(orders.termsAcceptedAt)))
+    .orderBy(desc(orders.termsAcceptedAt));
 }
 
 export async function updateOrderStatus(

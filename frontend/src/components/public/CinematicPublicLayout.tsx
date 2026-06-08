@@ -194,7 +194,10 @@ export default function CinematicPublicLayout({
     { href: '/free-content', label: isArabic ? 'المحتوى المجاني' : 'Free Content' },
     { href: '/faq', label: isArabic ? 'الأسئلة الشائعة' : 'FAQ' },
     { href: '/contact', label: isArabic ? 'تواصل معنا' : 'Contact' },
+    { href: '/terms', label: isArabic ? 'الشروط والأحكام' : 'Terms & Conditions' },
+    { href: '/refund-policy', label: isArabic ? 'سياسة الاسترداد' : 'Refund Policy' },
     { href: '/auth', label: isArabic ? 'تسجيل الدخول' : 'Login' },
+    { href: '/register', label: isArabic ? 'إنشاء حساب' : 'Create account' },
   ];
 
   const scrollToHomeSection = (sectionId: string) => {
@@ -358,12 +361,11 @@ export default function CinematicPublicLayout({
               </div>
               <div className="flex flex-col gap-3">
                 <p className="text-xs font-semibold uppercase tracking-widest text-white/22">{isArabic ? 'الحساب' : 'Account'}</p>
-                <Link href="/auth">
-                  <a className="cin-public-footer-link">{isArabic ? 'تسجيل الدخول' : 'Login'}</a>
-                </Link>
-                <Link href="/register">
-                  <a className="cin-public-footer-link">{isArabic ? 'إنشاء حساب' : 'Create account'}</a>
-                </Link>
+                {footerLinks.slice(6).map((link) => (
+                  <Link key={link.href} href={link.href}>
+                    <a className="cin-public-footer-link">{link.label}</a>
+                  </Link>
+                ))}
               </div>
             </div>
 

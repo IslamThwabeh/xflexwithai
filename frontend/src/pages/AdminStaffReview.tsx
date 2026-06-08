@@ -72,7 +72,7 @@ const FULL_SIDEBAR: SidebarSection[] = [
       { icon: Package, labelEn: "Packages", labelAr: "الباقات", path: "/admin/packages" },
       { icon: Tag, labelEn: "Coupons", labelAr: "الكوبونات", path: "/admin/coupons" },
       { icon: Building2, labelEn: "Brokers", labelAr: "الوسطاء", path: "/admin/brokers" },
-      { icon: FileCheck, labelEn: "Offer Agreements", labelAr: "اتفاقيات العروض", path: "/admin/offer-agreements" },
+      { icon: FileCheck, labelEn: "Terms Acceptance", labelAr: "موافقات الشروط", path: "/admin/terms-acceptance" },
     ],
   },
   {

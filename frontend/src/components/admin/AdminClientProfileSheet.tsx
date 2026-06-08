@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   Clock3,
   ExternalLink,
+  FileCheck,
   Loader2,
   Mail,
   MapPin,
@@ -168,6 +169,7 @@ export default function AdminClientProfileSheet({
   };
   const lexaiState = profile?.lexaiSubscription?.subscriptionState ?? "no_subscription";
   const recommendationState = profile?.recommendationSubscription?.subscriptionState ?? "no_subscription";
+  const termsAcceptanceOrders = profile?.termsAcceptanceOrders ?? [];
   const hasPendingService = lexaiState === "pending_activation" || recommendationState === "pending_activation";
   const hasActiveService = lexaiState === "active" || recommendationState === "active";
   const hasServiceRecord = !!profile?.lexaiSubscription || !!profile?.recommendationSubscription;
@@ -393,6 +395,75 @@ export default function AdminClientProfileSheet({
                       </div>
                     )}
                   </div>
+                </CardContent>
+              </Card>
+
+              <Card className="border-emerald-100 bg-white/95">
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <FileCheck className="h-5 w-5 text-emerald-600" />
+                    {isRtl ? "قبول الشروط والأحكام" : "Terms & Conditions Acceptance"}
+                  </CardTitle>
+                  <CardDescription>
+                    {isRtl
+                      ? "أدلة الموافقة المحفوظة على الطلبات المرتبطة بهذا العميل."
+                      : "Saved acceptance evidence on this client's linked orders."}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3 text-sm">
+                  {termsAcceptanceOrders.length === 0 ? (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800">
+                      {isRtl
+                        ? "لا يوجد سجل قبول شروط محفوظ لهذا العميل. قد تكون الطلبات أقدم من إضافة سجل الموافقات."
+                        : "No saved terms acceptance record for this client. Their orders may predate acceptance tracking."}
+                    </div>
+                  ) : (
+                    termsAcceptanceOrders.map((order: any) => (
+                      <div key={order.orderId} className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge className="bg-emerald-100 text-emerald-800">
+                              {isRtl ? "تم قبول الشروط" : "Accepted"}
+                            </Badge>
+                            <Badge variant="outline">#{order.orderId}</Badge>
+                            {order.termsAcceptedVersion && <Badge variant="outline">{order.termsAcceptedVersion}</Badge>}
+                          </div>
+                          <span className="text-xs font-medium text-emerald-900">
+                            {formatDate(order.termsAcceptedAt, locale)}
+                          </span>
+                        </div>
+                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                          <InfoLine
+                            label={isRtl ? "حالة الطلب" : "Order Status"}
+                            value={order.status || "-"}
+                          />
+                          <InfoLine
+                            label={isRtl ? "وقت إنشاء الطلب" : "Order Created"}
+                            value={formatDate(order.createdAt, locale)}
+                          />
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <Button asChild size="sm" variant="outline">
+                            <a href="/terms" target="_blank" rel="noopener noreferrer">
+                              {isRtl ? "الشروط الحالية" : "Current Terms"}
+                            </a>
+                          </Button>
+                          <Button asChild size="sm" variant="outline">
+                            <a href="/refund-policy" target="_blank" rel="noopener noreferrer">
+                              {isRtl ? "سياسة الاسترداد" : "Refund Policy"}
+                            </a>
+                          </Button>
+                          {order.paymentProofUrl && (
+                            <Button asChild size="sm" variant="outline">
+                              <a href={order.paymentProofUrl} target="_blank" rel="noopener noreferrer">
+                                {isRtl ? "إيصال الدفع" : "Payment Proof"}
+                              </a>
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </CardContent>
               </Card>
 

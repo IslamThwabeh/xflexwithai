@@ -91,6 +91,7 @@ const AdminBugReports = lazy(() => import("./pages/AdminBugReports"));
 const AdminEngagement = lazy(() => import("./pages/AdminEngagement"));
 const AdminMonitoring = lazy(() => import("./pages/AdminMonitoring"));
 const AdminOfferAgreements = lazy(() => import("./pages/AdminOfferAgreements"));
+const AdminTermsAcceptance = lazy(() => import("./pages/AdminTermsAcceptance"));
 const AdminPlanProgress = lazy(() => import("./pages/AdminPlanProgress"));
 const AdminLegacyPlanProgress = lazy(() => import("./pages/AdminLegacyPlanProgress"));
 const NotificationCenter = lazy(() => import("./pages/NotificationCenter"));
@@ -247,6 +248,11 @@ function Router() {
       <Route path={"/admin/offer-agreements"}>
         <AdminRoute>
           <AdminOfferAgreements />
+        </AdminRoute>
+      </Route>
+      <Route path={"/admin/terms-acceptance"}>
+        <AdminRoute>
+          <AdminTermsAcceptance />
         </AdminRoute>
       </Route>
       <Route path={"/admin/plan-progress"}>

@@ -96,7 +96,7 @@ const menuSectionsDef: MenuSection[] = [
       { icon: Package, labelKey: "admin.sidebar.packages", path: "/admin/packages" },
       { icon: Tag, labelKey: "admin.sidebar.coupons", path: "/admin/coupons" },
       { icon: Building2, labelKey: "admin.sidebar.brokers", path: "/admin/brokers" },
-      { icon: FileCheck, labelKey: "admin.sidebar.offerAgreements", path: "/admin/offer-agreements" },
+      { icon: FileCheck, labelKey: "admin.sidebar.termsAcceptance", path: "/admin/terms-acceptance" },
     ]
   },
   {
