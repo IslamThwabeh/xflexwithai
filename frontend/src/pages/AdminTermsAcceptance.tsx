@@ -6,6 +6,7 @@ import { useDataTable, DataTablePagination } from '@/components/DataTable';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { formatAdminCurrency } from '@/lib/adminCurrency';
 import { formatLocalizedDate } from '@/lib/dateLocale';
+import { getLegalVersionLinks } from '@/lib/legalVersions';
 import { formatPaymentMethodLabel } from '@/lib/paymentMethodLabel';
 import { trpc } from '@/lib/trpc';
 
@@ -77,7 +78,9 @@ export default function AdminTermsAcceptance() {
           </div>
         ) : (
           <div className="space-y-3">
-            {paged.map((order: any) => (
+            {paged.map((order: any) => {
+              const legalLinks = getLegalVersionLinks(order.termsAcceptedVersion);
+              return (
               <div key={order.id} className="rounded-xl border bg-white p-5 shadow-sm">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                   <div className="min-w-0">
@@ -145,18 +148,19 @@ export default function AdminTermsAcceptance() {
                     </Button>
                   )}
                   <Button asChild size="sm" variant="outline">
-                    <a href="/terms" target="_blank" rel="noopener noreferrer">
-                      {isRtl ? 'الشروط الحالية' : 'Current Terms'}
+                    <a href={legalLinks.terms} target="_blank" rel="noopener noreferrer">
+                      {isRtl ? `الشروط المقبولة ${order.termsAcceptedVersion || 'v1'}` : `Accepted Terms ${order.termsAcceptedVersion || 'v1'}`}
                     </a>
                   </Button>
                   <Button asChild size="sm" variant="outline">
-                    <a href="/refund-policy" target="_blank" rel="noopener noreferrer">
-                      {isRtl ? 'سياسة الاسترداد' : 'Refund Policy'}
+                    <a href={legalLinks.refund} target="_blank" rel="noopener noreferrer">
+                      {isRtl ? `سياسة الاسترداد ${order.termsAcceptedVersion || 'v1'}` : `Refund Policy ${order.termsAcceptedVersion || 'v1'}`}
                     </a>
                   </Button>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
 

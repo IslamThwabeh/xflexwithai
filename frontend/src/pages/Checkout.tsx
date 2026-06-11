@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import CinematicPublicLayout from '@/components/public/CinematicPublicLayout';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { CURRENT_TERMS_VERSION } from '@/lib/legalVersions';
 import { formatIlsAmount, getPackageDisplayPricing } from '@/lib/packagePricing';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
@@ -110,7 +111,7 @@ export default function Checkout() {
       notes: notes || undefined,
       couponCode: appliedCoupon?.code || undefined,
       termsAcceptedAt: new Date().toISOString(),
-      termsAcceptedVersion: 'v1',
+      termsAcceptedVersion: CURRENT_TERMS_VERSION,
     });
   };
 

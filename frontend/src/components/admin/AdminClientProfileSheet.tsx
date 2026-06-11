@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { getLegalVersionLinks } from "@/lib/legalVersions";
 import { trpc } from "@/lib/trpc";
 import type { ReactNode } from "react";
 import { useLocation } from "wouter";
@@ -418,7 +419,9 @@ export default function AdminClientProfileSheet({
                         : "No saved terms acceptance record for this client. Their orders may predate acceptance tracking."}
                     </div>
                   ) : (
-                    termsAcceptanceOrders.map((order: any) => (
+                    termsAcceptanceOrders.map((order: any) => {
+                      const legalLinks = getLegalVersionLinks(order.termsAcceptedVersion);
+                      return (
                       <div key={order.orderId} className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <div className="flex flex-wrap items-center gap-2">
@@ -452,13 +455,13 @@ export default function AdminClientProfileSheet({
                         </div>
                         <div className="mt-3 flex flex-wrap gap-2">
                           <Button asChild size="sm" variant="outline">
-                            <a href="/terms" target="_blank" rel="noopener noreferrer">
-                              {isRtl ? "الشروط الحالية" : "Current Terms"}
+                            <a href={legalLinks.terms} target="_blank" rel="noopener noreferrer">
+                              {isRtl ? `الشروط المقبولة ${order.termsAcceptedVersion || "v1"}` : `Accepted Terms ${order.termsAcceptedVersion || "v1"}`}
                             </a>
                           </Button>
                           <Button asChild size="sm" variant="outline">
-                            <a href="/refund-policy" target="_blank" rel="noopener noreferrer">
-                              {isRtl ? "سياسة الاسترداد" : "Refund Policy"}
+                            <a href={legalLinks.refund} target="_blank" rel="noopener noreferrer">
+                              {isRtl ? `سياسة الاسترداد ${order.termsAcceptedVersion || "v1"}` : `Refund Policy ${order.termsAcceptedVersion || "v1"}`}
                             </a>
                           </Button>
                           {order.paymentProofUrl && (
@@ -470,7 +473,8 @@ export default function AdminClientProfileSheet({
                           )}
                         </div>
                       </div>
-                    ))
+                      );
+                    })
                   )}
                 </CardContent>
               </Card>

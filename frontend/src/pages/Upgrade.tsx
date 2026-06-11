@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { CURRENT_TERMS_VERSION } from '@/lib/legalVersions';
 import { formatIlsAmount, getUpgradeDisplayPricing } from '@/lib/packagePricing';
 import { trpc } from '@/lib/trpc';
 import ClientLayout from '@/components/ClientLayout';
@@ -41,7 +42,7 @@ export default function Upgrade() {
       paymentMethod,
       notes: notes || undefined,
       termsAcceptedAt: new Date().toISOString(),
-      termsAcceptedVersion: 'v1',
+      termsAcceptedVersion: CURRENT_TERMS_VERSION,
     });
   };
 

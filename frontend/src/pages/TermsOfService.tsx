@@ -27,7 +27,7 @@ export default function TermsOfService() {
               </div>
               <div>
                 <h1 className="text-3xl font-extrabold tracking-[-0.4px]">{isRtl ? 'الشروط والأحكام' : 'Terms & Conditions'}</h1>
-                <p className="mt-2 text-sm text-white/42">{isRtl ? 'آخر تحديث: مارس 2026' : 'Last updated: March 2026'}</p>
+                <p className="mt-2 text-sm text-white/42">{isRtl ? 'آخر تحديث: يونيو 2026' : 'Last updated: June 2026'}</p>
               </div>
             </div>
           </div>

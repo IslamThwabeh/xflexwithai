@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { formatAdminCurrency } from '@/lib/adminCurrency';
 import { formatLocalizedDate } from '@/lib/dateLocale';
+import { getLegalVersionLinks } from '@/lib/legalVersions';
 import { formatPaymentMethodLabel } from '@/lib/paymentMethodLabel';
 import { trpc } from '@/lib/trpc';
 import DashboardLayout from '@/components/DashboardLayout';
@@ -102,7 +103,9 @@ export default function AdminOrders() {
           </div>
         ) : (
           <div className="space-y-3">
-            {paged.map((order: any) => (
+            {paged.map((order: any) => {
+              const legalLinks = getLegalVersionLinks(order.termsAcceptedVersion);
+              return (
               <div key={order.id} className="bg-white border rounded-xl shadow-sm">
                 <div className="p-5 flex items-center justify-between cursor-pointer" onClick={() => setExpandedId(expandedId === order.id ? null : order.id)}>
                   <div>
@@ -194,12 +197,12 @@ export default function AdminOrders() {
                               <span className="font-semibold">{order.termsAcceptedUserAgent || '—'}</span>
                             </div>
                             <div>
-                              <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-emerald-700 hover:underline">
-                                {language === 'ar' ? 'فتح الشروط الحالية' : 'Open current terms'}
+                              <a href={legalLinks.terms} target="_blank" rel="noopener noreferrer" className="text-emerald-700 hover:underline">
+                                {language === 'ar' ? `فتح الشروط المقبولة ${order.termsAcceptedVersion || 'v1'}` : `Open accepted terms ${order.termsAcceptedVersion || 'v1'}`}
                               </a>
                               <span className="px-2 text-emerald-700">•</span>
-                              <a href="/refund-policy" target="_blank" rel="noopener noreferrer" className="text-emerald-700 hover:underline">
-                                {language === 'ar' ? 'سياسة الاسترداد' : 'Refund policy'}
+                              <a href={legalLinks.refund} target="_blank" rel="noopener noreferrer" className="text-emerald-700 hover:underline">
+                                {language === 'ar' ? `سياسة الاسترداد ${order.termsAcceptedVersion || 'v1'}` : `Refund policy ${order.termsAcceptedVersion || 'v1'}`}
                               </a>
                             </div>
                           </div>
@@ -254,7 +257,8 @@ export default function AdminOrders() {
                   </div>
                 )}
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
 

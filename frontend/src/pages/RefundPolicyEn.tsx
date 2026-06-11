@@ -38,10 +38,16 @@ export function RefundPolicyEn() {
       <p className="font-semibold mt-3">The user acknowledges and agrees that:</p>
       <ul className="list-disc ps-6 space-y-1">
         <li>The Academy provides intangible digital content.</li>
-        <li>Beginning to use or access the service waives the right to claim a refund.</li>
+        <li>Activation, granting access, issuing an activation key, enabling the account, or making any channel, content, or tool available constitutes immediate performance of the service.</li>
+        <li>Beginning to use or merely accessing the service waives the right to claim a refund.</li>
+        <li>Refund requests made after activation, access to content, or use of any part of the service are rejected as a matter of policy, to the maximum extent permitted by law.</li>
+        <li>This policy does not affect any mandatory rights that cannot be waived under applicable Palestinian consumer protection laws.</li>
       </ul>
       <p className="font-semibold mt-3">No refunds are issued in the following cases:</p>
       <ul className="list-disc ps-6 space-y-1">
+        <li>Activation of the subscription or package key, or granting access to any content, channel, or tool.</li>
+        <li>Viewing any part of the content, opening the learning account, or accessing recommendation channels or Lex AI.</li>
+        <li>Partial or full use of the service, even for a short period.</li>
         <li>Failure to achieve profits or incurring losses.</li>
         <li>User's failure to follow the plan or instructions.</li>
         <li>User changing their mind after subscribing.</li>
@@ -51,14 +57,15 @@ export function RefundPolicyEn() {
       </ul>
 
       <h2 className="text-xl font-bold text-gray-900">4. Exceptional Cases</h2>
-      <p>The Academy may, at its sole discretion, consider exceptional cases such as:</p>
+      <p>The Academy may, at its sole discretion only and without creating any obligation or acquired right for the user, consider limited exceptional cases such as:</p>
       <ul className="list-disc ps-6 space-y-1">
-        <li>A severe technical malfunction that completely prevents access to the service and was not resolved within a reasonable timeframe.</li>
+        <li>A severe technical malfunction caused by the Academy only that completely prevents access to the service and was not resolved within a reasonable timeframe.</li>
       </ul>
       <p className="mt-2">If an exception is approved:</p>
       <ul className="list-disc ps-6 space-y-1">
         <li>The decision is final and not subject to appeal.</li>
-        <li>Refunds, if any, are made through the same payment method used.</li>
+        <li>The Academy may choose the appropriate remedy, including extension, replacement, internal credit, partial refund, or full refund if it deems appropriate.</li>
+        <li>Refunds, if any, are made through the same payment method used and after deducting any transfer, payment gateway, bank, or external non-refundable fees.</li>
         <li>The exception does not establish a precedent or acquired right.</li>
       </ul>
 
@@ -95,13 +102,17 @@ export function RefundPolicyEn() {
           <li>Having read the subscription and refund policy in full.</li>
           <li>Understanding its content and legal implications.</li>
           <li>Agreeing to it without any reservation.</li>
+          <li>That electronic acceptance, completing payment, making a bank transfer, activating a key, or using the service constitutes a binding electronic acceptance to the extent permitted by law.</li>
         </ul>
       </div>
 
       <h2 className="text-xl font-bold text-gray-900">9. Governing Law</h2>
       <ul className="list-disc ps-6 space-y-1">
         <li>This policy is governed and interpreted in accordance with the applicable laws of Palestine.</li>
-        <li>Any dispute shall be resolved amicably; failing that, the competent Palestinian courts shall be the legal reference.</li>
+        <li>The place of dispute and exclusive venue for any claim, disagreement, or dispute arising from this policy, the subscription, or use of the services is Palestine, Ramallah.</li>
+        <li>The parties shall attempt to resolve any dispute amicably within 30 days from the date of written notice of the dispute.</li>
+        <li>If amicable resolution fails, the parties shall proceed to arbitration in Ramallah under the applicable Palestinian laws before filing any court claim, unless a mandatory legal rule provides otherwise.</li>
+        <li>If the matter proceeds to court, the competent Palestinian courts in Ramallah shall be the exclusive legal and territorial venue, and the user may not transfer the dispute to any other country, city, or judicial authority.</li>
       </ul>
 
       <div className="mt-8 p-4 bg-gray-50 rounded-lg border">

@@ -44,6 +44,7 @@ export function TermsOfServiceEn() {
       <ul className="list-disc ps-6 space-y-1">
         <li>The Academy does not guarantee any profits.</li>
         <li>Any figures, examples, or past results are displayed for educational purposes only and do not imply the same results will be achieved in the future.</li>
+        <li>Client testimonials, profit examples, or past trading results do not constitute a promise, guarantee, or commitment to achieve any future result.</li>
         <li>Past performance does not necessarily reflect future performance.</li>
       </ul>
 
@@ -68,9 +69,12 @@ export function TermsOfServiceEn() {
 
       <h2 className="text-xl font-bold text-gray-900">8. Subscription & Payment Policy</h2>
       <ul className="list-disc ps-6 space-y-1">
-        <li>All subscriptions are non-refundable after activation.</li>
+        <li>All subscriptions are non-refundable after activation, granting access, issuing an activation key, or making any content, channel, or tool available, to the maximum extent permitted by law.</li>
         <li>The user is responsible for choosing the appropriate plan before payment.</li>
+        <li>The user acknowledges that the services are digital and educational and may begin immediately upon payment or activation; therefore, no refund may be claimed after performance has begun.</li>
+        <li>Refund requests are not accepted due to a change of mind, lack of time, failure to achieve profits, trading losses, poor follow-through, or the service not matching the user's personal expectations.</li>
         <li>Any temporary service interruption due to technical maintenance, updates, or force majeure does not constitute grounds for a refund claim.</li>
+        <li>These terms do not affect any mandatory rights that cannot be waived under applicable Palestinian consumer protection laws.</li>
       </ul>
 
       <h2 className="text-xl font-bold text-gray-900">9. Account Suspension or Termination</h2>
@@ -86,6 +90,7 @@ export function TermsOfServiceEn() {
       <ul className="list-disc ps-6 space-y-1">
         <li>The maximum potential liability of the Academy (if any) shall not exceed the value of the subscription paid.</li>
         <li>The Academy is not responsible for internet outages, issues with external platforms (broker, trading platform, banks, digital wallets), or decisions of third parties.</li>
+        <li>To the maximum extent permitted by law, the user agrees not to bring any claim, lawsuit, or compensation demand against the Academy, its employees, partners, or trainers for financial losses, lost profits, trading results, or investment decisions made based on the content, analyses, recommendations, or tools provided.</li>
       </ul>
 
       <h2 className="text-xl font-bold text-gray-900">11. Confidentiality & Data Protection</h2>
@@ -103,7 +108,10 @@ export function TermsOfServiceEn() {
       <h2 className="text-xl font-bold text-gray-900">13. Governing Law</h2>
       <ul className="list-disc ps-6 space-y-1">
         <li>These terms are governed by the applicable laws of Palestine.</li>
-        <li>Any dispute shall be resolved amicably; failing that, it shall be referred to the competent judicial authorities.</li>
+        <li>The place of dispute and exclusive venue for any claim, disagreement, or dispute arising from these terms, any service, or any subscription is Palestine, Ramallah.</li>
+        <li>The parties shall attempt to resolve any dispute amicably within 30 days from the date of written notice of the dispute.</li>
+        <li>If amicable resolution fails, the parties shall proceed to arbitration in Ramallah under the applicable Palestinian laws before filing any court claim, unless a mandatory legal rule provides otherwise.</li>
+        <li>If the matter proceeds to court, it shall be referred exclusively to the competent Palestinian courts in Ramallah, and the user may not transfer the dispute to any other country, city, or judicial authority.</li>
       </ul>
 
       <h2 className="text-xl font-bold text-gray-900">14. Acceptance</h2>
@@ -112,6 +120,7 @@ export function TermsOfServiceEn() {
         <li>Acknowledge that you have read these terms.</li>
         <li>Fully understand them.</li>
         <li>Agree to them without reservation.</li>
+        <li>Acknowledge that electronic acceptance, completing payment, making a bank transfer, activating a key, or using the service constitutes binding electronic acceptance to the extent permitted by law.</li>
       </ul>
 
       <div className="mt-8 p-4 bg-emerald-50 rounded-lg border border-emerald-200">
