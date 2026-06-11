@@ -1,10 +1,11 @@
 import { sendEmail, type EmailAuditInput } from "./email";
+import { buildUnsubscribeUrl, getBusinessPostalAddress, isSuppressibleEmailCategory } from "./emailPreferences";
 import { ENV } from "./env";
 import { logger } from "./logger";
 
 const BRAND = "XFlex Trading Academy";
 
-function wrapHtml(body: string) {
+function wrapHtml(body: string, complianceFooterHtml = "") {
   return `<!DOCTYPE html>
 <html dir="rtl" lang="ar">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
@@ -17,6 +18,7 @@ function wrapHtml(body: string) {
     ${body}
   </div>
   <div style="padding:16px 24px;background:#f9fafb;text-align:center;font-size:12px;color:#9ca3af;">
+    ${complianceFooterHtml}
     &copy; ${new Date().getFullYear()} ${BRAND}. All rights reserved.
   </div>
 </div>
@@ -24,10 +26,39 @@ function wrapHtml(body: string) {
 }
 
 /** Send a branded HTML email with plain-text fallback */
-function sendBrandedEmail(to: string, subject: string, bodyHtml: string, audit?: EmailAuditInput) {
-  const html = wrapHtml(bodyHtml);
+async function sendBrandedEmail(to: string, subject: string, bodyHtml: string, audit?: EmailAuditInput) {
+  let unsubscribeUrl: string | null = null;
+  if (isSuppressibleEmailCategory(audit?.category)) {
+    unsubscribeUrl = await buildUnsubscribeUrl(
+      to,
+      audit!.category as "service_lifecycle" | "marketing",
+    );
+  }
+  const complianceFooterHtml = `
+    <div style="margin-bottom:10px;line-height:1.6;color:#6b7280;">
+      ${escapeHtml(getBusinessPostalAddress())}
+    </div>
+    ${unsubscribeUrl ? `
+      <div style="margin-bottom:10px;line-height:1.6;color:#6b7280;">
+        لا تريد رسائل التجديد والمتابعة؟ 
+        <a href="${unsubscribeUrl}" style="color:#047857;text-decoration:underline;">إلغاء الاشتراك</a><br/>
+        Do not want renewal and lifecycle emails?
+        <a href="${unsubscribeUrl}" style="color:#047857;text-decoration:underline;">Unsubscribe</a>
+      </div>
+    ` : ''}`;
+  const html = wrapHtml(bodyHtml, complianceFooterHtml);
   const text = html.replace(/<[^>]*>/g, '').replace(/&[^;]+;/g, ' ').replace(/\s{2,}/g, '\n').trim();
-  return sendEmail({ to, subject, text, html, audit });
+  return sendEmail({
+    to,
+    subject,
+    text,
+    html,
+    headers: unsubscribeUrl ? {
+      "List-Unsubscribe": `<${unsubscribeUrl}>`,
+      "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+    } : undefined,
+    audit,
+  });
 }
 
 function escapeHtml(input: string) {
@@ -222,30 +253,76 @@ export async function sendFreezeExpiredEmail(to: string, name?: string | null) {
   }
 }
 
-export async function sendExpiryAlertEmail(to: string, name: string | null, daysLeft: number, packageName: string) {
+export async function sendExpiryAlertEmail(
+  to: string,
+  name: string | null,
+  daysLeft: number,
+  packageName: string,
+  serviceName = 'LexAI and Recommendations',
+  language: 'ar' | 'en' = 'ar',
+) {
   const firstName = name?.split(' ')[0] || '';
-  const subject = daysLeft === 0
-    ? `اشتراكك انتهى اليوم / Your subscription has expired today`
-    : `تنبيه: اشتراكك ينتهي خلال ${daysLeft} ${daysLeft === 1 ? 'يوم' : 'أيام'} / ${daysLeft} day${daysLeft === 1 ? '' : 's'} until expiry`;
+  const isExpired = daysLeft < 0;
+  const expiredDays = Math.abs(daysLeft);
+  const subjectAr = daysLeft === 0
+    ? 'خدماتك الشهرية تنتهي اليوم'
+    : isExpired
+      ? 'خدماتك الشهرية انتهت'
+      : `تنبيه تجديد: متبقي ${daysLeft} ${daysLeft === 1 ? 'يوم' : 'أيام'}`;
+  const subjectEn = daysLeft === 0
+    ? 'Your timed services expire today'
+    : isExpired
+      ? 'Your timed services have expired'
+      : `${daysLeft} day${daysLeft === 1 ? '' : 's'} until renewal`;
+  const subject = language === 'en' ? `${subjectEn} / ${subjectAr}` : `${subjectAr} / ${subjectEn}`;
 
-  const urgencyColor = daysLeft <= 1 ? '#dc2626' : daysLeft <= 3 ? '#f59e0b' : '#059669';
+  const urgencyColor = daysLeft <= 0 ? '#dc2626' : daysLeft <= 3 ? '#f59e0b' : '#059669';
+  const statusAr = daysLeft === 0
+    ? 'تنتهي خدماتك المحددة المدة اليوم'
+    : isExpired
+      ? `انتهت خدماتك منذ ${expiredDays} ${expiredDays === 1 ? 'يوم' : 'أيام'}`
+      : `متبقي ${daysLeft} ${daysLeft === 1 ? 'يوم' : 'أيام'} على التجديد`;
+  const statusEn = daysLeft === 0
+    ? 'Your timed services expire today'
+    : isExpired
+      ? `Expired ${expiredDays} day${expiredDays === 1 ? '' : 's'} ago`
+      : `${daysLeft} day${daysLeft === 1 ? '' : 's'} remaining`;
+  const primaryStatus = language === 'en' ? statusEn : statusAr;
+  const secondaryStatus = language === 'en' ? statusAr : statusEn;
+  const renewalAr = isExpired
+    ? 'فعّل مفتاح تجديد جديد لاستعادة الوصول إلى الخدمة.'
+    : 'فعّل مفتاح التجديد قبل الموعد لتجنب انقطاع الخدمة.';
+  const renewalEn = isExpired
+    ? 'Activate a new renewal key to restore service access.'
+    : 'Activate your renewal key before the date to avoid interruption.';
+  const primaryBody = language === 'en'
+    ? 'Your course content remains available. Renewal is only needed for timed services such as LexAI or Recommendations.'
+    : 'محتوى الدورة سيبقى متاحاً لك. التجديد مطلوب فقط للخدمات المحددة المدة مثل LexAI أو التوصيات.';
+  const secondaryBody = language === 'en'
+    ? 'محتوى الدورة سيبقى متاحاً لك. التجديد مطلوب فقط للخدمات المحددة المدة مثل LexAI أو التوصيات.'
+    : 'Your course content remains available. Renewal is only needed for timed services such as LexAI or Recommendations.';
+  const primaryRenewal = language === 'en' ? renewalEn : renewalAr;
+  const secondaryRenewal = language === 'en' ? renewalAr : renewalEn;
+  const greeting = language === 'en' ? `Hello ${firstName}` : `مرحباً ${firstName}`;
   const body = `
-    <h2 style="margin:0 0 12px;color:#111;">مرحباً ${firstName} 👋</h2>
+    <h2 style="margin:0 0 12px;color:#111;">${greeting} 👋</h2>
     <div style="background:${urgencyColor}10;border-left:4px solid ${urgencyColor};padding:16px;border-radius:8px;margin:16px 0;">
       <p style="color:${urgencyColor};font-weight:bold;margin:0;">
-        ${daysLeft === 0
-          ? '⚠️ انتهى اشتراكك اليوم / Your subscription has expired today'
-          : `⏰ متبقي ${daysLeft} ${daysLeft === 1 ? 'يوم' : 'أيام'} على انتهاء اشتراكك / ${daysLeft} day${daysLeft === 1 ? '' : 's'} remaining`}
+        ${primaryStatus} / ${secondaryStatus}
       </p>
       <p style="color:#374151;margin:8px 0 0;">
-        ${packageName}
+        ${packageName} — ${serviceName}
       </p>
     </div>
     <p style="color:#374151;line-height:1.7;">
-      للاستمرار في الوصول إلى LexAI والتوصيات الحية، يرجى تجديد اشتراكك عن طريق تفعيل مفتاح تجديد جديد.
+      ${primaryBody}
+    </p>
+    <p style="color:#6b7280;line-height:1.7;font-size:14px;">
+      ${secondaryBody}
     </p>
     <p style="color:#374151;line-height:1.7;">
-      To continue accessing LexAI and live recommendations, please renew your subscription by activating a new renewal key.
+      ${primaryRenewal}<br/>
+      <span style="color:#6b7280;font-size:14px;">${secondaryRenewal}</span>
     </p>
     <div style="text-align:center;margin-top:28px;">
       <a href="https://xflexacademy.com/activate-key" style="display:inline-block;background:#059669;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:bold;">
@@ -256,7 +333,8 @@ export async function sendExpiryAlertEmail(to: string, name: string | null, days
     await sendBrandedEmail(to, subject, body, {
       eventType: 'subscription_expiry_alert',
       templateId: 'subscription_expiry_alert',
-      metadata: { daysLeft, packageName },
+      category: 'service_lifecycle',
+      metadata: { daysLeft, packageName, serviceName, language },
     });
   } catch (e) {
     logger.warn("[ORDER_EMAIL] Failed to send expiry alert", { to, daysLeft, error: String(e) });
@@ -427,6 +505,7 @@ export async function sendDripEmail(to: string, dayNumber: number, data: {
     await sendBrandedEmail(to, subject, body, {
       eventType: 'drip',
       templateId: `drip_day_${dayNumber}`,
+      category: 'service_lifecycle',
       metadata: { dayNumber, packageName: data.packageName },
     });
   } catch (e) {
@@ -512,6 +591,7 @@ export async function sendMilestoneEmail(to: string, milestone: number, data: {
     await sendBrandedEmail(to, subject, body, {
       eventType: 'milestone',
       templateId: `milestone_${milestone}`,
+      category: 'service_lifecycle',
       metadata: { milestone, completedCount: data.completedCount },
     });
   } catch (e) {
@@ -566,6 +646,7 @@ export async function sendInactivityEmail(to: string, inactiveDays: number, data
     await sendBrandedEmail(to, subject, body, {
       eventType: 'inactivity',
       templateId: `inactivity_${inactiveDays}`,
+      category: 'service_lifecycle',
       metadata: { inactiveDays },
     });
   } catch (e) {
@@ -611,6 +692,7 @@ export async function sendOnboardingStalledEmail(to: string, data: {
     await sendBrandedEmail(to, subject, body, {
       eventType: 'onboarding_stalled',
       templateId: 'onboarding_stalled',
+      category: 'service_lifecycle',
       metadata: { step: data.step, daysPending: data.daysPending },
     });
   } catch (e) {
@@ -821,6 +903,7 @@ export async function sendAnnouncementEmail(to: string, data: {
       eventType: data.audit?.eventType || 'announcement',
       templateId: data.audit?.templateId || 'announcement',
       recipientUserId: data.audit?.recipientUserId,
+      category: data.audit?.category || 'marketing',
       metadata: {
         actionUrl: data.actionUrl || null,
         ...(data.audit?.metadata || {}),

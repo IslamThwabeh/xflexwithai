@@ -1590,6 +1590,21 @@ export const emailDeliveryLogs = sqliteTable("email_delivery_logs", {
 export type EmailDeliveryLog = typeof emailDeliveryLogs.$inferSelect;
 export type InsertEmailDeliveryLog = typeof emailDeliveryLogs.$inferInsert;
 
+export const emailUnsubscribes = sqliteTable("email_unsubscribes", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  email: text("email", { length: 320 }).notNull(),
+  category: text("category", { length: 40 }).notNull(),
+  tokenHash: text("token_hash"),
+  source: text("source", { length: 80 }),
+  unsubscribedAt: text("unsubscribed_at").default(sql`(datetime('now'))`).notNull(),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
+}, (table) => ({
+  emailCategoryUnique: unique("idx_email_unsubscribes_email_category").on(table.email, table.category),
+}));
+
+export type EmailUnsubscribe = typeof emailUnsubscribes.$inferSelect;
+export type InsertEmailUnsubscribe = typeof emailUnsubscribes.$inferInsert;
+
 // ============================================================================
 // LexAI Support Cases — internal workflow queue for LexAI monitoring/support
 // ============================================================================

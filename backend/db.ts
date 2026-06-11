@@ -65,6 +65,7 @@ import {
   brokerOnboarding, BrokerOnboarding, InsertBrokerOnboarding,
   emailLog, EmailLog, InsertEmailLog,
   emailDeliveryLogs, EmailDeliveryLog, InsertEmailDeliveryLog,
+  emailUnsubscribes, EmailUnsubscribe, InsertEmailUnsubscribe,
   planProgress, PlanProgress, InsertPlanProgress,
   lexaiSupportCases, LexaiSupportCase, InsertLexaiSupportCase,
   lexaiSupportNotes, LexaiSupportNote, InsertLexaiSupportNote,
@@ -94,6 +95,7 @@ import {
   type StaffNotificationEventType,
 } from '../shared/const';
 import { isLikelyValidEmail, normalizeEmailAddress } from '../shared/emailValidation';
+import { hashUnsubscribeToken, type EmailCategory } from './_core/emailPreferences';
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -2683,6 +2685,117 @@ export async function getExpiringSubscriptions(withinDays: number): Promise<{ us
     });
   }
   return results;
+}
+
+export type RenewalReminderCandidate = {
+  userId: number;
+  email: string;
+  name: string | null;
+  language: 'ar' | 'en';
+  daysLeft: number;
+  stage: string;
+  serviceType: 'lexai' | 'recommendations';
+  serviceName: string;
+  packageName: string;
+  endDate: string;
+};
+
+function getDateOnlyUtcMs(value: string | Date) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+}
+
+function getRenewalReminderStage(daysLeft: number) {
+  if (daysLeft > 0) return `t-${daysLeft}`;
+  if (daysLeft === 0) return 'd0';
+  return `d+${Math.abs(daysLeft)}`;
+}
+
+function getPreferredLifecycleEmailLanguage(notificationPrefs: string | null | undefined): 'ar' | 'en' {
+  if (!notificationPrefs) return 'ar';
+  try {
+    const parsed = JSON.parse(notificationPrefs);
+    return parsed?.language === 'en' ? 'en' : 'ar';
+  } catch {
+    return 'ar';
+  }
+}
+
+/**
+ * Get timed-service renewal reminder candidates for exact day offsets.
+ * Positive offsets are before expiry; 0 is day-of; negative offsets are after expiry.
+ */
+export async function getRenewalReminderCandidates(offsetDays: number[]): Promise<RenewalReminderCandidate[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const targetOffsets = new Set(offsetDays);
+  const todayMs = getDateOnlyUtcMs(new Date());
+  if (todayMs == null) return [];
+
+  const [lexaiRows, recommendationRows] = await Promise.all([
+    db.select({
+      userId: lexaiSubscriptions.userId,
+      endDate: lexaiSubscriptions.endDate,
+    })
+      .from(lexaiSubscriptions)
+      .where(and(
+        eq(lexaiSubscriptions.isActive, true),
+        eq(lexaiSubscriptions.isPaused, false),
+        eq(lexaiSubscriptions.isPendingActivation, false),
+        sql`${lexaiSubscriptions.endDate} IS NOT NULL`,
+      )),
+    db.select({
+      userId: recommendationSubscriptions.userId,
+      endDate: recommendationSubscriptions.endDate,
+    })
+      .from(recommendationSubscriptions)
+      .where(and(
+        eq(recommendationSubscriptions.isActive, true),
+        eq(recommendationSubscriptions.isPaused, false),
+        eq(recommendationSubscriptions.isPendingActivation, false),
+        sql`${recommendationSubscriptions.endDate} IS NOT NULL`,
+      )),
+  ]);
+
+  const rows = [
+    ...lexaiRows.map((row) => ({ ...row, serviceType: 'lexai' as const, serviceName: 'LexAI' })),
+    ...recommendationRows.map((row) => ({ ...row, serviceType: 'recommendations' as const, serviceName: 'Recommendations' })),
+  ];
+
+  const candidates: RenewalReminderCandidate[] = [];
+  for (const row of rows) {
+    const endMs = getDateOnlyUtcMs(row.endDate);
+    if (endMs == null) continue;
+    const daysLeft = Math.round((endMs - todayMs) / (24 * 60 * 60 * 1000));
+    if (!targetOffsets.has(daysLeft)) continue;
+
+    const [user] = await db.select({ email: users.email, name: users.name, notificationPrefs: users.notificationPrefs })
+      .from(users)
+      .where(and(eq(users.id, row.userId), eq(users.isStaff, false)))
+      .limit(1);
+    if (!user?.email) continue;
+
+    const [pkgSub] = await db.select({ packageId: packageSubscriptions.packageId })
+      .from(packageSubscriptions)
+      .where(and(eq(packageSubscriptions.userId, row.userId), eq(packageSubscriptions.isActive, true)))
+      .limit(1);
+    const pkg = pkgSub ? await getPackageById(pkgSub.packageId) : null;
+    candidates.push({
+      userId: row.userId,
+      email: user.email,
+      name: user.name,
+      language: getPreferredLifecycleEmailLanguage(user.notificationPrefs),
+      daysLeft,
+      stage: getRenewalReminderStage(daysLeft),
+      serviceType: row.serviceType,
+      serviceName: row.serviceName,
+      packageName: pkg?.nameEn ?? row.serviceName,
+      endDate: row.endDate,
+    });
+  }
+
+  return candidates;
 }
 
 /**
@@ -11274,6 +11387,65 @@ export async function hasEmailBeenSent(userId: number, emailType: string): Promi
   return !!row;
 }
 
+export type EmailDeliveryStatus = 'sent' | 'failed' | 'skipped_unsubscribed' | 'skipped_deduped' | 'skipped_renewed';
+
+export async function recordEmailUnsubscribe(input: {
+  email: string;
+  category: Exclude<EmailCategory, 'transactional'>;
+  token?: string | null;
+  source?: string | null;
+}): Promise<EmailUnsubscribe | null> {
+  const db = await getDb();
+  if (!db) return null;
+
+  const email = normalizeEmailAddress(input.email);
+  const now = getEmailAuditTimestamp();
+  const tokenHash = input.token ? await hashUnsubscribeToken(input.token) : null;
+  const [existing] = await db.select().from(emailUnsubscribes)
+    .where(and(eq(emailUnsubscribes.email, email), eq(emailUnsubscribes.category, input.category)))
+    .limit(1);
+
+  if (existing) {
+    await db.update(emailUnsubscribes)
+      .set({
+        tokenHash: tokenHash ?? existing.tokenHash,
+        source: input.source ?? existing.source,
+        unsubscribedAt: now,
+      } satisfies Partial<InsertEmailUnsubscribe>)
+      .where(eq(emailUnsubscribes.id, existing.id));
+    return {
+      ...existing,
+      tokenHash: tokenHash ?? existing.tokenHash,
+      source: input.source ?? existing.source,
+      unsubscribedAt: now,
+    };
+  }
+
+  const [created] = await db.insert(emailUnsubscribes).values({
+    email,
+    category: input.category,
+    tokenHash,
+    source: input.source ?? null,
+    unsubscribedAt: now,
+    createdAt: now,
+  } satisfies InsertEmailUnsubscribe).returning();
+  return created ?? null;
+}
+
+export async function isEmailSuppressed(
+  email: string,
+  category: Exclude<EmailCategory, 'transactional'>,
+): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  const normalizedEmail = normalizeEmailAddress(email);
+  const [row] = await db.select({ id: emailUnsubscribes.id })
+    .from(emailUnsubscribes)
+    .where(and(eq(emailUnsubscribes.email, normalizedEmail), eq(emailUnsubscribes.category, category)))
+    .limit(1);
+  return !!row;
+}
+
 function getEmailAuditTimestamp() {
   return new Date().toISOString().slice(0, 19).replace('T', ' ');
 }
@@ -11284,7 +11456,7 @@ export async function logEmailDeliveryAttempt(input: {
   eventType: string;
   templateId?: string | null;
   subject: string;
-  status: 'sent' | 'failed';
+  status: EmailDeliveryStatus;
   provider?: string | null;
   errorMessage?: string | null;
   metadata?: Record<string, unknown> | null;
@@ -11321,7 +11493,7 @@ type EmailDeliveryLogFilters = {
   recipientUserId?: number;
   eventType?: string;
   eventCategory?: EmailDeliveryEventCategory;
-  status?: 'sent' | 'failed';
+  status?: EmailDeliveryStatus;
   fromDate?: string;
   toDate?: string;
 };
@@ -11479,6 +11651,7 @@ export async function getEmailDeliveryLogSummary(filters?: EmailDeliveryLogFilte
   total: number;
   sent: number;
   failed: number;
+  skipped: number;
   oldestCreatedAt: string | null;
   newestCreatedAt: string | null;
   legacyTimestampCount: number;
@@ -11486,7 +11659,7 @@ export async function getEmailDeliveryLogSummary(filters?: EmailDeliveryLogFilte
 }> {
   const db = await getDb();
   if (!db) {
-    return { total: 0, sent: 0, failed: 0, oldestCreatedAt: null, newestCreatedAt: null, legacyTimestampCount: 0, topEventTypes: [] };
+    return { total: 0, sent: 0, failed: 0, skipped: 0, oldestCreatedAt: null, newestCreatedAt: null, legacyTimestampCount: 0, topEventTypes: [] };
   }
 
   const conditions = buildEmailDeliveryLogConditions(filters);
@@ -11497,6 +11670,7 @@ export async function getEmailDeliveryLogSummary(filters?: EmailDeliveryLogFilte
     total: sql<number>`count(*)`,
     sent: sql<number>`sum(case when ${emailDeliveryLogs.status} = 'sent' then 1 else 0 end)`,
     failed: sql<number>`sum(case when ${emailDeliveryLogs.status} = 'failed' then 1 else 0 end)`,
+    skipped: sql<number>`sum(case when ${emailDeliveryLogs.status} like 'skipped_%' then 1 else 0 end)`,
     oldestCreatedAt: sql<string | null>`min(${validCreatedAt})`,
     newestCreatedAt: sql<string | null>`max(${validCreatedAt})`,
     legacyTimestampCount: sql<number>`sum(case when ${emailDeliveryLogs.createdAt} not like '____-__-__%' then 1 else 0 end)`,
@@ -11521,6 +11695,7 @@ export async function getEmailDeliveryLogSummary(filters?: EmailDeliveryLogFilte
     total: Number(summary?.total ?? 0),
     sent: Number(summary?.sent ?? 0),
     failed: Number(summary?.failed ?? 0),
+    skipped: Number(summary?.skipped ?? 0),
     oldestCreatedAt: summary?.oldestCreatedAt ?? null,
     newestCreatedAt: summary?.newestCreatedAt ?? null,
     legacyTimestampCount: Number(summary?.legacyTimestampCount ?? 0),

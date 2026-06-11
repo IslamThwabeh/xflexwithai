@@ -479,40 +479,93 @@ export default {
       }
     }
 
-    // Send package expiry alerts (7 days, 3 days, and day-of)
-    const expiringWithin7 = await db.getExpiringSubscriptions(7);
-    for (const sub of expiringWithin7) {
-      // Send alerts at exactly 7, 3, and 0 days before expiry
-      if (sub.daysLeft === 7 || sub.daysLeft === 3 || sub.daysLeft === 0) {
-        await sendExpiryAlertEmail(sub.email, sub.name, sub.daysLeft, sub.packageName);
-        // Staff alert for expiring subscriptions
-        await db.notifyStaffByEvent('subscription_expiring', {
-          titleEn: `Subscription expiring in ${sub.daysLeft} days – ${sub.name}`,
-          titleAr: `اشتراك ينتهي خلال ${sub.daysLeft} أيام – ${sub.name}`,
-          contentEn: `${sub.name}'s ${sub.packageName} expires in ${sub.daysLeft} day(s).`,
-          contentAr: `اشتراك ${sub.name} في ${sub.packageName} ينتهي خلال ${sub.daysLeft} يوم.`,
-          metadata: { userId: sub.userId, packageName: sub.packageName, daysLeft: sub.daysLeft },
-        }).catch((e) => logger.error('[CRON] Staff notify (subscription_expiring) failed', e));
-        // Dashboard notification for expiry warning
-        await db.createNotification({
-          userId: sub.userId,
-          type: sub.daysLeft === 0 ? 'warning' : 'info',
-          titleAr: sub.daysLeft === 0 ? 'تنتهي خدماتك الشهرية اليوم' : `خدماتك الشهرية تنتهي خلال ${sub.daysLeft} أيام`,
-          titleEn: sub.daysLeft === 0 ? 'Your Monthly Services Expire Today' : `Your Monthly Services Expire in ${sub.daysLeft} Days`,
-          contentAr: sub.daysLeft === 0
-            ? 'محتوى الدورة ما زال متاحاً لك، لكن الخدمات الشهرية تحتاج الآن إلى مفتاح تجديد جديد.'
-            : 'محتوى الدورة سيبقى متاحاً لك، لكن الخدمات الشهرية تنتهي قريباً. جهّز مفتاح التجديد لتجنب الانقطاع.',
-          contentEn: sub.daysLeft === 0
-            ? 'Your course content is still available, but your monthly services now need a new renewal key.'
-            : 'Your course content will remain available, but your monthly services expire soon. Prepare your renewal key to avoid interruption.',
-          actionUrl: '/my-packages?focus=renewal',
-        }).catch((error) => logger.error('[CRON] Student notification (subscription_expiring) failed', {
+    // Send timed-service renewal reminders (pre-expiry, day-of, and bounded recovery).
+    const renewalReminderOffsets = [14, 7, 3, 1, 0, -3, -10];
+    const renewalReminderCandidates = await db.getRenewalReminderCandidates(renewalReminderOffsets);
+    for (const sub of renewalReminderCandidates) {
+      const emailType = `subscription_expiry_${sub.serviceType}_${sub.stage}_${sub.endDate.slice(0, 10)}`;
+      const alreadySent = await db.hasEmailBeenSent(sub.userId, emailType);
+      if (alreadySent) {
+        await db.logEmailDeliveryAttempt({
+          recipientEmail: sub.email,
+          recipientUserId: sub.userId,
+          eventType: 'subscription_expiry_alert',
+          templateId: 'subscription_expiry_alert',
+          subject: `[deduped] ${sub.serviceName} renewal reminder ${sub.stage}`,
+          status: 'skipped_deduped',
+          metadata: {
+            emailType,
+            serviceType: sub.serviceType,
+            stage: sub.stage,
+            endDate: sub.endDate,
+          },
+        }).catch(() => {});
+        continue;
+      }
+
+      await sendExpiryAlertEmail(sub.email, sub.name, sub.daysLeft, sub.packageName, sub.serviceName, sub.language);
+      await db.logEmailSent(sub.userId, emailType, {
+        serviceType: sub.serviceType,
+        stage: sub.stage,
+        endDate: sub.endDate,
+      });
+
+      const displayName = sub.name || sub.email;
+      const isExpired = sub.daysLeft < 0;
+      const absDays = Math.abs(sub.daysLeft);
+      await db.notifyStaffByEvent('subscription_expiring', {
+        titleEn: isExpired
+          ? `${sub.serviceName} expired ${absDays} day(s) ago – ${displayName}`
+          : sub.daysLeft === 0
+            ? `${sub.serviceName} expires today – ${displayName}`
+            : `${sub.serviceName} expires in ${sub.daysLeft} days – ${displayName}`,
+        titleAr: isExpired
+          ? `انتهت خدمة ${sub.serviceName} منذ ${absDays} يوم – ${displayName}`
+          : sub.daysLeft === 0
+            ? `تنتهي خدمة ${sub.serviceName} اليوم – ${displayName}`
+            : `تنتهي خدمة ${sub.serviceName} خلال ${sub.daysLeft} أيام – ${displayName}`,
+        contentEn: isExpired
+          ? `${displayName}'s ${sub.serviceName} access has expired. A renewal key is needed to restore timed-service access.`
+          : `${displayName}'s ${sub.serviceName} access expires in ${sub.daysLeft} day(s).`,
+        contentAr: isExpired
+          ? `انتهى وصول ${displayName} إلى ${sub.serviceName}. يحتاج إلى مفتاح تجديد لاستعادة الخدمة.`
+          : `وصول ${displayName} إلى ${sub.serviceName} ينتهي خلال ${sub.daysLeft} يوم.`,
+        metadata: {
           userId: sub.userId,
           packageName: sub.packageName,
+          serviceType: sub.serviceType,
           daysLeft: sub.daysLeft,
-          error: error instanceof Error ? error.message : String(error),
-        }));
-      }
+          stage: sub.stage,
+        },
+      }).catch((e) => logger.error('[CRON] Staff notify (subscription_expiring) failed', e));
+
+      await db.createNotification({
+        userId: sub.userId,
+        type: sub.daysLeft <= 0 ? 'warning' : 'info',
+        titleAr: isExpired
+          ? `انتهت خدمة ${sub.serviceName}`
+          : sub.daysLeft === 0
+            ? `تنتهي خدمة ${sub.serviceName} اليوم`
+            : `خدمة ${sub.serviceName} تنتهي خلال ${sub.daysLeft} أيام`,
+        titleEn: isExpired
+          ? `${sub.serviceName} Has Expired`
+          : sub.daysLeft === 0
+            ? `${sub.serviceName} Expires Today`
+            : `${sub.serviceName} Expires in ${sub.daysLeft} Days`,
+        contentAr: isExpired
+          ? 'محتوى الدورة ما زال متاحاً لك، لكن هذه الخدمة المحددة المدة تحتاج إلى مفتاح تجديد جديد.'
+          : 'محتوى الدورة سيبقى متاحاً لك، لكن هذه الخدمة المحددة المدة تنتهي قريباً. جهّز مفتاح التجديد لتجنب الانقطاع.',
+        contentEn: isExpired
+          ? 'Your course content is still available, but this timed service needs a new renewal key.'
+          : 'Your course content will remain available, but this timed service expires soon. Prepare your renewal key to avoid interruption.',
+        actionUrl: '/my-packages?focus=renewal',
+      }).catch((error) => logger.error('[CRON] Student notification (subscription_expiring) failed', {
+        userId: sub.userId,
+        packageName: sub.packageName,
+        serviceType: sub.serviceType,
+        daysLeft: sub.daysLeft,
+        error: error instanceof Error ? error.message : String(error),
+      }));
     }
 
     // Send LexAI-specific staff alerts (7 days, 3 days, and day-of)

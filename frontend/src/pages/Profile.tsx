@@ -58,6 +58,7 @@ export default function Profile() {
     recommendations: parsedPrefs.recommendations !== false,
     course_updates: parsedPrefs.course_updates !== false,
     admin_announcements: parsedPrefs.admin_announcements !== false,
+    language: parsedPrefs.language === "en" ? "en" as const : language,
   });
   const [notifMessage, setNotifMessage] = useState("");
 
@@ -353,7 +354,7 @@ export default function Profile() {
               <Button
                 className="mt-4 gap-2"
                 disabled={updateNotifPrefsMutation.isPending}
-                onClick={() => updateNotifPrefsMutation.mutate(notifPrefs)}
+                onClick={() => updateNotifPrefsMutation.mutate({ ...notifPrefs, language })}
               >
                 {updateNotifPrefsMutation.isPending ? (
                   <><Loader2 className="w-4 h-4 animate-spin" />{language === "ar" ? "جارٍ الحفظ..." : "Saving..."}</>

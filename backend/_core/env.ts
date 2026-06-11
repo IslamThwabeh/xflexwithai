@@ -56,6 +56,15 @@ export const ENV = {
   get emailFromName() {
     return getEnvVar("EMAIL_FROM_NAME", "");
   },
+  get siteUrl() {
+    return getEnvVar("SITE_URL", getEnvVar("PUBLIC_SITE_URL", "https://xflexacademy.com"));
+  },
+  get businessPostalAddress() {
+    return getEnvVar("BUSINESS_POSTAL_ADDRESS", "XFlex Trading Academy, Dubai, United Arab Emirates");
+  },
+  get emailUnsubscribeSecret() {
+    return getEnvVar("EMAIL_UNSUBSCRIBE_SECRET", getEnvVar("JWT_SECRET", ""));
+  },
   get resendApiKey() {
     return getEnvVar("RESEND_API_KEY", "");
   },

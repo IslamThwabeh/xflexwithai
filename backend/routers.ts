@@ -36,6 +36,7 @@ import { buildRecommendationAlertEmail, buildRecommendationMessageEmail } from "
 import { sendOrderConfirmationEmail, sendPaymentReceivedEmail, sendAdminNewOrderNotification, sendAnnouncementEmail, sendStaffWelcomeEmail, sendJobInterviewInviteEmail } from "./_core/orderEmails";
 import { ENV } from "./_core/env";
 import { generateNumericCode, generateSaltBase64, normalizeEmail, sha256Base64 } from "./_core/otp";
+import { verifyUnsubscribeToken } from "./_core/emailPreferences";
 // FlexAI routes are registered in server/_core/index.ts
 
 const SUPPORT_VIDEO_MAX_SECONDS = 60;
@@ -875,6 +876,29 @@ function buildSupportStaffEmailContent(input: {
 
 export const appRouter = router({
   system: systemRouter,
+  emailPreferences: router({
+    unsubscribe: publicProcedure
+      .input(z.object({ token: z.string().min(10).max(2000) }))
+      .mutation(async ({ input }) => {
+        const payload = await verifyUnsubscribeToken(input.token);
+        if (!payload) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid unsubscribe link.' });
+        }
+
+        await db.recordEmailUnsubscribe({
+          email: payload.email,
+          category: payload.category,
+          token: input.token,
+          source: 'unsubscribe_page',
+        });
+
+        return {
+          success: true,
+          email: payload.email,
+          category: payload.category,
+        };
+      }),
+  }),
   
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
@@ -7365,7 +7389,7 @@ ${qaText}`;
         recipientUserId: z.number().optional(),
         eventType: z.string().optional(),
         eventCategory: z.enum(['recommendations', 'support', 'orders', 'login', 'lifecycle', 'system']).optional(),
-        status: z.enum(['sent', 'failed']).optional(),
+        status: z.enum(['sent', 'failed', 'skipped_unsubscribed', 'skipped_deduped', 'skipped_renewed']).optional(),
         fromDate: z.string().optional(),
         toDate: z.string().optional(),
       }).optional())
@@ -7388,7 +7412,7 @@ ${qaText}`;
         recipientUserId: z.number().optional(),
         eventType: z.string().optional(),
         eventCategory: z.enum(['recommendations', 'support', 'orders', 'login', 'lifecycle', 'system']).optional(),
-        status: z.enum(['sent', 'failed']).optional(),
+        status: z.enum(['sent', 'failed', 'skipped_unsubscribed', 'skipped_deduped', 'skipped_renewed']).optional(),
         fromDate: z.string().optional(),
         toDate: z.string().optional(),
       }).optional())

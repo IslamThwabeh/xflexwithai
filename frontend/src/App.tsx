@@ -97,6 +97,7 @@ const AdminLegacyPlanProgress = lazy(() => import("./pages/AdminLegacyPlanProgre
 const NotificationCenter = lazy(() => import("./pages/NotificationCenter"));
 const LoyaltyPoints = lazy(() => import("./pages/LoyaltyPoints"));
 const TradingCalculators = lazy(() => import("./pages/TradingCalculators"));
+const Unsubscribe = lazy(() => import("./pages/Unsubscribe"));
 
 // Minimal fallback spinner
 function PageLoader() {
@@ -115,6 +116,7 @@ function Router() {
       <Route path={"/login"} component={Auth} />
       <Route path={"/register"} component={Auth} />
       <Route path={"/signup"} component={Auth} />
+      <Route path={"/unsubscribe"} component={Unsubscribe} />
       <Route path={"/admin"} component={AdminLogin} />
       <Route path={"/admin/login"} component={AdminLogin} />
       <Route path={"/dashboard"}>

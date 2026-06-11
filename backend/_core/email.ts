@@ -1,10 +1,12 @@
 import { ENV } from "./env";
+import { isSuppressibleEmailCategory, type EmailCategory } from "./emailPreferences";
 import { logger } from "./logger";
 
 export type EmailAuditInput = {
   eventType?: string;
   templateId?: string;
   recipientUserId?: number;
+  category?: EmailCategory;
   metadata?: Record<string, unknown>;
 };
 
@@ -43,11 +45,13 @@ type SendEmailInput = {
   text: string;
   /** Optional HTML body — when provided, providers that support it will send as HTML */
   html?: string;
+  headers?: Record<string, string>;
   audit?: EmailAuditInput;
+  skipSupportForwarding?: boolean;
 };
 
 async function writeEmailDeliveryAudit(input: SendEmailInput, outcome: {
-  status: 'sent' | 'failed';
+  status: 'sent' | 'failed' | 'skipped_unsubscribed' | 'skipped_deduped' | 'skipped_renewed';
   provider?: string | null;
   errorMessage?: string | null;
 }) {
@@ -131,6 +135,7 @@ async function sendViaResend(input: SendEmailInput) {
       to: [input.to],
       subject: input.subject,
       ...(input.html ? { html: input.html } : { text: input.text }),
+      ...(input.headers ? { headers: input.headers } : {}),
     }),
   });
 
@@ -163,10 +168,79 @@ async function sendViaMailChannels(input: SendEmailInput) {
   }
 }
 
-export async function sendEmail(input: SendEmailInput): Promise<{ provider: string | null; attemptedProviders: string[] }> {
+function isSupportMailbox(email: string) {
+  const normalized = String(email || "").trim().toLowerCase();
+  return normalized === "support@xflexacademy.com";
+}
+
+async function forwardSupportMailboxCopies(input: SendEmailInput) {
+  if (input.skipSupportForwarding || !isSupportMailbox(input.to)) return;
+
+  try {
+    const { getConfiguredAdminNotificationEmails } = await import("../db");
+    const adminEmails = (await getConfiguredAdminNotificationEmails())
+      .map((email) => email.trim().toLowerCase())
+      .filter((email) => email && !isSupportMailbox(email));
+
+    if (!adminEmails.length) return;
+
+    await Promise.allSettled(adminEmails.map((to) => sendEmail({
+      ...input,
+      to,
+      skipSupportForwarding: true,
+      audit: {
+        ...input.audit,
+        metadata: {
+          ...(input.audit?.metadata || {}),
+          forwardedFromSupportMailbox: input.to,
+        },
+      },
+    })));
+  } catch (error) {
+    logger.warn("[EMAIL] Failed to forward support mailbox copy", {
+      to: input.to,
+      eventType: input.audit?.eventType || 'generic',
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+export async function sendEmail(input: SendEmailInput): Promise<{ provider: string | null; attemptedProviders: string[]; skipped?: 'unsubscribed' }> {
   const provider = ENV.emailProvider;
   const attemptedProviders: string[] = [];
   let providerUsed: string | null = null;
+
+  const suppressibleCategory = input.audit?.category;
+  if (isSuppressibleEmailCategory(suppressibleCategory)) {
+    try {
+      const { isEmailSuppressed } = await import("../db");
+      const suppressed = await isEmailSuppressed(
+        input.to,
+        suppressibleCategory as Exclude<EmailCategory, 'transactional'>,
+      );
+      if (suppressed) {
+        await writeEmailDeliveryAudit(input, {
+          status: 'skipped_unsubscribed',
+          provider: null,
+          errorMessage: null,
+        });
+        logger.info("[EMAIL] Skipped suppressed recipient", {
+          to: input.to,
+          eventType: input.audit?.eventType || 'generic',
+          category: suppressibleCategory,
+        });
+        return { provider: null, attemptedProviders: [], skipped: 'unsubscribed' };
+      }
+    } catch (error) {
+      logger.warn("[EMAIL] Suppression check failed; continuing with send", {
+        to: input.to,
+        eventType: input.audit?.eventType || 'generic',
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  await forwardSupportMailboxCopies(input);
 
   const attemptWith = async (providerName: string, sendFn: (input: SendEmailInput) => Promise<void>) => {
     attemptedProviders.push(providerName);

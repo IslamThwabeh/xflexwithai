@@ -9,6 +9,7 @@ import { useEffect, useMemo, useState } from 'react';
 type DeliveryLogView = 'grouped' | 'detailed';
 type DeliveryCategory = 'all' | 'recommendations' | 'support' | 'orders' | 'login' | 'lifecycle' | 'system';
 type DeliveryDatePreset = 'all' | 'today' | 'yesterday' | 'last7' | 'custom';
+type DeliveryStatus = 'all' | 'sent' | 'failed' | 'skipped_unsubscribed' | 'skipped_deduped' | 'skipped_renewed';
 
 const DELIVERY_CATEGORIES: Array<{ key: DeliveryCategory; labelEn: string; labelAr: string }> = [
   { key: 'all', labelEn: 'All', labelAr: 'الكل' },
@@ -98,6 +99,7 @@ function buildDeliveryGroups(logs: any[] = []) {
         recipientCount: 1,
         sentCount: log.status === 'sent' ? 1 : 0,
         failedCount: log.status === 'failed' ? 1 : 0,
+        skippedCount: String(log.status || '').startsWith('skipped_') ? 1 : 0,
         recipients: [log],
       });
       continue;
@@ -106,6 +108,7 @@ function buildDeliveryGroups(logs: any[] = []) {
     current.recipientCount += 1;
     current.sentCount += log.status === 'sent' ? 1 : 0;
     current.failedCount += log.status === 'failed' ? 1 : 0;
+    current.skippedCount += String(log.status || '').startsWith('skipped_') ? 1 : 0;
     current.recipients.push(log);
   }
 
@@ -132,13 +135,28 @@ function formatMetadata(value: string | null | undefined) {
   }
 }
 
+function getStatusLabel(status: string, isRtl: boolean) {
+  if (status === 'sent') return isRtl ? 'تم الإرسال' : 'Sent';
+  if (status === 'failed') return isRtl ? 'فشل' : 'Failed';
+  if (status === 'skipped_unsubscribed') return isRtl ? 'تخطي: إلغاء الاشتراك' : 'Skipped: Unsubscribed';
+  if (status === 'skipped_deduped') return isRtl ? 'تخطي: مكرر' : 'Skipped: Deduped';
+  if (status === 'skipped_renewed') return isRtl ? 'تخطي: تم التجديد' : 'Skipped: Renewed';
+  return status;
+}
+
+function getStatusBadgeClass(status: string) {
+  if (status === 'sent') return 'bg-emerald-100 text-emerald-800 hover:bg-emerald-100 dark:bg-emerald-900/40 dark:text-emerald-200';
+  if (status === 'failed') return 'bg-red-100 text-red-800 hover:bg-red-100 dark:bg-red-900/40 dark:text-red-200';
+  return 'bg-amber-100 text-amber-800 hover:bg-amber-100 dark:bg-amber-900/40 dark:text-amber-200';
+}
+
 export default function AdminEmailLogs() {
   const { language } = useLanguage();
   const isRtl = language === 'ar';
   const { data: adminCheck } = trpc.auth.isAdmin.useQuery();
   const isAdmin = !!adminCheck?.isAdmin;
   const [recipientQuery, setRecipientQuery] = useState('');
-  const [deliveryStatus, setDeliveryStatus] = useState<'all' | 'sent' | 'failed'>('all');
+  const [deliveryStatus, setDeliveryStatus] = useState<DeliveryStatus>('all');
   const [deliveryEventType, setDeliveryEventType] = useState('');
   const [deliveryFromDate, setDeliveryFromDate] = useState('');
   const [deliveryToDate, setDeliveryToDate] = useState('');
@@ -194,6 +212,7 @@ export default function AdminEmailLogs() {
       total: deliverySummary?.total ?? logs.length,
       sent: deliverySummary?.sent ?? logs.filter((log: any) => log.status === 'sent').length,
       failed: deliverySummary?.failed ?? logs.filter((log: any) => log.status === 'failed').length,
+      skipped: deliverySummary?.skipped ?? logs.filter((log: any) => String(log.status || '').startsWith('skipped_')).length,
       grouped: deliveryGroups.length,
     };
   }, [visibleDeliveryLogs, deliveryGroups.length, deliverySummary]);
@@ -319,7 +338,7 @@ export default function AdminEmailLogs() {
               </div>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
               <div className="rounded-lg border bg-slate-50 px-3 py-2 dark:bg-slate-900/40">
                 <p className="text-xs text-muted-foreground">{isRtl ? 'المحاولات المطابقة' : 'Matching Attempts'}</p>
                 <p className="text-lg font-semibold">{deliverySummaryLoading ? '...' : deliveryStats.total}</p>
@@ -331,6 +350,10 @@ export default function AdminEmailLogs() {
               <div className="rounded-lg border bg-red-50 px-3 py-2 dark:bg-red-900/10">
                 <p className="text-xs text-red-700 dark:text-red-300">{isRtl ? 'فشل' : 'Failed'}</p>
                 <p className="text-lg font-semibold text-red-700 dark:text-red-300">{deliverySummaryLoading ? '...' : deliveryStats.failed}</p>
+              </div>
+              <div className="rounded-lg border bg-amber-50 px-3 py-2 dark:bg-amber-900/10">
+                <p className="text-xs text-amber-700 dark:text-amber-300">{isRtl ? 'تم التخطي' : 'Skipped'}</p>
+                <p className="text-lg font-semibold text-amber-700 dark:text-amber-300">{deliverySummaryLoading ? '...' : deliveryStats.skipped}</p>
               </div>
               <div className="rounded-lg border bg-teal-50 px-3 py-2 dark:bg-teal-900/10">
                 <p className="text-xs text-teal-700 dark:text-teal-300">{isRtl ? 'مجموعات الصفحة' : 'Page Groups'}</p>
@@ -388,12 +411,15 @@ export default function AdminEmailLogs() {
                 <label className="text-sm font-medium">{isRtl ? 'الحالة' : 'Status'}</label>
                 <select
                   value={deliveryStatus}
-                  onChange={(e) => setDeliveryStatus(e.target.value as 'all' | 'sent' | 'failed')}
+                  onChange={(e) => setDeliveryStatus(e.target.value as DeliveryStatus)}
                   className="w-full mt-1 border rounded px-3 py-2 text-sm dark:bg-slate-900 dark:border-slate-700"
                 >
                   <option value="all">{isRtl ? 'الكل' : 'All'}</option>
                   <option value="sent">{isRtl ? 'تم الإرسال' : 'Sent'}</option>
                   <option value="failed">{isRtl ? 'فشل' : 'Failed'}</option>
+                  <option value="skipped_unsubscribed">{isRtl ? 'تخطي: إلغاء الاشتراك' : 'Skipped: Unsubscribed'}</option>
+                  <option value="skipped_deduped">{isRtl ? 'تخطي: مكرر' : 'Skipped: Deduped'}</option>
+                  <option value="skipped_renewed">{isRtl ? 'تخطي: تم التجديد' : 'Skipped: Renewed'}</option>
                 </select>
               </div>
               <div>
@@ -497,10 +523,8 @@ export default function AdminEmailLogs() {
                               {isExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
                               <Badge variant="outline">{group.eventType}</Badge>
                               {group.templateId && <Badge variant="secondary">{group.templateId}</Badge>}
-                              <Badge className={group.status === 'sent' ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-100 dark:bg-emerald-900/40 dark:text-emerald-200' : 'bg-red-100 text-red-800 hover:bg-red-100 dark:bg-red-900/40 dark:text-red-200'}>
-                                {group.status === 'sent'
-                                  ? (isRtl ? 'تم الإرسال' : 'Sent')
-                                  : (isRtl ? 'فشل' : 'Failed')}
+                              <Badge className={getStatusBadgeClass(group.status)}>
+                                {getStatusLabel(group.status, isRtl)}
                               </Badge>
                             </div>
                             <p className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">{group.subject}</p>
@@ -522,6 +546,11 @@ export default function AdminEmailLogs() {
                                 {isRtl ? `فشل ${group.failedCount}` : `Failed ${group.failedCount}`}
                               </Badge>
                             )}
+                            {group.skippedCount > 0 && (
+                              <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 dark:bg-amber-900/40 dark:text-amber-200">
+                                {isRtl ? `تم التخطي ${group.skippedCount}` : `Skipped ${group.skippedCount}`}
+                              </Badge>
+                            )}
                           </div>
                         </button>
 
@@ -540,7 +569,7 @@ export default function AdminEmailLogs() {
                                   <div className="mt-1 flex items-center gap-2">
                                     {recipient.status === 'sent'
                                       ? <MailCheck className="h-3.5 w-3.5 text-emerald-600" />
-                                      : <MailX className="h-3.5 w-3.5 text-red-600" />}
+                                      : <MailX className={`h-3.5 w-3.5 ${String(recipient.status || '').startsWith('skipped_') ? 'text-amber-600' : 'text-red-600'}`} />}
                                     <span className="text-muted-foreground">{formatDeliveryLogTimestamp(recipient.createdAt, isRtl ? 'ar-EG' : 'en-US', unavailableDateLabel)}</span>
                                   </div>
                                 </div>
@@ -596,10 +625,8 @@ export default function AdminEmailLogs() {
                               <div className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{log.subject}</div>
                             </td>
                             <td className="px-4 py-3 whitespace-nowrap">
-                              <Badge className={log.status === 'sent' ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-100 dark:bg-emerald-900/40 dark:text-emerald-200' : 'bg-red-100 text-red-800 hover:bg-red-100 dark:bg-red-900/40 dark:text-red-200'}>
-                                {log.status === 'sent'
-                                  ? (isRtl ? 'تم الإرسال' : 'Sent')
-                                  : (isRtl ? 'فشل' : 'Failed')}
+                              <Badge className={getStatusBadgeClass(log.status)}>
+                                {getStatusLabel(log.status, isRtl)}
                               </Badge>
                             </td>
                             <td className="px-4 py-3 whitespace-nowrap text-xs">{log.provider || '-'}</td>

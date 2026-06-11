@@ -15,6 +15,8 @@ R2_PUBLIC_URL = "https://videos.xflexacademy.com"
 EMAIL_PROVIDER = "auto"
 EMAIL_FROM = "support@xflexacademy.com"
 EMAIL_FROM_NAME = "XFlex Academy"
+SITE_URL = "https://xflexacademy.com"
+BUSINESS_POSTAL_ADDRESS = "XFlex Trading Academy, Ramallah, Palestine | support@xflexacademy.com"
 
 # D1 Database binding (production)
 [[env.production.d1_databases]]
@@ -39,6 +41,8 @@ VITE_APP_TITLE = "XFlex Trading Academy (Staging)"
 EMAIL_PROVIDER = "auto"
 EMAIL_FROM = "support@xflexacademy.com"
 EMAIL_FROM_NAME = "XFlex Academy"
+SITE_URL = "https://xflexacademy.com"
+BUSINESS_POSTAL_ADDRESS = "XFlex Trading Academy, Ramallah, Palestine | support@xflexacademy.com"
 
 [[env.staging.d1_databases]]
 binding = "DB"
@@ -55,3 +59,5 @@ name = "xflexacademy-api-dev"
 [env.development.vars]
 ENVIRONMENT = "development"
 VITE_APP_TITLE = "XFlex Trading Academy (Dev)"
+SITE_URL = "http://localhost:5173"
+BUSINESS_POSTAL_ADDRESS = "XFlex Trading Academy, Ramallah, Palestine | support@xflexacademy.com"
