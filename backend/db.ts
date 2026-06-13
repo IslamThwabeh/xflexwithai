@@ -1739,7 +1739,7 @@ async function deactivateStudentSubscriptions(userId: number) {
   const entitlementDays = await getUserEntitlementDays(userId);
   const studyPeriodDays = await getStudyPeriodDays();
   const maxActivationDate = buildEndDateFromDays(now, studyPeriodDays).toISOString();
-  const placeholderEndDate = buildEndDateFromDays(now, studyPeriodDays + entitlementDays).toISOString();
+  const placeholderEndDate = buildEndDateFromDays(now, entitlementDays).toISOString();
 
   // Find recently activated (non-pending) LexAI sub
   const [lexaiSub] = await db.select().from(lexaiSubscriptions)
@@ -5202,13 +5202,13 @@ export async function renewPackageEntitlements(
         startDate: shouldStartTimedServicesNow && current.isPendingActivation ? nowIso : current.startDate,
         endDate: shouldStartTimedServicesNow
           ? newEnd.toISOString()
-          : buildEndDateFromDays(pendingServiceWindow.maxActivationDate, serviceDays.lexaiDays).toISOString(),
+          : buildEndDateFromDays(pendingServiceWindow.activationAnchor, serviceDays.lexaiDays).toISOString(),
         paymentStatus: "completed",
       });
     } else {
       const endDate = shouldStartTimedServicesNow
         ? buildEndDateFromDays(now, serviceDays.lexaiDays)
-        : buildEndDateFromDays(pendingServiceWindow.maxActivationDate, serviceDays.lexaiDays);
+        : buildEndDateFromDays(pendingServiceWindow.activationAnchor, serviceDays.lexaiDays);
       await createLexaiSubscription({
         userId,
         isActive: true,
@@ -5247,14 +5247,14 @@ export async function renewPackageEntitlements(
         startDate: shouldStartTimedServicesNow && current.isPendingActivation ? nowIso : current.startDate,
         endDate: shouldStartTimedServicesNow
           ? newEnd.toISOString()
-          : buildEndDateFromDays(pendingServiceWindow.maxActivationDate, serviceDays.recommendationDays).toISOString(),
+          : buildEndDateFromDays(pendingServiceWindow.activationAnchor, serviceDays.recommendationDays).toISOString(),
         paymentStatus: "completed",
         registrationKeyId: registrationKeyId ?? current.registrationKeyId,
       });
     } else {
       const endDate = shouldStartTimedServicesNow
         ? buildEndDateFromDays(now, serviceDays.recommendationDays)
-        : buildEndDateFromDays(pendingServiceWindow.maxActivationDate, serviceDays.recommendationDays);
+        : buildEndDateFromDays(pendingServiceWindow.activationAnchor, serviceDays.recommendationDays);
       await createRecommendationSubscription({
         userId,
         registrationKeyId: registrationKeyId ?? null,
@@ -5455,7 +5455,7 @@ export async function fulfillPackageEntitlements(
           studentActivatedAt: null,
           maxActivationDate: maxActivationDate.toISOString(),
           startDate: pendingServiceWindow.activationAnchor.toISOString(),
-          endDate: buildEndDateFromDays(maxActivationDate, serviceDays.lexaiDays).toISOString(),
+          endDate: buildEndDateFromDays(pendingServiceWindow.activationAnchor, serviceDays.lexaiDays).toISOString(),
           paymentStatus: "completed",
           paymentAmount: 0,
           paymentCurrency: "USD",
@@ -5493,7 +5493,7 @@ export async function fulfillPackageEntitlements(
           studentActivatedAt: null,
           maxActivationDate: maxActivationDate.toISOString(),
           startDate: pendingServiceWindow.activationAnchor.toISOString(),
-          endDate: buildEndDateFromDays(maxActivationDate, serviceDays.lexaiDays).toISOString(),
+          endDate: buildEndDateFromDays(pendingServiceWindow.activationAnchor, serviceDays.lexaiDays).toISOString(),
           paymentStatus: "completed",
           paymentAmount: 0,
           paymentCurrency: "USD",
@@ -5541,7 +5541,7 @@ export async function fulfillPackageEntitlements(
           studentActivatedAt: null,
           maxActivationDate: maxActivationDate.toISOString(),
           startDate: pendingServiceWindow.activationAnchor.toISOString(),
-          endDate: buildEndDateFromDays(maxActivationDate, serviceDays.recommendationDays).toISOString(),
+          endDate: buildEndDateFromDays(pendingServiceWindow.activationAnchor, serviceDays.recommendationDays).toISOString(),
           paymentStatus: "completed",
           paymentAmount: 0,
           paymentCurrency: "USD",
@@ -5578,7 +5578,7 @@ export async function fulfillPackageEntitlements(
           studentActivatedAt: null,
           maxActivationDate: maxActivationDate.toISOString(),
           startDate: pendingServiceWindow.activationAnchor.toISOString(),
-          endDate: buildEndDateFromDays(maxActivationDate, serviceDays.recommendationDays).toISOString(),
+          endDate: buildEndDateFromDays(pendingServiceWindow.activationAnchor, serviceDays.recommendationDays).toISOString(),
           paymentStatus: "completed",
           paymentAmount: 0,
           paymentCurrency: "USD",
@@ -8520,8 +8520,9 @@ export async function activateStudentSubscriptions(userId: number, isAutoActivat
   const nowStr = now.toISOString();
 
   for (const sub of pendingLexai) {
-    // Cap: endDate = min(now + entitlementDays, maxActivationDate + entitlementDays)
+    // If auto-activation runs late, cap expiry as if service started on the protection deadline.
     const serviceDays = derivePendingServiceDays({
+      activationAnchorDate: sub.startDate,
       maxActivationDate: sub.maxActivationDate,
       placeholderEndDate: sub.endDate,
       fallbackDays: entitlementDays,
@@ -8544,6 +8545,7 @@ export async function activateStudentSubscriptions(userId: number, isAutoActivat
 
   for (const sub of pendingRec) {
     const serviceDays = derivePendingServiceDays({
+      activationAnchorDate: sub.startDate,
       maxActivationDate: sub.maxActivationDate,
       placeholderEndDate: sub.endDate,
       fallbackDays: entitlementDays,

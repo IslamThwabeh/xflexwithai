@@ -86,7 +86,7 @@ Last updated: 2026-06-06
 - Comprehensive active -> Basic renewal is blocked until the Comprehensive LexAI service period is no longer active/pending.
 - The protection window is configurable via `study_period_days`; do not hardcode 14 days in lifecycle code.
 - `users.firstPackageActivatedAt` stores/derives the original package activation anchor so upgrades do not reset the protection window.
-- Pending timed-service rows use `maxActivationDate` plus placeholder `endDate`; activation derives the actual service days from that pair so LexAI and Recommendations can have different durations.
+- Pending timed-service rows keep `maxActivationDate` as the separate protection deadline; placeholder `endDate` stores only the key/service age from the activation anchor, so the protection window is not added to service life.
 
 ## Support Media Uploads
 

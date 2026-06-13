@@ -20,7 +20,7 @@ export function getPendingServiceWindow(input: {
   return {
     activationAnchor,
     maxActivationDate: addDays(activationAnchor, input.studyPeriodDays),
-    placeholderEndDate: addDays(activationAnchor, input.studyPeriodDays + input.entitlementDays),
+    placeholderEndDate: addDays(activationAnchor, input.entitlementDays),
   };
 }
 

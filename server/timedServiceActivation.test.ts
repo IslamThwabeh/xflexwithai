@@ -16,7 +16,7 @@ describe('timed service activation helpers', () => {
 
     expect(window.activationAnchor.toISOString()).toBe('2026-03-12T10:50:37.857Z');
     expect(window.maxActivationDate.toISOString()).toBe('2026-03-26T10:50:37.857Z');
-    expect(window.placeholderEndDate.toISOString()).toBe('2026-04-25T10:50:37.857Z');
+    expect(window.placeholderEndDate.toISOString()).toBe('2026-04-11T10:50:37.857Z');
   });
 
   it('falls back to the current fulfillment time when there is no key activation timestamp', () => {
@@ -30,7 +30,7 @@ describe('timed service activation helpers', () => {
 
     expect(window.activationAnchor.toISOString()).toBe('2026-04-12T00:00:00.000Z');
     expect(window.maxActivationDate.toISOString()).toBe('2026-04-26T00:00:00.000Z');
-    expect(window.placeholderEndDate.toISOString()).toBe('2026-05-26T00:00:00.000Z');
+    expect(window.placeholderEndDate.toISOString()).toBe('2026-05-12T00:00:00.000Z');
   });
 
   it('auto-activates when broker completion is already cleared', () => {

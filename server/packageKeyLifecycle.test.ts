@@ -64,4 +64,22 @@ describe("package key lifecycle helpers", () => {
       fallbackDays: 30,
     })).toBe(35);
   });
+
+  it("does not add the protection window to new pending service age", () => {
+    expect(derivePendingServiceDays({
+      activationAnchorDate: "2026-06-05T00:00:00.000Z",
+      maxActivationDate: "2026-06-19T00:00:00.000Z",
+      placeholderEndDate: "2026-07-05T00:00:00.000Z",
+      fallbackDays: 30,
+    })).toBe(30);
+  });
+
+  it("keeps old pending rows from turning the protection window into extra service days", () => {
+    expect(derivePendingServiceDays({
+      activationAnchorDate: "2026-06-13T15:05:13.604Z",
+      maxActivationDate: "2026-06-27T15:05:13.604Z",
+      placeholderEndDate: "2026-06-29T15:05:13.604Z",
+      fallbackDays: 2,
+    })).toBe(2);
+  });
 });

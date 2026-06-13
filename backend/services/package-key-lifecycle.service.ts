@@ -85,6 +85,7 @@ export function getServiceDaysForPackageTransition(input: {
 }
 
 export function derivePendingServiceDays(input: {
+  activationAnchorDate?: string | null;
   maxActivationDate?: string | null;
   placeholderEndDate?: string | null;
   fallbackDays: number;
@@ -97,6 +98,26 @@ export function derivePendingServiceDays(input: {
     return input.fallbackDays;
   }
 
-  const days = Math.ceil((placeholderEndDate.getTime() - maxActivationDate.getTime()) / (24 * 60 * 60 * 1000));
-  return Number.isFinite(days) && days > 0 ? days : input.fallbackDays;
+  const dayMs = 24 * 60 * 60 * 1000;
+  const daysFromMaxActivation = Math.ceil((placeholderEndDate.getTime() - maxActivationDate.getTime()) / dayMs);
+
+  if (input.activationAnchorDate) {
+    const activationAnchorDate = new Date(input.activationAnchorDate);
+    if (!Number.isNaN(activationAnchorDate.getTime())) {
+      const daysFromActivationAnchor = Math.ceil((placeholderEndDate.getTime() - activationAnchorDate.getTime()) / dayMs);
+
+      if (Number.isFinite(daysFromActivationAnchor) && daysFromActivationAnchor > 0) {
+        // Backward compatibility: older pending rows stored endDate as
+        // maxActivationDate + service days. New rows store activationAnchor + service days.
+        if (Number.isFinite(daysFromMaxActivation) && daysFromMaxActivation >= input.fallbackDays) {
+          return daysFromMaxActivation;
+        }
+        return daysFromActivationAnchor;
+      }
+    }
+  }
+
+  return Number.isFinite(daysFromMaxActivation) && daysFromMaxActivation > 0
+    ? daysFromMaxActivation
+    : input.fallbackDays;
 }
