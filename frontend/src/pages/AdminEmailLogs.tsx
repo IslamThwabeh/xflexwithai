@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { trpc } from '@/lib/trpc';
 import { ChevronDown, ChevronUp, Loader2, Mail, MailCheck, MailX } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 type DeliveryLogView = 'grouped' | 'detailed';
 type DeliveryCategory = 'all' | 'recommendations' | 'support' | 'orders' | 'login' | 'lifecycle' | 'system';
@@ -165,6 +165,7 @@ export default function AdminEmailLogs() {
   const [deliveryCategory, setDeliveryCategory] = useState<DeliveryCategory>('all');
   const [deliveryDatePreset, setDeliveryDatePreset] = useState<DeliveryDatePreset>('all');
   const [expandedDeliveryGroups, setExpandedDeliveryGroups] = useState<Record<string, boolean>>({});
+  const deliveryListTopRef = useRef<HTMLDivElement | null>(null);
 
   const deliveryFilters = useMemo(() => ({
     limit: DELIVERY_PAGE_SIZE,
@@ -263,8 +264,19 @@ export default function AdminEmailLogs() {
   const pageLabel = isRtl
     ? `الصفحة ${currentPage} من ${totalPages}`
     : `Page ${currentPage} of ${totalPages}`;
-  const goToPreviousPage = () => setDeliveryOffset((current) => Math.max(0, current - DELIVERY_PAGE_SIZE));
-  const goToNextPage = () => setDeliveryOffset((current) => current + DELIVERY_PAGE_SIZE);
+  const scrollDeliveryListToTop = () => {
+    window.requestAnimationFrame(() => {
+      deliveryListTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  };
+  const goToPreviousPage = () => {
+    setDeliveryOffset((current) => Math.max(0, current - DELIVERY_PAGE_SIZE));
+    scrollDeliveryListToTop();
+  };
+  const goToNextPage = () => {
+    setDeliveryOffset((current) => current + DELIVERY_PAGE_SIZE);
+    scrollDeliveryListToTop();
+  };
 
   return (
     <DashboardLayout>
@@ -284,7 +296,7 @@ export default function AdminEmailLogs() {
         </div>
 
         <div className="space-y-4">
-          <div className="bg-white dark:bg-slate-800 border rounded-xl p-5 space-y-4">
+          <div ref={deliveryListTopRef} className="bg-white dark:bg-slate-800 border rounded-xl p-5 space-y-4 scroll-mt-6">
             <div className="flex items-start justify-between gap-3 flex-wrap">
               <div>
                 <h3 className="font-semibold flex items-center gap-2">

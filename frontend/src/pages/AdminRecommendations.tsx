@@ -21,6 +21,7 @@ type RecommendationType = "recommendation" | "update" | "result";
 type FollowUpPresetGroupKey = "pips" | "management" | "outcome";
 type TradeOutcome = "win" | "loss";
 type ThreadFilter = "open" | "needsResult" | "closed" | "all";
+const THREAD_PAGE_SIZE = 50;
 
 type MonthlyTradeReportRow = {
   messageId: number;
@@ -346,6 +347,7 @@ function AnalystView() {
   const [threadSearch, setThreadSearch] = useState("");
   const [threadPage, setThreadPage] = useState(0);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
+  const workspaceTopRef = useRef<HTMLDivElement | null>(null);
 
   const { data: me } = trpc.recommendations.me.useQuery();
   const { data: adminCheck } = trpc.auth.isAdmin.useQuery();
@@ -369,8 +371,8 @@ function AnalystView() {
   } = trpc.recommendations.threadMessages.useQuery(
     {
       status: historyStatus ?? "closed",
-      limit: 50,
-      offset: threadPage * 50,
+      limit: THREAD_PAGE_SIZE,
+      offset: threadPage * THREAD_PAGE_SIZE,
       search: threadSearch.trim() || undefined,
     },
     { enabled: canManageChannel && !!historyStatus }
@@ -785,8 +787,15 @@ function AnalystView() {
     URL.revokeObjectURL(url);
   };
 
+  const scrollWorkspaceToTop = () => {
+    window.requestAnimationFrame(() => {
+      workspaceTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
+
   useEffect(() => {
     setThreadPage(0);
+    scrollWorkspaceToTop();
   }, [threadFilter, threadSearch]);
 
   const historyMessages = historyThreadFeed?.messages ?? [];
@@ -808,7 +817,7 @@ function AnalystView() {
     }
   }, [activePresetGroup, availablePresetGroups, type]);
   const normalizedThreadSearch = threadSearch.trim().toLowerCase();
-  const workspaceThreads = useMemo(() => {
+  const filteredWorkspaceThreads = useMemo(() => {
     const source = threadFilter === "closed" || threadFilter === "all" ? historyThreads : allOpenThreads;
     return source.filter((thread) => {
       if (threadFilter === "needsResult" && thread.hasResultChild) return false;
@@ -826,6 +835,12 @@ function AnalystView() {
       return true;
     });
   }, [allOpenThreads, historyThreads, normalizedThreadSearch, threadFilter]);
+  const canPageHistory = threadFilter === "closed" || threadFilter === "all";
+  const workspaceThreads = useMemo(() => {
+    if (canPageHistory) return filteredWorkspaceThreads;
+    const start = threadPage * THREAD_PAGE_SIZE;
+    return filteredWorkspaceThreads.slice(start, start + THREAD_PAGE_SIZE);
+  }, [canPageHistory, filteredWorkspaceThreads, threadPage]);
   const workspaceThreadGroups = useMemo(
     () => groupRecommendationThreadsByDay(workspaceThreads, language),
     [workspaceThreads, language],
@@ -835,9 +850,10 @@ function AnalystView() {
   const closedThreadCount = threadSummary?.closed ?? (threadFilter === "closed" ? historyThreadFeed?.total ?? 0 : 0);
   const totalThreadCount = threadSummary?.total ?? (threadFilter === "all" ? historyThreadFeed?.total ?? 0 : allOpenThreads.length);
   const historyTotal = historyThreadFeed?.total ?? (threadFilter === "closed" ? closedThreadCount : totalThreadCount);
-  const canPageHistory = threadFilter === "closed" || threadFilter === "all";
-  const historyFrom = historyTotal === 0 ? 0 : threadPage * 50 + 1;
-  const historyTo = Math.min(historyTotal, threadPage * 50 + workspaceThreads.length);
+  const workspaceTotal = canPageHistory ? historyTotal : filteredWorkspaceThreads.length;
+  const workspaceFrom = workspaceTotal === 0 ? 0 : threadPage * THREAD_PAGE_SIZE + 1;
+  const workspaceTo = Math.min(workspaceTotal, threadPage * THREAD_PAGE_SIZE + workspaceThreads.length);
+  const canPageWorkspace = canPageHistory || filteredWorkspaceThreads.length > THREAD_PAGE_SIZE;
 
   const renderThreadGroups = (groups: any[], isClosedSection: boolean) => (
     <div className="space-y-4">
@@ -1456,7 +1472,7 @@ function AnalystView() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card ref={workspaceTopRef} className="scroll-mt-6">
         <CardHeader>
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
@@ -1550,27 +1566,33 @@ function AnalystView() {
             </div>
           ) : (
             <>
-              {canPageHistory && (
+              {canPageWorkspace && (
                 <div className="flex flex-col gap-2 rounded-xl border bg-slate-50 px-3 py-2 text-sm text-slate-700 sm:flex-row sm:items-center sm:justify-between dark:bg-slate-900/30 dark:text-slate-200">
                   <span>
                     {isRTL
-                      ? `عرض ${historyFrom}-${historyTo} من ${historyTotal}`
-                      : `Showing ${historyFrom}-${historyTo} of ${historyTotal}`}
+                      ? `عرض ${workspaceFrom}-${workspaceTo} من ${workspaceTotal}`
+                      : `Showing ${workspaceFrom}-${workspaceTo} of ${workspaceTotal}`}
                   </span>
                   <div className="flex items-center gap-2">
                     <Button
                       size="sm"
                       variant="outline"
                       disabled={threadPage === 0 || historyThreadFeedLoading}
-                      onClick={() => setThreadPage((page) => Math.max(0, page - 1))}
+                      onClick={() => {
+                        setThreadPage((page) => Math.max(0, page - 1));
+                        scrollWorkspaceToTop();
+                      }}
                     >
                       {isRTL ? "الأحدث" : "Newer"}
                     </Button>
                     <Button
                       size="sm"
                       variant="outline"
-                      disabled={historyTo >= historyTotal || historyThreadFeedLoading}
-                      onClick={() => setThreadPage((page) => page + 1)}
+                      disabled={workspaceTo >= workspaceTotal || historyThreadFeedLoading}
+                      onClick={() => {
+                        setThreadPage((page) => page + 1);
+                        scrollWorkspaceToTop();
+                      }}
                     >
                       {isRTL ? "الأقدم" : "Older"}
                     </Button>

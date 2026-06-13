@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useEngagementTracker } from "@/_core/hooks/useEngagementTracker";
 import { trpc } from "@/lib/trpc";
 import { keepPreviousData } from "@tanstack/react-query";
@@ -155,6 +155,13 @@ export default function Recommendations() {
   const [now, setNow] = useState(() => Date.now());
   const [pendingThreadAction, setPendingThreadAction] = useState(() => parseThreadActionFromUrl());
   const [archivePage, setArchivePageState] = useState(() => parseArchivePageFromUrl());
+  const recommendationFeedTopRef = useRef<HTMLDivElement | null>(null);
+  const previousArchivePageRef = useRef(archivePage);
+  const scrollRecommendationFeedToTop = useCallback(() => {
+    window.requestAnimationFrame(() => {
+      recommendationFeedTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }, []);
   const setArchivePage = useCallback((nextPage: number | ((currentPage: number) => number)) => {
     setArchivePageState((currentPage) => {
       const resolvedPage = typeof nextPage === "function" ? nextPage(currentPage) : nextPage;
@@ -298,6 +305,13 @@ export default function Recommendations() {
   useEffect(() => {
     setPendingThreadAction(parseThreadActionFromUrl());
   }, [location]);
+
+  useEffect(() => {
+    if (previousArchivePageRef.current !== archivePage) {
+      previousArchivePageRef.current = archivePage;
+      scrollRecommendationFeedToTop();
+    }
+  }, [archivePage, scrollRecommendationFeedToTop]);
 
   useEffect(() => {
     const syncArchivePageFromUrl = () => {
@@ -715,7 +729,7 @@ export default function Recommendations() {
         )}
 
         {canRead && (
-          <Card className="border-slate-200 bg-white/95 shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
+          <Card ref={recommendationFeedTopRef} className="border-slate-200 bg-white/95 shadow-[0_20px_60px_rgba(15,23,42,0.08)] scroll-mt-6">
             <CardHeader className="border-b bg-gradient-to-b from-white to-slate-50/80">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                 <div className="space-y-2">
