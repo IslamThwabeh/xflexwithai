@@ -170,12 +170,71 @@ describe("support chat staff notifications", () => {
     const parsedBody = JSON.parse(String(openAiRequest?.body ?? "{}"));
     expect(parsedBody.messages?.[0]?.content).toContain("Rawan is the founder of XFlex Trading Academy");
     expect(parsedBody.messages?.[0]?.content).toContain("Birzeit University");
+    expect(parsedBody.messages?.[0]?.content).toContain("Locked lessons or missing lesson quizzes");
+    expect(parsedBody.messages?.[0]?.content).toContain("Start with one concrete self-service step");
     expect(createSupportMessage).toHaveBeenNthCalledWith(2, {
       conversationId: 10,
       senderId: 0,
       senderType: "bot",
       content: "Hello from AI",
     });
+  });
+
+  it("treats an explicit typed human request as an escalation and skips AI", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const caller = createAuthedCaller();
+    createSupportMessage
+      .mockResolvedValueOnce({ id: 77, conversationId: 10, content: "اريد مساعد بشري" } as any)
+      .mockResolvedValueOnce({ id: 78, conversationId: 10, content: "⚠️ Student requested a human agent." } as any);
+
+    await caller.supportChat.send({ content: "اريد مساعد بشري" });
+
+    expect(setNeedsHuman).toHaveBeenCalledWith(10, true);
+    expect(createSupportMessage).toHaveBeenNthCalledWith(2, {
+      conversationId: 10,
+      senderId: 0,
+      senderType: "bot",
+      content: "⚠️ Student requested a human agent.",
+    });
+    expect(notifyStaffByEvent).toHaveBeenCalledWith(
+      "human_escalation",
+      expect.objectContaining({
+        metadata: { userId: 123, conversationId: 10 },
+      }),
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("acknowledges attachment-only messages without asking OpenAI to inspect them", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const caller = createAuthedCaller();
+    createSupportMessage
+      .mockResolvedValueOnce({ id: 77, conversationId: 10, content: "[IMG_2723.png]" } as any)
+      .mockResolvedValueOnce({ id: 78, conversationId: 10, content: "وصلتني المرفقات." } as any);
+
+    await caller.supportChat.send({
+      content: "[IMG_2723.png]",
+      attachmentUrl: "https://videos.xflexacademy.com/support/83/image.png",
+      attachmentName: "IMG_2723.png",
+      attachmentType: "file",
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(createSupportMessage).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        conversationId: 10,
+        senderId: 0,
+        senderType: "bot",
+        content: expect.stringContaining("لا أستطيع قراءة الصورة"),
+      }),
+    );
   });
 
   it("normalizes voice-note duration before persisting the support message", async () => {

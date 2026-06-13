@@ -124,6 +124,7 @@ export default function CourseWatch() {
   const [showActivationDialog, setShowActivationDialog] = useState(false);
   const lastSyncedSecondRef = useRef<number>(0);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const autoCompletedEpisodeIdsRef = useRef<Set<number>>(new Set());
   const [liveWatchedSeconds, setLiveWatchedSeconds] = useState(0);
 
   const isLoading = courseLoading || episodesLoading;
@@ -213,13 +214,26 @@ export default function CourseWatch() {
     () => new Set(courseEpisodeProgress.filter((progress) => progress.isCompleted).map((progress) => progress.episodeId)),
     [courseEpisodeProgress]
   );
+  const progressByEpisodeId = useMemo(
+    () => new Map(courseEpisodeProgress.map((progress) => [progress.episodeId, progress])),
+    [courseEpisodeProgress]
+  );
+  const getRequiredWatchSeconds = (episode: any) => (
+    episode?.duration && episode.duration > 0
+      ? Math.max(60, Math.floor(episode.duration * 0.7))
+      : 60
+  );
 
   const isEpisodeUnlocked = (episode: any) => {
     if (!episode) return false;
     if (episode.order <= 1) return true;
     const previousEpisode = sortedEpisodes.find((item) => item.order === episode.order - 1);
     if (!previousEpisode) return false;
-    return completedEpisodeIds.has(previousEpisode.id);
+    if (completedEpisodeIds.has(previousEpisode.id)) return true;
+
+    const previousProgress = progressByEpisodeId.get(previousEpisode.id);
+    const previousWatchedSeconds = Number(previousProgress?.watchedDuration || 0);
+    return previousWatchedSeconds >= getRequiredWatchSeconds(previousEpisode);
   };
 
   const currentEpisodeIndex = selectedEpisode
@@ -229,9 +243,7 @@ export default function CourseWatch() {
     ? sortedEpisodes[currentEpisodeIndex + 1]
     : null;
   const canGoToNextEpisode = !!nextEpisode && isEpisodeUnlocked(nextEpisode);
-  const requiredWatchSeconds = selectedEpisode?.duration && selectedEpisode.duration > 0
-    ? Math.max(60, Math.floor(selectedEpisode.duration * 0.7))
-    : 60;
+  const requiredWatchSeconds = getRequiredWatchSeconds(selectedEpisode);
   const requiredWatchMinutes = Math.max(1, Math.ceil(requiredWatchSeconds / 60));
   const hasWatchRequirementMet = effectiveWatchedSeconds >= requiredWatchSeconds;
   const isArabic = language === 'ar';
@@ -243,7 +255,7 @@ export default function CourseWatch() {
   const quizPassed = !!episodeQuiz?.passed;
   const canMarkComplete = selectedEpisode?.order <= 1
     ? hasWatchRequirementMet
-    : hasWatchRequirementMet && (!quizRequired || quizPassed);
+    : hasWatchRequirementMet && !loadingEpisodeQuiz && (!quizRequired || quizPassed);
 
   const quizSectionRef = useRef<HTMLDivElement>(null);
 
@@ -255,6 +267,18 @@ export default function CourseWatch() {
       watchedDuration: effectiveWatchedSeconds,
     });
   }, [selectedEpisode, courseId, effectiveWatchedSeconds, markCompleteMutation]);
+
+  useEffect(() => {
+    if (!selectedEpisode || !courseId || selectedEpisodeProgress?.isCompleted) return;
+    if (!canMarkComplete || autoCompletedEpisodeIdsRef.current.has(selectedEpisode.id)) return;
+
+    autoCompletedEpisodeIdsRef.current.add(selectedEpisode.id);
+    markCompleteMutation.mutate({
+      courseId,
+      episodeId: selectedEpisode.id,
+      watchedDuration: effectiveWatchedSeconds,
+    });
+  }, [canMarkComplete, courseId, effectiveWatchedSeconds, markCompleteMutation, selectedEpisode, selectedEpisodeProgress?.isCompleted]);
 
   const handleMarkCompleteClick = useCallback(() => {
     if (canMarkComplete) {

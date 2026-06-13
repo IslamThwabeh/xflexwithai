@@ -397,6 +397,12 @@ const requireActivePackage = async (userId: number) => {
   }
 };
 
+const getEpisodeRequiredWatchSeconds = (episode: { duration?: number | null }) => (
+  episode.duration && episode.duration > 0
+    ? Math.max(60, Math.floor(episode.duration * 0.7))
+    : 60
+);
+
 type LexaiMessageList = Awaited<ReturnType<typeof db.getLexaiMessagesByUser>>;
 
 const getLatestLexaiAnalysisFromMessages = (messages: LexaiMessageList, analysisType: string) => {
@@ -627,7 +633,7 @@ const ensureEpisodeUnlockedForUser = async (userId: number, courseId: number, ep
     courseProgress.filter((progress) => progress.isCompleted).map((progress) => progress.episodeId)
   );
 
-  if (!completedEpisodeIds.has(previousEpisode.id)) {
+  if (!completedEpisodeIds.has(previousEpisode.id) && !(await hasEpisodeCompletionRequirementsSatisfied(userId, previousEpisode))) {
     throw new TRPCError({
       code: 'FORBIDDEN',
       message: 'Complete the previous episode first.',
@@ -635,6 +641,41 @@ const ensureEpisodeUnlockedForUser = async (userId: number, courseId: number, ep
   }
 
   return { episode, episodes: sortedEpisodes };
+};
+
+const getAttemptableQuizForLevel = async (level: number) => {
+  const quiz = await db.getQuizForLevelWithQuestions(level);
+  if (!quiz?.questions?.length) {
+    return null;
+  }
+
+  const hasUnanswerableQuestion = quiz.questions.some((question) => !question.options?.length);
+  return hasUnanswerableQuestion ? null : quiz;
+};
+
+const hasEpisodeCompletionRequirementsSatisfied = async (
+  userId: number,
+  episode: { id: number; order: number; duration?: number | null },
+) => {
+  const progress = await db.getUserEpisodeProgress(userId, episode.id);
+  if (progress?.isCompleted) return true;
+
+  const watchedDuration = Number(progress?.watchedDuration || 0);
+  if (watchedDuration < getEpisodeRequiredWatchSeconds(episode)) {
+    return false;
+  }
+
+  if (episode.order <= 1) {
+    return true;
+  }
+
+  const quizLevel = episode.order - 1;
+  const quiz = await getAttemptableQuizForLevel(quizLevel);
+  if (!quiz) {
+    return true;
+  }
+
+  return db.hasUserPassedQuizLevel(userId, quizLevel);
 };
 
 // ============================================================================
@@ -776,6 +817,12 @@ Common topics you can help with:
 - How to activate a package key (go to Dashboard, enter the key)
 - How to access courses and watch episodes
 - Quiz system (must watch episodes first, pass quizzes to earn points)
+- Locked lessons or missing lesson quizzes: ask the student to open the previous lesson, watch enough of the video, then tap "Mark Complete". If no quiz is shown for that lesson, explain that no quiz is required; after marking it complete, the next lesson should unlock. Ask for the course name and lesson number if it still does not unlock.
+- Recommendations not visible: ask them to check that their package/subscription is active, then open the Recommendations page. If they ask for a renewal key, missing key, expired subscription, or account-specific activation, say support must check their account.
+- Notification issues: suggest checking spam/junk, notification preferences in Profile, browser/app notification permission, and opening the Recommendations page directly. If they use iCloud email, mention delivery can be delayed and ask them to confirm whether in-platform notifications appear.
+- Broker/deposit issues: suggest checking account verification, card/account name match, available balance, broker payment restrictions, and contacting broker support. If they need to switch broker, reverse an onboarding step, or resolve a stuck broker account, say support must review it.
+- Trading/how much to deposit/lot size/leverage: do not give financial advice. Redirect to course risk-management material and say a coach can review educational questions if needed.
+- Attachments, screenshots, or voice notes: explain that you cannot inspect the attachment directly in the automatic reply. Ask for one short text description of what is shown, and tell them the support team can review the evidence.
 - Broker onboarding steps (select broker → open & verify account → deposit the minimum amount required by the selected broker)
 - Trading recommendations (available after subscription activation)
 - LexAI access (Comprehensive package only, activates after course completion)
@@ -785,11 +832,48 @@ Common topics you can help with:
 Rules:
 - Be concise and helpful. Keep responses under 150 words.
 - Respond in the same language the student uses (Arabic or English).
-- If you don't know the answer or the question requires human judgment (refunds, billing disputes, account issues), say you'll connect them with a human agent.
+- Start with one concrete self-service step or clarifying question before suggesting human support.
+- Do not repeat an old topic if the latest student message is about something else; answer the latest concrete problem.
+- Only say you'll connect them with a human agent for refunds, billing disputes, account ownership/key corrections, private account changes, or when the student says the same troubleshooting step already failed.
+- If the student explicitly asks for a human/support person, acknowledge that request instead of continuing troubleshooting.
 - If asked who Rawan is or what she represents to the academy, explain that she is the founder of XFlex Trading Academy using only the public bio above. Do not say you lack information about her unless the user asks for private details beyond that bio.
 - Never make up information about prices, features, or policies you're unsure about.
 - Be friendly but professional. Use the student's context when available.
 - Do NOT discuss competitor platforms or give financial/trading advice.`;
+
+function isExplicitHumanSupportRequest(content: string) {
+  const normalized = content.trim().toLowerCase();
+  if (!normalized) return false;
+
+  return [
+    "مساعد بشري",
+    "وكيل بشري",
+    "شخص حقيقي",
+    "حدا يحكي",
+    "بدي احكي مع",
+    "بدي أحكي مع",
+    "اريد مساعد",
+    "أريد مساعد",
+    "اريد التواصل",
+    "أريد التواصل",
+    "فريق الدعم",
+    "دعم بشري",
+    "human",
+    "agent",
+    "support person",
+    "real person",
+  ].some((phrase) => normalized.includes(phrase.toLowerCase()));
+}
+
+function getSupportAttachmentAutoReply(content: string, isArabicPreferred: boolean) {
+  const trimmed = content.trim();
+  const looksAttachmentOnly = /^\[[^\]]+\]$/.test(trimmed) || trimmed.includes("رسالة صوتية") || /voice message/i.test(trimmed);
+  if (!looksAttachmentOnly) return null;
+
+  return isArabicPreferred
+    ? "وصلتني المرفقات. لا أستطيع قراءة الصورة أو الرسالة الصوتية تلقائياً هنا، فاكتبي لي بجملة قصيرة ما الذي يظهر فيها أو ما المشكلة، وإذا كانت تحتاج مراجعة حسابك سيكمل فريق الدعم معك."
+    : "I received the attachment. I cannot inspect images or voice notes automatically here, so please write one short sentence describing what it shows.\n\nوصلتني المرفقات. لا أستطيع قراءة الصورة أو الرسالة الصوتية تلقائياً هنا، فاكتب/ي بجملة قصيرة ما المشكلة.";
+}
 
 /** Generate an AI auto-reply for a student message using GPT-4o-mini */
 async function generateSupportAIReply(
@@ -802,8 +886,11 @@ async function generateSupportAIReply(
 ): Promise<string | null> {
   if (!ENV.openaiApiKey) return null;
 
-  // Sliding window: last 10 messages for context
-  const recentMessages = conversationMessages.slice(-10);
+  // Use student/staff context, but do not feed previous bot replies back into the model.
+  // Old incorrect bot replies can anchor the next answer to the wrong topic.
+  const recentMessages = conversationMessages
+    .filter((msg) => msg.senderType !== 'bot')
+    .slice(-12);
 
   const chatMessages: Array<{ role: string; content: string }> = [
     { role: 'system', content: SUPPORT_AI_SYSTEM_PROMPT },
@@ -2011,9 +2098,7 @@ export const appRouter = router({
         }
 
         // Enforce a minimum watch duration (70% of episode duration, minimum 60s)
-        const requiredWatchSeconds = episode.duration && episode.duration > 0
-          ? Math.max(60, Math.floor(episode.duration * 0.7))
-          : 60;
+        const requiredWatchSeconds = getEpisodeRequiredWatchSeconds(episode);
         const watchedDuration = Math.max(
           Number(existingEpisodeProgress?.watchedDuration || 0),
           Math.floor(Number(input.watchedDuration || 0))
@@ -2028,7 +2113,7 @@ export const appRouter = router({
         // Intro episode (order = 1) is exempt from quiz gating
         if (episode.order > 1) {
           const quizLevel = episode.order - 1;
-          const quiz = await db.getQuizByLevel(quizLevel);
+          const quiz = await getAttemptableQuizForLevel(quizLevel);
           if (quiz) {
             const hasPassedQuiz = await db.hasUserPassedQuizLevel(ctx.user.id, quizLevel);
             if (!hasPassedQuiz) {
@@ -2221,7 +2306,7 @@ export const appRouter = router({
         }
 
         const quizLevel = episode.order - 1;
-        const quiz = await db.getQuizForLevelWithQuestions(quizLevel);
+        const quiz = await getAttemptableQuizForLevel(quizLevel);
 
         if (!quiz) {
           return { required: false, passed: true, introEpisode: false, quiz: null };
@@ -4018,11 +4103,30 @@ export const appRouter = router({
           attachmentDuration: normalizedAttachmentDuration && normalizedAttachmentDuration > 0 ? normalizedAttachmentDuration : undefined,
         });
 
+        const clientRequestedHumanByText = isExplicitHumanSupportRequest(input.content);
+        if (clientRequestedHumanByText && !conv.needsHuman) {
+          await db.setNeedsHuman(conv.id, true);
+          await db.createSupportMessage({
+            conversationId: conv.id,
+            senderId: 0,
+            senderType: 'bot',
+            content: '⚠️ Student requested a human agent.',
+          });
+
+          await db.notifyStaffByEvent('human_escalation', {
+            titleEn: `Human agent requested by ${ctx.user.name || ctx.user.email}`,
+            titleAr: `طلب تحويل لموظف من ${ctx.user.name || ctx.user.email}`,
+            contentEn: 'A student asked to speak with a human support agent in chat.',
+            contentAr: 'طالب طلب التحدث مع موظف دعم داخل المحادثة.',
+            metadata: { userId: ctx.user.id, conversationId: conv.id },
+          });
+        }
+
         // AI auto-replies unless the student has requested a human.
         // The silence lasts for the configured window (default 60 min) after the escalation.
         // After that, or when client/support explicitly re-enables, AI resumes.
-        let effectiveNeedsHuman = conv.needsHuman;
-        if (conv.needsHuman && conv.needsHumanAt) {
+        let effectiveNeedsHuman = conv.needsHuman || clientRequestedHumanByText;
+        if (!clientRequestedHumanByText && conv.needsHuman && conv.needsHumanAt) {
           const resumeMins = parseInt((await db.getAdminSetting('support_ai_resume_minutes')) ?? '60', 10);
           const elapsed = Date.now() - new Date(conv.needsHumanAt).getTime();
           if (elapsed > resumeMins * 60 * 1000) {
@@ -4031,8 +4135,12 @@ export const appRouter = router({
           }
         }
         if (!effectiveNeedsHuman) {
-          const allMessages = await db.getSupportMessages(conv.id);
-          const aiReply = await generateSupportAIReply(
+          const isArabicPreferred = /[\u0600-\u06FF]/.test(input.content);
+          const attachmentAutoReply = input.attachmentUrl
+            ? getSupportAttachmentAutoReply(input.content, isArabicPreferred)
+            : null;
+          const allMessages = attachmentAutoReply ? [] : await db.getSupportMessages(conv.id);
+          const aiReply = attachmentAutoReply ?? await generateSupportAIReply(
             allMessages.map(m => ({ senderType: m.senderType, content: m.content })),
             {
               userId: ctx.user.id,
