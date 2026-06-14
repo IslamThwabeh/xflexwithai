@@ -399,8 +399,8 @@ const requireActivePackage = async (userId: number) => {
 
 const getEpisodeRequiredWatchSeconds = (episode: { duration?: number | null }) => (
   episode.duration && episode.duration > 0
-    ? Math.max(60, Math.floor(episode.duration * 0.7))
-    : 60
+    ? Math.max(30, Math.floor(episode.duration * 0.1))
+    : 30
 );
 
 type LexaiMessageList = Awaited<ReturnType<typeof db.getLexaiMessagesByUser>>;
@@ -2078,6 +2078,7 @@ export const appRouter = router({
         courseId: z.number(),
         episodeId: z.number(),
         watchedDuration: z.number().min(0).optional(),
+        studentConfirmedWatch: z.boolean().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
         logger.procedure('enrollments.markEpisodeComplete', input, ctx.user.id);
@@ -2097,13 +2098,14 @@ export const appRouter = router({
           return { success: true, alreadyCompleted: true };
         }
 
-        // Enforce a minimum watch duration (70% of episode duration, minimum 60s)
+        // Enforce a soft watch duration. Student confirmation may repair missed playback tracking,
+        // but quiz requirements below remain strict when an attemptable quiz exists.
         const requiredWatchSeconds = getEpisodeRequiredWatchSeconds(episode);
         const watchedDuration = Math.max(
           Number(existingEpisodeProgress?.watchedDuration || 0),
           Math.floor(Number(input.watchedDuration || 0))
         );
-        if (watchedDuration < requiredWatchSeconds) {
+        if (watchedDuration < requiredWatchSeconds && !input.studentConfirmedWatch) {
           throw new TRPCError({
             code: 'FORBIDDEN',
             message: `Watch more of this episode before marking complete (${Math.ceil(requiredWatchSeconds / 60)} min required).`,

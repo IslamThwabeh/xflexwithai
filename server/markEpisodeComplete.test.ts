@@ -84,13 +84,13 @@ describe("enrollments.markEpisodeComplete", () => {
     } as any);
   });
 
-  it("uses seconds-based watch threshold so episode one can complete at 70% watch time", async () => {
+  it("uses a supportive seconds-based watch threshold so episode one can complete at 10% watch time with a 30s minimum", async () => {
     const caller = createAuthedCaller();
     getUserEpisodeProgress.mockResolvedValue({
       id: 501,
       userId: 123,
       episodeId: 1,
-      watchedDuration: 70,
+      watchedDuration: 30,
       isCompleted: false,
     } as any);
 
@@ -105,7 +105,7 @@ describe("enrollments.markEpisodeComplete", () => {
         userId: 123,
         episodeId: 1,
         courseId: 1,
-        watchedDuration: 70,
+        watchedDuration: 30,
         isCompleted: true,
       })
     );
@@ -117,7 +117,7 @@ describe("enrollments.markEpisodeComplete", () => {
       id: 502,
       userId: 123,
       episodeId: 1,
-      watchedDuration: 59,
+      watchedDuration: 29,
       isCompleted: false,
     } as any);
 
@@ -139,20 +139,87 @@ describe("enrollments.markEpisodeComplete", () => {
       id: 503,
       userId: 123,
       episodeId: 1,
-      watchedDuration: 60,
+      watchedDuration: 20,
       isCompleted: false,
     } as any);
 
     const result = await caller.enrollments.markEpisodeComplete({
       courseId: 1,
       episodeId: 1,
-      watchedDuration: 100,
+      watchedDuration: 45,
     });
 
     expect(result).toMatchObject({ success: true, progressPercentage: 50, reachedHalfway: true });
     expect(createOrUpdateEpisodeProgress).toHaveBeenCalledWith(
       expect.objectContaining({
-        watchedDuration: 100,
+        watchedDuration: 45,
+        isCompleted: true,
+      })
+    );
+  });
+
+  it("allows student confirmation to repair missing watch tracking below the soft threshold", async () => {
+    const caller = createAuthedCaller();
+    getUserEpisodeProgress.mockResolvedValue({
+      id: 508,
+      userId: 123,
+      episodeId: 1,
+      watchedDuration: 0,
+      isCompleted: false,
+    } as any);
+
+    const result = await caller.enrollments.markEpisodeComplete({
+      courseId: 1,
+      episodeId: 1,
+      watchedDuration: 0,
+      studentConfirmedWatch: true,
+    });
+
+    expect(result).toMatchObject({ success: true, progressPercentage: 50, reachedHalfway: true });
+    expect(createOrUpdateEpisodeProgress).toHaveBeenCalledWith(
+      expect.objectContaining({
+        episodeId: 1,
+        watchedDuration: 30,
+        isCompleted: true,
+      })
+    );
+  });
+
+  it("allows student confirmation for a later episode when no quiz is configured", async () => {
+    const caller = createAuthedCaller();
+    getEpisodesByCourseId.mockResolvedValue([
+      { id: 1, order: 1, duration: 100 },
+      { id: 2, order: 2, duration: 100 },
+      { id: 3, order: 3, duration: 100 },
+    ] as any);
+    getUserCourseProgress
+      .mockResolvedValueOnce([{ episodeId: 1, isCompleted: true }] as any)
+      .mockResolvedValueOnce([
+        { episodeId: 1, isCompleted: true },
+        { episodeId: 2, isCompleted: true },
+      ] as any);
+    getUserEpisodeProgress.mockResolvedValue({
+      id: 509,
+      userId: 123,
+      episodeId: 2,
+      watchedDuration: 0,
+      isCompleted: false,
+    } as any);
+
+    const result = await caller.enrollments.markEpisodeComplete({
+      courseId: 1,
+      episodeId: 2,
+      watchedDuration: 0,
+      studentConfirmedWatch: true,
+    });
+
+    expect(result).toMatchObject({ success: true, progressPercentage: 67 });
+    expect(getQuizForLevelWithQuestions).toHaveBeenCalledWith(1);
+    expect(hasUserPassedQuizLevel).not.toHaveBeenCalled();
+    expect(createOrUpdateEpisodeProgress).toHaveBeenCalledWith(
+      expect.objectContaining({
+        episodeId: 2,
+        watchedDuration: 30,
         isCompleted: true,
       })
     );
@@ -169,7 +236,7 @@ describe("enrollments.markEpisodeComplete", () => {
       id: 504,
       userId: 123,
       episodeId: 2,
-      watchedDuration: 70,
+      watchedDuration: 30,
       isCompleted: false,
     } as any);
     getUserCourseProgress
@@ -198,9 +265,9 @@ describe("enrollments.markEpisodeComplete", () => {
   it("unlocks the next episode when the previous intro episode was watched enough but not marked complete", async () => {
     const caller = createAuthedCaller();
     getUserCourseProgress
-      .mockResolvedValueOnce([{ episodeId: 1, isCompleted: false, watchedDuration: 70 }] as any)
+      .mockResolvedValueOnce([{ episodeId: 1, isCompleted: false, watchedDuration: 30 }] as any)
       .mockResolvedValueOnce([
-        { episodeId: 1, isCompleted: false, watchedDuration: 70 },
+        { episodeId: 1, isCompleted: false, watchedDuration: 30 },
         { episodeId: 2, isCompleted: true },
       ] as any);
     getUserEpisodeProgress
@@ -208,14 +275,14 @@ describe("enrollments.markEpisodeComplete", () => {
         id: 501,
         userId: 123,
         episodeId: 1,
-        watchedDuration: 70,
+        watchedDuration: 30,
         isCompleted: false,
       } as any)
       .mockResolvedValueOnce({
         id: 505,
         userId: 123,
         episodeId: 2,
-        watchedDuration: 70,
+        watchedDuration: 30,
         isCompleted: false,
       } as any);
     getQuizForLevelWithQuestions.mockResolvedValue({
@@ -239,6 +306,43 @@ describe("enrollments.markEpisodeComplete", () => {
         isCompleted: true,
       }),
     );
+  });
+
+  it("does not let student confirmation bypass an unpassed required quiz", async () => {
+    const caller = createAuthedCaller();
+    getEpisodesByCourseId.mockResolvedValue([
+      { id: 1, order: 1, duration: 100 },
+      { id: 2, order: 2, duration: 100 },
+    ] as any);
+    getUserCourseProgress.mockResolvedValue([{ episodeId: 1, isCompleted: true }] as any);
+    getUserEpisodeProgress.mockResolvedValue({
+      id: 506,
+      userId: 123,
+      episodeId: 2,
+      watchedDuration: 0,
+      isCompleted: false,
+    } as any);
+    getQuizForLevelWithQuestions.mockResolvedValue({
+      id: 20,
+      level: 1,
+      title: "Lesson 1 Quiz",
+      passingScore: 50,
+      questions: [{ id: 200, questionText: "Ready?", orderNum: 1, options: [{ id: 1, optionId: "a", text: "Yes" }] }],
+    } as any);
+    hasUserPassedQuizLevel.mockResolvedValue(false);
+
+    await expect(
+      caller.enrollments.markEpisodeComplete({
+        courseId: 1,
+        episodeId: 2,
+        watchedDuration: 0,
+        studentConfirmedWatch: true,
+      })
+    ).rejects.toMatchObject({
+      code: "FORBIDDEN",
+    } satisfies Partial<TRPCError>);
+
+    expect(createOrUpdateEpisodeProgress).not.toHaveBeenCalled();
   });
 
   it("reports an empty/malformed episode quiz as not required", async () => {

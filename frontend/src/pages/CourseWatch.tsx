@@ -122,6 +122,7 @@ export default function CourseWatch() {
     passingScore: number;
   } | null>(null);
   const [showActivationDialog, setShowActivationDialog] = useState(false);
+  const [confirmNextEpisode, setConfirmNextEpisode] = useState<any | null>(null);
   const lastSyncedSecondRef = useRef<number>(0);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const autoCompletedEpisodeIdsRef = useRef<Set<number>>(new Set());
@@ -220,8 +221,8 @@ export default function CourseWatch() {
   );
   const getRequiredWatchSeconds = (episode: any) => (
     episode?.duration && episode.duration > 0
-      ? Math.max(60, Math.floor(episode.duration * 0.7))
-      : 60
+      ? Math.max(30, Math.floor(episode.duration * 0.1))
+      : 30
   );
 
   const isEpisodeUnlocked = (episode: any) => {
@@ -242,7 +243,6 @@ export default function CourseWatch() {
   const nextEpisode = currentEpisodeIndex >= 0 && currentEpisodeIndex < sortedEpisodes.length - 1
     ? sortedEpisodes[currentEpisodeIndex + 1]
     : null;
-  const canGoToNextEpisode = !!nextEpisode && isEpisodeUnlocked(nextEpisode);
   const requiredWatchSeconds = getRequiredWatchSeconds(selectedEpisode);
   const requiredWatchMinutes = Math.max(1, Math.ceil(requiredWatchSeconds / 60));
   const hasWatchRequirementMet = effectiveWatchedSeconds >= requiredWatchSeconds;
@@ -256,17 +256,28 @@ export default function CourseWatch() {
   const canMarkComplete = selectedEpisode?.order <= 1
     ? hasWatchRequirementMet
     : hasWatchRequirementMet && !loadingEpisodeQuiz && (!quizRequired || quizPassed);
+  const canConfirmSelectedEpisodeWatch = !!selectedEpisode
+    && !!nextEpisode
+    && !selectedEpisodeProgress?.isCompleted
+    && !loadingEpisodeQuiz
+    && (!quizRequired || quizPassed);
 
   const quizSectionRef = useRef<HTMLDivElement>(null);
 
-  const handleEpisodeComplete = useCallback(() => {
-    if (!selectedEpisode || !courseId) return;
-    markCompleteMutation.mutate({
+  const markSelectedEpisodeComplete = useCallback(async (studentConfirmedWatch = false) => {
+    if (!selectedEpisode || !courseId) return false;
+    await markCompleteMutation.mutateAsync({
       courseId,
       episodeId: selectedEpisode.id,
       watchedDuration: effectiveWatchedSeconds,
+      studentConfirmedWatch,
     });
+    return true;
   }, [selectedEpisode, courseId, effectiveWatchedSeconds, markCompleteMutation]);
+
+  const handleEpisodeComplete = useCallback(() => {
+    void markSelectedEpisodeComplete(false);
+  }, [markSelectedEpisodeComplete]);
 
   useEffect(() => {
     if (!selectedEpisode || !courseId || selectedEpisodeProgress?.isCompleted) return;
@@ -301,36 +312,92 @@ export default function CourseWatch() {
     }
   }, [canMarkComplete, hasWatchRequirementMet, quizRequired, quizPassed, language, handleEpisodeComplete, requiredWatchMinutes, t]);
 
-  const handleVideoProgress = (currentTime: number) => {
+  const syncEpisodeProgress = useCallback((currentTime?: number, force = false) => {
     if (!selectedEpisode || !courseId) return;
-    const second = Math.floor(currentTime || 0);
+    const second = Math.floor(currentTime ?? videoRef.current?.currentTime ?? effectiveWatchedSeconds ?? 0);
     if (second <= 0) return;
 
     setLiveWatchedSeconds((current) => Math.max(current, second));
 
-    if (second - lastSyncedSecondRef.current < 10) {
+    if (!force && second - lastSyncedSecondRef.current < 5) {
       return;
     }
 
-    lastSyncedSecondRef.current = second;
+    lastSyncedSecondRef.current = Math.max(lastSyncedSecondRef.current, second);
     updateEpisodeProgressMutation.mutate({
       episodeId: selectedEpisode.id,
       courseId,
       watchedDuration: second,
       isCompleted: false,
     });
+  }, [courseId, effectiveWatchedSeconds, selectedEpisode, updateEpisodeProgressMutation]);
+
+  const handleVideoProgress = (currentTime: number) => {
+    syncEpisodeProgress(currentTime);
   };
 
-  const handleNextEpisode = () => {
+  const openEpisode = useCallback((episode: any) => {
+    syncEpisodeProgress(undefined, true);
+    setSelectedEpisode(episode);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [syncEpisodeProgress]);
+
+  const handleNextEpisode = async () => {
     if (!selectedEpisode || !nextEpisode) return;
     if (!isEpisodeUnlocked(nextEpisode)) {
+      if (canMarkComplete) {
+        const completed = await markSelectedEpisodeComplete(false);
+        if (completed) openEpisode(nextEpisode);
+        return;
+      }
+
+      if (canConfirmSelectedEpisodeWatch) {
+        setConfirmNextEpisode(nextEpisode);
+        return;
+      }
+
+      if (quizRequired && !quizPassed) {
+        toast.info(
+          language === 'ar'
+            ? 'يجب إتمام اختبار الحلقة أولاً لتحديدها كمكتملة'
+            : 'Complete the episode quiz first to mark it as complete'
+        );
+        quizSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        return;
+      }
+
       toast.error(t('course.toastUnlockPrev'));
       return;
     }
 
-    setSelectedEpisode(nextEpisode);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    openEpisode(nextEpisode);
   };
+
+  const handleConfirmNextEpisode = async () => {
+    if (!confirmNextEpisode) return;
+    const targetEpisode = confirmNextEpisode;
+
+    try {
+      const completed = await markSelectedEpisodeComplete(true);
+      if (!completed) return;
+      setConfirmNextEpisode(null);
+      await utils.episodeProgress.getCourse.invalidate();
+      openEpisode(targetEpisode);
+    } catch {
+      // The mutation toast already explains the failure.
+    }
+  };
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        syncEpisodeProgress(undefined, true);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [syncEpisodeProgress]);
 
   const handleQuizAnswerSelect = (questionId: number, optionId: string) => {
     setQuizAnswers((prev) => ({ ...prev, [questionId]: optionId }));
@@ -478,17 +545,11 @@ export default function CourseWatch() {
                         onContextMenu={(e) => e.preventDefault()}
                         className="w-full h-full"
                         onTimeUpdate={(event) => handleVideoProgress(event.currentTarget.currentTime)}
+                        onPause={(event) => syncEpisodeProgress(event.currentTarget.currentTime, true)}
                         onEnded={(event) => {
-                          if (!selectedEpisode || !courseId) return;
                           const finalSecond = Math.floor(event.currentTarget.duration || event.currentTarget.currentTime || 0);
                           setLiveWatchedSeconds((current) => Math.max(current, finalSecond));
-                          lastSyncedSecondRef.current = Math.max(lastSyncedSecondRef.current, finalSecond);
-                          updateEpisodeProgressMutation.mutate({
-                            episodeId: selectedEpisode.id,
-                            courseId,
-                            watchedDuration: Math.max(requiredWatchSeconds, finalSecond),
-                            isCompleted: false,
-                          });
+                          syncEpisodeProgress(Math.max(requiredWatchSeconds, finalSecond), true);
                         }}
                       />
                     )}
@@ -530,7 +591,7 @@ export default function CourseWatch() {
                     <CheckCircle2 className="h-4 w-4 me-2" />
                     {t('course.markComplete')}
                   </Button>
-                  <Button variant="outline" onClick={handleNextEpisode} disabled={!canGoToNextEpisode}>
+                  <Button variant="outline" onClick={handleNextEpisode} disabled={!nextEpisode || markCompleteMutation.isPending}>
                     {t('course.nextEpisode')}
                     <ChevronRight className="h-4 w-4 ms-2" />
                   </Button>
@@ -663,18 +724,23 @@ export default function CourseWatch() {
                     const isSelected = selectedEpisode?.id === episode.id;
                     const isCompleted = !!courseEpisodeProgress.find((progress) => progress.episodeId === episode.id)?.isCompleted;
                     const isUnlocked = isEpisodeUnlocked(episode);
+                    const canConfirmImmediateNext = nextEpisode?.id === episode.id && canConfirmSelectedEpisodeWatch;
                     
                     return (
                       <button
                         key={episode.id}
                         onClick={() => {
                           if (!isUnlocked) {
+                            if (canConfirmImmediateNext) {
+                              setConfirmNextEpisode(episode);
+                              return;
+                            }
                             toast.error(t('course.toastUnlockPrev'));
                             return;
                           }
-                          setSelectedEpisode(episode);
+                          openEpisode(episode);
                         }}
-                        disabled={!isUnlocked}
+                        disabled={!isUnlocked && !canConfirmImmediateNext}
                         className={`w-full text-start p-4 transition-colors ${
                           isUnlocked ? 'hover:bg-gray-50' : 'opacity-60 cursor-not-allowed bg-gray-50'
                         } ${
@@ -719,6 +785,38 @@ export default function CourseWatch() {
         </div>
       </div>
     </div>
+
+    <Dialog open={!!confirmNextEpisode} onOpenChange={(open) => !open && setConfirmNextEpisode(null)}>
+      <DialogContent className="sm:max-w-md" dir={isArabic ? "rtl" : "ltr"}>
+        <DialogHeader>
+          <DialogTitle>
+            {isArabic ? 'متابعة الحلقة التالية؟' : 'Continue to the next episode?'}
+          </DialogTitle>
+          <DialogDescription>
+            {isArabic
+              ? 'سجلاتنا لا تظهر أن الحلقة الحالية مكتملة. إذا كنت قد شاهدتها بالفعل، يمكننا تحديدها كمكتملة وفتح الحلقة التالية لك.'
+              : 'Our records do not show the current episode as completed. If you already watched it, we can mark it complete and open the next episode.'}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter className="flex-col gap-2 sm:flex-col">
+          <Button
+            className="w-full"
+            onClick={handleConfirmNextEpisode}
+            disabled={markCompleteMutation.isPending}
+          >
+            {isArabic ? 'نعم، شاهدتها - افتح التالية' : 'Yes, I watched it - open next'}
+          </Button>
+          <Button
+            variant="outline"
+            className="w-full"
+            onClick={() => setConfirmNextEpisode(null)}
+            disabled={markCompleteMutation.isPending}
+          >
+            {isArabic ? 'العودة للحلقة' : 'Go back to episode'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
     {/* Deferred Activation Dialog */}
     {activationStatus?.hasPending && (

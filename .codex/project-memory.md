@@ -1,6 +1,6 @@
 # XFLEX Project Memory
 
-Last updated: 2026-06-06
+Last updated: 2026-06-14
 
 ## Project Overview
 
@@ -49,6 +49,12 @@ Last updated: 2026-06-06
 ## Known Fixed Bugs / Lessons Learned
 
 - Episode prerequisite skip for no-quiz episodes was fixed.
+- Course episode progression is supportive, not punitive: watch progress should help unlock lessons, but missing playback tracking should not strand students.
+- Episode watch completion threshold is intentionally soft: 10% of episode duration with a 30-second minimum. Do not restore the old 70%/60-second hard gate.
+- If a student tries to open the next episode and the previous episode is incomplete only because watch progress was not captured, the app should ask for confirmation, then mark the previous episode complete and open the next episode.
+- Student confirmation may repair missing watch tracking only; it must not bypass a real configured quiz that the student has not passed.
+- Missing, empty, or malformed episode quizzes must be treated as not required (`required: false`, `passed: true`) and must never block the next episode.
+- Course progress capture should save on time updates plus pause, ended, tab hide, and episode switch; backend progress writes must remain monotonic so watched seconds never decrease and completed episodes stay completed.
 - Admin chat list loads newest first.
 - `admin_settings` insert should use `INSERT OR REPLACE` behavior where appropriate.
 - Support email trigger is inside `createSupportMessage` when `senderType = 'client'`.
