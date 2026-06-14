@@ -28,7 +28,7 @@ const subSortFns: Record<string, (a: any, b: any) => number> = {
   city: (a, b) => (a.city || '').localeCompare(b.city || ''),
   country: (a, b) => (a.country || '').localeCompare(b.country || ''),
   registered: (a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime(),
-  orders: (a, b) => (a.completedOrders || 0) - (b.completedOrders || 0),
+  keys: (a, b) => (a.totalKeys || 0) - (b.totalKeys || 0),
   spent: (a, b) => (a.totalSpent || 0) - (b.totalSpent || 0),
   renewals: (a, b) => (a.renewalCount || 0) - (b.renewalCount || 0),
 };
@@ -48,7 +48,7 @@ export default function AdminSubscribersReport() {
     { key: 'city', en: 'City', ar: 'المدينة' },
     { key: 'country', en: 'Country', ar: 'البلد' },
     { key: 'registered', en: 'Registered', ar: 'تاريخ التسجيل' },
-    { key: 'orders', en: 'Orders', ar: 'الطلبات' },
+    { key: 'keys', en: 'Keys', ar: 'المفاتيح' },
     { key: 'spent', en: 'Spent', ar: 'الإنفاق' },
     { key: 'packages', en: 'Active Packages', ar: 'الباقات النشطة' },
     { key: 'renewals', en: 'Renewals', ar: 'التجديدات' },
@@ -112,11 +112,11 @@ export default function AdminSubscribersReport() {
 
   const exportCSV = () => {
     if (!filtered.length) return;
-    const headers = ['Name', 'Email', 'Phone', 'City', 'Country', 'Registered', 'Total Orders', 'Total Spent ($)', 'Active Packages', 'Renewals'];
+    const headers = ['Name', 'Email', 'Phone', 'City', 'Country', 'Registered', 'Total Keys', 'Total Spent ($)', 'Active Packages', 'Renewals'];
     const rows = filtered.map((s: any) => [
       s.name || '', s.email, s.phone || '', s.city || '', s.country || '',
       s.createdAt ? formatLocalizedDate(s.createdAt, language) : '',
-      s.completedOrders, ((s.totalSpent || 0) / 100).toFixed(2),
+      s.totalKeys || 0, (s.totalSpent || 0).toFixed(2),
       (s.activePackages || []).join('; '), s.renewalCount,
     ]);
     const csv = [headers.join(','), ...rows.map(r => r.map((v: any) => `"${v}"`).join(','))].join('\n');
@@ -211,7 +211,7 @@ export default function AdminSubscribersReport() {
                 {visibleCols.has('city') && <th className="px-3 py-3 text-start font-medium"><SortableHeader label={isRtl ? 'المدينة' : 'City'} sortKey="city" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>}
                 {visibleCols.has('country') && <th className="px-3 py-3 text-start font-medium"><SortableHeader label={isRtl ? 'البلد' : 'Country'} sortKey="country" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>}
                 {visibleCols.has('registered') && <th className="px-3 py-3 text-start font-medium"><SortableHeader label={isRtl ? 'تاريخ التسجيل' : 'Registered'} sortKey="registered" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>}
-                {visibleCols.has('orders') && <th className="px-3 py-3 text-center font-medium"><SortableHeader label={isRtl ? 'الطلبات' : 'Orders'} sortKey="orders" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>}
+                {visibleCols.has('keys') && <th className="px-3 py-3 text-center font-medium"><SortableHeader label={isRtl ? 'المفاتيح' : 'Keys'} sortKey="keys" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>}
                 {visibleCols.has('spent') && <th className="px-3 py-3 text-center font-medium"><SortableHeader label={isRtl ? 'الإنفاق' : 'Spent'} sortKey="spent" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>}
                 {visibleCols.has('packages') && <th className="px-3 py-3 text-start font-medium">{isRtl ? 'الباقات النشطة' : 'Active Packages'}</th>}
                 {visibleCols.has('renewals') && <th className="px-3 py-3 text-center font-medium"><SortableHeader label={isRtl ? 'التجديدات' : 'Renewals'} sortKey="renewals" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>}
@@ -228,9 +228,9 @@ export default function AdminSubscribersReport() {
                   {visibleCols.has('registered') && <td className="px-3 py-2.5 text-muted-foreground">
                     {s.createdAt ? new Date(s.createdAt).toLocaleDateString(isRtl ? 'ar-EG' : 'en-US') : '—'}
                   </td>}
-                  {visibleCols.has('orders') && <td className="px-3 py-2.5 text-center">{s.completedOrders}</td>}
+                  {visibleCols.has('keys') && <td className="px-3 py-2.5 text-center">{s.totalKeys || 0}</td>}
                   {visibleCols.has('spent') && <td className="px-3 py-2.5 text-center font-medium text-green-700">
-                    ${((s.totalSpent || 0) / 100).toFixed(0)}
+                    ${(s.totalSpent || 0).toFixed(0)}
                   </td>}
                   {visibleCols.has('packages') && <td className="px-3 py-2.5">
                     {(s.activePackages || []).length > 0

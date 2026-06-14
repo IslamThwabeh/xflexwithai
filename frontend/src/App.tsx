@@ -38,7 +38,7 @@ const AdminQuizzes = lazy(() => import("./pages/AdminQuizzes"));
 const AdminCoupons = lazy(() => import("./pages/AdminCoupons"));
 const AdminTestimonials = lazy(() => import("./pages/AdminTestimonials"));
 const AdminBrokersHub = lazy(() => import("./pages/AdminBrokersHub"));
-const AdminSubscribersReport = lazy(() => import("./pages/AdminStudents"));
+const AdminSubscribersReport = lazy(() => import("./pages/AdminSubscribersReport"));
 const AdminRevenueReport = lazy(() => import("./pages/AdminRevenueReport"));
 const AdminExpiryReport = lazy(() => import("./pages/AdminExpiryReport"));
 const AdminPackageKeys = lazy(() => import("./pages/AdminPackageKeys"));
