@@ -3896,7 +3896,7 @@ export const appRouter = router({
     usageReport: lexaiSupportProcedure
       .input(z.object({ days: z.number().int().min(1).max(365).optional() }).optional())
       .query(async ({ input }) => {
-        return db.getOpenAiUsageReport(input?.days ?? 7);
+        return db.getOpenAiUsageReport(input?.days ?? 7, { featureName: "lexai" });
       }),
 
     addNote: lexaiSupportProcedure

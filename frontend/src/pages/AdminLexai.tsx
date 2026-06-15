@@ -586,8 +586,8 @@ export default function AdminLexai() {
               </CardTitle>
               <CardDescription>
                 {isRtl
-                  ? "ملخص تشغيلي سريع للتكلفة والاستهلاك داخل LexAI والخدمات المرتبطة به."
-                  : "A compact operator view of cost and usage across LexAI and adjacent AI workflows."}
+                  ? "ملخص تشغيلي سريع للتكلفة والاستهلاك داخل LexAI فقط."
+                  : "A compact operator view of cost and usage inside LexAI only."}
               </CardDescription>
             </div>
 

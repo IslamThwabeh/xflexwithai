@@ -25,6 +25,16 @@ const OPENAI_PRICING_USD_PER_MILLION: Record<string, OpenAiPricing> = {
   },
 };
 
+export function getOpenAiPricingModelKey(model: string | null | undefined) {
+  const normalizedModel = model?.trim();
+  if (!normalizedModel) return null;
+  if (OPENAI_PRICING_USD_PER_MILLION[normalizedModel]) return normalizedModel;
+
+  return Object.keys(OPENAI_PRICING_USD_PER_MILLION)
+    .sort((a, b) => b.length - a.length)
+    .find((pricingModel) => normalizedModel.startsWith(`${pricingModel}-`)) ?? null;
+}
+
 type OpenAiUsage = {
   prompt_tokens?: number;
   completion_tokens?: number;
@@ -62,7 +72,10 @@ export type OpenAiUsageContext = {
 export function estimateOpenAiCostUsd(model: string | null | undefined, usage?: OpenAiUsage | null) {
   if (!model || !usage) return null;
 
-  const pricing = OPENAI_PRICING_USD_PER_MILLION[model];
+  const pricingModel = getOpenAiPricingModelKey(model);
+  if (!pricingModel) return null;
+
+  const pricing = OPENAI_PRICING_USD_PER_MILLION[pricingModel];
   if (!pricing) return null;
 
   const promptTokens = Number(usage.prompt_tokens ?? 0);

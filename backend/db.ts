@@ -10073,6 +10073,10 @@ type RecordOpenAiUsageEventInput = {
   createdAt?: string;
 };
 
+type OpenAiUsageReportFilters = {
+  featureName?: string | null;
+};
+
 const EMPTY_OPENAI_USAGE_REPORT: OpenAiUsageReport = {
   rangeDays: 7,
   today: {
@@ -10144,15 +10148,23 @@ export async function recordOpenAiUsageEvent(input: RecordOpenAiUsageEventInput)
   });
 }
 
-export async function getOpenAiUsageReport(days = 7): Promise<OpenAiUsageReport> {
+export async function getOpenAiUsageReport(days = 7, filters: OpenAiUsageReportFilters = {}): Promise<OpenAiUsageReport> {
   const db = await getDb();
   if (!db) return { ...EMPTY_OPENAI_USAGE_REPORT, rangeDays: days };
 
   const normalizedDays = Math.max(1, Math.min(365, Math.round(days || 7)));
+  const featureName = normalizeNullableText(filters.featureName);
   const cutoff = new Date(Date.now() - normalizedDays * 86400000).toISOString();
   const todayStart = new Date();
   todayStart.setUTCHours(0, 0, 0, 0);
   const todayStartIso = todayStart.toISOString();
+
+  const scopedWhere = (...conditions: SQL[]) => {
+    const scopedConditions = featureName
+      ? [...conditions, eq(openAiUsageEvents.featureName, featureName)]
+      : conditions;
+    return and(...scopedConditions) as SQL;
+  };
 
   const actorKeyExpr = sql<string | null>`CASE
     WHEN ${openAiUsageEvents.userId} IS NOT NULL THEN CAST(${openAiUsageEvents.userId} AS TEXT)
@@ -10177,7 +10189,7 @@ export async function getOpenAiUsageReport(days = 7): Promise<OpenAiUsageReport>
         totalCalls: totalCallsExpr,
         activeUsers: activeUsersExpr,
       }).from(openAiUsageEvents)
-        .where(sql`${openAiUsageEvents.createdAt} >= ${todayStartIso}`),
+        .where(scopedWhere(sql`${openAiUsageEvents.createdAt} >= ${todayStartIso}`)),
       db.select({
         totalCostUsd: totalCostExpr,
         totalCalls: totalCallsExpr,
@@ -10188,14 +10200,14 @@ export async function getOpenAiUsageReport(days = 7): Promise<OpenAiUsageReport>
         completionTokens: completionTokensExpr,
         totalTokens: totalTokensExpr,
       }).from(openAiUsageEvents)
-        .where(sql`${openAiUsageEvents.createdAt} >= ${cutoff}`),
+        .where(scopedWhere(sql`${openAiUsageEvents.createdAt} >= ${cutoff}`)),
       db.select({
         day: dayExpr,
         totalCostUsd: totalCostExpr,
         totalCalls: totalCallsExpr,
         activeUsers: activeUsersExpr,
       }).from(openAiUsageEvents)
-        .where(sql`${openAiUsageEvents.createdAt} >= ${cutoff}`)
+        .where(scopedWhere(sql`${openAiUsageEvents.createdAt} >= ${cutoff}`))
         .groupBy(dayExpr)
         .orderBy(asc(dayExpr)),
       db.select({
@@ -10211,7 +10223,7 @@ export async function getOpenAiUsageReport(days = 7): Promise<OpenAiUsageReport>
         lastUsedAt: sql<string | null>`MAX(${openAiUsageEvents.createdAt})`,
       }).from(openAiUsageEvents)
         .leftJoin(users, eq(openAiUsageEvents.userId, users.id))
-        .where(and(
+        .where(scopedWhere(
           sql`${openAiUsageEvents.createdAt} >= ${cutoff}`,
           sql`${actorKeyExpr} IS NOT NULL`,
         ))
@@ -10237,7 +10249,7 @@ export async function getOpenAiUsageReport(days = 7): Promise<OpenAiUsageReport>
         totalCalls: totalCallsExpr,
       }).from(openAiUsageEvents)
         .leftJoin(users, eq(openAiUsageEvents.userId, users.id))
-        .where(and(
+        .where(scopedWhere(
           sql`${openAiUsageEvents.createdAt} >= ${cutoff}`,
           sql`${actorKeyExpr} IS NOT NULL`,
         ))
@@ -10260,7 +10272,7 @@ export async function getOpenAiUsageReport(days = 7): Promise<OpenAiUsageReport>
         totalCalls: totalCallsExpr,
         totalTokens: totalTokensExpr,
       }).from(openAiUsageEvents)
-        .where(sql`${openAiUsageEvents.createdAt} >= ${cutoff}`)
+        .where(scopedWhere(sql`${openAiUsageEvents.createdAt} >= ${cutoff}`))
         .groupBy(
           openAiUsageEvents.featureName,
           openAiUsageEvents.actionType,
