@@ -1,9 +1,11 @@
-import { GraduationCap, Download, ChevronDown, ChevronUp, CheckCircle2, Clock, Lock, MessageSquare } from 'lucide-react';
+import { GraduationCap, Download, ChevronDown, ChevronUp, CheckCircle2, Clock, Lock, MessageSquare, Search } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { trpc } from '@/lib/trpc';
 import DashboardLayout from '@/components/DashboardLayout';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { DataTablePagination, useDataTable } from '@/components/DataTable';
 
 const PHASES = [
   { num: 1, nameAr: 'أساسيات التداول', nameEn: 'Trading Basics', days: '1–2' },
@@ -74,6 +76,29 @@ export default function AdminLegacyPlanProgress() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [notesInput, setNotesInput] = useState<Record<number, string>>({});
   const [confirmAction, setConfirmAction] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+
+  const filteredStudents = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    const list = (students ?? []) as any[];
+    if (!query) return list;
+
+    return list.filter((student) => [
+      student.fullName,
+      student.email,
+      student.phone,
+    ].filter(Boolean).some((value) => String(value).toLowerCase().includes(query)));
+  }, [search, students]);
+
+  const {
+    paged,
+    page,
+    pageSize,
+    totalPages,
+    totalItems,
+    setPage,
+    changePageSize,
+  } = useDataTable(filteredStudents, undefined, 10);
 
   const getProgress = (student: any) => {
     const progress = JSON.parse(student.progress || '{}');
@@ -89,9 +114,9 @@ export default function AdminLegacyPlanProgress() {
   };
 
   const exportCSV = () => {
-    if (!students?.length) return;
+    if (!filteredStudents.length) return;
     const header = 'Name,Email,Phone,Current Phase,Progress %,Phase 1,Phase 2,Phase 3,Phase 4,Phase 5,Phase 6,Created,Updated';
-    const rows = students.map((s: any) => {
+    const rows = filteredStudents.map((s: any) => {
       const approvals = JSON.parse(s.phaseApprovals || '{}');
       const pct = getProgress(s);
       return `"${s.fullName}","${s.email}","${s.phone || ''}",${s.currentPhase},${pct}%,${approvals['1'] ? 'Approved' : 'Pending'},${approvals['2'] ? 'Approved' : 'Pending'},${approvals['3'] ? 'Approved' : 'Pending'},${approvals['4'] ? 'Approved' : 'Pending'},${approvals['5'] ? 'Approved' : 'Pending'},${approvals['6'] ? 'Approved' : 'Pending'},"${s.createdAt}","${s.updatedAt}"`;
@@ -148,9 +173,9 @@ export default function AdminLegacyPlanProgress() {
           </div>
           <div className="flex items-center gap-3">
             <Badge variant="secondary" className="text-sm px-3 py-1">
-              {students?.length ?? 0} {isRtl ? 'طالب' : 'students'}
+              {filteredStudents.length} / {students?.length ?? 0} {isRtl ? 'طالب' : 'students'}
             </Badge>
-            {students && students.length > 0 && (
+            {filteredStudents.length > 0 && (
               <button
                 onClick={exportCSV}
                 className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium bg-emerald-600 text-white hover:bg-emerald-700 transition"
@@ -162,17 +187,29 @@ export default function AdminLegacyPlanProgress() {
           </div>
         </div>
 
+        <div className="relative max-w-xl">
+          <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder={isRtl ? 'بحث بالاسم أو الإيميل أو الهاتف' : 'Search by name, email, or phone'}
+            className="ps-9"
+          />
+        </div>
+
         {isLoading ? (
           <div className="text-center py-16 text-muted-foreground">
             {isRtl ? 'جارٍ التحميل...' : 'Loading...'}
           </div>
-        ) : !students?.length ? (
+        ) : !filteredStudents.length ? (
           <div className="text-center py-16 text-muted-foreground">
-            {isRtl ? 'لا توجد بيانات بعد' : 'No data yet'}
+            {search
+              ? (isRtl ? 'لا يوجد طلاب يطابقون البحث' : 'No students match this search')
+              : (isRtl ? 'لا توجد بيانات بعد' : 'No data yet')}
           </div>
         ) : (
           <div className="space-y-4">
-            {students.map((student: any) => {
+            {paged.map((student: any) => {
               const pct = getProgress(student);
               const approvals = JSON.parse(student.phaseApprovals || '{}');
               const answers = JSON.parse(student.answers || '{}');
@@ -339,6 +376,15 @@ export default function AdminLegacyPlanProgress() {
                 </div>
               );
             })}
+            <DataTablePagination
+              page={page}
+              pageSize={pageSize}
+              totalPages={totalPages}
+              totalItems={totalItems}
+              setPage={setPage}
+              changePageSize={changePageSize}
+              isRtl={isRtl}
+            />
           </div>
         )}
       </div>

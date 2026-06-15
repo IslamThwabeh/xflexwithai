@@ -1,12 +1,15 @@
-import { ReactNode, useMemo, useState } from 'react';
+import { ReactNode, useEffect, useMemo, useState } from 'react';
 
 import DashboardLayout from '@/components/DashboardLayout';
+import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { formatLocalizedDateTime } from '@/lib/dateLocale';
 import { trpc } from '@/lib/trpc';
 import {
   Activity,
   BookOpen,
+  ChevronLeft,
+  ChevronRight,
   Eye,
   Loader2,
   MousePointerClick,
@@ -39,6 +42,8 @@ type EventSelection = {
   eventType: string;
   days: 7 | 30;
 };
+
+const RECENT_EVENTS_PAGE_SIZE = 10;
 
 const ROUTE_LABELS: Record<string, { en: string; ar: string }> = {
   '/dashboard': { en: 'Student Dashboard', ar: 'لوحة الطالب' },
@@ -242,7 +247,10 @@ function buildEventHighlights(event: RecentEngagementEvent, isRtl: boolean) {
   return highlights;
 }
 
-function getStudentIdentity(event: RecentEngagementEvent, isRtl: boolean) {
+function getStudentIdentity(
+  event: Pick<RecentEngagementEvent, 'userId' | 'userName' | 'userEmail'>,
+  isRtl: boolean,
+) {
   if (event.userName) return event.userName;
   if (event.userEmail) return event.userEmail;
   return isRtl ? `طالب #${event.userId}` : `Student #${event.userId}`;
@@ -252,6 +260,7 @@ export default function AdminEngagement() {
   const { language } = useLanguage();
   const isRtl = language === 'ar';
   const [selectedAction, setSelectedAction] = useState<EventSelection | null>(null);
+  const [recentEventsPage, setRecentEventsPage] = useState(0);
 
   const { data: summary7, isLoading: l7 } = trpc.engagement.summary.useQuery({ days: 7 });
   const { data: summary30, isLoading: l30 } = trpc.engagement.summary.useQuery({ days: 30 });
@@ -268,13 +277,35 @@ export default function AdminEngagement() {
 
   const activeSelection = selectedAction ?? defaultSelection;
   const activeCopy = activeSelection ? getEventCopy(activeSelection.eventType) : null;
+  const activeSelectionKey = activeSelection
+    ? `${activeSelection.days}:${activeSelection.eventType}`
+    : 'none';
 
-  const { data: recentEvents, isLoading: recentLoading } = trpc.engagement.recentEvents.useQuery(
+  const { data: eventUsers, isLoading: eventUsersLoading } = trpc.engagement.eventUsers.useQuery(
     activeSelection
-      ? { days: activeSelection.days, eventType: activeSelection.eventType, limit: 20 }
+      ? {
+        days: activeSelection.days,
+        eventType: activeSelection.eventType,
+        limit: RECENT_EVENTS_PAGE_SIZE,
+        offset: recentEventsPage * RECENT_EVENTS_PAGE_SIZE,
+      }
       : undefined,
     { enabled: !!activeSelection },
   );
+  const eventUserItems = eventUsers?.items ?? [];
+  const eventUsersTotalStudents = eventUsers?.totalStudents ?? 0;
+  const eventUsersTotalActions = eventUsers?.totalActions ?? 0;
+  const recentTotalPages = Math.max(1, Math.ceil(eventUsersTotalStudents / RECENT_EVENTS_PAGE_SIZE));
+
+  useEffect(() => {
+    setRecentEventsPage(0);
+  }, [activeSelectionKey]);
+
+  useEffect(() => {
+    if (recentEventsPage > recentTotalPages - 1) {
+      setRecentEventsPage(Math.max(0, recentTotalPages - 1));
+    }
+  }, [recentEventsPage, recentTotalPages]);
 
   return (
     <DashboardLayout>
@@ -347,9 +378,9 @@ export default function AdminEngagement() {
                   <h2 className="text-lg font-semibold">
                     {activeCopy
                       ? (isRtl
-                        ? `الإجراءات الفعلية: ${activeCopy.labelAr}`
-                        : `Recent Actions: ${activeCopy.labelEn}`)
-                      : (isRtl ? 'الإجراءات الفعلية للطلاب' : 'Recent Student Actions')}
+                        ? `الطلاب حسب الإجراء: ${activeCopy.labelAr}`
+                        : `Students by Action: ${activeCopy.labelEn}`)
+                      : (isRtl ? 'الطلاب حسب الإجراء' : 'Students by Action')}
                   </h2>
                   <p className="text-sm text-muted-foreground">
                     {activeCopy
@@ -360,6 +391,13 @@ export default function AdminEngagement() {
                         ? 'اختر نوع إجراء من الأعلى لعرض ما قام به الطلاب فعلياً.'
                         : 'Choose an action type above to inspect what students actually did.')}
                   </p>
+                  {activeSelection && !eventUsersLoading ? (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {isRtl
+                        ? `${eventUsersTotalActions.toLocaleString()} إجراء من ${eventUsersTotalStudents.toLocaleString()} طلاب`
+                        : `${eventUsersTotalActions.toLocaleString()} actions from ${eventUsersTotalStudents.toLocaleString()} students`}
+                    </p>
+                  ) : null}
                 </div>
                 {activeSelection ? (
                   <div className="inline-flex items-center rounded-full bg-emerald-50 text-emerald-700 px-3 py-1 text-xs font-medium border border-emerald-100 self-start">
@@ -376,61 +414,125 @@ export default function AdminEngagement() {
                     ? 'لا توجد بيانات كافية لعرض تفاصيل الإجراءات بعد.'
                     : 'There is not enough data yet to show action details.'}
                 </p>
-              ) : recentLoading ? (
+              ) : eventUsersLoading ? (
                 <div className="flex justify-center py-10">
                   <Loader2 className="w-5 h-5 animate-spin text-emerald-600" />
                 </div>
-              ) : !recentEvents?.length ? (
+              ) : !eventUserItems.length ? (
                 <p className="text-sm text-muted-foreground py-6">
                   {isRtl
                     ? 'لا توجد إجراءات مطابقة لهذا النوع في الفترة المحددة.'
                     : 'No matching student actions were found for this timeframe.'}
                 </p>
               ) : (
-                <div className="space-y-3">
-                  {recentEvents.map((event) => {
-                    const highlights = buildEventHighlights(event, isRtl);
-
-                    return (
-                      <div key={event.id} className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-3">
+                <>
+                  <div className="space-y-3">
+                    {eventUserItems.map((student) => (
+                      <div key={student.userId} className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
                         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                           <div className="space-y-1 min-w-0">
-                            <p className="font-semibold text-slate-900 truncate">{getStudentIdentity(event, isRtl)}</p>
-                            {event.userEmail && event.userName ? (
-                              <p className="text-xs text-muted-foreground truncate">{event.userEmail}</p>
+                            <p className="font-semibold text-slate-900 truncate">{getStudentIdentity(student, isRtl)}</p>
+                            {student.userEmail && student.userName ? (
+                              <p className="text-xs text-muted-foreground truncate">{student.userEmail}</p>
                             ) : null}
-                            <p className="text-sm text-slate-700 leading-6">{describeRecentEvent(event, isRtl)}</p>
+                            <p className="text-sm text-slate-700 leading-6">
+                              {isRtl
+                                ? `${student.actionCount.toLocaleString()} إجراء: ${activeCopy?.labelAr ?? 'نشاط طلابي'}`
+                                : `${student.actionCount.toLocaleString()} actions: ${activeCopy?.labelEn ?? 'Student activity'}`}
+                            </p>
                           </div>
-                          <p className="text-xs text-muted-foreground shrink-0">
-                            {formatLocalizedDateTime(event.createdAt, language, {
-                              dateStyle: 'medium',
-                              timeStyle: 'short',
-                            })}
-                          </p>
+                          <div className="text-xs text-muted-foreground shrink-0 md:text-end">
+                            <p>{isRtl ? 'آخر نشاط' : 'Last activity'}</p>
+                            <p>
+                              {formatLocalizedDateTime(student.lastEventAt, language, {
+                                dateStyle: 'medium',
+                                timeStyle: 'short',
+                              })}
+                            </p>
+                          </div>
                         </div>
-
-                        {highlights.length ? (
-                          <div className="flex flex-wrap gap-2">
-                            {highlights.map((highlight) => (
-                              <span
-                                key={`${event.id}-${highlight}`}
-                                className="inline-flex items-center rounded-full border border-emerald-100 bg-white px-2.5 py-1 text-xs text-slate-700"
-                              >
-                                {highlight}
-                              </span>
-                            ))}
-                          </div>
-                        ) : null}
                       </div>
-                    );
-                  })}
-                </div>
+                    ))}
+                  </div>
+
+                  <RecentEventsPagination
+                    page={recentEventsPage}
+                    pageSize={RECENT_EVENTS_PAGE_SIZE}
+                    totalItems={eventUsersTotalStudents}
+                    totalPages={recentTotalPages}
+                    isRtl={isRtl}
+                    onPageChange={setRecentEventsPage}
+                  />
+                </>
               )}
             </div>
           </>
         )}
       </div>
     </DashboardLayout>
+  );
+}
+
+function RecentEventsPagination({
+  page,
+  pageSize,
+  totalItems,
+  totalPages,
+  isRtl,
+  onPageChange,
+}: {
+  page: number;
+  pageSize: number;
+  totalItems: number;
+  totalPages: number;
+  isRtl: boolean;
+  onPageChange: (page: number) => void;
+}) {
+  if (totalItems === 0) return null;
+
+  const start = page * pageSize + 1;
+  const end = Math.min((page + 1) * pageSize, totalItems);
+  const isFirstPage = page <= 0;
+  const isLastPage = page >= totalPages - 1;
+
+  return (
+    <div className="flex flex-col gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
+      <p className="text-sm text-muted-foreground">
+        {isRtl
+          ? `عرض ${start.toLocaleString()}-${end.toLocaleString()} من ${totalItems.toLocaleString()}`
+          : `Showing ${start.toLocaleString()}-${end.toLocaleString()} of ${totalItems.toLocaleString()}`}
+      </p>
+
+      {totalPages > 1 ? (
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => onPageChange(page - 1)}
+            disabled={isFirstPage}
+            aria-label={isRtl ? 'الصفحة السابقة' : 'Previous page'}
+          >
+            {isRtl ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+          </Button>
+          <span className="min-w-16 text-center text-sm text-muted-foreground tabular-nums">
+            {page + 1} / {totalPages}
+          </span>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => onPageChange(page + 1)}
+            disabled={isLastPage}
+            aria-label={isRtl ? 'الصفحة التالية' : 'Next page'}
+          >
+            {isRtl ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+          </Button>
+        </div>
+      ) : null}
+    </div>
   );
 }
 

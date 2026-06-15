@@ -9208,8 +9208,9 @@ export async function getRevenueReport(): Promise<{
       ...data,
     }));
 
-  // Recent activations (last 50)
-  const recentActivations = activatedKeys.slice(0, 50).map(k => {
+  // Activation ledger for the report UI. Keep the full set so pagination,
+  // filters, and exports do not silently drop older sales.
+  const recentActivations = activatedKeys.map(k => {
     const user = k.email ? userByEmail.get(k.email.toLowerCase()) : undefined;
     const pkg = k.packageId ? pkgMap.get(k.packageId) : undefined;
     return {
@@ -10425,9 +10426,10 @@ export async function getRecentEngagementEvents(input?: {
   days?: number;
   eventType?: string;
   limit?: number;
+  offset?: number;
 }) {
   const db = await getDb();
-  if (!db) return [] as Array<{
+  type RecentEngagementEvent = {
     id: number;
     userId: number;
     userName: string | null;
@@ -10439,31 +10441,34 @@ export async function getRecentEngagementEvents(input?: {
     entityLabelAr: string | null;
     metadata: string | null;
     createdAt: string;
-  }>;
+  };
+
+  const emptyResult = {
+    items: [] as RecentEngagementEvent[],
+    total: 0,
+    uniqueUsers: 0,
+  };
+
+  if (!db) return emptyResult;
 
   const days = input?.days ?? 30;
-  const limit = input?.limit ?? 25;
+  const limit = Math.max(1, input?.limit ?? 25);
+  const offset = Math.max(0, input?.offset ?? 0);
   const cutoff = new Date(Date.now() - days * 86400000).toISOString();
 
-  return withOptionalEngagementEventsTable('recentEvents', [] as Array<{
-    id: number;
-    userId: number;
-    userName: string | null;
-    userEmail: string | null;
-    eventType: string;
-    entityType: string | null;
-    entityId: number | null;
-    entityLabelEn: string | null;
-    entityLabelAr: string | null;
-    metadata: string | null;
-    createdAt: string;
-  }>, async () => {
+  return withOptionalEngagementEventsTable('recentEvents', emptyResult, async () => {
     const filter = input?.eventType
       ? and(
           sql`${engagementEvents.createdAt} >= ${cutoff}`,
           eq(engagementEvents.eventType, input.eventType),
         )
       : sql`${engagementEvents.createdAt} >= ${cutoff}`;
+
+    const [totals] = await db.select({
+      total: sql<number>`COUNT(*)`,
+      uniqueUsers: sql<number>`COUNT(DISTINCT ${engagementEvents.userId})`,
+    }).from(engagementEvents)
+      .where(filter);
 
     const rows = await db.select({
       id: engagementEvents.id,
@@ -10479,7 +10484,8 @@ export async function getRecentEngagementEvents(input?: {
       .leftJoin(users, eq(engagementEvents.userId, users.id))
       .where(filter)
       .orderBy(desc(engagementEvents.createdAt))
-      .limit(limit);
+      .limit(limit)
+      .offset(offset);
 
     const courseIds = Array.from(new Set(
       rows
@@ -10537,7 +10543,7 @@ export async function getRecentEngagementEvents(input?: {
     const episodeMap = new Map(episodeRows.map((row) => [row.id, row]));
     const quizMap = new Map(quizRows.map((row) => [row.id, row]));
 
-    return rows.map((row) => {
+    const items = rows.map((row) => {
       const entityLabel = getEngagementEntityLabel(row, courseMap, episodeMap, quizMap);
 
       return {
@@ -10548,6 +10554,82 @@ export async function getRecentEngagementEvents(input?: {
         entityLabelAr: entityLabel.ar,
       };
     });
+
+    return {
+      items,
+      total: Number(totals?.total ?? 0),
+      uniqueUsers: Number(totals?.uniqueUsers ?? 0),
+    };
+  });
+}
+
+export async function getEngagementEventUsers(input?: {
+  days?: number;
+  eventType?: string;
+  limit?: number;
+  offset?: number;
+}) {
+  const db = await getDb();
+  const emptyResult = {
+    items: [] as Array<{
+      userId: number;
+      userName: string | null;
+      userEmail: string | null;
+      actionCount: number;
+      lastEventAt: string;
+    }>,
+    totalStudents: 0,
+    totalActions: 0,
+  };
+
+  if (!db) return emptyResult;
+
+  const days = input?.days ?? 30;
+  const limit = Math.max(1, input?.limit ?? 25);
+  const offset = Math.max(0, input?.offset ?? 0);
+  const cutoff = new Date(Date.now() - days * 86400000).toISOString();
+
+  return withOptionalEngagementEventsTable('eventUsers', emptyResult, async () => {
+    const filter = input?.eventType
+      ? and(
+          sql`${engagementEvents.createdAt} >= ${cutoff}`,
+          eq(engagementEvents.eventType, input.eventType),
+        )
+      : sql`${engagementEvents.createdAt} >= ${cutoff}`;
+
+    const [totals] = await db.select({
+      totalStudents: sql<number>`COUNT(DISTINCT ${engagementEvents.userId})`,
+      totalActions: sql<number>`COUNT(*)`,
+    }).from(engagementEvents)
+      .where(filter);
+
+    const lastEventAtExpr = sql<string>`MAX(${engagementEvents.createdAt})`;
+
+    const rows = await db.select({
+      userId: engagementEvents.userId,
+      userName: users.name,
+      userEmail: users.email,
+      actionCount: sql<number>`COUNT(*)`,
+      lastEventAt: lastEventAtExpr,
+    }).from(engagementEvents)
+      .leftJoin(users, eq(engagementEvents.userId, users.id))
+      .where(filter)
+      .groupBy(engagementEvents.userId, users.name, users.email)
+      .orderBy(desc(lastEventAtExpr))
+      .limit(limit)
+      .offset(offset);
+
+    return {
+      items: rows.map((row) => ({
+        userId: row.userId,
+        userName: row.userName?.trim() || null,
+        userEmail: row.userEmail ?? null,
+        actionCount: Number(row.actionCount ?? 0),
+        lastEventAt: row.lastEventAt,
+      })),
+      totalStudents: Number(totals?.totalStudents ?? 0),
+      totalActions: Number(totals?.totalActions ?? 0),
+    };
   });
 }
 

@@ -1,7 +1,9 @@
-import { FileCheck, Eye } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Download, Eye, FileCheck, Search } from 'lucide-react';
 import DashboardLayout from '@/components/DashboardLayout';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { useDataTable, DataTablePagination } from '@/components/DataTable';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { formatAdminCurrency } from '@/lib/adminCurrency';
@@ -38,8 +40,36 @@ export default function AdminTermsAcceptance() {
   const { language } = useLanguage();
   const isRtl = language === 'ar';
   const { data: orders, isLoading } = trpc.orders.adminList.useQuery(undefined);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
 
-  const acceptedOrders = (orders ?? []).filter((order: any) => order.termsAcceptedAt);
+  const acceptedOrders = useMemo(
+    () => (orders ?? []).filter((order: any) => order.termsAcceptedAt),
+    [orders],
+  );
+  const availableStatuses = useMemo(() => {
+    const statuses = new Set<string>();
+    for (const order of acceptedOrders as any[]) {
+      if (order.status) statuses.add(order.status);
+    }
+    return Array.from(statuses).sort();
+  }, [acceptedOrders]);
+  const filteredOrders = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return (acceptedOrders as any[]).filter((order) => {
+      const matchesSearch = !query || [
+        order.id,
+        order.userName,
+        order.userEmail,
+        order.userPhone,
+        order.termsAcceptedIpAddress,
+        order.termsAcceptedVersion,
+      ].filter(Boolean).some((value) => String(value).toLowerCase().includes(query));
+      const matchesStatus = !statusFilter || order.status === statusFilter;
+
+      return matchesSearch && matchesStatus;
+    });
+  }, [acceptedOrders, search, statusFilter]);
   const {
     paged,
     page,
@@ -48,7 +78,35 @@ export default function AdminTermsAcceptance() {
     totalItems,
     setPage,
     changePageSize,
-  } = useDataTable(acceptedOrders, orderSortFns);
+  } = useDataTable(filteredOrders, orderSortFns);
+
+  const exportCSV = () => {
+    if (!filteredOrders.length) return;
+
+    const headers = ['Order ID', 'Status', 'User', 'Email', 'Phone', 'Accepted At', 'Version', 'IP Address', 'User Agent'];
+    const rows = filteredOrders.map((order: any) => [
+      order.id,
+      statusLabels[order.status]?.en || order.status || '',
+      order.userName || '',
+      order.userEmail || '',
+      order.userPhone || '',
+      order.termsAcceptedAt || '',
+      order.termsAcceptedVersion || '',
+      order.termsAcceptedIpAddress || '',
+      order.termsAcceptedUserAgent || '',
+    ]);
+    const csv = [
+      headers.join(','),
+      ...rows.map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(',')),
+    ].join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `terms-acceptance-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <DashboardLayout>
@@ -65,16 +123,50 @@ export default function AdminTermsAcceptance() {
               </p>
             </div>
           </div>
-          <Badge className="w-fit bg-emerald-100 text-emerald-800">
-            {isRtl ? `${acceptedOrders.length} موافقة` : `${acceptedOrders.length} acceptances`}
-          </Badge>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge className="w-fit bg-emerald-100 text-emerald-800">
+              {isRtl
+                ? `${filteredOrders.length} / ${acceptedOrders.length} موافقة`
+                : `${filteredOrders.length} / ${acceptedOrders.length} acceptances`}
+            </Badge>
+            <Button onClick={exportCSV} variant="outline" size="sm" disabled={!filteredOrders.length}>
+              <Download className="me-2 h-4 w-4" />
+              {isRtl ? 'تصدير CSV' : 'Export CSV'}
+            </Button>
+          </div>
+        </div>
+
+        <div className="mb-6 grid gap-3 md:grid-cols-[minmax(220px,1fr)_220px]">
+          <div className="relative">
+            <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder={isRtl ? 'بحث بالطلب أو العميل أو الإيميل أو IP' : 'Search order, client, email, or IP'}
+              className="ps-9"
+            />
+          </div>
+          <select
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value)}
+            className="h-9 rounded-md border bg-background px-3 text-sm"
+          >
+            <option value="">{isRtl ? 'كل الحالات' : 'All Statuses'}</option>
+            {availableStatuses.map((status) => (
+              <option key={status} value={status}>
+                {isRtl ? statusLabels[status]?.ar : statusLabels[status]?.en || status}
+              </option>
+            ))}
+          </select>
         </div>
 
         {isLoading ? (
           <div className="py-8 text-center text-gray-400">{isRtl ? 'جاري التحميل...' : 'Loading...'}</div>
-        ) : acceptedOrders.length === 0 ? (
+        ) : filteredOrders.length === 0 ? (
           <div className="rounded-xl border bg-white p-10 text-center text-gray-400">
-            {isRtl ? 'لا توجد موافقات شروط مسجلة بعد' : 'No terms acceptance records yet'}
+            {search || statusFilter
+              ? (isRtl ? 'لا توجد موافقات تطابق الفلاتر' : 'No acceptance records match these filters')
+              : (isRtl ? 'لا توجد موافقات شروط مسجلة بعد' : 'No terms acceptance records yet')}
           </div>
         ) : (
           <div className="space-y-3">
@@ -164,7 +256,7 @@ export default function AdminTermsAcceptance() {
           </div>
         )}
 
-        {!isLoading && acceptedOrders.length > 0 && (
+        {!isLoading && filteredOrders.length > 0 && (
           <DataTablePagination
             page={page}
             pageSize={pageSize}

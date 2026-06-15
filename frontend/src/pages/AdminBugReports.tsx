@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
-import { Bug, CheckCircle2, Filter, Loader2, MessageSquareText, ShieldX, TriangleAlert } from "lucide-react";
+import { Bug, CheckCircle2, Download, Filter, Loader2, MessageSquareText, ShieldX, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 
 import DashboardLayout from "@/components/DashboardLayout";
+import { DataTablePagination, useDataTable } from "@/components/DataTable";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -76,6 +77,43 @@ export default function AdminBugReports() {
     return reports.filter((report: any) => report.status === filter);
   }, [filter, reports]);
 
+  const {
+    paged,
+    page,
+    pageSize,
+    totalPages,
+    totalItems,
+    setPage,
+    changePageSize,
+  } = useDataTable(filteredReports as any[], undefined, 10);
+
+  const exportCSV = () => {
+    if (!filteredReports.length) return;
+    const headers = ["ID", "Status", "Risk Level", "Awarded Points", "Client", "Email", "Created At", "Reviewed At", "Description", "Admin Note"];
+    const csv = [
+      headers.join(","),
+      ...filteredReports.map((report: any) => [
+        report.id,
+        report.status || "",
+        report.riskLevel || "",
+        report.awardedPoints || 0,
+        report.userName || "",
+        report.userEmail || "",
+        report.createdAt || "",
+        report.reviewedAt || "",
+        report.description || "",
+        report.adminNote || "",
+      ].map((value) => `"${String(value).replace(/"/g, '""')}"`).join(",")),
+    ].join("\n");
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `bug-reports-${filter}-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   const openReview = (report: any) => {
     setActiveReportId(report.id);
     setRiskLevel((report.riskLevel as RiskLevel) || "medium");
@@ -142,7 +180,8 @@ export default function AdminBugReports() {
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 rounded-2xl border bg-white p-3 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-white p-3 shadow-sm">
+            <div className="flex flex-wrap items-center gap-2">
             <div className="inline-flex items-center gap-2 px-2 text-sm text-slate-500">
               <Filter className="h-4 w-4" />
               {isRTL ? "تصفية" : "Filter"}
@@ -166,6 +205,11 @@ export default function AdminBugReports() {
                 )}
               </button>
             ))}
+            </div>
+            <Button onClick={exportCSV} variant="outline" size="sm" disabled={!filteredReports.length}>
+              <Download className="me-2 h-4 w-4" />
+              {isRTL ? "تصدير CSV" : "Export CSV"}
+            </Button>
           </div>
 
           {isLoading ? (
@@ -178,7 +222,7 @@ export default function AdminBugReports() {
             </div>
           ) : (
             <div className="space-y-4">
-              {filteredReports.map((report: any) => {
+              {paged.map((report: any) => {
                 const isPending = report.status === "pending";
                 const isActive = activeReportId === report.id;
                 return (
@@ -390,6 +434,15 @@ export default function AdminBugReports() {
                   </article>
                 );
               })}
+              <DataTablePagination
+                page={page}
+                pageSize={pageSize}
+                totalPages={totalPages}
+                totalItems={totalItems}
+                setPage={setPage}
+                changePageSize={changePageSize}
+                isRtl={isRTL}
+              />
             </div>
           )}
         </div>

@@ -1,9 +1,11 @@
-import { FileCheck, Download, Trash2 } from 'lucide-react';
+import { FileCheck, Download, Trash2, Search } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { trpc } from '@/lib/trpc';
 import DashboardLayout from '@/components/DashboardLayout';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { DataTablePagination, useDataTable, zebraRow } from '@/components/DataTable';
 
 export default function AdminOfferAgreements() {
   const { language } = useLanguage();
@@ -14,6 +16,30 @@ export default function AdminOfferAgreements() {
     onSuccess: () => utils.offers.listAgreements.invalidate(),
   });
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [search, setSearch] = useState('');
+
+  const filteredAgreements = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    const list = (agreements ?? []) as any[];
+    if (!query) return list;
+
+    return list.filter((agreement) => [
+      agreement.fullName,
+      agreement.email,
+      agreement.phone,
+      agreement.ipAddress,
+    ].filter(Boolean).some((value) => String(value).toLowerCase().includes(query)));
+  }, [agreements, search]);
+
+  const {
+    paged,
+    page,
+    pageSize,
+    totalPages,
+    totalItems,
+    setPage,
+    changePageSize,
+  } = useDataTable(filteredAgreements, undefined);
 
   const handleDelete = (id: number, name: string) => {
     if (!confirm(isRtl ? `هل أنت متأكد من حذف موافقة "${name}"؟` : `Delete agreement for "${name}"?`)) return;
@@ -22,9 +48,9 @@ export default function AdminOfferAgreements() {
   };
 
   const exportCSV = () => {
-    if (!agreements?.length) return;
+    if (!filteredAgreements.length) return;
     const header = 'Name,Email,Phone,Agreed At,IP';
-    const rows = agreements.map((a: any) =>
+    const rows = filteredAgreements.map((a: any) =>
       `"${a.fullName}","${a.email}","${a.phone || ''}","${a.agreedAt}","${a.ipAddress || ''}"`
     );
     const csv = [header, ...rows].join('\n');
@@ -52,9 +78,9 @@ export default function AdminOfferAgreements() {
           </div>
           <div className="flex items-center gap-3">
             <Badge variant="secondary" className="text-sm px-3 py-1">
-              {agreements?.length ?? 0} {isRtl ? 'موافقة' : 'agreements'}
+              {filteredAgreements.length} / {agreements?.length ?? 0} {isRtl ? 'موافقة' : 'agreements'}
             </Badge>
-            {agreements && agreements.length > 0 && (
+            {filteredAgreements.length > 0 && (
               <button
                 onClick={exportCSV}
                 className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium bg-green-600 text-white hover:bg-green-700 transition"
@@ -64,6 +90,16 @@ export default function AdminOfferAgreements() {
               </button>
             )}
           </div>
+        </div>
+
+        <div className="relative max-w-xl">
+          <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder={isRtl ? 'بحث بالاسم أو الإيميل أو الهاتف أو IP' : 'Search name, email, phone, or IP'}
+            className="ps-9"
+          />
         </div>
 
         <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
@@ -85,14 +121,16 @@ export default function AdminOfferAgreements() {
                   <tr><td colSpan={7} className="px-4 py-10 text-center text-muted-foreground">
                     {isRtl ? 'جارٍ التحميل...' : 'Loading...'}
                   </td></tr>
-                ) : !agreements?.length ? (
+                ) : !filteredAgreements.length ? (
                   <tr><td colSpan={7} className="px-4 py-10 text-center text-muted-foreground">
-                    {isRtl ? 'لا توجد موافقات بعد' : 'No agreements yet'}
+                    {search
+                      ? (isRtl ? 'لا توجد موافقات تطابق البحث' : 'No agreements match this search')
+                      : (isRtl ? 'لا توجد موافقات بعد' : 'No agreements yet')}
                   </td></tr>
                 ) : (
-                  agreements.map((a: any, i: number) => (
-                    <tr key={a.id} className="border-b last:border-0 hover:bg-muted/30 transition">
-                      <td className="px-4 py-3 text-muted-foreground">{i + 1}</td>
+                  paged.map((a: any, i: number) => (
+                    <tr key={a.id} className={zebraRow(i, "border-b last:border-0 hover:bg-muted/30 transition")}>
+                      <td className="px-4 py-3 text-muted-foreground">{page * pageSize + i + 1}</td>
                       <td className="px-4 py-3 font-medium">{a.fullName}</td>
                       <td className="px-4 py-3 font-mono text-xs">{a.email}</td>
                       <td className="px-4 py-3 font-mono text-xs">
@@ -125,6 +163,17 @@ export default function AdminOfferAgreements() {
             </table>
           </div>
         </div>
+        {!isLoading && filteredAgreements.length > 0 && (
+          <DataTablePagination
+            page={page}
+            pageSize={pageSize}
+            totalPages={totalPages}
+            totalItems={totalItems}
+            setPage={setPage}
+            changePageSize={changePageSize}
+            isRtl={isRtl}
+          />
+        )}
       </div>
     </DashboardLayout>
   );

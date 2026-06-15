@@ -6986,12 +6986,31 @@ ${qaText}`;
         days: z.number().min(1).max(365).optional(),
         eventType: z.string().min(1).max(50).optional(),
         limit: z.number().min(1).max(100).optional(),
+        offset: z.number().min(0).max(100000).optional(),
       }).optional())
       .query(async ({ input }) => {
         return db.getRecentEngagementEvents({
           days: input?.days ?? 30,
           eventType: input?.eventType,
           limit: input?.limit ?? 20,
+          offset: input?.offset ?? 0,
+        });
+      }),
+
+    // Admin: students who performed a selected event type
+    eventUsers: adminProcedure
+      .input(z.object({
+        days: z.number().min(1).max(365).optional(),
+        eventType: z.string().min(1).max(50).optional(),
+        limit: z.number().min(1).max(100).optional(),
+        offset: z.number().min(0).max(100000).optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        return db.getEngagementEventUsers({
+          days: input?.days ?? 30,
+          eventType: input?.eventType,
+          limit: input?.limit ?? 20,
+          offset: input?.offset ?? 0,
         });
       }),
 

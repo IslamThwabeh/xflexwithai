@@ -1,16 +1,37 @@
+import { useMemo, useState } from 'react';
 import { trpc } from '@/lib/trpc';
 import { printReport } from '@/lib/printReport';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { formatLocalizedDate } from '@/lib/dateLocale';
 import { formatAdminCurrencyFromUsd } from '@/lib/adminCurrency';
 import { Button } from '@/components/ui/button';
-import { Download, Wallet, TrendingUp, Key, FileText } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Download, Wallet, TrendingUp, Key, FileText, Search } from 'lucide-react';
 import DashboardLayout from '@/components/DashboardLayout';
+import { DataTablePagination, SortableHeader, useDataTable, zebraRow } from '@/components/DataTable';
+
+const activationSortFns: Record<string, (a: any, b: any) => number> = {
+  key: (a, b) => (a.keyCode || '').localeCompare(b.keyCode || ''),
+  user: (a, b) => (a.userName || '').localeCompare(b.userName || ''),
+  package: (a, b) => (a.packageName || '').localeCompare(b.packageName || ''),
+  price: (a, b) => (a.price || 0) - (b.price || 0),
+  date: (a, b) => new Date(a.activatedAt || 0).getTime() - new Date(b.activatedAt || 0).getTime(),
+};
+
+function getActivationType(activation: any) {
+  if (activation.isUpgrade) return 'upgrade';
+  if (activation.isRenewal) return 'renewal';
+  return 'new';
+}
 
 export default function AdminRevenueReport() {
   const { language } = useLanguage();
   const isRtl = language === 'ar';
   const { data, isLoading } = trpc.reports.revenue.useQuery();
+  const [search, setSearch] = useState('');
+  const [packageFilter, setPackageFilter] = useState('');
+  const [typeFilter, setTypeFilter] = useState<'all' | 'new' | 'upgrade' | 'renewal'>('all');
+  const [monthFilter, setMonthFilter] = useState('');
 
   const fmt = (dollars: number) => formatAdminCurrencyFromUsd(dollars, language);
 
@@ -18,10 +39,63 @@ export default function AdminRevenueReport() {
     ? (data?.totalRevenue || 0) / (data?.totalKeySales || 1)
     : 0;
 
+  const activations = useMemo(() => data?.recentActivations ?? [], [data?.recentActivations]);
+  const packages = useMemo(() => {
+    const names = new Set<string>();
+    for (const activation of activations) {
+      const name = isRtl
+        ? activation.packageNameAr || activation.packageName
+        : activation.packageName || activation.packageNameAr;
+      if (name) names.add(name);
+    }
+    return Array.from(names).sort();
+  }, [activations, isRtl]);
+  const months = useMemo(() => {
+    const values = new Set<string>();
+    for (const activation of activations) {
+      if (activation.activatedAt) values.add(String(activation.activatedAt).slice(0, 7));
+    }
+    return Array.from(values).sort().reverse();
+  }, [activations]);
+  const filteredActivations = useMemo(() => {
+    const query = search.trim().toLowerCase();
+
+    return activations.filter((activation: any) => {
+      const localizedPackage = isRtl
+        ? activation.packageNameAr || activation.packageName
+        : activation.packageName || activation.packageNameAr;
+      const matchesSearch = !query || [
+        activation.keyCode,
+        activation.userName,
+        activation.userEmail,
+        activation.packageName,
+        activation.packageNameAr,
+      ].filter(Boolean).some((value) => String(value).toLowerCase().includes(query));
+      const matchesPackage = !packageFilter || localizedPackage === packageFilter;
+      const matchesType = typeFilter === 'all' || getActivationType(activation) === typeFilter;
+      const matchesMonth = !monthFilter || String(activation.activatedAt || '').startsWith(monthFilter);
+
+      return matchesSearch && matchesPackage && matchesType && matchesMonth;
+    });
+  }, [activations, isRtl, monthFilter, packageFilter, search, typeFilter]);
+
+  const {
+    paged,
+    page,
+    pageSize,
+    totalPages,
+    totalItems,
+    sortKey,
+    sortDir,
+    setPage,
+    handleSort,
+    changePageSize,
+  } = useDataTable(filteredActivations, activationSortFns);
+
   const exportCSV = () => {
-    if (!data?.recentActivations?.length) return;
+    if (!filteredActivations.length) return;
     const headers = ['Key Code', 'User', 'Email', 'Package', 'Price (₪)', 'Upgrade', 'Renewal', 'Activated'];
-    const rows = data.recentActivations.map((a: any) => [
+    const rows = filteredActivations.map((a: any) => [
       a.keyCode, a.userName || '', a.userEmail || '',
       a.packageName || '', fmt(a.price || 0),
       a.isUpgrade ? 'Yes' : 'No', a.isRenewal ? 'Yes' : 'No',
@@ -60,7 +134,7 @@ export default function AdminRevenueReport() {
           <TrendingUp className="w-6 h-6 text-green-600" />
           {isRtl ? 'تقرير الإيرادات والمحاسبة' : 'Revenue & Accounting Report'}
         </h1>
-        <Button onClick={exportCSV} variant="outline" size="sm">
+        <Button onClick={exportCSV} variant="outline" size="sm" disabled={!filteredActivations.length}>
           <Download className="w-4 h-4 me-2" />
           {isRtl ? 'تصدير CSV' : 'Export CSV'}
         </Button>
@@ -142,22 +216,84 @@ export default function AdminRevenueReport() {
 
       {/* Recent Key Activations Table */}
       <div className="bg-white border rounded-xl p-5">
-        <h2 className="text-lg font-bold mb-4">{isRtl ? 'آخر التفعيلات' : 'Recent Key Activations'}</h2>
+        <div className="mb-4 flex flex-col gap-1 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h2 className="text-lg font-bold">{isRtl ? 'سجل التفعيلات' : 'Activation Ledger'}</h2>
+            <p className="text-sm text-muted-foreground">
+              {isRtl
+                ? `${filteredActivations.length.toLocaleString()} من ${activations.length.toLocaleString()} تفعيل`
+                : `${filteredActivations.length.toLocaleString()} of ${activations.length.toLocaleString()} activations`}
+            </p>
+          </div>
+        </div>
+
+        <div className="mb-4 grid gap-3 md:grid-cols-[minmax(220px,1fr)_180px_160px_160px]">
+          <div className="relative">
+            <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder={isRtl ? 'بحث بالمفتاح أو العميل أو الإيميل...' : 'Search key, client, email...'}
+              className="ps-9"
+            />
+          </div>
+          <select
+            value={packageFilter}
+            onChange={(event) => setPackageFilter(event.target.value)}
+            className="h-9 rounded-md border bg-background px-3 text-sm"
+          >
+            <option value="">{isRtl ? 'كل الباقات' : 'All Packages'}</option>
+            {packages.map((name) => (
+              <option key={name} value={name}>{name}</option>
+            ))}
+          </select>
+          <select
+            value={typeFilter}
+            onChange={(event) => setTypeFilter(event.target.value as typeof typeFilter)}
+            className="h-9 rounded-md border bg-background px-3 text-sm"
+          >
+            <option value="all">{isRtl ? 'كل الأنواع' : 'All Types'}</option>
+            <option value="new">{isRtl ? 'جديد' : 'New'}</option>
+            <option value="upgrade">{isRtl ? 'ترقية' : 'Upgrade'}</option>
+            <option value="renewal">{isRtl ? 'تجديد' : 'Renewal'}</option>
+          </select>
+          <select
+            value={monthFilter}
+            onChange={(event) => setMonthFilter(event.target.value)}
+            className="h-9 rounded-md border bg-background px-3 text-sm"
+          >
+            <option value="">{isRtl ? 'كل الأشهر' : 'All Months'}</option>
+            {months.map((month) => (
+              <option key={month} value={month}>{month}</option>
+            ))}
+          </select>
+        </div>
+
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/50">
               <tr>
-                <th className="px-3 py-2.5 text-start font-medium">{isRtl ? 'المفتاح' : 'Key'}</th>
-                <th className="px-3 py-2.5 text-start font-medium">{isRtl ? 'المستخدم' : 'User'}</th>
-                <th className="px-3 py-2.5 text-start font-medium">{isRtl ? 'الباقة' : 'Package'}</th>
-                <th className="px-3 py-2.5 text-center font-medium">{isRtl ? 'السعر' : 'Price'}</th>
+                <th className="px-3 py-2.5 text-start font-medium">
+                  <SortableHeader label={isRtl ? 'المفتاح' : 'Key'} sortKey="key" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} />
+                </th>
+                <th className="px-3 py-2.5 text-start font-medium">
+                  <SortableHeader label={isRtl ? 'المستخدم' : 'User'} sortKey="user" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} />
+                </th>
+                <th className="px-3 py-2.5 text-start font-medium">
+                  <SortableHeader label={isRtl ? 'الباقة' : 'Package'} sortKey="package" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} />
+                </th>
+                <th className="px-3 py-2.5 text-center font-medium">
+                  <SortableHeader label={isRtl ? 'السعر' : 'Price'} sortKey="price" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} />
+                </th>
                 <th className="px-3 py-2.5 text-center font-medium">{isRtl ? 'النوع' : 'Type'}</th>
-                <th className="px-3 py-2.5 text-start font-medium">{isRtl ? 'التاريخ' : 'Date'}</th>
+                <th className="px-3 py-2.5 text-start font-medium">
+                  <SortableHeader label={isRtl ? 'التاريخ' : 'Date'} sortKey="date" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} />
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y">
-              {data?.recentActivations?.map((a: any) => (
-                <tr key={a.id} className="hover:bg-muted/30">
+              {paged.map((a: any, index: number) => (
+                <tr key={a.id} className={zebraRow(index, "hover:bg-muted/30")}>
                   <td className="px-3 py-2 font-mono text-xs">{a.keyCode}</td>
                   <td className="px-3 py-2">
                     <div className="font-medium text-xs">{a.userName || '—'}</div>
@@ -179,7 +315,7 @@ export default function AdminRevenueReport() {
                   </td>
                 </tr>
               ))}
-              {(!data?.recentActivations || data.recentActivations.length === 0) && (
+              {paged.length === 0 && (
                 <tr><td colSpan={6} className="px-3 py-8 text-center text-muted-foreground">
                   {isRtl ? 'لا توجد تفعيلات' : 'No activations found'}
                 </td></tr>
@@ -187,6 +323,15 @@ export default function AdminRevenueReport() {
             </tbody>
           </table>
         </div>
+        <DataTablePagination
+          page={page}
+          pageSize={pageSize}
+          totalPages={totalPages}
+          totalItems={totalItems}
+          setPage={setPage}
+          changePageSize={changePageSize}
+          isRtl={isRtl}
+        />
       </div>
     </div>
     </DashboardLayout>
