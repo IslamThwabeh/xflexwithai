@@ -16,9 +16,10 @@ import {
 } from "@/components/ui/alert-dialog";
 import { FileUpload } from "@/components/FileUpload";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { groupLexaiMessagesByDay } from "@/lib/lexaiMessages";
 import { formatPendingActivationDate, getPendingActivationDaysLeft, getPendingActivationWindow } from "@/lib/pendingActivation";
 import { trpc } from "@/lib/trpc";
-import { Sparkles, Crown, CheckCircle2, ImageIcon, Trash2, BookOpen, MessageSquare, Building2, ArrowUpCircle } from "lucide-react";
+import { Sparkles, Crown, CheckCircle2, ImageIcon, Trash2, BookOpen, MessageSquare, Building2, ArrowUpCircle, ChevronDown, ChevronRight } from "lucide-react";
 import { useState, useRef, useEffect, useMemo } from "react";
 import { toast } from "sonner";
 import { Link } from "wouter";
@@ -163,6 +164,7 @@ export default function LexAI() {
   const [timeframe, setTimeframe] = useState("M15");
   const [userAnalysis, setUserAnalysis] = useState("");
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [expandedMessageDays, setExpandedMessageDays] = useState<Record<string, boolean>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when messages load or change
@@ -183,6 +185,23 @@ export default function LexAI() {
       return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
     });
   }, [messages]);
+  const messageDayGroups = useMemo(
+    () => groupLexaiMessagesByDay(sortedMessages, language === 'ar' ? 'ar-EG' : 'en-US'),
+    [language, sortedMessages],
+  );
+
+  useEffect(() => {
+    const latestDay = messageDayGroups.at(-1)?.key;
+    if (!latestDay) {
+      setExpandedMessageDays({});
+      return;
+    }
+
+    setExpandedMessageDays((current) => {
+      if (current[latestDay]) return current;
+      return { ...current, [latestDay]: true };
+    });
+  }, [messageDayGroups]);
 
   const isAdmin = !!adminCheck?.isAdmin;
   const frozenSubscription = subscription?.kind === 'frozen' ? subscription : null;
@@ -708,48 +727,65 @@ export default function LexAI() {
                 )}
 
                 {/* Chat messages */}
-                {sortedMessages.map((message) => {
-                  const rtl = isArabicText(message.content);
+                {messageDayGroups.map((group, groupIndex) => {
+                  const isExpanded = expandedMessageDays[group.key] ?? groupIndex === messageDayGroups.length - 1;
                   return (
-                    <div
-                      key={message.id}
-                      className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
-                    >
-                      <div
-                        className={`max-w-[82%] rounded-2xl px-3 py-2.5 md:px-4 md:py-3 shadow ${
-                          message.role === "user"
-                            ? "bg-gradient-to-br from-emerald-500 to-teal-500 text-white"
-                            : "bg-white border border-slate-200"
-                        }`}
+                    <div key={group.key} className="space-y-3">
+                      <button
+                        type="button"
+                        onClick={() => setExpandedMessageDays((current) => ({ ...current, [group.key]: !isExpanded }))}
+                        className="mx-auto flex items-center gap-2 rounded-full border border-slate-200 bg-white/90 px-3 py-1 text-xs font-medium text-slate-600 shadow-sm transition hover:border-emerald-200 hover:text-emerald-700"
                       >
-                        {message.imageUrl && (
-                          <div className="mb-2">
-                            <img
-                              src={message.imageUrl}
-                              alt="Chart"
-                              className="rounded-lg max-w-[120px] max-h-[90px] object-cover bg-black/5 cursor-pointer hover:opacity-80 transition-opacity"
-                              onClick={() => {
-                                if (message.imageUrl) window.open(message.imageUrl, '_blank');
-                              }}
-                            />
+                        {isExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                        <span>{group.label}</span>
+                        <span className="text-slate-400">({group.messages.length})</span>
+                      </button>
+
+                      {isExpanded && group.messages.map((message) => {
+                        const rtl = isArabicText(message.content);
+                        return (
+                          <div
+                            key={message.id}
+                            className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
+                          >
+                            <div
+                              className={`max-w-[82%] rounded-2xl px-3 py-2.5 md:px-4 md:py-3 shadow ${
+                                message.role === "user"
+                                  ? "bg-gradient-to-br from-emerald-500 to-teal-500 text-white"
+                                  : "bg-white border border-slate-200"
+                              }`}
+                            >
+                              {message.imageUrl && (
+                                <div className="mb-2">
+                                  <img
+                                    src={message.imageUrl}
+                                    alt="Chart"
+                                    className="rounded-lg max-w-[120px] max-h-[90px] object-cover bg-black/5 cursor-pointer hover:opacity-80 transition-opacity"
+                                    onClick={() => {
+                                      if (message.imageUrl) window.open(message.imageUrl, '_blank');
+                                    }}
+                                  />
+                                </div>
+                              )}
+                              <div
+                                dir={rtl ? "rtl" : "ltr"}
+                                className={`whitespace-pre-wrap leading-relaxed text-[0.9rem] md:text-[0.95rem] ${
+                                  rtl ? "text-right" : "text-left"
+                                }`}
+                              >
+                                {message.content}
+                              </div>
+                              <p
+                                className={`text-xs mt-2 ${
+                                  message.role === "user" ? "text-emerald-100" : "text-muted-foreground"
+                                }`}
+                              >
+                                {formatMessageDate(message.createdAt)}
+                              </p>
+                            </div>
                           </div>
-                        )}
-                        <div
-                          dir={rtl ? "rtl" : "ltr"}
-                          className={`whitespace-pre-wrap leading-relaxed text-[0.9rem] md:text-[0.95rem] ${
-                            rtl ? "text-right" : "text-left"
-                          }`}
-                        >
-                          {message.content}
-                        </div>
-                        <p
-                          className={`text-xs mt-2 ${
-                            message.role === "user" ? "text-emerald-100" : "text-muted-foreground"
-                          }`}
-                        >
-                          {formatMessageDate(message.createdAt)}
-                        </p>
-                      </div>
+                        );
+                      })}
                     </div>
                   );
                 })}

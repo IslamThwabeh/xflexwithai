@@ -25,11 +25,14 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { groupLexaiMessagesByDay } from "@/lib/lexaiMessages";
 import { trpc } from "@/lib/trpc";
 import { LEXAI_SUPPORT_CASE_PRIORITIES, LEXAI_SUPPORT_CASE_STATUSES } from "@shared/const";
 import {
   ArrowLeft,
   Bot,
+  ChevronDown,
+  ChevronRight,
   CheckCircle2,
   Clock3,
   ExternalLink,
@@ -172,6 +175,16 @@ function isDeletedUserRecord(caseIdentity: CaseIdentity | null | undefined) {
   return !!caseIdentity?.userId && !caseIdentity.userEmail;
 }
 
+function getLexaiCaseIdFromUrl() {
+  if (typeof window === "undefined") return null;
+
+  const rawCaseId = new URLSearchParams(window.location.search).get("caseId");
+  if (!rawCaseId) return null;
+
+  const caseId = Number(rawCaseId);
+  return Number.isFinite(caseId) && caseId > 0 ? caseId : null;
+}
+
 const statusStyles: Record<string, string> = {
   open: "bg-emerald-100 text-emerald-800",
   waiting_student: "bg-amber-100 text-amber-800",
@@ -241,7 +254,7 @@ export default function AdminLexai() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | (typeof LEXAI_SUPPORT_CASE_STATUSES)[number]>("all");
   const [assignedToMe, setAssignedToMe] = useState(false);
-  const [selectedCaseId, setSelectedCaseId] = useState<number | null>(null);
+  const [selectedCaseId, setSelectedCaseId] = useState<number | null>(() => getLexaiCaseIdFromUrl());
   const [profileUserId, setProfileUserId] = useState<number | null>(null);
   const [showOps, setShowOps] = useState(false);
   const didSyncQueryRef = useRef(false);
@@ -252,6 +265,7 @@ export default function AdminLexai() {
   const [statusNote, setStatusNote] = useState("");
   const [noteText, setNoteText] = useState("");
   const [pauseReason, setPauseReason] = useState("");
+  const [expandedMessageDays, setExpandedMessageDays] = useState<Record<string, boolean>>({});
 
   const { data: adminCheck } = trpc.auth.isAdmin.useQuery();
   const isAdmin = !!adminCheck?.isAdmin;
@@ -259,7 +273,13 @@ export default function AdminLexai() {
   const replaceLexaiUrl = (caseId: number | null) => {
     if (typeof window === "undefined") return;
     const nextUrl = caseId ? `/admin/lexai?caseId=${caseId}` : "/admin/lexai";
+    const currentUrl = `${window.location.pathname}${window.location.search}`;
+    if (currentUrl === nextUrl) return;
     window.history.replaceState(window.history.state, "", nextUrl);
+  };
+
+  const selectCase = (caseId: number | null) => {
+    setSelectedCaseId((current) => (current === caseId ? current : caseId));
   };
 
   useEffect(() => {
@@ -282,6 +302,12 @@ export default function AdminLexai() {
   );
 
   const supportCases = supportCasesData ?? [];
+  const supportCaseIds = useMemo(
+    () => supportCases.map((supportCase) => supportCase.id),
+    [supportCases],
+  );
+  const supportCaseIdsKey = supportCaseIds.join(",");
+  const firstSupportCaseId = supportCaseIds[0] ?? null;
 
   const {
     data: usageReport,
@@ -392,34 +418,25 @@ export default function AdminLexai() {
   });
 
   useEffect(() => {
-    if (!supportCases.length) {
-      if (selectedCaseId !== null) setSelectedCaseId(null);
+    if (!supportCasesData) return;
+
+    if (!supportCaseIds.length) {
+      selectCase(null);
       return;
     }
 
-    if (typeof window !== "undefined") {
-      const rawCaseId = new URLSearchParams(window.location.search).get("caseId");
-      if (rawCaseId) {
-        const requestedCaseId = Number(rawCaseId);
-        if (!Number.isFinite(requestedCaseId) || requestedCaseId <= 0) {
-          replaceLexaiUrl(null);
-        } else if (supportCases.some((item) => item.id === requestedCaseId)) {
-          if (selectedCaseId !== requestedCaseId) {
-            setSelectedCaseId(requestedCaseId);
-          }
-          return;
-        } else if (selectedCaseId == null) {
-          replaceLexaiUrl(null);
-        }
-      }
-    }
+    setSelectedCaseId((current) => {
+      if (current && supportCaseIds.includes(current)) return current;
 
-    const shouldAutoSelectFirstCase = typeof window !== "undefined"
-      && window.matchMedia("(min-width: 1280px)").matches;
-    if (shouldAutoSelectFirstCase && (!selectedCaseId || !supportCases.some((item) => item.id === selectedCaseId))) {
-      setSelectedCaseId(supportCases[0].id);
-    }
-  }, [supportCases, selectedCaseId]);
+      const urlCaseId = getLexaiCaseIdFromUrl();
+      if (urlCaseId && supportCaseIds.includes(urlCaseId)) return urlCaseId;
+
+      const shouldAutoSelectFirstCase = typeof window !== "undefined"
+        && window.matchMedia("(min-width: 1280px)").matches;
+
+      return shouldAutoSelectFirstCase ? firstSupportCaseId : null;
+    });
+  }, [firstSupportCaseId, supportCasesData, supportCaseIdsKey]);
 
   useEffect(() => {
     if (!didSyncQueryRef.current) {
@@ -437,10 +454,15 @@ export default function AdminLexai() {
 
   useEffect(() => {
     if (!selectedCase) return;
-    setStatusDraft(selectedCase.status as (typeof LEXAI_SUPPORT_CASE_STATUSES)[number]);
-    setPriorityDraft(selectedCase.priority as (typeof LEXAI_SUPPORT_CASE_PRIORITIES)[number]);
-    setAdminAssignee(selectedCase.assignedToUserId ? String(selectedCase.assignedToUserId) : "unassigned");
-    setPauseReason(selectedCase.lexaiSubscription?.pausedReason ?? "");
+    const nextStatus = selectedCase.status as (typeof LEXAI_SUPPORT_CASE_STATUSES)[number];
+    const nextPriority = selectedCase.priority as (typeof LEXAI_SUPPORT_CASE_PRIORITIES)[number];
+    const nextAssignee = selectedCase.assignedToUserId ? String(selectedCase.assignedToUserId) : "unassigned";
+    const nextPauseReason = selectedCase.lexaiSubscription?.pausedReason ?? "";
+
+    setStatusDraft((current) => (current === nextStatus ? current : nextStatus));
+    setPriorityDraft((current) => (current === nextPriority ? current : nextPriority));
+    setAdminAssignee((current) => (current === nextAssignee ? current : nextAssignee));
+    setPauseReason((current) => (current === nextPauseReason ? current : nextPauseReason));
   }, [selectedCase]);
 
   const selectedCaseSummary = useMemo(
@@ -453,6 +475,23 @@ export default function AdminLexai() {
     () => [...(selectedCase?.messages ?? [])].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()),
     [selectedCase?.messages],
   );
+  const messageDayGroups = useMemo(
+    () => groupLexaiMessagesByDay(sortedMessages, locale),
+    [locale, sortedMessages],
+  );
+
+  useEffect(() => {
+    const latestDay = messageDayGroups.at(-1)?.key;
+    if (!latestDay) {
+      setExpandedMessageDays({});
+      return;
+    }
+
+    setExpandedMessageDays((current) => {
+      if (current[latestDay]) return current;
+      return { ...current, [latestDay]: true };
+    });
+  }, [messageDayGroups]);
 
   const summary = useMemo(() => ({
     total: supportCases.length,
@@ -716,7 +755,7 @@ export default function AdminLexai() {
                 <div>
                   <CardTitle className="flex items-center gap-2 text-lg">
                     <MessageSquare className="w-5 h-5 text-emerald-500" />
-                    {isRtl ? "قائمة الحالات" : "Case Queue"}
+                    {isRtl ? "قائمة المحادثات" : "Case Queue"}
                   </CardTitle>
                   <CardDescription>
                     {isRtl ? `${supportCases.length} حالة مطابقة للفلاتر الحالية` : `${supportCases.length} cases matching the current filters`}
@@ -778,7 +817,7 @@ export default function AdminLexai() {
                     : "Try changing the search or filters to see other cases."}
                 />
               ) : (
-                <ScrollArea className="h-[calc(100vh-22rem)] min-h-[420px] pe-3">
+                <ScrollArea className="h-[calc(100vh-16rem)] min-h-[520px] pe-3">
                   <div className="space-y-2">
                     {supportCases.map((supportCase) => {
                       const isActive = supportCase.id === selectedCaseId;
@@ -788,7 +827,7 @@ export default function AdminLexai() {
                         <button
                           key={supportCase.id}
                           type="button"
-                          onClick={() => setSelectedCaseId(supportCase.id)}
+                          onClick={() => selectCase(supportCase.id)}
                           className={`w-full rounded-xl border p-4 text-start transition ${
                             isActive
                               ? "border-emerald-300 bg-emerald-50 shadow-sm"
@@ -846,7 +885,7 @@ export default function AdminLexai() {
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => setSelectedCaseId(null)}
+                onClick={() => selectCase(null)}
                 className="xl:hidden"
               >
                 <ArrowLeft className="h-4 w-4 me-2" />
@@ -926,39 +965,56 @@ export default function AdminLexai() {
                       ) : (
                         <ScrollArea className="h-[55vh] md:h-[640px] pe-3">
                           <div className="space-y-3">
-                            {sortedMessages.map((message) => {
-                              const isClient = message.role === "user";
+                            {messageDayGroups.map((group, groupIndex) => {
+                              const isExpanded = expandedMessageDays[group.key] ?? groupIndex === messageDayGroups.length - 1;
                               return (
-                                <div
-                                  key={message.id}
-                                  className={`rounded-xl border p-4 ${
-                                    isClient ? "bg-white border-emerald-100" : "bg-slate-50 border-slate-200"
-                                  }`}
-                                >
-                                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                                    <div className="flex flex-wrap items-center gap-2">
-                                      <Badge className={isClient ? "bg-emerald-100 text-emerald-800" : "bg-slate-200 text-slate-700"}>
-                                        {isClient ? (isRtl ? "العميل" : "Client") : "LexAI"}
-                                      </Badge>
-                                      {message.analysisType && <Badge variant="outline">{message.analysisType}</Badge>}
-                                    </div>
-                                    <span className="text-xs text-muted-foreground">{formatDate(message.createdAt, locale)}</span>
-                                  </div>
+                                <div key={group.key} className="space-y-3">
+                                  <button
+                                    type="button"
+                                    onClick={() => setExpandedMessageDays((current) => ({ ...current, [group.key]: !isExpanded }))}
+                                    className="mx-auto flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600 shadow-sm transition hover:border-emerald-200 hover:text-emerald-700"
+                                  >
+                                    {isExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                                    <span>{group.label}</span>
+                                    <span className="text-slate-400">({group.messages.length})</span>
+                                  </button>
 
-                                  {message.imageUrl && (
-                                    <div className="mb-3">
-                                      <img
-                                        src={message.imageUrl}
-                                        alt="Chart"
-                                        className="h-[90px] w-[120px] cursor-pointer rounded-lg bg-black/5 object-cover transition-opacity hover:opacity-85"
-                                        onClick={() => window.open(message.imageUrl ?? "", "_blank")}
-                                      />
-                                    </div>
-                                  )}
+                                  {isExpanded && group.messages.map((message) => {
+                                    const isClient = message.role === "user";
+                                    return (
+                                      <div
+                                        key={message.id}
+                                        className={`rounded-xl border p-4 ${
+                                          isClient ? "bg-white border-emerald-100" : "bg-slate-50 border-slate-200"
+                                        }`}
+                                      >
+                                        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                                          <div className="flex flex-wrap items-center gap-2">
+                                            <Badge className={isClient ? "bg-emerald-100 text-emerald-800" : "bg-slate-200 text-slate-700"}>
+                                              {isClient ? (isRtl ? "العميل" : "Client") : "LexAI"}
+                                            </Badge>
+                                            {message.analysisType && <Badge variant="outline">{message.analysisType}</Badge>}
+                                          </div>
+                                          <span className="text-xs text-muted-foreground">{formatDate(message.createdAt, locale)}</span>
+                                        </div>
 
-                                  <div className="whitespace-pre-wrap text-sm leading-6 text-slate-700">
-                                    {message.content}
-                                  </div>
+                                        {message.imageUrl && (
+                                          <div className="mb-3">
+                                            <img
+                                              src={message.imageUrl}
+                                              alt="Chart"
+                                              className="h-[90px] w-[120px] cursor-pointer rounded-lg bg-black/5 object-cover transition-opacity hover:opacity-85"
+                                              onClick={() => window.open(message.imageUrl ?? "", "_blank")}
+                                            />
+                                          </div>
+                                        )}
+
+                                        <div className="whitespace-pre-wrap text-sm leading-6 text-slate-700">
+                                          {message.content}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
                                 </div>
                               );
                             })}
@@ -1289,7 +1345,7 @@ export default function AdminLexai() {
         onOpenLexai={(caseId) => {
           setProfileUserId(null);
           if (caseId) {
-            setSelectedCaseId(caseId);
+            selectCase(caseId);
             replaceLexaiUrl(caseId);
           }
         }}

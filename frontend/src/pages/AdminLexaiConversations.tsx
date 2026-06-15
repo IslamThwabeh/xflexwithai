@@ -3,10 +3,11 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { groupLexaiMessagesByDay } from "@/lib/lexaiMessages";
 import { trpc } from "@/lib/trpc";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
-import { MessageSquare, User, ArrowLeft, Trash2, RefreshCw, ImageIcon } from "lucide-react";
+import { MessageSquare, User, ArrowLeft, Trash2, RefreshCw, ImageIcon, ChevronDown, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { useLanguage } from "@/contexts/LanguageContext";
 import {
@@ -34,9 +35,11 @@ function formatSafeDate(
 
 export default function AdminLexaiConversations() {
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
+  const [expandedMessageDays, setExpandedMessageDays] = useState<Record<string, boolean>>({});
   const utils = trpc.useUtils();
   const { t, language } = useLanguage();
   const isRtl = language === 'ar';
+  const locale = isRtl ? "ar-EG" : "en-US";
 
   // Get all users with conversations
   const { data: conversationUsers, isLoading: loadingUsers } = trpc.lexaiAdmin.conversationUsers.useQuery();
@@ -65,6 +68,27 @@ export default function AdminLexaiConversations() {
   };
 
   const selectedUser = conversationUsers?.find(u => u.userId === selectedUserId);
+  const sortedUserMessages = useMemo(
+    () => [...(userMessages ?? [])].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()),
+    [userMessages],
+  );
+  const messageDayGroups = useMemo(
+    () => groupLexaiMessagesByDay(sortedUserMessages, locale),
+    [locale, sortedUserMessages],
+  );
+
+  useEffect(() => {
+    const latestDay = messageDayGroups.at(-1)?.key;
+    if (!latestDay) {
+      setExpandedMessageDays({});
+      return;
+    }
+
+    setExpandedMessageDays((current) => {
+      if (current[latestDay]) return current;
+      return { ...current, [latestDay]: true };
+    });
+  }, [messageDayGroups]);
 
   if (selectedUserId && selectedUser) {
     return (
@@ -138,46 +162,63 @@ export default function AdminLexaiConversations() {
               ) : (
                 <ScrollArea className="h-[600px] pr-4">
                   <div className="space-y-4">
-                    {[...userMessages].reverse().map((message) => (
-                      <div
-                        key={message.id}
-                        className={`p-4 rounded-lg ${
-                          message.role === "user"
-                            ? "bg-emerald-50 dark:bg-emerald-950/30 border-l-4 border-emerald-500"
-                            : "bg-[#faf7f2] dark:bg-slate-900/60 border-l-4 border-amber-200 dark:border-amber-900/50"
-                        }`}
-                      >
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <Badge variant={message.role === "user" ? "default" : "secondary"}>
-                              {message.role === "user" ? "User" : "LexAI"}
-                            </Badge>
-                            {message.analysisType && (
-                              <Badge variant="outline">{message.analysisType}</Badge>
-                            )}
-                          </div>
-                          <span className="text-xs text-muted-foreground">
-                            {formatSafeDate(message.createdAt, "MMM d, yyyy HH:mm:ss", "Unknown date")}
-                          </span>
+                    {messageDayGroups.map((group, groupIndex) => {
+                      const isExpanded = expandedMessageDays[group.key] ?? groupIndex === messageDayGroups.length - 1;
+                      return (
+                        <div key={group.key} className="space-y-4">
+                          <button
+                            type="button"
+                            onClick={() => setExpandedMessageDays((current) => ({ ...current, [group.key]: !isExpanded }))}
+                            className="mx-auto flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600 shadow-sm transition hover:border-emerald-200 hover:text-emerald-700"
+                          >
+                            {isExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                            <span>{group.label}</span>
+                            <span className="text-slate-400">({group.messages.length})</span>
+                          </button>
+
+                          {isExpanded && group.messages.map((message) => (
+                            <div
+                              key={message.id}
+                              className={`p-4 rounded-lg ${
+                                message.role === "user"
+                                  ? "bg-emerald-50 dark:bg-emerald-950/30 border-l-4 border-emerald-500"
+                                  : "bg-[#faf7f2] dark:bg-slate-900/60 border-l-4 border-amber-200 dark:border-amber-900/50"
+                              }`}
+                            >
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-2">
+                                  <Badge variant={message.role === "user" ? "default" : "secondary"}>
+                                    {message.role === "user" ? "User" : "LexAI"}
+                                  </Badge>
+                                  {message.analysisType && (
+                                    <Badge variant="outline">{message.analysisType}</Badge>
+                                  )}
+                                </div>
+                                <span className="text-xs text-muted-foreground">
+                                  {formatSafeDate(message.createdAt, "MMM d, yyyy HH:mm:ss", "Unknown date")}
+                                </span>
+                              </div>
+
+                              {message.imageUrl && (
+                                <div className="mb-2">
+                                  <a href={message.imageUrl} target="_blank" rel="noopener noreferrer">
+                                    <img
+                                      src={message.imageUrl}
+                                      alt="Chart"
+                                      className="h-[90px] w-[120px] rounded border object-cover cursor-pointer hover:opacity-80 transition-opacity"
+                                    />
+                                  </a>
+                                </div>
+                              )}
+
+                              <div className="whitespace-pre-wrap text-sm">
+                                {message.content}
+                              </div>
+                            </div>
+                          ))}
                         </div>
-                        
-                        {message.imageUrl && (
-                          <div className="mb-2">
-                            <a href={message.imageUrl} target="_blank" rel="noopener noreferrer">
-                              <img 
-                                src={message.imageUrl} 
-                                alt="Chart" 
-                                className="max-w-sm rounded border cursor-pointer hover:opacity-80 transition-opacity"
-                              />
-                            </a>
-                          </div>
-                        )}
-                        
-                        <div className="whitespace-pre-wrap text-sm">
-                          {message.content}
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </ScrollArea>
               )}
