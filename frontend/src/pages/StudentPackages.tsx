@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Link, useLocation } from 'wouter';
+import type { ReactNode } from 'react';
+import { Link } from 'wouter';
 import { Package, CheckCircle2, X, ArrowUpCircle, Clock, Sparkles, MessageSquare, BookOpen, Shield, Snowflake, CheckCircle, AlertCircle, UserPlus, Key, GraduationCap, Landmark, Bot, TrendingUp, FileText, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,8 +15,6 @@ import ClientLayout from '@/components/ClientLayout';
 export default function StudentPackages() {
   const { language } = useLanguage();
   const isRtl = language === 'ar';
-  const [, setLocation] = useLocation();
-  const [freezeRequested, setFreezeRequested] = useState(false);
 
   const { data: activePackage, isLoading } = trpc.subscriptions.myActivePackage.useQuery();
   const { data: serviceAccess, isLoading: serviceAccessLoading } = trpc.subscriptions.serviceAccessSummary.useQuery();
@@ -62,13 +60,6 @@ export default function StudentPackages() {
     return Math.min(lowestDays, service.summary.daysLeft);
   }, null);
   const timedServiceWindowDays = Math.max(1, entitlementDays);
-
-  const freezeMutation = trpc.subscriptions.requestFreeze.useMutation({
-    onSuccess: () => {
-      setFreezeRequested(true);
-      setTimeout(() => setLocation('/support'), 1500);
-    },
-  });
 
   // Calculate remaining days for LexAI/Recommendations (course is forever)
   const getRemainingDays = () => {
@@ -475,7 +466,7 @@ export default function StudentPackages() {
             <h2 className="text-xl font-bold mb-4">{isRtl ? 'سجل الأحداث' : 'Activity Timeline'}</h2>
             <div className="relative border-s-2 border-emerald-200 ms-4">
               {timeline.map((event: any, i: number) => {
-                const iconMap: Record<string, React.ReactNode> = {
+                const iconMap: Record<string, ReactNode> = {
                   registration: <UserPlus className="w-4 h-4" />,
                   key_activation: <Key className="w-4 h-4" />,
                   enrollment: <BookOpen className="w-4 h-4" />,
@@ -593,41 +584,6 @@ export default function StudentPackages() {
             </CardContent>
           </Card>
         </div>
-
-        {/* Freeze Subscription */}
-        {subscriptions && subscriptions.length > 0 && subscriptions.some(s => s.isActive) && (
-          <div className="border rounded-xl p-5 bg-emerald-50/50 mb-8">
-            <div className="flex items-center gap-3 mb-2">
-              <Snowflake className="w-5 h-5 text-emerald-500" />
-              <h3 className="font-semibold text-gray-900">
-                {isRtl ? 'تجميد الاشتراك' : 'Freeze Subscription'}
-              </h3>
-            </div>
-            <p className="text-sm text-gray-600 mb-3">
-              {isRtl
-                ? 'يمكنك طلب تجميد اشتراكك مؤقتاً. سيتواصل فريق الدعم معك لتحديد مدة التجميد.'
-                : 'You can request a temporary freeze on your subscription. Our support team will contact you to set the freeze duration.'}
-            </p>
-            {freezeRequested ? (
-              <p className="text-sm text-green-600 font-medium">
-                {isRtl ? '✅ تم إرسال طلب التجميد. جارٍ تحويلك للدعم...' : '✅ Freeze request sent. Redirecting to support...'}
-              </p>
-            ) : (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => freezeMutation.mutate()}
-                disabled={freezeMutation.isPending}
-                className="gap-2"
-              >
-                <Snowflake className="w-4 h-4" />
-                {freezeMutation.isPending
-                  ? (isRtl ? 'جارٍ الإرسال...' : 'Sending...')
-                  : (isRtl ? 'طلب تجميد' : 'Request Freeze')}
-              </Button>
-            )}
-          </div>
-        )}
 
         {/* Activate Key CTA */}
         <Card className="bg-gray-50">

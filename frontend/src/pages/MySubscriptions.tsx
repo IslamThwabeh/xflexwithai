@@ -1,6 +1,5 @@
-import { useState } from 'react';
-import { Link, useLocation } from 'wouter';
-import { Package, CheckCircle, Clock, AlertCircle, ArrowUpCircle, Snowflake } from 'lucide-react';
+import { Link } from 'wouter';
+import { Package, CheckCircle, AlertCircle, ArrowUpCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -11,19 +10,9 @@ import ClientLayout from '@/components/ClientLayout';
 export default function MySubscriptions() {
   const { language, t } = useLanguage();
   const isRtl = language === 'ar';
-  const [, setLocation] = useLocation();
-  const [freezeRequested, setFreezeRequested] = useState(false);
   const { data: subscriptions, isLoading } = trpc.subscriptions.mySubscriptions.useQuery();
   const { data: activePackage } = trpc.subscriptions.myActivePackage.useQuery();
   const pkg = (activePackage as any)?.package;
-
-  const freezeMutation = trpc.subscriptions.requestFreeze.useMutation({
-    onSuccess: () => {
-      setFreezeRequested(true);
-      // Redirect to support chat after a brief moment
-      setTimeout(() => setLocation('/support'), 1500);
-    },
-  });
 
   return (
     <ClientLayout>
@@ -131,40 +120,6 @@ export default function MySubscriptions() {
           </div>
         )}
 
-        {/* Freeze Request Section */}
-        {subscriptions && subscriptions.length > 0 && subscriptions.some(s => s.isActive) && (
-          <div className="mt-8 border rounded-xl p-5 bg-emerald-50/50">
-            <div className="flex items-center gap-3 mb-2">
-              <Snowflake className="w-5 h-5 text-emerald-500" />
-              <h3 className="font-semibold text-gray-900">
-                {isRtl ? 'تجميد الاشتراك' : 'Freeze Subscription'}
-              </h3>
-            </div>
-            <p className="text-sm text-gray-600 mb-3">
-              {isRtl
-                ? 'يمكنك طلب تجميد اشتراكك مؤقتاً. سيتواصل فريق الدعم معك لتحديد مدة التجميد.'
-                : 'You can request a temporary freeze on your subscription. Our support team will contact you to set the freeze duration.'}
-            </p>
-            {freezeRequested ? (
-              <p className="text-sm text-green-600 font-medium">
-                {isRtl ? '✅ تم إرسال طلب التجميد. جارٍ تحويلك للدعم...' : '✅ Freeze request sent. Redirecting to support...'}
-              </p>
-            ) : (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => freezeMutation.mutate()}
-                disabled={freezeMutation.isPending}
-                className="gap-2"
-              >
-                <Snowflake className="w-4 h-4" />
-                {freezeMutation.isPending
-                  ? (isRtl ? 'جارٍ الإرسال...' : 'Sending...')
-                  : (isRtl ? 'طلب تجميد' : 'Request Freeze')}
-              </Button>
-            )}
-          </div>
-        )}
       </div>
     </ClientLayout>
   );
