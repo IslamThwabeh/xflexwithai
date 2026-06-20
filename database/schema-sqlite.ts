@@ -1,4 +1,4 @@
-import { int, sqliteTable, text, integer, unique, real } from "drizzle-orm/sqlite-core";
+import { index, int, sqliteTable, text, integer, unique, real } from "drizzle-orm/sqlite-core";
 import { relations, sql } from "drizzle-orm";
 
 /**
@@ -561,7 +561,10 @@ export const supportConversations = sqliteTable("supportConversations", {
   createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
   updatedAt: text("updatedAt").default(sql`(datetime('now'))`).notNull(),
   closedAt: text("closedAt"),
-});
+}, (table) => ({
+  updatedAtIdIdx: index("idx_support_conversations_updated_id").on(table.updatedAt, table.id),
+  statusUpdatedAtIdIdx: index("idx_support_conversations_status_updated_id").on(table.status, table.updatedAt, table.id),
+}));
 
 export type SupportConversation = typeof supportConversations.$inferSelect;
 export type InsertSupportConversation = typeof supportConversations.$inferInsert;
@@ -585,7 +588,12 @@ export const supportMessages = sqliteTable("supportMessages", {
   editedAt: text("editedAt"),   // ISO timestamp if message was edited, null otherwise
   deletedAt: text("deletedAt"), // ISO timestamp if message was soft-deleted, null otherwise
   createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
-});
+}, (table) => ({
+  conversationCreatedIdIdx: index("idx_support_messages_conversation_created_id").on(table.conversationId, table.createdAt, table.id),
+  unreadClientIdx: index("idx_support_messages_unread_client")
+    .on(table.conversationId, table.senderType, table.isRead)
+    .where(sql`${table.senderType} = 'client' AND ${table.isRead} = 0`),
+}));
 
 export type SupportMessage = typeof supportMessages.$inferSelect;
 export type InsertSupportMessage = typeof supportMessages.$inferInsert;

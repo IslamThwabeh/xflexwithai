@@ -67,6 +67,34 @@ const getRequestIp = (req: any) => {
 
 const getRequestUserAgent = (req: any) => getReqHeader(req, "user-agent") || "";
 
+async function measureSupportEndpoint<T>(
+  purpose: string,
+  operation: () => Promise<T>,
+  getRowCount: (result: T) => number,
+) {
+  const startedAt = Date.now();
+  try {
+    const result = await operation();
+    const durationMs = Date.now() - startedAt;
+    const rowCount = getRowCount(result);
+    const responseBytes = Buffer.byteLength(JSON.stringify(result), "utf8");
+    const context = { purpose, durationMs, rowCount, responseBytes };
+    if (durationMs > 500) {
+      logger.warn("[SUPPORT PERFORMANCE] Slow request", context);
+    } else {
+      logger.info("[SUPPORT PERFORMANCE] Request", context);
+    }
+    return result;
+  } catch (error) {
+    logger.error("[SUPPORT PERFORMANCE] Request failed", {
+      purpose,
+      durationMs: Date.now() - startedAt,
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+    throw error;
+  }
+}
+
 const STAFF_ACTIVITY_QUERY_ALLOWLIST = new Set([
   "supportDashboard.searchClients",
   "supportDashboard.clientProgress",
@@ -4263,6 +4291,27 @@ export const appRouter = router({
         return db.getAllSupportConversations(input?.search);
       }),
 
+    inboxPage: supportStaffProcedure
+      .input(z.object({
+        limit: z.number().int().min(1).max(50).default(30),
+        status: z.enum(["all", "open", "closed"]).default("all"),
+        search: z.string().max(200).optional(),
+        cursor: z.object({
+          updatedAt: z.string(),
+          id: z.number().int().positive(),
+        }).nullish(),
+      }))
+      .query(async ({ input }) => measureSupportEndpoint(
+        "support_inbox_page",
+        () => db.getSupportInboxPage({
+          limit: input.limit,
+          status: input.status,
+          search: input.search,
+          cursor: input.cursor ?? undefined,
+        }),
+        (result) => result.items.length,
+      )),
+
     // Support/Admin: get messages of a specific conversation
     getMessages: supportStaffProcedure
       .input(z.object({ conversationId: z.number() }))
@@ -4273,6 +4322,62 @@ export const appRouter = router({
         const messages = await db.getSupportMessages(input.conversationId);
         return { conversation: conv, messages };
       }),
+
+    messageHistory: supportStaffProcedure
+      .input(z.object({
+        conversationId: z.number().int().positive(),
+        limit: z.number().int().min(1).max(100).default(50),
+        cursor: z.object({
+          createdAt: z.string(),
+          id: z.number().int().positive(),
+        }).nullish(),
+      }))
+      .query(async ({ input }) => measureSupportEndpoint(
+        "support_message_history",
+        async () => {
+          const conv = await db.getSupportConversation(input.conversationId);
+          if (!conv) throw new TRPCError({ code: "NOT_FOUND", message: "Conversation not found" });
+          const client = await db.getUserById(conv.userId);
+          if (!input.cursor) {
+            await db.markSupportMessagesRead(input.conversationId, "support");
+          }
+          const history = await db.getSupportMessageHistory({
+            conversationId: input.conversationId,
+            limit: input.limit,
+            cursor: input.cursor ?? undefined,
+          });
+          return {
+            conversation: {
+              ...conv,
+              userName: client?.name ?? null,
+              userEmail: client?.email ?? null,
+            },
+            ...history,
+          };
+        },
+        (result) => result.messages.length,
+      )),
+
+    messageChanges: supportStaffProcedure
+      .input(z.object({
+        conversationId: z.number().int().positive(),
+        afterMessageId: z.number().int().min(0),
+        changedAfter: z.string().datetime(),
+      }))
+      .query(async ({ input }) => measureSupportEndpoint(
+        "support_message_changes",
+        async () => {
+          const messages = await db.getSupportMessageChanges(input);
+          if (messages.some((message) => message.senderType === "client" && !message.isRead)) {
+            await db.markSupportMessagesRead(input.conversationId, "support");
+          }
+          return {
+            messages,
+            checkedAt: new Date(),
+          };
+        },
+        (result) => result.messages.length,
+      )),
 
     // Support/Admin: reply to a conversation
     reply: supportStaffProcedure

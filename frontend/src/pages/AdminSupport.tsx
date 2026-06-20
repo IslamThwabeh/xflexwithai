@@ -59,7 +59,6 @@ export default function AdminSupport() {
   const [, setLocation] = useLocation();
   const [selectedConvId, setSelectedConvId] = useState<number | null>(null);
   const [profileUserId, setProfileUserId] = useState<number | null>(null);
-  const [showOlderMessages, setShowOlderMessages] = useState(false);
   const [reply, setReply] = useState("");
   const [attachment, setAttachment] = useState<{ name: string; file: File; size: number; kind: SupportMediaKind; duration?: number } | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -77,6 +76,20 @@ export default function AdminSupport() {
   const [editContent, setEditContent] = useState("");
   const [replyToMessageId, setReplyToMessageId] = useState<number | null>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isPageVisible, setIsPageVisible] = useState(
+    () => typeof document === "undefined" || document.visibilityState === "visible",
+  );
+  const [liveMessages, setLiveMessages] = useState<any[]>([]);
+  const [changeCursor, setChangeCursor] = useState({
+    afterMessageId: 0,
+    changedAfter: new Date().toISOString(),
+  });
+  const trpcUtils = trpc.useUtils();
+  const [olderConversationPages, setOlderConversationPages] = useState<any[]>([]);
+  const [loadingMoreConversations, setLoadingMoreConversations] = useState(false);
+  const [olderMessagePages, setOlderMessagePages] = useState<any[]>([]);
+  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
+  const wasPageVisibleRef = useRef(isPageVisible);
 
   const replaceSupportUrl = (conversationId: number | null) => {
     if (typeof window === "undefined") return;
@@ -101,28 +114,75 @@ export default function AdminSupport() {
     return () => clearTimeout(timer);
   }, [searchInput]);
 
+  useEffect(() => {
+    const handleVisibility = () => setIsPageVisible(document.visibilityState === "visible");
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, []);
+
   const {
-    data: conversations,
+    data: inboxData,
     isLoading: loadingConvs,
     refetch: refetchConvs,
-  } = trpc.supportChat.listAll.useQuery(
-    debouncedSearch.length >= 2 ? { search: debouncedSearch } : undefined,
-    { refetchInterval: 8000 }
+  } = trpc.supportChat.inboxPage.useQuery(
+    {
+      limit: 30,
+      status: statusFilter,
+      search: debouncedSearch.length >= 2 ? debouncedSearch : undefined,
+    },
+    {
+      refetchInterval: isPageVisible ? 8000 : false,
+      refetchOnWindowFocus: true,
+    },
   );
 
-  // Client-side status filter only. Ordering is decided in the backend.
-  const filteredConversations = useMemo(() => {
-    if (!conversations) return [];
-    return statusFilter === "all" ? conversations : conversations.filter(c => c.status === statusFilter);
-  }, [conversations, statusFilter]);
+  const conversations = useMemo(() => {
+    const rows = [
+      ...(inboxData?.items ?? []),
+      ...olderConversationPages.flatMap((page) => page.items),
+    ];
+    return Array.from(new Map(rows.map((conversation) => [conversation.id, conversation])).values());
+  }, [inboxData, olderConversationPages]);
+  const filteredConversations = conversations;
+  const inboxAggregates = inboxData?.aggregates ?? {
+    total: 0,
+    open: 0,
+    closed: 0,
+    unread: 0,
+    escalated: 0,
+  };
+  const conversationNextCursor = olderConversationPages.length
+    ? olderConversationPages.at(-1)?.nextCursor
+    : inboxData?.nextCursor;
+  const hasNextConversations = Boolean(conversationNextCursor);
+
+  useEffect(() => {
+    setOlderConversationPages([]);
+  }, [debouncedSearch, statusFilter]);
+
+  const fetchNextConversations = async () => {
+    if (!conversationNextCursor || loadingMoreConversations) return;
+    setLoadingMoreConversations(true);
+    try {
+      const page = await trpcUtils.client.supportChat.inboxPage.query({
+        limit: 30,
+        status: statusFilter,
+        search: debouncedSearch.length >= 2 ? debouncedSearch : undefined,
+        cursor: conversationNextCursor,
+      });
+      setOlderConversationPages((current) => [...current, page]);
+    } finally {
+      setLoadingMoreConversations(false);
+    }
+  };
 
   const selectedConversationSummary = useMemo(
-    () => conversations?.find((conversation) => conversation.id === selectedConvId) ?? null,
+    () => conversations.find((conversation) => conversation.id === selectedConvId) ?? null,
     [conversations, selectedConvId],
   );
 
   useEffect(() => {
-    if (didHydrateConversationRef.current || typeof window === "undefined" || !conversations) return;
+    if (didHydrateConversationRef.current || typeof window === "undefined" || loadingConvs) return;
     didHydrateConversationRef.current = true;
 
     const rawConversationId = new URLSearchParams(window.location.search).get("conversationId");
@@ -134,13 +194,8 @@ export default function AdminSupport() {
       return;
     }
 
-    if (conversations.some((conversation) => conversation.id === requestedConversationId)) {
-      setSelectedConvId(requestedConversationId);
-      return;
-    }
-
-    replaceSupportUrl(null);
-  }, [conversations]);
+    setSelectedConvId(requestedConversationId);
+  }, [loadingConvs]);
 
   useEffect(() => {
     if (!didSyncQueryRef.current) {
@@ -150,18 +205,118 @@ export default function AdminSupport() {
     replaceSupportUrl(selectedConvId);
   }, [selectedConvId]);
 
-  useEffect(() => {
-    setShowOlderMessages(false);
-  }, [selectedConvId]);
-
   const {
-    data: selectedData,
+    data: messageHistoryData,
     isLoading: loadingMessages,
     refetch: refetchMessages,
-  } = trpc.supportChat.getMessages.useQuery(
-    { conversationId: selectedConvId! },
-    { enabled: !!selectedConvId, refetchInterval: 5000 }
+  } = trpc.supportChat.messageHistory.useQuery(
+    { conversationId: selectedConvId!, limit: 50 },
+    {
+      enabled: !!selectedConvId,
+      refetchOnWindowFocus: false,
+    },
   );
+
+  const historyMessages = useMemo(
+    () => [
+      ...(messageHistoryData?.messages ?? []),
+      ...olderMessagePages.flatMap((page) => page.messages),
+    ],
+    [messageHistoryData, olderMessagePages],
+  );
+  const selectedConversation = messageHistoryData?.conversation ?? selectedConversationSummary;
+  const messageNextCursor = olderMessagePages.length
+    ? olderMessagePages.at(-1)?.nextCursor
+    : messageHistoryData?.nextCursor;
+  const hasOlderMessages = Boolean(messageNextCursor);
+
+  const fetchOlderMessages = async () => {
+    if (!selectedConvId || !messageNextCursor || loadingOlderMessages) return;
+    setLoadingOlderMessages(true);
+    const container = messagesContainerRef.current;
+    const previousHeight = container?.scrollHeight ?? 0;
+    try {
+      const page = await trpcUtils.client.supportChat.messageHistory.query({
+        conversationId: selectedConvId,
+        limit: 50,
+        cursor: messageNextCursor,
+      });
+      setOlderMessagePages((current) => [...current, page]);
+      window.requestAnimationFrame(() => {
+        if (container) container.scrollTop += container.scrollHeight - previousHeight;
+      });
+    } finally {
+      setLoadingOlderMessages(false);
+    }
+  };
+  const highestLoadedMessageId = useMemo(
+    () => Math.max(0, ...historyMessages.map((message) => message.id), ...liveMessages.map((message) => message.id)),
+    [historyMessages, liveMessages],
+  );
+
+  const changesQuery = trpc.supportChat.messageChanges.useQuery(
+    {
+      conversationId: selectedConvId!,
+      afterMessageId: Math.max(changeCursor.afterMessageId, highestLoadedMessageId),
+      changedAfter: changeCursor.changedAfter,
+    },
+    {
+      enabled: Boolean(selectedConvId && messageHistoryData && isPageVisible),
+      refetchInterval: isPageVisible ? 5000 : false,
+      refetchOnWindowFocus: true,
+    },
+  );
+
+  useEffect(() => {
+    const wasVisible = wasPageVisibleRef.current;
+    wasPageVisibleRef.current = isPageVisible;
+    if (!wasVisible && isPageVisible) {
+      void refetchConvs();
+      if (selectedConvId) {
+        void refetchMessages();
+        void changesQuery.refetch();
+      }
+    }
+  }, [isPageVisible, selectedConvId, refetchConvs, refetchMessages, changesQuery.refetch]);
+
+  useEffect(() => {
+    setLiveMessages([]);
+    setOlderMessagePages([]);
+    setChangeCursor({ afterMessageId: 0, changedAfter: new Date().toISOString() });
+  }, [selectedConvId]);
+
+  useEffect(() => {
+    const result = changesQuery.data;
+    if (!result) return;
+    if (result.messages.length) {
+      setLiveMessages((current) => {
+        const merged = new Map(current.map((message) => [message.id, message]));
+        for (const message of result.messages) merged.set(message.id, message);
+        return Array.from(merged.values());
+      });
+    }
+    setChangeCursor({
+      afterMessageId: Math.max(
+        changeCursor.afterMessageId,
+        ...result.messages.map((message) => message.id),
+        highestLoadedMessageId,
+      ),
+      changedAfter: changeCursor.changedAfter,
+    });
+  }, [changesQuery.data]);
+
+  const selectedMessages = useMemo(() => {
+    const merged = new Map(historyMessages.map((message) => [message.id, message]));
+    for (const message of liveMessages) merged.set(message.id, message);
+    return Array.from(merged.values()).sort((left, right) => {
+      const timeDifference = new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime();
+      return timeDifference || right.id - left.id;
+    });
+  }, [historyMessages, liveMessages]);
+
+  const selectedData = selectedConversation
+    ? { conversation: selectedConversation, messages: selectedMessages }
+    : undefined;
 
   const replyMutation = trpc.supportChat.reply.useMutation({
     onSuccess: () => {
@@ -425,21 +580,11 @@ export default function AdminSupport() {
     }
   };
 
-  const getMessageDayKey = (value: string) => {
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? "" : date.toDateString();
-  };
-
-  const totalOpen = (conversations ?? []).filter((c) => c.status === "open").length;
-  const totalUnread = (conversations ?? []).reduce((sum, c) => sum + (c.unreadCount ?? 0), 0);
-  const totalEscalated = (conversations ?? []).filter((c: any) => c.needsHuman).length;
-  const displayedCount = filteredConversations.length;
+  const totalOpen = inboxAggregates.open;
+  const totalUnread = inboxAggregates.unread;
+  const totalEscalated = inboxAggregates.escalated;
   const allMessagesForDisplay = [...(selectedData?.messages ?? [])].reverse();
-  const todayKey = new Date().toDateString();
-  const hasOlderMessages = allMessagesForDisplay.some((msg) => getMessageDayKey(msg.createdAt) !== todayKey);
-  const messagesForDisplay = showOlderMessages
-    ? allMessagesForDisplay
-    : allMessagesForDisplay.filter((msg) => getMessageDayKey(msg.createdAt) === todayKey);
+  const messagesForDisplay = allMessagesForDisplay;
   const supportMessages = selectedData?.messages ?? [];
   const messageMap = new Map(supportMessages.map((msg) => [msg.id, msg]));
   const replyTarget = replyToMessageId ? messageMap.get(replyToMessageId) : undefined;
@@ -508,7 +653,7 @@ export default function AdminSupport() {
             onClick={() => setStatusFilter("all")}
             className={`rounded-lg border px-3 py-2 text-center transition hover:shadow-sm ${statusFilter === "all" ? "ring-2 ring-inset ring-emerald-400 bg-emerald-50" : "bg-white"}`}
           >
-            <p className="text-lg font-bold">{(conversations ?? []).length}</p>
+            <p className="text-lg font-bold">{inboxAggregates.total}</p>
             <p className="text-[11px] text-muted-foreground leading-tight">{t('admin.support.totalConvos')}</p>
           </button>
         </div>
@@ -561,9 +706,9 @@ export default function AdminSupport() {
                     }`}
                   >
                     {s === "all" ? (isRtl ? 'الكل' : 'All') : s === "open" ? (isRtl ? 'مفتوح' : 'Open') : (isRtl ? 'مغلق' : 'Closed')}
-                    {s === "all" && ` (${(conversations ?? []).length})`}
+                    {s === "all" && ` (${inboxAggregates.total})`}
                     {s === "open" && ` (${totalOpen})`}
-                    {s === "closed" && ` (${(conversations ?? []).length - totalOpen})`}
+                    {s === "closed" && ` (${inboxAggregates.closed})`}
                   </button>
                 ))}
               </div>
@@ -645,6 +790,20 @@ export default function AdminSupport() {
                       )}
                     </button>
                   ))}
+                  {hasNextConversations && (
+                    <div className="p-3 text-center">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={loadingMoreConversations}
+                        onClick={() => void fetchNextConversations()}
+                      >
+                        {loadingMoreConversations && <Loader2 className="h-4 w-4 animate-spin" />}
+                        {isRtl ? 'تحميل المزيد' : 'Load more'}
+                      </Button>
+                    </div>
+                  )}
                 </div>
               )}
             </CardContent>
@@ -674,8 +833,10 @@ export default function AdminSupport() {
                       <X className="h-4 w-4" />
                     </Button>
                     <p className="font-medium text-sm flex-1 min-w-0">
-                      {conversations?.find((c) => c.id === selectedConvId)?.userName ??
-                        conversations?.find((c) => c.id === selectedConvId)?.userEmail}
+                      {(selectedConversation as any)?.userName ??
+                        (selectedConversation as any)?.userEmail ??
+                        selectedConversationSummary?.userName ??
+                        selectedConversationSummary?.userEmail}
                     </p>
                   </div>
                   <div className="flex items-center gap-1 mt-1.5 ps-10">
@@ -742,16 +903,18 @@ export default function AdminSupport() {
                     </div>
                   ) : (
                     <>
-                      {hasOlderMessages && !showOlderMessages && (
+                      {hasOlderMessages && (
                         <div className={`flex py-2 ${messagesForDisplay.length === 0 ? "min-h-[180px] items-center justify-center" : "justify-center"}`}>
                           <Button
                             type="button"
                             variant="outline"
                             size="sm"
-                            onClick={() => setShowOlderMessages(true)}
+                            disabled={loadingOlderMessages}
+                            onClick={() => void fetchOlderMessages()}
                             className="border-emerald-200 text-emerald-700 hover:bg-emerald-50"
                             aria-label={isRtl ? 'عرض الرسائل السابقة' : 'Show previous messages'}
                           >
+                            {loadingOlderMessages && <Loader2 className="h-4 w-4 animate-spin" />}
                             {isRtl ? 'عرض الرسائل السابقة' : 'Show previous messages'}
                           </Button>
                         </div>

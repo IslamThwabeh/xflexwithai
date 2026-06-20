@@ -1,4 +1,4 @@
-import { eq, desc, and, or, sql, ne, inArray, isNotNull, isNull, gte, lte, like, asc, type SQL } from "drizzle-orm";
+import { eq, desc, and, or, sql, ne, inArray, isNotNull, isNull, gte, lte, lt, gt, like, asc, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import type { D1Database } from "@cloudflare/workers-types";
 import {
@@ -10721,6 +10721,293 @@ export async function recordOpenAiUsageEvent(input: RecordOpenAiUsageEventInput)
       createdAt: input.createdAt ?? new Date().toISOString(),
     } as InsertOpenAiUsageEvent);
   });
+}
+
+export type SupportConversationCursor = {
+  updatedAt: string;
+  id: number;
+};
+
+export type SupportMessageCursor = {
+  createdAt: string;
+  id: number;
+};
+
+export async function getSupportInboxPage(options: {
+  limit?: number;
+  status?: "all" | "open" | "closed";
+  search?: string;
+  cursor?: SupportConversationCursor;
+} = {}) {
+  const db = await getDb();
+  if (!db) {
+    return {
+      items: [],
+      nextCursor: null,
+      aggregates: { total: 0, open: 0, closed: 0, unread: 0, escalated: 0 },
+    };
+  }
+
+  const limit = Math.min(Math.max(options.limit ?? 30, 1), 50);
+  const normalizedSearch = options.search?.trim().toLowerCase();
+  const searchCondition = normalizedSearch && normalizedSearch.length >= 2
+    ? (() => {
+        const pattern = `%${normalizedSearch}%`;
+        const messageCutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+        return sql`(
+          lower(COALESCE(u.name, '')) LIKE ${pattern}
+          OR lower(u.email) LIKE ${pattern}
+          OR EXISTS (
+            SELECT 1
+            FROM supportMessages AS search_message
+            WHERE search_message.conversationId = sc.id
+              AND search_message.createdAt >= ${messageCutoff}
+              AND lower(search_message.content) LIKE ${pattern}
+          )
+        )`;
+      })()
+    : null;
+  const pageFilters: SQL[] = [sql`EXISTS (
+    SELECT 1 FROM supportMessages AS visible_message
+    WHERE visible_message.conversationId = sc.id
+  )`];
+  if (options.status && options.status !== "all") {
+    pageFilters.push(sql`sc.status = ${options.status}`);
+  }
+  if (searchCondition) pageFilters.push(searchCondition);
+  if (options.cursor) {
+    pageFilters.push(sql`(
+      sc.updatedAt < ${options.cursor.updatedAt}
+      OR (sc.updatedAt = ${options.cursor.updatedAt} AND sc.id < ${options.cursor.id})
+    )`);
+  }
+  const aggregateFilters: SQL[] = [sql`EXISTS (
+    SELECT 1 FROM supportMessages AS visible_message
+    WHERE visible_message.conversationId = sc.id
+  )`];
+  if (searchCondition) aggregateFilters.push(searchCondition);
+  const pageWhere = pageFilters.length ? sql`WHERE ${sql.join(pageFilters, sql` AND `)}` : sql``;
+  const aggregateWhere = aggregateFilters.length ? sql`WHERE ${sql.join(aggregateFilters, sql` AND `)}` : sql``;
+
+  type SupportInboxRawRow = {
+    id: number;
+    userId: number;
+    status: string;
+    needsHuman: number | boolean;
+    assignedTo: number | null;
+    createdAt: string;
+    updatedAt: string;
+    closedAt: string | null;
+    userName: string | null;
+    userEmail: string | null;
+    lastMessageId: number | null;
+    lastMessageSenderType: string | null;
+    lastMessageContent: string | null;
+    lastMessageCreatedAt: string | null;
+    unreadCount: number;
+    aggregateTotal: number;
+    aggregateOpen: number;
+    aggregateClosed: number;
+    aggregateEscalated: number;
+    aggregateUnread: number;
+  };
+  const rows = await db.all<SupportInboxRawRow>(sql`
+    WITH page_conversations AS (
+      SELECT
+        sc.id, sc.userId, sc.status, sc.needsHuman, sc.assignedTo,
+        sc.createdAt, sc.updatedAt, sc.closedAt,
+        u.name AS userName, u.email AS userEmail
+      FROM supportConversations AS sc
+      LEFT JOIN users AS u ON u.id = sc.userId
+      ${pageWhere}
+      ORDER BY sc.updatedAt DESC, sc.id DESC
+      LIMIT ${limit + 1}
+    ),
+    aggregate_conversations AS (
+      SELECT sc.id, sc.status, sc.needsHuman
+      FROM supportConversations AS sc
+      LEFT JOIN users AS u ON u.id = sc.userId
+      ${aggregateWhere}
+    ),
+    page_with_latest AS (
+      SELECT
+        conversation.*,
+        (
+          SELECT latest_message.id
+          FROM supportMessages AS latest_message
+          WHERE latest_message.conversationId = conversation.id
+          ORDER BY latest_message.createdAt DESC, latest_message.id DESC
+          LIMIT 1
+        ) AS lastMessageId
+      FROM page_conversations AS conversation
+    ),
+    unread_by_conversation AS (
+      SELECT conversationId, COUNT(*) AS unreadCount
+      FROM supportMessages
+      WHERE senderType = 'client'
+        AND isRead = 0
+        AND conversationId IN (SELECT id FROM page_conversations)
+      GROUP BY conversationId
+    ),
+    aggregate_counts AS (
+      SELECT
+        COUNT(*) AS aggregateTotal,
+        SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END) AS aggregateOpen,
+        SUM(CASE WHEN status = 'closed' THEN 1 ELSE 0 END) AS aggregateClosed,
+        SUM(CASE WHEN needsHuman = 1 THEN 1 ELSE 0 END) AS aggregateEscalated,
+        (
+          SELECT COUNT(*)
+          FROM supportMessages AS aggregate_unread
+          WHERE aggregate_unread.senderType = 'client'
+            AND aggregate_unread.isRead = 0
+            AND aggregate_unread.conversationId IN (SELECT id FROM aggregate_conversations)
+        ) AS aggregateUnread
+      FROM aggregate_conversations
+    )
+    SELECT
+      conversation.id,
+      conversation.userId,
+      conversation.status,
+      conversation.needsHuman,
+      conversation.assignedTo,
+      conversation.createdAt,
+      conversation.updatedAt,
+      conversation.closedAt,
+      conversation.userName,
+      conversation.userEmail,
+      latest.id AS lastMessageId,
+      latest.senderType AS lastMessageSenderType,
+      latest.content AS lastMessageContent,
+      latest.createdAt AS lastMessageCreatedAt,
+      COALESCE(unread.unreadCount, 0) AS unreadCount,
+      counts.aggregateTotal,
+      counts.aggregateOpen,
+      counts.aggregateClosed,
+      counts.aggregateEscalated,
+      counts.aggregateUnread
+    FROM page_with_latest AS conversation
+    LEFT JOIN supportMessages AS latest ON latest.id = conversation.lastMessageId
+    LEFT JOIN unread_by_conversation AS unread
+      ON unread.conversationId = conversation.id
+    CROSS JOIN aggregate_counts AS counts
+    ORDER BY conversation.updatedAt DESC, conversation.id DESC
+  `);
+
+  const pageRows = rows.slice(0, limit);
+  const items = pageRows.map((row) => {
+    const lastMessage = row.lastMessageId == null ? null : {
+      id: Number(row.lastMessageId),
+      senderType: row.lastMessageSenderType,
+      content: row.lastMessageContent ?? "",
+      createdAt: row.lastMessageCreatedAt,
+    };
+    return {
+      id: row.id,
+      userId: row.userId,
+      status: row.status,
+      needsHuman: Boolean(row.needsHuman),
+      assignedTo: row.assignedTo,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      closedAt: row.closedAt,
+      userName: row.userName,
+      userEmail: row.userEmail,
+      lastMessage,
+      unreadCount: Number(row.unreadCount ?? 0),
+      hasMessages: Boolean(lastMessage),
+      summaryTimestamp: getSupportConversationSummaryTimestamp({ lastMessage }),
+    };
+  });
+  const lastItem = pageRows.at(-1);
+  const aggregateRow = rows[0] ?? await db.get<Pick<
+    SupportInboxRawRow,
+    "aggregateTotal" | "aggregateOpen" | "aggregateClosed" | "aggregateEscalated" | "aggregateUnread"
+  >>(sql`
+    WITH aggregate_conversations AS (
+      SELECT sc.id, sc.status, sc.needsHuman
+      FROM supportConversations AS sc
+      LEFT JOIN users AS u ON u.id = sc.userId
+      ${aggregateWhere}
+    )
+    SELECT
+      COUNT(*) AS aggregateTotal,
+      SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END) AS aggregateOpen,
+      SUM(CASE WHEN status = 'closed' THEN 1 ELSE 0 END) AS aggregateClosed,
+      SUM(CASE WHEN needsHuman = 1 THEN 1 ELSE 0 END) AS aggregateEscalated,
+      (
+        SELECT COUNT(*)
+        FROM supportMessages AS aggregate_unread
+        WHERE aggregate_unread.senderType = 'client'
+          AND aggregate_unread.isRead = 0
+          AND aggregate_unread.conversationId IN (SELECT id FROM aggregate_conversations)
+      ) AS aggregateUnread
+    FROM aggregate_conversations
+  `);
+  return {
+    items,
+    nextCursor: rows.length > limit && lastItem
+      ? { updatedAt: lastItem.updatedAt, id: lastItem.id }
+      : null,
+    aggregates: {
+      total: Number(aggregateRow?.aggregateTotal ?? 0),
+      open: Number(aggregateRow?.aggregateOpen ?? 0),
+      closed: Number(aggregateRow?.aggregateClosed ?? 0),
+      unread: Number(aggregateRow?.aggregateUnread ?? 0),
+      escalated: Number(aggregateRow?.aggregateEscalated ?? 0),
+    },
+  };
+}
+
+export async function getSupportMessageHistory(options: {
+  conversationId: number;
+  limit?: number;
+  cursor?: SupportMessageCursor;
+}) {
+  const db = await getDb();
+  if (!db) return { messages: [], nextCursor: null };
+  const limit = Math.min(Math.max(options.limit ?? 50, 1), 100);
+  const filters: SQL[] = [eq(supportMessages.conversationId, options.conversationId)];
+  if (options.cursor) {
+    filters.push(or(
+      lt(supportMessages.createdAt, options.cursor.createdAt),
+      and(
+        eq(supportMessages.createdAt, options.cursor.createdAt),
+        lt(supportMessages.id, options.cursor.id),
+      ),
+    )!);
+  }
+  const rows = await db.select().from(supportMessages)
+    .where(and(...filters))
+    .orderBy(desc(supportMessages.createdAt), desc(supportMessages.id))
+    .limit(limit + 1);
+  const pageRows = rows.slice(0, limit);
+  const last = pageRows.at(-1);
+  return {
+    messages: pageRows,
+    nextCursor: rows.length > limit && last
+      ? { createdAt: last.createdAt, id: last.id }
+      : null,
+  };
+}
+
+export async function getSupportMessageChanges(options: {
+  conversationId: number;
+  afterMessageId: number;
+  changedAfter: string;
+}) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(supportMessages)
+    .where(and(
+      eq(supportMessages.conversationId, options.conversationId),
+      or(
+        gt(supportMessages.id, options.afterMessageId),
+        gt(supportMessages.editedAt, options.changedAfter),
+        gt(supportMessages.deletedAt, options.changedAfter),
+      ),
+    ))
+    .orderBy(asc(supportMessages.createdAt), asc(supportMessages.id))
+    .limit(200);
 }
 
 export async function getOpenAiUsageReport(days = 7, filters: OpenAiUsageReportFilters = {}): Promise<OpenAiUsageReport> {
