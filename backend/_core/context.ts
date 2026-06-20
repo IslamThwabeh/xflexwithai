@@ -19,23 +19,16 @@ export type RequestLike = {
 export type TrpcContext = {
   req: RequestLike;
   user: User | null;
+  sessionId?: string | null;
   setCookie: (name: string, value: string, options?: any) => void;
   clearCookie: (name: string, options?: any) => void;
 };
-
-function isExpiredStaffSession(user: Pick<User, "isStaff" | "lastActiveAt"> | null | undefined) {
-  if (!user?.isStaff || !user.lastActiveAt) return false;
-
-  const lastActiveAt = new Date(user.lastActiveAt);
-  if (Number.isNaN(lastActiveAt.getTime())) return false;
-
-  return lastActiveAt.getTime() <= Date.now() - IDLE_TIMEOUT_STAFF_MS;
-}
 
 export async function createContext(
   opts: CreateExpressContextOptions
 ): Promise<TrpcContext> {
   let user: User | null = null;
+  let sessionId: string | null = null;
 
   // 🔍 LOG: Request details
   logger.info('🔍 [AUTH DEBUG] Creating context', {
@@ -128,7 +121,10 @@ export async function createContext(
               logger.error('❌ [AUTH DEBUG] User not found in database', {
                 userId: decoded.userId,
               });
-            } else if (isExpiredStaffSession(regularUser)) {
+            } else if (
+              regularUser.isStaff &&
+              (!decoded.sessionId || !await db.validateActiveStaffSession(regularUser.id, decoded.sessionId))
+            ) {
               logger.info('⏳ [AUTH DEBUG] Staff session expired due to inactivity', {
                 userId: regularUser.id,
                 email: regularUser.email,
@@ -146,7 +142,10 @@ export async function createContext(
               });
 
               user = regularUser;
-              db.touchUserActivity(regularUser.id).catch(() => {});
+              sessionId = decoded.sessionId ?? null;
+              if (!regularUser.isStaff) {
+                db.touchUserActivity(regularUser.id).catch(() => {});
+              }
               logger.auth('✅ User authenticated successfully', { 
                 userId: regularUser.id, 
                 email: regularUser.email 
@@ -174,6 +173,7 @@ export async function createContext(
   return {
     req: opts.req,
     user,
+    sessionId,
     setCookie: (name, value, options) => opts.res.cookie(name, value, options),
     clearCookie: (name, options) => opts.res.clearCookie(name, options),
   };

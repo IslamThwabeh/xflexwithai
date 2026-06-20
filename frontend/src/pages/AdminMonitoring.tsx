@@ -5,6 +5,7 @@ import { trpc } from '@/lib/trpc';
 import { IDLE_TIMEOUT_STAFF_MS } from '../../../shared/const';
 import { Activity, Clock3, Loader2, RefreshCw, ShieldCheck, TimerReset, Users } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import EmployeeDailyAudit from '@/components/admin/EmployeeDailyAudit';
 
 const ACTION_LABELS: Record<string, { en: string; ar: string }> = {
   'auth.login': { en: 'Signed in', ar: 'تسجيل دخول' },
@@ -72,6 +73,9 @@ export default function AdminMonitoring() {
     { refetchInterval: 60_000 },
   );
   const staffListQuery = trpc.roles.listStaff.useQuery();
+  const terminateSession = trpc.monitoring.terminateSession.useMutation({
+    onSuccess: () => refreshAll(),
+  });
 
   const summary = summaryQuery.data;
   const breakdown = (summary?.breakdown ?? []) as any[];
@@ -265,6 +269,14 @@ export default function AdminMonitoring() {
           </div>
         </div>
 
+        {selectedStaffUserId ? (
+          <EmployeeDailyAudit key={selectedStaffUserId} staffUserId={selectedStaffUserId} />
+        ) : (
+          <div className="rounded-2xl border border-dashed border-emerald-300 bg-emerald-50 px-4 py-8 text-center text-sm text-emerald-800">
+            Select a staff member to open the exact-date daily audit, schedule comparison, exceptions, and CSV export.
+          </div>
+        )}
+
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <MetricCard
             icon={<ShieldCheck className="w-4 h-4 text-emerald-600" />}
@@ -402,6 +414,18 @@ export default function AdminMonitoring() {
                       <div>{isRtl ? 'تنتهي تلقائياً:' : 'Auto timeout:'} {formatDateTime(session.sessionExpiresAt)}</div>
                       {session.ipAddress && <div>{isRtl ? 'IP:' : 'IP:'} {session.ipAddress}</div>}
                     </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="mt-3 border-red-200 text-red-700 hover:bg-red-50"
+                      disabled={terminateSession.isPending}
+                      onClick={() => terminateSession.mutate({
+                        sessionRecordId: session.id,
+                        staffUserId: session.staffUserId,
+                      })}
+                    >
+                      {isRtl ? 'إنهاء الجلسة' : 'End session'}
+                    </Button>
                   </div>
                 ))}
               </div>

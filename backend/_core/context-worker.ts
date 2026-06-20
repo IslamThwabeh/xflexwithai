@@ -12,21 +12,13 @@ export type WorkerContextOptions = {
   env: { DB: D1Database };
 };
 
-function isExpiredStaffSession(user: { isStaff?: boolean; lastActiveAt?: string | null } | null | undefined) {
-  if (!user?.isStaff || !user.lastActiveAt) return false;
-
-  const lastActiveAt = new Date(user.lastActiveAt);
-  if (Number.isNaN(lastActiveAt.getTime())) return false;
-
-  return lastActiveAt.getTime() <= Date.now() - IDLE_TIMEOUT_STAFF_MS;
-}
-
 export async function createWorkerContext(
   opts: WorkerContextOptions
 ): Promise<TrpcContext> {
   const { req } = opts;
   const cookieHeaders: string[] = [];
   let user: any = null;
+  let sessionId: string | null = null;
 
   const setCookie: TrpcContext["setCookie"] = (name, value, options = {}) => {
     cookieHeaders.push(serialize(name, value, options));
@@ -69,7 +61,10 @@ export async function createWorkerContext(
       } else {
         const regularUser = await db.getUserById(decoded.userId);
 
-        if (regularUser && isExpiredStaffSession(regularUser)) {
+        if (
+          regularUser?.isStaff &&
+          (!decoded.sessionId || !await db.validateActiveStaffSession(regularUser.id, decoded.sessionId))
+        ) {
           logger.info("[AUTH] Staff session expired due to inactivity", {
             userId: regularUser.id,
             email: regularUser.email,
@@ -78,7 +73,10 @@ export async function createWorkerContext(
         } else {
           user = regularUser;
           if (user) {
-            db.touchUserActivity(user.id).catch(() => {});
+            sessionId = decoded.sessionId ?? null;
+            if (!user.isStaff) {
+              db.touchUserActivity(user.id).catch(() => {});
+            }
           }
         }
       }
@@ -93,6 +91,7 @@ export async function createWorkerContext(
   return {
     req,
     user,
+    sessionId,
     setCookie,
     clearCookie,
     cookieHeaders,

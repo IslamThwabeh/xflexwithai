@@ -21,6 +21,7 @@ export type JWTPayload = JoseJWTPayload & {
   userId: number;
   email: string;
   type: "user" | "admin";
+  sessionId?: string;
 };
 
 /**

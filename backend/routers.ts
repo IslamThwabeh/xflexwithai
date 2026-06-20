@@ -79,6 +79,7 @@ const STAFF_ACTIVITY_QUERY_ALLOWLIST = new Set([
 ]);
 
 const STAFF_ACTIVITY_MUTATION_IGNORELIST = new Set([
+  "auth.interaction",
   "staffNotifications.markRead",
   "staffNotifications.markReadByRoute",
   "staffNotifications.markAllRead",
@@ -224,10 +225,6 @@ const writeStaffActivityLog = async ({
 const staffActivityTrackingMiddleware = async ({ ctx, path, type, input, next }: any) => {
   const result = await next();
 
-  if (!result.ok) {
-    return result;
-  }
-
   const shouldTrackMutation = type === "mutation" && !STAFF_ACTIVITY_MUTATION_IGNORELIST.has(path);
   const shouldTrackQuery = type === "query" && STAFF_ACTIVITY_QUERY_ALLOWLIST.has(path);
   if (!shouldTrackMutation && !shouldTrackQuery) {
@@ -235,7 +232,13 @@ const staffActivityTrackingMiddleware = async ({ ctx, path, type, input, next }:
   }
 
   try {
-    await writeStaffActivityLog({ ctx, path, type, input });
+    await writeStaffActivityLog({
+      ctx,
+      path,
+      type,
+      input,
+      details: { outcome: result.ok ? "success" : "failed" },
+    });
   } catch (error) {
     logger.warn("[STAFF MONITORING] Failed to log staff activity", {
       path,
@@ -1268,10 +1271,12 @@ export const appRouter = router({
         // Daily login points
         try { await db.autoAwardPoints(user.id, 'daily_login'); } catch {}
 
+        const staffSessionId = user.isStaff ? crypto.randomUUID() : undefined;
         const token = await generateToken({
           userId: user.id,
           email,
           type: "user",
+          sessionId: staffSessionId,
         });
 
         const cookieOptions = getSessionCookieOptions(ctx.req, 'user');
@@ -1291,6 +1296,7 @@ export const appRouter = router({
           const userAgent = getRequestUserAgent(ctx.req);
           await db.startStaffSession({
             staffUserId: user.id,
+            sessionKey: staffSessionId!,
             ipAddress: ip,
             userAgent,
           });
@@ -1376,10 +1382,12 @@ export const appRouter = router({
         try { await db.autoAwardPoints(user.id, 'daily_login'); } catch {}
 
         // Generate JWT token
+        const staffSessionId = user.isStaff ? crypto.randomUUID() : undefined;
         const token = await generateToken({
           userId: user.id,
           email: user.email,
           type: 'user',
+          sessionId: staffSessionId,
         });
 
         // Set cookie
@@ -1392,6 +1400,7 @@ export const appRouter = router({
           const userAgent = getRequestUserAgent(ctx.req);
           await db.startStaffSession({
             staffUserId: user.id,
+            sessionKey: staffSessionId!,
             ipAddress: ip,
             userAgent,
           });
@@ -1639,7 +1648,7 @@ export const appRouter = router({
         const logoutAt = new Date();
         const ip = getRequestIp(ctx.req);
         try {
-          await db.endActiveStaffSessions(ctx.user.id, logoutAt);
+          await db.endActiveStaffSessions(ctx.user.id, logoutAt, "logout", ctx.sessionId);
           await db.logStaffAction({
             staffUserId: ctx.user.id,
             actionType: 'auth.logout',
@@ -1674,6 +1683,21 @@ export const appRouter = router({
       const cookieOptions = getSessionCookieOptions(ctx.req, 'user');
       ctx.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
       return { success: true } as const;
+    }),
+
+    interaction: protectedProcedure.mutation(async ({ ctx }) => {
+      if (!ctx.user.isStaff) {
+        await db.touchUserInteraction(ctx.user.id);
+        return { active: true };
+      }
+      if (!ctx.sessionId) {
+        throw new TRPCError({ code: "UNAUTHORIZED", message: "Staff session is missing." });
+      }
+      const result = await db.touchStaffSessionInteraction(ctx.user.id, ctx.sessionId);
+      if (!result.active) {
+        throw new TRPCError({ code: "UNAUTHORIZED", message: "Staff session expired." });
+      }
+      return result;
     }),
   }),
 
@@ -7477,6 +7501,119 @@ ${qaText}`;
           limit: input?.limit,
           status: input?.status,
         });
+      }),
+
+    actionsPage: adminProcedure
+      .input(z.object({
+        staffUserId: z.number().optional(),
+        from: z.string().datetime().optional(),
+        to: z.string().datetime().optional(),
+        actionType: z.string().max(120).optional(),
+        limit: z.number().min(1).max(199).default(50),
+        offset: z.number().min(0).default(0),
+      }))
+      .query(async ({ input }) => {
+        const rows = await db.listStaffActionLogs({
+          staffUserId: input.staffUserId,
+          from: input.from ? new Date(input.from) : undefined,
+          to: input.to ? new Date(input.to) : undefined,
+          actionType: input.actionType,
+          limit: input.limit + 1,
+          offset: input.offset,
+        });
+        return { rows: rows.slice(0, input.limit), hasMore: rows.length > input.limit };
+      }),
+
+    sessionsPage: adminProcedure
+      .input(z.object({
+        staffUserId: z.number().optional(),
+        from: z.string().datetime().optional(),
+        to: z.string().datetime().optional(),
+        status: z.enum(["all", "active", "closed"]).default("all"),
+        limit: z.number().min(1).max(199).default(50),
+        offset: z.number().min(0).default(0),
+      }))
+      .query(async ({ input }) => {
+        const rows = await db.listStaffSessions({
+          staffUserId: input.staffUserId,
+          from: input.from ? new Date(input.from) : undefined,
+          to: input.to ? new Date(input.to) : undefined,
+          status: input.status,
+          limit: input.limit + 1,
+          offset: input.offset,
+        });
+        return { rows: rows.slice(0, input.limit), hasMore: rows.length > input.limit };
+      }),
+
+    dailyReport: adminProcedure
+      .input(z.object({
+        staffUserId: z.number(),
+        localDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        timezone: z.string().min(1).max(100),
+        from: z.string().datetime(),
+        to: z.string().datetime(),
+        revealNetwork: z.boolean().optional(),
+      }))
+      .query(async ({ ctx, input }) => {
+        const from = new Date(input.from);
+        const to = new Date(input.to);
+        const rangeMs = to.getTime() - from.getTime();
+        if (rangeMs <= 0 || rangeMs > 36 * 60 * 60 * 1000) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Daily report range must be between 0 and 36 hours." });
+        }
+        const report = await db.getStaffDailyReport({
+          staffUserId: input.staffUserId,
+          localDate: input.localDate,
+          timezone: input.timezone,
+          from,
+          to,
+          revealNetwork: Boolean(input.revealNetwork),
+        });
+        if (!report) throw new TRPCError({ code: "NOT_FOUND", message: "Staff member not found." });
+        await db.logAdminAction(ctx.admin.id, input.staffUserId, "view_staff_daily_report", {
+          localDate: input.localDate,
+          timezone: input.timezone,
+          revealNetwork: Boolean(input.revealNetwork),
+        });
+        return report;
+      }),
+
+    schedule: adminProcedure
+      .input(z.object({ staffUserId: z.number() }))
+      .query(({ input }) => db.getStaffWorkSchedule(input.staffUserId)),
+
+    updateSchedule: adminProcedure
+      .input(z.object({
+        staffUserId: z.number(),
+        timezone: z.string().min(1).max(100),
+        workDays: z.array(z.number().int().min(0).max(6)).max(7),
+        startTime: z.string().regex(/^\d{2}:\d{2}$/),
+        endTime: z.string().regex(/^\d{2}:\d{2}$/),
+        graceMinutes: z.number().int().min(0).max(120),
+        enabled: z.boolean(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const schedule = await db.upsertStaffWorkSchedule(input);
+        await db.logAdminAction(ctx.admin.id, input.staffUserId, "update_staff_work_schedule", {
+          timezone: input.timezone,
+          workDays: input.workDays,
+          startTime: input.startTime,
+          endTime: input.endTime,
+          graceMinutes: input.graceMinutes,
+          enabled: input.enabled,
+        });
+        return schedule;
+      }),
+
+    terminateSession: adminProcedure
+      .input(z.object({ sessionRecordId: z.number().int().positive(), staffUserId: z.number().int().positive() }))
+      .mutation(async ({ ctx, input }) => {
+        const result = await db.terminateStaffSession(input.sessionRecordId);
+        await db.logAdminAction(ctx.admin.id, input.staffUserId, "terminate_staff_session", {
+          sessionRecordId: input.sessionRecordId,
+          terminated: result.terminated,
+        });
+        return result;
       }),
   }),
 

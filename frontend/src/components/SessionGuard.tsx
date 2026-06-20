@@ -3,6 +3,8 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { useIdleTimeout } from "@/hooks/useIdleTimeout";
 import { IDLE_TIMEOUT_USER_MS, IDLE_TIMEOUT_STAFF_MS, IDLE_TIMEOUT_ADMIN_MS } from "../../../shared/const";
+import { toast } from "sonner";
+import { useRef } from "react";
 
 /**
  * Invisible component that sits near the top of the React tree.
@@ -21,6 +23,8 @@ export default function SessionGuard() {
 
   const isAdmin = Boolean(adminCheck?.isAdmin);
   const isStaff = Boolean(adminCheck?.isStaff);
+  const interactionMutation = trpc.auth.interaction.useMutation();
+  const lastHeartbeatAtRef = useRef(0);
   const timeoutMs = isAdmin
     ? IDLE_TIMEOUT_ADMIN_MS
     : isStaff
@@ -38,9 +42,31 @@ export default function SessionGuard() {
     window.location.href = dest;
   }, [logout, isAdmin]);
 
+  const handleActivity = useCallback(() => {
+    const now = Date.now();
+    if (now - lastHeartbeatAtRef.current < 60_000 || interactionMutation.isPending) return;
+    lastHeartbeatAtRef.current = now;
+    interactionMutation.mutate(undefined, {
+      onError: () => {
+        // Global auth handling redirects if the server has already expired the session.
+      },
+    });
+  }, [interactionMutation]);
+
+  const handleWarning = useCallback(() => {
+    toast.warning(
+      isAdmin
+        ? "Your admin session will expire in 2 minutes due to inactivity."
+        : "Your session will expire in 2 minutes due to inactivity.",
+    );
+  }, [isAdmin]);
+
   useIdleTimeout({
     timeoutMs,
     onIdle: handleIdle,
+    warningMs: 2 * 60 * 1000,
+    onWarning: handleWarning,
+    onActivity: handleActivity,
     enabled: isAuthenticated,
   });
 

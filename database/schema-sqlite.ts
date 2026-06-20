@@ -1701,8 +1701,13 @@ export type InsertStaffActionLog = typeof staffActionLogs.$inferInsert;
 export const staffSessions = sqliteTable("staffSessions", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   staffUserId: integer("staffUserId").notNull().references(() => users.id),
+  sessionKey: text("sessionKey"),
   loginAt: integer("loginAt", { mode: "timestamp" }).notNull(),
   logoutAt: integer("logoutAt", { mode: "timestamp" }),
+  endedAt: integer("endedAt", { mode: "timestamp" }),
+  lastInteractionAt: integer("lastInteractionAt", { mode: "timestamp" }),
+  hardExpiresAt: integer("hardExpiresAt", { mode: "timestamp" }),
+  endReason: text("endReason"),
   durationSeconds: integer("durationSeconds"),
   ipAddress: text("ipAddress"),
   userAgent: text("userAgent"),
@@ -1711,6 +1716,36 @@ export const staffSessions = sqliteTable("staffSessions", {
 
 export type StaffSession = typeof staffSessions.$inferSelect;
 export type InsertStaffSession = typeof staffSessions.$inferInsert;
+
+export const staffWorkSchedules = sqliteTable("staffWorkSchedules", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  staffUserId: integer("staffUserId").notNull().references(() => users.id).unique(),
+  timezone: text("timezone").notNull().default("Asia/Amman"),
+  workDays: text("workDays").notNull().default("[0,1,2,3,4]"),
+  startTime: text("startTime").notNull().default("09:00"),
+  endTime: text("endTime").notNull().default("17:00"),
+  graceMinutes: integer("graceMinutes").notNull().default(15),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull().default(sql`(strftime('%s', 'now'))`),
+});
+
+export type StaffWorkSchedule = typeof staffWorkSchedules.$inferSelect;
+export type InsertStaffWorkSchedule = typeof staffWorkSchedules.$inferInsert;
+
+export const staffDailyAggregates = sqliteTable("staffDailyAggregates", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  localDate: text("localDate").notNull(),
+  timezone: text("timezone").notNull(),
+  actionCount: integer("actionCount").notNull().default(0),
+  sessionCount: integer("sessionCount").notNull().default(0),
+  activeSeconds: integer("activeSeconds").notNull().default(0),
+  timeoutCount: integer("timeoutCount").notNull().default(0),
+  exceptionCount: integer("exceptionCount").notNull().default(0),
+  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().default(sql`(strftime('%s', 'now'))`),
+  updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull().default(sql`(strftime('%s', 'now'))`),
+}, (table) => ({
+  dateTimezoneUnique: unique().on(table.localDate, table.timezone),
+}));
 
 // ============================================
 // Relations for Staff Monitoring

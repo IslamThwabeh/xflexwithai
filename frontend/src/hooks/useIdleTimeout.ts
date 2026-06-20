@@ -10,26 +10,44 @@ import { useEffect, useRef, useCallback } from "react";
 export function useIdleTimeout({
   timeoutMs,
   onIdle,
+  warningMs = 0,
+  onWarning,
+  onActivity,
   enabled = true,
 }: {
   timeoutMs: number;
   onIdle: () => void;
+  warningMs?: number;
+  onWarning?: () => void;
+  onActivity?: () => void;
   enabled?: boolean;
 }) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const warningTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onIdleRef = useRef(onIdle);
+  const onWarningRef = useRef(onWarning);
+  const onActivityRef = useRef(onActivity);
   onIdleRef.current = onIdle;
+  onWarningRef.current = onWarning;
+  onActivityRef.current = onActivity;
 
   const resetTimer = useCallback(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
+    if (warningTimerRef.current) clearTimeout(warningTimerRef.current);
+    if (warningMs > 0 && warningMs < timeoutMs) {
+      warningTimerRef.current = setTimeout(() => {
+        onWarningRef.current?.();
+      }, timeoutMs - warningMs);
+    }
     timerRef.current = setTimeout(() => {
       onIdleRef.current();
     }, timeoutMs);
-  }, [timeoutMs]);
+  }, [timeoutMs, warningMs]);
 
   useEffect(() => {
     if (!enabled) {
       if (timerRef.current) clearTimeout(timerRef.current);
+      if (warningTimerRef.current) clearTimeout(warningTimerRef.current);
       return;
     }
 
@@ -45,7 +63,10 @@ export function useIdleTimeout({
     // Start the timer immediately
     resetTimer();
 
-    const handleActivity = () => resetTimer();
+    const handleActivity = () => {
+      resetTimer();
+      onActivityRef.current?.();
+    };
 
     for (const event of ACTIVITY_EVENTS) {
       window.addEventListener(event, handleActivity, { passive: true });
@@ -54,12 +75,13 @@ export function useIdleTimeout({
     // Also reset when tab becomes visible again (prevents instant logout
     // if the user switched tabs and came back within the window).
     const handleVisibility = () => {
-      if (document.visibilityState === "visible") resetTimer();
+      if (document.visibilityState === "visible") handleActivity();
     };
     document.addEventListener("visibilitychange", handleVisibility);
 
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
+      if (warningTimerRef.current) clearTimeout(warningTimerRef.current);
       for (const event of ACTIVITY_EVENTS) {
         window.removeEventListener(event, handleActivity);
       }

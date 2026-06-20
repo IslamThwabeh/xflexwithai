@@ -71,7 +71,7 @@ import {
   lexaiSupportNotes, LexaiSupportNote, InsertLexaiSupportNote,
   staffNotifications, StaffNotification, InsertStaffNotification,
   adminSettings, AdminSetting, InsertAdminSetting,
-  staffActionLogs, staffSessions,
+  staffActionLogs, staffSessions, staffWorkSchedules, staffDailyAggregates,
 } from "../database/schema-sqlite.ts";
 import { ENV } from './_core/env';
 import { logger } from './_core/logger';
@@ -88,6 +88,7 @@ import { getRecommendationThreadRootId } from './services/recommendation-thread.
 import { getPendingServiceWindow, shouldAutoActivateTimedServices } from './services/timed-service-activation.service';
 import {
   BUG_REPORT_RISK_LEVELS,
+  COOKIE_MAX_AGE_USER,
   IDLE_TIMEOUT_STAFF_MS,
   STAFF_NOTIFICATION_EVENTS,
   type BugReportRiskLevel,
@@ -1820,20 +1821,28 @@ function getStaffSessionLastActivityAt(loginAt: Date, lastActiveAt: unknown) {
   return parsedLastActiveAt;
 }
 
-function mapStaffSessionRow<T extends {
+export function mapStaffSessionRow<T extends {
   loginAt: unknown;
   logoutAt: unknown;
+  endedAt?: unknown;
   durationSeconds: number | null;
-  lastActiveAt?: unknown;
+  lastInteractionAt?: unknown;
+  hardExpiresAt?: unknown;
+  endReason?: string | null;
 }>(row: T, now: Date = new Date()) {
   const loginAt = coerceTimestampToDate(row.loginAt) ?? new Date(0);
-  const logoutAt = coerceTimestampToDate(row.logoutAt);
-  const lastActiveAt = getStaffSessionLastActivityAt(loginAt, row.lastActiveAt);
-  const sessionExpiresAt = logoutAt ? null : new Date(lastActiveAt.getTime() + IDLE_TIMEOUT_STAFF_MS);
-  const timedOutAt = !logoutAt && sessionExpiresAt && sessionExpiresAt.getTime() <= now.getTime()
+  const endedAt = coerceTimestampToDate(row.endedAt ?? row.logoutAt);
+  const logoutAt = coerceTimestampToDate(row.logoutAt) ?? endedAt;
+  const lastInteractionAt = getStaffSessionLastActivityAt(loginAt, row.lastInteractionAt);
+  const hardExpiresAt = coerceTimestampToDate(row.hardExpiresAt);
+  const idleExpiresAt = new Date(lastInteractionAt.getTime() + IDLE_TIMEOUT_STAFF_MS);
+  const sessionExpiresAt = endedAt
+    ? null
+    : hardExpiresAt && hardExpiresAt < idleExpiresAt ? hardExpiresAt : idleExpiresAt;
+  const timedOutAt = !endedAt && sessionExpiresAt && sessionExpiresAt.getTime() <= now.getTime()
     ? sessionExpiresAt
     : null;
-  const effectiveLogoutAt = logoutAt ?? timedOutAt;
+  const effectiveLogoutAt = endedAt ?? timedOutAt;
   const fallbackDurationSeconds = Math.max(
     0,
     Math.floor(((effectiveLogoutAt ?? now).getTime() - loginAt.getTime()) / 1000),
@@ -1844,14 +1853,24 @@ function mapStaffSessionRow<T extends {
     ...row,
     loginAt,
     logoutAt,
-    lastActiveAt,
+    endedAt,
+    lastInteractionAt,
+    hardExpiresAt,
+    lastActiveAt: lastInteractionAt,
     sessionExpiresAt,
     timedOutAt,
     effectiveLogoutAt,
     currentDurationSeconds,
     isActive: !effectiveLogoutAt,
-    status: effectiveLogoutAt ? (logoutAt ? "closed" : "timed_out") : "active",
+    status: effectiveLogoutAt ? ((row.endReason ?? (timedOutAt ? "timeout" : "logout")) === "timeout" ? "timed_out" : "closed") : "active",
   };
+}
+
+export function getReplacementStaffSessionEnd(lastInteractionAt: Date, nextLoginAt: Date) {
+  const timeoutAt = new Date(lastInteractionAt.getTime() + IDLE_TIMEOUT_STAFF_MS);
+  return timeoutAt.getTime() < nextLoginAt.getTime()
+    ? { endedAt: timeoutAt, endReason: "timeout" as const }
+    : { endedAt: nextLoginAt, endReason: "replaced_login" as const };
 }
 
 export async function logAdminAction(adminId: number, userId: number, action: string, details?: Record<string, any>) {
@@ -1919,6 +1938,7 @@ export async function logStaffAction(input: {
 
 export async function startStaffSession(input: {
   staffUserId: number;
+  sessionKey: string;
   ipAddress?: string | null;
   userAgent?: string | null;
   loginAt?: Date;
@@ -1931,6 +1951,7 @@ export async function startStaffSession(input: {
     .select({
       id: staffSessions.id,
       loginAt: staffSessions.loginAt,
+      lastInteractionAt: staffSessions.lastInteractionAt,
     })
     .from(staffSessions)
     .where(and(
@@ -1941,20 +1962,28 @@ export async function startStaffSession(input: {
 
   for (const openSession of openSessions) {
     const openedAt = new Date(openSession.loginAt);
+    const lastInteractionAt = coerceTimestampToDate(openSession.lastInteractionAt) ?? openedAt;
+    const replacement = getReplacementStaffSessionEnd(lastInteractionAt, loginAt);
+    const endedAt = replacement.endedAt;
     const durationSeconds = Math.max(
       0,
-      Math.floor((loginAt.getTime() - openedAt.getTime()) / 1000),
+      Math.floor((endedAt.getTime() - openedAt.getTime()) / 1000),
     );
 
     await db.update(staffSessions).set({
-      logoutAt: loginAt,
+      logoutAt: endedAt,
+      endedAt,
+      endReason: replacement.endReason,
       durationSeconds,
     }).where(eq(staffSessions.id, openSession.id));
   }
 
   const [session] = await db.insert(staffSessions).values({
     staffUserId: input.staffUserId,
+    sessionKey: input.sessionKey,
     loginAt,
+    lastInteractionAt: loginAt,
+    hardExpiresAt: new Date(loginAt.getTime() + COOKIE_MAX_AGE_USER * 1000),
     ipAddress: input.ipAddress?.trim() ? input.ipAddress.trim().slice(0, 255) : null,
     userAgent: input.userAgent?.trim() ? input.userAgent.trim().slice(0, 1000) : null,
   }).returning();
@@ -1962,7 +1991,12 @@ export async function startStaffSession(input: {
   return session ?? null;
 }
 
-export async function endActiveStaffSessions(staffUserId: number, logoutAt: Date = new Date()) {
+export async function endActiveStaffSessions(
+  staffUserId: number,
+  logoutAt: Date = new Date(),
+  endReason = "logout",
+  sessionKey?: string | null,
+) {
   const db = await getDb();
   if (!db) return { closedCount: 0 };
 
@@ -1970,23 +2004,31 @@ export async function endActiveStaffSessions(staffUserId: number, logoutAt: Date
     .select({
       id: staffSessions.id,
       loginAt: staffSessions.loginAt,
+      lastInteractionAt: staffSessions.lastInteractionAt,
     })
     .from(staffSessions)
     .where(and(
       eq(staffSessions.staffUserId, staffUserId),
-      isNull(staffSessions.logoutAt),
+      isNull(staffSessions.endedAt),
+      sessionKey ? eq(staffSessions.sessionKey, sessionKey) : undefined,
     ))
     .orderBy(desc(staffSessions.loginAt));
 
   for (const openSession of openSessions) {
     const openedAt = new Date(openSession.loginAt);
+    const lastInteractionAt = coerceTimestampToDate(openSession.lastInteractionAt) ?? openedAt;
+    const effectiveEnd = endReason === "timeout"
+      ? new Date(lastInteractionAt.getTime() + IDLE_TIMEOUT_STAFF_MS)
+      : logoutAt;
     const durationSeconds = Math.max(
       0,
-      Math.floor((logoutAt.getTime() - openedAt.getTime()) / 1000),
+      Math.floor((effectiveEnd.getTime() - openedAt.getTime()) / 1000),
     );
 
     await db.update(staffSessions).set({
-      logoutAt,
+      logoutAt: effectiveEnd,
+      endedAt: effectiveEnd,
+      endReason,
       durationSeconds,
     }).where(eq(staffSessions.id, openSession.id));
   }
@@ -1994,15 +2036,39 @@ export async function endActiveStaffSessions(staffUserId: number, logoutAt: Date
   return { closedCount: openSessions.length };
 }
 
+export async function terminateStaffSession(sessionRecordId: number, endedAt = new Date()) {
+  const db = await getDb();
+  if (!db) return { terminated: false };
+  const [row] = await db.select({
+    id: staffSessions.id,
+    loginAt: staffSessions.loginAt,
+    endedAt: staffSessions.endedAt,
+  }).from(staffSessions).where(eq(staffSessions.id, sessionRecordId)).limit(1);
+  if (!row || row.endedAt) return { terminated: false };
+  const loginAt = coerceTimestampToDate(row.loginAt) ?? endedAt;
+  await db.update(staffSessions).set({
+    logoutAt: endedAt,
+    endedAt,
+    endReason: "admin_terminated",
+    durationSeconds: Math.max(0, Math.floor((endedAt.getTime() - loginAt.getTime()) / 1000)),
+  }).where(eq(staffSessions.id, sessionRecordId));
+  return { terminated: true };
+}
+
 export async function listStaffActionLogs(options: {
   limit?: number;
+  offset?: number;
   days?: number;
   staffUserId?: number;
+  from?: Date;
+  to?: Date;
+  actionType?: string;
 } = {}) {
   const db = await getDb();
   if (!db) return [];
 
   const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
+  const offset = Math.max(options.offset ?? 0, 0);
   const filters = [] as any[];
 
   if (options.days && options.days > 0) {
@@ -2013,6 +2079,9 @@ export async function listStaffActionLogs(options: {
   if (options.staffUserId) {
     filters.push(eq(staffActionLogs.staffUserId, options.staffUserId));
   }
+  if (options.from) filters.push(gte(staffActionLogs.createdAt, options.from));
+  if (options.to) filters.push(lte(staffActionLogs.createdAt, options.to));
+  if (options.actionType) filters.push(eq(staffActionLogs.actionType, options.actionType));
 
   const baseQuery = db.select({
     id: staffActionLogs.id,
@@ -2029,8 +2098,8 @@ export async function listStaffActionLogs(options: {
     .leftJoin(users, eq(staffActionLogs.staffUserId, users.id));
 
   const rows = filters.length > 0
-    ? await baseQuery.where(filters.length === 1 ? filters[0] : and(...filters)).orderBy(desc(staffActionLogs.createdAt)).limit(limit)
-    : await baseQuery.orderBy(desc(staffActionLogs.createdAt)).limit(limit);
+    ? await baseQuery.where(filters.length === 1 ? filters[0] : and(...filters)).orderBy(desc(staffActionLogs.createdAt)).limit(limit).offset(offset)
+    : await baseQuery.orderBy(desc(staffActionLogs.createdAt)).limit(limit).offset(offset);
 
   return rows.map((row) => ({
     ...row,
@@ -2040,14 +2109,19 @@ export async function listStaffActionLogs(options: {
 
 export async function listStaffSessions(options: {
   limit?: number;
+  offset?: number;
   days?: number;
   staffUserId?: number;
   status?: "all" | "active" | "closed";
+  from?: Date;
+  to?: Date;
 } = {}) {
   const db = await getDb();
   if (!db) return [];
+  await closeExpiredStaffSessions();
 
   const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
+  const offset = Math.max(options.offset ?? 0, 0);
   const filters = [] as any[];
 
   if (options.days && options.days > 0) {
@@ -2057,6 +2131,13 @@ export async function listStaffSessions(options: {
 
   if (options.staffUserId) {
     filters.push(eq(staffSessions.staffUserId, options.staffUserId));
+  }
+  if (options.from) filters.push(lte(staffSessions.loginAt, options.to ?? new Date()));
+  if (options.to) {
+    filters.push(or(
+      gte(staffSessions.endedAt, options.from ?? new Date(0)),
+      and(isNull(staffSessions.endedAt), gte(staffSessions.lastInteractionAt, options.from ?? new Date(0))),
+    ));
   }
 
   const rawLimit = options.status && options.status !== "all"
@@ -2070,17 +2151,20 @@ export async function listStaffSessions(options: {
     staffEmail: users.email,
     loginAt: staffSessions.loginAt,
     logoutAt: staffSessions.logoutAt,
+    endedAt: staffSessions.endedAt,
+    lastInteractionAt: staffSessions.lastInteractionAt,
+    hardExpiresAt: staffSessions.hardExpiresAt,
+    endReason: staffSessions.endReason,
     durationSeconds: staffSessions.durationSeconds,
     ipAddress: staffSessions.ipAddress,
     userAgent: staffSessions.userAgent,
     createdAt: staffSessions.createdAt,
-    lastActiveAt: users.lastActiveAt,
   }).from(staffSessions)
     .leftJoin(users, eq(staffSessions.staffUserId, users.id));
 
   const rows = filters.length > 0
-    ? await baseQuery.where(filters.length === 1 ? filters[0] : and(...filters)).orderBy(desc(staffSessions.loginAt)).limit(rawLimit)
-    : await baseQuery.orderBy(desc(staffSessions.loginAt)).limit(rawLimit);
+    ? await baseQuery.where(filters.length === 1 ? filters[0] : and(...filters)).orderBy(desc(staffSessions.loginAt)).limit(rawLimit).offset(offset)
+    : await baseQuery.orderBy(desc(staffSessions.loginAt)).limit(rawLimit).offset(offset);
 
   const mappedRows = rows.map((row) => mapStaffSessionRow(row));
   const filteredRows = mappedRows.filter((row) => {
@@ -2113,11 +2197,13 @@ export async function getStaffMonitoringBreakdown(days = 14) {
       staffUserId: staffSessions.staffUserId,
       loginAt: staffSessions.loginAt,
       logoutAt: staffSessions.logoutAt,
+      endedAt: staffSessions.endedAt,
+      lastInteractionAt: staffSessions.lastInteractionAt,
+      hardExpiresAt: staffSessions.hardExpiresAt,
+      endReason: staffSessions.endReason,
       durationSeconds: staffSessions.durationSeconds,
-      lastActiveAt: users.lastActiveAt,
     })
       .from(staffSessions)
-      .leftJoin(users, eq(staffSessions.staffUserId, users.id))
       .where(gte(staffSessions.loginAt, since))
       .orderBy(desc(staffSessions.loginAt)),
   ]);
@@ -2196,6 +2282,7 @@ export async function getStaffMonitoringBreakdown(days = 14) {
 }
 
 export async function getStaffMonitoringSummary(days = 14) {
+  await closeExpiredStaffSessions();
   const [breakdown, activeSessionRows] = await Promise.all([
     getStaffMonitoringBreakdown(days),
     listStaffSessions({ limit: 200, status: "active" }),
@@ -2685,6 +2772,89 @@ export async function getExpiringSubscriptions(withinDays: number): Promise<{ us
     });
   }
   return results;
+}
+
+export async function validateActiveStaffSession(staffUserId: number, sessionKey: string): Promise<boolean> {
+  const db = await getDb();
+  if (!db || !sessionKey) return false;
+
+  const [row] = await db.select({
+    id: staffSessions.id,
+    loginAt: staffSessions.loginAt,
+    endedAt: staffSessions.endedAt,
+    lastInteractionAt: staffSessions.lastInteractionAt,
+    hardExpiresAt: staffSessions.hardExpiresAt,
+  }).from(staffSessions).where(and(
+    eq(staffSessions.staffUserId, staffUserId),
+    eq(staffSessions.sessionKey, sessionKey),
+  )).limit(1);
+
+  if (!row || row.endedAt) return false;
+  const loginAt = coerceTimestampToDate(row.loginAt) ?? new Date(0);
+  const lastInteractionAt = getStaffSessionLastActivityAt(loginAt, row.lastInteractionAt);
+  const hardExpiresAt = coerceTimestampToDate(row.hardExpiresAt);
+  if (hardExpiresAt && hardExpiresAt.getTime() <= Date.now()) {
+    await endActiveStaffSessions(staffUserId, hardExpiresAt, "jwt_expired", sessionKey);
+    return false;
+  }
+  if (lastInteractionAt.getTime() <= Date.now() - IDLE_TIMEOUT_STAFF_MS) {
+    await endActiveStaffSessions(staffUserId, new Date(), "timeout", sessionKey);
+    return false;
+  }
+  return true;
+}
+
+export async function touchStaffSessionInteraction(staffUserId: number, sessionKey: string, at = new Date()) {
+  const db = await getDb();
+  if (!db || !sessionKey) return { active: false };
+  if (!await validateActiveStaffSession(staffUserId, sessionKey)) return { active: false };
+
+  await db.update(staffSessions).set({ lastInteractionAt: at })
+    .where(and(
+      eq(staffSessions.staffUserId, staffUserId),
+      eq(staffSessions.sessionKey, sessionKey),
+      isNull(staffSessions.endedAt),
+    ));
+  await db.update(users).set({
+    lastInteractiveAt: at.toISOString(),
+    lastActiveAt: at.toISOString(),
+  }).where(eq(users.id, staffUserId));
+  return { active: true, lastInteractionAt: at };
+}
+
+export async function closeExpiredStaffSessions(now = new Date()) {
+  const db = await getDb();
+  if (!db) return { closedCount: 0 };
+  const threshold = new Date(now.getTime() - IDLE_TIMEOUT_STAFF_MS);
+  const rows = await db.select({
+    id: staffSessions.id,
+    staffUserId: staffSessions.staffUserId,
+    loginAt: staffSessions.loginAt,
+    lastInteractionAt: staffSessions.lastInteractionAt,
+    hardExpiresAt: staffSessions.hardExpiresAt,
+  }).from(staffSessions).where(and(
+    isNull(staffSessions.endedAt),
+    or(
+      lte(staffSessions.lastInteractionAt, threshold),
+      lte(staffSessions.hardExpiresAt, now),
+    ),
+  )).limit(500);
+
+  for (const row of rows) {
+    const loginAt = coerceTimestampToDate(row.loginAt) ?? now;
+    const lastInteractionAt = getStaffSessionLastActivityAt(loginAt, row.lastInteractionAt);
+    const idleEndedAt = new Date(lastInteractionAt.getTime() + IDLE_TIMEOUT_STAFF_MS);
+    const hardExpiresAt = coerceTimestampToDate(row.hardExpiresAt);
+    const hardExpired = Boolean(hardExpiresAt && hardExpiresAt <= now && hardExpiresAt < idleEndedAt);
+    const endedAt = hardExpired ? hardExpiresAt! : idleEndedAt;
+    await db.update(staffSessions).set({
+      logoutAt: endedAt,
+      endedAt,
+      endReason: hardExpired ? "jwt_expired" : "timeout",
+      durationSeconds: Math.max(0, Math.floor((endedAt.getTime() - loginAt.getTime()) / 1000)),
+    }).where(eq(staffSessions.id, row.id));
+  }
+  return { closedCount: rows.length };
 }
 
 export type RenewalReminderCandidate = {
@@ -4030,6 +4200,410 @@ function emptyRecommendationMonthlyTradeReport(
     },
     basis: 'result_created_month',
   };
+}
+
+const DEFAULT_STAFF_WORK_SCHEDULE = {
+  timezone: "Asia/Amman",
+  workDays: [0, 1, 2, 3, 4],
+  startTime: "09:00",
+  endTime: "17:00",
+  graceMinutes: 15,
+  enabled: true,
+};
+
+function parseWorkDays(value: string | null | undefined): number[] {
+  const parsed = parseOptionalJson<unknown>(value);
+  return Array.isArray(parsed)
+    ? parsed.filter((day): day is number => Number.isInteger(day) && day >= 0 && day <= 6)
+    : DEFAULT_STAFF_WORK_SCHEDULE.workDays;
+}
+
+export async function getStaffWorkSchedule(staffUserId: number) {
+  const db = await getDb();
+  if (!db) return { staffUserId, ...DEFAULT_STAFF_WORK_SCHEDULE };
+  const [row] = await db.select().from(staffWorkSchedules)
+    .where(eq(staffWorkSchedules.staffUserId, staffUserId)).limit(1);
+  if (!row) return { staffUserId, ...DEFAULT_STAFF_WORK_SCHEDULE };
+  return {
+    ...row,
+    workDays: parseWorkDays(row.workDays),
+    enabled: Boolean(row.enabled),
+  };
+}
+
+export async function upsertStaffWorkSchedule(input: {
+  staffUserId: number;
+  timezone: string;
+  workDays: number[];
+  startTime: string;
+  endTime: string;
+  graceMinutes: number;
+  enabled: boolean;
+}) {
+  const db = await getDb();
+  if (!db) return null;
+  const values = {
+    ...input,
+    workDays: JSON.stringify(input.workDays),
+    updatedAt: new Date(),
+  };
+  await db.insert(staffWorkSchedules).values(values).onConflictDoUpdate({
+    target: staffWorkSchedules.staffUserId,
+    set: values,
+  });
+  return getStaffWorkSchedule(input.staffUserId);
+}
+
+function maskIpAddress(value: string | null | undefined) {
+  if (!value) return null;
+  if (value.includes(":")) {
+    const parts = value.split(":");
+    return `${parts.slice(0, 3).join(":")}:…`;
+  }
+  const parts = value.split(".");
+  return parts.length === 4 ? `${parts[0]}.${parts[1]}.x.x` : "masked";
+}
+
+function getDeviceFamily(userAgent: string | null | undefined) {
+  const value = userAgent ?? "";
+  const browser = /Edg\//.test(value) ? "Edge"
+    : /Chrome\//.test(value) ? "Chrome"
+      : /Firefox\//.test(value) ? "Firefox"
+        : /Safari\//.test(value) ? "Safari"
+          : "Other browser";
+  const os = /Windows/.test(value) ? "Windows"
+    : /Android/.test(value) ? "Android"
+      : /iPhone|iPad/.test(value) ? "iOS"
+        : /Mac OS/.test(value) ? "macOS"
+          : /Linux/.test(value) ? "Linux"
+            : "Other OS";
+  return `${browser} / ${os}`;
+}
+
+function getStaffActionCategory(actionType: string) {
+  const scope = actionType.split(".")[0];
+  if (scope === "supportChat") return "support";
+  if (scope === "supportDashboard") return "clients";
+  if (scope === "recommendations") return "recommendations";
+  if (scope === "lexaiSupport") return "lexai";
+  if (scope === "plan") return "plans";
+  if (["packageKeys", "packages", "orders"].includes(scope)) return "keys_orders";
+  if (scope === "auth") return "authentication";
+  return "other";
+}
+
+function localDateInTimezone(date: Date, timezone: string) {
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const parts = Object.fromEntries(formatter.formatToParts(date).map((part) => [part.type, part.value]));
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+export function zonedLocalTimeToUtc(localDate: string, time: string, timezone: string) {
+  const [year, month, day] = localDate.split("-").map(Number);
+  const [hour, minute] = time.split(":").map(Number);
+  let guess = Date.UTC(year, month - 1, day, hour, minute, 0);
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    hour12: false,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  for (let index = 0; index < 2; index += 1) {
+    const parts = Object.fromEntries(formatter.formatToParts(new Date(guess)).map((part) => [part.type, part.value]));
+    const renderedAsUtc = Date.UTC(
+      Number(parts.year),
+      Number(parts.month) - 1,
+      Number(parts.day),
+      Number(parts.hour) % 24,
+      Number(parts.minute),
+      Number(parts.second),
+    );
+    guess -= renderedAsUtc - Date.UTC(year, month - 1, day, hour, minute, 0);
+  }
+  return new Date(guess);
+}
+
+function addLocalDays(localDate: string, days: number) {
+  const [year, month, day] = localDate.split("-").map(Number);
+  const value = new Date(Date.UTC(year, month - 1, day + days));
+  return value.toISOString().slice(0, 10);
+}
+
+export async function getStaffDailyReport(input: {
+  staffUserId: number;
+  localDate: string;
+  timezone: string;
+  from: Date;
+  to: Date;
+  revealNetwork?: boolean;
+}) {
+  await closeExpiredStaffSessions();
+  const [staff, schedule] = await Promise.all([
+    getUserById(input.staffUserId),
+    getStaffWorkSchedule(input.staffUserId),
+  ]);
+  if (!staff?.isStaff) return null;
+
+  const actions: any[] = [];
+  const sessions: any[] = [];
+  for (let offset = 0; ; offset += 200) {
+    const page = await listStaffActionLogs({
+      staffUserId: input.staffUserId,
+      from: input.from,
+      to: input.to,
+      limit: 200,
+      offset,
+    });
+    actions.push(...page);
+    if (page.length < 200) break;
+  }
+  for (let offset = 0; ; offset += 200) {
+    const page = await listStaffSessions({
+      staffUserId: input.staffUserId,
+      from: input.from,
+      to: input.to,
+      limit: 200,
+      offset,
+    });
+    sessions.push(...page);
+    if (page.length < 200) break;
+  }
+
+  const rangeStart = input.from.getTime();
+  const rangeEnd = input.to.getTime();
+  const normalizedSessions = sessions.map((session) => {
+    const startMs = Math.max(rangeStart, new Date(session.loginAt).getTime());
+    const rawEnd = session.effectiveLogoutAt ?? session.endedAt ?? new Date(Math.min(Date.now(), rangeEnd));
+    const endMs = Math.min(rangeEnd, new Date(rawEnd).getTime());
+    return {
+      ...session,
+      ipAddress: input.revealNetwork ? session.ipAddress : maskIpAddress(session.ipAddress),
+      device: getDeviceFamily(session.userAgent),
+      overlapStart: new Date(startMs),
+      overlapEnd: new Date(Math.max(startMs, endMs)),
+      activeSecondsInRange: Math.max(0, Math.floor((endMs - startMs) / 1000)),
+    };
+  });
+
+  const firstLoginAt = normalizedSessions.length
+    ? new Date(Math.min(...normalizedSessions.map((row) => new Date(row.loginAt).getTime())))
+    : null;
+  const endedSessions = normalizedSessions.filter((row) => row.effectiveLogoutAt || row.endedAt);
+  const finalLogoutAt = endedSessions.length
+    ? new Date(Math.max(...endedSessions.map((row) => new Date(row.effectiveLogoutAt ?? row.endedAt).getTime())))
+    : null;
+  const lastActionAt = actions.length
+    ? new Date(Math.max(...actions.map((row) => new Date(row.createdAt).getTime())))
+    : null;
+  const lastActivityAt = [lastActionAt, ...normalizedSessions.map((row) => row.lastInteractionAt)]
+    .filter(Boolean)
+    .map((value) => new Date(value).getTime())
+    .reduce<number | null>((latest, value) => latest == null || value > latest ? value : latest, null);
+
+  const categoryCounts: Record<string, number> = {};
+  const resourceKeys = new Set<string>();
+  for (const action of actions) {
+    const category = getStaffActionCategory(action.actionType);
+    categoryCounts[category] = (categoryCounts[category] ?? 0) + 1;
+    if (action.resourceType && action.resourceId != null) {
+      resourceKeys.add(`${action.resourceType}:${action.resourceId}`);
+    }
+  }
+
+  const timeline = [];
+  for (let bucketStart = rangeStart; bucketStart < rangeEnd; bucketStart += 60 * 60 * 1000) {
+    const bucketEnd = Math.min(bucketStart + 60 * 60 * 1000, rangeEnd);
+    timeline.push({
+      start: new Date(bucketStart),
+      end: new Date(bucketEnd),
+      actionCount: actions.filter((action) => {
+        const at = new Date(action.createdAt).getTime();
+        return at >= bucketStart && at < bucketEnd;
+      }).length,
+      activeSeconds: normalizedSessions.reduce((total, session) => {
+        const start = Math.max(bucketStart, new Date(session.overlapStart).getTime());
+        const end = Math.min(bucketEnd, new Date(session.overlapEnd).getTime());
+        return total + Math.max(0, Math.floor((end - start) / 1000));
+      }, 0),
+    });
+  }
+
+  const sortedSessions = [...normalizedSessions].sort(
+    (left, right) => new Date(left.overlapStart).getTime() - new Date(right.overlapStart).getTime(),
+  );
+  const gaps = sortedSessions.slice(1).map((session, index) => {
+    const previous = sortedSessions[index];
+    const seconds = Math.max(0, Math.floor(
+      (new Date(session.overlapStart).getTime() - new Date(previous.overlapEnd).getTime()) / 1000,
+    ));
+    return { from: previous.overlapEnd, to: session.overlapStart, seconds };
+  }).filter((gap) => gap.seconds > 0);
+
+  const scheduleLocalDate = localDateInTimezone(new Date((rangeStart + rangeEnd) / 2), schedule.timezone);
+  const scheduleDay = new Date(`${scheduleLocalDate}T00:00:00Z`).getUTCDay();
+  const isScheduledDay = schedule.enabled && schedule.workDays.includes(scheduleDay);
+  const scheduleStart = zonedLocalTimeToUtc(scheduleLocalDate, schedule.startTime, schedule.timezone);
+  let scheduleEnd = zonedLocalTimeToUtc(scheduleLocalDate, schedule.endTime, schedule.timezone);
+  if (scheduleEnd <= scheduleStart) {
+    scheduleEnd = zonedLocalTimeToUtc(addLocalDays(scheduleLocalDate, 1), schedule.endTime, schedule.timezone);
+  }
+  const graceMs = schedule.graceMinutes * 60 * 1000;
+  const exceptions: Array<{ code: string; severity: "info" | "warning"; value?: number }> = [];
+  if (isScheduledDay && !firstLoginAt) exceptions.push({ code: "no_login", severity: "warning" });
+  if (isScheduledDay && firstLoginAt && firstLoginAt.getTime() > scheduleStart.getTime() + graceMs) {
+    exceptions.push({
+      code: "late_start",
+      severity: "warning",
+      value: Math.round((firstLoginAt.getTime() - scheduleStart.getTime()) / 60000),
+    });
+  }
+  if (
+    isScheduledDay &&
+    finalLogoutAt &&
+    input.to.getTime() <= Date.now() &&
+    finalLogoutAt.getTime() < scheduleEnd.getTime() - graceMs
+  ) {
+    exceptions.push({
+      code: "early_finish",
+      severity: "info",
+      value: Math.round((scheduleEnd.getTime() - finalLogoutAt.getTime()) / 60000),
+    });
+  }
+  const longGap = Math.max(0, ...gaps.map((gap) => gap.seconds));
+  if (longGap >= 60 * 60) exceptions.push({ code: "long_gap", severity: "info", value: Math.round(longGap / 60) });
+  const timeoutCount = normalizedSessions.filter((session) => session.endReason === "timeout" || session.status === "timed_out").length;
+  if (timeoutCount >= 2) exceptions.push({ code: "repeated_timeout", severity: "info", value: timeoutCount });
+  if (isScheduledDay && normalizedSessions.some((session) =>
+    new Date(session.overlapStart).getTime() < scheduleStart.getTime() - graceMs ||
+    new Date(session.overlapEnd).getTime() > scheduleEnd.getTime() + graceMs
+  )) exceptions.push({ code: "outside_schedule", severity: "info" });
+  if (new Set(sessions.map((row) => row.ipAddress).filter(Boolean)).size > 1) {
+    exceptions.push({ code: "ip_change", severity: "info" });
+  }
+  if (new Set(normalizedSessions.map((row) => row.device).filter(Boolean)).size > 1) {
+    exceptions.push({ code: "device_change", severity: "info" });
+  }
+
+  const dataWarnings: string[] = [];
+  if (actions.length > 0 && normalizedSessions.length === 0) dataWarnings.push("actions_without_session");
+  if (normalizedSessions.some((session) => session.isActive && session.sessionExpiresAt < new Date())) {
+    dataWarnings.push("stale_open_session");
+  }
+
+  const trendFrom = new Date(input.from.getTime() - 14 * 24 * 60 * 60 * 1000);
+  const trendActions = await listStaffActionLogs({
+    staffUserId: input.staffUserId,
+    from: trendFrom,
+    to: input.from,
+    limit: 200,
+  });
+  const trendSessions = await listStaffSessions({
+    staffUserId: input.staffUserId,
+    from: trendFrom,
+    to: input.from,
+    limit: 200,
+  });
+
+  return {
+    staff: { id: staff.id, name: staff.name, email: staff.email },
+    localDate: input.localDate,
+    timezone: input.timezone,
+    range: { from: input.from, to: input.to },
+    schedule: { ...schedule, scheduleLocalDate, isScheduledDay, scheduleStart, scheduleEnd },
+    summary: {
+      firstLoginAt,
+      lastActivityAt: lastActivityAt == null ? null : new Date(lastActivityAt),
+      finalLogoutAt,
+      activeSeconds: normalizedSessions.reduce((total, row) => total + row.activeSecondsInRange, 0),
+      sessionCount: normalizedSessions.length,
+      timeoutCount,
+      actionCount: actions.length,
+      recordsHandled: resourceKeys.size,
+    },
+    categories: categoryCounts,
+    timeline,
+    gaps,
+    exceptions,
+    dataWarnings,
+    comparison: {
+      prior14DayActionAverage: Number((trendActions.length / 14).toFixed(1)),
+      prior14DaySessionAverage: Number((trendSessions.length / 14).toFixed(1)),
+    },
+    actions,
+    sessions: normalizedSessions,
+  };
+}
+
+export async function runStaffMonitoringRetention(now = new Date()) {
+  const db = await getDb();
+  if (!db) return { compacted: false };
+  await closeExpiredStaffSessions(now);
+
+  const detailCutoff = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+  const detailCutoffSeconds = Math.floor(detailCutoff.getTime() / 1000);
+  const aggregateCutoffDate = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+  await db.run(sql`
+    INSERT INTO staffDailyAggregates (
+      localDate, timezone, actionCount, sessionCount, activeSeconds,
+      timeoutCount, exceptionCount, updatedAt
+    )
+    SELECT
+      localDate,
+      'UTC',
+      SUM(actionCount),
+      SUM(sessionCount),
+      SUM(activeSeconds),
+      SUM(timeoutCount),
+      0,
+      strftime('%s', 'now')
+    FROM (
+      SELECT
+        date(createdAt, 'unixepoch') AS localDate,
+        COUNT(*) AS actionCount,
+        0 AS sessionCount,
+        0 AS activeSeconds,
+        0 AS timeoutCount
+      FROM staffActionLogs
+      WHERE createdAt < ${detailCutoffSeconds}
+      GROUP BY date(createdAt, 'unixepoch')
+      UNION ALL
+      SELECT
+        date(loginAt, 'unixepoch') AS localDate,
+        0 AS actionCount,
+        COUNT(*) AS sessionCount,
+        COALESCE(SUM(durationSeconds), 0) AS activeSeconds,
+        SUM(CASE WHEN endReason = 'timeout' THEN 1 ELSE 0 END) AS timeoutCount
+      FROM staffSessions
+      WHERE loginAt < ${detailCutoffSeconds}
+      GROUP BY date(loginAt, 'unixepoch')
+    )
+    GROUP BY localDate
+    ON CONFLICT(localDate, timezone) DO UPDATE SET
+      actionCount = excluded.actionCount,
+      sessionCount = excluded.sessionCount,
+      activeSeconds = excluded.activeSeconds,
+      timeoutCount = excluded.timeoutCount,
+      exceptionCount = excluded.exceptionCount,
+      updatedAt = excluded.updatedAt
+  `);
+
+  await db.delete(staffActionLogs).where(sql`${staffActionLogs.createdAt} < ${detailCutoff}`);
+  await db.delete(staffSessions).where(and(
+    isNotNull(staffSessions.endedAt),
+    sql`${staffSessions.endedAt} < ${detailCutoff}`,
+  ));
+  await db.delete(staffDailyAggregates).where(sql`${staffDailyAggregates.localDate} < ${aggregateCutoffDate}`);
+  return { compacted: true, detailCutoff, aggregateCutoffDate };
 }
 
 export async function getRecommendationMonthlyTradeReport(month: string): Promise<RecommendationMonthlyTradeReport> {

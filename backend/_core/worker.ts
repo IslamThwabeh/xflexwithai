@@ -472,6 +472,13 @@ export default {
   async scheduled(_controller: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
     (globalThis as { ENV?: Env }).ENV = env;
     await db.getDb({ DB: env.DB });
+    try {
+      await db.runStaffMonitoringRetention();
+    } catch (error) {
+      logger.error("[CRON] Staff monitoring retention failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
     const unfrozen = await db.processExpiredFreezes();
     for (const user of unfrozen) {
       if (user.email) {
