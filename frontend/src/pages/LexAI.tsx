@@ -1,6 +1,7 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useEngagementTracker } from "@/_core/hooks/useEngagementTracker";
 import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -671,6 +672,23 @@ export default function LexAI() {
     <div className="min-h-[calc(100vh-64px)] md:min-h-0 bg-[var(--color-xf-cream)] flex flex-col">
       {/* Sub-header with title and stats */}
       <div className="container max-w-5xl py-2 md:py-4 px-2 md:px-0 shrink-0">
+        {lexaiAccess?.activationReason === 'protection_expired' && (
+          <Alert className="mb-3 border-emerald-200 bg-emerald-50 text-emerald-950">
+            <CheckCircle2 className="h-4 w-4" />
+            <AlertTitle>
+              {isArabic ? 'تم التفعيل تلقائياً بعد فترة الحماية' : 'Activated Automatically After the Protection Period'}
+            </AlertTitle>
+            <AlertDescription>
+              {isArabic
+                ? `تم تجاوز شروط بدء الخدمة حسب السياسة. تقدم الدورة الفعلي ${serviceAccessSummary?.readiness.courseProgressPercent ?? 0}%، وحالة الوسيط ${serviceAccessSummary?.readiness.brokerReady ? 'مكتملة' : 'غير مكتملة'}.`
+                : `Service gates were waived by policy. Actual course progress is ${serviceAccessSummary?.readiness.courseProgressPercent ?? 0}%, and broker onboarding is ${serviceAccessSummary?.readiness.brokerReady ? 'complete' : 'incomplete'}.`}
+              <br />
+              {isArabic ? 'البداية' : 'Effective start'}: {lexaiAccess.startDate ? new Date(lexaiAccess.startDate).toLocaleString(isArabic ? 'ar-EG' : 'en-US') : '—'}
+              {' · '}
+              {isArabic ? 'النهاية' : 'Expires'}: {lexaiAccess.endDate ? new Date(lexaiAccess.endDate).toLocaleString(isArabic ? 'ar-EG' : 'en-US') : '—'}
+            </AlertDescription>
+          </Alert>
+        )}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 md:gap-3">
             <div className="w-10 h-10 md:w-12 md:h-12 bg-gradient-to-br from-emerald-500 to-teal-500 rounded-xl md:rounded-2xl flex items-center justify-center shadow-md">

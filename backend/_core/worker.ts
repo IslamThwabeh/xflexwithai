@@ -22,6 +22,98 @@ function jsonResponse(status: number, payload: unknown, headers?: Headers) {
   return new Response(JSON.stringify(payload), { status, headers: responseHeaders });
 }
 
+async function runFrequentTimedServiceAndEmailJobs() {
+  await db.runTimedServiceActivationRepair();
+  await db.materializeEmailOutboxCampaigns(10);
+
+  const genericRows = await db.claimEmailOutboxBatch(5);
+  for (const row of genericRows) {
+    try {
+      let metadata: Record<string, unknown> | undefined;
+      if (row.metadataJson) {
+        try {
+          metadata = JSON.parse(row.metadataJson);
+        } catch {
+          metadata = { malformedMetadata: true };
+        }
+      }
+      const result = await sendEmail({
+        to: row.recipientEmail,
+        subject: row.subject,
+        text: row.bodyText,
+        html: row.bodyHtml ?? undefined,
+        audit: {
+          eventType: row.eventType,
+          templateId: row.templateId ?? undefined,
+          recipientUserId: row.recipientUserId ?? undefined,
+          category: (row.emailCategory as any) ?? undefined,
+          metadata,
+        },
+      });
+      if (result.skipped === "unsubscribed") {
+        await db.markEmailOutboxSkipped(row.id, "Recipient unsubscribed from this email category");
+        continue;
+      }
+      await db.markEmailOutboxSent({
+        id: row.id,
+        provider: result.provider,
+        attemptedProviders: result.attemptedProviders,
+      });
+    } catch (error) {
+      await db.markEmailOutboxFailed({
+        id: row.id,
+        errorCategory: (error as { category?: string })?.category ?? "unknown",
+        errorMessage: error instanceof Error ? error.message : String(error),
+        attemptedProviders: (error as { attemptedProviders?: string[] })?.attemptedProviders,
+      });
+    }
+  }
+
+  const remainingBudget = Math.max(0, 10 - genericRows.length);
+  const recommendationRows = remainingBudget > 0
+    ? await db.listPendingRecommendationDeliveriesForRetry(remainingBudget)
+    : [];
+  for (const row of recommendationRows) {
+    if (!row.subject || !row.bodyText) {
+      await db.markRecommendationDeliveryFailed({
+        eventKey: row.eventKey,
+        userId: row.userId,
+        errorCategory: "missing_payload",
+        errorMessage: "Stored recommendation delivery is missing subject or body",
+      });
+      continue;
+    }
+    try {
+      const result = await sendEmail({
+        to: row.recipientEmail,
+        subject: row.subject,
+        text: row.bodyText,
+        html: row.bodyHtml ?? undefined,
+        audit: {
+          eventType: row.eventKind === "alert" ? "recommendation_alert" : `recommendation_${row.eventKind}`,
+          templateId: row.eventKind === "alert" ? "recommendation_alert" : `recommendation_${row.eventKind}`,
+          recipientUserId: row.userId,
+          metadata: { eventKey: row.eventKey, refId: row.refId },
+        },
+      });
+      await db.markRecommendationDeliverySent({
+        eventKey: row.eventKey,
+        userId: row.userId,
+        provider: result.provider,
+        attemptedProviders: result.attemptedProviders,
+      });
+    } catch (error) {
+      await db.markRecommendationDeliveryFailed({
+        eventKey: row.eventKey,
+        userId: row.userId,
+        errorCategory: (error as { category?: string })?.category ?? "unknown",
+        errorMessage: error instanceof Error ? error.message : String(error),
+        attemptedProviders: (error as { attemptedProviders?: string[] })?.attemptedProviders,
+      });
+    }
+  }
+}
+
 function buildContentDisposition(type: "inline" | "attachment", fileName: string) {
   const asciiFallback = fileName.replace(/[\\/\r\n\"]/g, "_");
   const encoded = encodeURIComponent(fileName);
@@ -469,9 +561,33 @@ export default {
     }
   },
 
-  async scheduled(_controller: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
+  async scheduled(controller: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
     (globalThis as { ENV?: Env }).ENV = env;
     await db.getDb({ DB: env.DB });
+    if (controller.cron === "* * * * *") {
+      try {
+        await runFrequentTimedServiceAndEmailJobs();
+      } catch (error) {
+        logger.error("[CRON] Frequent activation/email jobs failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+
+      const minute = new Date().getUTCMinutes();
+      if (minute === 0) {
+        const stats = await db.getEmailOutboxStats(new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
+        if (stats.deadLetter > 0 || stats.pending + stats.failed > 100) {
+          await db.notifyStaffByEvent("email_delivery_anomaly", {
+            titleEn: `Email outbox needs attention (${stats.deadLetter} dead-lettered)`,
+            titleAr: `صندوق البريد يحتاج متابعة (${stats.deadLetter} فشل نهائياً)`,
+            contentEn: `${stats.pending} pending, ${stats.failed} failed, ${stats.processing} processing.`,
+            contentAr: `${stats.pending} معلقة، ${stats.failed} فاشلة، ${stats.processing} قيد المعالجة.`,
+            metadata: stats,
+          }).catch(() => {});
+        }
+      }
+      return;
+    }
     try {
       await db.runStaffMonitoringRetention();
     } catch (error) {

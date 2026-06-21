@@ -42,4 +42,23 @@ describe("buildTimedServiceAccessSummary", () => {
 
     vi.useRealTimers();
   });
+
+  it("keeps a pending protection window pending even when its placeholder end date is earlier", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-20T12:00:00.000Z"));
+
+    const summary = buildTimedServiceAccessSummary({
+      startDate: "2026-06-09T06:23:45.502Z",
+      endDate: "2026-06-11T06:23:45.502Z",
+      isPendingActivation: true,
+    });
+
+    expect(summary).toMatchObject({
+      status: "pending",
+      daysLeft: null,
+      hasHistory: true,
+    });
+
+    vi.useRealTimers();
+  });
 });

@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { formatPendingActivationDate, getPendingActivationDaysLeft, getPendingActivationWindow } from "@/lib/pendingActivation";
 import { toast } from "sonner";
-import { ArrowUpRight, Clock3, Copy, Flame, Heart, Rocket, ThumbsUp, Frown, Bell, BellOff, TrendingUp, BookOpen, MessageSquare, Building2, Megaphone } from "lucide-react";
+import { ArrowUpRight, Clock3, Copy, Flame, Heart, Rocket, ThumbsUp, Frown, Bell, BellOff, TrendingUp, BookOpen, MessageSquare, Building2, Megaphone, CheckCircle2 } from "lucide-react";
 import ClientLayout from "@/components/ClientLayout";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { buildRecommendationThreads, groupRecommendationThreadsByDay } from "@/lib/recommendationThreads";
@@ -620,6 +620,34 @@ export default function Recommendations() {
           <h1 className="text-3xl font-bold">{t('rec.title')}</h1>
           <p className="text-muted-foreground">{t('rec.subtitle')}</p>
         </div>
+
+        {recommendationAccess?.activationReason === 'protection_expired' && (
+          <Alert className="border-emerald-200 bg-emerald-50 text-emerald-950">
+            <CheckCircle2 className="h-4 w-4" />
+            <AlertTitle>
+              {isArabic ? 'تم التفعيل تلقائياً بعد فترة الحماية' : 'Activated Automatically After the Protection Period'}
+            </AlertTitle>
+            <AlertDescription className="space-y-1">
+              <p>
+                {isArabic
+                  ? 'تم تجاوز شروط بدء الخدمة حسب السياسة، مع إبقاء تقدم الدورة وحالة الوسيط الفعلية بدون تغيير.'
+                  : 'Service gates were waived by policy while your actual course and broker progress remain unchanged.'}
+              </p>
+              <p>
+                {isArabic ? 'تقدم الدورة الفعلي' : 'Actual course progress'}: {serviceAccessSummary?.readiness.courseProgressPercent ?? 0}%
+                {' · '}
+                {isArabic ? 'حالة الوسيط' : 'Broker status'}: {serviceAccessSummary?.readiness.brokerReady
+                  ? (isArabic ? 'مكتمل' : 'Complete')
+                  : (isArabic ? 'غير مكتمل' : 'Incomplete')}
+              </p>
+              <p>
+                {isArabic ? 'بداية الخدمة' : 'Effective start'}: {formatMessageTimestamp(recommendationAccess.startDate, language)}
+                {' · '}
+                {isArabic ? 'نهاية الخدمة' : 'Expires'}: {formatMessageTimestamp(recommendationAccess.endDate, language)}
+              </p>
+            </AlertDescription>
+          </Alert>
+        )}
 
         <Card>
           <CardHeader>

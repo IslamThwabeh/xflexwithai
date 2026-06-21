@@ -101,6 +101,8 @@ export const STAFF_NOTIFICATION_EVENTS = {
   course_completion:    { labelEn: "Course Completed",          labelAr: "تم إكمال الكورس",           roles: [],               actionUrl: "/admin/students" },
   student_inactivity:   { labelEn: "Student Inactive",          labelAr: "طالب غير نشط",             roles: [],               actionUrl: "/admin/students" },
   recommendation_delivery_anomaly: { labelEn: "Recommendation Delivery Anomaly", labelAr: "خلل في توصيل التوصيات", roles: [], actionUrl: "/admin/recommendations" },
+  email_delivery_anomaly: { labelEn: "Email Delivery Anomaly", labelAr: "خلل في توصيل البريد", roles: [], actionUrl: "/admin/email-logs" },
+  timed_service_activation_failure: { labelEn: "Timed Service Activation Failure", labelAr: "فشل تفعيل خدمة زمنية", roles: ["support", "key_manager"], actionUrl: "/admin/expiry-report" },
   recommendation_published: { labelEn: "Recommendation Published", labelAr: "تم نشر توصية", roles: [], actionUrl: "/admin/recommendations" },
 } as const;
 

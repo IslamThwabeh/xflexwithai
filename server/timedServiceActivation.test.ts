@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   getPendingServiceWindow,
+  getTimedServiceActivationWindow,
   shouldAutoActivateTimedServices,
 } from '../backend/services/timed-service-activation.service';
 
@@ -68,5 +69,41 @@ describe('timed service activation helpers', () => {
       lexaiMaxActivationDate: null,
       recommendationMaxActivationDate: '2026-04-16T20:39:49.494Z',
     })).toBe(false);
+  });
+
+  it('anchors policy activation to the exact protection deadline when processing runs late', () => {
+    const window = getTimedServiceActivationWindow({
+      processedAt: new Date('2026-06-24T02:00:00.000Z'),
+      maxActivationDate: '2026-06-23T06:23:45.502Z',
+      entitlementDays: 30,
+      reason: 'protection_expired',
+    });
+
+    expect(window.effectiveStart.toISOString()).toBe('2026-06-23T06:23:45.502Z');
+    expect(window.endDate.toISOString()).toBe('2026-07-23T06:23:45.502Z');
+  });
+
+  it('starts early completion at the actual processing time', () => {
+    const window = getTimedServiceActivationWindow({
+      processedAt: new Date('2026-06-18T10:00:00.000Z'),
+      maxActivationDate: '2026-06-23T06:23:45.502Z',
+      entitlementDays: 31,
+      reason: 'requirements_completed',
+    });
+
+    expect(window.effectiveStart.toISOString()).toBe('2026-06-18T10:00:00.000Z');
+    expect(window.endDate.toISOString()).toBe('2026-07-19T10:00:00.000Z');
+  });
+
+  it('does not backdate manual activation merely because a deadline exists', () => {
+    const window = getTimedServiceActivationWindow({
+      processedAt: new Date('2026-06-24T02:00:00.000Z'),
+      maxActivationDate: '2026-06-23T06:23:45.502Z',
+      entitlementDays: 30,
+      reason: 'manual',
+    });
+
+    expect(window.effectiveStart.toISOString()).toBe('2026-06-24T02:00:00.000Z');
+    expect(window.endDate.toISOString()).toBe('2026-07-24T02:00:00.000Z');
   });
 });

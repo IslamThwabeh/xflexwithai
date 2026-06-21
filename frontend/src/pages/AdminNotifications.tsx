@@ -41,7 +41,14 @@ export default function AdminNotifications() {
   );
   const sendMut = trpc.notifications.send.useMutation({
     onSuccess: (data) => {
-      toast.success(isRtl ? `تم إرسال الإشعار إلى ${data.count} طالب` : `Notification sent to ${data.count} students`);
+      const emailNote = data.emailsQueued
+        ? (isRtl ? ` وتمت جدولة ${data.emailsQueued} رسالة بريد` : ` and ${data.emailsQueued} emails were queued`)
+        : '';
+      toast.success(
+        isRtl
+          ? `تم إرسال الإشعار إلى ${data.count} طالب${emailNote}`
+          : `Notification sent to ${data.count} students${emailNote}`,
+      );
       setForm({ titleEn: '', titleAr: '', contentEn: '', contentAr: '', type: 'info', actionUrl: '' });
       setSelectedStudentIds([]);
       setAudience('all');

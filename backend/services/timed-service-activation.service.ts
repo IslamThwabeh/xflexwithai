@@ -42,3 +42,28 @@ export function shouldAutoActivateTimedServices(input: {
 
   return dueDates.some((value) => value <= input.now);
 }
+
+export type TimedServiceActivationReason =
+  | "requirements_completed"
+  | "protection_expired"
+  | "manual"
+  | "renewal"
+  | "legacy";
+
+export function getTimedServiceActivationWindow(input: {
+  processedAt: Date;
+  maxActivationDate?: string | null;
+  entitlementDays: number;
+  reason: TimedServiceActivationReason;
+}) {
+  const deadline = input.maxActivationDate ? new Date(input.maxActivationDate) : null;
+  const useDeadline = input.reason === "protection_expired"
+    && deadline
+    && !Number.isNaN(deadline.getTime())
+    && deadline <= input.processedAt;
+  const effectiveStart = useDeadline ? deadline : input.processedAt;
+  return {
+    effectiveStart,
+    endDate: addDays(effectiveStart, input.entitlementDays),
+  };
+}

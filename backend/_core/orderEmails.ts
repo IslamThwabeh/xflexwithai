@@ -873,6 +873,43 @@ export async function sendStaffWelcomeEmail(to: string, data: {
 }
 
 /** Send branded HTML announcement email to a student */
+export function buildAnnouncementEmail(data: {
+  subject: string;
+  titleAr: string;
+  contentAr: string;
+  titleEn?: string;
+  contentEn?: string;
+  actionUrl?: string;
+  actionLabel?: string;
+}) {
+  const safeActionUrl = data.actionUrl
+    ? escapeHtml(data.actionUrl.startsWith('http') ? data.actionUrl : `https://xflexacademy.com${data.actionUrl}`)
+    : null;
+  const body = `
+    <h2 style="margin:0 0 16px;color:#111;font-size:20px;text-align:right;">${escapeHtml(data.titleAr)}</h2>
+    <div style="color:#555;line-height:1.8;font-size:15px;text-align:right;white-space:pre-line;">${escapeHtml(data.contentAr)}</div>
+    ${data.titleEn ? `
+    <hr style="margin:24px 0;border:none;border-top:1px solid #e5e7eb;" />
+    <h2 style="margin:0 0 16px;color:#111;font-size:20px;">${escapeHtml(data.titleEn)}</h2>
+    <div style="color:#555;line-height:1.8;font-size:15px;white-space:pre-line;">${escapeHtml(data.contentEn || '')}</div>
+    ` : ''}
+    ${safeActionUrl ? `
+    <div style="text-align:center;margin-top:28px;">
+      <a href="${safeActionUrl}" style="display:inline-block;background:#059669;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:bold;">
+        ${escapeHtml(data.actionLabel || 'زيارة الموقع')}
+      </a>
+    </div>` : ''}`;
+  const html = wrapHtml(body);
+  const text = [
+    data.titleAr,
+    data.contentAr,
+    data.titleEn || "",
+    data.contentEn || "",
+    data.actionUrl || "",
+  ].filter(Boolean).join("\n\n");
+  return { subject: data.subject, text, html };
+}
+
 export async function sendAnnouncementEmail(to: string, data: {
   subject: string;
   titleAr: string;

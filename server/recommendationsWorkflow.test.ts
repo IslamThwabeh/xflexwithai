@@ -21,6 +21,8 @@ vi.mock("../backend/db", async () => {
     insertSkippedRecommendationDeliveries: vi.fn().mockResolvedValue(undefined),
     markRecommendationDeliverySent: vi.fn().mockResolvedValue(undefined),
     markRecommendationDeliveryFailed: vi.fn().mockResolvedValue(undefined),
+    enqueueEmailOutbox: vi.fn().mockResolvedValue(true),
+    getConfiguredAdminNotificationEmails: vi.fn().mockResolvedValue([]),
     getMutedRecommendationUserIdsForThread: vi.fn().mockResolvedValue([]),
     getRecommendationPublishState: vi.fn(),
     createRecommendationMessage: vi.fn(),
@@ -193,7 +195,7 @@ describe("recommendations workflow", () => {
     expect(result).toMatchObject({ success: true });
   });
 
-  it("emails only inactive recommendation recipients during notify", async () => {
+  it("queues recommendation alert email deliveries for every eligible recipient", async () => {
     const caller = createAuthedCaller();
 
     const eligible = [
@@ -223,32 +225,15 @@ describe("recommendations workflow", () => {
 
     const result = await caller.recommendations.notifyClients({});
 
-    expect(result).toMatchObject({ success: true, recipientCount: 3, emailCount: 3 });
+    expect(result).toMatchObject({ success: true, recipientCount: 3, emailCount: 0, emailsQueued: 3 });
     expect(sendBulkNotification).toHaveBeenCalledWith(
       expect.objectContaining({
         userIds: [1, 2, 4],
         actionUrl: "/recommendations",
       })
     );
-    expect(mockedSendEmail).toHaveBeenCalledTimes(3);
-    expect(mockedSendEmail).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({
-        to: "inactive@example.com",
-        subject: "تنبيه التوصيات: جهّز تطبيق التداول، توصية جديدة قريبة",
-        html: expect.stringContaining("افتح القناة الآن"),
-      })
-    );
-    expect(mockedSendEmail).toHaveBeenNthCalledWith(
-      3,
-      expect.objectContaining({
-        to: "english@example.com",
-        subject: "Recommendations alert: be ready, a new recommendation is coming",
-        html: expect.stringContaining("Open Channel Now"),
-      })
-    );
-    expect(markRecommendationDeliverySent).toHaveBeenCalledWith(expect.objectContaining({ userId: 1 }));
-    expect(markRecommendationDeliverySent).toHaveBeenCalledWith(expect.objectContaining({ userId: 4 }));
+    expect(mockedSendEmail).not.toHaveBeenCalled();
+    expect(markRecommendationDeliverySent).not.toHaveBeenCalled();
     expect(prepareRecommendationDeliveries).toHaveBeenCalledWith(expect.objectContaining({
       recipients: expect.arrayContaining([
         expect.objectContaining({
@@ -382,13 +367,7 @@ describe("recommendations workflow", () => {
         batchId: "rec_live_901",
       })
     );
-    expect(mockedSendEmail).toHaveBeenCalledWith(
-      expect.objectContaining({
-        to: "subscriber@example.com",
-        subject: expect.stringContaining("التوصية الآن"),
-        html: expect.stringContaining("XAUUSD"),
-      })
-    );
+    expect(mockedSendEmail).not.toHaveBeenCalled();
     expect(prepareRecommendationDeliveries).toHaveBeenCalledWith(expect.objectContaining({
       recipients: expect.arrayContaining([
         expect.objectContaining({
@@ -399,7 +378,7 @@ describe("recommendations workflow", () => {
         }),
       ]),
     }));
-    expect(markRecommendationDeliverySent).toHaveBeenCalledWith(expect.objectContaining({ userId: 1 }));
+    expect(markRecommendationDeliverySent).not.toHaveBeenCalled();
   });
 
   it("allows same-trade updates while the active window is open and emails offline clients", async () => {
@@ -461,14 +440,18 @@ describe("recommendations workflow", () => {
         batchId: "rec_live_901",
       })
     );
-    expect(mockedSendEmail).toHaveBeenCalledWith(
-      expect.objectContaining({
-        to: "offline-update@example.com",
-        subject: "Trade update: XAUUSD",
-        html: expect.stringContaining("Latest update"),
-      })
-    );
-    expect(markRecommendationDeliverySent).toHaveBeenCalledWith(expect.objectContaining({ userId: 1 }));
+    expect(mockedSendEmail).not.toHaveBeenCalled();
+    expect(prepareRecommendationDeliveries).toHaveBeenCalledWith(expect.objectContaining({
+      eventKind: "update",
+      recipients: expect.arrayContaining([
+        expect.objectContaining({
+          userId: 1,
+          subject: "Trade update: XAUUSD",
+          bodyHtml: expect.stringContaining("Latest update"),
+        }),
+      ]),
+    }));
+    expect(markRecommendationDeliverySent).not.toHaveBeenCalled();
   });
 
   it("emails offline clients when a result is posted", async () => {
@@ -514,14 +497,18 @@ describe("recommendations workflow", () => {
         batchId: "rec_live_901",
       })
     );
-    expect(mockedSendEmail).toHaveBeenCalledWith(
-      expect.objectContaining({
-        to: "offline-result@example.com",
-        subject: "نتيجة الصفقة: XAUUSD",
-        html: expect.stringContaining("النتيجة الجديدة"),
-      })
-    );
-    expect(markRecommendationDeliverySent).toHaveBeenCalledWith(expect.objectContaining({ userId: 1 }));
+    expect(mockedSendEmail).not.toHaveBeenCalled();
+    expect(prepareRecommendationDeliveries).toHaveBeenCalledWith(expect.objectContaining({
+      eventKind: "result",
+      recipients: expect.arrayContaining([
+        expect.objectContaining({
+          userId: 1,
+          subject: "نتيجة الصفقة: XAUUSD",
+          bodyHtml: expect.stringContaining("النتيجة الجديدة"),
+        }),
+      ]),
+    }));
+    expect(markRecommendationDeliverySent).not.toHaveBeenCalled();
   });
 
   it("requires a fresh alert for new recommendations after 15 minutes of analyst silence", async () => {

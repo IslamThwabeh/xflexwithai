@@ -65,6 +65,8 @@ import {
   brokerOnboarding, BrokerOnboarding, InsertBrokerOnboarding,
   emailLog, EmailLog, InsertEmailLog,
   emailDeliveryLogs, EmailDeliveryLog, InsertEmailDeliveryLog,
+  emailOutbox, EmailOutbox, InsertEmailOutbox,
+  emailOutboxCampaigns, EmailOutboxCampaign, InsertEmailOutboxCampaign,
   emailUnsubscribes, EmailUnsubscribe, InsertEmailUnsubscribe,
   planProgress, PlanProgress, InsertPlanProgress,
   lexaiSupportCases, LexaiSupportCase, InsertLexaiSupportCase,
@@ -85,7 +87,12 @@ import {
   validateRenewalPackageTransition,
 } from './services/package-key-lifecycle.service';
 import { getRecommendationThreadRootId } from './services/recommendation-thread.service';
-import { getPendingServiceWindow, shouldAutoActivateTimedServices } from './services/timed-service-activation.service';
+import {
+  getPendingServiceWindow,
+  getTimedServiceActivationWindow,
+  shouldAutoActivateTimedServices,
+  type TimedServiceActivationReason,
+} from './services/timed-service-activation.service';
 import {
   BUG_REPORT_RISK_LEVELS,
   COOKIE_MAX_AGE_USER,
@@ -210,11 +217,16 @@ export type TimedServiceStatus = 'none' | 'pending' | 'active' | 'expiring' | 'e
 
 export type TimedServiceAccessSummary = {
   status: TimedServiceStatus;
+  startDate: string | null;
   endDate: string | null;
   daysLeft: number | null;
   frozenUntil: string | null;
   pausedReason: string | null;
   hasHistory: boolean;
+  activationReason: string | null;
+  activationProcessedAt: string | null;
+  courseWaivedByPolicy: boolean;
+  brokerWaivedByPolicy: boolean;
 };
 
 function getErrorMessage(error: unknown): string {
@@ -316,20 +328,47 @@ function buildEndDateFromDays(startDate: Date, days: number) {
 }
 
 export function buildTimedServiceAccessSummary(snapshot?: {
+  startDate?: string | null;
   endDate?: string | null;
   isPendingActivation?: boolean | null;
   isPaused?: boolean | null;
   frozenUntil?: string | null;
   pausedReason?: string | null;
+  activationReason?: string | null;
+  activationProcessedAt?: string | null;
+  courseWaivedByPolicy?: boolean | null;
+  brokerWaivedByPolicy?: boolean | null;
 } | null): TimedServiceAccessSummary {
+  const audit = {
+    startDate: snapshot?.startDate ?? null,
+    activationReason: snapshot?.activationReason ?? null,
+    activationProcessedAt: snapshot?.activationProcessedAt ?? null,
+    courseWaivedByPolicy: !!snapshot?.courseWaivedByPolicy,
+    brokerWaivedByPolicy: !!snapshot?.brokerWaivedByPolicy,
+  };
   if (!snapshot) {
     return {
       status: 'none',
+      ...audit,
       endDate: null,
       daysLeft: null,
       frozenUntil: null,
       pausedReason: null,
       hasHistory: false,
+    };
+  }
+
+  // Pending protection-window state takes precedence over placeholder dates.
+  // The placeholder end date is not a consumable service expiry.
+  if (snapshot.isPendingActivation) {
+    return {
+      status: 'pending',
+      ...audit,
+      endDate: snapshot.endDate ?? null,
+      daysLeft: null,
+      frozenUntil: snapshot.frozenUntil ?? null,
+      pausedReason: snapshot.pausedReason ?? null,
+      hasHistory: true,
     };
   }
 
@@ -340,6 +379,7 @@ export function buildTimedServiceAccessSummary(snapshot?: {
       if (daysLeft <= 0) {
         return {
           status: 'expired',
+          ...audit,
           endDate: snapshot.endDate,
           daysLeft: 0,
           frozenUntil: snapshot.frozenUntil ?? null,
@@ -351,17 +391,7 @@ export function buildTimedServiceAccessSummary(snapshot?: {
       if (snapshot.isPaused) {
         return {
           status: 'frozen',
-          endDate: snapshot.endDate,
-          daysLeft: null,
-          frozenUntil: snapshot.frozenUntil ?? null,
-          pausedReason: snapshot.pausedReason ?? null,
-          hasHistory: true,
-        };
-      }
-
-      if (snapshot.isPendingActivation) {
-        return {
-          status: 'pending',
+          ...audit,
           endDate: snapshot.endDate,
           daysLeft: null,
           frozenUntil: snapshot.frozenUntil ?? null,
@@ -372,6 +402,7 @@ export function buildTimedServiceAccessSummary(snapshot?: {
 
       return {
         status: daysLeft <= 7 ? 'expiring' : 'active',
+        ...audit,
         endDate: snapshot.endDate,
         daysLeft,
         frozenUntil: snapshot.frozenUntil ?? null,
@@ -384,17 +415,7 @@ export function buildTimedServiceAccessSummary(snapshot?: {
   if (snapshot.isPaused) {
     return {
       status: 'frozen',
-      endDate: snapshot.endDate ?? null,
-      daysLeft: null,
-      frozenUntil: snapshot.frozenUntil ?? null,
-      pausedReason: snapshot.pausedReason ?? null,
-      hasHistory: true,
-    };
-  }
-
-  if (snapshot.isPendingActivation) {
-    return {
-      status: 'pending',
+      ...audit,
       endDate: snapshot.endDate ?? null,
       daysLeft: null,
       frozenUntil: snapshot.frozenUntil ?? null,
@@ -406,6 +427,7 @@ export function buildTimedServiceAccessSummary(snapshot?: {
   if (!snapshot.endDate) {
     return {
       status: 'active',
+      ...audit,
       endDate: null,
       daysLeft: null,
       frozenUntil: snapshot.frozenUntil ?? null,
@@ -416,6 +438,7 @@ export function buildTimedServiceAccessSummary(snapshot?: {
 
   return {
     status: 'active',
+    ...audit,
     endDate: snapshot.endDate,
     daysLeft: null,
     frozenUntil: snapshot.frozenUntil ?? null,
@@ -468,7 +491,10 @@ async function ensureTimedServicesActivatedIfDue(userId: number) {
     return;
   }
 
-  await activateStudentSubscriptions(userId, !readiness.ready);
+  await activateStudentSubscriptions(
+    userId,
+    readiness.ready ? "requirements_completed" : "protection_expired",
+  );
 }
 
 /**
@@ -606,7 +632,7 @@ async function getPackageCourseIds(packageId: number) {
 async function getUserTimedServiceReadiness(userId: number, packageId: number) {
   const db = await getDb();
   if (!db) {
-    return { ready: false, courseReady: false, brokerReady: false };
+    return { ready: false, courseReady: false, brokerReady: false, courseProgressPercent: 0 };
   }
 
   const [userRow] = await db.select({ brokerOnboardingComplete: users.brokerOnboardingComplete })
@@ -621,6 +647,7 @@ async function getUserTimedServiceReadiness(userId: number, packageId: number) {
       ready: isStudentReadyForTimedServices({ courseCompleted: true, brokerCompleted: brokerReady }),
       courseReady: true,
       brokerReady,
+      courseProgressPercent: 100,
     };
   }
 
@@ -646,7 +673,18 @@ async function getUserTimedServiceReadiness(userId: number, packageId: number) {
     ready: isStudentReadyForTimedServices({ courseCompleted: courseReady, brokerCompleted: brokerReady }),
     courseReady,
     brokerReady,
+    courseProgressPercent: courseIds.length
+      ? Math.round(courseIds.reduce((sum, courseId) => sum + (enrollmentByCourse.get(courseId)?.progressPercentage ?? 0), 0) / courseIds.length)
+      : 100,
   };
+}
+
+export async function getTimedServiceReadinessSummary(userId: number) {
+  const packageId = await getUserLatestActivatedPackageId(userId);
+  if (!packageId) {
+    return { ready: false, courseReady: false, brokerReady: false, courseProgressPercent: 0 };
+  }
+  return getUserTimedServiceReadiness(userId, packageId);
 }
 
 async function getExistingStudentHistoryForKey(userId: number, email: string) {
@@ -1757,6 +1795,10 @@ async function deactivateStudentSubscriptions(userId: number) {
       isPendingActivation: true,
       studentActivatedAt: null,
       maxActivationDate,
+      activationReason: null,
+      activationProcessedAt: null,
+      courseWaivedByPolicy: false,
+      brokerWaivedByPolicy: false,
       startDate: now.toISOString(),
       endDate: placeholderEndDate,
       updatedAt: now.toISOString(),
@@ -1778,6 +1820,10 @@ async function deactivateStudentSubscriptions(userId: number) {
       isPendingActivation: true,
       studentActivatedAt: null,
       maxActivationDate,
+      activationReason: null,
+      activationProcessedAt: null,
+      courseWaivedByPolicy: false,
+      brokerWaivedByPolicy: false,
       startDate: now.toISOString(),
       endDate: placeholderEndDate,
       updatedAt: now.toISOString(),
@@ -3084,11 +3130,12 @@ export async function getRecommendationServiceAccessSummary(userId: number): Pro
   return buildTimedServiceAccessSummary(subscription);
 }
 
-async function repairDueRecommendationSubscriberStates() {
+async function repairDueTimedServiceStates() {
   const db = await getDb();
   if (!db) return;
 
-  const pendingRows = await db
+  const [pendingRecommendationRows, pendingLexaiRows] = await Promise.all([
+    db
     .select({ userId: recommendationSubscriptions.userId })
     .from(recommendationSubscriptions)
     .where(
@@ -3096,9 +3143,22 @@ async function repairDueRecommendationSubscriberStates() {
         eq(recommendationSubscriptions.isActive, true),
         eq(recommendationSubscriptions.isPendingActivation, true),
       )
-    );
+    )
+    .limit(200),
+    db
+      .select({ userId: lexaiSubscriptions.userId })
+      .from(lexaiSubscriptions)
+      .where(and(
+        eq(lexaiSubscriptions.isActive, true),
+        eq(lexaiSubscriptions.isPendingActivation, true),
+      ))
+      .limit(200),
+  ]);
 
-  const pendingUserIds = Array.from(new Set(pendingRows.map((row) => row.userId)));
+  const pendingUserIds = Array.from(new Set([
+    ...pendingRecommendationRows.map((row) => row.userId),
+    ...pendingLexaiRows.map((row) => row.userId),
+  ]));
   for (const userId of pendingUserIds) {
     try {
       await ensureTimedServicesActivatedIfDue(userId);
@@ -3107,6 +3167,13 @@ async function repairDueRecommendationSubscriberStates() {
         userId,
         error: error instanceof Error ? error.message : String(error),
       });
+      await notifyStaffByEvent("timed_service_activation_failure", {
+        titleEn: `Timed-service activation failed for user #${userId}`,
+        titleAr: `فشل تفعيل الخدمة الزمنية للمستخدم #${userId}`,
+        contentEn: error instanceof Error ? error.message : String(error),
+        contentAr: error instanceof Error ? error.message : String(error),
+        metadata: { userId },
+      }).catch(() => {});
     }
   }
 }
@@ -3116,7 +3183,64 @@ async function repairDueRecommendationSubscriberStates() {
  * the recommendation send hot path. Send-time queries no longer mutate state.
  */
 export async function runRecommendationSubscriberRepair(): Promise<void> {
-  await repairDueRecommendationSubscriberStates();
+  await repairDueTimedServiceStates();
+}
+
+export async function runTimedServiceActivationRepair(): Promise<void> {
+  await repairDueTimedServiceStates();
+}
+
+export async function getTimedServiceActivationAuditReport(limit: number = 200) {
+  const db = await getDb();
+  if (!db) return [];
+  const nowIso = new Date().toISOString();
+  const rows = await db.select({
+    subscriptionId: recommendationSubscriptions.id,
+    userId: recommendationSubscriptions.userId,
+    name: users.name,
+    email: users.email,
+    status: sql<string>`case
+      when ${recommendationSubscriptions.isPendingActivation} = 1
+        and ${recommendationSubscriptions.maxActivationDate} <= ${nowIso}
+        then 'overdue_pending'
+      else 'activated'
+    end`,
+    activationReason: recommendationSubscriptions.activationReason,
+    deadline: recommendationSubscriptions.maxActivationDate,
+    storedStart: recommendationSubscriptions.startDate,
+    processedAt: recommendationSubscriptions.activationProcessedAt,
+    endDate: recommendationSubscriptions.endDate,
+    courseWaivedByPolicy: recommendationSubscriptions.courseWaivedByPolicy,
+    brokerWaivedByPolicy: recommendationSubscriptions.brokerWaivedByPolicy,
+  }).from(recommendationSubscriptions)
+    .innerJoin(users, eq(users.id, recommendationSubscriptions.userId))
+    .where(or(
+      and(
+        eq(recommendationSubscriptions.isPendingActivation, true),
+        lte(recommendationSubscriptions.maxActivationDate, nowIso),
+      ),
+      eq(recommendationSubscriptions.activationReason, "protection_expired"),
+    ))
+    .orderBy(desc(recommendationSubscriptions.activationProcessedAt), desc(recommendationSubscriptions.maxActivationDate))
+    .limit(Math.max(1, Math.min(500, limit)));
+
+  return rows.map((row) => {
+    const effectiveStart = row.status === "overdue_pending" && row.deadline
+      ? row.deadline
+      : row.storedStart;
+    const effectiveStartMs = new Date(effectiveStart).getTime();
+    const processedAtMs = row.processedAt ? new Date(row.processedAt).getTime() : Date.now();
+    const inaccessibleMilliseconds = Number.isFinite(effectiveStartMs) && Number.isFinite(processedAtMs)
+      ? Math.max(0, processedAtMs - effectiveStartMs)
+      : 0;
+    return {
+      ...row,
+      effectiveStart,
+      inaccessibleMilliseconds,
+      inaccessibleHours: Number((inaccessibleMilliseconds / (60 * 60 * 1000)).toFixed(2)),
+      compensationReviewed: false,
+    };
+  });
 }
 
 export async function getRecommendationSubscriberEmails() {
@@ -3356,7 +3480,8 @@ function parseRecommendationPrefs(raw: string | null | undefined): { optedOut: b
 /**
  * Compute the recommendation delivery funnel: eligible recipients plus a
  * diagnostics bucket admin can render to explain who was filtered out.
- * Pure read — does NOT repair pending subscriber state (the daily cron does).
+ * Repairs overdue state before calculating the audience so a client can never
+ * consume deadline-anchored service time while being excluded from delivery.
  */
 export async function getRecommendationDeliveryFunnel(): Promise<RecommendationDeliveryFunnel> {
   const empty: RecommendationDeliveryDiagnostics = {
@@ -3375,6 +3500,7 @@ export async function getRecommendationDeliveryFunnel(): Promise<RecommendationD
   const db = await getDb();
   if (!db) return { eligible: [], diagnostics: empty };
 
+  await repairDueTimedServiceStates();
   const nowIso = new Date().toISOString();
 
   // Pull every is_active=true subscription joined to the user once; categorize
@@ -3781,15 +3907,46 @@ export async function markRecommendationDeliveryFailed(args: {
 export async function listPendingRecommendationDeliveriesForRetry(limit: number = 50): Promise<RecommendationDelivery[]> {
   const db = await getDb();
   if (!db) return [];
-  return db
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const staleIso = new Date(now.getTime() - 10 * 60 * 1000).toISOString();
+  await db.update(recommendationDeliveries).set({
+    status: "failed",
+    errorCategory: "stale_lock",
+    errorMessage: "Recovered stale recommendation delivery claim",
+    updatedAt: nowIso,
+  }).where(and(
+    eq(recommendationDeliveries.status, "processing"),
+    lt(recommendationDeliveries.lastAttemptAt, staleIso),
+  ));
+  const candidates = await db
     .select()
     .from(recommendationDeliveries)
     .where(and(
-      inArray(recommendationDeliveries.status, ['pending', 'failed']),
+      or(
+        eq(recommendationDeliveries.status, "pending"),
+        and(
+          eq(recommendationDeliveries.status, "failed"),
+          sql`datetime(${recommendationDeliveries.lastAttemptAt}, '+' || min(30, (1 << ${recommendationDeliveries.attempts})) || ' minutes') <= datetime(${nowIso})`,
+        ),
+      ),
       sql`${recommendationDeliveries.attempts} < ${MAX_RECOMMENDATION_DELIVERY_ATTEMPTS}`,
     ))
     .orderBy(recommendationDeliveries.createdAt)
-    .limit(limit);
+    .limit(Math.max(1, Math.min(10, limit)));
+  const claimed: RecommendationDelivery[] = [];
+  for (const candidate of candidates) {
+    const rows = await db.update(recommendationDeliveries).set({
+      status: "processing",
+      lastAttemptAt: nowIso,
+      updatedAt: nowIso,
+    }).where(and(
+      eq(recommendationDeliveries.id, candidate.id),
+      inArray(recommendationDeliveries.status, ["pending", "failed"]),
+    )).returning();
+    if (rows[0]) claimed.push(rows[0]);
+  }
+  return claimed;
 }
 
 export async function getRecommendationDeliveryStats(sinceIso: string): Promise<{
@@ -3818,6 +3975,276 @@ export async function getRecommendationDeliveryStats(sinceIso: string): Promise<
       case 'skipped': result.skipped = c; break;
       case 'dead_letter': result.deadLetter = c; break;
     }
+  }
+  return result;
+}
+
+const MAX_EMAIL_OUTBOX_ATTEMPTS = 3;
+const EMAIL_OUTBOX_LOCK_TIMEOUT_MS = 10 * 60 * 1000;
+
+export async function enqueueEmailOutbox(input: {
+  dedupeKey: string;
+  batchId?: string | null;
+  recipientUserId?: number | null;
+  recipientEmail: string;
+  eventType: string;
+  templateId?: string | null;
+  emailCategory?: EmailCategory | null;
+  subject: string;
+  bodyText: string;
+  bodyHtml?: string | null;
+  metadata?: Record<string, unknown> | null;
+}): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  const nowIso = new Date().toISOString();
+  const inserted = await db.insert(emailOutbox).values({
+    dedupeKey: input.dedupeKey,
+    batchId: input.batchId ?? null,
+    recipientUserId: input.recipientUserId ?? null,
+    recipientEmail: normalizeEmailAddress(input.recipientEmail),
+    eventType: input.eventType,
+    templateId: input.templateId ?? null,
+    emailCategory: input.emailCategory ?? null,
+    subject: input.subject,
+    bodyText: input.bodyText,
+    bodyHtml: input.bodyHtml ?? null,
+    metadataJson: input.metadata ? JSON.stringify(input.metadata) : null,
+    status: "pending",
+    attempts: 0,
+    nextAttemptAt: nowIso,
+    createdAt: nowIso,
+    updatedAt: nowIso,
+  } satisfies InsertEmailOutbox)
+    .onConflictDoNothing({ target: emailOutbox.dedupeKey })
+    .returning({ id: emailOutbox.id });
+  return inserted.length > 0;
+}
+
+export async function createEmailOutboxCampaign(input: {
+  batchId: string;
+  recipients: Array<{ userId: number; email: string }>;
+  eventType: string;
+  templateId?: string | null;
+  emailCategory?: EmailCategory | null;
+  subject: string;
+  bodyText: string;
+  bodyHtml?: string | null;
+  metadata?: Record<string, unknown> | null;
+}): Promise<number> {
+  const db = await getDb();
+  if (!db || !input.recipients.length) return 0;
+  const recipients = input.recipients
+    .filter((recipient) => recipient.userId > 0 && isLikelyValidEmail(recipient.email))
+    .map((recipient) => ({
+      userId: recipient.userId,
+      email: normalizeEmailAddress(recipient.email),
+    }));
+  if (!recipients.length) return 0;
+  const nowIso = new Date().toISOString();
+  await db.insert(emailOutboxCampaigns).values({
+    batchId: input.batchId,
+    recipientsJson: JSON.stringify(recipients),
+    cursor: 0,
+    eventType: input.eventType,
+    templateId: input.templateId ?? null,
+    emailCategory: input.emailCategory ?? null,
+    subject: input.subject,
+    bodyText: input.bodyText,
+    bodyHtml: input.bodyHtml ?? null,
+    metadataJson: input.metadata ? JSON.stringify(input.metadata) : null,
+    status: "pending",
+    createdAt: nowIso,
+    updatedAt: nowIso,
+  } satisfies InsertEmailOutboxCampaign)
+    .onConflictDoNothing({ target: emailOutboxCampaigns.batchId });
+  return recipients.length;
+}
+
+export async function materializeEmailOutboxCampaigns(limit: number = 10): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  const [campaign] = await db.select().from(emailOutboxCampaigns)
+    .where(inArray(emailOutboxCampaigns.status, ["pending", "processing"]))
+    .orderBy(emailOutboxCampaigns.createdAt)
+    .limit(1);
+  if (!campaign) return 0;
+
+  let recipients: Array<{ userId: number; email: string }> = [];
+  try {
+    const parsed = JSON.parse(campaign.recipientsJson);
+    if (Array.isArray(parsed)) recipients = parsed;
+  } catch {
+    await db.update(emailOutboxCampaigns).set({
+      status: "failed",
+      updatedAt: new Date().toISOString(),
+    }).where(eq(emailOutboxCampaigns.id, campaign.id));
+    return 0;
+  }
+
+  const cursor = Math.max(0, campaign.cursor);
+  const slice = recipients.slice(cursor, cursor + Math.max(1, Math.min(10, limit)));
+  const metadata = parseOptionalJson(campaign.metadataJson) as Record<string, unknown> | null;
+  let inserted = 0;
+  for (const recipient of slice) {
+    const created = await enqueueEmailOutbox({
+      dedupeKey: `${campaign.batchId}:${recipient.userId}`,
+      batchId: campaign.batchId,
+      recipientUserId: recipient.userId,
+      recipientEmail: recipient.email,
+      eventType: campaign.eventType,
+      templateId: campaign.templateId,
+      emailCategory: campaign.emailCategory as EmailCategory | null,
+      subject: campaign.subject,
+      bodyText: campaign.bodyText,
+      bodyHtml: campaign.bodyHtml,
+      metadata,
+    });
+    if (created) inserted += 1;
+  }
+
+  const nextCursor = cursor + slice.length;
+  await db.update(emailOutboxCampaigns).set({
+    cursor: nextCursor,
+    status: nextCursor >= recipients.length ? "completed" : "processing",
+    updatedAt: new Date().toISOString(),
+  }).where(eq(emailOutboxCampaigns.id, campaign.id));
+  return inserted;
+}
+
+export async function claimEmailOutboxBatch(limit: number = 10): Promise<EmailOutbox[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const staleLockIso = new Date(now.getTime() - EMAIL_OUTBOX_LOCK_TIMEOUT_MS).toISOString();
+
+  await db.update(emailOutbox).set({
+    status: "failed",
+    lockedAt: null,
+    nextAttemptAt: nowIso,
+    updatedAt: nowIso,
+    errorCategory: "stale_lock",
+    errorMessage: "Recovered stale email outbox claim",
+  }).where(and(
+    eq(emailOutbox.status, "processing"),
+    lt(emailOutbox.lockedAt, staleLockIso),
+  ));
+
+  const candidates = await db.select().from(emailOutbox)
+    .where(and(
+      inArray(emailOutbox.status, ["pending", "failed"]),
+      lte(emailOutbox.nextAttemptAt, nowIso),
+      lt(emailOutbox.attempts, MAX_EMAIL_OUTBOX_ATTEMPTS),
+    ))
+    .orderBy(emailOutbox.createdAt, emailOutbox.id)
+    .limit(Math.max(1, Math.min(10, limit)));
+
+  const claimed: EmailOutbox[] = [];
+  for (const candidate of candidates) {
+    const rows = await db.update(emailOutbox).set({
+      status: "processing",
+      lockedAt: nowIso,
+      updatedAt: nowIso,
+    }).where(and(
+      eq(emailOutbox.id, candidate.id),
+      inArray(emailOutbox.status, ["pending", "failed"]),
+    )).returning();
+    if (rows[0]) claimed.push(rows[0]);
+  }
+  return claimed;
+}
+
+export async function markEmailOutboxSent(input: {
+  id: number;
+  provider?: string | null;
+  attemptedProviders?: string[];
+}): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  const nowIso = new Date().toISOString();
+  const [row] = await db.select({
+    batchId: emailOutbox.batchId,
+    recipientUserId: emailOutbox.recipientUserId,
+  }).from(emailOutbox).where(eq(emailOutbox.id, input.id)).limit(1);
+  await db.update(emailOutbox).set({
+    status: "sent",
+    attempts: sql`${emailOutbox.attempts} + 1`,
+    provider: input.provider ?? null,
+    attemptedProviders: input.attemptedProviders?.join(",") ?? null,
+    errorCategory: null,
+    errorMessage: null,
+    lockedAt: null,
+    sentAt: nowIso,
+    updatedAt: nowIso,
+  }).where(and(eq(emailOutbox.id, input.id), eq(emailOutbox.status, "processing")));
+  if (row?.batchId && row.recipientUserId) {
+    await markNotificationEmailSent(row.batchId, row.recipientUserId);
+  }
+}
+
+export async function markEmailOutboxSkipped(id: number, reason: string): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(emailOutbox).set({
+    status: "skipped_unsubscribed",
+    attempts: sql`${emailOutbox.attempts} + 1`,
+    lockedAt: null,
+    errorCategory: null,
+    errorMessage: reason,
+    updatedAt: new Date().toISOString(),
+  }).where(and(eq(emailOutbox.id, id), eq(emailOutbox.status, "processing")));
+}
+
+export async function markEmailOutboxFailed(input: {
+  id: number;
+  errorCategory: string;
+  errorMessage: string;
+  attemptedProviders?: string[];
+}): Promise<"failed" | "dead_letter"> {
+  const db = await getDb();
+  if (!db) return "failed";
+  const [current] = await db.select({ attempts: emailOutbox.attempts })
+    .from(emailOutbox).where(eq(emailOutbox.id, input.id)).limit(1);
+  const attempts = (current?.attempts ?? 0) + 1;
+  const status = attempts >= MAX_EMAIL_OUTBOX_ATTEMPTS ? "dead_letter" : "failed";
+  const retryDelayMinutes = Math.min(30, 2 ** attempts);
+  const now = new Date();
+  await db.update(emailOutbox).set({
+    status,
+    attempts,
+    nextAttemptAt: new Date(now.getTime() + retryDelayMinutes * 60 * 1000).toISOString(),
+    lockedAt: null,
+    attemptedProviders: input.attemptedProviders?.join(",") ?? null,
+    errorCategory: input.errorCategory,
+    errorMessage: input.errorMessage.slice(0, 1000),
+    updatedAt: now.toISOString(),
+  }).where(eq(emailOutbox.id, input.id));
+  return status;
+}
+
+export async function getEmailOutboxStats(sinceIso?: string): Promise<{
+  pending: number;
+  failed: number;
+  processing: number;
+  deadLetter: number;
+}> {
+  const db = await getDb();
+  if (!db) return { pending: 0, failed: 0, processing: 0, deadLetter: 0 };
+  const baseQuery = db.select({
+    status: emailOutbox.status,
+    count: sql<number>`count(*)`,
+  }).from(emailOutbox);
+  const rows = sinceIso
+    ? await baseQuery.where(gte(emailOutbox.createdAt, sinceIso)).groupBy(emailOutbox.status)
+    : await baseQuery.groupBy(emailOutbox.status);
+  const result = { pending: 0, failed: 0, processing: 0, deadLetter: 0 };
+  for (const row of rows) {
+    const count = Number(row.count) || 0;
+    if (row.status === "pending") result.pending = count;
+    if (row.status === "failed") result.failed = count;
+    if (row.status === "processing") result.processing = count;
+    if (row.status === "dead_letter") result.deadLetter = count;
   }
   return result;
 }
@@ -5773,6 +6200,10 @@ export async function renewPackageEntitlements(
         isPendingActivation: shouldStartTimedServicesNow ? false : true,
         studentActivatedAt: shouldStartTimedServicesNow ? (current.studentActivatedAt || nowIso) : null,
         maxActivationDate: shouldStartTimedServicesNow ? null : pendingServiceWindow.maxActivationDate.toISOString(),
+        activationReason: shouldStartTimedServicesNow ? "renewal" : null,
+        activationProcessedAt: shouldStartTimedServicesNow ? nowIso : null,
+        courseWaivedByPolicy: false,
+        brokerWaivedByPolicy: false,
         startDate: shouldStartTimedServicesNow && current.isPendingActivation ? nowIso : current.startDate,
         endDate: shouldStartTimedServicesNow
           ? newEnd.toISOString()
@@ -5790,6 +6221,10 @@ export async function renewPackageEntitlements(
         isPendingActivation: !shouldStartTimedServicesNow,
         studentActivatedAt: shouldStartTimedServicesNow ? nowIso : null,
         maxActivationDate: shouldStartTimedServicesNow ? null : pendingServiceWindow.maxActivationDate.toISOString(),
+        activationReason: shouldStartTimedServicesNow ? "renewal" : null,
+        activationProcessedAt: shouldStartTimedServicesNow ? nowIso : null,
+        courseWaivedByPolicy: false,
+        brokerWaivedByPolicy: false,
         startDate: shouldStartTimedServicesNow ? nowIso : pendingServiceWindow.activationAnchor.toISOString(),
         endDate: endDate.toISOString(),
         paymentStatus: "completed",
@@ -5818,6 +6253,10 @@ export async function renewPackageEntitlements(
         isPendingActivation: shouldStartTimedServicesNow ? false : true,
         studentActivatedAt: shouldStartTimedServicesNow ? (current.studentActivatedAt || nowIso) : null,
         maxActivationDate: shouldStartTimedServicesNow ? null : pendingServiceWindow.maxActivationDate.toISOString(),
+        activationReason: shouldStartTimedServicesNow ? "renewal" : null,
+        activationProcessedAt: shouldStartTimedServicesNow ? nowIso : null,
+        courseWaivedByPolicy: false,
+        brokerWaivedByPolicy: false,
         startDate: shouldStartTimedServicesNow && current.isPendingActivation ? nowIso : current.startDate,
         endDate: shouldStartTimedServicesNow
           ? newEnd.toISOString()
@@ -5837,6 +6276,10 @@ export async function renewPackageEntitlements(
         isPendingActivation: !shouldStartTimedServicesNow,
         studentActivatedAt: shouldStartTimedServicesNow ? nowIso : null,
         maxActivationDate: shouldStartTimedServicesNow ? null : pendingServiceWindow.maxActivationDate.toISOString(),
+        activationReason: shouldStartTimedServicesNow ? "renewal" : null,
+        activationProcessedAt: shouldStartTimedServicesNow ? nowIso : null,
+        courseWaivedByPolicy: false,
+        brokerWaivedByPolicy: false,
         startDate: shouldStartTimedServicesNow ? nowIso : pendingServiceWindow.activationAnchor.toISOString(),
         endDate: endDate.toISOString(),
         paymentStatus: "completed",
@@ -5928,11 +6371,32 @@ export async function fulfillPackageEntitlements(
   }
 
   const isRenewalOrUpgrade = readiness.ready || deadlineReached || (existingLexai && !existingLexai.isPendingActivation) || (existingRec && !existingRec.isPendingActivation);
+  const immediateActivationReason: TimedServiceActivationReason = deadlineReached && !readiness.ready
+    ? "protection_expired"
+    : (existingLexai && !existingLexai.isPendingActivation) || (existingRec && !existingRec.isPendingActivation)
+      ? "renewal"
+      : "requirements_completed";
+  const immediateCourseWaiver = immediateActivationReason === "protection_expired" && !readiness.courseReady;
+  const immediateBrokerWaiver = immediateActivationReason === "protection_expired" && !readiness.brokerReady;
 
   // Stacking helper: endDate = max(currentEndDate, now) + entitlementDays
   const getStackedEndDate = (currentEndDate: string | null, days: number): Date => {
     const base = currentEndDate ? new Date(Math.max(new Date(currentEndDate).getTime(), now.getTime())) : now;
     return buildEndDateFromDays(base, days);
+  };
+  const getImmediateWindow = (currentEndDate: string | null, wasPending: boolean, days: number) => {
+    if (immediateActivationReason === "protection_expired" && wasPending) {
+      return getTimedServiceActivationWindow({
+        processedAt: now,
+        maxActivationDate: maxActivationDate.toISOString(),
+        entitlementDays: days,
+        reason: "protection_expired",
+      });
+    }
+    return {
+      effectiveStart: now,
+      endDate: getStackedEndDate(currentEndDate, days),
+    };
   };
 
   // ── Package subscription (course access = forever) ──
@@ -6000,7 +6464,11 @@ export async function fulfillPackageEntitlements(
     if (existingLexai) {
       if (isRenewalOrUpgrade) {
         // Stack after current endDate (or start now if expired/new)
-        const stackedEnd = getStackedEndDate(existingLexai.isPendingActivation ? null : existingLexai.endDate, serviceDays.lexaiDays);
+        const activationWindow = getImmediateWindow(
+          existingLexai.isPendingActivation ? null : existingLexai.endDate,
+          !!existingLexai.isPendingActivation,
+          serviceDays.lexaiDays,
+        );
         await updateLexaiSubscription(existingLexai.id, {
           isActive: true,
           isPaused: false,
@@ -6008,10 +6476,14 @@ export async function fulfillPackageEntitlements(
           pausedReason: null,
           pausedRemainingDays: null,
           isPendingActivation: false,
-          studentActivatedAt: existingLexai.studentActivatedAt || now.toISOString(),
+          studentActivatedAt: existingLexai.studentActivatedAt || activationWindow.effectiveStart.toISOString(),
           maxActivationDate: null,
-          startDate: existingLexai.isPendingActivation ? now.toISOString() : existingLexai.startDate,
-          endDate: stackedEnd.toISOString(),
+          activationReason: existingLexai.studentActivatedAt ? existingLexai.activationReason : immediateActivationReason,
+          activationProcessedAt: existingLexai.activationProcessedAt || now.toISOString(),
+          courseWaivedByPolicy: existingLexai.courseWaivedByPolicy || immediateCourseWaiver,
+          brokerWaivedByPolicy: existingLexai.brokerWaivedByPolicy || immediateBrokerWaiver,
+          startDate: existingLexai.isPendingActivation ? activationWindow.effectiveStart.toISOString() : existingLexai.startDate,
+          endDate: activationWindow.endDate.toISOString(),
           paymentStatus: "completed",
           paymentAmount: 0,
           paymentCurrency: "USD",
@@ -6028,6 +6500,10 @@ export async function fulfillPackageEntitlements(
           isPendingActivation: true,
           studentActivatedAt: null,
           maxActivationDate: maxActivationDate.toISOString(),
+          activationReason: null,
+          activationProcessedAt: null,
+          courseWaivedByPolicy: false,
+          brokerWaivedByPolicy: false,
           startDate: pendingServiceWindow.activationAnchor.toISOString(),
           endDate: buildEndDateFromDays(pendingServiceWindow.activationAnchor, serviceDays.lexaiDays).toISOString(),
           paymentStatus: "completed",
@@ -6039,16 +6515,20 @@ export async function fulfillPackageEntitlements(
     } else {
       if (isRenewalOrUpgrade) {
         // Upgrade: brand new LexAI, activate immediately (e.g. basic→comp)
-        const stackedEnd = buildEndDateFromDays(now, serviceDays.lexaiDays);
+        const activationWindow = getImmediateWindow(null, true, serviceDays.lexaiDays);
         await createLexaiSubscription({
           userId,
           isActive: true,
           isPaused: false,
           isPendingActivation: false,
-          studentActivatedAt: now.toISOString(),
+          studentActivatedAt: activationWindow.effectiveStart.toISOString(),
           maxActivationDate: null,
-          startDate: now.toISOString(),
-          endDate: stackedEnd.toISOString(),
+          activationReason: immediateActivationReason,
+          activationProcessedAt: now.toISOString(),
+          courseWaivedByPolicy: immediateCourseWaiver,
+          brokerWaivedByPolicy: immediateBrokerWaiver,
+          startDate: activationWindow.effectiveStart.toISOString(),
+          endDate: activationWindow.endDate.toISOString(),
           paymentStatus: "completed",
           paymentAmount: 0,
           paymentCurrency: "USD",
@@ -6066,6 +6546,10 @@ export async function fulfillPackageEntitlements(
           isPendingActivation: true,
           studentActivatedAt: null,
           maxActivationDate: maxActivationDate.toISOString(),
+          activationReason: null,
+          activationProcessedAt: null,
+          courseWaivedByPolicy: false,
+          brokerWaivedByPolicy: false,
           startDate: pendingServiceWindow.activationAnchor.toISOString(),
           endDate: buildEndDateFromDays(pendingServiceWindow.activationAnchor, serviceDays.lexaiDays).toISOString(),
           paymentStatus: "completed",
@@ -6086,7 +6570,11 @@ export async function fulfillPackageEntitlements(
     if (existingRec) {
       if (isRenewalOrUpgrade) {
         // Stack after current endDate
-        const stackedEnd = getStackedEndDate(existingRec.isPendingActivation ? null : existingRec.endDate, serviceDays.recommendationDays);
+        const activationWindow = getImmediateWindow(
+          existingRec.isPendingActivation ? null : existingRec.endDate,
+          !!existingRec.isPendingActivation,
+          serviceDays.recommendationDays,
+        );
         await updateRecommendationSubscription(existingRec.id, {
           isActive: true,
           isPaused: false,
@@ -6094,10 +6582,14 @@ export async function fulfillPackageEntitlements(
           pausedReason: null,
           pausedRemainingDays: null,
           isPendingActivation: false,
-          studentActivatedAt: existingRec.studentActivatedAt || now.toISOString(),
+          studentActivatedAt: existingRec.studentActivatedAt || activationWindow.effectiveStart.toISOString(),
           maxActivationDate: null,
-          startDate: existingRec.isPendingActivation ? now.toISOString() : existingRec.startDate,
-          endDate: stackedEnd.toISOString(),
+          activationReason: existingRec.studentActivatedAt ? existingRec.activationReason : immediateActivationReason,
+          activationProcessedAt: existingRec.activationProcessedAt || now.toISOString(),
+          courseWaivedByPolicy: existingRec.courseWaivedByPolicy || immediateCourseWaiver,
+          brokerWaivedByPolicy: existingRec.brokerWaivedByPolicy || immediateBrokerWaiver,
+          startDate: existingRec.isPendingActivation ? activationWindow.effectiveStart.toISOString() : existingRec.startDate,
+          endDate: activationWindow.endDate.toISOString(),
           paymentStatus: "completed",
           paymentAmount: 0,
           paymentCurrency: "USD",
@@ -6124,17 +6616,21 @@ export async function fulfillPackageEntitlements(
       }
     } else {
       if (isRenewalOrUpgrade) {
-        const stackedEnd = getStackedEndDate(null, serviceDays.recommendationDays);
+        const activationWindow = getImmediateWindow(null, true, serviceDays.recommendationDays);
         await createRecommendationSubscription({
           userId,
           registrationKeyId: registrationKeyId ?? null,
           isActive: true,
           isPaused: false,
           isPendingActivation: false,
-          studentActivatedAt: now.toISOString(),
+          studentActivatedAt: activationWindow.effectiveStart.toISOString(),
           maxActivationDate: null,
-          startDate: now.toISOString(),
-          endDate: stackedEnd.toISOString(),
+          activationReason: immediateActivationReason,
+          activationProcessedAt: now.toISOString(),
+          courseWaivedByPolicy: immediateCourseWaiver,
+          brokerWaivedByPolicy: immediateBrokerWaiver,
+          startDate: activationWindow.effectiveStart.toISOString(),
+          endDate: activationWindow.endDate.toISOString(),
           paymentStatus: "completed",
           paymentAmount: 0,
           paymentCurrency: "USD",
@@ -6151,6 +6647,10 @@ export async function fulfillPackageEntitlements(
           isPendingActivation: true,
           studentActivatedAt: null,
           maxActivationDate: maxActivationDate.toISOString(),
+          activationReason: null,
+          activationProcessedAt: null,
+          courseWaivedByPolicy: false,
+          brokerWaivedByPolicy: false,
           startDate: pendingServiceWindow.activationAnchor.toISOString(),
           endDate: buildEndDateFromDays(pendingServiceWindow.activationAnchor, serviceDays.recommendationDays).toISOString(),
           paymentStatus: "completed",
@@ -9066,19 +9566,123 @@ export async function getPendingActivationStatus(userId: number) {
   };
 }
 
+function escapeEmailHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+async function queueTimedServiceActivationEmail(input: {
+  userId: number;
+  activationReason: TimedServiceActivationReason;
+  courseWaivedByPolicy: boolean;
+  brokerWaivedByPolicy: boolean;
+  services: Array<{ name: "LexAI" | "Recommendations"; startDate: string; endDate: string }>;
+}) {
+  const db = await getDb();
+  if (!db || !input.services.length) return;
+  const [user] = await db.select({ email: users.email, name: users.name })
+    .from(users).where(eq(users.id, input.userId)).limit(1);
+  if (!user?.email) return;
+
+  const firstService = input.services[0];
+  const serviceNames = input.services.map((service) => service.name).join(" + ");
+  const policyActivated = input.activationReason === "protection_expired";
+  const reasonEn = policyActivated
+    ? "Your protection period ended, so the service gates were waived automatically by policy."
+    : "Your service requirements were completed.";
+  const reasonAr = policyActivated
+    ? "انتهت فترة الحماية، لذلك تم تجاوز شروط بدء الخدمة تلقائياً حسب السياسة."
+    : "تم استكمال متطلبات بدء الخدمة.";
+  const waiverEn = [
+    input.courseWaivedByPolicy ? "Course gate waived by policy." : null,
+    input.brokerWaivedByPolicy ? "Broker gate waived by policy." : null,
+  ].filter(Boolean).join(" ");
+  const waiverAr = [
+    input.courseWaivedByPolicy ? "تم تجاوز شرط الدورة حسب السياسة." : null,
+    input.brokerWaivedByPolicy ? "تم تجاوز شرط الوسيط حسب السياسة." : null,
+  ].filter(Boolean).join(" ");
+  const subject = "[XFlex Trading Academy] تم تفعيل خدماتك | Your Services Are Active";
+  const text = [
+    `مرحباً ${user.name || ""}`,
+    reasonAr,
+    waiverAr,
+    `الخدمات: ${serviceNames}`,
+    `بداية الخدمة: ${firstService.startDate}`,
+    `نهاية الخدمة: ${firstService.endDate}`,
+    "",
+    `Hello ${user.name || ""}`,
+    reasonEn,
+    waiverEn,
+    `Services: ${serviceNames}`,
+    `Effective start: ${firstService.startDate}`,
+    `Expires: ${firstService.endDate}`,
+  ].filter(Boolean).join("\n");
+  const html = `<!doctype html><html><body style="font-family:Arial,sans-serif;background:#f4f4f7;padding:24px">
+    <div style="max-width:600px;margin:auto;background:#fff;border-radius:12px;padding:28px">
+      <h2 style="color:#047857">تم تفعيل خدماتك | Your Services Are Active</h2>
+      <p>مرحباً ${escapeEmailHtml(user.name || "")}</p>
+      <p>${escapeEmailHtml(reasonAr)} ${escapeEmailHtml(waiverAr)}</p>
+      <p><strong>الخدمات:</strong> ${escapeEmailHtml(serviceNames)}<br>
+      <strong>البداية:</strong> ${escapeEmailHtml(firstService.startDate)}<br>
+      <strong>النهاية:</strong> ${escapeEmailHtml(firstService.endDate)}</p>
+      <hr style="border:0;border-top:1px solid #e5e7eb;margin:24px 0">
+      <p>Hello ${escapeEmailHtml(user.name || "")}</p>
+      <p>${escapeEmailHtml(reasonEn)} ${escapeEmailHtml(waiverEn)}</p>
+      <p><strong>Services:</strong> ${escapeEmailHtml(serviceNames)}<br>
+      <strong>Effective start:</strong> ${escapeEmailHtml(firstService.startDate)}<br>
+      <strong>Expires:</strong> ${escapeEmailHtml(firstService.endDate)}</p>
+    </div></body></html>`;
+
+  await enqueueEmailOutbox({
+    dedupeKey: `timed_activation:${input.userId}:${input.activationReason}:${firstService.startDate}`,
+    recipientUserId: input.userId,
+    recipientEmail: user.email,
+    eventType: "timed_service_activation",
+    templateId: "timed_service_activation",
+    emailCategory: "transactional",
+    subject,
+    bodyText: text,
+    bodyHtml: html,
+    metadata: {
+      activationReason: input.activationReason,
+      courseWaivedByPolicy: input.courseWaivedByPolicy,
+      brokerWaivedByPolicy: input.brokerWaivedByPolicy,
+      services: input.services,
+    },
+  });
+}
+
 /**
  * Activate all pending subscriptions for a user — starts the real 30-day timer.
  * Called by student (when they choose "Start Now") or auto-triggered at maxActivationDate.
  */
-export async function activateStudentSubscriptions(userId: number, isAutoActivation = false) {
+export async function activateStudentSubscriptions(
+  userId: number,
+  activationInput: boolean | TimedServiceActivationReason = false,
+) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
   const now = new Date();
   const entitlementDays = await getUserEntitlementDays(userId);
-  const DAY_MS = 24 * 60 * 60 * 1000;
+  const activationReason: TimedServiceActivationReason = typeof activationInput === "string"
+    ? activationInput
+    : activationInput
+      ? "protection_expired"
+      : "requirements_completed";
+  const isAutoActivation = activationReason === "protection_expired";
+  const packageId = await getUserLatestActivatedPackageId(userId);
+  const readiness = packageId
+    ? await getUserTimedServiceReadiness(userId, packageId)
+    : { ready: false, courseReady: false, brokerReady: false };
+  const courseWaivedByPolicy = isAutoActivation && !readiness.courseReady;
+  const brokerWaivedByPolicy = isAutoActivation && !readiness.brokerReady;
 
-  console.log(`[activateSubs] userId=${userId} auto=${isAutoActivation} entitlementDays=${entitlementDays}`);
+  console.log(`[activateSubs] userId=${userId} reason=${activationReason} entitlementDays=${entitlementDays}`);
 
   // Activate ALL pending subs (not just the first) to handle duplicate subscriptions
   const pendingLexai = await db
@@ -9092,29 +9696,39 @@ export async function activateStudentSubscriptions(userId: number, isAutoActivat
     .where(and(eq(recommendationSubscriptions.userId, userId), eq(recommendationSubscriptions.isPendingActivation, true)));
 
   const nowStr = now.toISOString();
+  const activatedServices: Array<{ name: "LexAI" | "Recommendations"; startDate: string; endDate: string }> = [];
 
   for (const sub of pendingLexai) {
-    // If auto-activation runs late, cap expiry as if service started on the protection deadline.
     const serviceDays = derivePendingServiceDays({
       activationAnchorDate: sub.startDate,
       maxActivationDate: sub.maxActivationDate,
       placeholderEndDate: sub.endDate,
       fallbackDays: entitlementDays,
     });
-    let endDate = new Date(now.getTime() + serviceDays * DAY_MS);
-    if (sub.maxActivationDate) {
-      const absoluteMax = new Date(new Date(sub.maxActivationDate).getTime() + serviceDays * DAY_MS);
-      if (absoluteMax < endDate) endDate = absoluteMax;
-    }
-    const endStr = endDate.toISOString();
-    console.log(`[activateSubs] LexAI id=${sub.id} oldEnd=${sub.endDate} newEnd=${endStr} maxAct=${sub.maxActivationDate}`);
-    await db.update(lexaiSubscriptions).set({
+    const window = getTimedServiceActivationWindow({
+      processedAt: now,
+      maxActivationDate: sub.maxActivationDate,
+      entitlementDays: serviceDays,
+      reason: activationReason,
+    });
+    const startStr = window.effectiveStart.toISOString();
+    const endStr = window.endDate.toISOString();
+    console.log(`[activateSubs] LexAI id=${sub.id} oldEnd=${sub.endDate} newStart=${startStr} newEnd=${endStr} maxAct=${sub.maxActivationDate}`);
+    const updated = await db.update(lexaiSubscriptions).set({
       isPendingActivation: false,
-      studentActivatedAt: nowStr,
-      startDate: nowStr,
+      studentActivatedAt: startStr,
+      startDate: startStr,
       endDate: endStr,
+      activationReason,
+      activationProcessedAt: nowStr,
+      courseWaivedByPolicy,
+      brokerWaivedByPolicy,
       updatedAt: nowStr,
-    }).where(eq(lexaiSubscriptions.id, sub.id));
+    }).where(and(
+      eq(lexaiSubscriptions.id, sub.id),
+      eq(lexaiSubscriptions.isPendingActivation, true),
+    )).returning({ id: lexaiSubscriptions.id });
+    if (updated.length) activatedServices.push({ name: "LexAI", startDate: startStr, endDate: endStr });
   }
 
   for (const sub of pendingRec) {
@@ -9124,24 +9738,34 @@ export async function activateStudentSubscriptions(userId: number, isAutoActivat
       placeholderEndDate: sub.endDate,
       fallbackDays: entitlementDays,
     });
-    let endDate = new Date(now.getTime() + serviceDays * DAY_MS);
-    if (sub.maxActivationDate) {
-      const absoluteMax = new Date(new Date(sub.maxActivationDate).getTime() + serviceDays * DAY_MS);
-      if (absoluteMax < endDate) endDate = absoluteMax;
-    }
-    const endStr = endDate.toISOString();
-    console.log(`[activateSubs] Rec id=${sub.id} oldEnd=${sub.endDate} newEnd=${endStr} maxAct=${sub.maxActivationDate}`);
-    await db.update(recommendationSubscriptions).set({
+    const window = getTimedServiceActivationWindow({
+      processedAt: now,
+      maxActivationDate: sub.maxActivationDate,
+      entitlementDays: serviceDays,
+      reason: activationReason,
+    });
+    const startStr = window.effectiveStart.toISOString();
+    const endStr = window.endDate.toISOString();
+    console.log(`[activateSubs] Rec id=${sub.id} oldEnd=${sub.endDate} newStart=${startStr} newEnd=${endStr} maxAct=${sub.maxActivationDate}`);
+    const updated = await db.update(recommendationSubscriptions).set({
       isPendingActivation: false,
-      studentActivatedAt: nowStr,
-      startDate: nowStr,
+      studentActivatedAt: startStr,
+      startDate: startStr,
       endDate: endStr,
+      activationReason,
+      activationProcessedAt: nowStr,
+      courseWaivedByPolicy,
+      brokerWaivedByPolicy,
       updatedAt: nowStr,
-    }).where(eq(recommendationSubscriptions.id, sub.id));
+    }).where(and(
+      eq(recommendationSubscriptions.id, sub.id),
+      eq(recommendationSubscriptions.isPendingActivation, true),
+    )).returning({ id: recommendationSubscriptions.id });
+    if (updated.length) activatedServices.push({ name: "Recommendations", startDate: startStr, endDate: endStr });
   }
 
   // Notify student that LexAI/Rec access is now active
-  if (pendingLexai.length > 0) {
+  if (activatedServices.some((service) => service.name === "LexAI")) {
     await createNotification({
       userId,
       type: 'success',
@@ -9152,7 +9776,7 @@ export async function activateStudentSubscriptions(userId: number, isAutoActivat
       actionUrl: '/lexai',
     }).catch(() => {});
   }
-  if (pendingRec.length > 0) {
+  if (activatedServices.some((service) => service.name === "Recommendations")) {
     await createNotification({
       userId,
       type: 'success',
@@ -9164,10 +9788,26 @@ export async function activateStudentSubscriptions(userId: number, isAutoActivat
     }).catch(() => {});
   }
 
+  if (activatedServices.length > 0) {
+    await queueTimedServiceActivationEmail({
+      userId,
+      activationReason,
+      courseWaivedByPolicy,
+      brokerWaivedByPolicy,
+      services: activatedServices,
+    }).catch((error) => logger.error("[ACTIVATION] Failed to queue activation email", {
+      userId,
+      error: error instanceof Error ? error.message : String(error),
+    }));
+  }
+
   return {
-    activated: !!(pendingLexai.length || pendingRec.length),
+    activated: activatedServices.length > 0,
     isAutoActivation,
-    endDate: nowStr,
+    activationReason,
+    activationProcessedAt: nowStr,
+    services: activatedServices,
+    endDate: activatedServices[0]?.endDate ?? nowStr,
   };
 }
 
@@ -9279,6 +9919,9 @@ export async function getStudentTimeline(userId: number) {
     endDate: lexaiSubscriptions.endDate,
     isPendingActivation: lexaiSubscriptions.isPendingActivation,
     studentActivatedAt: lexaiSubscriptions.studentActivatedAt,
+    activationReason: lexaiSubscriptions.activationReason,
+    courseWaivedByPolicy: lexaiSubscriptions.courseWaivedByPolicy,
+    brokerWaivedByPolicy: lexaiSubscriptions.brokerWaivedByPolicy,
   }).from(lexaiSubscriptions)
     .where(eq(lexaiSubscriptions.userId, userId))
     .orderBy(desc(lexaiSubscriptions.startDate)).limit(1);
@@ -9287,7 +9930,16 @@ export async function getStudentTimeline(userId: number) {
       events.push({ date: lexSub.startDate, type: 'lexai_pending', labelEn: 'LexAI: Pending Activation', labelAr: 'LexAI: في انتظار التفعيل' });
     } else {
       if (lexSub.studentActivatedAt) {
-        events.push({ date: lexSub.studentActivatedAt, type: 'lexai_activated', labelEn: 'LexAI Activated', labelAr: 'تفعيل LexAI' });
+        const policy = lexSub.activationReason === 'protection_expired';
+        events.push({
+          date: lexSub.studentActivatedAt,
+          type: 'lexai_activated',
+          labelEn: policy ? 'LexAI Activated (Protection Period Expired)' : 'LexAI Activated',
+          labelAr: policy ? 'تفعيل LexAI (انتهاء فترة الحماية)' : 'تفعيل LexAI',
+          details: policy
+            ? `Policy waivers — course: ${lexSub.courseWaivedByPolicy ? 'yes' : 'no'}, broker: ${lexSub.brokerWaivedByPolicy ? 'yes' : 'no'}`
+            : undefined,
+        });
       }
       if (lexSub.endDate) {
         events.push({ date: lexSub.endDate, type: 'lexai_expires', labelEn: 'LexAI Expires', labelAr: 'انتهاء LexAI' });
@@ -9301,6 +9953,9 @@ export async function getStudentTimeline(userId: number) {
     endDate: recommendationSubscriptions.endDate,
     isPendingActivation: recommendationSubscriptions.isPendingActivation,
     studentActivatedAt: recommendationSubscriptions.studentActivatedAt,
+    activationReason: recommendationSubscriptions.activationReason,
+    courseWaivedByPolicy: recommendationSubscriptions.courseWaivedByPolicy,
+    brokerWaivedByPolicy: recommendationSubscriptions.brokerWaivedByPolicy,
   }).from(recommendationSubscriptions)
     .where(eq(recommendationSubscriptions.userId, userId))
     .orderBy(desc(recommendationSubscriptions.startDate)).limit(1);
@@ -9309,7 +9964,16 @@ export async function getStudentTimeline(userId: number) {
       events.push({ date: recSub.startDate, type: 'rec_pending', labelEn: 'Recommendations: Pending Activation', labelAr: 'التوصيات: في انتظار التفعيل' });
     } else {
       if (recSub.studentActivatedAt) {
-        events.push({ date: recSub.studentActivatedAt, type: 'rec_activated', labelEn: 'Recommendations Activated', labelAr: 'تفعيل التوصيات' });
+        const policy = recSub.activationReason === 'protection_expired';
+        events.push({
+          date: recSub.studentActivatedAt,
+          type: 'rec_activated',
+          labelEn: policy ? 'Recommendations Activated (Protection Period Expired)' : 'Recommendations Activated',
+          labelAr: policy ? 'تفعيل التوصيات (انتهاء فترة الحماية)' : 'تفعيل التوصيات',
+          details: policy
+            ? `Policy waivers — course: ${recSub.courseWaivedByPolicy ? 'yes' : 'no'}, broker: ${recSub.brokerWaivedByPolicy ? 'yes' : 'no'}`
+            : undefined,
+        });
       }
       if (recSub.endDate) {
         events.push({ date: recSub.endDate, type: 'rec_expires', labelEn: 'Recommendations Expires', labelAr: 'انتهاء التوصيات' });
@@ -13159,9 +13823,15 @@ export async function notifyStaffByEvent(
   const metadataStr = data.metadata ? JSON.stringify(data.metadata) : undefined;
   const emailThrottleMinutes = 5;
   let shouldSendEmail = true;
+  let suppressDuplicateNotification = false;
 
-  if (eventType === 'new_support_message' && actionUrl) {
-    const cutoffIso = new Date(Date.now() - emailThrottleMinutes * 60 * 1000).toISOString();
+  const throttleMinutes = eventType === 'new_support_message'
+    ? emailThrottleMinutes
+    : eventType === 'timed_service_activation_failure' || eventType === 'email_delivery_anomaly'
+      ? 60
+      : 0;
+  if (throttleMinutes > 0 && actionUrl) {
+    const cutoffIso = new Date(Date.now() - throttleMinutes * 60 * 1000).toISOString();
     const [recentNotification] = await db.select({ id: staffNotifications.id })
       .from(staffNotifications)
       .where(and(
@@ -13171,7 +13841,9 @@ export async function notifyStaffByEvent(
       ))
       .limit(1);
     shouldSendEmail = !recentNotification;
+    suppressDuplicateNotification = eventType !== 'new_support_message' && !!recentNotification;
   }
+  if (suppressDuplicateNotification) return;
 
   // Collect target user IDs: all admins + staff with matching roles
   const targetUserIds: number[] = [];

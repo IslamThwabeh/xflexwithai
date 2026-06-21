@@ -199,6 +199,10 @@ export const lexaiSubscriptions = sqliteTable("lexaiSubscriptions", {
   isPendingActivation: integer("isPendingActivation", { mode: 'boolean' }).default(false).notNull(),
   studentActivatedAt: text("studentActivatedAt"),
   maxActivationDate: text("maxActivationDate"),
+  activationReason: text("activationReason"),
+  activationProcessedAt: text("activationProcessedAt"),
+  courseWaivedByPolicy: integer("courseWaivedByPolicy", { mode: 'boolean' }).default(false).notNull(),
+  brokerWaivedByPolicy: integer("brokerWaivedByPolicy", { mode: 'boolean' }).default(false).notNull(),
   startDate: text("startDate").default("CURRENT_TIMESTAMP").notNull(),
   endDate: text("endDate").notNull(),
   autoRenew: integer("autoRenew", { mode: 'boolean' }).default(true).notNull(),
@@ -286,6 +290,10 @@ export const recommendationSubscriptions = sqliteTable("recommendationSubscripti
   isPendingActivation: integer("isPendingActivation", { mode: 'boolean' }).default(false).notNull(),
   studentActivatedAt: text("studentActivatedAt"),
   maxActivationDate: text("maxActivationDate"),
+  activationReason: text("activationReason"),
+  activationProcessedAt: text("activationProcessedAt"),
+  courseWaivedByPolicy: integer("courseWaivedByPolicy", { mode: 'boolean' }).default(false).notNull(),
+  brokerWaivedByPolicy: integer("brokerWaivedByPolicy", { mode: 'boolean' }).default(false).notNull(),
   startDate: text("startDate").default("CURRENT_TIMESTAMP").notNull(),
   endDate: text("endDate").notNull(),
   paymentStatus: text("paymentStatus", { length: 20 }).default("key").notNull(),
@@ -386,6 +394,64 @@ export const recommendationDeliveries = sqliteTable("recommendation_deliveries",
 
 export type RecommendationDelivery = typeof recommendationDeliveries.$inferSelect;
 export type InsertRecommendationDelivery = typeof recommendationDeliveries.$inferInsert;
+
+/**
+ * Generic persistent email outbox used for transactional activation notices
+ * and large admin announcements that must not fan out inside one Worker request.
+ */
+export const emailOutbox = sqliteTable("email_outbox", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  dedupeKey: text("dedupeKey").notNull().unique(),
+  batchId: text("batchId"),
+  recipientUserId: integer("recipientUserId"),
+  recipientEmail: text("recipientEmail").notNull(),
+  eventType: text("eventType").notNull(),
+  templateId: text("templateId"),
+  emailCategory: text("emailCategory"),
+  subject: text("subject").notNull(),
+  bodyText: text("bodyText").notNull(),
+  bodyHtml: text("bodyHtml"),
+  metadataJson: text("metadataJson"),
+  status: text("status").default("pending").notNull(),
+  attempts: integer("attempts").default(0).notNull(),
+  nextAttemptAt: text("nextAttemptAt").notNull(),
+  lockedAt: text("lockedAt"),
+  provider: text("provider"),
+  attemptedProviders: text("attemptedProviders"),
+  errorCategory: text("errorCategory"),
+  errorMessage: text("errorMessage"),
+  sentAt: text("sentAt"),
+  createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
+  updatedAt: text("updatedAt").default(sql`(datetime('now'))`).notNull(),
+}, (table) => ({
+  statusNextAttemptIdx: index("idx_email_outbox_status_next_attempt").on(table.status, table.nextAttemptAt),
+  batchIdx: index("idx_email_outbox_batch").on(table.batchId),
+}));
+
+export type EmailOutbox = typeof emailOutbox.$inferSelect;
+export type InsertEmailOutbox = typeof emailOutbox.$inferInsert;
+
+export const emailOutboxCampaigns = sqliteTable("email_outbox_campaigns", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  batchId: text("batchId").notNull().unique(),
+  recipientsJson: text("recipientsJson").notNull(),
+  cursor: integer("cursor").default(0).notNull(),
+  eventType: text("eventType").notNull(),
+  templateId: text("templateId"),
+  emailCategory: text("emailCategory"),
+  subject: text("subject").notNull(),
+  bodyText: text("bodyText").notNull(),
+  bodyHtml: text("bodyHtml"),
+  metadataJson: text("metadataJson"),
+  status: text("status").default("pending").notNull(),
+  createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
+  updatedAt: text("updatedAt").default(sql`(datetime('now'))`).notNull(),
+}, (table) => ({
+  statusCreatedIdx: index("idx_email_outbox_campaign_status").on(table.status, table.createdAt),
+}));
+
+export type EmailOutboxCampaign = typeof emailOutboxCampaigns.$inferSelect;
+export type InsertEmailOutboxCampaign = typeof emailOutboxCampaigns.$inferInsert;
 
 /**
  * Recommendation message reactions

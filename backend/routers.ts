@@ -33,7 +33,7 @@ import { hashPassword, verifyPassword, generateToken, isValidEmail, isValidPassw
 import { generateFreeVideoPlaybackToken } from "./_core/freeLibraryPlayback";
 import { sendEmail, sendLoginCodeEmail } from "./_core/email";
 import { buildRecommendationAlertEmail, buildRecommendationMessageEmail } from "./_core/recommendationEmails";
-import { sendOrderConfirmationEmail, sendPaymentReceivedEmail, sendAdminNewOrderNotification, sendAnnouncementEmail, sendStaffWelcomeEmail, sendJobInterviewInviteEmail } from "./_core/orderEmails";
+import { buildAnnouncementEmail, sendOrderConfirmationEmail, sendPaymentReceivedEmail, sendAdminNewOrderNotification, sendStaffWelcomeEmail, sendJobInterviewInviteEmail } from "./_core/orderEmails";
 import { ENV } from "./_core/env";
 import { generateNumericCode, generateSaltBase64, normalizeEmail, sha256Base64 } from "./_core/otp";
 import { verifyUnsubscribeToken } from "./_core/emailPreferences";
@@ -3105,61 +3105,6 @@ export const appRouter = router({
           batchId,
         });
 
-        const emailResults = await Promise.allSettled(
-          emailRecipients.map(async ({ sub, emailCopy }) => {
-            try {
-              const result = await sendEmail({
-                to: sub.email,
-                subject: emailCopy.subject,
-                text: emailCopy.text,
-                html: emailCopy.html,
-                audit: {
-                  eventType: 'recommendation_alert',
-                  templateId: 'recommendation_alert',
-                  recipientUserId: sub.userId,
-                  metadata: {
-                    recommendationId: alert.id,
-                    type: 'alert',
-                    batchId,
-                    unlockSeconds: RECOMMENDATION_ALERT_UNLOCK_SECONDS,
-                  },
-                },
-              });
-              await db.markRecommendationDeliverySent({
-                eventKey,
-                userId: sub.userId,
-                provider: result?.provider ?? null,
-                attemptedProviders: result?.attemptedProviders,
-              });
-              return sub.userId;
-            } catch (err) {
-              const category = (err as { category?: string })?.category ?? 'unknown';
-              const attempted = (err as { attemptedProviders?: string[] })?.attemptedProviders;
-              await db.markRecommendationDeliveryFailed({
-                eventKey,
-                userId: sub.userId,
-                errorCategory: category,
-                errorMessage: err instanceof Error ? err.message : String(err),
-                attemptedProviders: attempted,
-              });
-              throw err;
-            }
-          })
-        );
-
-        const failedEmailResults = emailResults.filter((result) => result.status === 'rejected') as PromiseRejectedResult[];
-        if (failedEmailResults.length) {
-          logger.warn('[RECOMMENDATIONS] Alert email delivery failures detected', {
-            alertId: alert.id,
-            batchId,
-            recipients: recipients.length,
-            failed: failedEmailResults.length,
-            errors: failedEmailResults.slice(0, 5).map((result) =>
-              result.reason instanceof Error ? result.reason.message : String(result.reason)
-            ),
-          });
-        }
-
         // Send a copy of the alert email to configured admin notification
         // addresses (e.g. doaa.thwabeh@gmail.com). These addresses are global
         // admin observability inboxes — not in the recommendation_subscribers
@@ -3170,24 +3115,23 @@ export const appRouter = router({
             language: 'en',
             unlockSeconds: RECOMMENDATION_ALERT_UNLOCK_SECONDS,
           });
-          await Promise.allSettled(adminCopyEmails.map((to) => sendEmail({
-            to,
-            subject: `[Admin copy] ${adminCopy.subject}`,
-            text: adminCopy.text,
-            html: adminCopy.html,
-            audit: {
+          for (const to of adminCopyEmails) {
+            await db.enqueueEmailOutbox({
+              dedupeKey: `${eventKey}:admin:${to.toLowerCase()}`,
+              recipientEmail: to,
               eventType: 'recommendation_alert',
               templateId: 'recommendation_alert_admin_copy',
+              emailCategory: 'transactional',
+              subject: `[Admin copy] ${adminCopy.subject}`,
+              bodyText: adminCopy.text,
+              bodyHtml: adminCopy.html,
               metadata: { recommendationId: alert.id, type: 'alert', batchId, adminCopy: true },
-            },
-          }).catch((err) => {
-            logger.warn('[RECOMMENDATIONS] Admin copy email failed', {
-              alertId: alert.id, to, error: err instanceof Error ? err.message : String(err),
             });
-          })));
+          }
         }
 
-        const emailCount = emailResults.filter((result) => result.status === 'fulfilled').length;
+        const emailCount = 0;
+        const emailsQueued = emailRecipients.length;
 
         const isAdmin = !!(ctx.user?.email && await db.getAdminByEmail(ctx.user.email));
         if (ctx.user?.isStaff && !isAdmin) {
@@ -3199,6 +3143,7 @@ export const appRouter = router({
               alertId: alert.id,
               recipientCount: recipients.length,
               emailCount,
+              emailsQueued,
               diagnostics: funnel.diagnostics,
             },
           });
@@ -3209,6 +3154,7 @@ export const appRouter = router({
           alert,
           recipientCount: recipients.length,
           emailCount,
+          emailsQueued,
           diagnostics: funnel.diagnostics,
         };
       }),
@@ -3500,69 +3446,6 @@ export const appRouter = router({
             batchId,
           });
 
-          const emailResults = await Promise.allSettled(
-            emailRecipients.map(async ({ sub, emailCopy }) => {
-                try {
-                  const result = await sendEmail({
-                    to: sub.email,
-                    subject: emailCopy.subject,
-                    text: emailCopy.text,
-                    html: emailCopy.html,
-                    audit: {
-                      eventType: input.type === 'result'
-                        ? 'trade_result'
-                        : input.type === 'update'
-                          ? 'recommendation_update'
-                          : 'recommendation_new',
-                      templateId: input.type === 'recommendation'
-                        ? 'recommendation_new'
-                        : `recommendation_${input.type}`,
-                      recipientUserId: sub.userId,
-                      metadata: {
-                        recommendationId: threadRootMessageId,
-                        type: input.type,
-                        symbol: notificationSymbol || null,
-                        messageId,
-                        batchId,
-                      },
-                    },
-                  });
-                  await db.markRecommendationDeliverySent({
-                    eventKey,
-                    userId: sub.userId,
-                    provider: result?.provider ?? null,
-                    attemptedProviders: result?.attemptedProviders,
-                  });
-                } catch (err) {
-                  const category = (err as { category?: string })?.category ?? 'unknown';
-                  const attempted = (err as { attemptedProviders?: string[] })?.attemptedProviders;
-                  await db.markRecommendationDeliveryFailed({
-                    eventKey,
-                    userId: sub.userId,
-                    errorCategory: category,
-                    errorMessage: err instanceof Error ? err.message : String(err),
-                    attemptedProviders: attempted,
-                  });
-                  throw err;
-                }
-              })
-          );
-
-          const failedEmailResults = emailResults.filter((result) => result.status === 'rejected') as PromiseRejectedResult[];
-          if (failedEmailResults.length) {
-            logger.warn('[RECOMMENDATIONS] Message email delivery failures detected', {
-              messageId,
-              threadRootMessageId,
-              batchId,
-              type: input.type,
-              recipients: recipients.length,
-              failed: failedEmailResults.length,
-              errors: failedEmailResults.slice(0, 5).map((result) =>
-                result.reason instanceof Error ? result.reason.message : String(result.reason)
-              ),
-            });
-          }
-
           // Send a copy of the recommendation email to configured admin
           // notification addresses so admins see exactly what students received.
           const adminCopyEmails = await db.getConfiguredAdminNotificationEmails();
@@ -3574,21 +3457,19 @@ export const appRouter = router({
               latestMessage: input.type === 'recommendation' ? undefined : { content: trimmedContent },
               threadUnfollowUrl: undefined,
             });
-            await Promise.allSettled(adminCopyEmails.map((to) => sendEmail({
-              to,
-              subject: `[Admin copy] ${adminCopy.subject}`,
-              text: adminCopy.text,
-              html: adminCopy.html,
-              audit: {
+            for (const to of adminCopyEmails) {
+              await db.enqueueEmailOutbox({
+                dedupeKey: `${eventKey}:admin:${to.toLowerCase()}`,
+                recipientEmail: to,
                 eventType: input.type === 'result' ? 'trade_result' : input.type === 'update' ? 'recommendation_update' : 'recommendation_new',
                 templateId: `recommendation_${input.type}_admin_copy`,
+                emailCategory: 'transactional',
+                subject: `[Admin copy] ${adminCopy.subject}`,
+                bodyText: adminCopy.text,
+                bodyHtml: adminCopy.html,
                 metadata: { recommendationId: threadRootMessageId, type: input.type, symbol: notificationSymbol || null, messageId, batchId, adminCopy: true },
-              },
-            }).catch((err) => {
-              logger.warn('[RECOMMENDATIONS] Admin copy message email failed', {
-                messageId, to, error: err instanceof Error ? err.message : String(err),
               });
-            })));
+            }
           }
         }
 
@@ -5292,6 +5173,12 @@ export const appRouter = router({
   // PACKAGE SUBSCRIPTIONS
   // =============================================
   subscriptions: router({
+    activationAudit: adminProcedure
+      .input(z.object({ limit: z.number().int().min(1).max(500).optional() }).optional())
+      .query(async ({ input }) => {
+        return db.getTimedServiceActivationAuditReport(input?.limit ?? 200);
+      }),
+
     // User: get my active subscriptions
     mySubscriptions: protectedProcedure.query(async ({ ctx }) => {
       if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
@@ -5327,12 +5214,13 @@ export const appRouter = router({
     serviceAccessSummary: protectedProcedure.query(async ({ ctx }) => {
       if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
 
-      const [lexai, recommendation] = await Promise.all([
+      const [lexai, recommendation, readiness] = await Promise.all([
         db.getLexaiServiceAccessSummary(ctx.user.id),
         db.getRecommendationServiceAccessSummary(ctx.user.id),
+        db.getTimedServiceReadinessSummary(ctx.user.id),
       ]);
 
-      return { lexai, recommendation };
+      return { lexai, recommendation, readiness };
     }),
 
     // User: check if subscriptions are pending activation + course progress
@@ -5373,7 +5261,7 @@ export const appRouter = router({
           message: `Complete the course first (currently at ${status.progressPercent}%)`,
         });
       }
-      return db.activateStudentSubscriptions(ctx.user.id, false);
+      return db.activateStudentSubscriptions(ctx.user.id, "manual");
     }),
 
     // User: request freeze (sends a support chat message, admin handles manually)
@@ -6905,44 +6793,39 @@ ${qaText}`;
         const batchId = `batch_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
         await db.sendBulkNotification({ ...input, titleEn, contentEn, batchId });
 
-        // Send branded HTML emails if requested
-        let emailsSent = 0;
+        // Queue branded emails in one durable campaign. Recipient-level outbox
+        // rows are materialized by the minute worker to avoid Worker subrequest limits.
+        let emailsQueued = 0;
         if (input.sendEmail) {
           const users = await db.getAllUsers();
-          const emailMap = new Map(users.map((u: any) => [u.id, u.email]));
-          const subject = input.titleAr; // Arabic subject
-          for (const userId of input.userIds) {
-            const email = emailMap.get(userId);
-            if (email) {
-              try {
-                await sendAnnouncementEmail(email, {
-                  subject,
-                  titleAr: input.titleAr,
-                  contentAr: input.contentAr || '',
-                  titleEn: input.titleEn?.trim() || undefined,
-                  contentEn: input.contentEn?.trim() || undefined,
-                  actionUrl: input.actionUrl || undefined,
-                  audit: {
-                    eventType: 'admin_bulk_notification',
-                    templateId: 'announcement',
-                    recipientUserId: userId,
-                    metadata: {
-                      batchId,
-                      notificationType: input.type || 'info',
-                      actionUrl: input.actionUrl || null,
-                    },
-                  },
-                });
-                await db.markNotificationEmailSent(batchId, userId);
-                emailsSent++;
-              } catch (err) {
-                console.error(`Failed to send email to user ${userId}:`, err);
-              }
-            }
-          }
+          const userMap = new Map(users.map((u: any) => [u.id, u.email]));
+          const rendered = buildAnnouncementEmail({
+            subject: input.titleAr,
+            titleAr: input.titleAr,
+            contentAr: input.contentAr || '',
+            titleEn: input.titleEn?.trim() || undefined,
+            contentEn: input.contentEn?.trim() || undefined,
+            actionUrl: input.actionUrl || undefined,
+          });
+          emailsQueued = await db.createEmailOutboxCampaign({
+            batchId,
+            recipients: input.userIds
+              .map((userId) => ({ userId, email: userMap.get(userId) }))
+              .filter((recipient): recipient is { userId: number; email: string } => !!recipient.email),
+            eventType: 'admin_bulk_notification',
+            templateId: 'announcement',
+            emailCategory: 'marketing',
+            subject: rendered.subject,
+            bodyText: rendered.text,
+            bodyHtml: rendered.html,
+            metadata: {
+              notificationType: input.type || 'info',
+              actionUrl: input.actionUrl || null,
+            },
+          });
         }
 
-        return { success: true, count: input.userIds.length, emailsSent };
+        return { success: true, count: input.userIds.length, emailsQueued, emailsSent: 0 };
       }),
 
     // Admin: get students grouped by active/inactive for targeting

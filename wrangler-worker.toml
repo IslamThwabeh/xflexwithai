@@ -30,7 +30,7 @@ binding = "VIDEOS_BUCKET"
 bucket_name = "xflexwithai-videos"
 
 [env.production.triggers]
-crons = ["0 2 * * *"]
+crons = ["* * * * *", "0 2 * * *"]
 
 [env.staging]
 name = "xflexacademy-api-staging"
