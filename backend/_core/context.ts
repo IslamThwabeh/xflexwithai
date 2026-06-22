@@ -20,6 +20,7 @@ export type TrpcContext = {
   req: RequestLike;
   user: User | null;
   sessionId?: string | null;
+  defer?: (task: Promise<unknown>) => void;
   setCookie: (name: string, value: string, options?: any) => void;
   clearCookie: (name: string, options?: any) => void;
 };

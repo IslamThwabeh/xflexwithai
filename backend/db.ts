@@ -3904,6 +3904,133 @@ export async function markRecommendationDeliveryFailed(args: {
     ));
 }
 
+export async function reconcileStaleRecommendationDeliveries(now: Date = new Date()): Promise<{
+  alerts: number;
+  recommendations: number;
+  updates: number;
+  orphanedResults: number;
+  total: number;
+}> {
+  const db = await getDb();
+  if (!db) return { alerts: 0, recommendations: 0, updates: 0, orphanedResults: 0, total: 0 };
+  const nowIso = now.toISOString();
+  const queuedStatuses = ["pending", "failed"] as const;
+
+  const staleAlerts = await db.update(recommendationDeliveries).set({
+    status: "skipped",
+    skipReason: "alert_expired_or_closed",
+    errorCategory: null,
+    errorMessage: null,
+    lastAttemptAt: nowIso,
+    updatedAt: nowIso,
+  }).where(and(
+    inArray(recommendationDeliveries.status, queuedStatuses),
+    eq(recommendationDeliveries.eventKind, "alert"),
+    sql`NOT EXISTS (
+      SELECT 1
+      FROM recommendationAlerts alert
+      WHERE alert.id = ${recommendationDeliveries.refId}
+        AND alert.status = 'pending'
+        AND datetime(alert.expiresAt) > datetime(${nowIso})
+        AND NOT EXISTS (
+          SELECT 1
+          FROM recommendationMessages published
+          WHERE published.userId = alert.analystUserId
+            AND published.type = 'recommendation'
+            AND published.parentId IS NULL
+            AND datetime(published.createdAt) >= datetime(alert.notifiedAt)
+            AND datetime(published.createdAt) <= datetime(alert.expiresAt)
+        )
+    )`,
+  )).returning({ id: recommendationDeliveries.id });
+
+  const staleRecommendations = await db.update(recommendationDeliveries).set({
+    status: "skipped",
+    skipReason: "recommendation_no_longer_actionable",
+    errorCategory: null,
+    errorMessage: null,
+    lastAttemptAt: nowIso,
+    updatedAt: nowIso,
+  }).where(and(
+    inArray(recommendationDeliveries.status, queuedStatuses),
+    eq(recommendationDeliveries.eventKind, "recommendation"),
+    sql`NOT EXISTS (
+      SELECT 1
+      FROM recommendationMessages root
+      WHERE root.id = ${recommendationDeliveries.refId}
+        AND root.type = 'recommendation'
+        AND root.parentId IS NULL
+        AND COALESCE(root.threadStatus, 'open') <> 'closed'
+        AND NOT EXISTS (
+          SELECT 1
+          FROM recommendationMessages result
+          WHERE result.parentId = root.id
+            AND result.type = 'result'
+        )
+    )`,
+  )).returning({ id: recommendationDeliveries.id });
+
+  const staleUpdates = await db.update(recommendationDeliveries).set({
+    status: "skipped",
+    skipReason: "thread_no_longer_actionable",
+    errorCategory: null,
+    errorMessage: null,
+    lastAttemptAt: nowIso,
+    updatedAt: nowIso,
+  }).where(and(
+    inArray(recommendationDeliveries.status, queuedStatuses),
+    eq(recommendationDeliveries.eventKind, "update"),
+    sql`NOT EXISTS (
+      SELECT 1
+      FROM recommendationMessages root
+      WHERE root.id = ${recommendationDeliveries.threadRootMessageId}
+        AND root.type = 'recommendation'
+        AND root.parentId IS NULL
+        AND COALESCE(root.threadStatus, 'open') <> 'closed'
+        AND NOT EXISTS (
+          SELECT 1
+          FROM recommendationMessages result
+          WHERE result.parentId = root.id
+            AND result.type = 'result'
+        )
+    )`,
+  )).returning({ id: recommendationDeliveries.id });
+
+  // A delayed result email is confusing when the same recipient never
+  // received (and can no longer receive) the root recommendation email.
+  // Keep results queued while their root delivery is still viable, but skip
+  // them once that root is missing, skipped, or permanently failed.
+  const orphanedResults = await db.update(recommendationDeliveries).set({
+    status: "skipped",
+    skipReason: "result_without_viable_recommendation",
+    errorCategory: null,
+    errorMessage: null,
+    lastAttemptAt: nowIso,
+    updatedAt: nowIso,
+  }).where(and(
+    inArray(recommendationDeliveries.status, queuedStatuses),
+    eq(recommendationDeliveries.eventKind, "result"),
+    sql`NOT EXISTS (
+      SELECT 1
+      FROM recommendationMessages result
+      INNER JOIN recommendation_deliveries rootDelivery
+        ON rootDelivery.eventKey = ('rec_msg:' || result.parentId)
+       AND rootDelivery.userId = ${recommendationDeliveries.userId}
+      WHERE result.id = ${recommendationDeliveries.refId}
+        AND result.type = 'result'
+        AND rootDelivery.status IN ('sent', 'pending', 'failed', 'processing')
+    )`,
+  )).returning({ id: recommendationDeliveries.id });
+
+  return {
+    alerts: staleAlerts.length,
+    recommendations: staleRecommendations.length,
+    updates: staleUpdates.length,
+    orphanedResults: orphanedResults.length,
+    total: staleAlerts.length + staleRecommendations.length + staleUpdates.length + orphanedResults.length,
+  };
+}
+
 export async function listPendingRecommendationDeliveriesForRetry(limit: number = 50): Promise<RecommendationDelivery[]> {
   const db = await getDb();
   if (!db) return [];
@@ -3932,7 +4059,17 @@ export async function listPendingRecommendationDeliveriesForRetry(limit: number 
       ),
       sql`${recommendationDeliveries.attempts} < ${MAX_RECOMMENDATION_DELIVERY_ATTEMPTS}`,
     ))
-    .orderBy(recommendationDeliveries.createdAt)
+    .orderBy(
+      sql`CASE ${recommendationDeliveries.eventKind}
+        WHEN 'recommendation' THEN 0
+        WHEN 'alert' THEN 1
+        WHEN 'update' THEN 2
+        WHEN 'result' THEN 3
+        ELSE 4
+      END`,
+      desc(recommendationDeliveries.createdAt),
+      desc(recommendationDeliveries.id),
+    )
     .limit(Math.max(1, Math.min(10, limit)));
   const claimed: RecommendationDelivery[] = [];
   for (const candidate of candidates) {
@@ -4137,7 +4274,20 @@ export async function claimEmailOutboxBatch(limit: number = 10): Promise<EmailOu
       lte(emailOutbox.nextAttemptAt, nowIso),
       lt(emailOutbox.attempts, MAX_EMAIL_OUTBOX_ATTEMPTS),
     ))
-    .orderBy(emailOutbox.createdAt, emailOutbox.id)
+    .orderBy(
+      sql`CASE ${emailOutbox.eventType}
+        WHEN 'support_client_reply' THEN 0
+        WHEN 'timed_service_activation' THEN 1
+        WHEN 'recommendation_alert' THEN 2
+        WHEN 'recommendation_new' THEN 2
+        WHEN 'recommendation_update' THEN 2
+        WHEN 'trade_result' THEN 2
+        WHEN 'admin_bulk_notification' THEN 9
+        ELSE 5
+      END`,
+      emailOutbox.createdAt,
+      emailOutbox.id,
+    )
     .limit(Math.max(1, Math.min(10, limit)));
 
   const claimed: EmailOutbox[] = [];

@@ -14,7 +14,7 @@ import { useRef } from "react";
  * of inactivity.
  */
 export default function SessionGuard() {
-  const { isAuthenticated, logout } = useAuth();
+  const { isAuthenticated, logout, user } = useAuth();
   const { data: adminCheck } = trpc.auth.isAdmin.useQuery(undefined, {
     enabled: isAuthenticated,
     retry: false,
@@ -68,6 +68,7 @@ export default function SessionGuard() {
     onWarning: handleWarning,
     onActivity: handleActivity,
     enabled: isAuthenticated,
+    activityStorageKey: user?.id ? `xflex:session-activity:${user.id}` : undefined,
   });
 
   // This component renders nothing

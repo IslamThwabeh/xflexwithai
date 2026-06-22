@@ -1,6 +1,6 @@
 # XFLEX Project Memory
 
-Last updated: 2026-06-14
+Last updated: 2026-06-22
 
 ## Project Overview
 
@@ -32,6 +32,21 @@ Last updated: 2026-06-14
 - Latest Worker deploy completed on 2026-06-05 with version `6d231d23-f38e-485e-8064-c3177ec840eb`.
 - Latest Pages deploy attempt on 2026-06-05 for commit `b347e28` failed during Cloudflare asset upload with `POST /pages/assets/upload -> 502 Bad Gateway`; manual dashboard upload of `dist/public` is the fallback.
 - Latest production D1 migration applied on 2026-06-05: `database/migrations/050_first_package_activation_anchor.sql`.
+- On 2026-06-21, the user reported completing the Worker/frontend deployment for the timed-service activation and email reliability release. The exact Cloudflare deployment version/commit was not recorded in this session.
+- Production D1 migration `database/migrations/055_timed_service_activation_email_outbox.sql` was applied by Codex on 2026-06-21 before deployment.
+- Migration `055` Cloudflare bookmark: `00000ebe-0000002c-00005091-24213355c43c1b020dcc1e96230ee7bf`.
+- Pre-migration production recovery export:
+  `tmp/prod-backups/xflexwithai-before-055-20260621-152725.sql`.
+- Migration `055` is additive and must not be rerun manually: it added timed-service activation audit/waiver fields, deadline indexes, `email_outbox`, and `email_outbox_campaigns`.
+- Production Worker schedules are now:
+  - `* * * * *` for overdue timed-service repair and bounded email-outbox draining.
+  - `0 2 * * *` for existing daily lifecycle/retention/reminder work.
+- Migration `database/migrations/056_recommendation_delivery_priority.sql` was prepared on 2026-06-22 but has not been applied to production yet. It additively creates `idx_rec_deliveries_status_kind_created` on `recommendation_deliveries(status, eventKind, createdAt, id)`.
+- Release order for the 2026-06-22 hotfixes:
+  1. Apply migration `056`.
+  2. Deploy the production Worker/backend.
+  3. Deploy the Cloudflare Pages frontend.
+  4. Run recommendation, support-email, and multi-tab staff-session smoke tests.
 - Wrangler Pages deploy can fail because Cloudflare returns `POST /pages/assets/upload -> 502 Bad Gateway`; if it recurs, manual dashboard upload of `dist/public` is a practical fallback.
 
 ## Email And Notifications
@@ -45,6 +60,21 @@ Last updated: 2026-06-14
 - Recommendation email event types include `recommendation_alert`, `recommendation_update`, and `trade_result`.
 - Admin bulk email audit logs each recipient individually as `admin_bulk_notification`.
 - Recommendation delivery outbox rows store subject/body snapshots for alert, update, and result emails so audit rows remain inspectable later.
+- Recommendation publishing no longer sends recipient emails synchronously. Publishing creates `recommendation_deliveries` rows, and the minute Worker drains them in bounded batches.
+- Generic activation and admin-announcement emails use `email_outbox`; large admin sends first create one `email_outbox_campaigns` envelope and materialize recipient rows gradually.
+- Email outbox delivery is idempotent through dedupe keys, conditional claims, stale-lock recovery, bounded retries, provider/error auditing, and dead-letter status.
+- Admin notification send responses now distinguish in-app recipients (`count`) from queued emails (`emailsQueued`).
+- Normal queued-email delivery target is within approximately one minute, subject to provider availability and backlog.
+- On 2026-06-22, production recommendation-email complaints were traced to queue starvation rather than provider failure. In-app notifications were immediate and ZeptoMail sends succeeded, but generic email work consumed half of the shared 10-email minute budget and recommendation rows drained at only 5 recipients/minute.
+- Recommendation delivery now has priority over generic/bulk outbox work. Publishing also starts a bounded post-response Worker drain through `ExecutionContext.waitUntil`, with the minute cron remaining as the durable fallback.
+- Before claiming recommendation rows, queued deliveries are reconciled:
+  - Expired/cancelled alerts are skipped, and a published top-level recommendation supersedes any remaining pre-alert emails from its alert window.
+  - Closed or resulted recommendations and stale updates are skipped.
+  - Results are skipped if that recipient has no viable root-recommendation delivery.
+- Recommendation claim ordering is newest actionable recommendation first, then alerts, updates, and results. Do not restore simple FIFO ordering for time-sensitive trading messages.
+- Human support replies now always enqueue a transactional client email, regardless of whether the client is online. This applies to replies in existing conversations and staff-initiated conversations.
+- Support reply emails use `eventType = support_client_reply`, `templateId = support_client_reply`, and dedupe key `support_reply:<supportMessageId>`.
+- `support_client_reply` rows are prioritized ahead of bulk announcements inside the generic email outbox. Bot replies, polling, edits, and deletes do not generate support reply emails.
 
 ## Known Fixed Bugs / Lessons Learned
 
@@ -71,6 +101,11 @@ Last updated: 2026-06-14
 - Admin recommendation workspace counters should be sourced from a backend thread summary, not from whatever rows are loaded in the current view.
 - Admin recommendation archive/history should use dedicated thread-history queries with D1-safe chunked hydration; do not use the recent `recommendations.feed` query as the archive source.
 - Recommendation monthly reports should score official results from `result` replies posted in the selected month. `update` replies are management context and should be excluded from win rate/pips unless explicitly reviewed/converted.
+- A pending timed-service state must take precedence over its placeholder `endDate`; a short key must not appear expired while still inside the protection window.
+- Timed-service access, recommendation email eligibility, and deadline consumption must change together. A client must never consume deadline-anchored service time while remaining blocked from the service or its recommendation emails.
+- Staff inactivity remains 15 minutes and must be extended only by real user interaction, never by support polling or other background requests.
+- The frontend idle guard now synchronizes genuine activity across tabs using a per-user local-storage timestamp. An inactive tab must not log out a staff member who is actively typing in another tab.
+- Real activity detection includes direct `input`, `beforeinput`, Arabic/IME composition, keyboard, pointer/mouse, touch, click, and scroll events. Cross-tab activity resets local timers but does not emit duplicate server heartbeats.
 
 ## Package Key Lifecycle Rules
 
@@ -93,6 +128,19 @@ Last updated: 2026-06-14
 - The protection window is configurable via `study_period_days`; do not hardcode 14 days in lifecycle code.
 - `users.firstPackageActivatedAt` stores/derives the original package activation anchor so upgrades do not reset the protection window.
 - Pending timed-service rows keep `maxActivationDate` as the separate protection deadline; placeholder `endDate` stores only the key/service age from the activation anchor, so the protection window is not added to service life.
+- Timed services activate at the earliest of:
+  - Both readiness gates becoming ready.
+  - The exact `maxActivationDate` protection deadline.
+- If processing happens after the protection deadline, the effective `startDate` remains the exact deadline and `endDate` is deadline plus the key manager’s selected entitlement days.
+- Protection-expiry activation records `activationReason = protection_expired`, `activationProcessedAt`, and separate `courseWaivedByPolicy` / `brokerWaivedByPolicy` flags.
+- Policy waiver does not modify actual course progress, `completedAt`, `isAdminSkipped`, broker onboarding rows, or `brokerOnboardingComplete`.
+- Other activation reasons are `requirements_completed`, `manual`, `renewal`, and `legacy`.
+- Timed-service activation updates are conditional on `isPendingActivation = true`, so concurrent page access, recommendation publishing, and cron repair cannot double-activate a row.
+- Recommendation audience calculation repairs overdue pending states before selecting recipients.
+- Client LexAI and Recommendations pages display policy activation, actual course/broker readiness, effective start, and expiry.
+- Activation creates an in-app notice and queues a transactional activation email.
+- Previously affected clients are reviewed for compensation case by case; no automatic historical extension or recommendation replay is performed.
+- Admin API `subscriptions.activationAudit` reports overdue/policy-activated clients and inaccessible intervals for review.
 
 ## Support Media Uploads
 
@@ -125,6 +173,28 @@ Last updated: 2026-06-14
 - `pnpm run build:worker` passed.
 - Focused lifecycle tests passed: `server/packageKeyLifecycle.test.ts`, `server/timedServiceActivation.test.ts`, `server/packageKeyRenewalEligibility.test.ts`, `server/markEpisodeComplete.test.ts`, and `server/brokerFreezeAndSkipRoutes.test.ts`.
 - Browser smoke could not be completed in Codex because the in-app browser backend reported `iab` unavailable.
+- Release verification on 2026-06-21:
+  - `pnpm check` passed.
+  - Full `pnpm test` passed: 24 files, 105 tests.
+  - Targeted activation/course/broker/renewal/LexAI tests passed: 41/41.
+  - Targeted recommendation/email/notification tests passed: 25/25.
+  - `pnpm build` and `pnpm build:worker` passed.
+  - Migration `055` applied successfully to a fresh isolated local D1 fixture.
+  - Production schema preflight found no migration-name collisions.
+  - Post-migration production verification confirmed all 8 activation fields, 2 outbox tables, and 5 indexes.
+  - Subscription totals and Ayah/Walaa records were unchanged by the migration.
+  - Production outbox tables were empty immediately after migration.
+  - No overdue pending recommendation users existed immediately before deployment.
+- Release-candidate verification on 2026-06-22 covers three hotfixes:
+  - Recommendation queue prioritization, immediate bounded drain, and stale-delivery suppression.
+  - Multi-tab/IME-safe staff activity tracking while preserving the 15-minute policy.
+  - Always-on transactional email for human support replies.
+  - Full test suite result before final QA: 27 files, 114 tests passed.
+  - `pnpm check`, `pnpm build`, and `pnpm build:worker` passed.
+  - Final QA rerun after the pre-alert sequencing safeguard again passed all 27 files / 114 tests.
+  - Migration `056` applied successfully twice to an isolated local D1 database; the query plan used `idx_rec_deliveries_status_kind_created`.
+  - Isolated D1 behavior checks confirmed a pre-alert is valid before publication and stale after its recommendation is published, and `support_client_reply` outranks an older `admin_bulk_notification`.
+  - Read-only production preflight confirmed migration `056` is not yet present, all required delivery columns exist, and both recommendation and generic outbox queues were empty.
 
 ## Future Hardening
 

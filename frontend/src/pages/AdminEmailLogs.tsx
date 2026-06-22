@@ -470,7 +470,7 @@ export default function AdminEmailLogs() {
               <p>{isRtl ? 'تنبيهات انتهاء الاشتراك، LexAI، التجديد، الترحيب، الإنجازات، والخمول موجودة تحت تصنيف الاشتراكات.' : 'Subscription expiry, LexAI expiry, renewal, welcome, milestone, and inactivity emails are under Lifecycle.'}</p>
               <p>{isRtl ? 'إذا كانت الحالة فشل: راجع رسالة الخطأ لمعرفة رفض ZeptoMail أو فشل المزود.' : 'If status is failed: inspect the error message for provider rejection or transport failure.'}</p>
               <p>{isRtl ? 'إذا كانت الحالة تم الإرسال: التطبيق سلّم الرسالة للمزود، ثم افحص البريد المزعج أو لوحة المزود.' : 'If status is sent: the app handed the email to the provider, so next check spam or the provider dashboard.'}</p>
-              <p>{isRtl ? 'ملاحظة: ردود الدعم للعميل ما زالت داخل المنصة فقط حالياً، وليست بريداً تلقائياً في المسار الحالي.' : 'Note: support replies to clients are still in-app only in the current flow, not automatic emails.'}</p>
+              <p>{isRtl ? 'ردود الدعم البشري تُرسل الآن كإشعار داخل المنصة وبريد إلكتروني للعميل دائماً، بغض النظر عن حالة اتصاله.' : 'Human support replies now create both an in-app notification and a client email, regardless of online status.'}</p>
               {!!deliverySummary?.legacyTimestampCount && (
                 <p>
                   {isRtl

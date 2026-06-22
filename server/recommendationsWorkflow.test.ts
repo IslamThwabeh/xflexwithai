@@ -5,6 +5,16 @@ vi.mock("../backend/_core/email", () => ({
   sendEmail: vi.fn().mockResolvedValue({ provider: "zeptomail", attemptedProviders: ["zeptomail"] }),
 }));
 
+vi.mock("../backend/services/recommendation-delivery.service", () => ({
+  RECOMMENDATION_DELIVERY_BATCH_SIZE: 10,
+  drainRecommendationDeliveryQueue: vi.fn().mockResolvedValue({
+    claimed: 0,
+    sent: 0,
+    failed: 0,
+    skippedMissingPayload: 0,
+  }),
+}));
+
 vi.mock("../backend/db", async () => {
   const actual = await vi.importActual<typeof import("../backend/db")>("../backend/db");
 
@@ -40,8 +50,9 @@ vi.mock("../backend/db", async () => {
 import { sendEmail } from "../backend/_core/email";
 import { appRouter } from "../backend/routers";
 import * as db from "../backend/db";
+import { drainRecommendationDeliveryQueue } from "../backend/services/recommendation-delivery.service";
 
-function createAuthedCaller() {
+function createAuthedCaller(contextOverrides: Record<string, unknown> = {}) {
   return appRouter.createCaller({
     req: {
       headers: {},
@@ -61,6 +72,7 @@ function createAuthedCaller() {
     },
     setCookie: () => {},
     clearCookie: () => {},
+    ...contextOverrides,
   } as any);
 }
 
@@ -83,6 +95,7 @@ describe("recommendations workflow", () => {
   const getRecommendationMonthlyTradeReport = vi.mocked(db.getRecommendationMonthlyTradeReport);
   const saveRecommendationTradeResultOverride = vi.mocked(db.saveRecommendationTradeResultOverride);
   const mockedSendEmail = vi.mocked(sendEmail);
+  const mockedDrainRecommendationDeliveryQueue = vi.mocked(drainRecommendationDeliveryQueue);
 
   const emptyDiagnostics = {
     totalSubs: 0, activeSubs: 0, pending: 0, paused: 0, expired: 0,
@@ -196,7 +209,10 @@ describe("recommendations workflow", () => {
   });
 
   it("queues recommendation alert email deliveries for every eligible recipient", async () => {
-    const caller = createAuthedCaller();
+    const deferredTasks: Promise<unknown>[] = [];
+    const caller = createAuthedCaller({
+      defer: (task: Promise<unknown>) => deferredTasks.push(task),
+    });
 
     const eligible = [
       {
@@ -234,6 +250,11 @@ describe("recommendations workflow", () => {
     );
     expect(mockedSendEmail).not.toHaveBeenCalled();
     expect(markRecommendationDeliverySent).not.toHaveBeenCalled();
+    expect(mockedDrainRecommendationDeliveryQueue).toHaveBeenCalledWith({
+      limit: 10,
+      source: "publish",
+    });
+    expect(deferredTasks).toHaveLength(1);
     expect(prepareRecommendationDeliveries).toHaveBeenCalledWith(expect.objectContaining({
       recipients: expect.arrayContaining([
         expect.objectContaining({

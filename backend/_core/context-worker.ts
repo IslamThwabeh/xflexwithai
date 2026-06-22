@@ -1,5 +1,5 @@
 import { parse, serialize } from "cookie";
-import type { D1Database } from "@cloudflare/workers-types";
+import type { D1Database, ExecutionContext } from "@cloudflare/workers-types";
 import { COOKIE_NAME, IDLE_TIMEOUT_STAFF_MS } from "../../shared/const";
 import { verifyToken } from "./auth";
 import { getSessionCookieOptions } from "./cookies";
@@ -10,6 +10,7 @@ import type { TrpcContext } from "./context";
 export type WorkerContextOptions = {
   req: Request;
   env: { DB: D1Database };
+  executionCtx?: ExecutionContext;
 };
 
 export async function createWorkerContext(
@@ -92,6 +93,7 @@ export async function createWorkerContext(
     req,
     user,
     sessionId,
+    defer: opts.executionCtx ? (task) => opts.executionCtx!.waitUntil(task) : undefined,
     setCookie,
     clearCookie,
     cookieHeaders,

@@ -26,6 +26,10 @@ import { logger } from "./_core/logger";
 import * as db from "./db";
 import { filterRecipientsByMutedThreads } from "./services/recommendation-thread.service";
 import { parseRecommendationDraft } from "./services/recommendation-parser.service";
+import {
+  drainRecommendationDeliveryQueue,
+  RECOMMENDATION_DELIVERY_BATCH_SIZE,
+} from "./services/recommendation-delivery.service";
 import { storagePutR2, storageArchiveR2 } from "./storage-r2";
 import { analyzeLexai } from "./_core/lexai";
 import { invokeOpenAiChatCompletion } from "./_core/openai";
@@ -33,6 +37,7 @@ import { hashPassword, verifyPassword, generateToken, isValidEmail, isValidPassw
 import { generateFreeVideoPlaybackToken } from "./_core/freeLibraryPlayback";
 import { sendEmail, sendLoginCodeEmail } from "./_core/email";
 import { buildRecommendationAlertEmail, buildRecommendationMessageEmail } from "./_core/recommendationEmails";
+import { buildSupportReplyEmail } from "./_core/supportEmails";
 import { buildAnnouncementEmail, sendOrderConfirmationEmail, sendPaymentReceivedEmail, sendAdminNewOrderNotification, sendStaffWelcomeEmail, sendJobInterviewInviteEmail } from "./_core/orderEmails";
 import { ENV } from "./_core/env";
 import { generateNumericCode, generateSaltBase64, normalizeEmail, sha256Base64 } from "./_core/otp";
@@ -45,6 +50,20 @@ const SUPPORT_FILE_MAX_BYTES = 5 * 1024 * 1024;
 const SUPPORT_VOICE_MAX_BYTES = 5 * 1024 * 1024;
 const SUPPORT_VIDEO_MAX_BYTES = 100 * 1024 * 1024;
 const supportAttachmentTypeSchema = z.enum(['file', 'voice', 'video']);
+
+function deferRecommendationEmailDrain(ctx: { defer?: (task: Promise<unknown>) => void }) {
+  if (!ctx.defer) return;
+  ctx.defer(
+    drainRecommendationDeliveryQueue({
+      limit: RECOMMENDATION_DELIVERY_BATCH_SIZE,
+      source: "publish",
+    }).catch((error) => {
+      logger.error("[RECOMMENDATION DELIVERY] Immediate post-publish drain failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }),
+  );
+}
 
 const getReqHeader = (req: any, name: string) => {
   const headers = req?.headers;
@@ -3130,6 +3149,8 @@ export const appRouter = router({
           }
         }
 
+        deferRecommendationEmailDrain(ctx);
+
         const emailCount = 0;
         const emailsQueued = emailRecipients.length;
 
@@ -3471,6 +3492,8 @@ export const appRouter = router({
               });
             }
           }
+
+          deferRecommendationEmailDrain(ctx);
         }
 
         if (ctx.user?.isStaff && !isAdmin) {
@@ -4308,6 +4331,38 @@ export const appRouter = router({
             contentEn: input.content.length > 80 ? input.content.slice(0, 80) + '…' : input.content,
             actionUrl: '/support',
           }).catch(() => {});
+
+          const client = await db.getUserById(conv.userId);
+          if (client?.email) {
+            const supportEmail = buildSupportReplyEmail({
+              clientName: client.name,
+              replyContent: input.content,
+              hasAttachment: Boolean(input.attachmentUrl),
+            });
+            await db.enqueueEmailOutbox({
+              dedupeKey: `support_reply:${msg.id}`,
+              recipientUserId: conv.userId,
+              recipientEmail: client.email,
+              eventType: 'support_client_reply',
+              templateId: 'support_client_reply',
+              emailCategory: 'transactional',
+              subject: supportEmail.subject,
+              bodyText: supportEmail.text,
+              bodyHtml: supportEmail.html,
+              metadata: {
+                conversationId: conv.id,
+                messageId: msg.id,
+                senderType: isAdmin ? 'admin' : 'support',
+              },
+            }).catch((error) => {
+              logger.error('[SUPPORT EMAIL] Failed to queue client reply email', {
+                conversationId: conv.id,
+                messageId: msg.id,
+                userId: conv.userId,
+                error: error instanceof Error ? error.message : String(error),
+              });
+            });
+          }
         }
 
         // Do NOT auto-clear the escalation flag on staff reply.
@@ -4352,6 +4407,35 @@ export const appRouter = router({
             contentEn: input.content.length > 80 ? input.content.slice(0, 80) + '…' : input.content,
             actionUrl: '/support',
           }).catch(() => {});
+
+          const supportEmail = buildSupportReplyEmail({
+            clientName: targetUser.name,
+            replyContent: input.content.trim(),
+          });
+          await db.enqueueEmailOutbox({
+            dedupeKey: `support_reply:${firstMessage.id}`,
+            recipientUserId: input.userId,
+            recipientEmail: targetUser.email,
+            eventType: 'support_client_reply',
+            templateId: 'support_client_reply',
+            emailCategory: 'transactional',
+            subject: supportEmail.subject,
+            bodyText: supportEmail.text,
+            bodyHtml: supportEmail.html,
+            metadata: {
+              conversationId: conv.id,
+              messageId: firstMessage.id,
+              senderType: isAdmin ? 'admin' : 'support',
+              initiatedByStaff: true,
+            },
+          }).catch((error) => {
+            logger.error('[SUPPORT EMAIL] Failed to queue initial client support email', {
+              conversationId: conv.id,
+              messageId: firstMessage?.id,
+              userId: input.userId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
         }
 
         return { conversationId: conv.id, message: firstMessage };

@@ -8,8 +8,13 @@ vi.mock("../backend/db", async () => {
     getAdminByEmail: vi.fn().mockResolvedValue(null),
     getOrCreateSupportConversation: vi.fn(),
     getSupportMessages: vi.fn(),
+    getSupportConversation: vi.fn(),
+    getUserById: vi.fn(),
+    hasAnyRole: vi.fn().mockResolvedValue(true),
     setNeedsHuman: vi.fn().mockResolvedValue(undefined),
     createSupportMessage: vi.fn(),
+    createNotification: vi.fn().mockResolvedValue(undefined),
+    enqueueEmailOutbox: vi.fn().mockResolvedValue(true),
     notifyStaffByEvent: vi.fn(),
   };
 });
@@ -48,11 +53,39 @@ function createDeferred() {
   return { promise, resolve };
 }
 
+function createSupportStaffCaller() {
+  return appRouter.createCaller({
+    req: {
+      headers: {},
+      method: "POST",
+      path: "/api/trpc/supportChat.reply",
+    },
+    user: {
+      id: 456,
+      email: "support2@example.com",
+      passwordHash: "",
+      name: "Support 2",
+      phone: null,
+      emailVerified: true,
+      isStaff: true,
+      createdAt: "",
+      updatedAt: "",
+      lastSignedIn: "",
+    },
+    setCookie: () => {},
+    clearCookie: () => {},
+  } as any);
+}
+
 describe("support chat staff notifications", () => {
   const getOrCreateSupportConversation = vi.mocked(db.getOrCreateSupportConversation);
   const getSupportMessages = vi.mocked(db.getSupportMessages);
+  const getSupportConversation = vi.mocked(db.getSupportConversation);
+  const getUserById = vi.mocked(db.getUserById);
   const setNeedsHuman = vi.mocked(db.setNeedsHuman);
   const createSupportMessage = vi.mocked(db.createSupportMessage);
+  const createNotification = vi.mocked(db.createNotification);
+  const enqueueEmailOutbox = vi.mocked(db.enqueueEmailOutbox);
   const notifyStaffByEvent = vi.mocked(db.notifyStaffByEvent);
 
   beforeEach(() => {
@@ -68,7 +101,51 @@ describe("support chat staff notifications", () => {
     getSupportMessages.mockResolvedValue([] as any);
     setNeedsHuman.mockResolvedValue(undefined as any);
     createSupportMessage.mockResolvedValue(55 as any);
+    getSupportConversation.mockResolvedValue(null);
+    getUserById.mockResolvedValue(null);
+    createNotification.mockResolvedValue(undefined as any);
+    enqueueEmailOutbox.mockResolvedValue(true);
     notifyStaffByEvent.mockResolvedValue(undefined as any);
+  });
+
+  it("queues an email for every human reply even when the client is currently online", async () => {
+    const caller = createSupportStaffCaller();
+    getSupportConversation.mockResolvedValue({
+      id: 10,
+      userId: 123,
+      status: "open",
+    } as any);
+    getUserById.mockResolvedValue({
+      id: 123,
+      email: "student@example.com",
+      name: "Online Student",
+      lastInteractiveAt: new Date().toISOString(),
+    } as any);
+    createSupportMessage.mockResolvedValue({
+      id: 88,
+      conversationId: 10,
+      senderType: "support",
+      content: "Your issue has been resolved.",
+    } as any);
+
+    await caller.supportChat.reply({
+      conversationId: 10,
+      content: "Your issue has been resolved.",
+    });
+
+    expect(createNotification).toHaveBeenCalledWith(expect.objectContaining({
+      userId: 123,
+      actionUrl: "/support",
+    }));
+    expect(enqueueEmailOutbox).toHaveBeenCalledWith(expect.objectContaining({
+      dedupeKey: "support_reply:88",
+      recipientUserId: 123,
+      recipientEmail: "student@example.com",
+      eventType: "support_client_reply",
+      templateId: "support_client_reply",
+      emailCategory: "transactional",
+      bodyText: expect.stringContaining("Your issue has been resolved."),
+    }));
   });
 
   it("waits for the human escalation notification dispatch before returning", async () => {

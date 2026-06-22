@@ -390,6 +390,12 @@ export const recommendationDeliveries = sqliteTable("recommendation_deliveries",
   updatedAt: text("updatedAt").default(sql`(datetime('now'))`).notNull(),
 }, (table) => ({
   uniqueDeliveryByEventUser: unique("unique_rec_delivery_event_user").on(table.eventKey, table.userId),
+  statusKindCreatedIdx: index("idx_rec_deliveries_status_kind_created").on(
+    table.status,
+    table.eventKind,
+    table.createdAt,
+    table.id,
+  ),
 }));
 
 export type RecommendationDelivery = typeof recommendationDeliveries.$inferSelect;

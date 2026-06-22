@@ -8,6 +8,11 @@ import { sendFreezeExpiredEmail, sendExpiryAlertEmail, sendDripEmail, sendMilest
 import { sendEmail } from "./email";
 import { logger } from "./logger";
 import { getFreeLibraryDocumentBySlug, getFreeLibraryVideoBySlug } from "../../shared/freeLibrary";
+import {
+  drainRecommendationDeliveryQueue,
+  getRemainingGenericEmailBudget,
+  RECOMMENDATION_DELIVERY_BATCH_SIZE,
+} from "../services/recommendation-delivery.service";
 
 function appendCookieHeaders(headers: Headers, cookieHeaders: string[] | undefined) {
   if (!cookieHeaders?.length) return;
@@ -24,9 +29,22 @@ function jsonResponse(status: number, payload: unknown, headers?: Headers) {
 
 async function runFrequentTimedServiceAndEmailJobs() {
   await db.runTimedServiceActivationRepair();
-  await db.materializeEmailOutboxCampaigns(10);
 
-  const genericRows = await db.claimEmailOutboxBatch(5);
+  // Recommendation emails are operationally time-sensitive. Drain them before
+  // bulk/transactional outbox work so an announcement campaign cannot delay a
+  // live trading recommendation for hours.
+  const recommendationDrain = await drainRecommendationDeliveryQueue({
+    limit: RECOMMENDATION_DELIVERY_BATCH_SIZE,
+    source: "scheduled",
+  });
+  const genericBudget = getRemainingGenericEmailBudget(recommendationDrain.claimed);
+
+  if (genericBudget > 0) {
+    await db.materializeEmailOutboxCampaigns(genericBudget);
+  }
+  const genericRows = genericBudget > 0
+    ? await db.claimEmailOutboxBatch(genericBudget)
+    : [];
   for (const row of genericRows) {
     try {
       let metadata: Record<string, unknown> | undefined;
@@ -69,49 +87,6 @@ async function runFrequentTimedServiceAndEmailJobs() {
     }
   }
 
-  const remainingBudget = Math.max(0, 10 - genericRows.length);
-  const recommendationRows = remainingBudget > 0
-    ? await db.listPendingRecommendationDeliveriesForRetry(remainingBudget)
-    : [];
-  for (const row of recommendationRows) {
-    if (!row.subject || !row.bodyText) {
-      await db.markRecommendationDeliveryFailed({
-        eventKey: row.eventKey,
-        userId: row.userId,
-        errorCategory: "missing_payload",
-        errorMessage: "Stored recommendation delivery is missing subject or body",
-      });
-      continue;
-    }
-    try {
-      const result = await sendEmail({
-        to: row.recipientEmail,
-        subject: row.subject,
-        text: row.bodyText,
-        html: row.bodyHtml ?? undefined,
-        audit: {
-          eventType: row.eventKind === "alert" ? "recommendation_alert" : `recommendation_${row.eventKind}`,
-          templateId: row.eventKind === "alert" ? "recommendation_alert" : `recommendation_${row.eventKind}`,
-          recipientUserId: row.userId,
-          metadata: { eventKey: row.eventKey, refId: row.refId },
-        },
-      });
-      await db.markRecommendationDeliverySent({
-        eventKey: row.eventKey,
-        userId: row.userId,
-        provider: result.provider,
-        attemptedProviders: result.attemptedProviders,
-      });
-    } catch (error) {
-      await db.markRecommendationDeliveryFailed({
-        eventKey: row.eventKey,
-        userId: row.userId,
-        errorCategory: (error as { category?: string })?.category ?? "unknown",
-        errorMessage: error instanceof Error ? error.message : String(error),
-        attemptedProviders: (error as { attemptedProviders?: string[] })?.attemptedProviders,
-      });
-    }
-  }
 }
 
 function buildContentDisposition(type: "inline" | "attachment", fileName: string) {
@@ -285,7 +260,7 @@ export default {
           router: appRouter,
           allowBatching: true,
           allowMethodOverride: true,
-          createContext: async () => createWorkerContext({ req: request, env }),
+          createContext: async () => createWorkerContext({ req: request, env, executionCtx: ctx }),
           responseMeta({ ctx }) {
             const headers = new Headers();
             const cookieHeaders = (ctx as any)?.cookieHeaders as string[] | undefined;
@@ -795,43 +770,10 @@ export default {
     // final failure). The stored subject/body lets us resend without
     // recomputing template state.
     try {
-      const drainBatch = await db.listPendingRecommendationDeliveriesForRetry(50);
-      for (const row of drainBatch) {
-        if (!row.subject || !row.bodyText) {
-          // Legacy row without rendered body — skip; cannot rebuild safely.
-          continue;
-        }
-        try {
-          const result = await sendEmail({
-            to: row.recipientEmail,
-            subject: row.subject,
-            text: row.bodyText,
-            html: row.bodyHtml ?? undefined,
-            audit: {
-              eventType: row.eventKind === 'alert' ? 'recommendation_alert' : `recommendation_${row.eventKind}`,
-              templateId: row.eventKind === 'alert' ? 'recommendation_alert' : `recommendation_${row.eventKind}`,
-              recipientUserId: row.userId,
-              metadata: { retry: true, eventKey: row.eventKey, refId: row.refId },
-            },
-          });
-          await db.markRecommendationDeliverySent({
-            eventKey: row.eventKey,
-            userId: row.userId,
-            provider: result?.provider ?? null,
-            attemptedProviders: result?.attemptedProviders,
-          });
-        } catch (err) {
-          const category = (err as { category?: string })?.category ?? 'unknown';
-          const attempted = (err as { attemptedProviders?: string[] })?.attemptedProviders;
-          await db.markRecommendationDeliveryFailed({
-            eventKey: row.eventKey,
-            userId: row.userId,
-            errorCategory: category,
-            errorMessage: err instanceof Error ? err.message : String(err),
-            attemptedProviders: attempted,
-          });
-        }
-      }
+      await drainRecommendationDeliveryQueue({
+        limit: RECOMMENDATION_DELIVERY_BATCH_SIZE,
+        source: "daily",
+      });
     } catch (e) {
       logger.error("[CRON] Recommendation delivery drain failed", { error: e instanceof Error ? e.message : String(e) });
     }
