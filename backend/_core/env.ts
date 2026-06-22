@@ -56,6 +56,9 @@ export const ENV = {
   get emailFromName() {
     return getEnvVar("EMAIL_FROM_NAME", "");
   },
+  get recommendationEmailTo() {
+    return getEnvVar("RECOMMENDATION_EMAIL_TO", "support@xflexacademy.com");
+  },
   get siteUrl() {
     return getEnvVar("SITE_URL", getEnvVar("PUBLIC_SITE_URL", "https://xflexacademy.com"));
   },

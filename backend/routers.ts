@@ -3124,31 +3124,6 @@ export const appRouter = router({
           batchId,
         });
 
-        // Send a copy of the alert email to configured admin notification
-        // addresses (e.g. doaa.thwabeh@gmail.com). These addresses are global
-        // admin observability inboxes — not in the recommendation_subscribers
-        // funnel — so they need a separate send.
-        const adminCopyEmails = await db.getConfiguredAdminNotificationEmails();
-        if (adminCopyEmails.length) {
-          const adminCopy = buildRecommendationAlertEmail({
-            language: 'en',
-            unlockSeconds: RECOMMENDATION_ALERT_UNLOCK_SECONDS,
-          });
-          for (const to of adminCopyEmails) {
-            await db.enqueueEmailOutbox({
-              dedupeKey: `${eventKey}:admin:${to.toLowerCase()}`,
-              recipientEmail: to,
-              eventType: 'recommendation_alert',
-              templateId: 'recommendation_alert_admin_copy',
-              emailCategory: 'transactional',
-              subject: `[Admin copy] ${adminCopy.subject}`,
-              bodyText: adminCopy.text,
-              bodyHtml: adminCopy.html,
-              metadata: { recommendationId: alert.id, type: 'alert', batchId, adminCopy: true },
-            });
-          }
-        }
-
         deferRecommendationEmailDrain(ctx);
 
         const emailCount = 0;
@@ -3466,32 +3441,6 @@ export const appRouter = router({
             actionUrl: '/recommendations',
             batchId,
           });
-
-          // Send a copy of the recommendation email to configured admin
-          // notification addresses so admins see exactly what students received.
-          const adminCopyEmails = await db.getConfiguredAdminNotificationEmails();
-          if (adminCopyEmails.length) {
-            const adminCopy = buildRecommendationMessageEmail({
-              language: 'en',
-              type: input.type,
-              recommendation: rootMessageForDelivery!,
-              latestMessage: input.type === 'recommendation' ? undefined : { content: trimmedContent },
-              threadUnfollowUrl: undefined,
-            });
-            for (const to of adminCopyEmails) {
-              await db.enqueueEmailOutbox({
-                dedupeKey: `${eventKey}:admin:${to.toLowerCase()}`,
-                recipientEmail: to,
-                eventType: input.type === 'result' ? 'trade_result' : input.type === 'update' ? 'recommendation_update' : 'recommendation_new',
-                templateId: `recommendation_${input.type}_admin_copy`,
-                emailCategory: 'transactional',
-                subject: `[Admin copy] ${adminCopy.subject}`,
-                bodyText: adminCopy.text,
-                bodyHtml: adminCopy.html,
-                metadata: { recommendationId: threadRootMessageId, type: input.type, symbol: notificationSymbol || null, messageId, batchId, adminCopy: true },
-              });
-            }
-          }
 
           deferRecommendationEmailDrain(ctx);
         }

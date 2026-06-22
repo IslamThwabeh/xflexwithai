@@ -41,7 +41,8 @@ Last updated: 2026-06-22
 - Production Worker schedules are now:
   - `* * * * *` for overdue timed-service repair and bounded email-outbox draining.
   - `0 2 * * *` for existing daily lifecycle/retention/reminder work.
-- Migration `database/migrations/056_recommendation_delivery_priority.sql` was prepared on 2026-06-22 but has not been applied to production yet. It additively creates `idx_rec_deliveries_status_kind_created` on `recommendation_deliveries(status, eventKind, createdAt, id)`.
+- Migration `database/migrations/056_recommendation_delivery_priority.sql` was initially prepared on 2026-06-22 and later applied to production. It additively creates `idx_rec_deliveries_status_kind_created` on `recommendation_deliveries(status, eventKind, createdAt, id)`.
+- Production application of migration `056` read 11,941 rows and wrote 5,900 index entries; this was index construction, not modification of 5,900 business records. Cloudflare bookmark: `00000ec4-00001f32-00005092-b8b7c4078f9df3fb50a741d01f919baa`.
 - Release order for the 2026-06-22 hotfixes:
   1. Apply migration `056`.
   2. Deploy the production Worker/backend.
@@ -67,6 +68,12 @@ Last updated: 2026-06-22
 - Normal queued-email delivery target is within approximately one minute, subject to provider availability and backlog.
 - On 2026-06-22, production recommendation-email complaints were traced to queue starvation rather than provider failure. In-app notifications were immediate and ZeptoMail sends succeeded, but generic email work consumed half of the shared 10-email minute budget and recommendation rows drained at only 5 recipients/minute.
 - Recommendation delivery now has priority over generic/bulk outbox work. Publishing also starts a bounded post-response Worker drain through `ExecutionContext.waitUntil`, with the minute cron remaining as the durable fallback.
+- The next email reliability release groups recommendation recipients by event and language and sends one ZeptoMail request with the company mailbox in `To` and up to 50 clients in `BCC`. The ceiling is intentionally conservative versus ZeptoMail's 500 total-recipient limit.
+- BCC recommendation batches never combine different events, languages, subjects, or rendered bodies. Client addresses are never placed in `To` or `CC`.
+- Individual `recommendation_deliveries` and `email_delivery_logs` rows remain the client-level audit trail. Provider acceptance is correlated using `providerBatchKey` and ZeptoMail `providerRequestId`.
+- Recommendation capacity is budgeted by provider requests rather than recipient rows. A frequent run may process up to four recommendation BCC batches while reserving at least six of the shared ten provider-request slots for support and other transactional emails.
+- The company `To` copy replaces separately queued recommendation admin copies, preventing duplicate admin traffic and generic-outbox starvation.
+- Migration `database/migrations/057_recommendation_bcc_batches.sql` is additive, has not been applied to production, and adds only `providerRequestId`, `providerBatchKey`, and `idx_rec_deliveries_provider_batch`.
 - Before claiming recommendation rows, queued deliveries are reconciled:
   - Expired/cancelled alerts are skipped, and a published top-level recommendation supersedes any remaining pre-alert emails from its alert window.
   - Closed or resulted recommendations and stale updates are skipped.
@@ -194,7 +201,14 @@ Last updated: 2026-06-22
   - Final QA rerun after the pre-alert sequencing safeguard again passed all 27 files / 114 tests.
   - Migration `056` applied successfully twice to an isolated local D1 database; the query plan used `idx_rec_deliveries_status_kind_created`.
   - Isolated D1 behavior checks confirmed a pre-alert is valid before publication and stale after its recommendation is published, and `support_client_reply` outranks an older `admin_bulk_notification`.
-  - Read-only production preflight confirmed migration `056` is not yet present, all required delivery columns exist, and both recommendation and generic outbox queues were empty.
+  - The earlier read-only production preflight confirmed migration `056` was not yet present at that moment; it was subsequently applied successfully as recorded above.
+- BCC recommendation release verification on 2026-06-22:
+  - Full test suite passed: 28 files, 117 tests.
+  - `pnpm exec tsc --noEmit`, `pnpm run build`, and `pnpm run build:worker` passed.
+  - Focused BCC, queue, and recommendation workflow tests passed: 19/19.
+  - Tests verify BCC privacy, the 50-recipient ceiling, one provider request for a grouped batch, whole-batch retry, and rejection of non-identical content.
+  - Migration `057` executed successfully against an isolated in-memory SQLite schema.
+  - No production migration, push, or deployment was performed by Codex for this release.
 
 ## Future Hardening
 

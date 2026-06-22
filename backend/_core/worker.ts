@@ -37,7 +37,7 @@ async function runFrequentTimedServiceAndEmailJobs() {
     limit: RECOMMENDATION_DELIVERY_BATCH_SIZE,
     source: "scheduled",
   });
-  const genericBudget = getRemainingGenericEmailBudget(recommendationDrain.claimed);
+  const genericBudget = getRemainingGenericEmailBudget(recommendationDrain.providerRequests);
 
   if (genericBudget > 0) {
     await db.materializeEmailOutboxCampaigns(genericBudget);

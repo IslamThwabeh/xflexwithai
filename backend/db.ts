@@ -3904,6 +3904,68 @@ export async function markRecommendationDeliveryFailed(args: {
     ));
 }
 
+export async function markRecommendationDeliveryBatchSent(args: {
+  ids: number[];
+  provider: string | null;
+  attemptedProviders?: string[];
+  providerRequestId?: string | null;
+  providerBatchKey: string;
+}): Promise<void> {
+  const db = await getDb();
+  if (!db || !args.ids.length) return;
+  const nowIso = new Date().toISOString();
+  await db
+    .update(recommendationDeliveries)
+    .set({
+      status: 'sent',
+      provider: args.provider,
+      providerRequestId: args.providerRequestId ?? null,
+      providerBatchKey: args.providerBatchKey,
+      attemptedProviders: args.attemptedProviders?.length ? args.attemptedProviders.join(',') : null,
+      errorCategory: null,
+      errorMessage: null,
+      attempts: sql`${recommendationDeliveries.attempts} + 1`,
+      lastAttemptAt: nowIso,
+      updatedAt: nowIso,
+    })
+    .where(and(
+      inArray(recommendationDeliveries.id, args.ids),
+      eq(recommendationDeliveries.status, 'processing'),
+    ));
+}
+
+export async function markRecommendationDeliveryBatchFailed(args: {
+  ids: number[];
+  errorCategory: string;
+  errorMessage: string;
+  attemptedProviders?: string[];
+  providerBatchKey: string;
+}): Promise<void> {
+  const db = await getDb();
+  if (!db || !args.ids.length) return;
+  const nowIso = new Date().toISOString();
+  await db
+    .update(recommendationDeliveries)
+    .set({
+      status: sql`CASE
+        WHEN ${recommendationDeliveries.attempts} + 1 >= ${MAX_RECOMMENDATION_DELIVERY_ATTEMPTS}
+          THEN 'dead_letter'
+        ELSE 'failed'
+      END`,
+      providerBatchKey: args.providerBatchKey,
+      errorCategory: args.errorCategory,
+      errorMessage: args.errorMessage.slice(0, 1000),
+      attemptedProviders: args.attemptedProviders?.length ? args.attemptedProviders.join(',') : null,
+      attempts: sql`${recommendationDeliveries.attempts} + 1`,
+      lastAttemptAt: nowIso,
+      updatedAt: nowIso,
+    })
+    .where(and(
+      inArray(recommendationDeliveries.id, args.ids),
+      eq(recommendationDeliveries.status, 'processing'),
+    ));
+}
+
 export async function reconcileStaleRecommendationDeliveries(now: Date = new Date()): Promise<{
   alerts: number;
   recommendations: number;
@@ -4084,6 +4146,80 @@ export async function listPendingRecommendationDeliveriesForRetry(limit: number 
     if (rows[0]) claimed.push(rows[0]);
   }
   return claimed;
+}
+
+/**
+ * Claims one privacy-safe provider batch. Rows are grouped by event and
+ * language, which guarantees the stored subject/body are identical for all
+ * recipients prepared by the recommendation workflow.
+ */
+export async function claimNextRecommendationDeliveryBatch(limit: number = 50): Promise<RecommendationDelivery[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const staleIso = new Date(now.getTime() - 10 * 60 * 1000).toISOString();
+  const boundedLimit = Math.max(1, Math.min(50, limit));
+  const eligible = or(
+    eq(recommendationDeliveries.status, "pending"),
+    and(
+      eq(recommendationDeliveries.status, "failed"),
+      sql`datetime(${recommendationDeliveries.lastAttemptAt}, '+' || min(30, (1 << ${recommendationDeliveries.attempts})) || ' minutes') <= datetime(${nowIso})`,
+    ),
+  );
+
+  await db.update(recommendationDeliveries).set({
+    status: "failed",
+    errorCategory: "stale_lock",
+    errorMessage: "Recovered stale recommendation delivery claim",
+    updatedAt: nowIso,
+  }).where(and(
+    eq(recommendationDeliveries.status, "processing"),
+    lt(recommendationDeliveries.lastAttemptAt, staleIso),
+  ));
+
+  const [anchor] = await db
+    .select()
+    .from(recommendationDeliveries)
+    .where(and(
+      eligible,
+      sql`${recommendationDeliveries.attempts} < ${MAX_RECOMMENDATION_DELIVERY_ATTEMPTS}`,
+    ))
+    .orderBy(
+      sql`CASE ${recommendationDeliveries.eventKind}
+        WHEN 'recommendation' THEN 0
+        WHEN 'alert' THEN 1
+        WHEN 'update' THEN 2
+        WHEN 'result' THEN 3
+        ELSE 4
+      END`,
+      desc(recommendationDeliveries.createdAt),
+      desc(recommendationDeliveries.id),
+    )
+    .limit(1);
+  if (!anchor) return [];
+
+  const candidates = await db
+    .select()
+    .from(recommendationDeliveries)
+    .where(and(
+      eq(recommendationDeliveries.eventKey, anchor.eventKey),
+      eq(recommendationDeliveries.language, anchor.language),
+      eligible,
+      sql`${recommendationDeliveries.attempts} < ${MAX_RECOMMENDATION_DELIVERY_ATTEMPTS}`,
+    ))
+    .orderBy(asc(recommendationDeliveries.id))
+    .limit(boundedLimit);
+  if (!candidates.length) return [];
+
+  return db.update(recommendationDeliveries).set({
+    status: "processing",
+    lastAttemptAt: nowIso,
+    updatedAt: nowIso,
+  }).where(and(
+    inArray(recommendationDeliveries.id, candidates.map((row) => row.id)),
+    inArray(recommendationDeliveries.status, ["pending", "failed"]),
+  )).returning();
 }
 
 export async function getRecommendationDeliveryStats(sinceIso: string): Promise<{
@@ -13364,6 +13500,46 @@ function buildEmailDeliveryLogConditions(filters?: EmailDeliveryLogFilters) {
   }
 
   return conditions;
+}
+
+export async function logEmailDeliveryAttempts(inputs: Array<{
+  recipientEmail: string;
+  recipientUserId?: number | null;
+  eventType: string;
+  templateId?: string | null;
+  subject: string;
+  status: EmailDeliveryStatus;
+  provider?: string | null;
+  errorMessage?: string | null;
+  metadata?: Record<string, unknown> | null;
+}>): Promise<void> {
+  const db = await getDb();
+  if (!db || !inputs.length) return;
+  try {
+    const createdAt = getEmailAuditTimestamp();
+    // Keep each statement comfortably below D1's bind-parameter ceiling.
+    for (let offset = 0; offset < inputs.length; offset += 8) {
+      const chunk = inputs.slice(offset, offset + 8);
+      await db.insert(emailDeliveryLogs).values(chunk.map((input) => ({
+        recipientEmail: input.recipientEmail,
+        recipientUserId: input.recipientUserId ?? null,
+        eventType: input.eventType,
+        templateId: input.templateId ?? null,
+        subject: input.subject,
+        status: input.status,
+        provider: input.provider ?? null,
+        errorMessage: input.errorMessage ?? null,
+        metadata: input.metadata ? JSON.stringify(input.metadata) : null,
+        createdAt,
+      })));
+    }
+  } catch (error) {
+    logger.warn('[EMAIL_AUDIT] Failed to persist batch delivery logs', {
+      recipientCount: inputs.length,
+      eventType: inputs[0]?.eventType,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 export async function getEmailDeliveryLogs(filters?: EmailDeliveryLogFilters & {
