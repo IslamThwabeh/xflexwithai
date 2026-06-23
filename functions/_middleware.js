@@ -47,6 +47,8 @@ const PRIVATE_PREFIXES = [
   "/calculators",
 ];
 
+const LOCALIZED_PRIVATE_PATH = /^\/(ar|en)\/(?:auth|login|register|signup)(?:\/|$)/;
+
 function withNoIndex(response) {
   const headers = new Headers(response.headers);
   headers.set("X-Robots-Tag", "noindex, nofollow");
@@ -89,25 +91,31 @@ export async function onRequest(context) {
     return redirectTo(url, "/ar/project/vip-bot-plan");
   }
 
-  if (PRIVATE_PREFIXES.some((prefix) => url.pathname === prefix || url.pathname.startsWith(prefix))) {
-    const shellRequest = new Request(`${url.origin}/index.html`, request);
+  if (
+    LOCALIZED_PRIVATE_PATH.test(url.pathname)
+    || PRIVATE_PREFIXES.some((prefix) => url.pathname === prefix || url.pathname.startsWith(prefix))
+  ) {
+    const shellRequest = new Request(`${url.origin}/app-shell/`, request);
     return withNoIndex(await context.env.ASSETS.fetch(shellRequest));
   }
 
   if (/^\/(ar|en)(?:\/|$)/.test(url.pathname)) {
     const cleanPath = url.pathname.replace(/\/+$/, "");
-    const assetRequest = new Request(`${url.origin}${cleanPath}/index.html`, request);
+    // Ask Pages Assets for the canonical directory URL. Requesting index.html
+    // causes Pages to redirect back to the directory URL, which creates a loop
+    // when this middleware receives the redirected request again.
+    const assetRequest = new Request(`${url.origin}${cleanPath}/`, request);
     const response = await context.env.ASSETS.fetch(assetRequest);
     if (response.status !== 404) return response;
 
-    const notFound = await context.env.ASSETS.fetch(new Request(`${url.origin}/404.html`, request));
+    const notFound = await context.env.ASSETS.fetch(new Request(`${url.origin}/404/`, request));
     return new Response(notFound.body, {
       status: 404,
       headers: { ...Object.fromEntries(notFound.headers), "X-Robots-Tag": "noindex, nofollow" },
     });
   }
 
-  const notFound = await context.env.ASSETS.fetch(new Request(`${url.origin}/404.html`, request));
+  const notFound = await context.env.ASSETS.fetch(new Request(`${url.origin}/404/`, request));
   return new Response(notFound.body, {
     status: 404,
     headers: { ...Object.fromEntries(notFound.headers), "X-Robots-Tag": "noindex, nofollow" },

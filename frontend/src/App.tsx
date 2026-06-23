@@ -144,6 +144,14 @@ function Router() {
       <Route path={"/login"} component={Auth} />
       <Route path={"/register"} component={Auth} />
       <Route path={"/signup"} component={Auth} />
+      <Route path={"/ar/auth"} component={Auth} />
+      <Route path={"/en/auth"} component={Auth} />
+      <Route path={"/ar/login"} component={Auth} />
+      <Route path={"/en/login"} component={Auth} />
+      <Route path={"/ar/register"} component={Auth} />
+      <Route path={"/en/register"} component={Auth} />
+      <Route path={"/ar/signup"} component={Auth} />
+      <Route path={"/en/signup"} component={Auth} />
       <Route path={"/unsubscribe"} component={Unsubscribe} />
       <Route path={"/admin"} component={AdminLogin} />
       <Route path={"/admin/login"} component={AdminLogin} />

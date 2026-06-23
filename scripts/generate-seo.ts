@@ -232,6 +232,12 @@ async function main() {
   const articles = await fetchPublishedArticles();
   const generatedAt = new Date().toISOString();
 
+  // Internal Pages Functions targets. Directory URLs avoid Cloudflare's
+  // automatic `index.html` canonical redirects while keeping these files
+  // unreachable through the public route allowlist.
+  await fs.mkdir(path.join(outputRoot, "app-shell"), { recursive: true });
+  await fs.writeFile(path.join(outputRoot, "app-shell", "index.html"), template, "utf8");
+
   for (const route of SEO_ROUTES) {
     for (const language of languages) {
       const copy = route[language];
@@ -354,6 +360,8 @@ async function main() {
   )
     .replace("index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1", "noindex,nofollow")
     .replace('<link rel="canonical" href="https://xflexacademy.com/404" />', "");
+  await fs.mkdir(path.join(outputRoot, "404"), { recursive: true });
+  await fs.writeFile(path.join(outputRoot, "404", "index.html"), notFound);
   await fs.writeFile(path.join(outputRoot, "404.html"), notFound);
 
   await fs.writeFile(path.join(outputRoot, "_redirects"), [
