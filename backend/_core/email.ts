@@ -340,6 +340,139 @@ export type BccBatchRecipient = {
   userId: number;
 };
 
+export type StaffBccBatchRecipient = {
+  email: string;
+  userId?: number | null;
+};
+
+export async function sendStaffBccBatch(input: {
+  to: string;
+  recipients: StaffBccBatchRecipient[];
+  subject: string;
+  text: string;
+  html?: string;
+  eventType: string;
+  templateId: string;
+  providerBatchKey: string;
+  metadata?: Record<string, unknown>;
+}): Promise<{
+  provider: "zeptomail";
+  attemptedProviders: ["zeptomail"];
+  providerRequestId: string | null;
+  recipientCount: number;
+}> {
+  const companyTo = input.to.trim().toLowerCase();
+  const uniqueRecipients = new Map<string, StaffBccBatchRecipient>();
+  for (const recipient of input.recipients) {
+    const normalized = recipient.email.trim().toLowerCase();
+    if (!normalized || normalized === companyTo) continue;
+    if (!uniqueRecipients.has(normalized)) {
+      uniqueRecipients.set(normalized, { ...recipient, email: normalized });
+    }
+  }
+  const recipients = [...uniqueRecipients.values()];
+  if (!companyTo) throw new EmailSendError("Staff BCC batch requires a primary recipient", {
+    category: "config",
+    attemptedProviders: [],
+    providerUsed: null,
+  });
+  if (recipients.length > 50) throw new EmailSendError("Staff BCC batch exceeds the safe 50-recipient limit", {
+    category: "config",
+    attemptedProviders: [],
+    providerUsed: null,
+  });
+  if (ENV.emailProvider !== "auto" && ENV.emailProvider !== "zeptomail") {
+    throw new EmailSendError("Staff BCC batches require ZeptoMail", {
+      category: "config",
+      attemptedProviders: [],
+      providerUsed: null,
+    });
+  }
+
+  const auditRecipients = [
+    { email: companyTo, userId: null, deliveryMode: "bcc_batch_primary" },
+    ...recipients.map((recipient) => ({
+      email: recipient.email,
+      userId: recipient.userId ?? null,
+      deliveryMode: "bcc_batch",
+    })),
+  ];
+
+  try {
+    const providerResult = await sendViaZeptoMail({
+      to: companyTo,
+      bcc: recipients.map((recipient) => recipient.email),
+      subject: input.subject,
+      text: input.text,
+      html: input.html,
+      skipSupportForwarding: true,
+    });
+    const { logEmailDeliveryAttempts } = await import("../db");
+    await logEmailDeliveryAttempts(auditRecipients.map((recipient) => ({
+      recipientEmail: recipient.email,
+      recipientUserId: recipient.userId,
+      eventType: input.eventType,
+      templateId: input.templateId,
+      subject: input.subject,
+      status: "sent",
+      provider: "zeptomail",
+      metadata: {
+        ...(input.metadata || {}),
+        deliveryMode: recipient.deliveryMode,
+        providerBatchKey: input.providerBatchKey,
+        providerRequestId: providerResult.requestId,
+      },
+    })));
+    logger.info("[EMAIL] Staff BCC batch accepted", {
+      to: companyTo,
+      recipientCount: recipients.length,
+      providerBatchKey: input.providerBatchKey,
+      providerRequestId: providerResult.requestId,
+      eventType: input.eventType,
+    });
+    return {
+      provider: "zeptomail",
+      attemptedProviders: ["zeptomail"],
+      providerRequestId: providerResult.requestId,
+      recipientCount: recipients.length,
+    };
+  } catch (error) {
+    const category = categorizeEmailError(error);
+    try {
+      const { logEmailDeliveryAttempts } = await import("../db");
+      await logEmailDeliveryAttempts(auditRecipients.map((recipient) => ({
+        recipientEmail: recipient.email,
+        recipientUserId: recipient.userId,
+        eventType: input.eventType,
+        templateId: input.templateId,
+        subject: input.subject,
+        status: "failed",
+        provider: "zeptomail",
+        errorMessage: error instanceof Error ? error.message : String(error),
+        metadata: {
+          ...(input.metadata || {}),
+          deliveryMode: recipient.deliveryMode,
+          providerBatchKey: input.providerBatchKey,
+        },
+      })));
+    } catch {
+      // The provider failure remains authoritative; audit logging is best-effort.
+    }
+    logger.error("[EMAIL] Staff BCC batch failed", {
+      to: companyTo,
+      recipientCount: recipients.length,
+      providerBatchKey: input.providerBatchKey,
+      category,
+      eventType: input.eventType,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw new EmailSendError(
+      error instanceof Error ? error.message : String(error),
+      { category, attemptedProviders: ["zeptomail"], providerUsed: "zeptomail" },
+    );
+  }
+}
+
 /**
  * Sends one transactional recommendation email to the company mailbox with
  * clients hidden in BCC. ZeptoMail is deliberately required here because its

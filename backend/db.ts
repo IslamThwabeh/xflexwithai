@@ -77,7 +77,7 @@ import {
 } from "../database/schema-sqlite.ts";
 import { ENV } from './_core/env';
 import { logger } from './_core/logger';
-import { sendWelcomeEmail, sendMilestoneEmail, sendQuizFeedbackEmail, sendStaffAlertEmail } from './_core/orderEmails';
+import { sendWelcomeEmail, sendMilestoneEmail, sendQuizFeedbackEmail, sendStaffAlertEmail, sendStaffAlertBccEmail } from './_core/orderEmails';
 import {
   derivePendingServiceDays,
   getRemainingTimedServiceDays,
@@ -108,6 +108,12 @@ import { hashUnsubscribeToken, type EmailCategory } from './_core/emailPreferenc
 let _db: ReturnType<typeof drizzle> | null = null;
 
 const D1_SAFE_IN_CLAUSE_SIZE = 50;
+const SUPPORT_STAFF_ALERT_TO = 'support@xflexacademy.com';
+const SUPPORT_STAFF_BCC_EMAIL_EVENTS = new Set<StaffNotificationEventType>([
+  'new_support_message',
+  'human_escalation',
+]);
+const STAFF_BCC_BATCH_SIZE = 50;
 
 function chunkValues<T>(values: T[], size: number = D1_SAFE_IN_CLAUSE_SIZE): T[][] {
   const chunks: T[][] = [];
@@ -14175,7 +14181,7 @@ export async function notifyStaffByEvent(
   const targetUserIds: number[] = [];
 
   // All admin accounts
-  const adminRows = await db.select({ id: admins.id }).from(admins);
+  const adminRows = await db.select({ id: admins.id, email: admins.email }).from(admins);
   for (const adminRow of adminRows) {
     const adminNotificationUserId = -Number(adminRow.id);
     if (!targetUserIds.includes(adminNotificationUserId)) {
@@ -14217,6 +14223,61 @@ export async function notifyStaffByEvent(
   // Skip email entirely if this event is disabled globally
   if (globalEmailPrefs[eventType] === false) return;
   if (!shouldSendEmail) return;
+
+  if (SUPPORT_STAFF_BCC_EMAIL_EVENTS.has(eventType)) {
+    const recipients = new Map<string, { email: string; userId?: number | null }>();
+    const addRecipient = (email: string | null | undefined, userId?: number | null) => {
+      const normalized = normalizeEmailAddress(email || '');
+      if (!isLikelyValidEmail(normalized)) return;
+      if (normalized === SUPPORT_STAFF_ALERT_TO) return;
+      if (!recipients.has(normalized)) {
+        recipients.set(normalized, { email: normalized, userId: userId ?? null });
+      }
+    };
+
+    for (const notificationEmail of notificationEmails) {
+      addRecipient(notificationEmail, null);
+    }
+    for (const adminRow of adminRows) {
+      addRecipient(adminRow.email, -Number(adminRow.id));
+    }
+
+    const staffTargetUserIds = targetUserIds.filter((userId) => userId > 0);
+    for (const userIdChunk of chunkValues(staffTargetUserIds)) {
+      const staffRows = userIdChunk.length
+        ? await db.select({
+            id: users.id,
+            email: users.email,
+            prefs: users.staffNotificationPrefs,
+          }).from(users).where(inArray(users.id, userIdChunk))
+        : [];
+      for (const staffRow of staffRows) {
+        let staffPrefs: Record<string, boolean> = {};
+        try {
+          staffPrefs = staffRow.prefs ? JSON.parse(staffRow.prefs as string) : {};
+        } catch {
+          staffPrefs = {};
+        }
+        if (staffPrefs[eventType] === false) continue;
+        addRecipient(staffRow.email, staffRow.id);
+      }
+    }
+
+    const recipientList = [...recipients.values()];
+    const chunks = recipientList.length ? chunkValues(recipientList, STAFF_BCC_BATCH_SIZE) : [[]];
+    for (let index = 0; index < chunks.length; index += 1) {
+      await sendStaffAlertBccEmail({
+        to: SUPPORT_STAFF_ALERT_TO,
+        bcc: chunks[index],
+        eventType,
+        titleEn: data.titleEn,
+        contentEn: data.contentEn || data.titleEn,
+        actionUrl: actionUrl || '',
+        providerBatchKey: `staff_${eventType}_${Date.now()}_${index + 1}`,
+      });
+    }
+    return;
+  }
 
   for (const notificationEmail of notificationEmails) {
     try {

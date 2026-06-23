@@ -1,4 +1,4 @@
-import { sendEmail, type EmailAuditInput } from "./email";
+import { sendEmail, sendStaffBccBatch, type EmailAuditInput, type StaffBccBatchRecipient } from "./email";
 import { buildUnsubscribeUrl, getBusinessPostalAddress, isSuppressibleEmailCategory } from "./emailPreferences";
 import { ENV } from "./env";
 import { logger } from "./logger";
@@ -25,8 +25,7 @@ function wrapHtml(body: string, complianceFooterHtml = "") {
 </body></html>`;
 }
 
-/** Send a branded HTML email with plain-text fallback */
-async function sendBrandedEmail(to: string, subject: string, bodyHtml: string, audit?: EmailAuditInput) {
+async function buildBrandedEmailPayload(to: string, subject: string, bodyHtml: string, audit?: EmailAuditInput) {
   let unsubscribeUrl: string | null = null;
   if (isSuppressibleEmailCategory(audit?.category)) {
     unsubscribeUrl = await buildUnsubscribeUrl(
@@ -48,8 +47,7 @@ async function sendBrandedEmail(to: string, subject: string, bodyHtml: string, a
     ` : ''}`;
   const html = wrapHtml(bodyHtml, complianceFooterHtml);
   const text = html.replace(/<[^>]*>/g, '').replace(/&[^;]+;/g, ' ').replace(/\s{2,}/g, '\n').trim();
-  return sendEmail({
-    to,
+  return {
     subject,
     text,
     html,
@@ -57,6 +55,18 @@ async function sendBrandedEmail(to: string, subject: string, bodyHtml: string, a
       "List-Unsubscribe": `<${unsubscribeUrl}>`,
       "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
     } : undefined,
+  };
+}
+
+/** Send a branded HTML email with plain-text fallback */
+async function sendBrandedEmail(to: string, subject: string, bodyHtml: string, audit?: EmailAuditInput) {
+  const payload = await buildBrandedEmailPayload(to, subject, bodyHtml, audit);
+  return sendEmail({
+    to,
+    subject: payload.subject,
+    text: payload.text,
+    html: payload.html,
+    headers: payload.headers,
     audit,
   });
 }
@@ -813,6 +823,59 @@ export async function sendStaffAlertEmail(data: {
     });
   } catch (e) {
     logger.warn("[STAFF_ALERT_EMAIL] Failed", { to: data.to, eventType: data.eventType, error: String(e) });
+  }
+}
+
+export async function sendStaffAlertBccEmail(data: {
+  to: string;
+  bcc: StaffBccBatchRecipient[];
+  eventType: string;
+  titleEn: string;
+  contentEn: string;
+  actionUrl: string;
+  providerBatchKey: string;
+}) {
+  const emoji = EVENT_EMOJI[data.eventType] || '🔔';
+  const subject = `[XFlex Staff] ${emoji} ${data.titleEn}`;
+  const fullUrl = data.actionUrl.startsWith('http') ? data.actionUrl : `https://xflexacademy.com${data.actionUrl}`;
+  const body = `
+    <h2 style="margin:0 0 12px;color:#111;">${emoji} ${data.titleEn}</h2>
+    <p style="color:#555;line-height:1.7;font-size:15px;">
+      ${data.contentEn}
+    </p>
+    <div style="text-align:center;margin-top:24px;">
+      <a href="${fullUrl}" style="display:inline-block;background:#059669;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:bold;">
+        View in Dashboard
+      </a>
+    </div>`;
+  const payload = await buildBrandedEmailPayload(data.to, subject, body, {
+    eventType: data.eventType || 'staff_alert',
+    templateId: 'staff_alert',
+    metadata: { actionUrl: data.actionUrl },
+  });
+
+  try {
+    await sendStaffBccBatch({
+      to: data.to,
+      recipients: data.bcc,
+      subject: payload.subject,
+      text: payload.text,
+      html: payload.html,
+      eventType: data.eventType || 'staff_alert',
+      templateId: 'staff_alert',
+      providerBatchKey: data.providerBatchKey,
+      metadata: {
+        actionUrl: data.actionUrl,
+        recipientCount: data.bcc.length,
+      },
+    });
+  } catch (e) {
+    logger.warn("[STAFF_ALERT_BCC_EMAIL] Failed", {
+      to: data.to,
+      bccCount: data.bcc.length,
+      eventType: data.eventType,
+      error: String(e),
+    });
   }
 }
 

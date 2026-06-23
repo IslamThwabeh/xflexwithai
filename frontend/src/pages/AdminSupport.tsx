@@ -389,20 +389,21 @@ export default function AdminSupport() {
   const [newChatDebounced, setNewChatDebounced] = useState("");
   const [newChatUserId, setNewChatUserId] = useState<number | null>(null);
   const [newChatMessage, setNewChatMessage] = useState("");
+  const newChatMessageText = newChatMessage.trim();
 
   useEffect(() => {
     const t = setTimeout(() => setNewChatDebounced(newChatSearch.trim()), 250);
     return () => clearTimeout(t);
   }, [newChatSearch]);
 
-  const { data: newChatResults, isFetching: newChatSearching } = trpc.supportDashboard.searchClients.useQuery(
+  const { data: newChatResults, isFetching: newChatSearching, error: newChatSearchError } = trpc.supportDashboard.searchClients.useQuery(
     { query: newChatDebounced },
     { enabled: newChatOpen && newChatDebounced.length >= 2 },
   );
 
   const startConversationMutation = trpc.supportChat.startConversationForUser.useMutation({
     onSuccess: (result) => {
-      toast.success(isRtl ? 'تم بدء المحادثة' : 'Conversation started');
+      toast.success(isRtl ? 'تم بدء المحادثة وإرسال أول رسالة' : 'Conversation started and first message sent');
       setNewChatOpen(false);
       setNewChatSearch("");
       setNewChatDebounced("");
@@ -410,6 +411,7 @@ export default function AdminSupport() {
       setNewChatMessage("");
       refetchConvs();
       setSelectedConvId(result.conversationId);
+      replaceSupportUrl(result.conversationId);
     },
     onError: (err) => toast.error(err.message),
   });
@@ -1319,8 +1321,8 @@ export default function AdminSupport() {
             <DialogTitle>{isRtl ? 'بدء محادثة مع طالب' : 'Start a conversation with a student'}</DialogTitle>
             <DialogDescription>
               {isRtl
-                ? 'ابحث عن الطالب بالاسم أو البريد أو الهاتف ثم اختره لبدء محادثة، ويمكنك إرسال أول رسالة فوراً.'
-                : 'Search for the student by name, email, or phone, pick them, and optionally send the first message.'}
+                ? 'ابحث عن الطالب بالاسم أو البريد أو الهاتف، ثم اختره واكتب أول رسالة ليصل التنبيه للعميل.'
+                : 'Search for the student by name, email, or phone, then pick them and write the first message so the client is notified.'}
             </DialogDescription>
           </DialogHeader>
 
@@ -1331,7 +1333,10 @@ export default function AdminSupport() {
                 autoFocus
                 placeholder={isRtl ? 'البحث عن طالب...' : 'Search students...'}
                 value={newChatSearch}
-                onChange={(e) => setNewChatSearch(e.target.value)}
+                onChange={(e) => {
+                  setNewChatSearch(e.target.value);
+                  setNewChatUserId(null);
+                }}
                 className="pl-9 h-9 text-sm"
               />
             </div>
@@ -1345,6 +1350,10 @@ export default function AdminSupport() {
                 <p className="text-xs text-muted-foreground p-3 flex items-center gap-2">
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   {isRtl ? 'جاري البحث...' : 'Searching...'}
+                </p>
+              ) : newChatSearchError ? (
+                <p className="text-xs text-red-600 p-3">
+                  {newChatSearchError.message || (isRtl ? 'تعذر البحث عن الطلاب' : 'Could not search students.')}
                 </p>
               ) : (newChatResults?.length ?? 0) === 0 ? (
                 <p className="text-xs text-muted-foreground p-3">
@@ -1372,7 +1381,7 @@ export default function AdminSupport() {
 
             <div className="space-y-1">
               <label className="text-xs text-muted-foreground">
-                {isRtl ? 'أول رسالة (اختياري)' : 'First message (optional)'}
+                {isRtl ? 'أول رسالة' : 'First message'}
               </label>
               <Textarea
                 value={newChatMessage}
@@ -1381,6 +1390,9 @@ export default function AdminSupport() {
                 placeholder={isRtl ? 'مرحباً... كيف يمكننا مساعدتك؟' : 'Hi! How can we help?'}
                 maxLength={5000}
               />
+              <p className="text-xs text-muted-foreground">
+                {isRtl ? 'مطلوبة لبدء المحادثة وإرسال إشعار للعميل.' : 'Required to start the conversation and notify the client.'}
+              </p>
             </div>
           </div>
 
@@ -1396,13 +1408,20 @@ export default function AdminSupport() {
             <Button
               type="button"
               onClick={() => {
-                if (!newChatUserId) return;
+                if (!newChatUserId) {
+                  toast.error(isRtl ? 'اختر الطالب أولاً' : 'Select a student first');
+                  return;
+                }
+                if (!newChatMessageText) {
+                  toast.error(isRtl ? 'اكتب أول رسالة أولاً' : 'Write the first message first');
+                  return;
+                }
                 startConversationMutation.mutate({
                   userId: newChatUserId,
-                  content: newChatMessage.trim() ? newChatMessage.trim() : undefined,
+                  content: newChatMessageText,
                 });
               }}
-              disabled={!newChatUserId || startConversationMutation.isPending}
+              disabled={!newChatUserId || !newChatMessageText || startConversationMutation.isPending}
             >
               {startConversationMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               {isRtl ? 'بدء المحادثة' : 'Start conversation'}

@@ -4340,13 +4340,12 @@ export const appRouter = router({
         return msg;
       }),
 
-    // Support/Admin: start (or reopen) a conversation with a user who has not
-    // yet written in. Optionally send the first staff message in one call so
-    // the conversation appears in the queue immediately.
+    // Support/Admin: start (or reopen) a conversation and send the first staff
+    // message in one call so the client is notified immediately.
     startConversationForUser: supportStaffProcedure
       .input(z.object({
         userId: z.number().int().positive(),
-        content: z.string().min(1).max(5000).optional(),
+        content: z.string().trim().min(1, 'First message is required').max(5000),
       }))
       .mutation(async ({ ctx, input }) => {
         if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
@@ -4354,56 +4353,52 @@ export const appRouter = router({
         if (!targetUser) throw new TRPCError({ code: 'NOT_FOUND', message: 'User not found' });
 
         const conv = await db.getOrCreateSupportConversation(input.userId);
-        let firstMessage: Awaited<ReturnType<typeof db.createSupportMessage>> | null = null;
+        const isAdmin = ctx.user.email ? !!(await db.getAdminByEmail(ctx.user.email)) : false;
+        const firstMessage = await db.createSupportMessage({
+          conversationId: conv.id,
+          senderId: ctx.user.id,
+          senderType: isAdmin ? 'admin' : 'support',
+          content: input.content,
+        });
 
-        if (input.content && input.content.trim()) {
-          const isAdmin = ctx.user.email ? !!(await db.getAdminByEmail(ctx.user.email)) : false;
-          firstMessage = await db.createSupportMessage({
+        await db.createNotification({
+          userId: input.userId,
+          type: 'info',
+          titleAr: 'رسالة جديدة من الدعم',
+          titleEn: 'New Support Message',
+          contentAr: input.content.length > 80 ? input.content.slice(0, 80) + '…' : input.content,
+          contentEn: input.content.length > 80 ? input.content.slice(0, 80) + '…' : input.content,
+          actionUrl: '/support',
+        }).catch(() => {});
+
+        const supportEmail = buildSupportReplyEmail({
+          clientName: targetUser.name,
+          replyContent: input.content,
+        });
+        await db.enqueueEmailOutbox({
+          dedupeKey: `support_reply:${firstMessage.id}`,
+          recipientUserId: input.userId,
+          recipientEmail: targetUser.email,
+          eventType: 'support_client_reply',
+          templateId: 'support_client_reply',
+          emailCategory: 'transactional',
+          subject: supportEmail.subject,
+          bodyText: supportEmail.text,
+          bodyHtml: supportEmail.html,
+          metadata: {
             conversationId: conv.id,
-            senderId: ctx.user.id,
+            messageId: firstMessage.id,
             senderType: isAdmin ? 'admin' : 'support',
-            content: input.content.trim(),
-          });
-
-          await db.createNotification({
+            initiatedByStaff: true,
+          },
+        }).catch((error) => {
+          logger.error('[SUPPORT EMAIL] Failed to queue initial client support email', {
+            conversationId: conv.id,
+            messageId: firstMessage.id,
             userId: input.userId,
-            type: 'info',
-            titleAr: 'رسالة جديدة من الدعم',
-            titleEn: 'New Support Message',
-            contentAr: input.content.length > 80 ? input.content.slice(0, 80) + '…' : input.content,
-            contentEn: input.content.length > 80 ? input.content.slice(0, 80) + '…' : input.content,
-            actionUrl: '/support',
-          }).catch(() => {});
-
-          const supportEmail = buildSupportReplyEmail({
-            clientName: targetUser.name,
-            replyContent: input.content.trim(),
+            error: error instanceof Error ? error.message : String(error),
           });
-          await db.enqueueEmailOutbox({
-            dedupeKey: `support_reply:${firstMessage.id}`,
-            recipientUserId: input.userId,
-            recipientEmail: targetUser.email,
-            eventType: 'support_client_reply',
-            templateId: 'support_client_reply',
-            emailCategory: 'transactional',
-            subject: supportEmail.subject,
-            bodyText: supportEmail.text,
-            bodyHtml: supportEmail.html,
-            metadata: {
-              conversationId: conv.id,
-              messageId: firstMessage.id,
-              senderType: isAdmin ? 'admin' : 'support',
-              initiatedByStaff: true,
-            },
-          }).catch((error) => {
-            logger.error('[SUPPORT EMAIL] Failed to queue initial client support email', {
-              conversationId: conv.id,
-              messageId: firstMessage?.id,
-              userId: input.userId,
-              error: error instanceof Error ? error.message : String(error),
-            });
-          });
-        }
+        });
 
         return { conversationId: conv.id, message: firstMessage };
       }),
