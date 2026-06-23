@@ -56,7 +56,7 @@ export default function ArticlePreviewCard({ article, isRtl, variant = "grid", c
   const isCompact = variant === "compact";
 
   return (
-    <Link href={`/articles/${article.slug}`}>
+    <Link href={`/${isRtl ? "ar" : "en"}/articles/${article.slug}`}>
       <article
         className={cn(
           "group relative overflow-hidden rounded-[26px] border border-white/80 bg-white shadow-[0_20px_60px_rgba(15,23,42,0.08)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_24px_70px_rgba(15,23,42,0.14)]",

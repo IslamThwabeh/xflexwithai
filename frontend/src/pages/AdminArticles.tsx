@@ -23,6 +23,9 @@ export default function AdminArticles() {
     setEditing({
       slug: '', titleEn: '', titleAr: '', contentEn: '', contentAr: '',
       excerptEn: '', excerptAr: '', thumbnailUrl: '', isPublished: 0,
+      seoTitleEn: '', seoTitleAr: '', seoDescriptionEn: '', seoDescriptionAr: '',
+      socialImageUrl: '', authorNameEn: 'XFlex Editorial Team', authorNameAr: 'فريق XFlex التحريري',
+      reviewerNameEn: '', reviewerNameAr: '', sources: '', languageAvailability: 'both',
       publishedAt: new Date().toISOString(),
     });
   };
@@ -85,6 +88,37 @@ export default function AdminArticles() {
                 <Input value={editing.thumbnailUrl || ''} onChange={(e) => setEditing({ ...editing, thumbnailUrl: e.target.value })} dir="ltr" />
               </div>
               <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">SEO Title (EN)</label>
+                <Input value={editing.seoTitleEn || ''} onChange={(e) => setEditing({ ...editing, seoTitleEn: e.target.value })} dir="ltr" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">عنوان SEO (عربي)</label>
+                <Input value={editing.seoTitleAr || ''} onChange={(e) => setEditing({ ...editing, seoTitleAr: e.target.value })} dir="rtl" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">SEO Description (EN)</label>
+                <textarea className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={editing.seoDescriptionEn || ''} onChange={(e) => setEditing({ ...editing, seoDescriptionEn: e.target.value })} dir="ltr" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">وصف SEO (عربي)</label>
+                <textarea className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={editing.seoDescriptionAr || ''} onChange={(e) => setEditing({ ...editing, seoDescriptionAr: e.target.value })} dir="rtl" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{language === 'ar' ? 'صورة المشاركة الاجتماعية' : 'Social image URL'}</label>
+                <Input value={editing.socialImageUrl || ''} onChange={(e) => setEditing({ ...editing, socialImageUrl: e.target.value })} dir="ltr" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{language === 'ar' ? 'توفر اللغة' : 'Language availability'}</label>
+                <select className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={editing.languageAvailability || 'both'} onChange={(e) => setEditing({ ...editing, languageAvailability: e.target.value })}>
+                  <option value="both">Arabic + English</option>
+                  <option value="ar">Arabic only</option>
+                  <option value="en">English only</option>
+                </select>
+              </div>
+              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Title (EN)</label>
                 <Input value={editing.titleEn} onChange={(e) => setEditing({ ...editing, titleEn: e.target.value })} dir="ltr" />
               </div>
@@ -111,6 +145,27 @@ export default function AdminArticles() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">المحتوى (عربي)</label>
                 <textarea className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[200px]"
                   value={editing.contentAr || ''} onChange={(e) => setEditing({ ...editing, contentAr: e.target.value })} dir="rtl" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Author (EN)</label>
+                <Input value={editing.authorNameEn || ''} onChange={(e) => setEditing({ ...editing, authorNameEn: e.target.value })} dir="ltr" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">المؤلف (عربي)</label>
+                <Input value={editing.authorNameAr || ''} onChange={(e) => setEditing({ ...editing, authorNameAr: e.target.value })} dir="rtl" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Reviewer (EN)</label>
+                <Input value={editing.reviewerNameEn || ''} onChange={(e) => setEditing({ ...editing, reviewerNameEn: e.target.value })} dir="ltr" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">المراجع (عربي)</label>
+                <Input value={editing.reviewerNameAr || ''} onChange={(e) => setEditing({ ...editing, reviewerNameAr: e.target.value })} dir="rtl" />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">{language === 'ar' ? 'المصادر (رابط في كل سطر)' : 'Sources (one URL per line)'}</label>
+                <textarea className="flex min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={editing.sources || ''} onChange={(e) => setEditing({ ...editing, sources: e.target.value })} dir="ltr" />
               </div>
             </div>
 

@@ -23,17 +23,17 @@ import {
 
 // ─── Image map ────────────────────────────────────────────────────────────────
 const IMG = {
-  hero:      '/images/landing/HERO SECTION IMAGE.png',
-  learn:     '/images/landing/STICKY SCROLL SECTION \u2014 LEARNING EXPERIENCE.png',
-  dashboard: '/images/landing/Sleek neon trading dashboard mockup.png',
-  mentor:    '/images/landing/Mentor - Professional trader in a high-tech office.png',
-  mobile:    '/images/landing/MOBILE TRADING LIFESTYLE IMAGE.png',
-  community: '/images/landing/ELITE COMMUNITY SECTION.png',
-  success:   '/images/landing/Nighttime trading success celebration.png',
-  workspace: '/images/landing/Modern trading desk with green accents.png',
-  tech:      '/images/landing/XFLEX Trading Academy interface.png',
-  academy:   '/images/landing/XFLEX Trading Academy in action.png',
-  cta:       '/images/landing/Master the markets, create your future.png',
+  hero:      '/images/landing/HERO SECTION IMAGE.webp',
+  learn:     '/images/landing/STICKY SCROLL SECTION \u2014 LEARNING EXPERIENCE.webp',
+  dashboard: '/images/landing/Sleek neon trading dashboard mockup.webp',
+  mentor:    '/images/landing/Mentor - Professional trader in a high-tech office.webp',
+  mobile:    '/images/landing/MOBILE TRADING LIFESTYLE IMAGE.webp',
+  community: '/images/landing/ELITE COMMUNITY SECTION.webp',
+  success:   '/images/landing/Nighttime trading success celebration.webp',
+  workspace: '/images/landing/Modern trading desk with green accents.webp',
+  tech:      '/images/landing/XFLEX Trading Academy interface.webp',
+  academy:   '/images/landing/XFLEX Trading Academy in action.webp',
+  cta:       '/images/landing/Master the markets, create your future.webp',
 } as const;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -534,6 +534,12 @@ function CinematicNav({ onScrollTo }: { onScrollTo: (id: string) => void }) {
     href: item.href,
     label: isArabic ? item.labelAr : item.labelEn,
   }));
+  const localePrefix = `/${language}`;
+  const switchLanguage = () => {
+    const nextLanguage = language === 'ar' ? 'en' : 'ar';
+    setLanguage(nextLanguage);
+    window.location.assign(`/${nextLanguage}${window.location.hash}`);
+  };
 
   const handleNavClick = (sectionId: string, href: string) => {
     if (href.startsWith('/#')) {
@@ -541,20 +547,20 @@ function CinematicNav({ onScrollTo }: { onScrollTo: (id: string) => void }) {
       return;
     }
 
-    window.location.assign(href);
+    window.location.assign(`${localePrefix}${href}`);
   };
 
   return (
     <header className={`cin-nav fixed inset-x-0 top-0 z-50 ${scrolled ? 'cin-nav-scrolled' : ''}`} dir={isRTL ? 'rtl' : 'ltr'}>
       <div className="container mx-auto flex h-16 items-center justify-between px-4 md:h-20 md:px-8">
-        <Link href="/"><a className="flex shrink-0 items-center gap-2"><img src={BRAND_LOGO_SRC} alt={APP_TITLE} className="cin-logo-img cin-logo-header" /></a></Link>
+        <Link href={localePrefix}><a className="flex shrink-0 items-center gap-2"><img src={BRAND_LOGO_SRC} alt={APP_TITLE} className="cin-logo-img cin-logo-header" /></a></Link>
         <nav className="hidden items-center gap-7 text-sm font-medium text-white/65 md:flex">
           {navLinks.map((item) => (
             <button key={item.key} type="button" onClick={() => handleNavClick(item.sectionId, item.href)} className="transition-colors duration-200 hover:text-white">{item.label}</button>
           ))}
         </nav>
         <div className="hidden items-center gap-4 md:flex">
-          <button type="button" onClick={() => setLanguage(language === 'ar' ? 'en' : 'ar')} className="text-xs font-semibold text-white/55 transition-colors hover:text-white">
+          <button type="button" onClick={switchLanguage} className="text-xs font-semibold text-white/55 transition-colors hover:text-white">
             {getLanguageSwitchLabel(language)}
           </button>
           <button type="button" onClick={() => onScrollTo(DEFAULT_CINEMATIC_PRIMARY_ACTION.href.slice(2))} className="cin-btn-green inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold text-white">
@@ -570,7 +576,7 @@ function CinematicNav({ onScrollTo }: { onScrollTo: (id: string) => void }) {
           <div className="flex flex-col gap-5">
             <button
               type="button"
-              onClick={() => setLanguage(language === 'ar' ? 'en' : 'ar')}
+              onClick={switchLanguage}
               className="inline-flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-semibold text-white/80"
             >
               <span>{isArabic ? 'اللغة' : 'Language'}</span>
@@ -723,7 +729,7 @@ function HeroSection({ onScrollTo }: { onScrollTo: (id: string) => void }) {
     <section ref={heroRef} className="relative flex min-h-screen flex-col items-start justify-center overflow-hidden" dir={isRTL ? 'rtl' : 'ltr'}>
       {/* Background image */}
       <div className="cin-bg-zoom absolute inset-0">
-        <img src={IMG.hero} alt="" className="h-full w-full object-cover object-center" loading="eager" />
+        <img src={IMG.hero} alt="" width={1536} height={1024} fetchPriority="high" className="h-full w-full object-cover object-center" loading="eager" />
         <div className="absolute inset-0 bg-gradient-to-r from-[#050505]/92 via-[#050505]/70 to-[#050505]/30" />
         <div className="absolute inset-0 bg-gradient-to-t from-[#050505]/85 via-transparent to-transparent" />
       </div>
@@ -1060,7 +1066,7 @@ function DashboardSection() {
         </div>
 
         <div data-reveal className="cin-glow-ring relative mx-auto max-w-5xl overflow-hidden rounded-3xl border border-white/12">
-          <img src={IMG.dashboard} alt={isArabic ? 'لوحة تداول XFlex' : 'XFlex trading dashboard'} className="h-auto w-full object-cover" />
+          <img src={IMG.dashboard} alt={isArabic ? 'لوحة تداول XFlex' : 'XFlex trading dashboard'} width={1536} height={1024} loading="lazy" decoding="async" className="h-auto w-full object-cover" />
           <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0A]/70 via-transparent to-transparent" />
           <div className="absolute inset-x-6 bottom-6 flex justify-between gap-3">
             {pillLabels.map((label) => (
@@ -1171,7 +1177,7 @@ function LexAISection({ onScrollTo }: { onScrollTo: (id: string) => void }) {
               <button type="button" onClick={() => onScrollTo('packages')} className="cin-btn-green inline-flex items-center gap-2 rounded-full px-7 py-3.5 text-base font-semibold text-white">
                 {conversation.ctaPrimary}<ArrowUpRight className="h-5 w-5" />
               </button>
-              <Link href="/contact">
+              <Link href={`/${isArabic ? 'ar' : 'en'}/contact`}>
                 <a className="cin-btn-ghost inline-flex items-center gap-2 rounded-full px-7 py-3.5 text-base font-semibold text-white">
                   {conversation.ctaSecondary}
                 </a>
@@ -1314,7 +1320,7 @@ function MentorSection() {
       <div className="container mx-auto px-4 md:px-8">
         <div className="grid items-center gap-12 lg:grid-cols-2">
           <div data-reveal className="cin-glow-ring relative overflow-hidden rounded-3xl">
-            <img src={IMG.mentor} alt={isArabic ? 'مدرب XFlex' : 'XFlex mentor'} className="h-[500px] w-full object-cover object-top md:h-[620px] md:object-left-top" />
+            <img src={IMG.mentor} alt={isArabic ? 'مدرب XFlex' : 'XFlex mentor'} width={1536} height={1024} loading="lazy" decoding="async" className="h-[500px] w-full object-cover object-top md:h-[620px] md:object-left-top" />
             <div className="absolute inset-0 bg-gradient-to-t from-[#050505]/80 via-transparent to-transparent" />
             <div className="absolute inset-x-8 bottom-8">
               <div className="inline-flex items-center gap-2 rounded-full border border-[#00C176]/35 bg-[#00C176]/12 px-4 py-2 text-sm font-semibold text-[#00C176]" style={{ boxShadow: '0 0 24px rgba(0,193,118,0.30)' }}>
@@ -1341,7 +1347,7 @@ function MentorSection() {
             </div>
 
             <div data-reveal>
-              <Link href="/contact"><a className="cin-btn-green inline-flex items-center gap-2 rounded-full px-7 py-3.5 text-base font-semibold text-white">{isArabic ? 'تواصل مع الفريق' : 'Talk to the team'}<ArrowUpRight className="h-5 w-5" /></a></Link>
+              <Link href={`/${isArabic ? 'ar' : 'en'}/contact`}><a className="cin-btn-green inline-flex items-center gap-2 rounded-full px-7 py-3.5 text-base font-semibold text-white">{isArabic ? 'تواصل مع الفريق' : 'Talk to the team'}<ArrowUpRight className="h-5 w-5" /></a></Link>
             </div>
           </div>
         </div>
@@ -1394,7 +1400,7 @@ function MobileSection() {
           </div>
 
           <div data-reveal className="cin-glow-ring relative overflow-hidden rounded-3xl">
-            <img src={IMG.mobile} alt={isArabic ? 'تداول على الجوال' : 'Mobile trading'} className="h-[520px] w-full object-cover object-center md:h-[620px]" />
+            <img src={IMG.mobile} alt={isArabic ? 'تداول على الجوال' : 'Mobile trading'} width={1536} height={1024} loading="lazy" decoding="async" className="h-[520px] w-full object-cover object-center md:h-[620px]" />
             <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0A]/55 to-transparent" />
           </div>
         </div>
@@ -1413,7 +1419,7 @@ function CommunitySection() {
   return (
     <section id="community" ref={ref} className="relative overflow-hidden py-28 md:py-40" dir={isRTL ? 'rtl' : 'ltr'}>
       <div className="absolute inset-0">
-        <img src={IMG.community} alt="" className="h-full w-full object-cover object-center" />
+        <img src={IMG.community} alt="" width={1536} height={1024} loading="lazy" decoding="async" className="h-full w-full object-cover object-center" />
         <div className="absolute inset-0 bg-gradient-to-b from-[#050505]/85 via-[#050505]/60 to-[#050505]/92" />
       </div>
       <div className="cin-orb cin-orb-green" style={{ width: 500, height: 500, top: '20%', left: '50%', transform: 'translateX(-50%)', opacity: 0.35 }} />
@@ -1481,7 +1487,7 @@ function ResultsSection() {
   return (
     <section ref={ref} className="relative overflow-hidden py-20 md:py-28" dir={isRTL ? 'rtl' : 'ltr'}>
       <div className="absolute inset-0">
-        <img src={IMG.success} alt="" className="h-full w-full object-cover object-center" style={{ opacity: 0.20 }} />
+        <img src={IMG.success} alt="" width={1536} height={1024} loading="lazy" decoding="async" className="h-full w-full object-cover object-center" style={{ opacity: 0.20 }} />
         <div className="absolute inset-0 bg-[#050505]/85" />
       </div>
       <div className="cin-orb cin-orb-green" style={{ width: 600, height: 600, top: '20%', right: '-15%', opacity: 0.45 }} />
@@ -1821,7 +1827,7 @@ function PackagesSection() {
                 </div>
 
                 <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-                  <Link href={pkg.href}>
+                  <Link href={`/${isArabic ? 'ar' : 'en'}${pkg.href}`}>
                     <a className={`flex-1 inline-flex items-center justify-center gap-2 rounded-full px-6 py-3.5 text-sm font-semibold ${
                       pkg.featured ? 'cin-btn-green text-white' : 'cin-btn-white'
                     }`}>
@@ -1829,7 +1835,7 @@ function PackagesSection() {
                       <ArrowUpRight className="h-4 w-4" />
                     </a>
                   </Link>
-                  <Link href="/contact">
+                  <Link href={`/${isArabic ? 'ar' : 'en'}/contact`}>
                     <a className="cin-btn-ghost flex-1 inline-flex items-center justify-center gap-2 rounded-full px-6 py-3.5 text-sm font-semibold text-white">
                       {isArabic ? 'اسأل عن الأنسب' : 'Ask us first'}
                     </a>
@@ -1931,7 +1937,7 @@ function ExploreMoreSection() {
             </div>
 
             <div className="mt-6">
-              <Link href="/gifts">
+              <Link href={`/${isArabic ? 'ar' : 'en'}/gifts`}>
                 <a className="cin-btn-ghost inline-flex items-center gap-2 rounded-full px-5 py-3 text-sm font-semibold text-white">
                   {isArabic ? 'افتح صفحة الهدايا' : 'Open Gifts page'}
                   <ArrowUpRight className="h-4 w-4" />
@@ -1990,7 +1996,7 @@ function ExploreMoreSection() {
             </div>
 
             <div className="mt-6">
-              <Link href="/articles">
+              <Link href={`/${isArabic ? 'ar' : 'en'}/articles`}>
                 <a className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/[0.04] px-5 py-3 text-sm font-semibold text-white transition hover:border-[#C8A96B]/30 hover:text-[#C8A96B]">
                   {isArabic ? 'عرض جميع المقالات' : 'View all articles'}
                   <ArrowUpRight className="h-4 w-4" />
@@ -2073,7 +2079,7 @@ function CTASection({ onScrollTo }: { onScrollTo: (id: string) => void }) {
   return (
     <section ref={ref} className="relative overflow-hidden py-28 md:py-44" dir={isRTL ? 'rtl' : 'ltr'}>
       <div className="absolute inset-0">
-        <img src={IMG.cta} alt="" className="h-full w-full object-cover object-center" />
+        <img src={IMG.cta} alt="" width={1536} height={1024} loading="lazy" decoding="async" className="h-full w-full object-cover object-center" />
         <div className="absolute inset-0 bg-gradient-to-b from-[#050505]/85 via-[#050505]/68 to-[#050505]/95" />
       </div>
       <div className="cin-orb cin-orb-green" style={{ width: 700, height: 700, top: '20%', left: '50%', transform: 'translateX(-50%)', opacity: 0.45 }} />
@@ -2091,7 +2097,7 @@ function CTASection({ onScrollTo }: { onScrollTo: (id: string) => void }) {
             <button type="button" onClick={() => onScrollTo('packages')} className="cin-btn-green inline-flex items-center gap-2 rounded-full px-8 py-4 text-base font-semibold text-white">
               {isArabic ? 'ابدأ الآن' : 'Start now'}<ArrowUpRight className="h-5 w-5" />
             </button>
-            <Link href="/contact">
+            <Link href={`/${isArabic ? 'ar' : 'en'}/contact`}>
               <a className="cin-btn-ghost inline-flex items-center gap-2 rounded-full px-8 py-4 text-base font-semibold text-white">
                 {isArabic ? 'تواصل معنا' : 'Contact us'}
               </a>

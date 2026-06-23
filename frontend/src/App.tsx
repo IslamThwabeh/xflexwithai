@@ -1,21 +1,21 @@
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
-import { Route, Switch, Redirect } from "wouter";
+import { Route, Switch, Redirect, useParams } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { LanguageProvider } from "./contexts/LanguageContext";
-import { lazy, Suspense } from "react";
-import Home from "./pages/Home";
-import Auth from "./pages/Auth";
+import { lazy, Suspense, type ReactNode } from "react";
 import AdminRoute from "./components/AdminRoute";
 import ProtectedRoute from "./components/ProtectedRoute";
 import WhatsAppFloat from "./components/WhatsAppFloat";
 import SessionGuard from "./components/SessionGuard";
-import { AdminTableSkeleton, DetailPageSkeleton, TextPageSkeleton, PageWithCardsSkeleton } from "./components/PageSkeletons";
+import LocalizedPublicPage from "./components/LocalizedPublicPage";
+import AnalyticsTracker from "./components/AnalyticsTracker";
+import type { SeoLanguage, SeoRouteKey } from "@shared/seo";
 
-// Eagerly loaded (critical path)
-// Home, Auth are loaded above
+const Home = lazy(() => import("./pages/Home"));
+const Auth = lazy(() => import("./pages/Auth"));
 
 // Lazy-loaded admin pages
 const AdminLogin = lazy(() => import("./pages/AdminLogin"));
@@ -98,6 +98,7 @@ const NotificationCenter = lazy(() => import("./pages/NotificationCenter"));
 const LoyaltyPoints = lazy(() => import("./pages/LoyaltyPoints"));
 const TradingCalculators = lazy(() => import("./pages/TradingCalculators"));
 const Unsubscribe = lazy(() => import("./pages/Unsubscribe"));
+const TrustCenter = lazy(() => import("./pages/TrustCenter"));
 
 // Minimal fallback spinner
 function PageLoader() {
@@ -106,6 +107,33 @@ function PageLoader() {
       <div className="w-8 h-8 border-4 border-emerald-400 border-t-transparent rounded-full animate-spin" />
     </div>
   );
+}
+
+function Localized({
+  language,
+  seoKey,
+  children,
+}: {
+  language: SeoLanguage;
+  seoKey: SeoRouteKey;
+  children: ReactNode;
+}) {
+  return (
+    <LocalizedPublicPage language={language} seoKey={seoKey}>
+      {children}
+    </LocalizedPublicPage>
+  );
+}
+
+function LegacyPublicRedirect() {
+  const path = window.location.pathname === "/" ? "" : window.location.pathname;
+  return <Redirect to={`/ar${path}${window.location.search}${window.location.hash}`} />;
+}
+
+function LocalizedPackage({ language }: { language: SeoLanguage }) {
+  const { slug } = useParams<{ slug: string }>();
+  const seoKey = slug === "comprehensive" ? "package-comprehensive" : "package-basic";
+  return <Localized language={language} seoKey={seoKey}><PackageDetails /></Localized>;
 }
 
 function Router() {
@@ -314,26 +342,61 @@ function Router() {
           <QuizHistory />
         </ProtectedRoute>
       </Route>
-      <Route path="/packages/:slug" component={PackageDetails} />
+      <Route path="/ar/packages/:slug"><LocalizedPackage language="ar" /></Route>
+      <Route path="/en/packages/:slug"><LocalizedPackage language="en" /></Route>
+      <Route path="/packages/:slug"><LegacyPublicRedirect /></Route>
       <Route path="/checkout/:slug" component={Checkout} />
-      <Route path="/about" component={About} />
-      <Route path="/events" component={Events} />
-      <Route path="/articles" component={Articles} />
-      <Route path="/articles/:slug" component={ArticleDetail} />
-      <Route path="/free-content" component={FreeContent} />
-      <Route path="/gifts" component={Gifts} />
-      <Route path="/contact" component={Contact} />
-      <Route path="/business-owner/vip-trading-bot-plan" component={VipTradingBotPlanLanding} />
-      <Route path="/en/project/vip-bot-plan" component={VipTradingBotPlanEnglish} />
-      <Route path="/ar/project/vip-bot-plan" component={VipTradingBotPlanArabic} />
+      <Route path="/ar/about"><Localized language="ar" seoKey="about"><About /></Localized></Route>
+      <Route path="/en/about"><Localized language="en" seoKey="about"><About /></Localized></Route>
+      <Route path="/ar/events"><Localized language="ar" seoKey="events"><Events /></Localized></Route>
+      <Route path="/en/events"><Localized language="en" seoKey="events"><Events /></Localized></Route>
+      <Route path="/ar/articles"><Localized language="ar" seoKey="articles"><Articles /></Localized></Route>
+      <Route path="/en/articles"><Localized language="en" seoKey="articles"><Articles /></Localized></Route>
+      <Route path="/ar/articles/:slug"><Localized language="ar" seoKey="articles"><ArticleDetail /></Localized></Route>
+      <Route path="/en/articles/:slug"><Localized language="en" seoKey="articles"><ArticleDetail /></Localized></Route>
+      <Route path="/ar/free-content"><Localized language="ar" seoKey="free-content"><FreeContent /></Localized></Route>
+      <Route path="/en/free-content"><Localized language="en" seoKey="free-content"><FreeContent /></Localized></Route>
+      <Route path="/ar/gifts"><Localized language="ar" seoKey="gifts"><Gifts /></Localized></Route>
+      <Route path="/en/gifts"><Localized language="en" seoKey="gifts"><Gifts /></Localized></Route>
+      <Route path="/ar/contact"><Localized language="ar" seoKey="contact"><Contact /></Localized></Route>
+      <Route path="/en/contact"><Localized language="en" seoKey="contact"><Contact /></Localized></Route>
+      <Route path="/ar/project/vip-bot-plan"><Localized language="ar" seoKey="vip-bot-plan"><VipTradingBotPlanArabic /></Localized></Route>
+      <Route path="/en/project/vip-bot-plan"><Localized language="en" seoKey="vip-bot-plan"><VipTradingBotPlanEnglish /></Localized></Route>
+      <Route path="/business-owner/vip-trading-bot-plan"><LegacyPublicRedirect /></Route>
       <Route path="/vip-trading-bot-plan">
-        <Redirect to="/business-owner/vip-trading-bot-plan" />
+        <Redirect to="/ar/project/vip-bot-plan" />
       </Route>
-      <Route path="/terms" component={TermsOfService} />
-      <Route path="/privacy" component={PrivacyPolicy} />
-      <Route path="/refund-policy" component={RefundPolicy} />
-      <Route path="/faq" component={FAQ} />
-      <Route path="/careers" component={Careers} />
+      <Route path="/ar/terms"><Localized language="ar" seoKey="terms"><TermsOfService /></Localized></Route>
+      <Route path="/en/terms"><Localized language="en" seoKey="terms"><TermsOfService /></Localized></Route>
+      <Route path="/ar/privacy"><Localized language="ar" seoKey="privacy"><PrivacyPolicy /></Localized></Route>
+      <Route path="/en/privacy"><Localized language="en" seoKey="privacy"><PrivacyPolicy /></Localized></Route>
+      <Route path="/ar/refund-policy"><Localized language="ar" seoKey="refund-policy"><RefundPolicy /></Localized></Route>
+      <Route path="/en/refund-policy"><Localized language="en" seoKey="refund-policy"><RefundPolicy /></Localized></Route>
+      <Route path="/ar/faq"><Localized language="ar" seoKey="faq"><FAQ /></Localized></Route>
+      <Route path="/en/faq"><Localized language="en" seoKey="faq"><FAQ /></Localized></Route>
+      <Route path="/ar/careers"><Localized language="ar" seoKey="careers"><Careers /></Localized></Route>
+      <Route path="/en/careers"><Localized language="en" seoKey="careers"><Careers /></Localized></Route>
+      <Route path="/ar/editorial-policy"><Localized language="ar" seoKey="editorial-policy"><TrustCenter page="editorial" /></Localized></Route>
+      <Route path="/en/editorial-policy"><Localized language="en" seoKey="editorial-policy"><TrustCenter page="editorial" /></Localized></Route>
+      <Route path="/ar/risk-disclosure"><Localized language="ar" seoKey="risk-disclosure"><TrustCenter page="risk" /></Localized></Route>
+      <Route path="/en/risk-disclosure"><Localized language="en" seoKey="risk-disclosure"><TrustCenter page="risk" /></Localized></Route>
+      <Route path="/ar/authors/xflex-editorial-team"><Localized language="ar" seoKey="author-editorial-team"><TrustCenter page="author" /></Localized></Route>
+      <Route path="/en/authors/xflex-editorial-team"><Localized language="en" seoKey="author-editorial-team"><TrustCenter page="author" /></Localized></Route>
+      <Route path="/about"><LegacyPublicRedirect /></Route>
+      <Route path="/events"><LegacyPublicRedirect /></Route>
+      <Route path="/articles"><LegacyPublicRedirect /></Route>
+      <Route path="/articles/:slug"><LegacyPublicRedirect /></Route>
+      <Route path="/free-content"><LegacyPublicRedirect /></Route>
+      <Route path="/gifts"><LegacyPublicRedirect /></Route>
+      <Route path="/contact"><LegacyPublicRedirect /></Route>
+      <Route path="/terms"><LegacyPublicRedirect /></Route>
+      <Route path="/privacy"><LegacyPublicRedirect /></Route>
+      <Route path="/refund-policy"><LegacyPublicRedirect /></Route>
+      <Route path="/faq"><LegacyPublicRedirect /></Route>
+      <Route path="/careers"><LegacyPublicRedirect /></Route>
+      <Route path="/editorial-policy"><LegacyPublicRedirect /></Route>
+      <Route path="/risk-disclosure"><LegacyPublicRedirect /></Route>
+      <Route path="/authors/xflex-editorial-team"><LegacyPublicRedirect /></Route>
       <Route path="/admin/jobs">
         <AdminRoute>
           <AdminJobs />
@@ -427,7 +490,9 @@ function Router() {
           <TradingCalculators />
         </ProtectedRoute>
       </Route>
-      <Route path={"/"} component={Home} />
+      <Route path="/ar"><Localized language="ar" seoKey="home"><Home /></Localized></Route>
+      <Route path="/en"><Localized language="en" seoKey="home"><Home /></Localized></Route>
+      <Route path="/"><LegacyPublicRedirect /></Route>
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
     </Switch>
@@ -442,6 +507,7 @@ function App() {
         <ThemeProvider defaultTheme="light" switchable>
           <TooltipProvider>
             <Toaster />
+            <AnalyticsTracker />
             <SessionGuard />
             <Router />
             <WhatsAppFloat />

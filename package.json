@@ -8,7 +8,9 @@
   },
   "scripts": {
     "dev": "NODE_ENV=development tsx watch backend/_core/index.ts",
-    "build": "vite build && esbuild backend/_core/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist --external:../database/schema-sqlite.ts",
+    "build": "vite build && tsx scripts/generate-seo.ts && esbuild backend/_core/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist --external:../database/schema-sqlite.ts",
+    "build:seo": "tsx scripts/generate-seo.ts",
+    "test:seo": "tsx scripts/test-seo.ts && node scripts/test-seo-middleware.mjs",
     "build:worker": "esbuild backend/_core/worker.ts --platform=node --bundle --format=esm --outdir=dist --external:../database/schema-sqlite.ts --external:@tailwindcss/oxide --external:tailwindcss --external:lightningcss --external:postcss --external:postcss-nested --external:autoprefixer --external:@swc/core",
     "start": "NODE_ENV=production node dist/index.js",
     "check": "tsc --noEmit",

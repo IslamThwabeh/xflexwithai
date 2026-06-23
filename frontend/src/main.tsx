@@ -8,7 +8,6 @@ import App from "./App";
 import { ADMIN_LOGIN_URL, getLoginUrl } from "./const";
 import { resolveTrpcUrl } from "./lib/apiBase";
 import "./index.css";
-import { LanguageProvider } from "./contexts/LanguageContext";
 
 const normalizeCurrentPathname = () => {
   if (typeof window === "undefined") return;
@@ -22,6 +21,11 @@ const normalizeCurrentPathname = () => {
 };
 
 normalizeCurrentPathname();
+
+const localeFromPath = window.location.pathname.match(/^\/(ar|en)(?:\/|$)/)?.[1];
+if (localeFromPath === "ar" || localeFromPath === "en") {
+  window.localStorage.setItem("language", localeFromPath);
+}
 
 const queryClient = new QueryClient();
 
@@ -85,12 +89,14 @@ const trpcClient = trpc.createClient({
   ],
 });
 
-createRoot(document.getElementById("root")!).render(
+const rootElement = document.getElementById("root")!;
+// SEO prerendered HTML is intentionally static and is replaced by the interactive app.
+rootElement.replaceChildren();
+
+createRoot(rootElement).render(
   <trpc.Provider client={trpcClient} queryClient={queryClient}>
     <QueryClientProvider client={queryClient}>
-      <LanguageProvider>
-        <App />
-      </LanguageProvider>
+      <App />
     </QueryClientProvider>
   </trpc.Provider>
 );

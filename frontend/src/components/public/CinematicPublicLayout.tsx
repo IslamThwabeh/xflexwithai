@@ -167,6 +167,22 @@ export default function CinematicPublicLayout({
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const localePrefix = `/${language}`;
+  const localizePublicHref = (href: string) => {
+    if (href === '/') return localePrefix;
+    if (href.startsWith('/#')) return `${localePrefix}${href.slice(1)}`;
+    if (href.startsWith('/auth') || href.startsWith('/register')) return href;
+    if (href.startsWith('/ar/') || href.startsWith('/en/')) return href;
+    return `${localePrefix}${href}`;
+  };
+  const switchLanguage = () => {
+    const nextLanguage = language === 'ar' ? 'en' : 'ar';
+    const nextPath = window.location.pathname.match(/^\/(ar|en)(?=\/|$)/)
+      ? window.location.pathname.replace(/^\/(ar|en)(?=\/|$)/, `/${nextLanguage}`)
+      : `/${nextLanguage}${window.location.pathname === '/' ? '' : window.location.pathname}`;
+    setLanguage(nextLanguage);
+    window.location.assign(`${nextPath}${window.location.search}${window.location.hash}`);
+  };
 
   useEffect(() => {
     const onScroll = () => {
@@ -188,7 +204,7 @@ export default function CinematicPublicLayout({
   }));
 
   const footerLinks = [
-    { href: '/', label: isArabic ? 'الرئيسية' : 'Home' },
+    { href: localePrefix, label: isArabic ? 'الرئيسية' : 'Home' },
     { href: '/gifts', label: isArabic ? 'الهدايا' : 'Gifts' },
     { href: '/articles', label: isArabic ? 'المقالات' : 'Articles' },
     { href: '/free-content', label: isArabic ? 'المحتوى المجاني' : 'Free Content' },
@@ -196,6 +212,8 @@ export default function CinematicPublicLayout({
     { href: '/contact', label: isArabic ? 'تواصل معنا' : 'Contact' },
     { href: '/terms', label: isArabic ? 'الشروط والأحكام' : 'Terms & Conditions' },
     { href: '/refund-policy', label: isArabic ? 'سياسة الاسترداد' : 'Refund Policy' },
+    { href: '/editorial-policy', label: isArabic ? 'السياسة التحريرية' : 'Editorial Policy' },
+    { href: '/risk-disclosure', label: isArabic ? 'إفصاح المخاطر' : 'Risk Disclosure' },
     { href: '/auth', label: isArabic ? 'تسجيل الدخول' : 'Login' },
     { href: '/register', label: isArabic ? 'إنشاء حساب' : 'Create account' },
   ];
@@ -211,12 +229,12 @@ export default function CinematicPublicLayout({
   };
 
   const handlePrimaryNavigation = (sectionId: string, href: string) => {
-    if (location === '/' && scrollToHomeSection(sectionId)) {
+    if (location === localePrefix && scrollToHomeSection(sectionId)) {
       setMenuOpen(false);
       return;
     }
 
-    window.location.assign(href);
+    window.location.assign(localizePublicHref(href));
   };
 
   const handlePrimaryAction = (href: string) => {
@@ -226,7 +244,7 @@ export default function CinematicPublicLayout({
       return;
     }
 
-    window.location.assign(href);
+    window.location.assign(localizePublicHref(href));
   };
 
   return (
@@ -240,7 +258,7 @@ export default function CinematicPublicLayout({
 
       <header className={`cin-public-nav fixed inset-x-0 top-0 z-50 ${scrolled ? 'cin-public-nav-scrolled' : ''}`}>
         <div className="container mx-auto flex h-16 items-center justify-between px-4 md:h-20 md:px-8" dir={isRTL ? 'rtl' : 'ltr'}>
-          <Link href="/">
+          <Link href={localePrefix}>
             <a className="flex shrink-0 items-center gap-2">
               <img src={BRAND_LOGO_SRC} alt={APP_TITLE} className="cin-public-logo cin-public-logo-header" />
             </a>
@@ -262,7 +280,7 @@ export default function CinematicPublicLayout({
           <div className="hidden items-center gap-4 md:flex">
             <button
               type="button"
-              onClick={() => setLanguage(language === 'ar' ? 'en' : 'ar')}
+              onClick={switchLanguage}
               className="text-xs font-semibold text-white/55 transition-colors hover:text-white"
             >
               {getLanguageSwitchLabel(language)}
@@ -295,7 +313,7 @@ export default function CinematicPublicLayout({
             <div className="flex flex-col gap-5">
               <button
                 type="button"
-                onClick={() => setLanguage(language === 'ar' ? 'en' : 'ar')}
+                onClick={switchLanguage}
                 className="inline-flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-semibold text-white/80"
               >
                 <span>{isArabic ? 'اللغة' : 'Language'}</span>
@@ -346,7 +364,7 @@ export default function CinematicPublicLayout({
               <div className="flex flex-col gap-3">
                 <p className="text-xs font-semibold uppercase tracking-widest text-white/22">{isArabic ? 'التصفح' : 'Browse'}</p>
                 {footerLinks.slice(0, 3).map((link) => (
-                  <Link key={link.href} href={link.href}>
+                  <Link key={link.href} href={localizePublicHref(link.href)}>
                     <a className="cin-public-footer-link">{link.label}</a>
                   </Link>
                 ))}
@@ -354,7 +372,7 @@ export default function CinematicPublicLayout({
               <div className="flex flex-col gap-3">
                 <p className="text-xs font-semibold uppercase tracking-widest text-white/22">{isArabic ? 'المحتوى' : 'Content'}</p>
                 {footerLinks.slice(3, 6).map((link) => (
-                  <Link key={link.href} href={link.href}>
+                  <Link key={link.href} href={localizePublicHref(link.href)}>
                     <a className="cin-public-footer-link">{link.label}</a>
                   </Link>
                 ))}
@@ -362,7 +380,7 @@ export default function CinematicPublicLayout({
               <div className="flex flex-col gap-3">
                 <p className="text-xs font-semibold uppercase tracking-widest text-white/22">{isArabic ? 'الحساب' : 'Account'}</p>
                 {footerLinks.slice(6).map((link) => (
-                  <Link key={link.href} href={link.href}>
+                  <Link key={link.href} href={localizePublicHref(link.href)}>
                     <a className="cin-public-footer-link">{link.label}</a>
                   </Link>
                 ))}

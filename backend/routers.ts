@@ -345,6 +345,24 @@ const mergePublicArticles = (articles: Awaited<ReturnType<typeof db.getAllArticl
   });
 };
 
+async function requestSeoRebuild() {
+  const webhookUrl = process.env.SEO_REBUILD_WEBHOOK_URL?.trim();
+  if (!webhookUrl) return;
+  try {
+    const headers: Record<string, string> = { "content-type": "application/json" };
+    const secret = process.env.SEO_REBUILD_WEBHOOK_SECRET?.trim();
+    if (secret) headers.authorization = `Bearer ${secret}`;
+    await fetch(webhookUrl, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ reason: "article-content-changed", requestedAt: new Date().toISOString() }),
+      signal: AbortSignal.timeout(3000),
+    });
+  } catch (error) {
+    logger.warn("[SEO] Rebuild webhook request failed", { error: String(error) });
+  }
+}
+
 const userOnlyProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   if (!ctx.user?.email) {
     throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Not authenticated' });
@@ -5964,7 +5982,7 @@ export const appRouter = router({
         }
 
         const article = await db.getArticleBySlug(input.slug);
-        if (!article) throw new TRPCError({ code: 'NOT_FOUND', message: 'Article not found' });
+        if (!article || !article.isPublished) throw new TRPCError({ code: 'NOT_FOUND', message: 'Article not found' });
         return toPublicArticle(article);
       }),
 
@@ -5993,15 +6011,28 @@ export const appRouter = router({
         excerptEn: z.string().optional(),
         excerptAr: z.string().optional(),
         thumbnailUrl: z.string().optional(),
+        seoTitleEn: z.string().optional(),
+        seoTitleAr: z.string().optional(),
+        seoDescriptionEn: z.string().optional(),
+        seoDescriptionAr: z.string().optional(),
+        socialImageUrl: z.string().optional(),
+        authorNameEn: z.string().optional(),
+        authorNameAr: z.string().optional(),
+        reviewerNameEn: z.string().optional(),
+        reviewerNameAr: z.string().optional(),
+        sources: z.string().optional(),
+        languageAvailability: z.enum(["both", "ar", "en"]).default("both"),
         authorId: z.number().optional(),
         isPublished: z.union([z.boolean(), z.number().min(0).max(1)]).default(0),
         publishedAt: z.string().optional(),
       }))
       .mutation(async ({ input }) => {
-        return db.createArticle({
+        const article = await db.createArticle({
           ...input,
           isPublished: Boolean(input.isPublished),
         });
+        await requestSeoRebuild();
+        return article;
       }),
 
     // Admin: update article
@@ -6016,6 +6047,17 @@ export const appRouter = router({
         excerptEn: z.string().optional(),
         excerptAr: z.string().optional(),
         thumbnailUrl: z.string().optional(),
+        seoTitleEn: z.string().optional(),
+        seoTitleAr: z.string().optional(),
+        seoDescriptionEn: z.string().optional(),
+        seoDescriptionAr: z.string().optional(),
+        socialImageUrl: z.string().optional(),
+        authorNameEn: z.string().optional(),
+        authorNameAr: z.string().optional(),
+        reviewerNameEn: z.string().optional(),
+        reviewerNameAr: z.string().optional(),
+        sources: z.string().optional(),
+        languageAvailability: z.enum(["both", "ar", "en"]).optional(),
         authorId: z.number().optional(),
         isPublished: z.union([z.boolean(), z.number().min(0).max(1)]).optional(),
         publishedAt: z.string().optional(),
@@ -6024,14 +6066,18 @@ export const appRouter = router({
         const { id, ...data } = input;
         const updateData: Record<string, unknown> = { ...data };
         if (data.isPublished !== undefined) updateData.isPublished = Boolean(data.isPublished);
-        return db.updateArticle(id, updateData);
+        const article = await db.updateArticle(id, updateData);
+        await requestSeoRebuild();
+        return article;
       }),
 
     // Admin: delete article
     delete: adminProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {
-        return db.deleteArticle(input.id);
+        const result = await db.deleteArticle(input.id);
+        await requestSeoRebuild();
+        return result;
       }),
   }),
 

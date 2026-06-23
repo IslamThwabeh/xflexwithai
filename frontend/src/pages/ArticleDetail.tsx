@@ -3,12 +3,51 @@ import { ArrowLeft, ArrowRight, Clock, FileText } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { trpc } from '@/lib/trpc';
 import CinematicPublicLayout from '@/components/public/CinematicPublicLayout';
+import { useSeoMetadata } from '@/lib/seo';
+import { SITE_ORIGIN } from '@shared/seo';
 
 export default function ArticleDetail() {
   const { language, t } = useLanguage();
   const isRtl = language === 'ar';
   const params = useParams<{ slug: string }>();
   const { data: article, isLoading } = trpc.articles.bySlug.useQuery({ slug: params.slug || '' });
+  const localizedArticlePath = `/${isRtl ? 'ar' : 'en'}/articles/${params.slug || ''}`;
+  const seoTitle = article
+    ? ((isRtl ? article.seoTitleAr : article.seoTitleEn) || (isRtl ? article.titleAr : article.titleEn))
+    : undefined;
+  const seoDescription = article
+    ? ((isRtl ? article.seoDescriptionAr : article.seoDescriptionEn)
+      || (isRtl ? article.excerptAr || article.excerptEn : article.excerptEn || article.excerptAr)
+      || undefined)
+    : undefined;
+  useSeoMetadata('articles', isRtl ? 'ar' : 'en', {
+    title: seoTitle ? `${seoTitle} | XFlex` : undefined,
+    description: seoDescription,
+    image: (article?.socialImageUrl || article?.thumbnailUrl)
+      ? ((article.socialImageUrl || article.thumbnailUrl)!.startsWith('http')
+        ? (article.socialImageUrl || article.thumbnailUrl)!
+        : `${SITE_ORIGIN}${article.socialImageUrl || article.thumbnailUrl}`)
+      : undefined,
+    canonicalPath: localizedArticlePath,
+    type: 'article',
+    jsonLd: article ? {
+      '@context': 'https://schema.org',
+      '@type': 'Article',
+      headline: seoTitle,
+      description: seoDescription,
+      image: article.socialImageUrl || article.thumbnailUrl || `${SITE_ORIGIN}/xflex-logo-2026-transparent.png`,
+      datePublished: article.publishedAt,
+      dateModified: article.updatedAt || article.publishedAt,
+      inLanguage: isRtl ? 'ar' : 'en',
+      mainEntityOfPage: `${SITE_ORIGIN}${localizedArticlePath}`,
+      author: {
+        '@type': 'Organization',
+        name: (isRtl ? article.authorNameAr : article.authorNameEn) || 'XFlex Editorial Team',
+        url: `${SITE_ORIGIN}/${isRtl ? 'ar' : 'en'}/authors/xflex-editorial-team`,
+      },
+      publisher: { '@id': `${SITE_ORIGIN}/#organization` },
+    } : undefined,
+  });
 
   if (isLoading) {
     return (
@@ -26,7 +65,7 @@ export default function ArticleDetail() {
         <div className="flex flex-col items-center justify-center gap-4 bg-[#050505] py-32">
           <FileText className="w-16 h-16 text-white/24" />
           <p className="text-white/58">{t('articles.notFound')}</p>
-          <Link href="/articles">
+          <Link href={`/${isRtl ? 'ar' : 'en'}/articles`}>
             <button className="rounded-full border border-white/12 bg-white/[0.04] px-6 py-2.5 text-sm font-medium text-white/76 transition-all hover:bg-white/[0.08] hover:text-white">
               {t('articles.backToList')}
             </button>
@@ -40,6 +79,9 @@ export default function ArticleDetail() {
   const subject = isRtl ? article.subjectAr : article.subjectEn;
   const excerpt = isRtl ? article.excerptAr || article.excerptEn : article.excerptEn || article.excerptAr;
   const content = isRtl ? (article.contentAr || article.contentEn) : (article.contentEn || article.contentAr);
+  const authorName = (isRtl ? article.authorNameAr : article.authorNameEn)
+    || (isRtl ? 'فريق XFlex التحريري' : 'XFlex Editorial Team');
+  const reviewerName = isRtl ? article.reviewerNameAr : article.reviewerNameEn;
   const BackIcon = isRtl ? ArrowRight : ArrowLeft;
   const themeClass = article.theme === 'amber'
     ? 'from-amber-950 via-amber-900 to-slate-950'
@@ -55,7 +97,7 @@ export default function ArticleDetail() {
         ) : null}
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.14),transparent_45%)]" />
         <div className="relative mx-auto max-w-5xl px-4 py-12 md:px-6 md:py-20">
-          <Link href="/articles">
+          <Link href={`/${isRtl ? 'ar' : 'en'}/articles`}>
             <button className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-medium text-white/90 backdrop-blur-sm transition-all hover:bg-white/15">
               <BackIcon className="h-4 w-4" />
               {t('articles.backToList')}
@@ -88,6 +130,18 @@ export default function ArticleDetail() {
               {excerpt}
             </p>
           ) : null}
+          <div className="mt-5 flex flex-wrap gap-3 text-sm text-white/72">
+            <Link href={`/${isRtl ? 'ar' : 'en'}/authors/xflex-editorial-team`} className="underline decoration-white/30 underline-offset-4">
+              {isRtl ? `إعداد: ${authorName}` : `By ${authorName}`}
+            </Link>
+            {reviewerName ? <span>{isRtl ? `مراجعة: ${reviewerName}` : `Reviewed by ${reviewerName}`}</span> : null}
+            {article.updatedAt ? (
+              <span>
+                {isRtl ? 'آخر تحديث: ' : 'Updated: '}
+                {new Date(article.updatedAt).toLocaleDateString(isRtl ? 'ar-EG' : 'en-US')}
+              </span>
+            ) : null}
+          </div>
         </div>
       </section>
 
@@ -105,7 +159,21 @@ export default function ArticleDetail() {
             </div>
 
             <div className="mt-10 border-t border-slate-200/80 pt-6">
-              <Link href="/articles">
+              {article.sources ? (
+                <section className="mb-8">
+                  <h2 className="text-lg font-bold text-slate-900">{isRtl ? 'المصادر' : 'Sources'}</h2>
+                  <ul className="mt-3 list-disc space-y-2 ps-5 text-sm text-slate-600">
+                    {article.sources.split(/\r?\n/).filter(Boolean).map((source) => (
+                      <li key={source}>
+                        <a href={source} rel="noreferrer" target="_blank" className="break-all text-emerald-700 underline">
+                          {source}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ) : null}
+              <Link href={`/${isRtl ? 'ar' : 'en'}/articles`}>
                 <button className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white/80 px-6 py-2.5 text-sm font-medium text-slate-600 transition-all hover:border-emerald-300 hover:text-xf-dark">
                   <BackIcon className="h-4 w-4" />
                   {t('articles.backToList')}

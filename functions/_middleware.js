@@ -1,21 +1,115 @@
-/**
- * Cloudflare Pages Functions
- * This handles SPA routing by serving index.html for all non-existent routes
- */
+const LEGACY_PUBLIC_PATHS = new Set([
+  "/",
+  "/about",
+  "/events",
+  "/articles",
+  "/free-content",
+  "/gifts",
+  "/contact",
+  "/faq",
+  "/careers",
+  "/terms",
+  "/privacy",
+  "/refund-policy",
+  "/editorial-policy",
+  "/risk-disclosure",
+  "/authors/xflex-editorial-team",
+  "/packages/basic",
+  "/packages/comprehensive",
+]);
+
+const PRIVATE_PREFIXES = [
+  "/admin",
+  "/auth",
+  "/login",
+  "/register",
+  "/signup",
+  "/unsubscribe",
+  "/dashboard",
+  "/courses",
+  "/documents",
+  "/profile",
+  "/activate-key",
+  "/course/",
+  "/lexai",
+  "/recommendations",
+  "/support",
+  "/quiz",
+  "/checkout/",
+  "/orders",
+  "/subscriptions",
+  "/my-packages",
+  "/brokers",
+  "/broker-onboarding",
+  "/upgrade",
+  "/notifications",
+  "/my-points",
+  "/calculators",
+];
+
+function withNoIndex(response) {
+  const headers = new Headers(response.headers);
+  headers.set("X-Robots-Tag", "noindex, nofollow");
+  headers.set("Cache-Control", "private, no-store");
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+
+function redirectTo(url, pathname) {
+  const target = new URL(url);
+  target.protocol = "https:";
+  target.hostname = "xflexacademy.com";
+  target.port = "";
+  target.pathname = pathname;
+  return Response.redirect(target.toString(), 301);
+}
+
 export async function onRequest(context) {
   const { request } = context;
   const url = new URL(request.url);
-  
-  // Check if the requested path is a file or directory
-  // If it doesn't have a file extension and isn't a known API path, serve the app shell
-  if (!url.pathname.includes('.') && 
-      !url.pathname.startsWith('/api') &&
-      url.pathname !== '/api' &&
-      url.pathname !== '/') {
-    // Fetch '/' to avoid the Pages canonical redirect from /index.html to /
-    return context.env.ASSETS.fetch(new Request(url.origin + '/', request));
+
+  const forwardedProtocol = request.headers.get("x-forwarded-proto");
+  if (url.hostname === "www.xflexacademy.com" || forwardedProtocol === "http") {
+    return redirectTo(url, url.pathname);
   }
-  
-  // For everything else, use default behavior
-  return context.next();
+
+  if (url.pathname.startsWith("/api") || url.pathname.includes(".")) {
+    return context.next();
+  }
+
+  if (LEGACY_PUBLIC_PATHS.has(url.pathname)) {
+    const destination = url.pathname === "/" ? "/ar" : `/ar${url.pathname}`;
+    return redirectTo(url, destination);
+  }
+
+  if (url.pathname.startsWith("/articles/")) {
+    return redirectTo(url, `/ar${url.pathname}`);
+  }
+
+  if (url.pathname === "/business-owner/vip-trading-bot-plan" || url.pathname === "/vip-trading-bot-plan") {
+    return redirectTo(url, "/ar/project/vip-bot-plan");
+  }
+
+  if (PRIVATE_PREFIXES.some((prefix) => url.pathname === prefix || url.pathname.startsWith(prefix))) {
+    const shellRequest = new Request(`${url.origin}/index.html`, request);
+    return withNoIndex(await context.env.ASSETS.fetch(shellRequest));
+  }
+
+  if (/^\/(ar|en)(?:\/|$)/.test(url.pathname)) {
+    const cleanPath = url.pathname.replace(/\/+$/, "");
+    const assetRequest = new Request(`${url.origin}${cleanPath}/index.html`, request);
+    const response = await context.env.ASSETS.fetch(assetRequest);
+    if (response.status !== 404) return response;
+
+    const notFound = await context.env.ASSETS.fetch(new Request(`${url.origin}/404.html`, request));
+    return new Response(notFound.body, {
+      status: 404,
+      headers: { ...Object.fromEntries(notFound.headers), "X-Robots-Tag": "noindex, nofollow" },
+    });
+  }
+
+  const notFound = await context.env.ASSETS.fetch(new Request(`${url.origin}/404.html`, request));
+  return new Response(notFound.body, {
+    status: 404,
+    headers: { ...Object.fromEntries(notFound.headers), "X-Robots-Tag": "noindex, nofollow" },
+  });
 }

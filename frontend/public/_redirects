@@ -1,1 +1,14 @@
-/* /index.html 200
+/ /ar 301
+/about /ar/about 301
+/events /ar/events 301
+/articles /ar/articles 301
+/free-content /ar/free-content 301
+/gifts /ar/gifts 301
+/contact /ar/contact 301
+/faq /ar/faq 301
+/careers /ar/careers 301
+/terms /ar/terms 301
+/privacy /ar/privacy 301
+/refund-policy /ar/refund-policy 301
+/packages/basic /ar/packages/basic 301
+/packages/comprehensive /ar/packages/comprehensive 301

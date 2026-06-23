@@ -1,0 +1,11 @@
+ALTER TABLE articles ADD COLUMN seoTitleEn TEXT;
+ALTER TABLE articles ADD COLUMN seoTitleAr TEXT;
+ALTER TABLE articles ADD COLUMN seoDescriptionEn TEXT;
+ALTER TABLE articles ADD COLUMN seoDescriptionAr TEXT;
+ALTER TABLE articles ADD COLUMN socialImageUrl TEXT;
+ALTER TABLE articles ADD COLUMN authorNameEn TEXT;
+ALTER TABLE articles ADD COLUMN authorNameAr TEXT;
+ALTER TABLE articles ADD COLUMN reviewerNameEn TEXT;
+ALTER TABLE articles ADD COLUMN reviewerNameAr TEXT;
+ALTER TABLE articles ADD COLUMN sources TEXT;
+ALTER TABLE articles ADD COLUMN languageAvailability TEXT NOT NULL DEFAULT 'both';

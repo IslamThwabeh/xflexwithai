@@ -20,6 +20,17 @@ export type CuratedArticle = {
   isCurated: true;
   readingTimeMinutes: number;
   theme: PublicArticleTheme;
+  seoTitleEn?: string | null;
+  seoTitleAr?: string | null;
+  seoDescriptionEn?: string | null;
+  seoDescriptionAr?: string | null;
+  socialImageUrl?: string | null;
+  authorNameEn?: string | null;
+  authorNameAr?: string | null;
+  reviewerNameEn?: string | null;
+  reviewerNameAr?: string | null;
+  sources?: string | null;
+  languageAvailability?: "both" | "ar" | "en";
 };
 
 const publishedBase = "2026-04-09T08:00:00.000Z";
