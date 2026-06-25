@@ -5,9 +5,9 @@ import { createWorkerContext } from "./context-worker";
 import * as db from "../db";
 import { verifyFreeVideoPlaybackToken } from "./freeLibraryPlayback";
 import { sendFreezeExpiredEmail, sendExpiryAlertEmail, sendDripEmail, sendMilestoneEmail, sendInactivityEmail, sendOnboardingStalledEmail } from "./orderEmails";
-import { sendEmail } from "./email";
 import { logger } from "./logger";
 import { getFreeLibraryDocumentBySlug, getFreeLibraryVideoBySlug } from "../../shared/freeLibrary";
+import { drainGenericEmailOutbox } from "../services/email-outbox.service";
 import {
   drainRecommendationDeliveryQueue,
   getRemainingGenericEmailBudget,
@@ -42,49 +42,8 @@ async function runFrequentTimedServiceAndEmailJobs() {
   if (genericBudget > 0) {
     await db.materializeEmailOutboxCampaigns(genericBudget);
   }
-  const genericRows = genericBudget > 0
-    ? await db.claimEmailOutboxBatch(genericBudget)
-    : [];
-  for (const row of genericRows) {
-    try {
-      let metadata: Record<string, unknown> | undefined;
-      if (row.metadataJson) {
-        try {
-          metadata = JSON.parse(row.metadataJson);
-        } catch {
-          metadata = { malformedMetadata: true };
-        }
-      }
-      const result = await sendEmail({
-        to: row.recipientEmail,
-        subject: row.subject,
-        text: row.bodyText,
-        html: row.bodyHtml ?? undefined,
-        audit: {
-          eventType: row.eventType,
-          templateId: row.templateId ?? undefined,
-          recipientUserId: row.recipientUserId ?? undefined,
-          category: (row.emailCategory as any) ?? undefined,
-          metadata,
-        },
-      });
-      if (result.skipped === "unsubscribed") {
-        await db.markEmailOutboxSkipped(row.id, "Recipient unsubscribed from this email category");
-        continue;
-      }
-      await db.markEmailOutboxSent({
-        id: row.id,
-        provider: result.provider,
-        attemptedProviders: result.attemptedProviders,
-      });
-    } catch (error) {
-      await db.markEmailOutboxFailed({
-        id: row.id,
-        errorCategory: (error as { category?: string })?.category ?? "unknown",
-        errorMessage: error instanceof Error ? error.message : String(error),
-        attemptedProviders: (error as { attemptedProviders?: string[] })?.attemptedProviders,
-      });
-    }
+  if (genericBudget > 0) {
+    await drainGenericEmailOutbox({ limit: genericBudget });
   }
 
 }

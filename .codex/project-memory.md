@@ -1,6 +1,6 @@
 # XFLEX Project Memory
 
-Last updated: 2026-06-22
+Last updated: 2026-06-23
 
 ## Project Overview
 
@@ -29,6 +29,8 @@ Last updated: 2026-06-22
 - Remote production D1 query pattern:
   `npx wrangler d1 execute xflexwithai-db --remote --config wrangler-worker.toml --env production --command "SELECT ..."`
 - During investigations, Codex may inspect the production D1 database directly with Wrangler read-only `SELECT` queries to collect evidence. Any production write, repair, migration, or data change needs separate explicit user approval.
+- When writing raw Wrangler SQL against `email_delivery_logs`, use the physical snake_case column names: `recipient_email`, `recipient_user_id`, `event_type`, `template_id`, `error_message`, and `created_at`. Drizzle maps these to camelCase in TypeScript (`recipientEmail`, `eventType`, etc.), but raw D1 SQL with camelCase will fail.
+- For production D1 verification where result rows matter, prefer one `SELECT` per Wrangler command. Multi-statement SQL files may return only execution summaries instead of each result set.
 - Latest Worker deploy completed on 2026-06-05 with version `6d231d23-f38e-485e-8064-c3177ec840eb`.
 - Latest Pages deploy attempt on 2026-06-05 for commit `b347e28` failed during Cloudflare asset upload with `POST /pages/assets/upload -> 502 Bad Gateway`; manual dashboard upload of `dist/public` is the fallback.
 - Latest production D1 migration applied on 2026-06-05: `database/migrations/050_first_package_activation_anchor.sql`.

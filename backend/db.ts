@@ -4260,6 +4260,18 @@ export async function getRecommendationDeliveryStats(sinceIso: string): Promise<
 
 const MAX_EMAIL_OUTBOX_ATTEMPTS = 3;
 const EMAIL_OUTBOX_LOCK_TIMEOUT_MS = 10 * 60 * 1000;
+const SUPPORT_REPLY_DIGEST_DELAY_MS = 60 * 1000;
+
+function buildSupportReplyDigestBody(messages: Array<{ content: string; hasAttachment?: boolean }>) {
+  return messages
+    .map((message, index) => {
+      const attachmentNote = message.hasAttachment ? "\n[Attachment included in support chat]" : "";
+      return messages.length > 1
+        ? `Reply ${index + 1}:\n${message.content}${attachmentNote}`
+        : `${message.content}${attachmentNote}`;
+    })
+    .join("\n\n---\n\n");
+}
 
 export async function enqueueEmailOutbox(input: {
   dedupeKey: string;
@@ -4292,6 +4304,125 @@ export async function enqueueEmailOutbox(input: {
     status: "pending",
     attempts: 0,
     nextAttemptAt: nowIso,
+    createdAt: nowIso,
+    updatedAt: nowIso,
+  } satisfies InsertEmailOutbox)
+    .onConflictDoNothing({ target: emailOutbox.dedupeKey })
+    .returning({ id: emailOutbox.id });
+  return inserted.length > 0;
+}
+
+export async function enqueueSupportReplyDigestEmail(input: {
+  conversationId: number;
+  messageId: number;
+  senderType: "admin" | "support";
+  recipientUserId: number;
+  recipientEmail: string;
+  subject: string;
+  clientName?: string | null;
+  replyContent: string;
+  hasAttachment?: boolean;
+  initiatedByStaff?: boolean;
+  buildEmail: (input: {
+    clientName?: string | null;
+    replyContent: string;
+    hasAttachment?: boolean;
+  }) => { subject: string; text: string; html: string };
+}): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const nextAttemptAt = new Date(now.getTime() + SUPPORT_REPLY_DIGEST_DELAY_MS).toISOString();
+  const normalizedEmail = normalizeEmailAddress(input.recipientEmail);
+
+  const candidates = await db.select().from(emailOutbox)
+    .where(and(
+      eq(emailOutbox.eventType, "support_client_reply"),
+      eq(emailOutbox.recipientUserId, input.recipientUserId),
+      eq(emailOutbox.status, "pending"),
+      gt(emailOutbox.nextAttemptAt, nowIso),
+    ))
+    .orderBy(desc(emailOutbox.createdAt))
+    .limit(10);
+
+  const existing = candidates.find((row) => {
+    const metadata = parseOptionalJson<Record<string, unknown>>(row.metadataJson);
+    return metadata?.digest === true
+      && metadata?.conversationId === input.conversationId
+      && Array.isArray(metadata?.messageIds);
+  });
+
+  const newMessage = {
+    id: input.messageId,
+    content: input.replyContent,
+    hasAttachment: Boolean(input.hasAttachment),
+    senderType: input.senderType,
+    createdAt: nowIso,
+  };
+
+  if (existing) {
+    const metadata = parseOptionalJson<Record<string, any>>(existing.metadataJson) ?? {};
+    const messages = Array.isArray(metadata.messages) ? metadata.messages : [];
+    const nextMessages = messages.some((message: any) => Number(message?.id) === input.messageId)
+      ? messages
+      : [...messages, newMessage];
+    const replyContent = buildSupportReplyDigestBody(nextMessages);
+    const supportEmail = input.buildEmail({
+      clientName: input.clientName,
+      replyContent,
+      hasAttachment: nextMessages.some((message: any) => Boolean(message?.hasAttachment)),
+    });
+
+    await db.update(emailOutbox).set({
+      subject: supportEmail.subject,
+      bodyText: supportEmail.text,
+      bodyHtml: supportEmail.html,
+      metadataJson: JSON.stringify({
+        ...metadata,
+        digest: true,
+        conversationId: input.conversationId,
+        messageIds: nextMessages.map((message: any) => Number(message.id)).filter(Number.isFinite),
+        messages: nextMessages,
+        senderType: input.senderType,
+        initiatedByStaff: Boolean(metadata.initiatedByStaff || input.initiatedByStaff),
+      }),
+      nextAttemptAt,
+      updatedAt: nowIso,
+    }).where(and(eq(emailOutbox.id, existing.id), eq(emailOutbox.status, "pending")));
+    return false;
+  }
+
+  const replyContent = buildSupportReplyDigestBody([newMessage]);
+  const supportEmail = input.buildEmail({
+    clientName: input.clientName,
+    replyContent,
+    hasAttachment: Boolean(input.hasAttachment),
+  });
+
+  const inserted = await db.insert(emailOutbox).values({
+    dedupeKey: `support_reply_digest:${input.conversationId}:${input.recipientUserId}:${input.messageId}`,
+    batchId: null,
+    recipientUserId: input.recipientUserId,
+    recipientEmail: normalizedEmail,
+    eventType: "support_client_reply",
+    templateId: "support_client_reply",
+    emailCategory: "transactional",
+    subject: supportEmail.subject || input.subject,
+    bodyText: supportEmail.text,
+    bodyHtml: supportEmail.html,
+    metadataJson: JSON.stringify({
+      digest: true,
+      conversationId: input.conversationId,
+      messageIds: [input.messageId],
+      messages: [newMessage],
+      senderType: input.senderType,
+      initiatedByStaff: Boolean(input.initiatedByStaff),
+    }),
+    status: "pending",
+    attempts: 0,
+    nextAttemptAt,
     createdAt: nowIso,
     updatedAt: nowIso,
   } satisfies InsertEmailOutbox)
@@ -4391,7 +4522,10 @@ export async function materializeEmailOutboxCampaigns(limit: number = 10): Promi
   return inserted;
 }
 
-export async function claimEmailOutboxBatch(limit: number = 10): Promise<EmailOutbox[]> {
+export async function claimEmailOutboxBatch(
+  limit: number = 10,
+  options?: { eventTypes?: string[] },
+): Promise<EmailOutbox[]> {
   const db = await getDb();
   if (!db) return [];
   const now = new Date();
@@ -4410,12 +4544,17 @@ export async function claimEmailOutboxBatch(limit: number = 10): Promise<EmailOu
     lt(emailOutbox.lockedAt, staleLockIso),
   ));
 
+  const conditions = [
+    inArray(emailOutbox.status, ["pending", "failed"]),
+    lte(emailOutbox.nextAttemptAt, nowIso),
+    lt(emailOutbox.attempts, MAX_EMAIL_OUTBOX_ATTEMPTS),
+  ];
+  if (options?.eventTypes?.length) {
+    conditions.push(inArray(emailOutbox.eventType, options.eventTypes));
+  }
+
   const candidates = await db.select().from(emailOutbox)
-    .where(and(
-      inArray(emailOutbox.status, ["pending", "failed"]),
-      lte(emailOutbox.nextAttemptAt, nowIso),
-      lt(emailOutbox.attempts, MAX_EMAIL_OUTBOX_ATTEMPTS),
-    ))
+    .where(and(...conditions))
     .orderBy(
       sql`CASE ${emailOutbox.eventType}
         WHEN 'support_client_reply' THEN 0

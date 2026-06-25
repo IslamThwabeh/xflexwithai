@@ -28,8 +28,10 @@ import { filterRecipientsByMutedThreads } from "./services/recommendation-thread
 import { parseRecommendationDraft } from "./services/recommendation-parser.service";
 import {
   drainRecommendationDeliveryQueue,
+  getRemainingGenericEmailBudget,
   RECOMMENDATION_DELIVERY_BATCH_SIZE,
 } from "./services/recommendation-delivery.service";
+import { drainGenericEmailOutbox } from "./services/email-outbox.service";
 import { storagePutR2, storageArchiveR2 } from "./storage-r2";
 import { analyzeLexai } from "./_core/lexai";
 import { invokeOpenAiChatCompletion } from "./_core/openai";
@@ -63,6 +65,26 @@ function deferRecommendationEmailDrain(ctx: { defer?: (task: Promise<unknown>) =
       });
     }),
   );
+}
+
+function deferSupportReplyEmailDrain(ctx: { defer?: (task: Promise<unknown>) => void }) {
+  if (!ctx.defer) return;
+  ctx.defer((async () => {
+    const recommendationDrain = await drainRecommendationDeliveryQueue({
+      limit: RECOMMENDATION_DELIVERY_BATCH_SIZE,
+      source: "publish",
+    });
+    const genericBudget = getRemainingGenericEmailBudget(recommendationDrain.providerRequests);
+    if (genericBudget <= 0) return;
+    await drainGenericEmailOutbox({
+      limit: Math.min(10, genericBudget),
+      eventTypes: ["support_client_reply"],
+    });
+  })().catch((error) => {
+    logger.error("[SUPPORT EMAIL] Immediate support reply drain failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }));
 }
 
 const getReqHeader = (req: any, name: string) => {
@@ -4306,21 +4328,17 @@ export const appRouter = router({
               replyContent: input.content,
               hasAttachment: Boolean(input.attachmentUrl),
             });
-            await db.enqueueEmailOutbox({
-              dedupeKey: `support_reply:${msg.id}`,
+            await db.enqueueSupportReplyDigestEmail({
+              conversationId: conv.id,
+              messageId: msg.id,
+              senderType: isAdmin ? 'admin' : 'support',
               recipientUserId: conv.userId,
               recipientEmail: client.email,
-              eventType: 'support_client_reply',
-              templateId: 'support_client_reply',
-              emailCategory: 'transactional',
               subject: supportEmail.subject,
-              bodyText: supportEmail.text,
-              bodyHtml: supportEmail.html,
-              metadata: {
-                conversationId: conv.id,
-                messageId: msg.id,
-                senderType: isAdmin ? 'admin' : 'support',
-              },
+              clientName: client.name,
+              replyContent: input.content,
+              hasAttachment: Boolean(input.attachmentUrl),
+              buildEmail: buildSupportReplyEmail,
             }).catch((error) => {
               logger.error('[SUPPORT EMAIL] Failed to queue client reply email', {
                 conversationId: conv.id,
@@ -4329,6 +4347,7 @@ export const appRouter = router({
                 error: error instanceof Error ? error.message : String(error),
               });
             });
+            deferSupportReplyEmailDrain(ctx);
           }
         }
 
@@ -4375,22 +4394,17 @@ export const appRouter = router({
           clientName: targetUser.name,
           replyContent: input.content,
         });
-        await db.enqueueEmailOutbox({
-          dedupeKey: `support_reply:${firstMessage.id}`,
+        await db.enqueueSupportReplyDigestEmail({
+          conversationId: conv.id,
+          messageId: firstMessage.id,
+          senderType: isAdmin ? 'admin' : 'support',
           recipientUserId: input.userId,
           recipientEmail: targetUser.email,
-          eventType: 'support_client_reply',
-          templateId: 'support_client_reply',
-          emailCategory: 'transactional',
           subject: supportEmail.subject,
-          bodyText: supportEmail.text,
-          bodyHtml: supportEmail.html,
-          metadata: {
-            conversationId: conv.id,
-            messageId: firstMessage.id,
-            senderType: isAdmin ? 'admin' : 'support',
-            initiatedByStaff: true,
-          },
+          clientName: targetUser.name,
+          replyContent: input.content,
+          initiatedByStaff: true,
+          buildEmail: buildSupportReplyEmail,
         }).catch((error) => {
           logger.error('[SUPPORT EMAIL] Failed to queue initial client support email', {
             conversationId: conv.id,
@@ -4399,6 +4413,7 @@ export const appRouter = router({
             error: error instanceof Error ? error.message : String(error),
           });
         });
+        deferSupportReplyEmailDrain(ctx);
 
         return { conversationId: conv.id, message: firstMessage };
       }),

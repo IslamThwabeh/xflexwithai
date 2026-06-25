@@ -15,6 +15,7 @@ vi.mock("../backend/db", async () => {
     createSupportMessage: vi.fn(),
     createNotification: vi.fn().mockResolvedValue(undefined),
     enqueueEmailOutbox: vi.fn().mockResolvedValue(true),
+    enqueueSupportReplyDigestEmail: vi.fn().mockResolvedValue(true),
     notifyStaffByEvent: vi.fn(),
   };
 });
@@ -85,7 +86,7 @@ describe("support chat staff notifications", () => {
   const setNeedsHuman = vi.mocked(db.setNeedsHuman);
   const createSupportMessage = vi.mocked(db.createSupportMessage);
   const createNotification = vi.mocked(db.createNotification);
-  const enqueueEmailOutbox = vi.mocked(db.enqueueEmailOutbox);
+  const enqueueSupportReplyDigestEmail = vi.mocked(db.enqueueSupportReplyDigestEmail);
   const notifyStaffByEvent = vi.mocked(db.notifyStaffByEvent);
 
   beforeEach(() => {
@@ -104,11 +105,11 @@ describe("support chat staff notifications", () => {
     getSupportConversation.mockResolvedValue(null);
     getUserById.mockResolvedValue(null);
     createNotification.mockResolvedValue(undefined as any);
-    enqueueEmailOutbox.mockResolvedValue(true);
+    enqueueSupportReplyDigestEmail.mockResolvedValue(true);
     notifyStaffByEvent.mockResolvedValue(undefined as any);
   });
 
-  it("queues an email for every human reply even when the client is currently online", async () => {
+  it("queues a digest email for a human reply even when the client is currently online", async () => {
     const caller = createSupportStaffCaller();
     getSupportConversation.mockResolvedValue({
       id: 10,
@@ -137,14 +138,13 @@ describe("support chat staff notifications", () => {
       userId: 123,
       actionUrl: "/support",
     }));
-    expect(enqueueEmailOutbox).toHaveBeenCalledWith(expect.objectContaining({
-      dedupeKey: "support_reply:88",
+    expect(enqueueSupportReplyDigestEmail).toHaveBeenCalledWith(expect.objectContaining({
+      conversationId: 10,
+      messageId: 88,
       recipientUserId: 123,
       recipientEmail: "student@example.com",
-      eventType: "support_client_reply",
-      templateId: "support_client_reply",
-      emailCategory: "transactional",
-      bodyText: expect.stringContaining("Your issue has been resolved."),
+      replyContent: "Your issue has been resolved.",
+      buildEmail: expect.any(Function),
     }));
   });
 
