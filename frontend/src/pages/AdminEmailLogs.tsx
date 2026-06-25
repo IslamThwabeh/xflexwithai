@@ -3,7 +3,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { trpc } from '@/lib/trpc';
-import { ChevronDown, ChevronUp, Loader2, Mail, MailCheck, MailX } from 'lucide-react';
+import { ChevronDown, ChevronUp, Loader2, Mail, MailCheck, MailX, RefreshCw, Send } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 type DeliveryLogView = 'grouped' | 'detailed';
@@ -135,6 +135,22 @@ function formatMetadata(value: string | null | undefined) {
   }
 }
 
+function formatRelativeEmailAge(value: string | null | undefined, fallback: string) {
+  if (!value) return fallback;
+  const normalized = /^\d{4}-\d{2}-\d{2} /.test(value)
+    ? value.replace(' ', 'T') + 'Z'
+    : value;
+  const parsed = new Date(normalized).getTime();
+  if (!Number.isFinite(parsed)) return fallback;
+  const diffMs = Math.max(0, Date.now() - parsed);
+  const minutes = Math.floor(diffMs / 60000);
+  if (minutes < 1) return '<1m';
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  return remainingMinutes ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
+}
+
 function getStatusLabel(status: string, isRtl: boolean) {
   if (status === 'sent') return isRtl ? 'تم الإرسال' : 'Sent';
   if (status === 'failed') return isRtl ? 'فشل' : 'Failed';
@@ -153,6 +169,7 @@ function getStatusBadgeClass(status: string) {
 export default function AdminEmailLogs() {
   const { language } = useLanguage();
   const isRtl = language === 'ar';
+  const utils = trpc.useUtils();
   const { data: adminCheck } = trpc.auth.isAdmin.useQuery();
   const isAdmin = !!adminCheck?.isAdmin;
   const [recipientQuery, setRecipientQuery] = useState('');
@@ -195,6 +212,19 @@ export default function AdminEmailLogs() {
     deliverySummaryFilters,
     { enabled: isAdmin }
   );
+  const { data: outboxHealth, isLoading: outboxHealthLoading } = trpc.adminEmail.outboxHealth.useQuery(
+    undefined,
+    { enabled: isAdmin, refetchInterval: 60000 }
+  );
+  const drainDueOutboxMutation = trpc.adminEmail.drainDueOutbox.useMutation({
+    onSuccess: async () => {
+      await Promise.all([
+        utils.adminEmail.outboxHealth.invalidate(),
+        utils.adminEmail.deliveryLogs.invalidate(),
+        utils.adminEmail.deliveryLogSummary.invalidate(),
+      ]);
+    },
+  });
 
   const deliveryTotal = deliverySummary?.total ?? 0;
   const hasOlderDeliveryLogs = deliveryOffset + (deliveryLogs?.length ?? 0) < deliveryTotal;
@@ -296,6 +326,86 @@ export default function AdminEmailLogs() {
         </div>
 
         <div className="space-y-4">
+          <div className="bg-white dark:bg-slate-800 border rounded-xl p-5 space-y-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h3 className="font-semibold flex items-center gap-2">
+                  <RefreshCw className="w-4 h-4" />
+                  {isRtl ? 'حالة صندوق الإرسال' : 'Outbox Health'}
+                </h3>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {isRtl
+                    ? 'راقب الرسائل المنتظرة والمستحقة قبل أن تظهر كمشكلة عند العملاء.'
+                    : 'Monitor queued and due emails before clients feel the delay.'}
+                </p>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => drainDueOutboxMutation.mutate()}
+                disabled={drainDueOutboxMutation.isPending}
+              >
+                {drainDueOutboxMutation.isPending ? (
+                  <Loader2 className="me-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="me-2 h-4 w-4" />
+                )}
+                {isRtl ? 'إرسال المستحق الآن' : 'Drain due now'}
+              </Button>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+              <div className="rounded-lg border bg-slate-50 px-3 py-2 dark:bg-slate-900/40">
+                <p className="text-xs text-muted-foreground">{isRtl ? 'معلقة' : 'Pending'}</p>
+                <p className="text-lg font-semibold">{outboxHealthLoading ? '...' : outboxHealth?.pending ?? 0}</p>
+              </div>
+              <div className={`rounded-lg border px-3 py-2 ${outboxHealth?.duePending ? 'bg-amber-50 dark:bg-amber-900/10' : 'bg-slate-50 dark:bg-slate-900/40'}`}>
+                <p className={`text-xs ${outboxHealth?.duePending ? 'text-amber-700 dark:text-amber-300' : 'text-muted-foreground'}`}>{isRtl ? 'مستحقة الآن' : 'Due Now'}</p>
+                <p className={`text-lg font-semibold ${outboxHealth?.duePending ? 'text-amber-700 dark:text-amber-300' : ''}`}>{outboxHealthLoading ? '...' : outboxHealth?.duePending ?? 0}</p>
+              </div>
+              <div className={`rounded-lg border px-3 py-2 ${outboxHealth?.staleDuePending ? 'bg-red-50 dark:bg-red-900/10' : 'bg-slate-50 dark:bg-slate-900/40'}`}>
+                <p className={`text-xs ${outboxHealth?.staleDuePending ? 'text-red-700 dark:text-red-300' : 'text-muted-foreground'}`}>{isRtl ? 'متأخرة' : 'Stale Due'}</p>
+                <p className={`text-lg font-semibold ${outboxHealth?.staleDuePending ? 'text-red-700 dark:text-red-300' : ''}`}>{outboxHealthLoading ? '...' : outboxHealth?.staleDuePending ?? 0}</p>
+              </div>
+              <div className="rounded-lg border bg-slate-50 px-3 py-2 dark:bg-slate-900/40">
+                <p className="text-xs text-muted-foreground">{isRtl ? 'ردود الدعم المستحقة' : 'Support Due'}</p>
+                <p className="text-lg font-semibold">{outboxHealthLoading ? '...' : outboxHealth?.supportReplyDue ?? 0}</p>
+              </div>
+              <div className="rounded-lg border bg-slate-50 px-3 py-2 dark:bg-slate-900/40">
+                <p className="text-xs text-muted-foreground">{isRtl ? 'فشل قابل للإعادة' : 'Retryable Failed'}</p>
+                <p className="text-lg font-semibold">{outboxHealthLoading ? '...' : outboxHealth?.failedDue ?? 0}</p>
+              </div>
+              <div className={`rounded-lg border px-3 py-2 ${outboxHealth?.deadLetter ? 'bg-red-50 dark:bg-red-900/10' : 'bg-slate-50 dark:bg-slate-900/40'}`}>
+                <p className={`text-xs ${outboxHealth?.deadLetter ? 'text-red-700 dark:text-red-300' : 'text-muted-foreground'}`}>{isRtl ? 'فشل نهائي' : 'Dead Letter'}</p>
+                <p className={`text-lg font-semibold ${outboxHealth?.deadLetter ? 'text-red-700 dark:text-red-300' : ''}`}>{outboxHealthLoading ? '...' : outboxHealth?.deadLetter ?? 0}</p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-muted-foreground">
+              <span>
+                {isRtl ? 'أقدم معلقة: ' : 'Oldest pending: '}
+                {formatRelativeEmailAge(outboxHealth?.oldestPendingCreatedAt, isRtl ? 'لا يوجد' : 'none')}
+              </span>
+              <span>
+                {isRtl ? 'أقدم موعد مستحق: ' : 'Oldest due: '}
+                {formatRelativeEmailAge(outboxHealth?.oldestDueNextAttemptAt, isRtl ? 'لا يوجد' : 'none')}
+              </span>
+              <span>
+                {isRtl ? 'آخر إرسال: ' : 'Last sent: '}
+                {formatDeliveryLogTimestamp(outboxHealth?.lastSentAt, isRtl ? 'ar-EG' : 'en-US', isRtl ? 'غير متوفر' : 'unavailable')}
+              </span>
+            </div>
+
+            {drainDueOutboxMutation.data && (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-900 dark:border-emerald-900/50 dark:bg-emerald-950/20 dark:text-emerald-100">
+                {isRtl
+                  ? `تمت المحاولة: ${drainDueOutboxMutation.data.total.claimed}، تم الإرسال: ${drainDueOutboxMutation.data.total.sent}، فشل: ${drainDueOutboxMutation.data.total.failed}، تخطي: ${drainDueOutboxMutation.data.total.skipped}.`
+                  : `Claimed ${drainDueOutboxMutation.data.total.claimed}, sent ${drainDueOutboxMutation.data.total.sent}, failed ${drainDueOutboxMutation.data.total.failed}, skipped ${drainDueOutboxMutation.data.total.skipped}.`}
+              </div>
+            )}
+          </div>
+
           <div ref={deliveryListTopRef} className="bg-white dark:bg-slate-800 border rounded-xl p-5 space-y-4 scroll-mt-6">
             <div className="flex items-start justify-between gap-3 flex-wrap">
               <div>

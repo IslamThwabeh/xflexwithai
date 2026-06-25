@@ -4680,6 +4680,71 @@ export async function getEmailOutboxStats(sinceIso?: string): Promise<{
   return result;
 }
 
+export async function getEmailOutboxHealth(staleAfterMinutes: number = 5): Promise<{
+  pending: number;
+  duePending: number;
+  staleDuePending: number;
+  failed: number;
+  failedDue: number;
+  processing: number;
+  deadLetter: number;
+  supportReplyPending: number;
+  supportReplyDue: number;
+  oldestPendingCreatedAt: string | null;
+  oldestDueNextAttemptAt: string | null;
+  lastSentAt: string | null;
+}> {
+  const db = await getDb();
+  if (!db) {
+    return {
+      pending: 0,
+      duePending: 0,
+      staleDuePending: 0,
+      failed: 0,
+      failedDue: 0,
+      processing: 0,
+      deadLetter: 0,
+      supportReplyPending: 0,
+      supportReplyDue: 0,
+      oldestPendingCreatedAt: null,
+      oldestDueNextAttemptAt: null,
+      lastSentAt: null,
+    };
+  }
+
+  const nowIso = new Date().toISOString();
+  const staleCutoffIso = new Date(Date.now() - Math.max(1, staleAfterMinutes) * 60 * 1000).toISOString();
+  const [row] = await db.select({
+    pending: sql<number>`sum(case when ${emailOutbox.status} = 'pending' then 1 else 0 end)`,
+    duePending: sql<number>`sum(case when ${emailOutbox.status} = 'pending' and ${emailOutbox.nextAttemptAt} <= ${nowIso} then 1 else 0 end)`,
+    staleDuePending: sql<number>`sum(case when ${emailOutbox.status} = 'pending' and ${emailOutbox.nextAttemptAt} <= ${staleCutoffIso} then 1 else 0 end)`,
+    failed: sql<number>`sum(case when ${emailOutbox.status} = 'failed' then 1 else 0 end)`,
+    failedDue: sql<number>`sum(case when ${emailOutbox.status} = 'failed' and ${emailOutbox.nextAttemptAt} <= ${nowIso} then 1 else 0 end)`,
+    processing: sql<number>`sum(case when ${emailOutbox.status} = 'processing' then 1 else 0 end)`,
+    deadLetter: sql<number>`sum(case when ${emailOutbox.status} = 'dead_letter' then 1 else 0 end)`,
+    supportReplyPending: sql<number>`sum(case when ${emailOutbox.status} = 'pending' and ${emailOutbox.eventType} = 'support_client_reply' then 1 else 0 end)`,
+    supportReplyDue: sql<number>`sum(case when ${emailOutbox.status} = 'pending' and ${emailOutbox.eventType} = 'support_client_reply' and ${emailOutbox.nextAttemptAt} <= ${nowIso} then 1 else 0 end)`,
+    oldestPendingCreatedAt: sql<string | null>`min(case when ${emailOutbox.status} in ('pending', 'failed', 'processing') then ${emailOutbox.createdAt} else null end)`,
+    oldestDueNextAttemptAt: sql<string | null>`min(case when ${emailOutbox.status} in ('pending', 'failed') and ${emailOutbox.nextAttemptAt} <= ${nowIso} then ${emailOutbox.nextAttemptAt} else null end)`,
+    lastSentAt: sql<string | null>`max(${emailOutbox.sentAt})`,
+  }).from(emailOutbox);
+
+  return {
+    pending: Number(row?.pending ?? 0),
+    duePending: Number(row?.duePending ?? 0),
+    staleDuePending: Number(row?.staleDuePending ?? 0),
+    failed: Number(row?.failed ?? 0),
+    failedDue: Number(row?.failedDue ?? 0),
+    processing: Number(row?.processing ?? 0),
+    deadLetter: Number(row?.deadLetter ?? 0),
+    supportReplyPending: Number(row?.supportReplyPending ?? 0),
+    supportReplyDue: Number(row?.supportReplyDue ?? 0),
+    oldestPendingCreatedAt: row?.oldestPendingCreatedAt ?? null,
+    oldestDueNextAttemptAt: row?.oldestDueNextAttemptAt ?? null,
+    lastSentAt: row?.lastSentAt ?? null,
+  };
+}
+
 export async function hasRecommendationResultChild(parentId: number) {
   const db = await getDb();
   if (!db) return false;

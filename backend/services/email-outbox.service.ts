@@ -1,6 +1,10 @@
 import { sendEmail } from "../_core/email";
 import * as db from "../db";
 
+export const SUPPORT_REPLY_EMAIL_DRAIN_LIMIT = 5;
+export const SUPPORT_REPLY_IMMEDIATE_DRAIN_LIMIT = 3;
+export const GENERIC_EMAIL_OUTBOX_DRAIN_LIMIT = 10;
+
 export async function drainGenericEmailOutbox(input: {
   limit: number;
   eventTypes?: string[];
@@ -56,4 +60,32 @@ export async function drainGenericEmailOutbox(input: {
   }
 
   return result;
+}
+
+export async function drainDueEmailOutbox(input?: {
+  supportReplyLimit?: number;
+  genericLimit?: number;
+}): Promise<{
+  supportReplies: { claimed: number; sent: number; failed: number; skipped: number };
+  generic: { claimed: number; sent: number; failed: number; skipped: number };
+  total: { claimed: number; sent: number; failed: number; skipped: number };
+}> {
+  const supportReplies = await drainGenericEmailOutbox({
+    limit: input?.supportReplyLimit ?? SUPPORT_REPLY_EMAIL_DRAIN_LIMIT,
+    eventTypes: ["support_client_reply"],
+  });
+  const generic = await drainGenericEmailOutbox({
+    limit: input?.genericLimit ?? GENERIC_EMAIL_OUTBOX_DRAIN_LIMIT,
+  });
+
+  return {
+    supportReplies,
+    generic,
+    total: {
+      claimed: supportReplies.claimed + generic.claimed,
+      sent: supportReplies.sent + generic.sent,
+      failed: supportReplies.failed + generic.failed,
+      skipped: supportReplies.skipped + generic.skipped,
+    },
+  };
 }

@@ -28,10 +28,13 @@ import { filterRecipientsByMutedThreads } from "./services/recommendation-thread
 import { parseRecommendationDraft } from "./services/recommendation-parser.service";
 import {
   drainRecommendationDeliveryQueue,
-  getRemainingGenericEmailBudget,
   RECOMMENDATION_DELIVERY_BATCH_SIZE,
 } from "./services/recommendation-delivery.service";
-import { drainGenericEmailOutbox } from "./services/email-outbox.service";
+import {
+  drainDueEmailOutbox,
+  drainGenericEmailOutbox,
+  SUPPORT_REPLY_IMMEDIATE_DRAIN_LIMIT,
+} from "./services/email-outbox.service";
 import { storagePutR2, storageArchiveR2 } from "./storage-r2";
 import { analyzeLexai } from "./_core/lexai";
 import { invokeOpenAiChatCompletion } from "./_core/openai";
@@ -70,14 +73,8 @@ function deferRecommendationEmailDrain(ctx: { defer?: (task: Promise<unknown>) =
 function deferSupportReplyEmailDrain(ctx: { defer?: (task: Promise<unknown>) => void }) {
   if (!ctx.defer) return;
   ctx.defer((async () => {
-    const recommendationDrain = await drainRecommendationDeliveryQueue({
-      limit: RECOMMENDATION_DELIVERY_BATCH_SIZE,
-      source: "publish",
-    });
-    const genericBudget = getRemainingGenericEmailBudget(recommendationDrain.providerRequests);
-    if (genericBudget <= 0) return;
     await drainGenericEmailOutbox({
-      limit: Math.min(10, genericBudget),
+      limit: SUPPORT_REPLY_IMMEDIATE_DRAIN_LIMIT,
       eventTypes: ["support_client_reply"],
     });
   })().catch((error) => {
@@ -7769,6 +7766,15 @@ ${qaText}`;
           fromDate: input?.fromDate,
           toDate: input?.toDate,
         });
+      }),
+    outboxHealth: adminProcedure.query(async () => {
+      return db.getEmailOutboxHealth(5);
+    }),
+    drainDueOutbox: adminProcedure
+      .mutation(async ({ ctx }) => {
+        const result = await drainDueEmailOutbox();
+        await db.logAdminAction(ctx.admin.id, ctx.admin.id, "drain_due_email_outbox", result);
+        return result;
       }),
     sendOne: adminProcedure
       .input(z.object({

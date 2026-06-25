@@ -7,7 +7,11 @@ import { verifyFreeVideoPlaybackToken } from "./freeLibraryPlayback";
 import { sendFreezeExpiredEmail, sendExpiryAlertEmail, sendDripEmail, sendMilestoneEmail, sendInactivityEmail, sendOnboardingStalledEmail } from "./orderEmails";
 import { logger } from "./logger";
 import { getFreeLibraryDocumentBySlug, getFreeLibraryVideoBySlug } from "../../shared/freeLibrary";
-import { drainGenericEmailOutbox } from "../services/email-outbox.service";
+import {
+  drainGenericEmailOutbox,
+  GENERIC_EMAIL_OUTBOX_DRAIN_LIMIT,
+  SUPPORT_REPLY_EMAIL_DRAIN_LIMIT,
+} from "../services/email-outbox.service";
 import {
   drainRecommendationDeliveryQueue,
   getRemainingGenericEmailBudget,
@@ -37,13 +41,20 @@ async function runFrequentTimedServiceAndEmailJobs() {
     limit: RECOMMENDATION_DELIVERY_BATCH_SIZE,
     source: "scheduled",
   });
-  const genericBudget = getRemainingGenericEmailBudget(recommendationDrain.providerRequests);
 
-  if (genericBudget > 0) {
-    await db.materializeEmailOutboxCampaigns(genericBudget);
+  await drainGenericEmailOutbox({
+    limit: SUPPORT_REPLY_EMAIL_DRAIN_LIMIT,
+    eventTypes: ["support_client_reply"],
+  });
+
+  const genericBudget = getRemainingGenericEmailBudget(recommendationDrain.providerRequests);
+  const genericLimit = Math.min(GENERIC_EMAIL_OUTBOX_DRAIN_LIMIT, genericBudget);
+
+  if (genericLimit > 0) {
+    await db.materializeEmailOutboxCampaigns(genericLimit);
   }
-  if (genericBudget > 0) {
-    await drainGenericEmailOutbox({ limit: genericBudget });
+  if (genericLimit > 0) {
+    await drainGenericEmailOutbox({ limit: genericLimit });
   }
 
 }
@@ -503,6 +514,23 @@ export default {
         await runFrequentTimedServiceAndEmailJobs();
       } catch (error) {
         logger.error("[CRON] Frequent activation/email jobs failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+
+      try {
+        const health = await db.getEmailOutboxHealth(5);
+        if (health.staleDuePending > 0 || health.deadLetter > 0) {
+          await db.notifyStaffByEvent("email_delivery_anomaly", {
+            titleEn: `Email outbox delay detected (${health.staleDuePending} stale due)`,
+            titleAr: `تم رصد تأخير في صندوق البريد (${health.staleDuePending} مستحقة ومتأخرة)`,
+            contentEn: `${health.duePending} due pending, ${health.failedDue} failed due for retry, ${health.deadLetter} dead-lettered. Oldest pending: ${health.oldestPendingCreatedAt || "none"}.`,
+            contentAr: `${health.duePending} رسائل مستحقة، ${health.failedDue} فاشلة مستحقة لإعادة المحاولة، ${health.deadLetter} فاشلة نهائياً. أقدم رسالة معلقة: ${health.oldestPendingCreatedAt || "لا يوجد"}.`,
+            metadata: health,
+          }).catch(() => {});
+        }
+      } catch (error) {
+        logger.error("[CRON] Email outbox health check failed", {
           error: error instanceof Error ? error.message : String(error),
         });
       }
