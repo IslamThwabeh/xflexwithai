@@ -625,6 +625,100 @@ function getTimedServiceActivationDeadlineDays(subscription?: TimedServiceSubscr
   return getRemainingDaysUntil(subscription.maxActivationDate);
 }
 
+type SchemaHealthResult = {
+  ok: boolean;
+  missing: Array<{ table: string; columns: string[] }>;
+};
+
+const TIMED_SERVICE_REQUIRED_COLUMNS: Record<string, string[]> = {
+  enrollments: ["isAdminSkipped"],
+  lexaiSubscriptions: [
+    "isPendingActivation",
+    "maxActivationDate",
+    "activationReason",
+    "activationProcessedAt",
+    "courseWaivedByPolicy",
+    "brokerWaivedByPolicy",
+  ],
+  recommendationSubscriptions: [
+    "isPendingActivation",
+    "maxActivationDate",
+    "activationReason",
+    "activationProcessedAt",
+    "courseWaivedByPolicy",
+    "brokerWaivedByPolicy",
+  ],
+};
+
+let timedServiceSchemaHealthCache: { checkedAtMs: number; result: SchemaHealthResult } | null = null;
+const TIMED_SERVICE_SCHEMA_HEALTH_CACHE_MS = 60_000;
+
+function isSchemaMismatchError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return /no such column|no such table|SQLITE_ERROR|D1_ERROR|Failed query/i.test(message)
+    && /isAdminSkipped|maxActivationDate|isPendingActivation|activationReason|activationProcessedAt|courseWaivedByPolicy|brokerWaivedByPolicy|enrollments|lexaiSubscriptions|recommendationSubscriptions/i.test(message);
+}
+
+function getTimedServiceRepairAlertContent(input: {
+  userId?: number;
+  error: unknown;
+  schemaMismatch?: boolean;
+}) {
+  const reason = input.schemaMismatch || isSchemaMismatchError(input.error)
+    ? "schema_mismatch"
+    : "repair_error";
+  if (reason === "schema_mismatch") {
+    return {
+      reason,
+      titleEn: input.userId
+        ? `Timed-service activation repair skipped for user #${input.userId}`
+        : "Timed-service activation repair skipped",
+      titleAr: input.userId
+        ? `تم تخطي إصلاح تفعيل الخدمة الزمنية للمستخدم #${input.userId}`
+        : "تم تخطي إصلاح تفعيل الخدمة الزمنية",
+      contentEn: "Timed-service activation repair was skipped because the Worker schema expectations do not match the D1 database yet. Verify production migrations before retrying.",
+      contentAr: "تم تخطي إصلاح تفعيل الخدمة الزمنية لأن توقعات نسخة Worker لا تطابق قاعدة بيانات D1 بعد. تحقق من ترحيلات الإنتاج قبل إعادة المحاولة.",
+    };
+  }
+  return {
+    reason,
+    titleEn: input.userId
+      ? `Timed-service activation repair failed for user #${input.userId}`
+      : "Timed-service activation repair failed",
+    titleAr: input.userId
+      ? `فشل إصلاح تفعيل الخدمة الزمنية للمستخدم #${input.userId}`
+      : "فشل إصلاح تفعيل الخدمة الزمنية",
+    contentEn: "Timed-service activation repair failed. Review server logs and the notification metadata for the technical error.",
+    contentAr: "فشل إصلاح تفعيل الخدمة الزمنية. راجع سجلات الخادم وبيانات التنبيه للتفاصيل التقنية.",
+  };
+}
+
+export async function getTimedServiceSchemaHealth(forceRefresh: boolean = false): Promise<SchemaHealthResult> {
+  const nowMs = Date.now();
+  if (!forceRefresh && timedServiceSchemaHealthCache && nowMs - timedServiceSchemaHealthCache.checkedAtMs < TIMED_SERVICE_SCHEMA_HEALTH_CACHE_MS) {
+    return timedServiceSchemaHealthCache.result;
+  }
+
+  const db = await getDb();
+  if (!db) {
+    return { ok: false, missing: [{ table: "database", columns: ["connection"] }] };
+  }
+
+  const missing: SchemaHealthResult["missing"] = [];
+  for (const [table, requiredColumns] of Object.entries(TIMED_SERVICE_REQUIRED_COLUMNS)) {
+    const rows = await db.all(sql.raw(`PRAGMA table_info(${table})`)) as Array<{ name?: string }>;
+    const existing = new Set(rows.map((row) => row.name).filter((name): name is string => typeof name === "string"));
+    const missingColumns = requiredColumns.filter((column) => !existing.has(column));
+    if (missingColumns.length) {
+      missing.push({ table, columns: missingColumns });
+    }
+  }
+
+  const result = { ok: missing.length === 0, missing };
+  timedServiceSchemaHealthCache = { checkedAtMs: nowMs, result };
+  return result;
+}
+
 async function getPackageCourseIds(packageId: number) {
   let pkgCourses = await getPackageCourses(packageId);
   let courseIds = pkgCourses.map((pc) => pc.courseId);
@@ -3140,6 +3234,28 @@ async function repairDueTimedServiceStates() {
   const db = await getDb();
   if (!db) return;
 
+  const schemaHealth = await getTimedServiceSchemaHealth();
+  if (!schemaHealth.ok) {
+    const alert = getTimedServiceRepairAlertContent({
+      error: new Error("Timed-service schema health check failed"),
+      schemaMismatch: true,
+    });
+    logger.warn("[TIMED SERVICE] Repair skipped due to schema mismatch", {
+      missing: schemaHealth.missing,
+    });
+    await notifyStaffByEvent("timed_service_activation_failure", {
+      titleEn: alert.titleEn,
+      titleAr: alert.titleAr,
+      contentEn: alert.contentEn,
+      contentAr: alert.contentAr,
+      metadata: {
+        reason: alert.reason,
+        missing: schemaHealth.missing,
+      },
+    }).catch(() => {});
+    return;
+  }
+
   const [pendingRecommendationRows, pendingLexaiRows] = await Promise.all([
     db
     .select({ userId: recommendationSubscriptions.userId })
@@ -3169,16 +3285,21 @@ async function repairDueTimedServiceStates() {
     try {
       await ensureTimedServicesActivatedIfDue(userId);
     } catch (error) {
+      const alert = getTimedServiceRepairAlertContent({ userId, error });
       logger.warn('[RECOMMENDATIONS] Failed to repair pending subscriber state', {
         userId,
         error: error instanceof Error ? error.message : String(error),
       });
       await notifyStaffByEvent("timed_service_activation_failure", {
-        titleEn: `Timed-service activation failed for user #${userId}`,
-        titleAr: `فشل تفعيل الخدمة الزمنية للمستخدم #${userId}`,
-        contentEn: error instanceof Error ? error.message : String(error),
-        contentAr: error instanceof Error ? error.message : String(error),
-        metadata: { userId },
+        titleEn: alert.titleEn,
+        titleAr: alert.titleAr,
+        contentEn: alert.contentEn,
+        contentAr: alert.contentAr,
+        metadata: {
+          userId,
+          reason: alert.reason,
+          rawError: error instanceof Error ? error.message : String(error),
+        },
       }).catch(() => {});
     }
   }
@@ -14483,24 +14604,17 @@ export async function notifyStaffByEvent(
     return;
   }
 
-  for (const notificationEmail of notificationEmails) {
-    try {
-      await sendStaffAlertEmail({
-        to: notificationEmail,
-        eventType,
-        titleEn: data.titleEn,
-        contentEn: data.contentEn || data.titleEn,
-        actionUrl: actionUrl || '',
-      });
-    } catch (e) {
-      logger.warn(`[STAFF_NOTIF] Failed to email configured admin notification address`, {
-        error: String(e),
-        eventType,
-        notificationEmail,
-      });
+  const directEmailRecipients = new Map<string, { email: string; source: string; userId?: number }>();
+  const addDirectEmailRecipient = (email: string | null | undefined, source: string, userId?: number) => {
+    const normalized = normalizeEmailAddress(email || '');
+    if (!isLikelyValidEmail(normalized)) return;
+    if (!directEmailRecipients.has(normalized)) {
+      directEmailRecipients.set(normalized, { email: normalized, source, userId });
     }
+  };
+  for (const notificationEmail of notificationEmails) {
+    addDirectEmailRecipient(notificationEmail, "configured");
   }
-
   for (const userId of targetUserIds) {
     if (userId < 0) continue;
 
@@ -14524,16 +14638,29 @@ export async function notifyStaffByEvent(
       const emailTo = userRow.email;
 
       if (!emailTo) continue;
+      addDirectEmailRecipient(emailTo, "staff", userId);
+    } catch (e) {
+      logger.warn(`[STAFF_NOTIF] Failed to email userId=${userId}`, { error: String(e) });
+    }
+  }
 
+  for (const recipient of directEmailRecipients.values()) {
+    try {
       await sendStaffAlertEmail({
-        to: emailTo,
+        to: recipient.email,
         eventType,
         titleEn: data.titleEn,
         contentEn: data.contentEn || data.titleEn,
         actionUrl: actionUrl || '',
       });
     } catch (e) {
-      logger.warn(`[STAFF_NOTIF] Failed to email userId=${userId}`, { error: String(e) });
+      logger.warn(`[STAFF_NOTIF] Failed to email staff alert recipient`, {
+        error: String(e),
+        eventType,
+        recipientEmail: recipient.email,
+        source: recipient.source,
+        userId: recipient.userId,
+      });
     }
   }
 }

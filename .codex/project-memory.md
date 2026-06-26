@@ -1,6 +1,6 @@
 # XFLEX Project Memory
 
-Last updated: 2026-06-23
+Last updated: 2026-06-27
 
 ## Project Overview
 
@@ -45,6 +45,8 @@ Last updated: 2026-06-23
   - `0 2 * * *` for existing daily lifecycle/retention/reminder work.
 - Migration `database/migrations/056_recommendation_delivery_priority.sql` was initially prepared on 2026-06-22 and later applied to production. It additively creates `idx_rec_deliveries_status_kind_created` on `recommendation_deliveries(status, eventKind, createdAt, id)`.
 - Production application of migration `056` read 11,941 rows and wrote 5,900 index entries; this was index construction, not modification of 5,900 business records. Cloudflare bookmark: `00000ec4-00001f32-00005092-b8b7c4078f9df3fb50a741d01f919baa`.
+- Migration `database/migrations/059_fix_email_delivery_log_timestamp_default.sql` was applied to production on 2026-06-27 after the app produced legacy `email_delivery_logs.created_at = 'CURRENT_TIMESTAMP'` rows. It rebuilt `email_delivery_logs` with `created_at TEXT NOT NULL DEFAULT (datetime('now'))`, preserved 17,862 rows, and recreated `idx_email_delivery_logs_created_at`, `idx_email_delivery_logs_recipient_email`, and `idx_email_delivery_logs_status`. Cloudflare bookmark: `00000ee7-0000020e-00005096-0b9b3e6371d965180da477a114bbedeb`.
+- Migration `database/migrations/060_schema_migrations_tracking.sql` was applied to production on 2026-06-27. It created `schema_migrations` plus `idx_schema_migrations_applied_at`; Codex recorded migrations `059` and `060` in that table. Cloudflare bookmark: `00000ee7-00000214-00005096-2faa70207cd77d4f75c5ff001a10e37a`.
 - Release order for the 2026-06-22 hotfixes:
   1. Apply migration `056`.
   2. Deploy the production Worker/backend.
@@ -84,6 +86,9 @@ Last updated: 2026-06-23
 - Human support replies now always enqueue a transactional client email, regardless of whether the client is online. This applies to replies in existing conversations and staff-initiated conversations.
 - Support reply emails use `eventType = support_client_reply`, `templateId = support_client_reply`, and dedupe key `support_reply:<supportMessageId>`.
 - `support_client_reply` rows are prioritized ahead of bulk announcements inside the generic email outbox. Bot replies, polling, edits, and deletes do not generate support reply emails.
+- As of 2026-06-25/26 email reliability fixes, the minute Worker drains a reserved `support_client_reply` lane before generic campaign work. Admin Email Logs exposes Outbox Health and a manual "Drain due now" action. Expected support reply delay should stay near the digest window rather than drifting to 30+ minutes.
+- Staff alert emails must be deduped by normalized recipient email across configured notification emails and staff-role recipients. This prevents one person receiving duplicate operational alerts when they are both configured in `admin_settings.notification_emails_json` and present as a staff user.
+- Timed-service activation repair alerts must not expose raw SQL in the visible email body. Use admin-friendly content; keep raw errors only in metadata/logs.
 
 ## Known Fixed Bugs / Lessons Learned
 
@@ -150,6 +155,7 @@ Last updated: 2026-06-23
 - Activation creates an in-app notice and queues a transactional activation email.
 - Previously affected clients are reviewed for compensation case by case; no automatic historical extension or recommendation replay is performed.
 - Admin API `subscriptions.activationAudit` reports overdue/policy-activated clients and inaccessible intervals for review.
+- Timed-service cron repair now performs a schema-health preflight before querying readiness columns such as `enrollments.isAdminSkipped`, `lexaiSubscriptions.maxActivationDate`, and activation audit fields. If schema is missing, repair is skipped and a controlled schema-mismatch staff alert is sent instead of raw SQL failure content.
 
 ## Support Media Uploads
 
@@ -211,6 +217,14 @@ Last updated: 2026-06-23
   - Tests verify BCC privacy, the 50-recipient ceiling, one provider request for a grouped batch, whole-batch retry, and rejection of non-identical content.
   - Migration `057` executed successfully against an isolated in-memory SQLite schema.
   - No production migration, push, or deployment was performed by Codex for this release.
+- Email/timed-service hardening verification on 2026-06-27:
+  - `pnpm exec tsc --noEmit` passed.
+  - Focused tests passed: `server/timedServiceActivation.test.ts`, `server/supportChatNotifications.test.ts`, and `server/emailOutboxService.test.ts` (20 tests).
+  - Full `pnpm test` passed: 29 files, 120 tests.
+  - `pnpm run build:worker` passed and produced `dist/worker.js`.
+  - `pnpm run build` passed; Vite emitted only the existing large-chunk warning.
+  - Migration `060_schema_migrations_tracking.sql` smoke-tested successfully against in-memory SQLite.
+  - Production D1 post-migration verification confirmed `email_delivery_logs` has runtime `datetime('now')` default, 17,862 rows were preserved, `schema_migrations` contains `059` and `060`, and no new `timed_service_activation_failure` notifications appeared after the fix/migration point.
 
 ## Future Hardening
 
