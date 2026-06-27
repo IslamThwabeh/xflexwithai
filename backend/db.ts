@@ -659,37 +659,65 @@ function isSchemaMismatchError(error: unknown) {
     && /isAdminSkipped|maxActivationDate|isPendingActivation|activationReason|activationProcessedAt|courseWaivedByPolicy|brokerWaivedByPolicy|enrollments|lexaiSubscriptions|recommendationSubscriptions/i.test(message);
 }
 
-function getTimedServiceRepairAlertContent(input: {
+type TimedServiceRepairAlertUserContext = {
   userId?: number;
+  userName?: string | null;
+  userEmail?: string | null;
+};
+
+function getTimedServiceRepairAlertUserLabel(input: TimedServiceRepairAlertUserContext) {
+  if (!input.userId) return null;
+  const name = String(input.userName || "").trim();
+  const email = normalizeEmailAddress(input.userEmail || "");
+  const primary = name || email || `user #${input.userId}`;
+  return {
+    titleLabel: primary === `user #${input.userId}`
+      ? primary
+      : `${primary} (user #${input.userId})`,
+    detailLabelEn: [
+      name ? `Name: ${name}` : null,
+      email ? `Email: ${email}` : null,
+      `User ID: ${input.userId}`,
+    ].filter(Boolean).join("; "),
+    detailLabelAr: [
+      name ? `الاسم: ${name}` : null,
+      email ? `البريد الإلكتروني: ${email}` : null,
+      `رقم المستخدم: ${input.userId}`,
+    ].filter(Boolean).join("; "),
+  };
+}
+
+function getTimedServiceRepairAlertContent(input: TimedServiceRepairAlertUserContext & {
   error: unknown;
   schemaMismatch?: boolean;
 }) {
   const reason = input.schemaMismatch || isSchemaMismatchError(input.error)
     ? "schema_mismatch"
     : "repair_error";
+  const userLabel = getTimedServiceRepairAlertUserLabel(input);
   if (reason === "schema_mismatch") {
     return {
       reason,
-      titleEn: input.userId
-        ? `Timed-service activation repair skipped for user #${input.userId}`
+      titleEn: userLabel
+        ? `Timed-service activation repair skipped for ${userLabel.titleLabel}`
         : "Timed-service activation repair skipped",
-      titleAr: input.userId
-        ? `تم تخطي إصلاح تفعيل الخدمة الزمنية للمستخدم #${input.userId}`
+      titleAr: userLabel
+        ? `تم تخطي إصلاح تفعيل الخدمة الزمنية للمستخدم ${userLabel.titleLabel}`
         : "تم تخطي إصلاح تفعيل الخدمة الزمنية",
-      contentEn: "Timed-service activation repair was skipped because the Worker schema expectations do not match the D1 database yet. Verify production migrations before retrying.",
-      contentAr: "تم تخطي إصلاح تفعيل الخدمة الزمنية لأن توقعات نسخة Worker لا تطابق قاعدة بيانات D1 بعد. تحقق من ترحيلات الإنتاج قبل إعادة المحاولة.",
+      contentEn: `${userLabel ? `${userLabel.detailLabelEn}. ` : ""}Timed-service activation repair was skipped because the Worker schema expectations do not match the D1 database yet. Verify production migrations before retrying.`,
+      contentAr: `${userLabel ? `${userLabel.detailLabelAr}. ` : ""}تم تخطي إصلاح تفعيل الخدمة الزمنية لأن توقعات نسخة Worker لا تطابق قاعدة بيانات D1 بعد. تحقق من ترحيلات الإنتاج قبل إعادة المحاولة.`,
     };
   }
   return {
     reason,
-    titleEn: input.userId
-      ? `Timed-service activation repair failed for user #${input.userId}`
+    titleEn: userLabel
+      ? `Timed-service activation repair failed for ${userLabel.titleLabel}`
       : "Timed-service activation repair failed",
-    titleAr: input.userId
-      ? `فشل إصلاح تفعيل الخدمة الزمنية للمستخدم #${input.userId}`
+    titleAr: userLabel
+      ? `فشل إصلاح تفعيل الخدمة الزمنية للمستخدم ${userLabel.titleLabel}`
       : "فشل إصلاح تفعيل الخدمة الزمنية",
-    contentEn: "Timed-service activation repair failed. Review server logs and the notification metadata for the technical error.",
-    contentAr: "فشل إصلاح تفعيل الخدمة الزمنية. راجع سجلات الخادم وبيانات التنبيه للتفاصيل التقنية.",
+    contentEn: `${userLabel ? `${userLabel.detailLabelEn}. ` : ""}Timed-service activation repair failed. Review server logs and the notification metadata for the technical error.`,
+    contentAr: `${userLabel ? `${userLabel.detailLabelAr}. ` : ""}فشل إصلاح تفعيل الخدمة الزمنية. راجع سجلات الخادم وبيانات التنبيه للتفاصيل التقنية.`,
   };
 }
 
@@ -3285,9 +3313,30 @@ async function repairDueTimedServiceStates() {
     try {
       await ensureTimedServicesActivatedIfDue(userId);
     } catch (error) {
-      const alert = getTimedServiceRepairAlertContent({ userId, error });
+      let alertUser: { name: string | null; email: string | null } | undefined;
+      try {
+        const [userRow] = await db
+          .select({ name: users.name, email: users.email })
+          .from(users)
+          .where(eq(users.id, userId))
+          .limit(1);
+        alertUser = userRow;
+      } catch (lookupError) {
+        logger.warn('[RECOMMENDATIONS] Failed to load user context for timed-service repair alert', {
+          userId,
+          error: lookupError instanceof Error ? lookupError.message : String(lookupError),
+        });
+      }
+      const alert = getTimedServiceRepairAlertContent({
+        userId,
+        userName: alertUser?.name,
+        userEmail: alertUser?.email,
+        error,
+      });
       logger.warn('[RECOMMENDATIONS] Failed to repair pending subscriber state', {
         userId,
+        userName: alertUser?.name,
+        userEmail: alertUser?.email,
         error: error instanceof Error ? error.message : String(error),
       });
       await notifyStaffByEvent("timed_service_activation_failure", {
@@ -3297,6 +3346,8 @@ async function repairDueTimedServiceStates() {
         contentAr: alert.contentAr,
         metadata: {
           userId,
+          userName: alertUser?.name ?? null,
+          userEmail: alertUser?.email ?? null,
           reason: alert.reason,
           rawError: error instanceof Error ? error.message : String(error),
         },
