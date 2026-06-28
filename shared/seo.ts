@@ -58,9 +58,9 @@ export const SEO_ROUTES: SeoRouteDefinition[] = [
     path: "",
     type: "home",
     ar: {
-      title: "أكاديمية XFlex للتداول | تعليم تداول منظم ودعم عملي",
-      description: "تعلّم التداول خطوة بخطوة باللغة العربية مع إدارة المخاطر، التحليل الفني، الدعم العملي وأدوات LexAI.",
-      heading: "تعليم تداول منظم يبني قرارك لا اعتمادك",
+      title: "اكاديمية تداول XFlex | تعليم تداول عربي منظم ودعم عملي",
+      description: "اكاديمية تداول عربية لتعلّم التداول خطوة بخطوة مع إدارة المخاطر، التحليل الفني، الدعم العملي وأدوات LexAI.",
+      heading: "اكاديمية تداول عربية تبني قرارك لا اعتمادك",
       summary: "مسار عربي عملي لتعلّم أساسيات التداول والتحليل الفني وإدارة رأس المال والانضباط النفسي، مع دعم وأدوات تساعدك أثناء التعلّم.",
     },
     en: {
@@ -383,9 +383,32 @@ export function buildPageStructuredData(key: SeoRouteKey, language: SeoLanguage)
     "@type": "EducationalOrganization",
     "@id": `${SITE_ORIGIN}/#organization`,
     name: SITE_NAME,
+    alternateName: [
+      "XFlex Academy",
+      "XFlex",
+      "اكاديمية XFlex للتداول",
+      "اكاديمية تداول XFlex",
+      "أكاديمية تداول XFlex",
+    ],
     url: SITE_ORIGIN,
     logo: DEFAULT_SOCIAL_IMAGE,
     email: "support@xflexacademy.com",
+    sameAs: [
+      "https://www.instagram.com/xflex.academy",
+      "https://www.facebook.com/share/1Aj9HNNwsv/",
+      "https://wa.me/972597596030",
+    ],
+    areaServed: [
+      { "@type": "Country", name: "Palestine" },
+      { "@type": "Place", name: "Arab world" },
+    ],
+    knowsAbout: [
+      language === "ar" ? "تعليم التداول" : "Trading education",
+      language === "ar" ? "إدارة المخاطر" : "Risk management",
+      language === "ar" ? "التحليل الفني" : "Technical analysis",
+      language === "ar" ? "علم نفس التداول" : "Trading psychology",
+      language === "ar" ? "الفوركس والذهب" : "Forex and gold trading",
+    ],
     address: {
       "@type": "PostalAddress",
       addressLocality: "Ramallah",
@@ -431,6 +454,10 @@ export function buildPageStructuredData(key: SeoRouteKey, language: SeoLanguage)
       url,
       inLanguage: language,
       provider: { "@id": `${SITE_ORIGIN}/#organization` },
+      educationalLevel: language === "ar" ? "مبتدئ إلى متقدم" : "Beginner to advanced",
+      teaches: language === "ar"
+        ? ["أساسيات التداول", "إدارة المخاطر", "التحليل الفني", "خطة التداول"]
+        : ["Trading fundamentals", "Risk management", "Technical analysis", "Trading plan"],
     });
   }
 

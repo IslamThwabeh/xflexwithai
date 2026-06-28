@@ -754,15 +754,15 @@ function HeroSection({ onScrollTo }: { onScrollTo: (id: string) => void }) {
           <div className="max-w-2xl">
             <div className="cin-hero-1 inline-flex items-center gap-2 rounded-full border border-[#00C176]/35 bg-[#00C176]/12 px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-[#00C176]" style={{ boxShadow: '0 0 24px rgba(0,193,118,0.25)' }}>
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#00C176]" style={{ boxShadow: '0 0 8px #00C176' }} />
-              {isArabic ? 'أكاديمية التداول الأولى في فلسطين' : 'Elite Trading Academy — Palestine'}
+              {isArabic ? 'اكاديمية تداول عربية في فلسطين' : 'Elite Trading Academy — Palestine'}
             </div>
 
             <h1 className="cin-hero-2 mt-6 text-5xl font-extrabold leading-[1.08] tracking-[-0.03em] text-white md:text-6xl lg:text-[4.25rem]">
-              {isArabic ? (<>تداول بثقة.<br /><span className="text-[#00C176]" style={{ textShadow: '0 0 40px rgba(0,193,118,0.45)' }}>ابنِ مستقبلك.</span></>) : (<>Trade with<br /><span className="text-[#00C176]" style={{ textShadow: '0 0 40px rgba(0,193,118,0.45)' }}>Confidence.</span></>)}
+              {isArabic ? (<>اكاديمية تداول<br /><span className="text-[#00C176]" style={{ textShadow: '0 0 40px rgba(0,193,118,0.45)' }}>تبني قرارك.</span></>) : (<>Trade with<br /><span className="text-[#00C176]" style={{ textShadow: '0 0 40px rgba(0,193,118,0.45)' }}>Confidence.</span></>)}
             </h1>
 
             <p className="cin-hero-3 mt-6 max-w-xl text-base leading-8 text-white/70 md:text-lg">
-              {isArabic ? 'مسار تعليمي متكامل من الصفر حتى الاحتراف، توصيات مباشرة، وتحليل ذكي من LexAI — كل شيء في مكان واحد.' : 'A complete structured curriculum, live trade recommendations, and LexAI intelligence — everything you need to trade at a professional level.'}
+              {isArabic ? 'مسار تعليمي متكامل من الصفر حتى الاحتراف، مع إدارة مخاطر، تطبيق عملي، توصيات مباشرة، وتحليل ذكي من LexAI في مكان واحد.' : 'A complete structured curriculum, live trade recommendations, and LexAI intelligence — everything you need to trade at a professional level.'}
             </p>
 
             <div className="cin-hero-4 mt-9 flex flex-wrap gap-4">

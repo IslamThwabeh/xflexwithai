@@ -137,6 +137,53 @@ function articleCollectionBody(language: SeoLanguage, articles: PublicArticle[])
   </section>`;
 }
 
+function homePrerenderBody(language: SeoLanguage) {
+  const isArabic = language === "ar";
+  if (isArabic) {
+    return `<section aria-labelledby="arabic-trading-academy">
+      <h2 id="arabic-trading-academy">اكاديمية تداول للمتداول العربي</h2>
+      <p>تجمع XFlex بين مسار تعليمي منظم، تطبيق عملي، إدارة مخاطر، تحليل فني، ومتابعة تساعد الطالب على بناء خطة تداول واضحة بعيداً عن وعود الربح السريع.</p>
+      <ul>
+        <li><a href="/ar/packages/basic">الباقة الأساسية لتعليم التداول</a></li>
+        <li><a href="/ar/packages/comprehensive">الباقة الشاملة مع LexAI والدعم العملي</a></li>
+        <li><a href="/ar/free-content">محتوى تداول مجاني للمبتدئين</a></li>
+        <li><a href="/ar/risk-disclosure">إفصاح مخاطر التداول وحدود المحتوى التعليمي</a></li>
+      </ul>
+    </section>`;
+  }
+  return `<section aria-labelledby="structured-trading-academy">
+    <h2 id="structured-trading-academy">A structured trading academy for Arabic-speaking learners</h2>
+    <p>XFlex combines organized education, practical support, risk management, technical analysis, and learning tools that help students build a clearer trading plan.</p>
+    <ul>
+      <li><a href="/en/packages/basic">Basic trading education package</a></li>
+      <li><a href="/en/packages/comprehensive">Comprehensive package with LexAI and support</a></li>
+      <li><a href="/en/free-content">Free trading education for beginners</a></li>
+      <li><a href="/en/risk-disclosure">Trading risk disclosure and educational limits</a></li>
+    </ul>
+  </section>`;
+}
+
+function packagePrerenderBody(language: SeoLanguage, routeKey: string) {
+  const isArabic = language === "ar";
+  const isComprehensive = routeKey === "package-comprehensive";
+  if (isArabic) {
+    return `<section aria-labelledby="package-details">
+      <h2 id="package-details">${isComprehensive ? "ماذا تشمل الباقة الشاملة؟" : "ماذا تشمل الباقة الأساسية؟"}</h2>
+      <p>${isComprehensive
+        ? "مسار اكاديمية تداول متكامل يجمع التعليم المنظم، الدعم العملي، أدوات LexAI، والمتابعة المناسبة للمتداول الجاد."
+        : "مسار تأسيسي داخل اكاديمية تداول XFlex يركز على الأساسيات، إدارة رأس المال، التحليل الفني، وبناء خطة تداول عملية."}</p>
+      <p>التداول عالي المخاطر، لذلك نربط كل مسار بتعليم واضح حول وقف الخسارة، حجم الصفقة، والانضباط النفسي بدلاً من تقديم وعود ربح.</p>
+    </section>`;
+  }
+  return `<section aria-labelledby="package-details">
+    <h2 id="package-details">${isComprehensive ? "What does the comprehensive package include?" : "What does the basic package include?"}</h2>
+    <p>${isComprehensive
+      ? "A complete XFlex path combining structured education, practical support, LexAI tools, and guided follow-up for serious learners."
+      : "A foundation path focused on market basics, capital management, technical analysis, and building a practical trading plan."}</p>
+    <p>Trading is high risk, so each path teaches stop-loss discipline, position sizing, and emotional control instead of profit promises.</p>
+  </section>`;
+}
+
 function routeHtml(
   template: string,
   language: SeoLanguage,
@@ -222,7 +269,7 @@ function articleSchema(article: PublicArticle, language: SeoLanguage) {
 }
 
 function sitemapUrl(loc: string, lastmod?: string, alternatePath?: string) {
-  return `<url><loc>${escapeXml(loc)}</loc>${lastmod ? `<lastmod>${escapeXml(lastmod.slice(0, 10))}</lastmod>` : ""}${alternatePath
+  return `<url><loc>${escapeXml(loc)}</loc>${lastmod ? `<lastmod>${escapeXml(lastmod.slice(0, 10))}</lastmod>` : ""}${alternatePath !== undefined
     ? `<xhtml:link rel="alternate" hreflang="ar" href="${SITE_ORIGIN}/ar${alternatePath}"/><xhtml:link rel="alternate" hreflang="en" href="${SITE_ORIGIN}/en${alternatePath}"/><xhtml:link rel="alternate" hreflang="x-default" href="${SITE_ORIGIN}/ar${alternatePath}"/>`
     : ""}</url>`;
 }
@@ -242,7 +289,13 @@ async function main() {
     for (const language of languages) {
       const copy = route[language];
       const canonicalPath = localizedPath(route.path, language);
-      const body = route.key === "articles" ? articleCollectionBody(language, articles) : "";
+      const body = route.key === "articles"
+        ? articleCollectionBody(language, articles)
+        : route.key === "home"
+          ? homePrerenderBody(language)
+          : route.key === "package-basic" || route.key === "package-comprehensive"
+            ? packagePrerenderBody(language, route.key)
+            : "";
       const html = routeHtml(
         template,
         language,
