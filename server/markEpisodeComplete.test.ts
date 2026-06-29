@@ -340,9 +340,95 @@ describe("enrollments.markEpisodeComplete", () => {
       })
     ).rejects.toMatchObject({
       code: "FORBIDDEN",
+      message: "Pass the episode quiz (50% required) before continuing.",
     } satisfies Partial<TRPCError>);
 
     expect(createOrUpdateEpisodeProgress).not.toHaveBeenCalled();
+  });
+
+  it("returns a structured blocker when the previous episode quiz is still required", async () => {
+    const caller = createAuthedCaller();
+    getEpisodesByCourseId.mockResolvedValue([
+      { id: 1, order: 1, duration: 100, titleAr: "Intro", titleEn: "Intro" },
+      { id: 2, order: 2, duration: 100, titleAr: "Basics", titleEn: "Basics" },
+      { id: 3, order: 3, duration: 300, titleAr: "Terms", titleEn: "Terms" },
+      { id: 4, order: 4, duration: 400, titleAr: "More terms", titleEn: "More terms" },
+    ] as any);
+    getUserEpisodeProgress.mockResolvedValue({
+      id: 700,
+      userId: 123,
+      episodeId: 3,
+      watchedDuration: 30,
+      isCompleted: false,
+    } as any);
+    getQuizForLevelWithQuestions.mockResolvedValue({
+      id: 22,
+      level: 2,
+      title: "Previous Episode Quiz",
+      passingScore: 50,
+      questions: [{ id: 201, questionText: "Ready?", orderNum: 1, options: [{ id: 1, optionId: "a", text: "Yes" }] }],
+    } as any);
+    hasUserPassedQuizLevel.mockResolvedValue(false);
+
+    const result = await caller.episodeQuiz.getForEpisode({
+      courseId: 1,
+      episodeId: 4,
+    });
+
+    expect(result).toMatchObject({
+      required: false,
+      passed: false,
+      blocked: true,
+      blockReason: "previous_quiz_required",
+      previousEpisode: {
+        id: 3,
+        order: 3,
+      },
+      previousRequirement: {
+        watchSatisfied: true,
+        quizRequired: true,
+        quizPassed: false,
+        quizLevel: 2,
+        quizTitle: "Previous Episode Quiz",
+      },
+      quiz: null,
+    });
+  });
+
+  it("does not block a next episode when the previous episode has no attemptable quiz", async () => {
+    const caller = createAuthedCaller();
+    getEpisodesByCourseId.mockResolvedValue([
+      { id: 1, order: 1, duration: 100, titleAr: "Intro", titleEn: "Intro" },
+      { id: 2, order: 2, duration: 100, titleAr: "Basics", titleEn: "Basics" },
+      { id: 3, order: 3, duration: 100, titleAr: "Terms", titleEn: "Terms" },
+    ] as any);
+    getUserEpisodeProgress.mockResolvedValue({
+      id: 701,
+      userId: 123,
+      episodeId: 2,
+      watchedDuration: 30,
+      isCompleted: false,
+    } as any);
+    getQuizForLevelWithQuestions.mockResolvedValue({
+      id: 23,
+      level: 1,
+      title: "Empty Quiz",
+      passingScore: 50,
+      questions: [],
+    } as any);
+
+    const result = await caller.episodeQuiz.getForEpisode({
+      courseId: 1,
+      episodeId: 3,
+    });
+
+    expect(result).toMatchObject({
+      required: false,
+      passed: true,
+      blocked: false,
+      quiz: null,
+    });
+    expect(hasUserPassedQuizLevel).not.toHaveBeenCalled();
   });
 
   it("reports an empty/malformed episode quiz as not required", async () => {

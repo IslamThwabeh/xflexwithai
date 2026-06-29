@@ -130,7 +130,7 @@ export default function CourseWatch() {
 
   const isLoading = courseLoading || episodesLoading;
 
-  const { data: episodeQuiz, isLoading: loadingEpisodeQuiz } = trpc.episodeQuiz.getForEpisode.useQuery(
+  const { data: episodeQuiz, isLoading: loadingEpisodeQuiz, error: episodeQuizError } = trpc.episodeQuiz.getForEpisode.useQuery(
     { courseId: courseId!, episodeId: selectedEpisode?.id ?? 0 },
     { enabled: !!courseId && !!selectedEpisode }
   );
@@ -215,10 +215,6 @@ export default function CourseWatch() {
     () => new Set(courseEpisodeProgress.filter((progress) => progress.isCompleted).map((progress) => progress.episodeId)),
     [courseEpisodeProgress]
   );
-  const progressByEpisodeId = useMemo(
-    () => new Map(courseEpisodeProgress.map((progress) => [progress.episodeId, progress])),
-    [courseEpisodeProgress]
-  );
   const getRequiredWatchSeconds = (episode: any) => (
     episode?.duration && episode.duration > 0
       ? Math.max(30, Math.floor(episode.duration * 0.1))
@@ -230,11 +226,7 @@ export default function CourseWatch() {
     if (episode.order <= 1) return true;
     const previousEpisode = sortedEpisodes.find((item) => item.order === episode.order - 1);
     if (!previousEpisode) return false;
-    if (completedEpisodeIds.has(previousEpisode.id)) return true;
-
-    const previousProgress = progressByEpisodeId.get(previousEpisode.id);
-    const previousWatchedSeconds = Number(previousProgress?.watchedDuration || 0);
-    return previousWatchedSeconds >= getRequiredWatchSeconds(previousEpisode);
+    return completedEpisodeIds.has(previousEpisode.id);
   };
 
   const currentEpisodeIndex = selectedEpisode
@@ -251,15 +243,39 @@ export default function CourseWatch() {
   const activationDeadline = formatPendingActivationDate(activationStatus?.maxActivationDate, isArabic);
   const activationDaysLeft = getPendingActivationDaysLeft(activationStatus?.maxActivationDate);
 
+  const episodeAccessBlocked = !!episodeQuiz?.blocked;
+  const quizLoadFailed = !!episodeQuizError;
   const quizRequired = !!episodeQuiz?.required;
   const quizPassed = !!episodeQuiz?.passed;
+  const previousEpisodeBlock = episodeQuiz?.previousEpisode;
+  const previousRequirement = episodeQuiz?.previousRequirement;
+  const blockedPreviousEpisode = previousEpisodeBlock
+    ? sortedEpisodes.find((episode) => episode.id === previousEpisodeBlock.id)
+    : null;
+  const getEpisodeTitle = useCallback((episode: any) => (
+    language === 'ar'
+      ? (episode?.titleAr || episode?.titleEn || '')
+      : (episode?.titleEn || episode?.titleAr || '')
+  ), [language]);
+  const blockedPreviousTitle = getEpisodeTitle(blockedPreviousEpisode || previousEpisodeBlock);
+  const blockedMessage = episodeAccessBlocked
+    ? previousRequirement?.quizRequired && !previousRequirement?.quizPassed
+      ? (language === 'ar'
+        ? `أكمل اختبار الحلقة السابقة أولاً${blockedPreviousTitle ? `: ${blockedPreviousTitle}` : ''}${previousRequirement.quizTitle ? ` - ${previousRequirement.quizTitle}` : ''}.`
+        : `Complete the previous episode quiz first${blockedPreviousTitle ? `: ${blockedPreviousTitle}` : ''}${previousRequirement.quizTitle ? ` - ${previousRequirement.quizTitle}` : ''}.`)
+      : (language === 'ar'
+        ? `شاهد المزيد من الحلقة السابقة أولاً${blockedPreviousTitle ? `: ${blockedPreviousTitle}` : ''}.`
+        : `Watch more of the previous episode first${blockedPreviousTitle ? `: ${blockedPreviousTitle}` : ''}.`)
+    : null;
   const canMarkComplete = selectedEpisode?.order <= 1
     ? hasWatchRequirementMet
-    : hasWatchRequirementMet && !loadingEpisodeQuiz && (!quizRequired || quizPassed);
+    : hasWatchRequirementMet && !loadingEpisodeQuiz && !episodeAccessBlocked && !quizLoadFailed && (!quizRequired || quizPassed);
   const canConfirmSelectedEpisodeWatch = !!selectedEpisode
     && !!nextEpisode
     && !selectedEpisodeProgress?.isCompleted
     && !loadingEpisodeQuiz
+    && !episodeAccessBlocked
+    && !quizLoadFailed
     && (!quizRequired || quizPassed);
 
   const quizSectionRef = useRef<HTMLDivElement>(null);
@@ -309,8 +325,21 @@ export default function CourseWatch() {
           : 'Complete the episode quiz first to mark it as complete'
       );
       quizSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
     }
-  }, [canMarkComplete, hasWatchRequirementMet, quizRequired, quizPassed, language, handleEpisodeComplete, requiredWatchMinutes, t]);
+    if (episodeAccessBlocked) {
+      toast.info(blockedMessage || t('course.toastUnlockPrev'));
+      quizSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+    if (quizLoadFailed) {
+      toast.error(
+        language === 'ar'
+          ? 'تعذر تحميل حالة اختبار الحلقة. حدث الصفحة وحاول مرة أخرى.'
+          : 'Could not load this episode quiz status. Refresh and try again.'
+      );
+    }
+  }, [canMarkComplete, hasWatchRequirementMet, quizRequired, quizPassed, episodeAccessBlocked, blockedMessage, quizLoadFailed, language, handleEpisodeComplete, requiredWatchMinutes, t]);
 
   const syncEpisodeProgress = useCallback((currentTime?: number, force = false) => {
     if (!selectedEpisode || !courseId) return;
@@ -366,6 +395,21 @@ export default function CourseWatch() {
         return;
       }
 
+      if (episodeAccessBlocked) {
+        toast.info(blockedMessage || t('course.toastUnlockPrev'));
+        quizSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        return;
+      }
+
+      if (quizLoadFailed) {
+        toast.error(
+          language === 'ar'
+            ? 'تعذر تحميل حالة اختبار الحلقة. حدث الصفحة وحاول مرة أخرى.'
+            : 'Could not load this episode quiz status. Refresh and try again.'
+        );
+        return;
+      }
+
       toast.error(t('course.toastUnlockPrev'));
       return;
     }
@@ -387,6 +431,12 @@ export default function CourseWatch() {
       // The mutation toast already explains the failure.
     }
   };
+
+  const handleOpenBlockedPreviousEpisode = useCallback(() => {
+    if (blockedPreviousEpisode) {
+      openEpisode(blockedPreviousEpisode);
+    }
+  }, [blockedPreviousEpisode, openEpisode]);
 
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -613,6 +663,36 @@ export default function CourseWatch() {
                 <CardContent className="space-y-4">
                   {loadingEpisodeQuiz ? (
                     <p className="text-sm text-muted-foreground">{t('course.loadingQuiz')}</p>
+                  ) : quizLoadFailed ? (
+                    <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                      <div className="flex items-start gap-2">
+                        <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                        <p>
+                          {language === 'ar'
+                            ? 'تعذر تحميل حالة اختبار هذه الحلقة. حدث الصفحة وحاول مرة أخرى، أو تواصل مع الدعم إذا استمرت المشكلة.'
+                            : 'Could not load this episode quiz status. Refresh and try again, or contact support if it continues.'}
+                        </p>
+                      </div>
+                    </div>
+                  ) : episodeAccessBlocked ? (
+                    <div className="rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                      <div className="flex items-start gap-2">
+                        <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                        <div className="space-y-3">
+                          <p>{blockedMessage || t('course.toastUnlockPrev')}</p>
+                          {blockedPreviousEpisode && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={handleOpenBlockedPreviousEpisode}
+                            >
+                              {language === 'ar' ? 'العودة للحلقة السابقة' : 'Go to previous episode'}
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
                   ) : !episodeQuiz?.quiz ? (
                     <p className="text-sm text-muted-foreground">
                       {t('course.noQuiz')}
@@ -733,6 +813,15 @@ export default function CourseWatch() {
                           if (!isUnlocked) {
                             if (canConfirmImmediateNext) {
                               setConfirmNextEpisode(episode);
+                              return;
+                            }
+                            if (nextEpisode?.id === episode.id && quizRequired && !quizPassed) {
+                              toast.info(
+                                language === 'ar'
+                                  ? 'أكمل اختبار الحلقة الحالية أولاً لفتح التالية'
+                                  : 'Complete the current episode quiz first to unlock the next one'
+                              );
+                              quizSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                               return;
                             }
                             toast.error(t('course.toastUnlockPrev'));

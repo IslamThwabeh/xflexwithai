@@ -697,39 +697,6 @@ const ensureRecommendationPublishAccess = async (ctx: { user: { id: number; emai
   return access;
 };
 
-const ensureEpisodeUnlockedForUser = async (userId: number, courseId: number, episodeId: number) => {
-  const episodes = await db.getEpisodesByCourseId(courseId);
-  const sortedEpisodes = [...episodes].sort((a, b) => a.order - b.order);
-  const episode = sortedEpisodes.find((ep) => ep.id === episodeId);
-
-  if (!episode) {
-    throw new TRPCError({ code: 'NOT_FOUND', message: 'Episode not found in this course' });
-  }
-
-  if (episode.order <= 1) {
-    return { episode, episodes: sortedEpisodes };
-  }
-
-  const previousEpisode = sortedEpisodes.find((ep) => ep.order === episode.order - 1);
-  if (!previousEpisode) {
-    return { episode, episodes: sortedEpisodes };
-  }
-
-  const courseProgress = await db.getUserCourseProgress(userId, courseId);
-  const completedEpisodeIds = new Set(
-    courseProgress.filter((progress) => progress.isCompleted).map((progress) => progress.episodeId)
-  );
-
-  if (!completedEpisodeIds.has(previousEpisode.id) && !(await hasEpisodeCompletionRequirementsSatisfied(userId, previousEpisode))) {
-    throw new TRPCError({
-      code: 'FORBIDDEN',
-      message: 'Complete the previous episode first.',
-    });
-  }
-
-  return { episode, episodes: sortedEpisodes };
-};
-
 const getAttemptableQuizForLevel = async (level: number) => {
   const quiz = await db.getQuizForLevelWithQuestions(level);
   if (!quiz?.questions?.length) {
@@ -740,29 +707,108 @@ const getAttemptableQuizForLevel = async (level: number) => {
   return hasUnanswerableQuestion ? null : quiz;
 };
 
+const getEpisodeCompletionRequirementStatus = async (
+  userId: number,
+  episode: { id: number; order: number; duration?: number | null; titleAr?: string | null; titleEn?: string | null },
+) => {
+  const progress = await db.getUserEpisodeProgress(userId, episode.id);
+  const requiredWatchSeconds = getEpisodeRequiredWatchSeconds(episode);
+  const watchedDuration = Number(progress?.watchedDuration || 0);
+  const watchSatisfied = watchedDuration >= requiredWatchSeconds;
+
+  let quizRequired = false;
+  let quizPassed = true;
+  let quiz: Awaited<ReturnType<typeof getAttemptableQuizForLevel>> = null;
+  const quizLevel = episode.order > 1 ? episode.order - 1 : null;
+
+  if (quizLevel !== null) {
+    quiz = await getAttemptableQuizForLevel(quizLevel);
+    if (quiz) {
+      quizRequired = true;
+      quizPassed = await db.hasUserPassedQuizLevel(userId, quizLevel);
+    }
+  }
+
+  const isCompleted = !!progress?.isCompleted;
+  const satisfied = isCompleted || (watchSatisfied && (!quizRequired || quizPassed));
+
+  return {
+    satisfied,
+    isCompleted,
+    watchedDuration,
+    requiredWatchSeconds,
+    watchSatisfied,
+    quizRequired,
+    quizPassed,
+    quizLevel,
+    quizTitle: quiz?.title ?? null,
+    quizPassingScore: quiz?.passingScore ?? null,
+  };
+};
+
+const getEpisodeAccessBlock = async (
+  userId: number,
+  courseId: number,
+  episode: { id: number; order: number; duration?: number | null },
+  sortedEpisodes: Array<{ id: number; order: number; duration?: number | null; titleAr?: string | null; titleEn?: string | null }>,
+) => {
+  if (episode.order <= 1) return null;
+
+  const previousEpisode = sortedEpisodes.find((ep) => ep.order === episode.order - 1);
+  if (!previousEpisode) return null;
+
+  const courseProgress = await db.getUserCourseProgress(userId, courseId);
+  const previousCompleted = courseProgress.some((progress) => (
+    progress.episodeId === previousEpisode.id && progress.isCompleted
+  ));
+  if (previousCompleted) return null;
+
+  const status = await getEpisodeCompletionRequirementStatus(userId, previousEpisode);
+  if (status.satisfied) return null;
+
+  return {
+    code: status.watchSatisfied ? "previous_quiz_required" : "previous_watch_required",
+    previousEpisode: {
+      id: previousEpisode.id,
+      order: previousEpisode.order,
+      titleAr: previousEpisode.titleAr ?? null,
+      titleEn: previousEpisode.titleEn ?? null,
+    },
+    requirement: status,
+  };
+};
+
+const ensureEpisodeUnlockedForUser = async (userId: number, courseId: number, episodeId: number) => {
+  const episodes = await db.getEpisodesByCourseId(courseId);
+  const sortedEpisodes = [...episodes].sort((a, b) => a.order - b.order);
+  const episode = sortedEpisodes.find((ep) => ep.id === episodeId);
+
+  if (!episode) {
+    throw new TRPCError({ code: 'NOT_FOUND', message: 'Episode not found in this course' });
+  }
+
+  const block = await getEpisodeAccessBlock(userId, courseId, episode, sortedEpisodes);
+  if (block) {
+    const previousLabel = block.previousEpisode.titleEn || block.previousEpisode.titleAr || `episode ${block.previousEpisode.order}`;
+    const action = block.requirement.watchSatisfied && block.requirement.quizRequired
+      ? `pass the previous episode quiz${block.requirement.quizTitle ? ` (${block.requirement.quizTitle})` : ""}`
+      : `watch more of the previous episode (${Math.ceil(block.requirement.requiredWatchSeconds / 60)} min required)`;
+
+    throw new TRPCError({
+      code: 'FORBIDDEN',
+      message: `Complete ${previousLabel} first: ${action}.`,
+    });
+  }
+
+  return { episode, episodes: sortedEpisodes };
+};
+
 const hasEpisodeCompletionRequirementsSatisfied = async (
   userId: number,
   episode: { id: number; order: number; duration?: number | null },
 ) => {
-  const progress = await db.getUserEpisodeProgress(userId, episode.id);
-  if (progress?.isCompleted) return true;
-
-  const watchedDuration = Number(progress?.watchedDuration || 0);
-  if (watchedDuration < getEpisodeRequiredWatchSeconds(episode)) {
-    return false;
-  }
-
-  if (episode.order <= 1) {
-    return true;
-  }
-
-  const quizLevel = episode.order - 1;
-  const quiz = await getAttemptableQuizForLevel(quizLevel);
-  if (!quiz) {
-    return true;
-  }
-
-  return db.hasUserPassedQuizLevel(userId, quizLevel);
+  const status = await getEpisodeCompletionRequirementStatus(userId, episode);
+  return status.satisfied;
 };
 
 // ============================================================================
@@ -2405,21 +2451,37 @@ export const appRouter = router({
         episodeId: z.number(),
       }))
       .query(async ({ ctx, input }) => {
-        const { episode } = await ensureEpisodeUnlockedForUser(
-          ctx.user.id,
-          input.courseId,
-          input.episodeId
-        );
+        const episodes = await db.getEpisodesByCourseId(input.courseId);
+        const sortedEpisodes = [...episodes].sort((a, b) => a.order - b.order);
+        const episode = sortedEpisodes.find((ep) => ep.id === input.episodeId);
+
+        if (!episode) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Episode not found in this course' });
+        }
+
+        const block = await getEpisodeAccessBlock(ctx.user.id, input.courseId, episode, sortedEpisodes);
+        if (block) {
+          return {
+            required: false,
+            passed: false,
+            introEpisode: false,
+            blocked: true,
+            blockReason: block.code,
+            previousEpisode: block.previousEpisode,
+            previousRequirement: block.requirement,
+            quiz: null,
+          };
+        }
 
         if (episode.order <= 1) {
-          return { required: false, passed: true, introEpisode: true, quiz: null };
+          return { required: false, passed: true, introEpisode: true, blocked: false, quiz: null };
         }
 
         const quizLevel = episode.order - 1;
         const quiz = await getAttemptableQuizForLevel(quizLevel);
 
         if (!quiz) {
-          return { required: false, passed: true, introEpisode: false, quiz: null };
+          return { required: false, passed: true, introEpisode: false, blocked: false, quiz: null };
         }
 
         const passed = await db.hasUserPassedQuizLevel(ctx.user.id, quizLevel);
@@ -2428,6 +2490,7 @@ export const appRouter = router({
           required: true,
           passed,
           introEpisode: false,
+          blocked: false,
           quiz,
         };
       }),
