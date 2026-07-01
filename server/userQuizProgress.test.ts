@@ -84,4 +84,47 @@ describe("buildUserQuizProgress", () => {
       expect.objectContaining({ level: 2, isUnlocked: true, isPassed: false, bestScore: 0 }),
     ]);
   });
+
+  it("unlocks the next level when the previous quiz was bypassed without marking it passed", () => {
+    const progress = buildUserQuizProgress(
+      [
+        {
+          id: 1,
+          level: 1,
+          title: "Level 1",
+          description: null,
+          passingScore: 50,
+        },
+        {
+          id: 2,
+          level: 2,
+          title: "Level 2",
+          description: null,
+          passingScore: 50,
+        },
+      ] as any,
+      [
+        {
+          id: 10,
+          userId: 33,
+          quizId: 1,
+          isUnlocked: true,
+          isCompleted: false,
+          isBypassed: true,
+          bypassedAt: "2026-07-01T10:00:00.000Z",
+          bestScore: 20,
+          bestPercentage: "20",
+          attemptsCount: 1,
+          lastAttemptAt: "2026-07-01T09:58:00.000Z",
+          createdAt: "2026-07-01T09:55:00.000Z",
+          updatedAt: "2026-07-01T10:00:00.000Z",
+        },
+      ] as any,
+    );
+
+    expect(progress).toEqual([
+      expect.objectContaining({ level: 1, isUnlocked: true, isPassed: false, isBypassed: true }),
+      expect.objectContaining({ level: 2, isUnlocked: true, isPassed: false, isBypassed: false }),
+    ]);
+  });
 });

@@ -7838,6 +7838,145 @@ export async function hasUserPassedQuizLevel(userId: number, level: number): Pro
   return Boolean(record.isCompleted) || bestScore >= Number(quiz.passingScore || 50);
 }
 
+export async function hasUserBypassedQuizLevel(userId: number, level: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+
+  const quiz = await getQuizByLevel(level);
+  if (!quiz) return false;
+
+  const progress = await db.select().from(userQuizProgress)
+    .where(and(
+      eq(userQuizProgress.userId, userId),
+      eq(userQuizProgress.quizId, quiz.id)
+    ))
+    .limit(1);
+
+  return Boolean(progress[0]?.isBypassed);
+}
+
+export async function hasUserClearedQuizLevel(userId: number, level: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+
+  const quiz = await getQuizByLevel(level);
+  if (!quiz) return false;
+
+  const progress = await db.select().from(userQuizProgress)
+    .where(and(
+      eq(userQuizProgress.userId, userId),
+      eq(userQuizProgress.quizId, quiz.id)
+    ))
+    .limit(1);
+
+  if (!progress.length) return false;
+  const record = progress[0];
+  const bestScore = Number(record.bestScore || 0);
+  return Boolean(record.isCompleted)
+    || Boolean(record.isBypassed)
+    || bestScore >= Number(quiz.passingScore || 50);
+}
+
+export async function hasUserAttemptedQuizLevel(userId: number, level: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+
+  const quiz = await getQuizByLevel(level);
+  if (!quiz) return false;
+
+  const [attempt] = await db.select({ id: quizAttempts.id })
+    .from(quizAttempts)
+    .where(and(eq(quizAttempts.userId, userId), eq(quizAttempts.quizId, quiz.id)))
+    .limit(1);
+
+  return Boolean(attempt);
+}
+
+export async function bypassQuizLevel(userId: number, level: number, metadata?: Record<string, unknown>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const quiz = await getQuizByLevel(level);
+  if (!quiz) {
+    throw new Error(`Quiz not configured for level ${level}`);
+  }
+
+  const attempted = await hasUserAttemptedQuizLevel(userId, level);
+  if (!attempted) {
+    throw new Error("Quiz must be attempted before it can be bypassed");
+  }
+
+  const now = new Date().toISOString();
+  const progress = await db.select().from(userQuizProgress)
+    .where(and(
+      eq(userQuizProgress.userId, userId),
+      eq(userQuizProgress.quizId, quiz.id)
+    ))
+    .limit(1);
+
+  if (progress.length) {
+    await db.update(userQuizProgress)
+      .set({
+        isUnlocked: true,
+        isBypassed: true,
+        bypassedAt: now,
+        updatedAt: now,
+      })
+      .where(eq(userQuizProgress.id, progress[0].id));
+  } else {
+    await db.insert(userQuizProgress).values({
+      userId,
+      quizId: quiz.id,
+      isUnlocked: true,
+      isCompleted: false,
+      isBypassed: true,
+      bypassedAt: now,
+      bestScore: 0,
+      bestPercentage: "0",
+      attemptsCount: 0,
+      updatedAt: now,
+    });
+  }
+
+  const nextQuiz = await getQuizByLevel(level + 1);
+  if (nextQuiz) {
+    const nextProgress = await db.select().from(userQuizProgress)
+      .where(and(
+        eq(userQuizProgress.userId, userId),
+        eq(userQuizProgress.quizId, nextQuiz.id)
+      ))
+      .limit(1);
+
+    if (nextProgress.length) {
+      await db.update(userQuizProgress)
+        .set({ isUnlocked: true, updatedAt: now })
+        .where(eq(userQuizProgress.id, nextProgress[0].id));
+    } else {
+      await db.insert(userQuizProgress).values({
+        userId,
+        quizId: nextQuiz.id,
+        isUnlocked: true,
+        isCompleted: false,
+        isBypassed: false,
+        bestScore: 0,
+        bestPercentage: "0",
+        attemptsCount: 0,
+        updatedAt: now,
+      });
+    }
+  }
+
+  await trackEngagement({
+    userId,
+    eventType: "quiz_level_bypass",
+    entityType: "quiz_level",
+    entityId: quiz.id,
+    metadata: JSON.stringify({ level, quizId: quiz.id, bypassedAt: now, ...metadata }).slice(0, 2000),
+  });
+
+  return { success: true, level, quizId: quiz.id, bypassedAt: now };
+}
+
 export async function getQuizAttemptsByUser(userId: number) {
   const db = await getDb();
   if (!db) return [];
@@ -7945,6 +8084,8 @@ export async function submitEpisodeQuizAttempt(
       .set({
         isUnlocked: true,
         isCompleted: Boolean(existing.isCompleted) || passed,
+        isBypassed: passed ? false : Boolean(existing.isBypassed),
+        bypassedAt: passed ? null : existing.bypassedAt,
         bestScore: nextBestScore,
         bestPercentage: String(nextBestScore),
         attemptsCount: nextAttempts,
@@ -7958,6 +8099,7 @@ export async function submitEpisodeQuizAttempt(
       quizId: quiz.id,
       isUnlocked: true,
       isCompleted: passed,
+      isBypassed: false,
       bestScore: score,
       bestPercentage: String(score),
       attemptsCount: 1,
@@ -8022,6 +8164,12 @@ export function buildUserQuizProgress(allQuizzes: Quiz[], progressRows: UserQuiz
     const bestScore = Number(progress.bestScore || 0);
     return Boolean(progress.isCompleted) || bestScore >= Number(quiz.passingScore || 50);
   };
+  const hasClearedQuiz = (quiz: Quiz | undefined) => {
+    if (!quiz) return false;
+    const progress = progressByQuizId.get(quiz.id);
+    if (!progress) return false;
+    return hasPassedQuiz(quiz) || Boolean(progress.isBypassed);
+  };
 
   return allQuizzes.map((quiz) => {
     const progress = progressByQuizId.get(quiz.id);
@@ -8033,8 +8181,9 @@ export function buildUserQuizProgress(allQuizzes: Quiz[], progressRows: UserQuiz
       title: quiz.title,
       description: quiz.description,
       passingScore: Number(quiz.passingScore || 50),
-      isUnlocked: quiz.level === 1 || Boolean(progress?.isUnlocked) || hasPassedQuiz(previousQuiz),
+      isUnlocked: quiz.level === 1 || Boolean(progress?.isUnlocked) || hasClearedQuiz(previousQuiz),
       isPassed,
+      isBypassed: Boolean(progress?.isBypassed),
       bestScore: Number(progress?.bestScore ?? 0),
       lastAttemptAt: progress?.lastAttemptAt ?? null,
     };
@@ -8065,11 +8214,23 @@ export async function canAccessQuizLevel(userId: number, level: number): Promise
   const db = await getDb();
   if (!db) return false;
 
+  const quiz = await getQuizByLevel(level);
+  if (quiz) {
+    const [progress] = await db.select({ isUnlocked: userQuizProgress.isUnlocked })
+      .from(userQuizProgress)
+      .where(and(
+        eq(userQuizProgress.userId, userId),
+        eq(userQuizProgress.quizId, quiz.id)
+      ))
+      .limit(1);
+    if (progress?.isUnlocked) return true;
+  }
+
   // Find the previous-level quiz
   const prevQuiz = await getQuizByLevel(level - 1);
   if (!prevQuiz) return false;
 
-  return hasUserPassedQuizLevel(userId, level - 1);
+  return hasUserClearedQuizLevel(userId, level - 1);
 }
 
 /**

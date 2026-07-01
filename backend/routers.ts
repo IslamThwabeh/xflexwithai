@@ -47,6 +47,7 @@ import { buildAnnouncementEmail, sendOrderConfirmationEmail, sendPaymentReceived
 import { ENV } from "./_core/env";
 import { generateNumericCode, generateSaltBase64, normalizeEmail, sha256Base64 } from "./_core/otp";
 import { verifyUnsubscribeToken } from "./_core/emailPreferences";
+import { getCourseQuizLevelForEpisodeOrder, isCourseQuizLevelEnd } from "./courseQuizLevels";
 // FlexAI routes are registered in server/_core/index.ts
 
 const SUPPORT_VIDEO_MAX_SECONDS = 60;
@@ -718,19 +719,25 @@ const getEpisodeCompletionRequirementStatus = async (
 
   let quizRequired = false;
   let quizPassed = true;
+  let quizBypassed = false;
   let quiz: Awaited<ReturnType<typeof getAttemptableQuizForLevel>> = null;
-  const quizLevel = episode.order > 1 ? episode.order - 1 : null;
+  const courseQuizLevel = getCourseQuizLevelForEpisodeOrder(episode.order);
+  const quizLevel = courseQuizLevel && isCourseQuizLevelEnd(episode.order)
+    ? courseQuizLevel.level
+    : null;
 
   if (quizLevel !== null) {
     quiz = await getAttemptableQuizForLevel(quizLevel);
     if (quiz) {
       quizRequired = true;
       quizPassed = await db.hasUserPassedQuizLevel(userId, quizLevel);
+      quizBypassed = await db.hasUserBypassedQuizLevel(userId, quizLevel);
     }
   }
 
   const isCompleted = !!progress?.isCompleted;
-  const satisfied = isCompleted || (watchSatisfied && (!quizRequired || quizPassed));
+  const quizCleared = quizPassed || quizBypassed;
+  const satisfied = isCompleted || (watchSatisfied && (!quizRequired || quizCleared));
 
   return {
     satisfied,
@@ -740,6 +747,8 @@ const getEpisodeCompletionRequirementStatus = async (
     watchSatisfied,
     quizRequired,
     quizPassed,
+    quizBypassed,
+    quizCleared,
     quizLevel,
     quizTitle: quiz?.title ?? null,
     quizPassingScore: quiz?.passingScore ?? null,
@@ -2266,16 +2275,17 @@ export const appRouter = router({
           });
         }
 
-        // Intro episode (order = 1) is exempt from quiz gating
-        if (episode.order > 1) {
-          const quizLevel = episode.order - 1;
+        // Level quizzes are enforced only on the final episode of each course level.
+        const courseQuizLevel = getCourseQuizLevelForEpisodeOrder(episode.order);
+        if (courseQuizLevel && isCourseQuizLevelEnd(episode.order)) {
+          const quizLevel = courseQuizLevel.level;
           const quiz = await getAttemptableQuizForLevel(quizLevel);
           if (quiz) {
-            const hasPassedQuiz = await db.hasUserPassedQuizLevel(ctx.user.id, quizLevel);
-            if (!hasPassedQuiz) {
+            const hasClearedQuiz = await db.hasUserClearedQuizLevel(ctx.user.id, quizLevel);
+            if (!hasClearedQuiz) {
               throw new TRPCError({
                 code: 'FORBIDDEN',
-                message: `Pass the episode quiz (${quiz.passingScore}% required) before continuing.`,
+                message: `Pass or confirm bypass for the level quiz (${quiz.passingScore}% required) before continuing.`,
               });
             }
           }
@@ -2473,25 +2483,64 @@ export const appRouter = router({
           };
         }
 
-        if (episode.order <= 1) {
-          return { required: false, passed: true, introEpisode: true, blocked: false, quiz: null };
+        const courseQuizLevel = getCourseQuizLevelForEpisodeOrder(episode.order);
+        const levelInfo = courseQuizLevel
+          ? {
+              level: courseQuizLevel.level,
+              titleAr: courseQuizLevel.titleAr,
+              titleEn: courseQuizLevel.titleEn,
+              startOrder: courseQuizLevel.startOrder,
+              endOrder: courseQuizLevel.endOrder,
+              isLevelEnd: courseQuizLevel.endOrder === episode.order,
+            }
+          : null;
+
+        if (!courseQuizLevel || !isCourseQuizLevelEnd(episode.order)) {
+          return {
+            required: false,
+            passed: true,
+            bypassed: false,
+            cleared: true,
+            introEpisode: episode.order <= 1,
+            blocked: false,
+            lockedByWatch: false,
+            levelInfo,
+            quiz: null,
+          };
         }
 
-        const quizLevel = episode.order - 1;
+        const quizLevel = courseQuizLevel.level;
         const quiz = await getAttemptableQuizForLevel(quizLevel);
 
         if (!quiz) {
-          return { required: false, passed: true, introEpisode: false, blocked: false, quiz: null };
+          return {
+            required: false,
+            passed: true,
+            bypassed: false,
+            cleared: true,
+            introEpisode: false,
+            blocked: false,
+            lockedByWatch: false,
+            levelInfo,
+            quiz: null,
+          };
         }
 
+        const requirement = await getEpisodeCompletionRequirementStatus(ctx.user.id, episode);
         const passed = await db.hasUserPassedQuizLevel(ctx.user.id, quizLevel);
+        const bypassed = await db.hasUserBypassedQuizLevel(ctx.user.id, quizLevel);
+        const cleared = passed || bypassed;
 
         return {
           required: true,
           passed,
+          bypassed,
+          cleared,
           introEpisode: false,
           blocked: false,
-          quiz,
+          lockedByWatch: !requirement.watchSatisfied,
+          levelInfo,
+          quiz: requirement.watchSatisfied ? quiz : null,
         };
       }),
 
@@ -2511,7 +2560,8 @@ export const appRouter = router({
           input.episodeId
         );
 
-        if (episode.order <= 1) {
+        const courseQuizLevel = getCourseQuizLevelForEpisodeOrder(episode.order);
+        if (!courseQuizLevel || !isCourseQuizLevelEnd(episode.order)) {
           return {
             score: 100,
             passed: true,
@@ -2519,11 +2569,19 @@ export const appRouter = router({
             totalQuestions: 0,
             passingScore: 50,
             detailedResults: [],
-            introEpisode: true,
+            introEpisode: episode.order <= 1,
           };
         }
 
-        const quizLevel = episode.order - 1;
+        const requirement = await getEpisodeCompletionRequirementStatus(ctx.user.id, episode);
+        if (!requirement.watchSatisfied) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: `Watch more of this level before taking the quiz (${Math.ceil(requirement.requiredWatchSeconds / 60)} min required).`,
+          });
+        }
+
+        const quizLevel = courseQuizLevel.level;
         const quiz = await db.getQuizByLevel(quizLevel);
         if (!quiz) {
           throw new TRPCError({
@@ -2533,6 +2591,54 @@ export const appRouter = router({
         }
 
         return await db.submitEpisodeQuizAttempt(ctx.user.id, quizLevel, input.answers);
+      }),
+
+    bypassForEpisode: protectedProcedure
+      .input(z.object({
+        courseId: z.number(),
+        episodeId: z.number(),
+        confirmed: z.literal(true),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { episode } = await ensureEpisodeUnlockedForUser(
+          ctx.user.id,
+          input.courseId,
+          input.episodeId
+        );
+
+        const courseQuizLevel = getCourseQuizLevelForEpisodeOrder(episode.order);
+        if (!courseQuizLevel || !isCourseQuizLevelEnd(episode.order)) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'This episode is not a level quiz checkpoint.',
+          });
+        }
+
+        const requirement = await getEpisodeCompletionRequirementStatus(ctx.user.id, episode);
+        if (!requirement.watchSatisfied) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: `Watch more of this level before bypassing the quiz (${Math.ceil(requirement.requiredWatchSeconds / 60)} min required).`,
+          });
+        }
+
+        const passed = await db.hasUserPassedQuizLevel(ctx.user.id, courseQuizLevel.level);
+        if (passed) {
+          return { success: true, alreadyPassed: true, level: courseQuizLevel.level };
+        }
+
+        try {
+          return await db.bypassQuizLevel(ctx.user.id, courseQuizLevel.level, {
+            courseId: input.courseId,
+            episodeId: input.episodeId,
+            episodeOrder: episode.order,
+          });
+        } catch (error) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: error instanceof Error ? error.message : 'Could not bypass this quiz.',
+          });
+        }
       }),
   }),
 

@@ -582,6 +582,8 @@ export const userQuizProgress = sqliteTable("user_quiz_progress", {
   quizId: integer("quiz_id").notNull(),
   isUnlocked: integer("is_unlocked", { mode: 'boolean' }).notNull().default(false),
   isCompleted: integer("is_completed", { mode: 'boolean' }).notNull().default(false),
+  isBypassed: integer("is_bypassed", { mode: 'boolean' }).notNull().default(false),
+  bypassedAt: text("bypassed_at"),
   bestScore: integer("best_score").default(0),
   bestPercentage: text("best_percentage").default("0"), // Store as text instead of decimal
   attemptsCount: integer("attempts_count").default(0),

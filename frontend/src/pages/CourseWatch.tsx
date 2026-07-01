@@ -123,6 +123,7 @@ export default function CourseWatch() {
   } | null>(null);
   const [showActivationDialog, setShowActivationDialog] = useState(false);
   const [confirmNextEpisode, setConfirmNextEpisode] = useState<any | null>(null);
+  const [confirmQuizBypass, setConfirmQuizBypass] = useState(false);
   const lastSyncedSecondRef = useRef<number>(0);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const autoCompletedEpisodeIdsRef = useRef<Set<number>>(new Set());
@@ -167,6 +168,23 @@ export default function CourseWatch() {
     },
     onError: (error) => {
       toast.error(error.message || t('course.toastCompleteFail'));
+    },
+  });
+
+  const bypassEpisodeQuizMutation = trpc.episodeQuiz.bypassForEpisode.useMutation({
+    onSuccess: () => {
+      toast.success(language === 'ar'
+        ? 'تم تخطي اختبار المستوى بناءً على تأكيدك. يمكنك المتابعة الآن.'
+        : 'Level quiz bypass confirmed. You can continue now.');
+      setConfirmQuizBypass(false);
+      setQuizResult(null);
+      utils.episodeQuiz.getForEpisode.invalidate();
+      utils.userQuiz.progress.invalidate();
+    },
+    onError: (error) => {
+      toast.error(error.message || (language === 'ar'
+        ? 'تعذر تخطي اختبار المستوى.'
+        : 'Could not bypass this level quiz.'));
     },
   });
 
@@ -247,6 +265,12 @@ export default function CourseWatch() {
   const quizLoadFailed = !!episodeQuizError;
   const quizRequired = !!episodeQuiz?.required;
   const quizPassed = !!episodeQuiz?.passed;
+  const quizBypassed = !!episodeQuiz?.bypassed;
+  const quizCleared = !!episodeQuiz?.cleared || quizPassed || quizBypassed;
+  const quizLockedByWatch = !!episodeQuiz?.lockedByWatch;
+  const showLevelQuizCard = !!selectedEpisode
+    && !loadingEpisodeQuiz
+    && (!!episodeQuiz?.levelInfo?.isLevelEnd || episodeAccessBlocked || quizLoadFailed);
   const previousEpisodeBlock = episodeQuiz?.previousEpisode;
   const previousRequirement = episodeQuiz?.previousRequirement;
   const blockedPreviousEpisode = previousEpisodeBlock
@@ -269,14 +293,14 @@ export default function CourseWatch() {
     : null;
   const canMarkComplete = selectedEpisode?.order <= 1
     ? hasWatchRequirementMet
-    : hasWatchRequirementMet && !loadingEpisodeQuiz && !episodeAccessBlocked && !quizLoadFailed && (!quizRequired || quizPassed);
+    : hasWatchRequirementMet && !loadingEpisodeQuiz && !episodeAccessBlocked && !quizLoadFailed && (!quizRequired || quizCleared);
   const canConfirmSelectedEpisodeWatch = !!selectedEpisode
     && !!nextEpisode
     && !selectedEpisodeProgress?.isCompleted
     && !loadingEpisodeQuiz
     && !episodeAccessBlocked
     && !quizLoadFailed
-    && (!quizRequired || quizPassed);
+    && (!quizRequired || quizCleared);
 
   const quizSectionRef = useRef<HTMLDivElement>(null);
 
@@ -318,11 +342,11 @@ export default function CourseWatch() {
       );
       return;
     }
-    if (quizRequired && !quizPassed) {
+    if (quizRequired && !quizCleared) {
       toast.info(
         language === 'ar'
-          ? 'يجب إتمام اختبار الحلقة أولاً لتحديدها كمكتملة'
-          : 'Complete the episode quiz first to mark it as complete'
+          ? 'يجب إتمام اختبار المستوى أو تأكيد التخطي أولاً'
+          : 'Complete or confirm bypass for the level quiz first'
       );
       quizSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       return;
@@ -339,7 +363,7 @@ export default function CourseWatch() {
           : 'Could not load this episode quiz status. Refresh and try again.'
       );
     }
-  }, [canMarkComplete, hasWatchRequirementMet, quizRequired, quizPassed, episodeAccessBlocked, blockedMessage, quizLoadFailed, language, handleEpisodeComplete, requiredWatchMinutes, t]);
+  }, [canMarkComplete, hasWatchRequirementMet, quizRequired, quizCleared, episodeAccessBlocked, blockedMessage, quizLoadFailed, language, handleEpisodeComplete, requiredWatchMinutes, t]);
 
   const syncEpisodeProgress = useCallback((currentTime?: number, force = false) => {
     if (!selectedEpisode || !courseId) return;
@@ -385,11 +409,11 @@ export default function CourseWatch() {
         return;
       }
 
-      if (quizRequired && !quizPassed) {
+      if (quizRequired && !quizCleared) {
         toast.info(
           language === 'ar'
-            ? 'يجب إتمام اختبار الحلقة أولاً لتحديدها كمكتملة'
-            : 'Complete the episode quiz first to mark it as complete'
+            ? 'يجب إتمام اختبار المستوى أو تأكيد التخطي أولاً'
+            : 'Complete or confirm bypass for the level quiz first'
         );
         quizSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
         return;
@@ -473,6 +497,15 @@ export default function CourseWatch() {
       courseId,
       episodeId: selectedEpisode.id,
       answers,
+    });
+  };
+
+  const handleConfirmQuizBypass = () => {
+    if (!selectedEpisode || !courseId) return;
+    bypassEpisodeQuizMutation.mutate({
+      courseId,
+      episodeId: selectedEpisode.id,
+      confirmed: true,
     });
   };
 
@@ -650,20 +683,18 @@ export default function CourseWatch() {
               </CardContent>
             </Card>
 
-            {/* Episode Quiz */}
-            {selectedEpisode && selectedEpisode.order > 1 && (
+            {/* Level Quiz */}
+            {showLevelQuizCard && (
               <div ref={quizSectionRef}>
               <Card>
                 <CardHeader>
-                  <CardTitle>{t('course.episodeQuiz')}</CardTitle>
+                  <CardTitle>{t('course.levelQuiz')}</CardTitle>
                   <CardDescription>
                     {t('course.quizDesc')}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {loadingEpisodeQuiz ? (
-                    <p className="text-sm text-muted-foreground">{t('course.loadingQuiz')}</p>
-                  ) : quizLoadFailed ? (
+                  {quizLoadFailed ? (
                     <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">
                       <div className="flex items-start gap-2">
                         <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
@@ -693,6 +724,12 @@ export default function CourseWatch() {
                         </div>
                       </div>
                     </div>
+                  ) : quizLockedByWatch ? (
+                    <div className="rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                      {language === 'ar'
+                        ? 'سيظهر اختبار المستوى بعد استكمال مشاهدة الحلقة الحالية بالحد الأدنى المطلوب.'
+                        : 'The level quiz will appear after you meet the minimum watch requirement for this episode.'}
+                    </div>
                   ) : !episodeQuiz?.quiz ? (
                     <p className="text-sm text-muted-foreground">
                       {t('course.noQuiz')}
@@ -700,6 +737,12 @@ export default function CourseWatch() {
                   ) : episodeQuiz.passed ? (
                     <div className="rounded border border-green-200 bg-green-50 p-3 text-sm text-green-700">
                       {t('course.quizPassed')}
+                    </div>
+                  ) : episodeQuiz.bypassed ? (
+                    <div className="rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                      {language === 'ar'
+                        ? 'تم تخطي اختبار المستوى بناءً على تأكيدك. يمكنك المتابعة إلى المستوى التالي.'
+                        : 'This level quiz was bypassed by your confirmation. You can continue to the next level.'}
                     </div>
                   ) : !episodeQuiz.quiz?.questions?.length ? (
                     <p className="text-sm text-muted-foreground">
@@ -740,15 +783,42 @@ export default function CourseWatch() {
                       </Button>
 
                       {quizResult && (
-                        <div
-                          className={`rounded border p-3 text-sm ${
-                            quizResult.passed
-                              ? "border-green-200 bg-green-50 text-green-700"
-                              : "border-orange-200 bg-orange-50 text-orange-700"
-                          }`}
-                        >
-                          {t('course.score')}: {quizResult.score}% ({quizResult.correctCount}/{quizResult.totalQuestions})
-                          {!quizResult.passed && ` - ${t('course.requiredScore')}: ${quizResult.passingScore}%`}
+                        <div className="space-y-3">
+                          <div
+                            className={`rounded border p-3 text-sm ${
+                              quizResult.passed
+                                ? "border-green-200 bg-green-50 text-green-700"
+                                : "border-orange-200 bg-orange-50 text-orange-700"
+                            }`}
+                          >
+                            {t('course.score')}: {quizResult.score}% ({quizResult.correctCount}/{quizResult.totalQuestions})
+                            {!quizResult.passed && ` - ${t('course.requiredScore')}: ${quizResult.passingScore}%`}
+                          </div>
+                          {!quizResult.passed && (
+                            <div className="rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                              <p className="mb-3">
+                                {language === 'ar'
+                                  ? 'ننصحك بمراجعة حلقات هذا المستوى ثم إعادة الاختبار. إذا كنت متأكداً أنك تريد المتابعة، يمكنك تأكيد تخطي الاختبار.'
+                                  : 'We recommend reviewing this level and retaking the quiz. If you are sure you want to continue, you can confirm bypass.'}
+                              </p>
+                              <div className="flex flex-col gap-2 sm:flex-row">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                                >
+                                  {language === 'ar' ? 'مراجعة حلقات المستوى' : 'Review level episodes'}
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="secondary"
+                                  onClick={() => setConfirmQuizBypass(true)}
+                                >
+                                  {language === 'ar' ? 'أفهم وأريد المتابعة' : 'I understand and want to continue'}
+                                </Button>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
                     </>
@@ -815,11 +885,11 @@ export default function CourseWatch() {
                               setConfirmNextEpisode(episode);
                               return;
                             }
-                            if (nextEpisode?.id === episode.id && quizRequired && !quizPassed) {
+                            if (nextEpisode?.id === episode.id && quizRequired && !quizCleared) {
                               toast.info(
                                 language === 'ar'
-                                  ? 'أكمل اختبار الحلقة الحالية أولاً لفتح التالية'
-                                  : 'Complete the current episode quiz first to unlock the next one'
+                                  ? 'أكمل اختبار المستوى أو أكد التخطي لفتح المستوى التالي'
+                                  : 'Complete or confirm bypass for the level quiz to unlock the next level'
                               );
                               quizSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                               return;
@@ -902,6 +972,38 @@ export default function CourseWatch() {
             disabled={markCompleteMutation.isPending}
           >
             {isArabic ? 'العودة للحلقة' : 'Go back to episode'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog open={confirmQuizBypass} onOpenChange={setConfirmQuizBypass}>
+      <DialogContent className="sm:max-w-md" dir={isArabic ? "rtl" : "ltr"}>
+        <DialogHeader>
+          <DialogTitle>
+            {isArabic ? 'تأكيد تخطي اختبار المستوى؟' : 'Confirm level quiz bypass?'}
+          </DialogTitle>
+          <DialogDescription>
+            {isArabic
+              ? 'ننصحك بمراجعة حلقات المستوى وإعادة الاختبار. عند التأكيد سنفتح لك المستوى التالي، لكن لن يتم احتساب الاختبار كمجتاز.'
+              : 'We recommend reviewing the level and retaking the quiz. If you confirm, the next level will open, but this quiz will not be counted as passed.'}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter className="flex-col gap-2 sm:flex-col">
+          <Button
+            className="w-full"
+            onClick={handleConfirmQuizBypass}
+            disabled={bypassEpisodeQuizMutation.isPending}
+          >
+            {isArabic ? 'نعم، أريد المتابعة' : 'Yes, continue'}
+          </Button>
+          <Button
+            variant="outline"
+            className="w-full"
+            onClick={() => setConfirmQuizBypass(false)}
+            disabled={bypassEpisodeQuizMutation.isPending}
+          >
+            {isArabic ? 'العودة ومراجعة المستوى' : 'Go back and review'}
           </Button>
         </DialogFooter>
       </DialogContent>
