@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
-import { PauseCircle, PlayCircle, UserCog, Bell, TrendingUp, Copy, Trash2, ArrowDown, ArrowUp, Plus, Clock3, Megaphone, XCircle, Info, Pencil, WandSparkles, Download, ChevronDown, ChevronUp, ListFilter } from "lucide-react";
+import { PauseCircle, PlayCircle, UserCog, Bell, TrendingUp, Copy, Trash2, ArrowDown, ArrowUp, Plus, Clock3, Megaphone, XCircle, Info, Pencil, WandSparkles, Download, ChevronDown, ChevronUp, ListFilter, Search } from "lucide-react";
 import { useDataTable, DataTablePagination, zebraRow } from "@/components/DataTable";
 import { formatLocalizedDate } from "@/lib/dateLocale";
 import { buildRecommendationThreads, groupRecommendationThreadsByDay } from "@/lib/recommendationThreads";
@@ -1887,6 +1887,7 @@ function AnalystView() {
 /* ─── Admin view: analyst management + subscription management ─── */
 function AdminView() {
   const { t, language, isRTL } = useLanguage();
+  const [subscriptionSearch, setSubscriptionSearch] = useState("");
 
   const utils = trpc.useUtils();
 
@@ -1909,7 +1910,51 @@ function AdminView() {
     onError: (error) => toast.error(error.message),
   });
 
-  const subTable = useDataTable(subscriptions as any[], undefined, 10);
+  const filteredSubscriptions = useMemo(() => {
+    const query = subscriptionSearch.trim().toLowerCase();
+    if (!query) return subscriptions;
+
+    return subscriptions.filter((subscription: any) => {
+      const parsedEndDate = subscription.endDate ? new Date(subscription.endDate) : null;
+      const isExpired = !!parsedEndDate && !Number.isNaN(parsedEndDate.getTime()) && parsedEndDate.getTime() < Date.now();
+      const isInactive = !subscription.isActive;
+      const statusLabel = subscription.isPaused
+        ? "frozen مجمد مجمّد"
+        : isInactive
+          ? "inactive غير نشط"
+          : isExpired
+            ? "expired منتهي"
+            : "active نشط";
+      const searchable = [
+        subscription.id,
+        subscription.userId,
+        subscription.registrationKeyId,
+        subscription.userName,
+        subscription.userEmail,
+        subscription.packageId,
+        subscription.packageNameEn,
+        subscription.packageNameAr,
+        subscription.packageSlug,
+        subscription.keyEntitlementDays,
+        subscription.startDate,
+        subscription.endDate,
+        subscription.paymentStatus,
+        subscription.paymentAmount,
+        subscription.paymentCurrency,
+        subscription.pausedAt,
+        subscription.pausedReason,
+        subscription.pausedRemainingDays,
+        statusLabel,
+      ]
+        .filter((value) => value !== null && value !== undefined)
+        .join(" ")
+        .toLowerCase();
+
+      return searchable.includes(query);
+    });
+  }, [subscriptions, subscriptionSearch]);
+
+  const subTable = useDataTable(filteredSubscriptions as any[], undefined, 10);
 
   return (
     <div className="space-y-6">
@@ -1949,12 +1994,41 @@ function AdminView() {
             <CardDescription>{isRTL ? 'تجميد أو فك تجميد الاشتراكات النشطة مؤقتاً' : 'Temporarily freeze or unfreeze active recommendation access'}</CardDescription>
           </CardHeader>
           <CardContent>
+            <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="relative w-full sm:max-w-md">
+                <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={subscriptionSearch}
+                  onChange={(event) => setSubscriptionSearch(event.target.value)}
+                  placeholder={isRTL ? "بحث بالاسم أو البريد أو الباقة..." : "Search by name, email, or package..."}
+                  className="ps-9 pe-9"
+                />
+                {subscriptionSearch && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute end-1 top-1/2 h-7 w-7 -translate-y-1/2"
+                    onClick={() => setSubscriptionSearch("")}
+                    aria-label={isRTL ? "مسح البحث" : "Clear search"}
+                  >
+                    <XCircle className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+              <span className="text-sm text-muted-foreground">
+                {isRTL
+                  ? `عرض ${filteredSubscriptions.length} من ${subscriptions.length}`
+                  : `Showing ${filteredSubscriptions.length} of ${subscriptions.length}`}
+              </span>
+            </div>
             <ResponsiveTable>
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>{isRTL ? 'المستخدم' : 'User'}</TableHead>
                   <TableHead>{isRTL ? 'البريد' : 'Email'}</TableHead>
+                  <TableHead>{isRTL ? 'الباقة' : 'Package'}</TableHead>
                   <TableHead>{isRTL ? 'الحالة' : 'Status'}</TableHead>
                   <TableHead>{isRTL ? 'ينتهي' : 'Ends'}</TableHead>
                   <TableHead>{isRTL ? 'المتبقي عند التجميد' : 'Frozen balance'}</TableHead>
@@ -1962,7 +2036,15 @@ function AdminView() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {subTable.paged.map((subscription: any, i: number) => {
+                {subTable.totalItems === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="py-8 text-center text-sm text-muted-foreground">
+                      {subscriptionSearch
+                        ? (isRTL ? "لا توجد اشتراكات مطابقة للبحث." : "No subscriptions match your search.")
+                        : (isRTL ? "لا توجد اشتراكات توصيات." : "No recommendation subscriptions.")}
+                    </TableCell>
+                  </TableRow>
+                ) : subTable.paged.map((subscription: any, i: number) => {
                   const parsedEndDate = subscription.endDate ? new Date(subscription.endDate) : null;
                   const isExpired = !!parsedEndDate && !Number.isNaN(parsedEndDate.getTime()) && parsedEndDate.getTime() < Date.now();
                   const isInactive = !subscription.isActive;
@@ -1977,11 +2059,15 @@ function AdminView() {
                       : isExpired
                         ? (isRTL ? "منتهي" : "Expired")
                         : (isRTL ? "نشط" : "Active");
+                  const packageName = isRTL
+                    ? (subscription.packageNameAr || subscription.packageNameEn || "-")
+                    : (subscription.packageNameEn || subscription.packageNameAr || "-");
 
                   return (
                     <TableRow key={subscription.id} className={zebraRow(i)}>
                       <TableCell>{subscription.userName || '-'}</TableCell>
                       <TableCell>{subscription.userEmail || '-'}</TableCell>
+                      <TableCell>{packageName}</TableCell>
                       <TableCell>
                         <Badge variant={statusVariant}>
                           {statusLabel}

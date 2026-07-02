@@ -10838,9 +10838,16 @@ export async function getRecommendationSubscriptionsWithUsers() {
       updatedAt: recommendationSubscriptions.updatedAt,
       userEmail: users.email,
       userName: users.name,
+      packageId: registrationKeys.packageId,
+      packageNameEn: packages.nameEn,
+      packageNameAr: packages.nameAr,
+      packageSlug: packages.slug,
+      keyEntitlementDays: registrationKeys.entitlementDays,
     })
     .from(recommendationSubscriptions)
     .leftJoin(users, eq(recommendationSubscriptions.userId, users.id))
+    .leftJoin(registrationKeys, eq(recommendationSubscriptions.registrationKeyId, registrationKeys.id))
+    .leftJoin(packages, eq(registrationKeys.packageId, packages.id))
     .orderBy(desc(recommendationSubscriptions.createdAt));
 }
 
@@ -12920,6 +12927,7 @@ export async function getRecentEngagementEvents(input?: {
 export async function getEngagementEventUsers(input?: {
   days?: number;
   eventType?: string;
+  search?: string | null;
   limit?: number;
   offset?: number;
 }) {
@@ -12929,6 +12937,7 @@ export async function getEngagementEventUsers(input?: {
       userId: number;
       userName: string | null;
       userEmail: string | null;
+      userPhone: string | null;
       actionCount: number;
       lastEventAt: string;
     }>,
@@ -12942,19 +12951,27 @@ export async function getEngagementEventUsers(input?: {
   const limit = Math.max(1, input?.limit ?? 25);
   const offset = Math.max(0, input?.offset ?? 0);
   const cutoff = new Date(Date.now() - days * 86400000).toISOString();
+  const search = input?.search?.trim();
 
   return withOptionalEngagementEventsTable('eventUsers', emptyResult, async () => {
-    const filter = input?.eventType
-      ? and(
-          sql`${engagementEvents.createdAt} >= ${cutoff}`,
-          eq(engagementEvents.eventType, input.eventType),
-        )
-      : sql`${engagementEvents.createdAt} >= ${cutoff}`;
+    const filters: SQL[] = [sql`${engagementEvents.createdAt} >= ${cutoff}`];
+    if (input?.eventType) filters.push(eq(engagementEvents.eventType, input.eventType));
+    if (search) {
+      const searchPattern = `%${search.toLowerCase()}%`;
+      filters.push(or(
+        sql`LOWER(COALESCE(${users.name}, '')) LIKE ${searchPattern}`,
+        sql`LOWER(COALESCE(${users.email}, '')) LIKE ${searchPattern}`,
+        sql`LOWER(COALESCE(${users.phone}, '')) LIKE ${searchPattern}`,
+        sql`CAST(${engagementEvents.userId} AS TEXT) LIKE ${searchPattern}`,
+      )!);
+    }
+    const filter = and(...filters);
 
     const [totals] = await db.select({
       totalStudents: sql<number>`COUNT(DISTINCT ${engagementEvents.userId})`,
       totalActions: sql<number>`COUNT(*)`,
     }).from(engagementEvents)
+      .leftJoin(users, eq(engagementEvents.userId, users.id))
       .where(filter);
 
     const lastEventAtExpr = sql<string>`MAX(${engagementEvents.createdAt})`;
@@ -12963,12 +12980,13 @@ export async function getEngagementEventUsers(input?: {
       userId: engagementEvents.userId,
       userName: users.name,
       userEmail: users.email,
+      userPhone: users.phone,
       actionCount: sql<number>`COUNT(*)`,
       lastEventAt: lastEventAtExpr,
     }).from(engagementEvents)
       .leftJoin(users, eq(engagementEvents.userId, users.id))
       .where(filter)
-      .groupBy(engagementEvents.userId, users.name, users.email)
+      .groupBy(engagementEvents.userId, users.name, users.email, users.phone)
       .orderBy(desc(lastEventAtExpr))
       .limit(limit)
       .offset(offset);
@@ -12978,6 +12996,7 @@ export async function getEngagementEventUsers(input?: {
         userId: row.userId,
         userName: row.userName?.trim() || null,
         userEmail: row.userEmail ?? null,
+        userPhone: row.userPhone ?? null,
         actionCount: Number(row.actionCount ?? 0),
         lastEventAt: row.lastEventAt,
       })),

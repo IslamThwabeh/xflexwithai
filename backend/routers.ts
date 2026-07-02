@@ -7269,6 +7269,7 @@ ${qaText}`;
       .input(z.object({
         days: z.number().min(1).max(365).optional(),
         eventType: z.string().min(1).max(50).optional(),
+        search: z.string().max(120).optional(),
         limit: z.number().min(1).max(100).optional(),
         offset: z.number().min(0).max(100000).optional(),
       }).optional())
@@ -7276,6 +7277,7 @@ ${qaText}`;
         return db.getEngagementEventUsers({
           days: input?.days ?? 30,
           eventType: input?.eventType,
+          search: input?.search,
           limit: input?.limit ?? 20,
           offset: input?.offset ?? 0,
         });

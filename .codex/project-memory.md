@@ -1,6 +1,6 @@
 # XFLEX Project Memory
 
-Last updated: 2026-06-27
+Last updated: 2026-07-01
 
 ## Project Overview
 
@@ -47,6 +47,8 @@ Last updated: 2026-06-27
 - Production application of migration `056` read 11,941 rows and wrote 5,900 index entries; this was index construction, not modification of 5,900 business records. Cloudflare bookmark: `00000ec4-00001f32-00005092-b8b7c4078f9df3fb50a741d01f919baa`.
 - Migration `database/migrations/059_fix_email_delivery_log_timestamp_default.sql` was applied to production on 2026-06-27 after the app produced legacy `email_delivery_logs.created_at = 'CURRENT_TIMESTAMP'` rows. It rebuilt `email_delivery_logs` with `created_at TEXT NOT NULL DEFAULT (datetime('now'))`, preserved 17,862 rows, and recreated `idx_email_delivery_logs_created_at`, `idx_email_delivery_logs_recipient_email`, and `idx_email_delivery_logs_status`. Cloudflare bookmark: `00000ee7-0000020e-00005096-0b9b3e6371d965180da477a114bbedeb`.
 - Migration `database/migrations/060_schema_migrations_tracking.sql` was applied to production on 2026-06-27. It created `schema_migrations` plus `idx_schema_migrations_applied_at`; Codex recorded migrations `059` and `060` in that table. Cloudflare bookmark: `00000ee7-00000214-00005096-2faa70207cd77d4f75c5ff001a10e37a`.
+- Migration `database/migrations/061_quiz_level_bypass.sql` was applied to production on 2026-07-01 before the user's deployment. It additively added `user_quiz_progress.is_bypassed INTEGER NOT NULL DEFAULT 0` and `user_quiz_progress.bypassed_at TEXT` so students can confirm bypass after a failed level quiz without marking the quiz as passed. Pre-migration export: `tmp/prod-backups/xflexwithai-before-level-quizzes-20260701-131159.sql` (about 124 MB). Production verification confirmed `user_quiz_progress` row count stayed at 161 before/after the migration. On 2026-07-01 Codex recorded `061_quiz_level_bypass.sql` in `schema_migrations` with `source = codex_wrangler`.
+- The user completed the deployment for the level-quiz release on 2026-07-01. Post-deployment QA confirmed production API health, frontend route health, desktop/mobile browser smoke, live tRPC smoke, D1 schema/data sanity, TypeScript, focused quiz tests, full test suite, frontend build, and Worker build.
 - Release order for the 2026-06-22 hotfixes:
   1. Apply migration `056`.
   2. Deploy the production Worker/backend.
@@ -93,10 +95,12 @@ Last updated: 2026-06-27
 ## Known Fixed Bugs / Lessons Learned
 
 - Episode prerequisite skip for no-quiz episodes was fixed.
+- The old episode-quiz mapping treated `episode.order - 1` as the quiz level, which caused quiz questions to appear unrelated to episode content. The course now uses eight level checkpoints instead of per-episode quiz checks.
 - Course episode progression is supportive, not punitive: watch progress should help unlock lessons, but missing playback tracking should not strand students.
 - Episode watch completion threshold is intentionally soft: 10% of episode duration with a 30-second minimum. Do not restore the old 70%/60-second hard gate.
 - If a student tries to open the next episode and the previous episode is incomplete only because watch progress was not captured, the app should ask for confirmation, then mark the previous episode complete and open the next episode.
 - Student confirmation may repair missing watch tracking only; it must not bypass a real configured quiz that the student has not passed.
+- Level quiz bypass is now explicit and student-confirmed only after a failed/attempted level quiz at the level checkpoint. It records `is_bypassed` and `bypassed_at`, unlocks the next level, and does not set `is_completed`/passed.
 - Missing, empty, or malformed episode quizzes must be treated as not required (`required: false`, `passed: true`) and must never block the next episode.
 - Course progress capture should save on time updates plus pause, ended, tab hide, and episode switch; backend progress writes must remain monotonic so watched seconds never decrease and completed episodes stay completed.
 - Admin chat list loads newest first.
@@ -120,6 +124,26 @@ Last updated: 2026-06-27
 - Staff inactivity remains 15 minutes and must be extended only by real user interaction, never by support polling or other background requests.
 - The frontend idle guard now synchronizes genuine activity across tabs using a per-user local-storage timestamp. An inactive tab must not log out a staff member who is actively typing in another tab.
 - Real activity detection includes direct `input`, `beforeinput`, Arabic/IME composition, keyboard, pointer/mouse, touch, click, and scroll events. Cross-tab activity resets local timers but does not emit duplicate server heartbeats.
+
+## Course Level Quiz Journey
+
+- Arabic-first UX is the priority for course and quiz flows; desktop and mobile must both be checked before release.
+- The student watches multiple episodes to complete each course level, then sees the level quiz only at the final episode of that level.
+- Current course level checkpoints map episode orders as:
+  - Level 1: episodes 1-14.
+  - Level 2: episodes 15-17.
+  - Level 3: episodes 18-20.
+  - Level 4: episodes 21-25.
+  - Level 5: episodes 26-36.
+  - Level 6: episode 37.
+  - Level 7: episode 38.
+  - Level 8: episode 39.
+- Quiz enforcement applies only at a level checkpoint. Intermediate episodes should not show or require a quiz just because a quiz with the same numeric index exists.
+- A student who fails a level quiz should be advised in Arabic to rewatch/review the level and retry the exam.
+- If the student confirms that they understand and still want to continue, the app may bypass that level quiz, unlock the next level, and keep an audit trail through `quiz_level_bypass` engagement plus `user_quiz_progress.is_bypassed`.
+- Passing a later attempt clears any previous bypass state for that quiz level.
+- Support/team review should validate that each of the eight level quizzes covers the content in its level range, not only a single episode.
+- Key expiry and timed-service activation rules are intentionally unchanged by the quiz-level release. LexAI/recommendations activation still follows the existing stable implementation: service time starts after course and broker readiness or after the configurable protection deadline, whichever comes first.
 
 ## Package Key Lifecycle Rules
 
@@ -225,6 +249,17 @@ Last updated: 2026-06-27
   - `pnpm run build` passed; Vite emitted only the existing large-chunk warning.
   - Migration `060_schema_migrations_tracking.sql` smoke-tested successfully against in-memory SQLite.
   - Production D1 post-migration verification confirmed `email_delivery_logs` has runtime `datetime('now')` default, 17,862 rows were preserved, `schema_migrations` contains `059` and `060`, and no new `timed_service_activation_failure` notifications appeared after the fix/migration point.
+- Level-quiz release verification on 2026-07-01:
+  - `pnpm exec tsc --noEmit` passed.
+  - Focused quiz regression tests passed: `server/markEpisodeComplete.test.ts`, `server/userQuizProgress.test.ts`, and `server/userQuizSubmitAccess.test.ts` (17 tests).
+  - Full `pnpm test` passed: 29 files, 124 tests.
+  - `pnpm run build` passed; Vite emitted only the existing large-chunk warning.
+  - `pnpm run build:worker` passed.
+  - Production backup completed before migration: `tmp/prod-backups/xflexwithai-before-level-quizzes-20260701-131159.sql`.
+  - Migration `061_quiz_level_bypass.sql` applied successfully and was later recorded in `schema_migrations`.
+  - Production D1 verification confirmed the bypass columns exist, `user_quiz_progress` has 161 rows, `bypassed_rows = 0`, `bypass_missing_timestamp = 0`, and `quizzes` has exactly 8 levels from 1 to 8.
+  - Live tRPC smoke verified public reads and expected login-required behavior for protected quiz endpoints.
+  - Headless browser smoke passed on desktop and mobile for `/ar`, `/en`, `/auth`, `/quiz`, and `/course/1`; no console errors, page crashes, or failed requests were observed.
 
 ## Future Hardening
 

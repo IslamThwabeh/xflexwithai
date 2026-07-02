@@ -2,6 +2,7 @@ import { ReactNode, useEffect, useMemo, useState } from 'react';
 
 import DashboardLayout from '@/components/DashboardLayout';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { formatLocalizedDateTime } from '@/lib/dateLocale';
 import { trpc } from '@/lib/trpc';
@@ -13,9 +14,11 @@ import {
   Eye,
   Loader2,
   MousePointerClick,
+  Search,
   Sparkles,
   TrendingUp,
   Users,
+  XCircle,
 } from 'lucide-react';
 
 type EngagementSummaryItem = {
@@ -261,6 +264,8 @@ export default function AdminEngagement() {
   const isRtl = language === 'ar';
   const [selectedAction, setSelectedAction] = useState<EventSelection | null>(null);
   const [recentEventsPage, setRecentEventsPage] = useState(0);
+  const [studentSearchInput, setStudentSearchInput] = useState('');
+  const [studentSearch, setStudentSearch] = useState('');
 
   const { data: summary7, isLoading: l7 } = trpc.engagement.summary.useQuery({ days: 7 });
   const { data: summary30, isLoading: l30 } = trpc.engagement.summary.useQuery({ days: 30 });
@@ -286,6 +291,7 @@ export default function AdminEngagement() {
       ? {
         days: activeSelection.days,
         eventType: activeSelection.eventType,
+        search: studentSearch || undefined,
         limit: RECENT_EVENTS_PAGE_SIZE,
         offset: recentEventsPage * RECENT_EVENTS_PAGE_SIZE,
       }
@@ -299,7 +305,15 @@ export default function AdminEngagement() {
 
   useEffect(() => {
     setRecentEventsPage(0);
-  }, [activeSelectionKey]);
+  }, [activeSelectionKey, studentSearch]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setStudentSearch(studentSearchInput.trim());
+    }, 250);
+
+    return () => window.clearTimeout(timer);
+  }, [studentSearchInput]);
 
   useEffect(() => {
     if (recentEventsPage > recentTotalPages - 1) {
@@ -408,6 +422,42 @@ export default function AdminEngagement() {
                 ) : null}
               </div>
 
+              {activeSelection ? (
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="relative w-full sm:max-w-md">
+                    <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      value={studentSearchInput}
+                      onChange={(event) => setStudentSearchInput(event.target.value)}
+                      placeholder={isRtl ? 'بحث بالاسم أو البريد أو الهاتف...' : 'Search by name, email, or phone...'}
+                      className="ps-9 pe-9"
+                    />
+                    {studentSearchInput ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="absolute end-1 top-1/2 h-7 w-7 -translate-y-1/2"
+                        onClick={() => {
+                          setStudentSearchInput('');
+                          setStudentSearch('');
+                        }}
+                        aria-label={isRtl ? 'مسح البحث' : 'Clear search'}
+                      >
+                        <XCircle className="h-4 w-4" />
+                      </Button>
+                    ) : null}
+                  </div>
+                  <span className="text-sm text-muted-foreground">
+                    {studentSearch
+                      ? (isRtl
+                        ? `${eventUsersTotalStudents.toLocaleString()} طلاب مطابقين`
+                        : `${eventUsersTotalStudents.toLocaleString()} matching students`)
+                      : null}
+                  </span>
+                </div>
+              ) : null}
+
               {!activeSelection ? (
                 <p className="text-sm text-muted-foreground py-6">
                   {isRtl
@@ -420,9 +470,13 @@ export default function AdminEngagement() {
                 </div>
               ) : !eventUserItems.length ? (
                 <p className="text-sm text-muted-foreground py-6">
-                  {isRtl
-                    ? 'لا توجد إجراءات مطابقة لهذا النوع في الفترة المحددة.'
-                    : 'No matching student actions were found for this timeframe.'}
+                  {studentSearch
+                    ? (isRtl
+                      ? 'لا يوجد طلاب مطابقون لهذا البحث ضمن الإجراء والفترة المحددين.'
+                      : 'No students match this search for the selected action and timeframe.')
+                    : (isRtl
+                      ? 'لا توجد إجراءات مطابقة لهذا النوع في الفترة المحددة.'
+                      : 'No matching student actions were found for this timeframe.')}
                 </p>
               ) : (
                 <>
@@ -434,6 +488,9 @@ export default function AdminEngagement() {
                             <p className="font-semibold text-slate-900 truncate">{getStudentIdentity(student, isRtl)}</p>
                             {student.userEmail && student.userName ? (
                               <p className="text-xs text-muted-foreground truncate">{student.userEmail}</p>
+                            ) : null}
+                            {student.userPhone ? (
+                              <p className="text-xs text-muted-foreground truncate">{student.userPhone}</p>
                             ) : null}
                             <p className="text-sm text-slate-700 leading-6">
                               {isRtl
