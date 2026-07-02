@@ -112,6 +112,7 @@ const SUPPORT_STAFF_ALERT_TO = 'support@xflexacademy.com';
 const SUPPORT_STAFF_BCC_EMAIL_EVENTS = new Set<StaffNotificationEventType>([
   'new_support_message',
   'human_escalation',
+  'subscription_expiring',
 ]);
 const STAFF_BCC_BATCH_SIZE = 50;
 

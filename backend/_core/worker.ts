@@ -8,6 +8,10 @@ import { sendFreezeExpiredEmail, sendExpiryAlertEmail, sendDripEmail, sendMilest
 import { logger } from "./logger";
 import { getFreeLibraryDocumentBySlug, getFreeLibraryVideoBySlug } from "../../shared/freeLibrary";
 import {
+  buildSubscriptionExpiryDigestNotification,
+  type SubscriptionExpiryDigestItem,
+} from "./subscriptionExpiryDigest";
+import {
   drainGenericEmailOutbox,
   GENERIC_EMAIL_OUTBOX_DRAIN_LIMIT,
   SUPPORT_REPLY_EMAIL_DRAIN_LIMIT,
@@ -567,6 +571,7 @@ export default {
     // Send timed-service renewal reminders (pre-expiry, day-of, and bounded recovery).
     const renewalReminderOffsets = [14, 7, 3, 1, 0, -3, -10];
     const renewalReminderCandidates = await db.getRenewalReminderCandidates(renewalReminderOffsets);
+    const staffExpiryDigestItems: SubscriptionExpiryDigestItem[] = [];
     for (const sub of renewalReminderCandidates) {
       const emailType = `subscription_expiry_${sub.serviceType}_${sub.stage}_${sub.endDate.slice(0, 10)}`;
       const alreadySent = await db.hasEmailBeenSent(sub.userId, emailType);
@@ -594,35 +599,9 @@ export default {
         stage: sub.stage,
         endDate: sub.endDate,
       });
+      staffExpiryDigestItems.push(sub);
 
-      const displayName = sub.name || sub.email;
       const isExpired = sub.daysLeft < 0;
-      const absDays = Math.abs(sub.daysLeft);
-      await db.notifyStaffByEvent('subscription_expiring', {
-        titleEn: isExpired
-          ? `${sub.serviceName} expired ${absDays} day(s) ago – ${displayName}`
-          : sub.daysLeft === 0
-            ? `${sub.serviceName} expires today – ${displayName}`
-            : `${sub.serviceName} expires in ${sub.daysLeft} days – ${displayName}`,
-        titleAr: isExpired
-          ? `انتهت خدمة ${sub.serviceName} منذ ${absDays} يوم – ${displayName}`
-          : sub.daysLeft === 0
-            ? `تنتهي خدمة ${sub.serviceName} اليوم – ${displayName}`
-            : `تنتهي خدمة ${sub.serviceName} خلال ${sub.daysLeft} أيام – ${displayName}`,
-        contentEn: isExpired
-          ? `${displayName}'s ${sub.serviceName} access has expired. A renewal key is needed to restore timed-service access.`
-          : `${displayName}'s ${sub.serviceName} access expires in ${sub.daysLeft} day(s).`,
-        contentAr: isExpired
-          ? `انتهى وصول ${displayName} إلى ${sub.serviceName}. يحتاج إلى مفتاح تجديد لاستعادة الخدمة.`
-          : `وصول ${displayName} إلى ${sub.serviceName} ينتهي خلال ${sub.daysLeft} يوم.`,
-        metadata: {
-          userId: sub.userId,
-          packageName: sub.packageName,
-          serviceType: sub.serviceType,
-          daysLeft: sub.daysLeft,
-          stage: sub.stage,
-        },
-      }).catch((e) => logger.error('[CRON] Staff notify (subscription_expiring) failed', e));
 
       await db.createNotification({
         userId: sub.userId,
@@ -653,27 +632,22 @@ export default {
       }));
     }
 
+    const staffExpiryDigest = buildSubscriptionExpiryDigestNotification(staffExpiryDigestItems);
+    if (staffExpiryDigest) {
+      await db.notifyStaffByEvent('subscription_expiring', {
+        ...staffExpiryDigest,
+        metadata: {
+          ...staffExpiryDigest.metadata,
+          generatedAt: new Date().toISOString(),
+        },
+      }).catch((e) => logger.error('[CRON] Staff notify (subscription_expiring digest) failed', e));
+    }
+
     // Send LexAI-specific staff alerts (7 days, 3 days, and day-of)
     const expiringLexaiWithin7 = await db.getExpiringLexaiSubscriptions(7);
     for (const sub of expiringLexaiWithin7) {
       if (sub.daysLeft === 7 || sub.daysLeft === 3 || sub.daysLeft === 0) {
-        const displayName = sub.name || sub.email;
         await db.flagLexaiSupportCaseExpiry(sub.userId, sub.daysLeft);
-        await db.notifyStaffByEvent('lexai_expiry_soon', {
-          titleEn: sub.daysLeft === 0
-            ? `LexAI expires today – ${displayName}`
-            : `LexAI expires in ${sub.daysLeft} days – ${displayName}`,
-          titleAr: sub.daysLeft === 0
-            ? `ينتهي وصول LexAI اليوم – ${displayName}`
-            : `ينتهي وصول LexAI خلال ${sub.daysLeft} أيام – ${displayName}`,
-          contentEn: sub.daysLeft === 0
-            ? `${displayName}'s LexAI access expires today. Review the LexAI queue for follow-up.`
-            : `${displayName}'s LexAI access expires in ${sub.daysLeft} day(s). Review the LexAI queue for follow-up.`,
-          contentAr: sub.daysLeft === 0
-            ? `وصول LexAI للمستخدم ${displayName} ينتهي اليوم. راجع قائمة LexAI للمتابعة.`
-            : `وصول LexAI للمستخدم ${displayName} ينتهي خلال ${sub.daysLeft} يوم. راجع قائمة LexAI للمتابعة.`,
-          metadata: { userId: sub.userId, daysLeft: sub.daysLeft, endDate: sub.endDate },
-        }).catch((e) => logger.error('[CRON] Staff notify (lexai_expiry_soon) failed', e));
       }
     }
 

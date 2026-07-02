@@ -1,6 +1,6 @@
 # XFLEX Project Memory
 
-Last updated: 2026-07-01
+Last updated: 2026-07-02
 
 ## Project Overview
 
@@ -91,6 +91,8 @@ Last updated: 2026-07-01
 - As of 2026-06-25/26 email reliability fixes, the minute Worker drains a reserved `support_client_reply` lane before generic campaign work. Admin Email Logs exposes Outbox Health and a manual "Drain due now" action. Expected support reply delay should stay near the digest window rather than drifting to 30+ minutes.
 - Staff alert emails must be deduped by normalized recipient email across configured notification emails and staff-role recipients. This prevents one person receiving duplicate operational alerts when they are both configured in `admin_settings.notification_emails_json` and present as a staff user.
 - Timed-service activation repair alerts must not expose raw SQL in the visible email body. Use admin-friendly content; keep raw errors only in metadata/logs.
+- Daily timed-service expiry staff alerts are now digested: the `0 2 * * *` Worker still sends client renewal reminders individually, but staff/admin receive one `subscription_expiring` digest per daily run containing all relevant subscriptions. The event uses the existing staff BCC batch path with `support@xflexacademy.com` in `To`, avoiding one ZeptoMail provider request per expiring subscription or per staff recipient.
+- Passwordless `auth.requestLoginCode` intentionally no-ops for users whose `loginSecurityMode` is `password_plus_otp`. Those users must submit email/password through `auth.login`; after a valid password, the app creates a `login_stepup` OTP and sends the email code. When investigating "no token received" reports, check `users.loginSecurityMode` first, then `email_delivery_logs` for `event_type = 'login_code'`, and remember `authEmailOtps` only retains active/non-expired OTP rows.
 
 ## Known Fixed Bugs / Lessons Learned
 
@@ -260,6 +262,10 @@ Last updated: 2026-07-01
   - Production D1 verification confirmed the bypass columns exist, `user_quiz_progress` has 161 rows, `bypassed_rows = 0`, `bypass_missing_timestamp = 0`, and `quizzes` has exactly 8 levels from 1 to 8.
   - Live tRPC smoke verified public reads and expected login-required behavior for protected quiz endpoints.
   - Headless browser smoke passed on desktop and mobile for `/ar`, `/en`, `/auth`, `/quiz`, and `/course/1`; no console errors, page crashes, or failed requests were observed.
+- Subscription-expiry staff digest release verification on 2026-07-02:
+  - `pnpm exec tsc --noEmit` passed.
+  - Focused digest test passed: `pnpm vitest run server/subscriptionExpiryDigest.test.ts` (2 tests).
+  - Production D1 read-only login-token investigation confirmed `email_delivery_logs` remains the delivery source of truth; `authEmailOtps` may be empty after cleanup/expiry.
 
 ## Future Hardening
 
