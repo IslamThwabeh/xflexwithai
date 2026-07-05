@@ -636,6 +636,8 @@ export default {
     if (staffExpiryDigest) {
       await db.notifyStaffByEvent('subscription_expiring', {
         ...staffExpiryDigest,
+        emailContentHtmlEn: staffExpiryDigest.emailContentHtmlEn,
+        emailActionLabelEn: 'Open Expiry Report',
         metadata: {
           ...staffExpiryDigest.metadata,
           generatedAt: new Date().toISOString(),

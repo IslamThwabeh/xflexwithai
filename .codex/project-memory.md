@@ -1,6 +1,6 @@
 # XFLEX Project Memory
 
-Last updated: 2026-07-02
+Last updated: 2026-07-03
 
 ## Project Overview
 
@@ -42,7 +42,7 @@ Last updated: 2026-07-02
 - Migration `055` is additive and must not be rerun manually: it added timed-service activation audit/waiver fields, deadline indexes, `email_outbox`, and `email_outbox_campaigns`.
 - Production Worker schedules are now:
   - `* * * * *` for overdue timed-service repair and bounded email-outbox draining.
-  - `0 2 * * *` for existing daily lifecycle/retention/reminder work.
+  - `0 5 * * *` for existing daily lifecycle/retention/reminder work, which is 08:00 Asia/Amman.
 - Migration `database/migrations/056_recommendation_delivery_priority.sql` was initially prepared on 2026-06-22 and later applied to production. It additively creates `idx_rec_deliveries_status_kind_created` on `recommendation_deliveries(status, eventKind, createdAt, id)`.
 - Production application of migration `056` read 11,941 rows and wrote 5,900 index entries; this was index construction, not modification of 5,900 business records. Cloudflare bookmark: `00000ec4-00001f32-00005092-b8b7c4078f9df3fb50a741d01f919baa`.
 - Migration `database/migrations/059_fix_email_delivery_log_timestamp_default.sql` was applied to production on 2026-06-27 after the app produced legacy `email_delivery_logs.created_at = 'CURRENT_TIMESTAMP'` rows. It rebuilt `email_delivery_logs` with `created_at TEXT NOT NULL DEFAULT (datetime('now'))`, preserved 17,862 rows, and recreated `idx_email_delivery_logs_created_at`, `idx_email_delivery_logs_recipient_email`, and `idx_email_delivery_logs_status`. Cloudflare bookmark: `00000ee7-0000020e-00005096-0b9b3e6371d965180da477a114bbedeb`.
@@ -91,7 +91,7 @@ Last updated: 2026-07-02
 - As of 2026-06-25/26 email reliability fixes, the minute Worker drains a reserved `support_client_reply` lane before generic campaign work. Admin Email Logs exposes Outbox Health and a manual "Drain due now" action. Expected support reply delay should stay near the digest window rather than drifting to 30+ minutes.
 - Staff alert emails must be deduped by normalized recipient email across configured notification emails and staff-role recipients. This prevents one person receiving duplicate operational alerts when they are both configured in `admin_settings.notification_emails_json` and present as a staff user.
 - Timed-service activation repair alerts must not expose raw SQL in the visible email body. Use admin-friendly content; keep raw errors only in metadata/logs.
-- Daily timed-service expiry staff alerts are now digested: the `0 2 * * *` Worker still sends client renewal reminders individually, but staff/admin receive one `subscription_expiring` digest per daily run containing all relevant subscriptions. The event uses the existing staff BCC batch path with `support@xflexacademy.com` in `To`, avoiding one ZeptoMail provider request per expiring subscription or per staff recipient.
+- Daily timed-service expiry staff alerts are digested: the `0 5 * * *` Worker still sends client renewal reminders individually, but staff/admin receive one `subscription_expiring` digest per daily run. The digest groups one client/package/end-date row with services such as `LexAI + Recommendations`, renders as a table in email, and keeps dashboard notification text plain. The event uses the existing staff BCC batch path with `support@xflexacademy.com` in `To`, avoiding one ZeptoMail provider request per expiring subscription or per staff recipient.
 - Passwordless `auth.requestLoginCode` intentionally no-ops for users whose `loginSecurityMode` is `password_plus_otp`. Those users must submit email/password through `auth.login`; after a valid password, the app creates a `login_stepup` OTP and sends the email code. When investigating "no token received" reports, check `users.loginSecurityMode` first, then `email_delivery_logs` for `event_type = 'login_code'`, and remember `authEmailOtps` only retains active/non-expired OTP rows.
 
 ## Known Fixed Bugs / Lessons Learned

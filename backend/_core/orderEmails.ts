@@ -799,19 +799,24 @@ export async function sendStaffAlertEmail(data: {
   eventType: string;
   titleEn: string;
   contentEn: string;
+  contentHtmlEn?: string;
   actionUrl: string;
+  actionLabelEn?: string;
 }) {
   const emoji = EVENT_EMOJI[data.eventType] || '🔔';
   const subject = `[XFlex Staff] ${emoji} ${data.titleEn}`;
   const fullUrl = data.actionUrl.startsWith('http') ? data.actionUrl : `https://xflexacademy.com${data.actionUrl}`;
-  const body = `
-    <h2 style="margin:0 0 12px;color:#111;">${emoji} ${data.titleEn}</h2>
+  const actionLabel = data.actionLabelEn || "View in Dashboard";
+  const contentBlock = data.contentHtmlEn || `
     <p style="color:#555;line-height:1.7;font-size:15px;">
       ${data.contentEn}
-    </p>
+    </p>`;
+  const body = `
+    <h2 style="margin:0 0 12px;color:#111;">${emoji} ${data.titleEn}</h2>
+    ${contentBlock}
     <div style="text-align:center;margin-top:24px;">
       <a href="${fullUrl}" style="display:inline-block;background:#059669;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:bold;">
-        View in Dashboard
+        ${actionLabel}
       </a>
     </div>`;
 
@@ -832,20 +837,25 @@ export async function sendStaffAlertBccEmail(data: {
   eventType: string;
   titleEn: string;
   contentEn: string;
+  contentHtmlEn?: string;
   actionUrl: string;
+  actionLabelEn?: string;
   providerBatchKey: string;
 }) {
   const emoji = EVENT_EMOJI[data.eventType] || '🔔';
   const subject = `[XFlex Staff] ${emoji} ${data.titleEn}`;
   const fullUrl = data.actionUrl.startsWith('http') ? data.actionUrl : `https://xflexacademy.com${data.actionUrl}`;
-  const body = `
-    <h2 style="margin:0 0 12px;color:#111;">${emoji} ${data.titleEn}</h2>
+  const actionLabel = data.actionLabelEn || "View in Dashboard";
+  const contentBlock = data.contentHtmlEn || `
     <p style="color:#555;line-height:1.7;font-size:15px;">
       ${data.contentEn}
-    </p>
+    </p>`;
+  const body = `
+    <h2 style="margin:0 0 12px;color:#111;">${emoji} ${data.titleEn}</h2>
+    ${contentBlock}
     <div style="text-align:center;margin-top:24px;">
       <a href="${fullUrl}" style="display:inline-block;background:#059669;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:bold;">
-        View in Dashboard
+        ${actionLabel}
       </a>
     </div>`;
   const payload = await buildBrandedEmailPayload(data.to, subject, body, {

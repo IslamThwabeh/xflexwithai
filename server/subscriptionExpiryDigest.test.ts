@@ -21,6 +21,17 @@ describe("subscription expiry digest", () => {
         endDate: "2026-07-09T00:00:00.000Z",
       },
       {
+        userId: 2,
+        email: "maya@example.com",
+        name: "Maya Saleh",
+        daysLeft: 7,
+        stage: "t-7",
+        serviceType: "lexai",
+        serviceName: "LexAI",
+        packageName: "Pro Package",
+        endDate: "2026-07-09T00:00:00.000Z",
+      },
+      {
         userId: 1,
         email: "omar@example.com",
         name: "Omar Haddad",
@@ -45,11 +56,15 @@ describe("subscription expiry digest", () => {
     ]);
 
     expect(digest).not.toBeNull();
-    expect(digest?.titleEn).toBe("3 subscription renewals need attention");
-    expect(digest?.contentEn).toContain("1 expired, 1 expire today, 1 upcoming");
+    expect(digest?.titleEn).toBe("3 clients / 4 services need attention");
+    expect(digest?.contentEn).toContain("1 service expired, 1 service expires today, 2 services upcoming across 3 clients");
     expect(digest?.contentEn).toContain("lana@example.com (lana@example.com) - LexAI");
     expect(digest?.contentEn).toContain("Omar Haddad (omar@example.com) - LexAI");
-    expect(digest?.contentEn).toContain("Maya Saleh (maya@example.com) - Recommendations");
-    expect(digest?.metadata.subscriptions.map((item) => item.userId)).toEqual([3, 1, 2]);
+    expect(digest?.contentEn).toContain("Maya Saleh (maya@example.com) - LexAI + Recommendations");
+    expect(digest?.emailContentHtmlEn).toContain("<table");
+    expect(digest?.emailContentHtmlEn).toContain("LexAI + Recommendations");
+    expect(digest?.metadata.totalClients).toBe(3);
+    expect(digest?.metadata.totalRows).toBe(3);
+    expect(digest?.metadata.subscriptions.map((item) => item.userId)).toEqual([3, 1, 2, 2]);
   });
 });

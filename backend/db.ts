@@ -14698,6 +14698,8 @@ export async function notifyStaffByEvent(
   data: {
     titleEn: string; titleAr: string;
     contentEn?: string; contentAr?: string;
+    emailContentHtmlEn?: string;
+    emailActionLabelEn?: string;
     actionUrl?: string;
     metadata?: Record<string, unknown>;
   },
@@ -14829,6 +14831,8 @@ export async function notifyStaffByEvent(
         eventType,
         titleEn: data.titleEn,
         contentEn: data.contentEn || data.titleEn,
+        contentHtmlEn: data.emailContentHtmlEn,
+        actionLabelEn: data.emailActionLabelEn,
         actionUrl: actionUrl || '',
         providerBatchKey: `staff_${eventType}_${Date.now()}_${index + 1}`,
       });
@@ -14883,6 +14887,8 @@ export async function notifyStaffByEvent(
         eventType,
         titleEn: data.titleEn,
         contentEn: data.contentEn || data.titleEn,
+        contentHtmlEn: data.emailContentHtmlEn,
+        actionLabelEn: data.emailActionLabelEn,
         actionUrl: actionUrl || '',
       });
     } catch (e) {

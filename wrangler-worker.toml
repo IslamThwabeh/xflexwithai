@@ -30,7 +30,8 @@ binding = "VIDEOS_BUCKET"
 bucket_name = "xflexwithai-videos"
 
 [env.production.triggers]
-crons = ["* * * * *", "0 2 * * *"]
+# Daily lifecycle/reminder jobs run at 08:00 Asia/Amman (05:00 UTC).
+crons = ["* * * * *", "0 5 * * *"]
 
 [env.staging]
 name = "xflexacademy-api-staging"
