@@ -1,6 +1,6 @@
 # XFLEX Project Memory
 
-Last updated: 2026-07-03
+Last updated: 2026-07-05
 
 ## Project Overview
 
@@ -269,6 +269,12 @@ Last updated: 2026-07-03
 
 ## Future Hardening
 
+- Installed local Codex skills for future implementation workflows on 2026-07-05: `cloudflare-deploy`, `playwright`, `security-best-practices`, `security-threat-model`, `gh-fix-ci`, and `gh-address-comments`. `openai-docs` is already available as a system skill, so do not duplicate-install it.
+- Use `cloudflare-deploy` before production Worker/Pages deploys or when diagnosing Wrangler/Cloudflare deployment failures.
+- Use `playwright` for browser smoke, regression checks, and UI verification on desktop/mobile, especially for auth, checkout, support chat, course watch, admin dashboards, and Arabic/English routes.
+- Use `security-threat-model` before changes touching auth, OTP, sessions, roles, package keys, payments, R2 uploads, recommendation publishing, or production repair paths. Use `security-best-practices` for secure implementation review before merging/deploying those changes.
+- Use `gh-fix-ci` and `gh-address-comments` when PR checks or review comments need investigation through GitHub.
+- Do not add recommended third-party website/runtime packages just because a skill or repo exists. Treat React Email, Umami, PostHog, Sentry/GlitchTip, Uptime Kuma, TanStack Table, and axe-core as backlog candidates. Add each only when tied to a specific product goal, acceptance criteria, privacy/licensing review, implementation plan, tests, and deploy/rollback path.
 - Do not rely only on browser duration checks; for stronger abuse prevention, add server-side video probing or a quarantine process before long-term R2 retention.
 - Consider signed/private access for support evidence URLs if evidence may contain sensitive client data.
 - Add R2 lifecycle cleanup for rejected bug reports, deleted support messages, and abandoned uploads.
