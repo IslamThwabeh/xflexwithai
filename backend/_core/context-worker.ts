@@ -1,7 +1,7 @@
 import { parse, serialize } from "cookie";
 import type { D1Database, ExecutionContext } from "@cloudflare/workers-types";
 import { COOKIE_NAME, IDLE_TIMEOUT_STAFF_MS } from "../../shared/const";
-import { verifyToken } from "./auth";
+import { isAdminTokenValidForPasswordState, verifyToken } from "./auth";
 import { getSessionCookieOptions } from "./cookies";
 import { logger } from "./logger";
 import * as db from "../db";
@@ -42,7 +42,7 @@ export async function createWorkerContext(
         logger.error("[AUTH] Token verification failed");
       } else if (decoded.type === "admin") {
         const admin = await db.getAdminById(decoded.userId);
-        if (admin) {
+        if (admin && isAdminTokenValidForPasswordState(decoded, admin)) {
           user = {
             // IMPORTANT: admins and users are stored in separate tables that can share the same
             // numeric IDs. To prevent cross-account data collisions in user-scoped tables
@@ -58,6 +58,12 @@ export async function createWorkerContext(
             updatedAt: admin.updatedAt,
             lastSignedIn: admin.lastSignedIn,
           };
+        } else if (admin) {
+          logger.info("[AUTH] Admin token invalidated by password change", {
+            adminId: admin.id,
+            email: admin.email,
+          });
+          clearCookie(COOKIE_NAME, getSessionCookieOptions(req, "admin"));
         }
       } else {
         const regularUser = await db.getUserById(decoded.userId);

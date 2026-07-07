@@ -62,6 +62,7 @@ export const admins = sqliteTable("admins", {
   email: text("email", { length: 320 }).notNull().unique(),
   passwordHash: text("passwordHash", { length: 255 }).notNull(),
   name: text("name"),
+  passwordChangedAt: text("passwordChangedAt"),
   createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
   updatedAt: text("updatedAt").default("CURRENT_TIMESTAMP").notNull(),
   lastSignedIn: text("lastSignedIn").default("CURRENT_TIMESTAMP").notNull(),

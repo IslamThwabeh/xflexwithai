@@ -3,12 +3,14 @@ import { FileCheck, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
+import { DataTablePagination } from '@/components/DataTable';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { trpc } from '@/lib/trpc';
 import DashboardLayout from '@/components/DashboardLayout';
 import { toast } from 'sonner';
 import { AdminOnboardingRecordCard } from './AdminOnboardingRecordCard';
 import { AdminOnboardingFilters } from './AdminOnboardingFilters';
+import { useEffect, useMemo } from 'react';
 
 export default function AdminBrokerOnboarding() {
   return (<DashboardLayout><AdminBrokerOnboardingContent /></DashboardLayout>);
@@ -22,19 +24,37 @@ export function AdminBrokerOnboardingContent() {
   const [filterStatus, setFilterStatus] = useState('');
   const [filterStep, setFilterStep] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+  const [pageSize, setPageSize] = useState(25);
+  const [offset, setOffset] = useState(0);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [rejectReason, setRejectReason] = useState('');
   const [adminNote, setAdminNote] = useState('');
 
-  const { data: pendingProofs = [], isLoading: pendingLoading } = trpc.onboarding.pendingProofs.useQuery(
-    undefined, { enabled: tab === 'pending' }
-  );
-  const { data: allRecords = [], isLoading: allLoading } = trpc.onboarding.allRecords.useQuery(
-    filterStatus || filterStep ? { status: filterStatus || undefined, step: filterStep || undefined } : undefined,
-    { enabled: tab === 'all' }
-  );
+  const queryInput = useMemo(() => ({
+    status: tab === 'pending' ? 'pending_review' as const : (filterStatus || undefined) as any,
+    step: (filterStep || undefined) as any,
+    search: searchQuery.trim() || undefined,
+    fromDate: fromDate || undefined,
+    toDate: toDate ? `${toDate} 23:59:59` : undefined,
+    limit: pageSize,
+    offset,
+  }), [filterStatus, filterStep, fromDate, offset, pageSize, searchQuery, tab, toDate]);
+  const { data: recordsPage, isLoading } = trpc.onboarding.recordsPage.useQuery(queryInput);
+  const { data: pendingCountPage } = trpc.onboarding.recordsPage.useQuery({ status: 'pending_review', limit: 1, offset: 0 });
 
-  const invalidateAll = () => { utils.onboarding.pendingProofs.invalidate(); utils.onboarding.allRecords.invalidate(); };
+  useEffect(() => {
+    setOffset(0);
+    setExpandedId(null);
+  }, [tab, filterStatus, filterStep, searchQuery, fromDate, toDate, pageSize]);
+
+  const invalidateAll = () => {
+    utils.onboarding.pendingProofs.invalidate();
+    utils.onboarding.allRecords.invalidate();
+    utils.onboarding.recordsPage.invalidate();
+    utils.onboarding.report.invalidate();
+  };
   const approveMutation = trpc.onboarding.approve.useMutation({
     onSuccess: () => { toast.success(isAr ? 'تمت الموافقة على الخطوة' : 'Step approved'); invalidateAll(); setExpandedId(null); setAdminNote(''); },
     onError: (e) => toast.error(e.message),
@@ -44,14 +64,10 @@ export function AdminBrokerOnboardingContent() {
     onError: (e) => toast.error(e.message),
   });
 
-  const records = tab === 'pending' ? pendingProofs : allRecords;
-  const isLoading = tab === 'pending' ? pendingLoading : allLoading;
-  const filteredRecords = searchQuery
-    ? records.filter((r: any) =>
-        (r.userName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (r.userEmail || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (r.brokerName || '').toLowerCase().includes(searchQuery.toLowerCase()))
-    : records;
+  const records = recordsPage?.rows ?? [];
+  const total = recordsPage?.total ?? 0;
+  const page = Math.floor(offset / pageSize);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   const handleApprove = (stepId: number, note?: string) => approveMutation.mutate({ stepId, adminNote: note });
   const handleReject = (stepId: number, rejectionReason: string) => {
@@ -69,36 +85,53 @@ export function AdminBrokerOnboardingContent() {
         <Button variant={tab === 'pending' ? 'default' : 'outline'} size="sm" onClick={() => setTab('pending')}>
           <Clock className="h-4 w-4 mr-1" />
           {isAr ? 'بانتظار المراجعة' : 'Pending Review'}
-          {pendingProofs.length > 0 && <Badge className="ms-2 bg-amber-500 text-white text-xs">{pendingProofs.length}</Badge>}
+          {(pendingCountPage?.total ?? 0) > 0 && <Badge className="ms-2 bg-amber-500 text-white text-xs">{pendingCountPage?.total}</Badge>}
         </Button>
         <Button variant={tab === 'all' ? 'default' : 'outline'} size="sm" onClick={() => setTab('all')}>
           {isAr ? 'جميع السجلات' : 'All Records'}
         </Button>
       </div>
-      {tab === 'all' && (
+      <div className="mb-4">
         <AdminOnboardingFilters searchQuery={searchQuery} onSearchChange={setSearchQuery}
           filterStatus={filterStatus} onFilterStatusChange={setFilterStatus}
-          filterStep={filterStep} onFilterStepChange={setFilterStep} isAr={isAr} />
-      )}
+          filterStep={filterStep} onFilterStepChange={setFilterStep}
+          fromDate={fromDate} onFromDateChange={setFromDate}
+          toDate={toDate} onToDateChange={setToDate}
+          isAr={isAr} showStatus={tab === 'all'} />
+      </div>
       {isLoading ? (
         <div className="text-center py-8 text-muted-foreground">{isAr ? 'جارٍ التحميل...' : 'Loading...'}</div>
-      ) : filteredRecords.length === 0 ? (
+      ) : records.length === 0 ? (
         <Card><CardContent className="text-center py-12 text-muted-foreground">
           <FileCheck className="h-12 w-12 mx-auto mb-3 text-gray-300" />
           <p>{tab === 'pending' ? (isAr ? 'لا توجد إثباتات بانتظار المراجعة' : 'No pending proofs to review') : (isAr ? 'لا توجد سجلات' : 'No records found')}</p>
         </CardContent></Card>
       ) : (
-        <div className="space-y-3">
-          {filteredRecords.map((record: any) => (
-            <AdminOnboardingRecordCard key={record.id} record={record}
-              isExpanded={expandedId === record.id}
-              onToggle={() => setExpandedId(expandedId === record.id ? null : record.id)}
-              adminNote={adminNote} onAdminNoteChange={setAdminNote}
-              rejectReason={rejectReason} onRejectReasonChange={setRejectReason}
-              onApprove={handleApprove} onReject={handleReject}
-              isApproving={approveMutation.isPending} isRejecting={rejectMutation.isPending} />
-          ))}
-        </div>
+        <>
+          <div className="space-y-3">
+            {records.map((record: any) => (
+              <AdminOnboardingRecordCard key={record.id} record={record}
+                isExpanded={expandedId === record.id}
+                onToggle={() => setExpandedId(expandedId === record.id ? null : record.id)}
+                adminNote={adminNote} onAdminNoteChange={setAdminNote}
+                rejectReason={rejectReason} onRejectReasonChange={setRejectReason}
+                onApprove={handleApprove} onReject={handleReject}
+                isApproving={approveMutation.isPending} isRejecting={rejectMutation.isPending} />
+            ))}
+          </div>
+          <DataTablePagination
+            page={page}
+            pageSize={pageSize}
+            totalPages={totalPages}
+            totalItems={total}
+            setPage={(nextPage) => setOffset(nextPage * pageSize)}
+            changePageSize={(nextSize) => {
+              setPageSize(nextSize);
+              setOffset(0);
+            }}
+            isRtl={isAr}
+          />
+        </>
       )}
     </div>
   );

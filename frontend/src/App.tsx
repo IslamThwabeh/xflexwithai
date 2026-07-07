@@ -283,6 +283,16 @@ function Router() {
           <AdminBrokersHub />
         </AdminRoute>
       </Route>
+      <Route path="/admin/brokers/report">
+        <AdminRoute>
+          <AdminBrokersHub />
+        </AdminRoute>
+      </Route>
+      <Route path="/admin/reports/brokers">
+        <AdminRoute>
+          <AdminBrokersHub />
+        </AdminRoute>
+      </Route>
       <Route path={"/admin/offer-agreements"}>
         <AdminRoute>
           <AdminOfferAgreements />

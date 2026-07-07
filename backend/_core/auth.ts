@@ -22,7 +22,25 @@ export type JWTPayload = JoseJWTPayload & {
   email: string;
   type: "user" | "admin";
   sessionId?: string;
+  adminPasswordChangedAt?: string | null;
 };
+
+export function isAdminTokenValidForPasswordState(
+  token: Pick<JWTPayload, "iat" | "adminPasswordChangedAt">,
+  admin: { passwordChangedAt?: string | null },
+): boolean {
+  const changedAt = admin.passwordChangedAt ?? null;
+  if (!changedAt) return true;
+  if (token.adminPasswordChangedAt !== changedAt) return false;
+
+  const issuedAtSeconds = typeof token.iat === "number" ? token.iat : null;
+  if (!issuedAtSeconds) return false;
+
+  const changedAtMs = new Date(changedAt).getTime();
+  if (Number.isNaN(changedAtMs)) return false;
+
+  return issuedAtSeconds >= Math.floor(changedAtMs / 1000);
+}
 
 /**
  * Hash a password using bcrypt

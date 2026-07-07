@@ -1554,6 +1554,25 @@ export async function updateAdminLastSignIn(adminId: number): Promise<void> {
   }
 }
 
+export async function updateAdminPassword(adminId: number, passwordHash: string): Promise<{ passwordChangedAt: string }> {
+  const db = await getDb();
+  if (!db) {
+    throw new Error("Database not available");
+  }
+
+  const passwordChangedAt = new Date().toISOString();
+  await db.update(admins)
+    .set({
+      passwordHash,
+      passwordChangedAt,
+      updatedAt: passwordChangedAt,
+    })
+    .where(eq(admins.id, adminId));
+
+  logger.db('Admin password updated', { adminId });
+  return { passwordChangedAt };
+}
+
 // Legacy function - kept for backward compatibility but should not be used
 export async function getAdminByOpenId(openId: string) {
   const db = await getDb();
@@ -13803,6 +13822,291 @@ export async function getAllOnboardingRecords(filters?: { status?: string; step?
     .innerJoin(brokers, eq(brokers.id, brokerOnboarding.brokerId))
     .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(desc(brokerOnboarding.updatedAt));
+}
+
+export type OnboardingRecordsPageFilters = {
+  status?: string;
+  step?: string;
+  brokerId?: number;
+  search?: string;
+  fromDate?: string;
+  toDate?: string;
+  limit?: number;
+  offset?: number;
+};
+
+function buildOnboardingSearchCondition(search?: string): SQL | undefined {
+  const normalized = search?.trim().toLowerCase();
+  if (!normalized) return undefined;
+  const pattern = `%${normalized}%`;
+  return or(
+    sql`lower(coalesce(${users.name}, '')) like ${pattern}`,
+    sql`lower(coalesce(${users.email}, '')) like ${pattern}`,
+    sql`lower(coalesce(${brokers.nameEn}, '')) like ${pattern}`,
+    sql`lower(coalesce(${brokers.nameAr}, '')) like ${pattern}`,
+  );
+}
+
+function buildOnboardingDateCondition(fromDate?: string, toDate?: string): SQL[] {
+  const dateExpr = sql`coalesce(${brokerOnboarding.reviewedAt}, ${brokerOnboarding.submittedAt}, ${brokerOnboarding.updatedAt}, ${brokerOnboarding.createdAt})`;
+  const conditions: SQL[] = [];
+  if (fromDate) conditions.push(sql`${dateExpr} >= ${fromDate}`);
+  if (toDate) conditions.push(sql`${dateExpr} <= ${toDate}`);
+  return conditions;
+}
+
+export async function getOnboardingRecordsPage(filters?: OnboardingRecordsPageFilters): Promise<{
+  rows: Array<{
+    id: number;
+    userId: number;
+    brokerId: number;
+    step: string;
+    status: string;
+    proofUrl: string | null;
+    proofType: string | null;
+    aiConfidence: number | null;
+    aiResult: string | null;
+    adminNote: string | null;
+    rejectionReason: string | null;
+    submittedAt: string | null;
+    reviewedAt: string | null;
+    createdAt: string;
+    updatedAt: string;
+    userName: string | null;
+    userEmail: string;
+    brokerName: string;
+    brokerNameAr: string;
+  }>;
+  total: number;
+  limit: number;
+  offset: number;
+}> {
+  const db = await getDb();
+  const limit = Math.min(Math.max(filters?.limit ?? 25, 1), 100);
+  const offset = Math.max(filters?.offset ?? 0, 0);
+  if (!db) return { rows: [], total: 0, limit, offset };
+
+  const conditions: SQL[] = [];
+  if (filters?.status) conditions.push(eq(brokerOnboarding.status, filters.status));
+  if (filters?.step) conditions.push(eq(brokerOnboarding.step, filters.step));
+  if (filters?.brokerId) conditions.push(eq(brokerOnboarding.brokerId, filters.brokerId));
+  const searchCondition = buildOnboardingSearchCondition(filters?.search);
+  if (searchCondition) conditions.push(searchCondition);
+  conditions.push(...buildOnboardingDateCondition(filters?.fromDate, filters?.toDate));
+  const whereClause = conditions.length ? and(...conditions) : undefined;
+
+  const countBase = db.select({ total: sql<number>`count(*)` })
+    .from(brokerOnboarding)
+    .innerJoin(users, eq(users.id, brokerOnboarding.userId))
+    .innerJoin(brokers, eq(brokers.id, brokerOnboarding.brokerId));
+
+  const rowsBase = db.select({
+    id: brokerOnboarding.id,
+    userId: brokerOnboarding.userId,
+    brokerId: brokerOnboarding.brokerId,
+    step: brokerOnboarding.step,
+    status: brokerOnboarding.status,
+    proofUrl: brokerOnboarding.proofUrl,
+    proofType: brokerOnboarding.proofType,
+    aiConfidence: brokerOnboarding.aiConfidence,
+    aiResult: brokerOnboarding.aiResult,
+    adminNote: brokerOnboarding.adminNote,
+    rejectionReason: brokerOnboarding.rejectionReason,
+    submittedAt: brokerOnboarding.submittedAt,
+    reviewedAt: brokerOnboarding.reviewedAt,
+    createdAt: brokerOnboarding.createdAt,
+    updatedAt: brokerOnboarding.updatedAt,
+    userName: users.name,
+    userEmail: users.email,
+    brokerName: brokers.nameEn,
+    brokerNameAr: brokers.nameAr,
+  })
+    .from(brokerOnboarding)
+    .innerJoin(users, eq(users.id, brokerOnboarding.userId))
+    .innerJoin(brokers, eq(brokers.id, brokerOnboarding.brokerId))
+    .orderBy(desc(brokerOnboarding.updatedAt), desc(brokerOnboarding.id))
+    .limit(limit)
+    .offset(offset);
+
+  const [countRows, rows] = await Promise.all([
+    whereClause ? countBase.where(whereClause) : countBase,
+    whereClause ? rowsBase.where(whereClause) : rowsBase,
+  ]);
+
+  return {
+    rows,
+    total: Number(countRows[0]?.total ?? 0),
+    limit,
+    offset,
+  };
+}
+
+export type BrokerReportSort = "brokerName" | "openedAccounts" | "deposits" | "conversionRate" | "pendingProofs" | "rejectedProofs";
+export type BrokerStatusFilter = "all" | "active" | "inactive";
+
+export type BrokerReportFilters = {
+  search?: string;
+  brokerStatus?: BrokerStatusFilter;
+  fromDate?: string;
+  toDate?: string;
+  limit?: number;
+  offset?: number;
+  sort?: BrokerReportSort;
+  sortDir?: "asc" | "desc";
+};
+
+function buildBrokerReportBrokerConditions(filters?: BrokerReportFilters): SQL[] {
+  const conditions: SQL[] = [];
+  if (filters?.brokerStatus === "active") conditions.push(eq(brokers.isActive, true));
+  if (filters?.brokerStatus === "inactive") conditions.push(eq(brokers.isActive, false));
+  const normalized = filters?.search?.trim().toLowerCase();
+  if (normalized) {
+    const pattern = `%${normalized}%`;
+    const searchCondition = or(
+      sql`lower(coalesce(${brokers.nameEn}, '')) like ${pattern}`,
+      sql`lower(coalesce(${brokers.nameAr}, '')) like ${pattern}`,
+    );
+    if (searchCondition) conditions.push(searchCondition);
+  }
+  return conditions;
+}
+
+function buildDateRangeSql(column: any, fromDate?: string, toDate?: string) {
+  const parts: SQL[] = [sql`${column} is not null`];
+  if (fromDate) parts.push(sql`${column} >= ${fromDate}`);
+  if (toDate) parts.push(sql`${column} <= ${toDate}`);
+  return and(...parts) ?? sql`1 = 1`;
+}
+
+export async function getBrokerOnboardingReport(filters?: BrokerReportFilters): Promise<{
+  rows: Array<{
+    brokerId: number;
+    brokerNameEn: string;
+    brokerNameAr: string;
+    isActive: boolean;
+    openedAccounts: number;
+    deposits: number;
+    conversionRate: number;
+    pendingProofs: number;
+    rejectedProofs: number;
+    lastOpenedApprovedAt: string | null;
+    lastDepositApprovedAt: string | null;
+  }>;
+  total: number;
+  totals: {
+    openedAccounts: number;
+    deposits: number;
+    pendingProofs: number;
+    rejectedProofs: number;
+    activeBrokers: number;
+    inactiveBrokers: number;
+  };
+  limit: number;
+  offset: number;
+}> {
+  const db = await getDb();
+  const limit = Math.min(Math.max(filters?.limit ?? 25, 1), 100);
+  const offset = Math.max(filters?.offset ?? 0, 0);
+  if (!db) {
+    return {
+      rows: [],
+      total: 0,
+      totals: { openedAccounts: 0, deposits: 0, pendingProofs: 0, rejectedProofs: 0, activeBrokers: 0, inactiveBrokers: 0 },
+      limit,
+      offset,
+    };
+  }
+
+  const brokerConditions = buildBrokerReportBrokerConditions(filters);
+  const whereClause = brokerConditions.length ? and(...brokerConditions) : undefined;
+  const approvedDateSql = buildDateRangeSql(brokerOnboarding.reviewedAt, filters?.fromDate, filters?.toDate);
+  const pendingDateSql = buildDateRangeSql(brokerOnboarding.submittedAt, filters?.fromDate, filters?.toDate);
+
+  const openedExpr = sql<number>`count(distinct case when ${brokerOnboarding.step} = 'open_account' and ${brokerOnboarding.status} = 'approved' and ${approvedDateSql} then ${brokerOnboarding.userId} end)`;
+  const depositExpr = sql<number>`count(distinct case when ${brokerOnboarding.step} = 'deposit' and ${brokerOnboarding.status} = 'approved' and ${approvedDateSql} then ${brokerOnboarding.userId} end)`;
+  const pendingExpr = sql<number>`sum(case when ${brokerOnboarding.step} in ('open_account', 'deposit') and ${brokerOnboarding.status} = 'pending_review' and ${pendingDateSql} then 1 else 0 end)`;
+  const rejectedExpr = sql<number>`sum(case when ${brokerOnboarding.step} in ('open_account', 'deposit') and ${brokerOnboarding.status} = 'rejected' and ${approvedDateSql} then 1 else 0 end)`;
+  const conversionExpr = sql<number>`case when ${openedExpr} > 0 then round((${depositExpr} * 100.0) / ${openedExpr}, 1) else 0 end`;
+  const lastOpenedExpr = sql<string | null>`max(case when ${brokerOnboarding.step} = 'open_account' and ${brokerOnboarding.status} = 'approved' and ${approvedDateSql} then ${brokerOnboarding.reviewedAt} else null end)`;
+  const lastDepositExpr = sql<string | null>`max(case when ${brokerOnboarding.step} = 'deposit' and ${brokerOnboarding.status} = 'approved' and ${approvedDateSql} then ${brokerOnboarding.reviewedAt} else null end)`;
+
+  const sort = filters?.sort ?? "deposits";
+  const sortExpr = sort === "brokerName"
+    ? sql`lower(${brokers.nameEn})`
+    : sort === "openedAccounts"
+      ? openedExpr
+      : sort === "conversionRate"
+        ? conversionExpr
+        : sort === "pendingProofs"
+          ? pendingExpr
+          : sort === "rejectedProofs"
+            ? rejectedExpr
+            : depositExpr;
+  const sortDirection = filters?.sortDir === "asc" ? asc : desc;
+
+  const countBase = db.select({ total: sql<number>`count(*)` }).from(brokers);
+  const rowsBase = db.select({
+    brokerId: brokers.id,
+    brokerNameEn: brokers.nameEn,
+    brokerNameAr: brokers.nameAr,
+    isActive: brokers.isActive,
+    openedAccounts: openedExpr,
+    deposits: depositExpr,
+    conversionRate: conversionExpr,
+    pendingProofs: pendingExpr,
+    rejectedProofs: rejectedExpr,
+    lastOpenedApprovedAt: lastOpenedExpr,
+    lastDepositApprovedAt: lastDepositExpr,
+  })
+    .from(brokers)
+    .leftJoin(brokerOnboarding, eq(brokerOnboarding.brokerId, brokers.id))
+    .groupBy(brokers.id)
+    .orderBy(sortDirection(sortExpr), asc(brokers.displayOrder), asc(brokers.nameEn))
+    .limit(limit)
+    .offset(offset);
+
+  const totalsBase = db.select({
+    openedAccounts: sql<number>`count(distinct case when ${brokerOnboarding.step} = 'open_account' and ${brokerOnboarding.status} = 'approved' and ${approvedDateSql} then (${brokerOnboarding.brokerId} || ':' || ${brokerOnboarding.userId}) end)`,
+    deposits: sql<number>`count(distinct case when ${brokerOnboarding.step} = 'deposit' and ${brokerOnboarding.status} = 'approved' and ${approvedDateSql} then (${brokerOnboarding.brokerId} || ':' || ${brokerOnboarding.userId}) end)`,
+    pendingProofs: sql<number>`sum(case when ${brokerOnboarding.step} in ('open_account', 'deposit') and ${brokerOnboarding.status} = 'pending_review' and ${pendingDateSql} then 1 else 0 end)`,
+    rejectedProofs: sql<number>`sum(case when ${brokerOnboarding.step} in ('open_account', 'deposit') and ${brokerOnboarding.status} = 'rejected' and ${approvedDateSql} then 1 else 0 end)`,
+    activeBrokers: sql<number>`count(distinct case when ${brokers.isActive} = 1 then ${brokers.id} end)`,
+    inactiveBrokers: sql<number>`count(distinct case when ${brokers.isActive} = 0 then ${brokers.id} end)`,
+  })
+    .from(brokers)
+    .leftJoin(brokerOnboarding, eq(brokerOnboarding.brokerId, brokers.id));
+
+  const [countRows, rawRows, totalsRows] = await Promise.all([
+    whereClause ? countBase.where(whereClause) : countBase,
+    whereClause ? rowsBase.where(whereClause) : rowsBase,
+    whereClause ? totalsBase.where(whereClause) : totalsBase,
+  ]);
+
+  const rows = rawRows.map((row) => ({
+    ...row,
+    isActive: !!row.isActive,
+    openedAccounts: Number(row.openedAccounts ?? 0),
+    deposits: Number(row.deposits ?? 0),
+    conversionRate: Number(row.conversionRate ?? 0),
+    pendingProofs: Number(row.pendingProofs ?? 0),
+    rejectedProofs: Number(row.rejectedProofs ?? 0),
+  }));
+  const totals = totalsRows[0];
+
+  return {
+    rows,
+    total: Number(countRows[0]?.total ?? 0),
+    totals: {
+      openedAccounts: Number(totals?.openedAccounts ?? 0),
+      deposits: Number(totals?.deposits ?? 0),
+      pendingProofs: Number(totals?.pendingProofs ?? 0),
+      rejectedProofs: Number(totals?.rejectedProofs ?? 0),
+      activeBrokers: Number(totals?.activeBrokers ?? 0),
+      inactiveBrokers: Number(totals?.inactiveBrokers ?? 0),
+    },
+    limit,
+    offset,
+  };
 }
 
 /**

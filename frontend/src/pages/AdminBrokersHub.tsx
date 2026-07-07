@@ -3,10 +3,12 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import DashboardLayout from '@/components/DashboardLayout';
 import { AdminBrokersContent } from './AdminBrokers';
 import { AdminBrokerOnboardingContent } from './AdminBrokerOnboarding';
+import { AdminBrokerReportContent } from './AdminBrokerReport';
 
 const tabs = [
   { key: 'manage', path: '/admin/brokers', labelEn: 'Manage Brokers', labelAr: 'إدارة الوسطاء' },
   { key: 'onboarding', path: '/admin/broker-onboarding', labelEn: 'Onboarding Review', labelAr: 'مراجعة التسجيل' },
+  { key: 'report', path: '/admin/brokers/report', labelEn: 'Report', labelAr: 'التقرير' },
 ] as const;
 
 export default function AdminBrokersHub() {
@@ -14,7 +16,11 @@ export default function AdminBrokersHub() {
   const { language } = useLanguage();
   const isAr = language === 'ar';
 
-  const activeTab = location.includes('broker-onboarding') ? 'onboarding' : 'manage';
+  const activeTab = location.includes('broker-onboarding')
+    ? 'onboarding'
+    : location.includes('brokers/report') || location.includes('reports/brokers')
+      ? 'report'
+      : 'manage';
 
   return (
     <DashboardLayout>
@@ -36,7 +42,9 @@ export default function AdminBrokersHub() {
         ))}
       </div>
 
-      {activeTab === 'manage' ? <AdminBrokersContent /> : <AdminBrokerOnboardingContent />}
+      {activeTab === 'manage' && <AdminBrokersContent />}
+      {activeTab === 'onboarding' && <AdminBrokerOnboardingContent />}
+      {activeTab === 'report' && <AdminBrokerReportContent />}
     </DashboardLayout>
   );
 }

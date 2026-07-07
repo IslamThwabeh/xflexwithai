@@ -1,7 +1,7 @@
 import type { CreateExpressContextOptions } from "@trpc/server/adapters/express";
 import type { User } from "../../database/schema-sqlite";
 import { logger } from "./logger";
-import { verifyToken } from "./auth";
+import { isAdminTokenValidForPasswordState, verifyToken } from "./auth";
 import { COOKIE_NAME, IDLE_TIMEOUT_STAFF_MS } from "../../shared/const";
 import { getSessionCookieOptions } from "./cookies";
 import * as db from "../db";
@@ -80,6 +80,15 @@ export async function createContext(
             if (!admin) {
               logger.error('❌ [AUTH DEBUG] Admin not found in database', {
                 userId: decoded.userId,
+              });
+            } else if (!isAdminTokenValidForPasswordState(decoded, admin)) {
+              logger.info('🔒 [AUTH DEBUG] Admin token invalidated by password change', {
+                adminId: admin.id,
+                email: admin.email,
+              });
+              opts.res.clearCookie(COOKIE_NAME, {
+                ...getSessionCookieOptions(opts.req, 'admin'),
+                maxAge: -1,
               });
             } else {
               logger.info('✅ [AUTH DEBUG] Admin found in database', {

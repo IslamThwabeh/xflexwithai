@@ -56,6 +56,9 @@ const SUPPORT_FILE_MAX_BYTES = 5 * 1024 * 1024;
 const SUPPORT_VOICE_MAX_BYTES = 5 * 1024 * 1024;
 const SUPPORT_VIDEO_MAX_BYTES = 100 * 1024 * 1024;
 const supportAttachmentTypeSchema = z.enum(['file', 'voice', 'video']);
+const onboardingStepSchema = z.enum(['select_broker', 'open_account', 'deposit']);
+const onboardingStatusSchema = z.enum(['not_started', 'pending_review', 'approved', 'rejected']);
+const brokerReportSortSchema = z.enum(['brokerName', 'openedAccounts', 'deposits', 'conversionRate', 'pendingProofs', 'rejectedProofs']);
 
 function deferRecommendationEmailDrain(ctx: { defer?: (task: Promise<unknown>) => void }) {
   if (!ctx.defer) return;
@@ -1624,6 +1627,7 @@ export const appRouter = router({
           userId: admin.id,
           email: admin.email,
           type: 'admin',
+          adminPasswordChangedAt: admin.passwordChangedAt ?? null,
         });
         logger.info('✅ [ADMIN LOGIN] JWT token generated', {
           tokenLength: token.length,
@@ -1650,6 +1654,43 @@ export const appRouter = router({
         });
         
         return { success: true, admin: { id: admin.id, email: admin.email, name: admin.name } };
+      }),
+
+    changeAdminPassword: adminProcedure
+      .input(z.object({
+        currentPassword: z.string().min(1),
+        newPassword: z.string().min(8),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const admin = ctx.admin;
+        const currentIsValid = await verifyPassword(input.currentPassword, admin.passwordHash);
+        if (!currentIsValid) {
+          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Current password is incorrect' });
+        }
+
+        if (!isValidPassword(input.newPassword)) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Password must be at least 8 characters with 1 uppercase, 1 lowercase, and 1 number',
+          });
+        }
+
+        const passwordHash = await hashPassword(input.newPassword);
+        const result = await db.updateAdminPassword(admin.id, passwordHash);
+        await db.logAdminAction(admin.id, admin.id, 'change_admin_password', {
+          passwordChangedAt: result.passwordChangedAt,
+          sessionsInvalidated: true,
+        });
+
+        const cookieOptions = getSessionCookieOptions(ctx.req, 'admin');
+        ctx.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
+
+        logger.info('[AUTH] Admin password changed and sessions invalidated', {
+          adminId: admin.id,
+          email: admin.email,
+        });
+
+        return { success: true, passwordChangedAt: result.passwordChangedAt };
       }),
 
     // Change password (authenticated users only)
@@ -7485,6 +7526,36 @@ ${qaText}`;
       }).optional())
       .query(async ({ input }) => {
         return db.getAllOnboardingRecords(input ?? undefined);
+      }),
+
+    recordsPage: adminProcedure
+      .input(z.object({
+        status: onboardingStatusSchema.optional(),
+        step: onboardingStepSchema.optional(),
+        brokerId: z.number().optional(),
+        search: z.string().max(200).optional(),
+        fromDate: z.string().optional(),
+        toDate: z.string().optional(),
+        limit: z.number().min(1).max(100).optional(),
+        offset: z.number().min(0).optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        return db.getOnboardingRecordsPage(input ?? undefined);
+      }),
+
+    report: adminProcedure
+      .input(z.object({
+        search: z.string().max(200).optional(),
+        brokerStatus: z.enum(['all', 'active', 'inactive']).optional(),
+        fromDate: z.string().optional(),
+        toDate: z.string().optional(),
+        limit: z.number().min(1).max(100).optional(),
+        offset: z.number().min(0).optional(),
+        sort: brokerReportSortSchema.optional(),
+        sortDir: z.enum(['asc', 'desc']).optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        return db.getBrokerOnboardingReport(input ?? undefined);
       }),
 
     // Admin: approve a step

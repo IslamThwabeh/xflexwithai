@@ -154,6 +154,7 @@ const menuSectionsDef: MenuSection[] = [
     items: [
       { icon: DollarSign, labelKey: "admin.sidebar.revenue", path: "/admin/reports/revenue" },
       { icon: Clock, labelKey: "admin.sidebar.expiry", path: "/admin/reports/expiry" },
+      { icon: Building2, labelKey: "admin.sidebar.brokerReport", path: "/admin/reports/brokers" },
       { icon: Activity, labelKey: "admin.sidebar.engagement", path: "/admin/engagement" },
       { icon: ShieldCheck, labelKey: "admin.sidebar.monitoring", path: "/admin/monitoring" },
     ]
