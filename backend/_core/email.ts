@@ -1,6 +1,7 @@
 import { ENV } from "./env";
 import { isSuppressibleEmailCategory, type EmailCategory } from "./emailPreferences";
 import { logger } from "./logger";
+import { isLikelyValidEmail, normalizeEmailAddress } from "../../shared/emailValidation";
 
 export type EmailAuditInput = {
   eventType?: string;
@@ -344,6 +345,252 @@ export type StaffBccBatchRecipient = {
   email: string;
   userId?: number | null;
 };
+
+export type AdminNotificationBccRecipient = {
+  email: string;
+  userId: number;
+};
+
+export const ADMIN_NOTIFICATION_BCC_RECIPIENT_LIMIT = 499;
+
+export async function sendAdminNotificationEmail(input: {
+  recipients: AdminNotificationBccRecipient[];
+  subject: string;
+  text: string;
+  html?: string;
+  eventType: string;
+  templateId: string;
+  providerBatchKey: string;
+  metadata?: Record<string, unknown>;
+  supportTo?: string;
+}): Promise<{
+  provider: string | null;
+  attemptedProviders: string[];
+  providerRequestId: string | null;
+  sentUserIds: number[];
+  skippedUserIds: number[];
+  recipientCount: number;
+  deliveryMode: "single_to" | "bcc_batch" | "none";
+}> {
+  const uniqueRecipients = new Map<string, AdminNotificationBccRecipient>();
+  for (const recipient of input.recipients) {
+    const normalized = normalizeEmailAddress(recipient.email);
+    if (!recipient.userId || !isLikelyValidEmail(normalized)) continue;
+    if (!uniqueRecipients.has(normalized)) {
+      uniqueRecipients.set(normalized, { ...recipient, email: normalized });
+    }
+  }
+
+  const recipients = [...uniqueRecipients.values()];
+  if (!recipients.length) {
+    return {
+      provider: null,
+      attemptedProviders: [],
+      providerRequestId: null,
+      sentUserIds: [],
+      skippedUserIds: [],
+      recipientCount: 0,
+      deliveryMode: "none",
+    };
+  }
+
+  if (recipients.length === 1) {
+    const [recipient] = recipients;
+    const result = await sendEmail({
+      to: recipient.email,
+      subject: input.subject,
+      text: input.text,
+      html: input.html,
+      audit: {
+        eventType: input.eventType,
+        templateId: input.templateId,
+        recipientUserId: recipient.userId,
+        category: "marketing",
+        metadata: {
+          ...(input.metadata || {}),
+          deliveryMode: "single_to",
+          providerBatchKey: input.providerBatchKey,
+        },
+      },
+    });
+    return {
+      provider: result.provider,
+      attemptedProviders: result.attemptedProviders,
+      providerRequestId: null,
+      sentUserIds: result.skipped === "unsubscribed" ? [] : [recipient.userId],
+      skippedUserIds: result.skipped === "unsubscribed" ? [recipient.userId] : [],
+      recipientCount: recipients.length,
+      deliveryMode: "single_to",
+    };
+  }
+
+  if (recipients.length > ADMIN_NOTIFICATION_BCC_RECIPIENT_LIMIT) {
+    throw new EmailSendError("Admin notification BCC batch exceeds the safe recipient limit", {
+      category: "config",
+      attemptedProviders: [],
+      providerUsed: null,
+    });
+  }
+
+  if (ENV.emailProvider !== "auto" && ENV.emailProvider !== "zeptomail") {
+    throw new EmailSendError("Admin notification BCC batches require ZeptoMail", {
+      category: "config",
+      attemptedProviders: [],
+      providerUsed: null,
+    });
+  }
+
+  const supportTo = normalizeEmailAddress(input.supportTo || "support@xflexacademy.com");
+  if (!isLikelyValidEmail(supportTo)) {
+    throw new EmailSendError("Admin notification BCC batch requires a valid support mailbox", {
+      category: "config",
+      attemptedProviders: [],
+      providerUsed: null,
+    });
+  }
+
+  const deliverable: AdminNotificationBccRecipient[] = [];
+  const skipped: AdminNotificationBccRecipient[] = [];
+  try {
+    const { isEmailSuppressed } = await import("../db");
+    for (const recipient of recipients) {
+      const suppressed = await isEmailSuppressed(recipient.email, "marketing");
+      if (suppressed) skipped.push(recipient);
+      else deliverable.push(recipient);
+    }
+  } catch (error) {
+    logger.warn("[EMAIL] Admin notification suppression check failed; continuing with send", {
+      eventType: input.eventType,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    deliverable.push(...recipients);
+  }
+
+  if (skipped.length) {
+    try {
+      const { logEmailDeliveryAttempts } = await import("../db");
+      await logEmailDeliveryAttempts(skipped.map((recipient) => ({
+        recipientEmail: recipient.email,
+        recipientUserId: recipient.userId,
+        eventType: input.eventType,
+        templateId: input.templateId,
+        subject: input.subject,
+        status: "skipped_unsubscribed",
+        provider: null,
+        metadata: {
+          ...(input.metadata || {}),
+          deliveryMode: "bcc_batch",
+          providerBatchKey: input.providerBatchKey,
+        },
+      })));
+    } catch (error) {
+      logger.warn("[EMAIL] Failed to audit skipped admin notification recipients", {
+        eventType: input.eventType,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  if (!deliverable.length) {
+    return {
+      provider: null,
+      attemptedProviders: [],
+      providerRequestId: null,
+      sentUserIds: [],
+      skippedUserIds: skipped.map((recipient) => recipient.userId),
+      recipientCount: recipients.length,
+      deliveryMode: "none",
+    };
+  }
+
+  const auditRecipients = [
+    { email: supportTo, userId: null, deliveryMode: "bcc_batch_primary" },
+    ...deliverable.map((recipient) => ({
+      email: recipient.email,
+      userId: recipient.userId,
+      deliveryMode: "bcc_batch",
+    })),
+  ];
+
+  try {
+    const providerResult = await sendViaZeptoMail({
+      to: supportTo,
+      bcc: deliverable.map((recipient) => recipient.email),
+      subject: input.subject,
+      text: input.text,
+      html: input.html,
+      skipSupportForwarding: true,
+    });
+    const { logEmailDeliveryAttempts } = await import("../db");
+    await logEmailDeliveryAttempts(auditRecipients.map((recipient) => ({
+      recipientEmail: recipient.email,
+      recipientUserId: recipient.userId,
+      eventType: input.eventType,
+      templateId: input.templateId,
+      subject: input.subject,
+      status: "sent",
+      provider: "zeptomail",
+      metadata: {
+        ...(input.metadata || {}),
+        deliveryMode: recipient.deliveryMode,
+        providerBatchKey: input.providerBatchKey,
+        providerRequestId: providerResult.requestId,
+      },
+    })));
+    logger.info("[EMAIL] Admin notification BCC batch accepted", {
+      to: supportTo,
+      recipientCount: deliverable.length,
+      skippedCount: skipped.length,
+      providerBatchKey: input.providerBatchKey,
+      providerRequestId: providerResult.requestId,
+      eventType: input.eventType,
+    });
+    return {
+      provider: "zeptomail",
+      attemptedProviders: ["zeptomail"],
+      providerRequestId: providerResult.requestId,
+      sentUserIds: deliverable.map((recipient) => recipient.userId),
+      skippedUserIds: skipped.map((recipient) => recipient.userId),
+      recipientCount: recipients.length,
+      deliveryMode: "bcc_batch",
+    };
+  } catch (error) {
+    const category = categorizeEmailError(error);
+    try {
+      const { logEmailDeliveryAttempts } = await import("../db");
+      await logEmailDeliveryAttempts(auditRecipients.map((recipient) => ({
+        recipientEmail: recipient.email,
+        recipientUserId: recipient.userId,
+        eventType: input.eventType,
+        templateId: input.templateId,
+        subject: input.subject,
+        status: "failed",
+        provider: "zeptomail",
+        errorMessage: error instanceof Error ? error.message : String(error),
+        metadata: {
+          ...(input.metadata || {}),
+          deliveryMode: recipient.deliveryMode,
+          providerBatchKey: input.providerBatchKey,
+        },
+      })));
+    } catch {
+      // Keep the provider failure authoritative; audit logging is best-effort.
+    }
+    logger.error("[EMAIL] Admin notification BCC batch failed", {
+      to: supportTo,
+      recipientCount: deliverable.length,
+      skippedCount: skipped.length,
+      providerBatchKey: input.providerBatchKey,
+      category,
+      eventType: input.eventType,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw new EmailSendError(
+      error instanceof Error ? error.message : String(error),
+      { category, attemptedProviders: ["zeptomail"], providerUsed: "zeptomail" },
+    );
+  }
+}
 
 export async function sendStaffBccBatch(input: {
   to: string;

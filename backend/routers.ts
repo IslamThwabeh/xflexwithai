@@ -40,7 +40,7 @@ import { analyzeLexai } from "./_core/lexai";
 import { invokeOpenAiChatCompletion } from "./_core/openai";
 import { hashPassword, verifyPassword, generateToken, isValidEmail, isValidPassword, normalizeEmailAddress } from "./_core/auth";
 import { generateFreeVideoPlaybackToken } from "./_core/freeLibraryPlayback";
-import { sendEmail, sendLoginCodeEmail } from "./_core/email";
+import { sendAdminNotificationEmail, sendEmail, sendLoginCodeEmail } from "./_core/email";
 import { buildRecommendationAlertEmail, buildRecommendationMessageEmail } from "./_core/recommendationEmails";
 import { buildSupportReplyEmail } from "./_core/supportEmails";
 import { buildAnnouncementEmail, sendOrderConfirmationEmail, sendPaymentReceivedEmail, sendAdminNewOrderNotification, sendStaffWelcomeEmail, sendJobInterviewInviteEmail } from "./_core/orderEmails";
@@ -7480,9 +7480,14 @@ ${qaText}`;
         const batchId = `batch_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
         await db.sendBulkNotification({ ...input, titleEn, contentEn, batchId });
 
-        // Queue branded emails in one durable campaign. Recipient-level outbox
-        // rows are materialized by the minute worker to avoid Worker subrequest limits.
+        // Send branded email immediately. For one recipient the student is the
+        // To address; for multiple recipients, support is To and students are
+        // hidden in BCC so a bulk announcement does not spend hours draining one
+        // recipient per outbox row.
         let emailsQueued = 0;
+        let emailsSent = 0;
+        let emailsSkipped = 0;
+        let emailDeliveryMode: "single_to" | "bcc_batch" | "none" = "none";
         if (input.sendEmail) {
           const users = await db.getAllUsers();
           const userMap = new Map(users.map((u: any) => [u.id, u.email]));
@@ -7494,25 +7499,30 @@ ${qaText}`;
             contentEn: input.contentEn?.trim() || undefined,
             actionUrl: input.actionUrl || undefined,
           });
-          emailsQueued = await db.createEmailOutboxCampaign({
-            batchId,
-            recipients: input.userIds
-              .map((userId) => ({ userId, email: userMap.get(userId) }))
-              .filter((recipient): recipient is { userId: number; email: string } => !!recipient.email),
+          const emailRecipients = input.userIds
+            .map((userId) => ({ userId, email: userMap.get(userId) }))
+            .filter((recipient): recipient is { userId: number; email: string } => !!recipient.email);
+
+          const emailResult = await sendAdminNotificationEmail({
+            recipients: emailRecipients,
             eventType: 'admin_bulk_notification',
             templateId: 'announcement',
-            emailCategory: 'marketing',
             subject: rendered.subject,
-            bodyText: rendered.text,
-            bodyHtml: rendered.html,
+            text: rendered.text,
+            html: rendered.html,
+            providerBatchKey: batchId,
             metadata: {
               notificationType: input.type || 'info',
               actionUrl: input.actionUrl || null,
             },
           });
+          emailsSent = emailResult.sentUserIds.length;
+          emailsSkipped = emailResult.skippedUserIds.length;
+          emailDeliveryMode = emailResult.deliveryMode;
+          await db.markNotificationEmailsSent(batchId, emailResult.sentUserIds);
         }
 
-        return { success: true, count: input.userIds.length, emailsQueued, emailsSent: 0 };
+        return { success: true, count: input.userIds.length, emailsQueued, emailsSent, emailsSkipped, emailDeliveryMode };
       }),
 
     // Admin: get students grouped by active/inactive for targeting

@@ -13663,6 +13663,21 @@ export async function markNotificationEmailSent(batchId: string, userId: number)
     .where(and(eq(userNotifications.batchId, batchId), eq(userNotifications.userId, userId)));
 }
 
+export async function markNotificationEmailsSent(batchId: string, userIds: number[]) {
+  const db = await getDb();
+  if (!db || !userIds.length) return;
+  const uniqueUserIds = [...new Set(userIds.filter((userId) => Number.isInteger(userId) && userId > 0))];
+  if (!uniqueUserIds.length) return;
+  // Keep each statement under D1's bind parameter ceiling: one bind for batchId
+  // plus the user id list.
+  for (let offset = 0; offset < uniqueUserIds.length; offset += 90) {
+    const slice = uniqueUserIds.slice(offset, offset + 90);
+    await db.update(userNotifications)
+      .set({ emailSent: true })
+      .where(and(eq(userNotifications.batchId, batchId), inArray(userNotifications.userId, slice)));
+  }
+}
+
 // ============================================================================
 // Loyalty Points (Phase 4)
 // ============================================================================

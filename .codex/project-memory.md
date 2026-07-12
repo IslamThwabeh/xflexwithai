@@ -1,6 +1,6 @@
 # XFLEX Project Memory
 
-Last updated: 2026-07-05
+Last updated: 2026-07-12
 
 ## Project Overview
 
@@ -21,7 +21,12 @@ Last updated: 2026-07-05
 - Production frontend is Cloudflare Pages project `xflexacademy`.
 - Manual Pages upload artifact is `dist/public`.
 - Full build command: `npm run build` or `pnpm run build`.
-- Full deploy sequence when Wrangler Pages works: `npm run build && npm run deploy:pages && npm run deploy:worker`.
+- When the user asks Codex to deploy "from your end", use the `cloudflare-deploy` skill, check `npx wrangler whoami`, commit and push first, then deploy Worker before Pages:
+  1. `git add .`
+  2. `git commit -m "<meaningful release summary>"`
+  3. `git push origin main`
+  4. `npm run build && npm run deploy:worker && npm run deploy:pages`
+- If the release includes a database migration or schema read by new Worker code, get explicit user approval and apply the production D1 migration before `npm run deploy:worker`.
 - Pages deploy script: `pnpm run deploy:pages`.
 - Production Worker deploy script is `pnpm run deploy:worker`.
 - Worker deploy command expands to `wrangler deploy dist/worker.js --config wrangler-worker.toml --env production`.
@@ -49,6 +54,11 @@ Last updated: 2026-07-05
 - Migration `database/migrations/060_schema_migrations_tracking.sql` was applied to production on 2026-06-27. It created `schema_migrations` plus `idx_schema_migrations_applied_at`; Codex recorded migrations `059` and `060` in that table. Cloudflare bookmark: `00000ee7-00000214-00005096-2faa70207cd77d4f75c5ff001a10e37a`.
 - Migration `database/migrations/061_quiz_level_bypass.sql` was applied to production on 2026-07-01 before the user's deployment. It additively added `user_quiz_progress.is_bypassed INTEGER NOT NULL DEFAULT 0` and `user_quiz_progress.bypassed_at TEXT` so students can confirm bypass after a failed level quiz without marking the quiz as passed. Pre-migration export: `tmp/prod-backups/xflexwithai-before-level-quizzes-20260701-131159.sql` (about 124 MB). Production verification confirmed `user_quiz_progress` row count stayed at 161 before/after the migration. On 2026-07-01 Codex recorded `061_quiz_level_bypass.sql` in `schema_migrations` with `source = codex_wrangler`.
 - The user completed the deployment for the level-quiz release on 2026-07-01. Post-deployment QA confirmed production API health, frontend route health, desktop/mobile browser smoke, live tRPC smoke, D1 schema/data sanity, TypeScript, focused quiz tests, full test suite, frontend build, and Worker build.
+- Migration `database/migrations/062_admin_broker_report_and_password_rotation.sql` was applied to production by Codex on 2026-07-07 before deployment. It additively added `admins.passwordChangedAt` and broker-onboarding report/paging indexes. Cloudflare bookmark: `00000f2d-00000d69-000050a1-069bf24bd2e178e23edc53091684086c`. Post-migration verification confirmed the `admins.passwordChangedAt` column exists.
+- Admin broker report and admin password renewal release was committed as `a9b3196 Add admin broker report and password renewal`, pushed to `origin/main`, then deployed by Codex on 2026-07-07 using `npm run build && npm run deploy:worker && npm run deploy:pages`. Worker version: `9f08afc8-e98f-4117-8533-9033d1c6b461`. Pages preview: `https://9991b4d4.xflexwithai.pages.dev`.
+- Phased staff/student engagement release was committed as `da85992 Add phased staff and student engagement features`, pushed to `origin/main`, and deployed by Codex on 2026-07-12. Production backup before migrations: `tmp/prod-backups/xflexwithai-before-phases-063-068-20260712-215252.sql`. Worker version: `5925eb99-6ffe-4047-9f07-47edc49a9695`. Pages preview: `https://cb37d852.xflexwithai.pages.dev`.
+- Production D1 migrations `063_staff_performance_foundation.sql`, `064_student_surveys_foundation.sql`, `065_student_survey_blocking_flag.sql`, `066_loyalty_rewards_foundation.sql`, `067_student_community_foundation.sql`, and `068_student_job_eligibility_foundation.sql` were applied and recorded in `schema_migrations` on 2026-07-12 with `source = codex_wrangler`.
+- Post-deployment verification on 2026-07-12 confirmed production URLs `/`, `/ar`, `/en`, and `/auth` returned 200; Worker health returned `status=ok`; new feature flags remained `false`; and subscription/enrollment counts were unchanged: `packageSubscriptions` 59/59 active, `lexaiSubscriptions` 22/21 active/1 pending activation, `recommendationSubscriptions` 60/50 active/4 pending activation, `enrollments` 64/64 active.
 - Release order for the 2026-06-22 hotfixes:
   1. Apply migration `056`.
   2. Deploy the production Worker/backend.
@@ -68,7 +78,9 @@ Last updated: 2026-07-05
 - Admin bulk email audit logs each recipient individually as `admin_bulk_notification`.
 - Recommendation delivery outbox rows store subject/body snapshots for alert, update, and result emails so audit rows remain inspectable later.
 - Recommendation publishing no longer sends recipient emails synchronously. Publishing creates `recommendation_deliveries` rows, and the minute Worker drains them in bounded batches.
-- Generic activation and admin-announcement emails use `email_outbox`; large admin sends first create one `email_outbox_campaigns` envelope and materialize recipient rows gradually.
+- Generic activation emails use `email_outbox`. Before the local 2026-07-12 admin-email fix, admin announcements also used `email_outbox_campaigns` and materialized recipient rows gradually, which could stretch all-client announcements over hours.
+- Local/unreleased 2026-07-12 admin-email latency fix: admin notification emails now send immediately. If there is one client recipient, the client is placed in `To`. If there are multiple client recipients, `support@xflexacademy.com` is placed in `To` and clients are hidden in `BCC`; per-client `email_delivery_logs` audit rows and `user_notifications.email_sent` updates are still preserved. This change has no migration.
+- Production read-only diagnosis on 2026-07-12 found an 84-recipient admin bulk campaign from 2026-07-09 was created at `19:42:23Z` and completed at `23:05:26Z`, confirming the delay came from gradual campaign materialization/draining rather than ZeptoMail provider acceptance.
 - Email outbox delivery is idempotent through dedupe keys, conditional claims, stale-lock recovery, bounded retries, provider/error auditing, and dead-letter status.
 - Admin notification send responses now distinguish in-app recipients (`count`) from queued emails (`emailsQueued`).
 - Normal queued-email delivery target is within approximately one minute, subject to provider availability and backlog.
@@ -287,4 +299,4 @@ Last updated: 2026-07-05
 - For production-only symptoms, inspect production D1 read-only with Wrangler when useful before guessing from code.
 - Then provide a short prompt they can paste into VS Code AI/Copilot/Cursor.
 - Keep those prompts focused on file paths, line numbers, and exact code changes; avoid long explanations.
-- Preferred verification/deploy loop after fixes: build, deploy Pages, deploy Worker, then smoke test.
+- Preferred verification/deploy loop after fixes: build, deploy Worker, deploy Pages, then smoke test.

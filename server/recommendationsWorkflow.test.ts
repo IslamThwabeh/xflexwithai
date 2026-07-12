@@ -2,6 +2,15 @@ import { TRPCError } from "@trpc/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../backend/_core/email", () => ({
+  sendAdminNotificationEmail: vi.fn().mockResolvedValue({
+    provider: "zeptomail",
+    attemptedProviders: ["zeptomail"],
+    providerRequestId: null,
+    sentUserIds: [],
+    skippedUserIds: [],
+    recipientCount: 0,
+    deliveryMode: "none",
+  }),
   sendEmail: vi.fn().mockResolvedValue({ provider: "zeptomail", attemptedProviders: ["zeptomail"] }),
 }));
 
@@ -27,6 +36,7 @@ vi.mock("../backend/db", async () => {
     getRecommendationDeliveryFunnel: vi.fn(),
     sendBulkNotification: vi.fn().mockResolvedValue(undefined),
     markNotificationEmailSent: vi.fn().mockResolvedValue(undefined),
+    markNotificationEmailsSent: vi.fn().mockResolvedValue(undefined),
     prepareRecommendationDeliveries: vi.fn().mockResolvedValue({ inserted: 0, skippedDuplicate: 0 }),
     insertSkippedRecommendationDeliveries: vi.fn().mockResolvedValue(undefined),
     markRecommendationDeliverySent: vi.fn().mockResolvedValue(undefined),

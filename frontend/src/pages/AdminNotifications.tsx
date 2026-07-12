@@ -41,13 +41,18 @@ export default function AdminNotifications() {
   );
   const sendMut = trpc.notifications.send.useMutation({
     onSuccess: (data) => {
-      const emailNote = data.emailsQueued
-        ? (isRtl ? ` وتمت جدولة ${data.emailsQueued} رسالة بريد` : ` and ${data.emailsQueued} emails were queued`)
+      const emailNote = data.emailsSent
+        ? (isRtl ? ` وتم إرسال ${data.emailsSent} رسالة بريد` : ` and ${data.emailsSent} emails were sent`)
+        : data.emailsQueued
+          ? (isRtl ? ` وتمت جدولة ${data.emailsQueued} رسالة بريد` : ` and ${data.emailsQueued} emails were queued`)
+          : '';
+      const skippedNote = data.emailsSkipped
+        ? (isRtl ? `، وتم تخطي ${data.emailsSkipped} بسبب إلغاء الاشتراك` : `, ${data.emailsSkipped} skipped by unsubscribe preferences`)
         : '';
       toast.success(
         isRtl
-          ? `تم إرسال الإشعار إلى ${data.count} طالب${emailNote}`
-          : `Notification sent to ${data.count} students${emailNote}`,
+          ? `تم إرسال الإشعار إلى ${data.count} طالب${emailNote}${skippedNote}`
+          : `Notification sent to ${data.count} students${emailNote}${skippedNote}`,
       );
       setForm({ titleEn: '', titleAr: '', contentEn: '', contentAr: '', type: 'info', actionUrl: '' });
       setSelectedStudentIds([]);
