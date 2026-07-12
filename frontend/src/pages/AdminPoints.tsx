@@ -3,11 +3,11 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { trpc } from '@/lib/trpc';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Award, Plus, Minus, Loader2, Trophy, Settings2, Users, Save, ToggleLeft, ToggleRight } from 'lucide-react';
+import { Award, Plus, Minus, Loader2, Trophy, Settings2, Users, Save, ToggleLeft, ToggleRight, Gift, CheckCircle2, XCircle, PackageCheck } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
-type Tab = 'leaderboard' | 'rules' | 'referrals';
+type Tab = 'leaderboard' | 'rules' | 'referrals' | 'rewards';
 
 export default function AdminPoints() {
   const { language } = useLanguage();
@@ -15,10 +15,30 @@ export default function AdminPoints() {
   const [tab, setTab] = useState<Tab>('leaderboard');
   const [showAward, setShowAward] = useState(false);
   const [awardForm, setAwardForm] = useState({ userId: 0, amount: 0, reasonEn: '', reasonAr: '' });
+  const [rewardForm, setRewardForm] = useState({
+    titleEn: '',
+    titleAr: '',
+    descriptionEn: '',
+    descriptionAr: '',
+    pointsCost: 100,
+    stockQuantity: '',
+    isActive: false,
+    sortOrder: 0,
+  });
 
   const { data: leaderboard, isLoading } = trpc.points.leaderboard.useQuery(undefined, { enabled: tab === 'leaderboard' });
   const { data: rules, isLoading: rulesLoading, refetch: refetchRules } = trpc.points.adminRules.useQuery(undefined, { enabled: tab === 'rules' });
   const { data: referralStats, isLoading: refStatsLoading } = trpc.points.referralStats.useQuery(undefined, { enabled: tab === 'referrals' });
+  const { data: rewardsAvailability } = trpc.points.rewardsAvailability.useQuery(undefined, { enabled: tab === 'rewards' });
+  const rewardsEnabled = Boolean(rewardsAvailability?.enabled);
+  const { data: rewardItems, isLoading: rewardItemsLoading, refetch: refetchRewardItems } = trpc.points.adminRewardItems.useQuery(undefined, {
+    enabled: tab === 'rewards' && rewardsEnabled,
+    retry: false,
+  });
+  const { data: rewardRedemptions, isLoading: rewardRedemptionsLoading, refetch: refetchRewardRedemptions } = trpc.points.adminRewardRedemptions.useQuery({ limit: 100 }, {
+    enabled: tab === 'rewards' && rewardsEnabled,
+    retry: false,
+  });
 
   const awardMut = trpc.points.award.useMutation({
     onSuccess: () => { toast.success(isRtl ? 'تم منح النقاط' : 'Points awarded'); setShowAward(false); },
@@ -35,10 +55,35 @@ export default function AdminPoints() {
     onError: (e) => toast.error(e.message),
   });
 
+  const createRewardMut = trpc.points.createRewardItem.useMutation({
+    onSuccess: () => {
+      toast.success(isRtl ? 'تم إنشاء المكافأة' : 'Reward created');
+      setRewardForm({ titleEn: '', titleAr: '', descriptionEn: '', descriptionAr: '', pointsCost: 100, stockQuantity: '', isActive: false, sortOrder: 0 });
+      refetchRewardItems();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const updateRewardMut = trpc.points.updateRewardItem.useMutation({
+    onSuccess: () => { toast.success(isRtl ? 'تم تحديث المكافأة' : 'Reward updated'); refetchRewardItems(); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const reviewRewardMut = trpc.points.reviewRewardRedemption.useMutation({
+    onSuccess: () => { toast.success(isRtl ? 'تم تحديث الطلب' : 'Redemption updated'); refetchRewardRedemptions(); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const fulfillRewardMut = trpc.points.fulfillRewardRedemption.useMutation({
+    onSuccess: () => { toast.success(isRtl ? 'تم تنفيذ الطلب' : 'Redemption fulfilled'); refetchRewardRedemptions(); },
+    onError: (e) => toast.error(e.message),
+  });
+
   const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
     { key: 'leaderboard', label: isRtl ? 'المتصدرين' : 'Leaderboard', icon: <Trophy className="w-4 h-4" /> },
     { key: 'rules', label: isRtl ? 'قواعد النقاط' : 'Points Rules', icon: <Settings2 className="w-4 h-4" /> },
     { key: 'referrals', label: isRtl ? 'الإحالات' : 'Referrals', icon: <Users className="w-4 h-4" /> },
+    { key: 'rewards', label: isRtl ? 'المكافآت' : 'Rewards', icon: <Gift className="w-4 h-4" /> },
   ];
 
   return (
@@ -171,6 +216,42 @@ export default function AdminPoints() {
         {/* Referrals Tab */}
         {tab === 'referrals' && (
           <ReferralsTab stats={referralStats} isLoading={refStatsLoading} isRtl={isRtl} />
+        )}
+
+        {/* Rewards Tab */}
+        {tab === 'rewards' && (
+          <RewardsTab
+            enabled={rewardsEnabled}
+            items={rewardItems}
+            redemptions={rewardRedemptions}
+            itemsLoading={rewardItemsLoading}
+            redemptionsLoading={rewardRedemptionsLoading}
+            form={rewardForm}
+            setForm={setRewardForm}
+            isRtl={isRtl}
+            creating={createRewardMut.isPending}
+            updating={updateRewardMut.isPending || reviewRewardMut.isPending || fulfillRewardMut.isPending}
+            onCreate={() => createRewardMut.mutate({
+              titleEn: rewardForm.titleEn,
+              titleAr: rewardForm.titleAr,
+              descriptionEn: rewardForm.descriptionEn || null,
+              descriptionAr: rewardForm.descriptionAr || null,
+              pointsCost: rewardForm.pointsCost,
+              stockQuantity: rewardForm.stockQuantity === '' ? null : Number(rewardForm.stockQuantity),
+              isActive: rewardForm.isActive,
+              sortOrder: rewardForm.sortOrder,
+            })}
+            onToggle={(item) => updateRewardMut.mutate({ id: item.id, isActive: !item.isActive })}
+            onApprove={(id) => reviewRewardMut.mutate({ id, decision: 'approved' })}
+            onReject={(id) => {
+              const note = prompt(isRtl ? 'سبب الرفض أو ملاحظة اختيارية:' : 'Optional rejection note:');
+              reviewRewardMut.mutate({ id, decision: 'rejected', adminNote: note || null });
+            }}
+            onFulfill={(id) => {
+              const note = prompt(isRtl ? 'ملاحظة التنفيذ اختيارية:' : 'Optional fulfillment note:');
+              fulfillRewardMut.mutate({ id, adminNote: note || null });
+            }}
+          />
         )}
       </div>
     </DashboardLayout>
@@ -315,4 +396,218 @@ function ReferralsTab({ stats, isLoading, isRtl }: { stats: any; isLoading: bool
       </div>
     </div>
   );
+}
+
+function RewardsTab({
+  enabled,
+  items,
+  redemptions,
+  itemsLoading,
+  redemptionsLoading,
+  form,
+  setForm,
+  isRtl,
+  creating,
+  updating,
+  onCreate,
+  onToggle,
+  onApprove,
+  onReject,
+  onFulfill,
+}: {
+  enabled: boolean;
+  items: any[] | undefined;
+  redemptions: any[] | undefined;
+  itemsLoading: boolean;
+  redemptionsLoading: boolean;
+  form: {
+    titleEn: string;
+    titleAr: string;
+    descriptionEn: string;
+    descriptionAr: string;
+    pointsCost: number;
+    stockQuantity: string;
+    isActive: boolean;
+    sortOrder: number;
+  };
+  setForm: React.Dispatch<React.SetStateAction<{
+    titleEn: string;
+    titleAr: string;
+    descriptionEn: string;
+    descriptionAr: string;
+    pointsCost: number;
+    stockQuantity: string;
+    isActive: boolean;
+    sortOrder: number;
+  }>>;
+  isRtl: boolean;
+  creating: boolean;
+  updating: boolean;
+  onCreate: () => void;
+  onToggle: (item: any) => void;
+  onApprove: (id: number) => void;
+  onReject: (id: number) => void;
+  onFulfill: (id: number) => void;
+}) {
+  if (!enabled) {
+    return (
+      <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm leading-6 text-amber-900">
+        <div className="mb-2 flex items-center gap-2 font-semibold">
+          <Gift className="h-5 w-5" />
+          {isRtl ? 'مكافآت الولاء غير مفعّلة' : 'Loyalty rewards are disabled'}
+        </div>
+        <p>
+          {isRtl
+            ? 'كتالوج المكافآت وطلبات الاستبدال خلف مفتاح loyalty_rewards_enabled المعطل افتراضياً. لا يظهر للطلاب ولا يقبل طلبات حتى يتم تفعيله بموافقة منفصلة.'
+            : 'The reward catalog and redemption workflow are behind the disabled loyalty_rewards_enabled flag. Students cannot see or redeem rewards until it is enabled with separate approval.'}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="rounded-xl border bg-white p-5">
+        <h3 className="mb-4 flex items-center gap-2 font-semibold">
+          <Plus className="h-4 w-4 text-amber-600" />
+          {isRtl ? 'إضافة مكافأة' : 'Add reward'}
+        </h3>
+        <div className="grid gap-4 md:grid-cols-2">
+          <RewardInput label={isRtl ? 'العنوان الإنجليزي' : 'English title'} value={form.titleEn} onChange={(value) => setForm((current) => ({ ...current, titleEn: value }))} />
+          <RewardInput label={isRtl ? 'العنوان العربي' : 'Arabic title'} value={form.titleAr} onChange={(value) => setForm((current) => ({ ...current, titleAr: value }))} dir="rtl" />
+          <RewardInput label={isRtl ? 'الوصف الإنجليزي' : 'English description'} value={form.descriptionEn} onChange={(value) => setForm((current) => ({ ...current, descriptionEn: value }))} />
+          <RewardInput label={isRtl ? 'الوصف العربي' : 'Arabic description'} value={form.descriptionAr} onChange={(value) => setForm((current) => ({ ...current, descriptionAr: value }))} dir="rtl" />
+          <RewardInput label={isRtl ? 'تكلفة النقاط' : 'Points cost'} type="number" value={String(form.pointsCost || '')} onChange={(value) => setForm((current) => ({ ...current, pointsCost: Number(value) || 0 }))} />
+          <RewardInput label={isRtl ? 'المخزون، اتركه فارغاً لغير محدود' : 'Stock, blank for unlimited'} type="number" value={form.stockQuantity} onChange={(value) => setForm((current) => ({ ...current, stockQuantity: value }))} />
+        </div>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={form.isActive} onChange={(event) => setForm((current) => ({ ...current, isActive: event.target.checked }))} />
+            {isRtl ? 'نشطة للطلاب' : 'Active for students'}
+          </label>
+          <Button onClick={onCreate} disabled={creating || !form.titleEn.trim() || !form.titleAr.trim() || form.pointsCost < 1}>
+            {creating && <Loader2 className="h-4 w-4 animate-spin" />}
+            {isRtl ? 'حفظ المكافأة' : 'Save reward'}
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-2">
+        <div>
+          <h3 className="mb-3 flex items-center gap-2 font-semibold">
+            <Gift className="h-5 w-5 text-amber-500" />
+            {isRtl ? 'كتالوج المكافآت' : 'Reward catalog'}
+          </h3>
+          {itemsLoading ? (
+            <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin" /></div>
+          ) : !items?.length ? (
+            <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">{isRtl ? 'لا توجد مكافآت بعد' : 'No rewards yet'}</div>
+          ) : (
+            <div className="space-y-3">
+              {items.map((item) => (
+                <div key={item.id} className="rounded-xl border bg-white p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h4 className="font-semibold">{isRtl ? item.titleAr : item.titleEn}</h4>
+                      <p className="mt-1 text-xs text-muted-foreground">{isRtl ? item.descriptionAr : item.descriptionEn}</p>
+                    </div>
+                    <Badge className="bg-amber-100 text-amber-700">{item.pointsCost} pts</Badge>
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                    <span>{isRtl ? 'المخزون' : 'Stock'}: {item.stockQuantity ?? (isRtl ? 'غير محدود' : 'Unlimited')}</span>
+                    <Button size="sm" variant="outline" disabled={updating} onClick={() => onToggle(item)}>
+                      {item.isActive ? <ToggleRight className="h-4 w-4 text-green-500" /> : <ToggleLeft className="h-4 w-4 text-gray-400" />}
+                      {item.isActive ? (isRtl ? 'نشطة' : 'Active') : (isRtl ? 'غير نشطة' : 'Inactive')}
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div>
+          <h3 className="mb-3 flex items-center gap-2 font-semibold">
+            <PackageCheck className="h-5 w-5 text-emerald-600" />
+            {isRtl ? 'طلبات الاستبدال' : 'Redemption requests'}
+          </h3>
+          {redemptionsLoading ? (
+            <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin" /></div>
+          ) : !redemptions?.length ? (
+            <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">{isRtl ? 'لا توجد طلبات بعد' : 'No redemption requests yet'}</div>
+          ) : (
+            <div className="space-y-3">
+              {redemptions.map((request) => (
+                <div key={request.id} className="rounded-xl border bg-white p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h4 className="font-semibold">{isRtl ? request.titleAr : request.titleEn}</h4>
+                      <p className="mt-1 text-xs text-muted-foreground">{request.studentEmail}</p>
+                    </div>
+                    <Badge className={rewardStatusClass(request.status)}>{rewardStatusLabel(request.status, isRtl)}</Badge>
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    {request.status === 'pending' && (
+                      <>
+                        <Button size="sm" disabled={updating} onClick={() => onApprove(request.id)}>
+                          <CheckCircle2 className="h-4 w-4" /> {isRtl ? 'اعتماد' : 'Approve'}
+                        </Button>
+                        <Button size="sm" variant="outline" disabled={updating} onClick={() => onReject(request.id)}>
+                          <XCircle className="h-4 w-4" /> {isRtl ? 'رفض واسترجاع' : 'Reject & refund'}
+                        </Button>
+                      </>
+                    )}
+                    {request.status === 'approved' && (
+                      <Button size="sm" disabled={updating} onClick={() => onFulfill(request.id)}>
+                        <PackageCheck className="h-4 w-4" /> {isRtl ? 'تم التنفيذ' : 'Mark fulfilled'}
+                      </Button>
+                    )}
+                    <span className="text-xs text-muted-foreground">{request.pointsCost} pts</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RewardInput({ label, value, onChange, type = 'text', dir }: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  type?: string;
+  dir?: 'rtl' | 'ltr';
+}) {
+  return (
+    <label className="grid gap-1 text-sm font-medium">
+      <span>{label}</span>
+      <input
+        type={type}
+        value={value}
+        dir={dir}
+        onChange={(event) => onChange(event.target.value)}
+        className="rounded border px-3 py-2 text-sm"
+      />
+    </label>
+  );
+}
+
+function rewardStatusLabel(status: string, isRtl: boolean) {
+  const labels: Record<string, [string, string]> = {
+    pending: ['Pending', 'بانتظار المراجعة'],
+    approved: ['Approved', 'معتمد'],
+    rejected: ['Rejected/refunded', 'مرفوض/مسترجع'],
+    fulfilled: ['Fulfilled', 'منفذ'],
+  };
+  return labels[status]?.[isRtl ? 1 : 0] ?? status;
+}
+
+function rewardStatusClass(status: string) {
+  if (status === 'approved') return 'bg-blue-100 text-blue-700';
+  if (status === 'fulfilled') return 'bg-emerald-100 text-emerald-700';
+  if (status === 'rejected') return 'bg-red-100 text-red-700';
+  return 'bg-amber-100 text-amber-700';
 }

@@ -35,12 +35,21 @@ export const ROLE_PAGE_ACCESS: Record<string, string[]> = {
   view_subscriptions: ["/admin/students", "/admin/notifications"],
   view_quizzes: ["/admin/quizzes", "/admin/students", "/admin/notifications"],
   plan_manager: ["/admin/plan-progress", "/admin/plan-progress/legacy", "/admin/notifications"],
+  staff_performance_employee: ["/admin/my-performance"],
+  staff_performance_manager: ["/admin/staff-performance"],
+  student_surveys_manager: ["/admin/student-surveys", "/admin/notifications"],
+  loyalty_rewards_manager: ["/admin/points", "/admin/notifications"],
+  student_community_moderator: ["/admin/community", "/admin/notifications"],
+  student_job_eligibility_manager: ["/admin/job-eligibility", "/admin/notifications"],
 };
 
 // All available staff roles
 export const ALL_STAFF_ROLES = [
   "analyst", "support", "lexai_support", "key_manager", "plan_manager",
   "client_lookup", "view_progress", "view_recommendations", "view_subscriptions", "view_quizzes",
+  "staff_performance_employee", "staff_performance_manager",
+  "student_surveys_manager", "loyalty_rewards_manager", "student_community_moderator",
+  "student_job_eligibility_manager",
 ] as const;
 export type StaffRole = typeof ALL_STAFF_ROLES[number];
 

@@ -48,6 +48,49 @@ import { ENV } from "./_core/env";
 import { generateNumericCode, generateSaltBase64, normalizeEmail, sha256Base64 } from "./_core/otp";
 import { verifyUnsubscribeToken } from "./_core/emailPreferences";
 import { getCourseQuizLevelForEpisodeOrder, isCourseQuizLevelEnd } from "./courseQuizLevels";
+import {
+  STAFF_PERFORMANCE_FEATURE_FLAG,
+  STAFF_PERFORMANCE_STATUSES,
+  canTransitionStaffPerformanceStatus,
+  isEditableStaffPerformanceStatus,
+  isStaffPerformanceEnabled,
+  isUniqueConstraintError,
+  isValidIanaTimezone,
+  isValidIsoCalendarDate,
+  isValidPerformanceMonth,
+  isValidPerformanceWeek,
+  type StaffPerformanceActor,
+  type StaffPerformanceStatus,
+} from "./services/staff-performance.service";
+import {
+  STUDENT_SURVEY_ASSIGNMENT_STATUSES,
+  STUDENT_SURVEY_QUESTION_TYPES,
+  STUDENT_SURVEYS_BLOCKING_FEATURE_FLAG,
+  STUDENT_SURVEYS_FEATURE_FLAG,
+  canPostponeStudentSurvey,
+  getStudentSurveyAccessState,
+  isStudentSurveyBlockingEnabled,
+  isStudentSurveysEnabled,
+  isUniqueSurveyConstraintError,
+  isValidSurveyDateTime,
+  type StudentSurveyAssignmentStatus,
+} from "./services/student-surveys.service";
+import {
+  LOYALTY_REWARD_REDEMPTION_STATUSES,
+  LOYALTY_REWARDS_FEATURE_FLAG,
+  isLoyaltyRewardsEnabled,
+} from "./services/loyalty-rewards.service";
+import {
+  STUDENT_COMMUNITY_CONTENT_STATUSES,
+  STUDENT_COMMUNITY_FEATURE_FLAG,
+  STUDENT_COMMUNITY_REPORT_STATUSES,
+  isStudentCommunityEnabled,
+} from "./services/student-community.service";
+import {
+  STUDENT_JOB_ELIGIBILITY_FEATURE_FLAG,
+  STUDENT_JOB_ELIGIBILITY_REVIEW_STATUSES,
+  isStudentJobEligibilityEnabled,
+} from "./services/student-job-eligibility.service";
 // FlexAI routes are registered in server/_core/index.ts
 
 const SUPPORT_VIDEO_MAX_SECONDS = 60;
@@ -59,6 +102,69 @@ const supportAttachmentTypeSchema = z.enum(['file', 'voice', 'video']);
 const onboardingStepSchema = z.enum(['select_broker', 'open_account', 'deposit']);
 const onboardingStatusSchema = z.enum(['not_started', 'pending_review', 'approved', 'rejected']);
 const brokerReportSortSchema = z.enum(['brokerName', 'openedAccounts', 'deposits', 'conversionRate', 'pendingProofs', 'rejectedProofs']);
+const ASSIGNABLE_STAFF_ROLES = [
+  'analyst',
+  'support',
+  'lexai_support',
+  'key_manager',
+  'plan_manager',
+  'view_progress',
+  'view_recommendations',
+  'view_subscriptions',
+  'view_quizzes',
+  'client_lookup',
+  'staff_performance_employee',
+  'staff_performance_manager',
+  'student_surveys_manager',
+  'loyalty_rewards_manager',
+  'student_community_moderator',
+  'student_job_eligibility_manager',
+] as const;
+const staffPerformanceStatusSchema = z.enum(STAFF_PERFORMANCE_STATUSES);
+const performanceMonthSchema = z.string().refine(isValidPerformanceMonth, "Month must use YYYY-MM");
+const performanceDateSchema = z.string().refine(isValidIsoCalendarDate, "Date must be a valid YYYY-MM-DD date");
+const performanceTimezoneSchema = z.string().min(1).max(100)
+  .refine(isValidIanaTimezone, "Timezone must be a valid IANA timezone");
+const shortPerformanceText = z.string().trim().min(1).max(300);
+const longPerformanceText = z.string().trim().max(5000);
+const studentSurveyAssignmentStatusSchema = z.enum(STUDENT_SURVEY_ASSIGNMENT_STATUSES);
+const studentSurveyQuestionTypeSchema = z.enum(STUDENT_SURVEY_QUESTION_TYPES);
+const surveyDateTimeSchema = z.string().refine(isValidSurveyDateTime, "Date-time must be a valid ISO timestamp");
+const shortSurveyText = z.string().trim().min(1).max(300);
+const longSurveyText = z.string().trim().max(5000);
+const loyaltyRewardStatusSchema = z.enum(LOYALTY_REWARD_REDEMPTION_STATUSES);
+const shortRewardText = z.string().trim().min(1).max(300);
+const longRewardText = z.string().trim().max(5000);
+const communityContentStatusSchema = z.enum(STUDENT_COMMUNITY_CONTENT_STATUSES);
+const communityReportStatusSchema = z.enum(STUDENT_COMMUNITY_REPORT_STATUSES);
+const communityTargetTypeSchema = z.enum(["post", "comment"]);
+const shortCommunityText = z.string().trim().min(1).max(300);
+const longCommunityText = z.string().trim().min(1).max(5000);
+const studentJobReviewStatusSchema = z.enum(STUDENT_JOB_ELIGIBILITY_REVIEW_STATUSES);
+const studentJobDecisionStatusSchema = z.enum(["returned", "eligible", "ineligible"]);
+const shortStudentJobText = z.string().trim().max(300);
+const longStudentJobText = z.string().trim().max(5000);
+
+async function requireLoyaltyRewardsEnabled() {
+  const flag = await db.getAdminSetting(LOYALTY_REWARDS_FEATURE_FLAG);
+  if (!isLoyaltyRewardsEnabled(flag)) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Loyalty rewards are disabled" });
+  }
+}
+
+async function requireStudentCommunityEnabled() {
+  const flag = await db.getAdminSetting(STUDENT_COMMUNITY_FEATURE_FLAG);
+  if (!isStudentCommunityEnabled(flag)) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Student community is disabled" });
+  }
+}
+
+async function requireStudentJobEligibilityEnabled() {
+  const flag = await db.getAdminSetting(STUDENT_JOB_ELIGIBILITY_FEATURE_FLAG);
+  if (!isStudentJobEligibilityEnabled(flag)) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Student job eligibility is disabled" });
+  }
+}
 
 function deferRecommendationEmailDrain(ctx: { defer?: (task: Promise<unknown>) => void }) {
   if (!ctx.defer) return;
@@ -409,6 +515,9 @@ const supportStaffProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   const isStaff = await db.hasAnyRole(ctx.user.id, [
     'support', 'key_manager', 'plan_manager',
     'client_lookup', 'view_progress', 'view_recommendations', 'view_subscriptions', 'view_quizzes',
+    'staff_performance_employee', 'staff_performance_manager',
+    'student_surveys_manager', 'loyalty_rewards_manager',
+    'student_community_moderator', 'student_job_eligibility_manager',
   ]);
   if (!isStaff) {
     throw new TRPCError({ code: 'FORBIDDEN', message: 'Staff access required' });
@@ -442,6 +551,167 @@ const adminOrRoleProcedure = (roles: string[]) => protectedProcedure.use(async (
   }
   return next({ ctx: { ...ctx, admin: null } });
 }).use(staffActivityTrackingMiddleware);
+
+const staffPerformanceProcedure = protectedProcedure.use(async ({ ctx, next }) => {
+  if (!ctx.user?.email) {
+    throw new TRPCError({ code: "UNAUTHORIZED", message: "Not authenticated" });
+  }
+
+  const flag = await db.getAdminSetting(STAFF_PERFORMANCE_FEATURE_FLAG);
+  if (!isStaffPerformanceEnabled(flag)) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Staff performance management is disabled" });
+  }
+
+  const admin = await db.getAdminByEmail(ctx.user.email);
+  let performanceAccess: "employee" | "manager" | null = admin ? "manager" : null;
+  if (!admin) {
+    const roles = await db.getUserRoles(ctx.user.id);
+    const roleNames = new Set(roles.map((row) => row.role));
+    performanceAccess = roleNames.has("staff_performance_manager")
+      ? "manager"
+      : roleNames.has("staff_performance_employee")
+        ? "employee"
+        : null;
+  }
+
+  if (!performanceAccess) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Staff performance access required" });
+  }
+
+  return next({ ctx: { ...ctx, admin: null, performanceAccess } });
+}).use(staffActivityTrackingMiddleware);
+
+const studentSurveyProcedure = protectedProcedure.use(async ({ ctx, next }) => {
+  if (!ctx.user?.email) {
+    throw new TRPCError({ code: "UNAUTHORIZED", message: "Not authenticated" });
+  }
+
+  const flag = await db.getAdminSetting(STUDENT_SURVEYS_FEATURE_FLAG);
+  if (!isStudentSurveysEnabled(flag)) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Student surveys are disabled" });
+  }
+
+  const admin = await db.getAdminByEmail(ctx.user.email);
+  const hasSurveyManagerRole = admin ? false : await db.hasAnyRole(ctx.user.id, ["student_surveys_manager"]);
+  return next({
+    ctx: {
+      ...ctx,
+      admin,
+      surveyAccess: admin || hasSurveyManagerRole ? "admin" as const : "student" as const,
+    },
+  });
+}).use(staffActivityTrackingMiddleware);
+
+function requireStudentSurveyAdmin(access: "student" | "admin") {
+  if (access !== "admin") {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Student survey admin access required" });
+  }
+}
+
+function requirePerformanceManager(access: "employee" | "manager") {
+  if (access !== "manager") {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Staff performance manager access required" });
+  }
+}
+
+function requirePerformanceOwnerOrManager(
+  access: "employee" | "manager",
+  currentUserId: number,
+  staffUserId: number,
+) {
+  if (access !== "manager" && currentUserId !== staffUserId) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "You may only access your own performance records" });
+  }
+}
+
+function requireEditablePerformanceRecord(status: string) {
+  if (!isEditableStaffPerformanceStatus(status as StaffPerformanceStatus)) {
+    throw new TRPCError({ code: "CONFLICT", message: "This record is not editable in its current status" });
+  }
+}
+
+function requirePerformanceTransition(
+  actor: StaffPerformanceActor,
+  from: StaffPerformanceStatus,
+  to: StaffPerformanceStatus,
+) {
+  if (!canTransitionStaffPerformanceStatus(actor, from, to)) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: `Invalid staff performance transition: ${from} -> ${to}`,
+    });
+  }
+}
+
+function throwStaffPerformancePersistenceError(error: unknown): never {
+  if (isUniqueConstraintError(error)) {
+    throw new TRPCError({ code: "CONFLICT", message: "A performance record already exists for this period" });
+  }
+  if (error instanceof Error && error.message === "STAFF_PERFORMANCE_VERSION_CONFLICT") {
+    throw new TRPCError({
+      code: "CONFLICT",
+      message: "This record changed since it was loaded. Refresh and try again.",
+    });
+  }
+  throw error;
+}
+
+function throwStudentSurveyPersistenceError(error: unknown): never {
+  if (isUniqueSurveyConstraintError(error)) {
+    throw new TRPCError({ code: "CONFLICT", message: "A survey record already exists for this scope" });
+  }
+  throw error;
+}
+
+function parseSurveyOptions(options: string | null | undefined): string[] {
+  if (!options) return [];
+  try {
+    const parsed = JSON.parse(options);
+    return Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
+function validateStudentSurveyAnswers(input: {
+  questions: Array<{ id: number; isRequired: boolean; questionType: string; optionsJson?: string | null }>;
+  answers: Array<{ questionId: number; answerText?: string | null; answerJson?: string | null }>;
+}) {
+  const questionById = new Map(input.questions.map((question) => [question.id, question]));
+  const seen = new Set<number>();
+
+  for (const answer of input.answers) {
+    const question = questionById.get(answer.questionId);
+    if (!question) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Answer references a question outside this survey" });
+    }
+    if (seen.has(answer.questionId)) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Duplicate answers for one question are not allowed" });
+    }
+    seen.add(answer.questionId);
+
+    const value = answer.answerText?.trim() || answer.answerJson?.trim() || "";
+    if (!value && question.isRequired) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Required survey answers cannot be empty" });
+    }
+
+    const options = parseSurveyOptions(question.optionsJson);
+    if (value && question.questionType === "single_choice" && options.length > 0 && !options.includes(answer.answerText ?? "")) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Survey answer is not one of the allowed options" });
+    }
+    if (value && question.questionType === "rating") {
+      const rating = Number(answer.answerText);
+      if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Rating answers must be between 1 and 5" });
+      }
+    }
+  }
+
+  const missingRequired = input.questions.some((question) => question.isRequired && !seen.has(question.id));
+  if (missingRequired) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "All required survey questions must be answered" });
+  }
+}
 
 const hasTimedServiceExpired = (endDate?: string | null) => {
   if (!endDate) return false;
@@ -4818,7 +5088,7 @@ export const appRouter = router({
     assign: adminProcedure
       .input(z.object({
         userId: z.number(),
-        role: z.enum(['analyst', 'support', 'lexai_support', 'key_manager', 'plan_manager', 'view_progress', 'view_recommendations', 'view_subscriptions', 'view_quizzes', 'client_lookup']),
+        role: z.enum(ASSIGNABLE_STAFF_ROLES),
       }))
       .mutation(async ({ ctx, input }) => {
         // Verify user exists
@@ -4833,7 +5103,7 @@ export const appRouter = router({
     remove: adminProcedure
       .input(z.object({
         userId: z.number(),
-        role: z.enum(['analyst', 'support', 'lexai_support', 'key_manager', 'plan_manager', 'view_progress', 'view_recommendations', 'view_subscriptions', 'view_quizzes', 'client_lookup']),
+        role: z.enum(ASSIGNABLE_STAFF_ROLES),
       }))
       .mutation(async ({ input }) => {
         await db.removeRole(input.userId, input.role);
@@ -4845,7 +5115,7 @@ export const appRouter = router({
     setRoles: adminProcedure
       .input(z.object({
         userId: z.number(),
-        roles: z.array(z.enum(['analyst', 'support', 'lexai_support', 'key_manager', 'plan_manager', 'view_progress', 'view_recommendations', 'view_subscriptions', 'view_quizzes', 'client_lookup'])),
+        roles: z.array(z.enum(ASSIGNABLE_STAFF_ROLES)),
       }))
       .mutation(async ({ ctx, input }) => {
         const user = await db.getUserById(input.userId);
@@ -4876,7 +5146,7 @@ export const appRouter = router({
         name: z.string().min(2),
         email: z.string().email(),
         phone: z.string().optional(),
-        roles: z.array(z.enum(['analyst', 'support', 'lexai_support', 'key_manager', 'plan_manager', 'view_progress', 'view_recommendations', 'view_subscriptions', 'view_quizzes', 'client_lookup'])).min(1),
+        roles: z.array(z.enum(ASSIGNABLE_STAFF_ROLES)).min(1),
       }))
       .mutation(async ({ ctx, input }) => {
         const userId = await db.createStaffUser({ name: input.name, email: input.email, phone: input.phone });
@@ -4897,6 +5167,12 @@ export const appRouter = router({
           view_subscriptions: 'View Subscriptions / عرض الاشتراكات',
           view_quizzes: 'View Quizzes / عرض الاختبارات',
           client_lookup: 'Client Lookup / بحث العملاء',
+          staff_performance_employee: 'Performance Employee / موظف',
+          staff_performance_manager: 'Performance Manager / مدير الأداء',
+          student_surveys_manager: 'Student Surveys Manager / مدير استبيانات الطلاب',
+          loyalty_rewards_manager: 'Loyalty Rewards Manager / مدير نقاط الولاء',
+          student_community_moderator: 'Community Moderator / مشرف المجتمع',
+          student_job_eligibility_manager: 'Job Eligibility Manager / مدير أهلية الوظائف',
         };
         try {
           await sendStaffWelcomeEmail(input.email, {
@@ -6621,7 +6897,7 @@ export const appRouter = router({
       }),
 
     // Admin: list all jobs (including inactive)
-    adminList: adminProcedure.query(async () => {
+    adminList: adminOrRoleProcedure(['student_job_eligibility_manager']).query(async () => {
       return db.getAllJobs();
     }),
 
@@ -6960,6 +7236,121 @@ ${qaText}`;
   }),
 
   // ============================================================================
+  // Student Job Eligibility (Phase 5)
+  // ============================================================================
+  studentJobEligibility: router({
+    availability: protectedProcedure.query(async () => {
+      const flag = await db.getAdminSetting(STUDENT_JOB_ELIGIBILITY_FEATURE_FLAG);
+      return { enabled: isStudentJobEligibilityEnabled(flag) };
+    }),
+
+    myProfile: protectedProcedure.query(async ({ ctx }) => {
+      await requireStudentJobEligibilityEnabled();
+      return db.getStudentJobProfile(ctx.user.id);
+    }),
+
+    updateMyProfile: protectedProcedure
+      .input(z.object({
+        headline: shortStudentJobText.optional(),
+        skills: longStudentJobText.optional(),
+        experienceSummary: longStudentJobText.optional(),
+        portfolioUrl: z.string().trim().url().max(500).or(z.literal("")).optional(),
+        cvUrl: z.string().trim().url().max(500).or(z.literal("")).optional(),
+        preferredRole: shortStudentJobText.optional(),
+        availability: shortStudentJobText.optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        await requireStudentJobEligibilityEnabled();
+        return db.upsertStudentJobProfile({
+          userId: ctx.user.id,
+          ...input,
+        });
+      }),
+
+    myOpportunities: protectedProcedure.query(async ({ ctx }) => {
+      await requireStudentJobEligibilityEnabled();
+      return db.getStudentJobOpportunities(ctx.user.id);
+    }),
+
+    submitReview: protectedProcedure
+      .input(z.object({
+        jobId: z.number().int().positive(),
+        studentNote: longStudentJobText.optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        await requireStudentJobEligibilityEnabled();
+        return db.submitStudentJobEligibilityReview({
+          userId: ctx.user.id,
+          jobId: input.jobId,
+          studentNote: input.studentNote,
+        });
+      }),
+
+    adminRules: adminOrRoleProcedure(['student_job_eligibility_manager']).query(async () => {
+      await requireStudentJobEligibilityEnabled();
+      return db.listStudentJobEligibilityRules();
+    }),
+
+    adminUpsertRule: adminOrRoleProcedure(['student_job_eligibility_manager'])
+      .input(z.object({
+        jobId: z.number().int().positive(),
+        minCompletedEpisodes: z.number().int().min(0).max(10000).optional(),
+        minPassedQuizzes: z.number().int().min(0).max(10000).optional(),
+        minPointsBalance: z.number().int().min(0).max(1000000).optional(),
+        requireActiveSubscription: z.boolean().optional(),
+        requireProfile: z.boolean().optional(),
+        requireAdminReview: z.boolean().optional(),
+        isEnabled: z.boolean().optional(),
+        instructions: longStudentJobText.optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        await requireStudentJobEligibilityEnabled();
+        return db.upsertStudentJobEligibilityRule({
+          ...input,
+          actorUserId: ctx.user.id,
+        });
+      }),
+
+    adminReviews: adminOrRoleProcedure(['student_job_eligibility_manager'])
+      .input(z.object({
+        status: studentJobReviewStatusSchema.optional(),
+        jobId: z.number().int().positive().optional(),
+        limit: z.number().int().min(1).max(200).optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        await requireStudentJobEligibilityEnabled();
+        return db.listStudentJobEligibilityReviews(input);
+      }),
+
+    adminReviewDecision: adminOrRoleProcedure(['student_job_eligibility_manager'])
+      .input(z.object({
+        reviewId: z.number().int().positive(),
+        status: studentJobDecisionStatusSchema,
+        adminNote: longStudentJobText.optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        await requireStudentJobEligibilityEnabled();
+        return db.reviewStudentJobEligibility({
+          reviewId: input.reviewId,
+          status: input.status,
+          adminNote: input.adminNote,
+          actorUserId: ctx.user.id,
+        });
+      }),
+
+    adminAuditLog: adminOrRoleProcedure(['student_job_eligibility_manager'])
+      .input(z.object({
+        userId: z.number().int().positive().optional(),
+        jobId: z.number().int().positive().optional(),
+        limit: z.number().int().min(1).max(200).optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        await requireStudentJobEligibilityEnabled();
+        return db.listStudentJobEligibilityAuditLogs(input);
+      }),
+  }),
+
+  // ============================================================================
   // Global Search (Phase 3)
   // ============================================================================
   search: router({
@@ -7146,6 +7537,11 @@ ${qaText}`;
   // Loyalty Points (Phase 4)
   // ============================================================================
   points: router({
+    rewardsAvailability: protectedProcedure.query(async () => {
+      const flag = await db.getAdminSetting(LOYALTY_REWARDS_FEATURE_FLAG);
+      return { enabled: isLoyaltyRewardsEnabled(flag) };
+    }),
+
     // Student: get my balance and history
     myBalance: protectedProcedure.query(async ({ ctx }) => {
       if (!ctx.user) return { balance: 0 };
@@ -7175,6 +7571,38 @@ ${qaText}`;
       return db.getPointsRules();
     }),
 
+    rewardCatalog: protectedProcedure.query(async () => {
+      await requireLoyaltyRewardsEnabled();
+      return db.listLoyaltyRewardItemsForStudent();
+    }),
+
+    myRewardRedemptions: protectedProcedure.query(async ({ ctx }) => {
+      if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+      await requireLoyaltyRewardsEnabled();
+      return db.listMyLoyaltyRewardRedemptions(ctx.user.id);
+    }),
+
+    redeemReward: protectedProcedure
+      .input(z.object({ rewardItemId: z.number().int().positive() }))
+      .mutation(async ({ ctx, input }) => {
+        if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        await requireLoyaltyRewardsEnabled();
+        const result = await db.requestLoyaltyRewardRedemption({
+          rewardItemId: input.rewardItemId,
+          userId: ctx.user.id,
+        });
+        if (result.status === "not_available") {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Reward is not available" });
+        }
+        if (result.status === "out_of_stock") {
+          throw new TRPCError({ code: "CONFLICT", message: "Reward is out of stock" });
+        }
+        if (result.status === "insufficient_points") {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Insufficient points balance" });
+        }
+        return result.redemption;
+      }),
+
     // Public: register a referral (when new user signs up via referral code)
     registerReferral: publicProcedure
       .input(z.object({ referralCode: z.string().min(4).max(10) }))
@@ -7188,7 +7616,7 @@ ${qaText}`;
       }),
 
     // Admin: add points to a user
-    award: adminProcedure
+    award: adminOrRoleProcedure(['loyalty_rewards_manager'])
       .input(z.object({
         userId: z.number(),
         amount: z.number().min(1).max(100000),
@@ -7205,7 +7633,7 @@ ${qaText}`;
       }),
 
     // Admin: deduct points
-    deduct: adminProcedure
+    deduct: adminOrRoleProcedure(['loyalty_rewards_manager'])
       .input(z.object({
         userId: z.number(),
         amount: z.number().min(1).max(100000),
@@ -7222,21 +7650,21 @@ ${qaText}`;
       }),
 
     // Admin: leaderboard
-    leaderboard: adminProcedure.query(async () => {
+    leaderboard: adminOrRoleProcedure(['loyalty_rewards_manager']).query(async () => {
       return db.getTopPointsUsers();
     }),
 
     // Admin: referral stats
-    referralStats: adminProcedure.query(async () => {
+    referralStats: adminOrRoleProcedure(['loyalty_rewards_manager']).query(async () => {
       return db.getReferralStats();
     }),
 
     // Admin: list/update points rules
-    adminRules: adminProcedure.query(async () => {
+    adminRules: adminOrRoleProcedure(['loyalty_rewards_manager']).query(async () => {
       return db.getPointsRules();
     }),
 
-    updateRule: adminProcedure
+    updateRule: adminOrRoleProcedure(['loyalty_rewards_manager'])
       .input(z.object({
         id: z.number(),
         points: z.number().min(0).optional(),
@@ -7246,6 +7674,260 @@ ${qaText}`;
       .mutation(async ({ input }) => {
         const { id, ...data } = input;
         return db.updatePointsRule(id, data);
+      }),
+
+    adminRewardItems: adminOrRoleProcedure(['loyalty_rewards_manager']).query(async () => {
+      await requireLoyaltyRewardsEnabled();
+      return db.listLoyaltyRewardItemsForAdmin();
+    }),
+
+    createRewardItem: adminOrRoleProcedure(['loyalty_rewards_manager'])
+      .input(z.object({
+        titleEn: shortRewardText,
+        titleAr: shortRewardText,
+        descriptionEn: longRewardText.nullish(),
+        descriptionAr: longRewardText.nullish(),
+        pointsCost: z.number().int().min(1).max(1_000_000),
+        stockQuantity: z.number().int().min(0).nullable().optional(),
+        isActive: z.boolean().default(false),
+        sortOrder: z.number().int().min(0).max(10_000).default(0),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        await requireLoyaltyRewardsEnabled();
+        return db.createLoyaltyRewardItem({
+          ...input,
+          actorUserId: ctx.user.id,
+        });
+      }),
+
+    updateRewardItem: adminOrRoleProcedure(['loyalty_rewards_manager'])
+      .input(z.object({
+        id: z.number().int().positive(),
+        titleEn: shortRewardText.optional(),
+        titleAr: shortRewardText.optional(),
+        descriptionEn: longRewardText.nullish(),
+        descriptionAr: longRewardText.nullish(),
+        pointsCost: z.number().int().min(1).max(1_000_000).optional(),
+        stockQuantity: z.number().int().min(0).nullable().optional(),
+        isActive: z.boolean().optional(),
+        sortOrder: z.number().int().min(0).max(10_000).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        await requireLoyaltyRewardsEnabled();
+        const item = await db.updateLoyaltyRewardItem({
+          ...input,
+          actorUserId: ctx.user.id,
+        });
+        if (!item) throw new TRPCError({ code: "NOT_FOUND", message: "Reward item not found" });
+        return item;
+      }),
+
+    adminRewardRedemptions: adminOrRoleProcedure(['loyalty_rewards_manager'])
+      .input(z.object({
+        status: loyaltyRewardStatusSchema.optional(),
+        limit: z.number().int().min(1).max(200).default(100),
+      }).optional())
+      .query(async ({ input }) => {
+        await requireLoyaltyRewardsEnabled();
+        return db.listLoyaltyRewardRedemptionsForAdmin({
+          status: input?.status,
+          limit: input?.limit ?? 100,
+        });
+      }),
+
+    reviewRewardRedemption: adminOrRoleProcedure(['loyalty_rewards_manager'])
+      .input(z.object({
+        id: z.number().int().positive(),
+        decision: z.enum(["approved", "rejected"]),
+        adminNote: longRewardText.nullish(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        await requireLoyaltyRewardsEnabled();
+        const result = await db.reviewLoyaltyRewardRedemption({
+          ...input,
+          actorUserId: ctx.user.id,
+        });
+        if (!result) throw new TRPCError({ code: "NOT_FOUND", message: "Reward redemption not found" });
+        if (result.status === "invalid_status") {
+          throw new TRPCError({ code: "CONFLICT", message: "Reward redemption is not pending" });
+        }
+        return result.redemption;
+      }),
+
+    fulfillRewardRedemption: adminOrRoleProcedure(['loyalty_rewards_manager'])
+      .input(z.object({
+        id: z.number().int().positive(),
+        adminNote: longRewardText.nullish(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        await requireLoyaltyRewardsEnabled();
+        const result = await db.fulfillLoyaltyRewardRedemption({
+          ...input,
+          actorUserId: ctx.user.id,
+        });
+        if (!result) throw new TRPCError({ code: "NOT_FOUND", message: "Reward redemption not found" });
+        if (result.status === "invalid_status") {
+          throw new TRPCError({ code: "CONFLICT", message: "Reward redemption must be approved before fulfillment" });
+        }
+        return result.redemption;
+      }),
+  }),
+
+  // ============================================================================
+  // Student Community (Phase 4)
+  // ============================================================================
+  community: router({
+    availability: protectedProcedure.query(async () => {
+      const flag = await db.getAdminSetting(STUDENT_COMMUNITY_FEATURE_FLAG);
+      return { enabled: isStudentCommunityEnabled(flag) };
+    }),
+
+    listPosts: protectedProcedure
+      .input(z.object({
+        limit: z.number().int().min(1).max(100).default(50),
+      }).optional())
+      .query(async ({ input }) => {
+        await requireStudentCommunityEnabled();
+        return db.listStudentCommunityPosts({ limit: input?.limit ?? 50 });
+      }),
+
+    getPost: protectedProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .query(async ({ input }) => {
+        await requireStudentCommunityEnabled();
+        const post = await db.getStudentCommunityPost({ id: input.id });
+        if (!post) throw new TRPCError({ code: "NOT_FOUND", message: "Community post not found" });
+        return post;
+      }),
+
+    createPost: protectedProcedure
+      .input(z.object({
+        title: shortCommunityText,
+        body: longCommunityText,
+      }))
+      .mutation(async ({ ctx, input }) => {
+        await requireStudentCommunityEnabled();
+        return db.createStudentCommunityPost({
+          userId: ctx.user.id,
+          title: input.title,
+          body: input.body,
+        });
+      }),
+
+    createComment: protectedProcedure
+      .input(z.object({
+        postId: z.number().int().positive(),
+        body: longCommunityText,
+      }))
+      .mutation(async ({ ctx, input }) => {
+        await requireStudentCommunityEnabled();
+        const comment = await db.createStudentCommunityComment({
+          postId: input.postId,
+          userId: ctx.user.id,
+          body: input.body,
+        });
+        if (!comment) throw new TRPCError({ code: "NOT_FOUND", message: "Community post not found" });
+        return comment;
+      }),
+
+    reportContent: protectedProcedure
+      .input(z.object({
+        targetType: communityTargetTypeSchema,
+        targetId: z.number().int().positive(),
+        reason: z.string().trim().min(1).max(100),
+        details: z.string().trim().max(2000).nullish(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        await requireStudentCommunityEnabled();
+        const result = await db.reportStudentCommunityContent({
+          ...input,
+          details: input.details || null,
+          reporterUserId: ctx.user.id,
+        });
+        if (result.status === "not_found") {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Community content not found" });
+        }
+        if (result.status === "duplicate") {
+          throw new TRPCError({ code: "CONFLICT", message: "You already reported this content" });
+        }
+        return result.report;
+      }),
+
+    adminListPosts: adminOrRoleProcedure(['student_community_moderator'])
+      .input(z.object({
+        limit: z.number().int().min(1).max(100).default(50),
+      }).optional())
+      .query(async ({ input }) => {
+        await requireStudentCommunityEnabled();
+        return db.listStudentCommunityPosts({ includeHidden: true, limit: input?.limit ?? 50 });
+      }),
+
+    adminGetPost: adminOrRoleProcedure(['student_community_moderator'])
+      .input(z.object({ id: z.number().int().positive() }))
+      .query(async ({ input }) => {
+        await requireStudentCommunityEnabled();
+        const post = await db.getStudentCommunityPost({ id: input.id, includeHidden: true });
+        if (!post) throw new TRPCError({ code: "NOT_FOUND", message: "Community post not found" });
+        return post;
+      }),
+
+    adminReports: adminOrRoleProcedure(['student_community_moderator'])
+      .input(z.object({
+        status: communityReportStatusSchema.optional(),
+        limit: z.number().int().min(1).max(200).default(100),
+      }).optional())
+      .query(async ({ input }) => {
+        await requireStudentCommunityEnabled();
+        return db.listStudentCommunityReportsForAdmin({
+          status: input?.status,
+          limit: input?.limit ?? 100,
+        });
+      }),
+
+    moderateContent: adminOrRoleProcedure(['student_community_moderator'])
+      .input(z.object({
+        targetType: communityTargetTypeSchema,
+        targetId: z.number().int().positive(),
+        action: z.enum(["hide", "restore", "delete"]),
+        note: z.string().trim().max(2000).nullish(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        await requireStudentCommunityEnabled();
+        const updated = await db.moderateStudentCommunityContent({
+          ...input,
+          note: input.note || null,
+          actorUserId: ctx.user.id,
+        });
+        if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: "Community content not found" });
+        return updated;
+      }),
+
+    dismissReport: adminOrRoleProcedure(['student_community_moderator'])
+      .input(z.object({
+        reportId: z.number().int().positive(),
+        note: z.string().trim().max(2000).nullish(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        await requireStudentCommunityEnabled();
+        const updated = await db.reviewStudentCommunityReport({
+          reportId: input.reportId,
+          action: "dismiss",
+          actorUserId: ctx.user.id,
+          note: input.note || null,
+        });
+        if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: "Community report not found" });
+        return updated;
+      }),
+
+    auditLog: adminOrRoleProcedure(['student_community_moderator'])
+      .input(z.object({
+        entityType: z.enum(["post", "comment", "report"]),
+        entityId: z.number().int().positive(),
+        limit: z.number().int().min(1).max(200).default(50),
+      }))
+      .query(async ({ input }) => {
+        await requireStudentCommunityEnabled();
+        return db.listStudentCommunityAuditLogs(input);
       }),
   }),
 
@@ -7780,6 +8462,797 @@ ${qaText}`;
       await db.markAllStaffNotificationsRead(ctx.user.id);
       return { success: true };
     }),
+  }),
+
+  studentSurveys: router({
+    availability: protectedProcedure.query(async ({ ctx }) => {
+      const flag = await db.getAdminSetting(STUDENT_SURVEYS_FEATURE_FLAG);
+      if (!isStudentSurveysEnabled(flag)) {
+        return {
+          enabled: false,
+          blockingEnabled: false,
+          access: null as "student" | "admin" | null,
+          accessState: "clear" as const,
+        };
+      }
+
+      const blockingFlag = await db.getAdminSetting(STUDENT_SURVEYS_BLOCKING_FEATURE_FLAG);
+      const admin = ctx.user?.email ? await db.getAdminByEmail(ctx.user.email) : null;
+      const hasSurveyManagerRole = !admin && ctx.user?.id
+        ? await db.hasAnyRole(ctx.user.id, ["student_surveys_manager"])
+        : false;
+      const assignments = ctx.user?.id
+        ? await db.listStudentSurveyAssignmentsForUser(ctx.user.id, 20)
+        : [];
+      const accessState = assignments.some((item) => item.accessState === "blocked")
+        ? "blocked" as const
+        : assignments.some((item) => item.accessState === "survey_due")
+          ? "survey_due" as const
+          : "clear" as const;
+
+      return {
+        enabled: true,
+        blockingEnabled: isStudentSurveyBlockingEnabled(blockingFlag),
+        access: admin || hasSurveyManagerRole ? "admin" as const : "student" as const,
+        accessState,
+      };
+    }),
+
+    featureInfo: studentSurveyProcedure.query(({ ctx }) => ({
+      enabled: true,
+      access: ctx.surveyAccess,
+    })),
+
+    listSurveys: studentSurveyProcedure
+      .input(z.object({ limit: z.number().int().min(1).max(200).default(50) }))
+      .query(async ({ ctx, input }) => {
+        requireStudentSurveyAdmin(ctx.surveyAccess);
+        return db.listStudentSurveys(input.limit);
+      }),
+
+    createSurvey: studentSurveyProcedure
+      .input(z.object({
+        code: z.string().trim().min(2).max(80).regex(/^[a-z0-9_-]+$/),
+        title: shortSurveyText,
+        description: longSurveyText.nullish(),
+        isActive: z.boolean().default(false),
+        isRequired: z.boolean().default(true),
+        maxPostponements: z.number().int().min(0).max(30).default(2),
+        postponeHours: z.number().int().min(1).max(720).default(24),
+        blockAfterHours: z.number().int().min(1).max(2160).default(72),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        requireStudentSurveyAdmin(ctx.surveyAccess);
+        try {
+          return await db.createStudentSurvey({
+            ...input,
+            actorUserId: ctx.user.id,
+          });
+        } catch (error) {
+          throwStudentSurveyPersistenceError(error);
+        }
+      }),
+
+    getSurvey: studentSurveyProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .query(async ({ ctx, input }) => {
+        requireStudentSurveyAdmin(ctx.surveyAccess);
+        const survey = await db.getStudentSurvey(input.id);
+        if (!survey) throw new TRPCError({ code: "NOT_FOUND", message: "Survey not found" });
+        return survey;
+      }),
+
+    createQuestion: studentSurveyProcedure
+      .input(z.object({
+        surveyId: z.number().int().positive(),
+        questionText: shortSurveyText,
+        questionType: studentSurveyQuestionTypeSchema,
+        isRequired: z.boolean().default(true),
+        options: z.array(z.string().trim().min(1).max(200)).max(20).optional(),
+        sortOrder: z.number().int().min(0).max(1000).default(0),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        requireStudentSurveyAdmin(ctx.surveyAccess);
+        const survey = await db.getStudentSurvey(input.surveyId);
+        if (!survey) throw new TRPCError({ code: "NOT_FOUND", message: "Survey not found" });
+        if (["single_choice", "multiple_choice"].includes(input.questionType) && (!input.options || input.options.length < 2)) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Choice questions require at least two options" });
+        }
+        return db.createStudentSurveyQuestion({
+          surveyId: input.surveyId,
+          questionText: input.questionText,
+          questionType: input.questionType,
+          isRequired: input.isRequired,
+          optionsJson: input.options ? JSON.stringify(input.options) : null,
+          sortOrder: input.sortOrder,
+          actorUserId: ctx.user.id,
+        });
+      }),
+
+    assignSurvey: studentSurveyProcedure
+      .input(z.object({
+        surveyId: z.number().int().positive(),
+        userId: z.number().int().positive(),
+        dueAt: surveyDateTimeSchema,
+        blockAt: surveyDateTimeSchema,
+      }).refine(
+        (value) => new Date(value.blockAt).getTime() > new Date(value.dueAt).getTime(),
+        { message: "Blocking time must be after the due time", path: ["blockAt"] },
+      ))
+      .mutation(async ({ ctx, input }) => {
+        requireStudentSurveyAdmin(ctx.surveyAccess);
+        const [survey, user] = await Promise.all([
+          db.getStudentSurvey(input.surveyId),
+          db.getUserById(input.userId),
+        ]);
+        if (!survey) throw new TRPCError({ code: "NOT_FOUND", message: "Survey not found" });
+        if (!user) throw new TRPCError({ code: "NOT_FOUND", message: "Student not found" });
+        try {
+          return await db.assignStudentSurvey({
+            ...input,
+            actorUserId: ctx.user.id,
+          });
+        } catch (error) {
+          throwStudentSurveyPersistenceError(error);
+        }
+      }),
+
+    listAssignments: studentSurveyProcedure
+      .input(z.object({
+        surveyId: z.number().int().positive().optional(),
+        status: studentSurveyAssignmentStatusSchema.optional(),
+        limit: z.number().int().min(1).max(200).default(100),
+      }).optional())
+      .query(async ({ ctx, input }) => {
+        requireStudentSurveyAdmin(ctx.surveyAccess);
+        return db.listStudentSurveyAssignmentsForAdmin({
+          surveyId: input?.surveyId,
+          status: input?.status,
+          limit: input?.limit ?? 100,
+        });
+      }),
+
+    myAssignments: studentSurveyProcedure
+      .input(z.object({ limit: z.number().int().min(1).max(100).default(20) }).optional())
+      .query(async ({ ctx, input }) => {
+        return db.listStudentSurveyAssignmentsForUser(ctx.user.id, input?.limit ?? 20);
+      }),
+
+    getMyAssignment: studentSurveyProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .query(async ({ ctx, input }) => {
+        const assignment = await db.getStudentSurveyAssignment(input.id);
+        if (!assignment) throw new TRPCError({ code: "NOT_FOUND", message: "Survey assignment not found" });
+        if (assignment.userId !== ctx.user.id && ctx.surveyAccess !== "admin") {
+          throw new TRPCError({ code: "FORBIDDEN", message: "You may only access your own survey assignments" });
+        }
+        return assignment;
+      }),
+
+    sendAssignmentReminder: studentSurveyProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(async ({ ctx, input }) => {
+        requireStudentSurveyAdmin(ctx.surveyAccess);
+        const assignment = await db.getStudentSurveyAssignment(input.id);
+        if (!assignment) throw new TRPCError({ code: "NOT_FOUND", message: "Survey assignment not found" });
+        if (assignment.status === "submitted") {
+          throw new TRPCError({ code: "CONFLICT", message: "Submitted survey assignments do not need reminders" });
+        }
+        if (assignment.accessState === "blocked" || assignment.status === "blocked") {
+          throw new TRPCError({ code: "CONFLICT", message: "Blocked survey assignments require support review, not a reminder" });
+        }
+        const notification = await db.sendStudentSurveyAssignmentReminder({
+          assignmentId: input.id,
+          actorUserId: ctx.user.id,
+        });
+        if (!notification) throw new TRPCError({ code: "NOT_FOUND", message: "Survey assignment not found" });
+        return { success: true, notificationId: notification.id };
+      }),
+
+    postpone: studentSurveyProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(async ({ ctx, input }) => {
+        const assignment = await db.getStudentSurveyAssignment(input.id);
+        if (!assignment) throw new TRPCError({ code: "NOT_FOUND", message: "Survey assignment not found" });
+        if (assignment.userId !== ctx.user.id) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "You may only postpone your own survey assignments" });
+        }
+        if (!canPostponeStudentSurvey({
+          status: assignment.status as StudentSurveyAssignmentStatus,
+          postponementsUsed: assignment.postponementsUsed,
+          maxPostponements: assignment.maxPostponements,
+          blockAt: assignment.blockAt,
+        })) {
+          throw new TRPCError({ code: "CONFLICT", message: "This survey can no longer be postponed" });
+        }
+        const updated = await db.postponeStudentSurveyAssignment({
+          id: input.id,
+          userId: ctx.user.id,
+          postponeHours: assignment.postponeHours,
+        });
+        if (!updated) throw new TRPCError({ code: "CONFLICT", message: "Survey assignment changed. Refresh and try again." });
+        return updated;
+      }),
+
+    submit: studentSurveyProcedure
+      .input(z.object({
+        id: z.number().int().positive(),
+        answers: z.array(z.object({
+          questionId: z.number().int().positive(),
+          answerText: longSurveyText.nullish(),
+          answerJson: z.string().trim().max(5000).nullish(),
+        })).min(1).max(100),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const assignment = await db.getStudentSurveyAssignment(input.id);
+        if (!assignment) throw new TRPCError({ code: "NOT_FOUND", message: "Survey assignment not found" });
+        if (assignment.userId !== ctx.user.id) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "You may only submit your own survey assignments" });
+        }
+        const accessState = getStudentSurveyAccessState({
+          status: assignment.status,
+          dueAt: assignment.dueAt,
+          blockAt: assignment.blockAt,
+        });
+        const blockingFlag = await db.getAdminSetting(STUDENT_SURVEYS_BLOCKING_FEATURE_FLAG);
+        if (isStudentSurveyBlockingEnabled(blockingFlag) && accessState === "blocked") {
+          throw new TRPCError({ code: "CONFLICT", message: "This survey is blocked and requires support review" });
+        }
+        if (assignment.status === "submitted") {
+          throw new TRPCError({ code: "CONFLICT", message: "This survey was already submitted" });
+        }
+        validateStudentSurveyAnswers({
+          questions: assignment.questions,
+          answers: input.answers,
+        });
+        const updated = await db.submitStudentSurveyAssignment({
+          id: input.id,
+          userId: ctx.user.id,
+          answers: input.answers,
+        });
+        if (!updated) throw new TRPCError({ code: "CONFLICT", message: "Survey assignment changed. Refresh and try again." });
+        return updated;
+      }),
+
+    auditLog: studentSurveyProcedure
+      .input(z.object({
+        entityType: z.enum(["survey", "question", "assignment", "answer"]),
+        entityId: z.number().int().positive(),
+        limit: z.number().int().min(1).max(200).default(50),
+      }))
+      .query(async ({ ctx, input }) => {
+        requireStudentSurveyAdmin(ctx.surveyAccess);
+        return db.listStudentSurveyAuditLogs(input);
+      }),
+  }),
+
+  staffPerformance: router({
+    availability: protectedProcedure.query(async ({ ctx }) => {
+      const flag = await db.getAdminSetting(STAFF_PERFORMANCE_FEATURE_FLAG);
+      if (!isStaffPerformanceEnabled(flag)) {
+        return { enabled: false, access: null as "employee" | "manager" | null };
+      }
+
+      const admin = ctx.user.email ? await db.getAdminByEmail(ctx.user.email) : null;
+      if (admin) return { enabled: true, access: "manager" as const };
+
+      const roles = await db.getUserRoles(ctx.user.id);
+      const roleNames = new Set(roles.map((row) => row.role));
+      const access = roleNames.has("staff_performance_manager")
+        ? "manager" as const
+        : roleNames.has("staff_performance_employee")
+          ? "employee" as const
+          : null;
+      return { enabled: true, access };
+    }),
+
+    featureInfo: staffPerformanceProcedure.query(({ ctx }) => ({
+      enabled: true,
+      access: ctx.performanceAccess,
+    })),
+
+    listStaffOptions: staffPerformanceProcedure.query(async ({ ctx }) => {
+      requirePerformanceManager(ctx.performanceAccess);
+      const staff = await db.getStaffMembers();
+      return staff.map((row) => ({
+        id: row.id,
+        name: row.name,
+        email: row.email,
+        roles: row.roles,
+      }));
+    }),
+
+    listMonthlyPlans: staffPerformanceProcedure
+      .input(z.object({
+        staffUserId: z.number().int().positive().optional(),
+        limit: z.number().int().min(1).max(60).default(24),
+      }))
+      .query(async ({ ctx, input }) => {
+        const staffUserId = input.staffUserId ?? ctx.user.id;
+        requirePerformanceOwnerOrManager(ctx.performanceAccess, ctx.user.id, staffUserId);
+        return db.listStaffPerformanceMonthlyPlans(staffUserId, input.limit);
+      }),
+
+    getMonthlyPlan: staffPerformanceProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .query(async ({ ctx, input }) => {
+        const plan = await db.getStaffPerformanceMonthlyPlan(input.id);
+        if (!plan) throw new TRPCError({ code: "NOT_FOUND", message: "Monthly plan not found" });
+        requirePerformanceOwnerOrManager(ctx.performanceAccess, ctx.user.id, plan.staffUserId);
+        return plan;
+      }),
+
+    createMonthlyPlan: staffPerformanceProcedure
+      .input(z.object({
+        staffUserId: z.number().int().positive(),
+        month: performanceMonthSchema,
+        title: shortPerformanceText,
+        summary: longPerformanceText.nullish(),
+        expectedOutcomes: longPerformanceText.nullish(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        requirePerformanceManager(ctx.performanceAccess);
+        const staff = await db.getUserById(input.staffUserId);
+        if (!staff || !staff.isStaff) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Performance plans require an active staff member" });
+        }
+        try {
+          return await db.createStaffPerformanceMonthlyPlan({
+            ...input,
+            actorUserId: ctx.user.id,
+          });
+        } catch (error) {
+          throwStaffPerformancePersistenceError(error);
+        }
+      }),
+
+    updateMonthlyPlan: staffPerformanceProcedure
+      .input(z.object({
+        id: z.number().int().positive(),
+        version: z.number().int().positive(),
+        title: shortPerformanceText,
+        summary: longPerformanceText.nullish(),
+        expectedOutcomes: longPerformanceText.nullish(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        requirePerformanceManager(ctx.performanceAccess);
+        const plan = await db.getStaffPerformanceMonthlyPlan(input.id);
+        if (!plan) throw new TRPCError({ code: "NOT_FOUND", message: "Monthly plan not found" });
+        requireEditablePerformanceRecord(plan.status);
+        try {
+          return await db.updateStaffPerformanceMonthlyPlan({
+            ...input,
+            staffUserId: plan.staffUserId,
+            actorUserId: ctx.user.id,
+          });
+        } catch (error) {
+          throwStaffPerformancePersistenceError(error);
+        }
+      }),
+
+    transitionMonthlyPlan: staffPerformanceProcedure
+      .input(z.object({
+        id: z.number().int().positive(),
+        version: z.number().int().positive(),
+        toStatus: staffPerformanceStatusSchema,
+      }))
+      .mutation(async ({ ctx, input }) => {
+        requirePerformanceManager(ctx.performanceAccess);
+        const plan = await db.getStaffPerformanceMonthlyPlan(input.id);
+        if (!plan) throw new TRPCError({ code: "NOT_FOUND", message: "Monthly plan not found" });
+        const fromStatus = plan.status as StaffPerformanceStatus;
+        requirePerformanceTransition("manager", fromStatus, input.toStatus);
+        if (input.toStatus === "submitted") {
+          const totalWeight = plan.goals.reduce((sum, goal) => sum + goal.weight, 0);
+          if (plan.goals.length === 0 || totalWeight !== 100) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "A submitted monthly plan must have goals totaling exactly 100% weight",
+            });
+          }
+        }
+        try {
+          return await db.transitionStaffPerformanceMonthlyPlan({
+            id: input.id,
+            version: input.version,
+            fromStatus,
+            toStatus: input.toStatus,
+            staffUserId: plan.staffUserId,
+            actorUserId: ctx.user.id,
+          });
+        } catch (error) {
+          throwStaffPerformancePersistenceError(error);
+        }
+      }),
+
+    createGoal: staffPerformanceProcedure
+      .input(z.object({
+        planId: z.number().int().positive(),
+        title: shortPerformanceText,
+        description: longPerformanceText.nullish(),
+        expectedResult: z.string().trim().min(1).max(2000),
+        weight: z.number().int().min(0).max(100),
+        sortOrder: z.number().int().min(0).max(1000).default(0),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        requirePerformanceManager(ctx.performanceAccess);
+        const plan = await db.getStaffPerformanceMonthlyPlan(input.planId);
+        if (!plan) throw new TRPCError({ code: "NOT_FOUND", message: "Monthly plan not found" });
+        requireEditablePerformanceRecord(plan.status);
+        const totalWeight = plan.goals.reduce((sum, goal) => sum + goal.weight, 0) + input.weight;
+        if (totalWeight > 100) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Monthly goal weights cannot exceed 100%" });
+        }
+        return db.createStaffPerformanceGoal({
+          ...input,
+          staffUserId: plan.staffUserId,
+          actorUserId: ctx.user.id,
+        });
+      }),
+
+    updateGoal: staffPerformanceProcedure
+      .input(z.object({
+        id: z.number().int().positive(),
+        title: shortPerformanceText,
+        description: longPerformanceText.nullish(),
+        expectedResult: z.string().trim().min(1).max(2000),
+        weight: z.number().int().min(0).max(100),
+        sortOrder: z.number().int().min(0).max(1000),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        requirePerformanceManager(ctx.performanceAccess);
+        const goal = await db.getStaffPerformanceGoal(input.id);
+        if (!goal) throw new TRPCError({ code: "NOT_FOUND", message: "Goal not found" });
+        requireEditablePerformanceRecord(goal.planStatus);
+        const plan = await db.getStaffPerformanceMonthlyPlan(goal.planId);
+        if (!plan) throw new TRPCError({ code: "NOT_FOUND", message: "Monthly plan not found" });
+        const totalWeight = plan.goals
+          .filter((row) => row.id !== input.id)
+          .reduce((sum, row) => sum + row.weight, 0) + input.weight;
+        if (totalWeight > 100) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Monthly goal weights cannot exceed 100%" });
+        }
+        return db.updateStaffPerformanceGoal({
+          ...input,
+          staffUserId: goal.staffUserId,
+          actorUserId: ctx.user.id,
+        });
+      }),
+
+    deleteGoal: staffPerformanceProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(async ({ ctx, input }) => {
+        requirePerformanceManager(ctx.performanceAccess);
+        const goal = await db.getStaffPerformanceGoal(input.id);
+        if (!goal) throw new TRPCError({ code: "NOT_FOUND", message: "Goal not found" });
+        requireEditablePerformanceRecord(goal.planStatus);
+        await db.deleteStaffPerformanceGoal({
+          id: input.id,
+          planId: goal.planId,
+          staffUserId: goal.staffUserId,
+          actorUserId: ctx.user.id,
+        });
+        return { success: true };
+      }),
+
+    listDailyLogs: staffPerformanceProcedure
+      .input(z.object({
+        staffUserId: z.number().int().positive().optional(),
+        limit: z.number().int().min(1).max(90).default(31),
+      }))
+      .query(async ({ ctx, input }) => {
+        const staffUserId = input.staffUserId ?? ctx.user.id;
+        requirePerformanceOwnerOrManager(ctx.performanceAccess, ctx.user.id, staffUserId);
+        return db.listStaffPerformanceDailyLogs(staffUserId, input.limit);
+      }),
+
+    getDailyLog: staffPerformanceProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .query(async ({ ctx, input }) => {
+        const log = await db.getStaffPerformanceDailyLog(input.id);
+        if (!log) throw new TRPCError({ code: "NOT_FOUND", message: "Daily log not found" });
+        requirePerformanceOwnerOrManager(ctx.performanceAccess, ctx.user.id, log.staffUserId);
+        return log;
+      }),
+
+    createDailyLog: staffPerformanceProcedure
+      .input(z.object({
+        localDate: performanceDateSchema,
+        timezone: performanceTimezoneSchema.default("Asia/Amman"),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        if (ctx.performanceAccess !== "employee") {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Only employees can create their daily logs" });
+        }
+        try {
+          return await db.createStaffPerformanceDailyLog({
+            ...input,
+            staffUserId: ctx.user.id,
+            actorUserId: ctx.user.id,
+          });
+        } catch (error) {
+          throwStaffPerformancePersistenceError(error);
+        }
+      }),
+
+    updateDailyLog: staffPerformanceProcedure
+      .input(z.object({
+        id: z.number().int().positive(),
+        version: z.number().int().positive(),
+        endSummary: longPerformanceText.nullish(),
+        employeeNotes: longPerformanceText.nullish(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        if (ctx.performanceAccess !== "employee") {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Only employees can update daily work details" });
+        }
+        const log = await db.getStaffPerformanceDailyLog(input.id);
+        if (!log) throw new TRPCError({ code: "NOT_FOUND", message: "Daily log not found" });
+        requirePerformanceOwnerOrManager("employee", ctx.user.id, log.staffUserId);
+        requireEditablePerformanceRecord(log.status);
+        try {
+          return await db.updateStaffPerformanceDailyLog({
+            ...input,
+            staffUserId: log.staffUserId,
+            actorUserId: ctx.user.id,
+          });
+        } catch (error) {
+          throwStaffPerformancePersistenceError(error);
+        }
+      }),
+
+    createDailyTask: staffPerformanceProcedure
+      .input(z.object({
+        dailyLogId: z.number().int().positive(),
+        monthlyGoalId: z.number().int().positive().nullish(),
+        title: shortPerformanceText,
+        expectedOutput: z.string().trim().min(1).max(2000),
+        actualOutput: longPerformanceText.nullish(),
+        completed: z.boolean().default(false),
+        notes: longPerformanceText.nullish(),
+        sortOrder: z.number().int().min(0).max(1000).default(0),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        if (ctx.performanceAccess !== "employee") {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Only employees can manage daily tasks" });
+        }
+        const log = await db.getStaffPerformanceDailyLog(input.dailyLogId);
+        if (!log) throw new TRPCError({ code: "NOT_FOUND", message: "Daily log not found" });
+        requirePerformanceOwnerOrManager("employee", ctx.user.id, log.staffUserId);
+        requireEditablePerformanceRecord(log.status);
+        if (input.monthlyGoalId) {
+          const goal = await db.getStaffPerformanceGoal(input.monthlyGoalId);
+          if (!goal || goal.staffUserId !== log.staffUserId || goal.planMonth !== log.localDate.slice(0, 7)) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "The selected goal does not belong to this employee and month" });
+          }
+        }
+        return db.createStaffPerformanceDailyTask({
+          ...input,
+          staffUserId: log.staffUserId,
+          actorUserId: ctx.user.id,
+        });
+      }),
+
+    updateDailyTask: staffPerformanceProcedure
+      .input(z.object({
+        id: z.number().int().positive(),
+        monthlyGoalId: z.number().int().positive().nullish(),
+        title: shortPerformanceText,
+        expectedOutput: z.string().trim().min(1).max(2000),
+        actualOutput: longPerformanceText.nullish(),
+        completed: z.boolean(),
+        notes: longPerformanceText.nullish(),
+        sortOrder: z.number().int().min(0).max(1000),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        if (ctx.performanceAccess !== "employee") {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Only employees can manage daily tasks" });
+        }
+        const task = await db.getStaffPerformanceDailyTask(input.id);
+        if (!task) throw new TRPCError({ code: "NOT_FOUND", message: "Daily task not found" });
+        requirePerformanceOwnerOrManager("employee", ctx.user.id, task.staffUserId);
+        requireEditablePerformanceRecord(task.logStatus);
+        if (input.monthlyGoalId) {
+          const [goal, log] = await Promise.all([
+            db.getStaffPerformanceGoal(input.monthlyGoalId),
+            db.getStaffPerformanceDailyLog(task.dailyLogId),
+          ]);
+          if (!goal || !log || goal.staffUserId !== task.staffUserId || goal.planMonth !== log.localDate.slice(0, 7)) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "The selected goal does not belong to this employee and month" });
+          }
+        }
+        return db.updateStaffPerformanceDailyTask({
+          ...input,
+          staffUserId: task.staffUserId,
+          actorUserId: ctx.user.id,
+        });
+      }),
+
+    deleteDailyTask: staffPerformanceProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(async ({ ctx, input }) => {
+        if (ctx.performanceAccess !== "employee") {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Only employees can manage daily tasks" });
+        }
+        const task = await db.getStaffPerformanceDailyTask(input.id);
+        if (!task) throw new TRPCError({ code: "NOT_FOUND", message: "Daily task not found" });
+        requirePerformanceOwnerOrManager("employee", ctx.user.id, task.staffUserId);
+        requireEditablePerformanceRecord(task.logStatus);
+        await db.deleteStaffPerformanceDailyTask({
+          id: input.id,
+          dailyLogId: task.dailyLogId,
+          staffUserId: task.staffUserId,
+          actorUserId: ctx.user.id,
+        });
+        return { success: true };
+      }),
+
+    transitionDailyLog: staffPerformanceProcedure
+      .input(z.object({
+        id: z.number().int().positive(),
+        version: z.number().int().positive(),
+        toStatus: staffPerformanceStatusSchema,
+        managerFeedback: longPerformanceText.nullish(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const log = await db.getStaffPerformanceDailyLog(input.id);
+        if (!log) throw new TRPCError({ code: "NOT_FOUND", message: "Daily log not found" });
+        requirePerformanceOwnerOrManager(ctx.performanceAccess, ctx.user.id, log.staffUserId);
+        const actor: StaffPerformanceActor = ctx.performanceAccess;
+        const fromStatus = log.status as StaffPerformanceStatus;
+        requirePerformanceTransition(actor, fromStatus, input.toStatus);
+        if (actor === "employee" && input.managerFeedback !== undefined) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Employees cannot add manager feedback" });
+        }
+        if (input.toStatus === "submitted" && (log.tasks.length === 0 || !log.endSummary?.trim())) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "A daily log requires at least one task and an end-of-day summary before submission",
+          });
+        }
+        try {
+          return await db.transitionStaffPerformanceDailyLog({
+            id: input.id,
+            version: input.version,
+            fromStatus,
+            toStatus: input.toStatus,
+            managerFeedback: actor === "manager" ? input.managerFeedback : undefined,
+            staffUserId: log.staffUserId,
+            actorUserId: ctx.user.id,
+          });
+        } catch (error) {
+          throwStaffPerformancePersistenceError(error);
+        }
+      }),
+
+    listWeeklyReports: staffPerformanceProcedure
+      .input(z.object({
+        staffUserId: z.number().int().positive().optional(),
+        limit: z.number().int().min(1).max(104).default(26),
+      }))
+      .query(async ({ ctx, input }) => {
+        const staffUserId = input.staffUserId ?? ctx.user.id;
+        requirePerformanceOwnerOrManager(ctx.performanceAccess, ctx.user.id, staffUserId);
+        return db.listStaffPerformanceWeeklyReports(staffUserId, input.limit);
+      }),
+
+    getWeeklyReport: staffPerformanceProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .query(async ({ ctx, input }) => {
+        const report = await db.getStaffPerformanceWeeklyReport(input.id);
+        if (!report) throw new TRPCError({ code: "NOT_FOUND", message: "Weekly report not found" });
+        requirePerformanceOwnerOrManager(ctx.performanceAccess, ctx.user.id, report.staffUserId);
+        return report;
+      }),
+
+    createWeeklyReport: staffPerformanceProcedure
+      .input(z.object({
+        weekStart: performanceDateSchema,
+        weekEnd: performanceDateSchema,
+        timezone: performanceTimezoneSchema.default("Asia/Amman"),
+      }).refine(
+        (value) => isValidPerformanceWeek(value.weekStart, value.weekEnd),
+        { message: "Weekly reports must run from Monday through Sunday", path: ["weekEnd"] },
+      ))
+      .mutation(async ({ ctx, input }) => {
+        if (ctx.performanceAccess !== "employee") {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Only employees can create weekly reports" });
+        }
+        try {
+          return await db.createStaffPerformanceWeeklyReport({
+            ...input,
+            staffUserId: ctx.user.id,
+            actorUserId: ctx.user.id,
+          });
+        } catch (error) {
+          throwStaffPerformancePersistenceError(error);
+        }
+      }),
+
+    updateWeeklyReport: staffPerformanceProcedure
+      .input(z.object({
+        id: z.number().int().positive(),
+        version: z.number().int().positive(),
+        outputs: longPerformanceText.nullish(),
+        achievementPercent: z.number().int().min(0).max(100).nullish(),
+        complaints: longPerformanceText.nullish(),
+        suggestions: longPerformanceText.nullish(),
+        blockers: longPerformanceText.nullish(),
+        trainingNeeds: longPerformanceText.nullish(),
+        toolNeeds: longPerformanceText.nullish(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        if (ctx.performanceAccess !== "employee") {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Only employees can update weekly results" });
+        }
+        const report = await db.getStaffPerformanceWeeklyReport(input.id);
+        if (!report) throw new TRPCError({ code: "NOT_FOUND", message: "Weekly report not found" });
+        requirePerformanceOwnerOrManager("employee", ctx.user.id, report.staffUserId);
+        requireEditablePerformanceRecord(report.status);
+        try {
+          return await db.updateStaffPerformanceWeeklyReport({
+            ...input,
+            staffUserId: report.staffUserId,
+            actorUserId: ctx.user.id,
+          });
+        } catch (error) {
+          throwStaffPerformancePersistenceError(error);
+        }
+      }),
+
+    transitionWeeklyReport: staffPerformanceProcedure
+      .input(z.object({
+        id: z.number().int().positive(),
+        version: z.number().int().positive(),
+        toStatus: staffPerformanceStatusSchema,
+        managerFeedback: longPerformanceText.nullish(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const report = await db.getStaffPerformanceWeeklyReport(input.id);
+        if (!report) throw new TRPCError({ code: "NOT_FOUND", message: "Weekly report not found" });
+        requirePerformanceOwnerOrManager(ctx.performanceAccess, ctx.user.id, report.staffUserId);
+        const actor: StaffPerformanceActor = ctx.performanceAccess;
+        const fromStatus = report.status as StaffPerformanceStatus;
+        requirePerformanceTransition(actor, fromStatus, input.toStatus);
+        if (actor === "employee" && input.managerFeedback !== undefined) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Employees cannot add manager feedback" });
+        }
+        if (
+          input.toStatus === "submitted"
+          && (!report.outputs?.trim() || report.achievementPercent === null)
+        ) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Weekly outputs and achievement percentage are required before submission",
+          });
+        }
+        try {
+          return await db.transitionStaffPerformanceWeeklyReport({
+            id: input.id,
+            version: input.version,
+            fromStatus,
+            toStatus: input.toStatus,
+            managerFeedback: actor === "manager" ? input.managerFeedback : undefined,
+            staffUserId: report.staffUserId,
+            actorUserId: ctx.user.id,
+          });
+        } catch (error) {
+          throwStaffPerformancePersistenceError(error);
+        }
+      }),
+
+    auditLog: staffPerformanceProcedure
+      .input(z.object({
+        entityType: z.enum(["monthly_plan", "goal", "daily_log", "daily_task", "weekly_report"]),
+        entityId: z.number().int().positive(),
+        limit: z.number().int().min(1).max(200).default(50),
+      }))
+      .query(async ({ ctx, input }) => {
+        const rows = await db.listStaffPerformanceAuditLogs(input);
+        if (rows.length === 0) return [];
+        requirePerformanceOwnerOrManager(ctx.performanceAccess, ctx.user.id, rows[0].staffUserId);
+        return rows;
+      }),
   }),
 
   monitoring: router({

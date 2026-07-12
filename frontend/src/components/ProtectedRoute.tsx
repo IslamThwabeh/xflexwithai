@@ -1,4 +1,5 @@
 import { useAuth } from "@/_core/hooks/useAuth";
+import StudentSurveyAccessGate from "@/components/StudentSurveyAccessGate";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { trpc } from "@/lib/trpc";
 import { useEffect } from "react";
@@ -57,5 +58,9 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
     return null;
   }
 
-  return <>{children}</>;
+  return (
+    <StudentSurveyAccessGate>
+      {children}
+    </StudentSurveyAccessGate>
+  );
 }

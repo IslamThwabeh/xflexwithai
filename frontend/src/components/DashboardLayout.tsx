@@ -120,6 +120,7 @@ const menuSectionsDef: MenuSection[] = [
       { icon: BookOpen, labelKey: "admin.sidebar.courses", path: "/admin/courses" },
       { icon: GraduationCap, labelKey: "admin.sidebar.planProgress", path: "/admin/plan-progress" },
       { icon: ClipboardCheck, labelKey: "admin.sidebar.quizzes", path: "/admin/quizzes" },
+      { icon: ClipboardCheck, labelKey: "admin.sidebar.studentSurveys", path: "/admin/student-surveys" },
     ]
   },
   {
@@ -146,6 +147,8 @@ const menuSectionsDef: MenuSection[] = [
       { icon: Bug, labelKey: "admin.sidebar.bugReports", path: "/admin/bug-reports" },
       { icon: Shield, labelKey: "admin.sidebar.roles", path: "/admin/roles" },
       { icon: Search, labelKey: "admin.sidebar.staffReview", path: "/admin/staff-review" },
+      { icon: ClipboardCheck, labelKey: "admin.sidebar.staffPerformance", path: "/admin/staff-performance" },
+      { icon: ClipboardCheck, labelKey: "admin.sidebar.myPerformance", path: "/admin/my-performance" },
     ]
   },
   {
@@ -164,6 +167,7 @@ const menuSectionsDef: MenuSection[] = [
     labelKey: "admin.sidebar.moderation",
     items: [
       { icon: Star, labelKey: "admin.sidebar.reviews", path: "/admin/reviews" },
+      { icon: MessageSquare, labelKey: "admin.sidebar.community", path: "/admin/community" },
       { icon: Bell, labelKey: "admin.sidebar.notifications", path: "/admin/notifications" },
       { icon: Mail, labelKey: "admin.sidebar.emailLogs", path: "/admin/email-logs" },
       { icon: Award, labelKey: "admin.sidebar.loyaltyPoints", path: "/admin/points" },
@@ -175,6 +179,7 @@ const menuSectionsDef: MenuSection[] = [
     labelKey: "admin.sidebar.careers",
     items: [
       { icon: Briefcase, labelKey: "admin.sidebar.jobsApplications", path: "/admin/jobs" },
+      { icon: ShieldCheck, labelKey: "admin.sidebar.jobEligibility", path: "/admin/job-eligibility" },
     ]
   },
   // Hidden sections — backend kept, UI disabled
@@ -283,7 +288,24 @@ function DashboardLayoutContent({
 
   // Check admin/staff status for sidebar filtering
   const { data: adminCheck } = trpc.auth.isAdmin.useQuery();
+  const staffRolesForAvailability = adminCheck?.staffRoles ?? [];
   const canReadStaffNotifications = !!adminCheck?.isAdmin || !!adminCheck?.isStaff;
+  const { data: performanceAvailability } = trpc.staffPerformance.availability.useQuery(undefined, {
+    enabled: canReadStaffNotifications,
+    retry: false,
+  });
+  const { data: surveyAvailability } = trpc.studentSurveys.availability.useQuery(undefined, {
+    enabled: !!adminCheck?.isAdmin || staffRolesForAvailability.includes("student_surveys_manager"),
+    retry: false,
+  });
+  const { data: communityAvailability } = trpc.community.availability.useQuery(undefined, {
+    enabled: !!adminCheck?.isAdmin || staffRolesForAvailability.includes("student_community_moderator"),
+    retry: false,
+  });
+  const { data: jobEligibilityAvailability } = trpc.studentJobEligibility.availability.useQuery(undefined, {
+    enabled: !!adminCheck?.isAdmin || staffRolesForAvailability.includes("student_job_eligibility_manager"),
+    retry: false,
+  });
 
   // Staff notifications — bell badge + sidebar route badges (30s polling)
   const { data: unreadCountData } = trpc.staffNotifications.unreadCount.useQuery(undefined, {
@@ -300,8 +322,32 @@ function DashboardLayoutContent({
 
   // Compute visible menu sections based on role
   const visibleSections = useMemo(() => {
+    const filterUnavailableFeatures = (sections: MenuSection[]) => sections
+      .map(section => ({
+        ...section,
+        items: section.items.filter(item => {
+          if (item.path === "/admin/staff-performance") {
+            return performanceAvailability?.enabled === true && performanceAvailability?.access === "manager";
+          }
+          if (item.path === "/admin/my-performance") {
+            return performanceAvailability?.enabled === true && performanceAvailability?.access === "employee";
+          }
+          if (item.path === "/admin/student-surveys") {
+            return surveyAvailability?.enabled === true && surveyAvailability?.access === "admin";
+          }
+          if (item.path === "/admin/community") {
+            return communityAvailability?.enabled === true;
+          }
+          if (item.path === "/admin/job-eligibility") {
+            return jobEligibilityAvailability?.enabled === true;
+          }
+          return true;
+        }),
+      }))
+      .filter(section => section.items.length > 0);
+
     // Admin sees everything
-    if (!adminCheck || adminCheck.isAdmin) return menuSectionsDef;
+    if (!adminCheck || adminCheck.isAdmin) return filterUnavailableFeatures(menuSectionsDef);
 
     // Staff: filter by role-accessible paths
     const staffRoles: string[] = adminCheck.staffRoles ?? [];
@@ -312,13 +358,13 @@ function DashboardLayoutContent({
       }
     }
 
-    return menuSectionsDef
+    return filterUnavailableFeatures(menuSectionsDef
       .map(section => ({
         ...section,
         items: section.items.filter(item => accessiblePaths.has(item.path)),
       }))
-      .filter(section => section.items.length > 0);
-  }, [adminCheck]);
+      .filter(section => section.items.length > 0));
+  }, [adminCheck, performanceAvailability?.enabled, performanceAvailability?.access, surveyAvailability?.enabled, surveyAvailability?.access, communityAvailability?.enabled, jobEligibilityAvailability?.enabled]);
 
   // Find active menu item across all sections
   const activeMenuItem = visibleSections

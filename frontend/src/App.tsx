@@ -30,6 +30,8 @@ const AdminRecommendations = lazy(() => import("./pages/AdminRecommendations"));
 const AdminSupport = lazy(() => import("./pages/AdminSupport"));
 const AdminRoles = lazy(() => import("./pages/AdminRoles"));
 const AdminStaffReview = lazy(() => import("./pages/AdminStaffReview"));
+const AdminMyPerformance = lazy(() => import("./pages/AdminMyPerformance"));
+const AdminStudentSurveys = lazy(() => import("./pages/AdminStudentSurveys"));
 const AdminPackages = lazy(() => import("./pages/AdminPackages"));
 const AdminEvents = lazy(() => import("./pages/AdminEvents"));
 const AdminArticles = lazy(() => import("./pages/AdminArticles"));
@@ -54,6 +56,7 @@ const SupportChat = lazy(() => import("./pages/SupportChat"));
 const QuizLevels = lazy(() => import("./pages/QuizLevels"));
 const TakeQuiz = lazy(() => import("./pages/TakeQuiz"));
 const QuizHistory = lazy(() => import("./pages/QuizHistory"));
+const StudentSurveys = lazy(() => import("./pages/StudentSurveys"));
 const MyOrders = lazy(() => import("./pages/MyOrders"));
 const OrderDetail = lazy(() => import("./pages/OrderDetail"));
 const MySubscriptions = lazy(() => import("./pages/MySubscriptions"));
@@ -82,20 +85,25 @@ const RefundPolicy = lazy(() => import("./pages/RefundPolicy"));
 const FAQ = lazy(() => import("./pages/FAQ"));
 const Careers = lazy(() => import("./pages/Careers"));
 const AdminJobs = lazy(() => import("./pages/AdminJobs"));
+const AdminJobEligibility = lazy(() => import("./pages/AdminJobEligibility"));
 const AdminReviews = lazy(() => import("./pages/AdminReviews"));
 const AdminNotifications = lazy(() => import("./pages/AdminNotifications"));
 const AdminEmailLogs = lazy(() => import("./pages/AdminEmailLogs"));
 const AdminSettings = lazy(() => import("./pages/AdminSettings"));
 const AdminPoints = lazy(() => import("./pages/AdminPoints"));
 const AdminBugReports = lazy(() => import("./pages/AdminBugReports"));
+const AdminCommunityModeration = lazy(() => import("./pages/AdminCommunityModeration"));
 const AdminEngagement = lazy(() => import("./pages/AdminEngagement"));
 const AdminMonitoring = lazy(() => import("./pages/AdminMonitoring"));
+const AdminStaffPerformance = lazy(() => import("./pages/AdminStaffPerformance"));
 const AdminOfferAgreements = lazy(() => import("./pages/AdminOfferAgreements"));
 const AdminTermsAcceptance = lazy(() => import("./pages/AdminTermsAcceptance"));
 const AdminPlanProgress = lazy(() => import("./pages/AdminPlanProgress"));
 const AdminLegacyPlanProgress = lazy(() => import("./pages/AdminLegacyPlanProgress"));
 const NotificationCenter = lazy(() => import("./pages/NotificationCenter"));
 const LoyaltyPoints = lazy(() => import("./pages/LoyaltyPoints"));
+const StudentCommunity = lazy(() => import("./pages/StudentCommunity"));
+const StudentJobOpportunities = lazy(() => import("./pages/StudentJobOpportunities"));
 const TradingCalculators = lazy(() => import("./pages/TradingCalculators"));
 const Unsubscribe = lazy(() => import("./pages/Unsubscribe"));
 const TrustCenter = lazy(() => import("./pages/TrustCenter"));
@@ -345,6 +353,16 @@ function Router() {
           <SupportChat />
         </ProtectedRoute>
       </Route>
+      <Route path={"/community"}>
+        <ProtectedRoute>
+          <StudentCommunity />
+        </ProtectedRoute>
+      </Route>
+      <Route path={"/job-opportunities"}>
+        <ProtectedRoute>
+          <StudentJobOpportunities />
+        </ProtectedRoute>
+      </Route>
       <Route path="/quiz">
         <ProtectedRoute>
           <QuizLevels />
@@ -358,6 +376,11 @@ function Router() {
       <Route path="/quiz/:level/history">
         <ProtectedRoute>
           <QuizHistory />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/surveys">
+        <ProtectedRoute>
+          <StudentSurveys />
         </ProtectedRoute>
       </Route>
       <Route path="/ar/packages/:slug"><LocalizedPackage language="ar" /></Route>
@@ -420,6 +443,11 @@ function Router() {
           <AdminJobs />
         </AdminRoute>
       </Route>
+      <Route path="/admin/job-eligibility">
+        <AdminRoute>
+          <AdminJobEligibility />
+        </AdminRoute>
+      </Route>
       <Route path="/admin/reviews">
         <AdminRoute>
           <AdminReviews />
@@ -440,6 +468,11 @@ function Router() {
           <AdminBugReports />
         </AdminRoute>
       </Route>
+      <Route path="/admin/community">
+        <AdminRoute>
+          <AdminCommunityModeration />
+        </AdminRoute>
+      </Route>
       <Route path="/admin/settings">
         <AdminRoute>
           <AdminSettings />
@@ -458,6 +491,21 @@ function Router() {
       <Route path="/admin/monitoring">
         <AdminRoute>
           <AdminMonitoring />
+        </AdminRoute>
+      </Route>
+      <Route path="/admin/staff-performance">
+        <AdminRoute>
+          <AdminStaffPerformance />
+        </AdminRoute>
+      </Route>
+      <Route path="/admin/my-performance">
+        <AdminRoute>
+          <AdminMyPerformance />
+        </AdminRoute>
+      </Route>
+      <Route path="/admin/student-surveys">
+        <AdminRoute>
+          <AdminStudentSurveys />
         </AdminRoute>
       </Route>
       <Route path="/orders">

@@ -45,12 +45,20 @@ import { ROLE_PAGE_ACCESS, ALL_STAFF_ROLES } from "@shared/const";
 const ROLE_LABELS: Record<string, { en: string; ar: string; color: string; group: string }> = {
   analyst:              { en: "Analyst",              ar: "محلل",            color: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",   group: "core" },
   support:              { en: "Support",              ar: "دعم فني",         color: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300", group: "core" },
+  lexai_support:        { en: "LexAI Support",         ar: "دعم LexAI",       color: "bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-300", group: "core" },
   key_manager:          { en: "Key Manager",          ar: "مدير المفاتيح",   color: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",   group: "core" },
+  plan_manager:         { en: "Plan Manager",         ar: "مدير الخطة التعليمية", color: "bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-300", group: "core" },
   view_progress:        { en: "View Progress",        ar: "عرض التقدم",      color: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",   group: "perm" },
   view_recommendations: { en: "View Recommendations", ar: "عرض التوصيات",    color: "bg-pink-100 text-pink-800 dark:bg-pink-900/30 dark:text-pink-300",     group: "perm" },
   view_subscriptions:   { en: "View Subscriptions",   ar: "عرض الاشتراكات",  color: "bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-300",     group: "perm" },
   view_quizzes:         { en: "View Quizzes",         ar: "عرض الاختبارات",  color: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300", group: "perm" },
   client_lookup:        { en: "Client Lookup",        ar: "بحث العملاء",     color: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300", group: "perm" },
+  staff_performance_employee: { en: "Performance Employee", ar: "موظف - إدارة الأداء", color: "bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-300", group: "performance" },
+  staff_performance_manager: { en: "Performance Manager", ar: "مدير أداء الموظفين", color: "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-300", group: "performance" },
+  student_surveys_manager: { en: "Student Surveys Manager", ar: "مدير استبيانات الطلاب", color: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300", group: "feature" },
+  loyalty_rewards_manager: { en: "Loyalty Rewards Manager", ar: "مدير نقاط الولاء", color: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300", group: "feature" },
+  student_community_moderator: { en: "Community Moderator", ar: "مشرف المجتمع", color: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300", group: "feature" },
+  student_job_eligibility_manager: { en: "Job Eligibility Manager", ar: "مدير أهلية الوظائف", color: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300", group: "feature" },
 };
 
 // ── Full sidebar definition (mirrors DashboardLayout) ─────────────────
@@ -86,6 +94,7 @@ const FULL_SIDEBAR: SidebarSection[] = [
     items: [
       { icon: BookOpen, labelEn: "Courses", labelAr: "الدورات", path: "/admin/courses" },
       { icon: ClipboardCheck, labelEn: "Quizzes", labelAr: "الاختبارات", path: "/admin/quizzes" },
+      { icon: ClipboardCheck, labelEn: "Student Surveys", labelAr: "استبيانات الطلاب", path: "/admin/student-surveys" },
     ],
   },
   {
@@ -107,6 +116,8 @@ const FULL_SIDEBAR: SidebarSection[] = [
     items: [
       { icon: Headphones, labelEn: "Support Chat", labelAr: "الدعم الفني", path: "/admin/support" },
       { icon: Shield, labelEn: "Roles", labelAr: "الأدوار", path: "/admin/roles" },
+      { icon: ClipboardCheck, labelEn: "Staff Performance", labelAr: "أداء الموظفين", path: "/admin/staff-performance" },
+      { icon: ClipboardCheck, labelEn: "My Daily Work", labelAr: "عملي اليومي", path: "/admin/my-performance" },
     ],
   },
   {
@@ -122,6 +133,7 @@ const FULL_SIDEBAR: SidebarSection[] = [
     icon: Star, labelEn: "Moderation", labelAr: "الإشراف",
     items: [
       { icon: Star, labelEn: "Reviews", labelAr: "التقييمات", path: "/admin/reviews" },
+      { icon: Star, labelEn: "Community", labelAr: "المجتمع", path: "/admin/community" },
       { icon: Bell, labelEn: "Notifications", labelAr: "الإشعارات", path: "/admin/notifications" },
       { icon: Award, labelEn: "Loyalty Points", labelAr: "نقاط الولاء", path: "/admin/points" },
     ],
@@ -130,6 +142,7 @@ const FULL_SIDEBAR: SidebarSection[] = [
     icon: Briefcase, labelEn: "Careers", labelAr: "الوظائف",
     items: [
       { icon: Briefcase, labelEn: "Job Applications", labelAr: "طلبات التوظيف", path: "/admin/jobs" },
+      { icon: ShieldCheck, labelEn: "Job Eligibility", labelAr: "أهلية الطلاب للوظائف", path: "/admin/job-eligibility" },
     ],
   },
 ];
@@ -152,6 +165,10 @@ const ENDPOINT_ACCESS: EndpointDef[] = [
   { endpoint: "supportDashboard.clientProgress", descEn: "View student progress", descAr: "عرض تقدم الطالب",           requiredRoles: ["view_progress"] },
   { endpoint: "supportDashboard.clientSubscriptions", descEn: "View subscriptions", descAr: "عرض الاشتراكات",         requiredRoles: ["view_subscriptions"] },
   { endpoint: "supportDashboard.clientQuizzes", descEn: "View quiz results",     descAr: "عرض نتائج الاختبارات",       requiredRoles: ["view_quizzes"] },
+  { endpoint: "studentSurveys.*",        descEn: "Manage student surveys",        descAr: "إدارة استبيانات الطلاب",     requiredRoles: ["student_surveys_manager"] },
+  { endpoint: "points.*",                descEn: "Manage loyalty points/rewards", descAr: "إدارة نقاط الولاء والمكافآت", requiredRoles: ["loyalty_rewards_manager"] },
+  { endpoint: "community.moderation.*",  descEn: "Moderate student community",    descAr: "الإشراف على مجتمع الطلاب",    requiredRoles: ["student_community_moderator"] },
+  { endpoint: "studentJobEligibility.*", descEn: "Manage job eligibility",        descAr: "إدارة أهلية الطلاب للوظائف", requiredRoles: ["student_job_eligibility_manager"] },
   { endpoint: "dashboard.stats",          descEn: "Dashboard statistics",        descAr: "إحصائيات لوحة التحكم",       requiredRoles: "admin-only" },
   { endpoint: "courses.*",                descEn: "Manage courses",              descAr: "إدارة الدورات",              requiredRoles: "admin-only" },
   { endpoint: "episodes.*",               descEn: "Manage episodes",             descAr: "إدارة الحلقات",              requiredRoles: "admin-only" },
@@ -185,6 +202,8 @@ export default function AdminStaffReview() {
   const [searchQuery, setSearchQuery] = useState("");
 
   const { data: staffMembers, isLoading: staffLoading } = trpc.roles.listStaff.useQuery();
+  const { data: performanceAvailability } = trpc.staffPerformance.availability.useQuery(undefined, { retry: false });
+  const isStaffPerformanceVisible = performanceAvailability?.enabled === true;
 
   const { data: preview, isLoading: previewLoading } = trpc.roles.getStaffAccessPreview.useQuery(
     { userId: selectedStaffId! },
@@ -203,8 +222,34 @@ export default function AdminStaffReview() {
 
   const accessiblePaths = useMemo(() => {
     if (!preview?.roles) return new Set<string>();
-    return getAccessiblePaths(preview.roles);
-  }, [preview?.roles]);
+    const paths = getAccessiblePaths(preview.roles);
+    if (!isStaffPerformanceVisible) {
+      paths.delete("/admin/staff-performance");
+    }
+    return paths;
+  }, [preview?.roles, isStaffPerformanceVisible]);
+
+  const visibleSidebar = useMemo(() => FULL_SIDEBAR
+    .map(section => ({
+      ...section,
+      items: section.items.filter(item =>
+        !["/admin/staff-performance", "/admin/my-performance"].includes(item.path) || isStaffPerformanceVisible
+      ),
+    }))
+    .filter(section => section.items.length > 0), [isStaffPerformanceVisible]);
+
+  const visibleStaffRoles = useMemo(() => ALL_STAFF_ROLES.filter(role =>
+    isStaffPerformanceVisible || !role.startsWith("staff_performance_")
+  ), [isStaffPerformanceVisible]);
+
+  const visiblePreviewRoles = useMemo(() => (preview?.roles ?? []).filter((role: string) =>
+    isStaffPerformanceVisible || !role.startsWith("staff_performance_")
+  ), [preview?.roles, isStaffPerformanceVisible]);
+
+  const visibleSidebarItems = useMemo(
+    () => visibleSidebar.flatMap(section => section.items),
+    [visibleSidebar],
+  );
 
   return (
     <DashboardLayout>
@@ -287,7 +332,9 @@ export default function AdminStaffReview() {
                         </div>
                         {staff.roles?.length > 0 && (
                           <div className="flex flex-wrap gap-1 mt-2 ms-12">
-                            {staff.roles.map((role: string) => (
+                            {staff.roles
+                              .filter((role: string) => isStaffPerformanceVisible || !role.startsWith("staff_performance_"))
+                              .map((role: string) => (
                               <span key={role} className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${ROLE_LABELS[role]?.color || "bg-gray-100 text-gray-600"}`}>
                                 {isRtl ? ROLE_LABELS[role]?.ar : ROLE_LABELS[role]?.en || role}
                               </span>
@@ -359,10 +406,10 @@ export default function AdminStaffReview() {
                         {isRtl ? "الأدوار المُسندة" : "Assigned Roles"}
                       </p>
                       <div className="flex flex-wrap gap-2">
-                        {preview.roles.length === 0 ? (
+                        {visiblePreviewRoles.length === 0 ? (
                           <span className="text-sm text-gray-400 italic">{isRtl ? "لا توجد أدوار" : "No roles assigned"}</span>
                         ) : (
-                          preview.roles.map((role: string) => (
+                          visiblePreviewRoles.map((role: string) => (
                             <Badge key={role} className={`${ROLE_LABELS[role]?.color || "bg-gray-100 text-gray-600"} text-xs`}>
                               {isRtl ? ROLE_LABELS[role]?.ar : ROLE_LABELS[role]?.en || role}
                             </Badge>
@@ -386,7 +433,7 @@ export default function AdminStaffReview() {
                   </CardHeader>
                   <CardContent>
                     <div className="bg-slate-900 rounded-xl p-4 space-y-1 max-w-sm">
-                      {FULL_SIDEBAR.map((section, si) => {
+                      {visibleSidebar.map((section, si) => {
                         const visibleItems = section.items.filter(item => accessiblePaths.has(item.path));
                         const hasAnyVisible = visibleItems.length > 0;
                         const SectionIcon = section.icon;
@@ -438,7 +485,7 @@ export default function AdminStaffReview() {
                       </span>
                       <span className="flex items-center gap-1">
                         <XCircle className="w-3.5 h-3.5 text-red-400" />
-                        {FULL_SIDEBAR.flatMap(s => s.items).length - accessiblePaths.size} {isRtl ? "صفحات محجوبة" : "pages blocked"}
+                        {visibleSidebarItems.length - accessiblePaths.size} {isRtl ? "صفحات محجوبة" : "pages blocked"}
                       </span>
                     </div>
                   </CardContent>
@@ -517,7 +564,7 @@ export default function AdminStaffReview() {
                             <th className="text-start py-2 font-medium text-gray-500 min-w-[120px]">
                               {isRtl ? "الدور" : "Role"}
                             </th>
-                            {FULL_SIDEBAR.flatMap(s => s.items).map((item, i) => (
+                            {visibleSidebarItems.map((item, i) => (
                               <th key={i} className="text-center py-2 font-medium text-gray-500 px-1 min-w-[28px]" title={isRtl ? item.labelAr : item.labelEn}>
                                 <item.icon className="w-3.5 h-3.5 mx-auto text-gray-400" />
                               </th>
@@ -525,7 +572,7 @@ export default function AdminStaffReview() {
                           </tr>
                         </thead>
                         <tbody>
-                          {ALL_STAFF_ROLES.map((role) => {
+                          {visibleStaffRoles.map((role) => {
                             const rolePaths = new Set(ROLE_PAGE_ACCESS[role] ?? []);
                             const isAssigned = preview.roles.includes(role);
                             return (
@@ -538,7 +585,7 @@ export default function AdminStaffReview() {
                                     </span>
                                   </div>
                                 </td>
-                                {FULL_SIDEBAR.flatMap(s => s.items).map((item, i) => {
+                                {visibleSidebarItems.map((item, i) => {
                                   const hasAccess = rolePaths.has(item.path);
                                   return (
                                     <td key={i} className="text-center py-2">
@@ -562,7 +609,7 @@ export default function AdminStaffReview() {
                     </div>
                     {/* Column legend */}
                     <div className="mt-3 flex flex-wrap gap-2 text-[10px] text-gray-400">
-                      {FULL_SIDEBAR.flatMap(s => s.items).map((item, i) => (
+                      {visibleSidebarItems.map((item, i) => (
                         <span key={i} className="flex items-center gap-1">
                           <item.icon className="w-3 h-3" />
                           {isRtl ? item.labelAr : item.labelEn}

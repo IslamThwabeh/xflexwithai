@@ -34,10 +34,15 @@ const ROLE_LABELS: Record<string, { labelKey: string; color: string; group: stri
   view_subscriptions: { labelKey: "admin.roles.viewSubs", color: "bg-cyan-100 text-cyan-800", group: "Support Permissions" },
   view_quizzes: { labelKey: "admin.roles.viewQuizzes", color: "bg-orange-100 text-orange-800", group: "Support Permissions" },
   client_lookup: { labelKey: "admin.roles.clientLookup", color: "bg-emerald-100 text-emerald-800", group: "Support Permissions" },
+  staff_performance_employee: { labelKey: "admin.roles.performanceEmployee", color: "bg-sky-100 text-sky-800", group: "Performance Roles" },
+  staff_performance_manager: { labelKey: "admin.roles.performanceManager", color: "bg-violet-100 text-violet-800", group: "Performance Roles" },
+  student_surveys_manager: { labelKey: "admin.roles.studentSurveysManager", color: "bg-indigo-100 text-indigo-800", group: "Feature Roles" },
+  loyalty_rewards_manager: { labelKey: "admin.roles.loyaltyRewardsManager", color: "bg-yellow-100 text-yellow-800", group: "Feature Roles" },
+  student_community_moderator: { labelKey: "admin.roles.communityModerator", color: "bg-purple-100 text-purple-800", group: "Feature Roles" },
+  student_job_eligibility_manager: { labelKey: "admin.roles.jobEligibilityManager", color: "bg-blue-100 text-blue-800", group: "Feature Roles" },
 };
 
-const ALL_ROLES = Object.keys(ROLE_LABELS) as Array<keyof typeof ROLE_LABELS>;
-type RoleKey = "analyst" | "support" | "lexai_support" | "key_manager" | "plan_manager" | "view_progress" | "view_recommendations" | "view_subscriptions" | "view_quizzes" | "client_lookup";
+type RoleKey = "analyst" | "support" | "lexai_support" | "key_manager" | "plan_manager" | "view_progress" | "view_recommendations" | "view_subscriptions" | "view_quizzes" | "client_lookup" | "staff_performance_employee" | "staff_performance_manager" | "student_surveys_manager" | "loyalty_rewards_manager" | "student_community_moderator" | "student_job_eligibility_manager";
 
 export default function AdminRoles() {
   const [search, setSearch] = useState("");
@@ -60,6 +65,11 @@ export default function AdminRoles() {
 
   const { data: staffMembers, isLoading, refetch: refetchStaff } = trpc.roles.listStaff.useQuery();
   const { data: roleAssignments, refetch: refetchRoles } = trpc.roles.list.useQuery();
+  const { data: performanceAvailability } = trpc.staffPerformance.availability.useQuery(undefined, { retry: false });
+  const visibleRoleEntries = Object.entries(ROLE_LABELS).filter(([key]) =>
+    !key.startsWith("staff_performance_") || performanceAvailability?.enabled === true
+  );
+  const visibleRoles = visibleRoleEntries.map(([key]) => key as RoleKey);
 
   const createStaffMutation = trpc.roles.createStaff.useMutation({
     onSuccess: () => {
@@ -164,7 +174,7 @@ export default function AdminRoles() {
   });
 
   // Role counts from staff members
-  const roleCounts = ALL_ROLES.map(role => ({
+  const roleCounts = visibleRoles.map(role => ({
     role,
     count: (staffMembers ?? []).filter(s => s.roles.includes(role as string)).length,
   }));
@@ -227,7 +237,7 @@ export default function AdminRoles() {
                           {isRtl ? 'الأدوار الأساسية' : 'Core Roles'}
                         </p>
                         <div className="space-y-2">
-                          {Object.entries(ROLE_LABELS).filter(([, v]) => v.group === "Core Roles").map(([key, val]) => (
+                          {visibleRoleEntries.filter(([, v]) => v.group === "Core Roles").map(([key, val]) => (
                             <label key={key} className="flex items-center gap-3 p-2 rounded-lg border cursor-pointer hover:bg-muted/50 transition-colors">
                               <input
                                 type="checkbox"
@@ -245,13 +255,58 @@ export default function AdminRoles() {
                         </div>
                       </div>
 
+                      {performanceAvailability?.enabled && (
+                        <div>
+                          <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">
+                            {isRtl ? 'أدوار إدارة الأداء' : 'Performance Roles'}
+                          </p>
+                          <div className="space-y-2">
+                            {visibleRoleEntries.filter(([, v]) => v.group === "Performance Roles").map(([key, val]) => (
+                              <label key={key} className="flex items-center gap-3 p-2 rounded-lg border cursor-pointer hover:bg-muted/50 transition-colors">
+                                <input
+                                  type="checkbox"
+                                  checked={editingRoles.includes(key as RoleKey)}
+                                  onChange={() => toggleEditRole(key as RoleKey)}
+                                  className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 h-4 w-4"
+                                />
+                                <Badge variant="secondary" className={`text-xs ${val.color}`}>
+                                  {t(val.labelKey)}
+                                </Badge>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Feature Roles */}
+                      <div>
+                        <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">
+                          {isRtl ? 'أدوار الميزات الجديدة' : 'New Feature Roles'}
+                        </p>
+                        <div className="space-y-2">
+                          {visibleRoleEntries.filter(([, v]) => v.group === "Feature Roles").map(([key, val]) => (
+                            <label key={key} className="flex items-center gap-3 p-2 rounded-lg border cursor-pointer hover:bg-muted/50 transition-colors">
+                              <input
+                                type="checkbox"
+                                checked={editingRoles.includes(key as RoleKey)}
+                                onChange={() => toggleEditRole(key as RoleKey)}
+                                className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 h-4 w-4"
+                              />
+                              <Badge variant="secondary" className={`text-xs ${val.color}`}>
+                                {t(val.labelKey)}
+                              </Badge>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+
                       {/* Support Permissions */}
                       <div>
                         <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">
                           {isRtl ? 'صلاحيات الدعم' : 'Support Permissions'}
                         </p>
                         <div className="space-y-2">
-                          {Object.entries(ROLE_LABELS).filter(([, v]) => v.group === "Support Permissions").map(([key, val]) => (
+                          {visibleRoleEntries.filter(([, v]) => v.group === "Support Permissions").map(([key, val]) => (
                             <label key={key} className="flex items-center gap-3 p-2 rounded-lg border cursor-pointer hover:bg-muted/50 transition-colors">
                               <input
                                 type="checkbox"
@@ -346,7 +401,7 @@ export default function AdminRoles() {
                       {isRtl ? 'الأدوار' : 'Roles'} <span className="text-red-500">*</span>
                     </label>
                     <div className="flex flex-wrap gap-2 mt-1">
-                      {ALL_ROLES.map((role) => {
+                      {visibleRoles.map((role) => {
                         const info = ROLE_LABELS[role];
                         const isSelected = selectedRoles.includes(role as RoleKey);
                         return (
@@ -615,6 +670,54 @@ export default function AdminRoles() {
             <CardContent>
               <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                 {roleCounts.filter(({ role }) => ROLE_LABELS[role]?.group === "Support Permissions").map(({ role, count }) => (
+                  <div
+                    key={role}
+                    className={`text-center p-3 rounded-lg border cursor-pointer transition-all ${
+                      filterRole === role ? 'ring-2 ring-primary bg-primary/5' : 'hover:bg-muted/50'
+                    }`}
+                    onClick={() => setFilterRole(filterRole === role ? 'all' : role)}
+                  >
+                    <p className="text-xl font-bold">{count}</p>
+                    <p className="text-xs text-muted-foreground">{t(ROLE_LABELS[role].labelKey)}</p>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {roleCounts.some(({ role, count }) => ROLE_LABELS[role]?.group === "Performance Roles" && count > 0) && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg">{isRtl ? 'أدوار إدارة الأداء' : 'Performance Roles'}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {roleCounts.filter(({ role }) => ROLE_LABELS[role]?.group === "Performance Roles").map(({ role, count }) => (
+                  <div
+                    key={role}
+                    className={`text-center p-3 rounded-lg border cursor-pointer transition-all ${
+                      filterRole === role ? 'ring-2 ring-primary bg-primary/5' : 'hover:bg-muted/50'
+                    }`}
+                    onClick={() => setFilterRole(filterRole === role ? 'all' : role)}
+                  >
+                    <p className="text-xl font-bold">{count}</p>
+                    <p className="text-xs text-muted-foreground">{t(ROLE_LABELS[role].labelKey)}</p>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {roleCounts.some(({ role, count }) => ROLE_LABELS[role]?.group === "Feature Roles" && count > 0) && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg">{isRtl ? 'أدوار الميزات الجديدة' : 'New Feature Roles'}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                {roleCounts.filter(({ role }) => ROLE_LABELS[role]?.group === "Feature Roles").map(({ role, count }) => (
                   <div
                     key={role}
                     className={`text-center p-3 rounded-lg border cursor-pointer transition-all ${

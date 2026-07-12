@@ -51,10 +51,21 @@ import {
   jobApplications, JobApplication, InsertJobApplication,
   jobApplicationAnswers, JobApplicationAnswer, InsertJobApplicationAnswer,
   jobInviteLogs, JobInviteLog, InsertJobInviteLog,
+  studentJobProfiles, StudentJobProfile, InsertStudentJobProfile,
+  studentJobEligibilityRules, StudentJobEligibilityRule, InsertStudentJobEligibilityRule,
+  studentJobEligibilityReviews, StudentJobEligibilityReview, InsertStudentJobEligibilityReview,
+  studentJobEligibilityAuditLogs,
   // Phase 3+4: Reviews, Notifications, Points, Engagement
   courseReviews, CourseReview, InsertCourseReview,
   userNotifications, UserNotification, InsertUserNotification,
   pointsTransactions, PointsTransaction, InsertPointsTransaction,
+  loyaltyRewardItems, LoyaltyRewardItem, InsertLoyaltyRewardItem,
+  loyaltyRewardRedemptions, LoyaltyRewardRedemption, InsertLoyaltyRewardRedemption,
+  loyaltyRewardAuditLogs,
+  studentCommunityPosts, StudentCommunityPost, InsertStudentCommunityPost,
+  studentCommunityComments, StudentCommunityComment, InsertStudentCommunityComment,
+  studentCommunityReports, StudentCommunityReport, InsertStudentCommunityReport,
+  studentCommunityAuditLogs,
   engagementEvents, EngagementEvent, InsertEngagementEvent,
   openAiUsageEvents, OpenAiUsageEvent, InsertOpenAiUsageEvent,
   brokers, Broker, NewBroker,
@@ -74,6 +85,11 @@ import {
   staffNotifications, StaffNotification, InsertStaffNotification,
   adminSettings, AdminSetting, InsertAdminSetting,
   staffActionLogs, staffSessions, staffWorkSchedules, staffDailyAggregates,
+  staffPerformanceMonthlyPlans, staffPerformanceGoals,
+  staffPerformanceDailyLogs, staffPerformanceDailyTasks,
+  staffPerformanceWeeklyReports, staffPerformanceAuditLogs,
+  studentSurveys, studentSurveyQuestions, studentSurveyAssignments,
+  studentSurveyAnswers, studentSurveyAuditLogs,
 } from "../database/schema-sqlite.ts";
 import { ENV } from './_core/env';
 import { logger } from './_core/logger';
@@ -104,6 +120,19 @@ import {
 } from '../shared/const';
 import { isLikelyValidEmail, normalizeEmailAddress } from '../shared/emailValidation';
 import { hashUnsubscribeToken, type EmailCategory } from './_core/emailPreferences';
+import type { StaffPerformanceStatus } from './services/staff-performance.service';
+import {
+  getStudentSurveyAccessState,
+  nextPostponedDueAt,
+  type StudentSurveyAssignmentStatus,
+} from './services/student-surveys.service';
+import type { LoyaltyRewardRedemptionStatus } from './services/loyalty-rewards.service';
+import type {
+  StudentCommunityContentStatus,
+  StudentCommunityReportStatus,
+  StudentCommunityTargetType,
+} from './services/student-community.service';
+import type { StudentJobEligibilityReviewStatus } from './services/student-job-eligibility.service';
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -2516,6 +2545,1137 @@ export async function getStaffMonitoringSummary(days = 14) {
       .slice(0, 5),
     activeSessions: activeSessionRows.slice(0, 20),
   };
+}
+
+// ============================================================================
+// Staff Performance Management (Phase 1A, feature-flagged by the router)
+// ============================================================================
+
+type StaffPerformanceEntityType = "monthly_plan" | "goal" | "daily_log" | "daily_task" | "weekly_report";
+
+async function logStaffPerformanceAudit(input: {
+  entityType: StaffPerformanceEntityType;
+  entityId: number;
+  staffUserId: number;
+  actorUserId: number;
+  action: string;
+  fromStatus?: StaffPerformanceStatus | null;
+  toStatus?: StaffPerformanceStatus | null;
+  details?: Record<string, unknown> | null;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(staffPerformanceAuditLogs).values({
+    entityType: input.entityType,
+    entityId: input.entityId,
+    staffUserId: input.staffUserId,
+    actorUserId: input.actorUserId,
+    action: input.action,
+    fromStatus: input.fromStatus ?? null,
+    toStatus: input.toStatus ?? null,
+    details: input.details ? JSON.stringify(input.details) : null,
+    createdAt: new Date().toISOString(),
+  });
+}
+
+function performanceStatusTimestamps(status: StaffPerformanceStatus, now: string) {
+  return {
+    submittedAt: status === "submitted" ? now : undefined,
+    reviewedAt: status === "returned" || status === "approved" ? now : undefined,
+    lockedAt: status === "locked" ? now : undefined,
+  };
+}
+
+export async function getStaffPerformanceMonthlyPlan(id: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const [plan] = await db.select().from(staffPerformanceMonthlyPlans)
+    .where(eq(staffPerformanceMonthlyPlans.id, id)).limit(1);
+  if (!plan) return null;
+  const goals = await db.select().from(staffPerformanceGoals)
+    .where(eq(staffPerformanceGoals.planId, id))
+    .orderBy(asc(staffPerformanceGoals.sortOrder), asc(staffPerformanceGoals.id));
+  return { ...plan, goals };
+}
+
+export async function listStaffPerformanceMonthlyPlans(staffUserId: number, limit = 24) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(staffPerformanceMonthlyPlans)
+    .where(eq(staffPerformanceMonthlyPlans.staffUserId, staffUserId))
+    .orderBy(desc(staffPerformanceMonthlyPlans.month))
+    .limit(Math.min(Math.max(limit, 1), 60));
+}
+
+export async function createStaffPerformanceMonthlyPlan(input: {
+  staffUserId: number;
+  month: string;
+  title: string;
+  summary?: string | null;
+  expectedOutcomes?: string | null;
+  actorUserId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const now = new Date().toISOString();
+  const [plan] = await db.insert(staffPerformanceMonthlyPlans).values({
+    staffUserId: input.staffUserId,
+    month: input.month,
+    title: input.title,
+    summary: input.summary ?? null,
+    expectedOutcomes: input.expectedOutcomes ?? null,
+    createdByUserId: input.actorUserId,
+    status: "draft",
+    version: 1,
+    createdAt: now,
+    updatedAt: now,
+  }).returning();
+  await logStaffPerformanceAudit({
+    entityType: "monthly_plan",
+    entityId: plan.id,
+    staffUserId: input.staffUserId,
+    actorUserId: input.actorUserId,
+    action: "created",
+    toStatus: "draft",
+  });
+  return plan;
+}
+
+export async function updateStaffPerformanceMonthlyPlan(input: {
+  id: number;
+  version: number;
+  title: string;
+  summary?: string | null;
+  expectedOutcomes?: string | null;
+  actorUserId: number;
+  staffUserId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [updated] = await db.update(staffPerformanceMonthlyPlans).set({
+    title: input.title,
+    summary: input.summary ?? null,
+    expectedOutcomes: input.expectedOutcomes ?? null,
+    version: input.version + 1,
+    updatedAt: new Date().toISOString(),
+  }).where(and(
+    eq(staffPerformanceMonthlyPlans.id, input.id),
+    eq(staffPerformanceMonthlyPlans.version, input.version),
+  )).returning();
+  if (!updated) throw new Error("STAFF_PERFORMANCE_VERSION_CONFLICT");
+  await logStaffPerformanceAudit({
+    entityType: "monthly_plan",
+    entityId: input.id,
+    staffUserId: input.staffUserId,
+    actorUserId: input.actorUserId,
+    action: "updated",
+    details: { version: updated.version },
+  });
+  return updated;
+}
+
+export async function transitionStaffPerformanceMonthlyPlan(input: {
+  id: number;
+  version: number;
+  fromStatus: StaffPerformanceStatus;
+  toStatus: StaffPerformanceStatus;
+  actorUserId: number;
+  staffUserId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const now = new Date().toISOString();
+  const [updated] = await db.update(staffPerformanceMonthlyPlans).set({
+    status: input.toStatus,
+    version: input.version + 1,
+    updatedAt: now,
+    ...performanceStatusTimestamps(input.toStatus, now),
+  }).where(and(
+    eq(staffPerformanceMonthlyPlans.id, input.id),
+    eq(staffPerformanceMonthlyPlans.version, input.version),
+    eq(staffPerformanceMonthlyPlans.status, input.fromStatus),
+  )).returning();
+  if (!updated) throw new Error("STAFF_PERFORMANCE_VERSION_CONFLICT");
+  await logStaffPerformanceAudit({
+    entityType: "monthly_plan",
+    entityId: input.id,
+    staffUserId: input.staffUserId,
+    actorUserId: input.actorUserId,
+    action: "status_changed",
+    fromStatus: input.fromStatus,
+    toStatus: input.toStatus,
+  });
+  return updated;
+}
+
+export async function getStaffPerformanceGoal(id: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const [row] = await db.select({
+    id: staffPerformanceGoals.id,
+    planId: staffPerformanceGoals.planId,
+    title: staffPerformanceGoals.title,
+    description: staffPerformanceGoals.description,
+    expectedResult: staffPerformanceGoals.expectedResult,
+    weight: staffPerformanceGoals.weight,
+    sortOrder: staffPerformanceGoals.sortOrder,
+    createdByUserId: staffPerformanceGoals.createdByUserId,
+    createdAt: staffPerformanceGoals.createdAt,
+    updatedAt: staffPerformanceGoals.updatedAt,
+    staffUserId: staffPerformanceMonthlyPlans.staffUserId,
+    planMonth: staffPerformanceMonthlyPlans.month,
+    planStatus: staffPerformanceMonthlyPlans.status,
+  }).from(staffPerformanceGoals)
+    .innerJoin(staffPerformanceMonthlyPlans, eq(staffPerformanceGoals.planId, staffPerformanceMonthlyPlans.id))
+    .where(eq(staffPerformanceGoals.id, id)).limit(1);
+  return row ?? null;
+}
+
+export async function createStaffPerformanceGoal(input: {
+  planId: number;
+  title: string;
+  description?: string | null;
+  expectedResult: string;
+  weight: number;
+  sortOrder: number;
+  actorUserId: number;
+  staffUserId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const now = new Date().toISOString();
+  const [goal] = await db.insert(staffPerformanceGoals).values({
+    planId: input.planId,
+    title: input.title,
+    description: input.description ?? null,
+    expectedResult: input.expectedResult,
+    weight: input.weight,
+    sortOrder: input.sortOrder,
+    createdByUserId: input.actorUserId,
+    createdAt: now,
+    updatedAt: now,
+  }).returning();
+  await logStaffPerformanceAudit({
+    entityType: "goal",
+    entityId: goal.id,
+    staffUserId: input.staffUserId,
+    actorUserId: input.actorUserId,
+    action: "created",
+    details: { planId: input.planId },
+  });
+  return goal;
+}
+
+export async function updateStaffPerformanceGoal(input: {
+  id: number;
+  title: string;
+  description?: string | null;
+  expectedResult: string;
+  weight: number;
+  sortOrder: number;
+  actorUserId: number;
+  staffUserId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [updated] = await db.update(staffPerformanceGoals).set({
+    title: input.title,
+    description: input.description ?? null,
+    expectedResult: input.expectedResult,
+    weight: input.weight,
+    sortOrder: input.sortOrder,
+    updatedAt: new Date().toISOString(),
+  }).where(eq(staffPerformanceGoals.id, input.id)).returning();
+  if (!updated) return null;
+  await logStaffPerformanceAudit({
+    entityType: "goal",
+    entityId: input.id,
+    staffUserId: input.staffUserId,
+    actorUserId: input.actorUserId,
+    action: "updated",
+  });
+  return updated;
+}
+
+export async function deleteStaffPerformanceGoal(input: {
+  id: number;
+  actorUserId: number;
+  staffUserId: number;
+  planId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [deleted] = await db.delete(staffPerformanceGoals)
+    .where(eq(staffPerformanceGoals.id, input.id)).returning({ id: staffPerformanceGoals.id });
+  if (!deleted) return false;
+  await logStaffPerformanceAudit({
+    entityType: "goal",
+    entityId: input.id,
+    staffUserId: input.staffUserId,
+    actorUserId: input.actorUserId,
+    action: "deleted",
+    details: { planId: input.planId },
+  });
+  return true;
+}
+
+export async function getStaffPerformanceDailyLog(id: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const [log] = await db.select().from(staffPerformanceDailyLogs)
+    .where(eq(staffPerformanceDailyLogs.id, id)).limit(1);
+  if (!log) return null;
+  const tasks = await db.select().from(staffPerformanceDailyTasks)
+    .where(eq(staffPerformanceDailyTasks.dailyLogId, id))
+    .orderBy(asc(staffPerformanceDailyTasks.sortOrder), asc(staffPerformanceDailyTasks.id));
+  return { ...log, tasks };
+}
+
+export async function listStaffPerformanceDailyLogs(staffUserId: number, limit = 31) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(staffPerformanceDailyLogs)
+    .where(eq(staffPerformanceDailyLogs.staffUserId, staffUserId))
+    .orderBy(desc(staffPerformanceDailyLogs.localDate))
+    .limit(Math.min(Math.max(limit, 1), 90));
+}
+
+export async function createStaffPerformanceDailyLog(input: {
+  staffUserId: number;
+  localDate: string;
+  timezone: string;
+  actorUserId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const now = new Date().toISOString();
+  const [log] = await db.insert(staffPerformanceDailyLogs).values({
+    staffUserId: input.staffUserId,
+    localDate: input.localDate,
+    timezone: input.timezone,
+    status: "draft",
+    version: 1,
+    createdAt: now,
+    updatedAt: now,
+  }).returning();
+  await logStaffPerformanceAudit({
+    entityType: "daily_log",
+    entityId: log.id,
+    staffUserId: input.staffUserId,
+    actorUserId: input.actorUserId,
+    action: "created",
+    toStatus: "draft",
+  });
+  return log;
+}
+
+export async function updateStaffPerformanceDailyLog(input: {
+  id: number;
+  version: number;
+  endSummary?: string | null;
+  employeeNotes?: string | null;
+  managerFeedback?: string | null;
+  actorUserId: number;
+  staffUserId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const changes: Record<string, unknown> = {
+    version: input.version + 1,
+    updatedAt: new Date().toISOString(),
+  };
+  if (input.endSummary !== undefined) changes.endSummary = input.endSummary;
+  if (input.employeeNotes !== undefined) changes.employeeNotes = input.employeeNotes;
+  if (input.managerFeedback !== undefined) changes.managerFeedback = input.managerFeedback;
+  const [updated] = await db.update(staffPerformanceDailyLogs).set(changes)
+    .where(and(
+      eq(staffPerformanceDailyLogs.id, input.id),
+      eq(staffPerformanceDailyLogs.version, input.version),
+    )).returning();
+  if (!updated) throw new Error("STAFF_PERFORMANCE_VERSION_CONFLICT");
+  await logStaffPerformanceAudit({
+    entityType: "daily_log",
+    entityId: input.id,
+    staffUserId: input.staffUserId,
+    actorUserId: input.actorUserId,
+    action: "updated",
+    details: { version: updated.version },
+  });
+  return updated;
+}
+
+export async function transitionStaffPerformanceDailyLog(input: {
+  id: number;
+  version: number;
+  fromStatus: StaffPerformanceStatus;
+  toStatus: StaffPerformanceStatus;
+  actorUserId: number;
+  staffUserId: number;
+  managerFeedback?: string | null;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const now = new Date().toISOString();
+  const [updated] = await db.update(staffPerformanceDailyLogs).set({
+    status: input.toStatus,
+    version: input.version + 1,
+    updatedAt: now,
+    ...performanceStatusTimestamps(input.toStatus, now),
+    ...(input.managerFeedback !== undefined ? { managerFeedback: input.managerFeedback } : {}),
+  }).where(and(
+    eq(staffPerformanceDailyLogs.id, input.id),
+    eq(staffPerformanceDailyLogs.version, input.version),
+    eq(staffPerformanceDailyLogs.status, input.fromStatus),
+  )).returning();
+  if (!updated) throw new Error("STAFF_PERFORMANCE_VERSION_CONFLICT");
+  await logStaffPerformanceAudit({
+    entityType: "daily_log",
+    entityId: input.id,
+    staffUserId: input.staffUserId,
+    actorUserId: input.actorUserId,
+    action: "status_changed",
+    fromStatus: input.fromStatus,
+    toStatus: input.toStatus,
+  });
+  return updated;
+}
+
+export async function getStaffPerformanceDailyTask(id: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const [row] = await db.select({
+    id: staffPerformanceDailyTasks.id,
+    dailyLogId: staffPerformanceDailyTasks.dailyLogId,
+    monthlyGoalId: staffPerformanceDailyTasks.monthlyGoalId,
+    title: staffPerformanceDailyTasks.title,
+    expectedOutput: staffPerformanceDailyTasks.expectedOutput,
+    actualOutput: staffPerformanceDailyTasks.actualOutput,
+    completed: staffPerformanceDailyTasks.completed,
+    notes: staffPerformanceDailyTasks.notes,
+    sortOrder: staffPerformanceDailyTasks.sortOrder,
+    createdAt: staffPerformanceDailyTasks.createdAt,
+    updatedAt: staffPerformanceDailyTasks.updatedAt,
+    staffUserId: staffPerformanceDailyLogs.staffUserId,
+    logStatus: staffPerformanceDailyLogs.status,
+  }).from(staffPerformanceDailyTasks)
+    .innerJoin(staffPerformanceDailyLogs, eq(staffPerformanceDailyTasks.dailyLogId, staffPerformanceDailyLogs.id))
+    .where(eq(staffPerformanceDailyTasks.id, id)).limit(1);
+  return row ?? null;
+}
+
+export async function createStaffPerformanceDailyTask(input: {
+  dailyLogId: number;
+  monthlyGoalId?: number | null;
+  title: string;
+  expectedOutput: string;
+  actualOutput?: string | null;
+  completed: boolean;
+  notes?: string | null;
+  sortOrder: number;
+  actorUserId: number;
+  staffUserId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const now = new Date().toISOString();
+  const [task] = await db.insert(staffPerformanceDailyTasks).values({
+    dailyLogId: input.dailyLogId,
+    monthlyGoalId: input.monthlyGoalId ?? null,
+    title: input.title,
+    expectedOutput: input.expectedOutput,
+    actualOutput: input.actualOutput ?? null,
+    completed: input.completed,
+    notes: input.notes ?? null,
+    sortOrder: input.sortOrder,
+    createdAt: now,
+    updatedAt: now,
+  }).returning();
+  await logStaffPerformanceAudit({
+    entityType: "daily_task",
+    entityId: task.id,
+    staffUserId: input.staffUserId,
+    actorUserId: input.actorUserId,
+    action: "created",
+    details: { dailyLogId: input.dailyLogId },
+  });
+  return task;
+}
+
+export async function updateStaffPerformanceDailyTask(input: {
+  id: number;
+  monthlyGoalId?: number | null;
+  title: string;
+  expectedOutput: string;
+  actualOutput?: string | null;
+  completed: boolean;
+  notes?: string | null;
+  sortOrder: number;
+  actorUserId: number;
+  staffUserId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [updated] = await db.update(staffPerformanceDailyTasks).set({
+    monthlyGoalId: input.monthlyGoalId ?? null,
+    title: input.title,
+    expectedOutput: input.expectedOutput,
+    actualOutput: input.actualOutput ?? null,
+    completed: input.completed,
+    notes: input.notes ?? null,
+    sortOrder: input.sortOrder,
+    updatedAt: new Date().toISOString(),
+  }).where(eq(staffPerformanceDailyTasks.id, input.id)).returning();
+  if (!updated) return null;
+  await logStaffPerformanceAudit({
+    entityType: "daily_task",
+    entityId: input.id,
+    staffUserId: input.staffUserId,
+    actorUserId: input.actorUserId,
+    action: "updated",
+  });
+  return updated;
+}
+
+export async function deleteStaffPerformanceDailyTask(input: {
+  id: number;
+  actorUserId: number;
+  staffUserId: number;
+  dailyLogId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [deleted] = await db.delete(staffPerformanceDailyTasks)
+    .where(eq(staffPerformanceDailyTasks.id, input.id))
+    .returning({ id: staffPerformanceDailyTasks.id });
+  if (!deleted) return false;
+  await logStaffPerformanceAudit({
+    entityType: "daily_task",
+    entityId: input.id,
+    staffUserId: input.staffUserId,
+    actorUserId: input.actorUserId,
+    action: "deleted",
+    details: { dailyLogId: input.dailyLogId },
+  });
+  return true;
+}
+
+export async function getStaffPerformanceWeeklyReport(id: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const [report] = await db.select().from(staffPerformanceWeeklyReports)
+    .where(eq(staffPerformanceWeeklyReports.id, id)).limit(1);
+  return report ?? null;
+}
+
+export async function listStaffPerformanceWeeklyReports(staffUserId: number, limit = 26) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(staffPerformanceWeeklyReports)
+    .where(eq(staffPerformanceWeeklyReports.staffUserId, staffUserId))
+    .orderBy(desc(staffPerformanceWeeklyReports.weekStart))
+    .limit(Math.min(Math.max(limit, 1), 104));
+}
+
+export async function createStaffPerformanceWeeklyReport(input: {
+  staffUserId: number;
+  weekStart: string;
+  weekEnd: string;
+  timezone: string;
+  actorUserId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const now = new Date().toISOString();
+  const [report] = await db.insert(staffPerformanceWeeklyReports).values({
+    staffUserId: input.staffUserId,
+    weekStart: input.weekStart,
+    weekEnd: input.weekEnd,
+    timezone: input.timezone,
+    status: "draft",
+    version: 1,
+    createdAt: now,
+    updatedAt: now,
+  }).returning();
+  await logStaffPerformanceAudit({
+    entityType: "weekly_report",
+    entityId: report.id,
+    staffUserId: input.staffUserId,
+    actorUserId: input.actorUserId,
+    action: "created",
+    toStatus: "draft",
+  });
+  return report;
+}
+
+export async function updateStaffPerformanceWeeklyReport(input: {
+  id: number;
+  version: number;
+  outputs?: string | null;
+  achievementPercent?: number | null;
+  complaints?: string | null;
+  suggestions?: string | null;
+  blockers?: string | null;
+  trainingNeeds?: string | null;
+  toolNeeds?: string | null;
+  managerFeedback?: string | null;
+  actorUserId: number;
+  staffUserId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const changes: Record<string, unknown> = {
+    version: input.version + 1,
+    updatedAt: new Date().toISOString(),
+  };
+  for (const field of [
+    "outputs", "achievementPercent", "complaints", "suggestions", "blockers",
+    "trainingNeeds", "toolNeeds", "managerFeedback",
+  ] as const) {
+    if (input[field] !== undefined) changes[field] = input[field];
+  }
+  const [updated] = await db.update(staffPerformanceWeeklyReports).set(changes)
+    .where(and(
+      eq(staffPerformanceWeeklyReports.id, input.id),
+      eq(staffPerformanceWeeklyReports.version, input.version),
+    )).returning();
+  if (!updated) throw new Error("STAFF_PERFORMANCE_VERSION_CONFLICT");
+  await logStaffPerformanceAudit({
+    entityType: "weekly_report",
+    entityId: input.id,
+    staffUserId: input.staffUserId,
+    actorUserId: input.actorUserId,
+    action: "updated",
+    details: { version: updated.version },
+  });
+  return updated;
+}
+
+export async function transitionStaffPerformanceWeeklyReport(input: {
+  id: number;
+  version: number;
+  fromStatus: StaffPerformanceStatus;
+  toStatus: StaffPerformanceStatus;
+  actorUserId: number;
+  staffUserId: number;
+  managerFeedback?: string | null;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const now = new Date().toISOString();
+  const [updated] = await db.update(staffPerformanceWeeklyReports).set({
+    status: input.toStatus,
+    version: input.version + 1,
+    updatedAt: now,
+    ...performanceStatusTimestamps(input.toStatus, now),
+    ...(input.managerFeedback !== undefined ? { managerFeedback: input.managerFeedback } : {}),
+  }).where(and(
+    eq(staffPerformanceWeeklyReports.id, input.id),
+    eq(staffPerformanceWeeklyReports.version, input.version),
+    eq(staffPerformanceWeeklyReports.status, input.fromStatus),
+  )).returning();
+  if (!updated) throw new Error("STAFF_PERFORMANCE_VERSION_CONFLICT");
+  await logStaffPerformanceAudit({
+    entityType: "weekly_report",
+    entityId: input.id,
+    staffUserId: input.staffUserId,
+    actorUserId: input.actorUserId,
+    action: "status_changed",
+    fromStatus: input.fromStatus,
+    toStatus: input.toStatus,
+  });
+  return updated;
+}
+
+export async function listStaffPerformanceAuditLogs(input: {
+  entityType: StaffPerformanceEntityType;
+  entityId: number;
+  limit?: number;
+}) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(staffPerformanceAuditLogs)
+    .where(and(
+      eq(staffPerformanceAuditLogs.entityType, input.entityType),
+      eq(staffPerformanceAuditLogs.entityId, input.entityId),
+    ))
+    .orderBy(desc(staffPerformanceAuditLogs.createdAt), desc(staffPerformanceAuditLogs.id))
+    .limit(Math.min(Math.max(input.limit ?? 50, 1), 200));
+}
+
+// ============================================================================
+// Student Surveys (Phase 2A, feature-flagged by the router)
+// ============================================================================
+
+type StudentSurveyAuditEntityType = "survey" | "question" | "assignment" | "answer";
+
+async function logStudentSurveyAudit(input: {
+  entityType: StudentSurveyAuditEntityType;
+  entityId: number;
+  surveyId?: number | null;
+  userId?: number | null;
+  actorUserId: number;
+  action: string;
+  fromStatus?: StudentSurveyAssignmentStatus | null;
+  toStatus?: StudentSurveyAssignmentStatus | null;
+  details?: Record<string, unknown> | null;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(studentSurveyAuditLogs).values({
+    entityType: input.entityType,
+    entityId: input.entityId,
+    surveyId: input.surveyId ?? null,
+    userId: input.userId ?? null,
+    actorUserId: input.actorUserId,
+    action: input.action,
+    fromStatus: input.fromStatus ?? null,
+    toStatus: input.toStatus ?? null,
+    details: input.details ? JSON.stringify(input.details) : null,
+    createdAt: new Date().toISOString(),
+  });
+}
+
+export async function createStudentSurvey(input: {
+  code: string;
+  title: string;
+  description?: string | null;
+  isActive?: boolean;
+  isRequired?: boolean;
+  maxPostponements?: number;
+  postponeHours?: number;
+  blockAfterHours?: number;
+  actorUserId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const now = new Date().toISOString();
+  const [survey] = await db.insert(studentSurveys).values({
+    code: input.code,
+    title: input.title,
+    description: input.description ?? null,
+    isActive: input.isActive ?? false,
+    isRequired: input.isRequired ?? true,
+    maxPostponements: input.maxPostponements ?? 2,
+    postponeHours: input.postponeHours ?? 24,
+    blockAfterHours: input.blockAfterHours ?? 72,
+    createdByUserId: input.actorUserId,
+    createdAt: now,
+    updatedAt: now,
+  }).returning();
+  await logStudentSurveyAudit({
+    entityType: "survey",
+    entityId: survey.id,
+    surveyId: survey.id,
+    actorUserId: input.actorUserId,
+    action: "created",
+    details: { code: input.code, isActive: survey.isActive },
+  });
+  return survey;
+}
+
+export async function listStudentSurveys(limit = 50) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(studentSurveys)
+    .orderBy(desc(studentSurveys.id))
+    .limit(Math.min(Math.max(limit, 1), 200));
+}
+
+export async function getStudentSurvey(id: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const [survey] = await db.select().from(studentSurveys)
+    .where(eq(studentSurveys.id, id)).limit(1);
+  if (!survey) return null;
+  const questions = await db.select().from(studentSurveyQuestions)
+    .where(eq(studentSurveyQuestions.surveyId, id))
+    .orderBy(asc(studentSurveyQuestions.sortOrder), asc(studentSurveyQuestions.id));
+  return { ...survey, questions };
+}
+
+export async function createStudentSurveyQuestion(input: {
+  surveyId: number;
+  questionText: string;
+  questionType: string;
+  isRequired?: boolean;
+  optionsJson?: string | null;
+  sortOrder?: number;
+  actorUserId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const now = new Date().toISOString();
+  const [question] = await db.insert(studentSurveyQuestions).values({
+    surveyId: input.surveyId,
+    questionText: input.questionText,
+    questionType: input.questionType,
+    isRequired: input.isRequired ?? true,
+    optionsJson: input.optionsJson ?? null,
+    sortOrder: input.sortOrder ?? 0,
+    createdAt: now,
+    updatedAt: now,
+  }).returning();
+  await logStudentSurveyAudit({
+    entityType: "question",
+    entityId: question.id,
+    surveyId: input.surveyId,
+    actorUserId: input.actorUserId,
+    action: "created",
+  });
+  return question;
+}
+
+export async function assignStudentSurvey(input: {
+  surveyId: number;
+  userId: number;
+  dueAt: string;
+  blockAt: string;
+  actorUserId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const now = new Date().toISOString();
+  const [assignment] = await db.insert(studentSurveyAssignments).values({
+    surveyId: input.surveyId,
+    userId: input.userId,
+    status: "pending",
+    dueAt: input.dueAt,
+    blockAt: input.blockAt,
+    postponementsUsed: 0,
+    createdByUserId: input.actorUserId,
+    createdAt: now,
+    updatedAt: now,
+  }).returning();
+  await logStudentSurveyAudit({
+    entityType: "assignment",
+    entityId: assignment.id,
+    surveyId: input.surveyId,
+    userId: input.userId,
+    actorUserId: input.actorUserId,
+    action: "assigned",
+    toStatus: "pending",
+  });
+  return assignment;
+}
+
+export async function getStudentSurveyAssignment(id: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const [assignment] = await db.select({
+    id: studentSurveyAssignments.id,
+    surveyId: studentSurveyAssignments.surveyId,
+    userId: studentSurveyAssignments.userId,
+    status: studentSurveyAssignments.status,
+    dueAt: studentSurveyAssignments.dueAt,
+    blockAt: studentSurveyAssignments.blockAt,
+    postponementsUsed: studentSurveyAssignments.postponementsUsed,
+    lastPostponedAt: studentSurveyAssignments.lastPostponedAt,
+    submittedAt: studentSurveyAssignments.submittedAt,
+    createdByUserId: studentSurveyAssignments.createdByUserId,
+    createdAt: studentSurveyAssignments.createdAt,
+    updatedAt: studentSurveyAssignments.updatedAt,
+    surveyCode: studentSurveys.code,
+    surveyTitle: studentSurveys.title,
+    surveyDescription: studentSurveys.description,
+    surveyIsActive: studentSurveys.isActive,
+    surveyIsRequired: studentSurveys.isRequired,
+    maxPostponements: studentSurveys.maxPostponements,
+    postponeHours: studentSurveys.postponeHours,
+    blockAfterHours: studentSurveys.blockAfterHours,
+  }).from(studentSurveyAssignments)
+    .innerJoin(studentSurveys, eq(studentSurveyAssignments.surveyId, studentSurveys.id))
+    .where(eq(studentSurveyAssignments.id, id)).limit(1);
+  if (!assignment) return null;
+
+  const questions = await db.select().from(studentSurveyQuestions)
+    .where(eq(studentSurveyQuestions.surveyId, assignment.surveyId))
+    .orderBy(asc(studentSurveyQuestions.sortOrder), asc(studentSurveyQuestions.id));
+  const answers = await db.select().from(studentSurveyAnswers)
+    .where(eq(studentSurveyAnswers.assignmentId, id))
+    .orderBy(asc(studentSurveyAnswers.questionId));
+
+  return {
+    ...assignment,
+    status: assignment.status as StudentSurveyAssignmentStatus,
+    accessState: getStudentSurveyAccessState({
+      status: assignment.status as StudentSurveyAssignmentStatus,
+      dueAt: assignment.dueAt,
+      blockAt: assignment.blockAt,
+    }),
+    questions,
+    answers,
+  };
+}
+
+export async function listStudentSurveyAssignmentsForUser(userId: number, limit = 20) {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db.select({
+    id: studentSurveyAssignments.id,
+    surveyId: studentSurveyAssignments.surveyId,
+    userId: studentSurveyAssignments.userId,
+    status: studentSurveyAssignments.status,
+    dueAt: studentSurveyAssignments.dueAt,
+    blockAt: studentSurveyAssignments.blockAt,
+    postponementsUsed: studentSurveyAssignments.postponementsUsed,
+    lastPostponedAt: studentSurveyAssignments.lastPostponedAt,
+    submittedAt: studentSurveyAssignments.submittedAt,
+    surveyCode: studentSurveys.code,
+    surveyTitle: studentSurveys.title,
+    surveyIsActive: studentSurveys.isActive,
+    surveyIsRequired: studentSurveys.isRequired,
+    maxPostponements: studentSurveys.maxPostponements,
+    postponeHours: studentSurveys.postponeHours,
+  }).from(studentSurveyAssignments)
+    .innerJoin(studentSurveys, eq(studentSurveyAssignments.surveyId, studentSurveys.id))
+    .where(eq(studentSurveyAssignments.userId, userId))
+    .orderBy(desc(studentSurveyAssignments.updatedAt), desc(studentSurveyAssignments.id))
+    .limit(Math.min(Math.max(limit, 1), 100));
+
+  return rows.map((row) => ({
+    ...row,
+    status: row.status as StudentSurveyAssignmentStatus,
+    accessState: getStudentSurveyAccessState({
+      status: row.status as StudentSurveyAssignmentStatus,
+      dueAt: row.dueAt,
+      blockAt: row.blockAt,
+    }),
+  }));
+}
+
+export async function listStudentSurveyAssignmentsForAdmin(input: {
+  surveyId?: number | null;
+  status?: StudentSurveyAssignmentStatus | null;
+  limit?: number;
+}) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const filters: SQL[] = [];
+  if (input.surveyId) filters.push(eq(studentSurveyAssignments.surveyId, input.surveyId));
+  if (input.status) filters.push(eq(studentSurveyAssignments.status, input.status));
+
+  const rows = await db.select({
+    id: studentSurveyAssignments.id,
+    surveyId: studentSurveyAssignments.surveyId,
+    userId: studentSurveyAssignments.userId,
+    status: studentSurveyAssignments.status,
+    dueAt: studentSurveyAssignments.dueAt,
+    blockAt: studentSurveyAssignments.blockAt,
+    postponementsUsed: studentSurveyAssignments.postponementsUsed,
+    lastPostponedAt: studentSurveyAssignments.lastPostponedAt,
+    submittedAt: studentSurveyAssignments.submittedAt,
+    createdAt: studentSurveyAssignments.createdAt,
+    updatedAt: studentSurveyAssignments.updatedAt,
+    surveyCode: studentSurveys.code,
+    surveyTitle: studentSurveys.title,
+    surveyIsActive: studentSurveys.isActive,
+    surveyIsRequired: studentSurveys.isRequired,
+    maxPostponements: studentSurveys.maxPostponements,
+    postponeHours: studentSurveys.postponeHours,
+    studentName: users.name,
+    studentEmail: users.email,
+  }).from(studentSurveyAssignments)
+    .innerJoin(studentSurveys, eq(studentSurveyAssignments.surveyId, studentSurveys.id))
+    .innerJoin(users, eq(studentSurveyAssignments.userId, users.id))
+    .where(filters.length > 0 ? and(...filters) : undefined)
+    .orderBy(desc(studentSurveyAssignments.updatedAt), desc(studentSurveyAssignments.id))
+    .limit(Math.min(Math.max(input.limit ?? 100, 1), 200));
+
+  return rows.map((row) => ({
+    ...row,
+    status: row.status as StudentSurveyAssignmentStatus,
+    accessState: getStudentSurveyAccessState({
+      status: row.status as StudentSurveyAssignmentStatus,
+      dueAt: row.dueAt,
+      blockAt: row.blockAt,
+    }),
+  }));
+}
+
+export async function postponeStudentSurveyAssignment(input: {
+  id: number;
+  userId: number;
+  postponeHours: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const assignment = await getStudentSurveyAssignment(input.id);
+  if (!assignment) return null;
+
+  const fromStatus = assignment.status;
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const nextDueAt = nextPostponedDueAt({
+    currentDueAt: assignment.dueAt,
+    postponeHours: input.postponeHours,
+    blockAt: assignment.blockAt,
+    now,
+  });
+  const [updated] = await db.update(studentSurveyAssignments).set({
+    status: "postponed",
+    dueAt: nextDueAt,
+    postponementsUsed: assignment.postponementsUsed + 1,
+    lastPostponedAt: nowIso,
+    updatedAt: nowIso,
+  }).where(and(
+    eq(studentSurveyAssignments.id, input.id),
+    eq(studentSurveyAssignments.userId, input.userId),
+    eq(studentSurveyAssignments.status, fromStatus),
+  )).returning();
+  if (!updated) return null;
+
+  await logStudentSurveyAudit({
+    entityType: "assignment",
+    entityId: input.id,
+    surveyId: assignment.surveyId,
+    userId: input.userId,
+    actorUserId: input.userId,
+    action: "postponed",
+    fromStatus,
+    toStatus: "postponed",
+    details: { dueAt: nextDueAt, postponementsUsed: updated.postponementsUsed },
+  });
+  return updated;
+}
+
+export async function submitStudentSurveyAssignment(input: {
+  id: number;
+  userId: number;
+  answers: Array<{ questionId: number; answerText?: string | null; answerJson?: string | null }>;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const assignment = await getStudentSurveyAssignment(input.id);
+  if (!assignment) return null;
+  const fromStatus = assignment.status;
+  const now = new Date().toISOString();
+
+  await db.delete(studentSurveyAnswers)
+    .where(eq(studentSurveyAnswers.assignmentId, input.id));
+
+  if (input.answers.length > 0) {
+    await db.insert(studentSurveyAnswers).values(input.answers.map((answer) => ({
+      assignmentId: input.id,
+      questionId: answer.questionId,
+      answerText: answer.answerText ?? null,
+      answerJson: answer.answerJson ?? null,
+      createdAt: now,
+      updatedAt: now,
+    })));
+  }
+
+  const [updated] = await db.update(studentSurveyAssignments).set({
+    status: "submitted",
+    submittedAt: now,
+    updatedAt: now,
+  }).where(and(
+    eq(studentSurveyAssignments.id, input.id),
+    eq(studentSurveyAssignments.userId, input.userId),
+    eq(studentSurveyAssignments.status, fromStatus),
+  )).returning();
+  if (!updated) return null;
+
+  await logStudentSurveyAudit({
+    entityType: "assignment",
+    entityId: input.id,
+    surveyId: assignment.surveyId,
+    userId: input.userId,
+    actorUserId: input.userId,
+    action: "submitted",
+    fromStatus,
+    toStatus: "submitted",
+    details: { answerCount: input.answers.length },
+  });
+  return updated;
+}
+
+export async function markStudentSurveyAssignmentBlocked(input: {
+  id: number;
+  userId: number;
+  actorUserId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const assignment = await getStudentSurveyAssignment(input.id);
+  if (!assignment) return null;
+  const fromStatus = assignment.status;
+  const now = new Date().toISOString();
+  const [updated] = await db.update(studentSurveyAssignments).set({
+    status: "blocked",
+    updatedAt: now,
+  }).where(and(
+    eq(studentSurveyAssignments.id, input.id),
+    eq(studentSurveyAssignments.userId, input.userId),
+  )).returning();
+  if (!updated) return null;
+
+  await logStudentSurveyAudit({
+    entityType: "assignment",
+    entityId: input.id,
+    surveyId: assignment.surveyId,
+    userId: input.userId,
+    actorUserId: input.actorUserId,
+    action: "blocked",
+    fromStatus,
+    toStatus: "blocked",
+  });
+  return updated;
+}
+
+export async function sendStudentSurveyAssignmentReminder(input: {
+  assignmentId: number;
+  actorUserId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const assignment = await getStudentSurveyAssignment(input.assignmentId);
+  if (!assignment) return null;
+
+  const now = new Date().toISOString();
+  const [notification] = await db.insert(userNotifications).values({
+    userId: assignment.userId,
+    type: "action",
+    titleEn: "Survey reminder",
+    titleAr: "تذكير بالاستبيان",
+    contentEn: `Please complete the "${assignment.surveyTitle}" survey before the deadline.`,
+    contentAr: `يرجى تعبئة استبيان "${assignment.surveyTitle}" قبل الموعد المحدد.`,
+    actionUrl: "/surveys",
+    createdAt: now,
+  }).returning();
+
+  await logStudentSurveyAudit({
+    entityType: "assignment",
+    entityId: input.assignmentId,
+    surveyId: assignment.surveyId,
+    userId: assignment.userId,
+    actorUserId: input.actorUserId,
+    action: "reminder_sent",
+    details: {
+      notificationId: notification.id,
+      status: assignment.status,
+      dueAt: assignment.dueAt,
+      blockAt: assignment.blockAt,
+    },
+  });
+
+  return notification;
+}
+
+export async function listStudentSurveyAuditLogs(input: {
+  entityType: StudentSurveyAuditEntityType;
+  entityId: number;
+  limit?: number;
+}) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(studentSurveyAuditLogs)
+    .where(and(
+      eq(studentSurveyAuditLogs.entityType, input.entityType),
+      eq(studentSurveyAuditLogs.entityId, input.entityId),
+    ))
+    .orderBy(desc(studentSurveyAuditLogs.createdAt), desc(studentSurveyAuditLogs.id))
+    .limit(Math.min(Math.max(input.limit ?? 50, 1), 200));
 }
 
 // ============================================================================
@@ -7548,9 +8708,9 @@ export async function getUserCourseProgress(userId: number, courseId: number) {
 export async function createOrUpdateEpisodeProgress(progress: InsertEpisodeProgress) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  
+
   const existing = await getUserEpisodeProgress(progress.userId, progress.episodeId);
-  
+
   if (existing) {
     const nextWatchedDuration = Math.max(existing.watchedDuration || 0, progress.watchedDuration || 0);
     const nextCompleted = Boolean(existing.isCompleted) || Boolean(progress.isCompleted);
@@ -11168,7 +12328,7 @@ export async function deleteTestimonial(id: number): Promise<void> {
 export async function getSubscribersReport(): Promise<any[]> {
   const db = await getDb();
   if (!db) return [];
-  
+
   // Get all users (exclude staff members)
   const allUsers = await db.select({
     id: users.id,
@@ -11714,6 +12874,498 @@ export async function getJobApplicationStats() {
 }
 
 // ============================================================================
+// Student Job Eligibility (Phase 5)
+// ============================================================================
+
+type StudentJobEligibilityMetrics = {
+  completedEpisodes: number;
+  completedQuizzes: number;
+  pointsBalance: number;
+  hasActiveSubscription: boolean;
+  hasProfile: boolean;
+};
+
+type StudentJobEligibilityRuleInput = {
+  jobId: number;
+  minCompletedEpisodes?: number;
+  minPassedQuizzes?: number;
+  minPointsBalance?: number;
+  requireActiveSubscription?: boolean;
+  requireProfile?: boolean;
+  requireAdminReview?: boolean;
+  isEnabled?: boolean;
+  instructions?: string | null;
+};
+
+function normalizeEligibilityRule(rule?: StudentJobEligibilityRule | null) {
+  return {
+    id: rule?.id ?? null,
+    jobId: rule?.jobId ?? null,
+    minCompletedEpisodes: rule?.minCompletedEpisodes ?? 0,
+    minPassedQuizzes: rule?.minPassedQuizzes ?? 0,
+    minPointsBalance: rule?.minPointsBalance ?? 0,
+    requireActiveSubscription: rule?.requireActiveSubscription ?? true,
+    requireProfile: rule?.requireProfile ?? true,
+    requireAdminReview: rule?.requireAdminReview ?? true,
+    isEnabled: rule?.isEnabled ?? true,
+    instructions: rule?.instructions ?? null,
+  };
+}
+
+function evaluateStudentJobEligibility(
+  metrics: StudentJobEligibilityMetrics,
+  rule?: StudentJobEligibilityRule | null,
+) {
+  const normalizedRule = normalizeEligibilityRule(rule);
+  const checks = {
+    completedEpisodes: metrics.completedEpisodes >= normalizedRule.minCompletedEpisodes,
+    completedQuizzes: metrics.completedQuizzes >= normalizedRule.minPassedQuizzes,
+    pointsBalance: metrics.pointsBalance >= normalizedRule.minPointsBalance,
+    activeSubscription: !normalizedRule.requireActiveSubscription || metrics.hasActiveSubscription,
+    profile: !normalizedRule.requireProfile || metrics.hasProfile,
+  };
+  const values = Object.values(checks);
+  const passed = values.filter(Boolean).length;
+  return {
+    rule: normalizedRule,
+    checks,
+    systemEligible: values.every(Boolean),
+    score: Math.round((passed / values.length) * 100),
+  };
+}
+
+async function getStudentJobEligibilityMetrics(
+  userId: number,
+  profile?: StudentJobProfile | null,
+): Promise<StudentJobEligibilityMetrics> {
+  const db = await getDb();
+  if (!db) {
+    return {
+      completedEpisodes: 0,
+      completedQuizzes: 0,
+      pointsBalance: 0,
+      hasActiveSubscription: false,
+      hasProfile: false,
+    };
+  }
+
+  const [completedEpisodesRow] = await db.select({ count: sql<number>`count(*)` })
+    .from(episodeProgress)
+    .where(and(eq(episodeProgress.userId, userId), eq(episodeProgress.isCompleted, true)));
+
+  const [completedQuizzesRow] = await db.select({ count: sql<number>`count(*)` })
+    .from(userQuizProgress)
+    .where(and(eq(userQuizProgress.userId, userId), eq(userQuizProgress.isCompleted, true)));
+
+  const [activeEnrollmentRow] = await db.select({ count: sql<number>`count(*)` })
+    .from(enrollments)
+    .where(and(eq(enrollments.userId, userId), eq(enrollments.isSubscriptionActive, true)));
+
+  const [userRow] = await db.select({
+    pointsBalance: users.pointsBalance,
+  }).from(users).where(eq(users.id, userId)).limit(1);
+
+  const profileRow = profile ?? await getStudentJobProfile(userId);
+  const hasProfile = Boolean(
+    profileRow?.headline?.trim()
+    && profileRow?.skills?.trim()
+    && profileRow?.experienceSummary?.trim(),
+  );
+
+  return {
+    completedEpisodes: Number(completedEpisodesRow?.count ?? 0),
+    completedQuizzes: Number(completedQuizzesRow?.count ?? 0),
+    pointsBalance: Number(userRow?.pointsBalance ?? 0),
+    hasActiveSubscription: Number(activeEnrollmentRow?.count ?? 0) > 0,
+    hasProfile,
+  };
+}
+
+async function logStudentJobEligibilityAudit(input: {
+  userId?: number | null;
+  jobId?: number | null;
+  actorUserId: number;
+  action: string;
+  fromStatus?: string | null;
+  toStatus?: string | null;
+  details?: unknown;
+}) {
+  const db = await getDb();
+  if (!db) return;
+
+  await db.insert(studentJobEligibilityAuditLogs).values({
+    userId: input.userId ?? null,
+    jobId: input.jobId ?? null,
+    actorUserId: input.actorUserId,
+    action: input.action,
+    fromStatus: input.fromStatus ?? null,
+    toStatus: input.toStatus ?? null,
+    details: input.details === undefined ? null : JSON.stringify(input.details),
+  });
+}
+
+export async function getStudentJobProfile(userId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+
+  const [profile] = await db.select().from(studentJobProfiles)
+    .where(eq(studentJobProfiles.userId, userId))
+    .limit(1);
+  return profile;
+}
+
+export async function upsertStudentJobProfile(input: {
+  userId: number;
+  headline?: string | null;
+  skills?: string | null;
+  experienceSummary?: string | null;
+  portfolioUrl?: string | null;
+  cvUrl?: string | null;
+  preferredRole?: string | null;
+  availability?: string | null;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const now = new Date().toISOString();
+  const clean = {
+    headline: input.headline?.trim() || null,
+    skills: input.skills?.trim() || null,
+    experienceSummary: input.experienceSummary?.trim() || null,
+    portfolioUrl: input.portfolioUrl?.trim() || null,
+    cvUrl: input.cvUrl?.trim() || null,
+    preferredRole: input.preferredRole?.trim() || null,
+    availability: input.availability?.trim() || null,
+    updatedAt: now,
+  };
+
+  const existing = await getStudentJobProfile(input.userId);
+  if (existing) {
+    const [profile] = await db.update(studentJobProfiles)
+      .set(clean)
+      .where(eq(studentJobProfiles.userId, input.userId))
+      .returning();
+    await logStudentJobEligibilityAudit({
+      userId: input.userId,
+      actorUserId: input.userId,
+      action: "profile_updated",
+    });
+    return profile;
+  }
+
+  const [profile] = await db.insert(studentJobProfiles).values({
+    userId: input.userId,
+    ...clean,
+    createdAt: now,
+  }).returning();
+  await logStudentJobEligibilityAudit({
+    userId: input.userId,
+    actorUserId: input.userId,
+    action: "profile_created",
+  });
+  return profile;
+}
+
+export async function getStudentJobOpportunities(userId: number) {
+  const db = await getDb();
+  if (!db) return { profile: undefined, metrics: await getStudentJobEligibilityMetrics(userId), opportunities: [] };
+
+  const profile = await getStudentJobProfile(userId);
+  const metrics = await getStudentJobEligibilityMetrics(userId, profile);
+  const activeJobs = await getActiveJobs();
+  const jobIds = activeJobs.map((job) => job.id);
+
+  const rules = jobIds.length === 0
+    ? []
+    : await db.select().from(studentJobEligibilityRules)
+      .where(inArray(studentJobEligibilityRules.jobId, jobIds));
+  const reviews = jobIds.length === 0
+    ? []
+    : await db.select().from(studentJobEligibilityReviews)
+      .where(and(
+        eq(studentJobEligibilityReviews.userId, userId),
+        inArray(studentJobEligibilityReviews.jobId, jobIds),
+      ));
+
+  const ruleMap = new Map(rules.map((rule) => [rule.jobId, rule]));
+  const reviewMap = new Map(reviews.map((review) => [review.jobId, review]));
+
+  return {
+    profile,
+    metrics,
+    opportunities: activeJobs
+      .map((job) => {
+        const rule = ruleMap.get(job.id);
+        const evaluation = evaluateStudentJobEligibility(metrics, rule);
+        return {
+          job,
+          ...evaluation,
+          review: reviewMap.get(job.id) ?? null,
+        };
+      })
+      .filter((item) => item.rule.isEnabled),
+  };
+}
+
+export async function submitStudentJobEligibilityReview(input: {
+  userId: number;
+  jobId: number;
+  studentNote?: string | null;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const job = await getJobById(input.jobId);
+  if (!job || !job.isActive) throw new Error("Job not found or inactive");
+
+  const profile = await getStudentJobProfile(input.userId);
+  const metrics = await getStudentJobEligibilityMetrics(input.userId, profile);
+  const [rule] = await db.select().from(studentJobEligibilityRules)
+    .where(eq(studentJobEligibilityRules.jobId, input.jobId))
+    .limit(1);
+  const evaluation = evaluateStudentJobEligibility(metrics, rule);
+  if (!evaluation.rule.isEnabled) throw new Error("Eligibility is not enabled for this job");
+
+  const now = new Date().toISOString();
+  const snapshot = {
+    metrics,
+    rule: evaluation.rule,
+    checks: evaluation.checks,
+    capturedAt: now,
+  };
+  const existing = await db.select().from(studentJobEligibilityReviews)
+    .where(and(
+      eq(studentJobEligibilityReviews.userId, input.userId),
+      eq(studentJobEligibilityReviews.jobId, input.jobId),
+    ))
+    .limit(1);
+  const nextStatus: StudentJobEligibilityReviewStatus = "submitted";
+
+  if (existing[0]) {
+    const [review] = await db.update(studentJobEligibilityReviews).set({
+      status: nextStatus,
+      systemEligible: evaluation.systemEligible,
+      score: evaluation.score,
+      snapshotJson: JSON.stringify(snapshot),
+      studentNote: input.studentNote?.trim() || null,
+      adminNote: null,
+      reviewedByUserId: null,
+      reviewedAt: null,
+      submittedAt: now,
+      updatedAt: now,
+    }).where(eq(studentJobEligibilityReviews.id, existing[0].id)).returning();
+
+    await logStudentJobEligibilityAudit({
+      userId: input.userId,
+      jobId: input.jobId,
+      actorUserId: input.userId,
+      action: "review_resubmitted",
+      fromStatus: existing[0].status,
+      toStatus: nextStatus,
+      details: snapshot,
+    });
+    return review;
+  }
+
+  const [review] = await db.insert(studentJobEligibilityReviews).values({
+    userId: input.userId,
+    jobId: input.jobId,
+    status: nextStatus,
+    systemEligible: evaluation.systemEligible,
+    score: evaluation.score,
+    snapshotJson: JSON.stringify(snapshot),
+    studentNote: input.studentNote?.trim() || null,
+    submittedAt: now,
+    updatedAt: now,
+    createdAt: now,
+  }).returning();
+
+  await logStudentJobEligibilityAudit({
+    userId: input.userId,
+    jobId: input.jobId,
+    actorUserId: input.userId,
+    action: "review_submitted",
+    toStatus: nextStatus,
+    details: snapshot,
+  });
+  return review;
+}
+
+export async function listStudentJobEligibilityRules() {
+  const db = await getDb();
+  if (!db) return [];
+
+  return db.select({
+    id: studentJobEligibilityRules.id,
+    jobId: studentJobEligibilityRules.jobId,
+    minCompletedEpisodes: studentJobEligibilityRules.minCompletedEpisodes,
+    minPassedQuizzes: studentJobEligibilityRules.minPassedQuizzes,
+    minPointsBalance: studentJobEligibilityRules.minPointsBalance,
+    requireActiveSubscription: studentJobEligibilityRules.requireActiveSubscription,
+    requireProfile: studentJobEligibilityRules.requireProfile,
+    requireAdminReview: studentJobEligibilityRules.requireAdminReview,
+    isEnabled: studentJobEligibilityRules.isEnabled,
+    instructions: studentJobEligibilityRules.instructions,
+    updatedAt: studentJobEligibilityRules.updatedAt,
+    jobTitleAr: jobs.titleAr,
+    jobTitleEn: jobs.titleEn,
+    jobIsActive: jobs.isActive,
+  }).from(studentJobEligibilityRules)
+    .innerJoin(jobs, eq(studentJobEligibilityRules.jobId, jobs.id))
+    .orderBy(desc(studentJobEligibilityRules.updatedAt), asc(jobs.sortOrder));
+}
+
+export async function upsertStudentJobEligibilityRule(input: StudentJobEligibilityRuleInput & {
+  actorUserId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const job = await getJobById(input.jobId);
+  if (!job) throw new Error("Job not found");
+
+  const now = new Date().toISOString();
+  const data = {
+    minCompletedEpisodes: Math.max(0, input.minCompletedEpisodes ?? 0),
+    minPassedQuizzes: Math.max(0, input.minPassedQuizzes ?? 0),
+    minPointsBalance: Math.max(0, input.minPointsBalance ?? 0),
+    requireActiveSubscription: input.requireActiveSubscription ?? true,
+    requireProfile: input.requireProfile ?? true,
+    requireAdminReview: input.requireAdminReview ?? true,
+    isEnabled: input.isEnabled ?? true,
+    instructions: input.instructions?.trim() || null,
+    updatedByUserId: input.actorUserId,
+    updatedAt: now,
+  };
+
+  const [existing] = await db.select().from(studentJobEligibilityRules)
+    .where(eq(studentJobEligibilityRules.jobId, input.jobId))
+    .limit(1);
+
+  if (existing) {
+    const [rule] = await db.update(studentJobEligibilityRules)
+      .set(data)
+      .where(eq(studentJobEligibilityRules.id, existing.id))
+      .returning();
+    await logStudentJobEligibilityAudit({
+      jobId: input.jobId,
+      actorUserId: input.actorUserId,
+      action: "rule_updated",
+      details: data,
+    });
+    return rule;
+  }
+
+  const [rule] = await db.insert(studentJobEligibilityRules).values({
+    jobId: input.jobId,
+    ...data,
+    createdByUserId: input.actorUserId,
+    createdAt: now,
+  }).returning();
+  await logStudentJobEligibilityAudit({
+    jobId: input.jobId,
+    actorUserId: input.actorUserId,
+    action: "rule_created",
+    details: data,
+  });
+  return rule;
+}
+
+export async function listStudentJobEligibilityReviews(input?: {
+  status?: StudentJobEligibilityReviewStatus | null;
+  jobId?: number | null;
+  limit?: number | null;
+}) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const conditions: SQL[] = [];
+  if (input?.status) conditions.push(eq(studentJobEligibilityReviews.status, input.status));
+  if (input?.jobId) conditions.push(eq(studentJobEligibilityReviews.jobId, input.jobId));
+  const limit = Math.min(Math.max(input?.limit ?? 100, 1), 200);
+
+  return db.select({
+    id: studentJobEligibilityReviews.id,
+    userId: studentJobEligibilityReviews.userId,
+    jobId: studentJobEligibilityReviews.jobId,
+    status: studentJobEligibilityReviews.status,
+    systemEligible: studentJobEligibilityReviews.systemEligible,
+    score: studentJobEligibilityReviews.score,
+    snapshotJson: studentJobEligibilityReviews.snapshotJson,
+    studentNote: studentJobEligibilityReviews.studentNote,
+    adminNote: studentJobEligibilityReviews.adminNote,
+    reviewedByUserId: studentJobEligibilityReviews.reviewedByUserId,
+    reviewedAt: studentJobEligibilityReviews.reviewedAt,
+    submittedAt: studentJobEligibilityReviews.submittedAt,
+    updatedAt: studentJobEligibilityReviews.updatedAt,
+    studentName: users.name,
+    studentEmail: users.email,
+    studentPhone: users.phone,
+    jobTitleAr: jobs.titleAr,
+    jobTitleEn: jobs.titleEn,
+  }).from(studentJobEligibilityReviews)
+    .innerJoin(users, eq(studentJobEligibilityReviews.userId, users.id))
+    .innerJoin(jobs, eq(studentJobEligibilityReviews.jobId, jobs.id))
+    .where(conditions.length ? and(...conditions) : undefined)
+    .orderBy(desc(studentJobEligibilityReviews.submittedAt), desc(studentJobEligibilityReviews.id))
+    .limit(limit);
+}
+
+export async function reviewStudentJobEligibility(input: {
+  reviewId: number;
+  status: Extract<StudentJobEligibilityReviewStatus, "returned" | "eligible" | "ineligible">;
+  actorUserId: number;
+  adminNote?: string | null;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const [current] = await db.select().from(studentJobEligibilityReviews)
+    .where(eq(studentJobEligibilityReviews.id, input.reviewId))
+    .limit(1);
+  if (!current) throw new Error("Eligibility review not found");
+
+  const now = new Date().toISOString();
+  const [review] = await db.update(studentJobEligibilityReviews).set({
+    status: input.status,
+    adminNote: input.adminNote?.trim() || null,
+    reviewedByUserId: input.actorUserId,
+    reviewedAt: now,
+    updatedAt: now,
+  }).where(eq(studentJobEligibilityReviews.id, input.reviewId)).returning();
+
+  await logStudentJobEligibilityAudit({
+    userId: current.userId,
+    jobId: current.jobId,
+    actorUserId: input.actorUserId,
+    action: "review_decision",
+    fromStatus: current.status,
+    toStatus: input.status,
+    details: { adminNote: input.adminNote ?? null },
+  });
+  return review;
+}
+
+export async function listStudentJobEligibilityAuditLogs(input?: {
+  userId?: number | null;
+  jobId?: number | null;
+  limit?: number | null;
+}) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const conditions: SQL[] = [];
+  if (input?.userId) conditions.push(eq(studentJobEligibilityAuditLogs.userId, input.userId));
+  if (input?.jobId) conditions.push(eq(studentJobEligibilityAuditLogs.jobId, input.jobId));
+  const limit = Math.min(Math.max(input?.limit ?? 100, 1), 200);
+
+  return db.select().from(studentJobEligibilityAuditLogs)
+    .where(conditions.length ? and(...conditions) : undefined)
+    .orderBy(desc(studentJobEligibilityAuditLogs.createdAt), desc(studentJobEligibilityAuditLogs.id))
+    .limit(limit);
+}
+
+// ============================================================================
 // Global Search (Phase 3)
 // ============================================================================
 
@@ -12081,6 +13733,805 @@ export async function getTopPointsUsers(limit = 20) {
     .where(sql`${users.pointsBalance} > 0`)
     .orderBy(desc(users.pointsBalance))
     .limit(limit);
+}
+
+async function logLoyaltyRewardAudit(input: {
+  entityType: "item" | "redemption";
+  entityId: number;
+  actorUserId?: number | null;
+  action: string;
+  fromStatus?: string | null;
+  toStatus?: string | null;
+  details?: Record<string, unknown> | null;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(loyaltyRewardAuditLogs).values({
+    entityType: input.entityType,
+    entityId: input.entityId,
+    actorUserId: input.actorUserId ?? null,
+    action: input.action,
+    fromStatus: input.fromStatus ?? null,
+    toStatus: input.toStatus ?? null,
+    details: input.details ? JSON.stringify(input.details) : null,
+    createdAt: new Date().toISOString(),
+  });
+}
+
+function normalizeRewardStock(value: number | null | undefined) {
+  if (value === undefined || value === null || Number.isNaN(Number(value))) return null;
+  return Math.max(0, Math.floor(Number(value)));
+}
+
+export async function listLoyaltyRewardItemsForStudent() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(loyaltyRewardItems)
+    .where(eq(loyaltyRewardItems.isActive, true))
+    .orderBy(asc(loyaltyRewardItems.sortOrder), asc(loyaltyRewardItems.id));
+}
+
+export async function listLoyaltyRewardItemsForAdmin(limit = 200) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(loyaltyRewardItems)
+    .orderBy(asc(loyaltyRewardItems.sortOrder), desc(loyaltyRewardItems.id))
+    .limit(Math.min(Math.max(limit, 1), 200));
+}
+
+export async function getLoyaltyRewardItem(id: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const [item] = await db.select().from(loyaltyRewardItems)
+    .where(eq(loyaltyRewardItems.id, id)).limit(1);
+  return item ?? null;
+}
+
+export async function createLoyaltyRewardItem(input: {
+  titleEn: string;
+  titleAr: string;
+  descriptionEn?: string | null;
+  descriptionAr?: string | null;
+  pointsCost: number;
+  stockQuantity?: number | null;
+  isActive?: boolean;
+  sortOrder?: number;
+  actorUserId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const now = new Date().toISOString();
+  const [item] = await db.insert(loyaltyRewardItems).values({
+    titleEn: input.titleEn,
+    titleAr: input.titleAr,
+    descriptionEn: input.descriptionEn ?? null,
+    descriptionAr: input.descriptionAr ?? null,
+    pointsCost: Math.max(1, Math.floor(input.pointsCost)),
+    stockQuantity: normalizeRewardStock(input.stockQuantity),
+    isActive: input.isActive ?? false,
+    sortOrder: input.sortOrder ?? 0,
+    createdByUserId: input.actorUserId,
+    createdAt: now,
+    updatedAt: now,
+  }).returning();
+
+  await logLoyaltyRewardAudit({
+    entityType: "item",
+    entityId: item.id,
+    actorUserId: input.actorUserId,
+    action: "created",
+    details: { pointsCost: item.pointsCost, isActive: item.isActive },
+  });
+
+  return item;
+}
+
+export async function updateLoyaltyRewardItem(input: {
+  id: number;
+  titleEn?: string;
+  titleAr?: string;
+  descriptionEn?: string | null;
+  descriptionAr?: string | null;
+  pointsCost?: number;
+  stockQuantity?: number | null;
+  isActive?: boolean;
+  sortOrder?: number;
+  actorUserId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const before = await getLoyaltyRewardItem(input.id);
+  if (!before) return null;
+
+  const patch: Partial<InsertLoyaltyRewardItem> = {
+    updatedAt: new Date().toISOString(),
+  };
+  if (input.titleEn !== undefined) patch.titleEn = input.titleEn;
+  if (input.titleAr !== undefined) patch.titleAr = input.titleAr;
+  if (input.descriptionEn !== undefined) patch.descriptionEn = input.descriptionEn;
+  if (input.descriptionAr !== undefined) patch.descriptionAr = input.descriptionAr;
+  if (input.pointsCost !== undefined) patch.pointsCost = Math.max(1, Math.floor(input.pointsCost));
+  if (input.stockQuantity !== undefined) patch.stockQuantity = normalizeRewardStock(input.stockQuantity);
+  if (input.isActive !== undefined) patch.isActive = input.isActive;
+  if (input.sortOrder !== undefined) patch.sortOrder = input.sortOrder;
+
+  const [item] = await db.update(loyaltyRewardItems)
+    .set(patch)
+    .where(eq(loyaltyRewardItems.id, input.id))
+    .returning();
+
+  await logLoyaltyRewardAudit({
+    entityType: "item",
+    entityId: input.id,
+    actorUserId: input.actorUserId,
+    action: "updated",
+    details: {
+      before: {
+        pointsCost: before.pointsCost,
+        stockQuantity: before.stockQuantity,
+        isActive: before.isActive,
+      },
+      after: {
+        pointsCost: item.pointsCost,
+        stockQuantity: item.stockQuantity,
+        isActive: item.isActive,
+      },
+    },
+  });
+
+  return item;
+}
+
+export async function requestLoyaltyRewardRedemption(input: {
+  rewardItemId: number;
+  userId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const item = await getLoyaltyRewardItem(input.rewardItemId);
+  if (!item || !item.isActive) return { status: "not_available" as const };
+  if (item.stockQuantity !== null && item.stockQuantity <= 0) return { status: "out_of_stock" as const };
+
+  const balance = await getPointsBalance(input.userId);
+  if (balance < item.pointsCost) return { status: "insufficient_points" as const };
+
+  const now = new Date().toISOString();
+  const [redemption] = await db.insert(loyaltyRewardRedemptions).values({
+    rewardItemId: item.id,
+    userId: input.userId,
+    status: "pending",
+    pointsCost: item.pointsCost,
+    requestedAt: now,
+    updatedAt: now,
+  }).returning();
+
+  const tx = await redeemPoints({
+    userId: input.userId,
+    amount: item.pointsCost,
+    reasonEn: `Reward redemption requested: ${item.titleEn}`,
+    reasonAr: `طلب استبدال مكافأة: ${item.titleAr}`,
+    referenceId: redemption.id,
+    referenceType: "loyalty_reward",
+  });
+  if (!tx) return { status: "insufficient_points" as const };
+
+  const [updated] = await db.update(loyaltyRewardRedemptions)
+    .set({ pointsTransactionId: tx.id, updatedAt: now })
+    .where(eq(loyaltyRewardRedemptions.id, redemption.id))
+    .returning();
+
+  if (item.stockQuantity !== null) {
+    await db.update(loyaltyRewardItems)
+      .set({
+        stockQuantity: sql`${loyaltyRewardItems.stockQuantity} - 1`,
+        updatedAt: now,
+      })
+      .where(and(
+        eq(loyaltyRewardItems.id, item.id),
+        sql`${loyaltyRewardItems.stockQuantity} > 0`,
+      ));
+  }
+
+  await logLoyaltyRewardAudit({
+    entityType: "redemption",
+    entityId: redemption.id,
+    actorUserId: input.userId,
+    action: "requested",
+    toStatus: "pending",
+    details: { rewardItemId: item.id, pointsCost: item.pointsCost, transactionId: tx.id },
+  });
+
+  await createNotification({
+    userId: input.userId,
+    type: "action",
+    titleEn: "Reward request received",
+    titleAr: "تم استلام طلب المكافأة",
+    contentEn: `Your request for "${item.titleEn}" is pending review.`,
+    contentAr: `طلبك لمكافأة "${item.titleAr}" بانتظار المراجعة.`,
+    actionUrl: "/my-points",
+  });
+
+  return { status: "created" as const, redemption: updated };
+}
+
+export async function listMyLoyaltyRewardRedemptions(userId: number, limit = 50) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({
+    id: loyaltyRewardRedemptions.id,
+    rewardItemId: loyaltyRewardRedemptions.rewardItemId,
+    userId: loyaltyRewardRedemptions.userId,
+    status: loyaltyRewardRedemptions.status,
+    pointsCost: loyaltyRewardRedemptions.pointsCost,
+    adminNote: loyaltyRewardRedemptions.adminNote,
+    requestedAt: loyaltyRewardRedemptions.requestedAt,
+    reviewedAt: loyaltyRewardRedemptions.reviewedAt,
+    fulfilledAt: loyaltyRewardRedemptions.fulfilledAt,
+    titleEn: loyaltyRewardItems.titleEn,
+    titleAr: loyaltyRewardItems.titleAr,
+  }).from(loyaltyRewardRedemptions)
+    .innerJoin(loyaltyRewardItems, eq(loyaltyRewardRedemptions.rewardItemId, loyaltyRewardItems.id))
+    .where(eq(loyaltyRewardRedemptions.userId, userId))
+    .orderBy(desc(loyaltyRewardRedemptions.requestedAt), desc(loyaltyRewardRedemptions.id))
+    .limit(Math.min(Math.max(limit, 1), 100));
+}
+
+export async function listLoyaltyRewardRedemptionsForAdmin(input: {
+  status?: LoyaltyRewardRedemptionStatus | null;
+  limit?: number;
+}) {
+  const db = await getDb();
+  if (!db) return [];
+  const filters: SQL[] = [];
+  if (input.status) filters.push(eq(loyaltyRewardRedemptions.status, input.status));
+
+  return db.select({
+    id: loyaltyRewardRedemptions.id,
+    rewardItemId: loyaltyRewardRedemptions.rewardItemId,
+    userId: loyaltyRewardRedemptions.userId,
+    status: loyaltyRewardRedemptions.status,
+    pointsCost: loyaltyRewardRedemptions.pointsCost,
+    adminNote: loyaltyRewardRedemptions.adminNote,
+    requestedAt: loyaltyRewardRedemptions.requestedAt,
+    reviewedAt: loyaltyRewardRedemptions.reviewedAt,
+    fulfilledAt: loyaltyRewardRedemptions.fulfilledAt,
+    titleEn: loyaltyRewardItems.titleEn,
+    titleAr: loyaltyRewardItems.titleAr,
+    studentName: users.name,
+    studentEmail: users.email,
+  }).from(loyaltyRewardRedemptions)
+    .innerJoin(loyaltyRewardItems, eq(loyaltyRewardRedemptions.rewardItemId, loyaltyRewardItems.id))
+    .innerJoin(users, eq(loyaltyRewardRedemptions.userId, users.id))
+    .where(filters.length > 0 ? and(...filters) : undefined)
+    .orderBy(desc(loyaltyRewardRedemptions.requestedAt), desc(loyaltyRewardRedemptions.id))
+    .limit(Math.min(Math.max(input.limit ?? 100, 1), 200));
+}
+
+export async function reviewLoyaltyRewardRedemption(input: {
+  id: number;
+  decision: "approved" | "rejected";
+  adminNote?: string | null;
+  actorUserId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const [redemption] = await db.select({
+    id: loyaltyRewardRedemptions.id,
+    rewardItemId: loyaltyRewardRedemptions.rewardItemId,
+    userId: loyaltyRewardRedemptions.userId,
+    status: loyaltyRewardRedemptions.status,
+    pointsCost: loyaltyRewardRedemptions.pointsCost,
+    titleEn: loyaltyRewardItems.titleEn,
+    titleAr: loyaltyRewardItems.titleAr,
+  }).from(loyaltyRewardRedemptions)
+    .innerJoin(loyaltyRewardItems, eq(loyaltyRewardRedemptions.rewardItemId, loyaltyRewardItems.id))
+    .where(eq(loyaltyRewardRedemptions.id, input.id))
+    .limit(1);
+  if (!redemption) return null;
+  if (redemption.status !== "pending") return { status: "invalid_status" as const };
+
+  const now = new Date().toISOString();
+  const [updated] = await db.update(loyaltyRewardRedemptions)
+    .set({
+      status: input.decision,
+      adminNote: input.adminNote ?? null,
+      reviewedAt: now,
+      reviewedByUserId: input.actorUserId,
+      updatedAt: now,
+    })
+    .where(and(
+      eq(loyaltyRewardRedemptions.id, input.id),
+      eq(loyaltyRewardRedemptions.status, "pending"),
+    ))
+    .returning();
+
+  if (!updated) return { status: "invalid_status" as const };
+
+  if (input.decision === "rejected") {
+    await addPoints({
+      userId: redemption.userId,
+      amount: redemption.pointsCost,
+      type: "bonus",
+      reasonEn: `Reward redemption refund: ${redemption.titleEn}`,
+      reasonAr: `استرجاع نقاط مكافأة: ${redemption.titleAr}`,
+      referenceId: redemption.id,
+      referenceType: "loyalty_reward_refund",
+    });
+  }
+
+  await logLoyaltyRewardAudit({
+    entityType: "redemption",
+    entityId: redemption.id,
+    actorUserId: input.actorUserId,
+    action: input.decision,
+    fromStatus: "pending",
+    toStatus: input.decision,
+    details: { adminNote: input.adminNote ?? null, refunded: input.decision === "rejected" },
+  });
+
+  await createNotification({
+    userId: redemption.userId,
+    type: input.decision === "approved" ? "success" : "info",
+    titleEn: input.decision === "approved" ? "Reward approved" : "Reward request refunded",
+    titleAr: input.decision === "approved" ? "تم اعتماد المكافأة" : "تم إرجاع نقاط طلب المكافأة",
+    contentEn: input.decision === "approved"
+      ? `Your reward request for "${redemption.titleEn}" was approved.`
+      : `Your reward request for "${redemption.titleEn}" was rejected and points were returned.`,
+    contentAr: input.decision === "approved"
+      ? `تم اعتماد طلب مكافأة "${redemption.titleAr}".`
+      : `تم رفض طلب مكافأة "${redemption.titleAr}" وإرجاع النقاط.`,
+    actionUrl: "/my-points",
+  });
+
+  return { status: "updated" as const, redemption: updated };
+}
+
+export async function fulfillLoyaltyRewardRedemption(input: {
+  id: number;
+  adminNote?: string | null;
+  actorUserId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [redemption] = await db.select().from(loyaltyRewardRedemptions)
+    .where(eq(loyaltyRewardRedemptions.id, input.id))
+    .limit(1);
+  if (!redemption) return null;
+  if (redemption.status !== "approved") return { status: "invalid_status" as const };
+
+  const now = new Date().toISOString();
+  const [updated] = await db.update(loyaltyRewardRedemptions)
+    .set({
+      status: "fulfilled",
+      adminNote: input.adminNote ?? redemption.adminNote,
+      fulfilledAt: now,
+      updatedAt: now,
+    })
+    .where(and(
+      eq(loyaltyRewardRedemptions.id, input.id),
+      eq(loyaltyRewardRedemptions.status, "approved"),
+    ))
+    .returning();
+  if (!updated) return { status: "invalid_status" as const };
+
+  await logLoyaltyRewardAudit({
+    entityType: "redemption",
+    entityId: input.id,
+    actorUserId: input.actorUserId,
+    action: "fulfilled",
+    fromStatus: "approved",
+    toStatus: "fulfilled",
+    details: { adminNote: input.adminNote ?? null },
+  });
+
+  await createNotification({
+    userId: redemption.userId,
+    type: "success",
+    titleEn: "Reward fulfilled",
+    titleAr: "تم تسليم المكافأة",
+    contentEn: "Your reward request has been fulfilled.",
+    contentAr: "تم تنفيذ طلب المكافأة الخاص بك.",
+    actionUrl: "/my-points",
+  });
+
+  return { status: "updated" as const, redemption: updated };
+}
+
+export async function listLoyaltyRewardAuditLogs(input: {
+  entityType: "item" | "redemption";
+  entityId: number;
+  limit?: number;
+}) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(loyaltyRewardAuditLogs)
+    .where(and(
+      eq(loyaltyRewardAuditLogs.entityType, input.entityType),
+      eq(loyaltyRewardAuditLogs.entityId, input.entityId),
+    ))
+    .orderBy(desc(loyaltyRewardAuditLogs.createdAt), desc(loyaltyRewardAuditLogs.id))
+    .limit(Math.min(Math.max(input.limit ?? 50, 1), 200));
+}
+
+async function logStudentCommunityAudit(input: {
+  entityType: "post" | "comment" | "report";
+  entityId: number;
+  actorUserId?: number | null;
+  action: string;
+  fromStatus?: string | null;
+  toStatus?: string | null;
+  details?: Record<string, unknown> | null;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(studentCommunityAuditLogs).values({
+    entityType: input.entityType,
+    entityId: input.entityId,
+    actorUserId: input.actorUserId ?? null,
+    action: input.action,
+    fromStatus: input.fromStatus ?? null,
+    toStatus: input.toStatus ?? null,
+    details: input.details ? JSON.stringify(input.details) : null,
+    createdAt: new Date().toISOString(),
+  });
+}
+
+function communityVisibleFilter(includeHidden?: boolean) {
+  return includeHidden
+    ? ne(studentCommunityPosts.status, "deleted")
+    : eq(studentCommunityPosts.status, "visible");
+}
+
+export async function listStudentCommunityPosts(input: {
+  includeHidden?: boolean;
+  limit?: number;
+}) {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db.select({
+    id: studentCommunityPosts.id,
+    userId: studentCommunityPosts.userId,
+    title: studentCommunityPosts.title,
+    body: studentCommunityPosts.body,
+    status: studentCommunityPosts.status,
+    pinnedAt: studentCommunityPosts.pinnedAt,
+    createdAt: studentCommunityPosts.createdAt,
+    updatedAt: studentCommunityPosts.updatedAt,
+    authorName: users.name,
+    authorEmail: users.email,
+    visibleCommentCount: sql<number>`(
+      SELECT COUNT(*) FROM student_community_comments c
+      WHERE c.post_id = ${studentCommunityPosts.id}
+      AND c.status = 'visible'
+    )`,
+    openReportCount: sql<number>`(
+      SELECT COUNT(*) FROM student_community_reports r
+      WHERE r.target_type = 'post'
+      AND r.target_id = ${studentCommunityPosts.id}
+      AND r.status = 'open'
+    )`,
+  }).from(studentCommunityPosts)
+    .innerJoin(users, eq(studentCommunityPosts.userId, users.id))
+    .where(communityVisibleFilter(input.includeHidden))
+    .orderBy(desc(studentCommunityPosts.pinnedAt), desc(studentCommunityPosts.createdAt), desc(studentCommunityPosts.id))
+    .limit(Math.min(Math.max(input.limit ?? 50, 1), 100));
+
+  return rows.map((row) => ({
+    ...row,
+    status: row.status as StudentCommunityContentStatus,
+    visibleCommentCount: Number(row.visibleCommentCount ?? 0),
+    openReportCount: Number(row.openReportCount ?? 0),
+  }));
+}
+
+export async function getStudentCommunityPost(input: {
+  id: number;
+  includeHidden?: boolean;
+}) {
+  const db = await getDb();
+  if (!db) return null;
+  const [post] = await db.select({
+    id: studentCommunityPosts.id,
+    userId: studentCommunityPosts.userId,
+    title: studentCommunityPosts.title,
+    body: studentCommunityPosts.body,
+    status: studentCommunityPosts.status,
+    pinnedAt: studentCommunityPosts.pinnedAt,
+    createdAt: studentCommunityPosts.createdAt,
+    updatedAt: studentCommunityPosts.updatedAt,
+    authorName: users.name,
+    authorEmail: users.email,
+  }).from(studentCommunityPosts)
+    .innerJoin(users, eq(studentCommunityPosts.userId, users.id))
+    .where(and(
+      eq(studentCommunityPosts.id, input.id),
+      input.includeHidden ? ne(studentCommunityPosts.status, "deleted") : eq(studentCommunityPosts.status, "visible"),
+    ))
+    .limit(1);
+  if (!post) return null;
+
+  const commentRows = await db.select({
+    id: studentCommunityComments.id,
+    postId: studentCommunityComments.postId,
+    userId: studentCommunityComments.userId,
+    body: studentCommunityComments.body,
+    status: studentCommunityComments.status,
+    createdAt: studentCommunityComments.createdAt,
+    updatedAt: studentCommunityComments.updatedAt,
+    authorName: users.name,
+    authorEmail: users.email,
+    openReportCount: sql<number>`(
+      SELECT COUNT(*) FROM student_community_reports r
+      WHERE r.target_type = 'comment'
+      AND r.target_id = ${studentCommunityComments.id}
+      AND r.status = 'open'
+    )`,
+  }).from(studentCommunityComments)
+    .innerJoin(users, eq(studentCommunityComments.userId, users.id))
+    .where(and(
+      eq(studentCommunityComments.postId, input.id),
+      input.includeHidden ? ne(studentCommunityComments.status, "deleted") : eq(studentCommunityComments.status, "visible"),
+    ))
+    .orderBy(asc(studentCommunityComments.createdAt), asc(studentCommunityComments.id));
+
+  return {
+    ...post,
+    status: post.status as StudentCommunityContentStatus,
+    comments: commentRows.map((row) => ({
+      ...row,
+      status: row.status as StudentCommunityContentStatus,
+      openReportCount: Number(row.openReportCount ?? 0),
+    })),
+  };
+}
+
+export async function createStudentCommunityPost(input: {
+  userId: number;
+  title: string;
+  body: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const now = new Date().toISOString();
+  const [post] = await db.insert(studentCommunityPosts).values({
+    userId: input.userId,
+    title: input.title,
+    body: input.body,
+    status: "visible",
+    createdAt: now,
+    updatedAt: now,
+  }).returning();
+
+  await logStudentCommunityAudit({
+    entityType: "post",
+    entityId: post.id,
+    actorUserId: input.userId,
+    action: "created",
+    toStatus: "visible",
+  });
+
+  return post;
+}
+
+export async function createStudentCommunityComment(input: {
+  postId: number;
+  userId: number;
+  body: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const post = await getStudentCommunityPost({ id: input.postId, includeHidden: false });
+  if (!post) return null;
+  const now = new Date().toISOString();
+  const [comment] = await db.insert(studentCommunityComments).values({
+    postId: input.postId,
+    userId: input.userId,
+    body: input.body,
+    status: "visible",
+    createdAt: now,
+    updatedAt: now,
+  }).returning();
+
+  await logStudentCommunityAudit({
+    entityType: "comment",
+    entityId: comment.id,
+    actorUserId: input.userId,
+    action: "created",
+    toStatus: "visible",
+    details: { postId: input.postId },
+  });
+
+  return comment;
+}
+
+export async function reportStudentCommunityContent(input: {
+  targetType: StudentCommunityTargetType;
+  targetId: number;
+  reporterUserId: number;
+  reason: string;
+  details?: string | null;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  if (input.targetType === "post") {
+    const post = await getStudentCommunityPost({ id: input.targetId, includeHidden: false });
+    if (!post) return { status: "not_found" as const };
+  } else {
+    const [comment] = await db.select().from(studentCommunityComments)
+      .where(and(
+        eq(studentCommunityComments.id, input.targetId),
+        eq(studentCommunityComments.status, "visible"),
+      ))
+      .limit(1);
+    if (!comment) return { status: "not_found" as const };
+  }
+
+  try {
+    const now = new Date().toISOString();
+    const [report] = await db.insert(studentCommunityReports).values({
+      targetType: input.targetType,
+      targetId: input.targetId,
+      reporterUserId: input.reporterUserId,
+      reason: input.reason,
+      details: input.details ?? null,
+      status: "open",
+      createdAt: now,
+      updatedAt: now,
+    }).returning();
+
+    await logStudentCommunityAudit({
+      entityType: "report",
+      entityId: report.id,
+      actorUserId: input.reporterUserId,
+      action: "reported",
+      toStatus: "open",
+      details: { targetType: input.targetType, targetId: input.targetId, reason: input.reason },
+    });
+
+    return { status: "created" as const, report };
+  } catch (error) {
+    if (String(error).toLowerCase().includes("unique")) {
+      return { status: "duplicate" as const };
+    }
+    throw error;
+  }
+}
+
+export async function listStudentCommunityReportsForAdmin(input: {
+  status?: StudentCommunityReportStatus | null;
+  limit?: number;
+}) {
+  const db = await getDb();
+  if (!db) return [];
+  const filters: SQL[] = [];
+  if (input.status) filters.push(eq(studentCommunityReports.status, input.status));
+
+  return db.select({
+    id: studentCommunityReports.id,
+    targetType: studentCommunityReports.targetType,
+    targetId: studentCommunityReports.targetId,
+    reporterUserId: studentCommunityReports.reporterUserId,
+    reason: studentCommunityReports.reason,
+    details: studentCommunityReports.details,
+    status: studentCommunityReports.status,
+    reviewedAt: studentCommunityReports.reviewedAt,
+    createdAt: studentCommunityReports.createdAt,
+    reporterName: users.name,
+    reporterEmail: users.email,
+  }).from(studentCommunityReports)
+    .innerJoin(users, eq(studentCommunityReports.reporterUserId, users.id))
+    .where(filters.length > 0 ? and(...filters) : undefined)
+    .orderBy(desc(studentCommunityReports.createdAt), desc(studentCommunityReports.id))
+    .limit(Math.min(Math.max(input.limit ?? 100, 1), 200));
+}
+
+export async function moderateStudentCommunityContent(input: {
+  targetType: StudentCommunityTargetType;
+  targetId: number;
+  action: "hide" | "restore" | "delete";
+  actorUserId: number;
+  note?: string | null;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const table = input.targetType === "post" ? studentCommunityPosts : studentCommunityComments;
+  const [current] = await db.select().from(table)
+    .where(eq(table.id, input.targetId))
+    .limit(1);
+  if (!current) return null;
+
+  const fromStatus = current.status as StudentCommunityContentStatus;
+  const toStatus: StudentCommunityContentStatus = input.action === "restore"
+    ? "visible"
+    : input.action === "delete"
+      ? "deleted"
+      : "hidden";
+  const now = new Date().toISOString();
+  const [updated] = await db.update(table)
+    .set({ status: toStatus, updatedAt: now })
+    .where(eq(table.id, input.targetId))
+    .returning();
+
+  await db.update(studentCommunityReports)
+    .set({
+      status: input.action === "restore" ? "dismissed" : "reviewed",
+      reviewedByUserId: input.actorUserId,
+      reviewedAt: now,
+      updatedAt: now,
+    })
+    .where(and(
+      eq(studentCommunityReports.targetType, input.targetType),
+      eq(studentCommunityReports.targetId, input.targetId),
+      eq(studentCommunityReports.status, "open"),
+    ));
+
+  await logStudentCommunityAudit({
+    entityType: input.targetType,
+    entityId: input.targetId,
+    actorUserId: input.actorUserId,
+    action: input.action,
+    fromStatus,
+    toStatus,
+    details: { note: input.note ?? null },
+  });
+
+  return updated;
+}
+
+export async function reviewStudentCommunityReport(input: {
+  reportId: number;
+  action: "dismiss";
+  actorUserId: number;
+  note?: string | null;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [report] = await db.select().from(studentCommunityReports)
+    .where(eq(studentCommunityReports.id, input.reportId))
+    .limit(1);
+  if (!report) return null;
+  const now = new Date().toISOString();
+  const [updated] = await db.update(studentCommunityReports)
+    .set({
+      status: "dismissed",
+      reviewedByUserId: input.actorUserId,
+      reviewedAt: now,
+      updatedAt: now,
+    })
+    .where(eq(studentCommunityReports.id, input.reportId))
+    .returning();
+
+  await logStudentCommunityAudit({
+    entityType: "report",
+    entityId: input.reportId,
+    actorUserId: input.actorUserId,
+    action: input.action,
+    fromStatus: report.status,
+    toStatus: "dismissed",
+    details: { note: input.note ?? null },
+  });
+
+  return updated;
+}
+
+export async function listStudentCommunityAuditLogs(input: {
+  entityType: "post" | "comment" | "report";
+  entityId: number;
+  limit?: number;
+}) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(studentCommunityAuditLogs)
+    .where(and(
+      eq(studentCommunityAuditLogs.entityType, input.entityType),
+      eq(studentCommunityAuditLogs.entityId, input.entityId),
+    ))
+    .orderBy(desc(studentCommunityAuditLogs.createdAt), desc(studentCommunityAuditLogs.id))
+    .limit(Math.min(Math.max(input.limit ?? 50, 1), 200));
 }
 
 // ============================================================================

@@ -1311,6 +1311,80 @@ export const jobInviteLogs = sqliteTable("job_invite_logs", {
 export type JobInviteLog = typeof jobInviteLogs.$inferSelect;
 export type InsertJobInviteLog = typeof jobInviteLogs.$inferInsert;
 
+export const studentJobProfiles = sqliteTable("student_job_profiles", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().references(() => users.id).unique(),
+  headline: text("headline"),
+  skills: text("skills"),
+  experienceSummary: text("experience_summary"),
+  portfolioUrl: text("portfolio_url"),
+  cvUrl: text("cv_url"),
+  preferredRole: text("preferred_role"),
+  availability: text("availability"),
+  updatedAt: text("updated_at").default("CURRENT_TIMESTAMP").notNull(),
+  createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
+});
+
+export type StudentJobProfile = typeof studentJobProfiles.$inferSelect;
+export type InsertStudentJobProfile = typeof studentJobProfiles.$inferInsert;
+
+export const studentJobEligibilityRules = sqliteTable("student_job_eligibility_rules", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  jobId: integer("job_id").notNull().references(() => jobs.id).unique(),
+  minCompletedEpisodes: integer("min_completed_episodes").notNull().default(0),
+  minPassedQuizzes: integer("min_passed_quizzes").notNull().default(0),
+  minPointsBalance: integer("min_points_balance").notNull().default(0),
+  requireActiveSubscription: integer("require_active_subscription", { mode: "boolean" }).notNull().default(true),
+  requireProfile: integer("require_profile", { mode: "boolean" }).notNull().default(true),
+  requireAdminReview: integer("require_admin_review", { mode: "boolean" }).notNull().default(true),
+  isEnabled: integer("is_enabled", { mode: "boolean" }).notNull().default(true),
+  instructions: text("instructions"),
+  createdByUserId: integer("created_by_user_id").references(() => users.id),
+  updatedByUserId: integer("updated_by_user_id").references(() => users.id),
+  updatedAt: text("updated_at").default("CURRENT_TIMESTAMP").notNull(),
+  createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
+});
+
+export type StudentJobEligibilityRule = typeof studentJobEligibilityRules.$inferSelect;
+export type InsertStudentJobEligibilityRule = typeof studentJobEligibilityRules.$inferInsert;
+
+export const studentJobEligibilityReviews = sqliteTable("student_job_eligibility_reviews", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().references(() => users.id),
+  jobId: integer("job_id").notNull().references(() => jobs.id),
+  status: text("status", { length: 20 }).notNull().default("submitted"),
+  systemEligible: integer("system_eligible", { mode: "boolean" }).notNull().default(false),
+  score: integer("score").notNull().default(0),
+  snapshotJson: text("snapshot_json").notNull().default("{}"),
+  studentNote: text("student_note"),
+  adminNote: text("admin_note"),
+  reviewedByUserId: integer("reviewed_by_user_id").references(() => users.id),
+  reviewedAt: text("reviewed_at"),
+  submittedAt: text("submitted_at").default("CURRENT_TIMESTAMP").notNull(),
+  updatedAt: text("updated_at").default("CURRENT_TIMESTAMP").notNull(),
+  createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
+}, (table) => ({
+  uniqUserJob: unique().on(table.userId, table.jobId),
+}));
+
+export type StudentJobEligibilityReview = typeof studentJobEligibilityReviews.$inferSelect;
+export type InsertStudentJobEligibilityReview = typeof studentJobEligibilityReviews.$inferInsert;
+
+export const studentJobEligibilityAuditLogs = sqliteTable("student_job_eligibility_audit_logs", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").references(() => users.id),
+  jobId: integer("job_id").references(() => jobs.id),
+  actorUserId: integer("actor_user_id").notNull().references(() => users.id),
+  action: text("action").notNull(),
+  fromStatus: text("from_status"),
+  toStatus: text("to_status"),
+  details: text("details"),
+  createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
+});
+
+export type StudentJobEligibilityAuditLog = typeof studentJobEligibilityAuditLogs.$inferSelect;
+export type InsertStudentJobEligibilityAuditLog = typeof studentJobEligibilityAuditLogs.$inferInsert;
+
 // Relations for jobs
 export const jobsRelations = relations(jobs, ({ many }) => ({
   questions: many(jobQuestions),
@@ -1499,6 +1573,124 @@ export const pointsTransactionsRelations = relations(pointsTransactions, ({ one 
     references: [users.id],
   }),
 }));
+
+// ============================================================================
+// Loyalty Reward Catalog & Redemptions (Phase 3)
+// ============================================================================
+
+export const loyaltyRewardItems = sqliteTable("loyalty_reward_items", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  titleEn: text("title_en").notNull(),
+  titleAr: text("title_ar").notNull(),
+  descriptionEn: text("description_en"),
+  descriptionAr: text("description_ar"),
+  pointsCost: integer("points_cost").notNull(),
+  stockQuantity: integer("stock_quantity"),
+  isActive: integer("is_active", { mode: "boolean" }).default(false).notNull(),
+  sortOrder: integer("sort_order").default(0).notNull(),
+  createdByUserId: integer("created_by_user_id").notNull(),
+  createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
+  updatedAt: text("updated_at").default("CURRENT_TIMESTAMP").notNull(),
+});
+
+export type LoyaltyRewardItem = typeof loyaltyRewardItems.$inferSelect;
+export type InsertLoyaltyRewardItem = typeof loyaltyRewardItems.$inferInsert;
+
+export const loyaltyRewardRedemptions = sqliteTable("loyalty_reward_redemptions", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  rewardItemId: integer("reward_item_id").notNull(),
+  userId: integer("user_id").notNull(),
+  status: text("status", { length: 20 }).default("pending").notNull(),
+  pointsCost: integer("points_cost").notNull(),
+  pointsTransactionId: integer("points_transaction_id"),
+  adminNote: text("admin_note"),
+  requestedAt: text("requested_at").default("CURRENT_TIMESTAMP").notNull(),
+  reviewedAt: text("reviewed_at"),
+  reviewedByUserId: integer("reviewed_by_user_id"),
+  fulfilledAt: text("fulfilled_at"),
+  updatedAt: text("updated_at").default("CURRENT_TIMESTAMP").notNull(),
+});
+
+export type LoyaltyRewardRedemption = typeof loyaltyRewardRedemptions.$inferSelect;
+export type InsertLoyaltyRewardRedemption = typeof loyaltyRewardRedemptions.$inferInsert;
+
+export const loyaltyRewardAuditLogs = sqliteTable("loyalty_reward_audit_logs", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  entityType: text("entity_type", { length: 20 }).notNull(),
+  entityId: integer("entity_id").notNull(),
+  actorUserId: integer("actor_user_id"),
+  action: text("action", { length: 50 }).notNull(),
+  fromStatus: text("from_status", { length: 20 }),
+  toStatus: text("to_status", { length: 20 }),
+  details: text("details"),
+  createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
+});
+
+export type LoyaltyRewardAuditLog = typeof loyaltyRewardAuditLogs.$inferSelect;
+export type InsertLoyaltyRewardAuditLog = typeof loyaltyRewardAuditLogs.$inferInsert;
+
+// ============================================================================
+// Student Community (Phase 4, feature-flagged)
+// ============================================================================
+
+export const studentCommunityPosts = sqliteTable("student_community_posts", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull(),
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  status: text("status", { length: 20 }).default("visible").notNull(),
+  pinnedAt: text("pinned_at"),
+  createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
+  updatedAt: text("updated_at").default("CURRENT_TIMESTAMP").notNull(),
+});
+
+export type StudentCommunityPost = typeof studentCommunityPosts.$inferSelect;
+export type InsertStudentCommunityPost = typeof studentCommunityPosts.$inferInsert;
+
+export const studentCommunityComments = sqliteTable("student_community_comments", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  postId: integer("post_id").notNull(),
+  userId: integer("user_id").notNull(),
+  body: text("body").notNull(),
+  status: text("status", { length: 20 }).default("visible").notNull(),
+  createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
+  updatedAt: text("updated_at").default("CURRENT_TIMESTAMP").notNull(),
+});
+
+export type StudentCommunityComment = typeof studentCommunityComments.$inferSelect;
+export type InsertStudentCommunityComment = typeof studentCommunityComments.$inferInsert;
+
+export const studentCommunityReports = sqliteTable("student_community_reports", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  targetType: text("target_type", { length: 20 }).notNull(),
+  targetId: integer("target_id").notNull(),
+  reporterUserId: integer("reporter_user_id").notNull(),
+  reason: text("reason", { length: 100 }).notNull(),
+  details: text("details"),
+  status: text("status", { length: 20 }).default("open").notNull(),
+  reviewedByUserId: integer("reviewed_by_user_id"),
+  reviewedAt: text("reviewed_at"),
+  createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
+  updatedAt: text("updated_at").default("CURRENT_TIMESTAMP").notNull(),
+});
+
+export type StudentCommunityReport = typeof studentCommunityReports.$inferSelect;
+export type InsertStudentCommunityReport = typeof studentCommunityReports.$inferInsert;
+
+export const studentCommunityAuditLogs = sqliteTable("student_community_audit_logs", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  entityType: text("entity_type", { length: 20 }).notNull(),
+  entityId: integer("entity_id").notNull(),
+  actorUserId: integer("actor_user_id"),
+  action: text("action", { length: 50 }).notNull(),
+  fromStatus: text("from_status", { length: 20 }),
+  toStatus: text("to_status", { length: 20 }),
+  details: text("details"),
+  createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
+});
+
+export type StudentCommunityAuditLog = typeof studentCommunityAuditLogs.$inferSelect;
+export type InsertStudentCommunityAuditLog = typeof studentCommunityAuditLogs.$inferInsert;
 
 // ============================================================================
 // Engagement Events (Phase 4)
@@ -1842,6 +2034,220 @@ export const staffDailyAggregates = sqliteTable("staffDailyAggregates", {
 }, (table) => ({
   dateTimezoneUnique: unique().on(table.localDate, table.timezone),
 }));
+
+// ============================================================================
+// Staff Performance Management (Phase 1A, feature-flagged)
+// ============================================================================
+
+export const staffPerformanceMonthlyPlans = sqliteTable("staff_performance_monthly_plans", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  staffUserId: integer("staff_user_id").notNull().references(() => users.id),
+  month: text("month").notNull(),
+  title: text("title").notNull(),
+  summary: text("summary"),
+  expectedOutcomes: text("expected_outcomes"),
+  status: text("status").notNull().default("draft"),
+  version: integer("version").notNull().default(1),
+  createdByUserId: integer("created_by_user_id").notNull().references(() => users.id),
+  submittedAt: text("submitted_at"),
+  reviewedAt: text("reviewed_at"),
+  lockedAt: text("locked_at"),
+  createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+  updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+}, (table) => ({
+  uniqueStaffMonth: unique("ux_staff_performance_monthly_plan_staff_month").on(table.staffUserId, table.month),
+}));
+
+export type StaffPerformanceMonthlyPlan = typeof staffPerformanceMonthlyPlans.$inferSelect;
+export type InsertStaffPerformanceMonthlyPlan = typeof staffPerformanceMonthlyPlans.$inferInsert;
+
+export const staffPerformanceGoals = sqliteTable("staff_performance_goals", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  planId: integer("plan_id").notNull().references(() => staffPerformanceMonthlyPlans.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  description: text("description"),
+  expectedResult: text("expected_result").notNull(),
+  weight: integer("weight").notNull().default(0),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdByUserId: integer("created_by_user_id").notNull().references(() => users.id),
+  createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+  updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+});
+
+export type StaffPerformanceGoal = typeof staffPerformanceGoals.$inferSelect;
+export type InsertStaffPerformanceGoal = typeof staffPerformanceGoals.$inferInsert;
+
+export const staffPerformanceDailyLogs = sqliteTable("staff_performance_daily_logs", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  staffUserId: integer("staff_user_id").notNull().references(() => users.id),
+  localDate: text("local_date").notNull(),
+  timezone: text("timezone").notNull().default("Asia/Amman"),
+  status: text("status").notNull().default("draft"),
+  endSummary: text("end_summary"),
+  employeeNotes: text("employee_notes"),
+  managerFeedback: text("manager_feedback"),
+  version: integer("version").notNull().default(1),
+  submittedAt: text("submitted_at"),
+  reviewedAt: text("reviewed_at"),
+  lockedAt: text("locked_at"),
+  createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+  updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+}, (table) => ({
+  uniqueStaffDate: unique("ux_staff_performance_daily_log_staff_date").on(table.staffUserId, table.localDate),
+}));
+
+export type StaffPerformanceDailyLog = typeof staffPerformanceDailyLogs.$inferSelect;
+export type InsertStaffPerformanceDailyLog = typeof staffPerformanceDailyLogs.$inferInsert;
+
+export const staffPerformanceDailyTasks = sqliteTable("staff_performance_daily_tasks", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  dailyLogId: integer("daily_log_id").notNull().references(() => staffPerformanceDailyLogs.id, { onDelete: "cascade" }),
+  monthlyGoalId: integer("monthly_goal_id").references(() => staffPerformanceGoals.id, { onDelete: "set null" }),
+  title: text("title").notNull(),
+  expectedOutput: text("expected_output").notNull(),
+  actualOutput: text("actual_output"),
+  completed: integer("completed", { mode: "boolean" }).notNull().default(false),
+  notes: text("notes"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+  updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+});
+
+export type StaffPerformanceDailyTask = typeof staffPerformanceDailyTasks.$inferSelect;
+export type InsertStaffPerformanceDailyTask = typeof staffPerformanceDailyTasks.$inferInsert;
+
+export const staffPerformanceWeeklyReports = sqliteTable("staff_performance_weekly_reports", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  staffUserId: integer("staff_user_id").notNull().references(() => users.id),
+  weekStart: text("week_start").notNull(),
+  weekEnd: text("week_end").notNull(),
+  timezone: text("timezone").notNull().default("Asia/Amman"),
+  status: text("status").notNull().default("draft"),
+  outputs: text("outputs"),
+  achievementPercent: integer("achievement_percent"),
+  complaints: text("complaints"),
+  suggestions: text("suggestions"),
+  blockers: text("blockers"),
+  trainingNeeds: text("training_needs"),
+  toolNeeds: text("tool_needs"),
+  managerFeedback: text("manager_feedback"),
+  version: integer("version").notNull().default(1),
+  submittedAt: text("submitted_at"),
+  reviewedAt: text("reviewed_at"),
+  lockedAt: text("locked_at"),
+  createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+  updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+}, (table) => ({
+  uniqueStaffWeek: unique("ux_staff_performance_weekly_report_staff_week").on(table.staffUserId, table.weekStart),
+}));
+
+export type StaffPerformanceWeeklyReport = typeof staffPerformanceWeeklyReports.$inferSelect;
+export type InsertStaffPerformanceWeeklyReport = typeof staffPerformanceWeeklyReports.$inferInsert;
+
+export const staffPerformanceAuditLogs = sqliteTable("staff_performance_audit_logs", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  entityType: text("entity_type").notNull(),
+  entityId: integer("entity_id").notNull(),
+  staffUserId: integer("staff_user_id").notNull().references(() => users.id),
+  actorUserId: integer("actor_user_id").notNull().references(() => users.id),
+  action: text("action").notNull(),
+  fromStatus: text("from_status"),
+  toStatus: text("to_status"),
+  details: text("details"),
+  createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+});
+
+export type StaffPerformanceAuditLog = typeof staffPerformanceAuditLogs.$inferSelect;
+export type InsertStaffPerformanceAuditLog = typeof staffPerformanceAuditLogs.$inferInsert;
+
+// ============================================================================
+// Student Surveys (Phase 2A, feature-flagged)
+// ============================================================================
+
+export const studentSurveys = sqliteTable("student_surveys", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  code: text("code").notNull().unique(),
+  title: text("title").notNull(),
+  description: text("description"),
+  isActive: integer("is_active", { mode: "boolean" }).notNull().default(false),
+  isRequired: integer("is_required", { mode: "boolean" }).notNull().default(true),
+  maxPostponements: integer("max_postponements").notNull().default(2),
+  postponeHours: integer("postpone_hours").notNull().default(24),
+  blockAfterHours: integer("block_after_hours").notNull().default(72),
+  createdByUserId: integer("created_by_user_id").notNull().references(() => users.id),
+  createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+  updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+});
+
+export type StudentSurvey = typeof studentSurveys.$inferSelect;
+export type InsertStudentSurvey = typeof studentSurveys.$inferInsert;
+
+export const studentSurveyQuestions = sqliteTable("student_survey_questions", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  surveyId: integer("survey_id").notNull().references(() => studentSurveys.id, { onDelete: "cascade" }),
+  questionText: text("question_text").notNull(),
+  questionType: text("question_type").notNull(),
+  isRequired: integer("is_required", { mode: "boolean" }).notNull().default(true),
+  optionsJson: text("options_json"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+  updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+});
+
+export type StudentSurveyQuestion = typeof studentSurveyQuestions.$inferSelect;
+export type InsertStudentSurveyQuestion = typeof studentSurveyQuestions.$inferInsert;
+
+export const studentSurveyAssignments = sqliteTable("student_survey_assignments", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  surveyId: integer("survey_id").notNull().references(() => studentSurveys.id, { onDelete: "cascade" }),
+  userId: integer("user_id").notNull().references(() => users.id),
+  status: text("status").notNull().default("pending"),
+  dueAt: text("due_at").notNull(),
+  blockAt: text("block_at").notNull(),
+  postponementsUsed: integer("postponements_used").notNull().default(0),
+  lastPostponedAt: text("last_postponed_at"),
+  submittedAt: text("submitted_at"),
+  createdByUserId: integer("created_by_user_id").notNull().references(() => users.id),
+  createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+  updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+}, (table) => ({
+  uniqueSurveyUser: unique("ux_student_survey_assignment_survey_user").on(table.surveyId, table.userId),
+}));
+
+export type StudentSurveyAssignment = typeof studentSurveyAssignments.$inferSelect;
+export type InsertStudentSurveyAssignment = typeof studentSurveyAssignments.$inferInsert;
+
+export const studentSurveyAnswers = sqliteTable("student_survey_answers", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  assignmentId: integer("assignment_id").notNull().references(() => studentSurveyAssignments.id, { onDelete: "cascade" }),
+  questionId: integer("question_id").notNull().references(() => studentSurveyQuestions.id, { onDelete: "cascade" }),
+  answerText: text("answer_text"),
+  answerJson: text("answer_json"),
+  createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+  updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+}, (table) => ({
+  uniqueAssignmentQuestion: unique("ux_student_survey_answer_assignment_question").on(table.assignmentId, table.questionId),
+}));
+
+export type StudentSurveyAnswer = typeof studentSurveyAnswers.$inferSelect;
+export type InsertStudentSurveyAnswer = typeof studentSurveyAnswers.$inferInsert;
+
+export const studentSurveyAuditLogs = sqliteTable("student_survey_audit_logs", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  entityType: text("entity_type").notNull(),
+  entityId: integer("entity_id").notNull(),
+  surveyId: integer("survey_id").references(() => studentSurveys.id),
+  userId: integer("user_id").references(() => users.id),
+  actorUserId: integer("actor_user_id").notNull().references(() => users.id),
+  action: text("action").notNull(),
+  fromStatus: text("from_status"),
+  toStatus: text("to_status"),
+  details: text("details"),
+  createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+});
+
+export type StudentSurveyAuditLog = typeof studentSurveyAuditLogs.$inferSelect;
+export type InsertStudentSurveyAuditLog = typeof studentSurveyAuditLogs.$inferInsert;
 
 // ============================================
 // Relations for Staff Monitoring

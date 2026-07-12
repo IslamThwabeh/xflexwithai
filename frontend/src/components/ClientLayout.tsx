@@ -41,6 +41,7 @@ import {
   Calculator,
   Menu,
   Building2,
+  Briefcase,
 } from "lucide-react";
 
 interface ClientLayoutProps {
@@ -69,9 +70,15 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
   const hydratedLanguageForUserIdRef = useRef<number | null>(null);
 
   const { data: unreadNotifData } = trpc.notifications.unreadCount.useQuery(undefined, { refetchInterval: 30_000 });
+  const { data: surveyAvailability } = trpc.studentSurveys.availability.useQuery(undefined, { retry: false });
+  const { data: communityAvailability } = trpc.community.availability.useQuery(undefined, { retry: false });
+  const { data: jobEligibilityAvailability } = trpc.studentJobEligibility.availability.useQuery(undefined, { retry: false });
   const touchInteractionMutation = trpc.users.touchInteraction.useMutation();
   const updateNotificationPrefsMutation = trpc.users.updateNotificationPrefs.useMutation();
   const unreadNotifCount = unreadNotifData?.count ?? 0;
+  const showStudentSurveysNav = surveyAvailability?.enabled === true && surveyAvailability.access === "student";
+  const showCommunityNav = communityAvailability?.enabled === true;
+  const showJobEligibilityNav = jobEligibilityAvailability?.enabled === true;
 
   useEffect(() => {
     if (!user?.id) {
@@ -178,12 +185,31 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
       icon: <Headphones className="h-4 w-4" />,
       match: "/support",
     },
+    ...(showCommunityNav ? [{
+      href: "/community",
+      label: t("dashboard.nav.community"),
+      icon: <MessageSquare className="h-4 w-4" />,
+      match: "/community",
+    }] : []),
+    ...(showJobEligibilityNav ? [{
+      href: "/job-opportunities",
+      label: t("dashboard.nav.jobOpportunities"),
+      icon: <Briefcase className="h-4 w-4" />,
+      match: "/job-opportunities",
+    }] : []),
     {
       href: "/quiz",
       label: t("dashboard.nav.quizzes"),
       icon: <ClipboardCheck className="h-4 w-4" />,
       match: "/quiz",
     },
+    ...(showStudentSurveysNav ? [{
+      href: "/surveys",
+      label: t("dashboard.nav.surveys"),
+      icon: <ClipboardCheck className="h-4 w-4" />,
+      match: "/surveys",
+      badge: surveyAvailability?.accessState === "blocked" || surveyAvailability?.accessState === "survey_due" ? 1 : 0,
+    }] : []),
     {
       href: "/my-packages",
       label: language === "ar" ? "باقتي" : "My Package",

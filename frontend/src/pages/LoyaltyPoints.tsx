@@ -18,7 +18,26 @@ export default function LoyaltyPoints() {
   const { data: referralData } = trpc.points.myReferralCode.useQuery();
   const { data: referrals } = trpc.points.myReferrals.useQuery();
   const { data: rules } = trpc.points.rules.useQuery();
+  const { data: rewardsAvailability } = trpc.points.rewardsAvailability.useQuery();
+  const rewardsEnabled = Boolean(rewardsAvailability?.enabled);
+  const { data: rewardCatalog, refetch: refetchRewards } = trpc.points.rewardCatalog.useQuery(undefined, {
+    enabled: rewardsEnabled,
+    retry: false,
+  });
+  const { data: rewardRedemptions, refetch: refetchRedemptions } = trpc.points.myRewardRedemptions.useQuery(undefined, {
+    enabled: rewardsEnabled,
+    retry: false,
+  });
   const balance = balanceData?.balance ?? 0;
+
+  const redeemReward = trpc.points.redeemReward.useMutation({
+    onSuccess: () => {
+      toast.success(isRtl ? 'تم إرسال طلب المكافأة' : 'Reward request submitted');
+      refetchRewards();
+      refetchRedemptions();
+    },
+    onError: (error) => toast.error(error.message),
+  });
 
   const loading = loadingBal || loadingHist;
 
@@ -79,6 +98,81 @@ export default function LoyaltyPoints() {
               <p className="text-4xl font-bold mt-1">{(balance ?? 0).toLocaleString()}</p>
               <p className="text-sm opacity-70 mt-1">{isRtl ? 'نقطة' : 'points'}</p>
             </div>
+
+            {rewardsEnabled && (
+              <div className="bg-white border rounded-2xl p-5 mb-6">
+                <div className="flex items-center gap-2 mb-3">
+                  <Gift className="w-5 h-5 text-amber-600" />
+                  <h2 className="font-bold text-lg">{isRtl ? 'استبدال النقاط' : 'Redeem rewards'}</h2>
+                </div>
+                <p className="text-sm text-gray-600 mb-4">
+                  {isRtl
+                    ? 'اختر مكافأة من الكتالوج. سيتم خصم النقاط عند إرسال الطلب، وإذا رفضه المدير يتم إرجاع النقاط تلقائياً.'
+                    : 'Choose a reward from the catalog. Points are deducted when you submit the request; if an admin rejects it, points are automatically refunded.'}
+                </p>
+                {!rewardCatalog?.length ? (
+                  <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+                    {isRtl ? 'لا توجد مكافآت متاحة حالياً' : 'No rewards are available right now'}
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {rewardCatalog.map((reward: any) => {
+                      const outOfStock = reward.stockQuantity !== null && reward.stockQuantity <= 0;
+                      const cannotAfford = balance < reward.pointsCost;
+                      return (
+                        <div key={reward.id} className="rounded-xl border bg-amber-50/40 p-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <h3 className="font-semibold">{isRtl ? reward.titleAr : reward.titleEn}</h3>
+                              <p className="mt-1 text-sm text-gray-600">{isRtl ? reward.descriptionAr : reward.descriptionEn}</p>
+                            </div>
+                            <Badge className="bg-amber-100 text-amber-700">{reward.pointsCost} pts</Badge>
+                          </div>
+                          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                            <span className="text-xs text-muted-foreground">
+                              {reward.stockQuantity === null
+                                ? (isRtl ? 'متاح' : 'Available')
+                                : (isRtl ? `المتبقي: ${reward.stockQuantity}` : `Left: ${reward.stockQuantity}`)}
+                            </span>
+                            <Button
+                              size="sm"
+                              disabled={redeemReward.isPending || outOfStock || cannotAfford}
+                              onClick={() => redeemReward.mutate({ rewardItemId: reward.id })}
+                            >
+                              {redeemReward.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
+                              {outOfStock
+                                ? (isRtl ? 'نفد المخزون' : 'Out of stock')
+                                : cannotAfford
+                                  ? (isRtl ? 'نقاط غير كافية' : 'Not enough points')
+                                  : (isRtl ? 'طلب المكافأة' : 'Redeem')}
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {rewardRedemptions && rewardRedemptions.length > 0 && (
+                  <div className="mt-5">
+                    <h3 className="mb-2 font-semibold">{isRtl ? 'طلبات المكافآت' : 'My reward requests'}</h3>
+                    <div className="space-y-2">
+                      {rewardRedemptions.map((request: any) => (
+                        <div key={request.id} className="flex items-center justify-between gap-3 rounded-lg border bg-white px-3 py-2 text-sm">
+                          <div>
+                            <p className="font-medium">{isRtl ? request.titleAr : request.titleEn}</p>
+                            <p className="text-xs text-muted-foreground">{new Date(request.requestedAt).toLocaleDateString(isRtl ? 'ar-EG' : 'en-US')}</p>
+                          </div>
+                          <Badge className={rewardStatusClass(request.status)}>
+                            {rewardStatusLabel(request.status, isRtl)}
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Referral Section */}
             <div className="bg-gradient-to-br from-amber-50 to-amber-100/70 border border-amber-200 rounded-2xl p-5 mb-6">
@@ -227,4 +321,21 @@ export default function LoyaltyPoints() {
     </div>
     </ClientLayout>
   );
+}
+
+function rewardStatusLabel(status: string, isRtl: boolean) {
+  const labels: Record<string, [string, string]> = {
+    pending: ['Pending', 'بانتظار المراجعة'],
+    approved: ['Approved', 'معتمد'],
+    rejected: ['Rejected/refunded', 'مرفوض/مسترجع'],
+    fulfilled: ['Fulfilled', 'منفذ'],
+  };
+  return labels[status]?.[isRtl ? 1 : 0] ?? status;
+}
+
+function rewardStatusClass(status: string) {
+  if (status === 'approved') return 'bg-blue-100 text-blue-700';
+  if (status === 'fulfilled') return 'bg-emerald-100 text-emerald-700';
+  if (status === 'rejected') return 'bg-red-100 text-red-700';
+  return 'bg-amber-100 text-amber-700';
 }
