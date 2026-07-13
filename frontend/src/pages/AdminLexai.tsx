@@ -757,7 +757,7 @@ export default function AdminLexai() {
         </Card>
 
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
-          <Card className={selectedCaseId ? "hidden xl:block" : ""}>
+          <Card className={`${selectedCaseId ? "hidden xl:block" : ""} self-start`}>
             <CardHeader className="space-y-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
@@ -825,7 +825,7 @@ export default function AdminLexai() {
                     : "Try changing the search or filters to see other cases."}
                 />
               ) : (
-                <ScrollArea className="h-[calc(100vh-16rem)] min-h-[520px] pe-3">
+                <div className="max-h-[calc(100vh-16rem)] overflow-y-auto pe-3">
                   <div className="space-y-2">
                     {supportCases.map((supportCase) => {
                       const isActive = supportCase.id === selectedCaseId;
@@ -873,16 +873,29 @@ export default function AdminLexai() {
                           </div>
 
                           <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
-                            <span>{isRtl ? `آخر رسالة: ${formatDate(supportCase.lastMessageAt, locale)}` : `Last message: ${formatDate(supportCase.lastMessageAt, locale)}`}</span>
-                            <span>{isRtl ? `الرسائل: ${supportCase.messageCount}` : `Messages: ${supportCase.messageCount}`}</span>
-                            <span>{isRtl ? `آخر تحليل: ${supportCase.lastAnalysisType || "-"}` : `Last analysis: ${supportCase.lastAnalysisType || "-"}`}</span>
-                            <span>{isRtl ? `المكلّف: ${supportCase.assignedToName || "غير مخصص"}` : `Assigned: ${supportCase.assignedToName || "Unassigned"}`}</span>
+                            <CaseMeta
+                              label={isRtl ? "آخر رسالة" : "Last message"}
+                              value={formatDate(supportCase.lastMessageAt, locale)}
+                            />
+                            <CaseMeta
+                              label={isRtl ? "الرسائل" : "Messages"}
+                              value={supportCase.messageCount}
+                              valueDirection="ltr"
+                            />
+                            <CaseMeta
+                              label={isRtl ? "آخر تحليل" : "Last analysis"}
+                              value={supportCase.lastAnalysisType || "-"}
+                            />
+                            <CaseMeta
+                              label={isRtl ? "المكلّف" : "Assigned"}
+                              value={supportCase.assignedToName || (isRtl ? "غير مخصص" : "Unassigned")}
+                            />
                           </div>
                         </button>
                       );
                     })}
                   </div>
-                </ScrollArea>
+                </div>
               )}
             </CardContent>
           </Card>
@@ -971,8 +984,7 @@ export default function AdminLexai() {
                           description={isRtl ? "سيظهر سجل المحادثة هنا عند توفره." : "The conversation history will appear here when available."}
                         />
                       ) : (
-                        <ScrollArea className="h-[55vh] md:h-[640px] pe-3">
-                          <div className="space-y-3">
+                        <div className="space-y-3">
                             {messageDayGroups.map((group, groupIndex) => {
                               const isExpanded = expandedMessageDays[group.key] ?? groupIndex === messageDayGroups.length - 1;
                               return (
@@ -1030,8 +1042,7 @@ export default function AdminLexai() {
                                 </div>
                               );
                             })}
-                          </div>
-                        </ScrollArea>
+                        </div>
                       )}
                     </CardContent>
                   </Card>
@@ -1446,5 +1457,22 @@ function EmptyState({ title, description }: { title: string; description: string
       <p className="font-medium text-foreground">{title}</p>
       <p className="text-sm mt-1">{description}</p>
     </div>
+  );
+}
+
+function CaseMeta({
+  label,
+  value,
+  valueDirection = "auto",
+}: {
+  label: string;
+  value: string | number;
+  valueDirection?: "auto" | "ltr";
+}) {
+  return (
+    <span>
+      <span>{label}: </span>
+      <bdi dir={valueDirection}>{value}</bdi>
+    </span>
   );
 }
