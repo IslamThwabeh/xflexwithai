@@ -353,6 +353,11 @@ export type AdminNotificationBccRecipient = {
 
 export const ADMIN_NOTIFICATION_BCC_RECIPIENT_LIMIT = 499;
 
+type AdminNotificationRecipientGroup = {
+  email: string;
+  userIds: number[];
+};
+
 export async function sendAdminNotificationEmail(input: {
   recipients: AdminNotificationBccRecipient[];
   subject: string;
@@ -372,12 +377,15 @@ export async function sendAdminNotificationEmail(input: {
   recipientCount: number;
   deliveryMode: "single_to" | "bcc_batch" | "none";
 }> {
-  const uniqueRecipients = new Map<string, AdminNotificationBccRecipient>();
+  const uniqueRecipients = new Map<string, AdminNotificationRecipientGroup>();
   for (const recipient of input.recipients) {
     const normalized = normalizeEmailAddress(recipient.email);
     if (!recipient.userId || !isLikelyValidEmail(normalized)) continue;
-    if (!uniqueRecipients.has(normalized)) {
-      uniqueRecipients.set(normalized, { ...recipient, email: normalized });
+    const existing = uniqueRecipients.get(normalized);
+    if (existing) {
+      if (!existing.userIds.includes(recipient.userId)) existing.userIds.push(recipient.userId);
+    } else {
+      uniqueRecipients.set(normalized, { email: normalized, userIds: [recipient.userId] });
     }
   }
 
@@ -404,7 +412,7 @@ export async function sendAdminNotificationEmail(input: {
       audit: {
         eventType: input.eventType,
         templateId: input.templateId,
-        recipientUserId: recipient.userId,
+        recipientUserId: recipient.userIds[0],
         category: "marketing",
         metadata: {
           ...(input.metadata || {}),
@@ -417,8 +425,8 @@ export async function sendAdminNotificationEmail(input: {
       provider: result.provider,
       attemptedProviders: result.attemptedProviders,
       providerRequestId: null,
-      sentUserIds: result.skipped === "unsubscribed" ? [] : [recipient.userId],
-      skippedUserIds: result.skipped === "unsubscribed" ? [recipient.userId] : [],
+      sentUserIds: result.skipped === "unsubscribed" ? [] : recipient.userIds,
+      skippedUserIds: result.skipped === "unsubscribed" ? recipient.userIds : [],
       recipientCount: recipients.length,
       deliveryMode: "single_to",
     };
@@ -449,13 +457,16 @@ export async function sendAdminNotificationEmail(input: {
     });
   }
 
-  const deliverable: AdminNotificationBccRecipient[] = [];
-  const skipped: AdminNotificationBccRecipient[] = [];
+  const deliverable: AdminNotificationRecipientGroup[] = [];
+  const skipped: AdminNotificationRecipientGroup[] = [];
   try {
-    const { isEmailSuppressed } = await import("../db");
+    const { getSuppressedEmailAddresses } = await import("../db");
+    const suppressedEmails = await getSuppressedEmailAddresses(
+      recipients.map((recipient) => recipient.email),
+      "marketing",
+    );
     for (const recipient of recipients) {
-      const suppressed = await isEmailSuppressed(recipient.email, "marketing");
-      if (suppressed) skipped.push(recipient);
+      if (suppressedEmails.has(recipient.email)) skipped.push(recipient);
       else deliverable.push(recipient);
     }
   } catch (error) {
@@ -469,9 +480,9 @@ export async function sendAdminNotificationEmail(input: {
   if (skipped.length) {
     try {
       const { logEmailDeliveryAttempts } = await import("../db");
-      await logEmailDeliveryAttempts(skipped.map((recipient) => ({
+      await logEmailDeliveryAttempts(skipped.flatMap((recipient) => recipient.userIds.map((userId) => ({
         recipientEmail: recipient.email,
-        recipientUserId: recipient.userId,
+        recipientUserId: userId,
         eventType: input.eventType,
         templateId: input.templateId,
         subject: input.subject,
@@ -482,7 +493,7 @@ export async function sendAdminNotificationEmail(input: {
           deliveryMode: "bcc_batch",
           providerBatchKey: input.providerBatchKey,
         },
-      })));
+      }))));
     } catch (error) {
       logger.warn("[EMAIL] Failed to audit skipped admin notification recipients", {
         eventType: input.eventType,
@@ -497,7 +508,7 @@ export async function sendAdminNotificationEmail(input: {
       attemptedProviders: [],
       providerRequestId: null,
       sentUserIds: [],
-      skippedUserIds: skipped.map((recipient) => recipient.userId),
+      skippedUserIds: skipped.flatMap((recipient) => recipient.userIds),
       recipientCount: recipients.length,
       deliveryMode: "none",
     };
@@ -505,15 +516,16 @@ export async function sendAdminNotificationEmail(input: {
 
   const auditRecipients = [
     { email: supportTo, userId: null, deliveryMode: "bcc_batch_primary" },
-    ...deliverable.map((recipient) => ({
+    ...deliverable.flatMap((recipient) => recipient.userIds.map((userId) => ({
       email: recipient.email,
-      userId: recipient.userId,
+      userId,
       deliveryMode: "bcc_batch",
-    })),
+    }))),
   ];
 
+  let providerResult: Awaited<ReturnType<typeof sendViaZeptoMail>>;
   try {
-    const providerResult = await sendViaZeptoMail({
+    providerResult = await sendViaZeptoMail({
       to: supportTo,
       bcc: deliverable.map((recipient) => recipient.email),
       subject: input.subject,
@@ -521,39 +533,6 @@ export async function sendAdminNotificationEmail(input: {
       html: input.html,
       skipSupportForwarding: true,
     });
-    const { logEmailDeliveryAttempts } = await import("../db");
-    await logEmailDeliveryAttempts(auditRecipients.map((recipient) => ({
-      recipientEmail: recipient.email,
-      recipientUserId: recipient.userId,
-      eventType: input.eventType,
-      templateId: input.templateId,
-      subject: input.subject,
-      status: "sent",
-      provider: "zeptomail",
-      metadata: {
-        ...(input.metadata || {}),
-        deliveryMode: recipient.deliveryMode,
-        providerBatchKey: input.providerBatchKey,
-        providerRequestId: providerResult.requestId,
-      },
-    })));
-    logger.info("[EMAIL] Admin notification BCC batch accepted", {
-      to: supportTo,
-      recipientCount: deliverable.length,
-      skippedCount: skipped.length,
-      providerBatchKey: input.providerBatchKey,
-      providerRequestId: providerResult.requestId,
-      eventType: input.eventType,
-    });
-    return {
-      provider: "zeptomail",
-      attemptedProviders: ["zeptomail"],
-      providerRequestId: providerResult.requestId,
-      sentUserIds: deliverable.map((recipient) => recipient.userId),
-      skippedUserIds: skipped.map((recipient) => recipient.userId),
-      recipientCount: recipients.length,
-      deliveryMode: "bcc_batch",
-    };
   } catch (error) {
     const category = categorizeEmailError(error);
     try {
@@ -590,6 +569,50 @@ export async function sendAdminNotificationEmail(input: {
       { category, attemptedProviders: ["zeptomail"], providerUsed: "zeptomail" },
     );
   }
+
+  try {
+    const { logEmailDeliveryAttempts } = await import("../db");
+    await logEmailDeliveryAttempts(auditRecipients.map((recipient) => ({
+      recipientEmail: recipient.email,
+      recipientUserId: recipient.userId,
+      eventType: input.eventType,
+      templateId: input.templateId,
+      subject: input.subject,
+      status: "sent",
+      provider: "zeptomail",
+      metadata: {
+        ...(input.metadata || {}),
+        deliveryMode: recipient.deliveryMode,
+        providerBatchKey: input.providerBatchKey,
+        providerRequestId: providerResult.requestId,
+      },
+    })));
+  } catch (error) {
+    logger.warn("[EMAIL] Admin notification BCC batch audit failed after provider acceptance", {
+      eventType: input.eventType,
+      providerBatchKey: input.providerBatchKey,
+      providerRequestId: providerResult.requestId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  logger.info("[EMAIL] Admin notification BCC batch accepted", {
+    to: supportTo,
+    recipientCount: deliverable.length,
+    skippedCount: skipped.length,
+    providerBatchKey: input.providerBatchKey,
+    providerRequestId: providerResult.requestId,
+    eventType: input.eventType,
+  });
+  return {
+    provider: "zeptomail",
+    attemptedProviders: ["zeptomail"],
+    providerRequestId: providerResult.requestId,
+    sentUserIds: deliverable.flatMap((recipient) => recipient.userIds),
+    skippedUserIds: skipped.flatMap((recipient) => recipient.userIds),
+    recipientCount: recipients.length,
+    deliveryMode: "bcc_batch",
+  };
 }
 
 export async function sendStaffBccBatch(input: {

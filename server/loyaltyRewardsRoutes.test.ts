@@ -88,6 +88,15 @@ describe("loyalty rewards routes", () => {
       .rejects.toMatchObject({ code: "BAD_REQUEST", message: "Insufficient points balance" });
   });
 
+  it("maps duplicate active reward requests to conflict", async () => {
+    vi.mocked(db.requestLoyaltyRewardRedemption).mockResolvedValue({
+      status: "already_pending",
+    } as any);
+
+    await expect(createCaller().points.redeemReward({ rewardItemId: 1 }))
+      .rejects.toMatchObject({ code: "CONFLICT", message: "A request for this reward is already pending" });
+  });
+
   it("creates a reward redemption for the signed-in student", async () => {
     vi.mocked(db.requestLoyaltyRewardRedemption).mockResolvedValue({
       status: "created",

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../backend/db", () => ({
   isEmailSuppressed: vi.fn().mockResolvedValue(false),
+  getSuppressedEmailAddresses: vi.fn().mockResolvedValue(new Set()),
   logEmailDeliveryAttempts: vi.fn(),
 }));
 
@@ -13,6 +14,8 @@ describe("admin notification BCC provider request", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(db.getSuppressedEmailAddresses).mockResolvedValue(new Set());
+    vi.mocked(db.logEmailDeliveryAttempts).mockResolvedValue(undefined);
     process.env.EMAIL_PROVIDER = "zeptomail";
     process.env.EMAIL_FROM = "mailer@xflexacademy.com";
     process.env.ZEPTOMAIL_TOKEN = "test-token";
@@ -67,7 +70,7 @@ describe("admin notification BCC provider request", () => {
   });
 
   it("filters unsubscribed marketing recipients out of the BCC request", async () => {
-    vi.mocked(db.isEmailSuppressed).mockImplementation(async (email) => email === "second@example.com");
+    vi.mocked(db.getSuppressedEmailAddresses).mockResolvedValue(new Set(["second@example.com"]));
     const fetchMock = vi.fn().mockResolvedValue(new Response(
       JSON.stringify({ request_id: "admin-provider-request-2" }),
       { status: 200, headers: { "Content-Type": "application/json" } },
@@ -98,5 +101,56 @@ describe("admin notification BCC provider request", () => {
         status: "skipped_unsubscribed",
       }),
     ]);
+  });
+
+  it("returns provider success even if delivery audit persistence rejects", async () => {
+    vi.mocked(db.logEmailDeliveryAttempts).mockRejectedValueOnce(new Error("audit unavailable"));
+    const fetchMock = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ request_id: "admin-provider-request-3" }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    ));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(sendAdminNotificationEmail({
+      recipients: [
+        { email: "first@example.com", userId: 1 },
+        { email: "second@example.com", userId: 2 },
+      ],
+      subject: "Announcement",
+      text: "A new announcement is available.",
+      eventType: "admin_bulk_notification",
+      templateId: "announcement",
+      providerBatchKey: "batch_test",
+    })).resolves.toMatchObject({
+      provider: "zeptomail",
+      providerRequestId: "admin-provider-request-3",
+      sentUserIds: [1, 2],
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends a shared address once but marks every matching user as sent", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ request_id: "admin-provider-request-4" }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    ));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await sendAdminNotificationEmail({
+      recipients: [
+        { email: "shared@example.com", userId: 1 },
+        { email: "SHARED@example.com", userId: 2 },
+        { email: "other@example.com", userId: 3 },
+      ],
+      subject: "Announcement",
+      text: "A new announcement is available.",
+      eventType: "admin_bulk_notification",
+      templateId: "announcement",
+      providerBatchKey: "batch_test",
+    });
+
+    const request = JSON.parse(String(fetchMock.mock.calls[0][1].body));
+    expect(request.bcc).toHaveLength(2);
+    expect(result.sentUserIds).toEqual([1, 2, 3]);
   });
 });

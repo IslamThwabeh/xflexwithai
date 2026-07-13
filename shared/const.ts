@@ -113,6 +113,11 @@ export const STAFF_NOTIFICATION_EVENTS = {
   email_delivery_anomaly: { labelEn: "Email Delivery Anomaly", labelAr: "خلل في توصيل البريد", roles: [], actionUrl: "/admin/email-logs" },
   timed_service_activation_failure: { labelEn: "Timed Service Activation Failure", labelAr: "فشل تفعيل خدمة زمنية", roles: ["support", "key_manager"], actionUrl: "/admin/expiry-report" },
   recommendation_published: { labelEn: "Recommendation Published", labelAr: "تم نشر توصية", roles: [], actionUrl: "/admin/recommendations" },
+  student_survey_submitted: { labelEn: "Student Survey Submitted", labelAr: "تم إرسال استبيان طالب", roles: ["student_surveys_manager"], actionUrl: "/admin/student-surveys" },
+  loyalty_reward_requested: { labelEn: "Reward Requested", labelAr: "تم طلب مكافأة", roles: ["loyalty_rewards_manager"], actionUrl: "/admin/points" },
+  community_content_reported: { labelEn: "Community Report Submitted", labelAr: "تم إرسال بلاغ مجتمعي", roles: ["student_community_moderator"], actionUrl: "/admin/community" },
+  job_eligibility_review_requested: { labelEn: "Job Eligibility Review Requested", labelAr: "تم طلب مراجعة أهلية وظيفية", roles: ["student_job_eligibility_manager"], actionUrl: "/admin/job-eligibility" },
+  staff_performance_submitted: { labelEn: "Daily Work Submitted", labelAr: "تم إرسال العمل اليومي", roles: ["staff_performance_manager"], actionUrl: "/admin/staff-performance" },
 } as const;
 
 export type StaffNotificationEventType = keyof typeof STAFF_NOTIFICATION_EVENTS;

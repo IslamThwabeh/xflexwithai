@@ -7279,11 +7279,17 @@ ${qaText}`;
       }))
       .mutation(async ({ ctx, input }) => {
         await requireStudentJobEligibilityEnabled();
-        return db.submitStudentJobEligibilityReview({
+        const review = await db.submitStudentJobEligibilityReview({
           userId: ctx.user.id,
           jobId: input.jobId,
           studentNote: input.studentNote,
         });
+        await db.notifyStaffByEvent('job_eligibility_review_requested', {
+          titleEn: `Job eligibility review requested by ${ctx.user.name || ctx.user.email}`,
+          titleAr: `طلب مراجعة أهلية وظيفية من ${ctx.user.name || ctx.user.email}`,
+          metadata: { userId: ctx.user.id, jobId: input.jobId, reviewId: review.id },
+        }).catch(() => {});
+        return review;
       }),
 
     adminRules: adminOrRoleProcedure(['student_job_eligibility_manager']).query(async () => {
@@ -7610,6 +7616,18 @@ ${qaText}`;
         if (result.status === "insufficient_points") {
           throw new TRPCError({ code: "BAD_REQUEST", message: "Insufficient points balance" });
         }
+        if (result.status === "already_pending") {
+          throw new TRPCError({ code: "CONFLICT", message: "A request for this reward is already pending" });
+        }
+        await db.notifyStaffByEvent('loyalty_reward_requested', {
+          titleEn: `Reward requested by ${ctx.user.name || ctx.user.email}`,
+          titleAr: `تم طلب مكافأة من ${ctx.user.name || ctx.user.email}`,
+          metadata: {
+            userId: ctx.user.id,
+            rewardItemId: input.rewardItemId,
+            redemptionId: result.redemption.id,
+          },
+        }).catch(() => {});
         return result.redemption;
       }),
 
@@ -7860,6 +7878,16 @@ ${qaText}`;
         if (result.status === "duplicate") {
           throw new TRPCError({ code: "CONFLICT", message: "You already reported this content" });
         }
+        await db.notifyStaffByEvent('community_content_reported', {
+          titleEn: `Community content reported by ${ctx.user.name || ctx.user.email}`,
+          titleAr: `تم الإبلاغ عن محتوى مجتمعي من ${ctx.user.name || ctx.user.email}`,
+          metadata: {
+            userId: ctx.user.id,
+            targetType: input.targetType,
+            targetId: input.targetId,
+            reportId: result.report.id,
+          },
+        }).catch(() => {});
         return result.report;
       }),
 
@@ -8721,6 +8749,11 @@ ${qaText}`;
           answers: input.answers,
         });
         if (!updated) throw new TRPCError({ code: "CONFLICT", message: "Survey assignment changed. Refresh and try again." });
+        await db.notifyStaffByEvent('student_survey_submitted', {
+          titleEn: `Survey submitted by ${ctx.user.name || ctx.user.email}`,
+          titleAr: `تم إرسال استبيان من ${ctx.user.name || ctx.user.email}`,
+          metadata: { userId: ctx.user.id, assignmentId: input.id, surveyId: assignment.surveyId },
+        }).catch(() => {});
         return updated;
       }),
 
@@ -9121,7 +9154,7 @@ ${qaText}`;
           });
         }
         try {
-          return await db.transitionStaffPerformanceDailyLog({
+          const updated = await db.transitionStaffPerformanceDailyLog({
             id: input.id,
             version: input.version,
             fromStatus,
@@ -9130,6 +9163,14 @@ ${qaText}`;
             staffUserId: log.staffUserId,
             actorUserId: ctx.user.id,
           });
+          if (input.toStatus === "submitted") {
+            await db.notifyStaffByEvent('staff_performance_submitted', {
+              titleEn: `Daily work submitted by ${ctx.user.name || ctx.user.email}`,
+              titleAr: `تم إرسال العمل اليومي من ${ctx.user.name || ctx.user.email}`,
+              metadata: { staffUserId: log.staffUserId, dailyLogId: input.id },
+            }).catch(() => {});
+          }
+          return updated;
         } catch (error) {
           throwStaffPerformancePersistenceError(error);
         }

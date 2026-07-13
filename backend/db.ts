@@ -143,6 +143,13 @@ const SUPPORT_STAFF_BCC_EMAIL_EVENTS = new Set<StaffNotificationEventType>([
   'human_escalation',
   'subscription_expiring',
 ]);
+const PORTAL_ONLY_STAFF_NOTIFICATION_EVENTS = new Set<StaffNotificationEventType>([
+  'student_survey_submitted',
+  'loyalty_reward_requested',
+  'community_content_reported',
+  'job_eligibility_review_requested',
+  'staff_performance_submitted',
+]);
 const STAFF_BCC_BATCH_SIZE = 50;
 
 function chunkValues<T>(values: T[], size: number = D1_SAFE_IN_CLAUSE_SIZE): T[][] {
@@ -13909,44 +13916,46 @@ export async function requestLoyaltyRewardRedemption(input: {
   if (!item || !item.isActive) return { status: "not_available" as const };
   if (item.stockQuantity !== null && item.stockQuantity <= 0) return { status: "out_of_stock" as const };
 
-  const balance = await getPointsBalance(input.userId);
-  if (balance < item.pointsCost) return { status: "insufficient_points" as const };
-
   const now = new Date().toISOString();
-  const [redemption] = await db.insert(loyaltyRewardRedemptions).values({
-    rewardItemId: item.id,
-    userId: input.userId,
-    status: "pending",
-    pointsCost: item.pointsCost,
-    requestedAt: now,
-    updatedAt: now,
-  }).returning();
+  let redemption: LoyaltyRewardRedemption;
+  try {
+    const [created] = await db.insert(loyaltyRewardRedemptions).values({
+      rewardItemId: item.id,
+      userId: input.userId,
+      status: "pending",
+      pointsCost: item.pointsCost,
+      requestedAt: now,
+      updatedAt: now,
+    }).returning();
 
-  const tx = await redeemPoints({
-    userId: input.userId,
-    amount: item.pointsCost,
-    reasonEn: `Reward redemption requested: ${item.titleEn}`,
-    reasonAr: `طلب استبدال مكافأة: ${item.titleAr}`,
-    referenceId: redemption.id,
-    referenceType: "loyalty_reward",
-  });
-  if (!tx) return { status: "insufficient_points" as const };
-
-  const [updated] = await db.update(loyaltyRewardRedemptions)
-    .set({ pointsTransactionId: tx.id, updatedAt: now })
-    .where(eq(loyaltyRewardRedemptions.id, redemption.id))
-    .returning();
-
-  if (item.stockQuantity !== null) {
-    await db.update(loyaltyRewardItems)
-      .set({
-        stockQuantity: sql`${loyaltyRewardItems.stockQuantity} - 1`,
-        updatedAt: now,
-      })
-      .where(and(
-        eq(loyaltyRewardItems.id, item.id),
-        sql`${loyaltyRewardItems.stockQuantity} > 0`,
-      ));
+    // AFTER INSERT triggers populate pointsTransactionId. SQLite RETURNING does
+    // not include values written by AFTER triggers, so read the committed row.
+    const [committed] = await db.select().from(loyaltyRewardRedemptions)
+      .where(eq(loyaltyRewardRedemptions.id, created.id))
+      .limit(1);
+    redemption = committed ?? created;
+    if (!redemption.pointsTransactionId) {
+      // Fail closed if application code is deployed before migration 069.
+      // Without the trigger, accepting this row would grant a free reward.
+      await db.delete(loyaltyRewardRedemptions)
+        .where(eq(loyaltyRewardRedemptions.id, redemption.id));
+      throw new Error("Loyalty redemption integrity migration 069 is not applied");
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes("loyalty_reward_insufficient_points")) {
+      return { status: "insufficient_points" as const };
+    }
+    if (message.includes("loyalty_reward_out_of_stock")) {
+      return { status: "out_of_stock" as const };
+    }
+    if (message.includes("loyalty_reward_already_pending")) {
+      return { status: "already_pending" as const };
+    }
+    if (message.includes("loyalty_reward_not_available") || message.includes("loyalty_reward_price_changed")) {
+      return { status: "not_available" as const };
+    }
+    throw error;
   }
 
   await logLoyaltyRewardAudit({
@@ -13955,7 +13964,7 @@ export async function requestLoyaltyRewardRedemption(input: {
     actorUserId: input.userId,
     action: "requested",
     toStatus: "pending",
-    details: { rewardItemId: item.id, pointsCost: item.pointsCost, transactionId: tx.id },
+    details: { rewardItemId: item.id, pointsCost: item.pointsCost, transactionId: redemption.pointsTransactionId },
   });
 
   await createNotification({
@@ -13968,7 +13977,7 @@ export async function requestLoyaltyRewardRedemption(input: {
     actionUrl: "/my-points",
   });
 
-  return { status: "created" as const, redemption: updated };
+  return { status: "created" as const, redemption };
 }
 
 export async function listMyLoyaltyRewardRedemptions(userId: number, limit = 50) {
@@ -14064,18 +14073,6 @@ export async function reviewLoyaltyRewardRedemption(input: {
     .returning();
 
   if (!updated) return { status: "invalid_status" as const };
-
-  if (input.decision === "rejected") {
-    await addPoints({
-      userId: redemption.userId,
-      amount: redemption.pointsCost,
-      type: "bonus",
-      reasonEn: `Reward redemption refund: ${redemption.titleEn}`,
-      reasonAr: `استرجاع نقاط مكافأة: ${redemption.titleAr}`,
-      referenceId: redemption.id,
-      referenceType: "loyalty_reward_refund",
-    });
-  }
 
   await logLoyaltyRewardAudit({
     entityType: "redemption",
@@ -16686,6 +16683,30 @@ export async function isEmailSuppressed(
   return !!row;
 }
 
+export async function getSuppressedEmailAddresses(
+  emails: string[],
+  category: Exclude<EmailCategory, 'transactional'>,
+): Promise<Set<string>> {
+  const db = await getDb();
+  if (!db) return new Set();
+
+  const normalizedEmails = [...new Set(
+    emails.map(normalizeEmailAddress).filter(isLikelyValidEmail),
+  )];
+  if (!normalizedEmails.length) return new Set();
+
+  const rows = await collectChunkedRows(
+    normalizedEmails,
+    (chunk) => db.select({ email: emailUnsubscribes.email })
+      .from(emailUnsubscribes)
+      .where(and(
+        inArray(emailUnsubscribes.email, chunk),
+        eq(emailUnsubscribes.category, category),
+      )),
+  );
+  return new Set(rows.map((row) => normalizeEmailAddress(row.email)));
+}
+
 function getEmailAuditTimestamp() {
   return new Date().toISOString().slice(0, 19).replace('T', ' ');
 }
@@ -17543,6 +17564,10 @@ export async function notifyStaffByEvent(
     createdAt: now,
   }));
   await db.insert(staffNotifications).values(notifValues);
+
+  // These events drive actionable task-bar badges. Keep them in-portal to
+  // avoid turning routine workflow updates into unsolicited staff email.
+  if (PORTAL_ONLY_STAFF_NOTIFICATION_EVENTS.has(eventType)) return;
 
   // Send email to offline users who have email alerts enabled for this event
   const notificationEmails = await getConfiguredAdminNotificationEmails();
