@@ -3,7 +3,20 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatAdminCurrencyFromUsd } from "@/lib/adminCurrency";
 import { trpc } from "@/lib/trpc";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { Users, BookOpen, GraduationCap, TrendingUp, Key, Library, ShoppingCart, Clock, AlertCircle } from "lucide-react";
+import {
+  Users,
+  Key,
+  Library,
+  ShoppingCart,
+  AlertCircle,
+  ListTodo,
+  ClipboardCheck,
+  Award,
+  MessageSquare,
+  ShieldCheck,
+  Briefcase,
+  CheckCircle2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useLocation } from "wouter";
 import { formatDistanceToNow } from "date-fns";
@@ -35,6 +48,86 @@ export default function AdminDashboard() {
 
   const { data: stats, isLoading: statsLoading } = trpc.dashboard.stats.useQuery();
   const { data: recentEnrollments, isLoading: enrollmentsLoading } = trpc.dashboard.recentEnrollments.useQuery();
+  const { data: taskCounts, isLoading: taskCountsLoading, refetch: refetchTaskCounts } = trpc.staffNotifications.countByRoute.useQuery();
+  const markTaskRouteRead = trpc.staffNotifications.markReadByRoute.useMutation({
+    onSuccess: () => refetchTaskCounts(),
+  });
+  const { data: performanceAvailability } = trpc.staffPerformance.availability.useQuery(undefined, { retry: false });
+  const { data: surveyAvailability } = trpc.studentSurveys.availability.useQuery(undefined, { retry: false });
+  const { data: communityAvailability } = trpc.community.availability.useQuery(undefined, { retry: false });
+  const { data: rewardsAvailability } = trpc.points.rewardsAvailability.useQuery(undefined, { retry: false });
+  const { data: jobEligibilityAvailability } = trpc.studentJobEligibility.availability.useQuery(undefined, { retry: false });
+
+  const adminTasks = [
+    {
+      path: "/admin/orders",
+      labelEn: "Orders awaiting review",
+      labelAr: "طلبات بانتظار المراجعة",
+      count: stats?.pendingOrders ?? 0,
+      enabled: true,
+      icon: ShoppingCart,
+      iconClass: "bg-amber-100 text-amber-700",
+      notificationBacked: false,
+    },
+    {
+      path: "/admin/staff-performance",
+      labelEn: "Staff daily work submissions",
+      labelAr: "تسليمات العمل اليومي للموظفين",
+      count: taskCounts?.["/admin/staff-performance"] ?? 0,
+      enabled: performanceAvailability?.enabled === true,
+      icon: ClipboardCheck,
+      iconClass: "bg-violet-100 text-violet-700",
+      notificationBacked: true,
+    },
+    {
+      path: "/admin/student-surveys",
+      labelEn: "Student survey responses",
+      labelAr: "ردود استبيانات الطلاب",
+      count: taskCounts?.["/admin/student-surveys"] ?? 0,
+      enabled: surveyAvailability?.enabled === true,
+      icon: ListTodo,
+      iconClass: "bg-indigo-100 text-indigo-700",
+      notificationBacked: true,
+    },
+    {
+      path: "/admin/community",
+      labelEn: "Community moderation reports",
+      labelAr: "بلاغات الإشراف على المجتمع",
+      count: taskCounts?.["/admin/community"] ?? 0,
+      enabled: communityAvailability?.enabled === true,
+      icon: MessageSquare,
+      iconClass: "bg-purple-100 text-purple-700",
+      notificationBacked: true,
+    },
+    {
+      path: "/admin/points",
+      labelEn: "Loyalty reward requests",
+      labelAr: "طلبات مكافآت الولاء",
+      count: taskCounts?.["/admin/points"] ?? 0,
+      enabled: rewardsAvailability?.enabled === true,
+      icon: Award,
+      iconClass: "bg-yellow-100 text-yellow-700",
+      notificationBacked: true,
+    },
+    {
+      path: "/admin/job-eligibility",
+      labelEn: "Job eligibility reviews",
+      labelAr: "مراجعات الأهلية للوظائف",
+      count: taskCounts?.["/admin/job-eligibility"] ?? 0,
+      enabled: jobEligibilityAvailability?.enabled === true,
+      icon: Briefcase,
+      iconClass: "bg-blue-100 text-blue-700",
+      notificationBacked: true,
+    },
+  ];
+
+  const openAdminTask = (task: typeof adminTasks[number]) => {
+    if (!task.enabled) return;
+    if (task.notificationBacked && task.count > 0) {
+      markTaskRouteRead.mutate({ actionUrl: task.path });
+    }
+    setLocation(task.path);
+  };
 
   return (
     <DashboardLayout>
@@ -70,6 +163,66 @@ export default function AdminDashboard() {
             </CardContent>
           </Card>
         )}
+
+        {/* Consolidated admin task list — always visible, including disabled features */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-xl">
+              <ListTodo className="h-5 w-5 text-emerald-600" />
+              {isRtl ? "المهام التي تتطلب إجراء" : "Tasks requiring action"}
+            </CardTitle>
+            <p className="text-sm text-muted-foreground">
+              {isRtl
+                ? "قائمة موحدة بجميع الأعمال الجديدة والمعلقة في لوحة الإدارة"
+                : "One place for new and pending work across the admin panel"}
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {adminTasks.map((task) => {
+                const TaskIcon = task.icon;
+                const isLoading = task.notificationBacked ? taskCountsLoading : statsLoading;
+                return (
+                  <button
+                    key={task.path}
+                    type="button"
+                    onClick={() => openAdminTask(task)}
+                    disabled={!task.enabled}
+                    className={`flex items-center gap-3 rounded-xl border p-4 text-start transition-all ${
+                      task.enabled
+                        ? "bg-white hover:border-emerald-300 hover:shadow-sm cursor-pointer"
+                        : "bg-muted/40 opacity-65 cursor-not-allowed"
+                    }`}
+                  >
+                    <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${task.iconClass}`}>
+                      <TaskIcon className="h-5 w-5" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold">
+                        {isRtl ? task.labelAr : task.labelEn}
+                      </span>
+                      <span className="mt-1 block text-xs text-muted-foreground">
+                        {!task.enabled
+                          ? (isRtl ? "الميزة غير مفعلة" : "Feature disabled")
+                          : isLoading
+                            ? (isRtl ? "جارٍ التحميل..." : "Loading...")
+                            : task.count > 0
+                              ? (isRtl ? `${task.count} مهمة جديدة` : `${task.count} new task${task.count === 1 ? "" : "s"}`)
+                              : (isRtl ? "لا توجد مهام جديدة" : "No new tasks")}
+                      </span>
+                    </span>
+                    {task.enabled && !isLoading && (
+                      task.count > 0
+                        ? <span className="flex h-7 min-w-7 items-center justify-center rounded-full bg-red-500 px-2 text-xs font-bold text-white">{task.count > 99 ? "99+" : task.count}</span>
+                        : <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-500" />
+                    )}
+                    {!task.enabled && <ShieldCheck className="h-5 w-5 shrink-0 text-muted-foreground" />}
+                  </button>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Quick Actions — compact 4-column grid */}
         <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
