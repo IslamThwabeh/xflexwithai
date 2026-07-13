@@ -1,6 +1,6 @@
 # XFLEX Project Memory
 
-Last updated: 2026-07-12
+Last updated: 2026-07-13
 
 ## Project Overview
 
@@ -59,6 +59,9 @@ Last updated: 2026-07-12
 - Phased staff/student engagement release was committed as `da85992 Add phased staff and student engagement features`, pushed to `origin/main`, and deployed by Codex on 2026-07-12. Production backup before migrations: `tmp/prod-backups/xflexwithai-before-phases-063-068-20260712-215252.sql`. Worker version: `5925eb99-6ffe-4047-9f07-47edc49a9695`. Pages preview: `https://cb37d852.xflexwithai.pages.dev`.
 - Production D1 migrations `063_staff_performance_foundation.sql`, `064_student_surveys_foundation.sql`, `065_student_survey_blocking_flag.sql`, `066_loyalty_rewards_foundation.sql`, `067_student_community_foundation.sql`, and `068_student_job_eligibility_foundation.sql` were applied and recorded in `schema_migrations` on 2026-07-12 with `source = codex_wrangler`.
 - Post-deployment verification on 2026-07-12 confirmed production URLs `/`, `/ar`, `/en`, and `/auth` returned 200; Worker health returned `status=ok`; new feature flags remained `false`; and subscription/enrollment counts were unchanged: `packageSubscriptions` 59/59 active, `lexaiSubscriptions` 22/21 active/1 pending activation, `recommendationSubscriptions` 60/50 active/4 pending activation, `enrollments` 64/64 active.
+- Engagement workflow integrity/task-alert release was committed as `1bf0fdc Fix engagement workflows and task alerts`, pushed to `origin/main`, and deployed by Codex on 2026-07-13. Worker version: `bfdc4726-42da-4629-bfea-1afc4c04a3d4`. Pages preview: `https://9cec8f57.xflexwithai.pages.dev`.
+- Production D1 migration `069_loyalty_redemption_integrity.sql` was applied before the Worker deployment and recorded in `schema_migrations` with `source = codex_wrangler`. It adds atomic request validation/reservation and rejection-refund triggers. Cloudflare bookmark: `00000f4d-000010c6-000050a7-16d9dbf16e2d7e62ba970e9400340a04`. Production had zero reward redemptions before and after migration.
+- Post-deployment verification on 2026-07-13 confirmed Worker health returned `status=ok`; production `/ar`, `/en`, and `/auth` returned 200; `/` followed its expected redirect to 200; and the Pages preview followed its redirect to 200.
 - Release order for the 2026-06-22 hotfixes:
   1. Apply migration `056`.
   2. Deploy the production Worker/backend.
@@ -79,7 +82,7 @@ Last updated: 2026-07-12
 - Recommendation delivery outbox rows store subject/body snapshots for alert, update, and result emails so audit rows remain inspectable later.
 - Recommendation publishing no longer sends recipient emails synchronously. Publishing creates `recommendation_deliveries` rows, and the minute Worker drains them in bounded batches.
 - Generic activation emails use `email_outbox`. Before the local 2026-07-12 admin-email fix, admin announcements also used `email_outbox_campaigns` and materialized recipient rows gradually, which could stretch all-client announcements over hours.
-- Local/unreleased 2026-07-12 admin-email latency fix: admin notification emails now send immediately. If there is one client recipient, the client is placed in `To`. If there are multiple client recipients, `support@xflexacademy.com` is placed in `To` and clients are hidden in `BCC`; per-client `email_delivery_logs` audit rows and `user_notifications.email_sent` updates are still preserved. This change has no migration.
+- Released 2026-07-13 admin-email latency fix: admin notification emails now send immediately. If there is one client recipient, the client is placed in `To`. If there are multiple client recipients, `support@xflexacademy.com` is placed in `To` and clients are hidden in `BCC`; per-client `email_delivery_logs` audit rows and `user_notifications.email_sent` updates are still preserved. Suppression checks are bulk-loaded, and audit persistence failure after provider acceptance does not falsely report delivery failure. This email change has no migration.
 - Production read-only diagnosis on 2026-07-12 found an 84-recipient admin bulk campaign from 2026-07-09 was created at `19:42:23Z` and completed at `23:05:26Z`, confirming the delay came from gradual campaign materialization/draining rather than ZeptoMail provider acceptance.
 - Email outbox delivery is idempotent through dedupe keys, conditional claims, stale-lock recovery, bounded retries, provider/error auditing, and dead-letter status.
 - Admin notification send responses now distinguish in-app recipients (`count`) from queued emails (`emailsQueued`).
