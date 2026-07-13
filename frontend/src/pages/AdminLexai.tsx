@@ -51,6 +51,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { Streamdown } from "streamdown";
 import { useLocation } from "wouter";
 
 type SubscriptionShape = {
@@ -115,12 +116,13 @@ function pickLabel(
 }
 
 function formatUsd(value: number, locale: string) {
-  return new Intl.NumberFormat(locale, {
-    style: "currency",
-    currency: "USD",
+  const amount = new Intl.NumberFormat(locale, {
+    numberingSystem: "latn",
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(value || 0);
+
+  return `USD ${amount}`;
 }
 
 function getUsageActorLabel(
@@ -721,7 +723,13 @@ export default function AdminLexai() {
                 {usageByUserDayPreview.map((entry) => (
                   <UsageRow
                     key={`${entry.day}-${entry.actorKey}`}
-                    label={`${entry.day} · ${getUsageActorLabel(entry, isRtl)}`}
+                    label={(
+                      <span className="flex min-w-0 items-center gap-1.5" dir="ltr">
+                        <bdi className="shrink-0" dir="ltr">{entry.day}</bdi>
+                        <span className="shrink-0 text-slate-400" aria-hidden="true">·</span>
+                        <bdi className="min-w-0 truncate" dir="auto">{getUsageActorLabel(entry, isRtl)}</bdi>
+                      </span>
+                    )}
                     value={formatUsd(entry.totalCostUsd, locale)}
                     sublabel={isRtl
                       ? `${entry.totalCalls} استدعاء`
@@ -836,11 +844,11 @@ export default function AdminLexai() {
                         >
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
-                              <p className="font-semibold truncate">
-                                {caseLabel}
+                              <p className="truncate font-semibold">
+                                <bdi dir="auto">{caseLabel}</bdi>
                               </p>
-                              <p className="text-xs text-muted-foreground truncate mt-0.5">
-                                {caseSecondaryLabel}
+                              <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                                <bdi dir="auto">{caseSecondaryLabel}</bdi>
                               </p>
                             </div>
                             <div className="flex flex-col items-end gap-2">
@@ -912,10 +920,10 @@ export default function AdminLexai() {
                       <div>
                         <CardTitle className="text-2xl flex items-center gap-2">
                           <UserRound className="w-5 h-5 text-emerald-500" />
-                          {selectedUserLabel}
+                          <bdi dir="auto">{selectedUserLabel}</bdi>
                         </CardTitle>
                         <CardDescription className="mt-1">
-                          {selectedUserSecondaryLabel}
+                          <bdi dir="auto">{selectedUserSecondaryLabel}</bdi>
                         </CardDescription>
                       </div>
 
@@ -999,19 +1007,23 @@ export default function AdminLexai() {
                                         </div>
 
                                         {message.imageUrl && (
-                                          <div className="mb-3">
+                                          <div className="mb-4">
                                             <img
                                               src={message.imageUrl}
                                               alt="Chart"
-                                              className="h-[90px] w-[120px] cursor-pointer rounded-lg bg-black/5 object-cover transition-opacity hover:opacity-85"
+                                              className="h-auto max-h-72 w-full max-w-md cursor-pointer rounded-lg border border-slate-200 bg-black/5 object-contain transition-opacity hover:opacity-85"
                                               onClick={() => window.open(message.imageUrl ?? "", "_blank")}
                                             />
                                           </div>
                                         )}
 
-                                        <div className="whitespace-pre-wrap text-sm leading-6 text-slate-700">
+                                        <Streamdown
+                                          mode="static"
+                                          controls={false}
+                                          className="text-sm leading-6 text-slate-700 [&_a]:font-medium [&_a]:text-emerald-700 [&_a]:underline [&_blockquote]:my-3 [&_blockquote]:border-s-2 [&_blockquote]:border-emerald-300 [&_blockquote]:ps-3 [&_code]:rounded [&_code]:bg-slate-200/70 [&_code]:px-1 [&_h1]:mb-3 [&_h1]:mt-5 [&_h1]:text-xl [&_h1]:font-bold [&_h2]:mb-2 [&_h2]:mt-4 [&_h2]:text-lg [&_h2]:font-bold [&_h3]:mb-2 [&_h3]:mt-4 [&_h3]:text-base [&_h3]:font-semibold [&_li]:my-1 [&_ol]:my-3 [&_ol]:list-decimal [&_ol]:space-y-1 [&_ol]:ps-5 [&_p]:my-2 [&_strong]:font-bold [&_strong]:text-slate-900 [&_ul]:my-3 [&_ul]:list-disc [&_ul]:space-y-1 [&_ul]:ps-5"
+                                        >
                                           {message.content}
-                                        </div>
+                                        </Streamdown>
                                       </div>
                                     );
                                   })}
@@ -1371,7 +1383,7 @@ function UsageMetricCard({ label, value, hint }: { label: string; value: string;
   return (
     <div className="rounded-xl border border-emerald-100 bg-emerald-50/40 p-4">
       <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-2 text-2xl font-semibold text-slate-900">{value}</p>
+      <p className="mt-2 text-2xl font-semibold text-slate-900"><bdi dir="auto">{value}</bdi></p>
       <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
     </div>
   );
@@ -1404,15 +1416,15 @@ function UsagePanel({
   );
 }
 
-function UsageRow({ label, value, sublabel }: { label: string; value: string; sublabel?: string | null }) {
+function UsageRow({ label, value, sublabel }: { label: React.ReactNode; value: string; sublabel?: string | null }) {
   return (
     <div className="rounded-lg border border-white bg-white p-3 shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-slate-900">{label}</p>
-          {sublabel ? <p className="mt-1 text-xs text-muted-foreground">{sublabel}</p> : null}
+          <div className="truncate text-sm font-medium text-slate-900" dir="auto">{label}</div>
+          {sublabel ? <p className="mt-1 text-xs text-muted-foreground" dir="auto">{sublabel}</p> : null}
         </div>
-        <p className="shrink-0 text-sm font-semibold text-slate-900">{value}</p>
+        <p className="shrink-0 text-sm font-semibold text-slate-900"><bdi dir="auto">{value}</bdi></p>
       </div>
     </div>
   );
@@ -1422,7 +1434,7 @@ function InfoRow({ label, value }: { label: string; value: string | number | nul
   return (
     <div>
       <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-1 font-medium">{value || "-"}</p>
+      <p className="mt-1 font-medium"><bdi dir="auto">{value || "-"}</bdi></p>
     </div>
   );
 }
