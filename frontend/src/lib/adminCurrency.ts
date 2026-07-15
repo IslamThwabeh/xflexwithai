@@ -96,6 +96,21 @@ export function formatAdminCurrencyFromUsdCents(
   });
 }
 
+export function formatAdminCurrencyFromIls(
+  amountIls: number,
+  language: string,
+  options?: {
+    minimumFractionDigits?: number;
+    maximumFractionDigits?: number;
+  },
+) {
+  return formatAdminCurrency(amountIls, language, {
+    sourceCurrency: 'ILS',
+    minimumFractionDigits: options?.minimumFractionDigits,
+    maximumFractionDigits: options?.maximumFractionDigits,
+  });
+}
+
 export function formatSourceCurrencyAmount(
   amount: number,
   language: string,

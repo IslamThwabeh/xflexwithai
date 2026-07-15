@@ -6587,7 +6587,10 @@ export const appRouter = router({
         ...k,
         packageName: k.packageId ? (pkgMap.get(k.packageId)?.nameEn || pkgMap.get(k.packageId)?.nameAr || 'Unknown') : null,
         packageNameAr: k.packageId ? (pkgMap.get(k.packageId)?.nameAr || null) : null,
+        packageSlug: k.packageId ? (pkgMap.get(k.packageId)?.slug || null) : null,
+        packageIncludesLexai: k.packageId ? (pkgMap.get(k.packageId)?.includesLexai ?? null) : null,
         isUpgrade: k.isUpgrade ?? false,
+        isRenewal: k.isRenewal ?? false,
         referredBy: k.referredBy ?? null,
       }));
     }),

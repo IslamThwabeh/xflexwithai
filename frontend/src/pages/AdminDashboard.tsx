@@ -1,6 +1,6 @@
 import DashboardLayout from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatAdminCurrencyFromUsd } from "@/lib/adminCurrency";
+import { formatAdminCurrencyFromIls } from "@/lib/adminCurrency";
 import { trpc } from "@/lib/trpc";
 import { useLanguage } from "@/contexts/LanguageContext";
 import {
@@ -281,7 +281,7 @@ export default function AdminDashboard() {
             <p className="text-lg font-bold text-green-700">
               {statsLoading
                 ? "..."
-                : formatAdminCurrencyFromUsd(stats?.totalRevenue || 0, language, {
+                : formatAdminCurrencyFromIls(stats?.totalRevenueIls || 0, language, {
                     minimumFractionDigits: 0,
                     maximumFractionDigits: 0,
                   })}

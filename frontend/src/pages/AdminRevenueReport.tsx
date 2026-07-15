@@ -3,7 +3,7 @@ import { trpc } from '@/lib/trpc';
 import { printReport } from '@/lib/printReport';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { formatLocalizedDate } from '@/lib/dateLocale';
-import { formatAdminCurrencyFromUsd } from '@/lib/adminCurrency';
+import { formatAdminCurrencyFromIls } from '@/lib/adminCurrency';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Download, Wallet, TrendingUp, Key, FileText, Search } from 'lucide-react';
@@ -14,7 +14,7 @@ const activationSortFns: Record<string, (a: any, b: any) => number> = {
   key: (a, b) => (a.keyCode || '').localeCompare(b.keyCode || ''),
   user: (a, b) => (a.userName || '').localeCompare(b.userName || ''),
   package: (a, b) => (a.packageName || '').localeCompare(b.packageName || ''),
-  price: (a, b) => (a.price || 0) - (b.price || 0),
+  price: (a, b) => (a.priceIls || 0) - (b.priceIls || 0),
   date: (a, b) => new Date(a.activatedAt || 0).getTime() - new Date(b.activatedAt || 0).getTime(),
 };
 
@@ -33,10 +33,10 @@ export default function AdminRevenueReport() {
   const [typeFilter, setTypeFilter] = useState<'all' | 'new' | 'upgrade' | 'renewal'>('all');
   const [monthFilter, setMonthFilter] = useState('');
 
-  const fmt = (dollars: number) => formatAdminCurrencyFromUsd(dollars, language);
+  const fmt = (shekels: number) => formatAdminCurrencyFromIls(shekels, language);
 
   const avgKeyValue = (data?.totalKeySales || 0) > 0
-    ? (data?.totalRevenue || 0) / (data?.totalKeySales || 1)
+    ? (data?.totalRevenueIls || 0) / (data?.totalKeySales || 1)
     : 0;
 
   const activations = useMemo(() => data?.recentActivations ?? [], [data?.recentActivations]);
@@ -97,7 +97,7 @@ export default function AdminRevenueReport() {
     const headers = ['Key Code', 'User', 'Email', 'Package', 'Price (₪)', 'Upgrade', 'Renewal', 'Activated'];
     const rows = filteredActivations.map((a: any) => [
       a.keyCode, a.userName || '', a.userEmail || '',
-      a.packageName || '', fmt(a.price || 0),
+      a.packageName || '', fmt(a.priceIls || 0),
       a.isUpgrade ? 'Yes' : 'No', a.isRenewal ? 'Yes' : 'No',
       a.activatedAt ? formatLocalizedDate(a.activatedAt, language) : '',
     ]);
@@ -151,7 +151,7 @@ export default function AdminRevenueReport() {
             <Wallet className="w-5 h-5" />
             <span className="text-sm font-medium">{isRtl ? 'إجمالي الإيرادات' : 'Total Revenue'}</span>
           </div>
-          <div className="text-3xl font-bold">{fmt(data?.totalRevenue || 0)}</div>
+          <div className="text-3xl font-bold">{fmt(data?.totalRevenueIls || 0)}</div>
         </div>
         <div className="bg-white border rounded-xl p-5">
           <div className="flex items-center gap-2 mb-2 text-muted-foreground">
@@ -175,15 +175,15 @@ export default function AdminRevenueReport() {
         {data?.monthlyRevenue?.length ? (
           <div className="space-y-2">
             {data.monthlyRevenue.map((m: any) => {
-              const maxRevenue = Math.max(...data.monthlyRevenue.map((x: any) => x.revenue), 1);
-              const pct = (m.revenue / maxRevenue) * 100;
+              const maxRevenue = Math.max(...data.monthlyRevenue.map((x: any) => x.revenueIls), 1);
+              const pct = (m.revenueIls / maxRevenue) * 100;
               return (
                 <div key={m.month} className="flex items-center gap-3">
                   <span className="text-sm font-mono w-20 shrink-0">{m.month}</span>
                   <div className="flex-1 bg-gray-100 rounded-full h-6 overflow-hidden">
                     <div className="bg-green-500 h-full rounded-full transition-all" style={{ width: `${Math.max(pct, 2)}%` }} />
                   </div>
-                  <span className="text-sm font-bold w-24 text-end">{fmt(m.revenue)}</span>
+                  <span className="text-sm font-bold w-24 text-end">{fmt(m.revenueIls)}</span>
                   <span className="text-xs text-muted-foreground w-16 text-end">{m.count} {isRtl ? 'مفتاح' : 'keys'}</span>
                 </div>
               );
@@ -205,7 +205,7 @@ export default function AdminRevenueReport() {
                   <div className="font-medium text-sm">{isRtl ? (p.packageNameAr || p.packageName) : p.packageName}</div>
                   <div className="text-xs text-muted-foreground">{p.count} {isRtl ? 'مفتاح' : 'keys'}</div>
                 </div>
-                <div className="font-bold text-green-700">{fmt(p.revenue)}</div>
+                <div className="font-bold text-green-700">{fmt(p.revenueIls)}</div>
               </div>
             ))}
           </div>
@@ -300,7 +300,7 @@ export default function AdminRevenueReport() {
                     <div className="text-xs text-muted-foreground" dir="ltr">{a.userEmail || '—'}</div>
                   </td>
                   <td className="px-3 py-2 text-xs">{isRtl ? (a.packageNameAr || a.packageName) : (a.packageName || '—')}</td>
-                  <td className="px-3 py-2 text-center font-medium">{fmt(a.price || 0)}</td>
+                  <td className="px-3 py-2 text-center font-medium">{fmt(a.priceIls || 0)}</td>
                   <td className="px-3 py-2 text-center">
                     {a.isUpgrade ? (
                       <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">{isRtl ? 'ترقية' : 'Upgrade'}</span>

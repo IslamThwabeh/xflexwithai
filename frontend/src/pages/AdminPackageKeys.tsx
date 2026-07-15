@@ -77,13 +77,13 @@ import {
   zebraRow,
 } from "@/components/DataTable";
 import {
-  formatAdminCurrencyFromUsd,
-  formatAdminCurrencyFromUsdCents,
+  formatAdminCurrencyFromIls,
   formatAdminNumberInput,
-  ilsToUsd,
-  usdToIls,
 } from "@/lib/adminCurrency";
-import { getSuggestedPackageKeyPrice } from "@shared/packageKeyPricing";
+import {
+  getPackageKeyPriceIls,
+  getSuggestedPackageKeyPriceIls,
+} from "@shared/packageKeyPricing";
 
 const getServiceExpiryValue = (key: any): string | null => {
   if (!key?.isActive || !key?.activatedAt) return null;
@@ -111,6 +111,15 @@ const getServiceExpiryTime = (key: any): number => {
   return Number.isFinite(time) ? time : 0;
 };
 
+const getAdminPackageKeyPriceIls = (key: any) => getPackageKeyPriceIls({
+  price: key.price,
+  currency: key.currency,
+  packageSlug: key.packageSlug,
+  includesLexai: key.packageIncludesLexai,
+  isRenewal: key.isRenewal,
+  isUpgrade: key.isUpgrade,
+});
+
 const keySortFns: Record<string, (a: any, b: any) => number> = {
   keyCode: (a, b) => (a.keyCode || "").localeCompare(b.keyCode || ""),
   package: (a, b) => (a.packageName || "").localeCompare(b.packageName || ""),
@@ -120,7 +129,7 @@ const keySortFns: Record<string, (a: any, b: any) => number> = {
     const rank = (k: any) => !k.isActive ? 0 : k.activatedAt ? 2 : 1;
     return rank(a) - rank(b);
   },
-  price: (a, b) => (a.price || 0) - (b.price || 0),
+  price: (a, b) => getAdminPackageKeyPriceIls(a) - getAdminPackageKeyPriceIls(b),
   duration: (a, b) => (a.entitlementDays || 0) - (b.entitlementDays || 0),
   serviceExpiry: (a, b) => getServiceExpiryTime(a) - getServiceExpiryTime(b),
   keyExpiry: (a, b) =>
@@ -297,8 +306,9 @@ export default function AdminPackageKeys() {
       email: assignEmail || undefined,
       notes: notes || undefined,
       price: trimmedPrice && Number.isFinite(numericPrice) && numericPrice > 0
-        ? Math.round(ilsToUsd(numericPrice))
+        ? Math.round(numericPrice)
         : undefined,
+      currency: trimmedPrice && Number.isFinite(numericPrice) && numericPrice > 0 ? 'ILS' : undefined,
       entitlementDays: entitlementDays ? parseInt(entitlementDays, 10) : undefined,
       expiresAt: expiresAt || undefined,
       isUpgrade: isUpgrade || undefined,
@@ -319,8 +329,9 @@ export default function AdminPackageKeys() {
       quantity: parseInt(quantity) || 1,
       notes: notes || undefined,
       price: trimmedPrice && Number.isFinite(numericPrice) && numericPrice > 0
-        ? Math.round(ilsToUsd(numericPrice))
+        ? Math.round(numericPrice)
         : undefined,
+      currency: trimmedPrice && Number.isFinite(numericPrice) && numericPrice > 0 ? 'ILS' : undefined,
       entitlementDays: entitlementDays ? parseInt(entitlementDays, 10) : undefined,
       expiresAt: expiresAt || undefined,
       isUpgrade: isUpgrade || undefined,
@@ -415,7 +426,7 @@ export default function AdminPackageKeys() {
   ) => {
     setPrice(
       formatAdminNumberInput(
-        usdToIls(getSuggestedPackageKeyPrice(packages, packageId, options)),
+        getSuggestedPackageKeyPriceIls(packages, packageId, options),
       ),
     );
   };
@@ -451,7 +462,13 @@ export default function AdminPackageKeys() {
               <div className="flex items-center gap-2">
                 <Package className="w-4 h-4" />
                 <span>{language === 'ar' ? pkg.nameAr : pkg.nameEn}</span>
-                <span className="text-xs text-gray-500">{formatAdminCurrencyFromUsdCents(pkg.price || 0, language, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
+                <span className="text-xs text-gray-500">
+                  {formatAdminCurrencyFromIls(
+                    getSuggestedPackageKeyPriceIls(packages, pkg.id),
+                    language,
+                    { minimumFractionDigits: 0, maximumFractionDigits: 0 },
+                  )}
+                </span>
               </div>
             </SelectItem>
           ))}
@@ -907,7 +924,7 @@ export default function AdminPackageKeys() {
                   <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
                     <div>
                       <span className="text-gray-400 block">{language === 'ar' ? 'السعر' : 'Price'}</span>
-                      <span className="font-medium">{key.price ? formatAdminCurrencyFromUsd(key.price, language, { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : '—'}</span>
+                      <span className="font-medium">{key.price ? formatAdminCurrencyFromIls(getAdminPackageKeyPriceIls(key), language, { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : '—'}</span>
                     </div>
                     <div>
                       <span className="text-gray-400 block">
@@ -1136,7 +1153,7 @@ export default function AdminPackageKeys() {
                           )}
                         </TableCell>}
                         {visibleCols.has('price') && <TableCell className="text-sm font-medium">
-                          {key.price ? formatAdminCurrencyFromUsd(key.price, language, { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : '—'}
+                          {key.price ? formatAdminCurrencyFromIls(getAdminPackageKeyPriceIls(key), language, { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : '—'}
                         </TableCell>}
                         {visibleCols.has('duration') && <TableCell className="text-xs">
                           <span className="text-gray-600">

@@ -68,7 +68,7 @@ import {
   Info,
 } from "lucide-react";
 import { toast } from "sonner";
-import { formatAdminCurrencyFromUsd } from "@/lib/adminCurrency";
+import { formatAdminCurrencyFromIls } from "@/lib/adminCurrency";
 
 const studentSortFns: Record<string, (a: any, b: any) => number> = {
   name: (a, b) => (a.name || "").localeCompare(b.name || ""),
@@ -79,7 +79,7 @@ const studentSortFns: Record<string, (a: any, b: any) => number> = {
     ),
   package: (a, b) =>
     (a.activePackages || []).length - (b.activePackages || []).length,
-  spent: (a, b) => (a.totalSpent || 0) - (b.totalSpent || 0),
+  spent: (a, b) => (a.totalSpentIls || 0) - (b.totalSpentIls || 0),
   renewals: (a, b) => (a.renewalCount || 0) - (b.renewalCount || 0),
   registered: (a, b) =>
     new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime(),
@@ -241,7 +241,7 @@ export default function AdminStudents() {
   ).length || 0;
   const inactiveStudents = totalStudents - activeStudents;
   const totalRevenue = canViewFinancials ? (students?.reduce(
-    (sum: number, s: any) => sum + (s.totalSpent || 0),
+    (sum: number, s: any) => sum + (s.totalSpentIls || 0),
     0
   ) || 0) : 0;
 
@@ -275,7 +275,7 @@ export default function AdminStudents() {
         ? new Date(s.lastSignedIn).toLocaleDateString("en-US")
         : "",
       (s.activePackages || []).join("; "),
-      ...(canViewFinancials ? [formatAdminCurrencyFromUsd(s.totalSpent || 0, language)] : []),
+      ...(canViewFinancials ? [formatAdminCurrencyFromIls(s.totalSpentIls || 0, language)] : []),
       s.renewalCount || 0,
     ]);
     const csv = [
@@ -369,7 +369,7 @@ export default function AdminStudents() {
             <p className="text-[11px] text-gray-500 leading-tight">{isRtl ? "بدون باقة" : "No Package"}</p>
           </button>
           {canViewFinancials && <div className="rounded-lg border px-3 py-2 text-center bg-white">
-            <p className="text-lg font-bold text-emerald-600">{formatAdminCurrencyFromUsd(totalRevenue, language)}</p>
+            <p className="text-lg font-bold text-emerald-600">{formatAdminCurrencyFromIls(totalRevenue, language)}</p>
             <p className="text-[11px] text-gray-500 leading-tight">{isRtl ? "إجمالي الإيرادات" : "Total Revenue"}</p>
           </div>}
         </div>
@@ -553,7 +553,7 @@ export default function AdminStudents() {
                             {isRtl ? "الإنفاق" : "Spent"}
                           </span>
                           <span className="font-medium text-emerald-600">
-                            {s.totalSpent > 0 ? formatAdminCurrencyFromUsd(s.totalSpent, language) : "—"}
+                            {s.totalSpentIls > 0 ? formatAdminCurrencyFromIls(s.totalSpentIls, language) : "—"}
                           </span>
                         </div>}
                         <div>
@@ -775,7 +775,7 @@ export default function AdminStudents() {
                               )}
                             </TableCell>}
                             {canViewFinancials && visibleCols.has('spent') && <TableCell className="text-sm font-medium text-emerald-600">
-                              {s.totalSpent > 0 ? formatAdminCurrencyFromUsd(s.totalSpent, language) : "—"}
+                              {s.totalSpentIls > 0 ? formatAdminCurrencyFromIls(s.totalSpentIls, language) : "—"}
                             </TableCell>}
                             {visibleCols.has('renewals') && <TableCell className="text-center">
                               {s.renewalCount > 0 ? (

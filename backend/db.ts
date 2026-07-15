@@ -119,6 +119,10 @@ import {
   type StaffNotificationEventType,
 } from '../shared/const';
 import { isLikelyValidEmail, normalizeEmailAddress } from '../shared/emailValidation';
+import {
+  getPackageKeyPriceIls,
+  PACKAGE_KEY_USD_TO_ILS_RATE,
+} from '../shared/packageKeyPricing';
 import { hashUnsubscribeToken, type EmailCategory } from './_core/emailPreferences';
 import type { StaffPerformanceStatus } from './services/staff-performance.service';
 import {
@@ -3700,6 +3704,7 @@ export async function getDashboardStats() {
       totalKeySales: 0,
       activatedPackageKeys: 0,
       totalRevenue: 0,
+      totalRevenueIls: 0,
       pendingOrders: 0,
     };
   }
@@ -3724,11 +3729,27 @@ export async function getDashboardStats() {
     sql`${registrationKeys.price} > 0`,
   );
 
-  // Revenue is derived from activated paid package keys only.
-  const [keyRevenueResult] = await db.select({
-    total: sql<number>`COALESCE(SUM(${registrationKeys.price}), 0)`,
+  // Revenue is derived from activated paid package keys only. Preserve the
+  // source-currency total while also returning the exact staff-facing ILS
+  // total for fixed package prices.
+  const revenueKeys = await db.select({
+    price: registrationKeys.price,
+    currency: registrationKeys.currency,
+    isUpgrade: registrationKeys.isUpgrade,
+    isRenewal: registrationKeys.isRenewal,
+    packageSlug: packages.slug,
+    includesLexai: packages.includesLexai,
   }).from(registrationKeys)
+    .leftJoin(packages, eq(packages.id, registrationKeys.packageId))
     .where(activatedPackageKeyFilter);
+  const totalRevenue = revenueKeys.reduce((sum, key) => {
+    const price = Number(key.price ?? 0);
+    const currency = key.currency?.trim().toUpperCase();
+    return sum + ((currency === 'ILS' || currency === 'NIS')
+      ? price / PACKAGE_KEY_USD_TO_ILS_RATE
+      : price);
+  }, 0);
+  const totalRevenueIls = revenueKeys.reduce((sum, key) => sum + getPackageKeyPriceIls(key), 0);
 
   return {
     totalUsers: Number(totalUsersResult?.count ?? 0),
@@ -3737,7 +3758,8 @@ export async function getDashboardStats() {
     activeEnrollments: Number(activeEnrollmentsResult?.count ?? 0),
     totalKeySales: Number(packageKeyStats.total),
     activatedPackageKeys: Number(packageKeyStats.activated),
-    totalRevenue: Number(keyRevenueResult?.total ?? 0),  // dollars (not cents)
+    totalRevenue,
+    totalRevenueIls,
     pendingOrders: Number(pendingOrdersResult?.count ?? 0),
   };
 }
@@ -7546,6 +7568,7 @@ export async function getAllPackageKeysEnriched() {
     createdAt: registrationKeys.createdAt,
     expiresAt: registrationKeys.expiresAt,
     isUpgrade: registrationKeys.isUpgrade,
+    isRenewal: registrationKeys.isRenewal,
     referredBy: registrationKeys.referredBy,
     userId: users.id,
     userName: users.name,
@@ -12374,7 +12397,24 @@ export async function getSubscribersReport(): Promise<any[]> {
     const userKeys = allKeys.filter(k =>
       k.activatedAt && (k.email || '').trim().toLowerCase() === normalizedEmail
     );
-    const totalSpent = userKeys.reduce((s, k) => s + (k.price || 0), 0);
+    const totalSpent = userKeys.reduce((sum, key) => {
+      const price = Number(key.price ?? 0);
+      const currency = key.currency?.trim().toUpperCase();
+      return sum + ((currency === 'ILS' || currency === 'NIS')
+        ? price / PACKAGE_KEY_USD_TO_ILS_RATE
+        : price);
+    }, 0);
+    const totalSpentIls = userKeys.reduce((sum, key) => {
+      const pkg = key.packageId ? pkgMap.get(key.packageId) : undefined;
+      return sum + getPackageKeyPriceIls({
+        price: key.price,
+        currency: key.currency,
+        packageSlug: pkg?.slug,
+        includesLexai: pkg?.includesLexai,
+        isRenewal: key.isRenewal,
+        isUpgrade: key.isUpgrade,
+      });
+    }, 0);
     // Count renewal keys
     const renewalCount = userKeys.filter(k => k.isRenewal).length;
 
@@ -12401,7 +12441,8 @@ export async function getSubscribersReport(): Promise<any[]> {
     return {
       ...u,
       totalKeys: userKeys.length,
-      totalSpent, // already in dollars (key prices are stored in dollars)
+      totalSpent,
+      totalSpentIls,
       activePackages: activePackageNames,
       activePackagesAr: activePackageNamesAr,
       subscriptionCount: userSubs.length,
@@ -12417,13 +12458,14 @@ export async function getSubscribersReport(): Promise<any[]> {
  */
 export async function getRevenueReport(): Promise<{
   totalRevenue: number;
+  totalRevenueIls: number;
   totalKeySales: number;
-  monthlyRevenue: { month: string; revenue: number; count: number }[];
-  packageRevenue: { packageId: number; packageName: string; packageNameAr: string; revenue: number; count: number }[];
-  recentActivations: { id: number; keyCode: string; price: number; packageName: string; packageNameAr: string; userName: string; userEmail: string; activatedAt: string; isUpgrade: boolean; isRenewal: boolean }[];
+  monthlyRevenue: { month: string; revenue: number; revenueIls: number; count: number }[];
+  packageRevenue: { packageId: number; packageName: string; packageNameAr: string; revenue: number; revenueIls: number; count: number }[];
+  recentActivations: { id: number; keyCode: string; price: number; priceIls: number; packageName: string; packageNameAr: string; userName: string; userEmail: string; activatedAt: string; isUpgrade: boolean; isRenewal: boolean }[];
 }> {
   const db = await getDb();
-  if (!db) return { totalRevenue: 0, totalKeySales: 0, monthlyRevenue: [], packageRevenue: [], recentActivations: [] };
+  if (!db) return { totalRevenue: 0, totalRevenueIls: 0, totalKeySales: 0, monthlyRevenue: [], packageRevenue: [], recentActivations: [] };
 
   // All activated keys with price > 0 = actual sales
   const activatedKeys = await db.select().from(registrationKeys)
@@ -12436,15 +12478,35 @@ export async function getRevenueReport(): Promise<{
   const pkgMap = new Map(allPackages.map(p => [p.id, p]));
   const userByEmail = new Map(allUsers.map(u => [u.email?.toLowerCase(), u]));
 
-  const totalRevenue = activatedKeys.reduce((sum, k) => sum + (k.price || 0), 0);
+  const getKeyPriceUsd = (key: typeof activatedKeys[number]) => {
+    const price = Number(key.price ?? 0);
+    const currency = key.currency?.trim().toUpperCase();
+    return (currency === 'ILS' || currency === 'NIS')
+      ? price / PACKAGE_KEY_USD_TO_ILS_RATE
+      : price;
+  };
+  const getKeyPriceIls = (key: typeof activatedKeys[number]) => {
+    const pkg = key.packageId ? pkgMap.get(key.packageId) : undefined;
+    return getPackageKeyPriceIls({
+      price: key.price,
+      currency: key.currency,
+      packageSlug: pkg?.slug,
+      includesLexai: pkg?.includesLexai,
+      isRenewal: key.isRenewal,
+      isUpgrade: key.isUpgrade,
+    });
+  };
+  const totalRevenue = activatedKeys.reduce((sum, key) => sum + getKeyPriceUsd(key), 0);
+  const totalRevenueIls = activatedKeys.reduce((sum, key) => sum + getKeyPriceIls(key), 0);
   const totalKeySales = activatedKeys.length;
 
   // Monthly revenue by activatedAt month
-  const monthMap = new Map<string, { revenue: number; count: number }>();
+  const monthMap = new Map<string, { revenue: number; revenueIls: number; count: number }>();
   for (const k of activatedKeys) {
     const month = k.activatedAt ? k.activatedAt.substring(0, 7) : 'unknown';
-    const existing = monthMap.get(month) || { revenue: 0, count: 0 };
-    existing.revenue += k.price || 0;
+    const existing = monthMap.get(month) || { revenue: 0, revenueIls: 0, count: 0 };
+    existing.revenue += getKeyPriceUsd(k);
+    existing.revenueIls += getKeyPriceIls(k);
     existing.count += 1;
     monthMap.set(month, existing);
   }
@@ -12453,11 +12515,12 @@ export async function getRevenueReport(): Promise<{
     .sort((a, b) => b.month.localeCompare(a.month));
 
   // Revenue by package
-  const pkgRevMap = new Map<number, { revenue: number; count: number }>();
+  const pkgRevMap = new Map<number, { revenue: number; revenueIls: number; count: number }>();
   for (const k of activatedKeys) {
     const pid = k.packageId || 0;
-    const existing = pkgRevMap.get(pid) || { revenue: 0, count: 0 };
-    existing.revenue += k.price || 0;
+    const existing = pkgRevMap.get(pid) || { revenue: 0, revenueIls: 0, count: 0 };
+    existing.revenue += getKeyPriceUsd(k);
+    existing.revenueIls += getKeyPriceIls(k);
     existing.count += 1;
     pkgRevMap.set(pid, existing);
   }
@@ -12477,7 +12540,8 @@ export async function getRevenueReport(): Promise<{
     return {
       id: k.id,
       keyCode: k.keyCode,
-      price: k.price || 0,
+      price: getKeyPriceUsd(k),
+      priceIls: getKeyPriceIls(k),
       packageName: pkg?.nameEn || 'Unknown',
       packageNameAr: pkg?.nameAr || 'غير معروف',
       userName: user?.name || k.email || 'Unknown',
@@ -12488,7 +12552,7 @@ export async function getRevenueReport(): Promise<{
     };
   });
 
-  return { totalRevenue, totalKeySales, monthlyRevenue, packageRevenue, recentActivations };
+  return { totalRevenue, totalRevenueIls, totalKeySales, monthlyRevenue, packageRevenue, recentActivations };
 }
 
 /**

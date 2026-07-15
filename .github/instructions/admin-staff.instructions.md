@@ -27,6 +27,7 @@ applyTo: "frontend/src/pages/Admin*.tsx,frontend/src/components/DashboardLayout.
 - `AdminClientProfileSheet.tsx` is the preferred place for migration-readiness context. Keep account readiness, key state, broker state, and service-state warnings there instead of scattering separate migration cards across admin pages.
 - `AdminLexai.tsx` default daily view is conversation-first. Queue workflow controls (`status`, `priority`, `ownership`, `notes`) should stay hidden behind the admin-only Ops area rather than returning to the main support-facing layout.
 - On `AdminPackageKeys.tsx`, package selection must respect the current renewal/upgrade toggle when suggesting a price. Do not silently reset a renewal key back to the full package price when the package is chosen after the toggle is enabled.
+- Staff package-key prices are entered and stored with their ILS currency. Use the fixed commercial amounts (Basic ₪700, Comprehensive ₪1,700, Basic renewal ₪175, Comprehensive renewal ₪350, Basic→Comprehensive upgrade ₪1,000); do not derive these package amounts from the generic USD-to-ILS rate.
 - Prefer the bulk role path: `roles.setRoles` + `setUserRoles()` when editing multiple permissions.
 - Guard selection matters:
   - `adminProcedure` -> admin only

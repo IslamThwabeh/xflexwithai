@@ -180,6 +180,7 @@ Last updated: 2026-07-13
   - LexAI gets only the new Comprehensive key age.
   - Recommendations gets the new Comprehensive key age plus any remaining Basic Recommendation days.
 - Comprehensive active -> Basic renewal is blocked until the Comprehensive LexAI service period is no longer active/pending.
+- Staff package-key and revenue calculations use the fixed ILS commercial prices: Basic ₪700, Comprehensive ₪1,700, Basic renewal ₪175, Comprehensive renewal ₪350, and Basic→Comprehensive upgrade ₪1,000. Historic standard USD key rows are normalized to these exact ILS amounts in staff-facing reports.
 - The protection window is configurable via `study_period_days`; do not hardcode 14 days in lifecycle code.
 - `users.firstPackageActivatedAt` stores/derives the original package activation anchor so upgrades do not reset the protection window.
 - Pending timed-service rows keep `maxActivationDate` as the separate protection deadline; placeholder `endDate` stores only the key/service age from the activation anchor, so the protection window is not added to service life.
