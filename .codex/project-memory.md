@@ -1,6 +1,6 @@
 # XFLEX Project Memory
 
-Last updated: 2026-07-13
+Last updated: 2026-07-15
 
 ## Project Overview
 
@@ -60,6 +60,7 @@ Last updated: 2026-07-13
 - Production D1 migrations `063_staff_performance_foundation.sql`, `064_student_surveys_foundation.sql`, `065_student_survey_blocking_flag.sql`, `066_loyalty_rewards_foundation.sql`, `067_student_community_foundation.sql`, and `068_student_job_eligibility_foundation.sql` were applied and recorded in `schema_migrations` on 2026-07-12 with `source = codex_wrangler`.
 - Post-deployment verification on 2026-07-12 confirmed production URLs `/`, `/ar`, `/en`, and `/auth` returned 200; Worker health returned `status=ok`; new feature flags remained `false`; and subscription/enrollment counts were unchanged: `packageSubscriptions` 59/59 active, `lexaiSubscriptions` 22/21 active/1 pending activation, `recommendationSubscriptions` 60/50 active/4 pending activation, `enrollments` 64/64 active.
 - Engagement workflow integrity/task-alert release was committed as `1bf0fdc Fix engagement workflows and task alerts`, pushed to `origin/main`, and deployed by Codex on 2026-07-13. Worker version: `bfdc4726-42da-4629-bfea-1afc4c04a3d4`. Pages preview: `https://9cec8f57.xflexwithai.pages.dev`.
+- Fixed package-key ILS pricing/reporting release was committed as `0f96227 Fix package key ILS pricing reports`, pushed to `origin/main`, and deployed by Codex on 2026-07-15. Worker version: `40793937-b7b2-4998-aa31-7d1696dffe0c`. Pages preview: `https://307c336d.xflexwithai.pages.dev`. No database migration was required.
 - Production D1 migration `069_loyalty_redemption_integrity.sql` was applied before the Worker deployment and recorded in `schema_migrations` with `source = codex_wrangler`. It adds atomic request validation/reservation and rejection-refund triggers. Cloudflare bookmark: `00000f4d-000010c6-000050a7-16d9dbf16e2d7e62ba970e9400340a04`. Production had zero reward redemptions before and after migration.
 - Post-deployment verification on 2026-07-13 confirmed Worker health returned `status=ok`; production `/ar`, `/en`, and `/auth` returned 200; `/` followed its expected redirect to 200; and the Pages preview followed its redirect to 200.
 - Release order for the 2026-06-22 hotfixes:
@@ -282,6 +283,13 @@ Last updated: 2026-07-13
   - `pnpm exec tsc --noEmit` passed.
   - Focused digest test passed: `pnpm vitest run server/subscriptionExpiryDigest.test.ts` (2 tests).
   - Production D1 read-only login-token investigation confirmed `email_delivery_logs` remains the delivery source of truth; `authEmailOtps` may be empty after cleanup/expiry.
+- Package-key fixed ILS pricing release verification on 2026-07-15:
+  - `pnpm exec tsc --noEmit` passed.
+  - Focused package-key pricing tests passed: 9/9.
+  - Full `pnpm test` passed: 51 files, 247 tests.
+  - `pnpm run build` and `pnpm run build:worker` passed.
+  - Read-only production D1 reconciliation confirmed all nonzero package-key variants use the covered historic USD prices: Basic 200/50, Comprehensive 500/100, and Basic→Comprehensive upgrade 300.
+  - Post-deployment Worker health returned `status=ok`; production `/`, `/ar`, `/en`, `/auth`, and the Pages preview returned 200 and referenced the new frontend asset.
 
 ## Future Hardening
 
