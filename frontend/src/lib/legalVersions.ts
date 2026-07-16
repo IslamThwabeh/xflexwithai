@@ -1,4 +1,5 @@
-export const CURRENT_TERMS_VERSION = "v2";
+export { CURRENT_TERMS_VERSION } from "@shared/legal";
+import { CURRENT_TERMS_VERSION } from "@shared/legal";
 
 export type LegalVersion = "v1" | "v2";
 

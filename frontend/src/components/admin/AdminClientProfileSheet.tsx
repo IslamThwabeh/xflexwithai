@@ -173,7 +173,7 @@ export default function AdminClientProfileSheet({
   };
   const lexaiState = profile?.lexaiSubscription?.subscriptionState ?? "no_subscription";
   const recommendationState = profile?.recommendationSubscription?.subscriptionState ?? "no_subscription";
-  const termsAcceptanceOrders = profile?.termsAcceptanceOrders ?? [];
+  const termsAcceptances = profile?.termsAcceptances ?? [];
   const hasPendingService = lexaiState === "pending_activation" || recommendationState === "pending_activation";
   const hasActiveService = lexaiState === "active" || recommendationState === "active";
   const hasServiceRecord = !!profile?.lexaiSubscription || !!profile?.recommendationSubscription;
@@ -410,70 +410,68 @@ export default function AdminClientProfileSheet({
                   </CardTitle>
                   <CardDescription>
                     {isRtl
-                      ? "أدلة الموافقة المحفوظة على الطلبات المرتبطة بهذا العميل."
-                      : "Saved acceptance evidence on this client's linked orders."}
+                      ? "أدلة الموافقة على مستوى الحساب، سواء تمت أثناء الطلب أو عبر بوابة الدخول."
+                      : "Account-level evidence captured during checkout or through the login gate."}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3 text-sm">
-                  {termsAcceptanceOrders.length === 0 ? (
+                  {termsAcceptances.length === 0 ? (
                     <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800">
                       {isRtl
-                        ? "لا يوجد سجل قبول شروط محفوظ لهذا العميل. قد تكون الطلبات أقدم من إضافة سجل الموافقات."
-                        : "No saved terms acceptance record for this client. Their orders may predate acceptance tracking."}
+                        ? "لا يوجد قبول شروط مثبت لهذا العميل. سيُطلب منه القبول الصريح عند تسجيل الدخول."
+                        : "No evidenced terms acceptance exists. The client will be explicitly prompted at sign-in."}
                     </div>
                   ) : (
-                    termsAcceptanceOrders.map((order: any) => {
-                      const legalLinks = getLegalVersionLinks(order.termsAcceptedVersion);
+                    termsAcceptances.map((acceptance: any) => {
+                      const legalLinks = getLegalVersionLinks(acceptance.termsVersion);
                       return (
-                      <div key={order.orderId} className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3">
+                      <div key={acceptance.id} className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <div className="flex flex-wrap items-center gap-2">
                             <Badge className="bg-emerald-100 text-emerald-800">
                               {isRtl ? "تم قبول الشروط" : "Accepted"}
                             </Badge>
-                            <Badge variant="outline">#{order.orderId}</Badge>
-                            {order.termsAcceptedVersion && <Badge variant="outline">{order.termsAcceptedVersion}</Badge>}
+                            <Badge variant="outline">
+                              {acceptance.source === "login_gate"
+                                ? (isRtl ? "بوابة الدخول" : "Login gate")
+                                : (isRtl ? "طلب شراء" : "Checkout")}
+                            </Badge>
+                            {acceptance.orderId && <Badge variant="outline">#{acceptance.orderId}</Badge>}
+                            {acceptance.termsVersion && <Badge variant="outline">{acceptance.termsVersion}</Badge>}
                           </div>
                           <span className="text-xs font-medium text-emerald-900">
-                            {formatDate(order.termsAcceptedAt, locale)}
+                            {formatDate(acceptance.acceptedAt, locale)}
                           </span>
                         </div>
                         <div className="mt-3 grid gap-2 sm:grid-cols-2">
                           <InfoLine
-                            label={isRtl ? "حالة الطلب" : "Order Status"}
-                            value={order.status || "-"}
+                            label={isRtl ? "مصدر الموافقة" : "Acceptance Source"}
+                            value={acceptance.source === "login_gate" ? (isRtl ? "بوابة الدخول" : "Login gate") : (isRtl ? "طلب شراء" : "Checkout order")}
                           />
                           <InfoLine
-                            label={isRtl ? "وقت إنشاء الطلب" : "Order Created"}
-                            value={formatDate(order.createdAt, locale)}
+                            label={isRtl ? "رقم الطلب" : "Order ID"}
+                            value={acceptance.orderId ? `#${acceptance.orderId}` : "-"}
                           />
                           <InfoLine
                             label={isRtl ? "عنوان IP" : "IP Address"}
-                            value={order.termsAcceptedIpAddress || "-"}
+                            value={acceptance.ipAddress || "-"}
                           />
                           <InfoLine
                             label={isRtl ? "المتصفح/الجهاز" : "Browser/Device"}
-                            value={order.termsAcceptedUserAgent || "-"}
+                            value={acceptance.userAgent || "-"}
                           />
                         </div>
                         <div className="mt-3 flex flex-wrap gap-2">
                           <Button asChild size="sm" variant="outline">
                             <a href={legalLinks.terms} target="_blank" rel="noopener noreferrer">
-                              {isRtl ? `الشروط المقبولة ${order.termsAcceptedVersion || "v1"}` : `Accepted Terms ${order.termsAcceptedVersion || "v1"}`}
+                              {isRtl ? `الشروط المقبولة ${acceptance.termsVersion || "v1"}` : `Accepted Terms ${acceptance.termsVersion || "v1"}`}
                             </a>
                           </Button>
                           <Button asChild size="sm" variant="outline">
                             <a href={legalLinks.refund} target="_blank" rel="noopener noreferrer">
-                              {isRtl ? `سياسة الاسترداد ${order.termsAcceptedVersion || "v1"}` : `Refund Policy ${order.termsAcceptedVersion || "v1"}`}
+                              {isRtl ? `سياسة الاسترداد ${acceptance.termsVersion || "v1"}` : `Refund Policy ${acceptance.termsVersion || "v1"}`}
                             </a>
                           </Button>
-                          {order.paymentProofUrl && (
-                            <Button asChild size="sm" variant="outline">
-                              <a href={order.paymentProofUrl} target="_blank" rel="noopener noreferrer">
-                                {isRtl ? "إيصال الدفع" : "Payment Proof"}
-                              </a>
-                            </Button>
-                          )}
                         </div>
                       </div>
                       );

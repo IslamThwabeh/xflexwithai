@@ -12,6 +12,7 @@ import WhatsAppFloat from "./components/WhatsAppFloat";
 import SessionGuard from "./components/SessionGuard";
 import LocalizedPublicPage from "./components/LocalizedPublicPage";
 import AnalyticsTracker from "./components/AnalyticsTracker";
+import TermsAcceptanceGate from "./components/TermsAcceptanceGate";
 import type { SeoLanguage, SeoRouteKey } from "@shared/seo";
 
 const Home = lazy(() => import("./pages/Home"));
@@ -575,7 +576,9 @@ function App() {
             <Toaster />
             <AnalyticsTracker />
             <SessionGuard />
-            <Router />
+            <TermsAcceptanceGate>
+              <Router />
+            </TermsAcceptanceGate>
             <WhatsAppFloat />
           </TooltipProvider>
         </ThemeProvider>

@@ -1,137 +1,103 @@
-import { useMemo, useState } from 'react';
-import { Download, Eye, FileCheck, Search } from 'lucide-react';
-import DashboardLayout from '@/components/DashboardLayout';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { useDataTable, DataTablePagination } from '@/components/DataTable';
-import { useLanguage } from '@/contexts/LanguageContext';
-import { formatAdminCurrency } from '@/lib/adminCurrency';
-import { formatLocalizedDate } from '@/lib/dateLocale';
-import { getLegalVersionLinks } from '@/lib/legalVersions';
-import { formatPaymentMethodLabel } from '@/lib/paymentMethodLabel';
-import { trpc } from '@/lib/trpc';
+import { useMemo, useState } from "react";
+import { Download, FileCheck, Search, ShieldAlert } from "lucide-react";
+import DashboardLayout from "@/components/DashboardLayout";
+import { DataTablePagination, useDataTable } from "@/components/DataTable";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { formatLocalizedDate } from "@/lib/dateLocale";
+import { getLegalVersionLinks } from "@/lib/legalVersions";
+import { trpc } from "@/lib/trpc";
 
-const orderSortFns: Record<string, (a: any, b: any) => number> = {
-  accepted: (a, b) =>
-    new Date(String(a.termsAcceptedAt ?? a.createdAt).replace(' ', 'T')).getTime()
-    - new Date(String(b.termsAcceptedAt ?? b.createdAt).replace(' ', 'T')).getTime(),
-};
-
-const statusColors: Record<string, string> = {
-  pending: 'bg-yellow-100 text-yellow-800',
-  awaiting_confirmation: 'bg-orange-100 text-orange-800',
-  paid: 'bg-emerald-100 text-emerald-800',
-  completed: 'bg-green-100 text-green-800',
-  cancelled: 'bg-red-100 text-red-800',
-  refunded: 'bg-gray-100 text-gray-800',
-};
-
-const statusLabels: Record<string, { en: string; ar: string }> = {
-  pending: { en: 'Pending', ar: 'معلق' },
-  awaiting_confirmation: { en: 'Awaiting Confirmation', ar: 'بانتظار التأكيد' },
-  paid: { en: 'Paid', ar: 'مدفوع' },
-  completed: { en: 'Completed', ar: 'مكتمل' },
-  cancelled: { en: 'Cancelled', ar: 'ملغي' },
-  refunded: { en: 'Refunded', ar: 'مسترد' },
+const complianceSortFns: Record<string, (a: any, b: any) => number> = {
+  accepted: (a, b) => {
+    if (!a.termsAcceptedAt && !b.termsAcceptedAt) return 0;
+    if (!a.termsAcceptedAt) return -1;
+    if (!b.termsAcceptedAt) return 1;
+    return new Date(a.termsAcceptedAt).getTime() - new Date(b.termsAcceptedAt).getTime();
+  },
 };
 
 export default function AdminTermsAcceptance() {
   const { language } = useLanguage();
-  const isRtl = language === 'ar';
-  const { data: orders, isLoading } = trpc.orders.adminList.useQuery(undefined);
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  const isRtl = language === "ar";
+  const { data, isLoading } = trpc.orders.termsCompliance.useQuery();
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"" | "accepted" | "missing">("");
 
-  const acceptedOrders = useMemo(
-    () => (orders ?? []).filter((order: any) => order.termsAcceptedAt),
-    [orders],
-  );
-  const availableStatuses = useMemo(() => {
-    const statuses = new Set<string>();
-    for (const order of acceptedOrders as any[]) {
-      if (order.status) statuses.add(order.status);
-    }
-    return Array.from(statuses).sort();
-  }, [acceptedOrders]);
-  const filteredOrders = useMemo(() => {
+  const rows = data ?? [];
+  const acceptedCount = rows.filter((row: any) => !!row.termsAcceptedAt).length;
+  const missingCount = rows.length - acceptedCount;
+  const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
-    return (acceptedOrders as any[]).filter((order) => {
+    return rows.filter((row: any) => {
+      const isAccepted = !!row.termsAcceptedAt;
+      const matchesStatus = !statusFilter
+        || (statusFilter === "accepted" ? isAccepted : !isAccepted);
       const matchesSearch = !query || [
-        order.id,
-        order.userName,
-        order.userEmail,
-        order.userPhone,
-        order.termsAcceptedIpAddress,
-        order.termsAcceptedVersion,
+        row.userId,
+        row.userName,
+        row.userEmail,
+        row.userPhone,
+        row.termsAcceptedVersion,
+        row.acceptanceSource,
+        row.termsAcceptedIpAddress,
       ].filter(Boolean).some((value) => String(value).toLowerCase().includes(query));
-      const matchesStatus = !statusFilter || order.status === statusFilter;
-
-      return matchesSearch && matchesStatus;
+      return matchesStatus && matchesSearch;
     });
-  }, [acceptedOrders, search, statusFilter]);
-  const {
-    paged,
-    page,
-    pageSize,
-    totalPages,
-    totalItems,
-    setPage,
-    changePageSize,
-  } = useDataTable(filteredOrders, orderSortFns);
+  }, [rows, search, statusFilter]);
 
-  const exportCSV = () => {
-    if (!filteredOrders.length) return;
+  const table = useDataTable(filtered, complianceSortFns);
 
-    const headers = ['Order ID', 'Status', 'User', 'Email', 'Phone', 'Accepted At', 'Version', 'IP Address', 'User Agent'];
-    const rows = filteredOrders.map((order: any) => [
-      order.id,
-      statusLabels[order.status]?.en || order.status || '',
-      order.userName || '',
-      order.userEmail || '',
-      order.userPhone || '',
-      order.termsAcceptedAt || '',
-      order.termsAcceptedVersion || '',
-      order.termsAcceptedIpAddress || '',
-      order.termsAcceptedUserAgent || '',
+  const exportCsv = () => {
+    if (!filtered.length) return;
+    const headers = ["User ID", "Client", "Email", "Phone", "Compliance", "Accepted At", "Version", "Source", "Order ID", "IP Address", "User Agent"];
+    const csvRows = filtered.map((row: any) => [
+      row.userId,
+      row.userName || "",
+      row.userEmail || "",
+      row.userPhone || "",
+      row.termsAcceptedAt ? "accepted" : "missing",
+      row.termsAcceptedAt || "",
+      row.termsAcceptedVersion || "",
+      row.acceptanceSource || "",
+      row.orderId || "",
+      row.termsAcceptedIpAddress || "",
+      row.termsAcceptedUserAgent || "",
     ]);
-    const csv = [
-      headers.join(','),
-      ...rows.map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(',')),
-    ].join('\n');
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
+    const csv = [headers, ...csvRows]
+      .map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+    const url = URL.createObjectURL(new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
     link.href = url;
-    link.download = `terms-acceptance-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.download = `client-terms-compliance-${new Date().toISOString().slice(0, 10)}.csv`;
     link.click();
     URL.revokeObjectURL(url);
   };
 
   return (
     <DashboardLayout>
-      <div className="p-6" dir={isRtl ? 'rtl' : 'ltr'}>
-        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3">
-            <FileCheck className="h-6 w-6 text-emerald-600" />
+      <div className="p-6" dir={isRtl ? "rtl" : "ltr"}>
+        <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex items-start gap-3">
+            <FileCheck className="mt-1 h-6 w-6 text-emerald-600" />
             <div>
-              <h1 className="text-2xl font-bold">{isRtl ? 'موافقات الشروط والأحكام' : 'Terms & Conditions Acceptance'}</h1>
-              <p className="mt-1 text-sm text-muted-foreground">
+              <h1 className="text-2xl font-bold">{isRtl ? "امتثال العملاء للشروط والأحكام" : "Client Terms Compliance"}</h1>
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
                 {isRtl
-                  ? 'سجل الموافقات المرتبطة بالطلبات، لاستخدامه كدليل عند الحاجة.'
-                  : 'Order-linked acceptance records for evidence when needed.'}
+                  ? "سجل على مستوى الحساب يشمل موافقات الطلبات وموافقات بوابة الدخول، ويُظهر العملاء الذين ما زال قبولهم مفقوداً."
+                  : "Account-level evidence from checkout and the login gate, including clients whose acceptance is still missing."}
               </p>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge className="w-fit bg-emerald-100 text-emerald-800">
-              {isRtl
-                ? `${filteredOrders.length} / ${acceptedOrders.length} موافقة`
-                : `${filteredOrders.length} / ${acceptedOrders.length} acceptances`}
-            </Badge>
-            <Button onClick={exportCSV} variant="outline" size="sm" disabled={!filteredOrders.length}>
+          <div className="flex flex-wrap gap-2">
+            <Badge className="bg-emerald-100 text-emerald-800">{isRtl ? `${acceptedCount} مقبول` : `${acceptedCount} accepted`}</Badge>
+            <Badge className="bg-amber-100 text-amber-800">{isRtl ? `${missingCount} مفقود` : `${missingCount} missing`}</Badge>
+            <Button variant="outline" size="sm" onClick={exportCsv} disabled={!filtered.length}>
               <Download className="me-2 h-4 w-4" />
-              {isRtl ? 'تصدير CSV' : 'Export CSV'}
+              {isRtl ? "تصدير CSV" : "Export CSV"}
             </Button>
           </div>
         </div>
@@ -142,128 +108,84 @@ export default function AdminTermsAcceptance() {
             <Input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder={isRtl ? 'بحث بالطلب أو العميل أو الإيميل أو IP' : 'Search order, client, email, or IP'}
+              placeholder={isRtl ? "بحث بالعميل أو الإيميل أو IP" : "Search client, email, or IP"}
               className="ps-9"
             />
           </div>
           <select
             value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value)}
+            onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}
             className="h-9 rounded-md border bg-background px-3 text-sm"
           >
-            <option value="">{isRtl ? 'كل الحالات' : 'All Statuses'}</option>
-            {availableStatuses.map((status) => (
-              <option key={status} value={status}>
-                {isRtl ? statusLabels[status]?.ar : statusLabels[status]?.en || status}
-              </option>
-            ))}
+            <option value="">{isRtl ? "كل حالات الامتثال" : "All compliance states"}</option>
+            <option value="accepted">{isRtl ? "تم القبول" : "Accepted"}</option>
+            <option value="missing">{isRtl ? "القبول مفقود" : "Missing"}</option>
           </select>
         </div>
 
         {isLoading ? (
-          <div className="py-8 text-center text-gray-400">{isRtl ? 'جاري التحميل...' : 'Loading...'}</div>
-        ) : filteredOrders.length === 0 ? (
-          <div className="rounded-xl border bg-white p-10 text-center text-gray-400">
-            {search || statusFilter
-              ? (isRtl ? 'لا توجد موافقات تطابق الفلاتر' : 'No acceptance records match these filters')
-              : (isRtl ? 'لا توجد موافقات شروط مسجلة بعد' : 'No terms acceptance records yet')}
+          <div className="py-10 text-center text-muted-foreground">{isRtl ? "جاري التحميل..." : "Loading..."}</div>
+        ) : filtered.length === 0 ? (
+          <div className="rounded-xl border bg-white p-10 text-center text-muted-foreground">
+            {isRtl ? "لا توجد نتائج مطابقة" : "No matching clients"}
           </div>
         ) : (
           <div className="space-y-3">
-            {paged.map((order: any) => {
-              const legalLinks = getLegalVersionLinks(order.termsAcceptedVersion);
+            {table.paged.map((row: any) => {
+              const accepted = !!row.termsAcceptedAt;
+              const legalLinks = getLegalVersionLinks(row.termsAcceptedVersion);
               return (
-              <div key={order.id} className="rounded-xl border bg-white p-5 shadow-sm">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                  <div className="min-w-0">
-                    <div className="mb-2 flex flex-wrap items-center gap-2">
-                      <h2 className="font-bold text-gray-900">#{order.id}</h2>
-                      <Badge className={`text-xs ${statusColors[order.status] || 'bg-gray-100 text-gray-700'}`}>
-                        {isRtl ? statusLabels[order.status]?.ar : statusLabels[order.status]?.en || order.status}
-                      </Badge>
-                      <Badge className="bg-emerald-100 text-emerald-800">
-                        {isRtl ? 'تم قبول الشروط' : 'Terms accepted'}
-                      </Badge>
-                      {order.termsAcceptedVersion && (
-                        <Badge variant="outline">{order.termsAcceptedVersion}</Badge>
-                      )}
+                <div key={row.userId} className={`rounded-xl border bg-white p-5 shadow-sm ${accepted ? "border-emerald-100" : "border-amber-200"}`}>
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h2 className="font-bold text-slate-900">{row.userName || row.userEmail || `#${row.userId}`}</h2>
+                        <Badge className={accepted ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}>
+                          {accepted
+                            ? (isRtl ? "تم قبول الشروط" : "Accepted")
+                            : (isRtl ? "مطلوب القبول عند الدخول" : "Login acceptance required")}
+                        </Badge>
+                        {row.termsAcceptedVersion && <Badge variant="outline">{row.termsAcceptedVersion}</Badge>}
+                      </div>
+                      <p className="mt-2 text-sm text-slate-600" dir="ltr">{row.userEmail}</p>
+                      {row.userPhone && <p className="mt-1 text-xs text-muted-foreground" dir="ltr">{row.userPhone}</p>}
                     </div>
-                    <p className="text-sm font-medium text-gray-900">
-                      {order.userName || order.userEmail || `User #${order.userId}`}
-                    </p>
-                    <p className="mt-1 text-sm text-gray-500">
-                      {order.userEmail || '—'}
-                      {order.userPhone ? ` • ${order.userPhone}` : ''}
-                    </p>
+
+                    {accepted ? (
+                      <div className="grid gap-2 text-sm sm:grid-cols-2 lg:min-w-[560px]">
+                        <Evidence label={isRtl ? "وقت القبول" : "Accepted At"} value={formatLocalizedDate(String(row.termsAcceptedAt).replace(" ", "T"), language) || String(row.termsAcceptedAt)} />
+                        <Evidence label={isRtl ? "المصدر" : "Source"} value={row.acceptanceSource === "login_gate" ? (isRtl ? "بوابة الدخول" : "Login gate") : (isRtl ? "طلب شراء" : "Checkout order")} />
+                        <Evidence label={isRtl ? "رقم الطلب" : "Order ID"} value={row.orderId ? `#${row.orderId}` : "-"} />
+                        <Evidence label={isRtl ? "عنوان IP" : "IP Address"} value={row.termsAcceptedIpAddress || "-"} />
+                      </div>
+                    ) : (
+                      <div className="flex max-w-xl items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-900">
+                        <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
+                        <span>{isRtl ? "لم يتم إنشاء موافقة افتراضية. ستظهر للعميل بوابة غير قابلة للتجاوز في تسجيل الدخول القادم." : "No acceptance was fabricated. The client will receive a non-bypassable gate at the next sign-in."}</span>
+                      </div>
+                    )}
                   </div>
 
-                  <div className="grid gap-2 text-sm sm:grid-cols-2 lg:min-w-[620px]">
-                    <EvidenceLine
-                      label={isRtl ? 'وقت القبول' : 'Accepted At'}
-                      value={formatLocalizedDate(String(order.termsAcceptedAt).replace(' ', 'T'), language) || String(order.termsAcceptedAt)}
-                    />
-                    <EvidenceLine
-                      label={isRtl ? 'وقت إنشاء الطلب' : 'Order Created'}
-                      value={formatLocalizedDate(String(order.createdAt).replace(' ', 'T'), language) || String(order.createdAt)}
-                    />
-                    <EvidenceLine
-                      label={isRtl ? 'المبلغ' : 'Amount'}
-                      value={formatAdminCurrency(order.totalAmount, language, { sourceCurrency: order.currency, fromCents: true })}
-                    />
-                    <EvidenceLine
-                      label={isRtl ? 'طريقة الدفع' : 'Payment'}
-                      value={formatPaymentMethodLabel(order.paymentMethod, language)}
-                    />
-                    <EvidenceLine
-                      label={isRtl ? 'عنوان IP' : 'IP Address'}
-                      value={order.termsAcceptedIpAddress || '-'}
-                    />
-                    <EvidenceLine
-                      label={isRtl ? 'المتصفح/الجهاز' : 'Browser/Device'}
-                      value={order.termsAcceptedUserAgent || '-'}
-                    />
-                  </div>
-                </div>
-
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <Button asChild size="sm" variant="outline">
-                    <a href={`/admin/orders`} className="inline-flex items-center">
-                      <Eye className="me-1 h-3.5 w-3.5" />
-                      {isRtl ? 'فتح الطلبات' : 'Open Orders'}
-                    </a>
-                  </Button>
-                  {order.paymentProofUrl && (
-                    <Button asChild size="sm" variant="outline">
-                      <a href={order.paymentProofUrl} target="_blank" rel="noopener noreferrer">
-                        {isRtl ? 'إيصال الدفع' : 'Payment Proof'}
-                      </a>
-                    </Button>
+                  {accepted && (
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <Button asChild size="sm" variant="outline"><a href={legalLinks.terms} target="_blank" rel="noopener noreferrer">{isRtl ? "الشروط المقبولة" : "Accepted terms"}</a></Button>
+                      <Button asChild size="sm" variant="outline"><a href={legalLinks.refund} target="_blank" rel="noopener noreferrer">{isRtl ? "سياسة الاسترداد" : "Refund policy"}</a></Button>
+                    </div>
                   )}
-                  <Button asChild size="sm" variant="outline">
-                    <a href={legalLinks.terms} target="_blank" rel="noopener noreferrer">
-                      {isRtl ? `الشروط المقبولة ${order.termsAcceptedVersion || 'v1'}` : `Accepted Terms ${order.termsAcceptedVersion || 'v1'}`}
-                    </a>
-                  </Button>
-                  <Button asChild size="sm" variant="outline">
-                    <a href={legalLinks.refund} target="_blank" rel="noopener noreferrer">
-                      {isRtl ? `سياسة الاسترداد ${order.termsAcceptedVersion || 'v1'}` : `Refund Policy ${order.termsAcceptedVersion || 'v1'}`}
-                    </a>
-                  </Button>
                 </div>
-              </div>
               );
             })}
           </div>
         )}
 
-        {!isLoading && filteredOrders.length > 0 && (
+        {!isLoading && filtered.length > 0 && (
           <DataTablePagination
-            page={page}
-            pageSize={pageSize}
-            totalPages={totalPages}
-            totalItems={totalItems}
-            setPage={setPage}
-            changePageSize={changePageSize}
+            page={table.page}
+            pageSize={table.pageSize}
+            totalPages={table.totalPages}
+            totalItems={table.totalItems}
+            setPage={table.setPage}
+            changePageSize={table.changePageSize}
             isRtl={isRtl}
           />
         )}
@@ -272,11 +194,11 @@ export default function AdminTermsAcceptance() {
   );
 }
 
-function EvidenceLine({ label, value }: { label: string; value: string }) {
+function Evidence({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
       <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-1 text-sm font-medium text-slate-800">{value || '-'}</p>
+      <p className="mt-1 break-all font-medium text-slate-800">{value || "-"}</p>
     </div>
   );
 }

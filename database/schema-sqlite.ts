@@ -823,6 +823,27 @@ export const orders = sqliteTable("orders", {
 export type Order = typeof orders.$inferSelect;
 export type InsertOrder = typeof orders.$inferInsert;
 
+/**
+ * Account-level, versioned legal acceptance evidence. This closes the gap
+ * where a client can receive an entitlement outside the checkout flow.
+ */
+export const userTermsAcceptances = sqliteTable("user_terms_acceptances", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull(),
+  termsVersion: text("terms_version").notNull(),
+  acceptedAt: text("accepted_at").default(sql`(datetime('now'))`).notNull(),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  source: text("source").notNull(), // order_checkout | login_gate
+  orderId: integer("order_id"),
+}, (table) => ({
+  uniqueUserTermsVersion: unique("uq_user_terms_acceptance_version").on(table.userId, table.termsVersion),
+  userAcceptedAtIndex: index("idx_user_terms_acceptances_user_accepted").on(table.userId, table.acceptedAt),
+}));
+
+export type UserTermsAcceptance = typeof userTermsAcceptances.$inferSelect;
+export type InsertUserTermsAcceptance = typeof userTermsAcceptances.$inferInsert;
+
 /** Immutable audit trail for every privileged order status transition. */
 export const orderStatusHistory = sqliteTable("order_status_history", {
   id: int("id").primaryKey({ autoIncrement: true }),

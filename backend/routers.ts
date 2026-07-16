@@ -19,7 +19,8 @@ import {
 } from "../shared/curatedArticles";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
+import { authenticatedProcedure, publicProcedure, protectedProcedure, router } from "./_core/trpc";
+import { CURRENT_TERMS_VERSION } from "../shared/legal";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { logger } from "./_core/logger";
@@ -1418,6 +1419,50 @@ export const appRouter = router({
   
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
+
+    termsStatus: authenticatedProcedure.query(async ({ ctx }) => {
+      if (ctx.user.id < 0 || ctx.user.isStaff) {
+        return {
+          gateEnabled: false,
+          isClient: false,
+          accepted: true,
+          requiresAcceptance: false,
+          currentVersion: CURRENT_TERMS_VERSION,
+          latestAcceptance: null,
+        };
+      }
+
+      const status = await db.getUserTermsAcceptanceStatus(ctx.user.id, ctx.user.email);
+      return { ...status, currentVersion: CURRENT_TERMS_VERSION };
+    }),
+
+    acceptTerms: authenticatedProcedure
+      .input(z.object({
+        accepted: z.literal(true),
+        termsVersion: z.literal(CURRENT_TERMS_VERSION),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        if (ctx.user.id < 0 || ctx.user.isStaff) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Customer terms acceptance is not required" });
+        }
+
+        const status = await db.getUserTermsAcceptanceStatus(ctx.user.id, ctx.user.email);
+        if (!status.isClient) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "No customer entitlement requires acceptance" });
+        }
+
+        const acceptance = await db.recordUserTermsAcceptance({
+          userId: ctx.user.id,
+          termsVersion: input.termsVersion,
+          ipAddress: getRequestIp(ctx.req),
+          userAgent: getRequestUserAgent(ctx.req),
+          source: "login_gate",
+        });
+        if (!acceptance) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to record terms acceptance" });
+        }
+        return { success: true, acceptance };
+      }),
     
     // Check if current user is an admin or staff member
     isAdmin: protectedProcedure.query(async ({ ctx }) => {
@@ -5501,9 +5546,10 @@ export const appRouter = router({
       }))
       .mutation(async ({ input, ctx }) => {
         if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
-        if (!input.termsAcceptedAt || !input.termsAcceptedVersion) {
+        if (!input.termsAcceptedAt || input.termsAcceptedVersion !== CURRENT_TERMS_VERSION) {
           throw new TRPCError({ code: 'BAD_REQUEST', message: 'Terms acceptance is required' });
         }
+        const termsAcceptedAt = new Date().toISOString();
         const termsAcceptedIpAddress = getRequestIp(ctx.req) || null;
         const termsAcceptedUserAgent = getRequestUserAgent(ctx.req) || null;
 
@@ -5556,8 +5602,8 @@ export const appRouter = router({
           giftEmail: input.giftEmail || null,
           giftMessage: input.giftMessage || null,
           notes: input.notes || null,
-          termsAcceptedAt: input.termsAcceptedAt || null,
-          termsAcceptedVersion: input.termsAcceptedVersion || null,
+          termsAcceptedAt,
+          termsAcceptedVersion: CURRENT_TERMS_VERSION,
           termsAcceptedIpAddress,
           termsAcceptedUserAgent,
           createdAt: new Date().toISOString(),
@@ -5688,6 +5734,11 @@ export const appRouter = router({
         return db.getAllOrders(input?.status);
       }),
 
+    // Admin/support: account-level compliance, including clients whose access
+    // did not originate from an order.
+    termsCompliance: adminOrRoleProcedure(['key_manager', 'support', 'client_lookup'])
+      .query(async () => db.getClientTermsCompliance()),
+
     // Admin/Key Manager: update order status
     adminUpdateStatus: adminOrRoleProcedure(['key_manager'])
       .input(z.object({
@@ -5707,6 +5758,12 @@ export const appRouter = router({
         // Payment approval creates an email-bound entitlement credential. It
         // intentionally does not grant course/service access until redemption.
         if (input.status === 'completed') {
+          if (!order.termsAcceptedAt || !order.termsAcceptedVersion) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: 'The client must accept the Terms & Conditions before this order can be approved.',
+            });
+          }
           if (order.paymentMethod === 'bank_transfer' && !isTrustedPaymentProofUrl(order.paymentProofUrl)) {
             throw new TRPCError({
               code: 'BAD_REQUEST',
@@ -6219,9 +6276,10 @@ export const appRouter = router({
       }))
       .mutation(async ({ ctx, input }) => {
         if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
-        if (!input.termsAcceptedAt || !input.termsAcceptedVersion) {
+        if (!input.termsAcceptedAt || input.termsAcceptedVersion !== CURRENT_TERMS_VERSION) {
           throw new TRPCError({ code: 'BAD_REQUEST', message: 'Terms acceptance is required' });
         }
+        const termsAcceptedAt = new Date().toISOString();
         const termsAcceptedIpAddress = getRequestIp(ctx.req) || null;
         const termsAcceptedUserAgent = getRequestUserAgent(ctx.req) || null;
 
@@ -6250,8 +6308,8 @@ export const appRouter = router({
           notes: input.notes || `Upgrade from ${eligibility.currentPackageName} to ${eligibility.targetPackageName}`,
           isUpgrade: true,
           upgradeFromPackageId: eligibility.currentPackageId,
-          termsAcceptedAt: input.termsAcceptedAt || null,
-          termsAcceptedVersion: input.termsAcceptedVersion || null,
+          termsAcceptedAt,
+          termsAcceptedVersion: CURRENT_TERMS_VERSION,
           termsAcceptedIpAddress,
           termsAcceptedUserAgent,
           createdAt: new Date().toISOString(),

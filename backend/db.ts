@@ -37,6 +37,7 @@ import {
   packages, Package, InsertPackage,
   packageCourses, PackageCourse, InsertPackageCourse,
   orders, Order, InsertOrder,
+  userTermsAcceptances, UserTermsAcceptance, InsertUserTermsAcceptance,
   orderStatusHistory, InsertOrderStatusHistory,
   orderItems, OrderItem, InsertOrderItem,
   packageSubscriptions, PackageSubscription, InsertPackageSubscription,
@@ -121,6 +122,7 @@ import {
   type BugReportStatus,
   type StaffNotificationEventType,
 } from '../shared/const';
+import { CURRENT_TERMS_VERSION, TERMS_ACCEPTANCE_POLICY } from '../shared/legal';
 import { isLikelyValidEmail, normalizeEmailAddress } from '../shared/emailValidation';
 import {
   getPackageKeyPriceIls,
@@ -10409,7 +10411,7 @@ export async function getAdminClientProfile(userId: number, options?: { includeT
   const user = await getUserById(userId);
   const normalizedEmail = user?.email?.trim().toLowerCase() ?? null;
 
-  const [activePackageSubs, serviceContext, adminEmailCollision, keySummary, termsAcceptanceOrders] = await Promise.all([
+  const [activePackageSubs, serviceContext, adminEmailCollision, keySummary, termsAcceptanceOrders, termsAcceptances, termsAcceptanceStatus] = await Promise.all([
     getUserPackageSubscriptions(userId),
     getSharedClientServiceContext(userId, options),
     normalizedEmail ? getAdminByEmail(normalizedEmail) : Promise.resolve(null),
@@ -10423,6 +10425,8 @@ export async function getAdminClientProfile(userId: number, options?: { includeT
           latestOrderId: null as number | null,
         }),
     getTermsAcceptanceOrdersByUser(userId),
+    getTermsAcceptancesByUser(userId),
+    getUserTermsAcceptanceStatus(userId, normalizedEmail),
   ]);
 
   const activePackages = await Promise.all(
@@ -10462,6 +10466,8 @@ export async function getAdminClientProfile(userId: number, options?: { includeT
     },
     keySummary,
     termsAcceptanceOrders,
+    termsAcceptances,
+    termsAcceptanceStatus,
     ...serviceContext,
   };
 }
@@ -11749,6 +11755,185 @@ export async function getTermsAcceptanceOrdersByUser(userId: number) {
     .from(orders)
     .where(and(eq(orders.userId, userId), isNotNull(orders.termsAcceptedAt)))
     .orderBy(desc(orders.termsAcceptedAt));
+}
+
+export type UserTermsAcceptanceStatus = {
+  gateEnabled: boolean;
+  isClient: boolean;
+  accepted: boolean;
+  requiresAcceptance: boolean;
+  latestAcceptance: UserTermsAcceptance | null;
+};
+
+/**
+ * A client relationship can be created by checkout, migration, or an assigned
+ * key. Acceptance is therefore account-level and must not depend on an order
+ * existing. Existing evidenced versions remain valid for this rollout.
+ */
+export async function getUserTermsAcceptanceStatus(
+  userId: number,
+  email?: string | null,
+): Promise<UserTermsAcceptanceStatus> {
+  const db = await getDb();
+  if (!db || userId <= 0) {
+    return { gateEnabled: false, isClient: false, accepted: true, requiresAcceptance: false, latestAcceptance: null };
+  }
+
+  const normalizedEmail = normalizeEmailAddress(email ?? "");
+  const [latestAcceptance, clientMarker, gateSetting] = await Promise.all([
+    db
+      .select()
+      .from(userTermsAcceptances)
+      .where(eq(userTermsAcceptances.userId, userId))
+      .orderBy(desc(userTermsAcceptances.acceptedAt), desc(userTermsAcceptances.id))
+      .limit(1)
+      .then((rows) => rows[0] ?? null),
+    db
+      .select({
+        isClient: sql<number>`CASE WHEN
+          EXISTS (SELECT 1 FROM packageSubscriptions ps WHERE ps.userId = ${userId})
+          OR EXISTS (SELECT 1 FROM enrollments e WHERE e.userId = ${userId})
+          OR EXISTS (SELECT 1 FROM lexaiSubscriptions ls WHERE ls.userId = ${userId})
+          OR EXISTS (SELECT 1 FROM recommendationSubscriptions rs WHERE rs.userId = ${userId})
+          OR EXISTS (SELECT 1 FROM orders o WHERE o.userId = ${userId})
+          OR EXISTS (
+            SELECT 1 FROM registrationKeys rk
+            WHERE rk.packageId IS NOT NULL
+              AND lower(trim(COALESCE(rk.email, ''))) = ${normalizedEmail}
+          )
+          THEN 1 ELSE 0 END`,
+      })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1)
+      .then((rows) => rows[0] ?? { isClient: 0 }),
+    getAdminSetting('terms_acceptance_gate_enabled'),
+  ]);
+
+  const gateEnabled = gateSetting === 'true';
+  const isClient = Number(clientMarker.isClient) === 1;
+  const accepted = TERMS_ACCEPTANCE_POLICY === "any_recorded_version"
+    ? !!latestAcceptance
+    : latestAcceptance?.termsVersion === CURRENT_TERMS_VERSION;
+  return {
+    gateEnabled,
+    isClient,
+    accepted,
+    requiresAcceptance: gateEnabled && isClient && !accepted,
+    latestAcceptance,
+  };
+}
+
+export async function recordUserTermsAcceptance(input: {
+  userId: number;
+  termsVersion: string;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+  source: "login_gate" | "order_checkout";
+  orderId?: number | null;
+}): Promise<UserTermsAcceptance | null> {
+  const db = await getDb();
+  if (!db) return null;
+
+  const acceptedAt = new Date().toISOString();
+  await db
+    .insert(userTermsAcceptances)
+    .values({
+      userId: input.userId,
+      termsVersion: input.termsVersion,
+      acceptedAt,
+      ipAddress: input.ipAddress ?? null,
+      userAgent: input.userAgent ?? null,
+      source: input.source,
+      orderId: input.orderId ?? null,
+    } as InsertUserTermsAcceptance)
+    .onConflictDoNothing({
+      target: [userTermsAcceptances.userId, userTermsAcceptances.termsVersion],
+    });
+
+  const [saved] = await db
+    .select()
+    .from(userTermsAcceptances)
+    .where(and(
+      eq(userTermsAcceptances.userId, input.userId),
+      eq(userTermsAcceptances.termsVersion, input.termsVersion),
+    ))
+    .limit(1);
+  return saved ?? null;
+}
+
+export async function getTermsAcceptancesByUser(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(userTermsAcceptances)
+    .where(eq(userTermsAcceptances.userId, userId))
+    .orderBy(desc(userTermsAcceptances.acceptedAt), desc(userTermsAcceptances.id));
+}
+
+export async function getClientTermsCompliance() {
+  const db = await getDb();
+  if (!db) return [];
+
+  return db
+    .select({
+      userId: users.id,
+      userName: users.name,
+      userEmail: users.email,
+      userPhone: users.phone,
+      latestAcceptanceId: sql<number | null>`(
+        SELECT uta.id FROM user_terms_acceptances uta
+        WHERE uta.user_id = ${users.id}
+        ORDER BY uta.accepted_at DESC, uta.id DESC LIMIT 1
+      )`,
+      termsAcceptedAt: sql<string | null>`(
+        SELECT uta.accepted_at FROM user_terms_acceptances uta
+        WHERE uta.user_id = ${users.id}
+        ORDER BY uta.accepted_at DESC, uta.id DESC LIMIT 1
+      )`,
+      termsAcceptedVersion: sql<string | null>`(
+        SELECT uta.terms_version FROM user_terms_acceptances uta
+        WHERE uta.user_id = ${users.id}
+        ORDER BY uta.accepted_at DESC, uta.id DESC LIMIT 1
+      )`,
+      termsAcceptedIpAddress: sql<string | null>`(
+        SELECT uta.ip_address FROM user_terms_acceptances uta
+        WHERE uta.user_id = ${users.id}
+        ORDER BY uta.accepted_at DESC, uta.id DESC LIMIT 1
+      )`,
+      termsAcceptedUserAgent: sql<string | null>`(
+        SELECT uta.user_agent FROM user_terms_acceptances uta
+        WHERE uta.user_id = ${users.id}
+        ORDER BY uta.accepted_at DESC, uta.id DESC LIMIT 1
+      )`,
+      acceptanceSource: sql<string | null>`(
+        SELECT uta.source FROM user_terms_acceptances uta
+        WHERE uta.user_id = ${users.id}
+        ORDER BY uta.accepted_at DESC, uta.id DESC LIMIT 1
+      )`,
+      orderId: sql<number | null>`(
+        SELECT uta.order_id FROM user_terms_acceptances uta
+        WHERE uta.user_id = ${users.id}
+        ORDER BY uta.accepted_at DESC, uta.id DESC LIMIT 1
+      )`,
+    })
+    .from(users)
+    .where(and(
+      eq(users.isStaff, false),
+      sql`(
+        EXISTS (SELECT 1 FROM packageSubscriptions ps WHERE ps.userId = ${users.id})
+        OR EXISTS (SELECT 1 FROM enrollments e WHERE e.userId = ${users.id})
+        OR EXISTS (SELECT 1 FROM lexaiSubscriptions ls WHERE ls.userId = ${users.id})
+        OR EXISTS (SELECT 1 FROM recommendationSubscriptions rs WHERE rs.userId = ${users.id})
+        OR EXISTS (SELECT 1 FROM orders o WHERE o.userId = ${users.id})
+        OR EXISTS (
+          SELECT 1 FROM registrationKeys rk
+          WHERE rk.packageId IS NOT NULL
+            AND lower(trim(COALESCE(rk.email, ''))) = lower(trim(${users.email}))
+        )
+      )`,
+    ));
 }
 
 export async function updateOrderStatus(
