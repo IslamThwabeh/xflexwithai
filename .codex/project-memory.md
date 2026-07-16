@@ -1,6 +1,6 @@
 # XFLEX Project Memory
 
-Last updated: 2026-07-15
+Last updated: 2026-07-17
 
 ## Project Overview
 
@@ -63,7 +63,8 @@ Last updated: 2026-07-15
 - Fixed package-key ILS pricing/reporting release was committed as `0f96227 Fix package key ILS pricing reports`, pushed to `origin/main`, and deployed by Codex on 2026-07-15. Worker version: `40793937-b7b2-4998-aa31-7d1696dffe0c`. Pages preview: `https://307c336d.xflexwithai.pages.dev`. No database migration was required.
 - Production D1 migration `069_loyalty_redemption_integrity.sql` was applied before the Worker deployment and recorded in `schema_migrations` with `source = codex_wrangler`. It adds atomic request validation/reservation and rejection-refund triggers. Cloudflare bookmark: `00000f4d-000010c6-000050a7-16d9dbf16e2d7e62ba970e9400340a04`. Production had zero reward redemptions before and after migration.
 - Post-deployment verification on 2026-07-13 confirmed Worker health returned `status=ok`; production `/ar`, `/en`, and `/auth` returned 200; `/` followed its expected redirect to 200; and the Pages preview followed its redirect to 200.
-- Account-level terms acceptance gate prepared on 2026-07-16 (pending user deployment): migration `071_account_terms_acceptance_gate.sql` creates versioned account evidence, backfills only genuine order-linked acceptance, synchronizes future order acceptance, and adds a database guard for package-key redemption. The rollout flag `admin_settings.terms_acceptance_gate_enabled` defaults to `false`; deploy migrations `070` then `071`, Worker, and Pages before setting it to `true`. The user explicitly asked Codex not to run local verification and will verify in production.
+- Account-level terms acceptance gate release (`420393f Require account-level terms acceptance`) was deployed by Codex on 2026-07-17. Production backup before migrations: `tmp/prod-backups/xflexwithai-before-terms-gate-20260717-004203.sql`. D1 migrations `070_order_linked_package_activation.sql` and `071_account_terms_acceptance_gate.sql` were applied and recorded in `schema_migrations` with `source = codex_wrangler`. Migration bookmarks: `00000f6f-00000622-000050aa-a309998c36b954c80ca06765d4ad75d0` for 070 and `00000f6f-00000628-000050aa-855716e6d3b3fe2d4b5936209c72d2c8` for 071.
+- The 2026-07-17 terms-gate deployment used Worker version `e74f5bfb-62ba-4407-9e87-32c9b161830a` and Pages preview `https://2a8d39b6.xflexwithai.pages.dev`. The frontend asset `index-fkqK7Dw1.js` was confirmed live on production and preview before enabling `admin_settings.terms_acceptance_gate_enabled = true`. Final smoke confirmed `/`, `/ar`, `/en`, `/auth`, and preview returned 200; Worker health returned `status=ok`; anonymous `auth.termsStatus` correctly returned 401; the package-key database guard existed; and the preserved evidence count remained 13 rows for 12 clients.
 - Read-only production terms audit on 2026-07-16 found 62 active package clients: 12 had acceptance evidence on an order (8 v2 and 4 v1), while 50 had no recorded evidence. Existing v1/v2 evidence must be preserved; do not fabricate acceptance for the 50 missing clients.
 - Release order for the 2026-06-22 hotfixes:
   1. Apply migration `056`.
