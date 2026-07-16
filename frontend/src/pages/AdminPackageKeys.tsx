@@ -327,8 +327,8 @@ export default function AdminPackageKeys() {
       currency: trimmedPrice && Number.isFinite(numericPrice) && numericPrice > 0 ? 'ILS' : undefined,
       entitlementDays: entitlementDays ? parseInt(entitlementDays, 10) : undefined,
       expiresAt: expiresAt || undefined,
-      isUpgrade: isUpgrade || undefined,
-      isRenewal: isRenewal || undefined,
+      isUpgrade: undefined,
+      isRenewal: true,
       referredBy: referredBy.trim() || undefined,
     });
   };
@@ -350,8 +350,8 @@ export default function AdminPackageKeys() {
       currency: trimmedPrice && Number.isFinite(numericPrice) && numericPrice > 0 ? 'ILS' : undefined,
       entitlementDays: entitlementDays ? parseInt(entitlementDays, 10) : undefined,
       expiresAt: expiresAt || undefined,
-      isUpgrade: isUpgrade || undefined,
-      isRenewal: isRenewal || undefined,
+      isUpgrade: undefined,
+      isRenewal: true,
       referredBy: referredBy.trim() || undefined,
     });
   };
@@ -368,7 +368,11 @@ export default function AdminPackageKeys() {
       ? ['رمز المفتاح', 'الباقة', 'الاسم', 'البريد الإلكتروني', 'الحالة', 'مدة الخدمة', 'تاريخ الانتهاء', 'آخر موعد لاستخدام المفتاح', 'النوع', 'ترقية', 'تمت الإحالة بواسطة', 'تاريخ التفعيل', 'ملاحظات']
       : ['Key Code', 'Package', 'Name', 'Email', 'Status', 'Service Days', 'Service Expiry', 'Key Redeem Deadline', 'Type', 'Upgrade', 'Referred By', 'Activated', 'Notes'];
     const rows = keys.map(k => [
-      k.email ? k.keyCode : (language === 'ar' ? 'يجب التعيين قبل المشاركة' : 'Assign before sharing'),
+      k.email
+        ? k.keyCode
+        : k.isRenewal
+          ? (language === 'ar' ? 'يجب التعيين قبل المشاركة' : 'Assign before sharing')
+          : (language === 'ar' ? 'مخزون جديد غير قابل للتعيين' : 'Fresh inventory cannot be assigned'),
       (k as any).packageName || '',
       (k as any).userName || '',
       k.email || '',
@@ -377,7 +381,9 @@ export default function AdminPackageKeys() {
         : !k.isActive
           ? (language === 'ar' ? 'معطّل' : 'Deactivated')
           : !k.email
-            ? (language === 'ar' ? 'بحاجة لتعيين' : 'Needs assignment')
+            ? k.isRenewal
+              ? (language === 'ar' ? 'بحاجة لتعيين' : 'Needs assignment')
+              : (language === 'ar' ? 'مخزون جديد معطّل' : 'Fresh inventory disabled')
             : (language === 'ar' ? 'غير مستخدم' : 'Unused'),
       k.entitlementDays || (language === 'ar' ? 'الافتراضي' : 'Default'),
       getServiceExpiryValue(k) ? formatLocalizedDate(getServiceExpiryValue(k) as string, language) : '',
@@ -518,18 +524,18 @@ export default function AdminPackageKeys() {
           <div className="flex gap-2">
             <Dialog open={showGenerateDialog} onOpenChange={setShowGenerateDialog}>
               <DialogTrigger asChild>
-                <Button className="gap-2" onClick={() => resetForm()}>
+                <Button className="gap-2" onClick={() => { resetForm(); setIsRenewal(true); }}>
                   <Plus className="w-4 h-4" />
-                  {language === 'ar' ? 'مفتاح جديد' : 'New Key'}
+                  {language === 'ar' ? 'مفتاح تجديد' : 'Renewal Key'}
                 </Button>
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>{language === 'ar' ? 'إنشاء مفتاح جديد' : 'Generate New Key'}</DialogTitle>
+                  <DialogTitle>{language === 'ar' ? 'إنشاء مفتاح تجديد' : 'Generate Renewal Key'}</DialogTitle>
                   <DialogDescription>
                     {language === 'ar' 
-                      ? 'إنشاء مفتاح تفعيل لباقة معينة' 
-                      : 'Generate an activation key for a specific package'}
+                      ? 'المفاتيح الجديدة والترقيات تصدر تلقائياً من الطلب المعتمد. هذه الشاشة للتجديد فقط.' 
+                      : 'Fresh and upgrade keys are issued automatically from approved orders. This screen is for renewals only.'}
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4">
@@ -580,6 +586,7 @@ export default function AdminPackageKeys() {
                       type="checkbox"
                       id="isUpgrade"
                       checked={isUpgrade}
+                      disabled
                       onChange={(e) => {
                         const nextIsUpgrade = e.target.checked;
                         setIsUpgrade(nextIsUpgrade);
@@ -595,7 +602,7 @@ export default function AdminPackageKeys() {
                     />
                     <Label htmlFor="isUpgrade" className="flex items-center gap-2 cursor-pointer text-sm">
                       <ArrowUpCircle className="w-4 h-4 text-amber-600" />
-                      {language === 'ar' ? 'هذا ترقية (من الأساسية إلى الشاملة)' : 'This is an upgrade (Basic → Comprehensive)'}
+                      {language === 'ar' ? 'الترقية تتم من إدارة الطلبات فقط' : 'Upgrades use Order Management only'}
                     </Label>
                   </div>
                   )}
@@ -605,6 +612,7 @@ export default function AdminPackageKeys() {
                       type="checkbox"
                       id="isRenewal"
                       checked={isRenewal}
+                      disabled
                       onChange={(e) => {
                         const nextIsRenewal = e.target.checked;
                         setIsRenewal(nextIsRenewal);
@@ -620,7 +628,7 @@ export default function AdminPackageKeys() {
                     />
                     <Label htmlFor="isRenewal" className="flex items-center gap-2 cursor-pointer text-sm">
                       <RotateCcw className="w-4 h-4 text-emerald-600" />
-                      {language === 'ar' ? 'هذا تجديد (يمدد اشتراكات المستخدم)' : 'This is a renewal (extends existing subscription)'}
+                      {language === 'ar' ? 'مفتاح تجديد (إلزامي)' : 'Renewal key (required)'}
                     </Label>
                   </div>
                   {isUpgrade && !isBasicPackage && (
@@ -639,7 +647,7 @@ export default function AdminPackageKeys() {
                   <Button onClick={handleGenerateKey} disabled={generateKey.isPending || !assignEmail.trim()} className="w-full">
                     {generateKey.isPending 
                       ? (language === 'ar' ? 'جاري الإنشاء...' : 'Generating...') 
-                      : (language === 'ar' ? 'إنشاء المفتاح' : 'Generate Key')}
+                      : (language === 'ar' ? 'إنشاء مفتاح التجديد' : 'Generate Renewal Key')}
                   </Button>
                 </div>
               </DialogContent>
@@ -647,18 +655,18 @@ export default function AdminPackageKeys() {
 
             <Dialog open={showBulkDialog} onOpenChange={setShowBulkDialog}>
               <DialogTrigger asChild>
-                <Button variant="outline" className="gap-2" onClick={() => resetForm()}>
+                <Button variant="outline" className="gap-2" onClick={() => { resetForm(); setIsRenewal(true); }}>
                   <Layers className="w-4 h-4" />
-                  {language === 'ar' ? 'إنشاء دفعة' : 'Bulk Generate'}
+                  {language === 'ar' ? 'دفعة تجديد' : 'Bulk Renewals'}
                 </Button>
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>{language === 'ar' ? 'إنشاء مفاتيح بالجملة' : 'Bulk Generate Keys'}</DialogTitle>
+                  <DialogTitle>{language === 'ar' ? 'إنشاء مفاتيح تجديد بالجملة' : 'Bulk Generate Renewal Keys'}</DialogTitle>
                   <DialogDescription>
                     {language === 'ar' 
-                      ? 'إنشاء عدة مفاتيح لباقة معينة دفعة واحدة' 
-                      : 'Generate multiple keys for a package at once'}
+                      ? 'مخزون التجديد فقط. المفاتيح الجديدة والترقيات تصدر من الطلبات المعتمدة.' 
+                      : 'Renewal inventory only. Fresh and upgrade keys are issued from approved orders.'}
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4">
@@ -702,6 +710,7 @@ export default function AdminPackageKeys() {
                       type="checkbox"
                       id="isUpgradeBulk"
                       checked={isUpgrade}
+                      disabled
                       onChange={(e) => {
                         const nextIsUpgrade = e.target.checked;
                         setIsUpgrade(nextIsUpgrade);
@@ -717,7 +726,7 @@ export default function AdminPackageKeys() {
                     />
                     <Label htmlFor="isUpgradeBulk" className="flex items-center gap-2 cursor-pointer text-sm">
                       <ArrowUpCircle className="w-4 h-4 text-amber-600" />
-                      {language === 'ar' ? 'مفاتيح ترقية' : 'Upgrade keys'}
+                      {language === 'ar' ? 'الترقية تتم من إدارة الطلبات فقط' : 'Upgrades use Order Management only'}
                     </Label>
                   </div>
                   )}
@@ -727,6 +736,7 @@ export default function AdminPackageKeys() {
                       type="checkbox"
                       id="isRenewalBulk"
                       checked={isRenewal}
+                      disabled
                       onChange={(e) => {
                         const nextIsRenewal = e.target.checked;
                         setIsRenewal(nextIsRenewal);
@@ -742,7 +752,7 @@ export default function AdminPackageKeys() {
                     />
                     <Label htmlFor="isRenewalBulk" className="flex items-center gap-2 cursor-pointer text-sm">
                       <RotateCcw className="w-4 h-4 text-emerald-600" />
-                      {language === 'ar' ? 'مفاتيح تجديد' : 'Renewal keys'}
+                      {language === 'ar' ? 'مفاتيح تجديد (إلزامي)' : 'Renewal keys (required)'}
                     </Label>
                   </div>
                   {isUpgrade && !isBasicPackage && (
@@ -758,7 +768,7 @@ export default function AdminPackageKeys() {
                   <Button onClick={handleGenerateBulk} disabled={generateBulk.isPending} className="w-full">
                     {generateBulk.isPending 
                       ? (language === 'ar' ? 'جاري الإنشاء...' : 'Generating...') 
-                      : (language === 'ar' ? `إنشاء ${quantity} مفاتيح` : `Generate ${quantity} Keys`)}
+                      : (language === 'ar' ? `إنشاء ${quantity} مفتاح تجديد` : `Generate ${quantity} Renewal Keys`)}
                   </Button>
                 </div>
               </DialogContent>
@@ -915,7 +925,9 @@ export default function AdminPackageKeys() {
                     ) : !key.email ? (
                       <Badge className="gap-1 text-xs bg-amber-100 text-amber-800 hover:bg-amber-100">
                         <User className="w-3 h-3" />
-                        {language === 'ar' ? 'بحاجة لتعيين' : 'Needs assignment'}
+                        {key.isRenewal
+                          ? (language === 'ar' ? 'بحاجة لتعيين' : 'Needs assignment')
+                          : (language === 'ar' ? 'مخزون جديد معطّل' : 'Fresh inventory disabled')}
                       </Badge>
                     ) : (
                       <Badge variant="secondary" className="gap-1 text-xs">
@@ -994,7 +1006,7 @@ export default function AdminPackageKeys() {
 
                   {/* Row 6: Actions */}
                   <div className="flex items-center justify-end gap-2 pt-2 border-t border-dashed">
-                    {key.isActive && !key.activatedAt && !key.email && (
+                    {key.isActive && !key.activatedAt && !key.email && key.isRenewal && (
                       <Button
                         variant="outline"
                         size="sm"
@@ -1148,7 +1160,9 @@ export default function AdminPackageKeys() {
                           ) : !key.email ? (
                             <Badge className="gap-1 bg-amber-100 text-amber-800 hover:bg-amber-100">
                               <User className="w-3 h-3" />
-                              {language === 'ar' ? 'بحاجة لتعيين' : 'Needs assignment'}
+                              {key.isRenewal
+                                ? (language === 'ar' ? 'بحاجة لتعيين' : 'Needs assignment')
+                                : (language === 'ar' ? 'مخزون جديد معطّل' : 'Fresh inventory disabled')}
                             </Badge>
                           ) : (
                             <span className="text-xs text-gray-400">—</span>
@@ -1231,7 +1245,7 @@ export default function AdminPackageKeys() {
                           )}
                         </TableCell>}
                         <TableCell>
-                          {key.isActive && !key.activatedAt && !key.email && (
+                          {key.isActive && !key.activatedAt && !key.email && key.isRenewal && (
                             <Button
                               variant="ghost"
                               size="sm"

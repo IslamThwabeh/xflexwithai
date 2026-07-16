@@ -99,6 +99,7 @@ const SUPPORT_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 const SUPPORT_FILE_MAX_BYTES = 5 * 1024 * 1024;
 const SUPPORT_VOICE_MAX_BYTES = 5 * 1024 * 1024;
 const SUPPORT_VIDEO_MAX_BYTES = 100 * 1024 * 1024;
+const PAYMENT_PROOF_HOST = 'videos.xflexacademy.com';
 const supportAttachmentTypeSchema = z.enum(['file', 'voice', 'video']);
 const onboardingStepSchema = z.enum(['select_broker', 'open_account', 'deposit']);
 const onboardingStatusSchema = z.enum(['not_started', 'pending_review', 'approved', 'rejected']);
@@ -145,6 +146,18 @@ const studentJobReviewStatusSchema = z.enum(STUDENT_JOB_ELIGIBILITY_REVIEW_STATU
 const studentJobDecisionStatusSchema = z.enum(["returned", "eligible", "ineligible"]);
 const shortStudentJobText = z.string().trim().max(300);
 const longStudentJobText = z.string().trim().max(5000);
+
+function isTrustedPaymentProofUrl(value?: string | null) {
+  if (!value) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:'
+      && url.hostname === PAYMENT_PROOF_HOST
+      && url.pathname.startsWith('/payment-proofs/');
+  } catch {
+    return false;
+  }
+}
 
 async function requireLoyaltyRewardsEnabled() {
   const flag = await db.getAdminSetting(LOYALTY_REWARDS_FEATURE_FLAG);
@@ -5649,7 +5662,7 @@ export const appRouter = router({
     uploadProof: protectedProcedure
       .input(z.object({
         orderId: z.number(),
-        paymentProofUrl: z.string(),
+        paymentProofUrl: z.string().url(),
         paymentReference: z.string().optional(),
       }))
       .mutation(async ({ input, ctx }) => {
@@ -5657,6 +5670,9 @@ export const appRouter = router({
         const order = await db.getOrderById(input.orderId);
         if (!order) throw new TRPCError({ code: 'NOT_FOUND' });
         if (order.userId !== ctx.user.id) throw new TRPCError({ code: 'FORBIDDEN' });
+        if (!isTrustedPaymentProofUrl(input.paymentProofUrl)) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Payment evidence must be uploaded through the order page.' });
+        }
         return db.updateOrderStatus(input.orderId, 'awaiting_confirmation', {
           paymentProofUrl: input.paymentProofUrl,
           paymentReference: input.paymentReference,
@@ -5691,6 +5707,12 @@ export const appRouter = router({
         // Payment approval creates an email-bound entitlement credential. It
         // intentionally does not grant course/service access until redemption.
         if (input.status === 'completed') {
+          if (order.paymentMethod === 'bank_transfer' && !isTrustedPaymentProofUrl(order.paymentProofUrl)) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: 'Bank-transfer payment evidence must be uploaded before this order can be approved.',
+            });
+          }
           try {
             activationKeys = await db.createOrderActivationKeys({ order, actorType, actorId });
           } catch (error) {
@@ -6672,6 +6694,12 @@ export const appRouter = router({
         referredBy: z.string().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
+        if (!input.isRenewal || input.isUpgrade) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Fresh and upgrade keys are issued only after approving an order with payment evidence. Manual generation is limited to renewal keys.',
+          });
+        }
         const admin = ctx.admin ?? ctx.user;
         const actorType = ctx.admin ? 'admin' as const : 'staff' as const;
         const result = await db.createPackageKey({
@@ -6708,6 +6736,12 @@ export const appRouter = router({
         referredBy: z.string().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
+        if (!input.isRenewal || input.isUpgrade) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Bulk inventory is limited to renewal keys. Fresh and upgrade keys must come from an approved order.',
+          });
+        }
         const admin = ctx.admin ?? ctx.user;
         const keys = await db.createBulkPackageKeys({
           packageId: input.packageId,

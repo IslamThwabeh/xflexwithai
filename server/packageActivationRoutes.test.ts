@@ -79,6 +79,8 @@ describe('package activation routes', () => {
       giftEmail: null,
       isUpgrade: false,
       currency: 'USD',
+      paymentMethod: 'bank_transfer',
+      paymentProofUrl: 'https://videos.xflexacademy.com/payment-proofs/test-proof.jpg',
     } as any;
     vi.mocked(db.getOrderById).mockResolvedValue(order);
     vi.mocked(db.createOrderActivationKeys).mockResolvedValue([
@@ -125,6 +127,36 @@ describe('package activation routes', () => {
     await expect(createCaller().packageKeys.generateKey({ packageId: 1 } as any)).rejects.toMatchObject({
       code: 'BAD_REQUEST',
     });
+  });
+
+  it('rejects manual fresh keys so new sales must use an approved order', async () => {
+    await expect(createCaller().packageKeys.generateKey({
+      packageId: 1,
+      email: user.email,
+      isRenewal: false,
+    })).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+    expect(db.createPackageKey).not.toHaveBeenCalled();
+  });
+
+  it('rejects bank-transfer approval until payment evidence exists', async () => {
+    const order = {
+      id: 24,
+      userId: user.id,
+      status: 'pending',
+      isGift: false,
+      giftEmail: null,
+      isUpgrade: false,
+      currency: 'USD',
+      paymentMethod: 'bank_transfer',
+      paymentProofUrl: null,
+    } as any;
+    vi.mocked(db.getOrderById).mockResolvedValue(order);
+
+    await expect(createCaller().orders.adminUpdateStatus({
+      orderId: order.id,
+      status: 'completed',
+    })).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+    expect(db.createOrderActivationKeys).not.toHaveBeenCalled();
   });
 
   it('records the assigning actor when inventory is bound to a customer', async () => {

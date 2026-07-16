@@ -657,6 +657,9 @@ function getTimedServiceSubscriptionState(subscription?: TimedServiceSubscriptio
 
 function getTimedServiceRemainingDays(subscription?: TimedServiceSubscriptionSnapshot | null) {
   if (!subscription) return 0;
+  // Pending rows carry a placeholder endDate for the eventual service length.
+  // That date is not an active expiry and must never appear as consumed time.
+  if (subscription.isPendingActivation) return 0;
   if (subscription.isPaused) {
     return normalizePositiveInteger(subscription.pausedRemainingDays) ?? 0;
   }
@@ -7853,6 +7856,9 @@ export async function assignPackageKey(input: {
   if (!key || !key.packageId) throw new Error('Package key not found');
   if (!key.isActive) throw new Error('A deactivated key cannot be assigned');
   if (key.activatedAt) throw new Error('An activated key cannot be reassigned');
+  if (!key.isRenewal || key.isUpgrade) {
+    throw new Error('Fresh and upgrade package keys must be issued from an approved order. Only renewal inventory can be assigned manually.');
+  }
   if (key.email && normalizeEmailAddress(key.email) !== normalizedEmail) {
     throw new Error('This key is already assigned to another customer');
   }

@@ -557,10 +557,16 @@ export default function AdminClientProfileSheet({
                   state={profile.lexaiSubscription?.subscriptionState ?? "no_subscription"}
                   stateLabel={getServiceLabel(profile.lexaiSubscription?.subscriptionState, isRtl)}
                   badgeClass={getServiceBadgeClass(profile.lexaiSubscription?.subscriptionState)}
-                  rows={[
-                    { label: isRtl ? "الأيام المتبقية" : "Remaining Days", value: String(profile.lexaiSubscription?.remainingDays ?? 0) },
-                    { label: isRtl ? "سبب التجميد" : "Freeze Reason", value: profile.lexaiSubscription?.pausedReason || "-" },
-                  ]}
+                  rows={profile.lexaiSubscription?.subscriptionState === "pending_activation"
+                    ? [
+                        { label: isRtl ? "أيام الخدمة المستهلكة" : "Service Days Consumed", value: "0" },
+                        { label: isRtl ? "المتبقي من مهلة الحماية" : "Protection Window Remaining", value: String(profile.lexaiSubscription?.activationDeadlineDays ?? 0) },
+                        { label: isRtl ? "آخر موعد للحماية" : "Protection Deadline", value: formatDate(profile.lexaiSubscription?.maxActivationDate ?? null, locale, false) },
+                      ]
+                    : [
+                        { label: isRtl ? "الأيام المتبقية" : "Remaining Days", value: String(profile.lexaiSubscription?.remainingDays ?? 0) },
+                        { label: isRtl ? "سبب التجميد" : "Freeze Reason", value: profile.lexaiSubscription?.pausedReason || "-" },
+                      ]}
                 />
 
                 <ServiceCard
@@ -570,11 +576,17 @@ export default function AdminClientProfileSheet({
                   state={profile.recommendationSubscription?.subscriptionState ?? "no_subscription"}
                   stateLabel={getServiceLabel(profile.recommendationSubscription?.subscriptionState, isRtl)}
                   badgeClass={getServiceBadgeClass(profile.recommendationSubscription?.subscriptionState)}
-                  rows={[
-                    { label: isRtl ? "الأيام المتبقية" : "Remaining Days", value: String(profile.recommendationSubscription?.remainingDays ?? 0) },
-                    { label: isRtl ? "سبب التجميد" : "Freeze Reason", value: profile.recommendationSubscription?.pausedReason || "-" },
-                    { label: isRtl ? "تاريخ الانتهاء" : "End Date", value: formatDate(profile.recommendationSubscription?.endDate ?? null, locale, false) },
-                  ]}
+                  rows={profile.recommendationSubscription?.subscriptionState === "pending_activation"
+                    ? [
+                        { label: isRtl ? "أيام الخدمة المستهلكة" : "Service Days Consumed", value: "0" },
+                        { label: isRtl ? "المتبقي من مهلة الحماية" : "Protection Window Remaining", value: String(profile.recommendationSubscription?.activationDeadlineDays ?? 0) },
+                        { label: isRtl ? "آخر موعد للحماية" : "Protection Deadline", value: formatDate(profile.recommendationSubscription?.maxActivationDate ?? null, locale, false) },
+                      ]
+                    : [
+                        { label: isRtl ? "الأيام المتبقية" : "Remaining Days", value: String(profile.recommendationSubscription?.remainingDays ?? 0) },
+                        { label: isRtl ? "سبب التجميد" : "Freeze Reason", value: profile.recommendationSubscription?.pausedReason || "-" },
+                        { label: isRtl ? "تاريخ الانتهاء" : "End Date", value: formatDate(profile.recommendationSubscription?.endDate ?? null, locale, false) },
+                      ]}
                 />
               </div>
 
