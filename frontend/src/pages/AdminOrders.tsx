@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ShoppingCart, CheckCircle, XCircle, Eye, ChevronDown, ChevronUp, ArrowUpCircle, FileCheck } from 'lucide-react';
+import { ShoppingCart, CheckCircle, XCircle, Eye, ChevronDown, ChevronUp, FileCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -10,6 +10,7 @@ import { formatPaymentMethodLabel } from '@/lib/paymentMethodLabel';
 import { trpc } from '@/lib/trpc';
 import DashboardLayout from '@/components/DashboardLayout';
 import { useDataTable, DataTablePagination } from '@/components/DataTable';
+import { toast } from 'sonner';
 
 const orderSortFns: Record<string, (a: any, b: any) => number> = {
   created: (a, b) => new Date(String(a.createdAt).replace(' ', 'T')).getTime() - new Date(String(b.createdAt).replace(' ', 'T')).getTime(),
@@ -39,10 +40,15 @@ export default function AdminOrders() {
   const [filter, setFilter] = useState<string | undefined>(undefined);
   const { data: orders, isLoading } = trpc.orders.adminList.useQuery(filter ? { status: filter } : undefined);
   const updateMutation = trpc.orders.adminUpdateStatus.useMutation({
-    onSuccess: () => utils.orders.adminList.invalidate(),
-  });
-  const processUpgradeMutation = trpc.upgrade.process.useMutation({
-    onSuccess: () => utils.orders.adminList.invalidate(),
+    onSuccess: (data) => {
+      utils.orders.adminList.invalidate();
+      if (data.activationKeys?.length) {
+        toast.success(language === 'ar'
+          ? 'تم تأكيد الدفع وإنشاء مفتاح مربوط ببريد العميل. لن يبدأ الكورس قبل إدخال المفتاح.'
+          : 'Payment approved and an email-bound key was created. Course access starts after redemption.');
+      }
+    },
+    onError: (error) => toast.error(error.message),
   });
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
@@ -61,7 +67,7 @@ export default function AdminOrders() {
     await updateMutation.mutateAsync({
       orderId,
       status: newStatus as any,
-    });
+    }).catch(() => undefined);
   };
 
   return (
@@ -225,8 +231,8 @@ export default function AdminOrders() {
                     <div className="flex flex-wrap gap-2">
                       {order.status === 'pending' && (
                         <>
-                          <Button size="sm" onClick={() => handleStatusChange(order.id, 'completed')}>
-                            <CheckCircle className="w-3.5 h-3.5 me-1" />{language === 'ar' ? 'تأكيد ✓' : 'Approve'}
+                          <Button size="sm" disabled={updateMutation.isPending} onClick={() => handleStatusChange(order.id, 'completed')}>
+                            <CheckCircle className="w-3.5 h-3.5 me-1" />{language === 'ar' ? 'تأكيد الدفع وإصدار المفتاح' : 'Approve & issue key'}
                           </Button>
                           <Button size="sm" variant="outline" onClick={() => handleStatusChange(order.id, 'cancelled')} className="text-red-600">
                             <XCircle className="w-3.5 h-3.5 me-1" />{language === 'ar' ? 'إلغاء' : 'Cancel'}
@@ -235,8 +241,8 @@ export default function AdminOrders() {
                       )}
                       {order.status === 'awaiting_confirmation' && (
                         <>
-                          <Button size="sm" onClick={() => handleStatusChange(order.id, 'completed')}>
-                            <CheckCircle className="w-3.5 h-3.5 me-1" />{language === 'ar' ? 'تأكيد ✓' : 'Approve'}
+                          <Button size="sm" disabled={updateMutation.isPending} onClick={() => handleStatusChange(order.id, 'completed')}>
+                            <CheckCircle className="w-3.5 h-3.5 me-1" />{language === 'ar' ? 'تأكيد الدفع وإصدار المفتاح' : 'Approve & issue key'}
                           </Button>
                           <Button size="sm" variant="outline" onClick={() => handleStatusChange(order.id, 'cancelled')} className="text-red-600">
                             <XCircle className="w-3.5 h-3.5 me-1" />{language === 'ar' ? 'رفض' : 'Reject'}
@@ -244,13 +250,8 @@ export default function AdminOrders() {
                         </>
                       )}
                       {order.status === 'paid' && (
-                        <Button size="sm" onClick={() => handleStatusChange(order.id, 'completed')}>
-                          <CheckCircle className="w-3.5 h-3.5 me-1" />{language === 'ar' ? 'إكمال' : 'Complete'}
-                        </Button>
-                      )}
-                      {(order as any).isUpgrade && (order.status === 'paid' || order.status === 'awaiting_confirmation') && (
-                        <Button size="sm" className="bg-amber-600 hover:bg-amber-700" disabled={processUpgradeMutation.isPending} onClick={() => processUpgradeMutation.mutate({ orderId: order.id })}>
-                          <ArrowUpCircle className="w-3.5 h-3.5 me-1" />{language === 'ar' ? 'تنفيذ الترقية' : 'Process Upgrade'}
+                        <Button size="sm" disabled={updateMutation.isPending} onClick={() => handleStatusChange(order.id, 'completed')}>
+                          <CheckCircle className="w-3.5 h-3.5 me-1" />{language === 'ar' ? 'إصدار المفتاح' : 'Issue key'}
                         </Button>
                       )}
                     </div>

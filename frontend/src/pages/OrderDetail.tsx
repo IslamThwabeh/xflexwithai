@@ -202,11 +202,43 @@ export default function OrderDetail() {
         {order.status === 'completed' && (
           <div className="bg-green-50 border border-green-200 rounded-2xl p-6 text-center">
             <CheckCircle className="w-10 h-10 text-green-500 mx-auto mb-2" />
-            <p className="font-medium">{isRtl ? 'تم تأكيد الطلب!' : 'Order Confirmed!'}</p>
-            <p className="text-sm text-gray-600 mb-4">{isRtl ? 'يمكنك الآن الوصول إلى محتوى الباقة' : 'You can now access your package content.'}</p>
-            <Link href="/courses">
-              <Button>{isRtl ? 'إلى الكورسات' : 'Go to Courses'}</Button>
-            </Link>
+            {(order as any).activationKeys?.length ? (
+              <>
+                <p className="font-medium">{isRtl ? 'تم تأكيد الدفع ومفتاحك جاهز' : 'Payment confirmed and your key is ready'}</p>
+                <p className="text-sm text-gray-600 mb-4">
+                  {isRtl ? 'المفتاح مربوط ببريدك. أدخله مرة واحدة فقط لبدء الباقة.' : 'The key is bound to your email. Enter it once to start the package.'}
+                </p>
+                <div className="space-y-2 mb-4">
+                  {(order as any).activationKeys.map((key: any) => (
+                    <div key={key.id} className="rounded-lg border border-emerald-200 bg-white p-3" dir="ltr">
+                      <code className="font-mono font-bold tracking-wider break-all">{key.keyCode}</code>
+                      {key.activatedAt && (
+                        <p className="mt-1 text-xs text-emerald-700">{isRtl ? 'تم التفعيل' : 'Activated'}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {(order as any).activationKeys.some((key: any) => !key.activatedAt) ? (
+                  <Link href="/activate-key">
+                    <Button>{isRtl ? 'تفعيل المفتاح' : 'Activate Key'}</Button>
+                  </Link>
+                ) : (
+                  <Link href="/courses">
+                    <Button>{isRtl ? 'إلى الكورسات' : 'Go to Courses'}</Button>
+                  </Link>
+                )}
+              </>
+            ) : (
+              <>
+                <p className="font-medium">{isRtl ? 'تم تأكيد الطلب!' : 'Order Confirmed!'}</p>
+                <p className="text-sm text-gray-600 mb-4">
+                  {isRtl ? 'هذا طلب سابق وتم تفعيل محتوى الباقة مباشرة.' : 'This is a legacy order whose package content was activated directly.'}
+                </p>
+                <Link href="/courses">
+                  <Button>{isRtl ? 'إلى الكورسات' : 'Go to Courses'}</Button>
+                </Link>
+              </>
+            )}
           </div>
         )}
       </div>

@@ -123,10 +123,11 @@ export async function sendJobInterviewInviteEmail(to: string, candidateName?: st
 export async function sendOrderConfirmationEmail(to: string, data: {
   orderId: number;
   packageName: string;
-  totalUsd: number;
+  totalIls: number;
   paymentMethod: string;
 }) {
   const paymentLabel = formatPaymentLabel(data.paymentMethod);
+  const safePackageName = escapeHtml(data.packageName);
   const subject = `[${BRAND}] تأكيد الطلب #${data.orderId} | Order Confirmation`;
   const body = `
     <h2 style="margin:0 0 12px;color:#111;">شكراً لطلبك! Thank you for your order!</h2>
@@ -136,8 +137,8 @@ export async function sendOrderConfirmationEmail(to: string, data: {
     </p>
     <table style="width:100%;border-collapse:collapse;margin:16px 0;">
       <tr><td style="padding:8px 0;color:#888;">رقم الطلب / Order #</td><td style="padding:8px 0;font-weight:bold;text-align:left;">${data.orderId}</td></tr>
-      <tr><td style="padding:8px 0;color:#888;">الباقة / Package</td><td style="padding:8px 0;font-weight:bold;text-align:left;">${data.packageName}</td></tr>
-      <tr><td style="padding:8px 0;color:#888;">المبلغ / Total</td><td style="padding:8px 0;font-weight:bold;text-align:left;">$${data.totalUsd.toFixed(2)}</td></tr>
+      <tr><td style="padding:8px 0;color:#888;">الباقة / Package</td><td style="padding:8px 0;font-weight:bold;text-align:left;">${safePackageName}</td></tr>
+      <tr><td style="padding:8px 0;color:#888;">المبلغ / Total</td><td style="padding:8px 0;font-weight:bold;text-align:left;">₪${data.totalIls.toLocaleString('en-US', { maximumFractionDigits: 2 })}</td></tr>
       <tr><td style="padding:8px 0;color:#888;">طريقة الدفع / Payment</td><td style="padding:8px 0;text-align:left;">${paymentLabel}</td></tr>
     </table>
     ${data.paymentMethod === 'bank_transfer' ? `
@@ -168,22 +169,26 @@ export async function sendOrderConfirmationEmail(to: string, data: {
 export async function sendPaymentReceivedEmail(to: string, data: {
   orderId: number;
   packageName: string;
+  activationKeys: string[];
 }) {
-  const subject = `[${BRAND}] ✅ تم تفعيل الاشتراك | Subscription Activated - Order #${data.orderId}`;
+  const subject = `[${BRAND}] ✅ تم تأكيد الدفع ومفتاحك جاهز | Payment Confirmed - Order #${data.orderId}`;
+  const safePackageName = escapeHtml(data.packageName);
+  const keyRows = data.activationKeys.map((key) => `
+    <div dir="ltr" style="margin:8px 0;padding:12px;border-radius:8px;background:#ecfdf5;border:1px solid #a7f3d0;font-family:monospace;font-size:16px;font-weight:bold;text-align:center;letter-spacing:1px;">
+      ${escapeHtml(key)}
+    </div>`).join('');
   const body = `
-    <h2 style="margin:0 0 12px;color:#059669;">🎉 مبروك! تم تفعيل اشتراكك</h2>
-    <h3 style="margin:0 0 12px;color:#059669;">Congratulations! Your subscription is now active</h3>
+    <h2 style="margin:0 0 12px;color:#059669;">✅ تم تأكيد الدفع</h2>
+    <h3 style="margin:0 0 12px;color:#059669;">Payment confirmed</h3>
     <p style="color:#555;line-height:1.7;">
-      تم تأكيد دفعك وتفعيل باقة <strong>${data.packageName}</strong> بنجاح.<br/>
-      Your payment for <strong>${data.packageName}</strong> has been confirmed and your subscription is now active.
+      تم تأكيد دفعك لباقة <strong>${safePackageName}</strong>. مفتاح التفعيل أدناه مربوط ببريدك الإلكتروني ولا يمكن استخدامه من حساب آخر.<br/>
+      Your payment for <strong>${safePackageName}</strong> is confirmed. The activation key below is bound to your email and cannot be used by another account.
     </p>
-    <p style="color:#555;line-height:1.7;">
-      يمكنك الآن الوصول لجميع محتويات الباقة.<br/>
-      You can now access all package content.
-    </p>
+    ${keyRows}
+    <p style="color:#555;line-height:1.7;">أدخل المفتاح مرة واحدة فقط لبدء الباقة والكورس.<br/>Enter the key once to activate your package and course.</p>
     <div style="text-align:center;margin-top:24px;">
-      <a href="https://xflexacademy.com/courses" style="display:inline-block;background:#059669;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:bold;">
-        ابدأ التعلم / Start Learning
+      <a href="https://xflexacademy.com/activate-key" style="display:inline-block;background:#059669;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:bold;">
+        تفعيل المفتاح / Activate Key
       </a>
     </div>`;
   
@@ -203,19 +208,21 @@ export async function sendAdminNewOrderNotification(data: {
   orderId: number;
   userEmail: string;
   packageName: string;
-  totalUsd: number;
+  totalIls: number;
   paymentMethod: string;
 }) {
   const adminEmail = ENV.emailFrom || 'admin@xflexacademy.com';
   const paymentLabel = formatPaymentLabel(data.paymentMethod);
+  const safeEmail = escapeHtml(data.userEmail);
+  const safePackageName = escapeHtml(data.packageName);
   const subject = `[ADMIN] طلب جديد #${data.orderId} - ${data.userEmail}`;
   const body = `
     <h2 style="margin:0 0 12px;color:#111;">طلب جديد! New Order</h2>
     <table style="width:100%;border-collapse:collapse;margin:16px 0;">
       <tr><td style="padding:8px 0;color:#888;">Order #</td><td style="padding:8px 0;font-weight:bold;">${data.orderId}</td></tr>
-      <tr><td style="padding:8px 0;color:#888;">User</td><td style="padding:8px 0;">${data.userEmail}</td></tr>
-      <tr><td style="padding:8px 0;color:#888;">Package</td><td style="padding:8px 0;font-weight:bold;">${data.packageName}</td></tr>
-      <tr><td style="padding:8px 0;color:#888;">Total</td><td style="padding:8px 0;font-weight:bold;">$${data.totalUsd.toFixed(2)}</td></tr>
+      <tr><td style="padding:8px 0;color:#888;">User</td><td style="padding:8px 0;">${safeEmail}</td></tr>
+      <tr><td style="padding:8px 0;color:#888;">Package</td><td style="padding:8px 0;font-weight:bold;">${safePackageName}</td></tr>
+      <tr><td style="padding:8px 0;color:#888;">Total</td><td style="padding:8px 0;font-weight:bold;">₪${data.totalIls.toLocaleString('en-US', { maximumFractionDigits: 2 })}</td></tr>
       <tr><td style="padding:8px 0;color:#888;">Payment</td><td style="padding:8px 0;">${paymentLabel}</td></tr>
     </table>
     <div style="text-align:center;margin-top:24px;">

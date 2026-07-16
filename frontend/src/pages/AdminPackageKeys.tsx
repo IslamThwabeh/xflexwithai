@@ -160,6 +160,8 @@ export default function AdminPackageKeys() {
   const [referredBy, setReferredBy] = useState("");
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [deactivateDialogKey, setDeactivateDialogKey] = useState<{ id: number; keyCode: string } | null>(null);
+  const [assignDialogKey, setAssignDialogKey] = useState<{ id: number; keyCode: string } | null>(null);
+  const [assignmentEmail, setAssignmentEmail] = useState("");
   const [deactivateReason, setDeactivateReason] = useState("");
   const [freezeDialogUserId, setFreezeDialogUserId] = useState<number | null>(null);
   const [freezeReason, setFreezeReason] = useState("");
@@ -262,6 +264,16 @@ export default function AdminPackageKeys() {
     onError: (err) => toast.error(err.message),
   });
 
+  const assignKey = trpc.packageKeys.assignKey.useMutation({
+    onSuccess: () => {
+      toast.success(language === 'ar' ? 'تم ربط المفتاح ببريد العميل' : 'Key assigned to customer email');
+      keysQuery.refetch();
+      setAssignDialogKey(null);
+      setAssignmentEmail("");
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
   const freezeUser = trpc.packageKeys.freeze.useMutation({
     onSuccess: () => {
       toast.success(language === 'ar' ? 'تم تجميد الاشتراكات' : 'Subscriptions frozen');
@@ -299,11 +311,15 @@ export default function AdminPackageKeys() {
       toast.error(language === 'ar' ? 'يرجى اختيار الباقة' : 'Please select a package');
       return;
     }
+    if (!assignEmail.trim()) {
+      toast.error(language === 'ar' ? 'يجب إدخال بريد العميل قبل إنشاء المفتاح' : 'Customer email is required before generating a key');
+      return;
+    }
     const trimmedPrice = price.trim();
     const numericPrice = Number(trimmedPrice);
     generateKey.mutate({
       packageId: selectedPackage,
-      email: assignEmail || undefined,
+      email: assignEmail.trim(),
       notes: notes || undefined,
       price: trimmedPrice && Number.isFinite(numericPrice) && numericPrice > 0
         ? Math.round(numericPrice)
@@ -352,11 +368,17 @@ export default function AdminPackageKeys() {
       ? ['رمز المفتاح', 'الباقة', 'الاسم', 'البريد الإلكتروني', 'الحالة', 'مدة الخدمة', 'تاريخ الانتهاء', 'آخر موعد لاستخدام المفتاح', 'النوع', 'ترقية', 'تمت الإحالة بواسطة', 'تاريخ التفعيل', 'ملاحظات']
       : ['Key Code', 'Package', 'Name', 'Email', 'Status', 'Service Days', 'Service Expiry', 'Key Redeem Deadline', 'Type', 'Upgrade', 'Referred By', 'Activated', 'Notes'];
     const rows = keys.map(k => [
-      k.keyCode,
+      k.email ? k.keyCode : (language === 'ar' ? 'يجب التعيين قبل المشاركة' : 'Assign before sharing'),
       (k as any).packageName || '',
       (k as any).userName || '',
       k.email || '',
-      k.activatedAt ? (language === 'ar' ? 'مفعّل' : 'Activated') : k.isActive ? (language === 'ar' ? 'غير مستخدم' : 'Unused') : (language === 'ar' ? 'معطّل' : 'Deactivated'),
+      k.activatedAt
+        ? (language === 'ar' ? 'مفعّل' : 'Activated')
+        : !k.isActive
+          ? (language === 'ar' ? 'معطّل' : 'Deactivated')
+          : !k.email
+            ? (language === 'ar' ? 'بحاجة لتعيين' : 'Needs assignment')
+            : (language === 'ar' ? 'غير مستخدم' : 'Unused'),
       k.entitlementDays || (language === 'ar' ? 'الافتراضي' : 'Default'),
       getServiceExpiryValue(k) ? formatLocalizedDate(getServiceExpiryValue(k) as string, language) : '',
       k.expiresAt ? formatLocalizedDate(k.expiresAt, language) : '',
@@ -513,7 +535,7 @@ export default function AdminPackageKeys() {
                 <div className="space-y-4">
                   <PackageSelector />
                   <div className="space-y-2">
-                    <Label>{language === 'ar' ? 'تعيين لبريد إلكتروني (اختياري)' : 'Assign to email (optional)'}</Label>
+                    <Label>{language === 'ar' ? 'بريد العميل الإلكتروني (إلزامي)' : 'Customer email (required)'}</Label>
                     <Input
                       type="email"
                       value={assignEmail}
@@ -614,7 +636,7 @@ export default function AdminPackageKeys() {
                       </p>
                     </div>
                   )}
-                  <Button onClick={handleGenerateKey} disabled={generateKey.isPending} className="w-full">
+                  <Button onClick={handleGenerateKey} disabled={generateKey.isPending || !assignEmail.trim()} className="w-full">
                     {generateKey.isPending 
                       ? (language === 'ar' ? 'جاري الإنشاء...' : 'Generating...') 
                       : (language === 'ar' ? 'إنشاء المفتاح' : 'Generate Key')}
@@ -857,8 +879,10 @@ export default function AdminPackageKeys() {
                       {key.keyCode}
                     </code>
                     <button
-                      onClick={() => copyToClipboard(key.keyCode)}
-                      className="text-gray-400 hover:text-emerald-600 transition-colors shrink-0 p-1"
+                      onClick={() => key.email
+                        ? copyToClipboard(key.keyCode)
+                        : toast.error(language === 'ar' ? 'عيّن المفتاح لبريد العميل قبل نسخه' : 'Assign the key before copying it')}
+                      className={`transition-colors shrink-0 p-1 ${key.email ? 'text-gray-400 hover:text-emerald-600' : 'text-gray-300 cursor-not-allowed'}`}
                     >
                       <Copy className="w-4 h-4" />
                     </button>
@@ -888,6 +912,11 @@ export default function AdminPackageKeys() {
                           </Badge>
                         )}
                       </>
+                    ) : !key.email ? (
+                      <Badge className="gap-1 text-xs bg-amber-100 text-amber-800 hover:bg-amber-100">
+                        <User className="w-3 h-3" />
+                        {language === 'ar' ? 'بحاجة لتعيين' : 'Needs assignment'}
+                      </Badge>
                     ) : (
                       <Badge variant="secondary" className="gap-1 text-xs">
                         <Clock className="w-3 h-3" />
@@ -965,6 +994,17 @@ export default function AdminPackageKeys() {
 
                   {/* Row 6: Actions */}
                   <div className="flex items-center justify-end gap-2 pt-2 border-t border-dashed">
+                    {key.isActive && !key.activatedAt && !key.email && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1"
+                        onClick={() => setAssignDialogKey({ id: key.id, keyCode: key.keyCode })}
+                      >
+                        <User className="w-4 h-4" />
+                        {language === 'ar' ? 'تعيين' : 'Assign'}
+                      </Button>
+                    )}
                     {key.isActive && key.activatedAt && key.userId && (
                       (!!key.lexaiIsPaused || !!key.recIsPaused) ? (
                         <Button
@@ -1087,8 +1127,10 @@ export default function AdminPackageKeys() {
                               {key.keyCode}
                             </code>
                             <button
-                              onClick={() => copyToClipboard(key.keyCode)}
-                              className="text-gray-400 hover:text-emerald-600 transition-colors"
+                              onClick={() => key.email
+                                ? copyToClipboard(key.keyCode)
+                                : toast.error(language === 'ar' ? 'عيّن المفتاح لبريد العميل قبل نسخه' : 'Assign the key before copying it')}
+                              className={`transition-colors ${key.email ? 'text-gray-400 hover:text-emerald-600' : 'text-gray-300 cursor-not-allowed'}`}
                             >
                               <Copy className="w-3.5 h-3.5" />
                             </button>
@@ -1103,6 +1145,11 @@ export default function AdminPackageKeys() {
                         {visibleCols.has('name') && <TableCell>
                           {key.userName ? (
                             <span className="text-sm font-medium">{key.userName}</span>
+                          ) : !key.email ? (
+                            <Badge className="gap-1 bg-amber-100 text-amber-800 hover:bg-amber-100">
+                              <User className="w-3 h-3" />
+                              {language === 'ar' ? 'بحاجة لتعيين' : 'Needs assignment'}
+                            </Badge>
                           ) : (
                             <span className="text-xs text-gray-400">—</span>
                           )}
@@ -1184,6 +1231,16 @@ export default function AdminPackageKeys() {
                           )}
                         </TableCell>}
                         <TableCell>
+                          {key.isActive && !key.activatedAt && !key.email && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setAssignDialogKey({ id: key.id, keyCode: key.keyCode })}
+                              title={language === 'ar' ? 'تعيين لبريد العميل' : 'Assign to customer email'}
+                            >
+                              <User className="w-4 h-4" />
+                            </Button>
+                          )}
                           {key.isActive && key.activatedAt && key.userId && (
                             (!!key.lexaiIsPaused || !!key.recIsPaused) ? (
                               <Button
@@ -1417,6 +1474,43 @@ export default function AdminPackageKeys() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Deactivation Confirmation Dialog */}
+      <Dialog open={!!assignDialogKey} onOpenChange={(open) => { if (!open) { setAssignDialogKey(null); setAssignmentEmail(""); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{language === 'ar' ? 'تعيين المفتاح للعميل' : 'Assign key to customer'}</DialogTitle>
+            <DialogDescription>
+              {language === 'ar'
+                ? 'لن يعمل المفتاح قبل ربطه ببريد العميل الصحيح. بعد التعيين لا يمكن نقله إلى عميل آخر.'
+                : 'The key cannot be redeemed until it is bound to the correct customer email. It cannot be moved after assignment.'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label>{language === 'ar' ? 'بريد العميل الإلكتروني' : 'Customer email'}</Label>
+            <Input
+              type="email"
+              value={assignmentEmail}
+              onChange={(event) => setAssignmentEmail(event.target.value)}
+              placeholder="customer@example.com"
+              dir="ltr"
+            />
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => { setAssignDialogKey(null); setAssignmentEmail(""); }}>
+              {language === 'ar' ? 'إلغاء' : 'Cancel'}
+            </Button>
+            <Button
+              disabled={assignKey.isPending || !assignmentEmail.trim()}
+              onClick={() => assignDialogKey && assignKey.mutate({ id: assignDialogKey.id, email: assignmentEmail.trim() })}
+            >
+              {assignKey.isPending
+                ? (language === 'ar' ? 'جارٍ التعيين...' : 'Assigning...')
+                : (language === 'ar' ? 'تأكيد التعيين' : 'Confirm assignment')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Deactivation Confirmation Dialog */}
       <Dialog open={!!deactivateDialogKey} onOpenChange={(open) => { if (!open) { setDeactivateDialogKey(null); setDeactivateReason(""); } }}>

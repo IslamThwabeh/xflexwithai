@@ -11,6 +11,7 @@ import {
   lexaiSubscriptions, LexaiSubscription, InsertLexaiSubscription,
   lexaiMessages, LexaiMessage, InsertLexaiMessage,
   registrationKeys, RegistrationKey, InsertRegistrationKey,
+  packageKeyActivationAttempts, InsertPackageKeyActivationAttempt,
   recommendationSubscriptions, RecommendationSubscription, InsertRecommendationSubscription,
   recommendationAlerts, RecommendationAlert, InsertRecommendationAlert,
   recommendationMessages, RecommendationMessage, InsertRecommendationMessage,
@@ -36,6 +37,7 @@ import {
   packages, Package, InsertPackage,
   packageCourses, PackageCourse, InsertPackageCourse,
   orders, Order, InsertOrder,
+  orderStatusHistory, InsertOrderStatusHistory,
   orderItems, OrderItem, InsertOrderItem,
   packageSubscriptions, PackageSubscription, InsertPackageSubscription,
   studentDocuments, StudentDocument, InsertStudentDocument,
@@ -103,6 +105,7 @@ import {
   validateRenewalPackageTransition,
 } from './services/package-key-lifecycle.service';
 import { getRecommendationThreadRootId } from './services/recommendation-thread.service';
+import { getPackageKeyAssignmentFailure, isBlockedActivationAlertFresh } from './services/package-key-access.service';
 import {
   getPendingServiceWindow,
   getTimedServiceActivationWindow,
@@ -930,7 +933,7 @@ async function ensureFirstPackageActivationAnchor(userId: number, activatedAt: s
 
 async function notifyBlockedPackageKeyActivation(input: {
   email: string;
-  keyCode: string;
+  keyId: number;
   reason: string;
   packageName: string;
   userId?: number | null;
@@ -938,16 +941,50 @@ async function notifyBlockedPackageKeyActivation(input: {
   await notifyStaffByEvent('package_key_blocked', {
     titleEn: `Package key blocked for ${input.email}`,
     titleAr: `تم منع تفعيل مفتاح لـ ${input.email}`,
-    contentEn: `Key ${input.keyCode} (${input.packageName}) was blocked: ${input.reason}. Please issue the correct key.`,
-    contentAr: `تم منع المفتاح ${input.keyCode} (${input.packageName}): ${input.reason}. يرجى إصدار المفتاح الصحيح.`,
+    contentEn: `Key #${input.keyId} (${input.packageName}) was blocked: ${input.reason}. Please review the assigned order/key.`,
+    contentAr: `تم منع المفتاح رقم ${input.keyId} (${input.packageName}): ${input.reason}. يرجى مراجعة الطلب والمفتاح المعيّن.`,
     metadata: {
       email: input.email,
-      keyCode: input.keyCode,
+      keyId: input.keyId,
       reason: input.reason,
       packageName: input.packageName,
       userId: input.userId ?? null,
     },
   }).catch(() => {});
+}
+
+const PACKAGE_KEY_BLOCKED_ALERT_DEDUPE_MS = 15 * 60 * 1000;
+
+async function hasRecentNotifiedPackageKeyAttempt(
+  keyId: number,
+  userId: number | null | undefined,
+  reason: string,
+  now: Date,
+) {
+  const db = await getDb();
+  if (!db) return false;
+  const filters = [
+    eq(packageKeyActivationAttempts.keyId, keyId),
+    eq(packageKeyActivationAttempts.reason, reason),
+    eq(packageKeyActivationAttempts.notificationSent, true),
+  ];
+  if (userId) filters.push(eq(packageKeyActivationAttempts.userId, userId));
+  const [row] = await db.select({ createdAt: packageKeyActivationAttempts.createdAt })
+    .from(packageKeyActivationAttempts)
+    .where(and(...filters))
+    .orderBy(desc(packageKeyActivationAttempts.createdAt))
+    .limit(1);
+  return isBlockedActivationAlertFresh({
+    lastNotifiedAt: row?.createdAt,
+    now,
+    dedupeMs: PACKAGE_KEY_BLOCKED_ALERT_DEDUPE_MS,
+  });
+}
+
+async function recordPackageKeyActivationAttempt(input: InsertPackageKeyActivationAttempt) {
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(packageKeyActivationAttempts).values(input);
 }
 
 type LexaiSupportCaseStatus = "open" | "waiting_student" | "escalated" | "resolved";
@@ -7474,7 +7511,13 @@ export async function syncUserEntitlementsFromKeys(userId: number, email: string
     if (key.isRenewal) {
       await renewPackageEntitlements(userId, keyPackageId, key.id, key.entitlementDays ?? undefined);
     } else {
-      await fulfillPackageEntitlements(userId, keyPackageId, key.id, key.entitlementDays ?? undefined);
+      await fulfillPackageEntitlements(
+        userId,
+        keyPackageId,
+        key.id,
+        key.entitlementDays ?? undefined,
+        key.orderId ?? undefined,
+      );
     }
   }
 }
@@ -7486,6 +7529,8 @@ async function getPackageKeySummaryByEmail(email: string) {
       assignedPackageKeys: 0,
       activatedPackageKeys: 0,
       latestActivatedAt: null as string | null,
+      latestActivationSource: null as string | null,
+      latestOrderId: null as number | null,
     };
   }
 
@@ -7493,6 +7538,8 @@ async function getPackageKeySummaryByEmail(email: string) {
   const keys = await db
     .select({
       activatedAt: registrationKeys.activatedAt,
+      issuanceType: registrationKeys.issuanceType,
+      orderId: registrationKeys.orderId,
     })
     .from(registrationKeys)
     .where(
@@ -7504,10 +7551,13 @@ async function getPackageKeySummaryByEmail(email: string) {
     )
     .orderBy(desc(registrationKeys.activatedAt), desc(registrationKeys.createdAt));
 
+  const latestActivatedKey = keys.find((key) => !!key.activatedAt);
   return {
     assignedPackageKeys: keys.length,
     activatedPackageKeys: keys.filter((key) => !!key.activatedAt).length,
-    latestActivatedAt: keys.find((key) => !!key.activatedAt)?.activatedAt ?? null,
+    latestActivatedAt: latestActivatedKey?.activatedAt ?? null,
+    latestActivationSource: latestActivatedKey?.issuanceType ?? null,
+    latestOrderId: latestActivatedKey?.orderId ?? null,
   };
 }
 
@@ -7570,6 +7620,11 @@ export async function getAllPackageKeysEnriched() {
     isUpgrade: registrationKeys.isUpgrade,
     isRenewal: registrationKeys.isRenewal,
     referredBy: registrationKeys.referredBy,
+    orderId: registrationKeys.orderId,
+    issuanceType: registrationKeys.issuanceType,
+    assignedAt: registrationKeys.assignedAt,
+    assignedByType: registrationKeys.assignedByType,
+    assignedById: registrationKeys.assignedById,
     userId: users.id,
     userName: users.name,
     lexaiSubId: sql<number | null>`(SELECT ls.id FROM lexaiSubscriptions ls WHERE ls.userId = ${users.id} AND ls.isActive = 1 ORDER BY ls.createdAt DESC LIMIT 1)`,
@@ -7702,6 +7757,11 @@ export async function createPackageKey(input: {
   isUpgrade?: boolean;
   isRenewal?: boolean;
   referredBy?: string;
+  orderId?: number | null;
+  issuanceType?: 'manual' | 'order' | 'bulk_inventory';
+  assignedAt?: string | null;
+  assignedByType?: 'admin' | 'staff' | 'system' | null;
+  assignedById?: number | null;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -7711,7 +7771,7 @@ export async function createPackageKey(input: {
     courseId: 0, // not used for package keys
     packageId: input.packageId,
     createdBy: input.createdBy,
-    email: input.email ?? null,
+    email: input.email ? normalizeEmailAddress(input.email) : null,
     isActive: true,
     activatedAt: null,
     notes: input.notes ?? null,
@@ -7723,6 +7783,11 @@ export async function createPackageKey(input: {
     isUpgrade: input.isUpgrade ?? false,
     isRenewal: input.isRenewal ?? false,
     referredBy: input.referredBy ?? null,
+    orderId: input.orderId ?? null,
+    issuanceType: input.issuanceType ?? 'manual',
+    assignedAt: input.assignedAt ?? (input.email ? new Date().toISOString() : null),
+    assignedByType: input.assignedByType ?? null,
+    assignedById: input.assignedById ?? null,
   };
   const result = await db.insert(registrationKeys).values(values).returning({ id: registrationKeys.id });
   return { id: result[0].id, keyCode };
@@ -7760,10 +7825,149 @@ export async function createBulkPackageKeys(input: {
     isUpgrade: input.isUpgrade ?? false,
     isRenewal: input.isRenewal ?? false,
     referredBy: input.referredBy ?? null,
+    orderId: null,
+    issuanceType: 'bulk_inventory',
+    assignedAt: null,
+    assignedByType: null,
+    assignedById: null,
   }));
 
   await db.insert(registrationKeys).values(values);
   return values;
+}
+
+export async function assignPackageKey(input: {
+  keyId: number;
+  email: string;
+  assignedByType: 'admin' | 'staff';
+  assignedById: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error('Database not available');
+  const normalizedEmail = normalizeEmailAddress(input.email);
+  if (!isLikelyValidEmail(normalizedEmail)) throw new Error('A valid customer email is required');
+
+  const [key] = await db.select().from(registrationKeys)
+    .where(eq(registrationKeys.id, input.keyId))
+    .limit(1);
+  if (!key || !key.packageId) throw new Error('Package key not found');
+  if (!key.isActive) throw new Error('A deactivated key cannot be assigned');
+  if (key.activatedAt) throw new Error('An activated key cannot be reassigned');
+  if (key.email && normalizeEmailAddress(key.email) !== normalizedEmail) {
+    throw new Error('This key is already assigned to another customer');
+  }
+
+  const assignedAt = new Date().toISOString();
+  const [updated] = await db.update(registrationKeys).set({
+    email: normalizedEmail,
+    issuanceType: key.issuanceType === 'bulk_inventory' ? 'manual' : key.issuanceType,
+    assignedAt,
+    assignedByType: input.assignedByType,
+    assignedById: input.assignedById,
+  }).where(and(
+    eq(registrationKeys.id, input.keyId),
+    isNull(registrationKeys.activatedAt),
+    eq(registrationKeys.isActive, true),
+  )).returning();
+
+  if (!updated) throw new Error('Key assignment changed; refresh and try again');
+  return updated;
+}
+
+export async function getOrderActivationKeys(orderId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({
+    id: registrationKeys.id,
+    keyCode: registrationKeys.keyCode,
+    packageId: registrationKeys.packageId,
+    email: registrationKeys.email,
+    isActive: registrationKeys.isActive,
+    activatedAt: registrationKeys.activatedAt,
+    expiresAt: registrationKeys.expiresAt,
+    issuanceType: registrationKeys.issuanceType,
+  }).from(registrationKeys)
+    .where(eq(registrationKeys.orderId, orderId))
+    .orderBy(asc(registrationKeys.id));
+}
+
+export async function deactivateUnusedOrderActivationKeys(orderId: number, reason: string) {
+  const db = await getDb();
+  if (!db) return 0;
+  const result = await db.update(registrationKeys).set({
+    isActive: false,
+    notes: sql`CASE WHEN ${registrationKeys.notes} IS NULL OR ${registrationKeys.notes} = '' THEN ${reason} ELSE ${registrationKeys.notes} || ' | ' || ${reason} END`,
+  }).where(and(
+    eq(registrationKeys.orderId, orderId),
+    isNull(registrationKeys.activatedAt),
+    eq(registrationKeys.isActive, true),
+  ));
+  return Number((result as any)?.meta?.changes ?? (result as any)?.changes ?? 0);
+}
+
+export async function createOrderActivationKeys(input: {
+  order: Order;
+  actorType: 'admin' | 'staff';
+  actorId: number;
+}) {
+  const targetEmail = input.order.isGift && input.order.giftEmail
+    ? normalizeEmailAddress(input.order.giftEmail)
+    : normalizeEmailAddress((await getUserById(input.order.userId))?.email ?? '');
+  if (!isLikelyValidEmail(targetEmail)) {
+    throw new Error('The order does not have a valid activation email');
+  }
+
+  const items = await getOrderItems(input.order.id);
+  const existingOrderKeys = await getOrderActivationKeys(input.order.id);
+  const created: Array<{ id: number; keyCode: string; packageId: number }> = [];
+  for (const item of items) {
+    if (item.itemType !== 'package' || !item.packageId) continue;
+    const existing = existingOrderKeys
+      .find((key) => Number(key.packageId) === Number(item.packageId));
+    if (existing) {
+      if (normalizeEmailAddress(existing.email ?? '') !== targetEmail) {
+        throw new Error(`Order #${input.order.id} already has a key assigned to a different email`);
+      }
+      if (existing.issuanceType !== 'order') {
+        throw new Error(`Order #${input.order.id} has an invalid activation-key source`);
+      }
+      if (!existing.activatedAt && !existing.isActive) {
+        const db = await getDb();
+        if (!db) throw new Error('Database not available');
+        await db.update(registrationKeys).set({
+          isActive: true,
+          assignedAt: new Date().toISOString(),
+          assignedByType: input.actorType,
+          assignedById: input.actorId,
+          notes: sql`CASE WHEN ${registrationKeys.notes} IS NULL OR ${registrationKeys.notes} = '' THEN ${`Order #${input.order.id} payment re-approved`} ELSE ${registrationKeys.notes} || ' | ' || ${`Order #${input.order.id} payment re-approved`} END`,
+        }).where(and(
+          eq(registrationKeys.id, existing.id),
+          isNull(registrationKeys.activatedAt),
+        ));
+      }
+      created.push({ id: existing.id, keyCode: existing.keyCode, packageId: item.packageId });
+      continue;
+    }
+
+    const result = await createPackageKey({
+      packageId: item.packageId,
+      createdBy: input.actorId,
+      email: targetEmail,
+      notes: `Order #${input.order.id} payment approved`,
+      price: Math.round(Number(item.priceAtPurchase ?? 0) / 100),
+      currency: item.currency || input.order.currency,
+      orderId: input.order.id,
+      issuanceType: 'order',
+      assignedAt: new Date().toISOString(),
+      assignedByType: input.actorType,
+      assignedById: input.actorId,
+      isUpgrade: input.order.isUpgrade,
+    });
+    created.push({ ...result, packageId: item.packageId });
+  }
+
+  if (!created.length) throw new Error('The order has no package item to activate');
+  return created;
 }
 
 /**
@@ -7771,11 +7975,61 @@ export async function createBulkPackageKeys(input: {
  * This grants: course enrollments + LexAI subscription + Recommendation subscription
  * based on the package's includesLexai / includesRecommendations flags.
  */
-export async function activatePackageKey(keyCode: string, email: string, userId?: number) {
+export async function activatePackageKey(
+  keyCode: string,
+  email: string,
+  userId?: number,
+  requestContext?: { ipAddress?: string | null; userAgent?: string | null },
+) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
-  const normalizedEmail = email.trim().toLowerCase();
+  const normalizedEmail = normalizeEmailAddress(email);
+  const now = new Date();
+  const audit = async (input: {
+    keyId?: number | null;
+    outcome: 'success' | 'blocked' | 'invalid';
+    reason: string;
+    notificationSent?: boolean;
+  }) => {
+    try {
+      await recordPackageKeyActivationAttempt({
+        keyId: input.keyId ?? null,
+        userId: userId ?? null,
+        email: normalizedEmail,
+        outcome: input.outcome,
+        reason: input.reason,
+        notificationSent: input.notificationSent ?? false,
+        ipAddress: requestContext?.ipAddress ?? null,
+        userAgent: requestContext?.userAgent ?? null,
+        createdAt: now.toISOString(),
+      });
+    } catch (error) {
+      logger.warn('[PACKAGE_KEY] Failed to persist activation attempt audit', {
+        keyId: input.keyId ?? null,
+        userId: userId ?? null,
+        reason: input.reason,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  };
+
+  const fail = async (input: {
+    keyId?: number | null;
+    reason: string;
+    message: string;
+    messageAr: string;
+    outcome?: 'blocked' | 'invalid';
+    notificationSent?: boolean;
+  }) => {
+    await audit({
+      keyId: input.keyId,
+      outcome: input.outcome ?? 'blocked',
+      reason: input.reason,
+      notificationSent: input.notificationSent,
+    });
+    return { success: false as const, message: input.message, messageAr: input.messageAr };
+  };
 
   // 1. Validate key
   const [key] = await db
@@ -7784,31 +8038,108 @@ export async function activatePackageKey(keyCode: string, email: string, userId?
     .where(eq(registrationKeys.keyCode, keyCode))
     .limit(1);
 
-  if (!key) return { success: false, message: "Invalid activation key" };
-  if (!key.packageId) return { success: false, message: "This is not a package key" };
-  if (!key.isActive) return { success: false, message: "This key has been deactivated" };
+  if (!key) return fail({
+    outcome: 'invalid',
+    reason: 'invalid_key',
+    message: 'Invalid activation key',
+    messageAr: 'مفتاح التفعيل غير صحيح.',
+  });
+  if (!key.packageId) return fail({
+    keyId: key.id,
+    outcome: 'invalid',
+    reason: 'not_package_key',
+    message: 'This is not a package key',
+    messageAr: 'هذا المفتاح غير مخصص لتفعيل باقة.',
+  });
+  if (!key.isActive) return fail({
+    keyId: key.id,
+    reason: 'deactivated',
+    message: 'This key has been deactivated',
+    messageAr: 'تم تعطيل هذا المفتاح. يرجى التواصل مع الدعم.',
+  });
+
+  const pkg = await getPackageById(key.packageId);
+  if (!pkg) return fail({
+    keyId: key.id,
+    outcome: 'invalid',
+    reason: 'package_not_found',
+    message: 'Package not found',
+    messageAr: 'الباقة المرتبطة بالمفتاح غير موجودة.',
+  });
 
   if (key.activatedAt) {
     const keyEmail = (key.email ?? "").trim().toLowerCase();
     if (keyEmail === normalizedEmail) {
-      return { success: true, message: "Key already activated for this email", key, alreadyActivated: true };
+      if (userId) {
+        try { await syncUserEntitlementsFromKeys(userId, normalizedEmail); } catch {}
+      }
+      await audit({ keyId: key.id, outcome: 'success', reason: 'already_activated' });
+      return {
+        success: true,
+        message: 'Key already activated for this email',
+        messageAr: 'تم تفعيل هذا المفتاح مسبقاً لهذا الحساب.',
+        keyId: key.id,
+        packageName: pkg.nameEn || pkg.nameAr,
+        packageNameAr: pkg.nameAr || pkg.nameEn,
+        isUpgrade: key.isUpgrade ?? false,
+        isRenewal: key.isRenewal ?? false,
+        alreadyActivated: true,
+      };
     }
-    return { success: false, message: "This key has already been activated" };
+    return fail({
+      keyId: key.id,
+      reason: 'already_activated_other_email',
+      message: 'This key has already been activated',
+      messageAr: 'تم استخدام هذا المفتاح مسبقاً.',
+    });
   }
 
-  if (key.email && key.email.trim().toLowerCase() !== normalizedEmail) {
-    return { success: false, message: "This key is assigned to another email" };
+  const assignmentFailure = getPackageKeyAssignmentFailure({
+    assignedEmail: key.email,
+    issuanceType: key.issuanceType,
+    redeemerEmail: normalizedEmail,
+  });
+  if (assignmentFailure === 'assignment_required') {
+    return fail({
+      keyId: key.id,
+      reason: 'assignment_required',
+      message: 'This key must be assigned to your email by support before activation.',
+      messageAr: 'يجب أن يقوم الدعم بتعيين هذا المفتاح لبريدك الإلكتروني قبل التفعيل.',
+    });
+  }
+
+  if (assignmentFailure === 'email_mismatch') {
+    return fail({
+      keyId: key.id,
+      reason: 'email_mismatch',
+      message: 'This key is assigned to another email',
+      messageAr: 'هذا المفتاح معيّن لحساب آخر.',
+    });
   }
 
   if (key.expiresAt) {
     const expiresAt = new Date(key.expiresAt);
     if (!Number.isNaN(expiresAt.getTime()) && expiresAt.getTime() < Date.now()) {
-      return { success: false, message: "This key has expired" };
+      return fail({
+        keyId: key.id,
+        reason: 'key_expired',
+        message: 'This key has expired',
+        messageAr: 'انتهت صلاحية استخدام هذا المفتاح. يرجى التواصل مع الدعم.',
+      });
     }
   }
 
-  const pkg = await getPackageById(key.packageId);
-  if (!pkg) return { success: false, message: "Package not found" };
+  if (key.orderId) {
+    const linkedOrder = await getOrderById(key.orderId);
+    if (!linkedOrder || linkedOrder.status !== 'completed') {
+      return fail({
+        keyId: key.id,
+        reason: 'order_not_approved',
+        message: 'The linked order has not been approved for activation.',
+        messageAr: 'لم تتم الموافقة على الطلب المرتبط بهذا المفتاح بعد.',
+      });
+    }
+  }
 
   // Resolve the user ID before consuming the key so blocked attempts leave the key unused.
   let resolvedUserId = userId;
@@ -7822,18 +8153,24 @@ export async function activatePackageKey(keyCode: string, email: string, userId?
     isUpgrade: key.isUpgrade,
     history: await getExistingStudentHistoryForKey(resolvedUserId, normalizedEmail),
   })) {
-    await notifyBlockedPackageKeyActivation({
-      email: normalizedEmail,
-      keyCode: key.keyCode,
-      packageName: pkg.nameEn || pkg.nameAr || `Package #${key.packageId}`,
-      reason: "Fresh key used by an existing student. A renewal key is required for finance/reporting accuracy.",
-      userId: resolvedUserId,
+    const reason = 'fresh_key_existing_student';
+    const shouldNotify = !await hasRecentNotifiedPackageKeyAttempt(key.id, resolvedUserId, reason, now);
+    if (shouldNotify) {
+      await notifyBlockedPackageKeyActivation({
+        email: normalizedEmail,
+        keyId: key.id,
+        packageName: pkg.nameEn || pkg.nameAr || `Package #${key.packageId}`,
+        reason: 'Fresh key used by an existing student. A renewal key is required for finance/reporting accuracy.',
+        userId: resolvedUserId,
+      });
+    }
+    return fail({
+      keyId: key.id,
+      reason,
+      message: 'This student already has package or service history. Please contact support to issue the correct renewal key.',
+      messageAr: 'هذا الطالب لديه سجل باقة أو خدمات سابق. يرجى التواصل مع الدعم لإصدار مفتاح التجديد الصحيح.',
+      notificationSent: shouldNotify,
     });
-    return {
-      success: false,
-      message: "This student already has package or service history. Please contact support to issue the correct renewal key.",
-      messageAr: "هذا الطالب لديه سجل باقة أو خدمات سابق. يرجى التواصل مع الدعم لإصدار مفتاح التجديد الصحيح.",
-    };
   }
 
   if (key.isRenewal && resolvedUserId) {
@@ -7863,38 +8200,68 @@ export async function activatePackageKey(keyCode: string, email: string, userId?
       const reason = transition.reason === "comprehensive_to_basic_active"
         ? "Comprehensive service is still active; Basic renewal is blocked until LexAI expires."
         : "Renewal key package does not match the student's current subscription.";
-      await notifyBlockedPackageKeyActivation({
-        email: normalizedEmail,
-        keyCode: key.keyCode,
-        packageName: pkg.nameEn || pkg.nameAr || `Package #${key.packageId}`,
-        reason,
-        userId: resolvedUserId,
-      });
-      return {
-        success: false,
+      const auditReason = transition.reason === 'comprehensive_to_basic_active'
+        ? 'comprehensive_to_basic_active'
+        : 'renewal_package_mismatch';
+      const shouldNotify = !await hasRecentNotifiedPackageKeyAttempt(key.id, resolvedUserId, auditReason, now);
+      if (shouldNotify) {
+        await notifyBlockedPackageKeyActivation({
+          email: normalizedEmail,
+          keyId: key.id,
+          packageName: pkg.nameEn || pkg.nameAr || `Package #${key.packageId}`,
+          reason,
+          userId: resolvedUserId,
+        });
+      }
+      return fail({
+        keyId: key.id,
+        reason: auditReason,
         message: transition.reason === "comprehensive_to_basic_active"
           ? "A Basic renewal key can be used only after the Comprehensive LexAI period expires."
           : "This renewal key is for a different subscription package. Please contact the support team to provide the correct renewal key for your subscription.",
         messageAr: transition.reason === "comprehensive_to_basic_active"
           ? "لا يمكن استخدام مفتاح تجديد الباقة الأساسية قبل انتهاء فترة LexAI في الباقة الشاملة."
           : "مفتاح التجديد هذا مخصص لباقة مختلفة. يرجى التواصل مع فريق الدعم للحصول على مفتاح التجديد الصحيح لاشتراكك.",
-      };
+        notificationSent: shouldNotify,
+      });
     }
   }
 
-  // 2. Mark key as activated
+  // 2. Atomically claim the key. The conditional update prevents two users or
+  // two tabs from consuming the same authorization credential concurrently.
   const activatedAt = new Date().toISOString();
-  await db
+  const [claimedKey] = await db
     .update(registrationKeys)
     .set({ email: normalizedEmail, activatedAt, isActive: true })
-    .where(eq(registrationKeys.id, key.id));
+    .where(and(
+      eq(registrationKeys.id, key.id),
+      eq(registrationKeys.isActive, true),
+      isNull(registrationKeys.activatedAt),
+      sql`lower(${registrationKeys.email}) = ${normalizedEmail}`,
+    ))
+    .returning();
+
+  if (!claimedKey) {
+    return fail({
+      keyId: key.id,
+      reason: 'concurrent_claim_lost',
+      message: 'This key was activated in another session. Refresh and try again.',
+      messageAr: 'تم استخدام هذا المفتاح في جلسة أخرى. يرجى تحديث الصفحة والمحاولة مجدداً.',
+    });
+  }
 
   if (resolvedUserId) {
     await ensureFirstPackageActivationAnchor(resolvedUserId, activatedAt);
     if (key.isRenewal) {
       await renewPackageEntitlements(resolvedUserId, key.packageId, key.id, key.entitlementDays ?? undefined);
     } else {
-      await fulfillPackageEntitlements(resolvedUserId, key.packageId, key.id, key.entitlementDays ?? undefined);
+      await fulfillPackageEntitlements(
+        resolvedUserId,
+        key.packageId,
+        key.id,
+        key.entitlementDays ?? undefined,
+        key.orderId ?? undefined,
+      );
     }
   }
 
@@ -7942,10 +8309,11 @@ export async function activatePackageKey(keyCode: string, email: string, userId?
   }
 
   const [updated] = await db.select().from(registrationKeys).where(eq(registrationKeys.id, key.id)).limit(1);
+  await audit({ keyId: key.id, outcome: 'success', reason: 'activated' });
   return {
     success: true,
     message: `Package "${pkg.nameEn || pkg.nameAr}" activated successfully`,
-    key: updated ?? key,
+    keyId: (updated ?? key).id,
     packageName: pkg.nameEn || pkg.nameAr,
     packageNameAr: pkg.nameAr || pkg.nameEn,
     isUpgrade: key.isUpgrade ?? false,
@@ -8586,52 +8954,6 @@ export async function checkUpgradeEligibility(userId: number, targetPackageId: n
     renewalPrice: targetPkg.renewalPrice || 0, // in cents — renewal after upgrade
     renewalPeriodDays: targetPkg.renewalPeriodDays || 30,
   };
-}
-
-/**
- * Process an upgrade: deactivate old subscription, activate new one.
- */
-export async function processUpgrade(
-  userId: number,
-  fromPackageId: number,
-  toPackageId: number,
-  orderId?: number,
-) {
-  const db = await getDb();
-  if (!db) return null;
-
-  const now = new Date();
-
-  // Deactivate old subscription
-  const subs = await getUserPackageSubscriptions(userId);
-  const oldSub = subs.find(
-    (subscription) => Number(subscription.packageId) === Number(fromPackageId) && subscription.isActive
-  );
-  if (oldSub) {
-    await db.update(packageSubscriptions).set({
-      isActive: false,
-      updatedAt: now.toISOString(),
-    }).where(eq(packageSubscriptions.id, oldSub.id));
-  }
-
-  // Fulfill new package entitlements (creates subscription + enrollments + LexAI + recommendations)
-  await fulfillPackageEntitlements(userId, toPackageId);
-
-  // Mark the new subscription as upgraded
-  const newSubs = await getUserPackageSubscriptions(userId);
-  const newSub = newSubs.find(
-    (subscription) => Number(subscription.packageId) === Number(toPackageId) && subscription.isActive
-  );
-  if (newSub) {
-    await db.update(packageSubscriptions).set({
-      upgradedFromPackageId: fromPackageId,
-      upgradedAt: now.toISOString(),
-      orderId: orderId || newSub.orderId,
-      updatedAt: now.toISOString(),
-    }).where(eq(packageSubscriptions.id, newSub.id));
-  }
-
-  return { success: true, fromPackageId, toPackageId };
 }
 
 /**
@@ -10087,7 +10409,13 @@ export async function getAdminClientProfile(userId: number, options?: { includeT
     normalizedEmail ? getAdminByEmail(normalizedEmail) : Promise.resolve(null),
     normalizedEmail
       ? getPackageKeySummaryByEmail(normalizedEmail)
-      : Promise.resolve({ assignedPackageKeys: 0, activatedPackageKeys: 0, latestActivatedAt: null as string | null }),
+      : Promise.resolve({
+          assignedPackageKeys: 0,
+          activatedPackageKeys: 0,
+          latestActivatedAt: null as string | null,
+          latestActivationSource: null as string | null,
+          latestOrderId: null as number | null,
+        }),
     getTermsAcceptanceOrdersByUser(userId),
   ]);
 
@@ -11431,9 +11759,24 @@ export async function updateOrderStatus(
     if (metadata.paymentReference) updates.paymentReference = metadata.paymentReference;
     if (metadata.paymentProofUrl) updates.paymentProofUrl = metadata.paymentProofUrl;
   }
-  if (status === 'paid') updates.completedAt = new Date().toISOString();
+  if (status === 'paid' || status === 'completed') updates.completedAt = new Date().toISOString();
   const [updated] = await db.update(orders).set(updates).where(eq(orders.id, id)).returning();
   return updated ?? null;
+}
+
+export async function logOrderStatusHistory(input: InsertOrderStatusHistory) {
+  const db = await getDb();
+  if (!db) return null;
+  const [row] = await db.insert(orderStatusHistory).values(input).returning();
+  return row ?? null;
+}
+
+export async function getOrderStatusHistory(orderId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(orderStatusHistory)
+    .where(eq(orderStatusHistory.orderId, orderId))
+    .orderBy(desc(orderStatusHistory.createdAt), desc(orderStatusHistory.id));
 }
 
 export async function addOrderItem(input: Omit<InsertOrderItem, 'id'>): Promise<OrderItem | null> {

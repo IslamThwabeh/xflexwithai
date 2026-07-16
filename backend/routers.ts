@@ -48,6 +48,7 @@ import { ENV } from "./_core/env";
 import { generateNumericCode, generateSaltBase64, normalizeEmail, sha256Base64 } from "./_core/otp";
 import { verifyUnsubscribeToken } from "./_core/emailPreferences";
 import { getCourseQuizLevelForEpisodeOrder, isCourseQuizLevelEnd } from "./courseQuizLevels";
+import { getOrderDisplayTotalIls } from "../shared/orderPricing";
 import {
   STAFF_PERFORMANCE_FEATURE_FLAG,
   STAFF_PERFORMANCE_STATUSES,
@@ -5559,6 +5560,7 @@ export const appRouter = router({
 
         // Add order items
         let packageName = 'Package';
+        let packageSlug: string | null = null;
         for (const item of resolvedItems) {
           await db.addOrderItem({
             orderId: order.id,
@@ -5570,20 +5572,28 @@ export const appRouter = router({
           });
           if (item.packageId) {
             const pkg = await db.getPackageById(item.packageId);
-            if (pkg) packageName = pkg.nameEn || pkg.nameAr || 'Package';
+            if (pkg) {
+              packageName = pkg.nameEn || pkg.nameAr || 'Package';
+              packageSlug = pkg.slug;
+            }
           }
         }
 
         // In Workers, detached promises can be dropped before the provider call completes.
         const totalUsd = totalAmount / 100;
-        const totalIlsEn = formatAdminIlsFromUsd(totalUsd, 'en');
-        const totalIlsAr = formatAdminIlsFromUsd(totalUsd, 'ar');
+        const totalIls = getOrderDisplayTotalIls({
+          totalAmount,
+          currency: 'USD',
+          packageSlug,
+        });
+        const totalIlsEn = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'ILS' }).format(totalIls);
+        const totalIlsAr = new Intl.NumberFormat('ar-IL', { style: 'currency', currency: 'ILS' }).format(totalIls);
         const [orderEmailResult, adminOrderEmailResult] = await Promise.allSettled([
           sendOrderConfirmationEmail(ctx.user.email, {
-            orderId: order.id, packageName, totalUsd, paymentMethod: input.paymentMethod,
+            orderId: order.id, packageName, totalIls, paymentMethod: input.paymentMethod,
           }),
           sendAdminNewOrderNotification({
-            orderId: order.id, userEmail: ctx.user.email, packageName, totalUsd, paymentMethod: input.paymentMethod,
+            orderId: order.id, userEmail: ctx.user.email, packageName, totalIls, paymentMethod: input.paymentMethod,
           }),
         ]);
 
@@ -5606,7 +5616,7 @@ export const appRouter = router({
           titleAr: `طلب جديد #${order.id} — ${packageName} (${totalIlsAr})`,
           contentEn: `${ctx.user.email} placed a bank transfer order.`,
           contentAr: `${ctx.user.email} قام بتقديم طلب حوالة بنكية.`,
-          metadata: { orderId: order.id, userId: ctx.user.id, packageName, totalUsd, totalIls: totalUsd * ADMIN_USD_TO_ILS_RATE },
+          metadata: { orderId: order.id, userId: ctx.user.id, packageName, totalUsd, totalIls },
         });
 
         return order;
@@ -5631,7 +5641,8 @@ export const appRouter = router({
           if (!admin) throw new TRPCError({ code: 'FORBIDDEN' });
         }
         const items = await db.getOrderItems(input.id);
-        return { ...order, items };
+        const activationKeys = await db.getOrderActivationKeys(input.id);
+        return { ...order, items, activationKeys };
       }),
 
     // User: upload payment proof (bank transfer)
@@ -5667,16 +5678,56 @@ export const appRouter = router({
         orderId: z.number(),
         status: z.enum(['pending', 'awaiting_confirmation', 'paid', 'completed', 'cancelled', 'refunded']),
         paymentReference: z.string().optional(),
+        reason: z.string().max(500).optional(),
       }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
         const order = await db.getOrderById(input.orderId);
         if (!order) throw new TRPCError({ code: 'NOT_FOUND' });
+
+        const actorType = ctx.admin ? 'admin' as const : 'staff' as const;
+        const actorId = ctx.admin?.id ?? ctx.user.id;
+        let activationKeys: Array<{ id: number; keyCode: string; packageId: number }> = [];
+
+        // Payment approval creates an email-bound entitlement credential. It
+        // intentionally does not grant course/service access until redemption.
+        if (input.status === 'completed') {
+          try {
+            activationKeys = await db.createOrderActivationKeys({ order, actorType, actorId });
+          } catch (error) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: error instanceof Error ? error.message : 'Failed to create the assigned activation key',
+            });
+          }
+        }
 
         const updated = await db.updateOrderStatus(input.orderId, input.status, {
           paymentReference: input.paymentReference,
         });
 
-        // If status changed to 'completed', activate package subscriptions
+        if (!updated) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to update order' });
+
+        await db.logOrderStatusHistory({
+          orderId: order.id,
+          userId: order.userId,
+          previousStatus: order.status,
+          newStatus: input.status,
+          actorType,
+          actorId,
+          reason: input.reason?.trim() || null,
+          ipAddress: getRequestIp(ctx.req) || null,
+          createdAt: new Date().toISOString(),
+        });
+
+        if (input.status === 'cancelled' || input.status === 'refunded') {
+          await db.deactivateUnusedOrderActivationKeys(
+            order.id,
+            `${input.status} by ${actorType} #${actorId}`,
+          );
+        }
+
+        // If payment is approved, send the assigned key. Key redemption is the
+        // only path that grants package/course entitlements for new orders.
         if (input.status === 'completed' && updated) {
           const items = await db.getOrderItems(input.orderId);
           let packageName = 'Package';
@@ -5684,14 +5735,6 @@ export const appRouter = router({
             if (item.itemType === 'package' && item.packageId) {
               const pkg = await db.getPackageById(item.packageId);
               if (pkg) packageName = pkg.nameEn || pkg.nameAr || 'Package';
-              const targetUserId = order.isGift && order.giftEmail
-                ? (await db.getUserByEmail(order.giftEmail))?.id
-                : order.userId;
-
-              if (targetUserId) {
-                // Use fulfillPackageEntitlements which grants courses + LexAI + Recommendations
-                await db.fulfillPackageEntitlements(targetUserId, item.packageId, undefined, undefined, order.id);
-              }
             }
           }
 
@@ -5699,7 +5742,11 @@ export const appRouter = router({
           const userEmail = order.isGift && order.giftEmail ? order.giftEmail : (await db.getUserById(order.userId))?.email;
           if (userEmail) {
             try {
-              await sendPaymentReceivedEmail(userEmail, { orderId: order.id, packageName });
+              await sendPaymentReceivedEmail(userEmail, {
+                orderId: order.id,
+                packageName,
+                activationKeys: activationKeys.map((key) => key.keyCode),
+              });
             } catch (error) {
               logger.warn('[ORDER_EMAIL] Failed to send payment received email', {
                 orderId: order.id,
@@ -5707,9 +5754,22 @@ export const appRouter = router({
               });
             }
           }
+
+          const targetUser = userEmail ? await db.getUserByEmail(userEmail) : null;
+          if (targetUser) {
+            await db.createNotification({
+              userId: targetUser.id,
+              type: 'success',
+              titleAr: 'تم تأكيد الدفع — مفتاح التفعيل جاهز',
+              titleEn: 'Payment confirmed — activation key ready',
+              contentAr: 'تم ربط مفتاح التفعيل بحسابك. افتح صفحة الطلب أو صفحة تفعيل المفتاح لبدء الباقة.',
+              contentEn: 'Your activation key is assigned to your account. Open the order or activation page to start the package.',
+              actionUrl: `/orders/${order.id}`,
+            }).catch(() => {});
+          }
         }
 
-        return updated;
+        return { order: updated, activationKeys };
       }),
   }),
 
@@ -6189,17 +6249,23 @@ export const appRouter = router({
 
         // In Workers, detached promises can be dropped before the provider call completes.
         const totalUsd = totalAmount / 100;
-        const totalIlsEn = formatAdminIlsFromUsd(totalUsd, 'en');
-        const totalIlsAr = formatAdminIlsFromUsd(totalUsd, 'ar');
+        const totalIls = getOrderDisplayTotalIls({
+          totalAmount,
+          currency: 'USD',
+          packageSlug: 'comprehensive',
+          isUpgrade: true,
+        });
+        const totalIlsEn = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'ILS' }).format(totalIls);
+        const totalIlsAr = new Intl.NumberFormat('ar-IL', { style: 'currency', currency: 'ILS' }).format(totalIls);
         const [upgradeOrderEmailResult, upgradeAdminEmailResult] = await Promise.allSettled([
           sendOrderConfirmationEmail(ctx.user.email, {
             orderId: order.id, packageName: `Upgrade: ${eligibility.targetPackageName}`,
-            totalUsd, paymentMethod: input.paymentMethod,
+            totalIls, paymentMethod: input.paymentMethod,
           }),
           sendAdminNewOrderNotification({
             orderId: order.id, userEmail: ctx.user.email,
             packageName: `UPGRADE: ${eligibility.currentPackageName} → ${eligibility.targetPackageName}`,
-            totalUsd, paymentMethod: input.paymentMethod,
+            totalIls, paymentMethod: input.paymentMethod,
           }),
         ]);
 
@@ -6222,7 +6288,7 @@ export const appRouter = router({
           titleAr: `طلب ترقية #${order.id} — ${eligibility.currentPackageName} → ${eligibility.targetPackageName}`,
           contentEn: `${ctx.user.email} requested an upgrade (${totalIlsEn}).`,
           contentAr: `${ctx.user.email} طلب ترقية (${totalIlsAr}).`,
-          metadata: { orderId: order.id, userId: ctx.user.id, totalUsd, totalIls: totalUsd * ADMIN_USD_TO_ILS_RATE },
+          metadata: { orderId: order.id, userId: ctx.user.id, totalUsd, totalIls },
         });
 
         return order;
@@ -6231,29 +6297,11 @@ export const appRouter = router({
     // Admin/Key Manager: process/approve an upgrade after payment confirmed
     process: adminOrRoleProcedure(['key_manager'])
       .input(z.object({ orderId: z.number() }))
-      .mutation(async ({ input }) => {
-        const order = await db.getOrderById(input.orderId);
-        if (!order) throw new TRPCError({ code: 'NOT_FOUND', message: 'Order not found' });
-        if (!order.isUpgrade) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Not an upgrade order' });
-        if (!order.upgradeFromPackageId) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Missing upgrade source' });
-
-        // Get target package from order items
-        const items = await db.getOrderItems(order.id);
-        const pkgItem = items.find((i: any) => i.itemType === 'package' && i.packageId);
-        if (!pkgItem) throw new TRPCError({ code: 'BAD_REQUEST', message: 'No package in order' });
-
-        // Process the upgrade
-        const result = await db.processUpgrade(
-          order.userId,
-          order.upgradeFromPackageId,
-          pkgItem.packageId!,
-          order.id,
-        );
-
-        // Mark order as paid
-        await db.updateOrderStatus(order.id, 'paid');
-
-        return result;
+      .mutation(async () => {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Approve upgrade payments from Order Management so key issuance, email delivery, and audit history stay atomic.',
+        });
       }),
   }),
 
@@ -6613,7 +6661,7 @@ export const appRouter = router({
     generateKey: adminOrRoleProcedure(['key_manager'])
       .input(z.object({
         packageId: z.number(),
-        email: z.string().email().optional(),
+        email: z.string().email(),
         notes: z.string().optional(),
         price: z.number().optional(),
         currency: z.string().optional(),
@@ -6625,6 +6673,7 @@ export const appRouter = router({
       }))
       .mutation(async ({ ctx, input }) => {
         const admin = ctx.admin ?? ctx.user;
+        const actorType = ctx.admin ? 'admin' as const : 'staff' as const;
         const result = await db.createPackageKey({
           packageId: input.packageId,
           createdBy: admin?.id ?? 0,
@@ -6637,6 +6686,10 @@ export const appRouter = router({
           isUpgrade: input.isUpgrade,
           isRenewal: input.isRenewal,
           referredBy: input.referredBy,
+          issuanceType: 'manual',
+          assignedAt: new Date().toISOString(),
+          assignedByType: actorType,
+          assignedById: admin?.id ?? 0,
         });
         return result;
       }),
@@ -6684,6 +6737,24 @@ export const appRouter = router({
         return db.reactivateRegistrationKey(input.id);
       }),
 
+    assignKey: adminOrRoleProcedure(['key_manager'])
+      .input(z.object({ id: z.number(), email: z.string().email() }))
+      .mutation(async ({ ctx, input }) => {
+        try {
+          return await db.assignPackageKey({
+            keyId: input.id,
+            email: input.email,
+            assignedByType: ctx.admin ? 'admin' : 'staff',
+            assignedById: ctx.admin?.id ?? ctx.user.id,
+          });
+        } catch (error) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: error instanceof Error ? error.message : 'Failed to assign key',
+          });
+        }
+      }),
+
     freeze: adminOrRoleProcedure(['key_manager'])
       .input(z.object({ userId: z.number(), reason: z.string().optional(), frozenUntilDays: z.number().int().min(1).max(365).optional() }))
       .mutation(async ({ input }) => {
@@ -6698,8 +6769,8 @@ export const appRouter = router({
         return { success: true, ...result };
       }),
 
-    // Public: get key info (used by activation page)
-    getKeyInfo: publicProcedure
+    // Authenticated preview only; do not expose key validity to anonymous probes.
+    getKeyInfo: protectedProcedure
       .input(z.object({ keyCode: z.string() }))
       .query(async ({ input }) => {
         const key = await db.getRegistrationKeyByCode(input.keyCode);
@@ -6720,7 +6791,10 @@ export const appRouter = router({
         keyCode: z.string().min(1),
       }))
       .mutation(async ({ input, ctx }) => {
-        const result = await db.activatePackageKey(input.keyCode, ctx.user.email, ctx.user.id);
+        const result = await db.activatePackageKey(input.keyCode, ctx.user.email, ctx.user.id, {
+          ipAddress: getRequestIp(ctx.req),
+          userAgent: getRequestUserAgent(ctx.req),
+        });
         if (result.success) {
           // Auto-award referral points (if user was referred)
           try { await db.activateReferral(ctx.user.id); } catch {}

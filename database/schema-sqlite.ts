@@ -168,10 +168,36 @@ export const registrationKeys = sqliteTable("registrationKeys", {
   currency: text("currency", { length: 3 }).default("USD").notNull(),
   entitlementDays: integer("entitlementDays"),
   expiresAt: text("expiresAt"),
+  orderId: integer("orderId"),
+  issuanceType: text("issuanceType").default("manual").notNull(), // manual | order | bulk_inventory
+  assignedAt: text("assignedAt"),
+  assignedByType: text("assignedByType"), // admin | staff | system
+  assignedById: integer("assignedById"),
 });
 
 export type RegistrationKey = typeof registrationKeys.$inferSelect;
 export type InsertRegistrationKey = typeof registrationKeys.$inferInsert;
+
+/**
+ * Immutable package-key activation audit. Key codes are intentionally not
+ * stored here; keyId is sufficient for staff investigation without copying
+ * an authorization credential into logs.
+ */
+export const packageKeyActivationAttempts = sqliteTable("package_key_activation_attempts", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  keyId: integer("key_id"),
+  userId: integer("user_id"),
+  email: text("email").notNull(),
+  outcome: text("outcome").notNull(), // success | blocked | invalid
+  reason: text("reason").notNull(),
+  notificationSent: integer("notification_sent", { mode: 'boolean' }).default(false).notNull(),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
+});
+
+export type PackageKeyActivationAttempt = typeof packageKeyActivationAttempts.$inferSelect;
+export type InsertPackageKeyActivationAttempt = typeof packageKeyActivationAttempts.$inferInsert;
 
 /**
  * Episode Progress table - tracks which episodes users have watched
@@ -796,6 +822,23 @@ export const orders = sqliteTable("orders", {
 
 export type Order = typeof orders.$inferSelect;
 export type InsertOrder = typeof orders.$inferInsert;
+
+/** Immutable audit trail for every privileged order status transition. */
+export const orderStatusHistory = sqliteTable("order_status_history", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  orderId: integer("order_id").notNull(),
+  userId: integer("user_id").notNull(),
+  previousStatus: text("previous_status").notNull(),
+  newStatus: text("new_status").notNull(),
+  actorType: text("actor_type").notNull(), // admin | staff | system
+  actorId: integer("actor_id").notNull(),
+  reason: text("reason"),
+  ipAddress: text("ip_address"),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
+});
+
+export type OrderStatusHistory = typeof orderStatusHistory.$inferSelect;
+export type InsertOrderStatusHistory = typeof orderStatusHistory.$inferInsert;
 
 export const orderItems = sqliteTable("orderItems", {
   id: int("id").primaryKey({ autoIncrement: true }),

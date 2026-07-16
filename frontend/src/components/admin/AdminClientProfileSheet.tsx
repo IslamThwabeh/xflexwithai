@@ -22,6 +22,7 @@ import {
   Package,
   Phone,
   ShieldAlert,
+  ShieldCheck,
   TrendingUp,
   UserRound,
 } from "lucide-react";
@@ -167,6 +168,8 @@ export default function AdminClientProfileSheet({
     assignedPackageKeys: 0,
     activatedPackageKeys: 0,
     latestActivatedAt: null,
+    latestActivationSource: null,
+    latestOrderId: null,
   };
   const lexaiState = profile?.lexaiSubscription?.subscriptionState ?? "no_subscription";
   const recommendationState = profile?.recommendationSubscription?.subscriptionState ?? "no_subscription";
@@ -523,6 +526,15 @@ export default function AdminClientProfileSheet({
                       icon={<Clock3 className="h-4 w-4 text-emerald-600" />}
                       label={isRtl ? "آخر تفعيل مفتاح" : "Latest Key Activation"}
                       value={formatDate(keySummary.latestActivatedAt, locale, false)}
+                    />
+                    <InfoLine
+                      icon={<ShieldCheck className="h-4 w-4 text-emerald-600" />}
+                      label={isRtl ? "مصدر التفعيل" : "Activation Source"}
+                      value={keySummary.latestActivationSource === 'order'
+                        ? (isRtl ? `طلب معتمد${keySummary.latestOrderId ? ` #${keySummary.latestOrderId}` : ''}` : `Approved order${keySummary.latestOrderId ? ` #${keySummary.latestOrderId}` : ''}`)
+                        : keySummary.latestActivationSource === 'manual'
+                          ? (isRtl ? 'إصدار يدوي معتمد' : 'Approved manual issuance')
+                          : (isRtl ? 'لا يوجد تفعيل' : 'No activation')}
                     />
                   </div>
 
