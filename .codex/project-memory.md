@@ -1,6 +1,6 @@
 # XFLEX Project Memory
 
-Last updated: 2026-07-17
+Last updated: 2026-07-18
 
 ## Project Overview
 
@@ -293,6 +293,19 @@ Last updated: 2026-07-17
   - `pnpm run build` and `pnpm run build:worker` passed.
   - Read-only production D1 reconciliation confirmed all nonzero package-key variants use the covered historic USD prices: Basic 200/50, Comprehensive 500/100, and Basic→Comprehensive upgrade 300.
   - Post-deployment Worker health returned `status=ok`; production `/`, `/ar`, `/en`, `/auth`, and the Pages preview returned 200 and referenced the new frontend asset.
+- Audited package-key configuration release on 2026-07-18:
+  - Release commit `04f3468` (`Add audited package key configuration`) was pushed to `origin/main` before production changes.
+  - Order approval still requires terms acceptance and bank-transfer evidence, but the key manager must now choose each package key's service duration before issue; the generated code remains order-linked and email-bound.
+  - Active, unused package keys can be edited for service duration, key-redemption deadline, and internal configuration notes. Activated key configuration is immutable; later service time must use the renewal/extension workflow.
+  - Migration `072_package_key_configuration_audit.sql` adds editor metadata, an append-only configuration-history table, insert/update audit triggers, and an activated-key immutability trigger.
+  - `npm run check` passed. The full suite passed 54 files / 262 tests; focused package activation/lifecycle/timed-service tests passed 36/36, and the final migration/API rerun passed 10/10.
+  - `npm run build` and `npm run build:worker` passed. Desktop and 390x844 browser checks passed for order approval, custom 45-day configuration, unused-key editing, audit history, and the mobile edit action with zero final console errors.
+  - Migration `072` passed a fresh isolated local D1 smoke: 30→45 day history was recorded with staff/admin actors, history deletion was rejected, and activated-key edits were rejected.
+  - Full production backup completed before migration: `tmp/prod-backups/xflexwithai-before-key-config-20260718-232811.sql` (192,574,349 bytes).
+  - Migration `072` applied at D1 bookmark `00000f7d-0000033c-000050ac-c1f3e43e26c66d51eacb8b7cda8be497` and was recorded in `schema_migrations` with source `codex_wrangler`.
+  - Pre/post reconciliation remained unchanged: 115 registration keys (67 activated, 48 unused), 66 package subscriptions, and 71 enrollments. No historical audit rows were fabricated.
+  - Worker version `55910eb1-9a91-47cd-9915-bf7ab9bcc88d` deployed successfully. Pages deployment URL: `https://30fbf774.xflexwithai.pages.dev`.
+  - Production `/`, `/ar`, `/en`, `/auth`, and Pages preview returned 200 and referenced `assets/index-gB-exknF.js`; Worker `/health` returned `status=ok`; anonymous `packageKeys.list` returned the expected 401.
 
 ## Future Hardening
 
