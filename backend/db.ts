@@ -12,6 +12,7 @@ import {
   lexaiMessages, LexaiMessage, InsertLexaiMessage,
   registrationKeys, RegistrationKey, InsertRegistrationKey,
   packageKeyActivationAttempts, InsertPackageKeyActivationAttempt,
+  packageKeyConfigurationHistory,
   recommendationSubscriptions, RecommendationSubscription, InsertRecommendationSubscription,
   recommendationAlerts, RecommendationAlert, InsertRecommendationAlert,
   recommendationMessages, RecommendationMessage, InsertRecommendationMessage,
@@ -7630,6 +7631,10 @@ export async function getAllPackageKeysEnriched() {
     assignedAt: registrationKeys.assignedAt,
     assignedByType: registrationKeys.assignedByType,
     assignedById: registrationKeys.assignedById,
+    configurationNotes: registrationKeys.configurationNotes,
+    configurationUpdatedAt: registrationKeys.configurationUpdatedAt,
+    configurationUpdatedByType: registrationKeys.configurationUpdatedByType,
+    configurationUpdatedById: registrationKeys.configurationUpdatedById,
     userId: users.id,
     userName: users.name,
     lexaiSubId: sql<number | null>`(SELECT ls.id FROM lexaiSubscriptions ls WHERE ls.userId = ${users.id} AND ls.isActive = 1 ORDER BY ls.createdAt DESC LIMIT 1)`,
@@ -7750,6 +7755,26 @@ export async function getPackageKeyStatistics() {
   };
 }
 
+export type PackageKeyConfigurationInput = {
+  packageId: number;
+  entitlementDays: number;
+  expiresAt?: string | null;
+  configurationNotes?: string | null;
+};
+
+function normalizePackageKeyRedeemDeadline(value?: string | Date | null): string | null {
+  if (value === null || value === undefined || String(value).trim() === '') return null;
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) throw new Error('The key redemption deadline is invalid');
+  return date.toISOString();
+}
+
+function assertFuturePackageKeyRedeemDeadline(value: string | null) {
+  if (value && new Date(value).getTime() <= Date.now()) {
+    throw new Error('The key redemption deadline must be in the future');
+  }
+}
+
 export async function createPackageKey(input: {
   packageId: number;
   createdBy: number;
@@ -7767,6 +7792,10 @@ export async function createPackageKey(input: {
   assignedAt?: string | null;
   assignedByType?: 'admin' | 'staff' | 'system' | null;
   assignedById?: number | null;
+  configurationNotes?: string | null;
+  configurationUpdatedAt?: string | null;
+  configurationUpdatedByType?: 'admin' | 'staff' | 'system' | null;
+  configurationUpdatedById?: number | null;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -7784,7 +7813,7 @@ export async function createPackageKey(input: {
     currency: input.currency ?? "USD",
     entitlementDays: normalizePositiveInteger(input.entitlementDays),
     createdAt: new Date().toISOString(),
-    expiresAt: input.expiresAt ? new Date(input.expiresAt).toISOString() : null,
+    expiresAt: normalizePackageKeyRedeemDeadline(input.expiresAt),
     isUpgrade: input.isUpgrade ?? false,
     isRenewal: input.isRenewal ?? false,
     referredBy: input.referredBy ?? null,
@@ -7793,6 +7822,10 @@ export async function createPackageKey(input: {
     assignedAt: input.assignedAt ?? (input.email ? new Date().toISOString() : null),
     assignedByType: input.assignedByType ?? null,
     assignedById: input.assignedById ?? null,
+    configurationNotes: input.configurationNotes?.trim() || null,
+    configurationUpdatedAt: input.configurationUpdatedAt ?? null,
+    configurationUpdatedByType: input.configurationUpdatedByType ?? null,
+    configurationUpdatedById: input.configurationUpdatedById ?? null,
   };
   const result = await db.insert(registrationKeys).values(values).returning({ id: registrationKeys.id });
   return { id: result[0].id, keyCode };
@@ -7810,6 +7843,9 @@ export async function createBulkPackageKeys(input: {
   isUpgrade?: boolean;
   isRenewal?: boolean;
   referredBy?: string;
+  configurationUpdatedAt?: string | null;
+  configurationUpdatedByType?: 'admin' | 'staff' | 'system' | null;
+  configurationUpdatedById?: number | null;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -7826,7 +7862,7 @@ export async function createBulkPackageKeys(input: {
     price: input.price ?? 0,
     currency: input.currency ?? "USD",
     entitlementDays: normalizePositiveInteger(input.entitlementDays),
-    expiresAt: input.expiresAt ? new Date(input.expiresAt).toISOString() : null,
+    expiresAt: normalizePackageKeyRedeemDeadline(input.expiresAt),
     isUpgrade: input.isUpgrade ?? false,
     isRenewal: input.isRenewal ?? false,
     referredBy: input.referredBy ?? null,
@@ -7835,6 +7871,10 @@ export async function createBulkPackageKeys(input: {
     assignedAt: null,
     assignedByType: null,
     assignedById: null,
+    configurationNotes: null,
+    configurationUpdatedAt: input.configurationUpdatedAt ?? null,
+    configurationUpdatedByType: input.configurationUpdatedByType ?? null,
+    configurationUpdatedById: input.configurationUpdatedById ?? null,
   }));
 
   await db.insert(registrationKeys).values(values);
@@ -7882,6 +7922,60 @@ export async function assignPackageKey(input: {
   return updated;
 }
 
+export async function updateUnusedPackageKeyConfiguration(input: {
+  keyId: number;
+  entitlementDays: number;
+  expiresAt?: string | null;
+  configurationNotes?: string | null;
+  actorType: 'admin' | 'staff';
+  actorId: number;
+  allowReactivation?: boolean;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error('Database not available');
+
+  const entitlementDays = normalizePositiveInteger(input.entitlementDays);
+  if (!entitlementDays || entitlementDays > 3650) {
+    throw new Error('Service duration must be between 1 and 3650 days');
+  }
+  const expiresAt = normalizePackageKeyRedeemDeadline(input.expiresAt);
+  assertFuturePackageKeyRedeemDeadline(expiresAt);
+
+  const [key] = await db.select().from(registrationKeys)
+    .where(eq(registrationKeys.id, input.keyId))
+    .limit(1);
+  if (!key?.packageId) throw new Error('Package key not found');
+  if (!key.isActive && !input.allowReactivation) throw new Error('A deactivated key cannot be edited');
+  if (key.activatedAt) throw new Error('An activated key cannot be edited; use an audited renewal or extension');
+
+  const now = new Date().toISOString();
+  const [updated] = await db.update(registrationKeys).set({
+    entitlementDays,
+    expiresAt,
+    configurationNotes: input.configurationNotes?.trim() || null,
+    configurationUpdatedAt: now,
+    configurationUpdatedByType: input.actorType,
+    configurationUpdatedById: input.actorId,
+    ...(input.allowReactivation ? { isActive: true } : {}),
+  }).where(and(
+    eq(registrationKeys.id, input.keyId),
+    ...(input.allowReactivation ? [] : [eq(registrationKeys.isActive, true)]),
+    isNull(registrationKeys.activatedAt),
+  )).returning();
+
+  if (!updated) throw new Error('The key was activated or changed; refresh before editing it');
+  return updated;
+}
+
+export async function getPackageKeyConfigurationHistory(keyId: number, limit: number = 20) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(packageKeyConfigurationHistory)
+    .where(eq(packageKeyConfigurationHistory.keyId, keyId))
+    .orderBy(desc(packageKeyConfigurationHistory.createdAt), desc(packageKeyConfigurationHistory.id))
+    .limit(Math.max(1, Math.min(limit, 100)));
+}
+
 export async function getOrderActivationKeys(orderId: number) {
   const db = await getDb();
   if (!db) return [];
@@ -7893,6 +7987,8 @@ export async function getOrderActivationKeys(orderId: number) {
     isActive: registrationKeys.isActive,
     activatedAt: registrationKeys.activatedAt,
     expiresAt: registrationKeys.expiresAt,
+    entitlementDays: registrationKeys.entitlementDays,
+    configurationNotes: registrationKeys.configurationNotes,
     issuanceType: registrationKeys.issuanceType,
   }).from(registrationKeys)
     .where(eq(registrationKeys.orderId, orderId))
@@ -7917,6 +8013,7 @@ export async function createOrderActivationKeys(input: {
   order: Order;
   actorType: 'admin' | 'staff';
   actorId: number;
+  configurations: PackageKeyConfigurationInput[];
 }) {
   const targetEmail = input.order.isGift && input.order.giftEmail
     ? normalizeEmailAddress(input.order.giftEmail)
@@ -7927,9 +8024,20 @@ export async function createOrderActivationKeys(input: {
 
   const items = await getOrderItems(input.order.id);
   const existingOrderKeys = await getOrderActivationKeys(input.order.id);
+  const configurationByPackage = new Map(input.configurations.map((configuration) => [
+    Number(configuration.packageId),
+    configuration,
+  ]));
   const created: Array<{ id: number; keyCode: string; packageId: number }> = [];
   for (const item of items) {
     if (item.itemType !== 'package' || !item.packageId) continue;
+    const configuration = configurationByPackage.get(Number(item.packageId));
+    const entitlementDays = normalizePositiveInteger(configuration?.entitlementDays);
+    if (!configuration || !entitlementDays || entitlementDays > 3650) {
+      throw new Error(`A service duration between 1 and 3650 days is required for package #${item.packageId}`);
+    }
+    const expiresAt = normalizePackageKeyRedeemDeadline(configuration.expiresAt);
+    assertFuturePackageKeyRedeemDeadline(expiresAt);
     const existing = existingOrderKeys
       .find((key) => Number(key.packageId) === Number(item.packageId));
     if (existing) {
@@ -7939,19 +8047,16 @@ export async function createOrderActivationKeys(input: {
       if (existing.issuanceType !== 'order') {
         throw new Error(`Order #${input.order.id} has an invalid activation-key source`);
       }
-      if (!existing.activatedAt && !existing.isActive) {
-        const db = await getDb();
-        if (!db) throw new Error('Database not available');
-        await db.update(registrationKeys).set({
-          isActive: true,
-          assignedAt: new Date().toISOString(),
-          assignedByType: input.actorType,
-          assignedById: input.actorId,
-          notes: sql`CASE WHEN ${registrationKeys.notes} IS NULL OR ${registrationKeys.notes} = '' THEN ${`Order #${input.order.id} payment re-approved`} ELSE ${registrationKeys.notes} || ' | ' || ${`Order #${input.order.id} payment re-approved`} END`,
-        }).where(and(
-          eq(registrationKeys.id, existing.id),
-          isNull(registrationKeys.activatedAt),
-        ));
+      if (!existing.activatedAt) {
+        await updateUnusedPackageKeyConfiguration({
+          keyId: existing.id,
+          entitlementDays,
+          expiresAt,
+          configurationNotes: configuration.configurationNotes,
+          actorType: input.actorType,
+          actorId: input.actorId,
+          allowReactivation: true,
+        });
       }
       created.push({ id: existing.id, keyCode: existing.keyCode, packageId: item.packageId });
       continue;
@@ -7969,6 +8074,12 @@ export async function createOrderActivationKeys(input: {
       assignedAt: new Date().toISOString(),
       assignedByType: input.actorType,
       assignedById: input.actorId,
+      entitlementDays,
+      expiresAt,
+      configurationNotes: configuration.configurationNotes,
+      configurationUpdatedAt: new Date().toISOString(),
+      configurationUpdatedByType: input.actorType,
+      configurationUpdatedById: input.actorId,
       isUpgrade: input.order.isUpgrade,
     });
     created.push({ ...result, packageId: item.packageId });
@@ -11731,6 +11842,26 @@ export async function getAllOrders(status?: string) {
     return q.where(eq(orders.status, status));
   }
   return q;
+}
+
+export async function getOrderPackageConfigurationSummaries(orderIds: number[]) {
+  const db = await getDb();
+  if (!db || !orderIds.length) return [];
+  return collectChunkedRows(orderIds, (chunk) => db
+    .select({
+      orderId: orderItems.orderId,
+      packageId: packages.id,
+      packageNameEn: packages.nameEn,
+      packageNameAr: packages.nameAr,
+      defaultEntitlementDays: packages.durationDays,
+    })
+    .from(orderItems)
+    .innerJoin(packages, eq(packages.id, orderItems.packageId))
+    .where(and(
+      inArray(orderItems.orderId, chunk),
+      eq(orderItems.itemType, 'package'),
+      isNotNull(orderItems.packageId),
+    )));
 }
 
 export async function getTermsAcceptanceOrdersByUser(userId: number) {

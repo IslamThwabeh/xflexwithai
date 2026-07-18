@@ -5731,7 +5731,18 @@ export const appRouter = router({
         status: z.string().optional(),
       }).optional())
       .query(async ({ input }) => {
-        return db.getAllOrders(input?.status);
+        const orders = await db.getAllOrders(input?.status);
+        const packageItems = await db.getOrderPackageConfigurationSummaries(orders.map((order) => order.id));
+        const itemsByOrder = new Map<number, typeof packageItems>();
+        for (const item of packageItems) {
+          const existing = itemsByOrder.get(item.orderId) ?? [];
+          existing.push(item);
+          itemsByOrder.set(item.orderId, existing);
+        }
+        return orders.map((order) => ({
+          ...order,
+          packageItems: itemsByOrder.get(order.id) ?? [],
+        }));
       }),
 
     // Admin/support: account-level compliance, including clients whose access
@@ -5746,6 +5757,12 @@ export const appRouter = router({
         status: z.enum(['pending', 'awaiting_confirmation', 'paid', 'completed', 'cancelled', 'refunded']),
         paymentReference: z.string().optional(),
         reason: z.string().max(500).optional(),
+        keyConfigurations: z.array(z.object({
+          packageId: z.number().int().positive(),
+          entitlementDays: z.number().int().min(1).max(3650),
+          expiresAt: z.string().max(50).nullable().optional(),
+          configurationNotes: z.string().max(1000).nullable().optional(),
+        })).min(1).max(10).optional(),
       }))
       .mutation(async ({ input, ctx }) => {
         const order = await db.getOrderById(input.orderId);
@@ -5758,6 +5775,12 @@ export const appRouter = router({
         // Payment approval creates an email-bound entitlement credential. It
         // intentionally does not grant course/service access until redemption.
         if (input.status === 'completed') {
+          if (!input.keyConfigurations?.length) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: 'The key manager must select the service duration before issuing the key.',
+            });
+          }
           if (!order.termsAcceptedAt || !order.termsAcceptedVersion) {
             throw new TRPCError({
               code: 'BAD_REQUEST',
@@ -5771,7 +5794,12 @@ export const appRouter = router({
             });
           }
           try {
-            activationKeys = await db.createOrderActivationKeys({ order, actorType, actorId });
+            activationKeys = await db.createOrderActivationKeys({
+              order,
+              actorType,
+              actorId,
+              configurations: input.keyConfigurations,
+            });
           } catch (error) {
             throw new TRPCError({
               code: 'BAD_REQUEST',
@@ -6717,6 +6745,7 @@ export const appRouter = router({
         packageNameAr: k.packageId ? (pkgMap.get(k.packageId)?.nameAr || null) : null,
         packageSlug: k.packageId ? (pkgMap.get(k.packageId)?.slug || null) : null,
         packageIncludesLexai: k.packageId ? (pkgMap.get(k.packageId)?.includesLexai ?? null) : null,
+        packageDurationDays: k.packageId ? (pkgMap.get(k.packageId)?.durationDays ?? null) : null,
         isUpgrade: k.isUpgrade ?? false,
         isRenewal: k.isRenewal ?? false,
         referredBy: k.referredBy ?? null,
@@ -6776,6 +6805,9 @@ export const appRouter = router({
           assignedAt: new Date().toISOString(),
           assignedByType: actorType,
           assignedById: admin?.id ?? 0,
+          configurationUpdatedAt: input.entitlementDays || input.expiresAt ? new Date().toISOString() : null,
+          configurationUpdatedByType: input.entitlementDays || input.expiresAt ? actorType : null,
+          configurationUpdatedById: input.entitlementDays || input.expiresAt ? (admin?.id ?? 0) : null,
         });
         return result;
       }),
@@ -6813,6 +6845,11 @@ export const appRouter = router({
           isUpgrade: input.isUpgrade,
           isRenewal: input.isRenewal,
           referredBy: input.referredBy,
+          configurationUpdatedAt: input.entitlementDays || input.expiresAt ? new Date().toISOString() : null,
+          configurationUpdatedByType: input.entitlementDays || input.expiresAt
+            ? (ctx.admin ? 'admin' : 'staff')
+            : null,
+          configurationUpdatedById: input.entitlementDays || input.expiresAt ? (admin?.id ?? 0) : null,
         });
         return { count: keys.length };
       }),
@@ -6846,6 +6883,35 @@ export const appRouter = router({
           });
         }
       }),
+
+    updateUnusedKey: adminOrRoleProcedure(['key_manager'])
+      .input(z.object({
+        id: z.number().int().positive(),
+        entitlementDays: z.number().int().min(1).max(3650),
+        expiresAt: z.string().max(50).nullable().optional(),
+        configurationNotes: z.string().max(1000).nullable().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        try {
+          return await db.updateUnusedPackageKeyConfiguration({
+            keyId: input.id,
+            entitlementDays: input.entitlementDays,
+            expiresAt: input.expiresAt,
+            configurationNotes: input.configurationNotes,
+            actorType: ctx.admin ? 'admin' : 'staff',
+            actorId: ctx.admin?.id ?? ctx.user.id,
+          });
+        } catch (error) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: error instanceof Error ? error.message : 'Failed to update key configuration',
+          });
+        }
+      }),
+
+    configurationHistory: adminOrRoleProcedure(['key_manager'])
+      .input(z.object({ id: z.number().int().positive(), limit: z.number().int().min(1).max(100).optional() }))
+      .query(async ({ input }) => db.getPackageKeyConfigurationHistory(input.id, input.limit ?? 20)),
 
     freeze: adminOrRoleProcedure(['key_manager'])
       .input(z.object({ userId: z.number(), reason: z.string().optional(), frozenUntilDays: z.number().int().min(1).max(365).optional() }))

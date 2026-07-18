@@ -69,6 +69,8 @@ import {
   Snowflake,
   X,
   SlidersHorizontal,
+  Pencil,
+  History,
 } from "lucide-react";
 import {
   useDataTable,
@@ -161,6 +163,10 @@ export default function AdminPackageKeys() {
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [deactivateDialogKey, setDeactivateDialogKey] = useState<{ id: number; keyCode: string } | null>(null);
   const [assignDialogKey, setAssignDialogKey] = useState<{ id: number; keyCode: string } | null>(null);
+  const [editDialogKey, setEditDialogKey] = useState<any | null>(null);
+  const [editEntitlementDays, setEditEntitlementDays] = useState("");
+  const [editExpiresAt, setEditExpiresAt] = useState("");
+  const [editConfigurationNotes, setEditConfigurationNotes] = useState("");
   const [assignmentEmail, setAssignmentEmail] = useState("");
   const [deactivateReason, setDeactivateReason] = useState("");
   const [freezeDialogUserId, setFreezeDialogUserId] = useState<number | null>(null);
@@ -220,6 +226,10 @@ export default function AdminPackageKeys() {
   const statsQuery = trpc.packageKeys.stats.useQuery();
   const packagesQuery = trpc.packages.list.useQuery();
   const upgradeStatsQuery = trpc.packageKeys.upgradeStats.useQuery({ month: selectedMonth });
+  const configurationHistoryQuery = trpc.packageKeys.configurationHistory.useQuery(
+    { id: editDialogKey?.id ?? 0, limit: 20 },
+    { enabled: !!editDialogKey },
+  );
 
   // Mutations
   const generateKey = trpc.packageKeys.generateKey.useMutation({
@@ -274,6 +284,19 @@ export default function AdminPackageKeys() {
     onError: (err) => toast.error(err.message),
   });
 
+  const updateUnusedKey = trpc.packageKeys.updateUnusedKey.useMutation({
+    onSuccess: () => {
+      toast.success(language === 'ar' ? 'تم تحديث إعدادات المفتاح وتسجيل التعديل' : 'Key configuration updated and audited');
+      keysQuery.refetch();
+      configurationHistoryQuery.refetch();
+      setEditDialogKey(null);
+      setEditEntitlementDays("");
+      setEditExpiresAt("");
+      setEditConfigurationNotes("");
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
   const freezeUser = trpc.packageKeys.freeze.useMutation({
     onSuccess: () => {
       toast.success(language === 'ar' ? 'تم تجميد الاشتراكات' : 'Subscriptions frozen');
@@ -304,6 +327,30 @@ export default function AdminPackageKeys() {
     setIsUpgrade(false);
     setIsRenewal(false);
     setReferredBy("");
+  };
+
+  const openEditKeyDialog = (key: any) => {
+    setEditDialogKey(key);
+    setEditEntitlementDays(String(key.entitlementDays || key.packageDurationDays || 30));
+    setEditExpiresAt(key.expiresAt ? new Date(key.expiresAt).toISOString().slice(0, 10) : "");
+    setEditConfigurationNotes(key.configurationNotes || "");
+  };
+
+  const submitKeyConfigurationEdit = () => {
+    if (!editDialogKey) return;
+    const days = Number(editEntitlementDays);
+    if (!Number.isInteger(days) || days < 1 || days > 3650) {
+      toast.error(language === 'ar'
+        ? 'يجب أن تكون مدة الخدمة بين يوم واحد و3650 يوماً'
+        : 'Service duration must be between 1 and 3650 days');
+      return;
+    }
+    updateUnusedKey.mutate({
+      id: editDialogKey.id,
+      entitlementDays: days,
+      expiresAt: editExpiresAt ? new Date(`${editExpiresAt}T23:59:59.999Z`).toISOString() : null,
+      configurationNotes: editConfigurationNotes.trim() || null,
+    });
   };
 
   const handleGenerateKey = () => {
@@ -995,6 +1042,12 @@ export default function AdminPackageKeys() {
                         <span className="font-medium truncate block">{key.notes}</span>
                       </div>
                     )}
+                    {key.configurationNotes && (
+                      <div>
+                        <span className="text-gray-400 block">{language === 'ar' ? 'ملاحظات الإعداد' : 'Configuration notes'}</span>
+                        <span className="font-medium truncate block">{key.configurationNotes}</span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Row 5: Referred by */}
@@ -1006,6 +1059,17 @@ export default function AdminPackageKeys() {
 
                   {/* Row 6: Actions */}
                   <div className="flex items-center justify-end gap-2 pt-2 border-t border-dashed">
+                    {key.isActive && !key.activatedAt && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1 text-blue-700"
+                        onClick={() => openEditKeyDialog(key)}
+                      >
+                        <Pencil className="w-4 h-4" />
+                        {language === 'ar' ? 'تعديل المدة' : 'Edit duration'}
+                      </Button>
+                    )}
                     {key.isActive && !key.activatedAt && !key.email && key.isRenewal && (
                       <Button
                         variant="outline"
@@ -1238,6 +1302,11 @@ export default function AdminPackageKeys() {
                         </TableCell>}
                         {visibleCols.has('notes') && <TableCell className="text-xs text-gray-500 max-w-[150px] truncate">
                           {key.notes || '—'}
+                          {key.configurationNotes && (
+                            <span className="block text-blue-700 mt-0.5">
+                              {language === 'ar' ? 'إعداد: ' : 'Config: '}{key.configurationNotes}
+                            </span>
+                          )}
                           {(key as any).referredBy && (
                             <span className="block text-amber-600 mt-0.5">
                               {language === 'ar' ? 'بواسطة: ' : 'By: '}{(key as any).referredBy}
@@ -1245,6 +1314,17 @@ export default function AdminPackageKeys() {
                           )}
                         </TableCell>}
                         <TableCell>
+                          {key.isActive && !key.activatedAt && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-blue-700 hover:text-blue-800 hover:bg-blue-50"
+                              onClick={() => openEditKeyDialog(key)}
+                              title={language === 'ar' ? 'تعديل مدة وإعدادات المفتاح' : 'Edit key duration and configuration'}
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </Button>
+                          )}
                           {key.isActive && !key.activatedAt && !key.email && key.isRenewal && (
                             <Button
                               variant="ghost"
@@ -1489,7 +1569,113 @@ export default function AdminPackageKeys() {
         </Card>
       </div>
 
-      {/* Deactivation Confirmation Dialog */}
+      {/* Unused key configuration dialog */}
+      <Dialog open={!!editDialogKey} onOpenChange={(open) => {
+        if (!open && !updateUnusedKey.isPending) {
+          setEditDialogKey(null);
+          setEditEntitlementDays("");
+          setEditExpiresAt("");
+          setEditConfigurationNotes("");
+        }
+      }}>
+        <DialogContent className="sm:max-w-2xl" dir={language === 'ar' ? 'rtl' : 'ltr'}>
+          <DialogHeader>
+            <DialogTitle>{language === 'ar' ? 'تعديل إعدادات المفتاح غير المستخدم' : 'Edit unused key configuration'}</DialogTitle>
+            <DialogDescription>
+              {language === 'ar'
+                ? `يمكن تعديل المدة وموعد استخدام المفتاح ${editDialogKey?.keyCode ?? ''} قبل تفعيله فقط. كل تعديل يُسجّل تلقائياً.`
+                : `Duration and redemption settings for ${editDialogKey?.keyCode ?? ''} can be changed only before activation. Every change is audited.`}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label>{language === 'ar' ? 'مدة الخدمة بالأيام *' : 'Service duration (days) *'}</Label>
+              <Input
+                type="number"
+                min="1"
+                max="3650"
+                value={editEntitlementDays}
+                onChange={(event) => setEditEntitlementDays(event.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                {language === 'ar'
+                  ? `الافتراضي للباقة: ${editDialogKey?.packageDurationDays || 30} يوم`
+                  : `Package default: ${editDialogKey?.packageDurationDays || 30} days`}
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label>{language === 'ar' ? 'آخر موعد لاستخدام المفتاح' : 'Key redemption deadline'}</Label>
+              <Input
+                type="date"
+                min={new Date().toISOString().slice(0, 10)}
+                value={editExpiresAt}
+                onChange={(event) => setEditExpiresAt(event.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                {language === 'ar'
+                  ? 'اتركيه فارغاً إذا لم يوجد موعد نهائي لإدخال المفتاح.'
+                  : 'Leave empty when the key has no redemption deadline.'}
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>{language === 'ar' ? 'ملاحظات إعداد المفتاح' : 'Key configuration notes'}</Label>
+            <Textarea
+              maxLength={1000}
+              value={editConfigurationNotes}
+              onChange={(event) => setEditConfigurationNotes(event.target.value)}
+              placeholder={language === 'ar' ? 'سبب المدة الخاصة أو أي توضيح داخلي...' : 'Reason for a custom duration or internal context...'}
+            />
+          </div>
+
+          <div className="rounded-lg border bg-gray-50 p-3">
+            <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
+              <History className="h-4 w-4" />
+              {language === 'ar' ? 'سجل إعدادات المفتاح' : 'Configuration history'}
+            </div>
+            {configurationHistoryQuery.isLoading ? (
+              <p className="text-xs text-muted-foreground">{language === 'ar' ? 'جاري تحميل السجل...' : 'Loading history...'}</p>
+            ) : configurationHistoryQuery.data?.length ? (
+              <div className="max-h-40 space-y-2 overflow-y-auto">
+                {configurationHistoryQuery.data.map((entry: any) => (
+                  <div key={entry.id} className="rounded border bg-white px-3 py-2 text-xs">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-medium">
+                        {entry.actorType === 'admin'
+                          ? (language === 'ar' ? `مدير #${entry.actorId}` : `Admin #${entry.actorId}`)
+                          : (language === 'ar' ? `موظف #${entry.actorId}` : `Staff #${entry.actorId}`)}
+                      </span>
+                      <span className="text-muted-foreground">{formatLocalizedDate(String(entry.createdAt).replace(' ', 'T'), language) || entry.createdAt}</span>
+                    </div>
+                    <p className="mt-1 text-muted-foreground">
+                      {language === 'ar'
+                        ? `المدة: ${entry.previousEntitlementDays ?? '—'} ← ${entry.newEntitlementDays ?? '—'} يوم`
+                        : `Duration: ${entry.previousEntitlementDays ?? '—'} → ${entry.newEntitlementDays ?? '—'} days`}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">{language === 'ar' ? 'لا توجد تعديلات سابقة مسجلة.' : 'No previous configuration changes.'}</p>
+            )}
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" disabled={updateUnusedKey.isPending} onClick={() => setEditDialogKey(null)}>
+              {language === 'ar' ? 'إلغاء' : 'Cancel'}
+            </Button>
+            <Button disabled={updateUnusedKey.isPending} onClick={submitKeyConfigurationEdit}>
+              {updateUnusedKey.isPending
+                ? (language === 'ar' ? 'جاري الحفظ...' : 'Saving...')
+                : (language === 'ar' ? 'حفظ وتسجيل التعديل' : 'Save and audit change')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Assignment dialog */}
       <Dialog open={!!assignDialogKey} onOpenChange={(open) => { if (!open) { setAssignDialogKey(null); setAssignmentEmail(""); } }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>

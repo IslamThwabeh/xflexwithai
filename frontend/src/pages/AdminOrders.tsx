@@ -2,6 +2,17 @@ import { useState } from 'react';
 import { ShoppingCart, CheckCircle, XCircle, Eye, ChevronDown, ChevronUp, FileCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { formatAdminCurrency } from '@/lib/adminCurrency';
 import { formatLocalizedDate } from '@/lib/dateLocale';
@@ -38,6 +49,12 @@ export default function AdminOrders() {
   const { language } = useLanguage();
   const utils = trpc.useUtils();
   const [filter, setFilter] = useState<string | undefined>(undefined);
+  const [issueOrder, setIssueOrder] = useState<any | null>(null);
+  const [keyConfigurations, setKeyConfigurations] = useState<Record<number, {
+    entitlementDays: string;
+    expiresAt: string;
+    configurationNotes: string;
+  }>>({});
   const { data: orders, isLoading } = trpc.orders.adminList.useQuery(filter ? { status: filter } : undefined);
   const updateMutation = trpc.orders.adminUpdateStatus.useMutation({
     onSuccess: (data) => {
@@ -46,6 +63,8 @@ export default function AdminOrders() {
         toast.success(language === 'ar'
           ? 'تم تأكيد الدفع وإنشاء مفتاح مربوط ببريد العميل. لن يبدأ الكورس قبل إدخال المفتاح.'
           : 'Payment approved and an email-bound key was created. Course access starts after redemption.');
+        setIssueOrder(null);
+        setKeyConfigurations({});
       }
     },
     onError: (error) => toast.error(error.message),
@@ -67,6 +86,67 @@ export default function AdminOrders() {
     await updateMutation.mutateAsync({
       orderId,
       status: newStatus as any,
+    }).catch(() => undefined);
+  };
+
+  const openIssueDialog = (order: any) => {
+    const initial: typeof keyConfigurations = {};
+    for (const item of order.packageItems ?? []) {
+      initial[item.packageId] = {
+        entitlementDays: String(item.defaultEntitlementDays || 30),
+        expiresAt: '',
+        configurationNotes: '',
+      };
+    }
+    setKeyConfigurations(initial);
+    setIssueOrder(order);
+  };
+
+  const updateKeyConfiguration = (
+    packageId: number,
+    field: 'entitlementDays' | 'expiresAt' | 'configurationNotes',
+    value: string,
+  ) => {
+    setKeyConfigurations((current) => ({
+      ...current,
+      [packageId]: {
+        ...(current[packageId] ?? { entitlementDays: '', expiresAt: '', configurationNotes: '' }),
+        [field]: value,
+      },
+    }));
+  };
+
+  const issueConfiguredKeys = async () => {
+    if (!issueOrder) return;
+    const packageItems = issueOrder.packageItems ?? [];
+    if (!packageItems.length) {
+      toast.error(language === 'ar' ? 'لا توجد باقة مرتبطة بهذا الطلب' : 'This order has no linked package');
+      return;
+    }
+    const configurations = packageItems.map((item: any) => {
+      const configuration = keyConfigurations[item.packageId];
+      const days = Number(configuration?.entitlementDays);
+      return {
+        packageId: Number(item.packageId),
+        entitlementDays: days,
+        expiresAt: configuration?.expiresAt
+          ? new Date(`${configuration.expiresAt}T23:59:59.999Z`).toISOString()
+          : null,
+        configurationNotes: configuration?.configurationNotes?.trim() || null,
+      };
+    });
+    if (configurations.some((configuration: any) => !Number.isInteger(configuration.entitlementDays)
+      || configuration.entitlementDays < 1
+      || configuration.entitlementDays > 3650)) {
+      toast.error(language === 'ar'
+        ? 'يجب أن تكون مدة الخدمة بين يوم واحد و3650 يوماً'
+        : 'Service duration must be between 1 and 3650 days');
+      return;
+    }
+    await updateMutation.mutateAsync({
+      orderId: issueOrder.id,
+      status: 'completed',
+      keyConfigurations: configurations,
     }).catch(() => undefined);
   };
 
@@ -231,7 +311,7 @@ export default function AdminOrders() {
                     <div className="flex flex-wrap gap-2">
                       {order.status === 'pending' && (
                         <>
-                          <Button size="sm" disabled={updateMutation.isPending} onClick={() => handleStatusChange(order.id, 'completed')}>
+                          <Button size="sm" disabled={updateMutation.isPending} onClick={() => openIssueDialog(order)}>
                             <CheckCircle className="w-3.5 h-3.5 me-1" />{language === 'ar' ? 'تأكيد الدفع وإصدار المفتاح' : 'Approve & issue key'}
                           </Button>
                           <Button size="sm" variant="outline" onClick={() => handleStatusChange(order.id, 'cancelled')} className="text-red-600">
@@ -241,7 +321,7 @@ export default function AdminOrders() {
                       )}
                       {order.status === 'awaiting_confirmation' && (
                         <>
-                          <Button size="sm" disabled={updateMutation.isPending} onClick={() => handleStatusChange(order.id, 'completed')}>
+                          <Button size="sm" disabled={updateMutation.isPending} onClick={() => openIssueDialog(order)}>
                             <CheckCircle className="w-3.5 h-3.5 me-1" />{language === 'ar' ? 'تأكيد الدفع وإصدار المفتاح' : 'Approve & issue key'}
                           </Button>
                           <Button size="sm" variant="outline" onClick={() => handleStatusChange(order.id, 'cancelled')} className="text-red-600">
@@ -250,7 +330,7 @@ export default function AdminOrders() {
                         </>
                       )}
                       {order.status === 'paid' && (
-                        <Button size="sm" disabled={updateMutation.isPending} onClick={() => handleStatusChange(order.id, 'completed')}>
+                        <Button size="sm" disabled={updateMutation.isPending} onClick={() => openIssueDialog(order)}>
                           <CheckCircle className="w-3.5 h-3.5 me-1" />{language === 'ar' ? 'إصدار المفتاح' : 'Issue key'}
                         </Button>
                       )}
@@ -275,6 +355,116 @@ export default function AdminOrders() {
             isRtl={language === 'ar'}
           />
         )}
+
+        <Dialog open={!!issueOrder} onOpenChange={(open) => {
+          if (!open && !updateMutation.isPending) {
+            setIssueOrder(null);
+            setKeyConfigurations({});
+          }
+        }}>
+          <DialogContent className="max-w-2xl" dir={language === 'ar' ? 'rtl' : 'ltr'}>
+            <DialogHeader>
+              <DialogTitle>
+                {language === 'ar'
+                  ? `اعتماد الطلب #${issueOrder?.id ?? ''} وإصدار المفتاح`
+                  : `Approve order #${issueOrder?.id ?? ''} and issue key`}
+              </DialogTitle>
+              <DialogDescription>
+                {language === 'ar'
+                  ? 'حددي مدة الخدمة لكل باقة قبل إصدار المفتاح. تبدأ هذه المدة حسب سياسة الجاهزية/فترة الحماية، وليس من تاريخ إنشاء المفتاح.'
+                  : 'Set the service duration before issuing each key. The duration starts under the readiness/protection policy, not when the key is created.'}
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="max-h-[60vh] space-y-4 overflow-y-auto py-2">
+              {(issueOrder?.packageItems ?? []).map((item: any) => {
+                const configuration = keyConfigurations[item.packageId] ?? {
+                  entitlementDays: '',
+                  expiresAt: '',
+                  configurationNotes: '',
+                };
+                return (
+                  <div key={item.packageId} className="space-y-4 rounded-lg border bg-gray-50 p-4">
+                    <div>
+                      <p className="font-semibold text-gray-900">
+                        {language === 'ar' ? item.packageNameAr || item.packageNameEn : item.packageNameEn || item.packageNameAr}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {language === 'ar'
+                          ? `المدة الافتراضية للباقة: ${item.defaultEntitlementDays || 30} يوم`
+                          : `Package default: ${item.defaultEntitlementDays || 30} days`}
+                      </p>
+                    </div>
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label>{language === 'ar' ? 'مدة الخدمة بالأيام *' : 'Service duration (days) *'}</Label>
+                        <Input
+                          type="number"
+                          min="1"
+                          max="3650"
+                          value={configuration.entitlementDays}
+                          onChange={(event) => updateKeyConfiguration(item.packageId, 'entitlementDays', event.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>{language === 'ar' ? 'آخر موعد لاستخدام المفتاح' : 'Key redemption deadline'}</Label>
+                        <Input
+                          type="date"
+                          min={new Date().toISOString().slice(0, 10)}
+                          value={configuration.expiresAt}
+                          onChange={(event) => updateKeyConfiguration(item.packageId, 'expiresAt', event.target.value)}
+                        />
+                        <p className="text-xs text-gray-500">
+                          {language === 'ar'
+                            ? 'هذا الموعد لا يغيّر مدة الخدمة؛ يحدد فقط آخر يوم لإدخال المفتاح.'
+                            : 'This does not change service duration; it only limits when the key can be redeemed.'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>{language === 'ar' ? 'ملاحظات إعداد المفتاح' : 'Key configuration notes'}</Label>
+                      <Textarea
+                        maxLength={1000}
+                        value={configuration.configurationNotes}
+                        onChange={(event) => updateKeyConfiguration(item.packageId, 'configurationNotes', event.target.value)}
+                        placeholder={language === 'ar' ? 'سبب المدة الخاصة أو أي توضيح داخلي...' : 'Reason for a custom duration or internal context...'}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+              {issueOrder && !(issueOrder.packageItems ?? []).length && (
+                <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                  {language === 'ar' ? 'لا توجد باقة مرتبطة بهذا الطلب.' : 'No package is linked to this order.'}
+                </p>
+              )}
+            </div>
+
+            <DialogFooter>
+              <Button
+                variant="outline"
+                disabled={updateMutation.isPending}
+                onClick={() => {
+                  setIssueOrder(null);
+                  setKeyConfigurations({});
+                }}
+              >
+                {language === 'ar' ? 'إلغاء' : 'Cancel'}
+              </Button>
+              <Button
+                disabled={updateMutation.isPending || !(issueOrder?.packageItems ?? []).length}
+                onClick={issueConfiguredKeys}
+              >
+                <CheckCircle className="me-1 h-4 w-4" />
+                {updateMutation.isPending
+                  ? (language === 'ar' ? 'جاري الإصدار...' : 'Issuing...')
+                  : (language === 'ar' ? 'تأكيد الدفع وإصدار المفتاح' : 'Confirm payment and issue key')}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </DashboardLayout>
   );

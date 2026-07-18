@@ -20,6 +20,8 @@ vi.mock('../backend/db', async () => {
     activateReferral: vi.fn(),
     createPackageKey: vi.fn(),
     assignPackageKey: vi.fn(),
+    updateUnusedPackageKeyConfiguration: vi.fn(),
+    getPackageKeyConfigurationHistory: vi.fn(),
   };
 });
 
@@ -81,6 +83,8 @@ describe('package activation routes', () => {
       currency: 'USD',
       paymentMethod: 'bank_transfer',
       paymentProofUrl: 'https://videos.xflexacademy.com/payment-proofs/test-proof.jpg',
+      termsAcceptedAt: '2026-07-18T08:00:00.000Z',
+      termsAcceptedVersion: 'v2',
     } as any;
     vi.mocked(db.getOrderById).mockResolvedValue(order);
     vi.mocked(db.createOrderActivationKeys).mockResolvedValue([
@@ -93,10 +97,25 @@ describe('package activation routes', () => {
     vi.mocked(db.getUserByEmail).mockResolvedValue(user as any);
     vi.mocked(db.createNotification).mockResolvedValue({ id: 1 } as any);
 
-    const result = await createCaller().orders.adminUpdateStatus({ orderId: 23, status: 'completed' });
+    const keyConfigurations = [{
+      packageId: 1,
+      entitlementDays: 45,
+      expiresAt: '2026-08-18T23:59:59.999Z',
+      configurationNotes: 'Special 45-day entitlement',
+    }];
+    const result = await createCaller().orders.adminUpdateStatus({
+      orderId: 23,
+      status: 'completed',
+      keyConfigurations,
+    });
 
     expect(result.activationKeys).toHaveLength(1);
-    expect(db.createOrderActivationKeys).toHaveBeenCalledWith({ order, actorType: 'admin', actorId: 11 });
+    expect(db.createOrderActivationKeys).toHaveBeenCalledWith({
+      order,
+      actorType: 'admin',
+      actorId: 11,
+      configurations: keyConfigurations,
+    });
     expect(db.fulfillPackageEntitlements).not.toHaveBeenCalled();
     expect(db.logOrderStatusHistory).toHaveBeenCalledWith(expect.objectContaining({
       orderId: 23,
@@ -149,14 +168,55 @@ describe('package activation routes', () => {
       currency: 'USD',
       paymentMethod: 'bank_transfer',
       paymentProofUrl: null,
+      termsAcceptedAt: '2026-07-18T08:00:00.000Z',
+      termsAcceptedVersion: 'v2',
     } as any;
     vi.mocked(db.getOrderById).mockResolvedValue(order);
 
     await expect(createCaller().orders.adminUpdateStatus({
       orderId: order.id,
       status: 'completed',
+      keyConfigurations: [{ packageId: 1, entitlementDays: 30 }],
     })).rejects.toMatchObject({ code: 'BAD_REQUEST' });
     expect(db.createOrderActivationKeys).not.toHaveBeenCalled();
+  });
+
+  it('requires the key manager to select a duration before issuing an order key', async () => {
+    vi.mocked(db.getOrderById).mockResolvedValue({
+      id: 25,
+      userId: user.id,
+      status: 'awaiting_confirmation',
+      termsAcceptedAt: '2026-07-18T08:00:00.000Z',
+      termsAcceptedVersion: 'v2',
+      paymentMethod: 'bank_transfer',
+      paymentProofUrl: 'https://videos.xflexacademy.com/payment-proofs/test-proof.jpg',
+    } as any);
+
+    await expect(createCaller().orders.adminUpdateStatus({
+      orderId: 25,
+      status: 'completed',
+    })).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+    expect(db.createOrderActivationKeys).not.toHaveBeenCalled();
+  });
+
+  it('allows key managers to edit only the safe configuration fields through the audited route', async () => {
+    vi.mocked(db.updateUnusedPackageKeyConfiguration).mockResolvedValue({ id: 116, entitlementDays: 60 } as any);
+
+    await createCaller().packageKeys.updateUnusedKey({
+      id: 116,
+      entitlementDays: 60,
+      expiresAt: null,
+      configurationNotes: 'Extended before activation',
+    });
+
+    expect(db.updateUnusedPackageKeyConfiguration).toHaveBeenCalledWith({
+      keyId: 116,
+      entitlementDays: 60,
+      expiresAt: null,
+      configurationNotes: 'Extended before activation',
+      actorType: 'admin',
+      actorId: 11,
+    });
   });
 
   it('records the assigning actor when inventory is bound to a customer', async () => {

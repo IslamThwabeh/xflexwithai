@@ -173,6 +173,10 @@ export const registrationKeys = sqliteTable("registrationKeys", {
   assignedAt: text("assignedAt"),
   assignedByType: text("assignedByType"), // admin | staff | system
   assignedById: integer("assignedById"),
+  configurationNotes: text("configurationNotes"),
+  configurationUpdatedAt: text("configurationUpdatedAt"),
+  configurationUpdatedByType: text("configurationUpdatedByType"), // admin | staff | system
+  configurationUpdatedById: integer("configurationUpdatedById"),
 });
 
 export type RegistrationKey = typeof registrationKeys.$inferSelect;
@@ -198,6 +202,29 @@ export const packageKeyActivationAttempts = sqliteTable("package_key_activation_
 
 export type PackageKeyActivationAttempt = typeof packageKeyActivationAttempts.$inferSelect;
 export type InsertPackageKeyActivationAttempt = typeof packageKeyActivationAttempts.$inferInsert;
+
+/** Append-only audit of package-key duration/deadline configuration. */
+export const packageKeyConfigurationHistory = sqliteTable("package_key_configuration_history", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  keyId: integer("key_id").notNull(),
+  orderId: integer("order_id"),
+  actorType: text("actor_type").notNull(),
+  actorId: integer("actor_id").notNull(),
+  previousEntitlementDays: integer("previous_entitlement_days"),
+  newEntitlementDays: integer("new_entitlement_days"),
+  previousExpiresAt: text("previous_expires_at"),
+  newExpiresAt: text("new_expires_at"),
+  previousConfigurationNotes: text("previous_configuration_notes"),
+  newConfigurationNotes: text("new_configuration_notes"),
+  reason: text("reason").notNull(),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
+}, (table) => ({
+  keyCreatedIndex: index("idx_package_key_configuration_history_key_created")
+    .on(table.keyId, table.createdAt, table.id),
+}));
+
+export type PackageKeyConfigurationHistory = typeof packageKeyConfigurationHistory.$inferSelect;
+export type InsertPackageKeyConfigurationHistory = typeof packageKeyConfigurationHistory.$inferInsert;
 
 /**
  * Episode Progress table - tracks which episodes users have watched
