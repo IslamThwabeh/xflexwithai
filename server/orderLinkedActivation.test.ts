@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  getPackageKeyIssuancePolicy,
   getPackageKeyAssignmentFailure,
+  hasValidPackageKeyAdminAuthorization,
   isBlockedActivationAlertFresh,
+  packageKeyPolicyRequiresAdminAuthorization,
+  packageKeyPolicyRequiresOrder,
 } from '../backend/services/package-key-access.service';
 import { getOrderDisplayTotalIls } from '../shared/orderPricing';
 
@@ -55,6 +59,56 @@ describe('order-linked package activation policy', () => {
       lastNotifiedAt: '2026-07-16T11:40:00.000Z',
       now,
       dedupeMs: 15 * 60 * 1000,
+    })).toBe(false);
+  });
+
+  it('separates commercial order eligibility from internal admin authorization', () => {
+    expect(getPackageKeyIssuancePolicy({ keyKind: 'fresh', purpose: 'commercial' })).toMatchObject({
+      activationPolicy: 'order_required',
+      isRenewal: false,
+      isUpgrade: false,
+    });
+    expect(getPackageKeyIssuancePolicy({ keyKind: 'upgrade', purpose: 'commercial' })).toMatchObject({
+      activationPolicy: 'order_required',
+      isUpgrade: true,
+    });
+    expect(getPackageKeyIssuancePolicy({ keyKind: 'renewal', purpose: 'internal' })).toMatchObject({
+      activationPolicy: 'internal_authorized',
+      isRenewal: true,
+    });
+    expect(packageKeyPolicyRequiresOrder('order_required')).toBe(true);
+    expect(packageKeyPolicyRequiresOrder('internal_authorized')).toBe(false);
+    expect(packageKeyPolicyRequiresAdminAuthorization('internal_authorized')).toBe(true);
+    expect(packageKeyPolicyRequiresAdminAuthorization('admin_exception')).toBe(true);
+    expect(packageKeyPolicyRequiresAdminAuthorization('legacy')).toBe(false);
+  });
+
+  it('preserves the established manual commercial renewal policy during the transition', () => {
+    expect(getPackageKeyIssuancePolicy({ keyKind: 'renewal', purpose: 'commercial' })).toMatchObject({
+      activationPolicy: 'legacy',
+      isRenewal: true,
+      isUpgrade: false,
+    });
+  });
+
+  it('accepts only a complete immutable full-admin authorization', () => {
+    expect(hasValidPackageKeyAdminAuthorization({
+      authorizedByType: 'admin',
+      authorizedById: 7,
+      authorizedAt: '2026-07-20T10:00:00.000Z',
+      authorizationReason: 'Employee renewal for Batool',
+    })).toBe(true);
+    expect(hasValidPackageKeyAdminAuthorization({
+      authorizedByType: 'staff',
+      authorizedById: 7,
+      authorizedAt: '2026-07-20T10:00:00.000Z',
+      authorizationReason: 'Employee renewal for Batool',
+    })).toBe(false);
+    expect(hasValidPackageKeyAdminAuthorization({
+      authorizedByType: 'admin',
+      authorizedById: 7,
+      authorizedAt: '2026-07-20T10:00:00.000Z',
+      authorizationReason: 'No',
     })).toBe(false);
   });
 });

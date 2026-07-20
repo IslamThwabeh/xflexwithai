@@ -107,7 +107,15 @@ import {
   validateRenewalPackageTransition,
 } from './services/package-key-lifecycle.service';
 import { getRecommendationThreadRootId } from './services/recommendation-thread.service';
-import { getPackageKeyAssignmentFailure, isBlockedActivationAlertFresh } from './services/package-key-access.service';
+import {
+  getPackageKeyAssignmentFailure,
+  hasValidPackageKeyAdminAuthorization,
+  isBlockedActivationAlertFresh,
+  packageKeyPolicyRequiresAdminAuthorization,
+  packageKeyPolicyRequiresOrder,
+  type PackageKeyActivationPolicy,
+  type PackageKeyIssuancePurpose,
+} from './services/package-key-access.service';
 import {
   getPendingServiceWindow,
   getTimedServiceActivationWindow,
@@ -7635,6 +7643,12 @@ export async function getAllPackageKeysEnriched() {
     configurationUpdatedAt: registrationKeys.configurationUpdatedAt,
     configurationUpdatedByType: registrationKeys.configurationUpdatedByType,
     configurationUpdatedById: registrationKeys.configurationUpdatedById,
+    issuancePurpose: registrationKeys.issuancePurpose,
+    activationPolicy: registrationKeys.activationPolicy,
+    authorizationReason: registrationKeys.authorizationReason,
+    authorizedByType: registrationKeys.authorizedByType,
+    authorizedById: registrationKeys.authorizedById,
+    authorizedAt: registrationKeys.authorizedAt,
     userId: users.id,
     userName: users.name,
     lexaiSubId: sql<number | null>`(SELECT ls.id FROM lexaiSubscriptions ls WHERE ls.userId = ${users.id} AND ls.isActive = 1 ORDER BY ls.createdAt DESC LIMIT 1)`,
@@ -7796,6 +7810,12 @@ export async function createPackageKey(input: {
   configurationUpdatedAt?: string | null;
   configurationUpdatedByType?: 'admin' | 'staff' | 'system' | null;
   configurationUpdatedById?: number | null;
+  issuancePurpose?: PackageKeyIssuancePurpose | 'legacy';
+  activationPolicy?: PackageKeyActivationPolicy;
+  authorizationReason?: string | null;
+  authorizedByType?: 'admin' | 'staff' | 'system' | null;
+  authorizedById?: number | null;
+  authorizedAt?: string | null;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -7826,6 +7846,12 @@ export async function createPackageKey(input: {
     configurationUpdatedAt: input.configurationUpdatedAt ?? null,
     configurationUpdatedByType: input.configurationUpdatedByType ?? null,
     configurationUpdatedById: input.configurationUpdatedById ?? null,
+    issuancePurpose: input.issuancePurpose ?? 'legacy',
+    activationPolicy: input.activationPolicy ?? 'legacy',
+    authorizationReason: input.authorizationReason?.trim() || null,
+    authorizedByType: input.authorizedByType ?? null,
+    authorizedById: input.authorizedById ?? null,
+    authorizedAt: input.authorizedAt ?? null,
   };
   const result = await db.insert(registrationKeys).values(values).returning({ id: registrationKeys.id });
   return { id: result[0].id, keyCode };
@@ -7846,6 +7872,12 @@ export async function createBulkPackageKeys(input: {
   configurationUpdatedAt?: string | null;
   configurationUpdatedByType?: 'admin' | 'staff' | 'system' | null;
   configurationUpdatedById?: number | null;
+  issuancePurpose?: PackageKeyIssuancePurpose | 'legacy';
+  activationPolicy?: PackageKeyActivationPolicy;
+  authorizationReason?: string | null;
+  authorizedByType?: 'admin' | 'staff' | 'system' | null;
+  authorizedById?: number | null;
+  authorizedAt?: string | null;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -7875,6 +7907,12 @@ export async function createBulkPackageKeys(input: {
     configurationUpdatedAt: input.configurationUpdatedAt ?? null,
     configurationUpdatedByType: input.configurationUpdatedByType ?? null,
     configurationUpdatedById: input.configurationUpdatedById ?? null,
+    issuancePurpose: input.issuancePurpose ?? 'legacy',
+    activationPolicy: input.activationPolicy ?? 'legacy',
+    authorizationReason: input.authorizationReason?.trim() || null,
+    authorizedByType: input.authorizedByType ?? null,
+    authorizedById: input.authorizedById ?? null,
+    authorizedAt: input.authorizedAt ?? null,
   }));
 
   await db.insert(registrationKeys).values(values);
@@ -7898,7 +7936,7 @@ export async function assignPackageKey(input: {
   if (!key || !key.packageId) throw new Error('Package key not found');
   if (!key.isActive) throw new Error('A deactivated key cannot be assigned');
   if (key.activatedAt) throw new Error('An activated key cannot be reassigned');
-  if (!key.isRenewal || key.isUpgrade) {
+  if (input.assignedByType !== 'admin' && (!key.isRenewal || key.isUpgrade)) {
     throw new Error('Fresh and upgrade package keys must be issued from an approved order. Only renewal inventory can be assigned manually.');
   }
   if (key.email && normalizeEmailAddress(key.email) !== normalizedEmail) {
@@ -8015,6 +8053,8 @@ export async function createOrderActivationKeys(input: {
   actorId: number;
   configurations: PackageKeyConfigurationInput[];
 }) {
+  const db = await getDb();
+  if (!db) throw new Error('Database not available');
   const targetEmail = input.order.isGift && input.order.giftEmail
     ? normalizeEmailAddress(input.order.giftEmail)
     : normalizeEmailAddress((await getUserById(input.order.userId))?.email ?? '');
@@ -8062,6 +8102,60 @@ export async function createOrderActivationKeys(input: {
       continue;
     }
 
+    const pendingManualKeys = await db.select().from(registrationKeys)
+      .where(and(
+        eq(registrationKeys.packageId, item.packageId),
+        sql`lower(trim(${registrationKeys.email})) = ${targetEmail}`,
+        eq(registrationKeys.isActive, true),
+        isNull(registrationKeys.activatedAt),
+        isNull(registrationKeys.orderId),
+        eq(registrationKeys.issuancePurpose, 'commercial'),
+        eq(registrationKeys.activationPolicy, 'order_required'),
+        eq(registrationKeys.isUpgrade, !!input.order.isUpgrade),
+        eq(registrationKeys.isRenewal, false),
+      ))
+      .orderBy(desc(registrationKeys.createdAt), desc(registrationKeys.id))
+      .limit(2);
+
+    if (pendingManualKeys.length > 1) {
+      throw new Error(`Multiple pending manual keys match package #${item.packageId}; deactivate the duplicate before approving order #${input.order.id}`);
+    }
+
+    const pendingManualKey = pendingManualKeys[0];
+    if (pendingManualKey) {
+      await updateUnusedPackageKeyConfiguration({
+        keyId: pendingManualKey.id,
+        entitlementDays,
+        expiresAt,
+        configurationNotes: configuration.configurationNotes,
+        actorType: input.actorType,
+        actorId: input.actorId,
+        allowReactivation: true,
+      });
+      const [linkedKey] = await db.update(registrationKeys).set({
+        orderId: input.order.id,
+        issuanceType: 'order',
+        notes: sql`CASE
+          WHEN ${registrationKeys.notes} IS NULL OR ${registrationKeys.notes} = ''
+            THEN ${`Order #${input.order.id} payment approved`}
+          ELSE ${registrationKeys.notes} || ' | ' || ${`Order #${input.order.id} payment approved`}
+        END`,
+      }).where(and(
+        eq(registrationKeys.id, pendingManualKey.id),
+        isNull(registrationKeys.orderId),
+        isNull(registrationKeys.activatedAt),
+        eq(registrationKeys.isActive, true),
+      )).returning({
+        id: registrationKeys.id,
+        keyCode: registrationKeys.keyCode,
+      });
+      if (!linkedKey) {
+        throw new Error('The pending manual key changed while the order was being approved; refresh and try again');
+      }
+      created.push({ ...linkedKey, packageId: item.packageId });
+      continue;
+    }
+
     const result = await createPackageKey({
       packageId: item.packageId,
       createdBy: input.actorId,
@@ -8081,6 +8175,12 @@ export async function createOrderActivationKeys(input: {
       configurationUpdatedByType: input.actorType,
       configurationUpdatedById: input.actorId,
       isUpgrade: input.order.isUpgrade,
+      issuancePurpose: 'commercial',
+      activationPolicy: 'order_required',
+      authorizationReason: `Completed order #${input.order.id}`,
+      authorizedByType: input.actorType,
+      authorizedById: input.actorId,
+      authorizedAt: new Date().toISOString(),
     });
     created.push({ ...result, packageId: item.packageId });
   }
@@ -8248,6 +8348,34 @@ export async function activatePackageKey(
     }
   }
 
+  // Resolve the user ID before consuming the key so blocked attempts leave the key unused.
+  let resolvedUserId = userId;
+  if (!resolvedUserId) {
+    const user = await getUserByEmail(normalizedEmail);
+    resolvedUserId = user?.id;
+  }
+
+  if (packageKeyPolicyRequiresAdminAuthorization(key.activationPolicy)) {
+    const authorizationValid = hasValidPackageKeyAdminAuthorization(key);
+    if (!authorizationValid) {
+      return fail({
+        keyId: key.id,
+        reason: 'admin_authorization_required',
+        message: 'This internal or compensation key is missing a valid admin authorization.',
+        messageAr: 'يفتقد مفتاح الموظف أو التعويض إلى اعتماد إداري صالح.',
+      });
+    }
+  }
+
+  if (packageKeyPolicyRequiresOrder(key.activationPolicy) && !key.orderId) {
+    return fail({
+      keyId: key.id,
+      reason: 'matching_order_required',
+      message: 'This key is waiting for a matching order to be completed and linked by the Key Admin.',
+      messageAr: 'ينتظر هذا المفتاح إكمال طلب مطابق وربطه من مسؤول المفاتيح.',
+    });
+  }
+
   if (key.orderId) {
     const linkedOrder = await getOrderById(key.orderId);
     if (!linkedOrder || linkedOrder.status !== 'completed') {
@@ -8258,13 +8386,29 @@ export async function activatePackageKey(
         messageAr: 'لم تتم الموافقة على الطلب المرتبط بهذا المفتاح بعد.',
       });
     }
-  }
 
-  // Resolve the user ID before consuming the key so blocked attempts leave the key unused.
-  let resolvedUserId = userId;
-  if (!resolvedUserId) {
-    const user = await getUserByEmail(normalizedEmail);
-    resolvedUserId = user?.id;
+    if (packageKeyPolicyRequiresOrder(key.activationPolicy)) {
+      const orderOwner = linkedOrder.isGift && linkedOrder.giftEmail
+        ? null
+        : await getUserById(linkedOrder.userId);
+      const activationEmail = normalizeEmailAddress(
+        linkedOrder.isGift && linkedOrder.giftEmail
+          ? linkedOrder.giftEmail
+          : orderOwner?.email ?? '',
+      );
+      const orderItems = await getOrderItems(linkedOrder.id);
+      const packageMatches = orderItems.some((item) => (
+        item.itemType === 'package' && Number(item.packageId) === Number(key.packageId)
+      ));
+      if (activationEmail !== normalizedEmail || !packageMatches || !!linkedOrder.isUpgrade !== !!key.isUpgrade) {
+        return fail({
+          keyId: key.id,
+          reason: 'order_key_mismatch',
+          message: 'The linked order does not match this key’s customer, package, or activation type.',
+          messageAr: 'لا يتطابق الطلب المرتبط مع عميل المفتاح أو الباقة أو نوع التفعيل.',
+        });
+      }
+    }
   }
 
   if (resolvedUserId && shouldBlockFreshKeyForExistingStudent({

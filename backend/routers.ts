@@ -28,6 +28,11 @@ import * as db from "./db";
 import { filterRecipientsByMutedThreads } from "./services/recommendation-thread.service";
 import { parseRecommendationDraft } from "./services/recommendation-parser.service";
 import {
+  PACKAGE_KEY_ISSUANCE_PURPOSES,
+  PACKAGE_KEY_KINDS,
+  getPackageKeyIssuancePolicy,
+} from "./services/package-key-access.service";
+import {
   drainRecommendationDeliveryQueue,
   RECOMMENDATION_DELIVERY_BATCH_SIZE,
 } from "./services/recommendation-delivery.service";
@@ -6778,17 +6783,30 @@ export const appRouter = router({
         expiresAt: z.string().optional(),
         isUpgrade: z.boolean().optional(),
         isRenewal: z.boolean().optional(),
+        keyKind: z.enum(PACKAGE_KEY_KINDS).optional(),
+        purpose: z.enum(PACKAGE_KEY_ISSUANCE_PURPOSES).optional(),
+        authorizationReason: z.string().trim().max(1000).optional(),
         referredBy: z.string().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
-        if (!input.isRenewal || input.isUpgrade) {
+        const policy = getPackageKeyIssuancePolicy(input);
+        const isFullAdmin = !!ctx.admin;
+        if (!isFullAdmin && (policy.keyKind !== 'renewal' || policy.purpose !== 'commercial')) {
           throw new TRPCError({
             code: 'BAD_REQUEST',
-            message: 'Fresh and upgrade keys are issued only after approving an order with payment evidence. Manual generation is limited to renewal keys.',
+            message: 'Staff Key Managers can issue renewal keys only. Use a full admin login for fresh, upgrade, internal, or compensation keys.',
+          });
+        }
+        const authorizationReason = input.authorizationReason?.trim() || null;
+        if (policy.purpose !== 'commercial' && (!authorizationReason || authorizationReason.length < 5)) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Internal and compensation keys require a clear authorization reason.',
           });
         }
         const admin = ctx.admin ?? ctx.user;
         const actorType = ctx.admin ? 'admin' as const : 'staff' as const;
+        const now = new Date().toISOString();
         const result = await db.createPackageKey({
           packageId: input.packageId,
           createdBy: admin?.id ?? 0,
@@ -6798,16 +6816,23 @@ export const appRouter = router({
           currency: input.currency,
           entitlementDays: input.entitlementDays,
           expiresAt: input.expiresAt,
-          isUpgrade: input.isUpgrade,
-          isRenewal: input.isRenewal,
+          isUpgrade: policy.isUpgrade,
+          isRenewal: policy.isRenewal,
           referredBy: input.referredBy,
           issuanceType: 'manual',
-          assignedAt: new Date().toISOString(),
+          assignedAt: now,
           assignedByType: actorType,
           assignedById: admin?.id ?? 0,
-          configurationUpdatedAt: input.entitlementDays || input.expiresAt ? new Date().toISOString() : null,
+          configurationUpdatedAt: input.entitlementDays || input.expiresAt ? now : null,
           configurationUpdatedByType: input.entitlementDays || input.expiresAt ? actorType : null,
           configurationUpdatedById: input.entitlementDays || input.expiresAt ? (admin?.id ?? 0) : null,
+          issuancePurpose: policy.purpose,
+          activationPolicy: policy.activationPolicy,
+          authorizationReason: authorizationReason
+            ?? (policy.activationPolicy === 'order_required' ? 'Awaiting matching completed order' : 'Manual commercial renewal'),
+          authorizedByType: actorType,
+          authorizedById: admin?.id ?? 0,
+          authorizedAt: now,
         });
         return result;
       }),
@@ -6823,16 +6848,20 @@ export const appRouter = router({
         expiresAt: z.string().optional(),
         isUpgrade: z.boolean().optional(),
         isRenewal: z.boolean().optional(),
+        keyKind: z.enum(PACKAGE_KEY_KINDS).optional(),
         referredBy: z.string().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
-        if (!input.isRenewal || input.isUpgrade) {
+        const policy = getPackageKeyIssuancePolicy({ ...input, purpose: 'commercial' });
+        if (!ctx.admin && policy.keyKind !== 'renewal') {
           throw new TRPCError({
             code: 'BAD_REQUEST',
-            message: 'Bulk inventory is limited to renewal keys. Fresh and upgrade keys must come from an approved order.',
+            message: 'Staff Key Managers can create bulk renewal inventory only. Use a full admin login for fresh or upgrade inventory.',
           });
         }
         const admin = ctx.admin ?? ctx.user;
+        const actorType = ctx.admin ? 'admin' as const : 'staff' as const;
+        const now = new Date().toISOString();
         const keys = await db.createBulkPackageKeys({
           packageId: input.packageId,
           createdBy: admin?.id ?? 0,
@@ -6842,14 +6871,22 @@ export const appRouter = router({
           currency: input.currency,
           entitlementDays: input.entitlementDays,
           expiresAt: input.expiresAt,
-          isUpgrade: input.isUpgrade,
-          isRenewal: input.isRenewal,
+          isUpgrade: policy.isUpgrade,
+          isRenewal: policy.isRenewal,
           referredBy: input.referredBy,
-          configurationUpdatedAt: input.entitlementDays || input.expiresAt ? new Date().toISOString() : null,
+          configurationUpdatedAt: input.entitlementDays || input.expiresAt ? now : null,
           configurationUpdatedByType: input.entitlementDays || input.expiresAt
-            ? (ctx.admin ? 'admin' : 'staff')
+            ? actorType
             : null,
           configurationUpdatedById: input.entitlementDays || input.expiresAt ? (admin?.id ?? 0) : null,
+          issuancePurpose: 'commercial',
+          activationPolicy: policy.activationPolicy,
+          authorizationReason: policy.activationPolicy === 'order_required'
+            ? 'Bulk commercial inventory awaiting assignment and matching order'
+            : 'Bulk commercial renewal inventory',
+          authorizedByType: actorType,
+          authorizedById: admin?.id ?? 0,
+          authorizedAt: now,
         });
         return { count: keys.length };
       }),

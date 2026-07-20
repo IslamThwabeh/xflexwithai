@@ -177,6 +177,12 @@ export const registrationKeys = sqliteTable("registrationKeys", {
   configurationUpdatedAt: text("configurationUpdatedAt"),
   configurationUpdatedByType: text("configurationUpdatedByType"), // admin | staff | system
   configurationUpdatedById: integer("configurationUpdatedById"),
+  issuancePurpose: text("issuancePurpose").default("legacy").notNull(), // commercial | internal | compensation | legacy
+  activationPolicy: text("activationPolicy").default("legacy").notNull(), // order_required | internal_authorized | admin_exception | legacy
+  authorizationReason: text("authorizationReason"),
+  authorizedByType: text("authorizedByType"), // admin | staff | system
+  authorizedById: integer("authorizedById"),
+  authorizedAt: text("authorizedAt"),
 });
 
 export type RegistrationKey = typeof registrationKeys.$inferSelect;

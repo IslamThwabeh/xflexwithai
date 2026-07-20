@@ -5,6 +5,7 @@ vi.mock('../backend/db', async () => {
   return {
     ...actual,
     getAdminByEmail: vi.fn(),
+    hasAnyRole: vi.fn(),
     getOrderById: vi.fn(),
     createOrderActivationKeys: vi.fn(),
     updateOrderStatus: vi.fn(),
@@ -148,11 +149,72 @@ describe('package activation routes', () => {
     });
   });
 
-  it('rejects manual fresh keys so new sales must use an approved order', async () => {
-    await expect(createCaller().packageKeys.generateKey({
+  it('allows a full admin to prepare a commercial fresh key that still requires an order', async () => {
+    vi.mocked(db.createPackageKey).mockResolvedValue({ id: 201, keyCode: 'XFLEX-ADMIN-FRESH' } as any);
+
+    await createCaller().packageKeys.generateKey({
+      packageId: 1,
+      email: user.email,
+      keyKind: 'fresh',
+      purpose: 'commercial',
+    });
+
+    expect(db.createPackageKey).toHaveBeenCalledWith(expect.objectContaining({
       packageId: 1,
       email: user.email,
       isRenewal: false,
+      isUpgrade: false,
+      issuancePurpose: 'commercial',
+      activationPolicy: 'order_required',
+      authorizedByType: 'admin',
+      authorizedById: 11,
+    }));
+  });
+
+  it('allows a full admin to authorize an internal employee renewal without an order', async () => {
+    vi.mocked(db.createPackageKey).mockResolvedValue({ id: 202, keyCode: 'XFLEX-EMPLOYEE-RENEWAL' } as any);
+
+    await createCaller().packageKeys.generateKey({
+      packageId: 2,
+      email: 'batoulbahnag2005@gmail.com',
+      keyKind: 'renewal',
+      purpose: 'internal',
+      authorizationReason: 'Employee package renewal for Batool',
+      entitlementDays: 30,
+    });
+
+    expect(db.createPackageKey).toHaveBeenCalledWith(expect.objectContaining({
+      packageId: 2,
+      isRenewal: true,
+      isUpgrade: false,
+      issuancePurpose: 'internal',
+      activationPolicy: 'internal_authorized',
+      authorizationReason: 'Employee package renewal for Batool',
+      authorizedByType: 'admin',
+      authorizedById: 11,
+    }));
+  });
+
+  it('keeps staff Key Managers renewal-only', async () => {
+    const staffUser = { ...user, id: 4, email: 'keys@example.com', isStaff: true };
+    vi.mocked(db.getAdminByEmail).mockResolvedValue(null as any);
+    vi.mocked(db.hasAnyRole).mockResolvedValue(true);
+
+    await expect(createCaller(staffUser).packageKeys.generateKey({
+      packageId: 1,
+      email: user.email,
+      keyKind: 'fresh',
+      purpose: 'commercial',
+    })).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+    expect(db.createPackageKey).not.toHaveBeenCalled();
+  });
+
+  it('requires an authorization reason for internal and compensation keys', async () => {
+    await expect(createCaller().packageKeys.generateKey({
+      packageId: 2,
+      email: user.email,
+      keyKind: 'renewal',
+      purpose: 'internal',
     })).rejects.toMatchObject({ code: 'BAD_REQUEST' });
     expect(db.createPackageKey).not.toHaveBeenCalled();
   });
