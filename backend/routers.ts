@@ -6775,7 +6775,7 @@ export const appRouter = router({
     generateKey: adminOrRoleProcedure(['key_manager'])
       .input(z.object({
         packageId: z.number(),
-        email: z.string().email(),
+        email: z.string().trim().email().optional(),
         notes: z.string().optional(),
         price: z.number().optional(),
         currency: z.string().optional(),
@@ -6807,10 +6807,11 @@ export const appRouter = router({
         const admin = ctx.admin ?? ctx.user;
         const actorType = ctx.admin ? 'admin' as const : 'staff' as const;
         const now = new Date().toISOString();
+        const assignedEmail = input.email?.trim() || null;
         const result = await db.createPackageKey({
           packageId: input.packageId,
           createdBy: admin?.id ?? 0,
-          email: input.email,
+          email: assignedEmail,
           notes: input.notes,
           price: input.price,
           currency: input.currency,
@@ -6820,9 +6821,9 @@ export const appRouter = router({
           isRenewal: policy.isRenewal,
           referredBy: input.referredBy,
           issuanceType: 'manual',
-          assignedAt: now,
-          assignedByType: actorType,
-          assignedById: admin?.id ?? 0,
+          assignedAt: assignedEmail ? now : null,
+          assignedByType: assignedEmail ? actorType : null,
+          assignedById: assignedEmail ? (admin?.id ?? 0) : null,
           configurationUpdatedAt: input.entitlementDays || input.expiresAt ? now : null,
           configurationUpdatedByType: input.entitlementDays || input.expiresAt ? actorType : null,
           configurationUpdatedById: input.entitlementDays || input.expiresAt ? (admin?.id ?? 0) : null,

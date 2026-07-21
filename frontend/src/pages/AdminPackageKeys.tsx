@@ -237,7 +237,11 @@ export default function AdminPackageKeys() {
   // Mutations
   const generateKey = trpc.packageKeys.generateKey.useMutation({
     onSuccess: (data) => {
-      toast.success(language === 'ar' ? `تم إنشاء المفتاح: ${data.keyCode}` : `Key generated: ${data.keyCode}`);
+      toast.success(assignEmail.trim()
+        ? (language === 'ar' ? `تم إنشاء المفتاح: ${data.keyCode}` : `Key generated: ${data.keyCode}`)
+        : (language === 'ar'
+          ? `تم إنشاء مفتاح غير معيّن: ${data.keyCode}. عيّنه للعميل قبل مشاركته.`
+          : `Unassigned key generated: ${data.keyCode}. Assign it before sharing.`));
       keysQuery.refetch();
       statsQuery.refetch();
       setShowGenerateDialog(false);
@@ -363,15 +367,11 @@ export default function AdminPackageKeys() {
       toast.error(language === 'ar' ? 'يرجى اختيار الباقة' : 'Please select a package');
       return;
     }
-    if (!assignEmail.trim()) {
-      toast.error(language === 'ar' ? 'يجب إدخال بريد العميل قبل إنشاء المفتاح' : 'Customer email is required before generating a key');
-      return;
-    }
     const trimmedPrice = price.trim();
     const numericPrice = Number(trimmedPrice);
     generateKey.mutate({
       packageId: selectedPackage,
-      email: assignEmail.trim(),
+      email: assignEmail.trim() || undefined,
       notes: notes || undefined,
       price: trimmedPrice && Number.isFinite(numericPrice) && numericPrice > 0
         ? Math.round(numericPrice)
@@ -422,9 +422,9 @@ export default function AdminPackageKeys() {
     const rows = keys.map(k => [
       k.email
         ? k.keyCode
-        : k.isRenewal
-          ? (language === 'ar' ? 'يجب التعيين قبل المشاركة' : 'Assign before sharing')
-          : (language === 'ar' ? 'يجب التعيين والربط بطلب' : 'Assign and link to order'),
+        : k.activationPolicy === 'order_required'
+          ? (language === 'ar' ? 'يجب التعيين والربط بطلب' : 'Assign and link to order')
+          : (language === 'ar' ? 'يجب التعيين قبل المشاركة' : 'Assign before sharing'),
       (k as any).packageName || '',
       (k as any).userName || '',
       k.email || '',
@@ -433,9 +433,9 @@ export default function AdminPackageKeys() {
         : !k.isActive
           ? (language === 'ar' ? 'معطّل' : 'Deactivated')
           : !k.email
-            ? k.isRenewal
-              ? (language === 'ar' ? 'بحاجة لتعيين' : 'Needs assignment')
-              : (language === 'ar' ? 'بانتظار التعيين والطلب' : 'Awaiting assignment and order')
+            ? k.activationPolicy === 'order_required'
+              ? (language === 'ar' ? 'بانتظار التعيين والطلب' : 'Awaiting assignment and order')
+              : (language === 'ar' ? 'بحاجة لتعيين' : 'Needs assignment')
             : (language === 'ar' ? 'غير مستخدم' : 'Unused'),
       k.entitlementDays || (language === 'ar' ? 'الافتراضي' : 'Default'),
       getServiceExpiryValue(k) ? formatLocalizedDate(getServiceExpiryValue(k) as string, language) : '',
@@ -650,13 +650,18 @@ export default function AdminPackageKeys() {
                   )}
                   <PackageSelector />
                   <div className="space-y-2">
-                    <Label>{language === 'ar' ? 'بريد العميل الإلكتروني (إلزامي)' : 'Customer email (required)'}</Label>
+                    <Label>{language === 'ar' ? 'بريد العميل الإلكتروني (اختياري)' : 'Customer email (optional)'}</Label>
                     <Input
                       type="email"
                       value={assignEmail}
                       onChange={(e) => setAssignEmail(e.target.value)}
                       placeholder={language === 'ar' ? 'user@example.com' : 'user@example.com'}
                     />
+                    <p className="text-xs text-muted-foreground">
+                      {language === 'ar'
+                        ? 'إذا تركته فارغاً، سيتم إنشاء مفتاح غير معيّن ويجب تعيينه للعميل قبل مشاركته أو تفعيله.'
+                        : 'Leave blank to create unassigned inventory. Assign it to the client before sharing or activation.'}
+                    </p>
                   </div>
                   <div className="space-y-2">
                     <Label>{language === 'ar' ? 'السعر (₪)' : 'Price (₪)'}</Label>
@@ -755,7 +760,7 @@ export default function AdminPackageKeys() {
                   )}
                   <Button
                     onClick={handleGenerateKey}
-                    disabled={generateKey.isPending || !assignEmail.trim() || (issuancePurpose !== 'commercial' && authorizationReason.trim().length < 5)}
+                    disabled={generateKey.isPending || (issuancePurpose !== 'commercial' && authorizationReason.trim().length < 5)}
                     className="w-full"
                   >
                     {generateKey.isPending 
@@ -1063,9 +1068,9 @@ export default function AdminPackageKeys() {
                     ) : !key.email ? (
                       <Badge className="gap-1 text-xs bg-amber-100 text-amber-800 hover:bg-amber-100">
                         <User className="w-3 h-3" />
-                        {key.isRenewal
-                          ? (language === 'ar' ? 'بحاجة لتعيين' : 'Needs assignment')
-                          : (language === 'ar' ? 'بانتظار التعيين والطلب' : 'Awaiting assignment and order')}
+                        {key.activationPolicy === 'order_required'
+                          ? (language === 'ar' ? 'بانتظار التعيين والطلب' : 'Awaiting assignment and order')
+                          : (language === 'ar' ? 'بحاجة لتعيين' : 'Needs assignment')}
                       </Badge>
                     ) : key.activationPolicy === 'order_required' && !key.orderId ? (
                       <Badge className="gap-1 text-xs bg-amber-100 text-amber-800 hover:bg-amber-100">
@@ -1336,9 +1341,9 @@ export default function AdminPackageKeys() {
                           ) : !key.email ? (
                             <Badge className="gap-1 bg-amber-100 text-amber-800 hover:bg-amber-100">
                               <User className="w-3 h-3" />
-                              {key.isRenewal
-                                ? (language === 'ar' ? 'بحاجة لتعيين' : 'Needs assignment')
-                                : (language === 'ar' ? 'بانتظار التعيين والطلب' : 'Awaiting assignment and order')}
+                              {key.activationPolicy === 'order_required'
+                                ? (language === 'ar' ? 'بانتظار التعيين والطلب' : 'Awaiting assignment and order')
+                                : (language === 'ar' ? 'بحاجة لتعيين' : 'Needs assignment')}
                             </Badge>
                           ) : key.activationPolicy === 'order_required' && !key.orderId ? (
                             <Badge className="gap-1 bg-amber-100 text-amber-800 hover:bg-amber-100">

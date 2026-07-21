@@ -143,10 +143,23 @@ describe('package activation routes', () => {
     );
   });
 
-  it('requires a customer email for manually generated keys', async () => {
-    await expect(createCaller().packageKeys.generateKey({ packageId: 1 } as any)).rejects.toMatchObject({
-      code: 'BAD_REQUEST',
+  it('allows a full admin to generate an unassigned key without weakening activation gates', async () => {
+    vi.mocked(db.createPackageKey).mockResolvedValue({ id: 200, keyCode: 'XFLEX-UNASSIGNED' } as any);
+
+    await createCaller().packageKeys.generateKey({
+      packageId: 1,
+      keyKind: 'fresh',
+      purpose: 'commercial',
     });
+
+    expect(db.createPackageKey).toHaveBeenCalledWith(expect.objectContaining({
+      packageId: 1,
+      email: null,
+      assignedAt: null,
+      assignedByType: null,
+      assignedById: null,
+      activationPolicy: 'order_required',
+    }));
   });
 
   it('allows a full admin to prepare a commercial fresh key that still requires an order', async () => {
