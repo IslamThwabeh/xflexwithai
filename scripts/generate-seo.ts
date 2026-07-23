@@ -366,7 +366,7 @@ async function main() {
     `<?xml version="1.0" encoding="UTF-8"?><sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><sitemap><loc>${SITE_ORIGIN}/sitemap-ar.xml</loc></sitemap><sitemap><loc>${SITE_ORIGIN}/sitemap-en.xml</loc></sitemap><sitemap><loc>${SITE_ORIGIN}/sitemap-articles.xml</loc></sitemap></sitemapindex>`,
   );
 
-  const robots = `User-agent: *\nAllow: /ar/\nAllow: /en/\nDisallow: /admin\nDisallow: /auth\nDisallow: /login\nDisallow: /register\nDisallow: /signup\nDisallow: /checkout\nDisallow: /courses\nDisallow: /profile\nDisallow: /orders\nDisallow: /support\nDisallow: /lexai\nDisallow: /recommendations\nDisallow: /api/\n\nUser-agent: OAI-SearchBot\nAllow: /ar/\nAllow: /en/\n\nUser-agent: ChatGPT-User\nAllow: /ar/\nAllow: /en/\n\nUser-agent: PerplexityBot\nAllow: /ar/\nAllow: /en/\n\nSitemap: ${SITE_ORIGIN}/sitemap.xml\n`;
+  const robots = `User-agent: *\nAllow: /ar/\nAllow: /en/\nDisallow: /admin\nDisallow: /auth\nDisallow: /login\nDisallow: /register\nDisallow: /signup\nDisallow: /checkout\nDisallow: /courses\nDisallow: /profile\nDisallow: /orders\nDisallow: /support\nDisallow: /community\nDisallow: /lexai\nDisallow: /recommendations\nDisallow: /api/\n\nUser-agent: OAI-SearchBot\nAllow: /ar/\nAllow: /en/\n\nUser-agent: ChatGPT-User\nAllow: /ar/\nAllow: /en/\n\nUser-agent: PerplexityBot\nAllow: /ar/\nAllow: /en/\n\nSitemap: ${SITE_ORIGIN}/sitemap.xml\n`;
   await fs.writeFile(path.join(outputRoot, "robots.txt"), robots);
 
   for (const language of languages) {

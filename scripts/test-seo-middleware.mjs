@@ -25,6 +25,14 @@ assert.equal(privateRoute.status, 200);
 assert.equal(privateRoute.headers.get("x-robots-tag"), "noindex, nofollow");
 assert.equal(privateRoute.headers.get("cache-control"), "private, no-store");
 
+const communityRoute = await onRequest(contextFor("https://xflexacademy.com/community?postId=42", async (request) => {
+  assert.equal(new URL(request.url).pathname, "/app-shell/");
+  return new Response("<html>community app</html>", { status: 200, headers: { "content-type": "text/html" } });
+}));
+assert.equal(communityRoute.status, 200);
+assert.equal(communityRoute.headers.get("x-robots-tag"), "noindex, nofollow");
+assert.equal(communityRoute.headers.get("cache-control"), "private, no-store");
+
 const localizedAuth = await onRequest(contextFor("https://xflexacademy.com/ar/auth", async (request) => {
   assert.equal(new URL(request.url).pathname, "/app-shell/");
   return new Response("<html>auth app</html>", { status: 200, headers: { "content-type": "text/html" } });

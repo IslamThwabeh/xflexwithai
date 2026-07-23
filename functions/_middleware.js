@@ -45,6 +45,7 @@ const PRIVATE_PREFIXES = [
   "/notifications",
   "/my-points",
   "/calculators",
+  "/community",
 ];
 
 const LOCALIZED_PRIVATE_PATH = /^\/(ar|en)\/(?:auth|login|register|signup)(?:\/|$)/;
