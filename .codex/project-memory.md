@@ -1,6 +1,6 @@
 # XFLEX Project Memory
 
-Last updated: 2026-07-18
+Last updated: 2026-07-24
 
 ## Project Overview
 
@@ -36,9 +36,9 @@ Last updated: 2026-07-18
 - During investigations, Codex may inspect the production D1 database directly with Wrangler read-only `SELECT` queries to collect evidence. Any production write, repair, migration, or data change needs separate explicit user approval.
 - When writing raw Wrangler SQL against `email_delivery_logs`, use the physical snake_case column names: `recipient_email`, `recipient_user_id`, `event_type`, `template_id`, `error_message`, and `created_at`. Drizzle maps these to camelCase in TypeScript (`recipientEmail`, `eventType`, etc.), but raw D1 SQL with camelCase will fail.
 - For production D1 verification where result rows matter, prefer one `SELECT` per Wrangler command. Multi-statement SQL files may return only execution summaries instead of each result set.
-- Latest Worker deploy completed on 2026-06-05 with version `6d231d23-f38e-485e-8064-c3177ec840eb`.
-- Latest Pages deploy attempt on 2026-06-05 for commit `b347e28` failed during Cloudflare asset upload with `POST /pages/assets/upload -> 502 Bad Gateway`; manual dashboard upload of `dist/public` is the fallback.
-- Latest production D1 migration applied on 2026-06-05: `database/migrations/050_first_package_activation_anchor.sql`.
+- Latest production Worker deploy completed on 2026-07-18 with version `55910eb1-9a91-47cd-9915-bf7ab9bcc88d` for release commit `04f3468` (`Add audited package key configuration`).
+- Latest successful Pages deployment was on 2026-07-18 for release commit `04f3468`, with preview `https://30fbf774.xflexwithai.pages.dev`. A historical 2026-06-05 upload failed with `POST /pages/assets/upload -> 502 Bad Gateway`; if that Cloudflare error recurs, manual dashboard upload of `dist/public` remains the fallback.
+- Latest production D1 migration applied as of 2026-07-19 is `database/migrations/072_package_key_configuration_audit.sql`.
 - On 2026-06-21, the user reported completing the Worker/frontend deployment for the timed-service activation and email reliability release. The exact Cloudflare deployment version/commit was not recorded in this session.
 - Production D1 migration `database/migrations/055_timed_service_activation_email_outbox.sql` was applied by Codex on 2026-06-21 before deployment.
 - Migration `055` Cloudflare bookmark: `00000ebe-0000002c-00005091-24213355c43c1b020dcc1e96230ee7bf`.
@@ -66,6 +66,11 @@ Last updated: 2026-07-18
 - Account-level terms acceptance gate release (`420393f Require account-level terms acceptance`) was deployed by Codex on 2026-07-17. Production backup before migrations: `tmp/prod-backups/xflexwithai-before-terms-gate-20260717-004203.sql`. D1 migrations `070_order_linked_package_activation.sql` and `071_account_terms_acceptance_gate.sql` were applied and recorded in `schema_migrations` with `source = codex_wrangler`. Migration bookmarks: `00000f6f-00000622-000050aa-a309998c36b954c80ca06765d4ad75d0` for 070 and `00000f6f-00000628-000050aa-855716e6d3b3fe2d4b5936209c72d2c8` for 071.
 - The 2026-07-17 terms-gate deployment used Worker version `e74f5bfb-62ba-4407-9e87-32c9b161830a` and Pages preview `https://2a8d39b6.xflexwithai.pages.dev`. The frontend asset `index-fkqK7Dw1.js` was confirmed live on production and preview before enabling `admin_settings.terms_acceptance_gate_enabled = true`. Final smoke confirmed `/`, `/ar`, `/en`, `/auth`, and preview returned 200; Worker health returned `status=ok`; anonymous `auth.termsStatus` correctly returned 401; the package-key database guard existed; and the preserved evidence count remained 13 rows for 12 clients.
 - Read-only production terms audit on 2026-07-16 found 62 active package clients: 12 had acceptance evidence on an order (8 v2 and 4 v1), while 50 had no recorded evidence. Existing v1/v2 evidence must be preserved; do not fabricate acceptance for the 50 missing clients.
+- Current production client-case baseline from the read-only audit on 2026-07-19:
+  - Alaa Al Deek (`users.id = 73`, Basic order `20`) accepted terms v2 and uploaded payment evidence. Under the former order-completion behavior, the package and course enrollment started at `2026-07-12T09:42:26Z`. The Recommendations row remained pending with `maxActivationDate = 2026-07-26T09:42:26Z`; its earlier 26/27-day display was the UI reading the placeholder `endDate` while pending, not proof that timed-service days were being consumed. Production now shows the course completed on 2026-07-14, while broker onboarding remains incomplete. Unless broker readiness completes first, policy activation occurs at the exact July 26 deadline and grants the full configured service duration from that deadline.
+  - Obada Brahmeh (`users.id = 96`, Basic order `23`) accepted terms v2 and uploaded payment evidence. His package/enrollment was granted by the former order-approval flow on `2026-07-15T11:39:02Z`, which is why he could begin the course without entering a key. This was historical workflow behavior, not unauthorised anonymous access. The current order-linked flow no longer grants access on approval; it issues an email-bound key that must be redeemed. Obada already has an active package, so attempting an unused fresh Basic key is correctly blocked by the existing-client/fresh-key guard. As of the audit he had 38% course progress, incomplete broker onboarding, and a pending Recommendations deadline of `2026-07-29T11:39:02Z`.
+  - Jihad Nassar (`users.id = 98`) had no order row and no payment-proof record. Basic key `registrationKeys.id = 118` was manually created by main admin `1` at `2026-07-16T15:11:12Z` (18:11 Amman) and redeemed at `15:15:50Z`, so no order-approval email could exist. He later accepted terms v2 through the account login gate on `2026-07-17T05:24:53Z`. His package is active; Recommendations remains pending until readiness or `2026-07-30T15:15:50Z`. The new order/payment/terms/key safeguards prevent this fresh-sale path from recurring.
+  - These named cases are historical evidence, not instructions to modify their records. Do not bulk-repair or revoke them. Re-query production and obtain explicit approval before any client-specific write or compensation.
 - Release order for the 2026-06-22 hotfixes:
   1. Apply migration `056`.
   2. Deploy the production Worker/backend.
@@ -91,6 +96,11 @@ Last updated: 2026-07-18
 - Email outbox delivery is idempotent through dedupe keys, conditional claims, stale-lock recovery, bounded retries, provider/error auditing, and dead-letter status.
 - Admin notification send responses now distinguish in-app recipients (`count`) from queued emails (`emailsQueued`).
 - Normal queued-email delivery target is within approximately one minute, subject to provider availability and backlog.
+- Student-community notifications are email-first because in-app notifications are not routinely monitored. Staff events for new posts, new comments, reports, ordinary blocked submissions, high-risk violations, repeat violations, and moderation-service failures create staff notifications and private BCC email delivery to admins and users holding `student_community_moderator`.
+- Community staff email events use bounded throttles for noisy cases: comments per post 5 minutes, ordinary blocked submissions per user 5 minutes, repeat violations 60 minutes, and moderation failures 60 minutes. New posts, reports, and high-risk violations remain immediate.
+- Rejected community text must never be copied into staff/client notification emails. Staff safety emails contain only safe classification metadata, entity/user identifiers, counts, and an admin deep link.
+- Community client email events use the durable `email_outbox` with transactional category and idempotent dedupe keys. They cover: another student replying to a post, content hidden/deleted/restored, access suspended/restored, and report outcome. A matching in-app notification remains as a fallback. Self-replies do not email the post owner.
+- Client moderation emails omit internal moderator notes and reviewed text. Suspension emails may include the explicit admin-entered client-facing reason and expiry. Community/report email links use `/community?postId=<id>` where available; the student community page honors this deep link.
 - On 2026-06-22, production recommendation-email complaints were traced to queue starvation rather than provider failure. In-app notifications were immediate and ZeptoMail sends succeeded, but generic email work consumed half of the shared 10-email minute budget and recommendation rows drained at only 5 recipients/minute.
 - Recommendation delivery now has priority over generic/bulk outbox work. Publishing also starts a bounded post-response Worker drain through `ExecutionContext.waitUntil`, with the minute cron remaining as the durable fallback.
 - The next email reliability release groups recommendation recipients by event and language and sends one ZeptoMail request with the company mailbox in `To` and up to 50 clients in `BCC`. The ceiling is intentionally conservative versus ZeptoMail's 500 total-recipient limit.
@@ -203,6 +213,54 @@ Last updated: 2026-07-18
 - Admin API `subscriptions.activationAudit` reports overdue/policy-activated clients and inaccessible intervals for review.
 - Timed-service cron repair now performs a schema-health preflight before querying readiness columns such as `enrollments.isAdminSkipped`, `lexaiSubscriptions.maxActivationDate`, and activation audit fields. If schema is missing, repair is skipped and a controlled schema-mismatch staff alert is sent instead of raw SQL failure content.
 
+## Orders, Terms, And Key Issuance
+
+- A new package sale must originate from an order. Bank-transfer orders cannot be approved without a trusted uploaded payment-proof URL and recorded terms acceptance.
+- Completing an order does not grant package/course/service access. It creates an order-linked, email-bound activation key and sends/displays that key; the client must redeem it to start the package.
+- Account-level terms acceptance is versioned in `user_terms_acceptances`. The login gate covers legacy/manual-entitlement clients who lack current evidence; existing v1/v2 order evidence is imported/preserved rather than fabricated.
+- Fresh and Basic→Comprehensive upgrade keys cannot be issued as free-standing manual keys. Renewal inventory remains the supported manual key-manager path.
+- At order approval, the key manager must choose the service duration for each package item. The automatically generated key therefore does not force a fixed period.
+- An active unused order-linked package key can be edited for entitlement days, key-redemption deadline, and internal configuration notes. Every configuration change is audited. Once redeemed, its configuration is immutable; extra time must use the renewal/extension workflow.
+- Do not restore the former behavior where marking an order completed directly creates package subscriptions/enrollments. That behavior explains Obada's historical case and bypassed the intended key-redemption checkpoint.
+- Do not restore unrestricted manual fresh-package keys. Jihad's historical case demonstrated that this bypasses order evidence, approval email, and checkout terms acceptance.
+- Order notification emails must show the stored order total and currency. Staff-facing commercial/revenue reporting must use the canonical fixed ILS amounts and must not derive Comprehensive ₪1,700 as ₪1,750 from a historic USD value or ad-hoc conversion. Basic was verified at ₪700 and did not have the +₪50 defect.
+
+## Student Community
+
+- Admin moderation route: `/admin/community`. It is present in the main admin navigation/task bar for full admins and for the `student_community_moderator` role. The client route is `/community`.
+- The production feature flag is `admin_settings.student_community_enabled`. Keep it `false` until the safety readiness endpoint confirms all three activation prerequisites: production `OPENAI_API_KEY`, at least one active competitor term, and at least one active prohibited-language term.
+- Existing and future client/support accounts are automatically eligible; missing rows in `student_community_access_controls` mean allowed. Do not bulk-copy every user into an access table. Explicit bans are stored with reason, optional expiry, acting admin/moderator, and append-only access audit rows.
+- Suspended members are blocked server-side from both reading and writing. Admin/member preparation, access controls, and policy-list preparation remain available while the community feature itself is disabled.
+- Every post and comment is moderated before insertion. Deterministic local competitor/prohibited-language rules run before OpenAI `omni-moderation-latest`; OpenAI refusal or unavailability fails closed, so unchecked content is not published.
+- Moderation decisions store a content hash and safe policy/category metadata. Rejected raw text is not stored in the community tables or email notifications.
+- A third blocked attempt within 24 hours escalates to a repeat-violation staff event. OpenAI categories including threatening hate, violent illicit activity, self-harm intent/instructions, sexual content involving minors, violence, and graphic violence escalate immediately as high risk.
+- Migrations:
+  - `074_student_community_access_controls.sql`: additive access-control and access-audit tables.
+  - `075_student_community_prepublication_moderation.sql`: policy-term and moderation-decision tables.
+  - `076_student_community_prohibited_language.sql`: rebuilds the two new moderation tables to support separate competitor and prohibited-language categories while preserving rows. Never run 076 before 075.
+- Production preflight on 2026-07-24 confirmed `OPENAI_API_KEY`, `JWT_SECRET`, `EMAIL_UNSUBSCRIBE_SECRET`, and `ZEPTOMAIL_TOKEN` secret names exist; `student_community_enabled = false`; migrations 074–076 were not yet present; and existing community posts/comments/reports/audit tables each contained zero rows. This was read-only evidence collected before deployment.
+
+## Production D1 Storage And Backups
+
+- Read-only storage investigation completed on 2026-07-19. No code or production data was changed.
+- Local production SQL export growth:
+  - `xflexwithai-before-055-20260621-152725.sql`: 74,346,517 bytes.
+  - `xflexwithai-before-level-quizzes-20260701-131159.sql`: 123,947,922 bytes.
+  - `xflexwithai-before-phases-063-068-20260712-215252.sql`: 171,860,830 bytes.
+  - `xflexwithai-before-terms-gate-20260717-004203.sql`: 189,809,660 bytes.
+  - `xflexwithai-before-key-config-20260718-232811.sql`: 192,574,349 bytes.
+- The export increased by 118,227,832 bytes (159%, 2.59x) over about 27 days. Recent growth slowed to about 1.4 MB/day versus roughly 4-5 MB/day in earlier intervals; it was not accelerating at the audit point.
+- The latest SQL file is larger than billable D1 storage because SQL serialization/escaping adds overhead. Production `xflexwithai-db` was 174,120,960 bytes, and all four account D1 databases totaled about 174,477,312 bytes. Local `.sql` files consume workstation disk only and do not count toward Cloudflare D1 billing.
+- Latest 24-hour D1 metrics at the audit point were 5,881,624 rows read and 7,549 rows written. A simple 30-day projection is about 176.4 million reads and 226,470 writes; treat this as a one-day operational snapshot, not a forecast.
+- Largest latest-export contributors by UTF-8 INSERT statement size were `recommendation_deliveries` 104.95 MiB (57.15%), `email_delivery_logs` 15.98 MiB, `staff_notifications` 14.99 MiB, `engagement_events` 14.16 MiB, `user_notifications` 11.01 MiB, `email_outbox` 7.04 MiB, and `staffActionLogs` 7.03 MiB. These seven exceeded 95% of the export.
+- `recommendation_deliveries` had 15,867 rows for 694 events, zero duplicate `(eventKey,userId)` pairs, and only 640 distinct HTML bodies. The growth is expected under the current per-recipient audit/retry model, but storing the same rendered body per recipient is the main future optimization opportunity; this is not evidence of a retry loop.
+- `email_outbox` retained 2,105 terminal `sent` rows with full bodies. General retention was not found for recommendation deliveries, email outbox/logs, staff/user notifications, or engagement events. Existing staff-monitoring retention only compacts `staffActionLogs`/sessions after 90 days and keeps aggregates for 365 days.
+- Cloudflare pricing/limits checked on 2026-07-19: Workers Paid included 5 GB account D1 storage, 25 billion monthly rows read, and 50 million monthly rows written; extra storage was $0.75/GB-month, with a 10 GB per-database limit. At the audit point total storage was about 3.5% of the Paid inclusion and query usage projected well below Paid inclusions. Re-check current official pricing before making a future cost claim.
+- If the account were Workers Free, the 174 MB production database would be about 35% of the 500 MB per-database cap and the observed 5.88 million daily reads would exceed the 5 million daily Free allowance. Confirm the actual plan and authoritative usage in Cloudflare Billing -> Billable Usage; Wrangler does not identify the plan.
+- No emergency deletion is recommended. Future approved hardening should first define legal/support retention, then consider storing one payload per event/batch, stripping or archiving terminal email bodies after 30-90 days, pruning old read notifications after an agreed 90/180-day period, and monitoring actual D1 bytes at 50/70/85% thresholds. Preserve lightweight recipient/status/provider/timestamp audit rows.
+- Compressing/rotating old local backups can reduce workstation disk usage but cannot reduce Cloudflare billing. Do not delete production history solely because SQL exports look large.
+- Investigation evidence is stored under `tmp/reports/d1-storage-20260719/`, with canonical findings in `artifact.json` and supporting CSV/SQL files. This directory is temporary/ignored and is not a substitute for the project memory.
+
 ## Support Media Uploads
 
 - Commit `80b948e` added short video upload support to client support chat, admin support chat, and bug reports.
@@ -306,6 +364,13 @@ Last updated: 2026-07-18
   - Pre/post reconciliation remained unchanged: 115 registration keys (67 activated, 48 unused), 66 package subscriptions, and 71 enrollments. No historical audit rows were fabricated.
   - Worker version `55910eb1-9a91-47cd-9915-bf7ab9bcc88d` deployed successfully. Pages deployment URL: `https://30fbf774.xflexwithai.pages.dev`.
   - Production `/`, `/ar`, `/en`, `/auth`, and Pages preview returned 200 and referenced `assets/index-gB-exknF.js`; Worker `/health` returned `status=ok`; anonymous `packageKeys.list` returned the expected 401.
+- Student-community release candidate verification on 2026-07-24:
+  - `pnpm check` and `git diff --check` passed.
+  - Full test suite passed: 63 files / 312 tests.
+  - Focused community/notification suite passed: 12 files / 62 tests.
+  - `pnpm build` and `pnpm build:worker` passed; Vite emitted only the existing large-chunk warning.
+  - Secret scan across changed/untracked release files found no committed OpenAI/ZeptoMail key values.
+  - Live local OpenAI moderation QA previously confirmed a safe message was allowed, deterministic prohibited language was blocked locally, and threatening text was blocked by OpenAI. Local QA records were cleaned and the local feature flag was returned to `false`.
 
 ## Future Hardening
 
@@ -318,6 +383,7 @@ Last updated: 2026-07-18
 - Do not rely only on browser duration checks; for stronger abuse prevention, add server-side video probing or a quarantine process before long-term R2 retention.
 - Consider signed/private access for support evidence URLs if evidence may contain sensitive client data.
 - Add R2 lifecycle cleanup for rejected bug reports, deleted support messages, and abandoned uploads.
+- Design and approve D1 operational-history retention before the database approaches plan thresholds. Prioritize normalization/archive of repeated `recommendation_deliveries` bodies and terminal `email_outbox` payloads; do not implement destructive cleanup without retention requirements, a backup, reconciliation queries, and explicit production-write approval.
 - Manual QA before release should cover client/admin chat image upload, short video upload, 60s+ rejection, oversized rejection, existing voice notes, `/support?tab=bugs` evidence submit, and admin bug evidence playback on mobile and desktop.
 
 ## User Working Style

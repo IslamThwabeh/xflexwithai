@@ -69,7 +69,9 @@ import {
   studentCommunityPosts, StudentCommunityPost, InsertStudentCommunityPost,
   studentCommunityComments, StudentCommunityComment, InsertStudentCommunityComment,
   studentCommunityReports, StudentCommunityReport, InsertStudentCommunityReport,
-  studentCommunityAuditLogs,
+  studentCommunityAuditLogs, studentCommunityAccessControls,
+  studentCommunityAccessAuditLogs, studentCommunityPolicyTerms,
+  studentCommunityModerationDecisions,
   engagementEvents, EngagementEvent, InsertEngagementEvent,
   openAiUsageEvents, OpenAiUsageEvent, InsertOpenAiUsageEvent,
   brokers, Broker, NewBroker,
@@ -145,11 +147,17 @@ import {
   type StudentSurveyAssignmentStatus,
 } from './services/student-surveys.service';
 import type { LoyaltyRewardRedemptionStatus } from './services/loyalty-rewards.service';
-import type {
-  StudentCommunityContentStatus,
-  StudentCommunityReportStatus,
-  StudentCommunityTargetType,
+import {
+  isStudentCommunityBanActive,
+  type StudentCommunityAccessState,
+  type StudentCommunityContentStatus,
+  type StudentCommunityReportStatus,
+  type StudentCommunityTargetType,
 } from './services/student-community.service';
+import type {
+  CommunityPolicyTermCategory,
+  StudentCommunityModerationDecision as CommunityModerationDecision,
+} from './services/student-community-moderation.service';
 import type { StudentJobEligibilityReviewStatus } from './services/student-job-eligibility.service';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -160,14 +168,31 @@ const SUPPORT_STAFF_BCC_EMAIL_EVENTS = new Set<StaffNotificationEventType>([
   'new_support_message',
   'human_escalation',
   'subscription_expiring',
+  'community_post_created',
+  'community_comment_created',
+  'community_content_reported',
+  'community_content_blocked',
+  'community_high_risk_violation',
+  'community_repeat_violation',
+  'community_moderation_failure',
 ]);
 const PORTAL_ONLY_STAFF_NOTIFICATION_EVENTS = new Set<StaffNotificationEventType>([
   'student_survey_submitted',
   'loyalty_reward_requested',
-  'community_content_reported',
   'job_eligibility_review_requested',
   'staff_performance_submitted',
 ]);
+const STAFF_NOTIFICATION_EMAIL_THROTTLE_MINUTES: Partial<
+  Record<StaffNotificationEventType, number>
+> = {
+  new_support_message: 5,
+  community_comment_created: 5,
+  community_content_blocked: 5,
+  community_repeat_violation: 60,
+  community_moderation_failure: 60,
+  timed_service_activation_failure: 60,
+  email_delivery_anomaly: 60,
+};
 const STAFF_BCC_BATCH_SIZE = 50;
 
 function chunkValues<T>(values: T[], size: number = D1_SAFE_IN_CLAUSE_SIZE): T[][] {
@@ -1057,8 +1082,13 @@ export async function getDb(env?: { DB: D1Database }) {
         _db = drizzle(env.DB);
         logger.db('D1 Database connection established (Cloudflare Workers)');
       } else if (process.env.NODE_ENV === 'development') {
-        // Local development fallback - would need better-sqlite3 setup
-        logger.warn('Database not configured. Running in development mode without database.');
+        const databaseUrl =
+          process.env.DATABASE_URL?.trim() || "./xflexwithai.dev.db";
+        const { createLocalD1Database } = await import("./_core/localD1");
+        _db = drizzle(await createLocalD1Database(databaseUrl));
+        logger.db('Local SQLite database connection established', {
+          databaseUrl,
+        });
       } else {
         throw new Error("Database not available: D1 environment not provided");
       }
@@ -15041,6 +15071,408 @@ export async function listLoyaltyRewardAuditLogs(input: {
     .limit(Math.min(Math.max(input.limit ?? 50, 1), 200));
 }
 
+export async function listStudentCommunityPolicyTerms(input?: {
+  activeOnly?: boolean;
+  category?: CommunityPolicyTermCategory;
+}) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [
+    input?.activeOnly
+      ? eq(studentCommunityPolicyTerms.isActive, true)
+      : undefined,
+    input?.category
+      ? eq(studentCommunityPolicyTerms.category, input.category)
+      : undefined,
+  ].filter((condition): condition is SQL => Boolean(condition));
+  return db.select().from(studentCommunityPolicyTerms)
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .orderBy(
+      desc(studentCommunityPolicyTerms.isActive),
+      asc(studentCommunityPolicyTerms.category),
+      asc(studentCommunityPolicyTerms.term),
+    );
+}
+
+export async function addStudentCommunityPolicyTerm(input: {
+  term: string;
+  normalizedTerm: string;
+  category: CommunityPolicyTermCategory;
+  actorUserId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const now = new Date().toISOString();
+  try {
+    const [term] = await db.insert(studentCommunityPolicyTerms).values({
+      term: input.term,
+      normalizedTerm: input.normalizedTerm,
+      category: input.category,
+      isActive: true,
+      createdByUserId: input.actorUserId,
+      createdAt: now,
+      updatedAt: now,
+    }).returning();
+    return { status: "created" as const, term };
+  } catch (error) {
+    if (String(error).toLowerCase().includes("unique")) {
+      return { status: "duplicate" as const };
+    }
+    throw error;
+  }
+}
+
+export async function setStudentCommunityPolicyTermActive(input: {
+  id: number;
+  isActive: boolean;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [term] = await db.update(studentCommunityPolicyTerms)
+    .set({
+      isActive: input.isActive,
+      updatedAt: new Date().toISOString(),
+    })
+    .where(eq(studentCommunityPolicyTerms.id, input.id))
+    .returning();
+  return term ?? null;
+}
+
+export async function recordStudentCommunityModerationDecision(input: {
+  userId: number;
+  contentType: "post" | "comment";
+  contentHash: string;
+  decision: CommunityModerationDecision;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [record] = await db.insert(studentCommunityModerationDecisions).values({
+    userId: input.userId,
+    contentType: input.contentType,
+    entityId: null,
+    outcome: input.decision.outcome,
+    reasonCode: input.decision.reasonCode,
+    model: input.decision.model,
+    requestId: input.decision.requestId,
+    flaggedCategories: input.decision.flaggedCategories.length > 0
+      ? JSON.stringify(input.decision.flaggedCategories)
+      : null,
+    categoryScores: Object.keys(input.decision.categoryScores).length > 0
+      ? JSON.stringify(input.decision.categoryScores)
+      : null,
+    matchedPolicyTermId: input.decision.matchedPolicyTermId,
+    contentHash: input.contentHash,
+    durationMs: input.decision.durationMs,
+    createdAt: new Date().toISOString(),
+  }).returning();
+  return record;
+}
+
+export async function countRecentStudentCommunityBlockedDecisions(input: {
+  userId: number;
+  sinceIso: string;
+}) {
+  const db = await getDb();
+  if (!db) return 0;
+  const [row] = await db.select({
+    total: sql<number>`COUNT(*)`,
+  }).from(studentCommunityModerationDecisions)
+    .where(and(
+      eq(studentCommunityModerationDecisions.userId, input.userId),
+      inArray(studentCommunityModerationDecisions.outcome, [
+        "blocked_policy",
+        "blocked_openai",
+      ]),
+      gte(studentCommunityModerationDecisions.createdAt, input.sinceIso),
+    ));
+  return Number(row?.total ?? 0);
+}
+
+export async function attachStudentCommunityModerationDecision(input: {
+  decisionId: number;
+  entityId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(studentCommunityModerationDecisions)
+    .set({ entityId: input.entityId })
+    .where(eq(studentCommunityModerationDecisions.id, input.decisionId));
+}
+
+export async function listStudentCommunityModerationDecisions(input?: {
+  outcome?: "all" | "allowed" | "blocked_policy" | "blocked_openai" | "error";
+  limit?: number;
+}) {
+  const db = await getDb();
+  if (!db) return [];
+  const outcome = input?.outcome;
+  const rows = await db.select({
+    id: studentCommunityModerationDecisions.id,
+    userId: studentCommunityModerationDecisions.userId,
+    contentType: studentCommunityModerationDecisions.contentType,
+    entityId: studentCommunityModerationDecisions.entityId,
+    outcome: studentCommunityModerationDecisions.outcome,
+    reasonCode: studentCommunityModerationDecisions.reasonCode,
+    model: studentCommunityModerationDecisions.model,
+    requestId: studentCommunityModerationDecisions.requestId,
+    flaggedCategories: studentCommunityModerationDecisions.flaggedCategories,
+    matchedPolicyTermId: studentCommunityModerationDecisions.matchedPolicyTermId,
+    durationMs: studentCommunityModerationDecisions.durationMs,
+    createdAt: studentCommunityModerationDecisions.createdAt,
+    userName: users.name,
+    userEmail: users.email,
+    matchedPolicyTerm: studentCommunityPolicyTerms.term,
+  }).from(studentCommunityModerationDecisions)
+    .innerJoin(users, eq(studentCommunityModerationDecisions.userId, users.id))
+    .leftJoin(
+      studentCommunityPolicyTerms,
+      eq(
+        studentCommunityModerationDecisions.matchedPolicyTermId,
+        studentCommunityPolicyTerms.id,
+      ),
+    )
+    .where(outcome && outcome !== "all"
+      ? eq(studentCommunityModerationDecisions.outcome, outcome)
+      : undefined)
+    .orderBy(
+      desc(studentCommunityModerationDecisions.createdAt),
+      desc(studentCommunityModerationDecisions.id),
+    )
+    .limit(Math.min(Math.max(input?.limit ?? 50, 1), 200));
+
+  return rows.map(row => ({
+    ...row,
+    flaggedCategories: row.flaggedCategories
+      ? JSON.parse(row.flaggedCategories) as string[]
+      : [],
+  }));
+}
+
+export async function getStudentCommunityAccess(userId: number): Promise<{
+  access: StudentCommunityAccessState;
+  reason: string | null;
+  expiresAt: string | null;
+}> {
+  if (!Number.isInteger(userId) || userId <= 0) {
+    return { access: "not_eligible", reason: null, expiresAt: null };
+  }
+
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [control] = await db.select().from(studentCommunityAccessControls)
+    .where(eq(studentCommunityAccessControls.userId, userId))
+    .limit(1);
+
+  if (!control || !isStudentCommunityBanActive(control)) {
+    return { access: "allowed", reason: null, expiresAt: null };
+  }
+
+  return {
+    access: "banned",
+    reason: control.reason ?? null,
+    expiresAt: control.expiresAt ?? null,
+  };
+}
+
+const activeCommunityBanSql = sql<boolean>`COALESCE((
+  ${studentCommunityAccessControls.status} = 'banned'
+  AND (
+    ${studentCommunityAccessControls.expiresAt} IS NULL
+    OR julianday(${studentCommunityAccessControls.expiresAt}) > julianday('now')
+  )
+), 0)`;
+
+export async function listStudentCommunityMembers(input: {
+  search?: string | null;
+  status?: "all" | "allowed" | "banned";
+  limit?: number;
+  offset?: number;
+}) {
+  const db = await getDb();
+  if (!db) return { items: [], total: 0 };
+
+  const filters: SQL[] = [];
+  const search = input.search?.trim();
+  if (search) {
+    const searchFilter = or(
+      like(users.name, `%${search}%`),
+      like(users.email, `%${search}%`),
+    );
+    if (searchFilter) filters.push(searchFilter);
+  }
+  if (input.status === "banned") {
+    filters.push(activeCommunityBanSql);
+  } else if (input.status === "allowed") {
+    filters.push(sql<boolean>`NOT ${activeCommunityBanSql}`);
+  }
+
+  const whereClause = filters.length > 0 ? and(...filters) : undefined;
+  const limit = Math.min(Math.max(input.limit ?? 25, 1), 100);
+  const offset = Math.max(input.offset ?? 0, 0);
+  const accessState = sql<"allowed" | "banned">`
+    CASE WHEN ${activeCommunityBanSql} THEN 'banned' ELSE 'allowed' END
+  `;
+
+  const items = await db.select({
+    userId: users.id,
+    name: users.name,
+    email: users.email,
+    isStaff: users.isStaff,
+    access: accessState,
+    reason: studentCommunityAccessControls.reason,
+    bannedAt: studentCommunityAccessControls.bannedAt,
+    expiresAt: studentCommunityAccessControls.expiresAt,
+    updatedAt: studentCommunityAccessControls.updatedAt,
+  }).from(users)
+    .leftJoin(
+      studentCommunityAccessControls,
+      eq(studentCommunityAccessControls.userId, users.id),
+    )
+    .where(whereClause)
+    .orderBy(desc(activeCommunityBanSql), asc(users.name), asc(users.email))
+    .limit(limit)
+    .offset(offset);
+
+  const [countRow] = await db.select({
+    total: sql<number>`COUNT(*)`,
+  }).from(users)
+    .leftJoin(
+      studentCommunityAccessControls,
+      eq(studentCommunityAccessControls.userId, users.id),
+    )
+    .where(whereClause);
+
+  return {
+    items: items.map(item => ({
+      ...item,
+      reason: item.access === "banned" ? item.reason : null,
+      bannedAt: item.access === "banned" ? item.bannedAt : null,
+      expiresAt: item.access === "banned" ? item.expiresAt : null,
+    })),
+    total: Number(countRow?.total ?? 0),
+  };
+}
+
+export async function banStudentCommunityMember(input: {
+  userId: number;
+  actorUserId: number;
+  reason: string;
+  expiresAt?: string | null;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [user] = await db.select({ id: users.id }).from(users)
+    .where(eq(users.id, input.userId))
+    .limit(1);
+  if (!user) return null;
+
+  const now = new Date().toISOString();
+  await db.insert(studentCommunityAccessControls).values({
+    userId: input.userId,
+    status: "banned",
+    reason: input.reason,
+    bannedByUserId: input.actorUserId,
+    bannedAt: now,
+    expiresAt: input.expiresAt ?? null,
+    restoredByUserId: null,
+    restoredAt: null,
+    updatedAt: now,
+  }).onConflictDoUpdate({
+    target: studentCommunityAccessControls.userId,
+    set: {
+      status: "banned",
+      reason: input.reason,
+      bannedByUserId: input.actorUserId,
+      bannedAt: now,
+      expiresAt: input.expiresAt ?? null,
+      restoredByUserId: null,
+      restoredAt: null,
+      updatedAt: now,
+    },
+  });
+
+  const [audit] = await db.insert(studentCommunityAccessAuditLogs).values({
+    userId: input.userId,
+    actorUserId: input.actorUserId,
+    action: "ban",
+    reason: input.reason,
+    expiresAt: input.expiresAt ?? null,
+    createdAt: now,
+  }).returning({ id: studentCommunityAccessAuditLogs.id });
+
+  return {
+    ...await getStudentCommunityAccess(input.userId),
+    notificationDedupeKey: `community_access:ban:${audit.id}`,
+  };
+}
+
+export async function restoreStudentCommunityMember(input: {
+  userId: number;
+  actorUserId: number;
+  note?: string | null;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [user] = await db.select({ id: users.id }).from(users)
+    .where(eq(users.id, input.userId))
+    .limit(1);
+  if (!user) return null;
+
+  const now = new Date().toISOString();
+  await db.insert(studentCommunityAccessControls).values({
+    userId: input.userId,
+    status: "allowed",
+    reason: null,
+    bannedByUserId: null,
+    bannedAt: null,
+    expiresAt: null,
+    restoredByUserId: input.actorUserId,
+    restoredAt: now,
+    updatedAt: now,
+  }).onConflictDoUpdate({
+    target: studentCommunityAccessControls.userId,
+    set: {
+      status: "allowed",
+      reason: null,
+      bannedByUserId: null,
+      bannedAt: null,
+      expiresAt: null,
+      restoredByUserId: input.actorUserId,
+      restoredAt: now,
+      updatedAt: now,
+    },
+  });
+
+  const [audit] = await db.insert(studentCommunityAccessAuditLogs).values({
+    userId: input.userId,
+    actorUserId: input.actorUserId,
+    action: "restore",
+    reason: input.note ?? null,
+    expiresAt: null,
+    createdAt: now,
+  }).returning({ id: studentCommunityAccessAuditLogs.id });
+
+  return {
+    ...await getStudentCommunityAccess(input.userId),
+    notificationDedupeKey: `community_access:restore:${audit.id}`,
+  };
+}
+
+export async function listStudentCommunityAccessAuditLogs(input: {
+  userId: number;
+  limit?: number;
+}) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(studentCommunityAccessAuditLogs)
+    .where(eq(studentCommunityAccessAuditLogs.userId, input.userId))
+    .orderBy(
+      desc(studentCommunityAccessAuditLogs.createdAt),
+      desc(studentCommunityAccessAuditLogs.id),
+    )
+    .limit(Math.min(Math.max(input.limit ?? 50, 1), 200));
+}
+
 async function logStudentCommunityAudit(input: {
   entityType: "post" | "comment" | "report";
   entityId: number;
@@ -15314,6 +15746,100 @@ export async function listStudentCommunityReportsForAdmin(input: {
     .limit(Math.min(Math.max(input.limit ?? 100, 1), 200));
 }
 
+export async function getStudentCommunityContentNotificationContext(input: {
+  targetType: StudentCommunityTargetType;
+  targetId: number;
+}) {
+  const db = await getDb();
+  if (!db) return null;
+  if (input.targetType === "post") {
+    const [row] = await db.select({
+      targetType: sql<"post">`'post'`,
+      targetId: studentCommunityPosts.id,
+      postId: studentCommunityPosts.id,
+      userId: studentCommunityPosts.userId,
+      userName: users.name,
+      userEmail: users.email,
+      status: studentCommunityPosts.status,
+      updatedAt: studentCommunityPosts.updatedAt,
+    }).from(studentCommunityPosts)
+      .innerJoin(users, eq(studentCommunityPosts.userId, users.id))
+      .where(eq(studentCommunityPosts.id, input.targetId))
+      .limit(1);
+    return row ?? null;
+  }
+
+  const [row] = await db.select({
+    targetType: sql<"comment">`'comment'`,
+    targetId: studentCommunityComments.id,
+    postId: studentCommunityComments.postId,
+    userId: studentCommunityComments.userId,
+    userName: users.name,
+    userEmail: users.email,
+    status: studentCommunityComments.status,
+    updatedAt: studentCommunityComments.updatedAt,
+  }).from(studentCommunityComments)
+    .innerJoin(users, eq(studentCommunityComments.userId, users.id))
+    .where(eq(studentCommunityComments.id, input.targetId))
+    .limit(1);
+  return row ?? null;
+}
+
+export async function listOpenStudentCommunityReportNotificationContexts(input: {
+  targetType: StudentCommunityTargetType;
+  targetId: number;
+}) {
+  const db = await getDb();
+  if (!db) return [];
+  const reports = await db.select({
+    reportId: studentCommunityReports.id,
+    reporterUserId: studentCommunityReports.reporterUserId,
+    reporterName: users.name,
+    reporterEmail: users.email,
+    targetType: studentCommunityReports.targetType,
+    targetId: studentCommunityReports.targetId,
+  }).from(studentCommunityReports)
+    .innerJoin(users, eq(studentCommunityReports.reporterUserId, users.id))
+    .where(and(
+      eq(studentCommunityReports.targetType, input.targetType),
+      eq(studentCommunityReports.targetId, input.targetId),
+      eq(studentCommunityReports.status, "open"),
+    ));
+
+  if (input.targetType === "post") {
+    return reports.map(report => ({ ...report, postId: input.targetId }));
+  }
+  const [comment] = await db.select({ postId: studentCommunityComments.postId })
+    .from(studentCommunityComments)
+    .where(eq(studentCommunityComments.id, input.targetId))
+    .limit(1);
+  return reports.map(report => ({ ...report, postId: comment?.postId ?? null }));
+}
+
+export async function getStudentCommunityReportNotificationContext(reportId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const [report] = await db.select({
+    reportId: studentCommunityReports.id,
+    reporterUserId: studentCommunityReports.reporterUserId,
+    reporterName: users.name,
+    reporterEmail: users.email,
+    targetType: studentCommunityReports.targetType,
+    targetId: studentCommunityReports.targetId,
+    status: studentCommunityReports.status,
+  }).from(studentCommunityReports)
+    .innerJoin(users, eq(studentCommunityReports.reporterUserId, users.id))
+    .where(eq(studentCommunityReports.id, reportId))
+    .limit(1);
+  if (!report) return null;
+  if (report.targetType === "post") return { ...report, postId: report.targetId };
+  const [comment] = await db.select({ postId: studentCommunityComments.postId })
+    .from(studentCommunityComments)
+    .where(eq(studentCommunityComments.id, report.targetId))
+    .limit(1);
+  return { ...report, postId: comment?.postId ?? null };
+}
+
 export async function moderateStudentCommunityContent(input: {
   targetType: StudentCommunityTargetType;
   targetId: number;
@@ -15335,6 +15861,7 @@ export async function moderateStudentCommunityContent(input: {
     : input.action === "delete"
       ? "deleted"
       : "hidden";
+  if (fromStatus === toStatus) return current;
   const now = new Date().toISOString();
   const [updated] = await db.update(table)
     .set({ status: toStatus, updatedAt: now })
@@ -18376,15 +18903,11 @@ export async function notifyStaffByEvent(
 
   const actionUrl = data.actionUrl || eventConfig.actionUrl;
   const metadataStr = data.metadata ? JSON.stringify(data.metadata) : undefined;
-  const emailThrottleMinutes = 5;
   let shouldSendEmail = true;
   let suppressDuplicateNotification = false;
 
-  const throttleMinutes = eventType === 'new_support_message'
-    ? emailThrottleMinutes
-    : eventType === 'timed_service_activation_failure' || eventType === 'email_delivery_anomaly'
-      ? 60
-      : 0;
+  const throttleMinutes =
+    STAFF_NOTIFICATION_EMAIL_THROTTLE_MINUTES[eventType] ?? 0;
   if (throttleMinutes > 0 && actionUrl) {
     const cutoffIso = new Date(Date.now() - throttleMinutes * 60 * 1000).toISOString();
     const [recentNotification] = await db.select({ id: staffNotifications.id })
@@ -18396,7 +18919,11 @@ export async function notifyStaffByEvent(
       ))
       .limit(1);
     shouldSendEmail = !recentNotification;
-    suppressDuplicateNotification = eventType !== 'new_support_message' && !!recentNotification;
+    suppressDuplicateNotification =
+      (eventType === 'timed_service_activation_failure' ||
+        eventType === 'email_delivery_anomaly' ||
+        eventType === 'community_moderation_failure') &&
+      !!recentNotification;
   }
   if (suppressDuplicateNotification) return;
 

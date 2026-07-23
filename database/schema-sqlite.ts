@@ -1789,6 +1789,68 @@ export const studentCommunityAuditLogs = sqliteTable("student_community_audit_lo
 export type StudentCommunityAuditLog = typeof studentCommunityAuditLogs.$inferSelect;
 export type InsertStudentCommunityAuditLog = typeof studentCommunityAuditLogs.$inferInsert;
 
+export const studentCommunityAccessControls = sqliteTable("student_community_access_controls", {
+  userId: integer("user_id").primaryKey(),
+  status: text("status", { length: 20 }).default("banned").notNull(),
+  reason: text("reason"),
+  bannedByUserId: integer("banned_by_user_id"),
+  bannedAt: text("banned_at"),
+  expiresAt: text("expires_at"),
+  restoredByUserId: integer("restored_by_user_id"),
+  restoredAt: text("restored_at"),
+  updatedAt: text("updated_at").default("CURRENT_TIMESTAMP").notNull(),
+});
+
+export type StudentCommunityAccessControl = typeof studentCommunityAccessControls.$inferSelect;
+export type InsertStudentCommunityAccessControl = typeof studentCommunityAccessControls.$inferInsert;
+
+export const studentCommunityAccessAuditLogs = sqliteTable("student_community_access_audit_logs", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull(),
+  actorUserId: integer("actor_user_id").notNull(),
+  action: text("action", { length: 20 }).notNull(),
+  reason: text("reason"),
+  expiresAt: text("expires_at"),
+  createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
+});
+
+export type StudentCommunityAccessAuditLog = typeof studentCommunityAccessAuditLogs.$inferSelect;
+export type InsertStudentCommunityAccessAuditLog = typeof studentCommunityAccessAuditLogs.$inferInsert;
+
+export const studentCommunityPolicyTerms = sqliteTable("student_community_policy_terms", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  term: text("term").notNull(),
+  normalizedTerm: text("normalized_term").notNull().unique(),
+  category: text("category", { length: 30 }).default("competitor").notNull(),
+  isActive: integer("is_active", { mode: "boolean" }).default(true).notNull(),
+  createdByUserId: integer("created_by_user_id").notNull(),
+  createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
+  updatedAt: text("updated_at").default("CURRENT_TIMESTAMP").notNull(),
+});
+
+export type StudentCommunityPolicyTerm = typeof studentCommunityPolicyTerms.$inferSelect;
+export type InsertStudentCommunityPolicyTerm = typeof studentCommunityPolicyTerms.$inferInsert;
+
+export const studentCommunityModerationDecisions = sqliteTable("student_community_moderation_decisions", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull(),
+  contentType: text("content_type", { length: 20 }).notNull(),
+  entityId: integer("entity_id"),
+  outcome: text("outcome", { length: 30 }).notNull(),
+  reasonCode: text("reason_code", { length: 40 }).notNull(),
+  model: text("model"),
+  requestId: text("request_id"),
+  flaggedCategories: text("flagged_categories"),
+  categoryScores: text("category_scores"),
+  matchedPolicyTermId: integer("matched_policy_term_id"),
+  contentHash: text("content_hash").notNull(),
+  durationMs: integer("duration_ms"),
+  createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
+});
+
+export type StudentCommunityModerationDecision = typeof studentCommunityModerationDecisions.$inferSelect;
+export type InsertStudentCommunityModerationDecision = typeof studentCommunityModerationDecisions.$inferInsert;
+
 // ============================================================================
 // Engagement Events (Phase 4)
 // ============================================================================

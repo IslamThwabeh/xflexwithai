@@ -79,6 +79,9 @@ const trpcClient = trpc.createClient({
     httpBatchLink({
       url: resolveTrpcUrl(),
       transformer: superjson,
+      headers: {
+        "x-xflex-request": "web",
+      },
       fetch(input, init) {
         return globalThis.fetch(input, {
           ...(init ?? {}),

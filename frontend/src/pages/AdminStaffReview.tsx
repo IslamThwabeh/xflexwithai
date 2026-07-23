@@ -59,6 +59,7 @@ const ROLE_LABELS: Record<string, { en: string; ar: string; color: string; group
   loyalty_rewards_manager: { en: "Loyalty Rewards Manager", ar: "مدير نقاط الولاء", color: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300", group: "feature" },
   student_community_moderator: { en: "Community Moderator", ar: "مشرف المجتمع", color: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300", group: "feature" },
   student_job_eligibility_manager: { en: "Job Eligibility Manager", ar: "مدير أهلية الوظائف", color: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300", group: "feature" },
+  email_logs_viewer: { en: "Email Logs Viewer", ar: "عرض سجلات البريد", color: "bg-slate-100 text-slate-800 dark:bg-slate-900/30 dark:text-slate-300", group: "perm" },
 };
 
 // ── Full sidebar definition (mirrors DashboardLayout) ─────────────────
@@ -135,6 +136,7 @@ const FULL_SIDEBAR: SidebarSection[] = [
       { icon: Star, labelEn: "Reviews", labelAr: "التقييمات", path: "/admin/reviews" },
       { icon: Star, labelEn: "Community", labelAr: "المجتمع", path: "/admin/community" },
       { icon: Bell, labelEn: "Notifications", labelAr: "الإشعارات", path: "/admin/notifications" },
+      { icon: Bell, labelEn: "Email Delivery Logs", labelAr: "سجلات تسليم البريد", path: "/admin/email-logs" },
       { icon: Award, labelEn: "Loyalty Points", labelAr: "نقاط الولاء", path: "/admin/points" },
     ],
   },
@@ -169,6 +171,8 @@ const ENDPOINT_ACCESS: EndpointDef[] = [
   { endpoint: "points.*",                descEn: "Manage loyalty points/rewards", descAr: "إدارة نقاط الولاء والمكافآت", requiredRoles: ["loyalty_rewards_manager"] },
   { endpoint: "community.moderation.*",  descEn: "Moderate student community",    descAr: "الإشراف على مجتمع الطلاب",    requiredRoles: ["student_community_moderator"] },
   { endpoint: "studentJobEligibility.*", descEn: "Manage job eligibility",        descAr: "إدارة أهلية الطلاب للوظائف", requiredRoles: ["student_job_eligibility_manager"] },
+  { endpoint: "adminEmail.deliveryLogs", descEn: "View email delivery logs", descAr: "عرض سجلات تسليم البريد", requiredRoles: ["email_logs_viewer"] },
+  { endpoint: "adminEmail.deliveryLogSummary", descEn: "View email delivery summary", descAr: "عرض ملخص تسليم البريد", requiredRoles: ["email_logs_viewer"] },
   { endpoint: "dashboard.stats",          descEn: "Dashboard statistics",        descAr: "إحصائيات لوحة التحكم",       requiredRoles: "admin-only" },
   { endpoint: "courses.*",                descEn: "Manage courses",              descAr: "إدارة الدورات",              requiredRoles: "admin-only" },
   { endpoint: "episodes.*",               descEn: "Manage episodes",             descAr: "إدارة الحلقات",              requiredRoles: "admin-only" },

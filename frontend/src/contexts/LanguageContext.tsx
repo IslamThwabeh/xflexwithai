@@ -643,6 +643,7 @@ const translations = {
     'admin.roles.loyaltyRewardsManager': 'Loyalty Rewards Manager',
     'admin.roles.communityModerator': 'Community Moderator',
     'admin.roles.jobEligibilityManager': 'Job Eligibility Manager',
+    'admin.roles.emailLogsViewer': 'View Email Delivery Logs',
 
     // Admin Quiz
     'admin.quiz.dashboard': 'Quiz Management Dashboard',
@@ -1760,6 +1761,7 @@ const translations = {
     'admin.roles.loyaltyRewardsManager': 'مدير نقاط الولاء والمكافآت',
     'admin.roles.communityModerator': 'مشرف المجتمع',
     'admin.roles.jobEligibilityManager': 'مدير أهلية الطلاب للوظائف',
+    'admin.roles.emailLogsViewer': 'عرض سجلات تسليم البريد',
 
     // Admin Quiz
     'admin.quiz.dashboard': 'لوحة إدارة الاختبارات',

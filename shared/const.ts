@@ -41,6 +41,7 @@ export const ROLE_PAGE_ACCESS: Record<string, string[]> = {
   loyalty_rewards_manager: ["/admin/points", "/admin/notifications"],
   student_community_moderator: ["/admin/community", "/admin/notifications"],
   student_job_eligibility_manager: ["/admin/job-eligibility", "/admin/notifications"],
+  email_logs_viewer: ["/admin/email-logs"],
 };
 
 // All available staff roles
@@ -50,6 +51,7 @@ export const ALL_STAFF_ROLES = [
   "staff_performance_employee", "staff_performance_manager",
   "student_surveys_manager", "loyalty_rewards_manager", "student_community_moderator",
   "student_job_eligibility_manager",
+  "email_logs_viewer",
 ] as const;
 export type StaffRole = typeof ALL_STAFF_ROLES[number];
 
@@ -115,7 +117,13 @@ export const STAFF_NOTIFICATION_EVENTS = {
   recommendation_published: { labelEn: "Recommendation Published", labelAr: "تم نشر توصية", roles: [], actionUrl: "/admin/recommendations" },
   student_survey_submitted: { labelEn: "Student Survey Submitted", labelAr: "تم إرسال استبيان طالب", roles: ["student_surveys_manager"], actionUrl: "/admin/student-surveys" },
   loyalty_reward_requested: { labelEn: "Reward Requested", labelAr: "تم طلب مكافأة", roles: ["loyalty_rewards_manager"], actionUrl: "/admin/points" },
+  community_post_created: { labelEn: "New Community Post", labelAr: "منشور مجتمعي جديد", roles: ["student_community_moderator"], actionUrl: "/admin/community" },
+  community_comment_created: { labelEn: "New Community Comment", labelAr: "تعليق مجتمعي جديد", roles: ["student_community_moderator"], actionUrl: "/admin/community" },
   community_content_reported: { labelEn: "Community Report Submitted", labelAr: "تم إرسال بلاغ مجتمعي", roles: ["student_community_moderator"], actionUrl: "/admin/community" },
+  community_content_blocked: { labelEn: "Community Content Blocked", labelAr: "تم منع محتوى مجتمعي", roles: ["student_community_moderator"], actionUrl: "/admin/community" },
+  community_high_risk_violation: { labelEn: "High-Risk Community Violation", labelAr: "مخالفة مجتمعية عالية الخطورة", roles: ["student_community_moderator"], actionUrl: "/admin/community" },
+  community_repeat_violation: { labelEn: "Repeated Community Violations", labelAr: "مخالفات مجتمعية متكررة", roles: ["student_community_moderator"], actionUrl: "/admin/community" },
+  community_moderation_failure: { labelEn: "Community Moderation Unavailable", labelAr: "تعذر فحص سلامة المجتمع", roles: ["student_community_moderator"], actionUrl: "/admin/community" },
   job_eligibility_review_requested: { labelEn: "Job Eligibility Review Requested", labelAr: "تم طلب مراجعة أهلية وظيفية", roles: ["student_job_eligibility_manager"], actionUrl: "/admin/job-eligibility" },
   staff_performance_submitted: { labelEn: "Daily Work Submitted", labelAr: "تم إرسال العمل اليومي", roles: ["staff_performance_manager"], actionUrl: "/admin/staff-performance" },
 } as const;

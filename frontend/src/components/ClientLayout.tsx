@@ -77,7 +77,9 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
   const updateNotificationPrefsMutation = trpc.users.updateNotificationPrefs.useMutation();
   const unreadNotifCount = unreadNotifData?.count ?? 0;
   const showStudentSurveysNav = surveyAvailability?.enabled === true && surveyAvailability.access === "student";
-  const showCommunityNav = communityAvailability?.enabled === true;
+  const showCommunityNav =
+    communityAvailability?.enabled === true
+    && communityAvailability.access === "allowed";
   const showJobEligibilityNav = jobEligibilityAvailability?.enabled === true;
 
   useEffect(() => {

@@ -65,6 +65,7 @@ export default function AdminDashboard() {
       labelAr: "طلبات بانتظار المراجعة",
       count: stats?.pendingOrders ?? 0,
       enabled: true,
+      disabledPath: "/admin/orders",
       icon: ShoppingCart,
       iconClass: "bg-amber-100 text-amber-700",
       notificationBacked: false,
@@ -75,6 +76,7 @@ export default function AdminDashboard() {
       labelAr: "تسليمات العمل اليومي للموظفين",
       count: taskCounts?.["/admin/staff-performance"] ?? 0,
       enabled: performanceAvailability?.enabled === true,
+      disabledPath: "/admin/settings",
       icon: ClipboardCheck,
       iconClass: "bg-violet-100 text-violet-700",
       notificationBacked: true,
@@ -85,6 +87,7 @@ export default function AdminDashboard() {
       labelAr: "ردود استبيانات الطلاب",
       count: taskCounts?.["/admin/student-surveys"] ?? 0,
       enabled: surveyAvailability?.enabled === true,
+      disabledPath: "/admin/settings",
       icon: ListTodo,
       iconClass: "bg-indigo-100 text-indigo-700",
       notificationBacked: true,
@@ -95,6 +98,7 @@ export default function AdminDashboard() {
       labelAr: "بلاغات الإشراف على المجتمع",
       count: taskCounts?.["/admin/community"] ?? 0,
       enabled: communityAvailability?.enabled === true,
+      disabledPath: "/admin/community",
       icon: MessageSquare,
       iconClass: "bg-purple-100 text-purple-700",
       notificationBacked: true,
@@ -105,6 +109,7 @@ export default function AdminDashboard() {
       labelAr: "طلبات مكافآت الولاء",
       count: taskCounts?.["/admin/points"] ?? 0,
       enabled: rewardsAvailability?.enabled === true,
+      disabledPath: "/admin/settings",
       icon: Award,
       iconClass: "bg-yellow-100 text-yellow-700",
       notificationBacked: true,
@@ -115,6 +120,7 @@ export default function AdminDashboard() {
       labelAr: "مراجعات الأهلية للوظائف",
       count: taskCounts?.["/admin/job-eligibility"] ?? 0,
       enabled: jobEligibilityAvailability?.enabled === true,
+      disabledPath: "/admin/settings",
       icon: Briefcase,
       iconClass: "bg-blue-100 text-blue-700",
       notificationBacked: true,
@@ -122,7 +128,10 @@ export default function AdminDashboard() {
   ];
 
   const openAdminTask = (task: typeof adminTasks[number]) => {
-    if (!task.enabled) return;
+    if (!task.enabled) {
+      setLocation(task.disabledPath);
+      return;
+    }
     if (task.notificationBacked && task.count > 0) {
       markTaskRouteRead.mutate({ actionUrl: task.path });
     }
@@ -187,11 +196,10 @@ export default function AdminDashboard() {
                     key={task.path}
                     type="button"
                     onClick={() => openAdminTask(task)}
-                    disabled={!task.enabled}
                     className={`flex items-center gap-3 rounded-xl border p-4 text-start transition-all ${
                       task.enabled
                         ? "bg-white hover:border-emerald-300 hover:shadow-sm cursor-pointer"
-                        : "bg-muted/40 opacity-65 cursor-not-allowed"
+                        : "bg-amber-50/60 hover:border-amber-300 hover:shadow-sm cursor-pointer"
                     }`}
                   >
                     <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${task.iconClass}`}>
@@ -203,7 +211,9 @@ export default function AdminDashboard() {
                       </span>
                       <span className="mt-1 block text-xs text-muted-foreground">
                         {!task.enabled
-                          ? (isRtl ? "الميزة غير مفعلة" : "Feature disabled")
+                          ? task.disabledPath === task.path
+                            ? (isRtl ? "غير مفعلة — افتح صفحة الإعداد" : "Disabled — open setup page")
+                            : (isRtl ? "غير مفعلة — اضغط لإدارة التفعيل" : "Disabled — open feature settings")
                           : isLoading
                             ? (isRtl ? "جارٍ التحميل..." : "Loading...")
                             : task.count > 0

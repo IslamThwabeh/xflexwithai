@@ -4,6 +4,7 @@ import {
   COOKIE_NAME,
   LEXAI_SUPPORT_CASE_PRIORITIES,
   LEXAI_SUPPORT_CASE_STATUSES,
+  type StaffNotificationEventType,
 } from "../shared/const";
 import {
   FREE_LIBRARY_DOCUMENTS,
@@ -49,12 +50,20 @@ import { generateFreeVideoPlaybackToken } from "./_core/freeLibraryPlayback";
 import { sendAdminNotificationEmail, sendEmail, sendLoginCodeEmail } from "./_core/email";
 import { buildRecommendationAlertEmail, buildRecommendationMessageEmail } from "./_core/recommendationEmails";
 import { buildSupportReplyEmail } from "./_core/supportEmails";
+import {
+  buildStudentCommunityClientEmail,
+  type StudentCommunityClientEmailKind,
+} from "./_core/communityEmails";
 import { buildAnnouncementEmail, sendOrderConfirmationEmail, sendPaymentReceivedEmail, sendAdminNewOrderNotification, sendStaffWelcomeEmail, sendJobInterviewInviteEmail } from "./_core/orderEmails";
 import { ENV } from "./_core/env";
 import { generateNumericCode, generateSaltBase64, normalizeEmail, sha256Base64 } from "./_core/otp";
 import { verifyUnsubscribeToken } from "./_core/emailPreferences";
 import { getCourseQuizLevelForEpisodeOrder, isCourseQuizLevelEnd } from "./courseQuizLevels";
 import { getOrderDisplayTotalIls } from "../shared/orderPricing";
+import {
+  ADMIN_FEATURE_FLAG_KEYS,
+  getAdminFeatureFlagUpdates,
+} from "../shared/featureFlags";
 import {
   STAFF_PERFORMANCE_FEATURE_FLAG,
   STAFF_PERFORMANCE_STATUSES,
@@ -94,6 +103,14 @@ import {
   isStudentCommunityEnabled,
 } from "./services/student-community.service";
 import {
+  STUDENT_COMMUNITY_MODERATION_MODEL,
+  hashStudentCommunityContent,
+  isHighRiskCommunityModerationDecision,
+  moderateStudentCommunitySubmission,
+  normalizeCommunityPolicyText,
+  type StudentCommunityModerationDecision,
+} from "./services/student-community-moderation.service";
+import {
   STUDENT_JOB_ELIGIBILITY_FEATURE_FLAG,
   STUDENT_JOB_ELIGIBILITY_REVIEW_STATUSES,
   isStudentJobEligibilityEnabled,
@@ -127,6 +144,7 @@ const ASSIGNABLE_STAFF_ROLES = [
   'loyalty_rewards_manager',
   'student_community_moderator',
   'student_job_eligibility_manager',
+  'email_logs_viewer',
 ] as const;
 const staffPerformanceStatusSchema = z.enum(STAFF_PERFORMANCE_STATUSES);
 const performanceMonthSchema = z.string().refine(isValidPerformanceMonth, "Month must use YYYY-MM");
@@ -148,6 +166,19 @@ const communityReportStatusSchema = z.enum(STUDENT_COMMUNITY_REPORT_STATUSES);
 const communityTargetTypeSchema = z.enum(["post", "comment"]);
 const shortCommunityText = z.string().trim().min(1).max(300);
 const longCommunityText = z.string().trim().min(1).max(5000);
+const communityAccessStatusSchema = z.enum(["all", "allowed", "banned"]);
+const communityBanReasonSchema = z.string().trim().min(3).max(500);
+const communityBanExpirySchema = z.string().datetime({ offset: true }).refine(
+  value => Date.parse(value) > Date.now(),
+  "Community ban expiry must be in the future",
+);
+const communityModerationOutcomeSchema = z.enum([
+  "all",
+  "allowed",
+  "blocked_policy",
+  "blocked_openai",
+  "error",
+]);
 const studentJobReviewStatusSchema = z.enum(STUDENT_JOB_ELIGIBILITY_REVIEW_STATUSES);
 const studentJobDecisionStatusSchema = z.enum(["returned", "eligible", "ineligible"]);
 const shortStudentJobText = z.string().trim().max(300);
@@ -177,6 +208,298 @@ async function requireStudentCommunityEnabled() {
   if (!isStudentCommunityEnabled(flag)) {
     throw new TRPCError({ code: "FORBIDDEN", message: "Student community is disabled" });
   }
+}
+
+async function requireStudentCommunityMemberAccess(userId: number) {
+  await requireStudentCommunityEnabled();
+  const access = await db.getStudentCommunityAccess(userId);
+  if (access.access === "not_eligible") {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "This account is not eligible for the student community",
+    });
+  }
+  if (access.access === "banned") {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Student community access is suspended",
+    });
+  }
+}
+
+function requireCommunityMutationRequest(req: {
+  headers: Headers | Record<string, string | string[] | undefined>;
+}) {
+  const value = req.headers instanceof Headers
+    ? req.headers.get("x-xflex-request")
+    : req.headers["x-xflex-request"];
+  const normalized = Array.isArray(value) ? value[0] : value;
+  if (normalized !== "web") {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Trusted community request header is required",
+    });
+  }
+}
+
+const COMMUNITY_REPEAT_VIOLATION_THRESHOLD = 3;
+const COMMUNITY_REPEAT_VIOLATION_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+async function notifyCommunityStaff(
+  eventType: StaffNotificationEventType,
+  data: {
+    titleEn: string;
+    titleAr: string;
+    contentEn?: string;
+    contentAr?: string;
+    actionUrl?: string;
+    metadata?: Record<string, unknown>;
+  },
+) {
+  try {
+    await db.notifyStaffByEvent(eventType, data);
+  } catch (error) {
+    logger.error("[COMMUNITY] Failed to dispatch staff notification", {
+      eventType,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+async function notifyCommunityClient(input: {
+  dedupeKey: string;
+  eventType: string;
+  recipient: {
+    userId: number;
+    email: string;
+    name?: string | null;
+  };
+  kind: StudentCommunityClientEmailKind;
+  contentType?: "post" | "comment";
+  postId?: number | null;
+  reason?: string | null;
+  expiresAt?: string | null;
+  notificationType?: "info" | "success" | "warning" | "action";
+  metadata?: Record<string, unknown>;
+}) {
+  const email = buildStudentCommunityClientEmail({
+    kind: input.kind,
+    clientName: input.recipient.name,
+    contentType: input.contentType,
+    postId: input.postId,
+    reason: input.reason,
+    expiresAt: input.expiresAt,
+  });
+
+  try {
+    await db.createNotification({
+      userId: input.recipient.userId,
+      type: input.notificationType ?? "info",
+      titleAr: email.headingAr,
+      titleEn: email.headingEn,
+      contentAr: email.bodyAr,
+      contentEn: email.bodyEn,
+      actionUrl: email.actionUrl,
+    });
+  } catch (error) {
+    logger.error("[COMMUNITY] Failed to create client in-app notification", {
+      eventType: input.eventType,
+      userId: input.recipient.userId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  try {
+    await db.enqueueEmailOutbox({
+      dedupeKey: input.dedupeKey,
+      recipientUserId: input.recipient.userId,
+      recipientEmail: input.recipient.email,
+      eventType: input.eventType,
+      templateId: input.eventType,
+      emailCategory: "transactional",
+      subject: email.subject,
+      bodyText: email.text,
+      bodyHtml: email.html,
+      metadata: input.metadata,
+    });
+  } catch (error) {
+    logger.error("[COMMUNITY] Failed to queue client email", {
+      eventType: input.eventType,
+      userId: input.recipient.userId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+async function getRecentCommunityViolationCount(userId: number) {
+  try {
+    return await db.countRecentStudentCommunityBlockedDecisions({
+      userId,
+      sinceIso: new Date(
+        Date.now() - COMMUNITY_REPEAT_VIOLATION_WINDOW_MS,
+      ).toISOString(),
+    });
+  } catch (error) {
+    logger.error("[COMMUNITY] Failed to count recent moderation violations", {
+      userId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return 0;
+  }
+}
+
+async function notifyRejectedCommunitySubmission(input: {
+  userId: number;
+  contentType: "post" | "comment";
+  decisionId: number;
+  decision: StudentCommunityModerationDecision;
+}) {
+  const actionUrl = `/admin/community?tab=safety&userId=${input.userId}`;
+
+  if (input.decision.outcome === "error") {
+    await notifyCommunityStaff("community_moderation_failure", {
+      titleEn: "Community safety check unavailable",
+      titleAr: "تعذر فحص سلامة محتوى المجتمع",
+      contentEn: `A ${input.contentType} was not published because the safety service was unavailable. No submitted text is included in this email.`,
+      contentAr: `لم يتم نشر ${input.contentType === "post" ? "منشور" : "تعليق"} بسبب تعذر خدمة فحص السلامة. لا يتضمن هذا البريد النص المرسل.`,
+      actionUrl: "/admin/community?tab=safety",
+      metadata: {
+        userId: input.userId,
+        contentType: input.contentType,
+        decisionId: input.decisionId,
+        reasonCode: input.decision.reasonCode,
+      },
+    });
+    return;
+  }
+
+  if (
+    input.decision.outcome !== "blocked_policy" &&
+    input.decision.outcome !== "blocked_openai"
+  ) {
+    return;
+  }
+
+  const recentViolationCount = await getRecentCommunityViolationCount(
+    input.userId,
+  );
+  const highRisk =
+    input.decision.outcome === "blocked_openai" &&
+    isHighRiskCommunityModerationDecision(input.decision);
+  const repeated =
+    recentViolationCount >= COMMUNITY_REPEAT_VIOLATION_THRESHOLD;
+  const eventType: StaffNotificationEventType = highRisk
+    ? "community_high_risk_violation"
+    : repeated
+      ? "community_repeat_violation"
+      : "community_content_blocked";
+  const categorySummary = input.decision.flaggedCategories.length > 0
+    ? input.decision.flaggedCategories.join(", ")
+    : input.decision.reasonCode;
+
+  await notifyCommunityStaff(eventType, {
+    titleEn: highRisk
+      ? `High-risk community submission blocked for Student #${input.userId}`
+      : repeated
+        ? `Repeated community violations by Student #${input.userId}`
+        : `Community submission blocked for Student #${input.userId}`,
+    titleAr: highRisk
+      ? `تم منع محتوى عالي الخطورة للطالب #${input.userId}`
+      : repeated
+        ? `مخالفات مجتمعية متكررة للطالب #${input.userId}`
+        : `تم منع محتوى مجتمعي للطالب #${input.userId}`,
+    contentEn: `A ${input.contentType} was blocked before publication. Classification: ${categorySummary}. Recent blocked attempts: ${recentViolationCount}. The submitted text is not included in this email.`,
+    contentAr: `تم منع ${input.contentType === "post" ? "منشور" : "تعليق"} قبل النشر. التصنيف: ${categorySummary}. عدد المحاولات الممنوعة حديثاً: ${recentViolationCount}. لا يتضمن هذا البريد النص المرسل.`,
+    actionUrl,
+    metadata: {
+      userId: input.userId,
+      contentType: input.contentType,
+      decisionId: input.decisionId,
+      outcome: input.decision.outcome,
+      reasonCode: input.decision.reasonCode,
+      flaggedCategories: input.decision.flaggedCategories,
+      recentViolationCount,
+      highRisk,
+    },
+  });
+}
+
+async function requireStudentCommunityContentApproval(input: {
+  userId: number;
+  contentType: "post" | "comment";
+  content: string;
+}) {
+  const policyTerms = await db.listStudentCommunityPolicyTerms({
+    activeOnly: true,
+  });
+  const moderationPolicyTerms = policyTerms.map(term => ({
+    id: term.id,
+    term: term.term,
+    normalizedTerm: term.normalizedTerm,
+    category: term.category === "prohibited_language"
+      ? "prohibited_language" as const
+      : "competitor" as const,
+  }));
+  const [decision, contentHash] = await Promise.all([
+    moderateStudentCommunitySubmission({
+      userId: input.userId,
+      contentType: input.contentType,
+      content: input.content,
+      policyTerms: moderationPolicyTerms,
+    }),
+    hashStudentCommunityContent(input.content),
+  ]);
+  const decisionRecord = await db.recordStudentCommunityModerationDecision({
+    userId: input.userId,
+    contentType: input.contentType,
+    contentHash,
+    decision,
+  });
+  if (decision.outcome !== "allowed") {
+    await notifyRejectedCommunitySubmission({
+      userId: input.userId,
+      contentType: input.contentType,
+      decisionId: decisionRecord.id,
+      decision,
+    });
+  }
+
+  if (decision.outcome === "blocked_policy") {
+    const isProhibitedLanguage =
+      decision.reasonCode === "prohibited_language";
+    throw new TRPCError({
+      code: "UNPROCESSABLE_CONTENT",
+      message: isProhibitedLanguage
+        ? "يتضمن المحتوى لفظاً أو عبارة غير مسموحة. / This content includes prohibited language."
+        : "لا يمكن نشر محتوى يذكر جهة منافسة. / Competitor references are not allowed.",
+    });
+  }
+  if (decision.outcome === "blocked_openai") {
+    throw new TRPCError({
+      code: "UNPROCESSABLE_CONTENT",
+      message: "تم رفض المحتوى حفاظاً على سلامة المجتمع. / This content was blocked by the community safety check.",
+    });
+  }
+  if (decision.outcome === "error") {
+    throw new TRPCError({
+      code: "SERVICE_UNAVAILABLE",
+      message: "تعذر فحص المحتوى حالياً؛ لم يتم النشر. حاول مجدداً. / Safety check unavailable; nothing was published. Please retry.",
+    });
+  }
+
+  return decisionRecord.id;
+}
+
+function toPublicCommunityAuthor<T extends {
+  authorEmail?: string | null;
+  authorName?: string | null;
+  userId: number;
+}>(value: T) {
+  const { authorEmail: _privateEmail, ...publicValue } = value;
+  return {
+    ...publicValue,
+    authorName: value.authorName?.trim() || `Student #${value.userId}`,
+  };
 }
 
 async function requireStudentJobEligibilityEnabled() {
@@ -8078,27 +8401,35 @@ ${qaText}`;
   // Student Community (Phase 4)
   // ============================================================================
   community: router({
-    availability: protectedProcedure.query(async () => {
+    availability: protectedProcedure.query(async ({ ctx }) => {
       const flag = await db.getAdminSetting(STUDENT_COMMUNITY_FEATURE_FLAG);
-      return { enabled: isStudentCommunityEnabled(flag) };
+      const access = await db.getStudentCommunityAccess(ctx.user.id);
+      return {
+        enabled: isStudentCommunityEnabled(flag),
+        ...access,
+      };
     }),
 
     listPosts: protectedProcedure
       .input(z.object({
         limit: z.number().int().min(1).max(100).default(50),
       }).optional())
-      .query(async ({ input }) => {
-        await requireStudentCommunityEnabled();
-        return db.listStudentCommunityPosts({ limit: input?.limit ?? 50 });
+      .query(async ({ ctx, input }) => {
+        await requireStudentCommunityMemberAccess(ctx.user.id);
+        const posts = await db.listStudentCommunityPosts({ limit: input?.limit ?? 50 });
+        return posts.map(toPublicCommunityAuthor);
       }),
 
     getPost: protectedProcedure
       .input(z.object({ id: z.number().int().positive() }))
-      .query(async ({ input }) => {
-        await requireStudentCommunityEnabled();
+      .query(async ({ ctx, input }) => {
+        await requireStudentCommunityMemberAccess(ctx.user.id);
         const post = await db.getStudentCommunityPost({ id: input.id });
         if (!post) throw new TRPCError({ code: "NOT_FOUND", message: "Community post not found" });
-        return post;
+        return {
+          ...toPublicCommunityAuthor(post),
+          comments: post.comments.map(toPublicCommunityAuthor),
+        };
       }),
 
     createPost: protectedProcedure
@@ -8107,12 +8438,41 @@ ${qaText}`;
         body: longCommunityText,
       }))
       .mutation(async ({ ctx, input }) => {
-        await requireStudentCommunityEnabled();
-        return db.createStudentCommunityPost({
+        requireCommunityMutationRequest(ctx.req);
+        await requireStudentCommunityMemberAccess(ctx.user.id);
+        const moderationDecisionId = await requireStudentCommunityContentApproval({
+          userId: ctx.user.id,
+          contentType: "post",
+          content: `Title:\n${input.title}\n\nBody:\n${input.body}`,
+        });
+        const post = await db.createStudentCommunityPost({
           userId: ctx.user.id,
           title: input.title,
           body: input.body,
         });
+        await db.attachStudentCommunityModerationDecision({
+          decisionId: moderationDecisionId,
+          entityId: post.id,
+        }).catch(error => {
+          logger.error("[COMMUNITY] Failed to link moderation decision to post", {
+            decisionId: moderationDecisionId,
+            postId: post.id,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        });
+        await notifyCommunityStaff("community_post_created", {
+          titleEn: `New community post by Student #${ctx.user.id}`,
+          titleAr: `منشور مجتمعي جديد من الطالب #${ctx.user.id}`,
+          contentEn: `Approved post #${post.id} was published. Open the community moderation page to review it.`,
+          contentAr: `تم نشر المنشور المقبول #${post.id}. افتح صفحة إشراف المجتمع لمراجعته.`,
+          actionUrl: `/admin/community?postId=${post.id}`,
+          metadata: {
+            userId: ctx.user.id,
+            contentType: "post",
+            postId: post.id,
+          },
+        });
+        return post;
       }),
 
     createComment: protectedProcedure
@@ -8121,13 +8481,65 @@ ${qaText}`;
         body: longCommunityText,
       }))
       .mutation(async ({ ctx, input }) => {
-        await requireStudentCommunityEnabled();
+        requireCommunityMutationRequest(ctx.req);
+        await requireStudentCommunityMemberAccess(ctx.user.id);
+        const moderationDecisionId = await requireStudentCommunityContentApproval({
+          userId: ctx.user.id,
+          contentType: "comment",
+          content: input.body,
+        });
         const comment = await db.createStudentCommunityComment({
           postId: input.postId,
           userId: ctx.user.id,
           body: input.body,
         });
         if (!comment) throw new TRPCError({ code: "NOT_FOUND", message: "Community post not found" });
+        await db.attachStudentCommunityModerationDecision({
+          decisionId: moderationDecisionId,
+          entityId: comment.id,
+        }).catch(error => {
+          logger.error("[COMMUNITY] Failed to link moderation decision to comment", {
+            decisionId: moderationDecisionId,
+            commentId: comment.id,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        });
+        await notifyCommunityStaff("community_comment_created", {
+          titleEn: `New community comment by Student #${ctx.user.id}`,
+          titleAr: `تعليق مجتمعي جديد من الطالب #${ctx.user.id}`,
+          contentEn: `Approved comment #${comment.id} was added to post #${input.postId}. Open the community moderation page to review it.`,
+          contentAr: `تمت إضافة التعليق المقبول #${comment.id} إلى المنشور #${input.postId}. افتح صفحة إشراف المجتمع لمراجعته.`,
+          actionUrl: `/admin/community?postId=${input.postId}`,
+          metadata: {
+            userId: ctx.user.id,
+            contentType: "comment",
+            postId: input.postId,
+            commentId: comment.id,
+          },
+        });
+        const post = await db.getStudentCommunityPost({
+          id: input.postId,
+          includeHidden: false,
+        });
+        if (post && post.userId !== ctx.user.id) {
+          await notifyCommunityClient({
+            dedupeKey: `community_reply:${comment.id}:${post.userId}`,
+            eventType: "community_client_reply",
+            recipient: {
+              userId: post.userId,
+              email: post.authorEmail,
+              name: post.authorName,
+            },
+            kind: "reply",
+            postId: input.postId,
+            notificationType: "action",
+            metadata: {
+              postId: input.postId,
+              commentId: comment.id,
+              commenterUserId: ctx.user.id,
+            },
+          });
+        }
         return comment;
       }),
 
@@ -8139,7 +8551,8 @@ ${qaText}`;
         details: z.string().trim().max(2000).nullish(),
       }))
       .mutation(async ({ ctx, input }) => {
-        await requireStudentCommunityEnabled();
+        requireCommunityMutationRequest(ctx.req);
+        await requireStudentCommunityMemberAccess(ctx.user.id);
         const result = await db.reportStudentCommunityContent({
           ...input,
           details: input.details || null,
@@ -8151,18 +8564,203 @@ ${qaText}`;
         if (result.status === "duplicate") {
           throw new TRPCError({ code: "CONFLICT", message: "You already reported this content" });
         }
-        await db.notifyStaffByEvent('community_content_reported', {
-          titleEn: `Community content reported by ${ctx.user.name || ctx.user.email}`,
-          titleAr: `تم الإبلاغ عن محتوى مجتمعي من ${ctx.user.name || ctx.user.email}`,
+        await notifyCommunityStaff('community_content_reported', {
+          titleEn: `Community content reported by Student #${ctx.user.id}`,
+          titleAr: `تم الإبلاغ عن محتوى مجتمعي من الطالب #${ctx.user.id}`,
+          contentEn: `Report #${result.report.id} was submitted for ${input.targetType} #${input.targetId}. Open the moderation page to review it.`,
+          contentAr: `تم إرسال البلاغ #${result.report.id} بشأن ${input.targetType === "post" ? "المنشور" : "التعليق"} #${input.targetId}. افتح صفحة الإشراف لمراجعته.`,
+          actionUrl: `/admin/community?reportId=${result.report.id}`,
           metadata: {
             userId: ctx.user.id,
             targetType: input.targetType,
             targetId: input.targetId,
             reportId: result.report.id,
           },
-        }).catch(() => {});
+        });
         return result.report;
       }),
+
+    adminSafetyConfig: adminOrRoleProcedure(['student_community_moderator'])
+      .query(async () => {
+        const terms = await db.listStudentCommunityPolicyTerms();
+        const activeCompetitorTermCount = terms.filter(
+          term => term.isActive && term.category === "competitor",
+        ).length;
+        const activeProhibitedLanguageTermCount = terms.filter(
+          term => term.isActive && term.category === "prohibited_language",
+        ).length;
+        const openAiConfigured = Boolean(ENV.openaiApiKey);
+        return {
+          model: STUDENT_COMMUNITY_MODERATION_MODEL,
+          openAiConfigured,
+          activeCompetitorTermCount,
+          activeProhibitedLanguageTermCount,
+          readyForLimitedActivation: openAiConfigured
+            && activeCompetitorTermCount > 0
+            && activeProhibitedLanguageTermCount > 0,
+          failureMode: "fail_closed" as const,
+        };
+      }),
+
+    adminPolicyTerms: adminOrRoleProcedure(['student_community_moderator'])
+      .query(() => db.listStudentCommunityPolicyTerms()),
+
+    addPolicyTerm: adminOrRoleProcedure(['student_community_moderator'])
+      .input(z.object({
+        term: z.string().trim().min(2).max(100),
+        category: z.enum(["competitor", "prohibited_language"]),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        requireCommunityMutationRequest(ctx.req);
+        const normalizedTerm = normalizeCommunityPolicyText(input.term);
+        if (normalizedTerm.length < 2) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Policy term must contain at least two letters or numbers",
+          });
+        }
+        const result = await db.addStudentCommunityPolicyTerm({
+          term: input.term,
+          normalizedTerm,
+          category: input.category,
+          actorUserId: ctx.user.id,
+        });
+        if (result.status === "duplicate") {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "This policy term already exists in the selected category",
+          });
+        }
+        return result.term;
+      }),
+
+    setPolicyTermActive: adminOrRoleProcedure(['student_community_moderator'])
+      .input(z.object({
+        id: z.number().int().positive(),
+        isActive: z.boolean(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        requireCommunityMutationRequest(ctx.req);
+        const term = await db.setStudentCommunityPolicyTermActive(input);
+        if (!term) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Community policy term not found",
+          });
+        }
+        return term;
+      }),
+
+    adminModerationDecisions: adminOrRoleProcedure(['student_community_moderator'])
+      .input(z.object({
+        outcome: communityModerationOutcomeSchema.default("all"),
+        limit: z.number().int().min(1).max(200).default(50),
+      }).optional())
+      .query(({ input }) => db.listStudentCommunityModerationDecisions({
+        outcome: input?.outcome ?? "all",
+        limit: input?.limit ?? 50,
+      })),
+
+    adminMembers: adminOrRoleProcedure(['student_community_moderator'])
+      .input(z.object({
+        search: z.string().trim().max(200).nullish(),
+        status: communityAccessStatusSchema.default("all"),
+        limit: z.number().int().min(1).max(100).default(25),
+        offset: z.number().int().min(0).default(0),
+      }).optional())
+      .query(({ input }) => db.listStudentCommunityMembers({
+        search: input?.search,
+        status: input?.status ?? "all",
+        limit: input?.limit ?? 25,
+        offset: input?.offset ?? 0,
+      })),
+
+    banMember: adminOrRoleProcedure(['student_community_moderator'])
+      .input(z.object({
+        userId: z.number().int().positive(),
+        reason: communityBanReasonSchema,
+        expiresAt: communityBanExpirySchema.nullish(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        requireCommunityMutationRequest(ctx.req);
+        if (ctx.user.id > 0 && ctx.user.id === input.userId) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "You cannot suspend your own community access",
+          });
+        }
+        const updated = await db.banStudentCommunityMember({
+          ...input,
+          expiresAt: input.expiresAt ?? null,
+          actorUserId: ctx.user.id,
+        });
+        if (!updated) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Community member not found" });
+        }
+        const member = await db.getUserById(input.userId);
+        if (member) {
+          await notifyCommunityClient({
+            dedupeKey: updated.notificationDedupeKey,
+            eventType: "community_access_suspended",
+            recipient: {
+              userId: member.id,
+              email: member.email,
+              name: member.name,
+            },
+            kind: "access_suspended",
+            reason: input.reason,
+            expiresAt: input.expiresAt ?? null,
+            notificationType: "warning",
+            metadata: {
+              userId: input.userId,
+              expiresAt: input.expiresAt ?? null,
+            },
+          });
+        }
+        const { notificationDedupeKey: _, ...response } = updated;
+        return response;
+      }),
+
+    restoreMember: adminOrRoleProcedure(['student_community_moderator'])
+      .input(z.object({
+        userId: z.number().int().positive(),
+        note: z.string().trim().max(500).nullish(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        requireCommunityMutationRequest(ctx.req);
+        const updated = await db.restoreStudentCommunityMember({
+          userId: input.userId,
+          actorUserId: ctx.user.id,
+          note: input.note ?? null,
+        });
+        if (!updated) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Community member not found" });
+        }
+        const member = await db.getUserById(input.userId);
+        if (member) {
+          await notifyCommunityClient({
+            dedupeKey: updated.notificationDedupeKey,
+            eventType: "community_access_restored",
+            recipient: {
+              userId: member.id,
+              email: member.email,
+              name: member.name,
+            },
+            kind: "access_restored",
+            notificationType: "success",
+            metadata: { userId: input.userId },
+          });
+        }
+        const { notificationDedupeKey: _, ...response } = updated;
+        return response;
+      }),
+
+    memberAccessAudit: adminOrRoleProcedure(['student_community_moderator'])
+      .input(z.object({
+        userId: z.number().int().positive(),
+        limit: z.number().int().min(1).max(200).default(50),
+      }))
+      .query(({ input }) => db.listStudentCommunityAccessAuditLogs(input)),
 
     adminListPosts: adminOrRoleProcedure(['student_community_moderator'])
       .input(z.object({
@@ -8203,13 +8801,68 @@ ${qaText}`;
         note: z.string().trim().max(2000).nullish(),
       }))
       .mutation(async ({ ctx, input }) => {
+        requireCommunityMutationRequest(ctx.req);
         await requireStudentCommunityEnabled();
+        const [contentContext, reportContexts] = await Promise.all([
+          db.getStudentCommunityContentNotificationContext(input),
+          db.listOpenStudentCommunityReportNotificationContexts(input),
+        ]);
         const updated = await db.moderateStudentCommunityContent({
           ...input,
           note: input.note || null,
           actorUserId: ctx.user.id,
         });
         if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: "Community content not found" });
+        if (contentContext && contentContext.status !== updated.status) {
+          const kind = updated.status === "visible"
+            ? "content_restored"
+            : updated.status === "deleted"
+              ? "content_deleted"
+              : "content_hidden";
+          await notifyCommunityClient({
+            dedupeKey: `community_content:${input.targetType}:${input.targetId}:${updated.status}:${updated.updatedAt}`,
+            eventType: `community_client_${kind}`,
+            recipient: {
+              userId: contentContext.userId,
+              email: contentContext.userEmail,
+              name: contentContext.userName,
+            },
+            kind,
+            contentType: input.targetType,
+            postId: contentContext.postId,
+            notificationType: updated.status === "visible" ? "success" : "warning",
+            metadata: {
+              targetType: input.targetType,
+              targetId: input.targetId,
+              postId: contentContext.postId,
+              status: updated.status,
+            },
+          });
+
+          const reportKind = updated.status === "visible"
+            ? "report_dismissed"
+            : "report_action_taken";
+          for (const report of reportContexts) {
+            await notifyCommunityClient({
+              dedupeKey: `community_report:${report.reportId}:${reportKind}`,
+              eventType: `community_client_${reportKind}`,
+              recipient: {
+                userId: report.reporterUserId,
+                email: report.reporterEmail,
+                name: report.reporterName,
+              },
+              kind: reportKind,
+              postId: report.postId,
+              notificationType: reportKind === "report_action_taken" ? "success" : "info",
+              metadata: {
+                reportId: report.reportId,
+                targetType: report.targetType,
+                targetId: report.targetId,
+                postId: report.postId,
+              },
+            });
+          }
+        }
         return updated;
       }),
 
@@ -8219,7 +8872,11 @@ ${qaText}`;
         note: z.string().trim().max(2000).nullish(),
       }))
       .mutation(async ({ ctx, input }) => {
+        requireCommunityMutationRequest(ctx.req);
         await requireStudentCommunityEnabled();
+        const reportContext = await db.getStudentCommunityReportNotificationContext(
+          input.reportId,
+        );
         const updated = await db.reviewStudentCommunityReport({
           reportId: input.reportId,
           action: "dismiss",
@@ -8227,6 +8884,26 @@ ${qaText}`;
           note: input.note || null,
         });
         if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: "Community report not found" });
+        if (reportContext?.status === "open") {
+          await notifyCommunityClient({
+            dedupeKey: `community_report:${reportContext.reportId}:report_dismissed`,
+            eventType: "community_client_report_dismissed",
+            recipient: {
+              userId: reportContext.reporterUserId,
+              email: reportContext.reporterEmail,
+              name: reportContext.reporterName,
+            },
+            kind: "report_dismissed",
+            postId: reportContext.postId,
+            notificationType: "info",
+            metadata: {
+              reportId: reportContext.reportId,
+              targetType: reportContext.targetType,
+              targetId: reportContext.targetId,
+              postId: reportContext.postId,
+            },
+          });
+        }
         return updated;
       }),
 
@@ -9745,6 +10422,59 @@ ${qaText}`;
         return { success: true };
       }),
 
+    updateFeatureFlag: adminProcedure
+      .input(z.object({
+        key: z.enum(ADMIN_FEATURE_FLAG_KEYS),
+        enabled: z.boolean(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        if (input.key === "student_surveys_blocking_enabled" && input.enabled) {
+          const surveysEnabled = await db.getAdminSetting("student_surveys_enabled");
+          if (surveysEnabled !== "true") {
+            throw new TRPCError({
+              code: "PRECONDITION_FAILED",
+              message: "Enable student surveys before enabling gradual survey blocking.",
+            });
+          }
+        }
+
+        if (input.key === "student_community_enabled" && input.enabled) {
+          const terms = await db.listStudentCommunityPolicyTerms({
+            activeOnly: true,
+          });
+          const hasCompetitorTerm = terms.some(
+            term => term.category === "competitor",
+          );
+          const hasProhibitedLanguageTerm = terms.some(
+            term => term.category === "prohibited_language",
+          );
+          const missingRequirements = [
+            !ENV.openaiApiKey ? "OPENAI_API_KEY" : null,
+            !hasCompetitorTerm ? "at least one active competitor term" : null,
+            !hasProhibitedLanguageTerm
+              ? "at least one active prohibited-language term"
+              : null,
+          ].filter(Boolean);
+          if (missingRequirements.length > 0) {
+            throw new TRPCError({
+              code: "PRECONDITION_FAILED",
+              message: `Community activation blocked. Missing: ${missingRequirements.join(", ")}.`,
+            });
+          }
+        }
+
+        const updates = getAdminFeatureFlagUpdates(input.key, input.enabled);
+        for (const update of updates) {
+          await db.setAdminSetting(update.key, String(update.enabled));
+        }
+        await db.logAdminAction(ctx.admin.id, ctx.admin.id, "update_feature_flag", {
+          requestedKey: input.key,
+          requestedEnabled: input.enabled,
+          updates,
+        });
+        return { success: true, updates };
+      }),
+
     // Per-staff or admin: update own notification email preferences
     updateNotificationPrefs: supportStaffProcedure
       .input(z.object({ prefs: z.record(z.string(), z.boolean()) }))
@@ -9760,7 +10490,7 @@ ${qaText}`;
 
   // Temporary admin utility: send a one-off email via the configured email provider.
   adminEmail: router({
-    deliveryLogs: adminProcedure
+    deliveryLogs: adminOrRoleProcedure(['email_logs_viewer'])
       .input(z.object({
         limit: z.number().min(1).max(500).optional(),
         offset: z.number().min(0).optional(),
@@ -9785,7 +10515,7 @@ ${qaText}`;
           toDate: input?.toDate,
         });
       }),
-    deliveryLogSummary: adminProcedure
+    deliveryLogSummary: adminOrRoleProcedure(['email_logs_viewer'])
       .input(z.object({
         recipientQuery: z.string().optional(),
         recipientUserId: z.number().optional(),

@@ -5,6 +5,6 @@ export default defineConfig({
   out: "./database/drizzle",
   dialect: "sqlite",
   dbCredentials: {
-    url: process.env.DATABASE_URL || "./xflexwithai.db",
+    url: process.env.DATABASE_URL || "./xflexwithai.dev.db",
   },
 });

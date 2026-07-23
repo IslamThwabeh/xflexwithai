@@ -3,7 +3,7 @@ import type { User } from "../../database/schema-sqlite";
 import { logger } from "./logger";
 import { isAdminTokenValidForPasswordState, verifyToken } from "./auth";
 import { COOKIE_NAME, IDLE_TIMEOUT_STAFF_MS } from "../../shared/const";
-import { getSessionCookieOptions } from "./cookies";
+import { getSessionCookieOptions, toExpressCookieOptions } from "./cookies";
 import * as db from "../db";
 
 export type RequestLike = {
@@ -86,10 +86,10 @@ export async function createContext(
                 adminId: admin.id,
                 email: admin.email,
               });
-              opts.res.clearCookie(COOKIE_NAME, {
+              opts.res.clearCookie(COOKIE_NAME, toExpressCookieOptions({
                 ...getSessionCookieOptions(opts.req, 'admin'),
                 maxAge: -1,
-              });
+              }));
             } else {
               logger.info('✅ [AUTH DEBUG] Admin found in database', {
                 adminId: admin.id,
@@ -140,10 +140,10 @@ export async function createContext(
                 email: regularUser.email,
               });
 
-              opts.res.clearCookie(COOKIE_NAME, {
+              opts.res.clearCookie(COOKIE_NAME, toExpressCookieOptions({
                 ...getSessionCookieOptions(opts.req, 'user'),
                 maxAge: -1,
-              });
+              }));
             } else {
               logger.info('✅ [AUTH DEBUG] User found in database', {
                 userId: regularUser.id,
@@ -184,7 +184,9 @@ export async function createContext(
     req: opts.req,
     user,
     sessionId,
-    setCookie: (name, value, options) => opts.res.cookie(name, value, options),
-    clearCookie: (name, options) => opts.res.clearCookie(name, options),
+    setCookie: (name, value, options) =>
+      opts.res.cookie(name, value, options ? toExpressCookieOptions(options) : {}),
+    clearCookie: (name, options) =>
+      opts.res.clearCookie(name, options ? toExpressCookieOptions(options) : {}),
   };
 }

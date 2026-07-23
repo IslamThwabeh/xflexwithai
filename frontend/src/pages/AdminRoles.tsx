@@ -40,9 +40,10 @@ const ROLE_LABELS: Record<string, { labelKey: string; color: string; group: stri
   loyalty_rewards_manager: { labelKey: "admin.roles.loyaltyRewardsManager", color: "bg-yellow-100 text-yellow-800", group: "Feature Roles" },
   student_community_moderator: { labelKey: "admin.roles.communityModerator", color: "bg-purple-100 text-purple-800", group: "Feature Roles" },
   student_job_eligibility_manager: { labelKey: "admin.roles.jobEligibilityManager", color: "bg-blue-100 text-blue-800", group: "Feature Roles" },
+  email_logs_viewer: { labelKey: "admin.roles.emailLogsViewer", color: "bg-slate-100 text-slate-800", group: "Support Permissions" },
 };
 
-type RoleKey = "analyst" | "support" | "lexai_support" | "key_manager" | "plan_manager" | "view_progress" | "view_recommendations" | "view_subscriptions" | "view_quizzes" | "client_lookup" | "staff_performance_employee" | "staff_performance_manager" | "student_surveys_manager" | "loyalty_rewards_manager" | "student_community_moderator" | "student_job_eligibility_manager";
+type RoleKey = "analyst" | "support" | "lexai_support" | "key_manager" | "plan_manager" | "view_progress" | "view_recommendations" | "view_subscriptions" | "view_quizzes" | "client_lookup" | "staff_performance_employee" | "staff_performance_manager" | "student_surveys_manager" | "loyalty_rewards_manager" | "student_community_moderator" | "student_job_eligibility_manager" | "email_logs_viewer";
 
 export default function AdminRoles() {
   const [search, setSearch] = useState("");

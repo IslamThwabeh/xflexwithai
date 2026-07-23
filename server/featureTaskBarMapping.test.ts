@@ -40,4 +40,9 @@ describe("feature task-bar mappings", () => {
     expect(ROLE_PAGE_ACCESS.staff_performance_employee).toEqual(["/admin/my-performance"]);
     expect(ROLE_PAGE_ACCESS.staff_performance_manager).toEqual(["/admin/staff-performance"]);
   });
+
+  it("grants email log access only through the dedicated read-only role", () => {
+    expect(ROLE_PAGE_ACCESS.email_logs_viewer).toEqual(["/admin/email-logs"]);
+    expect(ROLE_PAGE_ACCESS.support).not.toContain("/admin/email-logs");
+  });
 });

@@ -3,6 +3,7 @@ import { ENV } from "./env";
 import { logger } from "./logger";
 
 const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
+const OPENAI_MODERATION_API_URL = "https://api.openai.com/v1/moderations";
 
 type OpenAiPricing = {
   inputUsdPerMillion: number;
@@ -67,6 +68,19 @@ export type OpenAiUsageContext = {
   timeframe?: string | null;
   currencyPair?: string | null;
   metadata?: string | null;
+};
+
+export type OpenAiModerationResult = {
+  flagged: boolean;
+  categories: Record<string, boolean>;
+  category_scores: Record<string, number>;
+  category_applied_input_types?: Record<string, string[]>;
+};
+
+export type OpenAiModerationResponse = {
+  id?: string;
+  model?: string;
+  results?: OpenAiModerationResult[];
 };
 
 export function estimateOpenAiCostUsd(model: string | null | undefined, usage?: OpenAiUsage | null) {
@@ -161,5 +175,62 @@ export async function invokeOpenAiChatCompletion<TResponse extends OpenAiChatCom
     success: true,
   });
 
+  return data;
+}
+
+export async function invokeOpenAiModeration(params: {
+  input: string;
+  model?: string;
+  usage: OpenAiUsageContext;
+}): Promise<OpenAiModerationResponse> {
+  if (!ENV.openaiApiKey) {
+    throw new Error("OPENAI_API_KEY is not configured");
+  }
+
+  const requestedModel = params.model ?? "omni-moderation-latest";
+  let response: Response;
+  try {
+    response = await fetch(OPENAI_MODERATION_API_URL, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${ENV.openaiApiKey}`,
+      },
+      body: JSON.stringify({
+        model: requestedModel,
+        input: params.input,
+      }),
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    await recordUsageSafely({
+      ...params.usage,
+      model: requestedModel,
+      success: false,
+      errorMessage,
+    });
+    throw error;
+  }
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    const errorMessage = `OpenAI moderation failed (${response.status} ${response.statusText})${detail ? `: ${detail}` : ""}`;
+    await recordUsageSafely({
+      ...params.usage,
+      model: requestedModel,
+      success: false,
+      errorMessage,
+    });
+    throw new Error(errorMessage);
+  }
+
+  const data = await response.json() as OpenAiModerationResponse;
+  await recordUsageSafely({
+    ...params.usage,
+    model: data.model ?? requestedModel,
+    requestId: data.id ?? null,
+    success: true,
+  });
   return data;
 }

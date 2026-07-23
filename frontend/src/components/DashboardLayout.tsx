@@ -346,8 +346,18 @@ function DashboardLayoutContent({
       }))
       .filter(section => section.items.length > 0);
 
-    // Admin sees everything
-    if (!adminCheck || adminCheck.isAdmin) return filterUnavailableFeatures(menuSectionsDef);
+    // Main admins must be able to discover management pages even while their
+    // student/staff-facing feature is disabled. The pages themselves show the
+    // disabled state; non-admin staff continue to see only enabled features.
+    if (adminCheck?.isAdmin) {
+      return menuSectionsDef
+        .map(section => ({
+          ...section,
+          items: section.items.filter(item => item.path !== "/admin/my-performance"),
+        }))
+        .filter(section => section.items.length > 0);
+    }
+    if (!adminCheck) return filterUnavailableFeatures(menuSectionsDef);
 
     // Staff: filter by role-accessible paths
     const staffRoles: string[] = adminCheck.staffRoles ?? [];
@@ -559,6 +569,14 @@ function DashboardLayoutContent({
                           const isActive = location === item.path;
                           const label = t(item.labelKey);
                           const badgeCount = routeBadges?.[item.path] ?? 0;
+                          const communityStatus = item.path === "/admin/community" && adminCheck?.isAdmin && communityAvailability
+                            ? communityAvailability.enabled
+                            : null;
+                          const communityStatusLabel = communityStatus === null
+                            ? null
+                            : communityStatus
+                              ? (language === "ar" ? "مفعّل" : "Enabled")
+                              : (language === "ar" ? "غير مفعّل" : "Disabled");
                           return (
                             <SidebarMenuItem key={item.path}>
                               <SidebarMenuButton
@@ -572,7 +590,7 @@ function DashboardLayoutContent({
                                     markReadByRoute.mutate({ actionUrl: item.path });
                                   }
                                 }}
-                                tooltip={label}
+                                tooltip={communityStatusLabel ? `${label} — ${communityStatusLabel}` : label}
                                 className={`transition-all font-normal ps-12 py-1.5 text-[13px] ${
                                   isActive
                                     ? "text-emerald-400 bg-emerald-500/[0.08] font-medium"
@@ -581,6 +599,17 @@ function DashboardLayoutContent({
                               >
                                 <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isActive ? "bg-emerald-400" : "bg-gray-600"}`} />
                                 <span className="flex-1">{label}</span>
+                                {communityStatusLabel && (
+                                  <span
+                                    className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${
+                                      communityStatus
+                                        ? "bg-emerald-500/15 text-emerald-300"
+                                        : "bg-amber-500/15 text-amber-300"
+                                    }`}
+                                  >
+                                    {communityStatusLabel}
+                                  </span>
+                                )}
                                 {badgeCount > 0 && (
                                   <span className="min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
                                     {badgeCount > 99 ? '99+' : badgeCount}

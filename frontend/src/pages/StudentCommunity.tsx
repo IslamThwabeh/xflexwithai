@@ -14,12 +14,21 @@ export default function StudentCommunity() {
   const { language } = useLanguage();
   const isRtl = language === "ar";
   const utils = trpc.useUtils();
-  const [selectedPostId, setSelectedPostId] = useState<number | null>(null);
+  const requestedPostId = Number(
+    new URLSearchParams(window.location.search).get("postId"),
+  );
+  const [selectedPostId, setSelectedPostId] = useState<number | null>(
+    Number.isInteger(requestedPostId) && requestedPostId > 0
+      ? requestedPostId
+      : null,
+  );
   const [postForm, setPostForm] = useState({ title: "", body: "" });
   const [commentBody, setCommentBody] = useState("");
 
   const availability = trpc.community.availability.useQuery(undefined, { retry: false });
-  const enabled = Boolean(availability.data?.enabled);
+  const enabled = Boolean(
+    availability.data?.enabled && availability.data.access === "allowed",
+  );
   const postsQuery = trpc.community.listPosts.useQuery({ limit: 50 }, { enabled, retry: false });
   const postQuery = trpc.community.getPost.useQuery(
     { id: selectedPostId ?? 0 },
@@ -38,11 +47,16 @@ export default function StudentCommunity() {
   }, [postsQuery.data, selectedPostId]);
 
   const labels = isRtl ? {
+    badge: "مجتمع آمن",
     title: "مجتمع الطلاب",
     subtitle: "مساحة آمنة للأسئلة والتجارب بين الطلاب مع إشراف إداري.",
     disabledTitle: "المجتمع غير مفعّل",
     disabledBody: "الميزة جاهزة لكنها مخفية حتى تفعيل student_community_enabled بموافقة منفصلة.",
-    safety: "يرجى عدم مشاركة بيانات الحسابات، أرقام المحافظ، أو توصيات تداول شخصية. يمكن الإبلاغ عن أي محتوى مخالف.",
+    bannedTitle: "تم تعليق وصولك إلى المجتمع",
+    bannedBody: "لا يمكنك قراءة أو نشر محتوى المجتمع حالياً. تواصل مع فريق الدعم إذا كنت تعتقد أن هذا القرار غير صحيح.",
+    bannedReason: "السبب",
+    bannedUntil: "ينتهي التعليق",
+    safety: "يُفحص كل منشور وتعليق قبل النشر. يُمنع السب والإهانة والألفاظ المسيئة وذكر المنصات المنافسة، كما يُمنع نشر بيانات الحسابات أو أرقام المحافظ أو توصيات تداول شخصية.",
     newPost: "منشور جديد",
     postTitle: "عنوان المنشور",
     postBody: "محتوى المنشور",
@@ -58,11 +72,16 @@ export default function StudentCommunity() {
     postSuccess: "تم نشر المنشور",
     commentSuccess: "تم إضافة التعليق",
   } : {
+    badge: "Safe community",
     title: "Student Community",
     subtitle: "A supervised space for student questions and shared learning.",
     disabledTitle: "Community not enabled",
     disabledBody: "This feature is ready but hidden until student_community_enabled is turned on with separate approval.",
-    safety: "Do not share account credentials, wallet numbers, or personal trading advice. You can report content that breaks the rules.",
+    bannedTitle: "Your community access is suspended",
+    bannedBody: "You cannot read or publish community content right now. Contact support if you believe this decision is incorrect.",
+    bannedReason: "Reason",
+    bannedUntil: "Suspension ends",
+    safety: "Every post and comment is checked before publishing. Profanity, insults, abusive language, competitor references, account credentials, wallet numbers, and personal trading advice are not allowed.",
     newPost: "New post",
     postTitle: "Post title",
     postBody: "Post body",
@@ -109,6 +128,27 @@ export default function StudentCommunity() {
   }
 
   if (!enabled) {
+    if (
+      availability.data?.enabled
+      && availability.data.access === "banned"
+    ) {
+      const details = [
+        labels.bannedBody,
+        availability.data.reason
+          ? `${labels.bannedReason}: ${availability.data.reason}`
+          : null,
+        availability.data.expiresAt
+          ? `${labels.bannedUntil}: ${new Date(availability.data.expiresAt).toLocaleString(isRtl ? "ar-JO" : "en-US")}`
+          : null,
+      ].filter(Boolean).join("\n");
+      return (
+        <CommunityState
+          title={labels.bannedTitle}
+          body={details}
+          icon={<ShieldCheck className="h-7 w-7" />}
+        />
+      );
+    }
     return <CommunityState title={labels.disabledTitle} body={labels.disabledBody} icon={<AlertCircle className="h-7 w-7" />} />;
   }
 
@@ -121,7 +161,7 @@ export default function StudentCommunity() {
           <header>
             <div className="mb-2 flex items-center gap-2 text-emerald-700">
               <MessageCircle className="h-5 w-5" />
-              <span className="text-xs font-semibold uppercase tracking-[0.16em]">Phase 4</span>
+              <span className="text-xs font-semibold uppercase tracking-[0.16em]">{labels.badge}</span>
             </div>
             <h1 className="text-2xl font-bold text-slate-950 md:text-3xl">{labels.title}</h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">{labels.subtitle}</p>
@@ -187,7 +227,7 @@ export default function StudentCommunity() {
                       }`}
                     >
                       <p className="line-clamp-2 font-semibold text-slate-950">{post.title}</p>
-                      <p className="mt-1 text-xs text-slate-500">{post.authorName || post.authorEmail} · {post.visibleCommentCount} {labels.comments}</p>
+                      <p className="mt-1 text-xs text-slate-500">{post.authorName} · {post.visibleCommentCount} {labels.comments}</p>
                     </button>
                   ))}
                 </CardContent>
@@ -208,7 +248,7 @@ export default function StudentCommunity() {
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
                           <h2 className="text-xl font-bold text-slate-950">{selectedPost.title}</h2>
-                          <p className="mt-1 text-xs text-slate-500">{selectedPost.authorName || selectedPost.authorEmail}</p>
+                          <p className="mt-1 text-xs text-slate-500">{selectedPost.authorName}</p>
                         </div>
                         <Button size="sm" variant="outline" onClick={() => reportContent.mutate({ targetType: "post", targetId: selectedPost.id, reason: "inappropriate" })}>
                           <Flag className="h-4 w-4" /> {labels.report}
@@ -226,7 +266,7 @@ export default function StudentCommunity() {
                           {selectedPost.comments.map((comment) => (
                             <article key={comment.id} className="rounded-xl border bg-slate-50 p-3">
                               <div className="flex items-start justify-between gap-3">
-                                <p className="text-xs font-medium text-slate-500">{comment.authorName || comment.authorEmail}</p>
+                                <p className="text-xs font-medium text-slate-500">{comment.authorName}</p>
                                 <Button size="sm" variant="ghost" onClick={() => reportContent.mutate({ targetType: "comment", targetId: comment.id, reason: "inappropriate" })}>
                                   <Flag className="h-3.5 w-3.5" /> {labels.report}
                                 </Button>
@@ -270,7 +310,7 @@ function CommunityState({ icon, title, body }: { icon: React.ReactNode; title: s
           <CardContent className="flex flex-col items-center p-8">
             <div className="mb-4 rounded-2xl bg-slate-100 p-3 text-slate-600">{icon}</div>
             <h1 className="text-xl font-bold text-slate-950">{title}</h1>
-            {body && <p className="mt-2 text-sm leading-6 text-slate-500">{body}</p>}
+            {body && <p className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-500">{body}</p>}
           </CardContent>
         </Card>
       </div>

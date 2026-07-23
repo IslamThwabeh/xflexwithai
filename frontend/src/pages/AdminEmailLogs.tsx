@@ -172,6 +172,7 @@ export default function AdminEmailLogs() {
   const utils = trpc.useUtils();
   const { data: adminCheck } = trpc.auth.isAdmin.useQuery();
   const isAdmin = !!adminCheck?.isAdmin;
+  const canViewEmailLogs = isAdmin || (adminCheck?.staffRoles ?? []).includes('email_logs_viewer');
   const [recipientQuery, setRecipientQuery] = useState('');
   const [deliveryStatus, setDeliveryStatus] = useState<DeliveryStatus>('all');
   const [deliveryEventType, setDeliveryEventType] = useState('');
@@ -206,11 +207,11 @@ export default function AdminEmailLogs() {
 
   const { data: deliveryLogs, isLoading: deliveryLogsLoading } = trpc.adminEmail.deliveryLogs.useQuery(
     deliveryFilters,
-    { enabled: isAdmin }
+    { enabled: canViewEmailLogs }
   );
   const { data: deliverySummary, isLoading: deliverySummaryLoading } = trpc.adminEmail.deliveryLogSummary.useQuery(
     deliverySummaryFilters,
-    { enabled: isAdmin }
+    { enabled: canViewEmailLogs }
   );
   const { data: outboxHealth, isLoading: outboxHealthLoading } = trpc.adminEmail.outboxHealth.useQuery(
     undefined,
@@ -326,7 +327,7 @@ export default function AdminEmailLogs() {
         </div>
 
         <div className="space-y-4">
-          <div className="bg-white dark:bg-slate-800 border rounded-xl p-5 space-y-4">
+          {isAdmin && <div className="bg-white dark:bg-slate-800 border rounded-xl p-5 space-y-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h3 className="font-semibold flex items-center gap-2">
@@ -404,7 +405,7 @@ export default function AdminEmailLogs() {
                   : `Claimed ${drainDueOutboxMutation.data.total.claimed}, sent ${drainDueOutboxMutation.data.total.sent}, failed ${drainDueOutboxMutation.data.total.failed}, skipped ${drainDueOutboxMutation.data.total.skipped}.`}
               </div>
             )}
-          </div>
+          </div>}
 
           <div ref={deliveryListTopRef} className="bg-white dark:bg-slate-800 border rounded-xl p-5 space-y-4 scroll-mt-6">
             <div className="flex items-start justify-between gap-3 flex-wrap">

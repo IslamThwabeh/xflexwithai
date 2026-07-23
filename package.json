@@ -7,7 +7,7 @@
     "node": ">=20.19.0"
   },
   "scripts": {
-    "dev": "NODE_ENV=development tsx watch backend/_core/index.ts",
+    "dev": "tsx watch scripts/dev.ts",
     "build": "vite build && tsx scripts/generate-seo.ts && esbuild backend/_core/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist --external:../database/schema-sqlite.ts",
     "build:seo": "tsx scripts/generate-seo.ts",
     "test:seo": "tsx scripts/test-seo.ts && node scripts/test-seo-middleware.mjs",
@@ -16,8 +16,9 @@
     "check": "tsc --noEmit",
     "format": "prettier --write .",
     "test": "vitest run",
-    "db:push": "drizzle-kit push --config database/drizzle.config.ts",
-    "db:generate": "drizzle-kit generate --config database/drizzle.config.ts",
+    "db:push": "drizzle-kit push --config drizzle.config.ts",
+    "db:generate": "drizzle-kit generate --config drizzle.config.ts",
+    "db:local:admin": "tsx scripts/create-local-admin.ts",
     "deploy:pages": "wrangler pages deploy dist/public --project-name xflexacademy --branch main",
     "deploy:worker": "npm run build:worker && wrangler deploy dist/worker.js --config wrangler-worker.toml --env production",
     "deploy:worker:staging": "npm run build:worker && wrangler deploy dist/worker.js --config wrangler-worker.toml --env staging"
@@ -126,6 +127,9 @@
   "pnpm": {
     "overrides": {
       "tailwindcss>nanoid": "3.3.7"
-    }
+    },
+    "onlyBuiltDependencies": [
+      "better-sqlite3"
+    ]
   }
 }

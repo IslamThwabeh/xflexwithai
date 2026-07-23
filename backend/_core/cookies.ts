@@ -16,6 +16,11 @@ type CookieRequest = {
   hostname?: string;
 };
 
+type SessionCookieOptions = Pick<
+  CookieOptions,
+  "domain" | "httpOnly" | "maxAge" | "path" | "sameSite" | "secure"
+>;
+
 function getHeader(
   headers: Headers | Record<string, string | string[] | undefined>,
   name: string
@@ -33,8 +38,14 @@ function isSecureRequest(req: CookieRequest) {
   if (req.protocol === "https") return true;
 
   if (req.url) {
-    const url = new URL(req.url);
-    if (url.protocol === "https:") return true;
+    try {
+      // Worker requests contain an absolute URL, while Express uses a relative
+      // path such as /api/trpc/auth.adminLogin.
+      const url = new URL(req.url, "http://localhost");
+      if (url.protocol === "https:") return true;
+    } catch {
+      // Fall through to the forwarded-proto check for malformed request URLs.
+    }
   }
 
   const forwardedProto = getHeader(req.headers, "x-forwarded-proto");
@@ -78,7 +89,7 @@ function isCrossSiteCookieRequest(input: {
 export function getSessionCookieOptions(
   req: CookieRequest,
   role: "admin" | "user" = "user"
-): Pick<CookieOptions, "domain" | "httpOnly" | "maxAge" | "path" | "sameSite" | "secure"> {
+): SessionCookieOptions {
   const secure = isSecureRequest(req);
 
   // Derive the hostname from the request (Worker uses req.url, Express uses req.hostname).
@@ -124,5 +135,20 @@ export function getSessionCookieOptions(
     // Hosted previews use a cross-site frontend origin, so they need SameSite=None for API auth.
     sameSite,
     secure,
+  };
+}
+
+/**
+ * The shared cookie options use seconds because Cloudflare's cookie serializer
+ * expects Max-Age in seconds. Express instead expects maxAge in milliseconds.
+ */
+export function toExpressCookieOptions(
+  options: SessionCookieOptions,
+): SessionCookieOptions {
+  return {
+    ...options,
+    maxAge: typeof options.maxAge === "number"
+      ? options.maxAge * 1000
+      : options.maxAge,
   };
 }
