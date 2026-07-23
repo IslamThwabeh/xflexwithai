@@ -1,8 +1,7 @@
 -- Migration 076: Add deterministic prohibited-language policy terms.
 -- Existing competitor terms and moderation decisions are preserved.
 -- The community feature flag is not changed.
-
-BEGIN TRANSACTION;
+-- Cloudflare D1 file imports are already atomic and reject explicit BEGIN/COMMIT.
 
 ALTER TABLE student_community_policy_terms
   RENAME TO student_community_policy_terms_075;
@@ -123,5 +122,3 @@ CREATE INDEX idx_student_community_moderation_user
 
 CREATE INDEX idx_student_community_moderation_outcome
   ON student_community_moderation_decisions (outcome, created_at DESC);
-
-COMMIT;
