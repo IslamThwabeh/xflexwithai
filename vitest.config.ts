@@ -1,10 +1,14 @@
 import { defineConfig } from "vitest/config";
-import path from "path";
 
 export default defineConfig({
-  root: path.resolve(import.meta.dirname),
+  root: ".",
   test: {
     environment: "node",
-    include: ["server/**/*.test.ts", "server/**/*.spec.ts"],
+    include: [
+      "server/**/*.test.ts",
+      "server/**/*.spec.ts",
+      "backend/**/*.test.ts",
+      "backend/**/*.spec.ts",
+    ],
   },
 });

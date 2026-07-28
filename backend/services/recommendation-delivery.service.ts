@@ -13,6 +13,7 @@ export type RecommendationDrainResult = {
   sent: number;
   failed: number;
   skippedMissingPayload: number;
+  skippedSuppressed: number;
   providerRequests: number;
   batches: number;
 };
@@ -51,6 +52,7 @@ export async function drainRecommendationDeliveryQueue(input: {
     sent: 0,
     failed: 0,
     skippedMissingPayload: 0,
+    skippedSuppressed: 0,
     providerRequests: 0,
     batches: 0,
   };
@@ -89,10 +91,10 @@ export async function drainRecommendationDeliveryQueue(input: {
     }
 
     try {
-      result.providerRequests += 1;
       const eventType = first.eventKind === "alert"
         ? "recommendation_alert"
         : `recommendation_${first.eventKind}`;
+      result.providerRequests += 1;
       const emailResult = await sendRecommendationBccBatch({
         recipients: rows.map((row) => ({
           email: row.recipientEmail,
@@ -111,14 +113,29 @@ export async function drainRecommendationDeliveryQueue(input: {
           language: first.language,
         },
       });
-      await db.markRecommendationDeliveryBatchSent({
-        ids: batchIds,
-        provider: emailResult.provider,
-        attemptedProviders: emailResult.attemptedProviders,
-        providerRequestId: emailResult.providerRequestId,
-        providerBatchKey,
-      });
-      result.sent += rows.length;
+      if (!emailResult.provider) result.providerRequests -= 1;
+
+      const sentUserIds = new Set(emailResult.sentUserIds);
+      const skippedUserIds = new Set(emailResult.skippedUserIds);
+      const sentIds = rows.filter((row) => sentUserIds.has(row.userId)).map((row) => row.id);
+      const skippedIds = rows.filter((row) => skippedUserIds.has(row.userId)).map((row) => row.id);
+
+      await Promise.all([
+        db.markRecommendationDeliveryBatchSent({
+          ids: sentIds,
+          provider: emailResult.provider,
+          attemptedProviders: emailResult.attemptedProviders,
+          providerRequestId: emailResult.providerRequestId,
+          providerBatchKey,
+        }),
+        db.markRecommendationDeliveryBatchSuppressed({
+          ids: skippedIds,
+          reason: "Recipient is permanently suppressed",
+          providerBatchKey,
+        }),
+      ]);
+      result.sent += sentIds.length;
+      result.skippedSuppressed += skippedIds.length;
     } catch (error) {
       await db.markRecommendationDeliveryBatchFailed({
         ids: batchIds,

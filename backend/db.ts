@@ -85,6 +85,7 @@ import {
   emailOutbox, EmailOutbox, InsertEmailOutbox,
   emailOutboxCampaigns, EmailOutboxCampaign, InsertEmailOutboxCampaign,
   emailUnsubscribes, EmailUnsubscribe, InsertEmailUnsubscribe,
+  emailSuppressions, EmailSuppression, InsertEmailSuppression,
   planProgress, PlanProgress, InsertPlanProgress,
   lexaiSupportCases, LexaiSupportCase, InsertLexaiSupportCase,
   lexaiSupportNotes, LexaiSupportNote, InsertLexaiSupportNote,
@@ -5399,6 +5400,34 @@ export async function markRecommendationDeliveryBatchSent(args: {
     .where(and(
       inArray(recommendationDeliveries.id, args.ids),
       eq(recommendationDeliveries.status, 'processing'),
+  ));
+}
+
+export async function markRecommendationDeliveryBatchSuppressed(args: {
+  ids: number[];
+  reason: string;
+  providerBatchKey: string;
+}): Promise<void> {
+  const db = await getDb();
+  if (!db || !args.ids.length) return;
+  const nowIso = new Date().toISOString();
+  await db
+    .update(recommendationDeliveries)
+    .set({
+      status: 'skipped_suppressed',
+      provider: null,
+      providerRequestId: null,
+      providerBatchKey: args.providerBatchKey,
+      attemptedProviders: null,
+      errorCategory: 'permanent_suppression',
+      errorMessage: args.reason.slice(0, 1000),
+      attempts: sql`${recommendationDeliveries.attempts} + 1`,
+      lastAttemptAt: nowIso,
+      updatedAt: nowIso,
+    })
+    .where(and(
+      inArray(recommendationDeliveries.id, args.ids),
+      eq(recommendationDeliveries.status, 'processing'),
     ));
 }
 
@@ -6076,11 +6105,15 @@ export async function markEmailOutboxSent(input: {
   }
 }
 
-export async function markEmailOutboxSkipped(id: number, reason: string): Promise<void> {
+export async function markEmailOutboxSkipped(
+  id: number,
+  reason: string,
+  status: 'skipped_unsubscribed' | 'skipped_suppressed' = 'skipped_unsubscribed',
+): Promise<void> {
   const db = await getDb();
   if (!db) return;
   await db.update(emailOutbox).set({
-    status: "skipped_unsubscribed",
+    status,
     attempts: sql`${emailOutbox.attempts} + 1`,
     lockedAt: null,
     errorCategory: null,
@@ -18024,7 +18057,13 @@ export async function hasEmailBeenSent(userId: number, emailType: string): Promi
   return !!row;
 }
 
-export type EmailDeliveryStatus = 'sent' | 'failed' | 'skipped_unsubscribed' | 'skipped_deduped' | 'skipped_renewed';
+export type EmailDeliveryStatus =
+  | 'sent'
+  | 'failed'
+  | 'skipped_unsubscribed'
+  | 'skipped_suppressed'
+  | 'skipped_deduped'
+  | 'skipped_renewed';
 
 export async function recordEmailUnsubscribe(input: {
   email: string;
@@ -18102,6 +18141,88 @@ export async function getSuppressedEmailAddresses(
       .where(and(
         inArray(emailUnsubscribes.email, chunk),
         eq(emailUnsubscribes.category, category),
+      )),
+  );
+  return new Set(rows.map((row) => normalizeEmailAddress(row.email)));
+}
+
+export async function recordPermanentEmailSuppression(input: {
+  email: string;
+  reason: string;
+  source: string;
+  provider?: string | null;
+  metadata?: Record<string, unknown> | null;
+}): Promise<EmailSuppression | null> {
+  const db = await getDb();
+  if (!db) return null;
+
+  const email = normalizeEmailAddress(input.email);
+  if (!isLikelyValidEmail(email)) {
+    throw new Error("A valid email address is required for permanent suppression");
+  }
+
+  const now = getEmailAuditTimestamp();
+  const metadata = input.metadata ? JSON.stringify(input.metadata) : null;
+  const [existing] = await db.select().from(emailSuppressions)
+    .where(eq(emailSuppressions.email, email))
+    .limit(1);
+
+  if (existing) {
+    await db.update(emailSuppressions)
+      .set({
+        reason: input.reason,
+        source: input.source,
+        provider: input.provider ?? existing.provider,
+        metadata,
+        isActive: true,
+        suppressedAt: now,
+        updatedAt: now,
+      } satisfies Partial<InsertEmailSuppression>)
+      .where(eq(emailSuppressions.id, existing.id));
+    return {
+      ...existing,
+      reason: input.reason,
+      source: input.source,
+      provider: input.provider ?? existing.provider,
+      metadata,
+      isActive: true,
+      suppressedAt: now,
+      updatedAt: now,
+    };
+  }
+
+  const [created] = await db.insert(emailSuppressions).values({
+    email,
+    reason: input.reason,
+    source: input.source,
+    provider: input.provider ?? null,
+    metadata,
+    isActive: true,
+    suppressedAt: now,
+    createdAt: now,
+    updatedAt: now,
+  } satisfies InsertEmailSuppression).returning();
+  return created ?? null;
+}
+
+export async function getPermanentlySuppressedEmailAddresses(
+  emails: string[],
+): Promise<Set<string>> {
+  const db = await getDb();
+  if (!db) return new Set();
+
+  const normalizedEmails = [...new Set(
+    emails.map(normalizeEmailAddress).filter(isLikelyValidEmail),
+  )];
+  if (!normalizedEmails.length) return new Set();
+
+  const rows = await collectChunkedRows(
+    normalizedEmails,
+    (chunk) => db.select({ email: emailSuppressions.email })
+      .from(emailSuppressions)
+      .where(and(
+        inArray(emailSuppressions.email, chunk),
+        eq(emailSuppressions.isActive, true),
       )),
   );
   return new Set(rows.map((row) => normalizeEmailAddress(row.email)));

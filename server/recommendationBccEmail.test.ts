@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../backend/db", () => ({
+  getPermanentlySuppressedEmailAddresses: vi.fn().mockResolvedValue(new Set()),
   logEmailDeliveryAttempts: vi.fn(),
 }));
 
@@ -12,6 +13,7 @@ describe("recommendation BCC provider request", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(db.getPermanentlySuppressedEmailAddresses).mockResolvedValue(new Set());
     process.env.EMAIL_PROVIDER = "zeptomail";
     process.env.EMAIL_FROM = "mailer@xflexacademy.com";
     process.env.RECOMMENDATION_EMAIL_TO = "support@xflexacademy.com";

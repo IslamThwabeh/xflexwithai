@@ -37,8 +37,15 @@ export async function drainGenericEmailOutbox(input: {
           metadata,
         },
       });
-      if (sendResult.skipped === "unsubscribed") {
-        await db.markEmailOutboxSkipped(row.id, "Recipient unsubscribed from this email category");
+      if (sendResult.skipped) {
+        const skipReason = sendResult.skipped === "suppressed"
+          ? "Recipient is permanently suppressed"
+          : "Recipient unsubscribed from this email category";
+        await db.markEmailOutboxSkipped(
+          row.id,
+          skipReason,
+          sendResult.skipped === "suppressed" ? "skipped_suppressed" : "skipped_unsubscribed",
+        );
         result.skipped += 1;
         continue;
       }

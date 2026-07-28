@@ -1,6 +1,6 @@
 # XFLEX Project Memory
 
-Last updated: 2026-07-24
+Last updated: 2026-07-28
 
 ## Project Overview
 
@@ -14,7 +14,7 @@ Last updated: 2026-07-24
 - Main router: `backend/routers.ts`.
 - Database wrapper/helpers: `backend/db.ts`.
 - SQLite schema source: `database/schema-sqlite.ts`.
-- Key tables to remember: `admin_settings`, `supportMessages`, `userRoles`, `users`, `email_delivery_logs`, `recommendationSubscriptions`, `lexaiSubscriptions`, `registrationKeys`, `packageSubscriptions`.
+- Key tables to remember: `admin_settings`, `supportMessages`, `userRoles`, `users`, `email_delivery_logs`, `email_suppressions`, `recommendationSubscriptions`, `lexaiSubscriptions`, `registrationKeys`, `packageSubscriptions`.
 
 ## Deployment
 
@@ -39,6 +39,7 @@ Last updated: 2026-07-24
 - Latest production Worker deploy completed on 2026-07-24 with version `7744ee87-216d-45d0-83ef-3c0702d0199c` from Worker release commit `79c603f`.
 - Latest successful Pages deployment completed on 2026-07-24 from release commit `b91453f`, deployment ID `e44e1f96-e11d-4141-a209-24d091b7b811`, preview `https://e44e1f96.xflexwithai.pages.dev`. A historical 2026-06-05 upload failed with `POST /pages/assets/upload -> 502 Bad Gateway`; if that Cloudflare error recurs, manual dashboard upload of `dist/public` remains the fallback.
 - Latest production D1 migration applied as of 2026-07-24 is `database/migrations/076_student_community_prohibited_language.sql`.
+- The 2026-07-28 email-reliability and recommendation-freshness release is authorized for production. It must be released in this order: commit/push, full D1 export, migration `077_email_hard_bounce_suppressions.sql`, schema/seed verification, Worker deployment, Pages deployment, then health/route/data reconciliation. At the time of this entry, production identifiers are still pending.
 - On 2026-06-21, the user reported completing the Worker/frontend deployment for the timed-service activation and email reliability release. The exact Cloudflare deployment version/commit was not recorded in this session.
 - Production D1 migration `database/migrations/055_timed_service_activation_email_outbox.sql` was applied by Codex on 2026-06-21 before deployment.
 - Migration `055` Cloudflare bookmark: `00000ebe-0000002c-00005091-24213355c43c1b020dcc1e96230ee7bf`.
@@ -89,6 +90,10 @@ Last updated: 2026-07-24
 
 - Central email sender is `backend/_core/email.ts`, function `sendEmail`.
 - Outbound automated emails are logged to `email_delivery_logs` with status, errors, and metadata.
+- ZeptoMail's 2026-07-20 through 2026-07-26 weekly summary reported 4,641 sent, 4,202 delivered, 9 soft bounces, and 250 hard bounces. The four displayed categories account for 4,461 messages, so 180 messages were outside those displayed outcome buckets; do not infer their final status without provider-level data.
+- The user-provided ZeptoMail detail confirmed `admin@xflexacademy.com` is a permanent hard bounce (`5.1.1 User does not exist`, `bad-mailbox`). Migration `077_email_hard_bounce_suppressions.sql` creates the permanent `email_suppressions` registry and seeds that invalid internal mailbox as active. This does not suppress any client/student address.
+- Application status `sent` means ZeptoMail accepted the API request; it is not proof of final inbox delivery. Until webhook/event ingestion exists, final delivery/bounce reconciliation remains provider-side. The suppression layer prevents known permanent failures from being retried across direct, staff, admin, generic-outbox, and recommendation BCC paths.
+- Suppressed recipients are auditable without calling ZeptoMail: direct/logged sends use `skipped_suppressed`, and durable outbox/recommendation rows are finalized as skipped rather than retried or dead-lettered.
 - Logged email flows include staff alerts, welcome/milestone emails, recommendation alerts, trade results, and admin bulk notifications.
 - Admin dashboard for email logs is in Admin Notifications -> `Email Delivery Logs` tab.
 - Email logs support grouped and detailed views, category filters, date presets, and offset paging; grouped rows intentionally combine the same email batch sent to multiple recipients.
@@ -121,6 +126,9 @@ Last updated: 2026-07-24
   - Closed or resulted recommendations and stale updates are skipped.
   - Results are skipped if that recipient has no viable root-recommendation delivery.
 - Recommendation claim ordering is newest actionable recommendation first, then alerts, updates, and results. Do not restore simple FIFO ordering for time-sensitive trading messages.
+- Production read-only diagnosis for Islam (`users.id = 102`) on 2026-07-28 found prompt and equal provider acceptance: for the latest event, his alert was accepted in 3.6 seconds versus a 3.7-second peer average, and his recommendation email was accepted in 3.9 seconds versus a 4.0-second peer average. Across seven reviewed alerts, his provider-acceptance latency was 1.9-4.4 seconds (3.7-second median). There is no evidence that Islam was deprioritized relative to other clients.
+- The actual late experience was publication plus page freshness, not email dispatch. On the latest event the alert was created at `2026-07-28T10:06:22Z`, Islam opened the Recommendations page at `10:07:18Z`, and the analyst published recommendation `875` at `10:10:10Z`, 228 seconds after the alert. Five reviewed alert-to-publication intervals were 95.6, 134.3, 135.3, 228.0, and 363.1 seconds, all longer than the approximately 60-second client copy.
+- Before the 2026-07-28 fix, an already-open Recommendations page did not poll for new open threads, so it could remain stale until navigation or manual reload. `frontend/src/pages/Recommendations.tsx` now refetches open threads every 3 seconds, including in the background, and on window focus. This reduces post-publication UI staleness but cannot make an analyst publish earlier; the approximately 60-second promise should be treated as an operational SLA or its wording should be revised.
 - Human support replies now always enqueue a transactional client email, regardless of whether the client is online. This applies to replies in existing conversations and staff-initiated conversations.
 - Support reply emails use `eventType = support_client_reply`, `templateId = support_client_reply`, and dedupe key `support_reply:<supportMessageId>`.
 - `support_client_reply` rows are prioritized ahead of bulk announcements inside the generic email outbox. Bot replies, polling, edits, and deletes do not generate support reply emails.
@@ -297,6 +305,12 @@ Last updated: 2026-07-24
 - `pnpm test` passed on 2026-06-05: 21 test files, 78 tests.
 - `pnpm run build` passed.
 - `pnpm run build:worker` passed.
+- Email suppression/recommendation freshness release candidate verification on 2026-07-28:
+  - `pnpm check`, `pnpm build`, and `pnpm run build:worker` passed; Vite emitted only the existing large-chunk warning.
+  - Full `pnpm test` passed: 64 files / 315 tests.
+  - Migration `077_email_hard_bounce_suppressions.sql` passed an idempotency smoke against isolated SQLite.
+  - Focused tests cover direct, admin/staff, generic-outbox, and recommendation suppression, including BCC privacy and skipped-row audit behavior.
+  - Production investigation used read-only D1 evidence; no client/student record was changed and no live QA email was sent.
 - Focused lifecycle tests passed: `server/packageKeyLifecycle.test.ts`, `server/timedServiceActivation.test.ts`, `server/packageKeyRenewalEligibility.test.ts`, `server/markEpisodeComplete.test.ts`, and `server/brokerFreezeAndSkipRoutes.test.ts`.
 - Browser smoke could not be completed in Codex because the in-app browser backend reported `iab` unavailable.
 - Release verification on 2026-06-21:

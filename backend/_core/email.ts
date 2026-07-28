@@ -53,7 +53,7 @@ type SendEmailInput = {
 };
 
 async function writeEmailDeliveryAudit(input: SendEmailInput, outcome: {
-  status: 'sent' | 'failed' | 'skipped_unsubscribed' | 'skipped_deduped' | 'skipped_renewed';
+  status: 'sent' | 'failed' | 'skipped_unsubscribed' | 'skipped_suppressed' | 'skipped_deduped' | 'skipped_renewed';
   provider?: string | null;
   errorMessage?: string | null;
 }) {
@@ -219,10 +219,38 @@ async function forwardSupportMailboxCopies(input: SendEmailInput) {
   }
 }
 
-export async function sendEmail(input: SendEmailInput): Promise<{ provider: string | null; attemptedProviders: string[]; skipped?: 'unsubscribed' }> {
+export async function sendEmail(input: SendEmailInput): Promise<{
+  provider: string | null;
+  attemptedProviders: string[];
+  skipped?: 'unsubscribed' | 'suppressed';
+}> {
   const provider = ENV.emailProvider;
   const attemptedProviders: string[] = [];
   let providerUsed: string | null = null;
+
+  const normalizedRecipient = normalizeEmailAddress(input.to);
+  try {
+    const { getPermanentlySuppressedEmailAddresses } = await import("../db");
+    const permanentlySuppressed = await getPermanentlySuppressedEmailAddresses([normalizedRecipient]);
+    if (permanentlySuppressed.has(normalizedRecipient)) {
+      await writeEmailDeliveryAudit(input, {
+        status: 'skipped_suppressed',
+        provider: null,
+        errorMessage: 'Recipient is permanently suppressed',
+      });
+      logger.info("[EMAIL] Skipped permanently suppressed recipient", {
+        to: normalizedRecipient,
+        eventType: input.audit?.eventType || 'generic',
+      });
+      return { provider: null, attemptedProviders: [], skipped: 'suppressed' };
+    }
+  } catch (error) {
+    logger.warn("[EMAIL] Permanent suppression check failed; continuing with send", {
+      to: normalizedRecipient,
+      eventType: input.audit?.eventType || 'generic',
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 
   const suppressibleCategory = input.audit?.category;
   if (isSuppressibleEmailCategory(suppressibleCategory)) {
@@ -425,8 +453,8 @@ export async function sendAdminNotificationEmail(input: {
       provider: result.provider,
       attemptedProviders: result.attemptedProviders,
       providerRequestId: null,
-      sentUserIds: result.skipped === "unsubscribed" ? [] : recipient.userIds,
-      skippedUserIds: result.skipped === "unsubscribed" ? recipient.userIds : [],
+      sentUserIds: result.skipped ? [] : recipient.userIds,
+      skippedUserIds: result.skipped ? recipient.userIds : [],
       recipientCount: recipients.length,
       deliveryMode: "single_to",
     };
@@ -458,16 +486,29 @@ export async function sendAdminNotificationEmail(input: {
   }
 
   const deliverable: AdminNotificationRecipientGroup[] = [];
-  const skipped: AdminNotificationRecipientGroup[] = [];
+  const skippedUnsubscribed: AdminNotificationRecipientGroup[] = [];
+  const skippedPermanentlySuppressed: AdminNotificationRecipientGroup[] = [];
   try {
-    const { getSuppressedEmailAddresses } = await import("../db");
-    const suppressedEmails = await getSuppressedEmailAddresses(
-      recipients.map((recipient) => recipient.email),
-      "marketing",
-    );
+    const {
+      getPermanentlySuppressedEmailAddresses,
+      getSuppressedEmailAddresses,
+    } = await import("../db");
+    const recipientEmails = recipients.map((recipient) => recipient.email);
+    const [unsubscribedEmails, permanentlySuppressedEmails] = await Promise.all([
+      getSuppressedEmailAddresses(
+        recipientEmails,
+        "marketing",
+      ),
+      getPermanentlySuppressedEmailAddresses(recipientEmails),
+    ]);
     for (const recipient of recipients) {
-      if (suppressedEmails.has(recipient.email)) skipped.push(recipient);
-      else deliverable.push(recipient);
+      if (permanentlySuppressedEmails.has(recipient.email)) {
+        skippedPermanentlySuppressed.push(recipient);
+      } else if (unsubscribedEmails.has(recipient.email)) {
+        skippedUnsubscribed.push(recipient);
+      } else {
+        deliverable.push(recipient);
+      }
     }
   } catch (error) {
     logger.warn("[EMAIL] Admin notification suppression check failed; continuing with send", {
@@ -476,24 +517,37 @@ export async function sendAdminNotificationEmail(input: {
     });
     deliverable.push(...recipients);
   }
+  const skipped = [...skippedPermanentlySuppressed, ...skippedUnsubscribed];
+
+  const auditSkipped = async (
+    recipientGroups: AdminNotificationRecipientGroup[],
+    status: "skipped_suppressed" | "skipped_unsubscribed",
+  ) => {
+    if (!recipientGroups.length) return;
+    const { logEmailDeliveryAttempts } = await import("../db");
+    await logEmailDeliveryAttempts(recipientGroups.flatMap((recipient) => recipient.userIds.map((userId) => ({
+      recipientEmail: recipient.email,
+      recipientUserId: userId,
+      eventType: input.eventType,
+      templateId: input.templateId,
+      subject: input.subject,
+      status,
+      provider: null,
+      errorMessage: status === "skipped_suppressed" ? "Recipient is permanently suppressed" : null,
+      metadata: {
+        ...(input.metadata || {}),
+        deliveryMode: "bcc_batch",
+        providerBatchKey: input.providerBatchKey,
+      },
+    }))));
+  };
 
   if (skipped.length) {
     try {
-      const { logEmailDeliveryAttempts } = await import("../db");
-      await logEmailDeliveryAttempts(skipped.flatMap((recipient) => recipient.userIds.map((userId) => ({
-        recipientEmail: recipient.email,
-        recipientUserId: userId,
-        eventType: input.eventType,
-        templateId: input.templateId,
-        subject: input.subject,
-        status: "skipped_unsubscribed",
-        provider: null,
-        metadata: {
-          ...(input.metadata || {}),
-          deliveryMode: "bcc_batch",
-          providerBatchKey: input.providerBatchKey,
-        },
-      }))));
+      await Promise.all([
+        auditSkipped(skippedPermanentlySuppressed, "skipped_suppressed"),
+        auditSkipped(skippedUnsubscribed, "skipped_unsubscribed"),
+      ]);
     } catch (error) {
       logger.warn("[EMAIL] Failed to audit skipped admin notification recipients", {
         eventType: input.eventType,
@@ -659,9 +713,54 @@ export async function sendStaffBccBatch(input: {
     });
   }
 
+  const deliverable: StaffBccBatchRecipient[] = [];
+  const skipped: StaffBccBatchRecipient[] = [];
+  try {
+    const { getPermanentlySuppressedEmailAddresses } = await import("../db");
+    const suppressedEmails = await getPermanentlySuppressedEmailAddresses(
+      recipients.map((recipient) => recipient.email),
+    );
+    for (const recipient of recipients) {
+      if (suppressedEmails.has(recipient.email)) skipped.push(recipient);
+      else deliverable.push(recipient);
+    }
+  } catch (error) {
+    logger.warn("[EMAIL] Staff BCC permanent suppression check failed; continuing with send", {
+      eventType: input.eventType,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    deliverable.push(...recipients);
+  }
+
+  if (skipped.length) {
+    try {
+      const { logEmailDeliveryAttempts } = await import("../db");
+      await logEmailDeliveryAttempts(skipped.map((recipient) => ({
+        recipientEmail: recipient.email,
+        recipientUserId: recipient.userId ?? null,
+        eventType: input.eventType,
+        templateId: input.templateId,
+        subject: input.subject,
+        status: "skipped_suppressed",
+        provider: null,
+        errorMessage: "Recipient is permanently suppressed",
+        metadata: {
+          ...(input.metadata || {}),
+          deliveryMode: "bcc_batch",
+          providerBatchKey: input.providerBatchKey,
+        },
+      })));
+    } catch (error) {
+      logger.warn("[EMAIL] Failed to audit permanently suppressed staff recipients", {
+        eventType: input.eventType,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   const auditRecipients = [
     { email: companyTo, userId: null, deliveryMode: "bcc_batch_primary" },
-    ...recipients.map((recipient) => ({
+    ...deliverable.map((recipient) => ({
       email: recipient.email,
       userId: recipient.userId ?? null,
       deliveryMode: "bcc_batch",
@@ -671,7 +770,7 @@ export async function sendStaffBccBatch(input: {
   try {
     const providerResult = await sendViaZeptoMail({
       to: companyTo,
-      bcc: recipients.map((recipient) => recipient.email),
+      bcc: deliverable.map((recipient) => recipient.email),
       subject: input.subject,
       text: input.text,
       html: input.html,
@@ -695,7 +794,8 @@ export async function sendStaffBccBatch(input: {
     })));
     logger.info("[EMAIL] Staff BCC batch accepted", {
       to: companyTo,
-      recipientCount: recipients.length,
+      recipientCount: deliverable.length,
+      skippedCount: skipped.length,
       providerBatchKey: input.providerBatchKey,
       providerRequestId: providerResult.requestId,
       eventType: input.eventType,
@@ -730,7 +830,8 @@ export async function sendStaffBccBatch(input: {
     }
     logger.error("[EMAIL] Staff BCC batch failed", {
       to: companyTo,
-      recipientCount: recipients.length,
+      recipientCount: deliverable.length,
+      skippedCount: skipped.length,
       providerBatchKey: input.providerBatchKey,
       category,
       eventType: input.eventType,
@@ -758,10 +859,12 @@ export async function sendRecommendationBccBatch(input: {
   providerBatchKey: string;
   metadata?: Record<string, unknown>;
 }): Promise<{
-  provider: "zeptomail";
-  attemptedProviders: ["zeptomail"];
+  provider: "zeptomail" | null;
+  attemptedProviders: ["zeptomail"] | [];
   providerRequestId: string | null;
   recipientCount: number;
+  sentUserIds: number[];
+  skippedUserIds: number[];
 }> {
   const companyTo = ENV.recommendationEmailTo.trim().toLowerCase();
   const uniqueRecipients = new Map<string, BccBatchRecipient>();
@@ -796,17 +899,73 @@ export async function sendRecommendationBccBatch(input: {
     });
   }
 
+  const deliverable: BccBatchRecipient[] = [];
+  const skipped: BccBatchRecipient[] = [];
+  try {
+    const { getPermanentlySuppressedEmailAddresses } = await import("../db");
+    const suppressedEmails = await getPermanentlySuppressedEmailAddresses(
+      recipients.map((recipient) => recipient.email),
+    );
+    for (const recipient of recipients) {
+      if (suppressedEmails.has(recipient.email)) skipped.push(recipient);
+      else deliverable.push(recipient);
+    }
+  } catch (error) {
+    logger.warn("[EMAIL] Recommendation BCC permanent suppression check failed; continuing with send", {
+      eventType: input.eventType,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    deliverable.push(...recipients);
+  }
+
+  if (skipped.length) {
+    try {
+      const { logEmailDeliveryAttempts } = await import("../db");
+      await logEmailDeliveryAttempts(skipped.map((recipient) => ({
+        recipientEmail: recipient.email,
+        recipientUserId: recipient.userId,
+        eventType: input.eventType,
+        templateId: input.templateId,
+        subject: input.subject,
+        status: "skipped_suppressed",
+        provider: null,
+        errorMessage: "Recipient is permanently suppressed",
+        metadata: {
+          ...(input.metadata || {}),
+          deliveryMode: "bcc_batch",
+          providerBatchKey: input.providerBatchKey,
+        },
+      })));
+    } catch (error) {
+      logger.warn("[EMAIL] Failed to audit permanently suppressed recommendation recipients", {
+        eventType: input.eventType,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  if (!deliverable.length) {
+    return {
+      provider: null,
+      attemptedProviders: [],
+      providerRequestId: null,
+      recipientCount: recipients.length,
+      sentUserIds: [],
+      skippedUserIds: skipped.map((recipient) => recipient.userId),
+    };
+  }
+
   try {
     const providerResult = await sendViaZeptoMail({
       to: companyTo,
-      bcc: recipients.map((recipient) => recipient.email),
+      bcc: deliverable.map((recipient) => recipient.email),
       subject: input.subject,
       text: input.text,
       html: input.html,
       skipSupportForwarding: true,
     });
     const { logEmailDeliveryAttempts } = await import("../db");
-    await logEmailDeliveryAttempts(recipients.map((recipient) => ({
+    await logEmailDeliveryAttempts(deliverable.map((recipient) => ({
       recipientEmail: recipient.email,
       recipientUserId: recipient.userId,
       eventType: input.eventType,
@@ -822,7 +981,8 @@ export async function sendRecommendationBccBatch(input: {
       },
     })));
     logger.info("[EMAIL] Recommendation BCC batch accepted", {
-      recipientCount: recipients.length,
+      recipientCount: deliverable.length,
+      skippedCount: skipped.length,
       providerBatchKey: input.providerBatchKey,
       providerRequestId: providerResult.requestId,
     });
@@ -831,12 +991,14 @@ export async function sendRecommendationBccBatch(input: {
       attemptedProviders: ["zeptomail"],
       providerRequestId: providerResult.requestId,
       recipientCount: recipients.length,
+      sentUserIds: deliverable.map((recipient) => recipient.userId),
+      skippedUserIds: skipped.map((recipient) => recipient.userId),
     };
   } catch (error) {
     const category = categorizeEmailError(error);
     try {
       const { logEmailDeliveryAttempts } = await import("../db");
-      await logEmailDeliveryAttempts(recipients.map((recipient) => ({
+      await logEmailDeliveryAttempts(deliverable.map((recipient) => ({
         recipientEmail: recipient.email,
         recipientUserId: recipient.userId,
         eventType: input.eventType,
@@ -855,7 +1017,8 @@ export async function sendRecommendationBccBatch(input: {
       // The provider failure remains authoritative; audit logging is best-effort.
     }
     logger.error("[EMAIL] Recommendation BCC batch failed", {
-      recipientCount: recipients.length,
+      recipientCount: deliverable.length,
+      skippedCount: skipped.length,
       providerBatchKey: input.providerBatchKey,
       category,
       error: error instanceof Error ? error.message : String(error),

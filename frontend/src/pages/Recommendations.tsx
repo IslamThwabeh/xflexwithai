@@ -16,6 +16,7 @@ import { buildRecommendationThreads, groupRecommendationThreadsByDay } from "@/l
 import { Link, useLocation } from "wouter";
 
 const ARCHIVED_THREADS_PER_PAGE = 8;
+const RECOMMENDATION_LIVE_REFETCH_MS = 3_000;
 
 const reactionIcons = {
   like: <ThumbsUp className="h-4 w-4" />,
@@ -183,7 +184,14 @@ export default function Recommendations() {
   });
   const { data: openThreadFeed = [], isLoading: openThreadFeedLoading } = trpc.recommendations.openThreads.useQuery(
     undefined,
-    { enabled: !!me && (me.hasSubscription || me.canPublish) }
+    {
+      enabled: !!me && (me.hasSubscription || me.canPublish),
+      // Trading recommendations are time-sensitive. Keep the feed fresh while
+      // the student waits on this page instead of requiring a manual reload.
+      refetchInterval: RECOMMENDATION_LIVE_REFETCH_MS,
+      refetchIntervalInBackground: true,
+      refetchOnWindowFocus: true,
+    }
   );
   const archiveOffset = (archivePage - 1) * ARCHIVED_THREADS_PER_PAGE;
   const {

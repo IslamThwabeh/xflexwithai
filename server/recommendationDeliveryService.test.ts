@@ -4,6 +4,7 @@ vi.mock("../backend/db", () => ({
   reconcileStaleRecommendationDeliveries: vi.fn(),
   claimNextRecommendationDeliveryBatch: vi.fn(),
   markRecommendationDeliveryBatchSent: vi.fn(),
+  markRecommendationDeliveryBatchSuppressed: vi.fn(),
   markRecommendationDeliveryBatchFailed: vi.fn(),
 }));
 
@@ -74,6 +75,8 @@ describe("recommendation delivery service", () => {
       attemptedProviders: ["zeptomail"],
       providerRequestId: "request-123",
       recipientCount: 2,
+      sentUserIds: [7, 8],
+      skippedUserIds: [],
     });
 
     const result = await drainRecommendationDeliveryQueue({
@@ -101,6 +104,7 @@ describe("recommendation delivery service", () => {
       sent: 2,
       failed: 0,
       skippedMissingPayload: 0,
+      skippedSuppressed: 0,
       providerRequests: 1,
       batches: 1,
     });

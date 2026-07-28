@@ -107,7 +107,11 @@ describe("email outbox service", () => {
       eventTypes: ["support_client_reply"],
     });
 
-    expect(db.markEmailOutboxSkipped).toHaveBeenCalledWith(4, "Recipient unsubscribed from this email category");
+    expect(db.markEmailOutboxSkipped).toHaveBeenCalledWith(
+      4,
+      "Recipient unsubscribed from this email category",
+      "skipped_unsubscribed",
+    );
     expect(db.markEmailOutboxSent).not.toHaveBeenCalled();
     expect(result).toEqual({ claimed: 1, sent: 0, failed: 0, skipped: 1 });
   });
