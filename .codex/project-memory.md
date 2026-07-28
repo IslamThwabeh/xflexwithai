@@ -36,10 +36,10 @@ Last updated: 2026-07-28
 - During investigations, Codex may inspect the production D1 database directly with Wrangler read-only `SELECT` queries to collect evidence. Any production write, repair, migration, or data change needs separate explicit user approval.
 - When writing raw Wrangler SQL against `email_delivery_logs`, use the physical snake_case column names: `recipient_email`, `recipient_user_id`, `event_type`, `template_id`, `error_message`, and `created_at`. Drizzle maps these to camelCase in TypeScript (`recipientEmail`, `eventType`, etc.), but raw D1 SQL with camelCase will fail.
 - For production D1 verification where result rows matter, prefer one `SELECT` per Wrangler command. Multi-statement SQL files may return only execution summaries instead of each result set.
-- Latest production Worker deploy completed on 2026-07-24 with version `7744ee87-216d-45d0-83ef-3c0702d0199c` from Worker release commit `79c603f`.
-- Latest successful Pages deployment completed on 2026-07-24 from release commit `b91453f`, deployment ID `e44e1f96-e11d-4141-a209-24d091b7b811`, preview `https://e44e1f96.xflexwithai.pages.dev`. A historical 2026-06-05 upload failed with `POST /pages/assets/upload -> 502 Bad Gateway`; if that Cloudflare error recurs, manual dashboard upload of `dist/public` remains the fallback.
-- Latest production D1 migration applied as of 2026-07-24 is `database/migrations/076_student_community_prohibited_language.sql`.
-- The 2026-07-28 email-reliability and recommendation-freshness release is authorized for production. It must be released in this order: commit/push, full D1 export, migration `077_email_hard_bounce_suppressions.sql`, schema/seed verification, Worker deployment, Pages deployment, then health/route/data reconciliation. At the time of this entry, production identifiers are still pending.
+- Latest production Worker deploy completed on 2026-07-28 with version `9dd3e02c-fac7-4bc6-a1ad-dc5e13c9f741` from release commit `5063172`.
+- Latest successful Pages deployment completed on 2026-07-28 from release commit `5063172`, deployment ID `143842fb-a417-43ca-86fa-a6a34c8ef6e2`, preview `https://143842fb.xflexwithai.pages.dev`. A historical 2026-06-05 upload failed with `POST /pages/assets/upload -> 502 Bad Gateway`; if that Cloudflare error recurs, manual dashboard upload of `dist/public` remains the fallback.
+- Latest production D1 migration applied as of 2026-07-28 is `database/migrations/077_email_hard_bounce_suppressions.sql`.
+- The email-reliability and recommendation-freshness release was committed as `5063172 Harden email delivery and recommendation freshness`, pushed to `origin/main`, and deployed by Codex on 2026-07-28. Production backup: `tmp/prod-backups/xflexwithai-before-email-suppression-077-20260728-160332.sql` (221,541,962 bytes). Migration `077_email_hard_bounce_suppressions.sql` was applied at Cloudflare bookmark `00000fc3-00000084-000050b6-6bc163a40b405eb03eab9eabf879346e` and recorded in `schema_migrations` with `source = codex_wrangler`.
 - On 2026-06-21, the user reported completing the Worker/frontend deployment for the timed-service activation and email reliability release. The exact Cloudflare deployment version/commit was not recorded in this session.
 - Production D1 migration `database/migrations/055_timed_service_activation_email_outbox.sql` was applied by Codex on 2026-06-21 before deployment.
 - Migration `055` Cloudflare bookmark: `00000ebe-0000002c-00005091-24213355c43c1b020dcc1e96230ee7bf`.
@@ -311,6 +311,12 @@ Last updated: 2026-07-28
   - Migration `077_email_hard_bounce_suppressions.sql` passed an idempotency smoke against isolated SQLite.
   - Focused tests cover direct, admin/staff, generic-outbox, and recommendation suppression, including BCC privacy and skipped-row audit behavior.
   - Production investigation used read-only D1 evidence; no client/student record was changed and no live QA email was sent.
+  - Production preflight confirmed migration 077 and its table/index were absent. The full recovery export completed before the write.
+  - Post-migration D1 verification confirmed all 10 suppression columns, `idx_email_suppressions_active_email`, exactly one active internal seed, and one migration-ledger record. No client/student email was added to the suppression registry.
+  - Worker custom-domain and workers.dev `/health` endpoints returned 200 with `status = ok`.
+  - Production `/`, `/ar`, `/en`, `/auth`, and `/recommendations` returned 200. Pages preview `/`, `/ar`, and `/auth` returned 200 after edge propagation.
+  - Production served the exact validated `Recommendations-DEVsLeqR.js` bundle; its open-thread query uses the minified 3-second constant (`ds=3e3`) for `refetchInterval`, plus background and window-focus refetching.
+  - Final D1 reconciliation found one active expected suppression and one 077 ledger record. No live QA email was sent, so zero post-deploy `skipped_suppressed` audit rows is expected until a real message targets the known invalid mailbox.
 - Focused lifecycle tests passed: `server/packageKeyLifecycle.test.ts`, `server/timedServiceActivation.test.ts`, `server/packageKeyRenewalEligibility.test.ts`, `server/markEpisodeComplete.test.ts`, and `server/brokerFreezeAndSkipRoutes.test.ts`.
 - Browser smoke could not be completed in Codex because the in-app browser backend reported `iab` unavailable.
 - Release verification on 2026-06-21:
