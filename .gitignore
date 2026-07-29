@@ -101,6 +101,10 @@ jspm_packages/
 tmp/
 temp/
 
+# Generated browser and investigation artifacts
+.playwright-cli/
+output/
+
 # Wrangler local state
 .wrangler/
 
