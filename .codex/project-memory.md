@@ -1,6 +1,6 @@
 # XFLEX Project Memory
 
-Last updated: 2026-07-28
+Last updated: 2026-07-30
 
 ## Project Overview
 
@@ -401,6 +401,13 @@ Last updated: 2026-07-28
   - `pnpm run test:seo` passed after adding `/community` to the Pages private app shell and robots exclusions.
   - Production and final preview returned 200 for `/community`, `/community?postId=42`, and `/admin/community`, with `X-Robots-Tag: noindex, nofollow` and `Cache-Control: private, no-store`.
   - Playwright production smoke passed on desktop and 390x844 mobile: anonymous `/community?postId=42` redirected to `/auth?next=%2Fcommunity%3FpostId%3D42`, preserving the intended post deep link; mobile navigation collapsed correctly; browser console had zero errors/warnings.
+- Support-AI and inactivity-outreach production rollout on 2026-07-30:
+  - Release commit `34e659d` (`Improve support AI and inactivity outreach`) was pushed to `origin/main`.
+  - Full test suite passed: 65 files / 323 tests. `pnpm exec tsc --noEmit`, `pnpm run build`, `pnpm run build:worker`, and `git diff --check` passed.
+  - Production D1 was checked read-only and already had the repository's latest migration, `077_email_hard_bounce_suppressions.sql`. This release contained no schema changes, so no migration was applied and the verification query wrote zero rows.
+  - Worker version `b9a68a1b-05ef-4c11-b65b-8d9dc1d5f7ba` deployed successfully. Both the custom-domain and workers.dev `/health` endpoints returned 200 with `status=ok` and `environment=production`.
+  - Pages deployment `b91e2fbb-7c94-41e7-8da3-b6f2b470cfd9` deployed commit `34e659d` to production; preview URL: `https://b91e2fbb.xflexwithai.pages.dev`.
+  - Production `/`, `/ar`, `/en`, `/auth`, and `/support`, plus the preview smoke routes, returned 200. The new `SupportChat-BX1ER8lY.js` asset was live on production and preview with the AI-first guidance and human-escalation wording.
 
 ## Future Hardening
 
