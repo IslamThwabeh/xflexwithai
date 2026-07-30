@@ -59,10 +59,17 @@ async function buildBrandedEmailPayload(to: string, subject: string, bodyHtml: s
 }
 
 /** Send a branded HTML email with plain-text fallback */
-async function sendBrandedEmail(to: string, subject: string, bodyHtml: string, audit?: EmailAuditInput) {
+async function sendBrandedEmail(
+  to: string,
+  subject: string,
+  bodyHtml: string,
+  audit?: EmailAuditInput,
+  delivery?: { bcc?: string[] },
+) {
   const payload = await buildBrandedEmailPayload(to, subject, bodyHtml, audit);
   return sendEmail({
     to,
+    bcc: delivery?.bcc,
     subject: payload.subject,
     text: payload.text,
     html: payload.html,
@@ -620,54 +627,129 @@ export async function sendMilestoneEmail(to: string, milestone: number, data: {
 // Inactivity Emails — re-engagement (7 days, 14 days)
 // ============================================================================
 
-export async function sendInactivityEmail(to: string, inactiveDays: number, data: {
-  name?: string | null;
-}) {
-  const firstName = data.name?.split(' ')[0] || '';
-  const is14 = inactiveDays >= 14;
+export type InactivityEmailService = {
+  serviceType: 'lexai' | 'recommendations';
+  serviceName: string;
+  status: 'active' | 'expired';
+  endDate: string;
+  daysLeft: number;
+};
 
-  const subject = is14
-    ? `[${BRAND}] مرّ أسبوعان — هل تحتاج مساعدة؟ | It's been 2 weeks`
-    : `[${BRAND}] نفتقدك! | We miss you!`;
+export function buildInactivityEmailContent(inactiveDays: number, data: {
+  name?: string | null;
+  services: InactivityEmailService[];
+}) {
+  const firstName = escapeHtml(data.name?.trim().split(/\s+/)[0] || '');
+  const activeServices = data.services.filter((service) => service.status === 'active');
+  const expiredServices = data.services.filter((service) => service.status === 'expired');
+  const hasActive = activeServices.length > 0;
+  const hasExpired = expiredServices.length > 0;
+
+  const subject = hasExpired
+    ? `[${BRAND}] جدّد خدماتك المحددة المدة | Renew your timed services`
+    : `[${BRAND}] استفد من اشتراكك قبل انتهائه | Use your subscription before it expires`;
+
+  const serviceRows = data.services.map((service) => {
+    const remainingDays = Math.max(1, service.daysLeft);
+    const statusAr = service.status === 'expired'
+      ? 'منتهية — تحتاج تجديد'
+      : `نشطة — متبقي ${remainingDays} يوم`;
+    const statusEn = service.status === 'expired'
+      ? 'Expired — renewal required'
+      : `Active — ${remainingDays} day${remainingDays === 1 ? '' : 's'} left`;
+    const statusColor = service.status === 'expired' ? '#b91c1c' : '#047857';
+    const endDate = escapeHtml(service.endDate.slice(0, 10));
+    return `
+      <tr>
+        <td style="padding:10px 8px;border-top:1px solid #e5e7eb;color:#111827;font-weight:bold;">
+          ${escapeHtml(service.serviceName)}
+        </td>
+        <td style="padding:10px 8px;border-top:1px solid #e5e7eb;color:${statusColor};">
+          ${statusAr}<br/><span style="font-size:12px;">${statusEn}</span>
+        </td>
+        <td style="padding:10px 8px;border-top:1px solid #e5e7eb;color:#6b7280;white-space:nowrap;">
+          ${endDate}
+        </td>
+      </tr>`;
+  }).join('');
 
   const body = `
     <h2 style="margin:0 0 8px;color:#065f46;">
-      ${is14 ? 'مرحباً! مرّ أسبوعان منذ آخر زيارة 😔' : 'نفتقدك! مرّ أسبوع 👋'}
+      ${hasExpired ? 'خدماتك المحددة المدة تحتاج إلى تجديد' : 'لا تدع مدة اشتراكك تمر دون استفادة'}
     </h2>
     <h3 style="margin:0 0 16px;color:#065f46;">
-      ${is14 ? "It's been 2 weeks — need help?" : "We miss you! It's been a week"}
+      ${hasExpired ? 'Your timed services need renewal' : 'Make the most of your active subscription'}
     </h3>
     <p style="color:#374151;line-height:1.7;">
       ${firstName ? `مرحباً ${firstName}،` : 'مرحباً،'}<br/>
-      ${is14
-        ? 'لم نرك منذ أسبوعين. إذا واجهت أي صعوبة أو تحتاج مساعدة، فريق الدعم موجود لمساعدتك. عُد وأكمل رحلتك!'
-        : 'مرّ أسبوع منذ آخر زيارة لك. رحلة التداول تحتاج استمرارية. عُد وأكمل من حيث توقفت!'}
+      لم نرَ نشاطاً على حسابك منذ ${inactiveDays} يوماً.
+      ${hasActive ? 'لديك خدمات محددة المدة ما زالت نشطة، فسجّل الدخول واستفد منها قبل انتهائها.' : ''}
+      ${hasExpired ? 'انتهت خدمة أو أكثر من خدماتك المحددة المدة، ويمكنك استعادتها باستخدام مفتاح تجديد.' : ''}
     </p>
-    <p style="color:#6b7280;line-height:1.7;font-size:14px;">
-      ${is14
-        ? "We haven't seen you in 2 weeks. If you're stuck or need help, our support team is here for you. Come back and continue your journey!"
-        : "It's been a week since your last visit. Trading education needs consistency. Pick up where you left off!"}
+    <p style="color:#6b7280;line-height:1.7;font-size:14px;" dir="ltr">
+      We have not seen activity on your account for ${inactiveDays} days.
+      ${hasActive ? 'You still have active timed services. Sign in and use them before they expire.' : ''}
+      ${hasExpired ? 'One or more timed services have expired. You can restore access with a renewal key.' : ''}
     </p>
-    <div style="text-align:center;margin-top:20px;">
-      <a href="https://xflexacademy.com/courses" style="display:inline-block;background:#059669;color:#fff;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:15px;">
-        عُد الآن / Come Back
-      </a>
+    <div style="overflow-x:auto;margin-top:18px;">
+      <table role="presentation" style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;font-size:13px;">
+        <thead>
+          <tr style="background:#f9fafb;color:#374151;">
+            <th align="left" style="padding:9px 8px;">الخدمة / Service</th>
+            <th align="left" style="padding:9px 8px;">الحالة / Status</th>
+            <th align="left" style="padding:9px 8px;">تاريخ الانتهاء / Ends</th>
+          </tr>
+        </thead>
+        <tbody>${serviceRows}</tbody>
+      </table>
     </div>
-    ${is14 ? `
+    <div style="text-align:center;margin-top:22px;">
+      ${hasActive ? `
+        <a href="https://xflexacademy.com/dashboard" style="display:inline-block;background:#059669;color:#fff;padding:14px 24px;margin:4px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:15px;">
+          تسجيل الدخول / Sign In
+        </a>` : ''}
+      ${hasExpired ? `
+        <a href="https://xflexacademy.com/my-packages?focus=renewal" style="display:inline-block;background:#d97706;color:#fff;padding:14px 24px;margin:4px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:15px;">
+          تجديد الخدمات / Renew Services
+        </a>` : ''}
+    </div>
     <p style="color:#9ca3af;font-size:12px;margin-top:20px;text-align:center;">
-      تحتاج مساعدة؟ تواصل مع الدعم عبر المنصة أو واتساب.<br/>
-      Need help? Reach out via platform support or WhatsApp.
-    </p>` : ''}`;
+      هذه الرسالة تخص خدمات LexAI والتوصيات المحددة المدة، وليست وصولك الدائم إلى محتوى الدورة.<br/>
+      This message concerns your timed LexAI and Recommendations services, not your permanent course access.
+    </p>`;
 
+  return { subject, body };
+}
+
+export async function sendInactivityEmail(to: string, inactiveDays: number, data: {
+  userId: number;
+  name?: string | null;
+  services: InactivityEmailService[];
+  adminBcc?: string[];
+}): Promise<{ status: 'sent' | 'skipped' | 'failed'; skippedReason?: 'unsubscribed' | 'suppressed' }> {
+  const { subject, body } = buildInactivityEmailContent(inactiveDays, data);
   try {
-    await sendBrandedEmail(to, subject, body, {
+    const result = await sendBrandedEmail(to, subject, body, {
       eventType: 'inactivity',
       templateId: `inactivity_${inactiveDays}`,
+      recipientUserId: data.userId,
       category: 'service_lifecycle',
-      metadata: { inactiveDays },
+      metadata: {
+        inactiveDays,
+        serviceTypes: data.services.map((service) => service.serviceType),
+        serviceStatuses: data.services.map((service) => service.status),
+        adminBccCount: data.adminBcc?.length ?? 0,
+      },
+    }, {
+      bcc: data.adminBcc,
     });
+    if (result.skipped) {
+      return { status: 'skipped', skippedReason: result.skipped };
+    }
+    return { status: 'sent' };
   } catch (e) {
     logger.warn(`[INACTIVITY_EMAIL] ${inactiveDays}d failed`, { to, error: String(e) });
+    return { status: 'failed' };
   }
 }
 

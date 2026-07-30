@@ -367,14 +367,14 @@ export default function SupportChat() {
             </div>
             {isChatTab && !hasRequestedHuman && allMessages.length > 0 && (
               <Button
-                variant="outline"
+                variant="ghost"
                 size="sm"
-                className="shrink-0 text-amber-600 border-amber-300 hover:bg-amber-50"
+                className="h-auto shrink-0 px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 hover:text-slate-700"
                 onClick={() => requestHumanMutation.mutate()}
                 disabled={requestHumanMutation.isPending}
               >
                 <UserRound className="h-4 w-4 mr-1" />
-                {isRTL ? 'طلب وكيل بشري' : 'Request Human'}
+                {isRTL ? 'ما زلت بحاجة لموظف؟' : 'Still need a human?'}
               </Button>
             )}
           </div>
@@ -411,8 +411,8 @@ export default function SupportChat() {
             <Bot className="h-4 w-4 shrink-0" />
             <span>
               {isRTL
-                ? 'المساعد الذكي يرد تلقائياً هنا. إذا أردت متابعة مع شخص حقيقي، اضغط "طلب وكيل بشري".'
-                : 'Our AI assistant replies automatically here. If you want a human, tap "Request Human".'}
+                ? 'المساعد الذكي يستطيع حل معظم أسئلة المنصة والاشتراكات مباشرة. يمكنك طلب موظف إذا لم تُحل المشكلة.'
+                : 'Our AI assistant can resolve most platform and subscription questions immediately. You can request a human if the issue remains unresolved.'}
             </span>
           </div>
         )}

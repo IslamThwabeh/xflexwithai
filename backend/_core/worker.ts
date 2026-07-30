@@ -12,6 +12,10 @@ import {
   type SubscriptionExpiryDigestItem,
 } from "./subscriptionExpiryDigest";
 import {
+  buildInactivityDigestNotification,
+  type InactivityDigestItem,
+} from "./inactivityDigest";
+import {
   drainGenericEmailOutbox,
   GENERIC_EMAIL_OUTBOX_DRAIN_LIMIT,
   SUPPORT_REPLY_EMAIL_DRAIN_LIMIT,
@@ -679,25 +683,61 @@ export default {
       }
     }
 
-    // --- Inactivity emails (7 days, 14 days) ---
+    // --- Timed-service inactivity emails (7 days, 14 days) ---
+    // Clients receive personalized messages with configured admins copied by
+    // BCC. Staff receive one digest instead of one extra alert per client.
+    const inactivityDigestItems: InactivityDigestItem[] = [];
+    const inactivityAdminBcc = await db.getConfiguredAdminNotificationEmails();
     for (const days of [7, 14]) {
       try {
         const users = await db.getInactiveUsers(days);
         for (const u of users) {
-          await sendInactivityEmail(u.email, days, { name: u.name });
-          await db.logEmailSent(u.userId, `inactivity_${days}`);
-          // Staff alert for student inactivity
-          db.notifyStaffByEvent('student_inactivity', {
-            titleEn: `Student inactive for ${days} days – ${u.name}`,
-            titleAr: `طالب غير نشط منذ ${days} أيام – ${u.name}`,
-            contentEn: `${u.name} hasn't logged in for ${days} days.`,
-            contentAr: `${u.name} لم يسجل دخولًا منذ ${days} أيام.`,
-            metadata: { userId: (u as any).userId ?? null, name: u.name, inactiveDays: days },
-          }).catch(() => {});
+          const clientEmail = u.email.trim().toLowerCase();
+          const adminBcc = inactivityAdminBcc.filter(
+            (email) => email.trim().toLowerCase() !== clientEmail,
+          );
+          const delivery = await sendInactivityEmail(u.email, days, {
+            userId: u.userId,
+            name: u.name,
+            services: u.services,
+            adminBcc,
+          });
+          if (delivery.status !== 'failed') {
+            await db.logEmailSent(u.userId, u.emailLogKey, {
+              inactiveDays: days,
+              lastActiveAt: u.lastActiveAt,
+              services: u.services,
+              deliveryStatus: delivery.status,
+              skippedReason: delivery.skippedReason ?? null,
+            });
+          }
+          inactivityDigestItems.push({
+            userId: u.userId,
+            email: u.email,
+            name: u.name,
+            inactiveDays: u.daysSinceActive,
+            services: u.services,
+            deliveryStatus: delivery.status,
+          });
         }
       } catch (e) {
         logger.error(`[CRON] Inactivity ${days}d failed`, { error: e instanceof Error ? e.message : String(e) });
       }
+    }
+
+    const inactivityDigest = buildInactivityDigestNotification(inactivityDigestItems);
+    if (inactivityDigest) {
+      await db.notifyStaffByEvent('student_inactivity', {
+        ...inactivityDigest,
+        emailContentHtmlEn: inactivityDigest.emailContentHtmlEn,
+        emailActionLabelEn: 'Open Student Report',
+        metadata: {
+          ...inactivityDigest.metadata,
+          generatedAt: new Date().toISOString(),
+        },
+      }).catch((error) => logger.error('[CRON] Staff notify (inactivity digest) failed', {
+        error: error instanceof Error ? error.message : String(error),
+      }));
     }
 
     // --- Onboarding stalled (3+ days pending review) ---

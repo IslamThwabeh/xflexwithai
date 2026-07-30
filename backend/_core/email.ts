@@ -147,6 +147,7 @@ async function sendViaResend(input: SendEmailInput) {
     body: JSON.stringify({
       from,
       to: [input.to],
+      ...(input.bcc?.length ? { bcc: input.bcc } : {}),
       subject: input.subject,
       ...(input.html ? { html: input.html } : { text: input.text }),
       ...(input.headers ? { headers: input.headers } : {}),
@@ -167,7 +168,10 @@ async function sendViaMailChannels(input: SendEmailInput) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      personalizations: [{ to: [{ email: input.to }] }],
+      personalizations: [{
+        to: [{ email: input.to }],
+        ...(input.bcc?.length ? { bcc: input.bcc.map((email) => ({ email })) } : {}),
+      }],
       from: { email: from, name: ENV.emailFromName || "XFlex Academy" },
       subject: input.subject,
       content: input.html

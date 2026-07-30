@@ -54,6 +54,26 @@ function createDeferred() {
   return { promise, resolve };
 }
 
+function supportAiResponse(overrides: Record<string, unknown> = {}) {
+  return {
+    ok: true,
+    json: async () => ({
+      choices: [{
+        message: {
+          content: JSON.stringify({
+            intent: "technical_issue",
+            answer: "Hello from AI",
+            confidence: 0.95,
+            needsHuman: false,
+            escalationReason: "none",
+            ...overrides,
+          }),
+        },
+      }],
+    }),
+  };
+}
+
 function createSupportStaffCaller() {
   return appRouter.createCaller({
     req: {
@@ -224,12 +244,7 @@ describe("support chat staff notifications", () => {
     vi.setSystemTime(new Date("2026-05-04T10:00:00.000Z"));
     vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
 
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        choices: [{ message: { content: "Hello from AI" } }],
-      }),
-    });
+    const fetchMock = vi.fn().mockResolvedValue(supportAiResponse());
     vi.stubGlobal("fetch", fetchMock);
 
     createSupportMessage
@@ -245,16 +260,118 @@ describe("support chat staff notifications", () => {
     expect(fetchMock).toHaveBeenCalledOnce();
     const openAiRequest = fetchMock.mock.calls[0]?.[1];
     const parsedBody = JSON.parse(String(openAiRequest?.body ?? "{}"));
-    expect(parsedBody.messages?.[0]?.content).toContain("Rawan is the founder of XFlex Trading Academy");
+    expect(parsedBody.messages?.[0]?.content).toContain("Rawan is the founder");
     expect(parsedBody.messages?.[0]?.content).toContain("Birzeit University");
-    expect(parsedBody.messages?.[0]?.content).toContain("Locked lessons or missing lesson quizzes");
+    expect(parsedBody.messages?.[0]?.content).toContain("Course access included with an activated package is permanent");
+    expect(parsedBody.messages?.[0]?.content).toContain("duration of LexAI and Recommendations is configured");
+    expect(parsedBody.messages?.[0]?.content).toContain("eight learning levels with checkpoint quizzes");
     expect(parsedBody.messages?.[0]?.content).toContain("Start with one concrete self-service step");
+    expect(parsedBody.temperature).toBe(0.2);
+    expect(parsedBody.response_format).toMatchObject({
+      type: "json_schema",
+      json_schema: {
+        name: "support_ai_reply",
+        strict: true,
+      },
+    });
     expect(createSupportMessage).toHaveBeenNthCalledWith(2, {
       conversationId: 10,
       senderId: 0,
       senderType: "bot",
       content: "Hello from AI",
     });
+    expect(notifyStaffByEvent).not.toHaveBeenCalled();
+  });
+
+  it("sends the latest support context chronologically and keeps previous AI replies", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
+    const fetchMock = vi.fn().mockResolvedValue(supportAiResponse({
+      answer: "Try the updated step",
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    createSupportMessage
+      .mockResolvedValueOnce({ id: 80, conversationId: 10, content: "It still fails" } as any)
+      .mockResolvedValueOnce({ id: 81, conversationId: 10, content: "Try the updated step" } as any);
+    // Database order is newest-first.
+    getSupportMessages.mockResolvedValue([
+      { senderType: "client", content: "It still fails" },
+      { senderType: "bot", content: "Please clear your browser cache" },
+      { senderType: "client", content: "The video does not load" },
+    ] as any);
+
+    await createAuthedCaller().supportChat.send({ content: "It still fails" });
+
+    const parsedBody = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body ?? "{}"));
+    expect(parsedBody.messages.slice(1)).toEqual([
+      { role: "user", content: "The video does not load" },
+      { role: "assistant", content: "Please clear your browser cache" },
+      { role: "user", content: "It still fails" },
+    ]);
+  });
+
+  it("does not mistake a reference to the support team for a human request", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
+    const fetchMock = vi.fn().mockResolvedValue(supportAiResponse());
+    vi.stubGlobal("fetch", fetchMock);
+    createSupportMessage
+      .mockResolvedValueOnce({ id: 82, conversationId: 10, content: "I contacted the support team yesterday" } as any)
+      .mockResolvedValueOnce({ id: 83, conversationId: 10, content: "Hello from AI" } as any);
+    getSupportMessages.mockResolvedValue([
+      { senderType: "client", content: "I contacted the support team yesterday" },
+    ] as any);
+
+    await createAuthedCaller().supportChat.send({ content: "I contacted the support team yesterday" });
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(setNeedsHuman).not.toHaveBeenCalled();
+  });
+
+  it("notifies staff when the structured AI decision has low confidence", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(supportAiResponse({
+      confidence: 0.55,
+      answer: "Please share the lesson number.",
+    })));
+    createSupportMessage
+      .mockResolvedValueOnce({ id: 84, conversationId: 10, content: "It is broken" } as any)
+      .mockResolvedValueOnce({ id: 85, conversationId: 10, content: "Please share the lesson number." } as any);
+    getSupportMessages
+      .mockResolvedValueOnce([{ senderType: "client", content: "It is broken" }] as any)
+      .mockResolvedValueOnce([{ senderType: "client", content: "It is broken", deletedAt: null }] as any);
+
+    await createAuthedCaller().supportChat.send({ content: "It is broken" });
+
+    expect(notifyStaffByEvent).toHaveBeenCalledWith(
+      "new_support_message",
+      expect.objectContaining({ metadata: { userId: 123, conversationId: 10 } }),
+    );
+  });
+
+  it("escalates when the structured AI decision requires account review", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(supportAiResponse({
+      intent: "activation_key",
+      answer: "A team member needs to verify your activation key.",
+      confidence: 0.92,
+      needsHuman: true,
+      escalationReason: "account_data_required",
+    })));
+    createSupportMessage
+      .mockResolvedValueOnce({ id: 86, conversationId: 10, content: "Why is my key expired?" } as any)
+      .mockResolvedValueOnce({ id: 87, conversationId: 10, content: "A team member needs to verify your activation key." } as any);
+    getSupportMessages.mockResolvedValue([
+      { senderType: "client", content: "Why is my key expired?" },
+    ] as any);
+
+    await createAuthedCaller().supportChat.send({ content: "Why is my key expired?" });
+
+    expect(setNeedsHuman).toHaveBeenCalledWith(10, true);
+    expect(notifyStaffByEvent).toHaveBeenCalledTimes(1);
+    expect(notifyStaffByEvent).toHaveBeenCalledWith(
+      "human_escalation",
+      expect.objectContaining({ metadata: { userId: 123, conversationId: 10 } }),
+    );
   });
 
   it("treats an explicit typed human request as an escalation and skips AI", async () => {

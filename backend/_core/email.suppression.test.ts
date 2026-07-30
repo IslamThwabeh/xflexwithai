@@ -60,6 +60,27 @@ describe("permanent email suppression", () => {
     );
   });
 
+  it("submits configured BCC recipients with a personalized client email", async () => {
+    await sendEmail({
+      to: "client@example.com",
+      bcc: ["admin@example.com", "ops@example.com"],
+      subject: "Timed service reminder",
+      text: "Reminder",
+      audit: { eventType: "inactivity", templateId: "inactivity_7" },
+    });
+
+    const providerBody = JSON.parse(
+      String((vi.mocked(fetch).mock.calls[0][1] as RequestInit).body),
+    );
+    expect(providerBody.to).toEqual([
+      { email_address: { address: "client@example.com" } },
+    ]);
+    expect(providerBody.bcc).toEqual([
+      { email_address: { address: "admin@example.com" } },
+      { email_address: { address: "ops@example.com" } },
+    ]);
+  });
+
   it("removes permanently suppressed staff BCC recipients while keeping live recipients", async () => {
     dbMocks.getPermanentlySuppressedEmailAddresses.mockResolvedValue(
       new Set(["dead@example.com"]),

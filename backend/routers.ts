@@ -45,6 +45,7 @@ import {
 import { storagePutR2, storageArchiveR2 } from "./storage-r2";
 import { analyzeLexai } from "./_core/lexai";
 import { invokeOpenAiChatCompletion } from "./_core/openai";
+import { SUPPORT_AI_ACADEMY_KNOWLEDGE } from "./_core/supportAiKnowledge";
 import { hashPassword, verifyPassword, generateToken, isValidEmail, isValidPassword, normalizeEmailAddress } from "./_core/auth";
 import { generateFreeVideoPlaybackToken } from "./_core/freeLibraryPlayback";
 import { sendAdminNotificationEmail, sendEmail, sendLoginCodeEmail } from "./_core/email";
@@ -1560,22 +1561,15 @@ function isSupportWorkingHours(): boolean {
   return day >= 0 && day <= 4 && hour >= 12 && hour < 20;
 }
 
-const SUPPORT_AI_SYSTEM_PROMPT = `You are the XFlex Trading Academy support assistant. You help students with questions about their courses, packages, subscriptions, and platform usage.
+const SUPPORT_AI_SYSTEM_PROMPT = `You are the XFlex Trading Academy support assistant. You help students with courses, packages, subscriptions, and platform usage.
 
-About XFlex:
-- Online trading academy based in Palestine, teaching in Arabic and English
-- Two packages: Basic (₪700 / $200) includes Trading Course + Recommendations, Comprehensive (₪1,700 / $500) adds LexAI chatbot
-- Renewal pricing: Basic ₪175 / $50, Comprehensive ₪350 / $100 (LexAI/Recommendations renewal only, course access is permanent)
-- Students activate access via package keys given after purchase
-- Platform has: video courses, quizzes, broker onboarding, trading recommendations, LexAI, loyalty points
-- Rawan is the founder of XFlex Trading Academy. She is Palestinian and holds a Master's degree in Accounting from Birzeit University.
-- XFlex was founded from a genuine passion for trading education and empowering Arab traders to achieve their financial goals.
+${SUPPORT_AI_ACADEMY_KNOWLEDGE}
 
 Common topics you can help with:
 - How to activate a package key (go to Dashboard, enter the key)
 - How to access courses and watch episodes
-- Quiz system (must watch episodes first, pass quizzes to earn points)
-- Locked lessons or missing lesson quizzes: ask the student to open the previous lesson, watch enough of the video, then tap "Mark Complete". If no quiz is shown for that lesson, explain that no quiz is required; after marking it complete, the next lesson should unlock. Ask for the course name and lesson number if it still does not unlock.
+- Quiz system and eight level-checkpoint quizzes
+- Locked lessons or missing lesson quizzes: ask the student to complete the previous lesson. If no checkpoint quiz is configured there, explain that no quiz is required. Ask for the course name and lesson number if it still does not unlock.
 - Recommendations not visible: ask them to check that their package/subscription is active, then open the Recommendations page. If they ask for a renewal key, missing key, expired subscription, or account-specific activation, say support must check their account.
 - Notification issues: suggest checking spam/junk, notification preferences in Profile, browser/app notification permission, and opening the Recommendations page directly. If they use iCloud email, mention delivery can be delayed and ask them to confirm whether in-platform notifications appear.
 - Broker/deposit issues: suggest checking account verification, card/account name match, available balance, broker payment restrictions, and contacting broker support. If they need to switch broker, reverse an onboarding step, or resolve a stuck broker account, say support must review it.
@@ -1583,7 +1577,7 @@ Common topics you can help with:
 - Attachments, screenshots, or voice notes: explain that you cannot inspect the attachment directly in the automatic reply. Ask for one short text description of what is shown, and tell them the support team can review the evidence.
 - Broker onboarding steps (select broker → open & verify account → deposit the minimum amount required by the selected broker)
 - Trading recommendations (available after subscription activation)
-- LexAI access (Comprehensive package only, activates after course completion)
+- LexAI access (Comprehensive only; timed-service activation follows the readiness/protection rules above)
 - Loyalty points and referral program
 - Technical issues (video not loading, login problems)
 
@@ -1592,48 +1586,148 @@ Rules:
 - Respond in the same language the student uses (Arabic or English).
 - Start with one concrete self-service step or clarifying question before suggesting human support.
 - Do not repeat an old topic if the latest student message is about something else; answer the latest concrete problem.
-- Only say you'll connect them with a human agent for refunds, billing disputes, account ownership/key corrections, private account changes, or when the student says the same troubleshooting step already failed.
+- Set needsHuman=true for refunds, payment disputes, account ownership/key corrections, private account changes, security concerns, an explicit human request, or when the same troubleshooting step already failed.
+- Set needsHuman=true when verified account data is required and no such data was provided.
+- Set needsHuman=false when a safe self-service answer or one useful clarifying question can move the issue forward.
 - If the student explicitly asks for a human/support person, acknowledge that request instead of continuing troubleshooting.
 - If asked who Rawan is or what she represents to the academy, explain that she is the founder of XFlex Trading Academy using only the public bio above. Do not say you lack information about her unless the user asks for private details beyond that bio.
 - Never make up information about prices, features, or policies you're unsure about.
 - Be friendly but professional. Use the student's context when available.
-- Do NOT discuss competitor platforms or give financial/trading advice.`;
+- Do NOT discuss competitor platforms or give financial/trading advice.
+- Return a decision matching the required JSON schema. The answer field is the only text shown to the student.
+- Confidence means confidence that the answer is correct and sufficient using only the supplied facts and conversation.`;
+
+const SUPPORT_AI_AUTO_HANDLE_CONFIDENCE = 0.8;
+
+const SUPPORT_AI_RESPONSE_SCHEMA = {
+  type: "object",
+  properties: {
+    intent: {
+      type: "string",
+      enum: [
+        "package_information",
+        "course_access",
+        "course_progress",
+        "quiz",
+        "recommendations",
+        "lexai",
+        "activation_key",
+        "subscription_renewal",
+        "notifications",
+        "broker_onboarding",
+        "technical_issue",
+        "billing_or_refund",
+        "account_change",
+        "security",
+        "financial_advice",
+        "human_request",
+        "other",
+      ],
+    },
+    answer: { type: "string" },
+    confidence: { type: "number", minimum: 0, maximum: 1 },
+    needsHuman: { type: "boolean" },
+    escalationReason: {
+      type: "string",
+      enum: [
+        "none",
+        "explicit_request",
+        "billing_or_refund",
+        "account_ownership",
+        "account_change",
+        "security",
+        "account_data_required",
+        "repeated_failed_step",
+        "unsupported_attachment",
+        "low_confidence",
+      ],
+    },
+  },
+  required: ["intent", "answer", "confidence", "needsHuman", "escalationReason"],
+  additionalProperties: false,
+} as const;
+
+type SupportAIReply = {
+  intent: string;
+  answer: string;
+  confidence: number;
+  needsHuman: boolean;
+  escalationReason: string;
+};
 
 function isExplicitHumanSupportRequest(content: string) {
   const normalized = content.trim().toLowerCase();
   if (!normalized) return false;
 
-  return [
+  const explicitArabicPhrases = [
     "مساعد بشري",
     "وكيل بشري",
     "شخص حقيقي",
-    "حدا يحكي",
-    "بدي احكي مع",
-    "بدي أحكي مع",
-    "اريد مساعد",
-    "أريد مساعد",
-    "اريد التواصل",
-    "أريد التواصل",
-    "فريق الدعم",
+    "موظف حقيقي",
     "دعم بشري",
-    "human",
-    "agent",
-    "support person",
-    "real person",
-  ].some((phrase) => normalized.includes(phrase.toLowerCase()));
+    "بدي احكي مع موظف",
+    "بدي أحكي مع موظف",
+    "اريد التحدث مع موظف",
+    "أريد التحدث مع موظف",
+    "اريد التواصل مع الدعم",
+    "أريد التواصل مع الدعم",
+    "احكي مع فريق الدعم",
+    "أحكي مع فريق الدعم",
+  ];
+  if (explicitArabicPhrases.some((phrase) => normalized.includes(phrase.toLowerCase()))) {
+    return true;
+  }
+
+  return [
+    /\b(?:real\s+person|human\s+(?:agent|support|representative)|live\s+agent|support\s+(?:person|agent|representative))\b/i,
+    /\b(?:speak|talk|chat|connect|transfer)\s+(?:me\s+)?(?:to|with)\s+(?:a\s+)?(?:human|agent|representative|support(?:\s+team)?)\b/i,
+    /^(?:human|agent|representative)\s*(?:please|now)?[.!?]*$/i,
+  ].some((pattern) => pattern.test(normalized));
 }
 
-function getSupportAttachmentAutoReply(content: string, isArabicPreferred: boolean) {
+function getSupportAttachmentAutoReply(content: string, isArabicPreferred: boolean): SupportAIReply | null {
   const trimmed = content.trim();
   const looksAttachmentOnly = /^\[[^\]]+\]$/.test(trimmed) || trimmed.includes("رسالة صوتية") || /voice message/i.test(trimmed);
   if (!looksAttachmentOnly) return null;
 
-  return isArabicPreferred
-    ? "وصلتني المرفقات. لا أستطيع قراءة الصورة أو الرسالة الصوتية تلقائياً هنا، فاكتبي لي بجملة قصيرة ما الذي يظهر فيها أو ما المشكلة، وإذا كانت تحتاج مراجعة حسابك سيكمل فريق الدعم معك."
-    : "I received the attachment. I cannot inspect images or voice notes automatically here, so please write one short sentence describing what it shows.\n\nوصلتني المرفقات. لا أستطيع قراءة الصورة أو الرسالة الصوتية تلقائياً هنا، فاكتب/ي بجملة قصيرة ما المشكلة.";
+  return {
+    intent: "other",
+    answer: isArabicPreferred
+      ? "وصلتني المرفقات. لا أستطيع قراءة الصورة أو الرسالة الصوتية تلقائياً هنا، فاكتبي لي بجملة قصيرة ما الذي يظهر فيها أو ما المشكلة، وإذا كانت تحتاج مراجعة حسابك سيكمل فريق الدعم معك."
+      : "I received the attachment. I cannot inspect images or voice notes automatically here, so please write one short sentence describing what it shows.\n\nوصلتني المرفقات. لا أستطيع قراءة الصورة أو الرسالة الصوتية تلقائياً هنا، فاكتب/ي بجملة قصيرة ما المشكلة.",
+    confidence: 0.5,
+    needsHuman: false,
+    escalationReason: "unsupported_attachment",
+  };
 }
 
-/** Generate an AI auto-reply for a student message using GPT-4o-mini */
+function parseSupportAIReply(value: unknown): SupportAIReply | null {
+  if (!value || typeof value !== "object") return null;
+  const candidate = value as Record<string, unknown>;
+  if (
+    typeof candidate.intent !== "string"
+    || typeof candidate.answer !== "string"
+    || !candidate.answer.trim()
+    || typeof candidate.confidence !== "number"
+    || !Number.isFinite(candidate.confidence)
+    || candidate.confidence < 0
+    || candidate.confidence > 1
+    || typeof candidate.needsHuman !== "boolean"
+    || typeof candidate.escalationReason !== "string"
+  ) {
+    return null;
+  }
+
+  return {
+    intent: candidate.intent,
+    answer: candidate.answer.trim(),
+    confidence: candidate.confidence,
+    needsHuman: candidate.needsHuman,
+    escalationReason: candidate.escalationReason,
+  };
+}
+
+/** Generate a structured AI support decision using GPT-4o-mini. */
 async function generateSupportAIReply(
   conversationMessages: Array<{ senderType: string; content: string }>,
   usage: {
@@ -1641,14 +1735,19 @@ async function generateSupportAIReply(
     conversationId?: number | null;
     actionType: "support_auto_reply" | "support_suggest_reply";
   },
-): Promise<string | null> {
+): Promise<SupportAIReply | null> {
   if (!ENV.openaiApiKey) return null;
 
-  // Use student/staff context, but do not feed previous bot replies back into the model.
-  // Old incorrect bot replies can anchor the next answer to the wrong topic.
-  const recentMessages = conversationMessages
-    .filter((msg) => msg.senderType !== 'bot')
-    .slice(-12);
+  // getSupportMessages returns newest-first. Restore chronological order before
+  // taking the latest context, and retain real bot replies so the assistant
+  // knows which troubleshooting steps it already suggested.
+  const recentMessages = [...conversationMessages]
+    .reverse()
+    .filter((msg) => (
+      msg.content.trim()
+      && !msg.content.startsWith("⚠️ Student requested a human agent.")
+    ))
+    .slice(-16);
 
   const chatMessages: Array<{ role: string; content: string }> = [
     { role: 'system', content: SUPPORT_AI_SYSTEM_PROMPT },
@@ -1676,11 +1775,27 @@ async function generateSupportAIReply(
         model: 'gpt-4o-mini',
         messages: chatMessages,
         max_tokens: 400,
-        temperature: 0.7,
+        temperature: 0.2,
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "support_ai_reply",
+            strict: true,
+            schema: SUPPORT_AI_RESPONSE_SCHEMA,
+          },
+        },
       },
     });
     const text = data?.choices?.[0]?.message?.content?.trim();
-    return text || null;
+    if (!text) return null;
+    try {
+      return parseSupportAIReply(JSON.parse(text));
+    } catch (error) {
+      logger.warn("[Support AI] Invalid structured reply", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
   } catch (err) {
     logger.error('[Support AI] Failed to generate reply', { error: String(err) });
     return null;
@@ -4915,6 +5030,7 @@ export const appRouter = router({
         });
 
         const clientRequestedHumanByText = isExplicitHumanSupportRequest(input.content);
+        let humanEscalationNotified = false;
         if (clientRequestedHumanByText && !conv.needsHuman) {
           await db.setNeedsHuman(conv.id, true);
           await db.createSupportMessage({
@@ -4931,6 +5047,7 @@ export const appRouter = router({
             contentAr: 'طالب طلب التحدث مع موظف دعم داخل المحادثة.',
             metadata: { userId: ctx.user.id, conversationId: conv.id },
           });
+          humanEscalationNotified = true;
         }
 
         // AI auto-replies unless the student has requested a human.
@@ -4945,13 +5062,14 @@ export const appRouter = router({
             effectiveNeedsHuman = false;
           }
         }
+        let shouldNotifyStaffOfNewMessage = effectiveNeedsHuman;
         if (!effectiveNeedsHuman) {
           const isArabicPreferred = /[\u0600-\u06FF]/.test(input.content);
-          const attachmentAutoReply = input.attachmentUrl
+          const attachmentDecision = input.attachmentUrl
             ? getSupportAttachmentAutoReply(input.content, isArabicPreferred)
             : null;
-          const allMessages = attachmentAutoReply ? [] : await db.getSupportMessages(conv.id);
-          const aiReply = attachmentAutoReply ?? await generateSupportAIReply(
+          const allMessages = attachmentDecision ? [] : await db.getSupportMessages(conv.id);
+          const aiDecision = attachmentDecision ?? await generateSupportAIReply(
             allMessages.map(m => ({ senderType: m.senderType, content: m.content })),
             {
               userId: ctx.user.id,
@@ -4959,39 +5077,62 @@ export const appRouter = router({
               actionType: "support_auto_reply",
             },
           );
-          if (aiReply) {
+          if (aiDecision) {
             await db.createSupportMessage({
               conversationId: conv.id,
               senderId: 0, // bot has no real user ID
               senderType: 'bot',
-              content: aiReply,
+              content: aiDecision.answer,
             });
+
+            if (aiDecision.needsHuman) {
+              await db.setNeedsHuman(conv.id, true);
+              effectiveNeedsHuman = true;
+              shouldNotifyStaffOfNewMessage = false;
+              await db.notifyStaffByEvent('human_escalation', {
+                titleEn: `AI escalated support for ${ctx.user.name || ctx.user.email}`,
+                titleAr: `حوّل المساعد الذكي محادثة ${ctx.user.name || ctx.user.email} للدعم`,
+                contentEn: `The support assistant requested human review (${aiDecision.escalationReason}).`,
+                contentAr: `طلب المساعد الذكي مراجعة بشرية (${aiDecision.escalationReason}).`,
+                actionUrl: `/admin/support?conversationId=${conv.id}`,
+                metadata: { userId: ctx.user.id, conversationId: conv.id },
+              });
+              humanEscalationNotified = true;
+            } else {
+              shouldNotifyStaffOfNewMessage = aiDecision.confidence < SUPPORT_AI_AUTO_HANDLE_CONFIDENCE;
+            }
+          } else {
+            // An unavailable or malformed AI response must remain visible to staff.
+            shouldNotifyStaffOfNewMessage = true;
           }
         }
 
-        // Notify admin/support staff of new student message
-        const recentMessagesForEmail = await db.getSupportMessages(conv.id, 10);
-        const recentClientMessages = recentMessagesForEmail
-          .filter((message) => message.senderType === 'client' && !message.deletedAt)
-          .reverse()
-          .map((message) => ({ content: message.content, createdAt: message.createdAt }));
-        const supportActionUrl = `/admin/support?conversationId=${conv.id}`;
-        const supportEmailContent = buildSupportStaffEmailContent({
-          clientName: ctx.user.name,
-          clientEmail: ctx.user.email,
-          conversationId: conv.id,
-          latestMessage: input.content,
-          recentClientMessages,
-        });
+        // High-confidence, non-escalated AI answers stay out of the staff inbox.
+        // Low-confidence, failed, attachment-only, and already-human threads remain visible.
+        if (shouldNotifyStaffOfNewMessage && !humanEscalationNotified) {
+          const recentMessagesForEmail = await db.getSupportMessages(conv.id, 10);
+          const recentClientMessages = recentMessagesForEmail
+            .filter((message) => message.senderType === 'client' && !message.deletedAt)
+            .reverse()
+            .map((message) => ({ content: message.content, createdAt: message.createdAt }));
+          const supportActionUrl = `/admin/support?conversationId=${conv.id}`;
+          const supportEmailContent = buildSupportStaffEmailContent({
+            clientName: ctx.user.name,
+            clientEmail: ctx.user.email,
+            conversationId: conv.id,
+            latestMessage: input.content,
+            recentClientMessages,
+          });
 
-        await db.notifyStaffByEvent('new_support_message', {
-          titleEn: `New support message from ${ctx.user.name || ctx.user.email}`,
-          titleAr: `رسالة دعم جديدة من ${ctx.user.name || ctx.user.email}`,
-          contentEn: supportEmailContent,
-          contentAr: supportEmailContent,
-          actionUrl: supportActionUrl,
-          metadata: { userId: ctx.user.id, conversationId: conv.id },
-        });
+          await db.notifyStaffByEvent('new_support_message', {
+            titleEn: `New support message from ${ctx.user.name || ctx.user.email}`,
+            titleAr: `رسالة دعم جديدة من ${ctx.user.name || ctx.user.email}`,
+            contentEn: supportEmailContent,
+            contentAr: supportEmailContent,
+            actionUrl: supportActionUrl,
+            metadata: { userId: ctx.user.id, conversationId: conv.id },
+          });
+        }
 
         return msg;
       }),
@@ -5300,7 +5441,7 @@ export const appRouter = router({
         if (!suggestion) {
           throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'AI suggestion unavailable' });
         }
-        return { suggestion };
+        return { suggestion: suggestion.answer };
       }),
 
     // Support/Admin: clear needsHuman flag after admin responds

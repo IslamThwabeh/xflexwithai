@@ -18577,53 +18577,143 @@ export async function getUsersForDripEmail(dayNumber: number): Promise<Array<{
   }));
 }
 
+export type InactiveTimedService = {
+  serviceType: 'lexai' | 'recommendations';
+  serviceName: string;
+  status: 'active' | 'expired';
+  endDate: string;
+  daysLeft: number;
+};
+
+export type InactiveTimedServiceUser = {
+  userId: number;
+  email: string;
+  name: string | null;
+  lastActiveAt: string;
+  daysSinceActive: number;
+  emailLogKey: string;
+  services: InactiveTimedService[];
+};
+
 /**
- * Find users inactive for N+ days who still have active subscriptions.
+ * Find users inactive for a lifecycle threshold who have started LexAI or
+ * Recommendations. Lifetime course/package ownership is intentionally ignored.
+ *
+ * The 7-day cohort is bounded below 14 days so a newly deployed or delayed
+ * cron cannot send both reminders to the same client on the same day.
  */
-export async function getInactiveUsers(inactiveDays: number): Promise<Array<{
-  userId: number; email: string; name: string | null; daysSinceActive: number;
-}>> {
+export async function getInactiveUsers(inactiveDays: number): Promise<InactiveTimedServiceUser[]> {
   const db = await getDb();
   if (!db) return [];
-  const emailType = `inactivity_${inactiveDays}`;
 
-  const results = await db
-    .select({
+  const inactivityConditions = [
+    eq(users.isStaff, false),
+    sql`${users.lastActiveAt} IS NOT NULL`,
+    sql`julianday('now') - julianday(${users.lastActiveAt}) >= ${inactiveDays}`,
+  ];
+  if (inactiveDays < 14) {
+    inactivityConditions.push(
+      sql`julianday('now') - julianday(${users.lastActiveAt}) < 14`,
+    );
+  }
+
+  const [lexaiRows, recommendationRows] = await Promise.all([
+    db.select({
       userId: users.id,
       email: users.email,
       name: users.name,
       lastActiveAt: users.lastActiveAt,
+      endDate: lexaiSubscriptions.endDate,
     })
-    .from(users)
-    .innerJoin(packageSubscriptions, eq(users.id, packageSubscriptions.userId))
-    .where(and(
-      eq(packageSubscriptions.isActive, true),
-      eq(users.isStaff, false),
-      sql`${users.lastActiveAt} IS NOT NULL`,
-      sql`julianday('now') - julianday(${users.lastActiveAt}) >= ${inactiveDays}`,
-    ));
+      .from(lexaiSubscriptions)
+      .innerJoin(users, eq(lexaiSubscriptions.userId, users.id))
+      .where(and(
+        eq(lexaiSubscriptions.isActive, true),
+        eq(lexaiSubscriptions.isPaused, false),
+        eq(lexaiSubscriptions.isPendingActivation, false),
+        sql`${lexaiSubscriptions.endDate} IS NOT NULL`,
+        ...inactivityConditions,
+      )),
+    db.select({
+      userId: users.id,
+      email: users.email,
+      name: users.name,
+      lastActiveAt: users.lastActiveAt,
+      endDate: recommendationSubscriptions.endDate,
+    })
+      .from(recommendationSubscriptions)
+      .innerJoin(users, eq(recommendationSubscriptions.userId, users.id))
+      .where(and(
+        eq(recommendationSubscriptions.isActive, true),
+        eq(recommendationSubscriptions.isPaused, false),
+        eq(recommendationSubscriptions.isPendingActivation, false),
+        sql`${recommendationSubscriptions.endDate} IS NOT NULL`,
+        ...inactivityConditions,
+      )),
+  ]);
 
-  // Deduplicate by userId (user may have multiple active subs)
-  const seen = new Set<number>();
-  const unique = results.filter(r => {
-    if (seen.has(r.userId)) return false;
-    seen.add(r.userId);
-    return true;
-  });
+  const nowMs = Date.now();
+  const grouped = new Map<number, {
+    userId: number;
+    email: string;
+    name: string | null;
+    lastActiveAt: string;
+    services: Map<InactiveTimedService['serviceType'], InactiveTimedService>;
+  }>();
 
-  const filtered: Array<{
-    userId: number; email: string; name: string | null; daysSinceActive: number;
-  }> = [];
-  for (const r of unique) {
-    const sent = await hasEmailBeenSent(r.userId, emailType);
-    if (!sent) {
-      const days = r.lastActiveAt
-        ? Math.floor((Date.now() - new Date(r.lastActiveAt).getTime()) / 86400000)
-        : inactiveDays;
-      filtered.push({ userId: r.userId, email: r.email, name: r.name, daysSinceActive: days });
+  const addService = (
+    row: typeof lexaiRows[number] | typeof recommendationRows[number],
+    serviceType: InactiveTimedService['serviceType'],
+    serviceName: string,
+  ) => {
+    if (!row.lastActiveAt || !row.endDate) return;
+    const endMs = new Date(row.endDate).getTime();
+    if (Number.isNaN(endMs)) return;
+    const daysLeft = Math.ceil((endMs - nowMs) / 86_400_000);
+    const service: InactiveTimedService = {
+      serviceType,
+      serviceName,
+      status: daysLeft <= 0 ? 'expired' : 'active',
+      endDate: row.endDate,
+      daysLeft: Math.max(0, daysLeft),
+    };
+    const existing = grouped.get(row.userId) ?? {
+      userId: row.userId,
+      email: row.email,
+      name: row.name,
+      lastActiveAt: row.lastActiveAt,
+      services: new Map(),
+    };
+    const currentService = existing.services.get(serviceType);
+    if (!currentService || new Date(currentService.endDate).getTime() < endMs) {
+      existing.services.set(serviceType, service);
     }
+    grouped.set(row.userId, existing);
+  };
+
+  for (const row of lexaiRows) addService(row, 'lexai', 'LexAI');
+  for (const row of recommendationRows) addService(row, 'recommendations', 'Recommendations');
+
+  const filtered: InactiveTimedServiceUser[] = [];
+  for (const candidate of grouped.values()) {
+    const lastActiveDate = candidate.lastActiveAt.slice(0, 10);
+    const emailLogKey = `inactivity_${inactiveDays}_${lastActiveDate}`;
+    if (await hasEmailBeenSent(candidate.userId, emailLogKey)) continue;
+    const daysSinceActive = Math.max(
+      inactiveDays,
+      Math.floor((nowMs - new Date(candidate.lastActiveAt).getTime()) / 86_400_000),
+    );
+    filtered.push({
+      userId: candidate.userId,
+      email: candidate.email,
+      name: candidate.name,
+      lastActiveAt: candidate.lastActiveAt,
+      daysSinceActive,
+      emailLogKey,
+      services: [...candidate.services.values()].sort((a, b) => a.serviceName.localeCompare(b.serviceName)),
+    });
   }
-  return filtered;
+  return filtered.sort((a, b) => b.daysSinceActive - a.daysSinceActive || a.email.localeCompare(b.email));
 }
 
 /**
