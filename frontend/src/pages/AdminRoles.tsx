@@ -19,7 +19,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { trpc } from "@/lib/trpc";
-import { Shield, UserPlus, Trash2, Search, Users, Phone, Mail, X, Plus } from "lucide-react";
+import { Shield, ShieldCheck, UserPlus, Trash2, Search, Users, Phone, Mail, X, Plus } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -45,6 +45,57 @@ const ROLE_LABELS: Record<string, { labelKey: string; color: string; group: stri
 
 type RoleKey = "analyst" | "support" | "lexai_support" | "key_manager" | "plan_manager" | "view_progress" | "view_recommendations" | "view_subscriptions" | "view_quizzes" | "client_lookup" | "staff_performance_employee" | "staff_performance_manager" | "student_surveys_manager" | "loyalty_rewards_manager" | "student_community_moderator" | "student_job_eligibility_manager" | "email_logs_viewer";
 
+const FEATURE_ACCESS_FOCUS: Record<string, {
+  titleEn: string;
+  titleAr: string;
+  descriptionEn: string;
+  descriptionAr: string;
+  roles: RoleKey[];
+}> = {
+  "staff-performance": {
+    titleEn: "Staff performance access",
+    titleAr: "صلاحيات أداء الموظفين",
+    descriptionEn: "Assign at least one manager and one employee before launching the workflow.",
+    descriptionAr: "عيّن مدير أداء وموظفاً واحداً على الأقل قبل بدء دورة العمل.",
+    roles: ["staff_performance_manager", "staff_performance_employee"],
+  },
+  "student-surveys": {
+    titleEn: "Student survey access",
+    titleAr: "صلاحيات استبيانات الطلاب",
+    descriptionEn: "Survey managers can prepare assignments and review responses without full admin access.",
+    descriptionAr: "يمكن لمدير الاستبيانات تجهيز التعيينات ومراجعة الإجابات دون صلاحية مدير كاملة.",
+    roles: ["student_surveys_manager"],
+  },
+  "points-rewards": {
+    titleEn: "Points and rewards access",
+    titleAr: "صلاحيات النقاط والمكافآت",
+    descriptionEn: "Reward managers can maintain the catalog and process redemption requests.",
+    descriptionAr: "يمكن لمدير المكافآت إدارة الكتالوج ومعالجة طلبات الاستبدال.",
+    roles: ["loyalty_rewards_manager"],
+  },
+  "student-community": {
+    titleEn: "Community moderation access",
+    titleAr: "صلاحيات الإشراف على المجتمع",
+    descriptionEn: "Community moderators can review reports and member access without receiving full admin control.",
+    descriptionAr: "يمكن لمشرف المجتمع مراجعة البلاغات ووصول الأعضاء دون منحه تحكماً إدارياً كاملاً.",
+    roles: ["student_community_moderator"],
+  },
+  "job-eligibility": {
+    titleEn: "Job eligibility access",
+    titleAr: "صلاحيات أهلية الوظائف",
+    descriptionEn: "Eligibility managers can maintain rules and review student requests.",
+    descriptionAr: "يمكن لمدير الأهلية إدارة القواعد ومراجعة طلبات الطلاب.",
+    roles: ["student_job_eligibility_manager"],
+  },
+  "email-logs": {
+    titleEn: "Email log access",
+    titleAr: "صلاحية سجل البريد",
+    descriptionEn: "Grant read-only delivery-log access without exposing outbox operations or full admin settings.",
+    descriptionAr: "امنح وصولاً للقراءة فقط إلى سجلات التسليم دون عمليات صندوق البريد أو إعدادات الإدارة الكاملة.",
+    roles: ["email_logs_viewer"],
+  },
+};
+
 export default function AdminRoles() {
   const [search, setSearch] = useState("");
   const [showAddStaff, setShowAddStaff] = useState(false);
@@ -63,13 +114,16 @@ export default function AdminRoles() {
 
   const { t, language } = useLanguage();
   const isRtl = language === 'ar';
+  const focusedFeature = FEATURE_ACCESS_FOCUS[
+    new URLSearchParams(window.location.search).get("feature") ?? ""
+  ];
 
   const { data: staffMembers, isLoading, refetch: refetchStaff } = trpc.roles.listStaff.useQuery();
   const { data: roleAssignments, refetch: refetchRoles } = trpc.roles.list.useQuery();
-  const { data: performanceAvailability } = trpc.staffPerformance.availability.useQuery(undefined, { retry: false });
-  const visibleRoleEntries = Object.entries(ROLE_LABELS).filter(([key]) =>
-    !key.startsWith("staff_performance_") || performanceAvailability?.enabled === true
-  );
+  // Admins must be able to prepare performance roles before enabling the
+  // feature; hiding these roles while disabled creates an impossible setup
+  // loop in the Feature Center readiness checklist.
+  const visibleRoleEntries = Object.entries(ROLE_LABELS);
   const visibleRoles = visibleRoleEntries.map(([key]) => key as RoleKey);
 
   const createStaffMutation = trpc.roles.createStaff.useMutation({
@@ -256,8 +310,7 @@ export default function AdminRoles() {
                         </div>
                       </div>
 
-                      {performanceAvailability?.enabled && (
-                        <div>
+                      <div>
                           <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">
                             {isRtl ? 'أدوار إدارة الأداء' : 'Performance Roles'}
                           </p>
@@ -276,8 +329,7 @@ export default function AdminRoles() {
                               </label>
                             ))}
                           </div>
-                        </div>
-                      )}
+                      </div>
 
                       {/* Feature Roles */}
                       <div>
@@ -442,6 +494,44 @@ export default function AdminRoles() {
             </Dialog>
           </div>
         </div>
+
+        {focusedFeature && (
+          <Card className="border-emerald-200 bg-emerald-50/50 dark:border-emerald-900 dark:bg-emerald-950/20">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <ShieldCheck className="h-5 w-5 text-emerald-600" />
+                {isRtl ? focusedFeature.titleAr : focusedFeature.titleEn}
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">
+                {isRtl ? focusedFeature.descriptionAr : focusedFeature.descriptionEn}
+              </p>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div className="grid flex-1 gap-2 sm:grid-cols-2">
+                {focusedFeature.roles.map((role) => {
+                  const count = (staffMembers ?? []).filter((staff) => staff.roles.includes(role)).length;
+                  return (
+                    <button
+                      key={role}
+                      type="button"
+                      onClick={() => setFilterRole(filterRole === role ? "all" : role)}
+                      className={`rounded-xl border bg-background p-3 text-start transition-colors hover:border-emerald-300 ${
+                        filterRole === role ? "border-emerald-400 ring-2 ring-emerald-100" : ""
+                      }`}
+                    >
+                      <span className="block text-2xl font-bold">{count}</span>
+                      <span className="text-xs text-muted-foreground">{t(ROLE_LABELS[role].labelKey)}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <Button type="button" onClick={() => setShowAssignRole(true)}>
+                <Plus className={`h-4 w-4 ${isRtl ? "ml-1" : "mr-1"}`} />
+                {isRtl ? "تعيين أو تعديل الصلاحيات" : "Assign or edit access"}
+              </Button>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Stats Row */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -663,7 +753,7 @@ export default function AdminRoles() {
         </Card>
 
         {/* Support Permissions Summary */}
-        {roleCounts.some(({ role, count }) => ROLE_LABELS[role]?.group === "Support Permissions" && count > 0) && (
+        {roleCounts.some(({ role }) => ROLE_LABELS[role]?.group === "Support Permissions") && (
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-lg">{t('admin.roles.supportPerms')}</CardTitle>
@@ -687,7 +777,7 @@ export default function AdminRoles() {
           </Card>
         )}
 
-        {roleCounts.some(({ role, count }) => ROLE_LABELS[role]?.group === "Performance Roles" && count > 0) && (
+        {roleCounts.some(({ role }) => ROLE_LABELS[role]?.group === "Performance Roles") && (
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-lg">{isRtl ? 'أدوار إدارة الأداء' : 'Performance Roles'}</CardTitle>
@@ -711,7 +801,7 @@ export default function AdminRoles() {
           </Card>
         )}
 
-        {roleCounts.some(({ role, count }) => ROLE_LABELS[role]?.group === "Feature Roles" && count > 0) && (
+        {roleCounts.some(({ role }) => ROLE_LABELS[role]?.group === "Feature Roles") && (
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-lg">{isRtl ? 'أدوار الميزات الجديدة' : 'New Feature Roles'}</CardTitle>

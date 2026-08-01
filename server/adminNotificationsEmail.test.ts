@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../backend/_core/email", () => ({
+  preflightAdminNotificationEmail: vi.fn().mockReturnValue({ recipientCount: 1, deliveryMode: "single_to" }),
   sendAdminNotificationEmail: vi.fn(),
   sendEmail: vi.fn().mockResolvedValue({ provider: "zeptomail", attemptedProviders: ["zeptomail"] }),
   sendLoginCodeEmail: vi.fn(),
@@ -14,10 +15,11 @@ vi.mock("../backend/db", async () => {
     sendBulkNotification: vi.fn().mockResolvedValue(undefined),
     getAllUsers: vi.fn(),
     markNotificationEmailsSent: vi.fn().mockResolvedValue(undefined),
+    logAdminAction: vi.fn().mockResolvedValue(undefined),
   };
 });
 
-import { sendAdminNotificationEmail } from "../backend/_core/email";
+import { preflightAdminNotificationEmail, sendAdminNotificationEmail } from "../backend/_core/email";
 import { appRouter } from "../backend/routers";
 import * as db from "../backend/db";
 
@@ -118,5 +120,81 @@ describe("admin notification email delivery", () => {
     }));
     expect(db.markNotificationEmailsSent).toHaveBeenCalledWith(expect.any(String), [10]);
     expect(result.emailDeliveryMode).toBe("single_to");
+  });
+
+  it("preflights email before creating in-app notification rows", async () => {
+    vi.mocked(preflightAdminNotificationEmail).mockImplementationOnce(() => {
+      throw new Error("Admin notification BCC batch exceeds the safe recipient limit");
+    });
+    const caller = createAdminCaller();
+
+    await expect(caller.notifications.send({
+      userIds: [10, 20, 30],
+      titleAr: "إعلان مهم",
+      contentAr: "نص الإعلان",
+      sendEmail: true,
+    })).rejects.toThrow("safe recipient limit");
+
+    expect(db.sendBulkNotification).not.toHaveBeenCalled();
+    expect(sendAdminNotificationEmail).not.toHaveBeenCalled();
+  });
+
+  it("reports email failure without making a successful in-app send look retryable", async () => {
+    vi.mocked(sendAdminNotificationEmail).mockRejectedValueOnce(new Error("provider unavailable"));
+    const caller = createAdminCaller();
+
+    const result = await caller.notifications.send({
+      userIds: [10, 20],
+      titleAr: "إعلان مهم",
+      contentAr: "نص الإعلان",
+      sendEmail: true,
+    });
+
+    expect(db.sendBulkNotification).toHaveBeenCalledTimes(1);
+    expect(db.markNotificationEmailsSent).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      success: true,
+      count: 2,
+      emailsSent: 0,
+      emailFailed: true,
+      emailError: "provider unavailable",
+    });
+  });
+
+  it("sends a safe test only to the signed-in admin without creating student notifications", async () => {
+    vi.mocked(sendAdminNotificationEmail).mockResolvedValueOnce({
+      provider: "zeptomail",
+      attemptedProviders: ["zeptomail"],
+      providerRequestId: "request-test",
+      sentUserIds: [-1],
+      skippedUserIds: [],
+      recipientCount: 1,
+      deliveryMode: "single_to",
+    } as any);
+    const caller = createAdminCaller();
+
+    const result = await caller.notifications.sendTestEmail({
+      titleAr: "اختبار إداري",
+      contentAr: "هذه معاينة قبل الإرسال",
+      titleEn: "Admin test",
+      contentEn: "Preview before sending",
+      actionUrl: "/surveys",
+      featureId: "student-surveys",
+    });
+
+    expect(sendAdminNotificationEmail).toHaveBeenCalledWith(expect.objectContaining({
+      recipients: [{ userId: -1, email: "admin@example.com" }],
+      eventType: "student_survey_admin_notification_test",
+      templateId: "announcement_test",
+      metadata: expect.objectContaining({
+        previewOnly: true,
+        actionUrl: "/surveys",
+        featureId: "student-surveys",
+      }),
+    }));
+    expect(db.sendBulkNotification).not.toHaveBeenCalled();
+    expect(db.markNotificationEmailsSent).not.toHaveBeenCalled();
+    expect(db.logAdminAction).toHaveBeenCalledWith(1, 1, "send_admin_notification_test", expect.any(Object));
+    expect(result).toEqual({ success: true, skipped: false });
   });
 });

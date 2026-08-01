@@ -10,6 +10,7 @@ vi.mock("../backend/db", async () => {
     getUserById: vi.fn(),
     getStaffMembers: vi.fn(),
     logStaffAction: vi.fn(),
+    listStaffPerformanceMonthlyPlans: vi.fn(),
     listStaffPerformanceDailyLogs: vi.fn(),
     getStaffPerformanceDailyLog: vi.fn(),
     getStaffPerformanceDailyTask: vi.fn(),
@@ -24,6 +25,7 @@ vi.mock("../backend/db", async () => {
     createStaffPerformanceMonthlyPlan: vi.fn(),
     updateStaffPerformanceMonthlyPlan: vi.fn(),
     transitionStaffPerformanceMonthlyPlan: vi.fn(),
+    listStaffPerformanceAuditLogs: vi.fn(),
   };
 });
 
@@ -61,25 +63,102 @@ describe("staff performance routes", () => {
     ] as any);
   });
 
-  it("rejects every route while the feature flag is disabled", async () => {
+  it("keeps manager planning and review history available while the feature is disabled", async () => {
     vi.mocked(db.getAdminSetting).mockResolvedValue("false");
+    vi.mocked(db.getUserRoles).mockResolvedValue([
+      { role: "staff_performance_manager" },
+    ] as any);
+    vi.mocked(db.getStaffMembers).mockResolvedValue([{
+      id: 10,
+      name: "Employee",
+      email: "employee@example.com",
+      roles: ["staff_performance_employee"],
+    }] as any);
+    vi.mocked(db.listStaffPerformanceMonthlyPlans).mockResolvedValue([{
+      id: 1,
+      staffUserId: 10,
+      goals: [{ id: 7, title: "Improve response quality" }],
+    }] as any);
+    vi.mocked(db.listStaffPerformanceAuditLogs).mockResolvedValue([] as any);
 
-    await expect(createCaller().staffPerformance.featureInfo()).rejects.toMatchObject({
-      code: "FORBIDDEN",
-      message: "Staff performance management is disabled",
+    await expect(createCaller().staffPerformance.availability()).resolves.toEqual({
+      enabled: false,
+      access: "manager",
     });
+    await expect(createCaller().staffPerformance.featureInfo()).resolves.toEqual({
+      enabled: false,
+      access: "manager",
+    });
+    await expect(createCaller().staffPerformance.listStaffOptions()).resolves.toEqual([{
+      id: 10,
+      name: "Employee",
+      email: "employee@example.com",
+      roles: ["staff_performance_employee"],
+    }]);
+    await expect(createCaller().staffPerformance.listMonthlyPlans({
+      staffUserId: 10,
+      limit: 24,
+    })).resolves.toEqual([expect.objectContaining({
+      id: 1,
+      goals: [expect.objectContaining({ id: 7 })],
+    })]);
+    await expect(createCaller().staffPerformance.auditLog({
+      entityType: "monthly_plan",
+      entityId: 1,
+      limit: 50,
+    })).resolves.toEqual([]);
+  });
+
+  it("keeps full administrators in the manager workspace while the feature is disabled", async () => {
+    vi.mocked(db.getAdminSetting).mockResolvedValue("false");
+    vi.mocked(db.getAdminByEmail).mockResolvedValue({
+      id: 1,
+      email: "admin@example.com",
+    } as any);
+    vi.mocked(db.getStaffMembers).mockResolvedValue([] as any);
+
+    await expect(createCaller().staffPerformance.availability()).resolves.toEqual({
+      enabled: false,
+      access: "manager",
+    });
+    await expect(createCaller().staffPerformance.featureInfo()).resolves.toEqual({
+      enabled: false,
+      access: "manager",
+    });
+    await expect(createCaller().staffPerformance.listStaffOptions()).resolves.toEqual([]);
     expect(db.getUserRoles).not.toHaveBeenCalled();
   });
 
-  it("reports disabled availability without resolving roles", async () => {
+  it("reports an employee's disabled availability but rejects employee actions", async () => {
     vi.mocked(db.getAdminSetting).mockResolvedValue("false");
+
+    await expect(createCaller().staffPerformance.availability()).resolves.toEqual({
+      enabled: false,
+      access: "employee",
+    });
+    await expect(createCaller().staffPerformance.createWeeklyReport({
+      weekStart: "2026-07-06",
+      weekEnd: "2026-07-12",
+      timezone: "Asia/Amman",
+    })).rejects.toMatchObject({
+      code: "FORBIDDEN",
+      message: "Staff performance management is disabled",
+    });
+    expect(db.createStaffPerformanceWeeklyReport).not.toHaveBeenCalled();
+  });
+
+  it("reports disabled availability without access for unrelated users", async () => {
+    vi.mocked(db.getAdminSetting).mockResolvedValue("false");
+    vi.mocked(db.getUserRoles).mockResolvedValue([] as any);
 
     await expect(createCaller().staffPerformance.availability()).resolves.toEqual({
       enabled: false,
       access: null,
     });
-    expect(db.getAdminByEmail).not.toHaveBeenCalled();
-    expect(db.getUserRoles).not.toHaveBeenCalled();
+    await expect(createCaller().staffPerformance.featureInfo()).rejects.toMatchObject({
+      code: "FORBIDDEN",
+      message: "Staff performance access required",
+    });
   });
 
   it("prevents an employee from reading another employee's records", async () => {
@@ -210,6 +289,31 @@ describe("staff performance routes", () => {
     }));
   });
 
+  it("requires nonblank manager feedback when returning a weekly report", async () => {
+    vi.mocked(db.getUserRoles).mockResolvedValue([
+      { role: "staff_performance_manager" },
+    ] as any);
+    vi.mocked(db.getStaffPerformanceWeeklyReport).mockResolvedValue({
+      id: 6,
+      staffUserId: 10,
+      status: "submitted",
+      version: 2,
+      outputs: "Completed support review",
+      achievementPercent: 85,
+    } as any);
+
+    await expect(createCaller(9).staffPerformance.transitionWeeklyReport({
+      id: 6,
+      version: 2,
+      toStatus: "returned",
+      managerFeedback: "   ",
+    })).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      message: "Manager feedback is required when returning a weekly report",
+    });
+    expect(db.transitionStaffPerformanceWeeklyReport).not.toHaveBeenCalled();
+  });
+
   it("allows managers to return daily logs with feedback", async () => {
     vi.mocked(db.getUserRoles).mockResolvedValue([
       { role: "staff_performance_manager" },
@@ -243,6 +347,31 @@ describe("staff performance routes", () => {
       actorUserId: 9,
       staffUserId: 10,
     }));
+  });
+
+  it("requires nonblank manager feedback when returning a daily log", async () => {
+    vi.mocked(db.getUserRoles).mockResolvedValue([
+      { role: "staff_performance_manager" },
+    ] as any);
+    vi.mocked(db.getStaffPerformanceDailyLog).mockResolvedValue({
+      id: 5,
+      staffUserId: 10,
+      status: "submitted",
+      version: 2,
+      endSummary: "Finished planned outreach",
+      tasks: [{ id: 1 }],
+    } as any);
+
+    await expect(createCaller(9).staffPerformance.transitionDailyLog({
+      id: 5,
+      version: 2,
+      toStatus: "returned",
+      managerFeedback: "   ",
+    })).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      message: "Manager feedback is required when returning a daily log",
+    });
+    expect(db.transitionStaffPerformanceDailyLog).not.toHaveBeenCalled();
   });
 
   it("keeps monthly plan creation manager-only", async () => {

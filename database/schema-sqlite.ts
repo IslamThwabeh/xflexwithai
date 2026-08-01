@@ -1436,8 +1436,9 @@ export const studentJobEligibilityRules = sqliteTable("student_job_eligibility_r
   requireAdminReview: integer("require_admin_review", { mode: "boolean" }).notNull().default(true),
   isEnabled: integer("is_enabled", { mode: "boolean" }).notNull().default(true),
   instructions: text("instructions"),
-  createdByUserId: integer("created_by_user_id").references(() => users.id),
-  updatedByUserId: integer("updated_by_user_id").references(() => users.id),
+  // Signed actor context id: users/staff are positive; full admins are negative.
+  createdByUserId: integer("created_by_user_id"),
+  updatedByUserId: integer("updated_by_user_id"),
   updatedAt: text("updated_at").default("CURRENT_TIMESTAMP").notNull(),
   createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
 });
@@ -1455,7 +1456,8 @@ export const studentJobEligibilityReviews = sqliteTable("student_job_eligibility
   snapshotJson: text("snapshot_json").notNull().default("{}"),
   studentNote: text("student_note"),
   adminNote: text("admin_note"),
-  reviewedByUserId: integer("reviewed_by_user_id").references(() => users.id),
+  // Signed actor context id: users/staff are positive; full admins are negative.
+  reviewedByUserId: integer("reviewed_by_user_id"),
   reviewedAt: text("reviewed_at"),
   submittedAt: text("submitted_at").default("CURRENT_TIMESTAMP").notNull(),
   updatedAt: text("updated_at").default("CURRENT_TIMESTAMP").notNull(),
@@ -1471,7 +1473,8 @@ export const studentJobEligibilityAuditLogs = sqliteTable("student_job_eligibili
   id: int("id").primaryKey({ autoIncrement: true }),
   userId: integer("user_id").references(() => users.id),
   jobId: integer("job_id").references(() => jobs.id),
-  actorUserId: integer("actor_user_id").notNull().references(() => users.id),
+  // Signed actor context id: users/staff are positive; full admins are negative.
+  actorUserId: integer("actor_user_id").notNull(),
   action: text("action").notNull(),
   fromStatus: text("from_status"),
   toStatus: text("to_status"),
@@ -2225,7 +2228,8 @@ export const staffPerformanceMonthlyPlans = sqliteTable("staff_performance_month
   expectedOutcomes: text("expected_outcomes"),
   status: text("status").notNull().default("draft"),
   version: integer("version").notNull().default(1),
-  createdByUserId: integer("created_by_user_id").notNull().references(() => users.id),
+  // Signed actor context id: users/staff are positive; full admins are negative.
+  createdByUserId: integer("created_by_user_id").notNull(),
   submittedAt: text("submitted_at"),
   reviewedAt: text("reviewed_at"),
   lockedAt: text("locked_at"),
@@ -2246,7 +2250,8 @@ export const staffPerformanceGoals = sqliteTable("staff_performance_goals", {
   expectedResult: text("expected_result").notNull(),
   weight: integer("weight").notNull().default(0),
   sortOrder: integer("sort_order").notNull().default(0),
-  createdByUserId: integer("created_by_user_id").notNull().references(() => users.id),
+  // Signed actor context id: users/staff are positive; full admins are negative.
+  createdByUserId: integer("created_by_user_id").notNull(),
   createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
   updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
 });
@@ -2326,7 +2331,8 @@ export const staffPerformanceAuditLogs = sqliteTable("staff_performance_audit_lo
   entityType: text("entity_type").notNull(),
   entityId: integer("entity_id").notNull(),
   staffUserId: integer("staff_user_id").notNull().references(() => users.id),
-  actorUserId: integer("actor_user_id").notNull().references(() => users.id),
+  // Signed actor context id: users/staff are positive; full admins are negative.
+  actorUserId: integer("actor_user_id").notNull(),
   action: text("action").notNull(),
   fromStatus: text("from_status"),
   toStatus: text("to_status"),
@@ -2351,7 +2357,8 @@ export const studentSurveys = sqliteTable("student_surveys", {
   maxPostponements: integer("max_postponements").notNull().default(2),
   postponeHours: integer("postpone_hours").notNull().default(24),
   blockAfterHours: integer("block_after_hours").notNull().default(72),
-  createdByUserId: integer("created_by_user_id").notNull().references(() => users.id),
+  // Signed actor context id: users/staff are positive; full admins are negative.
+  createdByUserId: integer("created_by_user_id").notNull(),
   createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
   updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
 });
@@ -2384,7 +2391,8 @@ export const studentSurveyAssignments = sqliteTable("student_survey_assignments"
   postponementsUsed: integer("postponements_used").notNull().default(0),
   lastPostponedAt: text("last_postponed_at"),
   submittedAt: text("submitted_at"),
-  createdByUserId: integer("created_by_user_id").notNull().references(() => users.id),
+  // Signed actor context id: users/staff are positive; full admins are negative.
+  createdByUserId: integer("created_by_user_id").notNull(),
   createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
   updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
 }, (table) => ({
@@ -2415,7 +2423,8 @@ export const studentSurveyAuditLogs = sqliteTable("student_survey_audit_logs", {
   entityId: integer("entity_id").notNull(),
   surveyId: integer("survey_id").references(() => studentSurveys.id),
   userId: integer("user_id").references(() => users.id),
-  actorUserId: integer("actor_user_id").notNull().references(() => users.id),
+  // Signed actor context id: users/staff are positive; full admins are negative.
+  actorUserId: integer("actor_user_id").notNull(),
   action: text("action").notNull(),
   fromStatus: text("from_status"),
   toStatus: text("to_status"),

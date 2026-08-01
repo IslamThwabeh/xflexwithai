@@ -10,16 +10,21 @@ vi.mock("../backend/db", async () => {
     getUserById: vi.fn(),
     logStaffAction: vi.fn(),
     listStudentSurveyAssignmentsForUser: vi.fn(),
+    listStudentSurveyBlockingAssignmentsForUser: vi.fn(),
     createStudentSurvey: vi.fn(),
     getStudentSurvey: vi.fn(),
     createStudentSurveyQuestion: vi.fn(),
     assignStudentSurvey: vi.fn(),
+    assignStudentSurveyAudience: vi.fn(),
+    getStudentsForNotification: vi.fn(),
+    listStudentSurveyAssignedUserIds: vi.fn(),
     listStudentSurveyAssignmentsForAdmin: vi.fn(),
     getStudentSurveyAssignment: vi.fn(),
     sendStudentSurveyAssignmentReminder: vi.fn(),
     postponeStudentSurveyAssignment: vi.fn(),
     submitStudentSurveyAssignment: vi.fn(),
     listStudentSurveyAuditLogs: vi.fn(),
+    notifyStaffByEvent: vi.fn(),
   };
 });
 
@@ -72,9 +77,13 @@ describe("student survey routes", () => {
     vi.mocked(db.getAdminByEmail).mockResolvedValue(null);
     vi.mocked(db.hasAnyRole).mockResolvedValue(false);
     vi.mocked(db.listStudentSurveyAssignmentsForUser).mockResolvedValue([]);
+    vi.mocked(db.listStudentSurveyBlockingAssignmentsForUser).mockResolvedValue([]);
+    vi.mocked(db.getStudentsForNotification).mockResolvedValue([]);
+    vi.mocked(db.listStudentSurveyAssignedUserIds).mockResolvedValue([]);
+    vi.mocked(db.notifyStaffByEvent).mockResolvedValue(undefined as any);
   });
 
-  it("rejects protected survey routes while the feature flag is disabled", async () => {
+  it("rejects ordinary students from survey data routes while delivery is disabled", async () => {
     vi.mocked(db.getAdminSetting).mockImplementation(async (key: string) => {
       if (key === "student_surveys_enabled") return "false";
       return null;
@@ -84,11 +93,13 @@ describe("student survey routes", () => {
       code: "FORBIDDEN",
       message: "Student surveys are disabled",
     });
-    expect(db.getAdminByEmail).not.toHaveBeenCalled();
+    expect(db.getAdminByEmail).toHaveBeenCalledWith("student9@example.com");
   });
 
-  it("reports disabled availability without checking admin state", async () => {
-    vi.mocked(db.getAdminSetting).mockResolvedValue("false");
+  it("reports disabled availability without exposing student access", async () => {
+    vi.mocked(db.getAdminSetting).mockImplementation(async (key: string) =>
+      key === "student_surveys_enabled" ? "false" : null
+    );
 
     await expect(createCaller().studentSurveys.availability()).resolves.toEqual({
       enabled: false,
@@ -96,13 +107,87 @@ describe("student survey routes", () => {
       access: null,
       accessState: "clear",
     });
-    expect(db.getAdminByEmail).not.toHaveBeenCalled();
+    expect(db.getAdminByEmail).toHaveBeenCalledWith("student9@example.com");
+  });
+
+  it("keeps the full no-notification setup workspace open to admins before launch", async () => {
+    vi.mocked(db.getAdminSetting).mockImplementation(async (key: string) => {
+      if (key === "student_surveys_enabled") return "false";
+      if (key === "student_surveys_blocking_enabled") return "true";
+      return null;
+    });
+    vi.mocked(db.getAdminByEmail).mockResolvedValue({ id: 1, email: "admin@example.com" } as any);
+    vi.mocked(db.createStudentSurvey).mockResolvedValue({ id: 3, code: "pilot-checkin" } as any);
+    vi.mocked(db.getStudentSurvey).mockResolvedValue({
+      id: 3,
+      title: "Pilot check-in",
+      questions: [{ id: 11, questionText: "How was it?" }],
+    } as any);
+    vi.mocked(db.createStudentSurveyQuestion).mockResolvedValue({ id: 11 } as any);
+    vi.mocked(db.getStudentsForNotification).mockResolvedValue([
+      { id: 10, name: "Pilot Student", email: "pilot@example.com", hasActivePackage: true },
+    ]);
+    vi.mocked(db.assignStudentSurveyAudience).mockResolvedValue({
+      assignments: [{ id: 70, userId: 10 }],
+      duplicateUserIds: [],
+      capacityExceeded: false,
+    } as any);
+    vi.mocked(db.listStudentSurveyAssignmentsForAdmin).mockResolvedValue([
+      { id: 70, surveyId: 3, userId: 10, status: "pending" },
+    ] as any);
+    vi.mocked(db.listStudentSurveyAuditLogs).mockResolvedValue([
+      { id: 90, entityType: "survey", entityId: 3, action: "created" },
+    ] as any);
+
+    const caller = createCaller(1, "admin@example.com").studentSurveys;
+    await expect(caller.availability()).resolves.toMatchObject({
+      enabled: false,
+      blockingEnabled: true,
+      access: "admin",
+    });
+    await expect(caller.featureInfo()).resolves.toEqual({ enabled: false, access: "admin" });
+    await expect(caller.createSurvey({
+      code: "pilot-checkin",
+      title: "Pilot check-in",
+      isActive: false,
+    })).resolves.toMatchObject({ id: 3 });
+    await expect(caller.createQuestion({
+      surveyId: 3,
+      questionText: "How was it?",
+      questionType: "short_text",
+    })).resolves.toMatchObject({ id: 11 });
+    const audiencePreview = await caller.previewAudience({
+      surveyId: 3,
+      audience: { mode: "single", userIds: [10] },
+    });
+    expect(audiencePreview).toMatchObject({ recipientCount: 1 });
+    expect(audiencePreview).not.toHaveProperty("notificationsSent");
+    await expect(caller.assignAudience({
+      surveyId: 3,
+      audience: { mode: "single", userIds: [10] },
+      dueAt: "2026-08-10T10:00:00.000Z",
+      blockAt: "2026-08-12T10:00:00.000Z",
+      expectedRecipientIds: [10],
+      expectedMatchedStudentIds: [10],
+      confirmed: true,
+    })).resolves.toMatchObject({ assignedCount: 1, notificationsSent: 0 });
+    await expect(caller.listAssignments({ surveyId: 3, limit: 500 }))
+      .resolves.toHaveLength(1);
+    await expect(caller.auditLog({ entityType: "survey", entityId: 3, limit: 50 }))
+      .resolves.toHaveLength(1);
+    expect(db.sendStudentSurveyAssignmentReminder).not.toHaveBeenCalled();
+    expect(db.notifyStaffByEvent).not.toHaveBeenCalled();
   });
 
   it("summarizes blocked assignment state in availability", async () => {
-    vi.mocked(db.listStudentSurveyAssignmentsForUser).mockResolvedValue([
-      { accessState: "survey_due" },
-      { accessState: "blocked" },
+    vi.mocked(db.listStudentSurveyBlockingAssignmentsForUser).mockResolvedValue([
+      {
+        status: "pending",
+        dueAt: "2020-07-10T10:00:00.000Z",
+        blockAt: "2020-07-12T10:00:00.000Z",
+        surveyIsActive: true,
+        surveyIsRequired: true,
+      },
     ] as any);
 
     await expect(createCaller().studentSurveys.availability()).resolves.toMatchObject({
@@ -111,6 +196,7 @@ describe("student survey routes", () => {
       access: "student",
       accessState: "blocked",
     });
+    expect(db.listStudentSurveyBlockingAssignmentsForUser).toHaveBeenCalledWith(9);
   });
 
   it("reports admin access in availability for student survey managers", async () => {
@@ -206,6 +292,53 @@ describe("student survey routes", () => {
     expect(db.createStudentSurveyQuestion).not.toHaveBeenCalled();
   });
 
+  it("rejects duplicate choice options", async () => {
+    vi.mocked(db.getAdminByEmail).mockResolvedValue({ id: 1, email: "admin@example.com" } as any);
+    vi.mocked(db.getStudentSurvey).mockResolvedValue({ id: 3, questions: [] } as any);
+
+    await expect(createCaller(1, "admin@example.com").studentSurveys.createQuestion({
+      surveyId: 3,
+      questionText: "Pick one",
+      questionType: "multiple_choice",
+      options: ["Yes", " yes "],
+    })).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      message: "Choice options must be unique",
+    });
+    expect(db.createStudentSurveyQuestion).not.toHaveBeenCalled();
+  });
+
+  it("normalizes valid choice options before saving", async () => {
+    vi.mocked(db.getAdminByEmail).mockResolvedValue({ id: 1, email: "admin@example.com" } as any);
+    vi.mocked(db.getStudentSurvey).mockResolvedValue({ id: 3, questions: [] } as any);
+    vi.mocked(db.createStudentSurveyQuestion).mockResolvedValue({ id: 12 } as any);
+
+    await expect(createCaller(1, "admin@example.com").studentSurveys.createQuestion({
+      surveyId: 3,
+      questionText: "Pick one",
+      questionType: "multiple_choice",
+      options: ["  Yes ", "No  "],
+    })).resolves.toMatchObject({ id: 12 });
+    expect(db.createStudentSurveyQuestion).toHaveBeenCalledWith(expect.objectContaining({
+      optionsJson: JSON.stringify(["Yes", "No"]),
+    }));
+  });
+
+  it("retires direct assignment so admins must confirm an audience preview", async () => {
+    vi.mocked(db.getAdminByEmail).mockResolvedValue({ id: 1, email: "admin@example.com" } as any);
+
+    await expect(createCaller(1, "admin@example.com").studentSurveys.assignSurvey({
+      surveyId: 3,
+      userId: 9,
+      dueAt: "2026-08-10T10:00:00.000Z",
+      blockAt: "2026-08-12T10:00:00.000Z",
+    })).rejects.toMatchObject({
+      code: "PRECONDITION_FAILED",
+      message: "Preview the student audience and use the confirmed distribution workflow",
+    });
+    expect(db.assignStudentSurvey).not.toHaveBeenCalled();
+  });
+
   it("prevents students from reading another student's assignment", async () => {
     vi.mocked(db.getStudentSurveyAssignment).mockResolvedValue({
       ...activeAssignment,
@@ -230,20 +363,188 @@ describe("student survey routes", () => {
 
     await expect(createCaller(1, "admin@example.com").studentSurveys.listAssignments({
       surveyId: 3,
-      limit: 50,
+      limit: 500,
     })).resolves.toEqual([
       { id: 7, surveyId: 3, userId: 9, status: "submitted", studentEmail: "student@example.com" },
     ]);
     expect(db.listStudentSurveyAssignmentsForAdmin).toHaveBeenCalledWith({
       surveyId: 3,
       status: undefined,
-      limit: 50,
+      limit: 500,
     });
+  });
+
+  it("keeps audience previews limited to survey administrators", async () => {
+    await expect(createCaller().studentSurveys.previewAudience({
+      surveyId: 3,
+      audience: { mode: "all", userIds: [] },
+    })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(db.getStudentsForNotification).not.toHaveBeenCalled();
+  });
+
+  it("previews filtered recipients and separates existing assignments", async () => {
+    vi.mocked(db.getAdminByEmail).mockResolvedValue({ id: 1, email: "admin@example.com" } as any);
+    vi.mocked(db.getStudentSurvey).mockResolvedValue({ id: 3, questions: [{ id: 1 }] } as any);
+    vi.mocked(db.getStudentsForNotification).mockResolvedValue([
+      { id: 10, name: "Active One", email: "one@example.com", hasActivePackage: true },
+      { id: 11, name: "Inactive", email: "inactive@example.com", hasActivePackage: false },
+      { id: 12, name: "Active Existing", email: "existing@example.com", hasActivePackage: true },
+    ]);
+    vi.mocked(db.listStudentSurveyAssignedUserIds).mockResolvedValue([12]);
+
+    await expect(createCaller(1, "admin@example.com").studentSurveys.previewAudience({
+      surveyId: 3,
+      audience: { mode: "active_package", userIds: [] },
+    })).resolves.toMatchObject({
+      matchedCount: 2,
+      recipientCount: 1,
+      alreadyAssignedCount: 1,
+      invalidRequestedCount: 0,
+      exceedsSafeLimit: false,
+      exceedsBatchLimit: false,
+      exceedsTotalLimit: false,
+      currentAssignmentCount: 1,
+      remainingAssignmentCapacity: 499,
+      maxBatchRecipients: 20,
+      maxAssignmentsPerSurvey: 500,
+      snapshotStudentIds: [10, 12],
+      recipientIds: [10],
+      students: [
+        expect.objectContaining({ id: 10, alreadyAssigned: false }),
+        expect.objectContaining({ id: 12, alreadyAssigned: true }),
+      ],
+    });
+  });
+
+  it("rejects a bulk confirmation when the recipient preview changed", async () => {
+    vi.mocked(db.getAdminByEmail).mockResolvedValue({ id: 1, email: "admin@example.com" } as any);
+    vi.mocked(db.getStudentSurvey).mockResolvedValue({ id: 3, questions: [{ id: 1 }] } as any);
+    vi.mocked(db.getStudentsForNotification).mockResolvedValue([
+      { id: 10, name: "Student", email: "student@example.com", hasActivePackage: true },
+    ]);
+
+    await expect(createCaller(1, "admin@example.com").studentSurveys.assignAudience({
+      surveyId: 3,
+      audience: { mode: "single", userIds: [10] },
+      dueAt: "2026-08-10T10:00:00.000Z",
+      blockAt: "2026-08-12T10:00:00.000Z",
+      expectedRecipientIds: [12],
+      expectedMatchedStudentIds: [10],
+      confirmed: true,
+    })).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(db.assignStudentSurvey).not.toHaveBeenCalled();
+    expect(db.sendStudentSurveyAssignmentReminder).not.toHaveBeenCalled();
+    expect(db.notifyStaffByEvent).not.toHaveBeenCalled();
+  });
+
+  it("rejects confirmation when the matched audience grows after preview", async () => {
+    vi.mocked(db.getAdminByEmail).mockResolvedValue({ id: 1, email: "admin@example.com" } as any);
+    vi.mocked(db.getStudentSurvey).mockResolvedValue({ id: 3, questions: [{ id: 1 }] } as any);
+    vi.mocked(db.getStudentsForNotification).mockResolvedValue([
+      { id: 10, name: "Original", email: "original@example.com", hasActivePackage: true },
+      { id: 11, name: "New match", email: "new@example.com", hasActivePackage: true },
+    ]);
+
+    await expect(createCaller(1, "admin@example.com").studentSurveys.assignAudience({
+      surveyId: 3,
+      audience: { mode: "active_package", userIds: [] },
+      dueAt: "2026-08-10T10:00:00.000Z",
+      blockAt: "2026-08-12T10:00:00.000Z",
+      expectedRecipientIds: [10],
+      expectedMatchedStudentIds: [10],
+      confirmed: true,
+    })).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(db.assignStudentSurveyAudience).not.toHaveBeenCalled();
+  });
+
+  it("assigns a confirmed selected audience idempotently without notification fanout", async () => {
+    vi.mocked(db.getAdminByEmail).mockResolvedValue({ id: 1, email: "admin@example.com" } as any);
+    vi.mocked(db.getStudentSurvey).mockResolvedValue({ id: 3, questions: [{ id: 1 }] } as any);
+    vi.mocked(db.getStudentsForNotification).mockResolvedValue([
+      { id: 10, name: "One", email: "one@example.com", hasActivePackage: true },
+      { id: 11, name: "Two", email: "two@example.com", hasActivePackage: false },
+    ]);
+    vi.mocked(db.assignStudentSurveyAudience).mockResolvedValue({
+      assignments: [{ id: 70, userId: 10 }],
+      duplicateUserIds: [11],
+      capacityExceeded: false,
+    } as any);
+
+    await expect(createCaller(1, "admin@example.com").studentSurveys.assignAudience({
+      surveyId: 3,
+      audience: { mode: "selected", userIds: [10, 11, 10] },
+      dueAt: "2026-08-10T10:00:00.000Z",
+      blockAt: "2026-08-12T10:00:00.000Z",
+      expectedRecipientIds: [11, 10],
+      expectedMatchedStudentIds: [10, 11],
+      confirmed: true,
+    })).resolves.toEqual({
+      success: true,
+      assignedCount: 1,
+      alreadyAssignedCount: 1,
+      replayedAssignmentCount: 0,
+      matchedCount: 2,
+      notificationsSent: 0,
+    });
+    expect(db.assignStudentSurveyAudience).toHaveBeenCalledWith({
+      surveyId: 3,
+      userIds: [10, 11],
+      dueAt: "2026-08-10T10:00:00.000Z",
+      blockAt: "2026-08-12T10:00:00.000Z",
+      actorUserId: 1,
+    });
+    expect(db.sendStudentSurveyAssignmentReminder).not.toHaveBeenCalled();
+    expect(db.notifyStaffByEvent).not.toHaveBeenCalled();
+  });
+
+  it("treats an already assigned audience as a successful no-op", async () => {
+    vi.mocked(db.getAdminByEmail).mockResolvedValue({ id: 1, email: "admin@example.com" } as any);
+    vi.mocked(db.getStudentSurvey).mockResolvedValue({ id: 3, questions: [{ id: 1 }] } as any);
+    vi.mocked(db.getStudentsForNotification).mockResolvedValue([
+      { id: 10, name: "Student", email: "student@example.com", hasActivePackage: true },
+    ]);
+    vi.mocked(db.listStudentSurveyAssignedUserIds).mockResolvedValue([10]);
+
+    await expect(createCaller(1, "admin@example.com").studentSurveys.assignAudience({
+      surveyId: 3,
+      audience: { mode: "single", userIds: [10] },
+      dueAt: "2026-08-10T10:00:00.000Z",
+      blockAt: "2026-08-12T10:00:00.000Z",
+      expectedRecipientIds: [10],
+      expectedMatchedStudentIds: [10],
+      confirmed: true,
+    })).resolves.toMatchObject({
+      success: true,
+      assignedCount: 0,
+      alreadyAssignedCount: 1,
+      replayedAssignmentCount: 1,
+      notificationsSent: 0,
+    });
+    expect(db.assignStudentSurveyAudience).not.toHaveBeenCalled();
   });
 
   it("keeps survey reminders admin-only", async () => {
     await expect(createCaller().studentSurveys.sendAssignmentReminder({ id: 7 }))
       .rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(db.sendStudentSurveyAssignmentReminder).not.toHaveBeenCalled();
+  });
+
+  it("prohibits real student reminders while delivery is disabled", async () => {
+    vi.mocked(db.getAdminSetting).mockImplementation(async (key: string) =>
+      key === "student_surveys_enabled" ? "false" : null
+    );
+    vi.mocked(db.getAdminByEmail).mockResolvedValue({
+      id: 1,
+      email: "admin@example.com",
+    } as any);
+
+    await expect(
+      createCaller(1, "admin@example.com").studentSurveys.sendAssignmentReminder({ id: 7 })
+    ).rejects.toMatchObject({
+      code: "PRECONDITION_FAILED",
+      message: "Enable Student Surveys before sending a reminder",
+    });
+    expect(db.getStudentSurveyAssignment).not.toHaveBeenCalled();
     expect(db.sendStudentSurveyAssignmentReminder).not.toHaveBeenCalled();
   });
 
@@ -261,6 +562,32 @@ describe("student survey routes", () => {
       assignmentId: 7,
       actorUserId: 1,
     });
+  });
+
+  it("allows a reminder after the final deadline because the survey remains submit-able", async () => {
+    vi.mocked(db.getAdminByEmail).mockResolvedValue({ id: 1, email: "admin@example.com" } as any);
+    vi.mocked(db.getStudentSurveyAssignment).mockResolvedValue({
+      ...activeAssignment,
+      accessState: "blocked",
+    } as any);
+    vi.mocked(db.sendStudentSurveyAssignmentReminder).mockResolvedValue({ id: 23 } as any);
+
+    await expect(createCaller(1, "admin@example.com").studentSurveys.sendAssignmentReminder({ id: 7 }))
+      .resolves.toEqual({ success: true, notificationId: 23 });
+  });
+
+  it("reports a clean conflict when submission wins a reminder race", async () => {
+    vi.mocked(db.getAdminByEmail).mockResolvedValue({ id: 1, email: "admin@example.com" } as any);
+    vi.mocked(db.getStudentSurveyAssignment).mockResolvedValue(activeAssignment as any);
+    vi.mocked(db.sendStudentSurveyAssignmentReminder).mockRejectedValue(
+      new Error("STUDENT_SURVEY_REMINDER_CONFLICT"),
+    );
+
+    await expect(createCaller(1, "admin@example.com").studentSurveys.sendAssignmentReminder({ id: 7 }))
+      .rejects.toMatchObject({
+        code: "CONFLICT",
+        message: "The survey was submitted before the reminder could be sent",
+      });
   });
 
   it("does not send reminders for submitted assignments", async () => {
@@ -301,8 +628,8 @@ describe("student survey routes", () => {
   it("submits a student's own assignment", async () => {
     vi.mocked(db.getStudentSurveyAssignment).mockResolvedValue(activeAssignment as any);
     vi.mocked(db.submitStudentSurveyAssignment).mockResolvedValue({
-      id: 7,
-      status: "submitted",
+      assignment: { id: 7, status: "submitted" },
+      submittedNow: true,
     } as any);
 
     await expect(createCaller(9).studentSurveys.submit({
@@ -314,5 +641,80 @@ describe("student survey routes", () => {
       userId: 9,
       answers: [{ questionId: 11, answerText: "Helpful" }],
     });
+    expect(db.notifyStaffByEvent).toHaveBeenCalledOnce();
+  });
+
+  it("treats a lost successful submission response as an idempotent retry", async () => {
+    vi.mocked(db.getStudentSurveyAssignment).mockResolvedValue({
+      ...activeAssignment,
+      status: "submitted",
+      accessState: "clear",
+      answers: [{ questionId: 11, answerText: "Helpful", answerJson: null }],
+    } as any);
+
+    await expect(createCaller(9).studentSurveys.submit({
+      id: 7,
+      answers: [{ questionId: 11, answerText: "Helpful" }],
+    })).resolves.toMatchObject({ id: 7, status: "submitted" });
+    expect(db.submitStudentSurveyAssignment).not.toHaveBeenCalled();
+    expect(db.notifyStaffByEvent).not.toHaveBeenCalled();
+  });
+
+  it("rejects a retry that would change already-submitted answers", async () => {
+    vi.mocked(db.getStudentSurveyAssignment).mockResolvedValue({
+      ...activeAssignment,
+      status: "submitted",
+      accessState: "clear",
+      answers: [{ questionId: 11, answerText: "Original", answerJson: null }],
+    } as any);
+
+    await expect(createCaller(9).studentSurveys.submit({
+      id: 7,
+      answers: [{ questionId: 11, answerText: "Changed" }],
+    })).rejects.toMatchObject({
+      code: "CONFLICT",
+      message: "This survey was already submitted with different answers",
+    });
+    expect(db.submitStudentSurveyAssignment).not.toHaveBeenCalled();
+  });
+
+  it("does not duplicate staff notifications when a concurrent retry already committed", async () => {
+    vi.mocked(db.getStudentSurveyAssignment).mockResolvedValue(activeAssignment as any);
+    vi.mocked(db.submitStudentSurveyAssignment).mockResolvedValue({
+      assignment: { id: 7, status: "submitted" },
+      submittedNow: false,
+    } as any);
+
+    await expect(createCaller(9).studentSurveys.submit({
+      id: 7,
+      answers: [{ questionId: 11, answerText: "Helpful" }],
+    })).resolves.toMatchObject({ id: 7, status: "submitted" });
+    expect(db.notifyStaffByEvent).not.toHaveBeenCalled();
+  });
+
+  it("allows an overdue required survey to be submitted while access protection is enabled", async () => {
+    vi.mocked(db.getAdminSetting).mockImplementation(async (key: string) => {
+      if (key === "student_surveys_enabled") return "true";
+      if (key === "student_surveys_blocking_enabled") return "true";
+      return null;
+    });
+    vi.mocked(db.getStudentSurveyAssignment).mockResolvedValue({
+      ...activeAssignment,
+      dueAt: "2020-07-10T10:00:00.000Z",
+      blockAt: "2020-07-12T10:00:00.000Z",
+      surveyIsActive: true,
+      surveyIsRequired: true,
+      accessState: "blocked",
+    } as any);
+    vi.mocked(db.submitStudentSurveyAssignment).mockResolvedValue({
+      assignment: { id: 7, status: "submitted" },
+      submittedNow: true,
+    } as any);
+
+    await expect(createCaller(9).studentSurveys.submit({
+      id: 7,
+      answers: [{ questionId: 11, answerText: "Completed after deadline" }],
+    })).resolves.toMatchObject({ id: 7, status: "submitted" });
+    expect(db.submitStudentSurveyAssignment).toHaveBeenCalledOnce();
   });
 });

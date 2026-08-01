@@ -1,11 +1,10 @@
 // client/src/pages/AdminSettings.tsx
 import DashboardLayout from "@/components/DashboardLayout";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { Settings, Bell, Mail, Save, Loader2, GraduationCap, MessageCircle, Shield, Eye, EyeOff, KeyRound, SlidersHorizontal, AlertTriangle } from 'lucide-react';
+import { Settings, Bell, Mail, Save, Loader2, GraduationCap, MessageCircle, Shield, Eye, EyeOff, KeyRound, Sparkles, ArrowRight } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Switch } from '@/components/ui/switch';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,7 +20,7 @@ import { trpc } from '@/lib/trpc';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { STAFF_NOTIFICATION_EVENTS } from '@shared/const';
-import { type AdminFeatureFlagKey } from '@shared/featureFlags';
+import { useLocation } from 'wouter';
 
 function parseNotificationEmailList(value: string) {
   return Array.from(new Set(
@@ -36,6 +35,7 @@ export default function AdminSettings() {
   const { t, language } = useLanguage();
   const isRtl = language === 'ar';
   const utils = trpc.useUtils();
+  const [, setLocation] = useLocation();
 
   // Global admin settings
   const { data: allSettings, isLoading } = trpc.adminSettings.getAll.useQuery();
@@ -66,28 +66,6 @@ export default function AdminSettings() {
   const [newAdminPassword, setNewAdminPassword] = useState('');
   const [confirmAdminPassword, setConfirmAdminPassword] = useState('');
   const [showAdminPasswords, setShowAdminPasswords] = useState(false);
-  const [pendingFeatureChange, setPendingFeatureChange] = useState<{
-    key: AdminFeatureFlagKey;
-    enabled: boolean;
-    label: string;
-  } | null>(null);
-
-  const updateFeatureFlag = trpc.adminSettings.updateFeatureFlag.useMutation({
-    onSuccess: async () => {
-      toast.success(isRtl ? 'تم تحديث حالة الميزة' : 'Feature status updated');
-      setPendingFeatureChange(null);
-      await Promise.all([
-        utils.adminSettings.getAll.invalidate(),
-        utils.staffPerformance.availability.invalidate(),
-        utils.studentSurveys.availability.invalidate(),
-        utils.community.availability.invalidate(),
-        utils.points.rewardsAvailability.invalidate(),
-        utils.studentJobEligibility.availability.invalidate(),
-      ]);
-    },
-    onError: (e) => toast.error(e.message),
-  });
-
   useEffect(() => {
     if (allSettings) {
       let parsedEmails: string[] = [];
@@ -170,57 +148,16 @@ export default function AdminSettings() {
     });
   };
 
-  const featureFlags: Array<{
-    key: AdminFeatureFlagKey;
-    label: string;
-    description: string;
-    caution?: boolean;
-  }> = [
-    {
-      key: 'staff_performance_enabled',
-      label: isRtl ? 'إدارة أداء الموظفين' : 'Staff performance management',
-      description: isRtl ? 'الخطط الشهرية، العمل اليومي، التقارير والمراجعات.' : 'Monthly plans, daily work, reports, and reviews.',
-    },
-    {
-      key: 'student_surveys_enabled',
-      label: isRtl ? 'استبيانات الطلاب' : 'Student surveys',
-      description: isRtl ? 'إنشاء الاستبيانات وإرسالها لعينة من الطلاب ومراجعة الإجابات.' : 'Create surveys, assign a student pilot, and review responses.',
-    },
-    {
-      key: 'student_surveys_blocking_enabled',
-      label: isRtl ? 'الحجب التدريجي بسبب الاستبيانات' : 'Gradual survey access blocking',
-      description: isRtl ? 'ميزة عالية التأثير. لا تفعّل إلا بعد نجاح تجربة الاستبيانات على حساب تجريبي.' : 'High-impact control. Enable only after a successful survey pilot.',
-      caution: true,
-    },
-    {
-      key: 'loyalty_rewards_enabled',
-      label: isRtl ? 'كتالوج المكافآت والاستبدال' : 'Rewards catalog and redemption',
-      description: isRtl ? 'النقاط الأساسية تبقى متاحة؛ هذا المفتاح يشغّل عرض المكافآت وطلبات استبدالها.' : 'Core points remain available; this enables reward browsing and redemption.',
-    },
-    {
-      key: 'student_community_enabled',
-      label: isRtl ? 'مجتمع الطلاب' : 'Student community',
-      description: isRtl ? 'المنشورات والتعليقات والبلاغات مع لوحة الإشراف.' : 'Posts, comments, reports, and moderation.',
-    },
-    {
-      key: 'student_job_eligibility_enabled',
-      label: isRtl ? 'أهلية الطلاب للوظائف' : 'Student job eligibility',
-      description: isRtl ? 'قواعد الأهلية والملف المهني وطلبات المراجعة.' : 'Eligibility rules, career profiles, and review requests.',
-    },
-  ];
-
-  const isFeatureEnabled = (key: AdminFeatureFlagKey) => allSettings?.[key] === 'true';
-
   return (
     <DashboardLayout>
       <div className="container mx-auto p-6 space-y-6" dir={isRtl ? 'rtl' : 'ltr'}>
         <div className="mb-4">
           <h1 className="text-3xl font-bold mb-2 flex items-center gap-2">
             <Settings className="w-7 h-7 text-emerald-500" />
-            {isRtl ? 'إعدادات الإشعارات' : 'Notification Settings'}
+            {isRtl ? 'إعدادات الإدارة' : 'Admin Settings'}
           </h1>
           <p className="text-gray-600 dark:text-gray-400">
-            {isRtl ? 'تحكم في إعدادات البريد الإلكتروني والإشعارات' : 'Configure email and notification preferences'}
+            {isRtl ? 'أمان حساب الإدارة وقواعد التشغيل وإعدادات التواصل' : 'Admin security, operating rules, and communication settings'}
           </p>
         </div>
 
@@ -228,53 +165,23 @@ export default function AdminSettings() {
           <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin" /></div>
         ) : (
           <>
-            <Card className="border-emerald-200">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <SlidersHorizontal className="h-5 w-5 text-emerald-600" />
-                  {isRtl ? 'إدارة تفعيل الميزات' : 'Feature activation'}
-                </CardTitle>
-                <CardDescription>
-                  {isRtl
-                    ? 'الصفحات الإدارية تبقى ظاهرة لكِ لمعرفة حالتها، بينما لا تظهر الميزة للطلاب أو الموظفين المخولين إلا بعد تفعيلها هنا. يفضّل تشغيل ميزة واحدة وتجربتها قبل الانتقال للتالية.'
-                    : 'Admin pages remain discoverable, while students and assigned staff see a feature only after it is enabled here. Enable and pilot one feature at a time.'}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {featureFlags.map((feature) => {
-                  const enabled = isFeatureEnabled(feature.key);
-                  const blockingPrerequisiteMissing = feature.key === 'student_surveys_blocking_enabled'
-                    && !isFeatureEnabled('student_surveys_enabled');
-                  return (
-                    <div
-                      key={feature.key}
-                      className={`flex items-start justify-between gap-4 rounded-xl border p-4 ${feature.caution ? 'border-amber-200 bg-amber-50/50' : 'bg-background'}`}
-                    >
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="font-semibold">{feature.label}</p>
-                          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${enabled ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
-                            {enabled ? (isRtl ? 'مفعّلة' : 'Enabled') : (isRtl ? 'غير مفعّلة' : 'Disabled')}
-                          </span>
-                          {feature.caution && <AlertTriangle className="h-4 w-4 text-amber-600" />}
-                        </div>
-                        <p className="mt-1 text-sm text-muted-foreground">{feature.description}</p>
-                        {blockingPrerequisiteMissing && (
-                          <p className="mt-1 text-xs font-medium text-amber-700">
-                            {isRtl ? 'يجب تفعيل استبيانات الطلاب أولاً.' : 'Student surveys must be enabled first.'}
-                          </p>
-                        )}
-                      </div>
-                      <Switch
-                        checked={enabled}
-                        disabled={updateFeatureFlag.isPending || (blockingPrerequisiteMissing && !enabled)}
-                        onCheckedChange={(checked) => setPendingFeatureChange({ key: feature.key, enabled: checked, label: feature.label })}
-                        aria-label={feature.label}
-                        className="mt-1"
-                      />
-                    </div>
-                  );
-                })}
+            <Card className="overflow-hidden border-emerald-200 bg-gradient-to-r from-emerald-50 to-sky-50 dark:border-emerald-900 dark:from-emerald-950/30 dark:to-sky-950/20">
+              <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white">
+                  <Sparkles className="h-5 w-5" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="font-bold">{isRtl ? 'تفعيل الميزات أصبح في مركز الميزات' : 'Feature activation now lives in the Feature Center'}</p>
+                  <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                    {isRtl
+                      ? 'راجعي حالة كل ميزة وجاهزيتها ومعاينتها قبل تفعيلها. ستبقى إعدادات البريد والتشغيل منظمة هنا.'
+                      : 'Review status, readiness, and a safe preview before activation. Email and operating settings remain organized here.'}
+                  </p>
+                </div>
+                <Button type="button" onClick={() => setLocation('/admin/features')}>
+                  {isRtl ? 'فتح مركز الميزات' : 'Open Feature Center'}
+                  <ArrowRight className={`h-4 w-4 ${isRtl ? 'rotate-180' : ''}`} />
+                </Button>
               </CardContent>
             </Card>
 
@@ -558,37 +465,6 @@ export default function AdminSettings() {
           </>
         )}
 
-        <AlertDialog open={Boolean(pendingFeatureChange)} onOpenChange={(open) => !open && setPendingFeatureChange(null)}>
-          <AlertDialogContent dir={isRtl ? 'rtl' : 'ltr'}>
-            <AlertDialogHeader>
-              <AlertDialogTitle>
-                {pendingFeatureChange?.enabled
-                  ? (isRtl ? 'تأكيد تفعيل الميزة' : 'Confirm feature activation')
-                  : (isRtl ? 'تأكيد إيقاف الميزة' : 'Confirm feature deactivation')}
-              </AlertDialogTitle>
-              <AlertDialogDescription>
-                {pendingFeatureChange?.enabled
-                  ? (isRtl
-                    ? `سيتم تفعيل «${pendingFeatureChange?.label ?? ''}» للمستخدمين المسموح لهم. ابدئي بعينة تجريبية صغيرة.`
-                    : `“${pendingFeatureChange?.label ?? ''}” will become available to authorized users. Start with a small pilot.`)
-                  : (isRtl
-                    ? `سيتم إخفاء «${pendingFeatureChange?.label ?? ''}» عن المستخدمين. البيانات الحالية لن تُحذف.`
-                    : `“${pendingFeatureChange?.label ?? ''}” will be hidden from users. Existing data will not be deleted.`)}
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>{isRtl ? 'إلغاء' : 'Cancel'}</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={() => pendingFeatureChange && updateFeatureFlag.mutate({
-                  key: pendingFeatureChange.key,
-                  enabled: pendingFeatureChange.enabled,
-                })}
-              >
-                {isRtl ? 'تأكيد' : 'Confirm'}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
       </div>
     </DashboardLayout>
   );

@@ -48,7 +48,12 @@ import { invokeOpenAiChatCompletion } from "./_core/openai";
 import { SUPPORT_AI_ACADEMY_KNOWLEDGE } from "./_core/supportAiKnowledge";
 import { hashPassword, verifyPassword, generateToken, isValidEmail, isValidPassword, normalizeEmailAddress } from "./_core/auth";
 import { generateFreeVideoPlaybackToken } from "./_core/freeLibraryPlayback";
-import { sendAdminNotificationEmail, sendEmail, sendLoginCodeEmail } from "./_core/email";
+import {
+  preflightAdminNotificationEmail,
+  sendAdminNotificationEmail,
+  sendEmail,
+  sendLoginCodeEmail,
+} from "./_core/email";
 import { buildRecommendationAlertEmail, buildRecommendationMessageEmail } from "./_core/recommendationEmails";
 import { buildSupportReplyEmail } from "./_core/supportEmails";
 import {
@@ -65,6 +70,16 @@ import {
   ADMIN_FEATURE_FLAG_KEYS,
   getAdminFeatureFlagUpdates,
 } from "../shared/featureFlags";
+import { ADMIN_FEATURE_IDS } from "../shared/adminFeatureCatalog";
+import {
+  MAX_STUDENT_SURVEY_CHOICE_OPTIONS,
+  isStudentSurveyChoiceQuestionType,
+  validateStudentSurveyChoiceOptions,
+} from "../shared/studentSurveyQuestionOptions";
+import {
+  EMAIL_DELIVERY_EVENT_CATEGORIES,
+  getAdminFeatureNotificationEventType,
+} from "../shared/emailDeliveryCategories";
 import {
   STAFF_PERFORMANCE_FEATURE_FLAG,
   STAFF_PERFORMANCE_STATUSES,
@@ -80,16 +95,24 @@ import {
   type StaffPerformanceStatus,
 } from "./services/staff-performance.service";
 import {
+  MAX_STUDENT_SURVEY_ASSIGNMENTS_PER_SURVEY,
+  MAX_STUDENT_SURVEY_BULK_RECIPIENTS,
+  STUDENT_SURVEY_AUDIENCE_MODES,
   STUDENT_SURVEY_ASSIGNMENT_STATUSES,
   STUDENT_SURVEY_QUESTION_TYPES,
   STUDENT_SURVEYS_BLOCKING_FEATURE_FLAG,
   STUDENT_SURVEYS_FEATURE_FLAG,
+  areStudentSurveyRecipientIdsSubset,
   canPostponeStudentSurvey,
-  getStudentSurveyAccessState,
+  getStudentSurveyBlockingAccessState,
+  haveSameStudentSurveyAnswers,
+  haveSameStudentSurveyRecipientIds,
   isStudentSurveyBlockingEnabled,
   isStudentSurveysEnabled,
   isUniqueSurveyConstraintError,
   isValidSurveyDateTime,
+  resolveStudentSurveyAudience,
+  type StudentSurveyAudienceMode,
   type StudentSurveyAssignmentStatus,
 } from "./services/student-surveys.service";
 import {
@@ -156,6 +179,38 @@ const shortPerformanceText = z.string().trim().min(1).max(300);
 const longPerformanceText = z.string().trim().max(5000);
 const studentSurveyAssignmentStatusSchema = z.enum(STUDENT_SURVEY_ASSIGNMENT_STATUSES);
 const studentSurveyQuestionTypeSchema = z.enum(STUDENT_SURVEY_QUESTION_TYPES);
+const studentSurveyAudienceSchema = z
+  .object({
+    mode: z.enum(STUDENT_SURVEY_AUDIENCE_MODES),
+    userIds: z
+      .array(z.number().int().positive())
+      .max(MAX_STUDENT_SURVEY_BULK_RECIPIENTS)
+      .default([]),
+  })
+  .superRefine((value, ctx) => {
+    const uniqueCount = new Set(value.userIds).size;
+    if (value.mode === "single" && uniqueCount !== 1) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["userIds"],
+        message: "Choose exactly one student",
+      });
+    }
+    if (value.mode === "selected" && uniqueCount < 1) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["userIds"],
+        message: "Choose at least one student",
+      });
+    }
+    if (!["single", "selected"].includes(value.mode) && uniqueCount > 0) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["userIds"],
+        message: "Filtered audiences do not accept individual student ids",
+      });
+    }
+  });
 const surveyDateTimeSchema = z.string().refine(isValidSurveyDateTime, "Date-time must be a valid ISO timestamp");
 const shortSurveyText = z.string().trim().min(1).max(300);
 const longSurveyText = z.string().trim().max(5000);
@@ -896,55 +951,81 @@ const adminOrRoleProcedure = (roles: string[]) => protectedProcedure.use(async (
   return next({ ctx: { ...ctx, admin: null } });
 }).use(staffActivityTrackingMiddleware);
 
-const staffPerformanceProcedure = protectedProcedure.use(async ({ ctx, next }) => {
-  if (!ctx.user?.email) {
-    throw new TRPCError({ code: "UNAUTHORIZED", message: "Not authenticated" });
-  }
+const staffPerformanceProcedure = protectedProcedure
+  .use(async ({ ctx, next }) => {
+    if (!ctx.user?.email) {
+      throw new TRPCError({ code: "UNAUTHORIZED", message: "Not authenticated" });
+    }
 
-  const flag = await db.getAdminSetting(STAFF_PERFORMANCE_FEATURE_FLAG);
-  if (!isStaffPerformanceEnabled(flag)) {
-    throw new TRPCError({ code: "FORBIDDEN", message: "Staff performance management is disabled" });
-  }
+    const flag = await db.getAdminSetting(STAFF_PERFORMANCE_FEATURE_FLAG);
+    const performanceEnabled = isStaffPerformanceEnabled(flag);
+    const admin = await db.getAdminByEmail(ctx.user.email);
+    let performanceAccess: "employee" | "manager" | null = admin ? "manager" : null;
+    if (!admin) {
+      const roles = await db.getUserRoles(ctx.user.id);
+      const roleNames = new Set(roles.map((row) => row.role));
+      performanceAccess = roleNames.has("staff_performance_manager")
+        ? "manager"
+        : roleNames.has("staff_performance_employee")
+          ? "employee"
+          : null;
+    }
 
-  const admin = await db.getAdminByEmail(ctx.user.email);
-  let performanceAccess: "employee" | "manager" | null = admin ? "manager" : null;
-  if (!admin) {
-    const roles = await db.getUserRoles(ctx.user.id);
-    const roleNames = new Set(roles.map((row) => row.role));
-    performanceAccess = roleNames.has("staff_performance_manager")
-      ? "manager"
-      : roleNames.has("staff_performance_employee")
-        ? "employee"
-        : null;
-  }
+    if (!performanceAccess) {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: "Staff performance access required",
+      });
+    }
 
-  if (!performanceAccess) {
-    throw new TRPCError({ code: "FORBIDDEN", message: "Staff performance access required" });
-  }
+    if (!performanceEnabled && performanceAccess !== "manager") {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: "Staff performance management is disabled",
+      });
+    }
 
-  return next({ ctx: { ...ctx, admin: null, performanceAccess } });
-}).use(staffActivityTrackingMiddleware);
+    return next({
+      ctx: { ...ctx, admin: null, performanceAccess, performanceEnabled },
+    });
+  })
+  .use(staffActivityTrackingMiddleware);
 
-const studentSurveyProcedure = protectedProcedure.use(async ({ ctx, next }) => {
-  if (!ctx.user?.email) {
-    throw new TRPCError({ code: "UNAUTHORIZED", message: "Not authenticated" });
-  }
+const studentSurveyProcedure = protectedProcedure
+  .use(async ({ ctx, next }) => {
+    if (!ctx.user?.email) {
+      throw new TRPCError({ code: "UNAUTHORIZED", message: "Not authenticated" });
+    }
 
-  const flag = await db.getAdminSetting(STUDENT_SURVEYS_FEATURE_FLAG);
-  if (!isStudentSurveysEnabled(flag)) {
-    throw new TRPCError({ code: "FORBIDDEN", message: "Student surveys are disabled" });
-  }
+    const flag = await db.getAdminSetting(STUDENT_SURVEYS_FEATURE_FLAG);
+    const surveyEnabled = isStudentSurveysEnabled(flag);
+    const admin = await db.getAdminByEmail(ctx.user.email);
+    const hasSurveyManagerRole = admin
+      ? false
+      : await db.hasAnyRole(ctx.user.id, ["student_surveys_manager"]);
+    const surveyAccess = admin || hasSurveyManagerRole
+      ? ("admin" as const)
+      : ("student" as const);
 
-  const admin = await db.getAdminByEmail(ctx.user.email);
-  const hasSurveyManagerRole = admin ? false : await db.hasAnyRole(ctx.user.id, ["student_surveys_manager"]);
-  return next({
-    ctx: {
-      ...ctx,
-      admin,
-      surveyAccess: admin || hasSurveyManagerRole ? "admin" as const : "student" as const,
-    },
-  });
-}).use(staffActivityTrackingMiddleware);
+    // Authorized managers can prepare the real workspace before launch, while
+    // ordinary students remain unable to read or mutate survey data.
+    if (!surveyEnabled && surveyAccess !== "admin") {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: "Student surveys are disabled",
+      });
+    }
+
+    return next({
+      ctx: {
+        ...ctx,
+        admin,
+        surveyAccess,
+        surveyEnabled,
+      },
+    });
+  })
+  .use(staffActivityTrackingMiddleware);
 
 function requireStudentSurveyAdmin(access: "student" | "admin") {
   if (access !== "admin") {
@@ -987,6 +1068,24 @@ function requirePerformanceTransition(
   }
 }
 
+function requireManagerFeedbackForReturn(
+  actor: StaffPerformanceActor,
+  toStatus: StaffPerformanceStatus,
+  managerFeedback: string | null | undefined,
+  recordLabel: "daily log" | "weekly report"
+) {
+  if (
+    actor === "manager" &&
+    toStatus === "returned" &&
+    !managerFeedback?.trim()
+  ) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: `Manager feedback is required when returning a ${recordLabel}`,
+    });
+  }
+}
+
 function throwStaffPerformancePersistenceError(error: unknown): never {
   if (isUniqueConstraintError(error)) {
     throw new TRPCError({ code: "CONFLICT", message: "A performance record already exists for this period" });
@@ -1005,6 +1104,28 @@ function throwStudentSurveyPersistenceError(error: unknown): never {
     throw new TRPCError({ code: "CONFLICT", message: "A survey record already exists for this scope" });
   }
   throw error;
+}
+
+async function getStudentSurveyAudienceSnapshot(input: {
+  surveyId: number;
+  mode: StudentSurveyAudienceMode;
+  userIds: number[];
+}) {
+  const [survey, students, assignedUserIds] = await Promise.all([
+    db.getStudentSurvey(input.surveyId),
+    db.getStudentsForNotification(),
+    db.listStudentSurveyAssignedUserIds(input.surveyId),
+  ]);
+  if (!survey)
+    throw new TRPCError({ code: "NOT_FOUND", message: "Survey not found" });
+
+  const audience = resolveStudentSurveyAudience({
+    students,
+    mode: input.mode,
+    userIds: input.userIds,
+    assignedUserIds,
+  });
+  return { survey, audience };
 }
 
 function parseSurveyOptions(options: string | null | undefined): string[] {
@@ -8029,8 +8150,19 @@ ${qaText}`;
         return review;
       }),
 
+    adminJobs: adminOrRoleProcedure(["student_job_eligibility_manager"]).query(
+      async () => {
+        const jobs = await db.getAllJobs();
+        return jobs.map(job => ({
+          id: job.id,
+          titleAr: job.titleAr,
+          titleEn: job.titleEn,
+          isActive: job.isActive,
+        }));
+      }
+    ),
+
     adminRules: adminOrRoleProcedure(['student_job_eligibility_manager']).query(async () => {
-      await requireStudentJobEligibilityEnabled();
       return db.listStudentJobEligibilityRules();
     }),
 
@@ -8047,7 +8179,6 @@ ${qaText}`;
         instructions: longStudentJobText.optional(),
       }))
       .mutation(async ({ ctx, input }) => {
-        await requireStudentJobEligibilityEnabled();
         return db.upsertStudentJobEligibilityRule({
           ...input,
           actorUserId: ctx.user.id,
@@ -8061,18 +8192,30 @@ ${qaText}`;
         limit: z.number().int().min(1).max(200).optional(),
       }).optional())
       .query(async ({ input }) => {
-        await requireStudentJobEligibilityEnabled();
         return db.listStudentJobEligibilityReviews(input);
       }),
 
     adminReviewDecision: adminOrRoleProcedure(['student_job_eligibility_manager'])
-      .input(z.object({
-        reviewId: z.number().int().positive(),
-        status: studentJobDecisionStatusSchema,
-        adminNote: longStudentJobText.optional(),
-      }))
+      .input(
+        z.object({
+          reviewId: z.number().int().positive(),
+          status: studentJobDecisionStatusSchema,
+          adminNote: longStudentJobText.optional(),
+        }).superRefine((input, ctx) => {
+          if (
+            (input.status === "returned" || input.status === "ineligible") &&
+            !input.adminNote?.trim()
+          ) {
+            ctx.addIssue({
+              code: "custom",
+              path: ["adminNote"],
+              message:
+                "An admin note is required for returned or ineligible decisions",
+            });
+          }
+        }),
+      )
       .mutation(async ({ ctx, input }) => {
-        await requireStudentJobEligibilityEnabled();
         return db.reviewStudentJobEligibility({
           reviewId: input.reviewId,
           status: input.status,
@@ -8088,7 +8231,6 @@ ${qaText}`;
         limit: z.number().int().min(1).max(200).optional(),
       }).optional())
       .query(async ({ input }) => {
-        await requireStudentJobEligibilityEnabled();
         return db.listStudentJobEligibilityAuditLogs(input);
       }),
   }),
@@ -8215,57 +8357,168 @@ ${qaText}`;
         contentAr: z.string().max(2000).optional(),
         actionUrl: z.string().max(500).optional(),
         sendEmail: z.boolean().optional(),
+        featureId: z.enum(ADMIN_FEATURE_IDS).optional(),
       }))
       .mutation(async ({ input }) => {
         // Fallback: if English title is empty, use Arabic
         const titleEn = input.titleEn?.trim() || input.titleAr;
         const contentEn = input.contentEn?.trim() || input.contentAr;
         const batchId = `batch_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-        await db.sendBulkNotification({ ...input, titleEn, contentEn, batchId });
+        const userIds = [...new Set(input.userIds)];
 
         // Send branded email immediately. For one recipient the student is the
         // To address; for multiple recipients, support is To and students are
         // hidden in BCC so a bulk announcement does not spend hours draining one
         // recipient per outbox row.
-        let emailsQueued = 0;
-        let emailsSent = 0;
-        let emailsSkipped = 0;
-        let emailDeliveryMode: "single_to" | "bcc_batch" | "none" = "none";
+        let emailPreparation: {
+          recipients: Array<{ userId: number; email: string }>;
+          rendered: ReturnType<typeof buildAnnouncementEmail>;
+        } | null = null;
         if (input.sendEmail) {
           const users = await db.getAllUsers();
           const userMap = new Map(users.map((u: any) => [u.id, u.email]));
-          const rendered = buildAnnouncementEmail({
-            subject: input.titleAr,
-            titleAr: input.titleAr,
-            contentAr: input.contentAr || '',
-            titleEn: input.titleEn?.trim() || undefined,
-            contentEn: input.contentEn?.trim() || undefined,
-            actionUrl: input.actionUrl || undefined,
-          });
-          const emailRecipients = input.userIds
+          const recipients = userIds
             .map((userId) => ({ userId, email: userMap.get(userId) }))
-            .filter((recipient): recipient is { userId: number; email: string } => !!recipient.email);
-
-          const emailResult = await sendAdminNotificationEmail({
-            recipients: emailRecipients,
-            eventType: 'admin_bulk_notification',
-            templateId: 'announcement',
-            subject: rendered.subject,
-            text: rendered.text,
-            html: rendered.html,
-            providerBatchKey: batchId,
-            metadata: {
-              notificationType: input.type || 'info',
-              actionUrl: input.actionUrl || null,
-            },
-          });
-          emailsSent = emailResult.sentUserIds.length;
-          emailsSkipped = emailResult.skippedUserIds.length;
-          emailDeliveryMode = emailResult.deliveryMode;
-          await db.markNotificationEmailsSent(batchId, emailResult.sentUserIds);
+            .filter(
+              (recipient): recipient is { userId: number; email: string } =>
+                !!recipient.email,
+            );
+          preflightAdminNotificationEmail({ recipients });
+          emailPreparation = {
+            recipients,
+            rendered: buildAnnouncementEmail({
+              subject: input.titleAr,
+              titleAr: input.titleAr,
+              contentAr: input.contentAr || '',
+              titleEn: input.titleEn?.trim() || undefined,
+              contentEn: input.contentEn?.trim() || undefined,
+              actionUrl: input.actionUrl || undefined,
+            }),
+          };
         }
 
-        return { success: true, count: input.userIds.length, emailsQueued, emailsSent, emailsSkipped, emailDeliveryMode };
+        await db.sendBulkNotification({
+          ...input,
+          userIds,
+          titleEn,
+          contentEn,
+          batchId,
+        });
+
+        const emailsQueued = 0;
+        let emailsSent = 0;
+        let emailsSkipped = 0;
+        let emailDeliveryMode: "single_to" | "bcc_batch" | "none" = "none";
+        let emailFailed = false;
+        let emailError: string | null = null;
+
+        if (emailPreparation) {
+          try {
+            const emailResult = await sendAdminNotificationEmail({
+              recipients: emailPreparation.recipients,
+              eventType: getAdminFeatureNotificationEventType(
+                input.featureId,
+                "campaign",
+              ),
+              templateId: 'announcement',
+              subject: emailPreparation.rendered.subject,
+              text: emailPreparation.rendered.text,
+              html: emailPreparation.rendered.html,
+              providerBatchKey: batchId,
+              metadata: {
+                notificationType: input.type || 'info',
+                actionUrl: input.actionUrl || null,
+                featureId: input.featureId || null,
+              },
+            });
+            emailsSent = emailResult.sentUserIds.length;
+            emailsSkipped = emailResult.skippedUserIds.length;
+            emailDeliveryMode = emailResult.deliveryMode;
+            await db.markNotificationEmailsSent(batchId, emailResult.sentUserIds);
+          } catch (error) {
+            emailFailed = true;
+            emailError = error instanceof Error ? error.message : "Email delivery failed";
+            logger.error("[ADMIN NOTIFICATIONS] In-app campaign saved but email delivery failed", {
+              batchId,
+              recipientCount: userIds.length,
+              error: emailError,
+            });
+          }
+        }
+
+        return {
+          success: true,
+          count: userIds.length,
+          emailsQueued,
+          emailsSent,
+          emailsSkipped,
+          emailDeliveryMode,
+          emailFailed,
+          emailError,
+        };
+      }),
+
+    // Admin: deliver a branded test only to the signed-in admin. This does not
+    // create student notifications, recipient batches, or campaign history.
+    sendTestEmail: adminProcedure
+      .input(
+        z.object({
+          titleEn: z.string().max(200).optional(),
+          titleAr: z.string().min(1).max(200),
+          contentEn: z.string().max(2000).optional(),
+          contentAr: z.string().max(2000).optional(),
+          actionUrl: z.string().max(500).optional(),
+          featureId: z.enum(ADMIN_FEATURE_IDS).optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const adminEmail = ctx.user.email?.trim();
+        if (!adminEmail) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "The signed-in admin account has no email address.",
+          });
+        }
+
+        const rendered = buildAnnouncementEmail({
+          subject: `[TEST] ${input.titleAr}`,
+          titleAr: input.titleAr,
+          contentAr: input.contentAr || "",
+          titleEn: input.titleEn?.trim() || undefined,
+          contentEn: input.contentEn?.trim() || undefined,
+          actionUrl: input.actionUrl || undefined,
+        });
+        const result = await sendAdminNotificationEmail({
+          recipients: [{ userId: ctx.user.id, email: adminEmail }],
+          eventType: getAdminFeatureNotificationEventType(
+            input.featureId,
+            "test"
+          ),
+          templateId: "announcement_test",
+          subject: rendered.subject,
+          text: rendered.text,
+          html: rendered.html,
+          providerBatchKey: `admin_notification_test:${ctx.admin.id}:${Date.now()}`,
+          metadata: {
+            previewOnly: true,
+            actionUrl: input.actionUrl || null,
+            featureId: input.featureId || null,
+          },
+        });
+        await db.logAdminAction(
+          ctx.admin.id,
+          ctx.admin.id,
+          "send_admin_notification_test",
+          {
+            deliveryMode: result.deliveryMode,
+            sent: result.sentUserIds.length,
+            skipped: result.skippedUserIds.length,
+          }
+        );
+        return {
+          success: result.sentUserIds.length === 1,
+          skipped: result.skippedUserIds.length === 1,
+        };
       }),
 
     // Admin: get students grouped by active/inactive for targeting
@@ -8383,32 +8636,59 @@ ${qaText}`;
     // Admin: add points to a user
     award: adminOrRoleProcedure(['loyalty_rewards_manager'])
       .input(z.object({
-        userId: z.number(),
-        amount: z.number().min(1).max(100000),
-        reasonEn: z.string().min(1).max(200),
-        reasonAr: z.string().min(1).max(200),
-        referenceType: z.string().optional(),
+        userId: z.number().int().positive(),
+        amount: z.number().int().min(1).max(100000),
+        reasonEn: z.string().trim().min(1).max(200),
+        reasonAr: z.string().trim().min(1).max(200),
       }))
-      .mutation(async ({ input }) => {
-        return db.addPoints({
-          userId: input.userId, amount: input.amount,
-          reasonEn: input.reasonEn, reasonAr: input.reasonAr,
-          referenceType: input.referenceType,
+      .mutation(async ({ ctx, input }) => {
+        const student = await db.getLoyaltyPointStudent(input.userId);
+        if (!student) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Student points account not found",
+          });
+        }
+        const result = await db.adjustStudentPointsAtomic({
+          userId: input.userId,
+          amount: input.amount,
+          reasonEn: input.reasonEn,
+          reasonAr: input.reasonAr,
+          direction: "award",
+          actorUserId: ctx.user.id,
         });
+        if (!result) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "Student points account changed; refresh and try again",
+          });
+        }
+        return result;
       }),
 
     // Admin: deduct points
     deduct: adminOrRoleProcedure(['loyalty_rewards_manager'])
       .input(z.object({
-        userId: z.number(),
-        amount: z.number().min(1).max(100000),
-        reasonEn: z.string().min(1).max(200),
-        reasonAr: z.string().min(1).max(200),
+        userId: z.number().int().positive(),
+        amount: z.number().int().min(1).max(100000),
+        reasonEn: z.string().trim().min(1).max(200),
+        reasonAr: z.string().trim().min(1).max(200),
       }))
-      .mutation(async ({ input }) => {
-        const result = await db.redeemPoints({
-          userId: input.userId, amount: input.amount,
-          reasonEn: input.reasonEn, reasonAr: input.reasonAr,
+      .mutation(async ({ ctx, input }) => {
+        const student = await db.getLoyaltyPointStudent(input.userId);
+        if (!student) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Student points account not found",
+          });
+        }
+        const result = await db.adjustStudentPointsAtomic({
+          userId: input.userId,
+          amount: input.amount,
+          reasonEn: input.reasonEn,
+          reasonAr: input.reasonAr,
+          direction: "deduct",
+          actorUserId: ctx.user.id,
         });
         if (!result) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Insufficient points balance' });
         return result;
@@ -8418,6 +8698,18 @@ ${qaText}`;
     leaderboard: adminOrRoleProcedure(['loyalty_rewards_manager']).query(async () => {
       return db.getTopPointsUsers();
     }),
+
+    // Admin: bounded student picker for points operators
+    searchStudents: adminOrRoleProcedure(["loyalty_rewards_manager"])
+      .input(
+        z.object({
+          query: z.string().trim().min(2).max(120),
+          limit: z.number().int().min(1).max(20).default(12),
+        })
+      )
+      .query(({ input }) =>
+        db.searchLoyaltyPointStudents(input.query, input.limit)
+      ),
 
     // Admin: referral stats
     referralStats: adminOrRoleProcedure(['loyalty_rewards_manager']).query(async () => {
@@ -8441,10 +8733,7 @@ ${qaText}`;
         return db.updatePointsRule(id, data);
       }),
 
-    adminRewardItems: adminOrRoleProcedure(['loyalty_rewards_manager']).query(async () => {
-      await requireLoyaltyRewardsEnabled();
-      return db.listLoyaltyRewardItemsForAdmin();
-    }),
+    adminRewardItems: adminOrRoleProcedure(['loyalty_rewards_manager']).query(() => db.listLoyaltyRewardItemsForAdmin()),
 
     createRewardItem: adminOrRoleProcedure(['loyalty_rewards_manager'])
       .input(z.object({
@@ -8458,7 +8747,13 @@ ${qaText}`;
         sortOrder: z.number().int().min(0).max(10_000).default(0),
       }))
       .mutation(async ({ ctx, input }) => {
-        await requireLoyaltyRewardsEnabled();
+        const flag = await db.getAdminSetting(LOYALTY_REWARDS_FEATURE_FLAG);
+        if (input.isActive && !isLoyaltyRewardsEnabled(flag)) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "Enable Loyalty Rewards before publishing a reward",
+          });
+        }
         return db.createLoyaltyRewardItem({
           ...input,
           actorUserId: ctx.user.id,
@@ -8478,7 +8773,13 @@ ${qaText}`;
         sortOrder: z.number().int().min(0).max(10_000).optional(),
       }))
       .mutation(async ({ ctx, input }) => {
-        await requireLoyaltyRewardsEnabled();
+        const flag = await db.getAdminSetting(LOYALTY_REWARDS_FEATURE_FLAG);
+        if (input.isActive === true && !isLoyaltyRewardsEnabled(flag)) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "Enable Loyalty Rewards before publishing a reward",
+          });
+        }
         const item = await db.updateLoyaltyRewardItem({
           ...input,
           actorUserId: ctx.user.id,
@@ -8508,6 +8809,12 @@ ${qaText}`;
       }))
       .mutation(async ({ ctx, input }) => {
         await requireLoyaltyRewardsEnabled();
+        if (input.decision === "rejected" && !input.adminNote?.trim()) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "A rejection reason is required",
+          });
+        }
         const result = await db.reviewLoyaltyRewardRedemption({
           ...input,
           actorUserId: ctx.user.id,
@@ -8935,12 +9242,25 @@ ${qaText}`;
       }),
 
     moderateContent: adminOrRoleProcedure(['student_community_moderator'])
-      .input(z.object({
-        targetType: communityTargetTypeSchema,
-        targetId: z.number().int().positive(),
-        action: z.enum(["hide", "restore", "delete"]),
-        note: z.string().trim().max(2000).nullish(),
-      }))
+      .input(
+        z.object({
+          targetType: communityTargetTypeSchema,
+          targetId: z.number().int().positive(),
+          action: z.enum(["hide", "restore", "delete"]),
+          note: z.string().trim().max(2000).nullish(),
+        }).superRefine((input, ctx) => {
+          if (
+            input.action === "delete" &&
+            (!input.note || input.note.length < 3)
+          ) {
+            ctx.addIssue({
+              code: "custom",
+              path: ["note"],
+              message: "A deletion reason of at least 3 characters is required",
+            });
+          }
+        }),
+      )
       .mutation(async ({ ctx, input }) => {
         requireCommunityMutationRequest(ctx.req);
         await requireStudentCommunityEnabled();
@@ -9596,39 +9916,46 @@ ${qaText}`;
   studentSurveys: router({
     availability: protectedProcedure.query(async ({ ctx }) => {
       const flag = await db.getAdminSetting(STUDENT_SURVEYS_FEATURE_FLAG);
-      if (!isStudentSurveysEnabled(flag)) {
-        return {
-          enabled: false,
-          blockingEnabled: false,
-          access: null as "student" | "admin" | null,
-          accessState: "clear" as const,
-        };
-      }
-
-      const blockingFlag = await db.getAdminSetting(STUDENT_SURVEYS_BLOCKING_FEATURE_FLAG);
+      const enabled = isStudentSurveysEnabled(flag);
       const admin = ctx.user?.email ? await db.getAdminByEmail(ctx.user.email) : null;
       const hasSurveyManagerRole = !admin && ctx.user?.id
         ? await db.hasAnyRole(ctx.user.id, ["student_surveys_manager"])
         : false;
-      const assignments = ctx.user?.id
-        ? await db.listStudentSurveyAssignmentsForUser(ctx.user.id, 20)
+      const access = admin || hasSurveyManagerRole
+        ? ("admin" as const)
+        : ("student" as const);
+
+      if (!enabled) {
+        const blockingFlag = access === "admin"
+          ? await db.getAdminSetting(STUDENT_SURVEYS_BLOCKING_FEATURE_FLAG)
+          : null;
+        return {
+          enabled: false,
+          blockingEnabled:
+            access === "admin" && isStudentSurveyBlockingEnabled(blockingFlag),
+          access: access === "admin" ? access : null,
+          accessState: "clear" as const,
+        };
+      }
+
+      const blockingFlag = await db.getAdminSetting(
+        STUDENT_SURVEYS_BLOCKING_FEATURE_FLAG
+      );
+      const blockingAssignments = ctx.user?.id
+        ? await db.listStudentSurveyBlockingAssignmentsForUser(ctx.user.id)
         : [];
-      const accessState = assignments.some((item) => item.accessState === "blocked")
-        ? "blocked" as const
-        : assignments.some((item) => item.accessState === "survey_due")
-          ? "survey_due" as const
-          : "clear" as const;
+      const accessState = getStudentSurveyBlockingAccessState(blockingAssignments);
 
       return {
         enabled: true,
         blockingEnabled: isStudentSurveyBlockingEnabled(blockingFlag),
-        access: admin || hasSurveyManagerRole ? "admin" as const : "student" as const,
+        access,
         accessState,
       };
     }),
 
     featureInfo: studentSurveyProcedure.query(({ ctx }) => ({
-      enabled: true,
+      enabled: ctx.surveyEnabled,
       access: ctx.surveyAccess,
     })),
 
@@ -9677,60 +10004,232 @@ ${qaText}`;
         questionText: shortSurveyText,
         questionType: studentSurveyQuestionTypeSchema,
         isRequired: z.boolean().default(true),
-        options: z.array(z.string().trim().min(1).max(200)).max(20).optional(),
+        options: z.array(z.string().trim().max(200)).max(MAX_STUDENT_SURVEY_CHOICE_OPTIONS).optional(),
         sortOrder: z.number().int().min(0).max(1000).default(0),
       }))
       .mutation(async ({ ctx, input }) => {
         requireStudentSurveyAdmin(ctx.surveyAccess);
         const survey = await db.getStudentSurvey(input.surveyId);
         if (!survey) throw new TRPCError({ code: "NOT_FOUND", message: "Survey not found" });
-        if (["single_choice", "multiple_choice"].includes(input.questionType) && (!input.options || input.options.length < 2)) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "Choice questions require at least two options" });
+        const choiceOptions = isStudentSurveyChoiceQuestionType(input.questionType)
+          ? validateStudentSurveyChoiceOptions(input.options ?? [])
+          : null;
+        if (choiceOptions && !choiceOptions.valid) {
+          const message = choiceOptions.error === "duplicate"
+            ? "Choice options must be unique"
+            : choiceOptions.error === "too_many"
+              ? `Choice questions support up to ${MAX_STUDENT_SURVEY_CHOICE_OPTIONS} options`
+              : "Choice questions require at least two complete options";
+          throw new TRPCError({ code: "BAD_REQUEST", message });
         }
         return db.createStudentSurveyQuestion({
           surveyId: input.surveyId,
           questionText: input.questionText,
           questionType: input.questionType,
           isRequired: input.isRequired,
-          optionsJson: input.options ? JSON.stringify(input.options) : null,
+          optionsJson: choiceOptions?.valid ? JSON.stringify(choiceOptions.options) : null,
           sortOrder: input.sortOrder,
           actorUserId: ctx.user.id,
         });
       }),
 
     assignSurvey: studentSurveyProcedure
-      .input(z.object({
-        surveyId: z.number().int().positive(),
-        userId: z.number().int().positive(),
-        dueAt: surveyDateTimeSchema,
-        blockAt: surveyDateTimeSchema,
-      }).refine(
-        (value) => new Date(value.blockAt).getTime() > new Date(value.dueAt).getTime(),
-        { message: "Blocking time must be after the due time", path: ["blockAt"] },
-      ))
+      .input(
+        z.object({
+          surveyId: z.number().int().positive(),
+          userId: z.number().int().positive(),
+          dueAt: surveyDateTimeSchema,
+          blockAt: surveyDateTimeSchema,
+        }).refine(
+          (value) => new Date(value.blockAt).getTime() > new Date(value.dueAt).getTime(),
+          { message: "Blocking time must be after the due time", path: ["blockAt"] },
+        ),
+      )
+      .mutation(async ({ ctx }) => {
+        requireStudentSurveyAdmin(ctx.surveyAccess);
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message:
+            "Preview the student audience and use the confirmed distribution workflow",
+        });
+      }),
+
+    listAudienceStudents: studentSurveyProcedure.query(async ({ ctx }) => {
+      requireStudentSurveyAdmin(ctx.surveyAccess);
+      return db.getStudentsForNotification();
+    }),
+
+    previewAudience: studentSurveyProcedure
+      .input(
+        z.object({
+          surveyId: z.number().int().positive(),
+          audience: studentSurveyAudienceSchema,
+        })
+      )
+      .query(async ({ ctx, input }) => {
+        requireStudentSurveyAdmin(ctx.surveyAccess);
+        const { audience } = await getStudentSurveyAudienceSnapshot({
+          surveyId: input.surveyId,
+          mode: input.audience.mode,
+          userIds: input.audience.userIds,
+        });
+        return {
+          matchedCount: audience.matchedStudents.length,
+          recipientCount: audience.recipients.length,
+          alreadyAssignedCount: audience.alreadyAssigned.length,
+          invalidRequestedCount: audience.invalidRequestedIds.length,
+          exceedsSafeLimit: audience.exceedsSafeLimit,
+          exceedsBatchLimit: audience.exceedsBatchLimit,
+          exceedsTotalLimit: audience.exceedsTotalLimit,
+          currentAssignmentCount: audience.currentAssignmentCount,
+          remainingAssignmentCapacity: audience.remainingAssignmentCapacity,
+          maxBatchRecipients: MAX_STUDENT_SURVEY_BULK_RECIPIENTS,
+          maxAssignmentsPerSurvey: MAX_STUDENT_SURVEY_ASSIGNMENTS_PER_SURVEY,
+          snapshotStudentIds: audience.exceedsSafeLimit
+            ? []
+            : audience.matchedStudents.map((student) => student.id),
+          recipientIds: audience.exceedsSafeLimit
+            ? []
+            : audience.recipients.map((student) => student.id),
+          students: audience.matchedStudents
+            .slice(0, MAX_STUDENT_SURVEY_BULK_RECIPIENTS)
+            .map((student) => ({
+              ...student,
+              alreadyAssigned: audience.alreadyAssigned.some(
+                (item) => item.id === student.id,
+              ),
+            })),
+        };
+      }),
+
+    assignAudience: studentSurveyProcedure
+      .input(
+        z
+          .object({
+            surveyId: z.number().int().positive(),
+            audience: studentSurveyAudienceSchema,
+            dueAt: surveyDateTimeSchema,
+            blockAt: surveyDateTimeSchema,
+            expectedRecipientIds: z
+              .array(z.number().int().positive())
+              .max(MAX_STUDENT_SURVEY_BULK_RECIPIENTS),
+            expectedMatchedStudentIds: z
+              .array(z.number().int().positive())
+              .max(MAX_STUDENT_SURVEY_ASSIGNMENTS_PER_SURVEY),
+            confirmed: z.literal(true),
+          })
+          .refine(
+            (value) =>
+              new Date(value.blockAt).getTime() >
+              new Date(value.dueAt).getTime(),
+            {
+              message: "Blocking time must be after the due time",
+              path: ["blockAt"],
+            },
+          )
+          .refine((value) => new Date(value.dueAt).getTime() > Date.now(), {
+            message: "The response due time must be in the future",
+            path: ["dueAt"],
+          }),
+      )
       .mutation(async ({ ctx, input }) => {
         requireStudentSurveyAdmin(ctx.surveyAccess);
-        const [survey, user] = await Promise.all([
-          db.getStudentSurvey(input.surveyId),
-          db.getUserById(input.userId),
-        ]);
-        if (!survey) throw new TRPCError({ code: "NOT_FOUND", message: "Survey not found" });
-        if (!user) throw new TRPCError({ code: "NOT_FOUND", message: "Student not found" });
-        try {
-          return await db.assignStudentSurvey({
-            ...input,
-            actorUserId: ctx.user.id,
+        const { survey, audience } = await getStudentSurveyAudienceSnapshot({
+          surveyId: input.surveyId,
+          mode: input.audience.mode,
+          userIds: input.audience.userIds,
+        });
+        if (survey.questions.length === 0) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message:
+              "Add at least one question before distributing this survey",
           });
-        } catch (error) {
-          throwStudentSurveyPersistenceError(error);
         }
+        if (audience.invalidRequestedIds.length > 0) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "One or more selected students are no longer available",
+          });
+        }
+        if (audience.exceedsSafeLimit) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: audience.exceedsTotalLimit
+              ? `A survey may have at most ${MAX_STUDENT_SURVEY_ASSIGNMENTS_PER_SURVEY} assigned students`
+              : `Choose a reviewed batch of ${MAX_STUDENT_SURVEY_BULK_RECIPIENTS} new students or fewer`,
+          });
+        }
+
+        const actualMatchedStudentIds = audience.matchedStudents.map(
+          (student) => student.id,
+        );
+        const actualRecipientIds = audience.recipients.map(
+          (student) => student.id,
+        );
+        const previewIsCurrent = haveSameStudentSurveyRecipientIds(
+          actualMatchedStudentIds,
+          input.expectedMatchedStudentIds,
+        );
+        const expectedRecipientsBelongToPreview =
+          areStudentSurveyRecipientIdsSubset(
+            input.expectedRecipientIds,
+            input.expectedMatchedStudentIds,
+          );
+        const remainingRecipientsMatchPreview =
+          areStudentSurveyRecipientIdsSubset(
+            actualRecipientIds,
+            input.expectedRecipientIds,
+          );
+        if (
+          !previewIsCurrent ||
+          !expectedRecipientsBelongToPreview ||
+          !remainingRecipientsMatchPreview
+        ) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message:
+              "The recipient preview changed. Review the updated count before confirming again.",
+          });
+        }
+
+        const result =
+          actualRecipientIds.length > 0
+            ? await db.assignStudentSurveyAudience({
+                surveyId: input.surveyId,
+                userIds: actualRecipientIds,
+                dueAt: input.dueAt,
+                blockAt: input.blockAt,
+                actorUserId: ctx.user.id,
+              })
+            : {
+                assignments: [],
+                duplicateUserIds: [],
+                capacityExceeded: false,
+              };
+        if (result.capacityExceeded) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: `The survey reached its ${MAX_STUDENT_SURVEY_ASSIGNMENTS_PER_SURVEY}-student limit. Preview the audience again.`,
+          });
+        }
+        return {
+          success: true,
+          assignedCount: result.assignments.length,
+          alreadyAssignedCount:
+            audience.alreadyAssigned.length + result.duplicateUserIds.length,
+          replayedAssignmentCount:
+            input.expectedRecipientIds.length - actualRecipientIds.length,
+          matchedCount: audience.matchedStudents.length,
+          notificationsSent: 0 as const,
+        };
       }),
 
     listAssignments: studentSurveyProcedure
       .input(z.object({
         surveyId: z.number().int().positive().optional(),
         status: studentSurveyAssignmentStatusSchema.optional(),
-        limit: z.number().int().min(1).max(200).default(100),
+        limit: z.number().int().min(1).max(500).default(100),
       }).optional())
       .query(async ({ ctx, input }) => {
         requireStudentSurveyAdmin(ctx.surveyAccess);
@@ -9762,20 +10261,45 @@ ${qaText}`;
       .input(z.object({ id: z.number().int().positive() }))
       .mutation(async ({ ctx, input }) => {
         requireStudentSurveyAdmin(ctx.surveyAccess);
+        if (!ctx.surveyEnabled) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "Enable Student Surveys before sending a reminder",
+          });
+        }
         const assignment = await db.getStudentSurveyAssignment(input.id);
         if (!assignment) throw new TRPCError({ code: "NOT_FOUND", message: "Survey assignment not found" });
         if (assignment.status === "submitted") {
-          throw new TRPCError({ code: "CONFLICT", message: "Submitted survey assignments do not need reminders" });
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "Submitted survey assignments do not need reminders",
+          });
         }
-        if (assignment.accessState === "blocked" || assignment.status === "blocked") {
-          throw new TRPCError({ code: "CONFLICT", message: "Blocked survey assignments require support review, not a reminder" });
+        try {
+          const notification = await db.sendStudentSurveyAssignmentReminder({
+            assignmentId: input.id,
+            actorUserId: ctx.user.id,
+          });
+          if (!notification) {
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "Survey assignment not found",
+            });
+          }
+          return { success: true, notificationId: notification.id };
+        } catch (error) {
+          if (
+            error instanceof Error &&
+            error.message === "STUDENT_SURVEY_REMINDER_CONFLICT"
+          ) {
+            throw new TRPCError({
+              code: "CONFLICT",
+              message:
+                "The survey was submitted before the reminder could be sent",
+            });
+          }
+          throw error;
         }
-        const notification = await db.sendStudentSurveyAssignmentReminder({
-          assignmentId: input.id,
-          actorUserId: ctx.user.id,
-        });
-        if (!notification) throw new TRPCError({ code: "NOT_FOUND", message: "Survey assignment not found" });
-        return { success: true, notificationId: notification.id };
       }),
 
     postpone: studentSurveyProcedure
@@ -9816,36 +10340,62 @@ ${qaText}`;
         const assignment = await db.getStudentSurveyAssignment(input.id);
         if (!assignment) throw new TRPCError({ code: "NOT_FOUND", message: "Survey assignment not found" });
         if (assignment.userId !== ctx.user.id) {
-          throw new TRPCError({ code: "FORBIDDEN", message: "You may only submit your own survey assignments" });
-        }
-        const accessState = getStudentSurveyAccessState({
-          status: assignment.status,
-          dueAt: assignment.dueAt,
-          blockAt: assignment.blockAt,
-        });
-        const blockingFlag = await db.getAdminSetting(STUDENT_SURVEYS_BLOCKING_FEATURE_FLAG);
-        if (isStudentSurveyBlockingEnabled(blockingFlag) && accessState === "blocked") {
-          throw new TRPCError({ code: "CONFLICT", message: "This survey is blocked and requires support review" });
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "You may only submit your own survey assignments",
+          });
         }
         if (assignment.status === "submitted") {
-          throw new TRPCError({ code: "CONFLICT", message: "This survey was already submitted" });
+          if (haveSameStudentSurveyAnswers(assignment.answers, input.answers)) {
+            return assignment;
+          }
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "This survey was already submitted with different answers",
+          });
         }
         validateStudentSurveyAnswers({
           questions: assignment.questions,
           answers: input.answers,
         });
-        const updated = await db.submitStudentSurveyAssignment({
-          id: input.id,
-          userId: ctx.user.id,
-          answers: input.answers,
-        });
-        if (!updated) throw new TRPCError({ code: "CONFLICT", message: "Survey assignment changed. Refresh and try again." });
-        await db.notifyStaffByEvent('student_survey_submitted', {
-          titleEn: `Survey submitted by ${ctx.user.name || ctx.user.email}`,
-          titleAr: `تم إرسال استبيان من ${ctx.user.name || ctx.user.email}`,
-          metadata: { userId: ctx.user.id, assignmentId: input.id, surveyId: assignment.surveyId },
-        }).catch(() => {});
-        return updated;
+        try {
+          const result = await db.submitStudentSurveyAssignment({
+            id: input.id,
+            userId: ctx.user.id,
+            answers: input.answers,
+          });
+          if (!result) {
+            throw new TRPCError({
+              code: "CONFLICT",
+              message: "Survey assignment changed. Refresh and try again.",
+            });
+          }
+          if (result.submittedNow) {
+            await db.notifyStaffByEvent('student_survey_submitted', {
+              titleEn: `Survey submitted by ${ctx.user.name || ctx.user.email}`,
+              titleAr: `تم إرسال استبيان من ${ctx.user.name || ctx.user.email}`,
+              metadata: {
+                userId: ctx.user.id,
+                assignmentId: input.id,
+                surveyId: assignment.surveyId,
+              },
+            }).catch(() => {});
+          }
+          return result.assignment;
+        } catch (error) {
+          if (
+            error instanceof Error &&
+            error.message ===
+              "STUDENT_SURVEY_ALREADY_SUBMITTED_DIFFERENT_ANSWERS"
+          ) {
+            throw new TRPCError({
+              code: "CONFLICT",
+              message:
+                "This survey was already submitted with different answers",
+            });
+          }
+          throw error;
+        }
       }),
 
     auditLog: studentSurveyProcedure
@@ -9863,12 +10413,9 @@ ${qaText}`;
   staffPerformance: router({
     availability: protectedProcedure.query(async ({ ctx }) => {
       const flag = await db.getAdminSetting(STAFF_PERFORMANCE_FEATURE_FLAG);
-      if (!isStaffPerformanceEnabled(flag)) {
-        return { enabled: false, access: null as "employee" | "manager" | null };
-      }
-
+      const enabled = isStaffPerformanceEnabled(flag);
       const admin = ctx.user.email ? await db.getAdminByEmail(ctx.user.email) : null;
-      if (admin) return { enabled: true, access: "manager" as const };
+      if (admin) return { enabled, access: "manager" as const };
 
       const roles = await db.getUserRoles(ctx.user.id);
       const roleNames = new Set(roles.map((row) => row.role));
@@ -9877,11 +10424,11 @@ ${qaText}`;
         : roleNames.has("staff_performance_employee")
           ? "employee" as const
           : null;
-      return { enabled: true, access };
+      return { enabled, access };
     }),
 
     featureInfo: staffPerformanceProcedure.query(({ ctx }) => ({
-      enabled: true,
+      enabled: ctx.performanceEnabled,
       access: ctx.performanceAccess,
     })),
 
@@ -10238,6 +10785,12 @@ ${qaText}`;
         if (actor === "employee" && input.managerFeedback !== undefined) {
           throw new TRPCError({ code: "FORBIDDEN", message: "Employees cannot add manager feedback" });
         }
+        requireManagerFeedbackForReturn(
+          actor,
+          input.toStatus,
+          input.managerFeedback,
+          "daily log"
+        );
         if (input.toStatus === "submitted" && (log.tasks.length === 0 || !log.endSummary?.trim())) {
           throw new TRPCError({
             code: "BAD_REQUEST",
@@ -10359,6 +10912,12 @@ ${qaText}`;
         if (actor === "employee" && input.managerFeedback !== undefined) {
           throw new TRPCError({ code: "FORBIDDEN", message: "Employees cannot add manager feedback" });
         }
+        requireManagerFeedbackForReturn(
+          actor,
+          input.toStatus,
+          input.managerFeedback,
+          "weekly report"
+        );
         if (
           input.toStatus === "submitted"
           && (!report.outputs?.trim() || report.achievementPercent === null)
@@ -10556,6 +11115,10 @@ ${qaText}`;
       return db.getAllAdminSettings();
     }),
 
+    featureOverview: adminProcedure.query(async () => {
+      return db.getAdminFeatureOverview();
+    }),
+
     update: adminProcedure
       .input(z.object({ key: z.string().min(1).max(100), value: z.string().max(5000) }))
       .mutation(async ({ input }) => {
@@ -10590,7 +11153,8 @@ ${qaText}`;
             term => term.category === "prohibited_language",
           );
           const missingRequirements = [
-            !ENV.openaiApiKey ? "OPENAI_API_KEY" : null,
+            !ENV.openaiApiKey ? "automated content checks are not connected"
+              : null,
             !hasCompetitorTerm ? "at least one active competitor term" : null,
             !hasProhibitedLanguageTerm
               ? "at least one active prohibited-language term"
@@ -10638,7 +11202,7 @@ ${qaText}`;
         recipientQuery: z.string().optional(),
         recipientUserId: z.number().optional(),
         eventType: z.string().optional(),
-        eventCategory: z.enum(['recommendations', 'support', 'orders', 'login', 'lifecycle', 'system']).optional(),
+        eventCategory: z.enum(EMAIL_DELIVERY_EVENT_CATEGORIES).optional(),
         status: z.enum(['sent', 'failed', 'skipped_unsubscribed', 'skipped_deduped', 'skipped_renewed']).optional(),
         fromDate: z.string().optional(),
         toDate: z.string().optional(),
@@ -10661,7 +11225,7 @@ ${qaText}`;
         recipientQuery: z.string().optional(),
         recipientUserId: z.number().optional(),
         eventType: z.string().optional(),
-        eventCategory: z.enum(['recommendations', 'support', 'orders', 'login', 'lifecycle', 'system']).optional(),
+        eventCategory: z.enum(EMAIL_DELIVERY_EVENT_CATEGORIES).optional(),
         status: z.enum(['sent', 'failed', 'skipped_unsubscribed', 'skipped_deduped', 'skipped_renewed']).optional(),
         fromDate: z.string().optional(),
         toDate: z.string().optional(),

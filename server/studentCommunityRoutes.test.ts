@@ -669,6 +669,44 @@ describe("student community routes", () => {
     }));
   });
 
+  it("requires an auditable reason before soft-deleting community content", async () => {
+    vi.mocked(db.getAdminByEmail).mockResolvedValue({ id: 1, email: "admin@example.com" } as any);
+
+    await expect(createCaller(1, "admin@example.com").community.moderateContent({
+      targetType: "comment",
+      targetId: 12,
+      action: "delete",
+      note: "  ",
+    })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+
+    expect(db.getStudentCommunityContentNotificationContext).not.toHaveBeenCalled();
+    expect(db.moderateStudentCommunityContent).not.toHaveBeenCalled();
+  });
+
+  it("passes the required soft-delete reason to the audited moderation write", async () => {
+    vi.mocked(db.getAdminByEmail).mockResolvedValue({ id: 1, email: "admin@example.com" } as any);
+    vi.mocked(db.moderateStudentCommunityContent).mockResolvedValue({
+      id: 12,
+      status: "deleted",
+      updatedAt: "2026-07-24T10:01:00.000Z",
+    } as any);
+
+    await expect(createCaller(1, "admin@example.com").community.moderateContent({
+      targetType: "comment",
+      targetId: 12,
+      action: "delete",
+      note: "Contains personal contact details",
+    })).resolves.toMatchObject({ id: 12, status: "deleted" });
+
+    expect(db.moderateStudentCommunityContent).toHaveBeenCalledWith({
+      targetType: "comment",
+      targetId: 12,
+      action: "delete",
+      note: "Contains personal contact details",
+      actorUserId: 1,
+    });
+  });
+
   it("allows community moderators to moderate content", async () => {
     vi.mocked(db.hasAnyRole).mockImplementation(async (_userId: number, roles: string[]) =>
       roles.includes("student_community_moderator")
@@ -706,12 +744,13 @@ describe("student community routes", () => {
 
     await expect(createCaller(1, "admin@example.com").community.dismissReport({
       reportId: 4,
+      note: "Reviewed; content follows the community policy",
     })).resolves.toEqual({ id: 4, status: "dismissed" });
     expect(db.reviewStudentCommunityReport).toHaveBeenCalledWith({
       reportId: 4,
       action: "dismiss",
       actorUserId: 1,
-      note: null,
+      note: "Reviewed; content follows the community policy",
     });
     expect(db.enqueueEmailOutbox).toHaveBeenCalledWith(expect.objectContaining({
       dedupeKey: "community_report:4:report_dismissed",

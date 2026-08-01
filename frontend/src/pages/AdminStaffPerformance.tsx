@@ -1,4 +1,5 @@
 import DashboardLayout from "@/components/DashboardLayout";
+import { AdminFeatureSetupCard, SafeAdminPreview } from "@/components/admin/SafeAdminPreview";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,6 +19,7 @@ import { trpc } from "@/lib/trpc";
 import { rowsToCsv, staffPerformanceCsvFilename, type StaffPerformanceCsvRow } from "@shared/staffPerformanceCsv";
 import {
   AlertCircle,
+  ArrowRight,
   BarChart3,
   Bell,
   CalendarDays,
@@ -27,18 +29,20 @@ import {
   ClipboardList,
   Download,
   Edit3,
+  Eye,
   FileLock2,
   Loader2,
   Plus,
   RotateCcw,
   Send,
   ShieldCheck,
+  Sparkles,
   Target,
   Trash2,
-  UserRound,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { Link } from "wouter";
 
 type PlanForm = {
   month: string;
@@ -62,6 +66,21 @@ type ReviewDialogState = {
   id: number;
   version: number;
 } | null;
+
+type PlanTransitionDialogState = {
+  toStatus: "submitted" | "returned" | "approved" | "locked";
+} | null;
+
+type GoalDeleteTarget = {
+  id: number;
+  title: string;
+  weight: number;
+} | null;
+
+function getInitialEmployeePreview() {
+  if (typeof window === "undefined") return false;
+  return new URLSearchParams(window.location.search).get("preview") === "employee";
+}
 
 const emptyPlanForm = (): PlanForm => ({
   month: new Date().toISOString().slice(0, 7),
@@ -99,10 +118,15 @@ export default function AdminStaffPerformance() {
   const [selectedDailyLogId, setSelectedDailyLogId] = useState<number | null>(null);
   const [selectedWeeklyReportId, setSelectedWeeklyReportId] = useState<number | null>(null);
   const [reviewDialog, setReviewDialog] = useState<ReviewDialogState>(null);
+  const [planTransitionDialog, setPlanTransitionDialog] = useState<PlanTransitionDialogState>(null);
+  const [goalDeleteTarget, setGoalDeleteTarget] = useState<GoalDeleteTarget>(null);
   const [managerFeedback, setManagerFeedback] = useState("");
+  const [directEmployeePreview] = useState(getInitialEmployeePreview);
+  const [showEmployeePreview, setShowEmployeePreview] = useState(directEmployeePreview);
 
   const availabilityQuery = trpc.staffPerformance.availability.useQuery(undefined, { retry: false });
-  const canManage = availabilityQuery.data?.enabled && availabilityQuery.data.access === "manager";
+  const featureEnabled = availabilityQuery.data?.enabled === true;
+  const canManage = availabilityQuery.data?.access === "manager";
   const staffQuery = trpc.staffPerformance.listStaffOptions.useQuery(undefined, {
     enabled: Boolean(canManage),
     retry: false,
@@ -202,6 +226,7 @@ export default function AdminStaffPerformance() {
   });
   const transitionPlan = trpc.staffPerformance.transitionMonthlyPlan.useMutation({
     onSuccess: async (plan) => {
+      setPlanTransitionDialog(null);
       await refreshPlans(plan.id);
       toast.success(isRtl ? "تم تحديث حالة الخطة" : "Plan status updated");
     },
@@ -225,6 +250,7 @@ export default function AdminStaffPerformance() {
   });
   const deleteGoal = trpc.staffPerformance.deleteGoal.useMutation({
     onSuccess: async () => {
+      setGoalDeleteTarget(null);
       if (selectedPlanId) await refreshPlans(selectedPlanId);
       toast.success(isRtl ? "تم حذف الهدف" : "Goal deleted");
     },
@@ -262,6 +288,30 @@ export default function AdminStaffPerformance() {
     () => (weeklyReportsQuery.data ?? []).filter((item) => !plan?.month || item.weekStart.startsWith(plan.month) || item.weekEnd.startsWith(plan.month)),
     [weeklyReportsQuery.data, plan?.month],
   );
+  const pendingDailyReviews = useMemo(
+    () => (dailyLogsQuery.data ?? []).filter((item) => item.status === "submitted"),
+    [dailyLogsQuery.data],
+  );
+  const pendingWeeklyReviews = useMemo(
+    () => (weeklyReportsQuery.data ?? []).filter((item) => item.status === "submitted"),
+    [weeklyReportsQuery.data],
+  );
+  useEffect(() => {
+    if (!plan?.month) return;
+    if (monthlyDailyLogs.length === 0) {
+      setSelectedDailyLogId(null);
+    } else if (!monthlyDailyLogs.some((item) => item.id === selectedDailyLogId)) {
+      setSelectedDailyLogId(monthlyDailyLogs[0].id);
+    }
+  }, [monthlyDailyLogs, plan?.month, selectedDailyLogId]);
+  useEffect(() => {
+    if (!plan?.month) return;
+    if (monthlyWeeklyReports.length === 0) {
+      setSelectedWeeklyReportId(null);
+    } else if (!monthlyWeeklyReports.some((item) => item.id === selectedWeeklyReportId)) {
+      setSelectedWeeklyReportId(monthlyWeeklyReports[0].id);
+    }
+  }, [monthlyWeeklyReports, plan?.month, selectedWeeklyReportId]);
   const monthlyAverageAchievement = useMemo(() => {
     const values = monthlyWeeklyReports
       .map((report) => report.achievementPercent)
@@ -269,10 +319,10 @@ export default function AdminStaffPerformance() {
     if (values.length === 0) return null;
     return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
   }, [monthlyWeeklyReports]);
-  const submittedDailyCount = monthlyDailyLogs.filter((item) => item.status === "submitted").length;
-  const submittedWeeklyCount = monthlyWeeklyReports.filter((item) => item.status === "submitted").length;
-  const returnedDailyCount = monthlyDailyLogs.filter((item) => item.status === "returned").length;
-  const returnedWeeklyCount = monthlyWeeklyReports.filter((item) => item.status === "returned").length;
+  const submittedDailyCount = pendingDailyReviews.length;
+  const submittedWeeklyCount = pendingWeeklyReviews.length;
+  const returnedDailyCount = (dailyLogsQuery.data ?? []).filter((item) => item.status === "returned").length;
+  const returnedWeeklyCount = (weeklyReportsQuery.data ?? []).filter((item) => item.status === "returned").length;
   const performanceEmployeeCount = staffOptions.filter((staff) => staff.roles?.includes("staff_performance_employee")).length;
   const performanceManagerCount = staffOptions.filter((staff) => staff.roles?.includes("staff_performance_manager")).length;
   const totalWeight = useMemo(
@@ -288,12 +338,25 @@ export default function AdminStaffPerformance() {
     || deleteGoal.isPending
     || transitionDailyLog.isPending
     || transitionWeeklyReport.isPending;
+  const workspaceError = [staffQuery, plansQuery, planQuery, dailyLogsQuery, dailyLogQuery, weeklyReportsQuery, weeklyReportQuery]
+    .find((query) => query.isError)?.error;
+
+  const retryWorkspace = () => {
+    const retries: Array<Promise<unknown>> = [staffQuery.refetch()];
+    if (selectedStaffId) {
+      retries.push(plansQuery.refetch(), dailyLogsQuery.refetch(), weeklyReportsQuery.refetch());
+    }
+    if (selectedPlanId) retries.push(planQuery.refetch());
+    if (selectedDailyLogId) retries.push(dailyLogQuery.refetch());
+    if (selectedWeeklyReportId) retries.push(weeklyReportQuery.refetch());
+    return Promise.all(retries);
+  };
 
   const labels = isRtl ? {
     title: "إدارة أداء الموظفين",
     subtitle: "تحديد الأهداف الشهرية والنتائج المتوقعة بصورة واضحة وقابلة للقياس.",
-    disabledTitle: "الميزة غير مفعّلة",
-    disabledBody: "تم تجهيز واجهة إدارة الخطط، لكنها ستبقى مخفية حتى تفعيل الخاصية بعد تطبيق migration في بيئة معتمدة.",
+    disabledTitle: "مساحة الأداء غير متاحة للموظفين بعد",
+    disabledBody: "الميزة مخفية عن الموظفين حالياً. يمكنك مراجعة تجربة الموظف الآمنة أدناه وتجهيز الصلاحيات والخطة التجريبية قبل إطلاقها.",
     forbiddenTitle: "لا توجد صلاحية إدارة",
     forbiddenBody: "هذه الصفحة متاحة لمدير النظام أو لدور مدير أداء الموظفين فقط.",
     employee: "الموظف",
@@ -323,14 +386,21 @@ export default function AdminStaffPerformance() {
     managerFeedback: "ملاحظات المدير",
     completedTasks: "المهام المكتملة",
     achievement: "نسبة الإنجاز",
-    phase: "Phase 1E",
+    phase: "مساحة إدارة الأداء",
     indicators: "المؤشرات",
     reminders: "التذكيرات",
     exports: "تصدير CSV",
     pilotReadiness: "جاهزية الإطلاق التجريبي",
-    featureFlagStatus: "حالة Feature Flag",
-    flagEnabled: "مفعّلة محلياً",
-    localPilotOnly: "جاهز لتجربة محدودة محلياً فقط؛ تفعيل الإنتاج يحتاج موافقة منفصلة.",
+    featureFlagStatus: "توفر مساحة الأداء",
+    flagEnabled: "متاحة لفريق الإدارة",
+    flagDisabled: "مخفية عن الموظفين",
+    reviewInbox: "صندوق مراجعات الموظف",
+    reviewInboxBody: "يعرض كل العناصر المرسلة لهذا الموظف، حتى إن لم توجد خطة شهرية أو كانت الخطة المختارة لشهر آخر.",
+    inboxClear: "لا توجد عناصر مرسلة تنتظر قرارك.",
+    openFeatureCenter: "فتح مركز الميزات",
+    workspaceLoadFailed: "تعذر تحميل جزء من مساحة الأداء. لا تُعامل البيانات الناقصة كأنها فارغة.",
+    retry: "إعادة المحاولة",
+    localPilotOnly: "المساحة جاهزة لتجربة محدودة بعد تعيين الموظفين والمدير المسؤول.",
     noReminders: "لا توجد تذكيرات عاجلة لهذا الموظف.",
     pendingDailyReviews: "سجلات يومية تنتظر المراجعة",
     pendingWeeklyReviews: "تقارير أسبوعية تنتظر المراجعة",
@@ -347,11 +417,15 @@ export default function AdminStaffPerformance() {
     pendingWeeklyReminder: "توجد تقارير أسبوعية مرسلة وتنتظر قرار المدير.",
     lowAchievementReminder: "متوسط الإنجاز أقل من 70٪؛ راجع العوائق مع الموظف.",
     productionGuardrail: "لا يتم إرسال تنبيهات تلقائية ولا يتم تغيير إعداد الإنتاج من هذه الصفحة.",
+    previewEmployee: "معاينة تجربة الموظف",
+    hidePreview: "إغلاق المعاينة",
+    missingRolesTitle: "عيّن المشاركين قبل بدء التجربة",
+    missingRolesBody: "لا يوجد موظفون ظاهرون في مساحة الأداء بعد. امنح دور الموظف لمن سيملأ السجلات، ودور المدير لمن سيعتمدها.",
   } : {
     title: "Staff Performance",
     subtitle: "Set clear, measurable monthly goals and expected outcomes for each staff member.",
-    disabledTitle: "Feature not enabled",
-    disabledBody: "The planning interface is ready but remains hidden until the migration is applied in an approved environment and the feature is enabled.",
+    disabledTitle: "Performance is not live for staff yet",
+    disabledBody: "The feature is currently hidden from staff. You can still review the safe employee experience below and prepare roles and a pilot plan before launch.",
     forbiddenTitle: "Manager access required",
     forbiddenBody: "This page is available only to administrators or the Staff Performance Manager role.",
     employee: "Staff member",
@@ -381,14 +455,21 @@ export default function AdminStaffPerformance() {
     managerFeedback: "Manager feedback",
     completedTasks: "Completed tasks",
     achievement: "Achievement",
-    phase: "Phase 1E",
+    phase: "Performance workspace",
     indicators: "Indicators",
     reminders: "Reminders",
     exports: "CSV export",
     pilotReadiness: "Pilot readiness",
-    featureFlagStatus: "Feature flag status",
-    flagEnabled: "Enabled locally",
-    localPilotOnly: "Ready for a limited local pilot only; production enablement requires separate approval.",
+    featureFlagStatus: "Performance workspace",
+    flagEnabled: "Available to administrators",
+    flagDisabled: "Hidden from employees",
+    reviewInbox: "Staff review inbox",
+    reviewInboxBody: "Shows every submitted item for this staff member, even when no monthly plan exists or another month is selected.",
+    inboxClear: "No submitted items are waiting for your decision.",
+    openFeatureCenter: "Open Feature Center",
+    workspaceLoadFailed: "Part of the performance workspace could not be loaded. Missing data is not being treated as an empty list.",
+    retry: "Retry",
+    localPilotOnly: "The workspace is ready for a limited pilot after assigning participating staff and a responsible manager.",
     noReminders: "No urgent reminders for this staff member.",
     pendingDailyReviews: "Daily logs awaiting review",
     pendingWeeklyReviews: "Weekly reports awaiting review",
@@ -405,6 +486,10 @@ export default function AdminStaffPerformance() {
     pendingWeeklyReminder: "Weekly reports have been submitted and are waiting for manager action.",
     lowAchievementReminder: "Average achievement is below 70%; review blockers with the staff member.",
     productionGuardrail: "No automatic notifications are sent and no production setting is changed from this page.",
+    previewEmployee: "Preview employee experience",
+    hidePreview: "Close preview",
+    missingRolesTitle: "Assign pilot participants before starting",
+    missingRolesBody: "No staff members are visible in the performance workspace yet. Give the employee role to participants who submit logs and the manager role to reviewers.",
   };
 
   const statusLabel = (status: string) => {
@@ -590,6 +675,7 @@ export default function AdminStaffPerformance() {
 
   const submitReviewAction = () => {
     if (!reviewDialog) return;
+    if (reviewDialog.action === "returned" && !managerFeedback.trim()) return;
     const payload = {
       id: reviewDialog.id,
       version: reviewDialog.version,
@@ -603,12 +689,31 @@ export default function AdminStaffPerformance() {
     }
   };
 
+  const confirmPlanTransition = () => {
+    if (!plan || !planTransitionDialog) return;
+    transitionPlan.mutate({
+      id: plan.id,
+      version: plan.version,
+      toStatus: planTransitionDialog.toStatus,
+    });
+  };
+
+  const reviewTarget: any = reviewDialog
+    ? reviewDialog.kind === "daily"
+      ? (dailyLogsQuery.data ?? []).find((item) => item.id === reviewDialog.id)
+      : (weeklyReportsQuery.data ?? []).find((item) => item.id === reviewDialog.id)
+    : null;
+
   if (availabilityQuery.isLoading) {
     return <PageState icon={<Loader2 className="h-6 w-6 animate-spin" />} title={isRtl ? "جار التحميل..." : "Loading…"} />;
   }
 
-  if (!availabilityQuery.data?.enabled) {
-    return <PageState icon={<FileLock2 className="h-7 w-7" />} title={labels.disabledTitle} body={labels.disabledBody} />;
+  if (availabilityQuery.isError) {
+    return <PageState icon={<AlertCircle className="h-7 w-7" />} title={labels.workspaceLoadFailed} body={availabilityQuery.error.message} />;
+  }
+
+  if (!featureEnabled && !canManage) {
+    return <StaffPerformanceSetupShell isRtl={isRtl} title={labels.title} subtitle={labels.subtitle} disabledTitle={labels.disabledTitle} disabledBody={labels.disabledBody} directPreview={directEmployeePreview} />;
   }
 
   if (!canManage) {
@@ -628,6 +733,15 @@ export default function AdminStaffPerformance() {
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">{labels.subtitle}</p>
           </div>
           <div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
+            <Button
+              type="button"
+              variant={showEmployeePreview ? "default" : "outline"}
+              onClick={() => setShowEmployeePreview((current) => !current)}
+              className={showEmployeePreview ? "self-end bg-indigo-600 hover:bg-indigo-700" : "self-end"}
+            >
+              <Eye className="h-4 w-4" />
+              {showEmployeePreview ? labels.hidePreview : labels.previewEmployee}
+            </Button>
             <label className="min-w-64 text-xs font-medium text-slate-600">
               <span className="mb-1 block">{labels.employee}</span>
               <select
@@ -635,6 +749,9 @@ export default function AdminStaffPerformance() {
                 onChange={(event) => {
                   setSelectedStaffId(Number(event.target.value));
                   setSelectedPlanId(null);
+                  setSelectedDailyLogId(null);
+                  setSelectedWeeklyReportId(null);
+                  setReviewDialog(null);
                 }}
                 className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-emerald-500"
               >
@@ -649,6 +766,54 @@ export default function AdminStaffPerformance() {
             </Button>
           </div>
         </header>
+
+        {showEmployeePreview && <StaffEmployeePreview isRtl={isRtl} focusOnMount={directEmployeePreview} />}
+
+        {!featureEnabled && (
+          <AdminFeatureSetupCard
+            isRtl={isRtl}
+            title={labels.disabledTitle}
+            description={labels.disabledBody}
+            items={[
+              { label: isRtl ? "تجهيز أدوار الموظف والمدير" : "Prepare employee and manager roles", complete: performanceEmployeeCount > 0 && performanceManagerCount > 0 },
+              { label: isRtl ? "إنشاء خطة تجريبية وأهدافها أدناه" : "Create a pilot plan and goals below", complete: Boolean(plansQuery.data?.length) },
+              { label: isRtl ? "مراجعة تجربة الموظف الآمنة" : "Review the safe employee preview", complete: showEmployeePreview },
+            ]}
+            action={(
+              <Button asChild variant="outline" className="border-amber-300 bg-white text-amber-950 hover:bg-amber-100">
+                <Link href="/admin/features">{labels.openFeatureCenter}</Link>
+              </Button>
+            )}
+          />
+        )}
+
+        {workspaceError && (
+          <div className="rounded-xl border border-red-200 bg-red-50 p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-2 text-red-900">
+                <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
+                <div>
+                  <p className="font-semibold">{labels.workspaceLoadFailed}</p>
+                  <p className="mt-1 text-xs">{workspaceError.message}</p>
+                </div>
+              </div>
+              <Button type="button" variant="outline" size="sm" onClick={retryWorkspace}>{labels.retry}</Button>
+            </div>
+          </div>
+        )}
+
+        {!staffQuery.isLoading && staffOptions.length === 0 && (
+          <AdminFeatureSetupCard
+            isRtl={isRtl}
+            title={labels.missingRolesTitle}
+            description={labels.missingRolesBody}
+            items={[
+              { label: isRtl ? "تعيين موظف واحد على الأقل للتجربة" : "Assign at least one pilot employee" },
+              { label: isRtl ? "تعيين مدير مسؤول عن الاعتماد" : "Assign a responsible performance manager" },
+              { label: isRtl ? "مراجعة تجربة الموظف التجريبية" : "Review the synthetic employee preview", complete: showEmployeePreview },
+            ]}
+          />
+        )}
 
         <div className="grid gap-4 xl:grid-cols-3">
           <Card className="border-slate-200 shadow-sm">
@@ -697,7 +862,7 @@ export default function AdminStaffPerformance() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-3 sm:grid-cols-2">
-                <MetricCard label={labels.featureFlagStatus} value={labels.flagEnabled} />
+                <MetricCard label={labels.featureFlagStatus} value={featureEnabled ? labels.flagEnabled : labels.flagDisabled} />
                 <MetricCard label={labels.staffWithRoles} value={String(performanceEmployeeCount)} />
                 <MetricCard label={labels.managersWithRoles} value={String(performanceManagerCount)} />
                 <MetricCard label={labels.exports} value="CSV" />
@@ -718,6 +883,83 @@ export default function AdminStaffPerformance() {
             </CardContent>
           </Card>
         </div>
+
+        <Card className="border-blue-200 bg-blue-50/30 shadow-sm">
+          <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <ClipboardList className="h-5 w-5 text-blue-700" />
+                {labels.reviewInbox}
+              </CardTitle>
+              <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-600">{labels.reviewInboxBody}</p>
+            </div>
+            <div className="flex gap-2">
+              <Badge variant="outline" className="border-blue-200 bg-white text-blue-800">{labels.dailyLogs}: {pendingDailyReviews.length}</Badge>
+              <Badge variant="outline" className="border-blue-200 bg-white text-blue-800">{labels.weeklyReports}: {pendingWeeklyReviews.length}</Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {dailyLogsQuery.isLoading || weeklyReportsQuery.isLoading ? (
+              <Loader2 className="mx-auto my-6 h-5 w-5 animate-spin text-blue-700" />
+            ) : pendingDailyReviews.length === 0 && pendingWeeklyReviews.length === 0 ? (
+              <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-white p-4 text-sm font-medium text-emerald-800">
+                <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+                {labels.inboxClear}
+              </div>
+            ) : (
+              <div className="grid gap-4 xl:grid-cols-2">
+                <section className="space-y-2">
+                  <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900"><CalendarDays className="h-4 w-4 text-blue-700" />{labels.dailyLogs}</h3>
+                  {pendingDailyReviews.length === 0 ? (
+                    <p className="rounded-xl border border-dashed bg-white p-4 text-sm text-slate-500">{labels.inboxClear}</p>
+                  ) : pendingDailyReviews.map((item) => (
+                    <article key={item.id} className="rounded-xl border border-blue-100 bg-white p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                          <p className="font-semibold text-slate-950">{formatDate(item.localDate, isRtl)}</p>
+                          <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{item.endSummary || "—"}</p>
+                        </div>
+                        <StatusBadge status={item.status} label={statusLabel(item.status)} />
+                      </div>
+                      <ReviewActions
+                        status={item.status}
+                        labels={labels}
+                        isBusy={isBusy}
+                        onReturn={() => openReviewDialog({ kind: "daily", action: "returned", id: item.id, version: item.version })}
+                        onApprove={() => openReviewDialog({ kind: "daily", action: "approved", id: item.id, version: item.version })}
+                        onLock={() => openReviewDialog({ kind: "daily", action: "locked", id: item.id, version: item.version })}
+                      />
+                    </article>
+                  ))}
+                </section>
+                <section className="space-y-2">
+                  <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900"><CalendarRange className="h-4 w-4 text-blue-700" />{labels.weeklyReports}</h3>
+                  {pendingWeeklyReviews.length === 0 ? (
+                    <p className="rounded-xl border border-dashed bg-white p-4 text-sm text-slate-500">{labels.inboxClear}</p>
+                  ) : pendingWeeklyReviews.map((item) => (
+                    <article key={item.id} className="rounded-xl border border-blue-100 bg-white p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                          <p className="font-semibold text-slate-950">{formatWeekRange(item.weekStart, item.weekEnd, isRtl)}</p>
+                          <p className="mt-1 text-xs text-slate-500">{labels.achievement}: {item.achievementPercent ?? "—"}%</p>
+                        </div>
+                        <StatusBadge status={item.status} label={statusLabel(item.status)} />
+                      </div>
+                      <ReviewActions
+                        status={item.status}
+                        labels={labels}
+                        isBusy={isBusy}
+                        onReturn={() => openReviewDialog({ kind: "weekly", action: "returned", id: item.id, version: item.version })}
+                        onApprove={() => openReviewDialog({ kind: "weekly", action: "approved", id: item.id, version: item.version })}
+                        onLock={() => openReviewDialog({ kind: "weekly", action: "locked", id: item.id, version: item.version })}
+                      />
+                    </article>
+                  ))}
+                </section>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         <div className="grid gap-5 xl:grid-cols-[300px_minmax(0,1fr)]">
           <Card className="h-fit border-slate-200 shadow-sm">
@@ -795,7 +1037,7 @@ export default function AdminStaffPerformance() {
                     <div className="mt-5 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
                       {(plan.status === "draft" || plan.status === "returned") && (
                         <Button
-                          onClick={() => transitionPlan.mutate({ id: plan.id, version: plan.version, toStatus: "submitted" })}
+                          onClick={() => setPlanTransitionDialog({ toStatus: "submitted" })}
                           disabled={isBusy || totalWeight !== 100 || plan.goals.length === 0}
                         >
                           <Send className="h-4 w-4" /> {labels.submit}
@@ -805,14 +1047,14 @@ export default function AdminStaffPerformance() {
                         <>
                           <Button
                             variant="outline"
-                            onClick={() => transitionPlan.mutate({ id: plan.id, version: plan.version, toStatus: "returned" })}
+                            onClick={() => setPlanTransitionDialog({ toStatus: "returned" })}
                             disabled={isBusy}
                           >
                             <RotateCcw className="h-4 w-4" /> {labels.return}
                           </Button>
                           <Button
                             className="bg-emerald-700 hover:bg-emerald-800"
-                            onClick={() => transitionPlan.mutate({ id: plan.id, version: plan.version, toStatus: "approved" })}
+                            onClick={() => setPlanTransitionDialog({ toStatus: "approved" })}
                             disabled={isBusy}
                           >
                             <CheckCircle2 className="h-4 w-4" /> {labels.approve}
@@ -822,7 +1064,7 @@ export default function AdminStaffPerformance() {
                       {plan.status === "approved" && (
                         <Button
                           className="bg-violet-700 hover:bg-violet-800"
-                          onClick={() => transitionPlan.mutate({ id: plan.id, version: plan.version, toStatus: "locked" })}
+                          onClick={() => setPlanTransitionDialog({ toStatus: "locked" })}
                           disabled={isBusy}
                         >
                           <FileLock2 className="h-4 w-4" /> {labels.lock}
@@ -894,11 +1136,7 @@ export default function AdminStaffPerformance() {
                                       size="sm"
                                       className="text-red-600 hover:bg-red-50 hover:text-red-700"
                                       disabled={deleteGoal.isPending}
-                                      onClick={() => {
-                                        if (window.confirm(isRtl ? "حذف هذا الهدف؟" : "Delete this goal?")) {
-                                          deleteGoal.mutate({ id: goal.id });
-                                        }
-                                      }}
+                                      onClick={() => setGoalDeleteTarget({ id: goal.id, title: goal.title, weight: goal.weight })}
                                     >
                                       <Trash2 className="h-3.5 w-3.5" /> {isRtl ? "حذف" : "Delete"}
                                     </Button>
@@ -939,12 +1177,12 @@ export default function AdminStaffPerformance() {
                         </div>
                         {dailyLogsQuery.isLoading ? (
                           <Loader2 className="mx-auto my-8 h-5 w-5 animate-spin text-emerald-700" />
-                        ) : !(dailyLogsQuery.data?.length) ? (
+                        ) : monthlyDailyLogs.length === 0 ? (
                           <p className="rounded-xl border border-dashed border-slate-200 p-5 text-center text-sm text-slate-500">{labels.noDailyLogs}</p>
                         ) : (
                           <div className="grid gap-3 lg:grid-cols-[220px_minmax(0,1fr)]">
                             <div className="space-y-2">
-                              {(dailyLogsQuery.data ?? []).map((item) => (
+                              {monthlyDailyLogs.map((item) => (
                                 <button
                                   key={item.id}
                                   type="button"
@@ -1018,12 +1256,12 @@ export default function AdminStaffPerformance() {
                         </div>
                         {weeklyReportsQuery.isLoading ? (
                           <Loader2 className="mx-auto my-8 h-5 w-5 animate-spin text-emerald-700" />
-                        ) : !(weeklyReportsQuery.data?.length) ? (
+                        ) : monthlyWeeklyReports.length === 0 ? (
                           <p className="rounded-xl border border-dashed border-slate-200 p-5 text-center text-sm text-slate-500">{labels.noWeeklyReports}</p>
                         ) : (
                           <div className="grid gap-3 lg:grid-cols-[220px_minmax(0,1fr)]">
                             <div className="space-y-2">
-                              {(weeklyReportsQuery.data ?? []).map((item) => (
+                              {monthlyWeeklyReports.map((item) => (
                                 <button
                                   key={item.id}
                                   type="button"
@@ -1161,6 +1399,68 @@ export default function AdminStaffPerformance() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={planTransitionDialog !== null} onOpenChange={(open) => !open && !transitionPlan.isPending && setPlanTransitionDialog(null)}>
+        <DialogContent className="sm:max-w-lg" dir={isRtl ? "rtl" : "ltr"}>
+          <DialogHeader>
+            <DialogTitle>{isRtl ? "تأكيد تغيير حالة الخطة" : "Confirm plan status change"}</DialogTitle>
+            <DialogDescription>
+              {isRtl ? "راجع الخطة والموظف والحالة الجديدة قبل الحفظ. سيُسجل الإجراء في سجل التدقيق." : "Review the plan, staff member, and new status before saving. The action will be recorded in the audit log."}
+            </DialogDescription>
+          </DialogHeader>
+          {plan && planTransitionDialog && (
+            <div className="space-y-3">
+              <div className="rounded-xl border bg-slate-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{labels.employee}</p>
+                <p className="mt-1 font-semibold text-slate-950">{selectedStaff?.name || selectedStaff?.email || "—"}</p>
+                <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">{isRtl ? "الخطة" : "Plan"}</p>
+                <p className="mt-1 font-semibold text-slate-950">{plan.title} · {formatMonth(plan.month, isRtl)}</p>
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+                  <StatusBadge status={plan.status} label={statusLabel(plan.status)} />
+                  <ArrowRight className={`h-4 w-4 text-slate-400 ${isRtl ? "rotate-180" : ""}`} />
+                  <StatusBadge status={planTransitionDialog.toStatus} label={statusLabel(planTransitionDialog.toStatus)} />
+                </div>
+              </div>
+              {planTransitionDialog.toStatus === "locked" && (
+                <p className="rounded-lg border border-violet-200 bg-violet-50 p-3 text-sm font-medium leading-6 text-violet-900">
+                  {isRtl ? "الإغلاق نهائي: لن يمكن تعديل الخطة أو أهدافها بعد ذلك." : "Locking is final: the plan and its goals cannot be edited afterward."}
+                </p>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setPlanTransitionDialog(null)} disabled={transitionPlan.isPending}>{isRtl ? "إلغاء" : "Cancel"}</Button>
+            <Button type="button" onClick={confirmPlanTransition} disabled={transitionPlan.isPending} className={planTransitionDialog?.toStatus === "locked" ? "bg-violet-700 text-white hover:bg-violet-800" : "bg-emerald-700 text-white hover:bg-emerald-800"}>
+              {transitionPlan.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+              {isRtl ? "تأكيد التغيير" : "Confirm change"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={goalDeleteTarget !== null} onOpenChange={(open) => !open && !deleteGoal.isPending && setGoalDeleteTarget(null)}>
+        <DialogContent className="sm:max-w-md" dir={isRtl ? "rtl" : "ltr"}>
+          <DialogHeader>
+            <DialogTitle>{isRtl ? "حذف الهدف؟" : "Delete goal?"}</DialogTitle>
+            <DialogDescription>
+              {isRtl ? "سيُحذف الهدف من الخطة الحالية ويُسجل الإجراء في سجل التدقيق." : "The goal will be removed from the current plan and the action will be recorded in the audit log."}
+            </DialogDescription>
+          </DialogHeader>
+          {goalDeleteTarget && (
+            <div className="rounded-xl border border-red-200 bg-red-50 p-4">
+              <p className="font-semibold text-red-950">{goalDeleteTarget.title}</p>
+              <p className="mt-1 text-sm text-red-800">{labels.weight}: {goalDeleteTarget.weight}%</p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setGoalDeleteTarget(null)} disabled={deleteGoal.isPending}>{isRtl ? "إلغاء" : "Cancel"}</Button>
+            <Button type="button" variant="destructive" disabled={!goalDeleteTarget || deleteGoal.isPending} onClick={() => goalDeleteTarget && deleteGoal.mutate({ id: goalDeleteTarget.id })}>
+              {deleteGoal.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+              {isRtl ? "حذف الهدف" : "Delete goal"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={reviewDialog !== null} onOpenChange={(open) => !open && setReviewDialog(null)}>
         <DialogContent className="sm:max-w-lg" dir={isRtl ? "rtl" : "ltr"}>
           <DialogHeader>
@@ -1175,14 +1475,27 @@ export default function AdminStaffPerformance() {
               {isRtl ? "سيتم تسجيل القرار في سجل التدقيق الخاص بإدارة الأداء." : "This decision will be recorded in the staff performance audit log."}
             </DialogDescription>
           </DialogHeader>
+          {reviewDialog && (
+            <div className="rounded-xl border bg-slate-50 p-4 text-sm">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{labels.employee}</p>
+              <p className="mt-1 font-semibold text-slate-950">{selectedStaff?.name || selectedStaff?.email || "—"}</p>
+              <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">{reviewDialog.kind === "daily" ? labels.dailyLogs : labels.weeklyReports}</p>
+              <p className="mt-1 font-semibold text-slate-950">
+                {reviewDialog.kind === "daily"
+                  ? reviewTarget?.localDate ? formatDate(reviewTarget.localDate, isRtl) : `#${reviewDialog.id}`
+                  : reviewTarget?.weekStart && reviewTarget?.weekEnd ? formatWeekRange(reviewTarget.weekStart, reviewTarget.weekEnd, isRtl) : `#${reviewDialog.id}`}
+              </p>
+              <p className="mt-2 text-xs text-slate-600">{isRtl ? "القرار" : "Decision"}: <span className="font-semibold">{statusLabel(reviewDialog.action)}</span></p>
+            </div>
+          )}
           {reviewDialog?.action === "returned" && (
-            <Field label={labels.managerFeedback}>
+            <Field label={labels.managerFeedback} required>
               <Textarea rows={5} value={managerFeedback} maxLength={5000} onChange={(event) => setManagerFeedback(event.target.value)} />
             </Field>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setReviewDialog(null)}>{isRtl ? "إلغاء" : "Cancel"}</Button>
-            <Button onClick={submitReviewAction} disabled={isBusy} className={reviewDialog?.action === "returned" ? "" : "bg-emerald-700 hover:bg-emerald-800"}>
+            <Button variant="outline" onClick={() => setReviewDialog(null)} disabled={isBusy}>{isRtl ? "إلغاء" : "Cancel"}</Button>
+            <Button onClick={submitReviewAction} disabled={isBusy || (reviewDialog?.action === "returned" && !managerFeedback.trim())} className={reviewDialog?.action === "returned" ? "" : "bg-emerald-700 hover:bg-emerald-800"}>
               {isBusy && <Loader2 className="h-4 w-4 animate-spin" />}
               {isRtl ? "تأكيد" : "Confirm"}
             </Button>
@@ -1190,6 +1503,258 @@ export default function AdminStaffPerformance() {
         </DialogContent>
       </Dialog>
     </DashboardLayout>
+  );
+}
+
+function StaffPerformanceSetupShell({
+  isRtl,
+  title,
+  subtitle,
+  disabledTitle,
+  disabledBody,
+  directPreview,
+}: {
+  isRtl: boolean;
+  title: string;
+  subtitle: string;
+  disabledTitle: string;
+  disabledBody: string;
+  directPreview: boolean;
+}) {
+  return (
+    <DashboardLayout>
+      <main className="space-y-6 p-4 md:p-6" dir={isRtl ? "rtl" : "ltr"}>
+        <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <div className="mb-2 flex items-center gap-2 text-emerald-700">
+              <ClipboardCheck className="h-5 w-5" />
+              <span className="text-xs font-semibold uppercase tracking-[0.16em]">
+                {isRtl ? "مساحة إدارة الأداء" : "Performance workspace"}
+              </span>
+            </div>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-950 md:text-3xl">{title}</h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">{subtitle}</p>
+          </div>
+          <Button variant="outline" onClick={() => document.getElementById("staff-employee-preview")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
+            <Eye className="h-4 w-4" />{isRtl ? "معاينة تجربة الموظف" : "Preview employee experience"}
+          </Button>
+        </header>
+
+        {directPreview && <StaffEmployeePreview isRtl={isRtl} focusOnMount />}
+
+        <AdminFeatureSetupCard
+          isRtl={isRtl}
+          title={disabledTitle}
+          description={disabledBody}
+          items={[
+            {
+              label: isRtl ? "راجع مسار الموظف أدناه" : "Review the employee journey below",
+              complete: true,
+              detail: isRtl ? "بيانات تجريبية آمنة من حساب الإدارة" : "Safe synthetic data from the admin account",
+            },
+            {
+              label: isRtl ? "عيّن الموظفين ومدير الأداء" : "Assign employees and a performance manager",
+              detail: isRtl ? "لا تبدأ التجربة قبل وضوح المسؤوليات" : "Make ownership clear before the pilot starts",
+            },
+            {
+              label: isRtl ? "أنشئ خطة شهرية تجريبية" : "Create one pilot monthly plan",
+              detail: isRtl ? "ابدأ بفريق صغير ثم راجع الدورة كاملة" : "Start with a small team and review the full cycle",
+            },
+          ]}
+        />
+
+        {!directPreview && <StaffEmployeePreview isRtl={isRtl} />}
+      </main>
+    </DashboardLayout>
+  );
+}
+
+function StaffEmployeePreview({ isRtl, focusOnMount = false }: { isRtl: boolean; focusOnMount?: boolean }) {
+  const copy = isRtl
+    ? {
+        audience: "موظفة تجريبية — ليان خالد",
+        title: "تجربة الموظف: الخطة والسجل اليومي والتقرير الأسبوعي",
+        description: "اعرض لصاحبة العمل ما يراه الموظف منذ استلام الخطة وحتى إرسال التقارير، دون تسجيل الدخول بحساب آخر.",
+        month: "يوليو 2026",
+        plan: "تحسين جودة متابعة الطلاب",
+        approved: "الخطة معتمدة",
+        manager: "المدير: حساب الإدارة التجريبي",
+        goalProgress: "تقدم الأهداف الشهرية",
+        responseGoal: "خفض متوسط زمن الرد",
+        satisfactionGoal: "رفع رضا الطلاب",
+        documentationGoal: "توثيق الحالات المتكررة",
+        daily: "سجل اليوم",
+        today: "الخميس، 30 يوليو",
+        taskOne: "متابعة رسائل الطلاب ذات الأولوية",
+        taskTwo: "تحديث الأسئلة الشائعة للفريق",
+        taskThree: "مراجعة حالات التأخر في الرد",
+        summary: "ملخص نهاية الدوام",
+        summaryValue: "تم إغلاق 18 حالة، وتصعيد حالتين تحتاجان قراراً من الإدارة.",
+        saveDraft: "حفظ مسودة",
+        submit: "إرسال للمدير",
+        weekly: "التقرير الأسبوعي",
+        achievement: "نسبة الإنجاز",
+        outputs: "أبرز المخرجات",
+        outputValue: "تحسين قالب الرد الأولي وإغلاق 92٪ من الحالات ضمن الوقت المستهدف.",
+        blockers: "العوائق",
+        blockerValue: "تأخر وصول تفاصيل الدفع في ثلاث حالات.",
+        feedback: "ملاحظات المدير",
+        feedbackValue: "عمل ممتاز. في الأسبوع القادم ركّزي على توحيد توثيق حالات التصعيد.",
+        workflow: "دورة الاعتماد",
+        draft: "مسودة",
+        submitted: "مرسلة",
+        returned: "معادة للتعديل",
+        approvedStatus: "معتمدة",
+        locked: "مغلقة",
+      }
+    : {
+        audience: "Sample employee — Layan Khaled",
+        title: "Employee experience: plan, daily log, and weekly report",
+        description: "Show the owner exactly what a staff member sees from receiving a plan through submitting work reports, without signing into another account.",
+        month: "July 2026",
+        plan: "Improve student follow-up quality",
+        approved: "Plan approved",
+        manager: "Manager: sample administrator",
+        goalProgress: "Monthly goal progress",
+        responseGoal: "Reduce average response time",
+        satisfactionGoal: "Increase student satisfaction",
+        documentationGoal: "Document recurring cases",
+        daily: "Today’s log",
+        today: "Thursday, July 30",
+        taskOne: "Follow up priority student messages",
+        taskTwo: "Update the team FAQ",
+        taskThree: "Review delayed-response cases",
+        summary: "End-of-day summary",
+        summaryValue: "Closed 18 cases and escalated two that need an administrative decision.",
+        saveDraft: "Save draft",
+        submit: "Submit to manager",
+        weekly: "Weekly report",
+        achievement: "Achievement",
+        outputs: "Key outputs",
+        outputValue: "Improved the first-response template and closed 92% of cases within the target time.",
+        blockers: "Blockers",
+        blockerValue: "Payment details arrived late for three cases.",
+        feedback: "Manager feedback",
+        feedbackValue: "Excellent work. Next week, focus on consistent documentation for escalated cases.",
+        workflow: "Approval cycle",
+        draft: "Draft",
+        submitted: "Submitted",
+        returned: "Returned",
+        approvedStatus: "Approved",
+        locked: "Locked",
+      };
+
+  const goals = [
+    { label: copy.responseGoal, value: 82, weight: 40 },
+    { label: copy.satisfactionGoal, value: 74, weight: 35 },
+    { label: copy.documentationGoal, value: 68, weight: 25 },
+  ];
+  const workflow = [copy.draft, copy.submitted, copy.returned, copy.approvedStatus, copy.locked];
+
+  return (
+    <SafeAdminPreview
+      isRtl={isRtl}
+      audience={copy.audience}
+      title={copy.title}
+      description={copy.description}
+      anchorId="staff-employee-preview"
+      focusOnMount={focusOnMount}
+    >
+      <div className="space-y-5">
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">{copy.workflow}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            {workflow.map((step, index) => (
+              <div key={step} className="flex items-center gap-2">
+                <span className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${index === 3 ? "border-emerald-300 bg-emerald-100 text-emerald-800" : "border-slate-200 bg-white text-slate-600"}`}>
+                  {step}
+                </span>
+                {index < workflow.length - 1 && <span className="text-slate-300">→</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid gap-5 xl:grid-cols-[1fr_1.15fr]">
+          <div className="space-y-4">
+            <Card className="border-emerald-200 bg-gradient-to-br from-emerald-50 to-teal-50 shadow-none">
+              <CardContent className="p-5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-emerald-700">{copy.month}</p>
+                    <h3 className="mt-1 text-xl font-bold text-slate-950">{copy.plan}</h3>
+                    <p className="mt-1 text-xs text-slate-500">{copy.manager}</p>
+                  </div>
+                  <Badge className="border border-emerald-200 bg-white text-emerald-700"><CheckCircle2 className="me-1 h-3 w-3" />{copy.approved}</Badge>
+                </div>
+                <div className="mt-5 space-y-4">
+                  <p className="text-sm font-semibold text-slate-900">{copy.goalProgress}</p>
+                  {goals.map((goal) => (
+                    <div key={goal.label}>
+                      <div className="mb-1.5 flex items-center justify-between gap-3 text-xs">
+                        <span className="font-medium text-slate-700">{goal.label} · {goal.weight}%</span>
+                        <span className="font-bold text-emerald-700">{goal.value}%</span>
+                      </div>
+                      <Progress value={goal.value} className="h-2" />
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-none">
+              <CardContent className="p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="font-bold text-slate-950">{copy.weekly}</h3>
+                    <p className="mt-1 text-xs text-slate-500">{copy.achievement}: 78%</p>
+                  </div>
+                  <Sparkles className="h-5 w-5 text-violet-500" />
+                </div>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <InfoPanel title={copy.outputs} value={copy.outputValue} />
+                  <InfoPanel title={copy.blockers} value={copy.blockerValue} />
+                </div>
+                <div className="mt-3 rounded-xl border border-violet-200 bg-violet-50 p-3">
+                  <p className="text-xs font-semibold text-violet-800">{copy.feedback}</p>
+                  <p className="mt-1 text-sm leading-6 text-violet-950">{copy.feedbackValue}</p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card className="shadow-none">
+            <CardContent className="p-5">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-bold text-slate-950">{copy.daily}</h3>
+                  <p className="mt-1 text-sm text-slate-500">{copy.today}</p>
+                </div>
+                <StatusBadge status="draft" label={copy.draft} />
+              </div>
+              <div className="mt-5 space-y-3">
+                {[copy.taskOne, copy.taskTwo, copy.taskThree].map((task, index) => (
+                  <div key={task} className="flex items-start gap-3 rounded-xl border border-slate-200 p-3">
+                    <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border ${index < 2 ? "border-emerald-500 bg-emerald-500 text-white" : "border-slate-300 bg-white"}`}>
+                      {index < 2 && <CheckCircle2 className="h-3.5 w-3.5" />}
+                    </span>
+                    <p className={`text-sm ${index < 2 ? "text-slate-500 line-through" : "font-medium text-slate-800"}`}>{task}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-5 rounded-xl bg-slate-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{copy.summary}</p>
+                <p className="mt-2 text-sm leading-6 text-slate-700">{copy.summaryValue}</p>
+              </div>
+              <div className="mt-5 flex flex-wrap gap-2">
+                <Button variant="outline" disabled>{copy.saveDraft}</Button>
+                <Button disabled><Send className="h-4 w-4" />{copy.submit}</Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </SafeAdminPreview>
   );
 }
 

@@ -33,7 +33,7 @@ describe("student community email notification policy", () => {
       dbSource.indexOf("const PORTAL_ONLY_STAFF_NOTIFICATION_EVENTS"),
     );
     for (const eventType of communityEmailEvents) {
-      expect(bccPolicy).toContain(`'${eventType}'`);
+      expect(bccPolicy).toMatch(new RegExp(`["']${eventType}["']`));
     }
   });
 
@@ -42,7 +42,9 @@ describe("student community email notification policy", () => {
       dbSource.indexOf("const PORTAL_ONLY_STAFF_NOTIFICATION_EVENTS"),
       dbSource.indexOf("const STAFF_NOTIFICATION_EMAIL_THROTTLE_MINUTES"),
     );
-    expect(portalOnlyPolicy).not.toContain("'community_content_reported'");
+    expect(portalOnlyPolicy).not.toMatch(
+      /["']community_content_reported["']/,
+    );
 
     expect(dbSource).toContain("community_comment_created: 5");
     expect(dbSource).toContain("community_content_blocked: 5");

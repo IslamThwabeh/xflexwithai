@@ -37,19 +37,19 @@ export default function StudentSurveyAccessGate({ children }: { children: ReactN
   }
 
   const copy = isRtl ? {
-    title: "يلزم مراجعة الاستبيان قبل المتابعة",
-    body: "انتهت مهلة استبيان مطلوب. يمكنك فتح صفحة الاستبيانات لمعرفة الحالة أو التواصل مع الدعم للمراجعة. تم إبقاء هذا الحجب خلف مفتاح تفعيل منفصل حتى لا يؤثر على التجارب المحدودة بالخطأ.",
+    title: "أكمل الاستبيانات المطلوبة للمتابعة",
+    body: "تجاوز استبيان مطلوب واحد أو أكثر موعده النهائي. افتح صفحة الاستبيانات وأرسل الاستبيانات الإلزامية المتأخرة لاستعادة الوصول، أو تواصل مع الدعم إذا احتجت إلى مساعدة.",
     survey: "فتح الاستبيانات",
     support: "التواصل مع الدعم",
-    noteTitle: "ملاحظة أمان",
-    noteBody: "صفحات الاستبيانات والدعم تبقى متاحة دائماً حتى عند تفعيل الحجب التدريجي.",
+    noteTitle: "يمكنك المتابعة الآن",
+    noteBody: "تبقى صفحتا الاستبيانات والدعم متاحتين دائماً، ويمكن إرسال الاستبيان حتى بعد الموعد النهائي.",
   } : {
-    title: "Survey review required before continuing",
-    body: "A required survey has passed its blocking deadline. You can open Surveys to review the status or contact Support for help. This enforcement stays behind a separate feature flag so limited pilots are not blocked by accident.",
+    title: "Complete required surveys to continue",
+    body: "One or more required surveys passed their final deadline. Open Surveys and submit the overdue required surveys to restore access, or contact Support if you need help.",
     survey: "Open surveys",
     support: "Contact support",
-    noteTitle: "Safety note",
-    noteBody: "Surveys and Support remain available even when gradual blocking is enabled.",
+    noteTitle: "You can act now",
+    noteBody: "Surveys and Support always remain available, and the survey can still be submitted after its final deadline.",
   };
 
   return (

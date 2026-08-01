@@ -5,9 +5,14 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { trpc } from '@/lib/trpc';
 import { ChevronDown, ChevronUp, Loader2, Mail, MailCheck, MailX, RefreshCw, Send } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  FEATURE_EMAIL_DELIVERY_CATEGORY,
+  getEmailDeliveryEventCategory,
+  type EmailDeliveryCategoryFilter,
+} from '@shared/emailDeliveryCategories';
 
 type DeliveryLogView = 'grouped' | 'detailed';
-type DeliveryCategory = 'all' | 'recommendations' | 'support' | 'orders' | 'login' | 'lifecycle' | 'system';
+type DeliveryCategory = EmailDeliveryCategoryFilter;
 type DeliveryDatePreset = 'all' | 'today' | 'yesterday' | 'last7' | 'custom';
 type DeliveryStatus = 'all' | 'sent' | 'failed' | 'skipped_unsubscribed' | 'skipped_deduped' | 'skipped_renewed';
 
@@ -18,6 +23,11 @@ const DELIVERY_CATEGORIES: Array<{ key: DeliveryCategory; labelEn: string; label
   { key: 'orders', labelEn: 'Orders', labelAr: 'الطلبات' },
   { key: 'login', labelEn: 'Login', labelAr: 'الدخول' },
   { key: 'lifecycle', labelEn: 'Lifecycle', labelAr: 'الاشتراكات' },
+  { key: 'surveys', labelEn: 'Surveys', labelAr: 'الاستبيانات' },
+  { key: 'rewards', labelEn: 'Rewards', labelAr: 'المكافآت' },
+  { key: 'community', labelEn: 'Community', labelAr: 'المجتمع' },
+  { key: 'jobs', labelEn: 'Job eligibility', labelAr: 'أهلية الوظائف' },
+  { key: 'staff_performance', labelEn: 'Staff performance', labelAr: 'أداء الموظفين' },
   { key: 'system', labelEn: 'System', labelAr: 'النظام' },
 ];
 const DELIVERY_PAGE_SIZE = 50;
@@ -32,28 +42,6 @@ function getAmmanDateValue(offsetDays = 0) {
   const date = new Date();
   date.setDate(date.getDate() + offsetDays);
   return formatter.format(date);
-}
-
-function getDeliveryCategory(eventType: string): DeliveryCategory {
-  if (eventType.startsWith('recommendation') || eventType === 'trade_result') return 'recommendations';
-  if (eventType.includes('support') || eventType === 'human_escalation') return 'support';
-  if (eventType.includes('order') || eventType.includes('payment')) return 'orders';
-  if (eventType.includes('login') || eventType.includes('otp')) return 'login';
-  if (
-    eventType.includes('expiry') ||
-    eventType.includes('expiring') ||
-    eventType.includes('subscription') ||
-    eventType.includes('renewal') ||
-    eventType.includes('welcome') ||
-    eventType.includes('drip') ||
-    eventType.includes('milestone') ||
-    eventType.includes('inactivity') ||
-    eventType.includes('onboarding') ||
-    eventType.includes('quiz') ||
-    eventType.includes('freeze') ||
-    eventType.startsWith('lexai_expiry')
-  ) return 'lifecycle';
-  return 'system';
 }
 
 function getDeliveryMetadata(log: any) {
@@ -180,7 +168,11 @@ export default function AdminEmailLogs() {
   const [deliveryToDate, setDeliveryToDate] = useState('');
   const [deliveryOffset, setDeliveryOffset] = useState(0);
   const [deliveryView, setDeliveryView] = useState<DeliveryLogView>('detailed');
-  const [deliveryCategory, setDeliveryCategory] = useState<DeliveryCategory>('all');
+  const requestedFeature = new URLSearchParams(window.location.search).get('feature');
+  const requestedFeatureCategory: DeliveryCategory = requestedFeature && requestedFeature in FEATURE_EMAIL_DELIVERY_CATEGORY
+    ? FEATURE_EMAIL_DELIVERY_CATEGORY[requestedFeature as keyof typeof FEATURE_EMAIL_DELIVERY_CATEGORY]
+    : 'all';
+  const [deliveryCategory, setDeliveryCategory] = useState<DeliveryCategory>(requestedFeatureCategory);
   const [deliveryDatePreset, setDeliveryDatePreset] = useState<DeliveryDatePreset>('all');
   const [expandedDeliveryGroups, setExpandedDeliveryGroups] = useState<Record<string, boolean>>({});
   const deliveryListTopRef = useRef<HTMLDivElement | null>(null);
@@ -233,7 +225,7 @@ export default function AdminEmailLogs() {
   const totalPages = Math.max(1, Math.ceil(deliveryTotal / DELIVERY_PAGE_SIZE));
   const visibleDeliveryLogs = useMemo(
     () => (deliveryLogs ?? []).filter((log: any) => (
-      deliveryCategory === 'all' || getDeliveryCategory(log.eventType) === deliveryCategory
+      deliveryCategory === 'all' || getEmailDeliveryEventCategory(log.eventType) === deliveryCategory
     )),
     [deliveryLogs, deliveryCategory],
   );
@@ -491,6 +483,7 @@ export default function AdminEmailLogs() {
                   type="button"
                   variant={deliveryCategory === category.key ? 'default' : 'outline'}
                   size="sm"
+                  aria-pressed={deliveryCategory === category.key}
                   onClick={() => setDeliveryCategory(category.key)}
                   className={deliveryCategory === category.key ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : ''}
                 >

@@ -91,6 +91,7 @@ const AdminReviews = lazy(() => import("./pages/AdminReviews"));
 const AdminNotifications = lazy(() => import("./pages/AdminNotifications"));
 const AdminEmailLogs = lazy(() => import("./pages/AdminEmailLogs"));
 const AdminSettings = lazy(() => import("./pages/AdminSettings"));
+const AdminFeatureCenter = lazy(() => import("./pages/AdminFeatureCenter"));
 const AdminPoints = lazy(() => import("./pages/AdminPoints"));
 const AdminBugReports = lazy(() => import("./pages/AdminBugReports"));
 const AdminCommunityModeration = lazy(() => import("./pages/AdminCommunityModeration"));
@@ -477,6 +478,11 @@ function Router() {
       <Route path="/admin/settings">
         <AdminRoute>
           <AdminSettings />
+        </AdminRoute>
+      </Route>
+      <Route path="/admin/features">
+        <AdminRoute>
+          <AdminFeatureCenter />
         </AdminRoute>
       </Route>
       <Route path="/admin/points">
