@@ -1292,7 +1292,7 @@ export const coupons = sqliteTable("coupons", {
   minOrderAmount: integer("min_order_amount"), // in cents, null = no minimum
   validFrom: text("valid_from"),
   validUntil: text("valid_until"),
-  isActive: integer("is_active", { mode: 'boolean' }).notNull().default(true),
+  isActive: integer("is_active", { mode: 'boolean' }).notNull().default(false),
   packageId: integer("package_id"), // null = applies to all packages
   createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
   updatedAt: text("updated_at").default("CURRENT_TIMESTAMP").notNull(),

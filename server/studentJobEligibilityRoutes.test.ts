@@ -8,6 +8,10 @@ vi.mock("../backend/db", async () => {
     getAdminByEmail: vi.fn(),
     hasAnyRole: vi.fn(),
     getAllJobs: vi.fn(),
+    getJobById: vi.fn(),
+    createJob: vi.fn(),
+    updateJob: vi.fn(),
+    setJobPublished: vi.fn(),
     getStudentJobProfile: vi.fn(),
     upsertStudentJobProfile: vi.fn(),
     getStudentJobOpportunities: vi.fn(),
@@ -52,6 +56,7 @@ describe("student job eligibility routes", () => {
     });
     vi.mocked(db.getAdminByEmail).mockResolvedValue(null);
     vi.mocked(db.hasAnyRole).mockResolvedValue(false);
+    vi.mocked(db.getJobById).mockResolvedValue({ id: 3, isActive: false } as any);
   });
 
   it("reports disabled availability", async () => {
@@ -119,6 +124,15 @@ describe("student job eligibility routes", () => {
     });
   });
 
+  it("preserves profile patch semantics and rejects an empty patch", async () => {
+    vi.mocked(db.upsertStudentJobProfile).mockResolvedValue({ id: 1, userId: 22, skills: null } as any);
+    const caller = createCaller(22);
+
+    await caller.studentJobEligibility.updateMyProfile({ skills: "" });
+    expect(db.upsertStudentJobProfile).toHaveBeenCalledWith({ userId: 22, skills: "" });
+    await expect(caller.studentJobEligibility.updateMyProfile({})).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
   it("submits eligibility review as the signed-in student", async () => {
     vi.mocked(db.submitStudentJobEligibilityReview).mockResolvedValue({ id: 5, status: "submitted" } as any);
 
@@ -131,6 +145,16 @@ describe("student job eligibility routes", () => {
       jobId: 3,
       studentNote: "I finished the basics.",
     });
+  });
+
+  it("returns a controlled conflict for a duplicate pending review", async () => {
+    const { StudentJobEligibilityError } = await import("../backend/services/student-job-eligibility.service");
+    vi.mocked(db.submitStudentJobEligibilityReview).mockRejectedValue(
+      new StudentJobEligibilityError("review_already_pending"),
+    );
+
+    await expect(createCaller(22).studentJobEligibility.submitReview({ jobId: 3 }))
+      .rejects.toMatchObject({ code: "CONFLICT", message: expect.stringContaining("already awaiting") });
   });
 
   it("keeps rule management limited to admins or job eligibility managers", async () => {
@@ -190,6 +214,37 @@ describe("student job eligibility routes", () => {
     });
   });
 
+  it("creates jobs as drafts and uses an explicit publish action", async () => {
+    vi.mocked(db.getAdminByEmail).mockResolvedValue({ id: 1, email: "admin@example.com" } as any);
+    vi.mocked(db.createJob).mockResolvedValue(42);
+    vi.mocked(db.setJobPublished).mockResolvedValue({ id: 42, isActive: true } as any);
+    const caller = createCaller(1, "admin@example.com");
+
+    await expect(caller.jobs.create({
+      titleAr: "محلل",
+      titleEn: "Analyst",
+      descriptionAr: "وصف",
+    })).resolves.toEqual({ id: 42, isActive: false });
+    expect(db.createJob).toHaveBeenCalledWith(expect.not.objectContaining({ isActive: true }));
+
+    await expect(caller.jobs.setPublished({ id: 42, isActive: true }))
+      .resolves.toMatchObject({ id: 42, isActive: true });
+    expect(db.setJobPublished).toHaveBeenCalledWith(42, true, 1);
+  });
+
+  it("returns controlled errors when publishing lacks an enabled rule or editing targets a missing job", async () => {
+    const { StudentJobEligibilityError } = await import("../backend/services/student-job-eligibility.service");
+    vi.mocked(db.getAdminByEmail).mockResolvedValue({ id: 1, email: "admin@example.com" } as any);
+    vi.mocked(db.setJobPublished).mockRejectedValue(new StudentJobEligibilityError("rule_not_available"));
+    vi.mocked(db.updateJob).mockResolvedValue(undefined);
+    const caller = createCaller(1, "admin@example.com");
+
+    await expect(caller.jobs.setPublished({ id: 42, isActive: true }))
+      .rejects.toMatchObject({ code: "PRECONDITION_FAILED", message: expect.stringContaining("eligibility rule") });
+    await expect(caller.jobs.update({ id: 999, titleEn: "Missing" }))
+      .rejects.toMatchObject({ code: "NOT_FOUND", message: "Job not found" });
+  });
+
   it("gives job eligibility managers a minimal job picker while disabled", async () => {
     vi.mocked(db.getAdminSetting).mockResolvedValue("false");
     vi.mocked(db.hasAnyRole).mockImplementation(async (_userId: number, roles: string[]) =>
@@ -237,6 +292,33 @@ describe("student job eligibility routes", () => {
 
     expect(db.reviewStudentJobEligibility).not.toHaveBeenCalled();
     expect(db.getAdminSetting).not.toHaveBeenCalled();
+  });
+
+  it("returns controlled not-found errors for missing rule and review targets", async () => {
+    const { StudentJobEligibilityError } = await import("../backend/services/student-job-eligibility.service");
+    vi.mocked(db.getAdminByEmail).mockResolvedValue({ id: 1, email: "admin@example.com" } as any);
+    vi.mocked(db.getJobById).mockResolvedValue(undefined);
+    const caller = createCaller(1, "admin@example.com");
+
+    await expect(caller.studentJobEligibility.adminUpsertRule({ jobId: 999 }))
+      .rejects.toMatchObject({ code: "NOT_FOUND", message: "Job not found" });
+
+    vi.mocked(db.reviewStudentJobEligibility).mockRejectedValue(
+      new StudentJobEligibilityError("review_not_found"),
+    );
+    await expect(caller.studentJobEligibility.adminReviewDecision({ reviewId: 999, status: "eligible" }))
+      .rejects.toMatchObject({ code: "NOT_FOUND", message: "Eligibility review not found" });
+  });
+
+  it("requires an active job to be unpublished before its rule is disabled", async () => {
+    vi.mocked(db.getAdminByEmail).mockResolvedValue({ id: 1, email: "admin@example.com" } as any);
+    vi.mocked(db.getJobById).mockResolvedValue({ id: 3, isActive: true } as any);
+
+    await expect(createCaller(1, "admin@example.com").studentJobEligibility.adminUpsertRule({
+      jobId: 3,
+      isEnabled: false,
+    })).rejects.toMatchObject({ code: "PRECONDITION_FAILED", message: expect.stringContaining("Unpublish") });
+    expect(db.upsertStudentJobEligibilityRule).not.toHaveBeenCalled();
   });
 
   it("allows admins to update rules and review decisions", async () => {

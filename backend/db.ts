@@ -163,7 +163,12 @@ import type {
   CommunityPolicyTermCategory,
   StudentCommunityModerationDecision as CommunityModerationDecision,
 } from './services/student-community-moderation.service';
-import type { StudentJobEligibilityReviewStatus } from './services/student-job-eligibility.service';
+import {
+  StudentJobEligibilityError,
+  canDecideStudentJobEligibilityReview,
+  canSubmitStudentJobEligibilityReview,
+  type StudentJobEligibilityReviewStatus,
+} from './services/student-job-eligibility.service';
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -13948,6 +13953,7 @@ export async function createJob(data: { titleAr: string; titleEn: string; descri
     titleEn: data.titleEn,
     descriptionAr: data.descriptionAr,
     descriptionEn: data.descriptionEn || null,
+    isActive: false,
     sortOrder: data.sortOrder ?? 0,
   }).returning({ id: jobs.id });
   return result[0].id;
@@ -13956,7 +13962,32 @@ export async function createJob(data: { titleAr: string; titleEn: string; descri
 export async function updateJob(id: number, data: Partial<{ titleAr: string; titleEn: string; descriptionAr: string; descriptionEn: string; isActive: boolean; sortOrder: number }>) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.update(jobs).set({ ...data, updatedAt: new Date().toISOString() }).where(eq(jobs.id, id));
+  const [job] = await db.update(jobs)
+    .set({ ...data, updatedAt: new Date().toISOString() })
+    .where(eq(jobs.id, id))
+    .returning();
+  return job;
+}
+
+export async function setJobPublished(id: number, isActive: boolean, actorUserId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const job = await getJobById(id);
+  if (!job) throw new StudentJobEligibilityError("job_not_available");
+  if (isActive) {
+    const rule = await getStudentJobEligibilityRuleByJobId(id);
+    if (!rule?.isEnabled) throw new StudentJobEligibilityError("rule_not_available");
+  }
+
+  const updated = await updateJob(id, { isActive });
+  await logStudentJobEligibilityAudit({
+    jobId: id,
+    actorUserId,
+    action: isActive ? "job_published" : "job_unpublished",
+    details: { titleAr: job.titleAr, titleEn: job.titleEn },
+  });
+  return updated;
 }
 
 export async function getQuestionsForJob(jobId: number) {
@@ -14175,7 +14206,7 @@ function normalizeEligibilityRule(rule?: StudentJobEligibilityRule | null) {
     requireActiveSubscription: rule?.requireActiveSubscription ?? true,
     requireProfile: rule?.requireProfile ?? true,
     requireAdminReview: rule?.requireAdminReview ?? true,
-    isEnabled: rule?.isEnabled ?? true,
+    isEnabled: rule?.isEnabled ?? false,
     instructions: rule?.instructions ?? null,
   };
 }
@@ -14269,6 +14300,7 @@ async function logStudentJobEligibilityAudit(input: {
     fromStatus: input.fromStatus ?? null,
     toStatus: input.toStatus ?? null,
     details: input.details === undefined ? null : JSON.stringify(input.details),
+    createdAt: new Date().toISOString(),
   });
 }
 
@@ -14296,16 +14328,19 @@ export async function upsertStudentJobProfile(input: {
   if (!db) throw new Error("Database not available");
 
   const now = new Date().toISOString();
-  const clean = {
-    headline: input.headline?.trim() || null,
-    skills: input.skills?.trim() || null,
-    experienceSummary: input.experienceSummary?.trim() || null,
-    portfolioUrl: input.portfolioUrl?.trim() || null,
-    cvUrl: input.cvUrl?.trim() || null,
-    preferredRole: input.preferredRole?.trim() || null,
-    availability: input.availability?.trim() || null,
-    updatedAt: now,
-  };
+  const clean: Partial<StudentJobProfile> & { updatedAt: string } = { updatedAt: now };
+  const patchableFields = [
+    "headline",
+    "skills",
+    "experienceSummary",
+    "portfolioUrl",
+    "cvUrl",
+    "preferredRole",
+    "availability",
+  ] as const;
+  for (const field of patchableFields) {
+    if (input[field] !== undefined) clean[field] = input[field]?.trim() || null;
+  }
 
   const existing = await getStudentJobProfile(input.userId);
   if (existing) {
@@ -14354,9 +14389,25 @@ export async function getStudentJobOpportunities(userId: number) {
         eq(studentJobEligibilityReviews.userId, userId),
         inArray(studentJobEligibilityReviews.jobId, jobIds),
       ));
+  const historyRows = jobIds.length === 0
+    ? []
+    : await db.select().from(studentJobEligibilityAuditLogs)
+      .where(and(
+        eq(studentJobEligibilityAuditLogs.userId, userId),
+        inArray(studentJobEligibilityAuditLogs.jobId, jobIds),
+        sql`${studentJobEligibilityAuditLogs.action} LIKE 'review_%'`,
+      ))
+      .orderBy(desc(studentJobEligibilityAuditLogs.createdAt), desc(studentJobEligibilityAuditLogs.id));
 
   const ruleMap = new Map(rules.map((rule) => [rule.jobId, rule]));
   const reviewMap = new Map(reviews.map((review) => [review.jobId, review]));
+  const historyMap = new Map<number, typeof historyRows>();
+  for (const history of historyRows) {
+    if (history.jobId == null) continue;
+    const rows = historyMap.get(history.jobId) ?? [];
+    rows.push(history);
+    historyMap.set(history.jobId, rows);
+  }
 
   return {
     profile,
@@ -14369,6 +14420,7 @@ export async function getStudentJobOpportunities(userId: number) {
           job,
           ...evaluation,
           review: reviewMap.get(job.id) ?? null,
+          reviewHistory: historyMap.get(job.id) ?? [],
         };
       })
       .filter((item) => item.rule.isEnabled),
@@ -14384,7 +14436,7 @@ export async function submitStudentJobEligibilityReview(input: {
   if (!db) throw new Error("Database not available");
 
   const job = await getJobById(input.jobId);
-  if (!job || !job.isActive) throw new Error("Job not found or inactive");
+  if (!job || !job.isActive) throw new StudentJobEligibilityError("job_not_available");
 
   const profile = await getStudentJobProfile(input.userId);
   const metrics = await getStudentJobEligibilityMetrics(input.userId, profile);
@@ -14392,7 +14444,7 @@ export async function submitStudentJobEligibilityReview(input: {
     .where(eq(studentJobEligibilityRules.jobId, input.jobId))
     .limit(1);
   const evaluation = evaluateStudentJobEligibility(metrics, rule);
-  if (!evaluation.rule.isEnabled) throw new Error("Eligibility is not enabled for this job");
+  if (!rule || !evaluation.rule.isEnabled) throw new StudentJobEligibilityError("rule_not_available");
 
   const now = new Date().toISOString();
   const snapshot = {
@@ -14407,7 +14459,14 @@ export async function submitStudentJobEligibilityReview(input: {
       eq(studentJobEligibilityReviews.jobId, input.jobId),
     ))
     .limit(1);
-  const nextStatus: StudentJobEligibilityReviewStatus = "submitted";
+  const currentStatus = existing[0]?.status as StudentJobEligibilityReviewStatus | undefined;
+  if (!canSubmitStudentJobEligibilityReview(currentStatus)) {
+    if (currentStatus === "submitted" || currentStatus === "resubmitted") {
+      throw new StudentJobEligibilityError("review_already_pending");
+    }
+    throw new StudentJobEligibilityError("review_already_decided");
+  }
+  const nextStatus: StudentJobEligibilityReviewStatus = existing[0] ? "resubmitted" : "submitted";
 
   if (existing[0]) {
     const [review] = await db.update(studentJobEligibilityReviews).set({
@@ -14416,12 +14475,15 @@ export async function submitStudentJobEligibilityReview(input: {
       score: evaluation.score,
       snapshotJson: JSON.stringify(snapshot),
       studentNote: input.studentNote?.trim() || null,
-      adminNote: null,
       reviewedByUserId: null,
       reviewedAt: null,
       submittedAt: now,
       updatedAt: now,
-    }).where(eq(studentJobEligibilityReviews.id, existing[0].id)).returning();
+    }).where(and(
+      eq(studentJobEligibilityReviews.id, existing[0].id),
+      eq(studentJobEligibilityReviews.status, "returned"),
+    )).returning();
+    if (!review) throw new StudentJobEligibilityError("review_already_pending");
 
     await logStudentJobEligibilityAudit({
       userId: input.userId,
@@ -14430,23 +14492,32 @@ export async function submitStudentJobEligibilityReview(input: {
       action: "review_resubmitted",
       fromStatus: existing[0].status,
       toStatus: nextStatus,
-      details: snapshot,
+      details: { snapshot, studentNote: input.studentNote?.trim() || null },
     });
     return review;
   }
 
-  const [review] = await db.insert(studentJobEligibilityReviews).values({
-    userId: input.userId,
-    jobId: input.jobId,
-    status: nextStatus,
-    systemEligible: evaluation.systemEligible,
-    score: evaluation.score,
-    snapshotJson: JSON.stringify(snapshot),
-    studentNote: input.studentNote?.trim() || null,
-    submittedAt: now,
-    updatedAt: now,
-    createdAt: now,
-  }).returning();
+  let review: StudentJobEligibilityReview | undefined;
+  try {
+    [review] = await db.insert(studentJobEligibilityReviews).values({
+      userId: input.userId,
+      jobId: input.jobId,
+      status: nextStatus,
+      systemEligible: evaluation.systemEligible,
+      score: evaluation.score,
+      snapshotJson: JSON.stringify(snapshot),
+      studentNote: input.studentNote?.trim() || null,
+      submittedAt: now,
+      updatedAt: now,
+      createdAt: now,
+    }).returning();
+  } catch (error) {
+    if (isSqliteUniqueConstraintError(error)) {
+      throw new StudentJobEligibilityError("review_already_pending");
+    }
+    throw error;
+  }
+  if (!review) throw new Error("Eligibility review insert returned no row");
 
   await logStudentJobEligibilityAudit({
     userId: input.userId,
@@ -14454,7 +14525,7 @@ export async function submitStudentJobEligibilityReview(input: {
     actorUserId: input.userId,
     action: "review_submitted",
     toStatus: nextStatus,
-    details: snapshot,
+    details: { snapshot, studentNote: input.studentNote?.trim() || null },
   });
   return review;
 }
@@ -14483,6 +14554,15 @@ export async function listStudentJobEligibilityRules() {
     .orderBy(desc(studentJobEligibilityRules.updatedAt), asc(jobs.sortOrder));
 }
 
+export async function getStudentJobEligibilityRuleByJobId(jobId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const [rule] = await db.select().from(studentJobEligibilityRules)
+    .where(eq(studentJobEligibilityRules.jobId, jobId))
+    .limit(1);
+  return rule;
+}
+
 export async function upsertStudentJobEligibilityRule(input: StudentJobEligibilityRuleInput & {
   actorUserId: number;
 }) {
@@ -14493,22 +14573,22 @@ export async function upsertStudentJobEligibilityRule(input: StudentJobEligibili
   if (!job) throw new Error("Job not found");
 
   const now = new Date().toISOString();
-  const data = {
-    minCompletedEpisodes: Math.max(0, input.minCompletedEpisodes ?? 0),
-    minPassedQuizzes: Math.max(0, input.minPassedQuizzes ?? 0),
-    minPointsBalance: Math.max(0, input.minPointsBalance ?? 0),
-    requireActiveSubscription: input.requireActiveSubscription ?? true,
-    requireProfile: input.requireProfile ?? true,
-    requireAdminReview: input.requireAdminReview ?? true,
-    isEnabled: input.isEnabled ?? true,
-    instructions: input.instructions?.trim() || null,
-    updatedByUserId: input.actorUserId,
-    updatedAt: now,
-  };
-
   const [existing] = await db.select().from(studentJobEligibilityRules)
     .where(eq(studentJobEligibilityRules.jobId, input.jobId))
     .limit(1);
+
+  const data = {
+    minCompletedEpisodes: Math.max(0, input.minCompletedEpisodes ?? existing?.minCompletedEpisodes ?? 0),
+    minPassedQuizzes: Math.max(0, input.minPassedQuizzes ?? existing?.minPassedQuizzes ?? 0),
+    minPointsBalance: Math.max(0, input.minPointsBalance ?? existing?.minPointsBalance ?? 0),
+    requireActiveSubscription: input.requireActiveSubscription ?? existing?.requireActiveSubscription ?? true,
+    requireProfile: input.requireProfile ?? existing?.requireProfile ?? true,
+    requireAdminReview: input.requireAdminReview ?? existing?.requireAdminReview ?? true,
+    isEnabled: input.isEnabled ?? existing?.isEnabled ?? true,
+    instructions: input.instructions === undefined ? (existing?.instructions ?? null) : (input.instructions?.trim() || null),
+    updatedByUserId: input.actorUserId,
+    updatedAt: now,
+  };
 
   if (existing) {
     const [rule] = await db.update(studentJobEligibilityRules)
@@ -14552,7 +14632,7 @@ export async function listStudentJobEligibilityReviews(input?: {
   if (input?.jobId) conditions.push(eq(studentJobEligibilityReviews.jobId, input.jobId));
   const limit = Math.min(Math.max(input?.limit ?? 100, 1), 200);
 
-  return db.select({
+  const reviews = await db.select({
     id: studentJobEligibilityReviews.id,
     userId: studentJobEligibilityReviews.userId,
     jobId: studentJobEligibilityReviews.jobId,
@@ -14577,6 +14657,29 @@ export async function listStudentJobEligibilityReviews(input?: {
     .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(desc(studentJobEligibilityReviews.submittedAt), desc(studentJobEligibilityReviews.id))
     .limit(limit);
+
+  if (reviews.length === 0) return [];
+  const userIds = Array.from(new Set(reviews.map((review) => review.userId)));
+  const jobIds = Array.from(new Set(reviews.map((review) => review.jobId)));
+  const historyRows = await db.select().from(studentJobEligibilityAuditLogs)
+    .where(and(
+      inArray(studentJobEligibilityAuditLogs.userId, userIds),
+      inArray(studentJobEligibilityAuditLogs.jobId, jobIds),
+      sql`${studentJobEligibilityAuditLogs.action} LIKE 'review_%'`,
+    ))
+    .orderBy(desc(studentJobEligibilityAuditLogs.createdAt), desc(studentJobEligibilityAuditLogs.id));
+  const historyMap = new Map<string, typeof historyRows>();
+  for (const history of historyRows) {
+    if (history.userId == null || history.jobId == null) continue;
+    const key = `${history.userId}:${history.jobId}`;
+    const rows = historyMap.get(key) ?? [];
+    rows.push(history);
+    historyMap.set(key, rows);
+  }
+  return reviews.map((review) => ({
+    ...review,
+    history: historyMap.get(`${review.userId}:${review.jobId}`) ?? [],
+  }));
 }
 
 export async function reviewStudentJobEligibility(input: {
@@ -14591,7 +14694,10 @@ export async function reviewStudentJobEligibility(input: {
   const [current] = await db.select().from(studentJobEligibilityReviews)
     .where(eq(studentJobEligibilityReviews.id, input.reviewId))
     .limit(1);
-  if (!current) throw new Error("Eligibility review not found");
+  if (!current) throw new StudentJobEligibilityError("review_not_found");
+  if (!canDecideStudentJobEligibilityReview(current.status as StudentJobEligibilityReviewStatus)) {
+    throw new StudentJobEligibilityError("invalid_review_transition");
+  }
 
   const now = new Date().toISOString();
   const [review] = await db.update(studentJobEligibilityReviews).set({
@@ -14600,7 +14706,11 @@ export async function reviewStudentJobEligibility(input: {
     reviewedByUserId: input.actorUserId,
     reviewedAt: now,
     updatedAt: now,
-  }).where(eq(studentJobEligibilityReviews.id, input.reviewId)).returning();
+  }).where(and(
+    eq(studentJobEligibilityReviews.id, input.reviewId),
+    inArray(studentJobEligibilityReviews.status, ["submitted", "resubmitted"]),
+  )).returning();
+  if (!review) throw new StudentJobEligibilityError("invalid_review_transition");
 
   await logStudentJobEligibilityAudit({
     userId: current.userId,

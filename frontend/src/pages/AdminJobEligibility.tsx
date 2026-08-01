@@ -43,7 +43,7 @@ const defaultRuleForm: RuleForm = {
   instructions: "",
 };
 
-const reviewStatuses = ["submitted", "returned", "eligible", "ineligible"] as const;
+const reviewStatuses = ["submitted", "resubmitted", "returned", "eligible", "ineligible"] as const;
 type ReviewDecision = "returned" | "eligible" | "ineligible";
 
 type EligibilitySnapshot = {
@@ -75,9 +75,22 @@ function parseEligibilitySnapshot(value: unknown): EligibilitySnapshot | null {
   }
 }
 
+function formatEligibilityHistoryDate(value: unknown, isRtl: boolean) {
+  const date = typeof value === "string" || value instanceof Date ? new Date(value) : null;
+  return date && Number.isFinite(date.getTime())
+    ? date.toLocaleString(isRtl ? "ar-JO" : "en-GB")
+    : (isRtl ? "وقت غير متاح" : "Time unavailable");
+}
+
 function getInitialJobPreview() {
   if (typeof window === "undefined") return false;
   return new URLSearchParams(window.location.search).get("preview") === "student";
+}
+
+function getInitialJobId() {
+  if (typeof window === "undefined") return "";
+  const value = Number(new URLSearchParams(window.location.search).get("jobId"));
+  return Number.isInteger(value) && value > 0 ? String(value) : "";
 }
 
 export default function AdminJobEligibility() {
@@ -206,7 +219,7 @@ export default function AdminJobEligibility() {
       };
 
   const utils = trpc.useUtils();
-  const [ruleForm, setRuleForm] = useState<RuleForm>(defaultRuleForm);
+  const [ruleForm, setRuleForm] = useState<RuleForm>(() => ({ ...defaultRuleForm, jobId: getInitialJobId() }));
   const [status, setStatus] = useState<string>("");
   const [notes, setNotes] = useState<Record<number, string>>({});
   const [decisionTarget, setDecisionTarget] = useState<{ review: any; status: ReviewDecision } | null>(null);
@@ -260,8 +273,8 @@ export default function AdminJobEligibility() {
 
   const statusLabel = (value: string) => {
     const labels: Record<string, string> = isRtl
-      ? { submitted: "بانتظار المراجعة", returned: "مُعاد للطالب", eligible: "مؤهل", ineligible: "غير مؤهل" }
-      : { submitted: "Awaiting review", returned: "Returned", eligible: "Eligible", ineligible: "Ineligible" };
+      ? { submitted: "بانتظار المراجعة", resubmitted: "أُعيد تقديمه", returned: "مُعاد للطالب", eligible: "مؤهل", ineligible: "غير مؤهل" }
+      : { submitted: "Awaiting review", resubmitted: "Resubmitted", returned: "Returned", eligible: "Eligible", ineligible: "Ineligible" };
     return labels[value] ?? value;
   };
 
@@ -535,19 +548,32 @@ export default function AdminJobEligibility() {
                       <p className="text-slate-800">{review.studentNote}</p>
                     </div>
                   )}
+                  {review.adminNote && (
+                    <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm">
+                      <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-amber-700">{isRtl ? "آخر ملاحظة للمدير" : "Latest manager note"}</p>
+                      <p className="text-amber-950">{review.adminNote}</p>
+                    </div>
+                  )}
                   <EligibilityEvidencePanel review={review} isRtl={isRtl} />
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <Button type="button" size="sm" disabled={decide.isPending} className="gap-2 bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => setDecisionTarget({ review, status: "eligible" })}>
-                      <CheckCircle2 className="h-4 w-4" />
-                      {copy.approve}
-                    </Button>
-                    <Button type="button" size="sm" variant="outline" disabled={decide.isPending} onClick={() => setDecisionTarget({ review, status: "returned" })}>
-                      {copy.return}
-                    </Button>
-                    <Button type="button" size="sm" variant="destructive" disabled={decide.isPending} onClick={() => setDecisionTarget({ review, status: "ineligible" })}>
-                      {copy.reject}
-                    </Button>
-                  </div>
+                  <ReviewHistory history={review.history} studentUserId={review.userId} isRtl={isRtl} />
+                  {(review.status === "submitted" || review.status === "resubmitted") ? (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button type="button" size="sm" disabled={decide.isPending} className="gap-2 bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => setDecisionTarget({ review, status: "eligible" })}>
+                        <CheckCircle2 className="h-4 w-4" />
+                        {copy.approve}
+                      </Button>
+                      <Button type="button" size="sm" variant="outline" disabled={decide.isPending} onClick={() => setDecisionTarget({ review, status: "returned" })}>
+                        {copy.return}
+                      </Button>
+                      <Button type="button" size="sm" variant="destructive" disabled={decide.isPending} onClick={() => setDecisionTarget({ review, status: "ineligible" })}>
+                        {copy.reject}
+                      </Button>
+                    </div>
+                  ) : (
+                    <p className="mt-3 text-xs font-medium text-slate-500">
+                      {isRtl ? "لا تتوفر قرارات جديدة حتى يعيد الطالب تقديم الطلب." : "No new decision is available until the student resubmits."}
+                    </p>
+                  )}
                 </div>
               ))}
             </div>
@@ -610,6 +636,44 @@ export default function AdminJobEligibility() {
         </Dialog>
       </div>
     </DashboardLayout>
+  );
+}
+
+function ReviewHistory({ history, studentUserId, isRtl }: { history: any[] | undefined; studentUserId: number; isRtl: boolean }) {
+  if (!history?.length) return null;
+  const actionLabels: Record<string, string> = isRtl
+    ? { review_submitted: "تقديم الطلب", review_resubmitted: "إعادة تقديم الطلب", review_decision: "قرار المدير" }
+    : { review_submitted: "Review submitted", review_resubmitted: "Review resubmitted", review_decision: "Manager decision" };
+  const statusLabels: Record<string, string> = isRtl
+    ? { submitted: "بانتظار المراجعة", resubmitted: "أُعيد تقديمه", returned: "مُعاد للطالب", eligible: "مؤهل", ineligible: "غير مؤهل" }
+    : { submitted: "Awaiting review", resubmitted: "Resubmitted", returned: "Returned", eligible: "Eligible", ineligible: "Ineligible" };
+
+  return (
+    <div className="mt-3 rounded-xl border bg-white p-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{isRtl ? "سجل المراجعة" : "Review history"}</p>
+      <div className="mt-2 space-y-2">
+        {history.map((entry) => {
+          let details: any = null;
+          try { details = entry.details ? JSON.parse(entry.details) : null; } catch { details = null; }
+          const note = details?.adminNote || details?.studentNote;
+          const actor = entry.actorUserId === studentUserId
+            ? (isRtl ? "الطالب" : "Student")
+            : `${isRtl ? "المدير" : "Manager"} #${Math.abs(entry.actorUserId)}`;
+          return (
+            <div key={entry.id} className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-700">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-semibold">
+                  {actionLabels[entry.action] || entry.action}
+                  {entry.toStatus ? ` · ${statusLabels[entry.toStatus] || entry.toStatus}` : ""}
+                </span>
+                <span className="text-slate-500">{actor} · {formatEligibilityHistoryDate(entry.createdAt, isRtl)}</span>
+              </div>
+              {note && <p className="mt-1 text-slate-800">{note}</p>}
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 

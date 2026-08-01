@@ -137,6 +137,7 @@ import {
 import {
   STUDENT_JOB_ELIGIBILITY_FEATURE_FLAG,
   STUDENT_JOB_ELIGIBILITY_REVIEW_STATUSES,
+  StudentJobEligibilityError,
   isStudentJobEligibilityEnabled,
 } from "./services/student-job-eligibility.service";
 // FlexAI routes are registered in server/_core/index.ts
@@ -563,6 +564,20 @@ async function requireStudentJobEligibilityEnabled() {
   if (!isStudentJobEligibilityEnabled(flag)) {
     throw new TRPCError({ code: "FORBIDDEN", message: "Student job eligibility is disabled" });
   }
+}
+
+function throwStudentJobEligibilityRouteError(error: unknown): never {
+  if (!(error instanceof StudentJobEligibilityError)) throw error;
+  const mapped = {
+    job_not_available: { code: "NOT_FOUND", message: "Job not found or not available" },
+    rule_not_available: { code: "PRECONDITION_FAILED", message: "Create and enable the eligibility rule before publishing or requesting review" },
+    review_not_found: { code: "NOT_FOUND", message: "Eligibility review not found" },
+    review_already_pending: { code: "CONFLICT", message: "An eligibility review is already awaiting a manager decision" },
+    review_already_decided: { code: "CONFLICT", message: "This eligibility review already has a final decision" },
+    invalid_review_transition: { code: "CONFLICT", message: "Only submitted or resubmitted reviews can receive a decision" },
+  } as const;
+  const result = mapped[error.reason];
+  throw new TRPCError(result);
 }
 
 function deferRecommendationEmailDrain(ctx: { defer?: (task: Promise<unknown>) => void }) {
@@ -7821,7 +7836,7 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         const id = await db.createJob(input);
-        return { id };
+        return { id, isActive: false };
       }),
 
     // Admin: update job
@@ -7832,13 +7847,23 @@ export const appRouter = router({
         titleEn: z.string().optional(),
         descriptionAr: z.string().optional(),
         descriptionEn: z.string().optional(),
-        isActive: z.boolean().optional(),
         sortOrder: z.number().optional(),
       }))
       .mutation(async ({ input }) => {
         const { id, ...data } = input;
-        await db.updateJob(id, data);
-        return { success: true };
+        const job = await db.updateJob(id, data);
+        if (!job) throw new TRPCError({ code: 'NOT_FOUND', message: 'Job not found' });
+        return job;
+      }),
+
+    setPublished: adminProcedure
+      .input(z.object({ id: z.number().int().positive(), isActive: z.boolean() }))
+      .mutation(async ({ ctx, input }) => {
+        try {
+          return await db.setJobPublished(input.id, input.isActive, ctx.user.id);
+        } catch (error) {
+          throwStudentJobEligibilityRouteError(error);
+        }
       }),
 
     // Admin: list all questions
@@ -8167,6 +8192,8 @@ ${qaText}`;
         cvUrl: z.string().trim().url().max(500).or(z.literal("")).optional(),
         preferredRole: shortStudentJobText.optional(),
         availability: shortStudentJobText.optional(),
+      }).refine((value) => Object.values(value).some((field) => field !== undefined), {
+        message: "Provide at least one profile field to update",
       }))
       .mutation(async ({ ctx, input }) => {
         await requireStudentJobEligibilityEnabled();
@@ -8188,11 +8215,16 @@ ${qaText}`;
       }))
       .mutation(async ({ ctx, input }) => {
         await requireStudentJobEligibilityEnabled();
-        const review = await db.submitStudentJobEligibilityReview({
-          userId: ctx.user.id,
-          jobId: input.jobId,
-          studentNote: input.studentNote,
-        });
+        let review;
+        try {
+          review = await db.submitStudentJobEligibilityReview({
+            userId: ctx.user.id,
+            jobId: input.jobId,
+            studentNote: input.studentNote,
+          });
+        } catch (error) {
+          throwStudentJobEligibilityRouteError(error);
+        }
         await db.notifyStaffByEvent('job_eligibility_review_requested', {
           titleEn: `Job eligibility review requested by ${ctx.user.name || ctx.user.email}`,
           titleAr: `طلب مراجعة أهلية وظيفية من ${ctx.user.name || ctx.user.email}`,
@@ -8230,10 +8262,12 @@ ${qaText}`;
         instructions: longStudentJobText.optional(),
       }))
       .mutation(async ({ ctx, input }) => {
-        return db.upsertStudentJobEligibilityRule({
-          ...input,
-          actorUserId: ctx.user.id,
-        });
+        const job = await db.getJobById(input.jobId);
+        if (!job) throw new TRPCError({ code: "NOT_FOUND", message: "Job not found" });
+        if (job.isActive && input.isEnabled === false) {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Unpublish the job before disabling its eligibility rule" });
+        }
+        return db.upsertStudentJobEligibilityRule({ ...input, actorUserId: ctx.user.id });
       }),
 
     adminReviews: adminOrRoleProcedure(['student_job_eligibility_manager'])
@@ -8267,12 +8301,16 @@ ${qaText}`;
         }),
       )
       .mutation(async ({ ctx, input }) => {
-        return db.reviewStudentJobEligibility({
-          reviewId: input.reviewId,
-          status: input.status,
-          adminNote: input.adminNote,
-          actorUserId: ctx.user.id,
-        });
+        try {
+          return await db.reviewStudentJobEligibility({
+            reviewId: input.reviewId,
+            status: input.status,
+            adminNote: input.adminNote,
+            actorUserId: ctx.user.id,
+          });
+        } catch (error) {
+          throwStudentJobEligibilityRouteError(error);
+        }
       }),
 
     adminAuditLog: adminOrRoleProcedure(['student_job_eligibility_manager'])
