@@ -408,6 +408,14 @@ Last updated: 2026-07-30
   - Worker version `b9a68a1b-05ef-4c11-b65b-8d9dc1d5f7ba` deployed successfully. Both the custom-domain and workers.dev `/health` endpoints returned 200 with `status=ok` and `environment=production`.
   - Pages deployment `b91e2fbb-7c94-41e7-8da3-b6f2b470cfd9` deployed commit `34e659d` to production; preview URL: `https://b91e2fbb.xflexwithai.pages.dev`.
   - Production `/`, `/ar`, `/en`, `/auth`, and `/support`, plus the preview smoke routes, returned 200. The new `SupportChat-BX1ER8lY.js` asset was live on production and preview with the AI-first guidance and human-escalation wording.
+- Admin-feature remediation production rollout on 2026-08-01:
+  - Branch `fix/admin-feature-remediation-20260801` was pushed with release commit `25a3722`; the GitHub app could not open the draft PR because the integration returned 403, so use the repository's one-click compare URL to create it manually.
+  - Full tests, TypeScript checks, the production build, focused survey/job-eligibility suites, and the 32/32 live local functional matrix passed before rollout; the matrix covered filled/unfilled inputs, admin and student journeys, database integrity, cleanup, and SQL-leak prevention.
+  - A local D1 export was deliberately not created because it would copy production user data to the workstation. Cloudflare D1 Time Travel bookmark `00000fe1-00001432-000050ba-9d890035948c72929ff51f1c8a807b8d` is the pre-migration rollback point.
+  - Production migrations `078_signed_admin_feature_actors.sql`, `079_student_survey_assignment_cap.sql`, and `080_student_job_review_resubmission.sql` were applied in order and recorded as ledger IDs 19-21. All rebuilt feature tables had zero rows before migration; post-migration foreign-key checks were clean, all six survey-integrity triggers existed, and the job-review constraint/indexes included the explicit `resubmitted` lifecycle.
+  - Worker version `d26fb4bd-c7a7-4a57-8a3f-62fc5651e692` deployed successfully with D1/R2 bindings and both scheduled triggers intact.
+  - Initial Pages smoke exposed that `/surveys` and `/job-opportunities` were missing from the private app-shell middleware. Commit `25a3722` added both routes plus regression tests; final Pages preview: `https://b7bc355c.xflexwithai.pages.dev`.
+  - Final production smoke passed 13/13 checks across both Worker health endpoints, Pages preview, `/`, `/ar`, `/en`, `/auth`, survey/job admin pages, and both student feature routes. Every app route served the exact `index-BxvRTtTa.js` bundle; private routes returned `X-Robots-Tag: noindex, nofollow` and `Cache-Control: private, no-store`.
 
 ## Future Hardening
 
