@@ -145,6 +145,7 @@ export default function AdminStudentSurveys() {
   const [selectedSurveyId, setSelectedSurveyId] = useState<number | null>(null);
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<number | null>(null);
   const [surveyDialogOpen, setSurveyDialogOpen] = useState(false);
+  const [editingSurveyId, setEditingSurveyId] = useState<number | null>(null);
   const [questionDialogOpen, setQuestionDialogOpen] = useState(false);
   const [surveyForm, setSurveyForm] = useState<SurveyForm>(emptySurveyForm);
   const [questionForm, setQuestionForm] = useState<QuestionForm>(emptyQuestionForm);
@@ -280,6 +281,34 @@ export default function AdminStudentSurveys() {
     onError: (error) => toast.error(error.message),
   });
 
+  const updateSurvey = trpc.studentSurveys.updateSurvey.useMutation({
+    onSuccess: async () => {
+      setSurveyDialogOpen(false);
+      setEditingSurveyId(null);
+      setSurveyForm(emptySurveyForm());
+      await Promise.all([
+        utils.studentSurveys.listSurveys.invalidate(),
+        selectedSurveyId
+          ? utils.studentSurveys.getSurvey.invalidate({ id: selectedSurveyId })
+          : Promise.resolve(),
+      ]);
+      toast.success(copy.surveyUpdated);
+    },
+    onError: (error) => toast.error(error.message),
+  });
+
+  const setSurveyActive = trpc.studentSurveys.setSurveyActive.useMutation({
+    onSuccess: async (survey) => {
+      await Promise.all([
+        utils.studentSurveys.listSurveys.invalidate(),
+        utils.studentSurveys.getSurvey.invalidate({ id: survey.id }),
+        utils.studentSurveys.myAssignments.invalidate(),
+      ]);
+      toast.success(survey.isActive ? copy.surveyActivated : copy.surveyDeactivated);
+    },
+    onError: (error) => toast.error(error.message),
+  });
+
   const createQuestion = trpc.studentSurveys.createQuestion.useMutation({
     onSuccess: async () => {
       setQuestionDialogOpen(false);
@@ -328,16 +357,56 @@ export default function AdminStudentSurveys() {
 
   const saveSurvey = () => {
     if (!surveyForm.code.trim() || !surveyForm.title.trim()) return;
+    if (editingSurveyId) {
+      updateSurvey.mutate({
+        id: editingSurveyId,
+        title: surveyForm.title.trim(),
+        description: surveyForm.description.trim() || null,
+        isRequired: surveyForm.isRequired,
+        maxPostponements: Number(surveyForm.maxPostponements) || 0,
+        postponeHours: Number(surveyForm.postponeHours) || 24,
+        blockAfterHours: Number(surveyForm.blockAfterHours) || 72,
+      });
+      return;
+    }
     createSurvey.mutate({
       code: surveyForm.code.trim().toLowerCase(),
       title: surveyForm.title.trim(),
       description: surveyForm.description.trim() || null,
-      isActive: surveyForm.isActive,
+      isActive: false,
       isRequired: surveyForm.isRequired,
       maxPostponements: Number(surveyForm.maxPostponements) || 0,
       postponeHours: Number(surveyForm.postponeHours) || 24,
       blockAfterHours: Number(surveyForm.blockAfterHours) || 72,
     });
+  };
+
+  const openCreateSurvey = () => {
+    setEditingSurveyId(null);
+    setSurveyForm(emptySurveyForm());
+    setSurveyDialogOpen(true);
+  };
+
+  const openEditSurvey = () => {
+    if (!selectedSurvey) return;
+    setEditingSurveyId(selectedSurvey.id);
+    setSurveyForm({
+      code: selectedSurvey.code,
+      title: selectedSurvey.title,
+      description: selectedSurvey.description ?? "",
+      isActive: selectedSurvey.isActive,
+      isRequired: selectedSurvey.isRequired,
+      maxPostponements: String(selectedSurvey.maxPostponements),
+      postponeHours: String(selectedSurvey.postponeHours),
+      blockAfterHours: String(selectedSurvey.blockAfterHours),
+    });
+    setSurveyDialogOpen(true);
+  };
+
+  const toggleSelectedSurveyActive = () => {
+    if (!selectedSurvey || setSurveyActive.isPending) return;
+    if (selectedSurvey.isActive && !window.confirm(copy.deactivateConfirm)) return;
+    setSurveyActive.mutate({ id: selectedSurvey.id, isActive: !selectedSurvey.isActive });
   };
 
   const saveQuestion = () => {
@@ -515,7 +584,7 @@ export default function AdminStudentSurveys() {
               <Button variant="outline" onClick={() => changeTab("preview")}>
                 <Eye /> {copy.previewAsStudent}
               </Button>
-              <Button className="bg-emerald-700 hover:bg-emerald-800" onClick={() => setSurveyDialogOpen(true)}>
+              <Button className="bg-emerald-700 hover:bg-emerald-800" onClick={openCreateSurvey}>
                 <Plus /> {copy.newSurvey}
               </Button>
             </div>
@@ -569,7 +638,7 @@ export default function AdminStudentSurveys() {
             assignments={assignments}
             stats={assignmentStats}
             blockingEnabled={availability.blockingEnabled}
-            onCreate={() => setSurveyDialogOpen(true)}
+            onCreate={openCreateSurvey}
             onBuild={() => changeTab("builder")}
             onDistribute={() => changeTab("distribution")}
             onPreview={() => changeTab("preview")}
@@ -586,9 +655,13 @@ export default function AdminStudentSurveys() {
             selectedSurvey={selectedSurvey}
             surveyLoading={surveyQuery.isLoading}
             onSelect={setSelectedSurveyId}
-            onCreate={() => setSurveyDialogOpen(true)}
+            onCreate={openCreateSurvey}
             onAddQuestion={() => setQuestionDialogOpen(true)}
             onPreview={() => changeTab("preview")}
+            onEdit={openEditSurvey}
+            onToggleActive={toggleSelectedSurveyActive}
+            togglingActive={setSurveyActive.isPending}
+            onDistribute={() => changeTab("distribution")}
           />
         )}
 
@@ -622,6 +695,8 @@ export default function AdminStudentSurveys() {
             onAssign={confirmDistribution}
             assigning={assignAudience.isPending}
             onBuilder={() => changeTab("builder")}
+            onActivate={toggleSelectedSurveyActive}
+            activating={setSurveyActive.isPending}
           />
         )}
 
@@ -683,7 +758,8 @@ export default function AdminStudentSurveys() {
         form={surveyForm}
         onForm={setSurveyForm}
         onSave={saveSurvey}
-        pending={createSurvey.isPending}
+        pending={createSurvey.isPending || updateSurvey.isPending}
+        editing={Boolean(editingSurveyId)}
         copy={copy}
         isRtl={isRtl}
       />
@@ -758,7 +834,7 @@ function OverviewTab({ copy, surveys, selectedSurvey, assignments, stats, blocki
   );
 }
 
-function BuilderTab({ copy, isRtl, surveys, surveysLoading, selectedSurveyId, selectedSurvey, surveyLoading, onSelect, onCreate, onAddQuestion, onPreview }: any) {
+function BuilderTab({ copy, isRtl, surveys, surveysLoading, selectedSurveyId, selectedSurvey, surveyLoading, onSelect, onCreate, onAddQuestion, onPreview, onEdit, onToggleActive, togglingActive, onDistribute }: any) {
   return (
     <div className="grid gap-5 xl:grid-cols-[320px_minmax(0,1fr)]">
       <Card className="h-fit border-slate-200 shadow-sm">
@@ -792,6 +868,27 @@ function BuilderTab({ copy, isRtl, surveys, surveysLoading, selectedSurveyId, se
         <EmptyState icon={<ListChecks />} title={copy.noSurveySelected} body={copy.chooseOrCreate} action={copy.createFirstSurvey} onAction={onCreate} />
       ) : surveyLoading || !selectedSurvey ? <CenteredLoader /> : (
         <div className="space-y-5">
+          <Card className={selectedSurvey.isActive ? "border-emerald-200 bg-emerald-50/70" : selectedSurvey.questions.length ? "border-amber-200 bg-amber-50/70" : "border-sky-200 bg-sky-50/70"}>
+            <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">{copy.nextStep}</p>
+                <p className="mt-1 font-semibold text-slate-950">
+                  {selectedSurvey.questions.length === 0
+                    ? copy.nextAddQuestion
+                    : selectedSurvey.isActive ? copy.nextDistribute : copy.nextActivate}
+                </p>
+              </div>
+              {selectedSurvey.questions.length === 0 ? (
+                <Button onClick={onAddQuestion}><Plus />{copy.addQuestion}</Button>
+              ) : selectedSurvey.isActive ? (
+                <Button onClick={onDistribute}><UsersRound />{copy.distributeSurvey}</Button>
+              ) : (
+                <Button onClick={onToggleActive} disabled={togglingActive} className="bg-emerald-700 hover:bg-emerald-800">
+                  {togglingActive ? <Loader2 className="animate-spin" /> : <CheckCircle2 />}{copy.activateSurvey}
+                </Button>
+              )}
+            </CardContent>
+          </Card>
           <Card className="overflow-hidden border-slate-200 shadow-sm">
             <div className="h-1 bg-gradient-to-r from-emerald-600 via-teal-500 to-sky-500" />
             <CardContent className="p-5 md:p-6">
@@ -807,7 +904,20 @@ function BuilderTab({ copy, isRtl, surveys, surveysLoading, selectedSurveyId, se
                   {selectedSurvey.description && <p className="mt-3 max-w-3xl whitespace-pre-wrap text-sm leading-6 text-slate-600">{selectedSurvey.description}</p>}
                   <p className="mt-2 text-xs text-slate-400">{copy.reference}: {selectedSurvey.code}</p>
                 </div>
-                <Button variant="outline" onClick={onPreview}><Eye />{copy.preview}</Button>
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="outline" onClick={onEdit}><Settings2 />{copy.editSettings}</Button>
+                  <Button variant="outline" onClick={onPreview}><Eye />{copy.preview}</Button>
+                  {selectedSurvey.questions.length > 0 && (
+                    <Button
+                      variant={selectedSurvey.isActive ? "destructive" : "default"}
+                      onClick={onToggleActive}
+                      disabled={togglingActive}
+                    >
+                      {togglingActive && <Loader2 className="animate-spin" />}
+                      {selectedSurvey.isActive ? copy.deactivateSurvey : copy.activateSurvey}
+                    </Button>
+                  )}
+                </div>
               </div>
               <div className="mt-5 grid gap-3 sm:grid-cols-3">
                 <MetricCard label={copy.postponements} value={String(selectedSurvey.maxPostponements)} />
@@ -862,6 +972,7 @@ function DistributionTab(props: any) {
     copy, isRtl, selectedSurvey, audienceMode, audienceUserIds, onAudienceMode, onAudienceUserIds,
     students, studentsLoading, totalStudents, knownAssignedIds, search, onSearch, preview, previewLoading,
     dates, onDates, datesValid, blockingEnabled, confirmed, onConfirmed, onAssign, assigning, onBuilder,
+    onActivate, activating,
   } = props;
   const modes: Array<{ id: AudienceMode; title: string; body: string }> = [
     { id: "single", title: copy.oneStudent, body: copy.oneStudentHelp },
@@ -888,6 +999,9 @@ function DistributionTab(props: any) {
   }
   if (!selectedSurvey.questions.length) {
     return <EmptyState icon={<ListChecks />} title={copy.questionsRequired} body={copy.questionsRequiredBody} action={copy.addQuestions} onAction={onBuilder} />;
+  }
+  if (!selectedSurvey.isActive) {
+    return <EmptyState icon={<FileLock2 />} title={copy.activationRequired} body={copy.activationRequiredBody} action={copy.activateSurvey} onAction={onActivate} />;
   }
 
   return (
@@ -1304,19 +1418,19 @@ function DisabledWorkspace({ isRtl, previewOpen, onPreview }: { isRtl: boolean; 
   );
 }
 
-function SurveyDialog({ open, onOpenChange, form, onForm, onSave, pending, copy, isRtl }: any) {
+function SurveyDialog({ open, onOpenChange, form, onForm, onSave, pending, editing, copy, isRtl }: any) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl" dir={isRtl ? "rtl" : "ltr"}>
         <DialogHeader>
-          <DialogTitle>{copy.newSurvey}</DialogTitle>
-          <DialogDescription>{copy.createSurveyHelp}</DialogDescription>
+          <DialogTitle>{editing ? copy.editSurvey : copy.newSurvey}</DialogTitle>
+          <DialogDescription>{editing ? copy.editSurveyHelp : copy.createSurveyHelp}</DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-2">
           <Field label={copy.surveyTitle} required><Input value={form.title} maxLength={300} onChange={(event) => onForm({ ...form, title: event.target.value })} /></Field>
           <Field label={copy.description}><Textarea rows={4} value={form.description} maxLength={5000} onChange={(event) => onForm({ ...form, description: event.target.value })} /></Field>
           <Field label={copy.reference} required>
-            <Input value={form.code} maxLength={80} placeholder="student-check-in" onChange={(event) => onForm({ ...form, code: event.target.value.replace(/\s+/g, "-").toLowerCase() })} />
+            <Input value={form.code} disabled={editing} maxLength={80} placeholder="student-check-in" onChange={(event) => onForm({ ...form, code: event.target.value.replace(/\s+/g, "-").toLowerCase() })} />
             <span className="text-xs font-normal text-slate-500">{copy.referenceHelp}</span>
           </Field>
           <div className="grid gap-4 sm:grid-cols-3">
@@ -1324,15 +1438,14 @@ function SurveyDialog({ open, onOpenChange, form, onForm, onSave, pending, copy,
             <Field label={copy.postponeWindow}><Input type="number" min={1} max={720} value={form.postponeHours} onChange={(event) => onForm({ ...form, postponeHours: event.target.value })} /></Field>
             <Field label={copy.finalDeadlineWindow}><Input type="number" min={1} max={2160} value={form.blockAfterHours} onChange={(event) => onForm({ ...form, blockAfterHours: event.target.value })} /></Field>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3">
             <CheckOption checked={form.isRequired} onChange={(checked) => onForm({ ...form, isRequired: checked })} label={copy.requiredSurvey} help={copy.requiredSurveyHelp} />
-            <CheckOption checked={form.isActive} onChange={(checked) => onForm({ ...form, isActive: checked })} label={copy.availableForAssignment} help={copy.activeHelp} />
           </div>
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs leading-5 text-emerald-900">{copy.createSafetyNote}</div>
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs leading-5 text-emerald-900">{editing ? copy.editSafetyNote : copy.createSafetyNote}</div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>{copy.cancel}</Button>
-          <Button onClick={onSave} disabled={pending || !form.code.trim() || !form.title.trim()}>{pending && <Loader2 className="animate-spin" />}{copy.createSurvey}</Button>
+          <Button onClick={onSave} disabled={pending || !form.code.trim() || !form.title.trim()}>{pending && <Loader2 className="animate-spin" />}{editing ? copy.saveChanges : copy.createSurvey}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -1598,6 +1711,8 @@ function parseAuditDetails(value: string | null | undefined): Record<string, unk
 function surveyAuditActionLabel(action: string, isRtl: boolean) {
   const labels: Record<string, [string, string]> = {
     created: ["Survey draft created", "تم إنشاء مسودة الاستبيان"],
+    activated: ["Survey activated", "تم تفعيل الاستبيان"],
+    deactivated: ["Survey returned to draft", "تمت إعادة الاستبيان إلى مسودة"],
     audience_assignment_confirmed: ["Audience assignment confirmed", "تم تأكيد تعيين الجمهور"],
     updated: ["Survey settings updated", "تم تحديث إعدادات الاستبيان"],
   };
@@ -1696,6 +1811,23 @@ function getCopy(isRtl: boolean): Record<string, string> {
     staffOrStudentActor: "مستخدم/موظف",
     reviewedRecipients: "المستلمون الذين تمت مراجعتهم",
     remindersDisabled: "التذكيرات متوقفة لأن استبيانات الطلاب غير مفعّلة. فعّل الميزة من مركز الميزات قبل إرسال أي تذكير.",
+    surveyUpdated: "تم حفظ إعدادات الاستبيان",
+    surveyActivated: "تم تفعيل الاستبيان وأصبح جاهزاً للتوزيع",
+    surveyDeactivated: "تم إيقاف الاستبيان وإخفاؤه عن الطلاب",
+    editSettings: "تعديل الإعدادات",
+    editSurvey: "تعديل الاستبيان",
+    editSurveyHelp: "حدّث الإعدادات دون تغيير المرجع الداخلي أو حالة التفعيل.",
+    saveChanges: "حفظ التغييرات",
+    editSafetyNote: "حفظ الإعدادات لا يرسل إشعارات جديدة للطلاب.",
+    activateSurvey: "تفعيل الاستبيان",
+    deactivateSurvey: "إيقاف الاستبيان",
+    deactivateConfirm: "سيختفي هذا الاستبيان من حسابات الطلاب ولن يمكن توزيعه حتى تعيد تفعيله. هل تريد المتابعة؟",
+    nextStep: "الخطوة التالية",
+    nextAddQuestion: "أضف سؤالاً واحداً على الأقل، ثم عاين تجربة الطالب.",
+    nextActivate: "الأسئلة جاهزة. فعّل الاستبيان للسماح بالتوزيع.",
+    nextDistribute: "الاستبيان فعّال وجاهز لمعاينة الجمهور والتوزيع.",
+    activationRequired: "فعّل الاستبيان قبل التوزيع",
+    activationRequiredBody: "الأسئلة جاهزة، لكن المسودة لا يمكن تعيينها لأي طالب. اضغط التفعيل للانتقال بأمان إلى خطوة التوزيع.",
     loading: "جار التحميل...", title: "استبيانات الطلاب", subtitle: "أنشئ الاستبيان، اختر جمهوره بدقة، راقب الردود، واعرض تجربة الطالب كاملة من حساب المدير دون تسجيل دخول آخر.", available: "متاح للإدارة", protectionOn: "حماية الوصول مفعّلة", protectionOff: "حماية الوصول متوقفة", previewAsStudent: "معاينة كطالب", newSurvey: "استبيان جديد", workspaceSections: "أقسام إدارة الاستبيانات", overview: "نظرة عامة", builder: "تصميم الاستبيان", distribution: "التوزيع", responses: "الردود", studentPreview: "معاينة الطالب", workingSurvey: "الاستبيان الحالي", noAccess: "صلاحية إدارة الاستبيانات مطلوبة", noAccessBody: "اطلب دور مدير استبيانات الطلاب من المسؤول الرئيسي.", surveyCreated: "تم إنشاء الاستبيان كمسودة آمنة", questionAdded: "تمت إضافة السؤال", reminderSent: "تم إرسال تذكير واحد داخل المنصة", nothingToExport: "لا توجد بيانات للتصدير", surveys: "الاستبيانات", configured: "تم إعدادها", totalAssignments: "إجمالي التعيينات", studentsReached: "طالباً مستهدفاً", awaiting: "بانتظار الرد", needResponse: "تحتاج إجابة", overdue: "متأخرة", pastDue: "تجاوزت موعد الرد", submitted: "مرسلة", readyToReview: "جاهزة للمراجعة", quickDemo: "جولة العرض السريعة", quickDemoHelp: "استخدم هذه الخطوات لإظهار الميزة لصاحبة العمل من حساب المدير.", builderAction: "اعرض الأسئلة وإعدادات كل استبيان.", distributionAction: "اختر طالباً أو مجموعة وشاهد العدد قبل التأكيد.", previewAction: "اعرض واجهة الطالب بأمان دون حفظ أي بيانات.", pilotReadiness: "جاهزية التجربة", readinessSurvey: "تم إنشاء استبيان واحد على الأقل", readinessQuestions: "الاستبيان المحدد يحتوي على أسئلة", readinessActive: "الاستبيان متاح للتعيين", readinessPilot: "تم تعيين مجموعة تجريبية", readinessSafeBlocking: "حماية الوصول متوقفة أثناء التجربة", noSurveysTitle: "ابدأ باستبيان واضح وبسيط", noSurveysBody: "لا توجد استبيانات بعد. أنشئ مسودة، أضف الأسئلة، ثم عاينها قبل اختيار أي طالب.", createFirstSurvey: "إنشاء أول استبيان", new: "جديد", active: "متاح", draft: "مسودة", reference: "مرجع داخلي", noSurveySelected: "اختر استبياناً", chooseOrCreate: "اختر استبياناً من القائمة أو أنشئ مسودة جديدة.", required: "مطلوب", optional: "اختياري", availableForAssignment: "متاح للتعيين", preview: "معاينة", postponements: "مرات التأجيل", postponeWindow: "مدة التأجيل (ساعة)", finalDeadlineWindow: "المهلة النهائية (ساعة)", questions: "الأسئلة", questionsHelp: "رتّب ما سيراه الطالب. لن يحدث أي توزيع من هذه الصفحة.", addQuestion: "إضافة سؤال", noQuestionsTitle: "الاستبيان بحاجة إلى أسئلة", noQuestionsBody: "أضف سؤالاً واحداً على الأقل قبل المعاينة أو التوزيع.", addFirstQuestion: "إضافة أول سؤال", audience: "الجمهور", chooseAudience: "من سيستلم هذا الاستبيان؟", oneStudent: "طالب واحد", oneStudentHelp: "الأفضل لأول تجربة آمنة.", selectedStudents: "طلاب محددون", selectedStudentsHelp: "اختر الأسماء واحداً تلو الآخر.", activeStudents: "طلاب باقة نشطة", activeStudentsHelp: "كل الطلاب ذوي الباقة النشطة حالياً.", inactiveStudents: "طلاب دون باقة نشطة", inactiveStudentsHelp: "كل الطلاب الذين لا يملكون باقة نشطة.", allStudents: "جميع الطلاب", allStudentsHelp: "استخدمه فقط بعد مراجعة العدد الكامل.", searchStudents: "ابحث بالاسم أو البريد", showing: "عرض", of: "من", selected: "محدد", noStudentsMatch: "لا يوجد طلاب مطابقون للبحث.", activePackage: "باقة نشطة", noActivePackage: "دون باقة نشطة", alreadyAssigned: "معيّن مسبقاً", schedule: "الجدولة", setDeadlines: "حدد موعد الرد والمهلة النهائية", responseDue: "موعد الرد", finalDeadline: "المهلة النهائية", deadlineError: "يجب أن تكون المهلة النهائية بعد موعد الرد.", blockingWarningTitle: "تنبيه مهم: حماية الوصول مفعّلة", blockingWarningBody: "قد يفقد الطالب الوصول إلى أجزاء من المنصة إذا لم يرسل الاستبيان قبل المهلة النهائية. راجع الجمهور والموعد بعناية قبل التأكيد.", safePilotTitle: "تجربة آمنة: وصول الطالب لن يتغير", safePilotBody: "يتم تسجيل المهلة النهائية للمتابعة فقط. لا يتم حجب أي طالب ما دامت حماية الوصول متوقفة.", reviewConfirm: "المراجعة والتأكيد", recipientPreview: "معاينة المستلمين", chooseRecipientsPrompt: "اختر طالباً أو جمهوراً لعرض العدد الدقيق.", previewUnavailable: "تعذرت معاينة الجمهور. حدّث الصفحة وحاول مرة أخرى.", matching: "مطابق", newAssignments: "جديد", audienceTooLarge: "هذا الجمهور أكبر من حد الأمان (500). اختر مجموعة أصغر.", studentsUnavailable: "بعض الطلاب المحددين لم يعودوا متاحين. راجع اختيارك.", assigned: "معيّن", more: "إضافي", noAutomaticMessages: "التعيين لا يرسل بريداً أو تذكيراً تلقائياً. يمكن إرسال تذكير فردي لاحقاً من صفحة الردود.", assignTo: "تعيين إلى", students: "طالب", chooseSurveyFirst: "اختر استبياناً أولاً", chooseSurveyFirstBody: "اختر الاستبيان الذي تريد توزيعه من أداة الاختيار أعلاه.", openBuilder: "فتح التصميم", questionsRequired: "أضف الأسئلة قبل التوزيع", questionsRequiredBody: "لا يمكن توزيع استبيان فارغ. أضف سؤالاً ثم ارجع إلى هذه الصفحة.", addQuestions: "إضافة الأسئلة", all: "الكل", accessRestricted: "الوصول مقيّد", finalDeadlinePassed: "تجاوز المهلة", responsesAssignments: "التعيينات وردود الطلاب", responsesHelp: "تابع كل طالب، راجع الإجابات، وأرسل تذكيراً فردياً عند الحاجة.", exportAssignments: "تصدير التعيينات", distributeSurvey: "توزيع الاستبيان", noAssignmentsTitle: "لا توجد تعيينات بعد", noAssignmentsBody: "ابدأ بطالب واحد أو مجموعة تجريبية صغيرة، وراجع العدد قبل التأكيد.", noResultsForFilter: "لا توجد نتائج ضمن هذا الفلتر.", submittedAt: "أرسل في", selectAssignment: "اختر تعييناً لعرض التفاصيل.", studentResponse: "إجابة الطالب", exportAnswers: "تصدير الإجابات", sendOneReminder: "تذكير واحد", reminderHelp: "يرسل تذكيراً واحداً داخل المنصة لهذا الطالب فقط؛ لا يتم إرسال بريد جماعي.", status: "الحالة", deadlineState: "حالة الموعد", noAnswers: "لم يرسل الطالب إجابات بعد.", previewHelp: "هذه معاينة تفاعلية محلية فقط. لا تحفظ الردود، ولا ترسل إشعارات، ولا تغيّر وصول الطالب.", notLive: "غير متاح للطلاب حالياً", disabledBody: "مساحة الاستبيانات غير مفعّلة حالياً. يمكنك مع ذلك عرض تجربة الطالب النموذجية بأمان ومراجعة خطوات الإعداد قبل إطلاق تجربة صغيرة.", reviewActivation: "مراجعة التفعيل", prepare: "الإعداد", prepareBody: "جهّز العنوان والأسئلة والجمهور التجريبي.", previewSetupBody: "اعرض التجربة من حساب المدير دون تغيير أي بيانات.", pilot: "تجربة صغيرة", pilotBody: "ابدأ بطالب واحد وراجع الرد قبل التوسع.", sampleStudentPreview: "معاينة نموذجية للطالب", disabledPreviewHelp: "بيانات توضيحية فقط؛ لا اتصال بأي حساب طالب.", previewWithoutActivation: "يمكنك العرض دون تفعيل الميزة", previewWithoutActivationBody: "افتح معاينة نموذجية كاملة الآن لتشرح الشكل والتدفق لصاحبة العمل بأمان.", openSafePreview: "فتح المعاينة الآمنة", createSurveyHelp: "يبدأ الاستبيان كمسودة. إنشاء الاستبيان وحده لا يعيّنه لأي طالب.", surveyTitle: "عنوان الاستبيان", description: "الوصف", referenceHelp: "حروف إنجليزية صغيرة وأرقام وشرطة فقط؛ لا يظهر هذا المرجع للطالب.", requiredSurvey: "استبيان مطلوب", requiredSurveyHelp: "يظهر للطالب كاستبيان مطلوب، لكن الوصول لا يتغير إلا عند تفعيل الحماية بشكل منفصل.", activeHelp: "يسمح باختياره للتوزيع بعد إضافة الأسئلة.", createSafetyNote: "إنشاء هذه المسودة لا يرسل إشعاراً ولا يغيّر حساب أي طالب.", cancel: "إلغاء", createSurvey: "إنشاء المسودة", questionText: "نص السؤال", questionType: "نوع السؤال", sortOrder: "الترتيب", options: "الخيارات", optionsHelp: "اكتب كل خيار في سطر مستقل.", requiredQuestion: "إجابة مطلوبة", requiredQuestionHelp: "يجب على الطالب الإجابة قبل الإرسال.",
   } : {
     workspaceUnavailable: "Survey workspace unavailable",
@@ -1713,6 +1845,23 @@ function getCopy(isRtl: boolean): Record<string, string> {
     staffOrStudentActor: "User/staff",
     reviewedRecipients: "Reviewed recipients",
     remindersDisabled: "Reminders are disabled while Student Surveys is off. Activate the feature in Feature Center before sending any reminder.",
+    surveyUpdated: "Survey settings saved",
+    surveyActivated: "Survey activated and ready for distribution",
+    surveyDeactivated: "Survey deactivated and hidden from students",
+    editSettings: "Edit settings",
+    editSurvey: "Edit survey",
+    editSurveyHelp: "Update settings without changing the internal reference or activation state.",
+    saveChanges: "Save changes",
+    editSafetyNote: "Saving settings does not send new student notifications.",
+    activateSurvey: "Activate survey",
+    deactivateSurvey: "Deactivate survey",
+    deactivateConfirm: "This survey will disappear from student accounts and cannot be distributed until you reactivate it. Continue?",
+    nextStep: "Next step",
+    nextAddQuestion: "Add at least one question, then preview the student experience.",
+    nextActivate: "Questions are ready. Activate the survey to allow distribution.",
+    nextDistribute: "The survey is active and ready for audience preview and distribution.",
+    activationRequired: "Activate the survey before distribution",
+    activationRequiredBody: "The questions are ready, but a draft cannot be assigned to students. Activate it to continue safely to distribution.",
     loading: "Loading…", title: "Student Surveys", subtitle: "Build a survey, choose its audience precisely, monitor responses, and demonstrate the complete student experience from the admin account—no second login needed.", available: "Available to manage", protectionOn: "Access protection is on", protectionOff: "Access protection is off", previewAsStudent: "Preview as student", newSurvey: "New survey", workspaceSections: "Survey workspace sections", overview: "Overview", builder: "Survey builder", distribution: "Distribution", responses: "Responses", studentPreview: "Student preview", workingSurvey: "Working survey", noAccess: "Survey management access required", noAccessBody: "Ask the main administrator to grant the Student Surveys Manager role.", surveyCreated: "Survey created as a safe draft", questionAdded: "Question added", reminderSent: "One in-app reminder was sent", nothingToExport: "There is nothing to export", surveys: "Surveys", configured: "configured", totalAssignments: "Total assignments", studentsReached: "students reached", awaiting: "Awaiting response", needResponse: "need a response", overdue: "Overdue", pastDue: "past response due date", submitted: "Submitted", readyToReview: "ready to review", quickDemo: "Quick demo journey", quickDemoHelp: "Use these steps to demonstrate the feature to the business owner entirely from the admin account.", builderAction: "Show the questions and settings for each survey.", distributionAction: "Choose one student or an audience and preview the exact count.", previewAction: "Show the student interface safely without saving data.", pilotReadiness: "Pilot readiness", readinessSurvey: "At least one survey has been created", readinessQuestions: "The selected survey has questions", readinessActive: "The survey is available for assignment", readinessPilot: "A pilot audience has been assigned", readinessSafeBlocking: "Access protection is off during the pilot", noSurveysTitle: "Start with one clear, simple survey", noSurveysBody: "No surveys exist yet. Create a draft, add questions, then preview it before selecting any student.", createFirstSurvey: "Create first survey", new: "New", active: "Available", draft: "Draft", reference: "Internal reference", noSurveySelected: "Choose a survey", chooseOrCreate: "Select a survey from the list or create a new draft.", required: "Required", optional: "Optional", availableForAssignment: "Available for assignment", preview: "Preview", postponements: "Postponements", postponeWindow: "Postpone window (hours)", finalDeadlineWindow: "Final deadline window (hours)", questions: "Questions", questionsHelp: "Arrange what the student will see. Nothing is distributed from this section.", addQuestion: "Add question", noQuestionsTitle: "This survey needs questions", noQuestionsBody: "Add at least one question before previewing or distributing it.", addFirstQuestion: "Add first question", audience: "Audience", chooseAudience: "Who should receive this survey?", oneStudent: "One student", oneStudentHelp: "Best for the first safe pilot.", selectedStudents: "Selected students", selectedStudentsHelp: "Choose individual students by name.", activeStudents: "Active-package students", activeStudentsHelp: "Every student with an active package now.", inactiveStudents: "No active package", inactiveStudentsHelp: "Every student without an active package.", allStudents: "All students", allStudentsHelp: "Use only after reviewing the complete count.", searchStudents: "Search by name or email", showing: "Showing", of: "of", selected: "selected", noStudentsMatch: "No students match this search.", activePackage: "Active package", noActivePackage: "No active package", alreadyAssigned: "Already assigned", schedule: "Schedule", setDeadlines: "Set the response and final deadlines", responseDue: "Response due", finalDeadline: "Final deadline", deadlineError: "The final deadline must be after the response due date.", blockingWarningTitle: "Important: access protection is enabled", blockingWarningBody: "A student may lose access to parts of the platform if they do not submit before the final deadline. Review the audience and dates carefully before confirming.", safePilotTitle: "Safe pilot: student access will not change", safePilotBody: "The final deadline is recorded for follow-up only. No student is blocked while access protection remains off.", reviewConfirm: "Review & confirm", recipientPreview: "Recipient preview", chooseRecipientsPrompt: "Choose a student or audience to see the exact count.", previewUnavailable: "The audience preview is unavailable. Refresh and try again.", matching: "Matching", newAssignments: "New", audienceTooLarge: "This audience exceeds the 500-student safety limit. Choose a narrower group.", studentsUnavailable: "Some selected students are no longer available. Review your selection.", assigned: "Assigned", more: "more", noAutomaticMessages: "Assignment sends no email or automatic reminder. A single in-app reminder can be sent later from Responses.", assignTo: "Assign to", students: "students", chooseSurveyFirst: "Choose a survey first", chooseSurveyFirstBody: "Select the survey you want to distribute using the selector above.", openBuilder: "Open builder", questionsRequired: "Add questions before distribution", questionsRequiredBody: "An empty survey cannot be distributed. Add a question, then return here.", addQuestions: "Add questions", all: "All", accessRestricted: "Access restricted", finalDeadlinePassed: "Final deadline passed", responsesAssignments: "Assignments & student responses", responsesHelp: "Track each student, review answers, and send a single reminder only when needed.", exportAssignments: "Export assignments", distributeSurvey: "Distribute survey", noAssignmentsTitle: "No assignments yet", noAssignmentsBody: "Start with one student or a small pilot group, and review the count before confirming.", noResultsForFilter: "No results match this filter.", submittedAt: "Submitted", selectAssignment: "Select an assignment to view its details.", studentResponse: "Student response", exportAnswers: "Export answers", sendOneReminder: "One reminder", reminderHelp: "Sends one in-app reminder to this student only; no bulk email is sent.", status: "Status", deadlineState: "Deadline state", noAnswers: "The student has not submitted answers yet.", previewHelp: "This is a local interactive preview only. It does not save responses, send notifications, or change student access.", notLive: "Not currently available to students", disabledBody: "The survey workspace is not currently active. You can still safely demonstrate a sample student experience and review the setup journey before launching a small pilot.", reviewActivation: "Review activation", prepare: "Prepare", prepareBody: "Plan the title, questions, and pilot audience.", previewSetupBody: "Demonstrate the experience from admin without changing data.", pilot: "Small pilot", pilotBody: "Start with one student and review the result before expanding.", sampleStudentPreview: "Sample student preview", disabledPreviewHelp: "Illustrative data only; no student account is connected.", previewWithoutActivation: "You can demonstrate without activation", previewWithoutActivationBody: "Open a complete sample now to explain the appearance and flow to the business owner safely.", openSafePreview: "Open safe preview", createSurveyHelp: "The survey starts as a draft. Creating it does not assign it to any student.", surveyTitle: "Survey title", description: "Description", referenceHelp: "Lowercase letters, numbers, dashes, and underscores only. Students do not see this reference.", requiredSurvey: "Required survey", requiredSurveyHelp: "Shown as required to the student; access changes only if protection is enabled separately.", activeHelp: "Makes it available for selection after questions are added.", createSafetyNote: "Creating this draft sends no notification and changes no student account.", cancel: "Cancel", createSurvey: "Create draft", questionText: "Question text", questionType: "Question type", sortOrder: "Sort order", options: "Options", optionsHelp: "Put each option on its own line.", requiredQuestion: "Answer required", requiredQuestionHelp: "The student must answer before submitting.",
   };
 }

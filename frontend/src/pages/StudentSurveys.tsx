@@ -113,6 +113,8 @@ export default function StudentSurveys() {
     postpone: "تأجيل",
     submit: "إرسال الاستبيان",
     submitted: "تم إرسال هذا الاستبيان.",
+    submittedNoticeTitle: "تم استلام إجابتك",
+    submittedNoticeBody: "اكتمل هذا الاستبيان بنجاح، ويمكنك الرجوع إليه لمراجعة حالته وموعد الإرسال.",
     restrictedTitle: "أكمل الاستبيان لاستعادة الوصول",
     restrictedBody: "انتهى الموعد النهائي لهذا الاستبيان الإلزامي. لا يزال بإمكانك إرساله أدناه، وسيُستعاد وصولك بعد إرسال جميع الاستبيانات الإلزامية المتأخرة.",
     finalDeadlineTitle: "انتهى الموعد النهائي",
@@ -145,6 +147,8 @@ export default function StudentSurveys() {
     postpone: "Postpone",
     submit: "Submit survey",
     submitted: "This survey has been submitted.",
+    submittedNoticeTitle: "Your response was received",
+    submittedNoticeBody: "This survey is complete. You can return here to review its status and submission time.",
     restrictedTitle: "Complete this survey to restore access",
     restrictedBody: "This required survey passed its final deadline. You can still submit it below; access is restored once every overdue required survey is submitted.",
     finalDeadlineTitle: "Final deadline passed",
@@ -324,7 +328,7 @@ export default function StudentSurveys() {
           const values = Array.isArray(value) ? value : [];
           return {
             questionId: question.id,
-            answerText: values.join(", "),
+            answerText: null,
             answerJson: JSON.stringify(values),
           };
         }
@@ -353,7 +357,9 @@ export default function StudentSurveys() {
     return <PageState title={labels.noAssignmentsTitle} body={labels.noAssignmentsBody} icon={<ClipboardCheck className="h-7 w-7" />} />;
   }
 
-  const notice = selectedAssignment?.accessState === "blocked"
+  const notice = selectedAssignment?.status === "submitted"
+    ? { icon: <CheckCircle2 className="h-4 w-4" />, title: labels.submittedNoticeTitle, body: labels.submittedNoticeBody, className: "border-emerald-200 bg-emerald-50 text-emerald-900" }
+    : selectedAssignment?.accessState === "blocked"
     ? accessProtectionApplies
       ? { icon: <AlertCircle className="h-4 w-4" />, title: labels.restrictedTitle, body: labels.restrictedBody, className: "border-red-200 bg-red-50 text-red-900" }
       : { icon: <AlertCircle className="h-4 w-4" />, title: labels.finalDeadlineTitle, body: labels.finalDeadlineBody, className: "border-amber-200 bg-amber-50 text-amber-900" }

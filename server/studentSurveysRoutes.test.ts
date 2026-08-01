@@ -12,6 +12,8 @@ vi.mock("../backend/db", async () => {
     listStudentSurveyAssignmentsForUser: vi.fn(),
     listStudentSurveyBlockingAssignmentsForUser: vi.fn(),
     createStudentSurvey: vi.fn(),
+    updateStudentSurvey: vi.fn(),
+    setStudentSurveyActive: vi.fn(),
     getStudentSurvey: vi.fn(),
     createStudentSurveyQuestion: vi.fn(),
     assignStudentSurvey: vi.fn(),
@@ -61,6 +63,7 @@ const activeAssignment = {
   postponementsUsed: 0,
   maxPostponements: 2,
   postponeHours: 24,
+  surveyIsActive: true,
   questions: [
     { id: 11, isRequired: true, questionType: "short_text", optionsJson: null },
   ],
@@ -121,6 +124,7 @@ describe("student survey routes", () => {
     vi.mocked(db.getStudentSurvey).mockResolvedValue({
       id: 3,
       title: "Pilot check-in",
+      isActive: true,
       questions: [{ id: 11, questionText: "How was it?" }],
     } as any);
     vi.mocked(db.createStudentSurveyQuestion).mockResolvedValue({ id: 11 } as any);
@@ -281,7 +285,7 @@ describe("student survey routes", () => {
 
   it("rejects choice questions without enough options", async () => {
     vi.mocked(db.getAdminByEmail).mockResolvedValue({ id: 1, email: "admin@example.com" } as any);
-    vi.mocked(db.getStudentSurvey).mockResolvedValue({ id: 3, questions: [] } as any);
+    vi.mocked(db.getStudentSurvey).mockResolvedValue({ id: 3, isActive: true, questions: [] } as any);
 
     await expect(createCaller(1, "admin@example.com").studentSurveys.createQuestion({
       surveyId: 3,
@@ -294,7 +298,7 @@ describe("student survey routes", () => {
 
   it("rejects duplicate choice options", async () => {
     vi.mocked(db.getAdminByEmail).mockResolvedValue({ id: 1, email: "admin@example.com" } as any);
-    vi.mocked(db.getStudentSurvey).mockResolvedValue({ id: 3, questions: [] } as any);
+    vi.mocked(db.getStudentSurvey).mockResolvedValue({ id: 3, isActive: true, questions: [] } as any);
 
     await expect(createCaller(1, "admin@example.com").studentSurveys.createQuestion({
       surveyId: 3,
@@ -310,7 +314,7 @@ describe("student survey routes", () => {
 
   it("normalizes valid choice options before saving", async () => {
     vi.mocked(db.getAdminByEmail).mockResolvedValue({ id: 1, email: "admin@example.com" } as any);
-    vi.mocked(db.getStudentSurvey).mockResolvedValue({ id: 3, questions: [] } as any);
+    vi.mocked(db.getStudentSurvey).mockResolvedValue({ id: 3, isActive: true, questions: [] } as any);
     vi.mocked(db.createStudentSurveyQuestion).mockResolvedValue({ id: 12 } as any);
 
     await expect(createCaller(1, "admin@example.com").studentSurveys.createQuestion({
@@ -384,7 +388,7 @@ describe("student survey routes", () => {
 
   it("previews filtered recipients and separates existing assignments", async () => {
     vi.mocked(db.getAdminByEmail).mockResolvedValue({ id: 1, email: "admin@example.com" } as any);
-    vi.mocked(db.getStudentSurvey).mockResolvedValue({ id: 3, questions: [{ id: 1 }] } as any);
+    vi.mocked(db.getStudentSurvey).mockResolvedValue({ id: 3, isActive: true, questions: [{ id: 1 }] } as any);
     vi.mocked(db.getStudentsForNotification).mockResolvedValue([
       { id: 10, name: "Active One", email: "one@example.com", hasActivePackage: true },
       { id: 11, name: "Inactive", email: "inactive@example.com", hasActivePackage: false },
@@ -418,7 +422,7 @@ describe("student survey routes", () => {
 
   it("rejects a bulk confirmation when the recipient preview changed", async () => {
     vi.mocked(db.getAdminByEmail).mockResolvedValue({ id: 1, email: "admin@example.com" } as any);
-    vi.mocked(db.getStudentSurvey).mockResolvedValue({ id: 3, questions: [{ id: 1 }] } as any);
+    vi.mocked(db.getStudentSurvey).mockResolvedValue({ id: 3, isActive: true, questions: [{ id: 1 }] } as any);
     vi.mocked(db.getStudentsForNotification).mockResolvedValue([
       { id: 10, name: "Student", email: "student@example.com", hasActivePackage: true },
     ]);
@@ -439,7 +443,7 @@ describe("student survey routes", () => {
 
   it("rejects confirmation when the matched audience grows after preview", async () => {
     vi.mocked(db.getAdminByEmail).mockResolvedValue({ id: 1, email: "admin@example.com" } as any);
-    vi.mocked(db.getStudentSurvey).mockResolvedValue({ id: 3, questions: [{ id: 1 }] } as any);
+    vi.mocked(db.getStudentSurvey).mockResolvedValue({ id: 3, isActive: true, questions: [{ id: 1 }] } as any);
     vi.mocked(db.getStudentsForNotification).mockResolvedValue([
       { id: 10, name: "Original", email: "original@example.com", hasActivePackage: true },
       { id: 11, name: "New match", email: "new@example.com", hasActivePackage: true },
@@ -459,7 +463,7 @@ describe("student survey routes", () => {
 
   it("assigns a confirmed selected audience idempotently without notification fanout", async () => {
     vi.mocked(db.getAdminByEmail).mockResolvedValue({ id: 1, email: "admin@example.com" } as any);
-    vi.mocked(db.getStudentSurvey).mockResolvedValue({ id: 3, questions: [{ id: 1 }] } as any);
+    vi.mocked(db.getStudentSurvey).mockResolvedValue({ id: 3, isActive: true, questions: [{ id: 1 }] } as any);
     vi.mocked(db.getStudentsForNotification).mockResolvedValue([
       { id: 10, name: "One", email: "one@example.com", hasActivePackage: true },
       { id: 11, name: "Two", email: "two@example.com", hasActivePackage: false },
@@ -499,7 +503,7 @@ describe("student survey routes", () => {
 
   it("treats an already assigned audience as a successful no-op", async () => {
     vi.mocked(db.getAdminByEmail).mockResolvedValue({ id: 1, email: "admin@example.com" } as any);
-    vi.mocked(db.getStudentSurvey).mockResolvedValue({ id: 3, questions: [{ id: 1 }] } as any);
+    vi.mocked(db.getStudentSurvey).mockResolvedValue({ id: 3, isActive: true, questions: [{ id: 1 }] } as any);
     vi.mocked(db.getStudentsForNotification).mockResolvedValue([
       { id: 10, name: "Student", email: "student@example.com", hasActivePackage: true },
     ]);
@@ -639,7 +643,7 @@ describe("student survey routes", () => {
     expect(db.submitStudentSurveyAssignment).toHaveBeenCalledWith({
       id: 7,
       userId: 9,
-      answers: [{ questionId: 11, answerText: "Helpful" }],
+      answers: [{ questionId: 11, answerText: "Helpful", answerJson: null }],
     });
     expect(db.notifyStaffByEvent).toHaveBeenCalledOnce();
   });
@@ -716,5 +720,189 @@ describe("student survey routes", () => {
       answers: [{ questionId: 11, answerText: "Completed after deadline" }],
     })).resolves.toMatchObject({ id: 7, status: "submitted" });
     expect(db.submitStudentSurveyAssignment).toHaveBeenCalledOnce();
+  });
+
+  it("always creates a draft and rejects create-time activation", async () => {
+    vi.mocked(db.getAdminByEmail).mockResolvedValue({ id: 1, email: "admin@example.com" } as any);
+
+    await expect(createCaller(1, "admin@example.com").studentSurveys.createSurvey({
+      code: "unsafe-live-create",
+      title: "Unsafe live create",
+      isActive: true,
+    })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(db.createStudentSurvey).not.toHaveBeenCalled();
+  });
+
+  it("updates draft settings without changing activation state", async () => {
+    vi.mocked(db.getAdminByEmail).mockResolvedValue({ id: 1, email: "admin@example.com" } as any);
+    vi.mocked(db.updateStudentSurvey).mockResolvedValue({ id: 3, title: "Updated" } as any);
+
+    await expect(createCaller(1, "admin@example.com").studentSurveys.updateSurvey({
+      id: 3,
+      title: "Updated",
+      description: null,
+      maxPostponements: 0,
+    })).resolves.toMatchObject({ id: 3, title: "Updated" });
+    expect(db.updateStudentSurvey).toHaveBeenCalledWith({
+      id: 3,
+      title: "Updated",
+      description: null,
+      maxPostponements: 0,
+      actorUserId: 1,
+    });
+  });
+
+  it("requires a question before activation and then activates explicitly", async () => {
+    vi.mocked(db.getAdminByEmail).mockResolvedValue({ id: 1, email: "admin@example.com" } as any);
+    vi.mocked(db.getStudentSurvey).mockResolvedValueOnce({
+      id: 3,
+      isActive: false,
+      questions: [],
+    } as any).mockResolvedValueOnce({
+      id: 3,
+      isActive: false,
+      questions: [{ id: 11 }],
+    } as any);
+    vi.mocked(db.setStudentSurveyActive).mockResolvedValue({ id: 3, isActive: true } as any);
+
+    await expect(createCaller(1, "admin@example.com").studentSurveys.setSurveyActive({
+      id: 3,
+      isActive: true,
+    })).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+    await expect(createCaller(1, "admin@example.com").studentSurveys.setSurveyActive({
+      id: 3,
+      isActive: true,
+    })).resolves.toMatchObject({ isActive: true });
+    expect(db.setStudentSurveyActive).toHaveBeenCalledOnce();
+  });
+
+  it("blocks distribution while a survey is still a draft", async () => {
+    vi.mocked(db.getAdminByEmail).mockResolvedValue({ id: 1, email: "admin@example.com" } as any);
+    vi.mocked(db.getStudentSurvey).mockResolvedValue({
+      id: 3,
+      isActive: false,
+      questions: [{ id: 11 }],
+    } as any);
+    vi.mocked(db.getStudentsForNotification).mockResolvedValue([
+      { id: 10, name: "Pilot", email: "pilot@example.com", hasActivePackage: true },
+    ]);
+
+    await expect(createCaller(1, "admin@example.com").studentSurveys.assignAudience({
+      surveyId: 3,
+      audience: { mode: "single", userIds: [10] },
+      dueAt: "2026-08-10T10:00:00.000Z",
+      blockAt: "2026-08-12T10:00:00.000Z",
+      expectedRecipientIds: [10],
+      expectedMatchedStudentIds: [10],
+      confirmed: true,
+    })).rejects.toMatchObject({
+      code: "PRECONDITION_FAILED",
+      message: "Activate this survey before distributing it",
+    });
+    expect(db.assignStudentSurveyAudience).not.toHaveBeenCalled();
+  });
+
+  it("hides an inactive assignment from its student but keeps admin review available", async () => {
+    vi.mocked(db.getStudentSurveyAssignment).mockResolvedValue({
+      ...activeAssignment,
+      surveyIsActive: false,
+    } as any);
+
+    await expect(createCaller(9).studentSurveys.getMyAssignment({ id: 7 }))
+      .rejects.toMatchObject({ code: "NOT_FOUND" });
+
+    vi.mocked(db.getAdminByEmail).mockResolvedValue({ id: 1, email: "admin@example.com" } as any);
+    await expect(createCaller(1, "admin@example.com").studentSurveys.getMyAssignment({ id: 7 }))
+      .resolves.toMatchObject({ id: 7, surveyIsActive: false });
+  });
+
+  it("prevents postpone and submit after deactivation", async () => {
+    vi.mocked(db.getStudentSurveyAssignment).mockResolvedValue({
+      ...activeAssignment,
+      surveyIsActive: false,
+    } as any);
+
+    await expect(createCaller(9).studentSurveys.postpone({ id: 7 }))
+      .rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+    await expect(createCaller(9).studentSurveys.submit({
+      id: 7,
+      answers: [{ questionId: 11, answerText: "Hidden" }],
+    })).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+    expect(db.postponeStudentSurveyAssignment).not.toHaveBeenCalled();
+    expect(db.submitStudentSurveyAssignment).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["unknown question", [{ id: 11, isRequired: false, questionType: "short_text", optionsJson: null }], [{ questionId: 99, answerText: "x" }]],
+    ["duplicate question", [{ id: 11, isRequired: true, questionType: "short_text", optionsJson: null }], [{ questionId: 11, answerText: "x" }, { questionId: 11, answerText: "x" }]],
+    ["text JSON bypass", [{ id: 11, isRequired: true, questionType: "short_text", optionsJson: null }], [{ questionId: 11, answerJson: '"bypass"' }]],
+    ["single-choice list bypass", [{ id: 11, isRequired: true, questionType: "single_choice", optionsJson: '["A","B"]' }], [{ questionId: 11, answerJson: '["A"]' }]],
+    ["unknown single choice", [{ id: 11, isRequired: true, questionType: "single_choice", optionsJson: '["A","B"]' }], [{ questionId: 11, answerText: "C" }]],
+    ["invalid multiple-choice JSON", [{ id: 11, isRequired: true, questionType: "multiple_choice", optionsJson: '["A","B"]' }], [{ questionId: 11, answerJson: "not-json" }]],
+    ["duplicate multiple choices", [{ id: 11, isRequired: true, questionType: "multiple_choice", optionsJson: '["A","B"]' }], [{ questionId: 11, answerJson: '["A","A"]' }]],
+    ["unknown multiple choice", [{ id: 11, isRequired: true, questionType: "multiple_choice", optionsJson: '["A","B"]' }], [{ questionId: 11, answerJson: '["C"]' }]],
+    ["rating JSON bypass", [{ id: 11, isRequired: true, questionType: "rating", optionsJson: null }], [{ questionId: 11, answerJson: "5" }]],
+    ["out-of-range rating", [{ id: 11, isRequired: true, questionType: "rating", optionsJson: null }], [{ questionId: 11, answerText: "6" }]],
+  ])("rejects %s submissions", async (_label, questions, answers) => {
+    vi.mocked(db.getStudentSurveyAssignment).mockResolvedValue({
+      ...activeAssignment,
+      questions,
+    } as any);
+
+    await expect(createCaller(9).studentSurveys.submit({ id: 7, answers } as any))
+      .rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(db.submitStudentSurveyAssignment).not.toHaveBeenCalled();
+  });
+
+  it("accepts no answers when every question is optional", async () => {
+    vi.mocked(db.getStudentSurveyAssignment).mockResolvedValue({
+      ...activeAssignment,
+      questions: [{ id: 11, isRequired: false, questionType: "short_text", optionsJson: null }],
+    } as any);
+    vi.mocked(db.submitStudentSurveyAssignment).mockResolvedValue({
+      assignment: { id: 7, status: "submitted" },
+      submittedNow: true,
+    } as any);
+
+    await expect(createCaller(9).studentSurveys.submit({ id: 7, answers: [] }))
+      .resolves.toMatchObject({ status: "submitted" });
+    expect(db.submitStudentSurveyAssignment).toHaveBeenCalledWith({
+      id: 7,
+      userId: 9,
+      answers: [],
+    });
+  });
+
+  it("normalizes valid answers before persistence and idempotency", async () => {
+    vi.mocked(db.getStudentSurveyAssignment).mockResolvedValue({
+      ...activeAssignment,
+      questions: [
+        { id: 11, isRequired: true, questionType: "short_text", optionsJson: null },
+        { id: 12, isRequired: true, questionType: "multiple_choice", optionsJson: '["A","B"]' },
+        { id: 13, isRequired: true, questionType: "rating", optionsJson: null },
+      ],
+    } as any);
+    vi.mocked(db.submitStudentSurveyAssignment).mockResolvedValue({
+      assignment: { id: 7, status: "submitted" },
+      submittedNow: true,
+    } as any);
+
+    await createCaller(9).studentSurveys.submit({
+      id: 7,
+      answers: [
+        { questionId: 13, answerText: "5" },
+        { questionId: 12, answerJson: '["B","A"]' },
+        { questionId: 11, answerText: "  Helpful  " },
+      ],
+    });
+    expect(db.submitStudentSurveyAssignment).toHaveBeenCalledWith({
+      id: 7,
+      userId: 9,
+      answers: [
+        { questionId: 11, answerText: "Helpful", answerJson: null },
+        { questionId: 12, answerText: null, answerJson: '["B","A"]' },
+        { questionId: 13, answerText: "5", answerJson: null },
+      ],
+    });
   });
 });

@@ -3370,6 +3370,70 @@ export async function createStudentSurvey(input: {
   return survey;
 }
 
+export async function updateStudentSurvey(input: {
+  id: number;
+  title?: string;
+  description?: string | null;
+  isRequired?: boolean;
+  maxPostponements?: number;
+  postponeHours?: number;
+  blockAfterHours?: number;
+  actorUserId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const current = await getStudentSurvey(input.id);
+  if (!current) return null;
+
+  const changes = {
+    ...(input.title !== undefined ? { title: input.title } : {}),
+    ...(input.description !== undefined ? { description: input.description } : {}),
+    ...(input.isRequired !== undefined ? { isRequired: input.isRequired } : {}),
+    ...(input.maxPostponements !== undefined ? { maxPostponements: input.maxPostponements } : {}),
+    ...(input.postponeHours !== undefined ? { postponeHours: input.postponeHours } : {}),
+    ...(input.blockAfterHours !== undefined ? { blockAfterHours: input.blockAfterHours } : {}),
+    updatedAt: new Date().toISOString(),
+  };
+  const [updated] = await db.update(studentSurveys).set(changes)
+    .where(eq(studentSurveys.id, input.id)).returning();
+  if (!updated) return null;
+  await logStudentSurveyAudit({
+    entityType: "survey",
+    entityId: input.id,
+    surveyId: input.id,
+    actorUserId: input.actorUserId,
+    action: "updated",
+    details: Object.fromEntries(
+      Object.entries(changes).filter(([key]) => key !== "updatedAt"),
+    ),
+  });
+  return updated;
+}
+
+export async function setStudentSurveyActive(input: {
+  id: number;
+  isActive: boolean;
+  actorUserId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const now = new Date().toISOString();
+  const [updated] = await db.update(studentSurveys).set({
+    isActive: input.isActive,
+    updatedAt: now,
+  }).where(eq(studentSurveys.id, input.id)).returning();
+  if (!updated) return null;
+  await logStudentSurveyAudit({
+    entityType: "survey",
+    entityId: input.id,
+    surveyId: input.id,
+    actorUserId: input.actorUserId,
+    action: input.isActive ? "activated" : "deactivated",
+    details: { isActive: input.isActive },
+  });
+  return updated;
+}
+
 export async function listStudentSurveys(limit = 50) {
   const db = await getDb();
   if (!db) return [];
@@ -3626,7 +3690,10 @@ export async function listStudentSurveyAssignmentsForUser(userId: number, limit 
     postponeHours: studentSurveys.postponeHours,
   }).from(studentSurveyAssignments)
     .innerJoin(studentSurveys, eq(studentSurveyAssignments.surveyId, studentSurveys.id))
-    .where(eq(studentSurveyAssignments.userId, userId))
+    .where(and(
+      eq(studentSurveyAssignments.userId, userId),
+      eq(studentSurveys.isActive, true),
+    ))
     .orderBy(sql`CASE
         WHEN ${studentSurveys.isActive} = 1
           AND ${studentSurveys.isRequired} = 1

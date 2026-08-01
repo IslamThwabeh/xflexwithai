@@ -1144,6 +1144,15 @@ function validateStudentSurveyAnswers(input: {
 }) {
   const questionById = new Map(input.questions.map((question) => [question.id, question]));
   const seen = new Set<number>();
+  const normalized: Array<{
+    questionId: number;
+    answerText: string | null;
+    answerJson: string | null;
+  }> = [];
+
+  const invalid = (message: string): never => {
+    throw new TRPCError({ code: "BAD_REQUEST", message });
+  };
 
   for (const answer of input.answers) {
     const question = questionById.get(answer.questionId);
@@ -1155,27 +1164,69 @@ function validateStudentSurveyAnswers(input: {
     }
     seen.add(answer.questionId);
 
-    const value = answer.answerText?.trim() || answer.answerJson?.trim() || "";
-    if (!value && question.isRequired) {
-      throw new TRPCError({ code: "BAD_REQUEST", message: "Required survey answers cannot be empty" });
+    const answerText = answer.answerText?.trim() || null;
+    const answerJson = answer.answerJson?.trim() || null;
+    const options = parseSurveyOptions(question.optionsJson);
+    let normalizedText: string | null = null;
+    let normalizedJson: string | null = null;
+
+    if (question.questionType === "short_text" || question.questionType === "long_text") {
+      if (answerJson) invalid("Text questions require a text answer");
+      normalizedText = answerText;
+    } else if (question.questionType === "single_choice") {
+      if (answerJson) invalid("Single-choice questions require exactly one option");
+      if (answerText && !options.includes(answerText)) {
+        invalid("Survey answer is not one of the allowed options");
+      }
+      normalizedText = answerText;
+    } else if (question.questionType === "multiple_choice") {
+      if (answerText) invalid("Multiple-choice questions require an option list");
+      let selected: unknown = [];
+      if (answerJson) {
+        try {
+          selected = JSON.parse(answerJson);
+        } catch {
+          invalid("Multiple-choice answers must be a valid option list");
+        }
+      }
+      if (!Array.isArray(selected) || selected.some((value) => typeof value !== "string")) {
+        invalid("Multiple-choice answers must be a valid option list");
+      }
+      const selectedOptions = selected as string[];
+      if (new Set(selectedOptions).size !== selectedOptions.length) {
+        invalid("Multiple-choice answers cannot contain duplicate options");
+      }
+      if (selectedOptions.some((value) => !options.includes(value))) {
+        invalid("Survey answer contains an option that is not allowed");
+      }
+      normalizedJson = selectedOptions.length ? JSON.stringify(selectedOptions) : null;
+    } else if (question.questionType === "rating") {
+      if (answerJson) invalid("Rating questions require one numeric rating");
+      const rating = answerText === null ? null : Number(answerText);
+      if (rating !== null && (!Number.isInteger(rating) || rating < 1 || rating > 5)) {
+        invalid("Rating answers must be between 1 and 5");
+      }
+      normalizedText = rating === null ? null : String(rating);
+    } else {
+      invalid("This survey contains an unsupported question type");
     }
 
-    const options = parseSurveyOptions(question.optionsJson);
-    if (value && question.questionType === "single_choice" && options.length > 0 && !options.includes(answer.answerText ?? "")) {
-      throw new TRPCError({ code: "BAD_REQUEST", message: "Survey answer is not one of the allowed options" });
+    if (!normalizedText && !normalizedJson) {
+      if (question.isRequired) invalid("Required survey answers cannot be empty");
+      continue;
     }
-    if (value && question.questionType === "rating") {
-      const rating = Number(answer.answerText);
-      if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Rating answers must be between 1 and 5" });
-      }
-    }
+    normalized.push({
+      questionId: answer.questionId,
+      answerText: normalizedText,
+      answerJson: normalizedJson,
+    });
   }
 
   const missingRequired = input.questions.some((question) => question.isRequired && !seen.has(question.id));
   if (missingRequired) {
     throw new TRPCError({ code: "BAD_REQUEST", message: "All required survey questions must be answered" });
   }
+  return normalized.sort((left, right) => left.questionId - right.questionId);
 }
 
 const hasTimedServiceExpired = (endDate?: string | null) => {
@@ -9971,7 +10022,7 @@ ${qaText}`;
         code: z.string().trim().min(2).max(80).regex(/^[a-z0-9_-]+$/),
         title: shortSurveyText,
         description: longSurveyText.nullish(),
-        isActive: z.boolean().default(false),
+        isActive: z.literal(false).default(false),
         isRequired: z.boolean().default(true),
         maxPostponements: z.number().int().min(0).max(30).default(2),
         postponeHours: z.number().int().min(1).max(720).default(24),
@@ -9987,6 +10038,49 @@ ${qaText}`;
         } catch (error) {
           throwStudentSurveyPersistenceError(error);
         }
+      }),
+
+    updateSurvey: studentSurveyProcedure
+      .input(z.object({
+        id: z.number().int().positive(),
+        title: shortSurveyText.optional(),
+        description: longSurveyText.nullish(),
+        isRequired: z.boolean().optional(),
+        maxPostponements: z.number().int().min(0).max(30).optional(),
+        postponeHours: z.number().int().min(1).max(720).optional(),
+        blockAfterHours: z.number().int().min(1).max(2160).optional(),
+      }).refine((value) => Object.keys(value).some((key) => key !== "id"), {
+        message: "Choose at least one survey setting to update",
+      }))
+      .mutation(async ({ ctx, input }) => {
+        requireStudentSurveyAdmin(ctx.surveyAccess);
+        const updated = await db.updateStudentSurvey({
+          ...input,
+          actorUserId: ctx.user.id,
+        });
+        if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: "Survey not found" });
+        return updated;
+      }),
+
+    setSurveyActive: studentSurveyProcedure
+      .input(z.object({ id: z.number().int().positive(), isActive: z.boolean() }))
+      .mutation(async ({ ctx, input }) => {
+        requireStudentSurveyAdmin(ctx.surveyAccess);
+        const survey = await db.getStudentSurvey(input.id);
+        if (!survey) throw new TRPCError({ code: "NOT_FOUND", message: "Survey not found" });
+        if (input.isActive && survey.questions.length === 0) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "Add at least one question before activating this survey",
+          });
+        }
+        if (survey.isActive === input.isActive) return survey;
+        const updated = await db.setStudentSurveyActive({
+          ...input,
+          actorUserId: ctx.user.id,
+        });
+        if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: "Survey not found" });
+        return updated;
       }),
 
     getSurvey: studentSurveyProcedure
@@ -10192,6 +10286,12 @@ ${qaText}`;
               "The recipient preview changed. Review the updated count before confirming again.",
           });
         }
+        if (!survey.isActive) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "Activate this survey before distributing it",
+          });
+        }
 
         const result =
           actualRecipientIds.length > 0
@@ -10254,6 +10354,9 @@ ${qaText}`;
         if (assignment.userId !== ctx.user.id && ctx.surveyAccess !== "admin") {
           throw new TRPCError({ code: "FORBIDDEN", message: "You may only access your own survey assignments" });
         }
+        if (ctx.surveyAccess !== "admin" && !assignment.surveyIsActive) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Survey assignment not found" });
+        }
         return assignment;
       }),
 
@@ -10269,6 +10372,9 @@ ${qaText}`;
         }
         const assignment = await db.getStudentSurveyAssignment(input.id);
         if (!assignment) throw new TRPCError({ code: "NOT_FOUND", message: "Survey assignment not found" });
+        if (!assignment.surveyIsActive) {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Activate this survey before sending reminders" });
+        }
         if (assignment.status === "submitted") {
           throw new TRPCError({
             code: "CONFLICT",
@@ -10310,6 +10416,9 @@ ${qaText}`;
         if (assignment.userId !== ctx.user.id) {
           throw new TRPCError({ code: "FORBIDDEN", message: "You may only postpone your own survey assignments" });
         }
+        if (!assignment.surveyIsActive) {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "This survey is not currently active" });
+        }
         if (!canPostponeStudentSurvey({
           status: assignment.status as StudentSurveyAssignmentStatus,
           postponementsUsed: assignment.postponementsUsed,
@@ -10334,7 +10443,7 @@ ${qaText}`;
           questionId: z.number().int().positive(),
           answerText: longSurveyText.nullish(),
           answerJson: z.string().trim().max(5000).nullish(),
-        })).min(1).max(100),
+        })).max(100),
       }))
       .mutation(async ({ ctx, input }) => {
         const assignment = await db.getStudentSurveyAssignment(input.id);
@@ -10345,8 +10454,15 @@ ${qaText}`;
             message: "You may only submit your own survey assignments",
           });
         }
+        if (!assignment.surveyIsActive) {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "This survey is not currently active" });
+        }
+        const normalizedAnswers = validateStudentSurveyAnswers({
+          questions: assignment.questions,
+          answers: input.answers,
+        });
         if (assignment.status === "submitted") {
-          if (haveSameStudentSurveyAnswers(assignment.answers, input.answers)) {
+          if (haveSameStudentSurveyAnswers(assignment.answers, normalizedAnswers)) {
             return assignment;
           }
           throw new TRPCError({
@@ -10354,15 +10470,11 @@ ${qaText}`;
             message: "This survey was already submitted with different answers",
           });
         }
-        validateStudentSurveyAnswers({
-          questions: assignment.questions,
-          answers: input.answers,
-        });
         try {
           const result = await db.submitStudentSurveyAssignment({
             id: input.id,
             userId: ctx.user.id,
-            answers: input.answers,
+            answers: normalizedAnswers,
           });
           if (!result) {
             throw new TRPCError({
