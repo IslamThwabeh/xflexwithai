@@ -100,6 +100,7 @@ import {
 } from "../database/schema-sqlite.ts";
 import { ENV } from './_core/env';
 import { logger } from './_core/logger';
+import { errorChainMatches, isSqliteUniqueConstraintError } from './_core/databaseErrors';
 import { sendWelcomeEmail, sendMilestoneEmail, sendQuizFeedbackEmail, sendStaffAlertEmail, sendStaffAlertBccEmail } from './_core/orderEmails';
 import {
   derivePendingServiceDays,
@@ -15265,17 +15266,19 @@ export async function requestLoyaltyRewardRedemption(input: {
       throw new Error("Loyalty redemption integrity migration 069 is not applied");
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (message.includes("loyalty_reward_insufficient_points")) {
+    if (errorChainMatches(error, "loyalty_reward_insufficient_points")) {
       return { status: "insufficient_points" as const };
     }
-    if (message.includes("loyalty_reward_out_of_stock")) {
+    if (errorChainMatches(error, "loyalty_reward_out_of_stock")) {
       return { status: "out_of_stock" as const };
     }
-    if (message.includes("loyalty_reward_already_pending")) {
+    if (errorChainMatches(error, "loyalty_reward_already_pending")) {
       return { status: "already_pending" as const };
     }
-    if (message.includes("loyalty_reward_not_available") || message.includes("loyalty_reward_price_changed")) {
+    if (
+      errorChainMatches(error, "loyalty_reward_not_available")
+      || errorChainMatches(error, "loyalty_reward_price_changed")
+    ) {
       return { status: "not_available" as const };
     }
     throw error;
@@ -15535,7 +15538,7 @@ export async function addStudentCommunityPolicyTerm(input: {
     }).returning();
     return { status: "created" as const, term };
   } catch (error) {
-    if (String(error).toLowerCase().includes("unique")) {
+    if (isSqliteUniqueConstraintError(error)) {
       return { status: "duplicate" as const };
     }
     throw error;
@@ -16131,7 +16134,7 @@ export async function reportStudentCommunityContent(input: {
 
     return { status: "created" as const, report };
   } catch (error) {
-    if (String(error).toLowerCase().includes("unique")) {
+    if (isSqliteUniqueConstraintError(error)) {
       return { status: "duplicate" as const };
     }
     throw error;

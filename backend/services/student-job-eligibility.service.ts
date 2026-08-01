@@ -1,3 +1,5 @@
+import { isSqliteUniqueConstraintError } from "../_core/databaseErrors";
+
 export const STUDENT_JOB_ELIGIBILITY_FEATURE_FLAG = "student_job_eligibility_enabled";
 
 export const STUDENT_JOB_ELIGIBILITY_REVIEW_STATUSES = [
@@ -15,7 +17,5 @@ export function isStudentJobEligibilityEnabled(value: string | null | undefined)
 }
 
 export function isUniqueStudentJobEligibilityConstraintError(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error);
-  return message.toLowerCase().includes("unique")
-    || message.toLowerCase().includes("constraint");
+  return isSqliteUniqueConstraintError(error);
 }

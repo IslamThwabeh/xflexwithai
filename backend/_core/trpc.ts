@@ -4,13 +4,42 @@ import superjson from "superjson";
 import type { TrpcContext } from "./context";
 import * as db from "../db";
 import { TERMS_ACCEPTANCE_REQUIRED_ERROR } from "../../shared/legal";
+import {
+  getDatabaseErrorDiagnostic,
+  isDatabasePersistenceError,
+} from "./databaseErrors";
+import { logger } from "./logger";
 
 const t = initTRPC.context<TrpcContext>().create({
   transformer: superjson,
 });
 
 export const router = t.router;
-export const publicProcedure = t.procedure;
+
+const databaseErrorBoundary = t.middleware(async ({ next, path }) => {
+  const result = await next();
+  if (result.ok) return result;
+
+  const error = result.error;
+  if (
+    !isDatabasePersistenceError(error)
+    || (error instanceof TRPCError && error.code !== "INTERNAL_SERVER_ERROR")
+  ) {
+    return result;
+  }
+
+  logger.error("Database procedure failed", {
+    path,
+    diagnostic: getDatabaseErrorDiagnostic(error),
+  });
+  throw new TRPCError({
+    code: "INTERNAL_SERVER_ERROR",
+    message: "The database operation could not be completed",
+    cause: error,
+  });
+});
+
+export const publicProcedure = t.procedure.use(databaseErrorBoundary);
 
 const requireUser = t.middleware(async opts => {
   const { ctx, next } = opts;
@@ -29,7 +58,7 @@ const requireUser = t.middleware(async opts => {
 
 /** Authentication without the customer compliance gate. Keep usage limited to
  * auth/compliance recovery paths that must remain reachable while gated. */
-export const authenticatedProcedure = t.procedure.use(requireUser);
+export const authenticatedProcedure = publicProcedure.use(requireUser);
 
 const TERMS_GATE_EXEMPT_PATHS = new Set([
   "orders.create",

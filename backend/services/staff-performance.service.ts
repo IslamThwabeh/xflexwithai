@@ -1,3 +1,5 @@
+import { isSqliteUniqueConstraintError } from "../_core/databaseErrors";
+
 export const STAFF_PERFORMANCE_FEATURE_FLAG = "staff_performance_enabled";
 
 export const STAFF_PERFORMANCE_ROLES = [
@@ -104,6 +106,5 @@ export function isValidPerformanceWeek(weekStart: string, weekEnd: string): bool
 }
 
 export function isUniqueConstraintError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
-  return /unique constraint|constraint failed|already exists/i.test(message);
+  return isSqliteUniqueConstraintError(error);
 }

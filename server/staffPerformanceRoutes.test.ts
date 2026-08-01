@@ -409,7 +409,9 @@ describe("staff performance routes", () => {
     ] as any);
     vi.mocked(db.getUserById).mockResolvedValue({ id: 10, isStaff: true } as any);
     vi.mocked(db.createStaffPerformanceMonthlyPlan)
-      .mockRejectedValue(new Error("UNIQUE constraint failed"));
+      .mockRejectedValue(new Error("Failed query: insert into staff_performance_monthly_plans", {
+        cause: new Error("UNIQUE constraint failed: staff_performance_monthly_plans.staff_user_id, staff_performance_monthly_plans.month"),
+      }));
 
     await expect(createCaller().staffPerformance.createMonthlyPlan({
       staffUserId: 10,

@@ -26,6 +26,11 @@ describe("student job eligibility service", () => {
 
   it("recognizes unique constraint failures", () => {
     expect(isUniqueStudentJobEligibilityConstraintError(new Error("UNIQUE constraint failed"))).toBe(true);
+    expect(isUniqueStudentJobEligibilityConstraintError(
+      new Error("Failed query: insert into student_job_eligibility_reviews", {
+        cause: new Error("UNIQUE constraint failed: student_job_eligibility_reviews.user_id"),
+      }),
+    )).toBe(true);
     expect(isUniqueStudentJobEligibilityConstraintError(new Error("network failed"))).toBe(false);
   });
 });

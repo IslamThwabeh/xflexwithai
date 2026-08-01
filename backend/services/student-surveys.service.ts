@@ -1,3 +1,5 @@
+import { isSqliteUniqueConstraintError } from "../_core/databaseErrors";
+
 export const STUDENT_SURVEYS_FEATURE_FLAG = "student_surveys_enabled";
 export const STUDENT_SURVEYS_BLOCKING_FEATURE_FLAG = "student_surveys_blocking_enabled";
 
@@ -142,8 +144,7 @@ export function nextPostponedDueAt(input: {
 }
 
 export function isUniqueSurveyConstraintError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
-  return /unique constraint|constraint failed|already exists/i.test(message);
+  return isSqliteUniqueConstraintError(error);
 }
 
 /**
