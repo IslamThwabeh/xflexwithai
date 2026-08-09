@@ -18,6 +18,7 @@ type SqliteDatabase = {
   exec(query: string): unknown;
   pragma(query: string): unknown;
   prepare(query: string): SqliteStatement;
+  transaction<T>(callback: () => T): () => T;
 };
 
 type SqliteDatabaseConstructor = new (
@@ -99,9 +100,14 @@ class LocalD1PreparedStatement {
       .all(...this.values) as unknown as unknown[][];
   }
 
-  async executeForBatch() {
+  executeForBatch() {
+    const startedAt = performance.now();
     const statement = this.database.prepare(this.query);
-    return statement.reader ? this.all() : this.run();
+    if (statement.reader) {
+      return createResult(statement.all(...this.values), startedAt);
+    }
+    const result = statement.run(...this.values);
+    return createResult([], startedAt, result.changes, result.lastInsertRowid);
   }
 }
 
@@ -123,9 +129,9 @@ export async function createLocalD1Database(
       return new LocalD1PreparedStatement(sqlite, query);
     },
     async batch(statements: LocalD1PreparedStatement[]) {
-      return Promise.all(
-        statements.map(statement => statement.executeForBatch()),
-      );
+      return sqlite.transaction(() =>
+        statements.map(statement => statement.executeForBatch())
+      )();
     },
     async exec(query: string) {
       const startedAt = performance.now();
@@ -139,6 +145,9 @@ export async function createLocalD1Database(
     },
     async dump() {
       throw new Error("Local D1 dump is not implemented");
+    },
+    close() {
+      sqlite.close();
     },
   };
 

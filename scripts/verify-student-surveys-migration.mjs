@@ -24,10 +24,16 @@ const blockingFlagMigrationSql = readFileSync(
   new URL("../database/migrations/065_student_survey_blocking_flag.sql", import.meta.url),
   "utf8",
 );
+const assignmentCapMigrationSql = readFileSync(
+  new URL("../database/migrations/079_student_survey_assignment_cap.sql", import.meta.url),
+  "utf8",
+);
 sqlite.exec(migrationSql);
 sqlite.exec(blockingFlagMigrationSql);
+sqlite.exec(assignmentCapMigrationSql);
 sqlite.exec(migrationSql);
 sqlite.exec(blockingFlagMigrationSql);
+sqlite.exec(assignmentCapMigrationSql);
 
 const flag = sqlite.prepare(
   "SELECT settingValue FROM admin_settings WHERE settingKey = ?",

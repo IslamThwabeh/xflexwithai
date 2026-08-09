@@ -390,6 +390,56 @@ type AdminNotificationRecipientGroup = {
   userIds: number[];
 };
 
+function groupAdminNotificationRecipients(
+  recipients: AdminNotificationBccRecipient[]
+): AdminNotificationRecipientGroup[] {
+  const uniqueRecipients = new Map<string, AdminNotificationRecipientGroup>();
+  for (const recipient of recipients) {
+    const normalized = normalizeEmailAddress(recipient.email);
+    if (!recipient.userId || !isLikelyValidEmail(normalized)) continue;
+    const existing = uniqueRecipients.get(normalized);
+    if (existing) {
+      if (!existing.userIds.includes(recipient.userId)) existing.userIds.push(recipient.userId);
+    } else {
+      uniqueRecipients.set(normalized, { email: normalized, userIds: [recipient.userId] });
+    }
+  }
+  return [...uniqueRecipients.values()];
+}
+
+export function preflightAdminNotificationEmail(input: {
+  recipients: AdminNotificationBccRecipient[];
+  supportTo?: string;
+}): { recipientCount: number; deliveryMode: "single_to" | "bcc_batch" | "none" } {
+  const recipients = groupAdminNotificationRecipients(input.recipients);
+  if (recipients.length === 0) return { recipientCount: 0, deliveryMode: "none" };
+  if (recipients.length === 1) return { recipientCount: 1, deliveryMode: "single_to" };
+
+  if (recipients.length > ADMIN_NOTIFICATION_BCC_RECIPIENT_LIMIT) {
+    throw new EmailSendError("Admin notification BCC batch exceeds the safe recipient limit", {
+      category: "config",
+      attemptedProviders: [],
+      providerUsed: null,
+    });
+  }
+  if (ENV.emailProvider !== "auto" && ENV.emailProvider !== "zeptomail") {
+    throw new EmailSendError("Admin notification BCC batches require ZeptoMail", {
+      category: "config",
+      attemptedProviders: [],
+      providerUsed: null,
+    });
+  }
+  const supportTo = normalizeEmailAddress(input.supportTo || "support@xflexacademy.com");
+  if (!isLikelyValidEmail(supportTo)) {
+    throw new EmailSendError("Admin notification BCC batch requires a valid support mailbox", {
+      category: "config",
+      attemptedProviders: [],
+      providerUsed: null,
+    });
+  }
+  return { recipientCount: recipients.length, deliveryMode: "bcc_batch" };
+}
+
 export async function sendAdminNotificationEmail(input: {
   recipients: AdminNotificationBccRecipient[];
   subject: string;
@@ -409,19 +459,7 @@ export async function sendAdminNotificationEmail(input: {
   recipientCount: number;
   deliveryMode: "single_to" | "bcc_batch" | "none";
 }> {
-  const uniqueRecipients = new Map<string, AdminNotificationRecipientGroup>();
-  for (const recipient of input.recipients) {
-    const normalized = normalizeEmailAddress(recipient.email);
-    if (!recipient.userId || !isLikelyValidEmail(normalized)) continue;
-    const existing = uniqueRecipients.get(normalized);
-    if (existing) {
-      if (!existing.userIds.includes(recipient.userId)) existing.userIds.push(recipient.userId);
-    } else {
-      uniqueRecipients.set(normalized, { email: normalized, userIds: [recipient.userId] });
-    }
-  }
-
-  const recipients = [...uniqueRecipients.values()];
+  const recipients = groupAdminNotificationRecipients(input.recipients);
   if (!recipients.length) {
     return {
       provider: null,
@@ -464,30 +502,8 @@ export async function sendAdminNotificationEmail(input: {
     };
   }
 
-  if (recipients.length > ADMIN_NOTIFICATION_BCC_RECIPIENT_LIMIT) {
-    throw new EmailSendError("Admin notification BCC batch exceeds the safe recipient limit", {
-      category: "config",
-      attemptedProviders: [],
-      providerUsed: null,
-    });
-  }
-
-  if (ENV.emailProvider !== "auto" && ENV.emailProvider !== "zeptomail") {
-    throw new EmailSendError("Admin notification BCC batches require ZeptoMail", {
-      category: "config",
-      attemptedProviders: [],
-      providerUsed: null,
-    });
-  }
-
+  preflightAdminNotificationEmail({ recipients: input.recipients, supportTo: input.supportTo });
   const supportTo = normalizeEmailAddress(input.supportTo || "support@xflexacademy.com");
-  if (!isLikelyValidEmail(supportTo)) {
-    throw new EmailSendError("Admin notification BCC batch requires a valid support mailbox", {
-      category: "config",
-      attemptedProviders: [],
-      providerUsed: null,
-    });
-  }
 
   const deliverable: AdminNotificationRecipientGroup[] = [];
   const skippedUnsubscribed: AdminNotificationRecipientGroup[] = [];

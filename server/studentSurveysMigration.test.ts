@@ -8,10 +8,14 @@ const migrationPath = fileURLToPath(
 const blockingFlagMigrationPath = fileURLToPath(
   new URL("../database/migrations/065_student_survey_blocking_flag.sql", import.meta.url),
 );
+const assignmentCapMigrationPath = fileURLToPath(
+  new URL("../database/migrations/079_student_survey_assignment_cap.sql", import.meta.url),
+);
 
 describe("student surveys migration", () => {
   const migrationSql = readFileSync(migrationPath, "utf8");
   const blockingFlagMigrationSql = readFileSync(blockingFlagMigrationPath, "utf8");
+  const assignmentCapMigrationSql = readFileSync(assignmentCapMigrationPath, "utf8");
 
   it("is additive and seeds the feature flag as disabled", () => {
     const statementsOnly = migrationSql.replace(/^--.*$/gm, "");
@@ -46,5 +50,85 @@ describe("student surveys migration", () => {
     expect(blockingFlagMigrationSql).toContain(
       "VALUES ('student_surveys_blocking_enabled', 'false', datetime('now'))",
     );
+  });
+
+  it("enforces the 500-assignment review ceiling in the database", () => {
+    expect(assignmentCapMigrationSql).toContain("BEFORE INSERT ON student_survey_assignments");
+    expect(assignmentCapMigrationSql).toContain(">= 500");
+    expect(assignmentCapMigrationSql).toContain("STUDENT_SURVEY_ASSIGNMENT_CAP_EXCEEDED");
+    expect(assignmentCapMigrationSql).toContain("student_survey_submission_audit_guard");
+    expect(assignmentCapMigrationSql).toContain("student_survey_reminder_audit_guard");
+    expect(assignmentCapMigrationSql).toContain("student_survey_submitted_answer_delete_guard");
+  });
+
+  it("rejects assignment 501 without changing the first 500", async () => {
+    const imported = await import("better-sqlite3");
+    const Database = (imported.default ?? imported) as any;
+    const database = new Database(":memory:");
+    try {
+      database.exec(`
+        PRAGMA foreign_keys = ON;
+        CREATE TABLE users (id INTEGER PRIMARY KEY);
+        CREATE TABLE admin_settings (
+          settingKey TEXT PRIMARY KEY,
+          settingValue TEXT,
+          updatedAt TEXT
+        );
+        ${migrationSql}
+        ${assignmentCapMigrationSql}
+        WITH RECURSIVE student_ids(id) AS (
+          SELECT 1 UNION ALL SELECT id + 1 FROM student_ids WHERE id < 501
+        ) INSERT INTO users (id) SELECT id FROM student_ids;
+        INSERT INTO student_surveys (id, code, title, created_by_user_id)
+        VALUES (1, 'capacity-test', 'Capacity test', 1);
+        INSERT INTO student_survey_assignments (
+          survey_id, user_id, due_at, block_at, created_by_user_id
+        ) SELECT 1, id, '2026-08-10T10:00:00.000Z', '2026-08-12T10:00:00.000Z', 1
+          FROM users WHERE id <= 500;
+      `);
+
+      expect(() => database.prepare(`
+        INSERT INTO student_survey_assignments (
+          survey_id, user_id, due_at, block_at, created_by_user_id
+        ) VALUES (1, 501, '2026-08-10T10:00:00.000Z', '2026-08-12T10:00:00.000Z', 1)
+      `).run()).toThrow(/STUDENT_SURVEY_ASSIGNMENT_CAP_EXCEEDED/);
+      expect(database.prepare(
+        "SELECT COUNT(*) AS total FROM student_survey_assignments WHERE survey_id = 1",
+      ).get().total).toBe(500);
+
+      database.prepare(`
+        INSERT INTO student_survey_questions (survey_id, question_text, question_type)
+        VALUES (1, 'How was it?', 'short_text')
+      `).run();
+      const assignmentId = database.prepare(
+        "SELECT id FROM student_survey_assignments WHERE survey_id = 1 AND user_id = 1",
+      ).get().id;
+      database.prepare(`
+        INSERT INTO student_survey_answers (assignment_id, question_id, answer_text)
+        VALUES (?, 1, 'Original')
+      `).run(assignmentId);
+      database.prepare(
+        "UPDATE student_survey_assignments SET status = 'submitted' WHERE id = ?",
+      ).run(assignmentId);
+
+      expect(() => database.prepare(
+        "DELETE FROM student_survey_answers WHERE assignment_id = ?",
+      ).run(assignmentId)).toThrow(/STUDENT_SURVEY_SUBMITTED_ANSWERS_IMMUTABLE/);
+      expect(() => database.prepare(`
+        INSERT INTO student_survey_audit_logs (
+          entity_type, entity_id, survey_id, user_id, actor_user_id, action
+        ) VALUES ('assignment', ?, 1, 1, 1, 'submitted')
+      `).run(assignmentId)).toThrow(/STUDENT_SURVEY_SUBMISSION_CONFLICT/);
+      expect(() => database.prepare(`
+        INSERT INTO student_survey_audit_logs (
+          entity_type, entity_id, survey_id, user_id, actor_user_id, action
+        ) VALUES ('assignment', ?, 1, 1, 1, 'reminder_sent')
+      `).run(assignmentId)).toThrow(/STUDENT_SURVEY_REMINDER_CONFLICT/);
+      expect(database.prepare(
+        "SELECT answer_text AS answerText FROM student_survey_answers WHERE assignment_id = ?",
+      ).get(assignmentId).answerText).toBe("Original");
+    } finally {
+      database.close();
+    }
   });
 });

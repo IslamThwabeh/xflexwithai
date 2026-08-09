@@ -28,6 +28,7 @@ type AssignmentSummary = {
   dueAt: string | null;
   blockAt?: string | null;
   surveyTitle: string;
+  surveyIsActive: boolean;
   surveyIsRequired: boolean;
   postponementsUsed: number;
   maxPostponements: number;
@@ -97,7 +98,7 @@ export default function StudentSurveys() {
 
   const labels = isRtl ? {
     title: "استبيانات الطلاب",
-    subtitle: "أكمل الاستبيانات المطلوبة أو أجّلها ضمن الحدود المسموحة. هذه المرحلة لا تفعّل الحجب التلقائي على الموقع.",
+    subtitle: "أكمل الاستبيانات المعيّنة لك وتابع مواعيد الاستحقاق والموعد النهائي من مكان واحد.",
     disabledTitle: "الميزة غير مفعّلة",
     disabledBody: "صفحة الاستبيانات جاهزة لكنها تبقى مخفية حتى تفعيل الخاصية بموافقة منفصلة.",
     noAssignmentsTitle: "لا توجد استبيانات حالياً",
@@ -107,13 +108,17 @@ export default function StudentSurveys() {
     optional: "اختياري",
     status: "الحالة",
     dueAt: "موعد الاستحقاق",
-    blockAt: "موعد الحجب النظري",
+    blockAt: "الموعد النهائي",
     postponements: "التأجيل",
     postpone: "تأجيل",
     submit: "إرسال الاستبيان",
     submitted: "تم إرسال هذا الاستبيان.",
-    blockedTitle: "الاستبيان محجوب",
-    blockedBody: "انتهت مهلة هذا الاستبيان. تواصل مع الدعم أو الإدارة لمراجعته.",
+    submittedNoticeTitle: "تم استلام إجابتك",
+    submittedNoticeBody: "اكتمل هذا الاستبيان بنجاح، ويمكنك الرجوع إليه لمراجعة حالته وموعد الإرسال.",
+    restrictedTitle: "أكمل الاستبيان لاستعادة الوصول",
+    restrictedBody: "انتهى الموعد النهائي لهذا الاستبيان الإلزامي. لا يزال بإمكانك إرساله أدناه، وسيُستعاد وصولك بعد إرسال جميع الاستبيانات الإلزامية المتأخرة.",
+    finalDeadlineTitle: "انتهى الموعد النهائي",
+    finalDeadlineBody: "لا يزال بإمكانك تعبئة هذا الاستبيان وإرساله. لن تتغير إمكانية وصولك إلى بقية الموقع بسبب هذا الاستبيان.",
     dueNoticeTitle: "استبيان مستحق",
     dueNoticeBody: "يرجى إكمال الاستبيان أو استخدام التأجيل إذا كان ما زال متاحاً.",
     draftNoticeTitle: "جاهز للتعبئة",
@@ -124,9 +129,10 @@ export default function StudentSurveys() {
     missingRequired: "يرجى تعبئة كل الأسئلة الإلزامية.",
     submitSuccess: "تم إرسال الاستبيان بنجاح",
     postponeSuccess: "تم تأجيل الاستبيان",
+    pageBadge: "آراء الطلاب",
   } : {
     title: "Student Surveys",
-    subtitle: "Complete assigned surveys or postpone within the allowed limits. This phase does not enforce site-wide blocking.",
+    subtitle: "Complete assigned surveys and track due dates and final deadlines in one place.",
     disabledTitle: "Feature not enabled",
     disabledBody: "The survey page is ready but remains hidden until the feature is enabled with separate approval.",
     noAssignmentsTitle: "No surveys right now",
@@ -136,13 +142,17 @@ export default function StudentSurveys() {
     optional: "Optional",
     status: "Status",
     dueAt: "Due at",
-    blockAt: "Theoretical block at",
+    blockAt: "Final deadline",
     postponements: "Postponements",
     postpone: "Postpone",
     submit: "Submit survey",
     submitted: "This survey has been submitted.",
-    blockedTitle: "Survey blocked",
-    blockedBody: "This survey is past its blocking deadline. Contact support or administration for review.",
+    submittedNoticeTitle: "Your response was received",
+    submittedNoticeBody: "This survey is complete. You can return here to review its status and submission time.",
+    restrictedTitle: "Complete this survey to restore access",
+    restrictedBody: "This required survey passed its final deadline. You can still submit it below; access is restored once every overdue required survey is submitted.",
+    finalDeadlineTitle: "Final deadline passed",
+    finalDeadlineBody: "You can still complete and submit this survey. This survey does not change your access to the rest of the site.",
     dueNoticeTitle: "Survey due",
     dueNoticeBody: "Please complete the survey or postpone it if postponement is still available.",
     draftNoticeTitle: "Ready to complete",
@@ -153,6 +163,7 @@ export default function StudentSurveys() {
     missingRequired: "Please answer all required questions.",
     submitSuccess: "Survey submitted",
     postponeSuccess: "Survey postponed",
+    pageBadge: "Student feedback",
   };
 
   const availabilityQuery = trpc.studentSurveys.availability.useQuery(undefined, { retry: false });
@@ -168,7 +179,10 @@ export default function StudentSurveys() {
 
   const assignments = (assignmentsQuery.data ?? []) as AssignmentSummary[];
   const selectedAssignment = assignmentQuery.data;
-  const questions = (selectedAssignment?.questions ?? []) as SurveyQuestion[];
+  const questions = useMemo(
+    () => (selectedAssignment?.questions ?? []) as SurveyQuestion[],
+    [selectedAssignment?.questions],
+  );
 
   useEffect(() => {
     if (assignments.length === 0) {
@@ -176,13 +190,41 @@ export default function StudentSurveys() {
       return;
     }
 
+    const urgentBlockedAssignment = assignments.find((assignment) =>
+      assignment.status !== "submitted"
+      && assignment.surveyIsActive
+      && assignment.surveyIsRequired
+      && assignment.accessState === "blocked"
+    );
+    if (
+      availabilityQuery.data?.blockingEnabled
+      && availabilityQuery.data.accessState === "blocked"
+      && urgentBlockedAssignment
+      && urgentBlockedAssignment.id !== selectedAssignmentId
+    ) {
+      setSelectedAssignmentId(urgentBlockedAssignment.id);
+      return;
+    }
+
     if (selectedAssignmentId && assignments.some((assignment) => assignment.id === selectedAssignmentId)) {
       return;
     }
 
-    const firstActionable = assignments.find((assignment) => assignment.status !== "submitted") ?? assignments[0];
+    const firstActionable = urgentBlockedAssignment ?? assignments.find((assignment) =>
+      assignment.status !== "submitted"
+      && assignment.surveyIsActive
+      && assignment.surveyIsRequired
+      && assignment.accessState === "survey_due"
+    ) ?? assignments.find((assignment) =>
+      assignment.status !== "submitted" && assignment.accessState === "survey_due"
+    ) ?? assignments.find((assignment) => assignment.status !== "submitted") ?? assignments[0];
     setSelectedAssignmentId(firstActionable.id);
-  }, [assignments, selectedAssignmentId]);
+  }, [
+    assignments,
+    availabilityQuery.data?.accessState,
+    availabilityQuery.data?.blockingEnabled,
+    selectedAssignmentId,
+  ]);
 
   useEffect(() => {
     if (!selectedAssignment) {
@@ -195,13 +237,18 @@ export default function StudentSurveys() {
       nextAnswers[question.id] = getInitialAnswerValue(question, selectedAssignment.answers ?? []);
     }
     setAnswers(nextAnswers);
-  }, [questions, selectedAssignment]);
+  }, [selectedAssignment?.id, selectedAssignment?.updatedAt]);
 
   const postponeSurvey = trpc.studentSurveys.postpone.useMutation({
     onSuccess: async () => {
       toast.success(labels.postponeSuccess);
-      await utils.studentSurveys.myAssignments.invalidate();
-      if (selectedAssignmentId) await utils.studentSurveys.getMyAssignment.invalidate({ id: selectedAssignmentId });
+      await Promise.all([
+        utils.studentSurveys.availability.invalidate(),
+        utils.studentSurveys.myAssignments.invalidate(),
+        selectedAssignmentId
+          ? utils.studentSurveys.getMyAssignment.invalidate({ id: selectedAssignmentId })
+          : Promise.resolve(),
+      ]);
     },
     onError: (error) => toast.error(error.message),
   });
@@ -209,8 +256,13 @@ export default function StudentSurveys() {
   const submitSurvey = trpc.studentSurveys.submit.useMutation({
     onSuccess: async () => {
       toast.success(labels.submitSuccess);
-      await utils.studentSurveys.myAssignments.invalidate();
-      if (selectedAssignmentId) await utils.studentSurveys.getMyAssignment.invalidate({ id: selectedAssignmentId });
+      await Promise.all([
+        utils.studentSurveys.availability.invalidate(),
+        utils.studentSurveys.myAssignments.invalidate(),
+        selectedAssignmentId
+          ? utils.studentSurveys.getMyAssignment.invalidate({ id: selectedAssignmentId })
+          : Promise.resolve(),
+      ]);
     },
     onError: (error) => toast.error(error.message),
   });
@@ -231,8 +283,12 @@ export default function StudentSurveys() {
   const canSubmit = Boolean(
     selectedAssignment &&
     selectedAssignment.status !== "submitted" &&
-    selectedAssignment.accessState !== "blocked" &&
     questions.length > 0,
+  );
+  const accessProtectionApplies = Boolean(
+    availabilityQuery.data?.blockingEnabled &&
+    selectedAssignment?.surveyIsActive &&
+    selectedAssignment?.surveyIsRequired,
   );
 
   const updateAnswer = (questionId: number, value: AnswerValue) => {
@@ -272,7 +328,7 @@ export default function StudentSurveys() {
           const values = Array.isArray(value) ? value : [];
           return {
             questionId: question.id,
-            answerText: values.join(", "),
+            answerText: null,
             answerJson: JSON.stringify(values),
           };
         }
@@ -301,8 +357,12 @@ export default function StudentSurveys() {
     return <PageState title={labels.noAssignmentsTitle} body={labels.noAssignmentsBody} icon={<ClipboardCheck className="h-7 w-7" />} />;
   }
 
-  const notice = selectedAssignment?.accessState === "blocked"
-    ? { icon: <AlertCircle className="h-4 w-4" />, title: labels.blockedTitle, body: labels.blockedBody, className: "border-red-200 bg-red-50 text-red-900" }
+  const notice = selectedAssignment?.status === "submitted"
+    ? { icon: <CheckCircle2 className="h-4 w-4" />, title: labels.submittedNoticeTitle, body: labels.submittedNoticeBody, className: "border-emerald-200 bg-emerald-50 text-emerald-900" }
+    : selectedAssignment?.accessState === "blocked"
+    ? accessProtectionApplies
+      ? { icon: <AlertCircle className="h-4 w-4" />, title: labels.restrictedTitle, body: labels.restrictedBody, className: "border-red-200 bg-red-50 text-red-900" }
+      : { icon: <AlertCircle className="h-4 w-4" />, title: labels.finalDeadlineTitle, body: labels.finalDeadlineBody, className: "border-amber-200 bg-amber-50 text-amber-900" }
     : selectedAssignment?.accessState === "survey_due"
       ? { icon: <CalendarClock className="h-4 w-4" />, title: labels.dueNoticeTitle, body: labels.dueNoticeBody, className: "border-amber-200 bg-amber-50 text-amber-900" }
       : { icon: <Clock3 className="h-4 w-4" />, title: labels.draftNoticeTitle, body: labels.draftNoticeBody, className: "border-emerald-200 bg-emerald-50 text-emerald-900" };
@@ -312,7 +372,7 @@ export default function StudentSurveys() {
       <div className="min-h-[calc(100vh-64px)] bg-[var(--color-xf-cream)]">
         <main className="container mx-auto px-4 py-8">
           <div className="mb-6">
-            <Badge className="mb-3 bg-emerald-100 text-emerald-800 hover:bg-emerald-100">Phase 2C</Badge>
+            <Badge className="mb-3 bg-emerald-100 text-emerald-800 hover:bg-emerald-100">{labels.pageBadge}</Badge>
             <h1 className="text-3xl font-bold text-slate-900">{labels.title}</h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">{labels.subtitle}</p>
           </div>

@@ -100,6 +100,7 @@ import {
 } from "../database/schema-sqlite.ts";
 import { ENV } from './_core/env';
 import { logger } from './_core/logger';
+import { errorChainMatches, isSqliteUniqueConstraintError } from './_core/databaseErrors';
 import { sendWelcomeEmail, sendMilestoneEmail, sendQuizFeedbackEmail, sendStaffAlertEmail, sendStaffAlertBccEmail } from './_core/orderEmails';
 import {
   derivePendingServiceDays,
@@ -136,6 +137,7 @@ import {
 } from '../shared/const';
 import { CURRENT_TERMS_VERSION, TERMS_ACCEPTANCE_POLICY } from '../shared/legal';
 import { isLikelyValidEmail, normalizeEmailAddress } from '../shared/emailValidation';
+import type { EmailDeliveryEventCategory } from "../shared/emailDeliveryCategories";
 import {
   getPackageKeyPriceIls,
   PACKAGE_KEY_USD_TO_ILS_RATE,
@@ -143,7 +145,9 @@ import {
 import { hashUnsubscribeToken, type EmailCategory } from './_core/emailPreferences';
 import type { StaffPerformanceStatus } from './services/staff-performance.service';
 import {
+  MAX_STUDENT_SURVEY_ASSIGNMENTS_PER_SURVEY,
   getStudentSurveyAccessState,
+  haveSameStudentSurveyAnswers,
   nextPostponedDueAt,
   type StudentSurveyAssignmentStatus,
 } from './services/student-surveys.service';
@@ -159,7 +163,12 @@ import type {
   CommunityPolicyTermCategory,
   StudentCommunityModerationDecision as CommunityModerationDecision,
 } from './services/student-community-moderation.service';
-import type { StudentJobEligibilityReviewStatus } from './services/student-job-eligibility.service';
+import {
+  StudentJobEligibilityError,
+  canDecideStudentJobEligibilityReview,
+  canSubmitStudentJobEligibilityReview,
+  type StudentJobEligibilityReviewStatus,
+} from './services/student-job-eligibility.service';
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -3366,6 +3375,70 @@ export async function createStudentSurvey(input: {
   return survey;
 }
 
+export async function updateStudentSurvey(input: {
+  id: number;
+  title?: string;
+  description?: string | null;
+  isRequired?: boolean;
+  maxPostponements?: number;
+  postponeHours?: number;
+  blockAfterHours?: number;
+  actorUserId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const current = await getStudentSurvey(input.id);
+  if (!current) return null;
+
+  const changes = {
+    ...(input.title !== undefined ? { title: input.title } : {}),
+    ...(input.description !== undefined ? { description: input.description } : {}),
+    ...(input.isRequired !== undefined ? { isRequired: input.isRequired } : {}),
+    ...(input.maxPostponements !== undefined ? { maxPostponements: input.maxPostponements } : {}),
+    ...(input.postponeHours !== undefined ? { postponeHours: input.postponeHours } : {}),
+    ...(input.blockAfterHours !== undefined ? { blockAfterHours: input.blockAfterHours } : {}),
+    updatedAt: new Date().toISOString(),
+  };
+  const [updated] = await db.update(studentSurveys).set(changes)
+    .where(eq(studentSurveys.id, input.id)).returning();
+  if (!updated) return null;
+  await logStudentSurveyAudit({
+    entityType: "survey",
+    entityId: input.id,
+    surveyId: input.id,
+    actorUserId: input.actorUserId,
+    action: "updated",
+    details: Object.fromEntries(
+      Object.entries(changes).filter(([key]) => key !== "updatedAt"),
+    ),
+  });
+  return updated;
+}
+
+export async function setStudentSurveyActive(input: {
+  id: number;
+  isActive: boolean;
+  actorUserId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const now = new Date().toISOString();
+  const [updated] = await db.update(studentSurveys).set({
+    isActive: input.isActive,
+    updatedAt: now,
+  }).where(eq(studentSurveys.id, input.id)).returning();
+  if (!updated) return null;
+  await logStudentSurveyAudit({
+    entityType: "survey",
+    entityId: input.id,
+    surveyId: input.id,
+    actorUserId: input.actorUserId,
+    action: input.isActive ? "activated" : "deactivated",
+    details: { isActive: input.isActive },
+  });
+  return updated;
+}
+
 export async function listStudentSurveys(limit = 50) {
   const db = await getDb();
   if (!db) return [];
@@ -3451,6 +3524,106 @@ export async function assignStudentSurvey(input: {
   return assignment;
 }
 
+/** Assign one reviewed audience and its audit record in one D1 transaction. */
+export async function assignStudentSurveyAudience(input: {
+  surveyId: number;
+  userIds: number[];
+  dueAt: string;
+  blockAt: string;
+  actorUserId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const userIds = Array.from(new Set(input.userIds));
+  if (userIds.length === 0) {
+    return {
+      assignments: [] as Array<typeof studentSurveyAssignments.$inferSelect>,
+      duplicateUserIds: [] as number[],
+      capacityExceeded: false,
+    };
+  }
+
+  const now = new Date().toISOString();
+  const assignmentStatements = chunkValues(userIds, 8).map((userIdChunk) =>
+    db
+      .insert(studentSurveyAssignments)
+      .values(
+        userIdChunk.map((userId) => ({
+          surveyId: input.surveyId,
+          userId,
+          status: "pending",
+          dueAt: input.dueAt,
+          blockAt: input.blockAt,
+          postponementsUsed: 0,
+          createdByUserId: input.actorUserId,
+          createdAt: now,
+          updatedAt: now,
+        })),
+      )
+      .onConflictDoNothing({
+        target: [
+          studentSurveyAssignments.surveyId,
+          studentSurveyAssignments.userId,
+        ],
+      })
+      .returning(),
+  );
+  const auditStatement = db
+    .insert(studentSurveyAuditLogs)
+    .values({
+      entityType: "survey",
+      entityId: input.surveyId,
+      surveyId: input.surveyId,
+      actorUserId: input.actorUserId,
+      action: "audience_assignment_confirmed",
+      details: JSON.stringify({
+        requestedUserIds: userIds,
+        requestedCount: userIds.length,
+        dueAt: input.dueAt,
+        blockAt: input.blockAt,
+        maxAssignmentsPerSurvey: MAX_STUDENT_SURVEY_ASSIGNMENTS_PER_SURVEY,
+      }),
+      createdAt: now,
+    })
+    .returning({ id: studentSurveyAuditLogs.id });
+
+  try {
+    // Cloudflare D1 batches are sequential and transactional. Each assignment
+    // statement is kept below the bind limit, and the database trigger aborts
+    // the entire batch if this survey would exceed its 500-student ceiling.
+    const batchResults = (await db.batch([
+      ...assignmentStatements,
+      auditStatement,
+    ] as any)) as unknown as Array<
+      Array<typeof studentSurveyAssignments.$inferSelect>
+    >;
+    const assignments = batchResults
+      .slice(0, assignmentStatements.length)
+      .flat();
+    const insertedUserIds = new Set(
+      assignments.map((assignment) => assignment.userId),
+    );
+    return {
+      assignments,
+      duplicateUserIds: userIds.filter(
+        (userId) => !insertedUserIds.has(userId),
+      ),
+      capacityExceeded: false,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/STUDENT_SURVEY_ASSIGNMENT_CAP_EXCEEDED/i.test(message)) {
+      return {
+        assignments: [] as Array<typeof studentSurveyAssignments.$inferSelect>,
+        duplicateUserIds: [] as number[],
+        capacityExceeded: true,
+      };
+    }
+    throw error;
+  }
+}
+
 export async function getStudentSurveyAssignment(id: number) {
   const db = await getDb();
   if (!db) return null;
@@ -3503,6 +3676,7 @@ export async function getStudentSurveyAssignment(id: number) {
 export async function listStudentSurveyAssignmentsForUser(userId: number, limit = 20) {
   const db = await getDb();
   if (!db) return [];
+  const now = new Date().toISOString();
   const rows = await db.select({
     id: studentSurveyAssignments.id,
     surveyId: studentSurveyAssignments.surveyId,
@@ -3521,8 +3695,25 @@ export async function listStudentSurveyAssignmentsForUser(userId: number, limit 
     postponeHours: studentSurveys.postponeHours,
   }).from(studentSurveyAssignments)
     .innerJoin(studentSurveys, eq(studentSurveyAssignments.surveyId, studentSurveys.id))
-    .where(eq(studentSurveyAssignments.userId, userId))
-    .orderBy(desc(studentSurveyAssignments.updatedAt), desc(studentSurveyAssignments.id))
+    .where(and(
+      eq(studentSurveyAssignments.userId, userId),
+      eq(studentSurveys.isActive, true),
+    ))
+    .orderBy(sql`CASE
+        WHEN ${studentSurveys.isActive} = 1
+          AND ${studentSurveys.isRequired} = 1
+          AND ${studentSurveyAssignments.status} <> 'submitted'
+          AND (${studentSurveyAssignments.status} = 'blocked' OR ${studentSurveyAssignments.blockAt} <= ${now})
+          THEN 0
+        WHEN ${studentSurveys.isActive} = 1
+          AND ${studentSurveys.isRequired} = 1
+          AND ${studentSurveyAssignments.status} <> 'submitted'
+          AND ${studentSurveyAssignments.dueAt} <= ${now}
+          THEN 1
+        WHEN ${studentSurveyAssignments.status} <> 'submitted' THEN 2
+        ELSE 3
+      END`,
+      desc(studentSurveyAssignments.updatedAt), desc(studentSurveyAssignments.id))
     .limit(Math.min(Math.max(limit, 1), 100));
 
   return rows.map((row) => ({
@@ -3533,6 +3724,40 @@ export async function listStudentSurveyAssignmentsForUser(userId: number, limit 
       dueAt: row.dueAt,
       blockAt: row.blockAt,
     }),
+  }));
+}
+
+/** Return every unresolved assignment that is eligible to protect access. */
+export async function listStudentSurveyBlockingAssignmentsForUser(
+  userId: number,
+) {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db
+    .select({
+      status: studentSurveyAssignments.status,
+      dueAt: studentSurveyAssignments.dueAt,
+      blockAt: studentSurveyAssignments.blockAt,
+      surveyIsActive: studentSurveys.isActive,
+      surveyIsRequired: studentSurveys.isRequired,
+    })
+    .from(studentSurveyAssignments)
+    .innerJoin(
+      studentSurveys,
+      eq(studentSurveyAssignments.surveyId, studentSurveys.id)
+    )
+    .where(
+      and(
+        eq(studentSurveyAssignments.userId, userId),
+        ne(studentSurveyAssignments.status, "submitted"),
+        eq(studentSurveys.isActive, true),
+        eq(studentSurveys.isRequired, true),
+      ),
+    );
+
+  return rows.map((row) => ({
+    ...row,
+    status: row.status as StudentSurveyAssignmentStatus,
   }));
 }
 
@@ -3573,7 +3798,7 @@ export async function listStudentSurveyAssignmentsForAdmin(input: {
     .innerJoin(users, eq(studentSurveyAssignments.userId, users.id))
     .where(filters.length > 0 ? and(...filters) : undefined)
     .orderBy(desc(studentSurveyAssignments.updatedAt), desc(studentSurveyAssignments.id))
-    .limit(Math.min(Math.max(input.limit ?? 100, 1), 200));
+    .limit(Math.min(Math.max(input.limit ?? 100, 1), 500));
 
   return rows.map((row) => ({
     ...row,
@@ -3584,6 +3809,49 @@ export async function listStudentSurveyAssignmentsForAdmin(input: {
       blockAt: row.blockAt,
     }),
   }));
+}
+
+export async function listStudentSurveyAssignedUserIds(
+  surveyId: number,
+): Promise<number[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db
+    .select({ userId: studentSurveyAssignments.userId })
+    .from(studentSurveyAssignments)
+    .where(eq(studentSurveyAssignments.surveyId, surveyId));
+  return rows.map((row) => row.userId);
+}
+
+/**
+ * Count distinct students who would be gated immediately if survey access
+ * protection were enabled. No student identity or response data is returned.
+ */
+export async function countStudentsAffectedBySurveyBlocking(): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  const now = new Date().toISOString();
+  const [row] = await db
+    .select({
+      total: sql<number>`COUNT(DISTINCT ${studentSurveyAssignments.userId})`,
+    })
+    .from(studentSurveyAssignments)
+    .innerJoin(
+      studentSurveys,
+      eq(studentSurveyAssignments.surveyId, studentSurveys.id)
+    )
+    .where(
+      and(
+        eq(studentSurveys.isActive, true),
+        eq(studentSurveys.isRequired, true),
+        ne(studentSurveyAssignments.status, "submitted"),
+        or(
+          eq(studentSurveyAssignments.status, "blocked"),
+          lte(studentSurveyAssignments.blockAt, now),
+        ),
+      ),
+    );
+  return Number(row?.total ?? 0);
 }
 
 export async function postponeStudentSurveyAssignment(input: {
@@ -3641,46 +3909,83 @@ export async function submitStudentSurveyAssignment(input: {
   if (!db) throw new Error("Database not available");
   const assignment = await getStudentSurveyAssignment(input.id);
   if (!assignment) return null;
-  const fromStatus = assignment.status;
   const now = new Date().toISOString();
 
-  await db.delete(studentSurveyAnswers)
-    .where(eq(studentSurveyAnswers.assignmentId, input.id));
-
-  if (input.answers.length > 0) {
-    await db.insert(studentSurveyAnswers).values(input.answers.map((answer) => ({
-      assignmentId: input.id,
-      questionId: answer.questionId,
-      answerText: answer.answerText ?? null,
-      answerJson: answer.answerJson ?? null,
-      createdAt: now,
-      updatedAt: now,
-    })));
+  if (assignment.status === "submitted") {
+    if (haveSameStudentSurveyAnswers(assignment.answers, input.answers)) {
+      return { assignment, submittedNow: false };
+    }
+    throw new Error("STUDENT_SURVEY_ALREADY_SUBMITTED_DIFFERENT_ANSWERS");
   }
 
-  const [updated] = await db.update(studentSurveyAssignments).set({
+  const auditStatement = db
+    .insert(studentSurveyAuditLogs)
+    .values({
+      entityType: "assignment",
+      entityId: input.id,
+      surveyId: assignment.surveyId,
+      userId: input.userId,
+      actorUserId: input.userId,
+      action: "submitted",
+      fromStatus: null,
+      toStatus: "submitted",
+      details: JSON.stringify({ answerCount: input.answers.length }),
+      createdAt: now,
+    })
+    .returning({ id: studentSurveyAuditLogs.id });
+  const deleteAnswersStatement = db.delete(studentSurveyAnswers)
+    .where(eq(studentSurveyAnswers.assignmentId, input.id));
+
+  const answerStatements = chunkValues(input.answers, 12).map((answerChunk) =>
+    db
+      .insert(studentSurveyAnswers)
+      .values(
+        answerChunk.map((answer) => ({
+          assignmentId: input.id,
+          questionId: answer.questionId,
+          answerText: answer.answerText ?? null,
+          answerJson: answer.answerJson ?? null,
+          createdAt: now,
+          updatedAt: now,
+        })),
+      )
+      .returning({ id: studentSurveyAnswers.id }),
+  );
+  const updateAssignmentStatement = db.update(studentSurveyAssignments).set({
     status: "submitted",
     submittedAt: now,
     updatedAt: now,
   }).where(and(
     eq(studentSurveyAssignments.id, input.id),
     eq(studentSurveyAssignments.userId, input.userId),
-    eq(studentSurveyAssignments.status, fromStatus),
+    ne(studentSurveyAssignments.status, "submitted"),
   )).returning();
-  if (!updated) return null;
-
-  await logStudentSurveyAudit({
-    entityType: "assignment",
-    entityId: input.id,
-    surveyId: assignment.surveyId,
-    userId: input.userId,
-    actorUserId: input.userId,
-    action: "submitted",
-    fromStatus,
-    toStatus: "submitted",
-    details: { answerCount: input.answers.length },
-  });
-  return updated;
+  try {
+    const batchResults = (await db.batch([
+      auditStatement,
+      deleteAnswersStatement,
+      ...answerStatements,
+      updateAssignmentStatement,
+    ] as any)) as unknown as Array<
+      Array<typeof studentSurveyAssignments.$inferSelect>
+    >;
+    const updatedRows = batchResults.at(-1) ?? [];
+    const updated = updatedRows[0];
+    if (!updated) throw new Error("STUDENT_SURVEY_SUBMISSION_INVARIANT_FAILED");
+    return { assignment: updated, submittedNow: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/STUDENT_SURVEY_SUBMISSION_CONFLICT/i.test(message)) {
+      const latest = await getStudentSurveyAssignment(input.id);
+      if (latest?.status === "submitted") {
+        if (haveSameStudentSurveyAnswers(latest.answers, input.answers)) {
+          return { assignment: latest, submittedNow: false };
+        }
+        throw new Error("STUDENT_SURVEY_ALREADY_SUBMITTED_DIFFERENT_ANSWERS");
+      }
+    }
+    throw error;
+  }
 }
 
 export async function markStudentSurveyAssignmentBlocked(input: {
@@ -3726,33 +4031,58 @@ export async function sendStudentSurveyAssignmentReminder(input: {
   if (!assignment) return null;
 
   const now = new Date().toISOString();
-  const [notification] = await db.insert(userNotifications).values({
+  const deadlinePassed = assignment.accessState === "blocked";
+  const notificationStatement = db.insert(userNotifications).values({
     userId: assignment.userId,
     type: "action",
     titleEn: "Survey reminder",
     titleAr: "تذكير بالاستبيان",
-    contentEn: `Please complete the "${assignment.surveyTitle}" survey before the deadline.`,
-    contentAr: `يرجى تعبئة استبيان "${assignment.surveyTitle}" قبل الموعد المحدد.`,
+    contentEn: deadlinePassed
+      ? `Please complete the "${assignment.surveyTitle}" survey. You can still submit it after the final deadline.`
+      : `Please complete the "${assignment.surveyTitle}" survey before the deadline.`,
+    contentAr: deadlinePassed
+      ? `يرجى تعبئة استبيان "${assignment.surveyTitle}". لا يزال بإمكانك إرساله بعد الموعد النهائي.`
+      : `يرجى تعبئة استبيان "${assignment.surveyTitle}" قبل الموعد المحدد.`,
     actionUrl: "/surveys",
     createdAt: now,
   }).returning();
 
-  await logStudentSurveyAudit({
-    entityType: "assignment",
-    entityId: input.assignmentId,
-    surveyId: assignment.surveyId,
-    userId: assignment.userId,
-    actorUserId: input.actorUserId,
-    action: "reminder_sent",
-    details: {
-      notificationId: notification.id,
-      status: assignment.status,
-      dueAt: assignment.dueAt,
-      blockAt: assignment.blockAt,
-    },
-  });
+  const auditStatement = db
+    .insert(studentSurveyAuditLogs)
+    .values({
+      entityType: "assignment",
+      entityId: input.assignmentId,
+      surveyId: assignment.surveyId,
+      userId: assignment.userId,
+      actorUserId: input.actorUserId,
+      action: "reminder_sent",
+      details: JSON.stringify({
+        channel: "in_app",
+        status: assignment.status,
+        dueAt: assignment.dueAt,
+        blockAt: assignment.blockAt,
+      }),
+      createdAt: now,
+    })
+    .returning({ id: studentSurveyAuditLogs.id });
 
-  return notification;
+  try {
+    const [notificationRows] = await db.batch([
+      notificationStatement,
+      auditStatement,
+    ]);
+    const notification = notificationRows[0];
+    if (!notification) {
+      throw new Error("STUDENT_SURVEY_REMINDER_INVARIANT_FAILED");
+    }
+    return notification;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/STUDENT_SURVEY_REMINDER_CONFLICT/i.test(message)) {
+      throw new Error("STUDENT_SURVEY_REMINDER_CONFLICT");
+    }
+    throw error;
+  }
 }
 
 export async function listStudentSurveyAuditLogs(input: {
@@ -13623,6 +13953,7 @@ export async function createJob(data: { titleAr: string; titleEn: string; descri
     titleEn: data.titleEn,
     descriptionAr: data.descriptionAr,
     descriptionEn: data.descriptionEn || null,
+    isActive: false,
     sortOrder: data.sortOrder ?? 0,
   }).returning({ id: jobs.id });
   return result[0].id;
@@ -13631,7 +13962,32 @@ export async function createJob(data: { titleAr: string; titleEn: string; descri
 export async function updateJob(id: number, data: Partial<{ titleAr: string; titleEn: string; descriptionAr: string; descriptionEn: string; isActive: boolean; sortOrder: number }>) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.update(jobs).set({ ...data, updatedAt: new Date().toISOString() }).where(eq(jobs.id, id));
+  const [job] = await db.update(jobs)
+    .set({ ...data, updatedAt: new Date().toISOString() })
+    .where(eq(jobs.id, id))
+    .returning();
+  return job;
+}
+
+export async function setJobPublished(id: number, isActive: boolean, actorUserId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const job = await getJobById(id);
+  if (!job) throw new StudentJobEligibilityError("job_not_available");
+  if (isActive) {
+    const rule = await getStudentJobEligibilityRuleByJobId(id);
+    if (!rule?.isEnabled) throw new StudentJobEligibilityError("rule_not_available");
+  }
+
+  const updated = await updateJob(id, { isActive });
+  await logStudentJobEligibilityAudit({
+    jobId: id,
+    actorUserId,
+    action: isActive ? "job_published" : "job_unpublished",
+    details: { titleAr: job.titleAr, titleEn: job.titleEn },
+  });
+  return updated;
 }
 
 export async function getQuestionsForJob(jobId: number) {
@@ -13850,7 +14206,7 @@ function normalizeEligibilityRule(rule?: StudentJobEligibilityRule | null) {
     requireActiveSubscription: rule?.requireActiveSubscription ?? true,
     requireProfile: rule?.requireProfile ?? true,
     requireAdminReview: rule?.requireAdminReview ?? true,
-    isEnabled: rule?.isEnabled ?? true,
+    isEnabled: rule?.isEnabled ?? false,
     instructions: rule?.instructions ?? null,
   };
 }
@@ -13944,6 +14300,7 @@ async function logStudentJobEligibilityAudit(input: {
     fromStatus: input.fromStatus ?? null,
     toStatus: input.toStatus ?? null,
     details: input.details === undefined ? null : JSON.stringify(input.details),
+    createdAt: new Date().toISOString(),
   });
 }
 
@@ -13971,16 +14328,19 @@ export async function upsertStudentJobProfile(input: {
   if (!db) throw new Error("Database not available");
 
   const now = new Date().toISOString();
-  const clean = {
-    headline: input.headline?.trim() || null,
-    skills: input.skills?.trim() || null,
-    experienceSummary: input.experienceSummary?.trim() || null,
-    portfolioUrl: input.portfolioUrl?.trim() || null,
-    cvUrl: input.cvUrl?.trim() || null,
-    preferredRole: input.preferredRole?.trim() || null,
-    availability: input.availability?.trim() || null,
-    updatedAt: now,
-  };
+  const clean: Partial<StudentJobProfile> & { updatedAt: string } = { updatedAt: now };
+  const patchableFields = [
+    "headline",
+    "skills",
+    "experienceSummary",
+    "portfolioUrl",
+    "cvUrl",
+    "preferredRole",
+    "availability",
+  ] as const;
+  for (const field of patchableFields) {
+    if (input[field] !== undefined) clean[field] = input[field]?.trim() || null;
+  }
 
   const existing = await getStudentJobProfile(input.userId);
   if (existing) {
@@ -14029,9 +14389,25 @@ export async function getStudentJobOpportunities(userId: number) {
         eq(studentJobEligibilityReviews.userId, userId),
         inArray(studentJobEligibilityReviews.jobId, jobIds),
       ));
+  const historyRows = jobIds.length === 0
+    ? []
+    : await db.select().from(studentJobEligibilityAuditLogs)
+      .where(and(
+        eq(studentJobEligibilityAuditLogs.userId, userId),
+        inArray(studentJobEligibilityAuditLogs.jobId, jobIds),
+        sql`${studentJobEligibilityAuditLogs.action} LIKE 'review_%'`,
+      ))
+      .orderBy(desc(studentJobEligibilityAuditLogs.createdAt), desc(studentJobEligibilityAuditLogs.id));
 
   const ruleMap = new Map(rules.map((rule) => [rule.jobId, rule]));
   const reviewMap = new Map(reviews.map((review) => [review.jobId, review]));
+  const historyMap = new Map<number, typeof historyRows>();
+  for (const history of historyRows) {
+    if (history.jobId == null) continue;
+    const rows = historyMap.get(history.jobId) ?? [];
+    rows.push(history);
+    historyMap.set(history.jobId, rows);
+  }
 
   return {
     profile,
@@ -14044,6 +14420,7 @@ export async function getStudentJobOpportunities(userId: number) {
           job,
           ...evaluation,
           review: reviewMap.get(job.id) ?? null,
+          reviewHistory: historyMap.get(job.id) ?? [],
         };
       })
       .filter((item) => item.rule.isEnabled),
@@ -14059,7 +14436,7 @@ export async function submitStudentJobEligibilityReview(input: {
   if (!db) throw new Error("Database not available");
 
   const job = await getJobById(input.jobId);
-  if (!job || !job.isActive) throw new Error("Job not found or inactive");
+  if (!job || !job.isActive) throw new StudentJobEligibilityError("job_not_available");
 
   const profile = await getStudentJobProfile(input.userId);
   const metrics = await getStudentJobEligibilityMetrics(input.userId, profile);
@@ -14067,7 +14444,7 @@ export async function submitStudentJobEligibilityReview(input: {
     .where(eq(studentJobEligibilityRules.jobId, input.jobId))
     .limit(1);
   const evaluation = evaluateStudentJobEligibility(metrics, rule);
-  if (!evaluation.rule.isEnabled) throw new Error("Eligibility is not enabled for this job");
+  if (!rule || !evaluation.rule.isEnabled) throw new StudentJobEligibilityError("rule_not_available");
 
   const now = new Date().toISOString();
   const snapshot = {
@@ -14082,7 +14459,14 @@ export async function submitStudentJobEligibilityReview(input: {
       eq(studentJobEligibilityReviews.jobId, input.jobId),
     ))
     .limit(1);
-  const nextStatus: StudentJobEligibilityReviewStatus = "submitted";
+  const currentStatus = existing[0]?.status as StudentJobEligibilityReviewStatus | undefined;
+  if (!canSubmitStudentJobEligibilityReview(currentStatus)) {
+    if (currentStatus === "submitted" || currentStatus === "resubmitted") {
+      throw new StudentJobEligibilityError("review_already_pending");
+    }
+    throw new StudentJobEligibilityError("review_already_decided");
+  }
+  const nextStatus: StudentJobEligibilityReviewStatus = existing[0] ? "resubmitted" : "submitted";
 
   if (existing[0]) {
     const [review] = await db.update(studentJobEligibilityReviews).set({
@@ -14091,12 +14475,15 @@ export async function submitStudentJobEligibilityReview(input: {
       score: evaluation.score,
       snapshotJson: JSON.stringify(snapshot),
       studentNote: input.studentNote?.trim() || null,
-      adminNote: null,
       reviewedByUserId: null,
       reviewedAt: null,
       submittedAt: now,
       updatedAt: now,
-    }).where(eq(studentJobEligibilityReviews.id, existing[0].id)).returning();
+    }).where(and(
+      eq(studentJobEligibilityReviews.id, existing[0].id),
+      eq(studentJobEligibilityReviews.status, "returned"),
+    )).returning();
+    if (!review) throw new StudentJobEligibilityError("review_already_pending");
 
     await logStudentJobEligibilityAudit({
       userId: input.userId,
@@ -14105,23 +14492,32 @@ export async function submitStudentJobEligibilityReview(input: {
       action: "review_resubmitted",
       fromStatus: existing[0].status,
       toStatus: nextStatus,
-      details: snapshot,
+      details: { snapshot, studentNote: input.studentNote?.trim() || null },
     });
     return review;
   }
 
-  const [review] = await db.insert(studentJobEligibilityReviews).values({
-    userId: input.userId,
-    jobId: input.jobId,
-    status: nextStatus,
-    systemEligible: evaluation.systemEligible,
-    score: evaluation.score,
-    snapshotJson: JSON.stringify(snapshot),
-    studentNote: input.studentNote?.trim() || null,
-    submittedAt: now,
-    updatedAt: now,
-    createdAt: now,
-  }).returning();
+  let review: StudentJobEligibilityReview | undefined;
+  try {
+    [review] = await db.insert(studentJobEligibilityReviews).values({
+      userId: input.userId,
+      jobId: input.jobId,
+      status: nextStatus,
+      systemEligible: evaluation.systemEligible,
+      score: evaluation.score,
+      snapshotJson: JSON.stringify(snapshot),
+      studentNote: input.studentNote?.trim() || null,
+      submittedAt: now,
+      updatedAt: now,
+      createdAt: now,
+    }).returning();
+  } catch (error) {
+    if (isSqliteUniqueConstraintError(error)) {
+      throw new StudentJobEligibilityError("review_already_pending");
+    }
+    throw error;
+  }
+  if (!review) throw new Error("Eligibility review insert returned no row");
 
   await logStudentJobEligibilityAudit({
     userId: input.userId,
@@ -14129,7 +14525,7 @@ export async function submitStudentJobEligibilityReview(input: {
     actorUserId: input.userId,
     action: "review_submitted",
     toStatus: nextStatus,
-    details: snapshot,
+    details: { snapshot, studentNote: input.studentNote?.trim() || null },
   });
   return review;
 }
@@ -14158,6 +14554,15 @@ export async function listStudentJobEligibilityRules() {
     .orderBy(desc(studentJobEligibilityRules.updatedAt), asc(jobs.sortOrder));
 }
 
+export async function getStudentJobEligibilityRuleByJobId(jobId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const [rule] = await db.select().from(studentJobEligibilityRules)
+    .where(eq(studentJobEligibilityRules.jobId, jobId))
+    .limit(1);
+  return rule;
+}
+
 export async function upsertStudentJobEligibilityRule(input: StudentJobEligibilityRuleInput & {
   actorUserId: number;
 }) {
@@ -14168,22 +14573,22 @@ export async function upsertStudentJobEligibilityRule(input: StudentJobEligibili
   if (!job) throw new Error("Job not found");
 
   const now = new Date().toISOString();
-  const data = {
-    minCompletedEpisodes: Math.max(0, input.minCompletedEpisodes ?? 0),
-    minPassedQuizzes: Math.max(0, input.minPassedQuizzes ?? 0),
-    minPointsBalance: Math.max(0, input.minPointsBalance ?? 0),
-    requireActiveSubscription: input.requireActiveSubscription ?? true,
-    requireProfile: input.requireProfile ?? true,
-    requireAdminReview: input.requireAdminReview ?? true,
-    isEnabled: input.isEnabled ?? true,
-    instructions: input.instructions?.trim() || null,
-    updatedByUserId: input.actorUserId,
-    updatedAt: now,
-  };
-
   const [existing] = await db.select().from(studentJobEligibilityRules)
     .where(eq(studentJobEligibilityRules.jobId, input.jobId))
     .limit(1);
+
+  const data = {
+    minCompletedEpisodes: Math.max(0, input.minCompletedEpisodes ?? existing?.minCompletedEpisodes ?? 0),
+    minPassedQuizzes: Math.max(0, input.minPassedQuizzes ?? existing?.minPassedQuizzes ?? 0),
+    minPointsBalance: Math.max(0, input.minPointsBalance ?? existing?.minPointsBalance ?? 0),
+    requireActiveSubscription: input.requireActiveSubscription ?? existing?.requireActiveSubscription ?? true,
+    requireProfile: input.requireProfile ?? existing?.requireProfile ?? true,
+    requireAdminReview: input.requireAdminReview ?? existing?.requireAdminReview ?? true,
+    isEnabled: input.isEnabled ?? existing?.isEnabled ?? true,
+    instructions: input.instructions === undefined ? (existing?.instructions ?? null) : (input.instructions?.trim() || null),
+    updatedByUserId: input.actorUserId,
+    updatedAt: now,
+  };
 
   if (existing) {
     const [rule] = await db.update(studentJobEligibilityRules)
@@ -14227,7 +14632,7 @@ export async function listStudentJobEligibilityReviews(input?: {
   if (input?.jobId) conditions.push(eq(studentJobEligibilityReviews.jobId, input.jobId));
   const limit = Math.min(Math.max(input?.limit ?? 100, 1), 200);
 
-  return db.select({
+  const reviews = await db.select({
     id: studentJobEligibilityReviews.id,
     userId: studentJobEligibilityReviews.userId,
     jobId: studentJobEligibilityReviews.jobId,
@@ -14252,6 +14657,29 @@ export async function listStudentJobEligibilityReviews(input?: {
     .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(desc(studentJobEligibilityReviews.submittedAt), desc(studentJobEligibilityReviews.id))
     .limit(limit);
+
+  if (reviews.length === 0) return [];
+  const userIds = Array.from(new Set(reviews.map((review) => review.userId)));
+  const jobIds = Array.from(new Set(reviews.map((review) => review.jobId)));
+  const historyRows = await db.select().from(studentJobEligibilityAuditLogs)
+    .where(and(
+      inArray(studentJobEligibilityAuditLogs.userId, userIds),
+      inArray(studentJobEligibilityAuditLogs.jobId, jobIds),
+      sql`${studentJobEligibilityAuditLogs.action} LIKE 'review_%'`,
+    ))
+    .orderBy(desc(studentJobEligibilityAuditLogs.createdAt), desc(studentJobEligibilityAuditLogs.id));
+  const historyMap = new Map<string, typeof historyRows>();
+  for (const history of historyRows) {
+    if (history.userId == null || history.jobId == null) continue;
+    const key = `${history.userId}:${history.jobId}`;
+    const rows = historyMap.get(key) ?? [];
+    rows.push(history);
+    historyMap.set(key, rows);
+  }
+  return reviews.map((review) => ({
+    ...review,
+    history: historyMap.get(`${review.userId}:${review.jobId}`) ?? [],
+  }));
 }
 
 export async function reviewStudentJobEligibility(input: {
@@ -14266,7 +14694,10 @@ export async function reviewStudentJobEligibility(input: {
   const [current] = await db.select().from(studentJobEligibilityReviews)
     .where(eq(studentJobEligibilityReviews.id, input.reviewId))
     .limit(1);
-  if (!current) throw new Error("Eligibility review not found");
+  if (!current) throw new StudentJobEligibilityError("review_not_found");
+  if (!canDecideStudentJobEligibilityReview(current.status as StudentJobEligibilityReviewStatus)) {
+    throw new StudentJobEligibilityError("invalid_review_transition");
+  }
 
   const now = new Date().toISOString();
   const [review] = await db.update(studentJobEligibilityReviews).set({
@@ -14275,7 +14706,11 @@ export async function reviewStudentJobEligibility(input: {
     reviewedByUserId: input.actorUserId,
     reviewedAt: now,
     updatedAt: now,
-  }).where(eq(studentJobEligibilityReviews.id, input.reviewId)).returning();
+  }).where(and(
+    eq(studentJobEligibilityReviews.id, input.reviewId),
+    inArray(studentJobEligibilityReviews.status, ["submitted", "resubmitted"]),
+  )).returning();
+  if (!review) throw new StudentJobEligibilityError("invalid_review_transition");
 
   await logStudentJobEligibilityAudit({
     userId: current.userId,
@@ -14632,6 +15067,22 @@ export async function getPointsBalance(userId: number): Promise<number> {
   return Number(user?.pointsBalance ?? 0);
 }
 
+export async function getLoyaltyPointStudent(userId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const [student] = await db
+    .select({
+      id: users.id,
+      name: users.name,
+      email: users.email,
+      pointsBalance: users.pointsBalance,
+    })
+    .from(users)
+    .where(and(eq(users.id, userId), eq(users.isStaff, false)))
+    .limit(1);
+  return student ?? null;
+}
+
 export async function getPointsHistory(userId: number, limit = 50) {
   const db = await getDb();
   if (!db) return [];
@@ -14681,6 +15132,94 @@ export async function redeemPoints(input: {
   return tx;
 }
 
+type AdminStudentPointsAdjustmentInput = {
+  userId: number;
+  actorUserId: number;
+  amount: number;
+  direction: "award" | "deduct";
+  reasonEn: string;
+  reasonAr: string;
+};
+
+/**
+ * Applies an operator adjustment and its ledger entry in one D1 batch.
+ *
+ * The user update is conditional on a student target and, for deductions, a
+ * sufficient live balance. The ledger insert uses SQLite's changes() result as
+ * a transaction guard: when the update did not affect exactly one student, its
+ * required user_id becomes NULL and aborts the whole batch. This keeps both D1
+ * and the local D1 adapter free of balance-only or ledger-only partial writes.
+ * The existing reference fields preserve the acting staff user's ID without a
+ * schema migration.
+ */
+export async function adjustStudentPointsAtomic(
+  input: AdminStudentPointsAdjustmentInput,
+  database?: NonNullable<Awaited<ReturnType<typeof getDb>>>,
+): Promise<PointsTransaction | null> {
+  const db = database ?? (await getDb());
+  if (!db) throw new Error("Database not available");
+
+  const signedAmount =
+    input.direction === "award" ? input.amount : -input.amount;
+  const type = input.direction === "award" ? "bonus" : "redeem";
+  const now = new Date().toISOString();
+  const targetCondition =
+    input.direction === "deduct"
+      ? and(
+          eq(users.id, input.userId),
+          eq(users.isStaff, false),
+          gte(users.pointsBalance, input.amount),
+        )
+      : and(eq(users.id, input.userId), eq(users.isStaff, false));
+
+  const updateBalance = db
+    .update(users)
+    .set({ pointsBalance: sql`${users.pointsBalance} + ${signedAmount}` })
+    .where(targetCondition)
+    .returning({
+      id: users.id,
+      pointsBalance: users.pointsBalance,
+    });
+  const insertLedgerEntry = db
+    .insert(pointsTransactions)
+    .select(
+      sql`
+    SELECT
+      NULL,
+      CASE WHEN changes() = 1 THEN ${input.userId} ELSE NULL END,
+      ${signedAmount},
+      ${type},
+      ${input.reasonEn},
+      ${input.reasonAr},
+      ${input.actorUserId},
+      ${"admin_adjustment"},
+      ${now}
+  `,
+    )
+    .returning();
+
+  try {
+    const [, transactions] = (await db.batch([
+      updateBalance,
+      insertLedgerEntry,
+    ] as any)) as unknown as [
+      Array<{ id: number; pointsBalance: number }>,
+      PointsTransaction[],
+    ];
+    return transactions[0] ?? null;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (
+      /NOT NULL constraint failed:\s*points_transactions\.user_id/i.test(
+        message,
+      )
+    ) {
+      return null;
+    }
+    throw error;
+  }
+}
+
 export async function getTopPointsUsers(limit = 20) {
   const db = await getDb();
   if (!db) return [];
@@ -14688,9 +15227,35 @@ export async function getTopPointsUsers(limit = 20) {
     id: users.id, name: users.name, email: users.email,
     pointsBalance: users.pointsBalance,
   }).from(users)
-    .where(sql`${users.pointsBalance} > 0`)
+    .where(and(eq(users.isStaff, false), sql`${users.pointsBalance} > 0`))
     .orderBy(desc(users.pointsBalance))
     .limit(limit);
+}
+
+export async function searchLoyaltyPointStudents(search: string, limit = 12) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const query = search.trim();
+  if (query.length < 2) return [];
+  const pattern = `%${query}%`;
+
+  return db
+    .select({
+      id: users.id,
+      name: users.name,
+      email: users.email,
+      pointsBalance: users.pointsBalance,
+    })
+    .from(users)
+    .where(
+      and(
+        eq(users.isStaff, false),
+        or(like(users.name, pattern), like(users.email, pattern)),
+      ),
+    )
+    .orderBy(asc(users.name), asc(users.email), asc(users.id))
+    .limit(Math.min(Math.max(limit, 1), 20));
 }
 
 async function logLoyaltyRewardAudit(input: {
@@ -14878,17 +15443,19 @@ export async function requestLoyaltyRewardRedemption(input: {
       throw new Error("Loyalty redemption integrity migration 069 is not applied");
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (message.includes("loyalty_reward_insufficient_points")) {
+    if (errorChainMatches(error, "loyalty_reward_insufficient_points")) {
       return { status: "insufficient_points" as const };
     }
-    if (message.includes("loyalty_reward_out_of_stock")) {
+    if (errorChainMatches(error, "loyalty_reward_out_of_stock")) {
       return { status: "out_of_stock" as const };
     }
-    if (message.includes("loyalty_reward_already_pending")) {
+    if (errorChainMatches(error, "loyalty_reward_already_pending")) {
       return { status: "already_pending" as const };
     }
-    if (message.includes("loyalty_reward_not_available") || message.includes("loyalty_reward_price_changed")) {
+    if (
+      errorChainMatches(error, "loyalty_reward_not_available")
+      || errorChainMatches(error, "loyalty_reward_price_changed")
+    ) {
       return { status: "not_available" as const };
     }
     throw error;
@@ -15148,7 +15715,7 @@ export async function addStudentCommunityPolicyTerm(input: {
     }).returning();
     return { status: "created" as const, term };
   } catch (error) {
-    if (String(error).toLowerCase().includes("unique")) {
+    if (isSqliteUniqueConstraintError(error)) {
       return { status: "duplicate" as const };
     }
     throw error;
@@ -15744,7 +16311,7 @@ export async function reportStudentCommunityContent(input: {
 
     return { status: "created" as const, report };
   } catch (error) {
-    if (String(error).toLowerCase().includes("unique")) {
+    if (isSqliteUniqueConstraintError(error)) {
       return { status: "duplicate" as const };
     }
     throw error;
@@ -15764,7 +16331,45 @@ export async function listStudentCommunityReportsForAdmin(input: {
     id: studentCommunityReports.id,
     targetType: studentCommunityReports.targetType,
     targetId: studentCommunityReports.targetId,
-    reporterUserId: studentCommunityReports.reporterUserId,
+    postId: sql<number | null>`CASE
+      WHEN ${studentCommunityReports.targetType} = 'post'
+        THEN ${studentCommunityReports.targetId}
+      ELSE (
+        SELECT report_comment.post_id
+        FROM student_community_comments AS report_comment
+        WHERE report_comment.id = ${studentCommunityReports.targetId}
+      )
+    END`,
+      targetTitle: sql<string | null>`CASE
+      WHEN ${studentCommunityReports.targetType} = 'post'
+        THEN (
+          SELECT report_post.title
+          FROM student_community_posts AS report_post
+          WHERE report_post.id = ${studentCommunityReports.targetId}
+        )
+      ELSE NULL
+    END`,
+      targetPreview: sql<string | null>`CASE
+      WHEN ${studentCommunityReports.targetType} = 'post'
+        THEN (
+          SELECT report_post.body
+          FROM student_community_posts AS report_post
+          WHERE report_post.id = ${studentCommunityReports.targetId}
+        )
+      ELSE (
+        SELECT report_comment.body
+        FROM student_community_comments AS report_comment
+        WHERE report_comment.id = ${studentCommunityReports.targetId}
+      )
+    END`,
+      openReportCount: sql<number>`(
+      SELECT COUNT(*)
+      FROM student_community_reports AS related_report
+      WHERE related_report.target_type = ${studentCommunityReports.targetType}
+        AND related_report.target_id = ${studentCommunityReports.targetId}
+        AND related_report.status = 'open'
+    )`,
+      reporterUserId: studentCommunityReports.reporterUserId,
     reason: studentCommunityReports.reason,
     details: studentCommunityReports.details,
     status: studentCommunityReports.status,
@@ -18268,8 +18873,6 @@ export async function logEmailDeliveryAttempt(input: {
   }
 }
 
-type EmailDeliveryEventCategory = 'recommendations' | 'support' | 'orders' | 'login' | 'lifecycle' | 'system';
-
 type EmailDeliveryLogFilters = {
   recipientQuery?: string;
   recipientUserId?: number;
@@ -18306,11 +18909,16 @@ function buildEmailDeliveryLogConditions(filters?: EmailDeliveryLogFilters) {
         eq(emailDeliveryLogs.eventType, 'trade_result'),
       ));
     } else if (filters.eventCategory === 'support') {
-      conditions.push(or(
-        like(emailDeliveryLogs.eventType, '%support%'),
-        like(emailDeliveryLogs.eventType, 'lexai%'),
-        eq(emailDeliveryLogs.eventType, 'human_escalation'),
-      ));
+      conditions.push(
+        or(
+          like(emailDeliveryLogs.eventType, '%support%'),
+          and(
+            like(emailDeliveryLogs.eventType, 'lexai%'),
+            sql`${emailDeliveryLogs.eventType} NOT LIKE 'lexai_expiry%'`,
+          ),
+          eq(emailDeliveryLogs.eventType, 'human_escalation'),
+        ),
+      );
     } else if (filters.eventCategory === 'orders') {
       conditions.push(or(
         like(emailDeliveryLogs.eventType, '%order%'),
@@ -18336,29 +18944,48 @@ function buildEmailDeliveryLogConditions(filters?: EmailDeliveryLogFilters) {
         like(emailDeliveryLogs.eventType, '%freeze%'),
         like(emailDeliveryLogs.eventType, 'lexai_expiry%'),
       ));
+    } else if (filters.eventCategory === "surveys") {
+      conditions.push(
+        like(emailDeliveryLogs.eventType, "student_survey%"),
+      );
+    } else if (filters.eventCategory === "rewards") {
+      conditions.push(like(emailDeliveryLogs.eventType, "loyalty_reward%"));
+    } else if (filters.eventCategory === "community") {
+      conditions.push(like(emailDeliveryLogs.eventType, "community_%"));
+    } else if (filters.eventCategory === "jobs") {
+      conditions.push(like(emailDeliveryLogs.eventType, "job_eligibility%"));
+    } else if (filters.eventCategory === "staff_performance") {
+      conditions.push(like(emailDeliveryLogs.eventType, "staff_performance%"));
     } else if (filters.eventCategory === 'system') {
-      conditions.push(and(
-        sql`${emailDeliveryLogs.eventType} NOT LIKE 'recommendation%'`,
-        ne(emailDeliveryLogs.eventType, 'trade_result'),
-        sql`${emailDeliveryLogs.eventType} NOT LIKE '%support%'`,
-        sql`${emailDeliveryLogs.eventType} NOT LIKE 'lexai%'`,
-        ne(emailDeliveryLogs.eventType, 'human_escalation'),
-        sql`${emailDeliveryLogs.eventType} NOT LIKE '%order%'`,
-        sql`${emailDeliveryLogs.eventType} NOT LIKE '%payment%'`,
-        sql`${emailDeliveryLogs.eventType} NOT LIKE '%login%'`,
-        sql`${emailDeliveryLogs.eventType} NOT LIKE '%otp%'`,
-        sql`${emailDeliveryLogs.eventType} NOT LIKE '%expiry%'`,
-        sql`${emailDeliveryLogs.eventType} NOT LIKE '%expiring%'`,
-        sql`${emailDeliveryLogs.eventType} NOT LIKE '%subscription%'`,
-        sql`${emailDeliveryLogs.eventType} NOT LIKE '%renewal%'`,
-        sql`${emailDeliveryLogs.eventType} NOT LIKE '%welcome%'`,
-        sql`${emailDeliveryLogs.eventType} NOT LIKE '%drip%'`,
-        sql`${emailDeliveryLogs.eventType} NOT LIKE '%milestone%'`,
-        sql`${emailDeliveryLogs.eventType} NOT LIKE '%inactivity%'`,
-        sql`${emailDeliveryLogs.eventType} NOT LIKE '%onboarding%'`,
-        sql`${emailDeliveryLogs.eventType} NOT LIKE '%quiz%'`,
-        sql`${emailDeliveryLogs.eventType} NOT LIKE '%freeze%'`,
-      ));
+      conditions.push(
+        and(
+          sql`${emailDeliveryLogs.eventType} NOT LIKE 'recommendation%'`,
+          ne(emailDeliveryLogs.eventType, 'trade_result'),
+          sql`${emailDeliveryLogs.eventType} NOT LIKE '%support%'`,
+          sql`${emailDeliveryLogs.eventType} NOT LIKE 'lexai%'`,
+          ne(emailDeliveryLogs.eventType, 'human_escalation'),
+          sql`${emailDeliveryLogs.eventType} NOT LIKE '%order%'`,
+          sql`${emailDeliveryLogs.eventType} NOT LIKE '%payment%'`,
+          sql`${emailDeliveryLogs.eventType} NOT LIKE '%login%'`,
+          sql`${emailDeliveryLogs.eventType} NOT LIKE '%otp%'`,
+          sql`${emailDeliveryLogs.eventType} NOT LIKE '%expiry%'`,
+          sql`${emailDeliveryLogs.eventType} NOT LIKE '%expiring%'`,
+          sql`${emailDeliveryLogs.eventType} NOT LIKE '%subscription%'`,
+          sql`${emailDeliveryLogs.eventType} NOT LIKE '%renewal%'`,
+          sql`${emailDeliveryLogs.eventType} NOT LIKE '%welcome%'`,
+          sql`${emailDeliveryLogs.eventType} NOT LIKE '%drip%'`,
+          sql`${emailDeliveryLogs.eventType} NOT LIKE '%milestone%'`,
+          sql`${emailDeliveryLogs.eventType} NOT LIKE '%inactivity%'`,
+          sql`${emailDeliveryLogs.eventType} NOT LIKE '%onboarding%'`,
+          sql`${emailDeliveryLogs.eventType} NOT LIKE '%quiz%'`,
+          sql`${emailDeliveryLogs.eventType} NOT LIKE '%freeze%'`,
+          sql`${emailDeliveryLogs.eventType} NOT LIKE 'student_survey%'`,
+          sql`${emailDeliveryLogs.eventType} NOT LIKE 'loyalty_reward%'`,
+          sql`${emailDeliveryLogs.eventType} NOT LIKE 'community_%'`,
+          sql`${emailDeliveryLogs.eventType} NOT LIKE 'job_eligibility%'`,
+          sql`${emailDeliveryLogs.eventType} NOT LIKE 'staff_performance%'`,
+        ),
+      );
     }
   }
 
@@ -19377,6 +20004,208 @@ export async function getAllAdminSettings(): Promise<Record<string, string>> {
   const result: Record<string, string> = {};
   for (const row of rows) result[row.settingKey] = row.settingValue ?? '';
   return result;
+}
+
+/**
+ * Aggregate, non-sensitive feature readiness data for the main admin console.
+ *
+ * This deliberately returns counts and configuration state only. It does not
+ * include student content, email addresses, policy-term text, or secret values,
+ * so the Feature Center can stay useful without becoming another data export.
+ */
+export async function getAdminFeatureOverview() {
+  const db = await getDb();
+  if (!db) {
+    return {
+      generatedAt: new Date().toISOString(),
+      modules: {
+        staffPerformance: {
+          enabled: false,
+          plans: 0,
+          dailyLogs: 0,
+          weeklyReports: 0,
+          managers: 0,
+          employees: 0,
+        },
+        studentSurveys: {
+          enabled: false,
+          blockingEnabled: false,
+          blockingAffectedStudents: 0,
+          surveys: 0,
+          questions: 0,
+          assignments: 0,
+          answers: 0,
+          managers: 0,
+        },
+        loyaltyRewards: {
+          enabled: false,
+          rewardItems: 0,
+          redemptions: 0,
+          managers: 0,
+        },
+        studentCommunity: {
+          enabled: false,
+          posts: 0,
+          openReports: 0,
+          activeCompetitorTerms: 0,
+          activeProhibitedLanguageTerms: 0,
+          moderationDecisions: 0,
+          moderators: 0,
+          openAiConfigured: false,
+        },
+        studentJobEligibility: {
+          enabled: false,
+          profiles: 0,
+          rules: 0,
+          reviews: 0,
+          managers: 0,
+        },
+      },
+      operations: { emailLogViewers: 0, notificationRecipients: 0 },
+    };
+  }
+
+  const count = async (table: any) => {
+    const [row] = await db.select({ total: sql<number>`COUNT(*)` }).from(table);
+    return Number(row?.total ?? 0);
+  };
+  const countRole = async (role: string) => {
+    const [row] = await db
+      .select({ total: sql<number>`COUNT(*)` })
+      .from(userRoles)
+      .where(eq(userRoles.role, role));
+    return Number(row?.total ?? 0);
+  };
+
+  const [
+    settings,
+    plans,
+    dailyLogs,
+    weeklyReports,
+    performanceManagers,
+    performanceEmployees,
+    surveys,
+    surveyQuestions,
+    surveyAssignments,
+    surveyAnswers,
+    surveyManagers,
+    surveyBlockingAffectedStudents,
+    rewardItems,
+    redemptions,
+    rewardManagers,
+    posts,
+    openReportsRow,
+    activeCompetitorTermsRow,
+    activeProhibitedTermsRow,
+    moderationDecisions,
+    communityModerators,
+    jobProfiles,
+    jobRules,
+    jobReviews,
+    jobManagers,
+    emailLogViewers,
+    notificationRecipients,
+  ] = await Promise.all([
+    getAllAdminSettings(),
+    count(staffPerformanceMonthlyPlans),
+    count(staffPerformanceDailyLogs),
+    count(staffPerformanceWeeklyReports),
+    countRole("staff_performance_manager"),
+    countRole("staff_performance_employee"),
+    count(studentSurveys),
+    count(studentSurveyQuestions),
+    count(studentSurveyAssignments),
+    count(studentSurveyAnswers),
+    countRole("student_surveys_manager"),
+    countStudentsAffectedBySurveyBlocking(),
+    count(loyaltyRewardItems),
+    count(loyaltyRewardRedemptions),
+    countRole("loyalty_rewards_manager"),
+    count(studentCommunityPosts),
+    db
+      .select({ total: sql<number>`COUNT(*)` })
+      .from(studentCommunityReports)
+      .where(eq(studentCommunityReports.status, "open")),
+    db
+      .select({ total: sql<number>`COUNT(*)` })
+      .from(studentCommunityPolicyTerms)
+      .where(
+        and(
+          eq(studentCommunityPolicyTerms.category, "competitor"),
+          eq(studentCommunityPolicyTerms.isActive, true),
+        ),
+      ),
+    db
+      .select({ total: sql<number>`COUNT(*)` })
+      .from(studentCommunityPolicyTerms)
+      .where(
+        and(
+          eq(studentCommunityPolicyTerms.category, "prohibited_language"),
+          eq(studentCommunityPolicyTerms.isActive, true),
+        ),
+      ),
+    count(studentCommunityModerationDecisions),
+    countRole("student_community_moderator"),
+    count(studentJobProfiles),
+    count(studentJobEligibilityRules),
+    count(studentJobEligibilityReviews),
+    countRole("student_job_eligibility_manager"),
+    countRole("email_logs_viewer"),
+    getConfiguredAdminNotificationEmails().then((emails) => emails.length),
+  ]);
+
+  return {
+    generatedAt: new Date().toISOString(),
+    modules: {
+      staffPerformance: {
+        enabled: settings.staff_performance_enabled === "true",
+        plans,
+        dailyLogs,
+        weeklyReports,
+        managers: performanceManagers,
+        employees: performanceEmployees,
+      },
+      studentSurveys: {
+        enabled: settings.student_surveys_enabled === "true",
+        blockingEnabled: settings.student_surveys_blocking_enabled === "true",
+        blockingAffectedStudents: surveyBlockingAffectedStudents,
+        surveys,
+        questions: surveyQuestions,
+        assignments: surveyAssignments,
+        answers: surveyAnswers,
+        managers: surveyManagers,
+      },
+      loyaltyRewards: {
+        enabled: settings.loyalty_rewards_enabled === "true",
+        rewardItems,
+        redemptions,
+        managers: rewardManagers,
+      },
+      studentCommunity: {
+        enabled: settings.student_community_enabled === "true",
+        posts,
+        openReports: Number(openReportsRow[0]?.total ?? 0),
+        activeCompetitorTerms: Number(activeCompetitorTermsRow[0]?.total ?? 0),
+        activeProhibitedLanguageTerms: Number(
+          activeProhibitedTermsRow[0]?.total ?? 0,
+        ),
+        moderationDecisions,
+        moderators: communityModerators,
+        openAiConfigured: Boolean(ENV.openaiApiKey),
+      },
+      studentJobEligibility: {
+        enabled: settings.student_job_eligibility_enabled === "true",
+        profiles: jobProfiles,
+        rules: jobRules,
+        reviews: jobReviews,
+        managers: jobManagers,
+      },
+    },
+    operations: {
+      emailLogViewers,
+      notificationRecipients,
+    },
+  };
 }
 
 export async function getStaffNotificationPrefs(userId: number): Promise<Record<string, boolean>> {

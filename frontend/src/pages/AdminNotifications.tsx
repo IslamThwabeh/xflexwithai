@@ -3,25 +3,127 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { trpc } from '@/lib/trpc';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Bell, Send, Loader2, Users, Inbox, CheckCheck, ExternalLink, Filter, Search, UserCheck, UserX, User, Mail, Info, ChevronDown, ChevronUp, MailCheck, MailX } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Bell, Send, Loader2, Users, Inbox, CheckCheck, ExternalLink, Filter, Search, UserCheck, UserX, User, Mail, Info, ChevronDown, ChevronUp, MailCheck, MailX, Eye, Sparkles } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import { toast } from 'sonner';
 import { STAFF_NOTIFICATION_EVENTS, type StaffNotificationEventType } from '@shared/const';
+import type { AdminFeatureId } from '@shared/adminFeatureCatalog';
 import { useLocation } from 'wouter';
+
+type NotificationDraft = {
+  titleEn: string;
+  titleAr: string;
+  contentEn: string;
+  contentAr: string;
+  type: string;
+  actionUrl: string;
+};
+
+const EMPTY_NOTIFICATION_DRAFT: NotificationDraft = {
+  titleEn: '',
+  titleAr: '',
+  contentEn: '',
+  contentAr: '',
+  type: 'info',
+  actionUrl: '',
+};
+
+const ADMIN_NOTIFICATION_EMAIL_RECIPIENT_LIMIT = 499;
+
+const FEATURE_NOTIFICATION_TEMPLATES: Array<{
+  id: string;
+  featureId: AdminFeatureId;
+  labelEn: string;
+  labelAr: string;
+  draft: NotificationDraft;
+}> = [
+  {
+    id: 'survey-invitation',
+    featureId: 'student-surveys',
+    labelEn: 'Survey invitation',
+    labelAr: 'دعوة لاستبيان',
+    draft: {
+      titleEn: 'A new survey is waiting for you',
+      titleAr: 'استبيان جديد بانتظارك',
+      contentEn: 'Your feedback helps us improve the academy experience. Please complete the survey from your account.',
+      contentAr: 'رأيك يساعدنا على تحسين تجربة الأكاديمية. يرجى تعبئة الاستبيان من حسابك.',
+      type: 'action',
+      actionUrl: '/surveys',
+    },
+  },
+  {
+    id: 'rewards-launch',
+    featureId: 'points-rewards',
+    labelEn: 'Rewards announcement',
+    labelAr: 'إعلان المكافآت',
+    draft: {
+      titleEn: 'Discover your XFlex rewards',
+      titleAr: 'اكتشف مكافآتك في XFlex',
+      contentEn: 'Review your points balance and the rewards currently available from your account.',
+      contentAr: 'راجع رصيد نقاطك والمكافآت المتاحة حالياً من داخل حسابك.',
+      type: 'success',
+      actionUrl: '/my-points',
+    },
+  },
+  {
+    id: 'community-launch',
+    featureId: 'student-community',
+    labelEn: 'Community launch',
+    labelAr: 'إطلاق المجتمع',
+    draft: {
+      titleEn: 'The XFlex student community is ready',
+      titleAr: 'مجتمع طلاب XFlex أصبح جاهزاً',
+      contentEn: 'Join the academy community, exchange educational ideas, and communicate within the community rules.',
+      contentAr: 'انضم إلى مجتمع الأكاديمية، وشارك الأفكار التعليمية، وتواصل ضمن قواعد المجتمع.',
+      type: 'info',
+      actionUrl: '/community',
+    },
+  },
+  {
+    id: 'job-opportunities',
+    featureId: 'job-eligibility',
+    labelEn: 'Job opportunities',
+    labelAr: 'فرص العمل',
+    draft: {
+      titleEn: 'Interested in job and collaboration opportunities?',
+      titleAr: 'هل أنت مهتم بفرص العمل والتعاون؟',
+      contentEn: 'Complete your career profile and review the steps required to become eligible for available opportunities.',
+      contentAr: 'أكمل ملفك المهني وراجع الخطوات المطلوبة لتصبح مؤهلاً للفرص المتاحة.',
+      type: 'action',
+      actionUrl: '/job-opportunities',
+    },
+  },
+];
 
 export default function AdminNotifications() {
   const { language } = useLanguage();
   const isRtl = language === 'ar';
   const { data: adminCheck } = trpc.auth.isAdmin.useQuery();
   const isAdmin = !!adminCheck?.isAdmin;
-  const [tab, setTab] = useState<'alerts' | 'send'>('alerts');
-  const [form, setForm] = useState({ titleEn: '', titleAr: '', contentEn: '', contentAr: '', type: 'info' as string, actionUrl: '' });
+  const requestedFeature = new URLSearchParams(window.location.search).get('feature');
+  const requestedTemplate = FEATURE_NOTIFICATION_TEMPLATES.find((template) => template.featureId === requestedFeature);
+  const [tab, setTab] = useState<'alerts' | 'send'>(() => requestedTemplate ? 'send' : 'alerts');
+  const [form, setForm] = useState<NotificationDraft>(() => ({
+    ...(requestedTemplate?.draft ?? EMPTY_NOTIFICATION_DRAFT),
+  }));
+  const [notificationFeatureId, setNotificationFeatureId] = useState<AdminFeatureId | undefined>(requestedTemplate?.featureId);
   const [sendEmail, setSendEmail] = useState(true);
   const [eventFilter, setEventFilter] = useState<StaffNotificationEventType | 'all'>('all');
   const [audience, setAudience] = useState<'all' | 'active' | 'inactive' | 'specific'>('all');
   const [selectedStudentIds, setSelectedStudentIds] = useState<number[]>([]);
   const [studentSearch, setStudentSearch] = useState('');
   const [expandedBatch, setExpandedBatch] = useState<string | null>(null);
+  const [sendConfirmationOpen, setSendConfirmationOpen] = useState(false);
   const [, setLocation] = useLocation();
 
   // Staff alerts inbox
@@ -49,19 +151,59 @@ export default function AdminNotifications() {
       const skippedNote = data.emailsSkipped
         ? (isRtl ? `، وتم تخطي ${data.emailsSkipped} بسبب إلغاء الاشتراك` : `, ${data.emailsSkipped} skipped by unsubscribe preferences`)
         : '';
-      toast.success(
-        isRtl
-          ? `تم إرسال الإشعار إلى ${data.count} طالب${emailNote}${skippedNote}`
-          : `Notification sent to ${data.count} students${emailNote}${skippedNote}`,
-      );
-      setForm({ titleEn: '', titleAr: '', contentEn: '', contentAr: '', type: 'info', actionUrl: '' });
+      if (data.emailFailed) {
+        toast.warning(
+          isRtl
+            ? `تم إنشاء الإشعار داخل المنصة لـ ${data.count} طالب، لكن تعذر تسليم البريد. لا تعيدي الإرسال؛ راجعي سجل البريد.`
+            : `The in-app notification was created for ${data.count} students, but email delivery failed. Do not resend; review the email log.`,
+        );
+      } else {
+        toast.success(
+          isRtl
+            ? `تم إرسال الإشعار إلى ${data.count} طالب${emailNote}${skippedNote}`
+            : `Notification sent to ${data.count} students${emailNote}${skippedNote}`,
+        );
+      }
+      setForm({ ...EMPTY_NOTIFICATION_DRAFT });
       setSelectedStudentIds([]);
       setAudience('all');
       setSendEmail(true);
+      setNotificationFeatureId(undefined);
+      setSendConfirmationOpen(false);
       utils.notifications.sentHistory.invalidate();
     },
     onError: (e) => toast.error(e.message),
   });
+  const sendTestEmail = trpc.notifications.sendTestEmail.useMutation({
+    onSuccess: (data) => {
+      if (data.success) {
+        toast.success(isRtl ? 'تم إرسال الاختبار إلى بريد حساب الإدارة فقط' : 'Test sent only to the signed-in admin email');
+      } else {
+        toast.info(isRtl ? 'تم تخطي بريد الاختبار وفق قواعد التسليم' : 'The test email was skipped by delivery policy');
+      }
+      utils.adminEmail.deliveryLogs.invalidate();
+      utils.adminEmail.deliveryLogSummary.invalidate();
+    },
+    onError: (error) => toast.error(error.message),
+  });
+
+  const applyTemplate = (template: typeof FEATURE_NOTIFICATION_TEMPLATES[number]) => {
+    setForm({ ...template.draft });
+    setNotificationFeatureId(template.featureId);
+    setTab('send');
+  };
+
+  const audienceLabel = audience === 'all'
+    ? (isRtl ? 'جميع الطلاب' : 'all students')
+    : audience === 'active'
+      ? (isRtl ? 'الطلاب النشطين' : 'active students')
+      : audience === 'inactive'
+        ? (isRtl ? 'الطلاب غير النشطين' : 'inactive students')
+        : (isRtl ? 'الطلاب المحددين' : 'the selected students');
+
+  const sendConfirmed = () => {
+    sendMut.mutate({ ...form, userIds: targetUserIds, sendEmail, featureId: notificationFeatureId });
+  };
 
   // Filter students based on audience
   const filteredStudents = useMemo(() => {
@@ -91,7 +233,10 @@ export default function AdminNotifications() {
     return filtered.slice(0, 50);
   }, [studentSearch, targetStudents]);
 
-  const canSend = form.titleAr.trim() && targetUserIds.length > 0 && !sendMut.isPending;
+  const hasRequiredContent = Boolean(form.titleAr.trim() && form.contentAr.trim());
+  const emailAudienceTooLarge = sendEmail && targetUserIds.length > ADMIN_NOTIFICATION_EMAIL_RECIPIENT_LIMIT;
+  const canSend = hasRequiredContent && targetUserIds.length > 0 && !emailAudienceTooLarge && !sendMut.isPending;
+  const canSendTest = hasRequiredContent && !sendTestEmail.isPending;
 
   const filteredAlerts = (staffAlerts ?? []).filter((a: any) =>
     eventFilter === 'all' || a.eventType === eventFilter
@@ -247,6 +392,47 @@ export default function AdminNotifications() {
                 {isRtl ? 'إرسال إشعار للطلاب' : 'Send Notification to Students'}
               </h3>
 
+              {/* Feature-aware starting templates */}
+              <div className="rounded-xl border border-violet-200 bg-violet-50/60 p-4 dark:border-violet-900/60 dark:bg-violet-950/20">
+                <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <p className="flex items-center gap-2 text-sm font-semibold text-violet-900 dark:text-violet-200">
+                      <Sparkles className="h-4 w-4" />
+                      {isRtl ? 'ابدأ من قالب ميزة' : 'Start from a feature template'}
+                    </p>
+                    <p className="mt-1 text-xs text-violet-700/80 dark:text-violet-300/80">
+                      {isRtl
+                        ? 'يمكنك مراجعة النص وتعديله ومعاينته قبل إرسال أي شيء.'
+                        : 'Review, edit, and preview the copy before anything is sent.'}
+                    </p>
+                  </div>
+                  {requestedTemplate && (
+                    <Badge className="bg-violet-600 text-white hover:bg-violet-600">
+                      {isRtl ? 'تم فتحه من مركز الميزات' : 'Opened from Feature Center'}
+                    </Badge>
+                  )}
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                  {FEATURE_NOTIFICATION_TEMPLATES.map((template) => {
+                    const isSelected = notificationFeatureId === template.featureId;
+                    return (
+                      <button
+                        key={template.id}
+                        type="button"
+                        onClick={() => applyTemplate(template)}
+                        className={`rounded-lg border px-3 py-2 text-start text-sm font-medium transition ${
+                          isSelected
+                            ? 'border-violet-500 bg-white text-violet-800 ring-1 ring-violet-500 dark:bg-slate-900 dark:text-violet-200'
+                            : 'border-violet-200 bg-white/70 text-slate-700 hover:border-violet-400 dark:border-violet-900 dark:bg-slate-900/60 dark:text-slate-200'
+                        }`}
+                      >
+                        {isRtl ? template.labelAr : template.labelEn}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               {/* Audience Selector */}
               <div>
                 <label className="text-sm font-medium mb-2 block">{isRtl ? 'الجمهور المستهدف' : 'Target Audience'}</label>
@@ -261,9 +447,9 @@ export default function AdminNotifications() {
                     { value: 'inactive', icon: UserX, labelEn: 'Inactive Students', labelAr: 'الطلاب غير النشطين',
                       tipEn: 'Students who registered but have no active package — either expired or never subscribed',
                       tipAr: 'الطلاب المسجلون ولكن بدون باقة فعّالة — إما انتهت صلاحيتها أو لم يشتركوا' },
-                    { value: 'specific', icon: User, labelEn: 'Specific Student', labelAr: 'طالب محدد',
-                      tipEn: 'Search and select individual students by name or email',
-                      tipAr: 'ابحث واختر طلاب محددين بالاسم أو البريد الإلكتروني' },
+                    { value: 'specific', icon: User, labelEn: 'Selected Students', labelAr: 'طلاب محددون',
+                      tipEn: 'Search and select one or more students by name or email',
+                      tipAr: 'ابحث واختر طالباً واحداً أو أكثر بالاسم أو البريد الإلكتروني' },
                   ] as const).map(opt => (
                     <div key={opt.value} className="relative group">
                       <button onClick={() => { setAudience(opt.value); setSelectedStudentIds([]); setStudentSearch(''); }}
@@ -421,8 +607,66 @@ export default function AdminNotifications() {
                 </div>
               </label>
 
-              <div className="flex gap-2 pt-2">
-                <Button onClick={() => sendMut.mutate({ ...form, userIds: targetUserIds, sendEmail })} disabled={!canSend}>
+              {/* Safe, no-write previews */}
+              <section className="rounded-xl border border-sky-200 bg-sky-50/50 p-4 dark:border-sky-900/60 dark:bg-sky-950/20">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h4 className="flex items-center gap-2 text-sm font-semibold text-sky-950 dark:text-sky-100">
+                      <Eye className="h-4 w-4" />
+                      {isRtl ? 'معاينة آمنة قبل الإرسال' : 'Safe preview before sending'}
+                    </h4>
+                    <p className="mt-1 text-xs text-sky-800/80 dark:text-sky-300/80">
+                      {isRtl ? 'هذه المعاينات لا تنشئ إشعارات ولا ترسل بريداً.' : 'These previews do not create notifications or send email.'}
+                    </p>
+                  </div>
+                  <Badge variant="outline" className="border-sky-300 bg-white text-sky-800 dark:bg-slate-900 dark:text-sky-200">
+                    {isRtl ? 'معاينة فقط' : 'Preview only'}
+                  </Badge>
+                </div>
+                <div className="grid gap-3 lg:grid-cols-2">
+                  <div className="rounded-xl border bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+                    <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      {isRtl ? 'داخل المنصة' : 'In-app notification'}
+                    </p>
+                    <div className="flex items-start gap-3">
+                      <div className="rounded-full bg-emerald-100 p-2 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                        <Bell className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-semibold">
+                          {(isRtl ? form.titleAr : form.titleEn) || form.titleAr || (isRtl ? 'عنوان الإشعار' : 'Notification title')}
+                        </p>
+                        <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">
+                          {(isRtl ? form.contentAr : form.contentEn) || form.contentAr || (isRtl ? 'سيظهر نص الرسالة هنا.' : 'The message body will appear here.')}
+                        </p>
+                        {form.actionUrl && <p className="mt-2 text-xs font-medium text-emerald-700 dark:text-emerald-300">{form.actionUrl}</p>}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="overflow-hidden rounded-xl border bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+                    <div className="bg-slate-950 px-4 py-3 text-sm font-bold text-white">XFlex Academy</div>
+                    <div className="p-4">
+                      <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        {isRtl ? 'معاينة البريد الإلكتروني' : 'Email preview'}
+                      </p>
+                      <p className="font-semibold">
+                        {(isRtl ? form.titleAr : form.titleEn) || form.titleAr || (isRtl ? 'عنوان البريد' : 'Email subject')}
+                      </p>
+                      <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">
+                        {(isRtl ? form.contentAr : form.contentEn) || form.contentAr || (isRtl ? 'سيظهر محتوى البريد هنا.' : 'The email content will appear here.')}
+                      </p>
+                      {form.actionUrl && (
+                        <span className="mt-3 inline-flex rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white">
+                          {isRtl ? 'فتح في XFlex' : 'Open in XFlex'}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <div className="flex flex-wrap items-center gap-2 pt-2">
+                <Button onClick={() => setSendConfirmationOpen(true)} disabled={!canSend}>
                   {sendMut.isPending && <Loader2 className="w-4 h-4 me-2 animate-spin" />}
                   <Send className="w-4 h-4 me-2" />
                   {isRtl
@@ -430,6 +674,38 @@ export default function AdminNotifications() {
                     : `Send (${targetUserIds.length})${sendEmail ? ' + Email' : ''}`
                   }
                 </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={!canSendTest}
+                  onClick={() => sendTestEmail.mutate({
+                    titleEn: form.titleEn,
+                    titleAr: form.titleAr,
+                    contentEn: form.contentEn,
+                    contentAr: form.contentAr,
+                    actionUrl: form.actionUrl,
+                    featureId: notificationFeatureId,
+                  })}
+                >
+                  {sendTestEmail.isPending ? <Loader2 className="w-4 h-4 me-2 animate-spin" /> : <MailCheck className="w-4 h-4 me-2" />}
+                  {isRtl ? 'إرسال اختبار إلى بريدي فقط' : 'Send test to my email only'}
+                </Button>
+                <Button type="button" variant="ghost" onClick={() => setLocation(`/admin/email-logs${notificationFeatureId ? `?feature=${notificationFeatureId}` : ''}`)}>
+                  <ExternalLink className="w-4 h-4 me-2" />
+                  {isRtl ? 'فتح سجل البريد' : 'Open email log'}
+                </Button>
+                {!hasRequiredContent && (
+                  <p className="w-full text-xs text-amber-700 dark:text-amber-300">
+                    {isRtl ? 'أضف العنوان والمحتوى بالعربية لتفعيل الاختبار والإرسال.' : 'Add the required Arabic title and content to enable testing and sending.'}
+                  </p>
+                )}
+                {emailAudienceTooLarge && (
+                  <p className="w-full rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
+                    {isRtl
+                      ? `الإرسال بالبريد محدود بـ ${ADMIN_NOTIFICATION_EMAIL_RECIPIENT_LIMIT} مستلماً في الحملة الواحدة. قلّصي الجمهور أو أوقفي خيار البريد لإرسال الإشعار داخل المنصة فقط.`
+                      : `Email delivery is limited to ${ADMIN_NOTIFICATION_EMAIL_RECIPIENT_LIMIT} recipients per campaign. Narrow the audience or turn email off to send an in-app notification only.`}
+                  </p>
+                )}
               </div>
             </div>
 
@@ -516,6 +792,57 @@ export default function AdminNotifications() {
             </div>
           </div>
         )}
+
+        <AlertDialog
+          open={sendConfirmationOpen}
+          onOpenChange={(open) => !sendMut.isPending && setSendConfirmationOpen(open)}
+        >
+          <AlertDialogContent dir={isRtl ? 'rtl' : 'ltr'}>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {isRtl ? 'تأكيد إرسال الإشعار' : 'Confirm notification send'}
+              </AlertDialogTitle>
+              <AlertDialogDescription asChild>
+                <div className="space-y-3 text-sm">
+                  <p>
+                    {isRtl
+                      ? `سيتم إنشاء إشعار داخل المنصة لـ ${targetUserIds.length} طالب (${audienceLabel}).`
+                      : `An in-app notification will be created for ${targetUserIds.length} students (${audienceLabel}).`}
+                  </p>
+                  <div className="rounded-lg border bg-muted/40 p-3 text-foreground">
+                    <p className="font-semibold">{form.titleAr}</p>
+                    <p className="mt-1 line-clamp-3 text-xs text-muted-foreground">{form.contentAr}</p>
+                  </div>
+                  <p className={sendEmail ? 'font-medium text-amber-700 dark:text-amber-300' : ''}>
+                    {sendEmail
+                      ? (isRtl ? 'سيتم أيضاً إرسال بريد إلكتروني لكل مستلم.' : 'An email will also be sent to every recipient.')
+                      : (isRtl ? 'لن يتم إرسال بريد إلكتروني.' : 'No email will be sent.')}
+                  </p>
+                  <p className="text-xs">
+                    {isRtl ? 'استخدمي زر الاختبار أولاً إذا أردت مراجعة البريد في صندوقك.' : 'Use the test button first if you want to review the email in your own inbox.'}
+                  </p>
+                </div>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={sendMut.isPending}>
+                {isRtl ? 'العودة للمراجعة' : 'Back to review'}
+              </AlertDialogCancel>
+              <AlertDialogAction
+                disabled={sendMut.isPending}
+                onClick={(event) => {
+                  event.preventDefault();
+                  sendConfirmed();
+                }}
+              >
+                {sendMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                {isRtl
+                  ? `تأكيد الإرسال إلى ${targetUserIds.length}`
+                  : `Confirm send to ${targetUserIds.length}`}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </DashboardLayout>
   );

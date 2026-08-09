@@ -13,15 +13,18 @@ import {
   ClipboardCheck,
   Award,
   MessageSquare,
-  ShieldCheck,
   Briefcase,
   CheckCircle2,
+  Sparkles,
+  Eye,
+  RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useLocation } from "wouter";
 import { formatDistanceToNow } from "date-fns";
 import { arEG } from "date-fns/locale";
 import { getStaffLandingPage } from "@shared/const";
+import { ADMIN_FEATURE_CATALOG } from "@shared/adminFeatureCatalog";
 import { useEffect } from "react";
 
 function formatSafeDistanceToNow(value: string | number | Date | null | undefined, isRtl: boolean) {
@@ -52,11 +55,14 @@ export default function AdminDashboard() {
   const markTaskRouteRead = trpc.staffNotifications.markReadByRoute.useMutation({
     onSuccess: () => refetchTaskCounts(),
   });
-  const { data: performanceAvailability } = trpc.staffPerformance.availability.useQuery(undefined, { retry: false });
-  const { data: surveyAvailability } = trpc.studentSurveys.availability.useQuery(undefined, { retry: false });
-  const { data: communityAvailability } = trpc.community.availability.useQuery(undefined, { retry: false });
-  const { data: rewardsAvailability } = trpc.points.rewardsAvailability.useQuery(undefined, { retry: false });
-  const { data: jobEligibilityAvailability } = trpc.studentJobEligibility.availability.useQuery(undefined, { retry: false });
+  const featureOverviewQuery = trpc.adminSettings.featureOverview.useQuery(undefined, {
+    enabled: adminCheck?.isAdmin === true,
+    retry: false,
+  });
+  const featureOverview = featureOverviewQuery.data;
+  const featureOverviewLoading = adminCheckLoading
+    || (adminCheck?.isAdmin === true && featureOverviewQuery.isFetching && !featureOverview);
+  const featureOverviewUnavailable = adminCheck?.isAdmin === true && featureOverviewQuery.isError;
 
   const adminTasks = [
     {
@@ -65,7 +71,6 @@ export default function AdminDashboard() {
       labelAr: "طلبات بانتظار المراجعة",
       count: stats?.pendingOrders ?? 0,
       enabled: true,
-      disabledPath: "/admin/orders",
       icon: ShoppingCart,
       iconClass: "bg-amber-100 text-amber-700",
       notificationBacked: false,
@@ -75,8 +80,7 @@ export default function AdminDashboard() {
       labelEn: "Staff daily work submissions",
       labelAr: "تسليمات العمل اليومي للموظفين",
       count: taskCounts?.["/admin/staff-performance"] ?? 0,
-      enabled: performanceAvailability?.enabled === true,
-      disabledPath: "/admin/settings",
+      enabled: featureOverview?.modules.staffPerformance.enabled === true,
       icon: ClipboardCheck,
       iconClass: "bg-violet-100 text-violet-700",
       notificationBacked: true,
@@ -86,8 +90,7 @@ export default function AdminDashboard() {
       labelEn: "Student survey responses",
       labelAr: "ردود استبيانات الطلاب",
       count: taskCounts?.["/admin/student-surveys"] ?? 0,
-      enabled: surveyAvailability?.enabled === true,
-      disabledPath: "/admin/settings",
+      enabled: featureOverview?.modules.studentSurveys.enabled === true,
       icon: ListTodo,
       iconClass: "bg-indigo-100 text-indigo-700",
       notificationBacked: true,
@@ -97,8 +100,7 @@ export default function AdminDashboard() {
       labelEn: "Community moderation reports",
       labelAr: "بلاغات الإشراف على المجتمع",
       count: taskCounts?.["/admin/community"] ?? 0,
-      enabled: communityAvailability?.enabled === true,
-      disabledPath: "/admin/community",
+      enabled: featureOverview?.modules.studentCommunity.enabled === true,
       icon: MessageSquare,
       iconClass: "bg-purple-100 text-purple-700",
       notificationBacked: true,
@@ -108,8 +110,7 @@ export default function AdminDashboard() {
       labelEn: "Loyalty reward requests",
       labelAr: "طلبات مكافآت الولاء",
       count: taskCounts?.["/admin/points"] ?? 0,
-      enabled: rewardsAvailability?.enabled === true,
-      disabledPath: "/admin/settings",
+      enabled: featureOverview?.modules.loyaltyRewards.enabled === true,
       icon: Award,
       iconClass: "bg-yellow-100 text-yellow-700",
       notificationBacked: true,
@@ -119,8 +120,7 @@ export default function AdminDashboard() {
       labelEn: "Job eligibility reviews",
       labelAr: "مراجعات الأهلية للوظائف",
       count: taskCounts?.["/admin/job-eligibility"] ?? 0,
-      enabled: jobEligibilityAvailability?.enabled === true,
-      disabledPath: "/admin/settings",
+      enabled: featureOverview?.modules.studentJobEligibility.enabled === true,
       icon: Briefcase,
       iconClass: "bg-blue-100 text-blue-700",
       notificationBacked: true,
@@ -128,15 +128,19 @@ export default function AdminDashboard() {
   ];
 
   const openAdminTask = (task: typeof adminTasks[number]) => {
-    if (!task.enabled) {
-      setLocation(task.disabledPath);
-      return;
-    }
     if (task.notificationBacked && task.count > 0) {
       markTaskRouteRead.mutate({ actionUrl: task.path });
     }
     setLocation(task.path);
   };
+
+  const operationalTasks = adminTasks.filter((task) =>
+    task.enabled
+    || (featureOverviewUnavailable && task.notificationBacked)
+  );
+  const enabledFeatureCount = featureOverview
+    ? Object.values(featureOverview.modules).filter((module) => module.enabled).length
+    : null;
 
   return (
     <DashboardLayout>
@@ -173,7 +177,64 @@ export default function AdminDashboard() {
           </Card>
         )}
 
-        {/* Consolidated admin task list — always visible, including disabled features */}
+        <Card className="overflow-hidden border-emerald-200 bg-gradient-to-r from-emerald-50 via-white to-sky-50 dark:border-emerald-900 dark:from-emerald-950/40 dark:via-background dark:to-sky-950/30">
+          <CardContent className="grid gap-5 p-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+            <div className="flex items-start gap-4">
+              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-sm">
+                <Sparkles className="h-6 w-6" />
+              </span>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-lg font-bold">{isRtl ? "مركز الميزات" : "Admin Feature Center"}</h2>
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${featureOverviewUnavailable ? "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300" : "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"}`}>
+                    {featureOverviewLoading
+                      ? (isRtl ? "جارٍ التحميل" : "Loading")
+                      : featureOverviewUnavailable || enabledFeatureCount === null
+                        ? (isRtl ? "الحالة غير متاحة" : "Status unavailable")
+                        : (isRtl
+                          ? `${enabledFeatureCount} من ${ADMIN_FEATURE_CATALOG.length} مفعّلة`
+                          : `${enabledFeatureCount} of ${ADMIN_FEATURE_CATALOG.length} enabled`)}
+                  </span>
+                </div>
+                <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
+                  {isRtl
+                    ? "أديري كل الميزات الجديدة من مكان واحد، راجعي جاهزيتها، وعايني تجربة الطالب أو الموظف دون تسجيل الدخول بحساب آخر."
+                    : "Manage every new feature in one place, review launch readiness, and safely preview the student or staff experience without another login."}
+                </p>
+                {featureOverviewUnavailable && (
+                  <p className="mt-1 text-xs font-medium text-red-700 dark:text-red-300">
+                    {isRtl
+                      ? "تعذر تحديث حالات الميزات. لم يتم تغيير أي إعداد، وستظل اختصارات مهام الميزات متاحة أدناه."
+                      : "Feature statuses could not be refreshed. No settings changed, and feature task shortcuts remain accessible below."}
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2 md:justify-end">
+              {featureOverviewUnavailable ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={featureOverviewQuery.isFetching}
+                  onClick={() => featureOverviewQuery.refetch()}
+                >
+                  <RefreshCw className={`h-4 w-4 ${featureOverviewQuery.isFetching ? "animate-spin" : ""}`} />
+                  {isRtl ? "إعادة المحاولة" : "Retry status"}
+                </Button>
+              ) : (
+                <Button type="button" variant="outline" onClick={() => setLocation("/admin/features")}>
+                  <Eye className="h-4 w-4" />
+                  {isRtl ? "العرض والإعداد" : "Preview & setup"}
+                </Button>
+              )}
+              <Button type="button" onClick={() => setLocation("/admin/features")}>
+                {isRtl ? "فتح مركز الميزات" : "Open Feature Center"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Operational work only; feature setup lives in the Feature Center. */}
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-xl">
@@ -188,7 +249,7 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent>
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {adminTasks.map((task) => {
+              {operationalTasks.map((task) => {
                 const TaskIcon = task.icon;
                 const isLoading = task.notificationBacked ? taskCountsLoading : statsLoading;
                 return (
@@ -196,11 +257,7 @@ export default function AdminDashboard() {
                     key={task.path}
                     type="button"
                     onClick={() => openAdminTask(task)}
-                    className={`flex items-center gap-3 rounded-xl border p-4 text-start transition-all ${
-                      task.enabled
-                        ? "bg-white hover:border-emerald-300 hover:shadow-sm cursor-pointer"
-                        : "bg-amber-50/60 hover:border-amber-300 hover:shadow-sm cursor-pointer"
-                    }`}
+                    className="flex cursor-pointer items-center gap-3 rounded-xl border bg-white p-4 text-start transition-all hover:border-emerald-300 hover:shadow-sm dark:bg-background"
                   >
                     <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${task.iconClass}`}>
                       <TaskIcon className="h-5 w-5" />
@@ -210,23 +267,18 @@ export default function AdminDashboard() {
                         {isRtl ? task.labelAr : task.labelEn}
                       </span>
                       <span className="mt-1 block text-xs text-muted-foreground">
-                        {!task.enabled
-                          ? task.disabledPath === task.path
-                            ? (isRtl ? "غير مفعلة — افتح صفحة الإعداد" : "Disabled — open setup page")
-                            : (isRtl ? "غير مفعلة — اضغط لإدارة التفعيل" : "Disabled — open feature settings")
-                          : isLoading
-                            ? (isRtl ? "جارٍ التحميل..." : "Loading...")
-                            : task.count > 0
-                              ? (isRtl ? `${task.count} مهمة جديدة` : `${task.count} new task${task.count === 1 ? "" : "s"}`)
-                              : (isRtl ? "لا توجد مهام جديدة" : "No new tasks")}
+                        {isLoading
+                          ? (isRtl ? "جارٍ التحميل..." : "Loading...")
+                          : task.count > 0
+                            ? (isRtl ? `${task.count} مهمة جديدة` : `${task.count} new task${task.count === 1 ? "" : "s"}`)
+                            : (isRtl ? "لا توجد مهام جديدة" : "No new tasks")}
                       </span>
                     </span>
-                    {task.enabled && !isLoading && (
+                    {!isLoading && (
                       task.count > 0
                         ? <span className="flex h-7 min-w-7 items-center justify-center rounded-full bg-red-500 px-2 text-xs font-bold text-white">{task.count > 99 ? "99+" : task.count}</span>
                         : <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-500" />
                     )}
-                    {!task.enabled && <ShieldCheck className="h-5 w-5 shrink-0 text-muted-foreground" />}
                   </button>
                 );
               })}

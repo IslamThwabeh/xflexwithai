@@ -1,4 +1,5 @@
 import DashboardLayout from "@/components/DashboardLayout";
+import { AdminFeatureSetupCard, SafeAdminPreview } from "@/components/admin/SafeAdminPreview";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,8 +16,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { trpc } from "@/lib/trpc";
-import { AlertCircle, Bot, CheckCircle2, Eye, EyeOff, Loader2, MessageCircle, Plus, Power, PowerOff, Search, ShieldAlert, Trash2, UserCheck, UserX, XCircle } from "lucide-react";
-import { useEffect, useState } from "react";
+import { AlertCircle, BellRing, Bot, CheckCircle2, ExternalLink, Eye, EyeOff, Heart, Loader2, MessageCircle, Plus, Power, PowerOff, RefreshCw, Search, Send, ShieldAlert, Sparkles, Trash2, UserCheck, UserX, XCircle } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 
@@ -26,14 +27,81 @@ function getInitialCommunityPostId() {
   return Number.isInteger(value) && value > 0 ? value : null;
 }
 
+function getInitialCommunityReportId() {
+  if (typeof window === "undefined") return null;
+  const value = Number(new URLSearchParams(window.location.search).get("reportId"));
+  return Number.isInteger(value) && value > 0 ? value : null;
+}
+
+function getInitialCommunityPreview() {
+  if (typeof window === "undefined") return false;
+  return new URLSearchParams(window.location.search).get("preview") === "student";
+}
+
+type CommunitySetupTarget = "policy" | "automated-checks";
+
+function getInitialCommunitySetupTarget(): CommunitySetupTarget | null {
+  if (typeof window === "undefined") return null;
+  const value = new URLSearchParams(window.location.search).get("setup");
+  return value === "policy" || value === "automated-checks" ? value : null;
+}
+
+const COMMUNITY_SETUP_ELEMENT_IDS: Record<CommunitySetupTarget, string> = {
+  policy: "community-policy-terms",
+  "automated-checks": "community-automated-checks",
+};
+
+function focusCommunitySetup(target: CommunitySetupTarget) {
+  const element = document.getElementById(COMMUNITY_SETUP_ELEMENT_IDS[target]);
+  if (!element) return;
+  element.scrollIntoView({ behavior: "smooth", block: "start" });
+  element.focus({ preventScroll: true });
+}
+
+type CommunityContentAction = "hide" | "restore" | "delete";
+
+type CommunityModerationIntent = {
+  kind: "content";
+  action: CommunityContentAction;
+  targetType: "post" | "comment";
+  targetId: number;
+  targetLabel: string;
+  preview: string;
+  authorEmail: string;
+  affectedReportCount: number;
+} | {
+  kind: "report";
+  reportId: number;
+  targetLabel: string;
+  preview: string;
+  reporterEmail: string;
+};
+
+type CommunityFocusTarget = {
+  targetType: "post" | "comment";
+  targetId: number;
+};
+
 export default function AdminCommunityModeration() {
   const { language } = useLanguage();
   const isRtl = language === "ar";
   const utils = trpc.useUtils();
   const [, setLocation] = useLocation();
+  const [initialPostId] = useState(getInitialCommunityPostId);
+  const [initialReportId] = useState(getInitialCommunityReportId);
   const [selectedPostId, setSelectedPostId] = useState<number | null>(
     getInitialCommunityPostId,
   );
+  const [directStudentPreview] = useState(getInitialCommunityPreview);
+  const [initialSetupTarget] = useState(getInitialCommunitySetupTarget);
+  const [showStudentPreview, setShowStudentPreview] = useState(directStudentPreview);
+  const [focusedReportId, setFocusedReportId] = useState<number | null>(initialReportId);
+  const [focusedTarget, setFocusedTarget] = useState<CommunityFocusTarget | null>(
+    initialPostId ? { targetType: "post", targetId: initialPostId } : null,
+  );
+  const [moderationIntent, setModerationIntent] = useState<CommunityModerationIntent | null>(null);
+  const [moderationNote, setModerationNote] = useState("");
+  const resolvedReportDeepLink = useRef(false);
 
   const availability = trpc.community.availability.useQuery(undefined, { retry: false });
   const enabled = Boolean(availability.data?.enabled);
@@ -43,8 +111,19 @@ export default function AdminCommunityModeration() {
     { id: selectedPostId ?? 0 },
     { enabled: enabled && Boolean(selectedPostId), retry: false },
   );
+  const selectedPost = postQuery.data;
 
   useEffect(() => {
+    if (!initialSetupTarget || availability.isLoading) return;
+    const timeout = window.setTimeout(
+      () => focusCommunitySetup(initialSetupTarget),
+      75,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [availability.isLoading, initialSetupTarget]);
+
+  useEffect(() => {
+    if (!postsQuery.isSuccess) return;
     const posts = postsQuery.data ?? [];
     if (posts.length === 0) {
       setSelectedPostId(null);
@@ -53,7 +132,45 @@ export default function AdminCommunityModeration() {
     if (!posts.some((post) => post.id === selectedPostId)) {
       setSelectedPostId(posts[0].id);
     }
-  }, [postsQuery.data, selectedPostId]);
+  }, [postsQuery.data, postsQuery.isSuccess, selectedPostId]);
+
+  useEffect(() => {
+    if (!initialReportId || resolvedReportDeepLink.current || !reportsQuery.data) return;
+    const report = reportsQuery.data.find(item => item.id === initialReportId);
+    if (!report) return;
+    resolvedReportDeepLink.current = true;
+    setFocusedReportId(report.id);
+    setFocusedTarget({
+      targetType: report.targetType === "comment" ? "comment" : "post",
+      targetId: report.targetId,
+    });
+    if (report.postId) setSelectedPostId(report.postId);
+  }, [initialReportId, reportsQuery.data]);
+
+  useEffect(() => {
+    if (!focusedReportId || !reportsQuery.data) return;
+    const timeoutId = window.setTimeout(() => {
+      document.getElementById(`community-report-${focusedReportId}`)?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }, 80);
+    return () => window.clearTimeout(timeoutId);
+  }, [focusedReportId, reportsQuery.data]);
+
+  useEffect(() => {
+    if (!focusedTarget || !selectedPost) return;
+    const targetExists = focusedTarget.targetType === "post"
+      ? selectedPost.id === focusedTarget.targetId
+      : selectedPost.comments.some(comment => comment.id === focusedTarget.targetId);
+    if (!targetExists) return;
+    const timeoutId = window.setTimeout(() => {
+      document.getElementById(
+        `community-${focusedTarget.targetType}-${focusedTarget.targetId}`,
+      )?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 120);
+    return () => window.clearTimeout(timeoutId);
+  }, [focusedTarget, selectedPost]);
 
   const labels = isRtl ? {
     title: "إشراف مجتمع الطلاب",
@@ -64,13 +181,22 @@ export default function AdminCommunityModeration() {
     posts: "المنشورات",
     reports: "البلاغات المفتوحة",
     noPosts: "لا توجد منشورات.",
+    noPostsDetail: "لم ينشر الطلاب محتوى فعلياً بعد. استخدم معاينة الطالب لشرح التجربة بأمان.",
     noReports: "لا توجد بلاغات مفتوحة.",
+    noReportsDetail: "ستظهر هنا البلاغات الجديدة مع المحتوى والسبب وإجراءات المراجعة.",
     comments: "التعليقات",
     hide: "إخفاء",
     restore: "استعادة",
     delete: "حذف منطقي",
     dismiss: "رفض البلاغ",
     updated: "تم تحديث الإشراف",
+    previewStudent: "معاينة تجربة الطالب",
+    closePreview: "إغلاق المعاينة",
+    workspace: "مساحة المجتمع والسلامة",
+    loadFailed: "تعذر تحميل بيانات المجتمع",
+    loadFailedBody: "لم تُجرَ أي تغييرات. أعد المحاولة، ويمكنك استخدام المعاينة الآمنة أدناه في هذه الأثناء.",
+    retry: "إعادة المحاولة",
+    detailFailed: "تعذر تحميل تفاصيل المنشور",
   } : {
     title: "Student Community Moderation",
     subtitle: "Review reports and hide, restore, or soft-delete community content during the pilot.",
@@ -80,13 +206,27 @@ export default function AdminCommunityModeration() {
     posts: "Posts",
     reports: "Open reports",
     noPosts: "No posts yet.",
+    noPostsDetail: "Students have not published live content yet. Use the student preview to demonstrate the experience safely.",
     noReports: "No open reports.",
+    noReportsDetail: "New reports will appear here with the content, reason, and moderation actions.",
     comments: "Comments",
     hide: "Hide",
     restore: "Restore",
     delete: "Soft delete",
     dismiss: "Dismiss report",
     updated: "Moderation updated",
+    previewStudent: "Preview student experience",
+    closePreview: "Close preview",
+    workspace: "Community & safety workspace",
+    loadFailed: "Community data could not be loaded",
+    loadFailedBody: "No changes were made. Retry, or use the safe preview below in the meantime.",
+    retry: "Retry",
+    detailFailed: "Post details could not be loaded",
+  };
+
+  const closeModerationDialog = () => {
+    setModerationIntent(null);
+    setModerationNote("");
   };
 
   const moderate = trpc.community.moderateContent.useMutation({
@@ -97,6 +237,7 @@ export default function AdminCommunityModeration() {
         selectedPostId ? utils.community.adminGetPost.invalidate({ id: selectedPostId }) : Promise.resolve(),
       ]);
       toast.success(labels.updated);
+      closeModerationDialog();
     },
     onError: (error) => toast.error(error.message),
   });
@@ -105,15 +246,42 @@ export default function AdminCommunityModeration() {
     onSuccess: async () => {
       await utils.community.adminReports.invalidate();
       toast.success(labels.updated);
+      closeModerationDialog();
     },
     onError: (error) => toast.error(error.message),
   });
+
+  const submitModeration = () => {
+    if (!moderationIntent) return;
+    if (moderationIntent.kind === "report") {
+      dismissReport.mutate({
+        reportId: moderationIntent.reportId,
+        note: moderationNote.trim() || null,
+      });
+      return;
+    }
+    moderate.mutate({
+      targetType: moderationIntent.targetType,
+      targetId: moderationIntent.targetId,
+      action: moderationIntent.action,
+      note: moderationNote.trim() || null,
+    });
+  };
+
+  const focusReport = (report: NonNullable<typeof reportsQuery.data>[number]) => {
+    setFocusedReportId(report.id);
+    setFocusedTarget({
+      targetType: report.targetType === "comment" ? "comment" : "post",
+      targetId: report.targetId,
+    });
+    if (report.postId) setSelectedPostId(report.postId);
+  };
 
   if (availability.isLoading) {
     return <AdminCommunityState title={isRtl ? "جار التحميل..." : "Loading..."} icon={<Loader2 className="h-6 w-6 animate-spin" />} />;
   }
 
-  if (!enabled) {
+  if (availability.isError) {
     return (
       <DashboardLayout>
         <main className="space-y-6 p-4 md:p-6" dir={isRtl ? "rtl" : "ltr"}>
@@ -121,43 +289,128 @@ export default function AdminCommunityModeration() {
             <h1 className="text-2xl font-bold text-slate-950 md:text-3xl">{labels.title}</h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">{labels.subtitle}</p>
           </header>
-          <Card className="border-amber-200 bg-amber-50">
-            <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-start gap-3">
-                <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
-                <div>
-                  <p className="font-semibold text-amber-950">{labels.disabledTitle}</p>
-                  <p className="mt-1 text-sm leading-6 text-amber-900">{labels.disabledBody}</p>
-                </div>
-              </div>
-              <Button variant="outline" onClick={() => setLocation("/admin/settings")}>
-                {labels.openSettings}
-              </Button>
-            </CardContent>
-          </Card>
-          <CommunitySafetyManager isRtl={isRtl} />
-          <CommunityAccessManager isRtl={isRtl} />
+          <CommunityQueryError
+            title={labels.loadFailed}
+            body={labels.loadFailedBody}
+            retryLabel={labels.retry}
+            onRetry={() => void availability.refetch()}
+          />
+          <CommunityStudentPreview isRtl={isRtl} focusOnMount={directStudentPreview} />
         </main>
       </DashboardLayout>
     );
   }
 
-  const selectedPost = postQuery.data;
+  if (!enabled) {
+    return (
+      <DashboardLayout>
+        <main className="space-y-6 p-4 md:p-6" dir={isRtl ? "rtl" : "ltr"}>
+          <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-slate-950 md:text-3xl">{labels.title}</h1>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">{labels.subtitle}</p>
+            </div>
+            <Button variant="outline" onClick={() => document.getElementById("community-student-preview")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
+              <Eye className="h-4 w-4" />{labels.previewStudent}
+            </Button>
+          </header>
+          {directStudentPreview && <CommunityStudentPreview isRtl={isRtl} focusOnMount />}
+          <AdminFeatureSetupCard
+            isRtl={isRtl}
+            title={labels.disabledTitle}
+            description={labels.disabledBody}
+            action={<Button variant="outline" onClick={() => setLocation("/admin/features")}>{labels.openSettings}</Button>}
+            items={[
+              {
+                label: isRtl
+                  ? "راجع تجربة النشر والبلاغ أدناه"
+                  : "Review publishing and reporting below",
+                complete: true,
+                action: (
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="sm"
+                    className="h-auto p-0 text-xs"
+                    onClick={() =>
+                      document
+                        .getElementById("community-student-preview")
+                        ?.scrollIntoView({ behavior: "smooth", block: "start" })
+                    }
+                  >
+                    {isRtl ? "فتح المعاينة" : "Open preview"}
+                  </Button>
+                ),
+              },
+              {
+                label: isRtl
+                  ? "أكمل قواعد المنافسين واللغة المحظورة"
+                  : "Complete competitor and prohibited-language rules",
+                action: (
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="sm"
+                    className="h-auto p-0 text-xs"
+                    onClick={() => focusCommunitySetup("policy")}
+                  >
+                    {isRtl ? "فتح محرر القواعد" : "Open rule editor"}
+                  </Button>
+                ),
+              },
+              {
+                label: isRtl
+                  ? "تحقق من جاهزية اتصال وقواعد السلامة"
+                  : "Confirm safety connection and rule readiness",
+                action: (
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="sm"
+                    className="h-auto p-0 text-xs"
+                    onClick={() => focusCommunitySetup("automated-checks")}
+                  >
+                    {isRtl ? "فتح دليل الاتصال" : "Open connection guide"}
+                  </Button>
+                ),
+              },
+            ]}
+          />
+          {!directStudentPreview && <CommunityStudentPreview isRtl={isRtl} />}
+          <CommunitySafetyManager isRtl={isRtl} />
+          <CommunityAccessManager isRtl={isRtl} featureEnabled={false} />
+        </main>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>
       <main className="space-y-6 p-4 md:p-6" dir={isRtl ? "rtl" : "ltr"}>
-        <header>
-          <div className="mb-2 flex items-center gap-2 text-emerald-700">
-            <ShieldAlert className="h-5 w-5" />
-            <span className="text-xs font-semibold uppercase tracking-[0.16em]">Phase 4</span>
+        <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <div className="mb-2 flex items-center gap-2 text-emerald-700">
+              <ShieldAlert className="h-5 w-5" />
+              <span className="text-xs font-semibold uppercase tracking-[0.16em]">{labels.workspace}</span>
+            </div>
+            <h1 className="text-2xl font-bold text-slate-950 md:text-3xl">{labels.title}</h1>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">{labels.subtitle}</p>
           </div>
-          <h1 className="text-2xl font-bold text-slate-950 md:text-3xl">{labels.title}</h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">{labels.subtitle}</p>
+          <Button
+            type="button"
+            variant={showStudentPreview ? "default" : "outline"}
+            className={showStudentPreview ? "bg-indigo-600 hover:bg-indigo-700" : ""}
+            onClick={() => setShowStudentPreview((current) => !current)}
+          >
+            <Eye className="h-4 w-4" />
+            {showStudentPreview ? labels.closePreview : labels.previewStudent}
+          </Button>
         </header>
 
+        {showStudentPreview && <CommunityStudentPreview isRtl={isRtl} focusOnMount={directStudentPreview} />}
+
         <CommunitySafetyManager isRtl={isRtl} />
-        <CommunityAccessManager isRtl={isRtl} />
+        <CommunityAccessManager isRtl={isRtl} featureEnabled />
 
         <div className="grid gap-5 xl:grid-cols-[340px_minmax(0,1fr)_360px]">
           <Card className="h-fit">
@@ -170,13 +423,28 @@ export default function AdminCommunityModeration() {
             <CardContent className="space-y-2">
               {postsQuery.isLoading ? (
                 <Loader2 className="mx-auto my-8 h-5 w-5 animate-spin text-emerald-700" />
+              ) : postsQuery.isError ? (
+                <CommunityQueryError
+                  compact
+                  title={labels.loadFailed}
+                  body={labels.loadFailedBody}
+                  retryLabel={labels.retry}
+                  onRetry={() => void postsQuery.refetch()}
+                />
               ) : !(postsQuery.data?.length) ? (
-                <p className="rounded-xl border border-dashed p-5 text-center text-sm text-slate-500">{labels.noPosts}</p>
+                <div className="rounded-xl border border-dashed p-5 text-center">
+                  <p className="text-sm font-semibold text-slate-700">{labels.noPosts}</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">{labels.noPostsDetail}</p>
+                </div>
               ) : postsQuery.data.map((post) => (
                 <button
                   key={post.id}
                   type="button"
-                  onClick={() => setSelectedPostId(post.id)}
+                  onClick={() => {
+                    setSelectedPostId(post.id);
+                    setFocusedTarget({ targetType: "post", targetId: post.id });
+                    setFocusedReportId(null);
+                  }}
                   className={`w-full rounded-xl border p-3 text-start transition ${
                     selectedPostId === post.id ? "border-emerald-300 bg-emerald-50" : "border-slate-200 bg-white hover:border-emerald-200"
                   }`}
@@ -194,12 +462,24 @@ export default function AdminCommunityModeration() {
           <section>
             {!selectedPostId ? (
               <Card className="border-dashed"><CardContent className="p-10 text-center text-sm text-slate-500">{labels.noPosts}</CardContent></Card>
-            ) : postQuery.isLoading || !selectedPost ? (
+            ) : postQuery.isLoading ? (
               <div className="flex min-h-72 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-emerald-700" /></div>
+            ) : postQuery.isError || !selectedPost ? (
+              <CommunityQueryError
+                title={labels.detailFailed}
+                body={labels.loadFailedBody}
+                retryLabel={labels.retry}
+                onRetry={() => void postQuery.refetch()}
+              />
             ) : (
               <Card>
                 <CardContent className="space-y-5 p-5 md:p-6">
-                  <article>
+                  <article
+                    id={`community-post-${selectedPost.id}`}
+                    className={focusedTarget?.targetType === "post" && focusedTarget.targetId === selectedPost.id
+                      ? "rounded-xl ring-2 ring-indigo-400 ring-offset-4"
+                      : ""}
+                  >
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <h2 className="text-xl font-bold text-slate-950">{selectedPost.title}</h2>
@@ -209,9 +489,18 @@ export default function AdminCommunityModeration() {
                         labels={labels}
                         status={selectedPost.status}
                         disabled={moderate.isPending}
-                        onHide={() => moderate.mutate({ targetType: "post", targetId: selectedPost.id, action: "hide" })}
-                        onRestore={() => moderate.mutate({ targetType: "post", targetId: selectedPost.id, action: "restore" })}
-                        onDelete={() => moderate.mutate({ targetType: "post", targetId: selectedPost.id, action: "delete" })}
+                        onAction={action => setModerationIntent({
+                          kind: "content",
+                          action,
+                          targetType: "post",
+                          targetId: selectedPost.id,
+                          targetLabel: selectedPost.title,
+                          preview: selectedPost.body,
+                          authorEmail: selectedPost.authorEmail,
+                          affectedReportCount: Number(
+                            postsQuery.data?.find(post => post.id === selectedPost.id)?.openReportCount ?? 0,
+                          ),
+                        })}
                       />
                     </div>
                     <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-slate-700">{selectedPost.body}</p>
@@ -221,7 +510,15 @@ export default function AdminCommunityModeration() {
                     <h3 className="mb-3 font-semibold">{labels.comments}</h3>
                     <div className="space-y-3">
                       {selectedPost.comments.map((comment) => (
-                        <article key={comment.id} className="rounded-xl border bg-slate-50 p-3">
+                        <article
+                          key={comment.id}
+                          id={`community-comment-${comment.id}`}
+                          className={`rounded-xl border bg-slate-50 p-3 ${
+                            focusedTarget?.targetType === "comment" && focusedTarget.targetId === comment.id
+                              ? "border-indigo-400 ring-2 ring-indigo-300 ring-offset-2"
+                              : ""
+                          }`}
+                        >
                           <div className="flex flex-wrap items-start justify-between gap-3">
                             <div>
                               <p className="text-xs font-medium text-slate-500">{comment.authorEmail}</p>
@@ -231,9 +528,16 @@ export default function AdminCommunityModeration() {
                               labels={labels}
                               status={comment.status}
                               disabled={moderate.isPending}
-                              onHide={() => moderate.mutate({ targetType: "comment", targetId: comment.id, action: "hide" })}
-                              onRestore={() => moderate.mutate({ targetType: "comment", targetId: comment.id, action: "restore" })}
-                              onDelete={() => moderate.mutate({ targetType: "comment", targetId: comment.id, action: "delete" })}
+                              onAction={action => setModerationIntent({
+                                kind: "content",
+                                action,
+                                targetType: "comment",
+                                targetId: comment.id,
+                                targetLabel: isRtl ? `تعليق #${comment.id}` : `Comment #${comment.id}`,
+                                preview: comment.body,
+                                authorEmail: comment.authorEmail,
+                                affectedReportCount: Number(comment.openReportCount ?? 0),
+                              })}
                             />
                           </div>
                           <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{comment.body}</p>
@@ -256,10 +560,29 @@ export default function AdminCommunityModeration() {
             <CardContent className="space-y-3">
               {reportsQuery.isLoading ? (
                 <Loader2 className="mx-auto my-8 h-5 w-5 animate-spin text-emerald-700" />
+              ) : reportsQuery.isError ? (
+                <CommunityQueryError
+                  compact
+                  title={labels.loadFailed}
+                  body={labels.loadFailedBody}
+                  retryLabel={labels.retry}
+                  onRetry={() => void reportsQuery.refetch()}
+                />
               ) : !(reportsQuery.data?.length) ? (
-                <p className="rounded-xl border border-dashed p-5 text-center text-sm text-slate-500">{labels.noReports}</p>
+                <div className="rounded-xl border border-dashed p-5 text-center">
+                  <p className="text-sm font-semibold text-slate-700">{labels.noReports}</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">{labels.noReportsDetail}</p>
+                </div>
               ) : reportsQuery.data.map((report) => (
-                <article key={report.id} className="rounded-xl border bg-white p-3">
+                <article
+                  key={report.id}
+                  id={`community-report-${report.id}`}
+                  className={`rounded-xl border bg-white p-3 ${
+                    focusedReportId === report.id
+                      ? "border-indigo-400 ring-2 ring-indigo-300 ring-offset-2"
+                      : ""
+                  }`}
+                >
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <p className="text-sm font-semibold text-slate-900">{report.reason}</p>
@@ -268,11 +591,29 @@ export default function AdminCommunityModeration() {
                     <Badge variant="outline">{report.targetType} #{report.targetId}</Badge>
                   </div>
                   {report.details && <p className="mt-2 text-xs leading-5 text-slate-500">{report.details}</p>}
+                  {report.targetPreview && (
+                    <p className="mt-2 line-clamp-3 rounded-lg bg-slate-50 p-2 text-xs leading-5 text-slate-600">
+                      {report.targetTitle && <span className="font-semibold">{report.targetTitle}: </span>}
+                      {report.targetPreview}
+                    </p>
+                  )}
                   <div className="mt-3 flex flex-wrap gap-2">
-                    <Button size="sm" variant="outline" onClick={() => setSelectedPostId(report.targetType === "post" ? report.targetId : selectedPostId)}>
+                    <Button size="sm" variant="outline" onClick={() => focusReport(report)}>
                       <Eye className="h-4 w-4" /> {isRtl ? "عرض" : "View"}
                     </Button>
-                    <Button size="sm" variant="outline" disabled={dismissReport.isPending} onClick={() => dismissReport.mutate({ reportId: report.id })}>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={dismissReport.isPending}
+                      onClick={() => setModerationIntent({
+                        kind: "report",
+                        reportId: report.id,
+                        targetLabel: report.targetTitle
+                          || (isRtl ? `${report.targetType === "post" ? "منشور" : "تعليق"} #${report.targetId}` : `${report.targetType} #${report.targetId}`),
+                        preview: report.targetPreview || "",
+                        reporterEmail: report.reporterEmail,
+                      })}
+                    >
                       <XCircle className="h-4 w-4" /> {labels.dismiss}
                     </Button>
                   </div>
@@ -281,8 +622,340 @@ export default function AdminCommunityModeration() {
             </CardContent>
           </Card>
         </div>
+
+        <ModerationConfirmationDialog
+          isRtl={isRtl}
+          intent={moderationIntent}
+          note={moderationNote}
+          pending={moderate.isPending || dismissReport.isPending}
+          onNoteChange={setModerationNote}
+          onCancel={closeModerationDialog}
+          onConfirm={submitModeration}
+        />
       </main>
     </DashboardLayout>
+  );
+}
+
+function ModerationConfirmationDialog({
+  isRtl,
+  intent,
+  note,
+  pending,
+  onNoteChange,
+  onCancel,
+  onConfirm,
+}: {
+  isRtl: boolean;
+  intent: CommunityModerationIntent | null;
+  note: string;
+  pending: boolean;
+  onNoteChange: (value: string) => void;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const requiresReason = intent?.kind === "content" && intent.action === "delete";
+  const actionName = intent?.kind === "report"
+    ? (isRtl ? "رفض البلاغ" : "Dismiss report")
+    : intent?.action === "hide"
+      ? (isRtl ? "إخفاء المحتوى" : "Hide content")
+      : intent?.action === "restore"
+        ? (isRtl ? "استعادة المحتوى" : "Restore content")
+        : (isRtl ? "حذف المحتوى منطقياً" : "Soft-delete content");
+  const copy = isRtl ? {
+    live: "إجراء فعلي — وليس معاينة",
+    description: "راجع الهدف والأثر قبل تنفيذ هذا الإجراء على بيانات المجتمع الفعلية.",
+    target: "المحتوى المستهدف",
+    previewUnavailable: "معاينة المحتوى غير متاحة لهذا البلاغ.",
+    author: "صاحب المحتوى",
+    reporter: "صاحب البلاغ",
+    reports: "البلاغات المفتوحة المتأثرة",
+    notifications: "سيتم إرسال الإشعارات",
+    reportNotification: "سيتم إشعار صاحب البلاغ داخل المنصة وعبر البريد الإلكتروني بعد التأكيد.",
+    contentNotification: "سيتم إشعار الطالب صاحب المحتوى داخل المنصة وعبر البريد الإلكتروني بعد التأكيد.",
+    reporterNotification: (count: number) => count > 0
+      ? `سيتم أيضاً إشعار ${count} من أصحاب البلاغات المفتوحة بنتيجة الإجراء.`
+      : "لا توجد بلاغات مفتوحة إضافية لإشعار أصحابها.",
+    deleteReason: "سبب الحذف (مطلوب)",
+    note: "ملاحظة التدقيق (اختيارية)",
+    deletePlaceholder: "اكتب سبباً واضحاً للحذف يظهر في سجل التدقيق...",
+    notePlaceholder: "أضف سياقاً اختيارياً لسجل التدقيق...",
+    cancel: "إلغاء",
+    confirm: "تأكيد الإجراء وإرسال الإشعارات",
+  } : {
+    live: "Live action — not a preview",
+    description: "Review the exact target and impact before changing live community data.",
+    target: "Target content",
+    previewUnavailable: "A content preview is unavailable for this report.",
+    author: "Content author",
+    reporter: "Reporter",
+    reports: "Open reports affected",
+    notifications: "Notifications will be sent",
+    reportNotification: "The reporter will receive an in-app notification and email after confirmation.",
+    contentNotification: "The student content author will receive an in-app notification and email after confirmation.",
+    reporterNotification: (count: number) => count > 0
+      ? `${count} open report ${count === 1 ? "reporter" : "reporters"} will also be notified of the outcome.`
+      : "There are no additional open reporters to notify.",
+    deleteReason: "Deletion reason (required)",
+    note: "Audit note (optional)",
+    deletePlaceholder: "Enter a clear deletion reason for the audit trail...",
+    notePlaceholder: "Add optional context for the audit trail...",
+    cancel: "Cancel",
+    confirm: "Confirm action and send notifications",
+  };
+
+  return (
+    <Dialog open={Boolean(intent)} onOpenChange={open => !open && onCancel()}>
+      <DialogContent dir={isRtl ? "rtl" : "ltr"}>
+        <DialogHeader>
+          <div className="mb-1 flex items-center gap-2 text-red-700">
+            <ShieldAlert className="h-4 w-4" />
+            <span className="text-xs font-bold uppercase tracking-wide">{copy.live}</span>
+          </div>
+          <DialogTitle>{actionName}</DialogTitle>
+          <DialogDescription>{copy.description}</DialogDescription>
+        </DialogHeader>
+
+        {intent && (
+          <div className="space-y-4">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{copy.target}</p>
+              <p className="mt-1 font-semibold text-slate-950">{intent.targetLabel}</p>
+              <p className="mt-2 line-clamp-4 whitespace-pre-wrap text-sm leading-6 text-slate-600">
+                {intent.preview || copy.previewUnavailable}
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-600">
+                <Badge variant="outline">
+                  {intent.kind === "report" ? copy.reporter : copy.author}: {intent.kind === "report" ? intent.reporterEmail : intent.authorEmail}
+                </Badge>
+                <Badge variant="outline">
+                  {copy.reports}: {intent.kind === "report" ? 1 : intent.affectedReportCount}
+                </Badge>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-950">
+              <p className="flex items-center gap-2 font-semibold">
+                <BellRing className="h-4 w-4" /> {copy.notifications}
+              </p>
+              <p className="mt-1 text-sm leading-6">
+                {intent.kind === "report" ? copy.reportNotification : copy.contentNotification}
+              </p>
+              {intent.kind === "content" && (
+                <p className="mt-1 text-sm leading-6">{copy.reporterNotification(intent.affectedReportCount)}</p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="community-moderation-note">
+                {requiresReason ? copy.deleteReason : copy.note}
+              </Label>
+              <Textarea
+                id="community-moderation-note"
+                value={note}
+                maxLength={2000}
+                placeholder={requiresReason ? copy.deletePlaceholder : copy.notePlaceholder}
+                onChange={event => onNoteChange(event.target.value)}
+              />
+              {requiresReason && note.trim().length > 0 && note.trim().length < 3 && (
+                <p className="text-xs font-medium text-red-700">
+                  {isRtl ? "اكتب ثلاثة أحرف على الأقل." : "Enter at least three characters."}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onCancel}>{copy.cancel}</Button>
+          <Button
+            variant={requiresReason ? "destructive" : "default"}
+            disabled={pending || (requiresReason && note.trim().length < 3)}
+            onClick={onConfirm}
+          >
+            {pending && <Loader2 className="h-4 w-4 animate-spin" />}
+            {copy.confirm}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CommunityQueryError({
+  title,
+  body,
+  retryLabel,
+  onRetry,
+  compact = false,
+}: {
+  title: string;
+  body: string;
+  retryLabel: string;
+  onRetry: () => void;
+  compact?: boolean;
+}) {
+  return (
+    <div role="alert" className={`rounded-xl border border-red-200 bg-red-50 ${compact ? "p-4" : "p-5"}`}>
+      <div className="flex items-start gap-3">
+        <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-700" />
+        <div className="min-w-0 flex-1">
+          <p className="font-semibold text-red-950">{title}</p>
+          <p className="mt-1 text-sm leading-6 text-red-800">{body}</p>
+          <Button type="button" size="sm" variant="outline" className="mt-3 border-red-300 bg-white" onClick={onRetry}>
+            <RefreshCw className="h-4 w-4" /> {retryLabel}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CommunityStudentPreview({ isRtl, focusOnMount = false }: { isRtl: boolean; focusOnMount?: boolean }) {
+  const copy = isRtl
+    ? {
+        audience: "طالبة تجريبية — نور محمود",
+        title: "مجتمع الطلاب كما يظهر قبل الإطلاق",
+        description: "معاينة كاملة لإنشاء منشور، فحصه قبل النشر، التفاعل معه، والإبلاغ عنه. جميع البيانات أدناه افتراضية.",
+        community: "مجتمع XFlex",
+        feed: "أحدث النقاشات",
+        composer: "شارك سؤالاً أو تجربة مفيدة مع زملائك...",
+        publish: "نشر في المجتمع",
+        safe: "يتم الفحص قبل النشر",
+        safeBody: "قواعد المنافسين واللغة المحظورة، ثم فحص المعنى والسياق. لا يُحفظ المحتوى إلا بعد اجتياز الفحص.",
+        author: "نور محمود · طالبة تجريبية",
+        time: "منذ 12 دقيقة",
+        titleText: "كيف نظّمتم أول مشروع باستخدام أدوات الذكاء الاصطناعي؟",
+        body: "أنهيت اليوم أول نموذج عملي، وساعدني تقسيم المهمة إلى خطوات صغيرة. ما الطريقة التي وجدتموها أكثر فاعلية؟",
+        commentAuthor: "سارة أحمد",
+        comment: "بدأت بقائمة واضحة للمخرجات ثم راجعت كل خطوة مع الدرس. كانت طريقة ممتازة لتقليل التشتت.",
+        likes: "14 إعجاباً",
+        comments: "4 تعليقات",
+        report: "إبلاغ",
+        moderation: "ما يحدث خلف الشاشة",
+        checkOne: "فحص القواعد المحلية",
+        checkTwo: "فحص سلامة السياق",
+        checkThree: "النشر وإشعار المشاركين",
+        reportFlow: "عند الإبلاغ",
+        reportBody: "يصل البلاغ إلى لوحة الإدارة مع المنشور والسبب. يمكن للمدير إخفاء المحتوى أو استعادته أو رفض البلاغ.",
+        active: "نموذج توضيحي",
+      }
+    : {
+        audience: "Sample student — Noor Mahmoud",
+        title: "Student community before launch",
+        description: "A complete preview of creating, pre-checking, interacting with, and reporting a post. Everything below is synthetic.",
+        community: "XFlex Community",
+        feed: "Latest discussions",
+        composer: "Share a useful question or experience with your peers...",
+        publish: "Publish to community",
+        safe: "Checked before publishing",
+        safeBody: "Competitor and prohibited-language rules run first, followed by context and meaning safety checks. Content is saved only after it passes.",
+        author: "Noor Mahmoud · Sample student",
+        time: "12 minutes ago",
+        titleText: "How did you organize your first project with AI tools?",
+        body: "I finished my first practical prototype today, and breaking the work into small steps helped. Which approach worked best for you?",
+        commentAuthor: "Sara Ahmad",
+        comment: "I began with a clear output checklist and reviewed every step against the lesson. It was a great way to stay focused.",
+        likes: "14 likes",
+        comments: "4 comments",
+        report: "Report",
+        moderation: "What happens behind the screen",
+        checkOne: "Local policy check",
+        checkTwo: "Context safety check",
+        checkThree: "Publish and notify participants",
+        reportFlow: "When a post is reported",
+        reportBody: "The report reaches the admin workspace with the post and reason. A moderator can hide or restore the content, or dismiss the report.",
+        active: "Demonstration",
+      };
+
+  return (
+    <SafeAdminPreview
+      isRtl={isRtl}
+      audience={copy.audience}
+      title={copy.title}
+      description={copy.description}
+      anchorId="community-student-preview"
+      focusOnMount={focusOnMount}
+    >
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.65fr)]">
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+          <div className="flex items-center justify-between border-b bg-white px-4 py-3">
+            <div className="flex items-center gap-2">
+              <div className="rounded-lg bg-emerald-600 p-2 text-white"><MessageCircle className="h-4 w-4" /></div>
+              <p className="font-bold text-slate-950">{copy.community}</p>
+            </div>
+            <Badge className="bg-indigo-50 text-indigo-700">{copy.active}</Badge>
+          </div>
+
+          <div className="space-y-4 p-4">
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="flex gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 font-bold text-white">ن</div>
+                <div className="min-w-0 flex-1">
+                  <div className="min-h-20 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm leading-6 text-slate-400">{copy.composer}</div>
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                    <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-700"><ShieldAlert className="h-3.5 w-3.5" />{copy.safe}</span>
+                    <Button size="sm" disabled><Send className="h-4 w-4" />{copy.publish}</Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">{copy.feed}</p>
+              <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 font-bold text-white">ن</div>
+                    <div>
+                      <p className="text-sm font-semibold text-slate-950">{copy.author}</p>
+                      <p className="text-xs text-slate-500">{copy.time}</p>
+                    </div>
+                  </div>
+                  <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700"><CheckCircle2 className="me-1 h-3 w-3" />{copy.safe}</Badge>
+                </div>
+                <h3 className="mt-4 text-lg font-bold text-slate-950">{copy.titleText}</h3>
+                <p className="mt-2 text-sm leading-7 text-slate-600">{copy.body}</p>
+                <div className="mt-4 flex flex-wrap items-center gap-2 border-y border-slate-100 py-3">
+                  <Button size="sm" variant="ghost" disabled><Heart className="h-4 w-4" />{copy.likes}</Button>
+                  <Button size="sm" variant="ghost" disabled><MessageCircle className="h-4 w-4" />{copy.comments}</Button>
+                  <Button size="sm" variant="ghost" disabled className="ms-auto text-slate-500"><ShieldAlert className="h-4 w-4" />{copy.report}</Button>
+                </div>
+                <div className="mt-3 flex items-start gap-3 rounded-xl bg-slate-50 p-3">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sky-500 text-xs font-bold text-white">س</div>
+                  <div>
+                    <p className="text-xs font-semibold text-slate-900">{copy.commentAuthor}</p>
+                    <p className="mt-1 text-sm leading-6 text-slate-600">{copy.comment}</p>
+                  </div>
+                </div>
+              </article>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
+            <div className="flex items-center gap-2 text-emerald-900">
+              <Sparkles className="h-5 w-5" />
+              <h3 className="font-bold">{copy.moderation}</h3>
+            </div>
+            <p className="mt-2 text-xs leading-5 text-emerald-800">{copy.safeBody}</p>
+            <div className="mt-4 space-y-3">
+              {[copy.checkOne, copy.checkTwo, copy.checkThree].map((item, index) => (
+                <div key={item} className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-white p-3">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-xs font-bold text-white">{index + 1}</span>
+                  <span className="text-sm font-medium text-slate-800">{item}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
+            <h3 className="flex items-center gap-2 font-bold text-amber-950"><ShieldAlert className="h-5 w-5" />{copy.reportFlow}</h3>
+            <p className="mt-2 text-sm leading-6 text-amber-900">{copy.reportBody}</p>
+          </div>
+        </div>
+      </div>
+    </SafeAdminPreview>
   );
 }
 
@@ -333,6 +1006,15 @@ function CommunitySafetyManager({ isRtl }: { isRtl: boolean }) {
     error: "تعذر الفحص",
     noDecisions: "لا توجد قرارات فحص بعد.",
     updated: "تم تحديث سياسة المجتمع",
+    loadFailed: "تعذر تحميل بيانات السلامة",
+    loadFailedBody: "لا تفترض اللوحة أن الإعداد غير جاهز. أعد المحاولة لقراءة الحالة الفعلية.",
+    retry: "إعادة المحاولة",
+    unavailable: "غير متاح حالياً",
+    connectionGuideTitle: "مكان إعداد فحص المحتوى التلقائي",
+    connectionGuideBody: "لا يُحفظ مفتاح OpenAI داخل لوحة الإدارة. أضيفيه كسِرّ بيئة ثم أعيدي تشغيل الخدمة.",
+    localConnectionGuide: "محلياً: أضيفي OPENAI_API_KEY إلى ملف .env ثم أعيدي تشغيل خادم التطوير.",
+    productionConnectionGuide: "في الإنتاج: احفظي OPENAI_API_KEY كسِرّ مشفّر في إعدادات Cloudflare Worker.",
+    openCloudflare: "فتح لوحة Cloudflare",
   } : {
     title: "Pre-publication content safety",
     description: "Every post and comment passes competitor and prohibited-language rules, then OpenAI moderation for context and meaning, before it is saved.",
@@ -360,6 +1042,15 @@ function CommunitySafetyManager({ isRtl }: { isRtl: boolean }) {
     error: "Check unavailable",
     noDecisions: "No moderation decisions yet.",
     updated: "Community policy updated",
+    loadFailed: "Safety data could not be loaded",
+    loadFailedBody: "The workspace will not assume the configuration is unready. Retry to read its live status.",
+    retry: "Retry",
+    unavailable: "Currently unavailable",
+    connectionGuideTitle: "Where to configure automated content checks",
+    connectionGuideBody: "The OpenAI key is never stored in this admin page. Add it as an environment secret, then restart the service.",
+    localConnectionGuide: "Local: add OPENAI_API_KEY to .env, then restart the development server.",
+    productionConnectionGuide: "Production: save OPENAI_API_KEY as an encrypted secret for the Cloudflare Worker.",
+    openCloudflare: "Open Cloudflare dashboard",
   };
 
   const addTerm = trpc.community.addPolicyTerm.useMutation({
@@ -397,7 +1088,11 @@ function CommunitySafetyManager({ isRtl }: { isRtl: boolean }) {
   };
 
   return (
-    <Card>
+    <Card
+      id="community-safety-setup"
+      tabIndex={-1}
+      className="scroll-mt-24 outline-none"
+    >
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-lg">
           <Bot className="h-5 w-5 text-emerald-700" />
@@ -406,32 +1101,78 @@ function CommunitySafetyManager({ isRtl }: { isRtl: boolean }) {
         <p className="text-sm leading-6 text-slate-500">{labels.description}</p>
       </CardHeader>
       <CardContent className="space-y-5">
-        <div className="flex flex-wrap gap-2">
-          <Badge className={configQuery.data?.openAiConfigured
-            ? "bg-emerald-100 text-emerald-700"
-            : "bg-amber-100 text-amber-800"}>
-            {configQuery.data?.openAiConfigured ? labels.configured : labels.missingKey}
-          </Badge>
-          <Badge variant="outline">
-            {configQuery.data?.model || "omni-moderation-latest"}
-          </Badge>
-          <Badge variant="outline">{labels.failClosed}</Badge>
-          <Badge className={configQuery.data?.readyForLimitedActivation
-            ? "bg-emerald-100 text-emerald-700"
-            : "bg-amber-100 text-amber-800"}>
-            {configQuery.data?.readyForLimitedActivation
-              ? labels.ready
-              : labels.notReady}
-          </Badge>
-        </div>
+        {configQuery.isLoading ? (
+          <Loader2 className="mx-auto my-5 h-5 w-5 animate-spin text-emerald-700" />
+        ) : configQuery.isError ? (
+          <CommunityQueryError
+            compact
+            title={labels.loadFailed}
+            body={labels.loadFailedBody}
+            retryLabel={labels.retry}
+            onRetry={() => void configQuery.refetch()}
+          />
+        ) : (
+          <section
+            id="community-automated-checks"
+            tabIndex={-1}
+            className="scroll-mt-24 space-y-3 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+          >
+            <div className="flex flex-wrap gap-2">
+              <Badge className={configQuery.data?.openAiConfigured
+                ? "bg-emerald-100 text-emerald-700"
+                : "bg-amber-100 text-amber-800"}>
+                {configQuery.data?.openAiConfigured ? labels.configured : labels.missingKey}
+              </Badge>
+              <Badge variant="outline">
+                {configQuery.data?.model || "omni-moderation-latest"}
+              </Badge>
+              <Badge variant="outline">{labels.failClosed}</Badge>
+              <Badge className={configQuery.data?.readyForLimitedActivation
+                ? "bg-emerald-100 text-emerald-700"
+                : "bg-amber-100 text-amber-800"}>
+                {configQuery.data?.readyForLimitedActivation
+                  ? labels.ready
+                  : labels.notReady}
+              </Badge>
+            </div>
 
-        <section className="space-y-3">
+            {!configQuery.data?.openAiConfigured && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-950">
+                <h3 className="text-sm font-bold">{labels.connectionGuideTitle}</h3>
+                <p className="mt-1 text-xs leading-5">{labels.connectionGuideBody}</p>
+                <ul className="mt-3 space-y-1.5 text-xs leading-5">
+                  <li>{labels.localConnectionGuide}</li>
+                  <li>{labels.productionConnectionGuide}</li>
+                </ul>
+                <a
+                  href="https://dash.cloudflare.com/"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-3 inline-flex items-center gap-1.5 text-xs font-bold text-amber-950 underline underline-offset-4"
+                >
+                  {labels.openCloudflare}
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </a>
+              </div>
+            )}
+          </section>
+        )}
+
+        <section
+          id="community-policy-terms"
+          tabIndex={-1}
+          className="scroll-mt-24 space-y-3 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+        >
           <div>
             <h3 className="font-semibold text-slate-950">{labels.policyTerms}</h3>
             <p className="mt-1 text-xs text-slate-500">
-              {labels.competitor}: {configQuery.data?.activeCompetitorTermCount ?? 0} {labels.active}
-              {" · "}
-              {labels.prohibitedLanguage}: {configQuery.data?.activeProhibitedLanguageTermCount ?? 0} {labels.active}
+              {configQuery.isError ? labels.unavailable : (
+                <>
+                  {labels.competitor}: {configQuery.data?.activeCompetitorTermCount ?? 0} {labels.active}
+                  {" · "}
+                  {labels.prohibitedLanguage}: {configQuery.data?.activeProhibitedLanguageTermCount ?? 0} {labels.active}
+                </>
+              )}
             </p>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row">
@@ -476,6 +1217,14 @@ function CommunitySafetyManager({ isRtl }: { isRtl: boolean }) {
           </div>
           {termsQuery.isLoading ? (
             <Loader2 className="mx-auto my-5 h-5 w-5 animate-spin text-emerald-700" />
+          ) : termsQuery.isError ? (
+            <CommunityQueryError
+              compact
+              title={labels.loadFailed}
+              body={labels.loadFailedBody}
+              retryLabel={labels.retry}
+              onRetry={() => void termsQuery.refetch()}
+            />
           ) : !(termsQuery.data?.length) ? (
             <p className="rounded-xl border border-dashed p-5 text-center text-sm text-slate-500">
               {labels.noTerms}
@@ -536,6 +1285,14 @@ function CommunitySafetyManager({ isRtl }: { isRtl: boolean }) {
           </div>
           {decisionsQuery.isLoading ? (
             <Loader2 className="mx-auto my-5 h-5 w-5 animate-spin text-emerald-700" />
+          ) : decisionsQuery.isError ? (
+            <CommunityQueryError
+              compact
+              title={labels.loadFailed}
+              body={labels.loadFailedBody}
+              retryLabel={labels.retry}
+              onRetry={() => void decisionsQuery.refetch()}
+            />
           ) : !(decisionsQuery.data?.length) ? (
             <p className="rounded-xl border border-dashed p-5 text-center text-sm text-slate-500">
               {labels.noDecisions}
@@ -577,7 +1334,7 @@ function CommunitySafetyManager({ isRtl }: { isRtl: boolean }) {
   );
 }
 
-function CommunityAccessManager({ isRtl }: { isRtl: boolean }) {
+function CommunityAccessManager({ isRtl, featureEnabled }: { isRtl: boolean; featureEnabled: boolean }) {
   const utils = trpc.useUtils();
   const pageSize = 20;
   const [search, setSearch] = useState("");
@@ -597,7 +1354,10 @@ function CommunityAccessManager({ isRtl }: { isRtl: boolean }) {
 
   const labels = isRtl ? {
     title: "إدارة وصول الأعضاء",
-    description: "جميع حسابات العملاء وفريق الدعم مشمولة تلقائياً. استخدم الحظر فقط عند إساءة الاستخدام.",
+    description: "تحكم مباشر بحسابات العملاء وفريق الدعم. استخدم التعليق فقط عند إساءة الاستخدام.",
+    liveControl: "تحكم فعلي بالحساب — ليس معاينة",
+    liveEnabled: "أي تعليق أو استعادة هنا يغيّر وصول الحساب الفعلي فوراً، ويرسل إشعاراً داخل المنصة وبريداً إلكترونياً.",
+    liveDisabled: "رغم أن المجتمع غير مفعّل، فإن التعليق أو الاستعادة هنا يُسجّل فوراً على الحساب الفعلي ويرسل إشعاراً داخل المنصة وبريداً إلكترونياً. هذا القسم منفصل عن المعاينة الافتراضية.",
     search: "البحث بالاسم أو البريد",
     all: "الكل",
     allowed: "مسموح",
@@ -606,7 +1366,8 @@ function CommunityAccessManager({ isRtl }: { isRtl: boolean }) {
     client: "عميل",
     ban: "حظر",
     restore: "إلغاء الحظر",
-    reason: "سبب القرار",
+    reason: "سبب التعليق (مطلوب)",
+    restoreNote: "ملاحظة الاستعادة (اختيارية)",
     reasonPlaceholder: "اكتب سبباً واضحاً يظهر في سجل التدقيق...",
     expiry: "انتهاء الحظر (اختياري)",
     permanent: "اتركه فارغاً للحظر الدائم.",
@@ -615,16 +1376,24 @@ function CommunityAccessManager({ isRtl }: { isRtl: boolean }) {
     confirmRestore: "تأكيد الاستعادة",
     banTitle: "حظر العضو من المجتمع",
     restoreTitle: "استعادة وصول العضو",
-    banDescription: "سيُمنع العضو فوراً من قراءة المجتمع أو النشر أو التعليق أو الإبلاغ.",
-    restoreDescription: "سيستعيد العضو الوصول عند تفعيل المجتمع.",
+    banDescription: "سيُسجّل تعليق فعلي فوراً، وسيُمنع هذا الحساب من القراءة أو النشر أو التعليق أو الإبلاغ عند إتاحة المجتمع.",
+    restoreDescription: "ستتم إزالة التعليق الفعلي فوراً. هذا لا يفعّل ميزة المجتمع لجميع الطلاب.",
+    exactMember: "الحساب المتأثر",
+    notificationImpact: "سيتلقى هذا العضو إشعاراً داخل المنصة وبريداً إلكترونياً فور تأكيد الإجراء.",
     noMembers: "لا توجد حسابات مطابقة.",
     previous: "السابق",
     next: "التالي",
     updated: "تم تحديث وصول العضو",
     permanentBan: "دائم",
+    loadFailed: "تعذر تحميل حسابات الأعضاء",
+    loadFailedBody: "لم يتغير وصول أي حساب. أعد المحاولة قبل اتخاذ قرار فعلي.",
+    retry: "إعادة المحاولة",
   } : {
     title: "Member access management",
-    description: "Every client and support account is included automatically. Use suspension only for misuse.",
+    description: "Direct control for every client and support account. Use suspension only for misuse.",
+    liveControl: "Live account control — not a preview",
+    liveEnabled: "A suspension or restoration here changes the real account immediately and sends an in-app notification and email.",
+    liveDisabled: "Although the community feature is off, a suspension or restoration here is written to the real account immediately and sends an in-app notification and email. This section is separate from the synthetic preview.",
     search: "Search by name or email",
     all: "All",
     allowed: "Allowed",
@@ -633,7 +1402,8 @@ function CommunityAccessManager({ isRtl }: { isRtl: boolean }) {
     client: "Client",
     ban: "Suspend",
     restore: "Restore",
-    reason: "Decision reason",
+    reason: "Suspension reason (required)",
+    restoreNote: "Restoration note (optional)",
     reasonPlaceholder: "Enter a clear reason for the audit trail...",
     expiry: "Suspension expiry (optional)",
     permanent: "Leave empty for a permanent suspension.",
@@ -642,13 +1412,18 @@ function CommunityAccessManager({ isRtl }: { isRtl: boolean }) {
     confirmRestore: "Confirm restoration",
     banTitle: "Suspend community member",
     restoreTitle: "Restore community access",
-    banDescription: "The member will immediately lose read, post, comment, and report access.",
-    restoreDescription: "The member will regain access when the community is enabled.",
+    banDescription: "A real suspension is recorded immediately. This account cannot read, post, comment, or report whenever community routes are available.",
+    restoreDescription: "The live suspension is removed immediately. This does not enable the community feature for everyone.",
+    exactMember: "Affected account",
+    notificationImpact: "This member will receive an in-app notification and email as soon as you confirm.",
     noMembers: "No matching accounts.",
     previous: "Previous",
     next: "Next",
     updated: "Member access updated",
     permanentBan: "Permanent",
+    loadFailed: "Member accounts could not be loaded",
+    loadFailedBody: "No account access changed. Retry before making a live decision.",
+    retry: "Retry",
   };
 
   const membersQuery = trpc.community.adminMembers.useQuery({
@@ -712,8 +1487,12 @@ function CommunityAccessManager({ isRtl }: { isRtl: boolean }) {
 
   return (
     <>
-      <Card>
-        <CardHeader>
+      <Card className="overflow-hidden border-rose-200 shadow-sm">
+        <CardHeader className="border-b border-rose-100 bg-rose-50/70">
+          <div className="mb-1 flex items-center gap-2 text-rose-700">
+            <ShieldAlert className="h-4 w-4" />
+            <span className="text-xs font-bold uppercase tracking-wide">{labels.liveControl}</span>
+          </div>
           <CardTitle className="flex items-center gap-2 text-lg">
             <UserCheck className="h-5 w-5 text-emerald-700" />
             {labels.title}
@@ -721,6 +1500,12 @@ function CommunityAccessManager({ isRtl }: { isRtl: boolean }) {
           <p className="text-sm leading-6 text-slate-500">{labels.description}</p>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
+            <div className="flex items-start gap-2">
+              <BellRing className="mt-1 h-4 w-4 shrink-0" />
+              <p>{featureEnabled ? labels.liveEnabled : labels.liveDisabled}</p>
+            </div>
+          </div>
           <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_180px]">
             <div className="relative">
               <Search className="absolute start-3 top-3 h-4 w-4 text-slate-400" />
@@ -750,6 +1535,13 @@ function CommunityAccessManager({ isRtl }: { isRtl: boolean }) {
 
           {membersQuery.isLoading ? (
             <Loader2 className="mx-auto my-8 h-5 w-5 animate-spin text-emerald-700" />
+          ) : membersQuery.isError ? (
+            <CommunityQueryError
+              title={labels.loadFailed}
+              body={labels.loadFailedBody}
+              retryLabel={labels.retry}
+              onRetry={() => void membersQuery.refetch()}
+            />
           ) : items.length === 0 ? (
             <p className="rounded-xl border border-dashed p-6 text-center text-sm text-slate-500">{labels.noMembers}</p>
           ) : (
@@ -789,7 +1581,7 @@ function CommunityAccessManager({ isRtl }: { isRtl: boolean }) {
             </div>
           )}
 
-          <div className="flex items-center justify-between gap-3">
+          {membersQuery.isSuccess && <div className="flex items-center justify-between gap-3">
             <p className="text-xs text-slate-500">{Math.min(page * pageSize + items.length, total)} / {total}</p>
             <div className="flex gap-2">
               <Button size="sm" variant="outline" disabled={page === 0} onClick={() => setPage(value => Math.max(0, value - 1))}>
@@ -799,21 +1591,40 @@ function CommunityAccessManager({ isRtl }: { isRtl: boolean }) {
                 {labels.next}
               </Button>
             </div>
-          </div>
+          </div>}
         </CardContent>
       </Card>
 
       <Dialog open={Boolean(dialog)} onOpenChange={open => !open && closeDialog()}>
         <DialogContent dir={isRtl ? "rtl" : "ltr"}>
           <DialogHeader>
+            <div className="mb-1 flex items-center gap-2 text-red-700">
+              <ShieldAlert className="h-4 w-4" />
+              <span className="text-xs font-bold uppercase tracking-wide">{labels.liveControl}</span>
+            </div>
             <DialogTitle>{dialog?.action === "ban" ? labels.banTitle : labels.restoreTitle}</DialogTitle>
             <DialogDescription>
               {dialog?.action === "ban" ? labels.banDescription : labels.restoreDescription}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
+            {dialog && (
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{labels.exactMember}</p>
+                <p className="mt-1 text-base font-bold text-slate-950">{dialog.member.name || dialog.member.email}</p>
+                <p className="mt-1 break-all text-sm text-slate-600">{dialog.member.email}</p>
+              </div>
+            )}
+            <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
+              <p className="flex items-start gap-2">
+                <BellRing className="mt-1 h-4 w-4 shrink-0" />
+                <span>{labels.notificationImpact}</span>
+              </p>
+            </div>
             <div className="space-y-2">
-              <Label htmlFor="community-access-reason">{labels.reason}</Label>
+              <Label htmlFor="community-access-reason">
+                {dialog?.action === "ban" ? labels.reason : labels.restoreNote}
+              </Label>
               <Textarea
                 id="community-access-reason"
                 value={reason}
@@ -838,6 +1649,7 @@ function CommunityAccessManager({ isRtl }: { isRtl: boolean }) {
           <DialogFooter>
             <Button variant="outline" onClick={closeDialog}>{labels.cancel}</Button>
             <Button
+              variant={dialog?.action === "ban" ? "destructive" : "default"}
               disabled={
                 isPending
                 || (dialog?.action === "ban" && reason.trim().length < 3)
@@ -854,28 +1666,26 @@ function CommunityAccessManager({ isRtl }: { isRtl: boolean }) {
   );
 }
 
-function ModerationButtons({ labels, status, disabled, onHide, onRestore, onDelete }: {
+function ModerationButtons({ labels, status, disabled, onAction }: {
   labels: Record<string, string>;
   status: string;
   disabled: boolean;
-  onHide: () => void;
-  onRestore: () => void;
-  onDelete: () => void;
+  onAction: (action: CommunityContentAction) => void;
 }) {
   return (
     <div className="flex flex-wrap gap-2">
       {status !== "hidden" && status !== "deleted" && (
-        <Button size="sm" variant="outline" disabled={disabled} onClick={onHide}>
+        <Button size="sm" variant="outline" disabled={disabled} onClick={() => onAction("hide")}>
           <EyeOff className="h-4 w-4" /> {labels.hide}
         </Button>
       )}
       {status !== "visible" && (
-        <Button size="sm" variant="outline" disabled={disabled} onClick={onRestore}>
+        <Button size="sm" variant="outline" disabled={disabled} onClick={() => onAction("restore")}>
           <CheckCircle2 className="h-4 w-4" /> {labels.restore}
         </Button>
       )}
       {status !== "deleted" && (
-        <Button size="sm" variant="outline" disabled={disabled} onClick={onDelete}>
+        <Button size="sm" variant="outline" disabled={disabled} onClick={() => onAction("delete")}>
           <Trash2 className="h-4 w-4" /> {labels.delete}
         </Button>
       )}

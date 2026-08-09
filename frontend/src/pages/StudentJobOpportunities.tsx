@@ -30,10 +30,32 @@ const emptyProfile: ProfileForm = {
 
 const statusStyle: Record<string, string> = {
   submitted: "bg-amber-50 text-amber-700",
+  resubmitted: "bg-indigo-50 text-indigo-700",
   returned: "bg-slate-100 text-slate-700",
   eligible: "bg-emerald-50 text-emerald-700",
   ineligible: "bg-red-50 text-red-700",
 };
+
+function reviewStatusLabel(status: string, isRtl: boolean) {
+  const labels: Record<string, string> = isRtl
+    ? { submitted: "بانتظار المراجعة", resubmitted: "أُعيد تقديمه", returned: "مُعاد لاستكمال البيانات", eligible: "مؤهل", ineligible: "غير مؤهل" }
+    : { submitted: "Awaiting review", resubmitted: "Resubmitted", returned: "Returned for updates", eligible: "Eligible", ineligible: "Ineligible" };
+  return labels[status] ?? status;
+}
+
+function eligibilityCheckLabel(key: string, isRtl: boolean) {
+  const labels: Record<string, string> = isRtl
+    ? { completedEpisodes: "الدروس المكتملة", completedQuizzes: "الاختبارات المجتازة", pointsBalance: "رصيد النقاط", activeSubscription: "الاشتراك النشط", profile: "الملف المهني" }
+    : { completedEpisodes: "Completed lessons", completedQuizzes: "Passed quizzes", pointsBalance: "Points balance", activeSubscription: "Active subscription", profile: "Career profile" };
+  return labels[key] ?? key;
+}
+
+function formatReviewHistoryDate(value: unknown, isRtl: boolean) {
+  const date = typeof value === "string" || value instanceof Date ? new Date(value) : null;
+  return date && Number.isFinite(date.getTime())
+    ? date.toLocaleString(isRtl ? "ar-JO" : "en-GB")
+    : (isRtl ? "وقت غير متاح" : "Time unavailable");
+}
 
 export default function StudentJobOpportunities() {
   const { language } = useLanguage();
@@ -57,6 +79,7 @@ export default function StudentJobOpportunities() {
         saved: "تم حفظ الملف",
         opportunities: "الفرص المتاحة",
         request: "طلب مراجعة الأهلية",
+        resubmit: "إعادة تقديم الطلب",
         requesting: "جاري الإرسال...",
         requested: "تم إرسال طلب المراجعة",
         metrics: "مؤشراتك الحالية",
@@ -67,6 +90,9 @@ export default function StudentJobOpportunities() {
         profileReady: "ملف مكتمل",
         noJobs: "لا توجد فرص مفعلة حالياً.",
         notePlaceholder: "ملاحظة اختيارية للمدير...",
+        pendingBody: "طلبك لدى المدير الآن. لا تحتاج إلى إرساله مرة أخرى.",
+        finalBody: "تم اتخاذ القرار النهائي لهذا الطلب.",
+        managerNote: "ملاحظة المدير",
       }
     : {
         title: "Student Job Opportunities",
@@ -86,6 +112,7 @@ export default function StudentJobOpportunities() {
         saved: "Profile saved",
         opportunities: "Open opportunities",
         request: "Request eligibility review",
+        resubmit: "Resubmit for review",
         requesting: "Submitting...",
         requested: "Eligibility review submitted",
         metrics: "Your current metrics",
@@ -96,6 +123,9 @@ export default function StudentJobOpportunities() {
         profileReady: "Complete profile",
         noJobs: "No enabled opportunities right now.",
         notePlaceholder: "Optional note for the manager...",
+        pendingBody: "Your request is with the manager now; no duplicate submission is needed.",
+        finalBody: "A final decision has been recorded for this request.",
+        managerNote: "Manager note",
       };
 
   const utils = trpc.useUtils();
@@ -242,7 +272,7 @@ export default function StudentJobOpportunities() {
                     </Badge>
                     {item.review?.status && (
                       <Badge className={statusStyle[item.review.status] ?? "bg-gray-100 text-gray-700"}>
-                        {item.review.status}
+                        {reviewStatusLabel(item.review.status, isRtl)}
                       </Badge>
                     )}
                   </div>
@@ -252,34 +282,76 @@ export default function StudentJobOpportunities() {
                   {Object.entries(item.checks).map(([key, passed]) => (
                     <div key={key} className="flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2 text-xs">
                       {passed ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <XCircle className="h-4 w-4 text-red-500" />}
-                      <span>{key}</span>
+                      <span>{eligibilityCheckLabel(key, isRtl)}</span>
                     </div>
                   ))}
                 </div>
 
                 {item.review?.adminNote && (
-                  <div className="mt-3 rounded-lg bg-slate-50 p-3 text-sm text-slate-700">{item.review.adminNote}</div>
+                  <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+                    <p className="mb-1 text-xs font-semibold text-amber-700">{copy.managerNote}</p>
+                    {item.review.adminNote}
+                  </div>
                 )}
 
-                <textarea
-                  className="mt-4 min-h-20 w-full rounded-lg border px-3 py-2 text-sm"
-                  placeholder={copy.notePlaceholder}
-                  value={notes[item.job.id] ?? ""}
-                  onChange={(e) => setNotes({ ...notes, [item.job.id]: e.target.value })}
-                />
-                <Button
-                  className="mt-3 gap-2 bg-emerald-600 text-white hover:bg-emerald-700"
-                  disabled={submitReview.isPending}
-                  onClick={() => submitReview.mutate({ jobId: item.job.id, studentNote: notes[item.job.id] })}
-                >
-                  {submitReview.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clock className="h-4 w-4" />}
-                  {submitReview.isPending ? copy.requesting : copy.request}
-                </Button>
+                <StudentReviewHistory history={item.reviewHistory} studentUserId={item.review?.userId} isRtl={isRtl} />
+
+                {(!item.review || item.review.status === "returned") ? (
+                  <>
+                    <textarea
+                      className="mt-4 min-h-20 w-full rounded-lg border px-3 py-2 text-sm"
+                      placeholder={copy.notePlaceholder}
+                      value={notes[item.job.id] ?? ""}
+                      onChange={(e) => setNotes({ ...notes, [item.job.id]: e.target.value })}
+                    />
+                    <Button
+                      className="mt-3 gap-2 bg-emerald-600 text-white hover:bg-emerald-700"
+                      disabled={submitReview.isPending}
+                      onClick={() => submitReview.mutate({ jobId: item.job.id, studentNote: notes[item.job.id] })}
+                    >
+                      {submitReview.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clock className="h-4 w-4" />}
+                      {submitReview.isPending ? copy.requesting : (item.review?.status === "returned" ? copy.resubmit : copy.request)}
+                    </Button>
+                  </>
+                ) : (
+                  <p className="mt-4 rounded-lg bg-slate-50 p-3 text-sm text-slate-600">
+                    {item.review.status === "submitted" || item.review.status === "resubmitted" ? copy.pendingBody : copy.finalBody}
+                  </p>
+                )}
               </div>
             ))
           )}
         </section>
       </div>
     </ClientLayout>
+  );
+}
+
+function StudentReviewHistory({ history, studentUserId, isRtl }: { history: any[] | undefined; studentUserId?: number; isRtl: boolean }) {
+  if (!history?.length) return null;
+  const actions: Record<string, string> = isRtl
+    ? { review_submitted: "تم تقديم الطلب", review_resubmitted: "تمت إعادة التقديم", review_decision: "سجّل المدير قراراً" }
+    : { review_submitted: "Request submitted", review_resubmitted: "Request resubmitted", review_decision: "Manager decision recorded" };
+  return (
+    <div className="mt-3 rounded-xl border p-3">
+      <p className="text-xs font-semibold text-slate-500">{isRtl ? "سجل الطلب" : "Request history"}</p>
+      <div className="mt-2 space-y-2">
+        {history.map((entry) => {
+          let details: any = null;
+          try { details = entry.details ? JSON.parse(entry.details) : null; } catch { details = null; }
+          const note = details?.adminNote || details?.studentNote;
+          const actor = entry.actorUserId === studentUserId ? (isRtl ? "أنت" : "You") : (isRtl ? "المدير" : "Manager");
+          return (
+            <div key={entry.id} className="rounded-lg bg-slate-50 px-3 py-2 text-xs">
+              <div className="flex flex-wrap justify-between gap-2">
+                <span className="font-semibold">{actions[entry.action] || entry.action}{entry.toStatus ? ` · ${reviewStatusLabel(entry.toStatus, isRtl)}` : ""}</span>
+                <span className="text-slate-500">{actor} · {formatReviewHistoryDate(entry.createdAt, isRtl)}</span>
+              </div>
+              {note && <p className="mt-1 text-slate-700">{note}</p>}
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }

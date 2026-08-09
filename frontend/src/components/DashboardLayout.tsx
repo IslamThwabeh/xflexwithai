@@ -25,13 +25,13 @@ import {
 import { APP_LOGO, APP_TITLE, getLoginUrl } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { 
-  LayoutDashboard, 
-  LogOut, 
-  PanelLeft, 
-  Users, 
-  BookOpen, 
-  Key, 
+import {
+  LayoutDashboard,
+  LogOut,
+  PanelLeft,
+  Users,
+  BookOpen,
+  Key,
   MessageSquare,
   Shield,
   Headphones,
@@ -65,122 +65,298 @@ import {
   TrendingUp,
   Settings2,
   Mail,
+  Boxes,
+  Sparkles,
 } from "lucide-react";
-import { CSSProperties, useEffect, useRef, useState, useMemo, lazy, Suspense } from "react";
+import {
+  CSSProperties,
+  useEffect,
+  useRef,
+  useState,
+  useMemo,
+  lazy,
+  Suspense,
+} from "react";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useLocation } from "wouter";
-import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
+import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
 import { Button } from "./ui/button";
 import { trpc } from "@/lib/trpc";
 import { getLanguageSwitchLabel } from "@/lib/languageToggle";
 import { ROLE_PAGE_ACCESS } from "@shared/const";
+import { getAdminFeatureByPath } from "@shared/adminFeatureCatalog";
 
 // Menu sections use i18n keys – resolved at render time
-type MenuItem = { icon: any; labelKey: string; path: string; descKey?: string };
-type MenuSection = { icon: any; labelKey: string; items: MenuItem[] };
+type LocalizedMenuLabel = { en: string; ar: string };
+type MenuItem = {
+  icon: any;
+  labelKey: string;
+  label?: LocalizedMenuLabel;
+  path: string;
+  descKey?: string;
+};
+type MenuSection = {
+  icon: any;
+  labelKey: string;
+  label?: LocalizedMenuLabel;
+  items: MenuItem[];
+};
 
 const menuSectionsDef: MenuSection[] = [
   {
     icon: LayoutDashboard,
     labelKey: "admin.sidebar.overview",
     items: [
-      { icon: LayoutDashboard, labelKey: "admin.sidebar.dashboard", path: "/admin/dashboard" },
-    ]
+      {
+        icon: LayoutDashboard,
+        labelKey: "admin.sidebar.dashboard",
+        path: "/admin/dashboard",
+      },
+      {
+        icon: Sparkles,
+        labelKey: "admin.sidebar.settings",
+        label: { en: "Feature Center", ar: "مركز الميزات" },
+        path: "/admin/features",
+      },
+    ],
+  },
+  {
+    icon: Boxes,
+    labelKey: "admin.sidebar.overview",
+    label: { en: "Feature Management", ar: "إدارة الميزات" },
+    items: [
+      {
+        icon: ClipboardCheck,
+        labelKey: "admin.sidebar.staffPerformance",
+        path: "/admin/staff-performance",
+      },
+      {
+        icon: ClipboardCheck,
+        labelKey: "admin.sidebar.studentSurveys",
+        path: "/admin/student-surveys",
+      },
+      {
+        icon: Award,
+        labelKey: "admin.sidebar.loyaltyPoints",
+        label: { en: "Points & Rewards", ar: "النقاط والمكافآت" },
+        path: "/admin/points",
+      },
+      {
+        icon: MessageSquare,
+        labelKey: "admin.sidebar.community",
+        path: "/admin/community",
+      },
+      {
+        icon: ShieldCheck,
+        labelKey: "admin.sidebar.jobEligibility",
+        path: "/admin/job-eligibility",
+      },
+    ],
   },
   {
     icon: ShoppingCart,
     labelKey: "admin.sidebar.sales",
     items: [
-      { icon: ShoppingCart, labelKey: "admin.sidebar.orders", path: "/admin/orders" },
-      { icon: Key, labelKey: "admin.sidebar.activationKeys", path: "/admin/package-keys" },
-      { icon: Package, labelKey: "admin.sidebar.packages", path: "/admin/packages" },
+      {
+        icon: ShoppingCart,
+        labelKey: "admin.sidebar.orders",
+        path: "/admin/orders",
+      },
+      {
+        icon: Key,
+        labelKey: "admin.sidebar.activationKeys",
+        path: "/admin/package-keys",
+      },
+      {
+        icon: Package,
+        labelKey: "admin.sidebar.packages",
+        path: "/admin/packages",
+      },
       { icon: Tag, labelKey: "admin.sidebar.coupons", path: "/admin/coupons" },
-      { icon: Building2, labelKey: "admin.sidebar.brokers", path: "/admin/brokers" },
-      { icon: FileCheck, labelKey: "admin.sidebar.termsAcceptance", path: "/admin/terms-acceptance" },
-    ]
+      {
+        icon: Building2,
+        labelKey: "admin.sidebar.brokers",
+        path: "/admin/brokers",
+      },
+      {
+        icon: FileCheck,
+        labelKey: "admin.sidebar.termsAcceptance",
+        path: "/admin/terms-acceptance",
+      },
+    ],
   },
   {
     icon: TrendingUp,
     labelKey: "admin.sidebar.recChannel",
     items: [
-      { icon: TrendingUp, labelKey: "admin.sidebar.recommendations", path: "/admin/recommendations" },
-    ]
+      {
+        icon: TrendingUp,
+        labelKey: "admin.sidebar.recommendations",
+        path: "/admin/recommendations",
+      },
+    ],
   },
   {
     icon: MessageSquare,
     labelKey: "admin.sidebar.lexai",
     items: [
-      { icon: MessageSquare, labelKey: "admin.sidebar.lexai", path: "/admin/lexai" },
-    ]
+      {
+        icon: MessageSquare,
+        labelKey: "admin.sidebar.lexai",
+        path: "/admin/lexai",
+      },
+    ],
   },
   {
     icon: GraduationCap,
     labelKey: "admin.sidebar.learning",
     items: [
-      { icon: BookOpen, labelKey: "admin.sidebar.courses", path: "/admin/courses" },
-      { icon: GraduationCap, labelKey: "admin.sidebar.planProgress", path: "/admin/plan-progress" },
-      { icon: ClipboardCheck, labelKey: "admin.sidebar.quizzes", path: "/admin/quizzes" },
-      { icon: ClipboardCheck, labelKey: "admin.sidebar.studentSurveys", path: "/admin/student-surveys" },
-    ]
+      {
+        icon: BookOpen,
+        labelKey: "admin.sidebar.courses",
+        path: "/admin/courses",
+      },
+      {
+        icon: GraduationCap,
+        labelKey: "admin.sidebar.planProgress",
+        path: "/admin/plan-progress",
+      },
+      {
+        icon: ClipboardCheck,
+        labelKey: "admin.sidebar.quizzes",
+        path: "/admin/quizzes",
+      },
+    ],
   },
   {
     icon: Megaphone,
     labelKey: "admin.sidebar.content",
     items: [
-      { icon: FileText, labelKey: "admin.sidebar.articles", path: "/admin/articles" },
-      { icon: CalendarDays, labelKey: "admin.sidebar.events", path: "/admin/events" },
-      { icon: MessageSquareQuote, labelKey: "admin.sidebar.testimonials", path: "/admin/testimonials" },
-    ]
+      {
+        icon: FileText,
+        labelKey: "admin.sidebar.articles",
+        path: "/admin/articles",
+      },
+      {
+        icon: CalendarDays,
+        labelKey: "admin.sidebar.events",
+        path: "/admin/events",
+      },
+      {
+        icon: MessageSquareQuote,
+        labelKey: "admin.sidebar.testimonials",
+        path: "/admin/testimonials",
+      },
+    ],
   },
   {
     icon: Users,
     labelKey: "admin.sidebar.students",
     items: [
-      { icon: Users, labelKey: "admin.sidebar.students", path: "/admin/students" },
-    ]
+      {
+        icon: Users,
+        labelKey: "admin.sidebar.students",
+        path: "/admin/students",
+      },
+    ],
   },
   {
     icon: ShieldCheck,
     labelKey: "admin.sidebar.team",
     items: [
-      { icon: Headphones, labelKey: "admin.sidebar.supportChat", path: "/admin/support" },
-      { icon: Bug, labelKey: "admin.sidebar.bugReports", path: "/admin/bug-reports" },
+      {
+        icon: Headphones,
+        labelKey: "admin.sidebar.supportChat",
+        path: "/admin/support",
+      },
+      {
+        icon: Bug,
+        labelKey: "admin.sidebar.bugReports",
+        path: "/admin/bug-reports",
+      },
       { icon: Shield, labelKey: "admin.sidebar.roles", path: "/admin/roles" },
-      { icon: Search, labelKey: "admin.sidebar.staffReview", path: "/admin/staff-review" },
-      { icon: ClipboardCheck, labelKey: "admin.sidebar.staffPerformance", path: "/admin/staff-performance" },
-      { icon: ClipboardCheck, labelKey: "admin.sidebar.myPerformance", path: "/admin/my-performance" },
-    ]
+      {
+        icon: Search,
+        labelKey: "admin.sidebar.staffReview",
+        path: "/admin/staff-review",
+      },
+      {
+        icon: ClipboardCheck,
+        labelKey: "admin.sidebar.myPerformance",
+        path: "/admin/my-performance",
+      },
+    ],
   },
   {
     icon: BarChart3,
     labelKey: "admin.sidebar.reports",
     items: [
-      { icon: DollarSign, labelKey: "admin.sidebar.revenue", path: "/admin/reports/revenue" },
-      { icon: Clock, labelKey: "admin.sidebar.expiry", path: "/admin/reports/expiry" },
-      { icon: Building2, labelKey: "admin.sidebar.brokerReport", path: "/admin/reports/brokers" },
-      { icon: Activity, labelKey: "admin.sidebar.engagement", path: "/admin/engagement" },
-      { icon: ShieldCheck, labelKey: "admin.sidebar.monitoring", path: "/admin/monitoring" },
-    ]
+      {
+        icon: DollarSign,
+        labelKey: "admin.sidebar.revenue",
+        path: "/admin/reports/revenue",
+      },
+      {
+        icon: Clock,
+        labelKey: "admin.sidebar.expiry",
+        path: "/admin/reports/expiry",
+      },
+      {
+        icon: Building2,
+        labelKey: "admin.sidebar.brokerReport",
+        path: "/admin/reports/brokers",
+      },
+      {
+        icon: Activity,
+        labelKey: "admin.sidebar.engagement",
+        path: "/admin/engagement",
+      },
+      {
+        icon: ShieldCheck,
+        labelKey: "admin.sidebar.monitoring",
+        path: "/admin/monitoring",
+      },
+    ],
   },
   {
     icon: Star,
     labelKey: "admin.sidebar.moderation",
     items: [
       { icon: Star, labelKey: "admin.sidebar.reviews", path: "/admin/reviews" },
-      { icon: MessageSquare, labelKey: "admin.sidebar.community", path: "/admin/community" },
-      { icon: Bell, labelKey: "admin.sidebar.notifications", path: "/admin/notifications" },
-      { icon: Mail, labelKey: "admin.sidebar.emailLogs", path: "/admin/email-logs" },
-      { icon: Award, labelKey: "admin.sidebar.loyaltyPoints", path: "/admin/points" },
-      { icon: Settings2, labelKey: "admin.sidebar.settings", path: "/admin/settings" },
-    ]
+    ],
+  },
+  {
+    icon: Settings2,
+    labelKey: "admin.sidebar.settings",
+    label: { en: "Communications & Settings", ar: "التواصل والإعدادات" },
+    items: [
+      {
+        icon: Bell,
+        labelKey: "admin.sidebar.notifications",
+        path: "/admin/notifications",
+      },
+      {
+        icon: Mail,
+        labelKey: "admin.sidebar.emailLogs",
+        path: "/admin/email-logs",
+      },
+      {
+        icon: Settings2,
+        labelKey: "admin.sidebar.settings",
+        path: "/admin/settings",
+      },
+    ],
   },
   {
     icon: Briefcase,
     labelKey: "admin.sidebar.careers",
     items: [
-      { icon: Briefcase, labelKey: "admin.sidebar.jobsApplications", path: "/admin/jobs" },
-      { icon: ShieldCheck, labelKey: "admin.sidebar.jobEligibility", path: "/admin/job-eligibility" },
-    ]
+      {
+        icon: Briefcase,
+        labelKey: "admin.sidebar.jobsApplications",
+        path: "/admin/jobs",
+      },
+    ],
   },
   // Hidden sections — backend kept, UI disabled
   // {
@@ -213,7 +389,7 @@ export default function DashboardLayout({
   }, [sidebarWidth]);
 
   if (loading) {
-    return <DashboardLayoutSkeleton />
+    return <DashboardLayoutSkeleton />;
   }
 
   if (!user) {
@@ -231,7 +407,9 @@ export default function DashboardLayout({
               </div>
             </div>
             <div className="text-center space-y-2">
-              <h1 className="text-2xl font-bold tracking-tight text-slate-900">{APP_TITLE}</h1>
+              <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+                {APP_TITLE}
+              </h1>
               <p className="text-sm text-muted-foreground">
                 Please sign in to continue
               </p>
@@ -278,6 +456,8 @@ function DashboardLayoutContent({
   const { user, logout } = useAuth();
   const [location, setLocation] = useLocation();
   const { t, language, setLanguage, isRTL } = useLanguage();
+  const menuLabel = (entry: { labelKey: string; label?: LocalizedMenuLabel }) =>
+    entry.label?.[language] ?? t(entry.labelKey);
   const { state, toggleSidebar, setOpenMobile } = useSidebar();
   const { theme, toggleTheme } = useTheme();
   const isCollapsed = state === "collapsed";
@@ -289,62 +469,112 @@ function DashboardLayoutContent({
   // Check admin/staff status for sidebar filtering
   const { data: adminCheck } = trpc.auth.isAdmin.useQuery();
   const staffRolesForAvailability = adminCheck?.staffRoles ?? [];
-  const canReadStaffNotifications = !!adminCheck?.isAdmin || !!adminCheck?.isStaff;
-  const { data: performanceAvailability } = trpc.staffPerformance.availability.useQuery(undefined, {
-    enabled: canReadStaffNotifications,
-    retry: false,
-  });
-  const { data: surveyAvailability } = trpc.studentSurveys.availability.useQuery(undefined, {
-    enabled: !!adminCheck?.isAdmin || staffRolesForAvailability.includes("student_surveys_manager"),
-    retry: false,
-  });
-  const { data: communityAvailability } = trpc.community.availability.useQuery(undefined, {
-    enabled: !!adminCheck?.isAdmin || staffRolesForAvailability.includes("student_community_moderator"),
-    retry: false,
-  });
-  const { data: jobEligibilityAvailability } = trpc.studentJobEligibility.availability.useQuery(undefined, {
-    enabled: !!adminCheck?.isAdmin || staffRolesForAvailability.includes("student_job_eligibility_manager"),
-    retry: false,
-  });
+  const canReadStaffNotifications =
+    !!adminCheck?.isAdmin || !!adminCheck?.isStaff;
+  const { data: performanceAvailability } =
+    trpc.staffPerformance.availability.useQuery(undefined, {
+      enabled: canReadStaffNotifications,
+      retry: false,
+    });
+  const { data: surveyAvailability } =
+    trpc.studentSurveys.availability.useQuery(undefined, {
+      enabled:
+        !!adminCheck?.isAdmin ||
+        staffRolesForAvailability.includes("student_surveys_manager"),
+      retry: false,
+    });
+  const { data: communityAvailability } = trpc.community.availability.useQuery(
+    undefined,
+    {
+      enabled:
+        !!adminCheck?.isAdmin ||
+        staffRolesForAvailability.includes("student_community_moderator"),
+      retry: false,
+    }
+  );
+  const { data: rewardsAvailability } =
+    trpc.points.rewardsAvailability.useQuery(undefined, {
+      enabled:
+        !!adminCheck?.isAdmin ||
+        staffRolesForAvailability.includes("loyalty_rewards_manager"),
+      retry: false,
+    });
+  const { data: jobEligibilityAvailability } =
+    trpc.studentJobEligibility.availability.useQuery(undefined, {
+      enabled:
+        !!adminCheck?.isAdmin ||
+        staffRolesForAvailability.includes("student_job_eligibility_manager"),
+      retry: false,
+    });
+  const { data: featureOverview } = trpc.adminSettings.featureOverview.useQuery(
+    undefined,
+    {
+      enabled: adminCheck?.isAdmin === true,
+      retry: false,
+    }
+  );
 
   // Staff notifications — bell badge + sidebar route badges (30s polling)
-  const { data: unreadCountData } = trpc.staffNotifications.unreadCount.useQuery(undefined, {
-    enabled: canReadStaffNotifications,
-    refetchInterval: canReadStaffNotifications ? 30_000 : false,
-    retry: false,
-  });
-  const { data: routeBadges } = trpc.staffNotifications.countByRoute.useQuery(undefined, {
-    enabled: canReadStaffNotifications,
-    refetchInterval: canReadStaffNotifications ? 30_000 : false,
-    retry: false,
-  });
+  const { data: unreadCountData } =
+    trpc.staffNotifications.unreadCount.useQuery(undefined, {
+      enabled: canReadStaffNotifications,
+      refetchInterval: canReadStaffNotifications ? 30_000 : false,
+      retry: false,
+    });
+  const { data: routeBadges } = trpc.staffNotifications.countByRoute.useQuery(
+    undefined,
+    {
+      enabled: canReadStaffNotifications,
+      refetchInterval: canReadStaffNotifications ? 30_000 : false,
+      retry: false,
+    }
+  );
   const markReadByRoute = trpc.staffNotifications.markReadByRoute.useMutation();
+  const canPrepareRewards = staffRolesForAvailability.includes(
+    "loyalty_rewards_manager"
+  );
 
   // Compute visible menu sections based on role
   const visibleSections = useMemo(() => {
-    const filterUnavailableFeatures = (sections: MenuSection[]) => sections
-      .map(section => ({
-        ...section,
-        items: section.items.filter(item => {
-          if (item.path === "/admin/staff-performance") {
-            return performanceAvailability?.enabled === true && performanceAvailability?.access === "manager";
-          }
-          if (item.path === "/admin/my-performance") {
-            return performanceAvailability?.enabled === true && performanceAvailability?.access === "employee";
-          }
-          if (item.path === "/admin/student-surveys") {
-            return surveyAvailability?.enabled === true && surveyAvailability?.access === "admin";
-          }
-          if (item.path === "/admin/community") {
-            return communityAvailability?.enabled === true;
-          }
-          if (item.path === "/admin/job-eligibility") {
-            return jobEligibilityAvailability?.enabled === true;
-          }
-          return true;
-        }),
-      }))
-      .filter(section => section.items.length > 0);
+    const filterUnavailableFeatures = (sections: MenuSection[]) =>
+      sections
+        .map(section => ({
+          ...section,
+          items: section.items.filter(item => {
+            if (item.path === "/admin/features") {
+              return false;
+            }
+            if (item.path === "/admin/staff-performance") {
+              return performanceAvailability?.access === "manager";
+            }
+            if (item.path === "/admin/my-performance") {
+              return (
+                performanceAvailability?.enabled === true &&
+                performanceAvailability?.access === "employee"
+              );
+            }
+            if (item.path === "/admin/student-surveys") {
+              return surveyAvailability?.access === "admin";
+            }
+            if (item.path === "/admin/community") {
+              return (
+                communityAvailability?.enabled === true ||
+                staffRolesForAvailability.includes("student_community_moderator")
+              );
+            }
+            if (item.path === "/admin/points") {
+              return rewardsAvailability?.enabled === true || canPrepareRewards;
+            }
+            if (item.path === "/admin/job-eligibility") {
+              return (
+                jobEligibilityAvailability?.enabled === true ||
+                staffRolesForAvailability.includes("student_job_eligibility_manager")
+              );
+            }
+            return true;
+          }),
+        }))
+        .filter(section => section.items.length > 0);
 
     // Main admins must be able to discover management pages even while their
     // student/staff-facing feature is disabled. The pages themselves show the
@@ -353,7 +583,9 @@ function DashboardLayoutContent({
       return menuSectionsDef
         .map(section => ({
           ...section,
-          items: section.items.filter(item => item.path !== "/admin/my-performance"),
+          items: section.items.filter(
+            item => item.path !== "/admin/my-performance"
+          ),
         }))
         .filter(section => section.items.length > 0);
     }
@@ -368,13 +600,26 @@ function DashboardLayoutContent({
       }
     }
 
-    return filterUnavailableFeatures(menuSectionsDef
-      .map(section => ({
-        ...section,
-        items: section.items.filter(item => accessiblePaths.has(item.path)),
-      }))
-      .filter(section => section.items.length > 0));
-  }, [adminCheck, performanceAvailability?.enabled, performanceAvailability?.access, surveyAvailability?.enabled, surveyAvailability?.access, communityAvailability?.enabled, jobEligibilityAvailability?.enabled]);
+    return filterUnavailableFeatures(
+      menuSectionsDef
+        .map(section => ({
+          ...section,
+          items: section.items.filter(item => accessiblePaths.has(item.path)),
+        }))
+        .filter(section => section.items.length > 0)
+    );
+  }, [
+    adminCheck,
+    canPrepareRewards,
+    performanceAvailability?.enabled,
+    performanceAvailability?.access,
+    surveyAvailability?.enabled,
+    surveyAvailability?.access,
+    communityAvailability?.enabled,
+    rewardsAvailability?.enabled,
+    jobEligibilityAvailability?.enabled,
+    staffRolesForAvailability,
+  ]);
 
   // Find active menu item across all sections
   const activeMenuItem = visibleSections
@@ -463,171 +708,212 @@ function DashboardLayoutContent({
         className="border-r-0"
         disableTransition={isResizing}
       >
-          <SidebarHeader className="h-16 justify-center border-b border-white/[0.06]">
-            <div className="flex items-center gap-3 pl-2 group-data-[collapsible=icon]:px-0 transition-all w-full">
-              {isCollapsed ? (
-                <div className="relative h-8 w-8 shrink-0 group">
+        <SidebarHeader className="h-16 justify-center border-b border-white/[0.06]">
+          <div className="flex items-center gap-3 pl-2 group-data-[collapsible=icon]:px-0 transition-all w-full">
+            {isCollapsed ? (
+              <div className="relative h-8 w-8 shrink-0 group">
+                <img
+                  src={APP_LOGO}
+                  className="h-8 w-8 rounded-md object-cover ring-1 ring-emerald-500/30"
+                  alt="Logo"
+                />
+                <button
+                  onClick={toggleSidebar}
+                  className="absolute inset-0 flex items-center justify-center bg-emerald-500/10 rounded-md ring-1 ring-emerald-500/30 opacity-0 group-hover:opacity-100 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                >
+                  <PanelLeft className="h-4 w-4 text-emerald-400" />
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center gap-3 min-w-0">
                   <img
                     src={APP_LOGO}
-                    className="h-8 w-8 rounded-md object-cover ring-1 ring-emerald-500/30"
-                    alt="Logo"
-                  />
-                  <button
-                    onClick={toggleSidebar}
-                    className="absolute inset-0 flex items-center justify-center bg-emerald-500/10 rounded-md ring-1 ring-emerald-500/30 opacity-0 group-hover:opacity-100 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-                  >
-                    <PanelLeft className="h-4 w-4 text-emerald-400" />
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <div className="flex items-center gap-3 min-w-0">
-                    <img
-                      src={APP_LOGO}
                     className="h-8 w-8 rounded-md object-cover ring-1 ring-emerald-500/30 shrink-0"
                     alt="Logo"
                   />
-                    <span className="font-semibold tracking-tight truncate text-white">
-                      {APP_TITLE}
-                    </span>
-                  </div>
-                </>
-              )}
-            </div>
-          </SidebarHeader>
+                  <span className="font-semibold tracking-tight truncate text-white">
+                    {APP_TITLE}
+                  </span>
+                </div>
+              </>
+            )}
+          </div>
+        </SidebarHeader>
 
-          <SidebarContent>
-            {visibleSections.map((section, sectionIndex) => {
-              const isSingleItem = section.items.length === 1;
-              const sectionHasActive = section.items.some(item => item.path === location);
-              const isExpanded = expandedSections.has(sectionIndex);
-              const SectionIcon = section.icon;
-              const singleItemPath = isSingleItem ? section.items[0].path : null;
-              const singleItemBadgeCount = singleItemPath ? (routeBadges?.[singleItemPath] ?? 0) : 0;
+        <SidebarContent>
+          {visibleSections.map((section, sectionIndex) => {
+            const isSingleItem = section.items.length === 1;
+            const sectionHasActive = section.items.some(
+              item => item.path === location
+            );
+            const isExpanded = expandedSections.has(sectionIndex);
+            const SectionIcon = section.icon;
+            const singleItemPath = isSingleItem ? section.items[0].path : null;
+            const singleItemBadgeCount = singleItemPath
+              ? (routeBadges?.[singleItemPath] ?? 0)
+              : 0;
 
-              return (
-                <SidebarGroup key={sectionIndex} className="shrink-0 py-0.5 px-2">
-                  {/* Section header row — clickable */}
-                  <button
-                    onClick={() => {
-                      if (isSingleItem) {
-                        if (isMobile) {
-                          setOpenMobile(false);
-                        }
-                        setLocation(section.items[0].path);
-                        if (singleItemBadgeCount > 0) {
-                          markReadByRoute.mutate({ actionUrl: section.items[0].path });
-                        }
-                      } else {
-                        toggleSection(sectionIndex);
+            return (
+              <SidebarGroup key={sectionIndex} className="shrink-0 py-0.5 px-2">
+                {/* Section header row — clickable */}
+                <button
+                  onClick={() => {
+                    if (isSingleItem) {
+                      if (isMobile) {
+                        setOpenMobile(false);
                       }
-                    }}
-                    className={`flex items-center gap-3 w-full px-3 py-2 rounded-xl text-[13px] font-medium transition-all group/section ${
-                      isSingleItem && location === section.items[0].path
-                        ? "bg-gradient-to-l from-emerald-600/20 to-emerald-500/10 text-white border border-emerald-500/20"
-                        : sectionHasActive
-                          ? "text-emerald-400"
-                          : "text-gray-400 hover:text-white hover:bg-white/[0.04]"
-                    }`}
-                  >
-                    <div className={`relative w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
-                      (isSingleItem && location === section.items[0].path) || sectionHasActive
+                      setLocation(section.items[0].path);
+                      if (singleItemBadgeCount > 0) {
+                        markReadByRoute.mutate({
+                          actionUrl: section.items[0].path,
+                        });
+                      }
+                    } else {
+                      toggleSection(sectionIndex);
+                    }
+                  }}
+                  className={`flex items-center gap-3 w-full px-3 py-2 rounded-xl text-[13px] font-medium transition-all group/section ${
+                    isSingleItem && location === section.items[0].path
+                      ? "bg-gradient-to-l from-emerald-600/20 to-emerald-500/10 text-white border border-emerald-500/20"
+                      : sectionHasActive
+                        ? "text-emerald-400"
+                        : "text-gray-400 hover:text-white hover:bg-white/[0.04]"
+                  }`}
+                >
+                  <div
+                    className={`relative w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
+                      (isSingleItem && location === section.items[0].path) ||
+                      sectionHasActive
                         ? "bg-emerald-500/15"
                         : "bg-white/[0.04] group-hover/section:bg-white/[0.06]"
-                    }`}>
-                      <SectionIcon className={`w-4 h-4 ${
-                        (isSingleItem && location === section.items[0].path) || sectionHasActive
+                    }`}
+                  >
+                    <SectionIcon
+                      className={`w-4 h-4 ${
+                        (isSingleItem && location === section.items[0].path) ||
+                        sectionHasActive
                           ? "text-emerald-400"
                           : ""
-                      }`} />
-                      {singleItemBadgeCount > 0 && (
-                        <span className="absolute -end-1 -top-1 min-w-[16px] h-4 px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-                          {singleItemBadgeCount > 99 ? '99+' : singleItemBadgeCount}
+                      }`}
+                    />
+                    {singleItemBadgeCount > 0 && (
+                      <span className="absolute -end-1 -top-1 min-w-[16px] h-4 px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                        {singleItemBadgeCount > 99
+                          ? "99+"
+                          : singleItemBadgeCount}
+                      </span>
+                    )}
+                  </div>
+                  {!isCollapsed && (
+                    <>
+                      <span className="flex-1 text-start truncate">
+                        {menuLabel(section)}
+                      </span>
+                      {isSingleItem && singleItemBadgeCount > 0 && (
+                        <span className="min-w-[20px] h-5 px-1.5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                          {singleItemBadgeCount > 99
+                            ? "99+"
+                            : singleItemBadgeCount}
                         </span>
                       )}
-                    </div>
-                    {!isCollapsed && (
-                      <>
-                        <span className="flex-1 text-start truncate">{t(section.labelKey)}</span>
-                        {isSingleItem && singleItemBadgeCount > 0 && (
-                          <span className="min-w-[20px] h-5 px-1.5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-                            {singleItemBadgeCount > 99 ? '99+' : singleItemBadgeCount}
-                          </span>
-                        )}
-                        {!isSingleItem && (
-                          <ChevronRight className={`w-3.5 h-3.5 text-gray-500 transition-transform duration-200 ${isExpanded ? "rotate-90" : ""}`} />
-                        )}
-                      </>
-                    )}
-                  </button>
-
-                  {/* Sub-items — collapsible */}
-                  {!isSingleItem && isExpanded && !isCollapsed && (
-                    <SidebarGroupContent className="mt-0.5">
-                      <SidebarMenu>
-                        {section.items.map(item => {
-                          const isActive = location === item.path;
-                          const label = t(item.labelKey);
-                          const badgeCount = routeBadges?.[item.path] ?? 0;
-                          const communityStatus = item.path === "/admin/community" && adminCheck?.isAdmin && communityAvailability
-                            ? communityAvailability.enabled
-                            : null;
-                          const communityStatusLabel = communityStatus === null
-                            ? null
-                            : communityStatus
-                              ? (language === "ar" ? "مفعّل" : "Enabled")
-                              : (language === "ar" ? "غير مفعّل" : "Disabled");
-                          return (
-                            <SidebarMenuItem key={item.path}>
-                              <SidebarMenuButton
-                                isActive={isActive}
-                                onClick={() => {
-                                  if (isMobile) {
-                                    setOpenMobile(false);
-                                  }
-                                  setLocation(item.path);
-                                  if (badgeCount > 0) {
-                                    markReadByRoute.mutate({ actionUrl: item.path });
-                                  }
-                                }}
-                                tooltip={communityStatusLabel ? `${label} — ${communityStatusLabel}` : label}
-                                className={`transition-all font-normal ps-12 py-1.5 text-[13px] ${
-                                  isActive
-                                    ? "text-emerald-400 bg-emerald-500/[0.08] font-medium"
-                                    : "text-gray-500 hover:text-white hover:bg-white/[0.04]"
-                                }`}
-                              >
-                                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isActive ? "bg-emerald-400" : "bg-gray-600"}`} />
-                                <span className="flex-1">{label}</span>
-                                {communityStatusLabel && (
-                                  <span
-                                    className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${
-                                      communityStatus
-                                        ? "bg-emerald-500/15 text-emerald-300"
-                                        : "bg-amber-500/15 text-amber-300"
-                                    }`}
-                                  >
-                                    {communityStatusLabel}
-                                  </span>
-                                )}
-                                {badgeCount > 0 && (
-                                  <span className="min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-                                    {badgeCount > 99 ? '99+' : badgeCount}
-                                  </span>
-                                )}
-                              </SidebarMenuButton>
-                            </SidebarMenuItem>
-                          );
-                        })}
-                      </SidebarMenu>
-                    </SidebarGroupContent>
+                      {!isSingleItem && (
+                        <ChevronRight
+                          className={`w-3.5 h-3.5 text-gray-500 transition-transform duration-200 ${isExpanded ? "rotate-90" : ""}`}
+                        />
+                      )}
+                    </>
                   )}
-                </SidebarGroup>
-              );
-            })}
-          </SidebarContent>
+                </button>
 
-          <SidebarFooter className="p-3 border-t border-white/[0.06]" />
+                {/* Sub-items — collapsible */}
+                {!isSingleItem && isExpanded && !isCollapsed && (
+                  <SidebarGroupContent className="mt-0.5">
+                    <SidebarMenu>
+                      {section.items.map(item => {
+                        const isActive = location === item.path;
+                        const label = menuLabel(item);
+                        const badgeCount = routeBadges?.[item.path] ?? 0;
+                        const featureDefinition = getAdminFeatureByPath(
+                          item.path
+                        );
+                        const featureStatus =
+                          featureDefinition &&
+                          adminCheck?.isAdmin &&
+                          featureOverview
+                            ? featureOverview.modules[
+                                featureDefinition.overviewKey
+                              ].enabled
+                            : null;
+                        const featureStatusLabel =
+                          featureStatus === null
+                            ? null
+                            : featureStatus
+                              ? language === "ar"
+                                ? "مفعّل"
+                                : "Enabled"
+                              : language === "ar"
+                                ? "غير مفعّل"
+                                : "Disabled";
+                        return (
+                          <SidebarMenuItem key={item.path}>
+                            <SidebarMenuButton
+                              isActive={isActive}
+                              onClick={() => {
+                                if (isMobile) {
+                                  setOpenMobile(false);
+                                }
+                                setLocation(item.path);
+                                if (badgeCount > 0) {
+                                  markReadByRoute.mutate({
+                                    actionUrl: item.path,
+                                  });
+                                }
+                              }}
+                              tooltip={
+                                featureStatusLabel
+                                  ? `${label} — ${featureStatusLabel}`
+                                  : label
+                              }
+                              className={`transition-all font-normal ps-12 py-1.5 text-[13px] ${
+                                isActive
+                                  ? "text-emerald-400 bg-emerald-500/[0.08] font-medium"
+                                  : "text-gray-500 hover:text-white hover:bg-white/[0.04]"
+                              }`}
+                            >
+                              <span
+                                className={`w-1.5 h-1.5 rounded-full shrink-0 ${isActive ? "bg-emerald-400" : "bg-gray-600"}`}
+                              />
+                              <span className="flex-1">{label}</span>
+                              {featureStatusLabel && (
+                                <span
+                                  className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${
+                                    featureStatus
+                                      ? "bg-emerald-500/15 text-emerald-300"
+                                      : "bg-amber-500/15 text-amber-300"
+                                  }`}
+                                >
+                                  {featureStatusLabel}
+                                </span>
+                              )}
+                              {badgeCount > 0 && (
+                                <span className="min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                                  {badgeCount > 99 ? "99+" : badgeCount}
+                                </span>
+                              )}
+                            </SidebarMenuButton>
+                          </SidebarMenuItem>
+                        );
+                      })}
+                    </SidebarMenu>
+                  </SidebarGroupContent>
+                )}
+              </SidebarGroup>
+            );
+          })}
+        </SidebarContent>
+
+        <SidebarFooter className="p-3 border-t border-white/[0.06]" />
       </Sidebar>
 
       <div
@@ -648,10 +934,12 @@ function DashboardLayoutContent({
               <SidebarTrigger className="h-9 w-9 rounded-xl hover:bg-gray-100 dark:hover:bg-white/[0.06] flex items-center justify-center text-gray-500 dark:text-gray-400" />
               <div className="hidden sm:block">
                 <h1 className="text-[17px] font-bold text-slate-900 dark:text-white leading-tight">
-                  {activeMenuItem ? t(activeMenuItem.labelKey) : APP_TITLE}
+                  {activeMenuItem ? menuLabel(activeMenuItem) : APP_TITLE}
                 </h1>
                 <p className="text-[11px] text-gray-400 mt-0.5">
-                  {activeMenuItem?.descKey ? t(activeMenuItem.descKey) : t('admin.topbar.welcome')}
+                  {activeMenuItem?.descKey
+                    ? t(activeMenuItem.descKey)
+                    : t("admin.topbar.welcome")}
                 </p>
               </div>
             </div>
@@ -661,24 +949,25 @@ function DashboardLayoutContent({
               {/* ── Group 1: Utilities (Search + Dark mode) ── */}
               <div className="flex items-center gap-0.5 bg-gray-100/70 dark:bg-white/[0.04] rounded-xl p-1">
                 {adminCheck?.isAdmin && (
-                <button
-                  onClick={() => setShowAdminSearch(true)}
-                  className="w-8 h-8 rounded-lg hover:bg-white dark:hover:bg-white/[0.08] flex items-center justify-center transition"
-                  title={t('admin.sidebar.search')}
-                >
-                  <Search className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-                </button>
+                  <button
+                    onClick={() => setShowAdminSearch(true)}
+                    className="w-8 h-8 rounded-lg hover:bg-white dark:hover:bg-white/[0.08] flex items-center justify-center transition"
+                    title={t("admin.sidebar.search")}
+                  >
+                    <Search className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                  </button>
                 )}
                 {toggleTheme && (
                   <button
                     onClick={toggleTheme}
                     className="w-8 h-8 rounded-lg hover:bg-white dark:hover:bg-white/[0.08] flex items-center justify-center transition"
-                    title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
+                    title={theme === "dark" ? "Light mode" : "Dark mode"}
                   >
-                    {theme === 'dark'
-                      ? <Sun className="w-4 h-4 text-amber-400" />
-                      : <Moon className="w-4 h-4 text-gray-500" />
-                    }
+                    {theme === "dark" ? (
+                      <Sun className="w-4 h-4 text-amber-400" />
+                    ) : (
+                      <Moon className="w-4 h-4 text-gray-500" />
+                    )}
                   </button>
                 )}
               </div>
@@ -687,19 +976,21 @@ function DashboardLayoutContent({
               <div className="flex items-center gap-0.5 bg-gray-100/70 dark:bg-white/[0.04] rounded-xl p-1">
                 {/* Notification bell — visible to all admin/staff */}
                 <button
-                  onClick={() => setLocation('/admin/notifications')}
+                  onClick={() => setLocation("/admin/notifications")}
                   className="relative w-8 h-8 rounded-lg hover:bg-white dark:hover:bg-white/[0.08] flex items-center justify-center transition"
-                  title={t('admin.sidebar.notifications')}
+                  title={t("admin.sidebar.notifications")}
                 >
                   <Bell className="w-4 h-4 text-gray-500 dark:text-gray-400" />
                   {(unreadCountData?.count ?? 0) > 0 && (
                     <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center animate-pulse">
-                      {unreadCountData!.count > 99 ? '99+' : unreadCountData!.count}
+                      {unreadCountData!.count > 99
+                        ? "99+"
+                        : unreadCountData!.count}
                     </span>
                   )}
                 </button>
                 <button
-                  onClick={() => setLanguage(language === 'ar' ? 'en' : 'ar')}
+                  onClick={() => setLanguage(language === "ar" ? "en" : "ar")}
                   className="w-8 h-8 rounded-lg hover:bg-white dark:hover:bg-white/[0.08] flex items-center justify-center transition"
                   title={getLanguageSwitchLabel(language)}
                   aria-label={getLanguageSwitchLabel(language)}
@@ -722,12 +1013,12 @@ function DashboardLayoutContent({
                     </Avatar>
                     <div className="hidden md:block text-start">
                       <p className="text-[13px] font-semibold text-slate-900 dark:text-white leading-tight">
-                        {user?.name?.split(' ')[0] || '-'}
+                        {user?.name?.split(" ")[0] || "-"}
                       </p>
                       <p className="text-[10px] text-gray-400">
                         {adminCheck?.isStaff && !adminCheck?.isAdmin
-                          ? t('admin.sidebar.staffLabel')
-                          : t('admin.sidebar.admin')}
+                          ? t("admin.sidebar.staffLabel")
+                          : t("admin.sidebar.admin")}
                       </p>
                     </div>
                     <ChevronDown className="w-4 h-4 text-gray-400 hidden md:block" />
@@ -739,7 +1030,7 @@ function DashboardLayoutContent({
                     className="cursor-pointer text-destructive focus:text-destructive"
                   >
                     <LogOut className="mr-2 h-4 w-4" />
-                    <span>{t('admin.sidebar.signOut')}</span>
+                    <span>{t("admin.sidebar.signOut")}</span>
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -747,11 +1038,18 @@ function DashboardLayoutContent({
           </div>
         </header>
 
-        <main className="flex-1 p-4 md:p-6 bg-[#faf7f2] dark:bg-[#0b1120]" dir={isRTL ? "rtl" : "ltr"}>{children}</main>
+        <main
+          className="flex-1 p-4 md:p-6 bg-[#faf7f2] dark:bg-[#0b1120]"
+          dir={isRTL ? "rtl" : "ltr"}
+        >
+          {children}
+        </main>
       </SidebarInset>
-      {showAdminSearch && <AdminSearchDialogLazy onClose={() => setShowAdminSearch(false)} />}
+      {showAdminSearch && (
+        <AdminSearchDialogLazy onClose={() => setShowAdminSearch(false)} />
+      )}
     </div>
   );
 }
 
-const AdminSearchDialogLazy = lazy(() => import('./AdminSearchDialog'));
+const AdminSearchDialogLazy = lazy(() => import("./AdminSearchDialog"));

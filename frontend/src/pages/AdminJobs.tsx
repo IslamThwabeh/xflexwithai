@@ -12,6 +12,7 @@ import { formatLocalizedDate, formatLocalizedDateTime } from '@/lib/dateLocale';
 import { trpc } from '@/lib/trpc';
 import DashboardLayout from '@/components/DashboardLayout';
 import { toast } from 'sonner';
+import { Link } from 'wouter';
 
 const STATUS_MAP: Record<string, { label: string; labelAr: string; color: string; icon: any }> = {
   new: { label: 'New', labelAr: 'جديد', color: 'bg-emerald-100 text-emerald-700', icon: Clock },
@@ -499,10 +500,21 @@ function JobsTab({ isRtl }: { isRtl: boolean }) {
   const utils = trpc.useUtils();
   const { data: jobs, isLoading } = trpc.jobs.adminList.useQuery();
   const createMut = trpc.jobs.create.useMutation({
-    onSuccess: () => { utils.jobs.adminList.invalidate(); setEditing(null); toast.success(isRtl ? 'تمت الإضافة' : 'Job created'); },
+    onSuccess: () => { utils.jobs.adminList.invalidate(); setEditing(null); toast.success(isRtl ? 'تم إنشاء مسودة الوظيفة' : 'Job draft created'); },
+    onError: (error) => toast.error(error.message),
   });
   const updateMut = trpc.jobs.update.useMutation({
     onSuccess: () => { utils.jobs.adminList.invalidate(); setEditing(null); toast.success(isRtl ? 'تم التحديث' : 'Job updated'); },
+    onError: (error) => toast.error(error.message),
+  });
+  const publishMut = trpc.jobs.setPublished.useMutation({
+    onSuccess: async (job) => {
+      await utils.jobs.adminList.invalidate();
+      toast.success(job?.isActive
+        ? (isRtl ? 'تم نشر الوظيفة للطلاب' : 'Job published to students')
+        : (isRtl ? 'تم إلغاء نشر الوظيفة' : 'Job unpublished'));
+    },
+    onError: (error) => toast.error(error.message),
   });
 
   const [editing, setEditing] = useState<any>(null);
@@ -520,8 +532,8 @@ function JobsTab({ isRtl }: { isRtl: boolean }) {
     else await updateMut.mutateAsync(editing);
   };
 
-  const toggleActive = async (j: any) => {
-    await updateMut.mutateAsync({ id: j.id, isActive: !j.isActive });
+  const togglePublished = async (j: any) => {
+    await publishMut.mutateAsync({ id: j.id, isActive: !j.isActive });
   };
 
   return (
@@ -529,6 +541,18 @@ function JobsTab({ isRtl }: { isRtl: boolean }) {
       <div className="flex justify-end mb-4">
         <Button onClick={startNew} className="gap-1.5">
           <Plus className="w-4 h-4" />{isRtl ? 'وظيفة جديدة' : 'New Job'}
+        </Button>
+      </div>
+
+      <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-950">
+        <p className="font-semibold">{isRtl ? 'مسار النشر الآمن' : 'Safe publishing flow'}</p>
+        <p className="mt-1 text-emerald-800">
+          {isRtl
+            ? 'تبدأ كل وظيفة كمسودة. احفظ قاعدة أهلية مفعّلة أولاً، ثم ارجع إلى هنا وانشر الوظيفة للطلاب.'
+            : 'Every job starts as a draft. Save an enabled eligibility rule first, then return here and publish it to students.'}
+        </p>
+        <Button asChild size="sm" variant="outline" className="mt-3 border-emerald-300 bg-white">
+          <Link href="/admin/job-eligibility">{isRtl ? 'فتح قواعد الأهلية' : 'Open eligibility rules'}</Link>
         </Button>
       </div>
 
@@ -589,14 +613,19 @@ function JobsTab({ isRtl }: { isRtl: boolean }) {
               </div>
               <div className="flex items-center gap-2">
                 <Badge className={j.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}>
-                  {j.isActive ? (isRtl ? 'مفعّل' : 'Active') : (isRtl ? 'معطّل' : 'Disabled')}
+                  {j.isActive ? (isRtl ? 'منشورة للطلاب' : 'Published') : (isRtl ? 'مسودة' : 'Draft')}
                 </Badge>
                 <Button size="sm" variant="outline" onClick={() => startEdit(j)} className="gap-1">
                   <Edit2 className="w-3 h-3" />{isRtl ? 'تعديل' : 'Edit'}
                 </Button>
-                <Button size="sm" variant="outline" onClick={() => toggleActive(j)} className="gap-1">
+                {!j.isActive && (
+                  <Button asChild size="sm" variant="outline" className="gap-1 border-emerald-200 text-emerald-700">
+                    <Link href={`/admin/job-eligibility?jobId=${j.id}`}>{isRtl ? 'إعداد الأهلية' : 'Set eligibility'}</Link>
+                  </Button>
+                )}
+                <Button size="sm" variant="outline" disabled={publishMut.isPending} onClick={() => togglePublished(j)} className="gap-1">
                   {j.isActive ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                  {j.isActive ? (isRtl ? 'تعطيل' : 'Disable') : (isRtl ? 'تفعيل' : 'Enable')}
+                  {j.isActive ? (isRtl ? 'إلغاء النشر' : 'Unpublish') : (isRtl ? 'نشر للطلاب' : 'Publish')}
                 </Button>
               </div>
             </div>
