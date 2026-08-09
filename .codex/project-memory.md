@@ -1,6 +1,6 @@
 # XFLEX Project Memory
 
-Last updated: 2026-07-30
+Last updated: 2026-08-09
 
 ## Project Overview
 
@@ -416,6 +416,12 @@ Last updated: 2026-07-30
   - Worker version `d26fb4bd-c7a7-4a57-8a3f-62fc5651e692` deployed successfully with D1/R2 bindings and both scheduled triggers intact.
   - Initial Pages smoke exposed that `/surveys` and `/job-opportunities` were missing from the private app-shell middleware. Commit `25a3722` added both routes plus regression tests; final Pages preview: `https://b7bc355c.xflexwithai.pages.dev`.
   - Final production smoke passed 13/13 checks across both Worker health endpoints, Pages preview, `/`, `/ar`, `/en`, `/auth`, survey/job admin pages, and both student feature routes. Every app route served the exact `index-BxvRTtTa.js` bundle; private routes returned `X-Robots-Tag: noindex, nofollow` and `Cache-Control: private, no-store`.
+- Admin-feature remediation branch reconciliation on 2026-08-09:
+  - GitHub PR `#1` (`Reconcile admin feature remediation`) merged the six audited remediation commits into `main` as merge commit `e027e0f1757b68546702cc8afabc2043de23d1c7`. The merged tree exactly matched validated branch commit `8e518397f89e2d4bc90524b85c8771dae77ca986`.
+  - Release gates passed: `pnpm check`, the full `pnpm test` suite, `pnpm test:seo`, `pnpm build`, `pnpm build:worker`, and `git diff --check origin/main...HEAD`.
+  - Migrations `078_signed_admin_feature_actors.sql`, `079_student_survey_assignment_cap.sql`, and `080_student_job_review_resubmission.sql` were not rerun because their production application was already recorded as ledger IDs 19-21. No feature flags, customer records, or production configuration were changed.
+  - Verified Worker bundle SHA-256 `82C2390E71807570AF58611D7E29CE79A499484EED009FE2017BCAD3FCBF8333` deployed as production version `de9e2b61-4472-4a10-a9a4-2e07e24a9fcc`. Pages deployed merged commit `e027e0f` to production with preview `https://e9bd5acc.xflexwithai.pages.dev`.
+  - Final production smoke passed 15/15 checks across both Worker health endpoints, Pages preview, public routes, the admin feature center and all affected admin feature pages, plus student survey/job routes. Every application route served `assets/index-BxvRTtTa.js`; private routes retained `X-Robots-Tag: noindex, nofollow` and `Cache-Control: private, no-store`.
 
 ## Future Hardening
 
