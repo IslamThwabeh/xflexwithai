@@ -437,7 +437,14 @@ Last updated: 2026-08-09
   - The Admin Feature Center now gives every incomplete prerequisite a direct action, supports deep links to the survey builder and rewards workspace, and displays a prominent bilingual warning whenever a feature is enabled before setup is complete.
   - Job Eligibility readiness now reports enabled-rule coverage across active jobs (`coveredActiveJobs/activeJobs`) instead of treating any stored rule as sufficient. The exact aggregate SQL was validated read-only against production and returned 0 covered jobs out of 3 active jobs with `rows_written = 0`.
   - Added focused readiness UI regression coverage. The 39 focused tests, full test suite, TypeScript check, production frontend/server build, Worker build, SEO checks, and private-route middleware checks passed.
-  - This phase adds no migration and changes no production flags, roles, records, secrets, or configuration. The implementation remains undeployed until its PR is explicitly approved, merged, and released in a later phase.
+  - This phase adds no migration and changes no production flags, roles, records, secrets, or configuration. It was subsequently approved and released in Phase 4 as recorded below.
+- Admin-feature Phase 4 readiness-guidance production release on 2026-08-09:
+  - GitHub PR `#4` (`Make admin feature setup directly actionable`) merged validated feature commit `1389136a4dbef796f7ccba798692a7a2c3c9ecce` into `main` as merge commit `fe5da3a7fdd2711892bd8aec77209abd4698b4fd`.
+  - Final release gates passed on the exact release line: `pnpm check`, full `pnpm test`, `pnpm test:seo`, `pnpm build`, `pnpm build:worker`, and the clean branch/base revision checks.
+  - Worker version `3971642c-4879-41d2-a832-08fd6dff65ee` deployed successfully. Pages production deployment `9f9eae77-a63f-43d3-b66c-e82be515c0d7` deployed source `fe5da3a`; preview URL: `https://9f9eae77.xflexwithai.pages.dev`.
+  - Production smoke passed 21/21 timeout-bounded checks across both Worker health endpoints, Pages preview, public routes, the Feature Center, all affected admin workspaces and new setup deep links, both student routes, and the exact `assets/index-C_dLLAPV.js` release bundle.
+  - Checked private routes retained `X-Robots-Tag: noindex, nofollow` and `Cache-Control: no-store, private`; anonymous access to `adminSettings.featureOverview` returned the expected 401.
+  - No migration was run. No production database write, feature flag, role, customer record, secret, or configuration was changed; remaining feature setup and activation decisions stay with the admin/business owner.
 
 ## Future Hardening
 
