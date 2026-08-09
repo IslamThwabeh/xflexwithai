@@ -78,10 +78,12 @@ const emptyRewardForm = (): RewardDraftForm => ({
 
 function getInitialPointsTab(): Tab {
   if (typeof window === "undefined") return "leaderboard";
-  return new URLSearchParams(window.location.search).get("preview") ===
-    "student"
-    ? "preview"
-    : "leaderboard";
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("preview") === "student") return "preview";
+  const requestedTab = params.get("tab");
+  return ["leaderboard", "rules", "referrals", "rewards", "preview"].includes(
+    requestedTab ?? "",
+  ) ? requestedTab as Tab : "leaderboard";
 }
 
 export default function AdminPoints() {

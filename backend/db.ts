@@ -20057,6 +20057,8 @@ export async function getAdminFeatureOverview() {
           enabled: false,
           profiles: 0,
           rules: 0,
+          activeJobs: 0,
+          coveredActiveJobs: 0,
           reviews: 0,
           managers: 0,
         },
@@ -20101,6 +20103,8 @@ export async function getAdminFeatureOverview() {
     communityModerators,
     jobProfiles,
     jobRules,
+    activeJobsRow,
+    coveredActiveJobsRow,
     jobReviews,
     jobManagers,
     emailLogViewers,
@@ -20148,6 +20152,20 @@ export async function getAdminFeatureOverview() {
     countRole("student_community_moderator"),
     count(studentJobProfiles),
     count(studentJobEligibilityRules),
+    db
+      .select({ total: sql<number>`COUNT(*)` })
+      .from(jobs)
+      .where(eq(jobs.isActive, true)),
+    db
+      .select({ total: sql<number>`COUNT(*)` })
+      .from(studentJobEligibilityRules)
+      .innerJoin(jobs, eq(studentJobEligibilityRules.jobId, jobs.id))
+      .where(
+        and(
+          eq(studentJobEligibilityRules.isEnabled, true),
+          eq(jobs.isActive, true),
+        ),
+      ),
     count(studentJobEligibilityReviews),
     countRole("student_job_eligibility_manager"),
     countRole("email_logs_viewer"),
@@ -20197,6 +20215,8 @@ export async function getAdminFeatureOverview() {
         enabled: settings.student_job_eligibility_enabled === "true",
         profiles: jobProfiles,
         rules: jobRules,
+        activeJobs: Number(activeJobsRow[0]?.total ?? 0),
+        coveredActiveJobs: Number(coveredActiveJobsRow[0]?.total ?? 0),
         reviews: jobReviews,
         managers: jobManagers,
       },
