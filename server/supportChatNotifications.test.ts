@@ -166,6 +166,33 @@ describe("support chat staff notifications", () => {
       replyContent: "Your issue has been resolved.",
       buildEmail: expect.any(Function),
     }));
+    expect(setNeedsHuman).toHaveBeenCalledWith(10, true);
+  });
+
+  it("pauses AI when support starts a conversation for a client", async () => {
+    const caller = createSupportStaffCaller();
+    getUserById.mockResolvedValue({
+      id: 123,
+      email: "student@example.com",
+      name: "Student User",
+    } as any);
+    createSupportMessage.mockResolvedValue({
+      id: 89,
+      conversationId: 10,
+      senderType: "support",
+      content: "We are following up on your case.",
+    } as any);
+
+    await caller.supportChat.startConversationForUser({
+      userId: 123,
+      content: "We are following up on your case.",
+    });
+
+    expect(setNeedsHuman).toHaveBeenCalledWith(10, true);
+    expect(createNotification).toHaveBeenCalledWith(expect.objectContaining({
+      userId: 123,
+      actionUrl: "/support",
+    }));
   });
 
   it("waits for the human escalation notification dispatch before returning", async () => {

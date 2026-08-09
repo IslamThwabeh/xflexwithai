@@ -253,6 +253,28 @@ describe("student survey routes", () => {
     }));
   });
 
+  it("accepts Arabic survey content with an API-safe automatic reference", async () => {
+    vi.mocked(db.getAdminByEmail).mockResolvedValue({ id: 1, email: "admin@example.com" } as any);
+    vi.mocked(db.createStudentSurvey).mockResolvedValue({
+      id: 4,
+      code: "survey-msm0m1og-abcd1234",
+      title: "استبيان رضا الطلاب",
+    } as any);
+
+    await expect(createCaller(1, "admin@example.com").studentSurveys.createSurvey({
+      code: "survey-msm0m1og-abcd1234",
+      title: "استبيان رضا الطلاب",
+      description: "نرجو مشاركة رأيك حول تجربتك التعليمية.",
+      isActive: false,
+    })).resolves.toMatchObject({ id: 4, title: "استبيان رضا الطلاب" });
+    expect(db.createStudentSurvey).toHaveBeenCalledWith(expect.objectContaining({
+      code: "survey-msm0m1og-abcd1234",
+      title: "استبيان رضا الطلاب",
+      description: "نرجو مشاركة رأيك حول تجربتك التعليمية.",
+      actorUserId: 1,
+    }));
+  });
+
   it("allows student survey managers to create survey definitions", async () => {
     vi.mocked(db.hasAnyRole).mockImplementation(async (_userId: number, roles: string[]) =>
       roles.includes("student_surveys_manager")

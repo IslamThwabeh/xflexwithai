@@ -5594,14 +5594,18 @@ export async function prepareRecommendationDeliveries(input: {
     updatedAt: nowIso,
   }));
 
+  // D1 caps bound parameters at 100 per statement. These inserts bind 15
+  // columns per row, so six rows keep each statement safely below the cap
+  // while avoiding one network round trip per recommendation recipient.
+  const recommendationInsertChunkSize = 6;
   let inserted = 0;
-  for (const row of rows) {
+  for (const rowChunk of chunkValues(rows, recommendationInsertChunkSize)) {
     const result = await db
       .insert(recommendationDeliveries)
-      .values(row)
+      .values(rowChunk)
       .onConflictDoNothing({ target: [recommendationDeliveries.eventKey, recommendationDeliveries.userId] })
       .returning({ id: recommendationDeliveries.id });
-    if (result.length) inserted += 1;
+    inserted += result.length;
   }
   return { inserted, skippedDuplicate: rows.length - inserted };
 }
@@ -5980,7 +5984,10 @@ export async function listPendingRecommendationDeliveriesForRetry(limit: number 
  * language, which guarantees the stored subject/body are identical for all
  * recipients prepared by the recommendation workflow.
  */
-export async function claimNextRecommendationDeliveryBatch(limit: number = 50): Promise<RecommendationDelivery[]> {
+export async function claimNextRecommendationDeliveryBatch(
+  limit: number = 50,
+  eventKey?: string,
+): Promise<RecommendationDelivery[]> {
   const db = await getDb();
   if (!db) return [];
   const now = new Date();
@@ -6011,6 +6018,7 @@ export async function claimNextRecommendationDeliveryBatch(limit: number = 50): 
     .where(and(
       eligible,
       sql`${recommendationDeliveries.attempts} < ${MAX_RECOMMENDATION_DELIVERY_ATTEMPTS}`,
+      eventKey ? eq(recommendationDeliveries.eventKey, eventKey) : undefined,
     ))
     .orderBy(
       sql`CASE ${recommendationDeliveries.eventKind}

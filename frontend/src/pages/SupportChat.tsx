@@ -1,10 +1,10 @@
 import ClientLayout from "@/components/ClientLayout";
 import SupportBugReportsPanel from "@/components/SupportBugReportsPanel";
-import { trpc } from "@/lib/trpc";
+import { trpc, type RouterOutputs } from "@/lib/trpc";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Button } from "@/components/ui/button";
 import { Send, Headphones, Loader2, Paperclip, FileIcon, X, Bot, UserRound, Pencil, Trash2, Check, Bug, ArrowLeft, Copy, Reply, Video } from "lucide-react";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { toast } from "sonner";
 import VoiceRecorder from "@/components/VoiceRecorder";
 import AudioPlayer from "@/components/AudioPlayer";
@@ -26,15 +26,22 @@ function getRequestedSupportTab() {
   return tab === "bugs" ? ("bugs" as const) : ("chat" as const);
 }
 
+type SupportMessage = RouterOutputs["supportChat"]["myConversation"]["messages"][number];
+type SupportHistoryPage = RouterOutputs["supportChat"]["myMessageHistory"];
+
 export default function SupportChat() {
   const { t, isRTL } = useLanguage();
   const [, setLocation] = useLocation();
   const [message, setMessage] = useState("");
   const [attachment, setAttachment] = useState<{ name: string; file: File; size: number; kind: SupportMediaKind; duration?: number } | null>(null);
   const [activeTab, setActiveTab] = useState<"chat" | "bugs">(() => getRequestedSupportTab());
-  const [showOlderMessages, setShowOlderMessages] = useState(false);
+  const [olderMessagePages, setOlderMessagePages] = useState<SupportHistoryPage[]>([]);
+  const [liveMessages, setLiveMessages] = useState<SupportMessage[]>([]);
+  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
+  const [hasUnseenMessages, setHasUnseenMessages] = useState(false);
+  const [isPageVisible, setIsPageVisible] = useState(() => typeof document === "undefined" || document.visibilityState === "visible");
+  const [changeCursor, setChangeCursor] = useState<{ afterMessageId: number; changedAfter: string } | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const shouldStickToBottomRef = useRef(true);
   const [activeMenuMsgId, setActiveMenuMsgId] = useState<number | null>(null);
@@ -43,10 +50,11 @@ export default function SupportChat() {
   const [replyToMessageId, setReplyToMessageId] = useState<number | null>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isChatTab = activeTab === "chat";
+  const trpcUtils = trpc.useUtils();
 
   const { data, isLoading, refetch } = trpc.supportChat.myConversation.useQuery(undefined, {
     enabled: isChatTab,
-    refetchInterval: isChatTab ? 5000 : false,
+    refetchOnWindowFocus: true,
   });
 
   const { data: workingHoursData } = trpc.supportChat.isWorkingHours.useQuery(undefined, {
@@ -90,20 +98,44 @@ export default function SupportChat() {
     onError: (err) => toast.error(err.message),
   });
 
-  const hasRequestedHuman = data?.conversation?.needsHuman === true;
-  const getMessageDayKey = (value: string) => {
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? "" : date.toDateString();
-  };
-  const rawMessages = data?.messages ?? [];
-  const messageMap = new Map(rawMessages.map((msg) => [msg.id, msg]));
-  const allMessages = [...rawMessages].reverse();
-  const todayKey = new Date().toDateString();
-  const hasOlderMessages = allMessages.some((msg) => getMessageDayKey(msg.createdAt) !== todayKey);
-  const messages = showOlderMessages
-    ? allMessages
-    : allMessages.filter((msg) => getMessageDayKey(msg.createdAt) === todayKey);
-  const latestMessageId = rawMessages[0]?.id;
+  const historyMessages = useMemo(
+    () => [
+      ...(data?.messages ?? []),
+      ...olderMessagePages.flatMap((page) => page.messages),
+    ],
+    [data?.messages, olderMessagePages],
+  );
+  const highestLoadedMessageId = useMemo(
+    () => Math.max(0, ...historyMessages.map((item) => item.id), ...liveMessages.map((item) => item.id)),
+    [historyMessages, liveMessages],
+  );
+  const changesQuery = trpc.supportChat.myMessageChanges.useQuery(
+    changeCursor ?? { afterMessageId: 0, changedAfter: new Date(0).toISOString() },
+    {
+      enabled: Boolean(isChatTab && isPageVisible && data?.conversation?.id && changeCursor),
+      refetchInterval: isPageVisible ? 5000 : false,
+      refetchIntervalInBackground: false,
+      refetchOnWindowFocus: true,
+    },
+  );
+  const currentConversation = changesQuery.data?.conversation ?? data?.conversation;
+  const hasRequestedHuman = currentConversation?.needsHuman === true;
+  const rawMessages = useMemo(() => {
+    const merged = new Map<number, SupportMessage>();
+    for (const item of historyMessages) merged.set(item.id, item);
+    for (const item of liveMessages) merged.set(item.id, item);
+    return Array.from(merged.values()).sort((left, right) => {
+      const timeDifference = new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime();
+      return timeDifference || right.id - left.id;
+    });
+  }, [historyMessages, liveMessages]);
+  const messageMap = useMemo(() => new Map(rawMessages.map((item) => [item.id, item])), [rawMessages]);
+  const messages = useMemo(() => [...rawMessages].reverse(), [rawMessages]);
+  const latestMessageId = messages.at(-1)?.id;
+  const messageNextCursor = olderMessagePages.length
+    ? olderMessagePages.at(-1)?.nextCursor
+    : data?.nextCursor;
+  const hasOlderMessages = Boolean(messageNextCursor);
 
   const uploadMutation = trpc.supportChat.uploadAttachment.useMutation();
   const [uploading, setUploading] = useState(false);
@@ -118,13 +150,13 @@ export default function SupportChat() {
     onError: (err) => toast.error(err.message),
   });
 
-  const scrollToBottom = () => {
+  const scrollToBottom = (behavior: ScrollBehavior = "smooth") => {
     const container = messagesContainerRef.current;
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
     if (!container) return;
 
-    container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
+    container.scrollTo({ top: container.scrollHeight, behavior });
     shouldStickToBottomRef.current = true;
+    setHasUnseenMessages(false);
   };
 
   const handleMessagesScroll = () => {
@@ -133,6 +165,31 @@ export default function SupportChat() {
 
     const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
     shouldStickToBottomRef.current = distanceFromBottom <= 96;
+    if (shouldStickToBottomRef.current) setHasUnseenMessages(false);
+  };
+
+  const fetchOlderMessages = async () => {
+    if (!messageNextCursor || loadingOlderMessages) return;
+    const container = messagesContainerRef.current;
+    const previousHeight = container?.scrollHeight ?? 0;
+    const previousTop = container?.scrollTop ?? 0;
+    setLoadingOlderMessages(true);
+    try {
+      const page = await trpcUtils.client.supportChat.myMessageHistory.query({
+        limit: 50,
+        cursor: messageNextCursor,
+      });
+      setOlderMessagePages((current) => [...current, page]);
+      window.requestAnimationFrame(() => {
+        if (container) {
+          container.scrollTop = previousTop + container.scrollHeight - previousHeight;
+        }
+      });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : (isRTL ? "تعذر تحميل الرسائل السابقة" : "Could not load previous messages"));
+    } finally {
+      setLoadingOlderMessages(false);
+    }
   };
 
   const handleMobileBack = () => {
@@ -148,7 +205,7 @@ export default function SupportChat() {
     if (!isChatTab || !latestMessageId || !shouldStickToBottomRef.current) return;
 
     const frame = window.requestAnimationFrame(() => {
-      scrollToBottom();
+      scrollToBottom("auto");
     });
 
     return () => window.cancelAnimationFrame(frame);
@@ -174,8 +231,41 @@ export default function SupportChat() {
   }, [activeTab]);
 
   useEffect(() => {
-    setShowOlderMessages(false);
-  }, [isChatTab, data?.conversation?.id]);
+    const handleVisibility = () => setIsPageVisible(document.visibilityState === "visible");
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, []);
+
+  useEffect(() => {
+    if (!data?.conversation?.id) return;
+    setOlderMessagePages([]);
+    setLiveMessages([]);
+    setHasUnseenMessages(false);
+    setChangeCursor({
+      afterMessageId: Math.max(0, ...data.messages.map((item) => item.id)),
+      changedAfter: data.checkedAt,
+    });
+  }, [data?.conversation?.id]);
+
+  useEffect(() => {
+    const result = changesQuery.data;
+    if (!result || !changeCursor) return;
+    const newMessages = result.messages.filter((item) => item.id > highestLoadedMessageId);
+    if (newMessages.length > 0 && !shouldStickToBottomRef.current) {
+      setHasUnseenMessages(true);
+    }
+    if (result.messages.length > 0) {
+      setLiveMessages((current) => {
+        const merged = new Map(current.map((item) => [item.id, item]));
+        for (const item of result.messages) merged.set(item.id, item);
+        return Array.from(merged.values());
+      });
+    }
+    setChangeCursor((current) => current ? {
+      ...current,
+      afterMessageId: Math.max(current.afterMessageId, ...result.messages.map((item) => item.id), highestLoadedMessageId),
+    } : current);
+  }, [changesQuery.data]);
 
   const uploadFileToR2 = async (file: File | Blob, fileName: string, contentType: string, attachmentType: 'file' | 'voice' | 'video', attachmentDuration?: number) => {
     const buffer = await file.arrayBuffer();
@@ -335,11 +425,21 @@ export default function SupportChat() {
 
   return (
     <ClientLayout>
-      <div className="container mx-auto max-w-3xl px-4 py-6" dir={isRTL ? "rtl" : "ltr"}>
+      <div className="container relative mx-auto flex h-[calc(100dvh-5rem)] min-h-[32rem] max-w-3xl flex-col overflow-hidden px-4 py-4 md:h-[calc(100dvh-6rem)] md:py-6" dir={isRTL ? "rtl" : "ltr"}>
         {/* Header */}
-        <div className="mb-4 border-b pb-4">
+        <div className="mb-4 shrink-0 border-b pb-4">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex items-start gap-3">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={handleMobileBack}
+                className="h-10 w-10 shrink-0 rounded-full md:hidden"
+                aria-label={isRTL ? "رجوع" : "Back"}
+              >
+                <ArrowLeft className={`h-5 w-5 ${isRTL ? "rotate-180" : ""}`} />
+              </Button>
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-r from-emerald-500 to-teal-500">
                 {isChatTab ? <Headphones className="h-5 w-5 text-white" /> : <Bug className="h-5 w-5 text-white" />}
               </div>
@@ -365,7 +465,7 @@ export default function SupportChat() {
                 </div>
               </div>
             </div>
-            {isChatTab && !hasRequestedHuman && allMessages.length > 0 && (
+            {isChatTab && !hasRequestedHuman && messages.length > 0 && (
               <Button
                 variant="ghost"
                 size="sm"
@@ -402,9 +502,11 @@ export default function SupportChat() {
         </div>
 
         {!isChatTab ? (
-          <SupportBugReportsPanel />
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <SupportBugReportsPanel />
+          </div>
         ) : (
-          <div className="flex min-h-[65vh] flex-col">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {/* AI replies by default until the student explicitly requests a human */}
         {!hasRequestedHuman && (
           <div className="flex items-center gap-2 px-3 py-2 mb-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs">
@@ -442,16 +544,17 @@ export default function SupportChat() {
         )}
 
         {/* Messages area */}
-        <div
-          ref={messagesContainerRef}
-          onScroll={handleMessagesScroll}
-          className="flex-1 overflow-y-auto overscroll-contain space-y-3 pb-56 md:pb-48"
-        >
+        <div className="relative min-h-0 flex-1">
+          <div
+            ref={messagesContainerRef}
+            onScroll={handleMessagesScroll}
+            className="h-full space-y-3 overflow-y-auto overscroll-contain px-1 pb-3"
+          >
           {isLoading ? (
             <div className="flex items-center justify-center py-20">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
-          ) : allMessages.length === 0 ? (
+          ) : messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-center text-muted-foreground">
               <Headphones className="h-12 w-12 mb-3 opacity-50" />
               <p className="text-lg font-medium">{t("support.empty")}</p>
@@ -459,17 +562,19 @@ export default function SupportChat() {
             </div>
           ) : (
             <>
-              {hasOlderMessages && !showOlderMessages && (
+              {hasOlderMessages && (
                 <div className={`flex py-2 ${messages.length === 0 ? "min-h-[180px] items-center justify-center" : "justify-center"}`}>
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => setShowOlderMessages(true)}
+                    onClick={() => void fetchOlderMessages()}
+                    disabled={loadingOlderMessages}
                     className="border-emerald-200 text-emerald-700 hover:bg-emerald-50"
                     aria-label={isRTL ? 'عرض الرسائل السابقة' : 'Show previous messages'}
                   >
-                    {isRTL ? 'عرض الرسائل السابقة' : 'Show previous messages'}
+                    {loadingOlderMessages && <Loader2 className="me-2 h-4 w-4 animate-spin" />}
+                    {isRTL ? 'تحميل الرسائل السابقة' : 'Load previous messages'}
                   </Button>
                 </div>
               )}
@@ -707,12 +812,22 @@ export default function SupportChat() {
               })}
             </>
           )}
-          <div ref={messagesEndRef} />
+          </div>
+          {hasUnseenMessages && (
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => scrollToBottom()}
+              className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-emerald-600 px-4 shadow-lg hover:bg-emerald-700"
+            >
+              {isRTL ? 'رسائل جديدة' : 'New messages'}
+            </Button>
+          )}
         </div>
 
         {/* Input area */}
-        <div className="fixed bottom-0 left-0 right-0 z-40 border-t bg-white pt-3 shadow-lg">
-          <div className="mx-auto max-w-3xl px-4 pb-4" dir={isRTL ? "rtl" : "ltr"}>
+        <div className="max-h-[45dvh] shrink-0 overflow-y-auto border-t bg-white pt-3 shadow-[0_-8px_24px_-20px_rgba(15,23,42,0.45)]">
+          <div className="pb-1" dir={isRTL ? "rtl" : "ltr"}>
           {replyTarget && (
             <div className="mb-2 flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm">
               <Reply className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
@@ -801,16 +916,6 @@ export default function SupportChat() {
           </div>
         </div>
           </div>
-        )}
-        {isChatTab && message.length === 0 && !attachment && replyToMessageId === null && editingMsgId === null && (
-          <button
-            type="button"
-            onClick={handleMobileBack}
-            className="fixed bottom-36 right-4 z-30 rounded-full bg-gradient-to-r from-emerald-500 to-teal-600 p-3 text-white shadow-lg transition hover:from-emerald-600 hover:to-teal-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 md:hidden"
-            aria-label={isRTL ? "رجوع" : "Back"}
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </button>
         )}
       </div>
     </ClientLayout>

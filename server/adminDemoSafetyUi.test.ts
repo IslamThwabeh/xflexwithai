@@ -34,11 +34,13 @@ describe("admin demo safety polish", () => {
     expect(dashboardLayoutSource).toContain("min-h-11 min-w-11");
   });
 
-  it("requires deliberate selection of a performance-role employee", () => {
+  it("requires deliberate staff selection and makes missing performance roles actionable", () => {
     expect(staffPerformanceSource).not.toContain("setSelectedStaffId(staffQuery.data[0].id)");
     expect(staffPerformanceSource).toContain('roles?.includes("staff_performance_employee")');
     expect(staffPerformanceSource).toContain('<option value="">{labels.employeePlaceholder}</option>');
-    expect(staffPerformanceSource).toContain("performanceEmployees.map");
+    expect(staffPerformanceSource).toContain("staffOptions.map");
+    expect(staffPerformanceSource).toContain("enablePerformanceEmployee.mutate");
+    expect(staffPerformanceSource).toContain('role: "staff_performance_employee"');
   });
 
   it("keeps live community account controls closed and unloaded during demos", () => {

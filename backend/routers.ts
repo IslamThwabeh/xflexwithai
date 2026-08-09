@@ -580,11 +580,15 @@ function throwStudentJobEligibilityRouteError(error: unknown): never {
   throw new TRPCError(result);
 }
 
-function deferRecommendationEmailDrain(ctx: { defer?: (task: Promise<unknown>) => void }) {
+function deferRecommendationEmailDrain(
+  ctx: { defer?: (task: Promise<unknown>) => void },
+  eventKey: string,
+) {
   if (!ctx.defer) return;
   ctx.defer(
     drainRecommendationDeliveryQueue({
       limit: RECOMMENDATION_DELIVERY_BATCH_SIZE,
+      eventKey,
       source: "publish",
     }).catch((error) => {
       logger.error("[RECOMMENDATION DELIVERY] Immediate post-publish drain failed", {
@@ -4330,7 +4334,7 @@ export const appRouter = router({
           batchId,
         });
 
-        deferRecommendationEmailDrain(ctx);
+        deferRecommendationEmailDrain(ctx, eventKey);
 
         const emailCount = 0;
         const emailsQueued = emailRecipients.length;
@@ -4648,7 +4652,7 @@ export const appRouter = router({
             batchId,
           });
 
-          deferRecommendationEmailDrain(ctx);
+          deferRecommendationEmailDrain(ctx, eventKey);
         }
 
         if (ctx.user?.isStaff && !isAdmin) {
@@ -5173,15 +5177,65 @@ export const appRouter = router({
         return { url: result.url, key: result.key, size: buffer.length };
       }),
 
-    // Client: get or create their conversation & messages
+    // Client: get or create their conversation and the newest bounded page.
+    // Older history is fetched explicitly so long conversations do not replace
+    // the browser's scroll viewport every few seconds.
     myConversation: protectedProcedure.query(async ({ ctx }) => {
       if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
       const conv = await db.getOrCreateSupportConversation(ctx.user.id);
-      const messages = await db.getSupportMessages(conv.id);
+      const checkedAt = new Date().toISOString();
+      const history = await db.getSupportMessageHistory({
+        conversationId: conv.id,
+        limit: 50,
+      });
       // Mark support/admin replies as read
       await db.markClientMessagesRead(conv.id);
-      return { conversation: conv, messages };
+      return { conversation: conv, ...history, checkedAt };
     }),
+
+    // Client: load an older page from their own conversation. The conversation
+    // id is deliberately inferred from the authenticated user.
+    myMessageHistory: protectedProcedure
+      .input(z.object({
+        limit: z.number().int().min(1).max(100).default(50),
+        cursor: z.object({
+          createdAt: z.string(),
+          id: z.number().int().positive(),
+        }),
+      }))
+      .query(async ({ ctx, input }) => {
+        if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        const conv = await db.getOrCreateSupportConversation(ctx.user.id);
+        return db.getSupportMessageHistory({
+          conversationId: conv.id,
+          limit: input.limit,
+          cursor: input.cursor,
+        });
+      }),
+
+    // Client: poll only new/edited/deleted messages and current conversation
+    // state rather than downloading the latest 200-message window repeatedly.
+    myMessageChanges: protectedProcedure
+      .input(z.object({
+        afterMessageId: z.number().int().min(0),
+        changedAfter: z.string().datetime(),
+      }))
+      .query(async ({ ctx, input }) => {
+        if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        const conv = await db.getOrCreateSupportConversation(ctx.user.id);
+        const messages = await db.getSupportMessageChanges({
+          conversationId: conv.id,
+          afterMessageId: input.afterMessageId,
+          changedAfter: input.changedAfter,
+        });
+        if (messages.some((message) => (
+          (message.senderType === 'support' || message.senderType === 'admin')
+          && !message.isRead
+        ))) {
+          await db.markClientMessagesRead(conv.id);
+        }
+        return { conversation: conv, messages, checkedAt: new Date().toISOString() };
+      }),
 
     // Client: send a message (with optional attachment)
     send: protectedProcedure
@@ -5501,6 +5555,12 @@ export const appRouter = router({
           attachmentDuration: normalizedAttachmentDuration && normalizedAttachmentDuration > 0 ? normalizedAttachmentDuration : undefined,
         });
 
+        // A human reply means the staff team has taken ownership. Keep AI
+        // paused until staff or the client explicitly resumes it.
+        if (!conv.needsHuman) {
+          await db.setNeedsHuman(conv.id, true);
+        }
+
         // Notify student when admin/support replies
         if ((isAdmin || ctx.user.id !== conv.userId) && conv.userId) {
           await db.createNotification({
@@ -5571,6 +5631,10 @@ export const appRouter = router({
           senderType: isAdmin ? 'admin' : 'support',
           content: input.content,
         });
+
+        if (!conv.needsHuman) {
+          await db.setNeedsHuman(conv.id, true);
+        }
 
         await db.createNotification({
           userId: input.userId,
