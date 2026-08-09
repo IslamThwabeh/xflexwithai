@@ -931,7 +931,7 @@ function DashboardLayoutContent({
           <div className="flex items-center justify-between px-4 md:px-6 h-16">
             {/* Left: sidebar trigger + page title */}
             <div className="flex items-center gap-3">
-              <SidebarTrigger className="h-9 w-9 rounded-xl hover:bg-gray-100 dark:hover:bg-white/[0.06] flex items-center justify-center text-gray-500 dark:text-gray-400" />
+              <SidebarTrigger className="flex h-11 w-11 items-center justify-center rounded-xl text-gray-500 hover:bg-gray-100 sm:h-9 sm:w-9 dark:text-gray-400 dark:hover:bg-white/[0.06]" />
               <div className="hidden sm:block">
                 <h1 className="text-[17px] font-bold text-slate-900 dark:text-white leading-tight">
                   {activeMenuItem ? menuLabel(activeMenuItem) : APP_TITLE}
@@ -951,7 +951,7 @@ function DashboardLayoutContent({
                 {adminCheck?.isAdmin && (
                   <button
                     onClick={() => setShowAdminSearch(true)}
-                    className="w-8 h-8 rounded-lg hover:bg-white dark:hover:bg-white/[0.08] flex items-center justify-center transition"
+                    className="flex h-11 w-11 items-center justify-center rounded-lg transition hover:bg-white sm:h-8 sm:w-8 dark:hover:bg-white/[0.08]"
                     title={t("admin.sidebar.search")}
                   >
                     <Search className="w-4 h-4 text-gray-500 dark:text-gray-400" />
@@ -960,7 +960,7 @@ function DashboardLayoutContent({
                 {toggleTheme && (
                   <button
                     onClick={toggleTheme}
-                    className="w-8 h-8 rounded-lg hover:bg-white dark:hover:bg-white/[0.08] flex items-center justify-center transition"
+                    className="flex h-11 w-11 items-center justify-center rounded-lg transition hover:bg-white sm:h-8 sm:w-8 dark:hover:bg-white/[0.08]"
                     title={theme === "dark" ? "Light mode" : "Dark mode"}
                   >
                     {theme === "dark" ? (
@@ -977,7 +977,7 @@ function DashboardLayoutContent({
                 {/* Notification bell — visible to all admin/staff */}
                 <button
                   onClick={() => setLocation("/admin/notifications")}
-                  className="relative w-8 h-8 rounded-lg hover:bg-white dark:hover:bg-white/[0.08] flex items-center justify-center transition"
+                  className="relative flex h-11 w-11 items-center justify-center rounded-lg transition hover:bg-white sm:h-8 sm:w-8 dark:hover:bg-white/[0.08]"
                   title={t("admin.sidebar.notifications")}
                 >
                   <Bell className="w-4 h-4 text-gray-500 dark:text-gray-400" />
@@ -991,7 +991,7 @@ function DashboardLayoutContent({
                 </button>
                 <button
                   onClick={() => setLanguage(language === "ar" ? "en" : "ar")}
-                  className="w-8 h-8 rounded-lg hover:bg-white dark:hover:bg-white/[0.08] flex items-center justify-center transition"
+                  className="flex h-11 w-11 items-center justify-center rounded-lg transition hover:bg-white sm:h-8 sm:w-8 dark:hover:bg-white/[0.08]"
                   title={getLanguageSwitchLabel(language)}
                   aria-label={getLanguageSwitchLabel(language)}
                 >
@@ -1005,7 +1005,7 @@ function DashboardLayoutContent({
               {/* ── Group 3: Identity (Avatar + dropdown) ── */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button className="flex items-center gap-2 ms-0.5 hover:opacity-80 transition focus:outline-none">
+                  <button className="ms-0.5 flex min-h-11 min-w-11 items-center justify-center gap-2 transition hover:opacity-80 focus:outline-none sm:min-h-9 sm:min-w-9">
                     <Avatar className="h-9 w-9 border border-emerald-500/30 shadow-lg shadow-emerald-500/10">
                       <AvatarFallback className="text-xs font-bold bg-gradient-to-br from-emerald-500 to-teal-600 text-white">
                         {user?.name?.charAt(0).toUpperCase()}

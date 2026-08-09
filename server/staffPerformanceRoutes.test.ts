@@ -403,10 +403,31 @@ describe("staff performance routes", () => {
     }]);
   });
 
+  it("requires the performance employee role before creating a monthly plan", async () => {
+    vi.mocked(db.getUserRoles).mockImplementation(async (userId) => (
+      userId === 9
+        ? [{ role: "staff_performance_manager" }]
+        : []
+    ) as any);
+    vi.mocked(db.getUserById).mockResolvedValue({ id: 10, isStaff: true } as any);
+
+    await expect(createCaller().staffPerformance.createMonthlyPlan({
+      staffUserId: 10,
+      month: "2026-07",
+      title: "July plan",
+    })).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      message: "Assign the staff performance employee role before creating a plan",
+    });
+    expect(db.createStaffPerformanceMonthlyPlan).not.toHaveBeenCalled();
+  });
+
   it("maps duplicate period records to a conflict", async () => {
-    vi.mocked(db.getUserRoles).mockResolvedValue([
-      { role: "staff_performance_manager" },
-    ] as any);
+    vi.mocked(db.getUserRoles).mockImplementation(async (userId) => (
+      userId === 10
+        ? [{ role: "staff_performance_employee" }]
+        : [{ role: "staff_performance_manager" }]
+    ) as any);
     vi.mocked(db.getUserById).mockResolvedValue({ id: 10, isStaff: true } as any);
     vi.mocked(db.createStaffPerformanceMonthlyPlan)
       .mockRejectedValue(new Error("Failed query: insert into staff_performance_monthly_plans", {

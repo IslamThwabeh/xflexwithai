@@ -1337,6 +1337,7 @@ function CommunitySafetyManager({ isRtl }: { isRtl: boolean }) {
 function CommunityAccessManager({ isRtl, featureEnabled }: { isRtl: boolean; featureEnabled: boolean }) {
   const utils = trpc.useUtils();
   const pageSize = 20;
+  const [showLiveControls, setShowLiveControls] = useState(false);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<"all" | "allowed" | "banned">("all");
   const [page, setPage] = useState(0);
@@ -1388,6 +1389,9 @@ function CommunityAccessManager({ isRtl, featureEnabled }: { isRtl: boolean; fea
     loadFailed: "تعذر تحميل حسابات الأعضاء",
     loadFailedBody: "لم يتغير وصول أي حساب. أعد المحاولة قبل اتخاذ قرار فعلي.",
     retry: "إعادة المحاولة",
+    collapsedBody: "أبقينا بيانات الحسابات وإجراءات الحظر مخفية لحماية العرض التوضيحي. افتح هذا القسم فقط عند تنفيذ إجراء إشرافي فعلي.",
+    openLiveControls: "فتح أدوات الحسابات الفعلية",
+    closeLiveControls: "إغلاق أدوات الحسابات الفعلية",
   } : {
     title: "Member access management",
     description: "Direct control for every client and support account. Use suspension only for misuse.",
@@ -1424,6 +1428,9 @@ function CommunityAccessManager({ isRtl, featureEnabled }: { isRtl: boolean; fea
     loadFailed: "Member accounts could not be loaded",
     loadFailedBody: "No account access changed. Retry before making a live decision.",
     retry: "Retry",
+    collapsedBody: "Account data and suspension actions stay hidden during demonstrations. Open this section only when performing a real moderation action.",
+    openLiveControls: "Open live account controls",
+    closeLiveControls: "Close live account controls",
   };
 
   const membersQuery = trpc.community.adminMembers.useQuery({
@@ -1431,7 +1438,7 @@ function CommunityAccessManager({ isRtl, featureEnabled }: { isRtl: boolean; fea
     status,
     limit: pageSize,
     offset: page * pageSize,
-  }, { retry: false });
+  }, { enabled: showLiveControls, retry: false });
 
   const closeDialog = () => {
     setDialog(null);
@@ -1485,6 +1492,38 @@ function CommunityAccessManager({ isRtl, featureEnabled }: { isRtl: boolean; fea
   const total = membersQuery.data?.total ?? 0;
   const isPending = banMember.isPending || restoreMember.isPending;
 
+  if (!showLiveControls) {
+    return (
+      <Card className="overflow-hidden border-rose-200 shadow-sm">
+        <CardHeader className="border-b border-rose-100 bg-rose-50/70">
+          <div className="mb-1 flex items-center gap-2 text-rose-700">
+            <ShieldAlert className="h-4 w-4" />
+            <span className="text-xs font-bold uppercase tracking-wide">{labels.liveControl}</span>
+          </div>
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <UserCheck className="h-5 w-5 text-emerald-700" />
+            {labels.title}
+          </CardTitle>
+          <p className="text-sm leading-6 text-slate-500">{labels.collapsedBody}</p>
+        </CardHeader>
+        <CardContent>
+          <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
+            <p>{featureEnabled ? labels.liveEnabled : labels.liveDisabled}</p>
+            <Button
+              type="button"
+              variant="outline"
+              className="mt-4 min-h-11 border-rose-300 bg-white text-rose-800 hover:bg-rose-50"
+              onClick={() => setShowLiveControls(true)}
+            >
+              <Eye className="h-4 w-4" />
+              {labels.openLiveControls}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <>
       <Card className="overflow-hidden border-rose-200 shadow-sm">
@@ -1498,6 +1537,15 @@ function CommunityAccessManager({ isRtl, featureEnabled }: { isRtl: boolean; fea
             {labels.title}
           </CardTitle>
           <p className="text-sm leading-6 text-slate-500">{labels.description}</p>
+          <Button
+            type="button"
+            variant="outline"
+            className="mt-2 min-h-11 w-fit border-rose-300 bg-white text-rose-800 hover:bg-rose-50"
+            onClick={() => setShowLiveControls(false)}
+          >
+            <EyeOff className="h-4 w-4" />
+            {labels.closeLiveControls}
+          </Button>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
