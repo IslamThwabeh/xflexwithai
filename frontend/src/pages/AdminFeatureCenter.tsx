@@ -116,6 +116,12 @@ function localized(text: LocalizedAdminText, isRtl: boolean) {
   return isRtl ? text.ar : text.en;
 }
 
+function arabicRemainingRequirements(count: number) {
+  if (count === 1) return "متطلب واحد متبقٍ";
+  if (count === 2) return "متطلبان متبقيان";
+  return `${count} متطلبات متبقية`;
+}
+
 function statusCopy(status: FeatureStatus, isRtl: boolean) {
   const copy: Record<
     FeatureStatus,
@@ -652,6 +658,7 @@ export default function AdminFeatureCenter() {
                       <Button
                         type="button"
                         size="sm"
+                        className="min-h-11 sm:min-h-8"
                         variant={view.enabled ? "outline" : "default"}
                         disabled={
                           updateFeatureFlag.isPending || activationBlocked
@@ -700,7 +707,7 @@ export default function AdminFeatureCenter() {
                           </p>
                           <p className="mt-0.5">
                             {isRtl
-                              ? `أكملي ${missingItems} ${missingItems === 1 ? "متطلب متبقٍ" : "متطلبات متبقية"} أدناه قبل تقديم الميزة كتجربة جاهزة.`
+                              ? `${arabicRemainingRequirements(missingItems)} أدناه. أكملي الإعداد قبل تقديم الميزة كتجربة جاهزة.`
                               : `Complete the ${missingItems} remaining setup ${missingItems === 1 ? "step" : "steps"} below before presenting this feature as ready.`}
                           </p>
                         </div>
@@ -722,7 +729,7 @@ export default function AdminFeatureCenter() {
                             type="button"
                             variant="link"
                             size="sm"
-                            className="mt-1 h-auto p-0 text-xs font-bold text-amber-900 underline underline-offset-4 dark:text-amber-200"
+                            className="-ms-2 mt-1 min-h-11 px-2 py-2 text-xs font-bold text-amber-900 underline underline-offset-4 sm:min-h-8 dark:text-amber-200"
                             onClick={() =>
                               setLocation("/admin/community?setup=policy")
                             }
@@ -766,7 +773,7 @@ export default function AdminFeatureCenter() {
                               ? "مكتملة"
                               : "Complete"
                             : isRtl
-                              ? `${missingItems} متطلبات متبقية`
+                              ? arabicRemainingRequirements(missingItems)
                               : `${missingItems} remaining`}
                         </span>
                       </div>
@@ -804,7 +811,7 @@ export default function AdminFeatureCenter() {
                               {item.href ? (
                                 <button
                                   type="button"
-                                  className="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-start transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                                  className="flex min-h-11 w-full items-center gap-2 rounded-md px-2 py-2 text-start transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 sm:min-h-9"
                                   onClick={() => setLocation(item.href!)}
                                 >
                                   {itemContent}
@@ -872,6 +879,7 @@ export default function AdminFeatureCenter() {
                           <Button
                             type="button"
                             size="sm"
+                            className="min-h-11 sm:min-h-8"
                             variant="outline"
                             disabled={
                               updateFeatureFlag.isPending || !surveys.enabled
@@ -907,7 +915,7 @@ export default function AdminFeatureCenter() {
                       </div>
                     )}
 
-                    <div className="grid gap-2 sm:grid-cols-2">
+                    <div className="grid gap-2 [&>button]:min-h-11 sm:grid-cols-2 sm:[&>button]:min-h-9">
                       <Button
                         type="button"
                         onClick={() => setLocation(feature.adminPath)}
@@ -1001,6 +1009,7 @@ export default function AdminFeatureCenter() {
                   type="button"
                   size="sm"
                   variant="ghost"
+                  className="min-h-11 min-w-11 sm:min-h-8 sm:min-w-8"
                   onClick={() => setLocation("/admin/roles?feature=email-logs")}
                   aria-label={
                     isRtl
@@ -1035,6 +1044,7 @@ export default function AdminFeatureCenter() {
                   type="button"
                   size="sm"
                   variant="ghost"
+                  className="min-h-11 min-w-11 sm:min-h-8 sm:min-w-8"
                   onClick={() => setLocation("/admin/settings")}
                   aria-label={
                     isRtl

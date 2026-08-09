@@ -10627,6 +10627,13 @@ ${qaText}`;
         if (!staff || !staff.isStaff) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "Performance plans require an active staff member" });
         }
+        const staffRoles = await db.getUserRoles(input.staffUserId);
+        if (!staffRoles.some((row) => row.role === "staff_performance_employee")) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Assign the staff performance employee role before creating a plan",
+          });
+        }
         try {
           return await db.createStaffPerformanceMonthlyPlan({
             ...input,

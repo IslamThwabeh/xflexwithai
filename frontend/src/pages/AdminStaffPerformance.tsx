@@ -157,12 +157,6 @@ export default function AdminStaffPerformance() {
   );
 
   useEffect(() => {
-    if (!selectedStaffId && staffQuery.data?.length) {
-      setSelectedStaffId(staffQuery.data[0].id);
-    }
-  }, [selectedStaffId, staffQuery.data]);
-
-  useEffect(() => {
     const plans = plansQuery.data ?? [];
     if (plans.length === 0) {
       setSelectedPlanId(null);
@@ -277,6 +271,9 @@ export default function AdminStaffPerformance() {
 
   const selectedStaff = staffQuery.data?.find((staff) => staff.id === selectedStaffId);
   const staffOptions = staffQuery.data ?? [];
+  const performanceEmployees = staffOptions.filter((staff) =>
+    staff.roles?.includes("staff_performance_employee"),
+  );
   const plan = planQuery.data;
   const dailyLog = dailyLogQuery.data;
   const weeklyReport = weeklyReportQuery.data;
@@ -360,6 +357,7 @@ export default function AdminStaffPerformance() {
     forbiddenTitle: "لا توجد صلاحية إدارة",
     forbiddenBody: "هذه الصفحة متاحة لمدير النظام أو لدور مدير أداء الموظفين فقط.",
     employee: "الموظف",
+    employeePlaceholder: "اختر موظفاً لديه دور إدارة الأداء",
     plans: "الخطط الشهرية",
     noPlans: "لا توجد خطة لهذا الموظف بعد.",
     newPlan: "خطة جديدة",
@@ -420,7 +418,7 @@ export default function AdminStaffPerformance() {
     previewEmployee: "معاينة تجربة الموظف",
     hidePreview: "إغلاق المعاينة",
     missingRolesTitle: "عيّن المشاركين قبل بدء التجربة",
-    missingRolesBody: "لا يوجد موظفون ظاهرون في مساحة الأداء بعد. امنح دور الموظف لمن سيملأ السجلات، ودور المدير لمن سيعتمدها.",
+    missingRolesBody: "يظهر في قائمة التخطيط فقط الموظفون الذين لديهم دور موظف إدارة الأداء. عيّن دور الموظف للمشارك، ودور المدير لمن سيعتمد عمله.",
   } : {
     title: "Staff Performance",
     subtitle: "Set clear, measurable monthly goals and expected outcomes for each staff member.",
@@ -429,6 +427,7 @@ export default function AdminStaffPerformance() {
     forbiddenTitle: "Manager access required",
     forbiddenBody: "This page is available only to administrators or the Staff Performance Manager role.",
     employee: "Staff member",
+    employeePlaceholder: "Choose a staff member with the performance role",
     plans: "Monthly plans",
     noPlans: "No plan has been created for this staff member yet.",
     newPlan: "New plan",
@@ -489,7 +488,7 @@ export default function AdminStaffPerformance() {
     previewEmployee: "Preview employee experience",
     hidePreview: "Close preview",
     missingRolesTitle: "Assign pilot participants before starting",
-    missingRolesBody: "No staff members are visible in the performance workspace yet. Give the employee role to participants who submit logs and the manager role to reviewers.",
+    missingRolesBody: "Only staff with the performance-employee role appear in the planning selector. Assign the employee role to participants and the manager role to reviewers.",
   };
 
   const statusLabel = (status: string) => {
@@ -747,7 +746,8 @@ export default function AdminStaffPerformance() {
               <select
                 value={selectedStaffId ?? ""}
                 onChange={(event) => {
-                  setSelectedStaffId(Number(event.target.value));
+                  const value = Number(event.target.value);
+                  setSelectedStaffId(Number.isInteger(value) && value > 0 ? value : null);
                   setSelectedPlanId(null);
                   setSelectedDailyLogId(null);
                   setSelectedWeeklyReportId(null);
@@ -755,12 +755,17 @@ export default function AdminStaffPerformance() {
                 }}
                 className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-emerald-500"
               >
-                {(staffQuery.data ?? []).map((staff) => (
+                <option value="">{labels.employeePlaceholder}</option>
+                {performanceEmployees.map((staff) => (
                   <option key={staff.id} value={staff.id}>{staff.name || staff.email}</option>
                 ))}
               </select>
             </label>
-            <Button onClick={openCreatePlan} disabled={!selectedStaffId} className="self-end bg-emerald-700 hover:bg-emerald-800">
+            <Button
+              onClick={openCreatePlan}
+              disabled={!selectedStaffId || !selectedStaff?.roles?.includes("staff_performance_employee")}
+              className="self-end bg-emerald-700 hover:bg-emerald-800"
+            >
               <Plus className="h-4 w-4" />
               {labels.newPlan}
             </Button>
@@ -802,14 +807,14 @@ export default function AdminStaffPerformance() {
           </div>
         )}
 
-        {!staffQuery.isLoading && staffOptions.length === 0 && (
+        {!staffQuery.isLoading && (performanceEmployeeCount === 0 || performanceManagerCount === 0) && (
           <AdminFeatureSetupCard
             isRtl={isRtl}
             title={labels.missingRolesTitle}
             description={labels.missingRolesBody}
             items={[
-              { label: isRtl ? "تعيين موظف واحد على الأقل للتجربة" : "Assign at least one pilot employee" },
-              { label: isRtl ? "تعيين مدير مسؤول عن الاعتماد" : "Assign a responsible performance manager" },
+              { label: isRtl ? "تعيين موظف واحد على الأقل للتجربة" : "Assign at least one pilot employee", complete: performanceEmployeeCount > 0 },
+              { label: isRtl ? "تعيين مدير مسؤول عن الاعتماد" : "Assign a responsible performance manager", complete: performanceManagerCount > 0 },
               { label: isRtl ? "مراجعة تجربة الموظف التجريبية" : "Review the synthetic employee preview", complete: showEmployeePreview },
             ]}
           />
