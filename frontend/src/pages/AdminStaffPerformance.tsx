@@ -269,11 +269,25 @@ export default function AdminStaffPerformance() {
     onError: (error) => toast.error(error.message),
   });
 
+  const enablePerformanceEmployee = trpc.roles.assign.useMutation({
+    onSuccess: async () => {
+      await utils.staffPerformance.listStaffOptions.invalidate();
+      toast.success(isRtl
+        ? "تم تفعيل الموظف لإدارة الأداء ويمكنك الآن إنشاء الخطة والمهام."
+        : "The staff member is enabled for performance management. You can now create the plan and tasks.");
+    },
+    onError: (error) => {
+      toast.error(error.data?.code === "FORBIDDEN"
+        ? isRtl
+          ? "تفعيل دور الموظف يتطلب صلاحية المدير الرئيسي. افتح إدارة الأدوار أو اطلب من المدير الرئيسي تنفيذها."
+          : "Enabling the employee role requires a main administrator. Open Role Management or ask the main admin to complete it."
+        : error.message);
+    },
+  });
+
   const selectedStaff = staffQuery.data?.find((staff) => staff.id === selectedStaffId);
   const staffOptions = staffQuery.data ?? [];
-  const performanceEmployees = staffOptions.filter((staff) =>
-    staff.roles?.includes("staff_performance_employee"),
-  );
+  const selectedStaffHasEmployeeRole = selectedStaff?.roles?.includes("staff_performance_employee") === true;
   const plan = planQuery.data;
   const dailyLog = dailyLogQuery.data;
   const weeklyReport = weeklyReportQuery.data;
@@ -357,7 +371,14 @@ export default function AdminStaffPerformance() {
     forbiddenTitle: "لا توجد صلاحية إدارة",
     forbiddenBody: "هذه الصفحة متاحة لمدير النظام أو لدور مدير أداء الموظفين فقط.",
     employee: "الموظف",
-    employeePlaceholder: "اختر موظفاً لديه دور إدارة الأداء",
+    employeePlaceholder: "اختر أي موظف",
+    employeeNeedsRole: "يحتاج تفعيل دور أداء الموظفين",
+    employeeRoleMissingTitle: "الموظف محدد، وتبقى خطوة تفعيل واحدة",
+    employeeRoleMissingBody: "فعّل دور موظف إدارة الأداء لهذا الموظف، ثم ستصبح أزرار إنشاء الخطة وإضافة الأهداف متاحة مباشرة.",
+    enableEmployeeRole: "تفعيل الموظف لإدارة الأداء",
+    enablingEmployeeRole: "جارٍ التفعيل...",
+    manageRoles: "فتح إدارة الأدوار",
+    bilingualTaskHelp: "يمكن كتابة الخطة والأهداف والمهام والنتائج بالعربية أو الإنجليزية أو بكليهما.",
     plans: "الخطط الشهرية",
     noPlans: "لا توجد خطة لهذا الموظف بعد.",
     newPlan: "خطة جديدة",
@@ -427,7 +448,14 @@ export default function AdminStaffPerformance() {
     forbiddenTitle: "Manager access required",
     forbiddenBody: "This page is available only to administrators or the Staff Performance Manager role.",
     employee: "Staff member",
-    employeePlaceholder: "Choose a staff member with the performance role",
+    employeePlaceholder: "Choose any staff member",
+    employeeNeedsRole: "needs the performance employee role",
+    employeeRoleMissingTitle: "Staff member selected — one activation step remains",
+    employeeRoleMissingBody: "Enable the performance employee role for this staff member. The plan and goal actions will then become available immediately.",
+    enableEmployeeRole: "Enable for performance",
+    enablingEmployeeRole: "Enabling…",
+    manageRoles: "Open role management",
+    bilingualTaskHelp: "Plans, goals, tasks, results, and notes can be written in Arabic, English, or both.",
     plans: "Monthly plans",
     noPlans: "No plan has been created for this staff member yet.",
     newPlan: "New plan",
@@ -756,14 +784,19 @@ export default function AdminStaffPerformance() {
                 className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-emerald-500"
               >
                 <option value="">{labels.employeePlaceholder}</option>
-                {performanceEmployees.map((staff) => (
-                  <option key={staff.id} value={staff.id}>{staff.name || staff.email}</option>
-                ))}
+                {staffOptions.map((staff) => {
+                  const hasEmployeeRole = staff.roles?.includes("staff_performance_employee");
+                  return (
+                    <option key={staff.id} value={staff.id}>
+                      {staff.name || staff.email}{hasEmployeeRole ? "" : ` — ${labels.employeeNeedsRole}`}
+                    </option>
+                  );
+                })}
               </select>
             </label>
             <Button
               onClick={openCreatePlan}
-              disabled={!selectedStaffId || !selectedStaff?.roles?.includes("staff_performance_employee")}
+              disabled={!selectedStaffId || !selectedStaffHasEmployeeRole}
               className="self-end bg-emerald-700 hover:bg-emerald-800"
             >
               <Plus className="h-4 w-4" />
@@ -771,6 +804,37 @@ export default function AdminStaffPerformance() {
             </Button>
           </div>
         </header>
+
+        {selectedStaff && !selectedStaffHasEmployeeRole && (
+          <div className="flex flex-col gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-950 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="font-semibold">{labels.employeeRoleMissingTitle}</p>
+              <p className="mt-1 text-sm leading-6">{labels.employeeRoleMissingBody}</p>
+              <p className="mt-1 text-xs text-amber-800">{labels.bilingualTaskHelp}</p>
+            </div>
+            <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+              <Button
+                type="button"
+                onClick={() => enablePerformanceEmployee.mutate({
+                  userId: selectedStaff.id,
+                  role: "staff_performance_employee",
+                })}
+                disabled={enablePerformanceEmployee.isPending}
+                className="bg-amber-700 text-white hover:bg-amber-800"
+              >
+                {enablePerformanceEmployee.isPending
+                  ? <Loader2 className="h-4 w-4 animate-spin" />
+                  : <ShieldCheck className="h-4 w-4" />}
+                {enablePerformanceEmployee.isPending
+                  ? labels.enablingEmployeeRole
+                  : labels.enableEmployeeRole}
+              </Button>
+              <Button asChild type="button" variant="outline" className="border-amber-400 bg-white">
+                <Link href="/admin/roles?feature=staff-performance">{labels.manageRoles}</Link>
+              </Button>
+            </div>
+          </div>
+        )}
 
         {showEmployeePreview && <StaffEmployeePreview isRtl={isRtl} focusOnMount={directEmployeePreview} />}
 
@@ -817,6 +881,11 @@ export default function AdminStaffPerformance() {
               { label: isRtl ? "تعيين مدير مسؤول عن الاعتماد" : "Assign a responsible performance manager", complete: performanceManagerCount > 0 },
               { label: isRtl ? "مراجعة تجربة الموظف التجريبية" : "Review the synthetic employee preview", complete: showEmployeePreview },
             ]}
+            action={(
+              <Button asChild variant="outline" className="border-amber-300 bg-white text-amber-950 hover:bg-amber-100">
+                <Link href="/admin/roles?feature=staff-performance">{labels.manageRoles}</Link>
+              </Button>
+            )}
           />
         )}
 
@@ -1345,14 +1414,15 @@ export default function AdminStaffPerformance() {
               <Input type="month" value={planForm.month} disabled={planDialogMode === "edit"} onChange={(event) => setPlanForm({ ...planForm, month: event.target.value })} />
             </Field>
             <Field label={isRtl ? "عنوان الخطة" : "Plan title"} required>
-              <Input value={planForm.title} maxLength={300} onChange={(event) => setPlanForm({ ...planForm, title: event.target.value })} />
+              <Input dir="auto" value={planForm.title} maxLength={300} onChange={(event) => setPlanForm({ ...planForm, title: event.target.value })} />
             </Field>
             <Field label={isRtl ? "ملخص الخطة" : "Plan summary"}>
-              <Textarea rows={4} value={planForm.summary} maxLength={5000} onChange={(event) => setPlanForm({ ...planForm, summary: event.target.value })} />
+              <Textarea dir="auto" rows={4} value={planForm.summary} maxLength={5000} onChange={(event) => setPlanForm({ ...planForm, summary: event.target.value })} />
             </Field>
             <Field label={isRtl ? "المخرجات المتوقعة" : "Expected outcomes"}>
-              <Textarea rows={4} value={planForm.expectedOutcomes} maxLength={5000} onChange={(event) => setPlanForm({ ...planForm, expectedOutcomes: event.target.value })} />
+              <Textarea dir="auto" rows={4} value={planForm.expectedOutcomes} maxLength={5000} onChange={(event) => setPlanForm({ ...planForm, expectedOutcomes: event.target.value })} />
             </Field>
+            <p className="text-xs text-slate-500">{labels.bilingualTaskHelp}</p>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setPlanDialogMode(null)}>{isRtl ? "إلغاء" : "Cancel"}</Button>
@@ -1374,14 +1444,15 @@ export default function AdminStaffPerformance() {
           </DialogHeader>
           <div className="grid gap-4 py-2">
             <Field label={isRtl ? "عنوان الهدف" : "Goal title"} required>
-              <Input value={goalForm.title} maxLength={300} onChange={(event) => setGoalForm({ ...goalForm, title: event.target.value })} />
+              <Input dir="auto" value={goalForm.title} maxLength={300} onChange={(event) => setGoalForm({ ...goalForm, title: event.target.value })} />
             </Field>
             <Field label={isRtl ? "وصف الهدف" : "Description"}>
-              <Textarea rows={3} value={goalForm.description} maxLength={5000} onChange={(event) => setGoalForm({ ...goalForm, description: event.target.value })} />
+              <Textarea dir="auto" rows={3} value={goalForm.description} maxLength={5000} onChange={(event) => setGoalForm({ ...goalForm, description: event.target.value })} />
             </Field>
             <Field label={labels.expected} required>
-              <Textarea rows={4} value={goalForm.expectedResult} maxLength={2000} onChange={(event) => setGoalForm({ ...goalForm, expectedResult: event.target.value })} />
+              <Textarea dir="auto" rows={4} value={goalForm.expectedResult} maxLength={2000} onChange={(event) => setGoalForm({ ...goalForm, expectedResult: event.target.value })} />
             </Field>
+            <p className="text-xs text-slate-500">{labels.bilingualTaskHelp}</p>
             <div className="grid grid-cols-2 gap-4">
               <Field label={`${labels.weight} (%)`} required>
                 <Input type="number" min={0} max={100} value={goalForm.weight} onChange={(event) => setGoalForm({ ...goalForm, weight: event.target.value })} />

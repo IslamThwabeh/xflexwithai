@@ -21,6 +21,7 @@ vi.mock("../backend/db", async () => {
     updateStaffPerformanceWeeklyReport: vi.fn(),
     transitionStaffPerformanceWeeklyReport: vi.fn(),
     getStaffPerformanceGoal: vi.fn(),
+    createStaffPerformanceGoal: vi.fn(),
     getStaffPerformanceMonthlyPlan: vi.fn(),
     createStaffPerformanceMonthlyPlan: vi.fn(),
     updateStaffPerformanceMonthlyPlan: vi.fn(),
@@ -173,7 +174,10 @@ describe("staff performance routes", () => {
     expect(getStaffLandingPage(["staff_performance_employee"])).toBe("/admin/my-performance");
   });
 
-  it("allows an employee to create a daily task linked to a goal from the same month", async () => {
+  it.each([
+    ["English", "Call students", "Ten contacted students"],
+    ["Arabic", "التواصل مع الطلاب", "التواصل مع عشرة طلاب وتوثيق النتائج"],
+  ])("allows an employee to create a %s daily task linked to a goal from the same month", async (_language, title, expectedOutput) => {
     vi.mocked(db.getStaffPerformanceDailyLog).mockResolvedValue({
       id: 5,
       staffUserId: 9,
@@ -192,14 +196,16 @@ describe("staff performance routes", () => {
     await expect(createCaller(9).staffPerformance.createDailyTask({
       dailyLogId: 5,
       monthlyGoalId: 7,
-      title: "Call students",
-      expectedOutput: "Ten contacted students",
+      title,
+      expectedOutput,
       completed: false,
       sortOrder: 0,
     })).resolves.toEqual({ id: 11 });
     expect(db.createStaffPerformanceDailyTask).toHaveBeenCalledWith(expect.objectContaining({
       dailyLogId: 5,
       monthlyGoalId: 7,
+      title,
+      expectedOutput,
       staffUserId: 9,
       actorUserId: 9,
     }));
@@ -420,6 +426,59 @@ describe("staff performance routes", () => {
       message: "Assign the staff performance employee role before creating a plan",
     });
     expect(db.createStaffPerformanceMonthlyPlan).not.toHaveBeenCalled();
+  });
+
+  it("allows managers to create Arabic plans and assigned goals", async () => {
+    vi.mocked(db.getUserRoles).mockImplementation(async (userId) => (
+      userId === 9
+        ? [{ role: "staff_performance_manager" }]
+        : [{ role: "staff_performance_employee" }]
+    ) as any);
+    vi.mocked(db.getUserById).mockResolvedValue({ id: 10, isStaff: true } as any);
+    vi.mocked(db.createStaffPerformanceMonthlyPlan).mockResolvedValue({
+      id: 20,
+      staffUserId: 10,
+      title: "خطة متابعة خدمة الطلاب",
+    } as any);
+
+    await expect(createCaller().staffPerformance.createMonthlyPlan({
+      staffUserId: 10,
+      month: "2026-08",
+      title: "خطة متابعة خدمة الطلاب",
+      summary: "تنظيم المهام اليومية باللغة العربية والإنجليزية.",
+      expectedOutcomes: "تحسين سرعة الرد وجودة المتابعة.",
+    })).resolves.toMatchObject({ id: 20, title: "خطة متابعة خدمة الطلاب" });
+    expect(db.createStaffPerformanceMonthlyPlan).toHaveBeenCalledWith(expect.objectContaining({
+      title: "خطة متابعة خدمة الطلاب",
+      summary: "تنظيم المهام اليومية باللغة العربية والإنجليزية.",
+      expectedOutcomes: "تحسين سرعة الرد وجودة المتابعة.",
+    }));
+
+    vi.mocked(db.getStaffPerformanceMonthlyPlan).mockResolvedValue({
+      id: 20,
+      staffUserId: 10,
+      status: "draft",
+      goals: [],
+    } as any);
+    vi.mocked(db.createStaffPerformanceGoal).mockResolvedValue({
+      id: 21,
+      title: "متابعة استفسارات الطلاب",
+    } as any);
+
+    await expect(createCaller().staffPerformance.createGoal({
+      planId: 20,
+      title: "متابعة استفسارات الطلاب",
+      description: "الرد على الاستفسارات وتوثيق الحالات المفتوحة.",
+      expectedResult: "إغلاق 90٪ من الحالات ضمن يوم عمل واحد.",
+      weight: 40,
+      sortOrder: 0,
+    })).resolves.toMatchObject({ id: 21, title: "متابعة استفسارات الطلاب" });
+    expect(db.createStaffPerformanceGoal).toHaveBeenCalledWith(expect.objectContaining({
+      staffUserId: 10,
+      title: "متابعة استفسارات الطلاب",
+      expectedResult: "إغلاق 90٪ من الحالات ضمن يوم عمل واحد.",
+      actorUserId: 9,
+    }));
   });
 
   it("maps duplicate period records to a conflict", async () => {

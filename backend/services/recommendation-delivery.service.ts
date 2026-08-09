@@ -28,6 +28,7 @@ export function getRemainingGenericEmailBudget(
 export async function drainRecommendationDeliveryQueue(input: {
   limit?: number;
   maxBatches?: number;
+  eventKey?: string;
   source: RecommendationDrainSource;
 }): Promise<RecommendationDrainResult> {
   const limit = Math.max(
@@ -58,7 +59,7 @@ export async function drainRecommendationDeliveryQueue(input: {
   };
 
   for (let batchIndex = 0; batchIndex < maxBatches; batchIndex += 1) {
-    const rows = await db.claimNextRecommendationDeliveryBatch(limit);
+    const rows = await db.claimNextRecommendationDeliveryBatch(limit, input.eventKey);
     if (!rows.length) break;
     result.claimed += rows.length;
     result.batches += 1;

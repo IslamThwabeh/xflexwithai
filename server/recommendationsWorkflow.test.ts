@@ -262,6 +262,7 @@ describe("recommendations workflow", () => {
     expect(markRecommendationDeliverySent).not.toHaveBeenCalled();
     expect(mockedDrainRecommendationDeliveryQueue).toHaveBeenCalledWith({
       limit: 10,
+      eventKey: "rec_alert:55",
       source: "publish",
     });
     expect(deferredTasks).toHaveLength(1);
@@ -347,7 +348,10 @@ describe("recommendations workflow", () => {
   });
 
   it("publishes the recommendation once the alert window is unlocked", async () => {
-    const caller = createAuthedCaller();
+    const deferredTasks: Promise<unknown>[] = [];
+    const caller = createAuthedCaller({
+      defer: (task: Promise<unknown>) => deferredTasks.push(task),
+    });
 
     getRecommendationPublishState.mockResolvedValue({
       activeAlert: {
@@ -410,6 +414,12 @@ describe("recommendations workflow", () => {
       ]),
     }));
     expect(markRecommendationDeliverySent).not.toHaveBeenCalled();
+    expect(mockedDrainRecommendationDeliveryQueue).toHaveBeenCalledWith({
+      limit: 10,
+      eventKey: "rec_msg:901",
+      source: "publish",
+    });
+    expect(deferredTasks).toHaveLength(1);
   });
 
   it("allows same-trade updates while the active window is open and emails offline clients", async () => {

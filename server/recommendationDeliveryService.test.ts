@@ -146,6 +146,20 @@ describe("recommendation delivery service", () => {
     expect(result.providerRequests).toBe(1);
   });
 
+  it("targets a newly published event without changing scheduled drain behavior", async () => {
+    await drainRecommendationDeliveryQueue({
+      eventKey: "rec_msg:104",
+      source: "publish",
+    });
+
+    expect(db.claimNextRecommendationDeliveryBatch).toHaveBeenCalledWith(50, "rec_msg:104");
+
+    vi.mocked(db.claimNextRecommendationDeliveryBatch).mockClear();
+    await drainRecommendationDeliveryQueue({ source: "scheduled" });
+
+    expect(db.claimNextRecommendationDeliveryBatch).toHaveBeenCalledWith(50, undefined);
+  });
+
   it("rejects non-identical content before any provider request", async () => {
     vi.mocked(db.claimNextRecommendationDeliveryBatch)
       .mockResolvedValueOnce([

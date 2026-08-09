@@ -6,8 +6,10 @@ vi.mock("../backend/db", async () => {
     ...actual,
     getAdminByEmail: vi.fn(),
     getSupportInboxPage: vi.fn(),
+    getOrCreateSupportConversation: vi.fn(),
     getSupportConversation: vi.fn(),
     getUserById: vi.fn(),
+    markClientMessagesRead: vi.fn(),
     markSupportMessagesRead: vi.fn(),
     getSupportMessageHistory: vi.fn(),
     getSupportMessageChanges: vi.fn(),
@@ -37,10 +39,36 @@ function createStaffCaller() {
   } as any);
 }
 
+function createStudentCaller() {
+  return appRouter.createCaller({
+    req: { headers: {}, method: "GET", path: "/api/trpc/supportChat" },
+    user: {
+      id: 44,
+      email: "student@example.com",
+      passwordHash: "",
+      name: "Student",
+      phone: null,
+      emailVerified: true,
+      createdAt: "",
+      updatedAt: "",
+      lastSignedIn: "",
+      isStaff: false,
+    },
+    setCookie: () => {},
+    clearCookie: () => {},
+  } as any);
+}
+
 describe("support performance routes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(db.getAdminByEmail).mockResolvedValue({ id: 1 } as any);
+    vi.mocked(db.getOrCreateSupportConversation).mockResolvedValue({
+      id: 12,
+      userId: 44,
+      status: "open",
+      needsHuman: false,
+    } as any);
     vi.mocked(db.getSupportConversation).mockResolvedValue({
       id: 12,
       userId: 44,
@@ -52,6 +80,61 @@ describe("support performance routes", () => {
       email: "client@example.com",
     } as any);
     vi.mocked(db.markSupportMessagesRead).mockResolvedValue(undefined);
+    vi.mocked(db.markClientMessagesRead).mockResolvedValue(undefined);
+  });
+
+  it("loads only the newest 50 messages for the student and returns an older-history cursor", async () => {
+    const nextCursor = { createdAt: "2026-06-01T10:00:00.000Z", id: 501 };
+    vi.mocked(db.getSupportMessageHistory).mockResolvedValue({
+      messages: [{ id: 550, conversationId: 12, senderType: "support" }] as any,
+      nextCursor,
+    });
+
+    const result = await createStudentCaller().supportChat.myConversation();
+
+    expect(db.getSupportMessageHistory).toHaveBeenCalledWith({
+      conversationId: 12,
+      limit: 50,
+    });
+    expect(db.markClientMessagesRead).toHaveBeenCalledWith(12);
+    expect(result.nextCursor).toEqual(nextCursor);
+    expect(result.messages).toHaveLength(1);
+  });
+
+  it("infers the student's conversation when loading older history", async () => {
+    const cursor = { createdAt: "2026-06-01T10:00:00.000Z", id: 501 };
+    vi.mocked(db.getSupportMessageHistory).mockResolvedValue({ messages: [], nextCursor: null });
+
+    await createStudentCaller().supportChat.myMessageHistory({ limit: 50, cursor });
+
+    expect(db.getSupportMessageHistory).toHaveBeenCalledWith({
+      conversationId: 12,
+      limit: 50,
+      cursor,
+    });
+  });
+
+  it("polls only student message changes and marks a new staff reply as read", async () => {
+    vi.mocked(db.getSupportMessageChanges).mockResolvedValue([{
+      id: 551,
+      conversationId: 12,
+      senderType: "support",
+      isRead: false,
+      createdAt: "2026-06-20T10:00:00.000Z",
+    }] as any);
+
+    const result = await createStudentCaller().supportChat.myMessageChanges({
+      afterMessageId: 550,
+      changedAfter: "2026-06-20T09:59:55.000Z",
+    });
+
+    expect(db.getSupportMessageChanges).toHaveBeenCalledWith({
+      conversationId: 12,
+      afterMessageId: 550,
+      changedAfter: "2026-06-20T09:59:55.000Z",
+    });
+    expect(db.markClientMessagesRead).toHaveBeenCalledWith(12);
+    expect(result.messages).toHaveLength(1);
   });
 
   it("uses a bounded 30-row inbox page by default", async () => {
