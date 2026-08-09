@@ -433,6 +433,11 @@ Last updated: 2026-08-09
   - Operational coverage has 3 configured admin-notification recipients but 0 `email_logs_viewer` role assignments. Full admins retain access, but assign this role if non-admin staff must monitor delivery logs.
   - Production foreign-key integrity was clean; migrations 078-080 were each present once in `schema_migrations`; all 12 audited feature tables existed; 6 survey integrity triggers and 3 job-review indexes were present.
   - Live read-only routing passed 20/20 checks for the Feature Center, all feature admin pages and previews, community setup links, role-focus links, email logs, and notification templates. Focused routing/setup tests passed 14/14. Authenticated visual browser inspection remains pending because no browser was connected to the Codex session; do not claim visual sign-off from this audit.
+- Admin-feature Phase 3 readiness-guidance implementation prepared on 2026-08-09:
+  - The Admin Feature Center now gives every incomplete prerequisite a direct action, supports deep links to the survey builder and rewards workspace, and displays a prominent bilingual warning whenever a feature is enabled before setup is complete.
+  - Job Eligibility readiness now reports enabled-rule coverage across active jobs (`coveredActiveJobs/activeJobs`) instead of treating any stored rule as sufficient. The exact aggregate SQL was validated read-only against production and returned 0 covered jobs out of 3 active jobs with `rows_written = 0`.
+  - Added focused readiness UI regression coverage. The 39 focused tests, full test suite, TypeScript check, production frontend/server build, Worker build, SEO checks, and private-route middleware checks passed.
+  - This phase adds no migration and changes no production flags, roles, records, secrets, or configuration. The implementation remains undeployed until its PR is explicitly approved, merged, and released in a later phase.
 
 ## Future Hardening
 

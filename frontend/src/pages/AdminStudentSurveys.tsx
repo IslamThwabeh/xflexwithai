@@ -1674,7 +1674,12 @@ function getChoiceQuestionCopy(isRtl: boolean) {
 
 function getInitialTab(): WorkspaceTab {
   if (typeof window === "undefined") return "overview";
-  return new URLSearchParams(window.location.search).get("preview") === "student" ? "preview" : "overview";
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("preview") === "student") return "preview";
+  const requestedTab = params.get("tab");
+  return ["overview", "builder", "distribution", "responses", "preview", "audit"].includes(
+    requestedTab ?? "",
+  ) ? requestedTab as WorkspaceTab : "overview";
 }
 
 function hasAudienceChoice(mode: AudienceMode, userIds: number[]) {

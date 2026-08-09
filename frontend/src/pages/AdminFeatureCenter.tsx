@@ -172,18 +172,24 @@ function buildFeatureViewModel(
         {
           label: isRtl ? "تعيين مدير أداء" : "Assign a performance manager",
           complete: module.managers > 0,
+          href: "/admin/roles?feature=staff-performance",
+          actionLabel: isRtl ? "فتح الصلاحيات" : "Open roles",
         },
         {
           label: isRtl
             ? "تعيين موظف واحد على الأقل"
             : "Assign at least one employee",
           complete: module.employees > 0,
+          href: "/admin/roles?feature=staff-performance",
+          actionLabel: isRtl ? "فتح الصلاحيات" : "Open roles",
         },
         {
           label: isRtl
             ? "إنشاء أول خطة شهرية"
             : "Create the first monthly plan",
           complete: module.plans > 0,
+          href: "/admin/staff-performance",
+          actionLabel: isRtl ? "فتح التخطيط" : "Open planner",
         },
       ];
       return {
@@ -215,14 +221,20 @@ function buildFeatureViewModel(
         {
           label: isRtl ? "تعيين مسؤول استبيانات" : "Assign a survey manager",
           complete: module.managers > 0,
+          href: "/admin/roles?feature=student-surveys",
+          actionLabel: isRtl ? "فتح الصلاحيات" : "Open roles",
         },
         {
           label: isRtl ? "إنشاء أول استبيان" : "Create the first survey",
           complete: module.surveys > 0,
+          href: "/admin/student-surveys?tab=builder",
+          actionLabel: isRtl ? "فتح المنشئ" : "Open builder",
         },
         {
           label: isRtl ? "إضافة أسئلة للاستبيان" : "Add survey questions",
           complete: module.questions > 0,
+          href: "/admin/student-surveys?tab=builder",
+          actionLabel: isRtl ? "فتح المنشئ" : "Open builder",
         },
       ];
       return {
@@ -257,10 +269,14 @@ function buildFeatureViewModel(
         {
           label: isRtl ? "تعيين مسؤول مكافآت" : "Assign a rewards manager",
           complete: module.managers > 0,
+          href: "/admin/roles?feature=points-rewards",
+          actionLabel: isRtl ? "فتح الصلاحيات" : "Open roles",
         },
         {
           label: isRtl ? "إضافة أول مكافأة" : "Add the first reward",
           complete: module.rewardItems > 0,
+          href: "/admin/points?tab=rewards",
+          actionLabel: isRtl ? "فتح المكافآت" : "Open rewards",
         },
       ];
       return {
@@ -342,16 +358,26 @@ function buildFeatureViewModel(
         {
           label: isRtl ? "تعيين مسؤول أهلية" : "Assign an eligibility manager",
           complete: module.managers > 0,
+          href: "/admin/roles?feature=job-eligibility",
+          actionLabel: isRtl ? "فتح الصلاحيات" : "Open roles",
         },
         {
-          label: isRtl ? "إضافة قواعد الأهلية" : "Add eligibility rules",
-          complete: module.rules > 0,
+          label: isRtl
+            ? "إضافة قاعدة مفعّلة لكل وظيفة منشورة"
+            : "Add an enabled rule for every active job",
+          complete:
+            module.activeJobs > 0 &&
+            module.coveredActiveJobs === module.activeJobs,
+          href: "/admin/job-eligibility",
+          actionLabel: isRtl ? "فتح القواعد" : "Open rules",
         },
         {
           label: isRtl
             ? "الملفات المهنية جاهزة للمراجعة"
             : "Career profiles ready for review",
           complete: module.profiles > 0,
+          href: "/admin/job-eligibility?preview=student",
+          actionLabel: isRtl ? "معاينة الطالب" : "Student preview",
         },
       ];
       return {
@@ -359,7 +385,10 @@ function buildFeatureViewModel(
         status: deriveStatus(module.enabled, readiness, module.reviews),
         metrics: [
           { label: isRtl ? "ملفات مهنية" : "Profiles", value: module.profiles },
-          { label: isRtl ? "قواعد" : "Rules", value: module.rules },
+          {
+            label: isRtl ? "وظائف بقواعد" : "Jobs with rules",
+            value: `${module.coveredActiveJobs}/${module.activeJobs}`,
+          },
           { label: isRtl ? "مراجعات" : "Reviews", value: module.reviews },
           {
             label: isRtl ? "مسؤولو الأهلية" : "Managers",
@@ -660,6 +689,23 @@ export default function AdminFeatureCenter() {
                     <p className="pt-3 text-sm leading-6 text-muted-foreground">
                       {localized(feature.description, isRtl)}
                     </p>
+                    {view.enabled && missingItems > 0 && (
+                      <div className="mt-3 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium leading-5 text-red-900 dark:border-red-900 dark:bg-red-950/30 dark:text-red-200">
+                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                        <div>
+                          <p className="font-bold">
+                            {isRtl
+                              ? "الميزة مفعّلة قبل اكتمال الإعداد"
+                              : "Enabled before setup is complete"}
+                          </p>
+                          <p className="mt-0.5">
+                            {isRtl
+                              ? `أكملي ${missingItems} ${missingItems === 1 ? "متطلب متبقٍ" : "متطلبات متبقية"} أدناه قبل تقديم الميزة كتجربة جاهزة.`
+                              : `Complete the ${missingItems} remaining setup ${missingItems === 1 ? "step" : "steps"} below before presenting this feature as ready.`}
+                          </p>
+                        </div>
+                      </div>
+                    )}
                     {activationBlocked && (
                       <div
                         id="community-activation-requirement"
