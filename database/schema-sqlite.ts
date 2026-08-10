@@ -243,7 +243,12 @@ export const episodeProgress = sqliteTable("episodeProgress", {
   watchedDuration: integer("watchedDuration").default(0).notNull(),
   isCompleted: integer("isCompleted", { mode: 'boolean' }).default(false).notNull(),
   lastWatchedAt: text("lastWatchedAt").default("CURRENT_TIMESTAMP").notNull(),
-});
+}, (table) => ({
+  userCourseWatchedIdx: index("idx_episode_progress_user_course_watched")
+    .on(table.userId, table.courseId, table.lastWatchedAt),
+  userEpisodeIdx: index("idx_episode_progress_user_episode")
+    .on(table.userId, table.episodeId),
+}));
 
 export type EpisodeProgress = typeof episodeProgress.$inferSelect;
 export type InsertEpisodeProgress = typeof episodeProgress.$inferInsert;
