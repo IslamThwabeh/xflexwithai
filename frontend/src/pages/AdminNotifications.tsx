@@ -40,6 +40,76 @@ const EMPTY_NOTIFICATION_DRAFT: NotificationDraft = {
 
 const ADMIN_NOTIFICATION_EMAIL_RECIPIENT_LIMIT = 499;
 
+type RecommendationDeliveryStatus =
+  | 'pending'
+  | 'processing'
+  | 'sent'
+  | 'failed'
+  | 'dead_letter'
+  | 'skipped_suppressed'
+  | 'skipped';
+
+function getRecommendationDeliveryStatusPresentation(
+  status: RecommendationDeliveryStatus | null,
+  emailSent: boolean,
+  isRtl: boolean,
+) {
+  if (status === 'sent' || (!status && emailSent)) {
+    return {
+      state: 'accepted' as const,
+      className: 'text-emerald-600',
+      label: isRtl ? 'قَبِل مزود البريد الرسالة' : 'Accepted by email provider',
+    };
+  }
+  if (status === 'pending') {
+    return {
+      state: 'pending' as const,
+      className: 'text-amber-600',
+      label: isRtl ? 'مُجهّز للإرسال' : 'Prepared for delivery',
+    };
+  }
+  if (status === 'processing') {
+    return {
+      state: 'pending' as const,
+      className: 'text-amber-600',
+      label: isRtl ? 'جارٍ الإرسال' : 'Sending in progress',
+    };
+  }
+  if (status === 'failed') {
+    return {
+      state: 'pending' as const,
+      className: 'text-amber-700 dark:text-amber-300',
+      label: isRtl ? 'بانتظار إعادة المحاولة' : 'Pending retry',
+    };
+  }
+  if (status === 'dead_letter') {
+    return {
+      state: 'failed' as const,
+      className: 'text-red-600',
+      label: isRtl ? 'فشل الإرسال بعد المحاولات' : 'Delivery failed after retries',
+    };
+  }
+  if (status === 'skipped_suppressed') {
+    return {
+      state: 'suppressed' as const,
+      className: 'text-gray-500',
+      label: isRtl ? 'مستثنى من البريد' : 'Email suppressed',
+    };
+  }
+  if (status === 'skipped') {
+    return {
+      state: 'suppressed' as const,
+      className: 'text-gray-500',
+      label: isRtl ? 'تم تخطي البريد' : 'Email skipped',
+    };
+  }
+  return {
+    state: 'unknown' as const,
+    className: 'text-gray-400',
+    label: isRtl ? 'لا توجد حالة مسجلة' : 'No delivery status recorded',
+  };
+}
+
 const FEATURE_NOTIFICATION_TEMPLATES: Array<{
   id: string;
   featureId: AdminFeatureId;
@@ -720,6 +790,11 @@ export default function AdminNotifications() {
                 <div className="space-y-2">
                   {sentHistory.map((n: any, i: number) => {
                     const isExpanded = expandedBatch === n.batchId;
+                    const isRecommendationBatch = typeof n.batchId === 'string'
+                      && (n.batchId.startsWith('rec_live_') || n.batchId.startsWith('rec_alert_'));
+                    const delivery = n.recommendationDelivery;
+                    const preparedCount = (delivery?.preparedCount ?? 0) + (delivery?.processingCount ?? 0);
+                    const suppressedCount = (delivery?.suppressedCount ?? 0) + (delivery?.skippedCount ?? 0);
                     return (
                       <div key={n.batchId || i} className="bg-white dark:bg-slate-800 border rounded-lg overflow-hidden">
                         <button
@@ -734,7 +809,46 @@ export default function AdminNotifications() {
                             )}
                             <div className="flex items-center gap-3 mt-1">
                               <span className="text-xs text-muted-foreground">{new Date(n.createdAt).toLocaleString(isRtl ? 'ar-EG' : 'en-US')}</span>
-                              {n.emailSentCount > 0 && (
+                              {isRecommendationBatch && delivery ? (
+                                <>
+                                  {delivery.providerAcceptedCount > 0 && (
+                                    <span className="inline-flex items-center gap-1 text-[10px] text-emerald-600" title={isRtl ? 'قبول مزود البريد لا يضمن الوصول إلى صندوق الوارد' : 'Provider acceptance does not guarantee inbox delivery'}>
+                                      <MailCheck className="w-3 h-3" />
+                                      {isRtl ? 'قبول المزود' : 'Provider accepted'} {delivery.providerAcceptedCount}/{n.recipientCount}
+                                    </span>
+                                  )}
+                                  {preparedCount > 0 && (
+                                    <span className="inline-flex items-center gap-1 text-[10px] text-amber-600">
+                                      <Mail className="w-3 h-3" />
+                                      {isRtl ? 'مُجهّز' : 'Prepared'} {preparedCount}
+                                    </span>
+                                  )}
+                                  {delivery.pendingRetryCount > 0 && (
+                                    <span className="inline-flex items-center gap-1 text-[10px] text-amber-700 dark:text-amber-300">
+                                      <Mail className="w-3 h-3" />
+                                      {isRtl ? 'إعادة محاولة' : 'Pending retry'} {delivery.pendingRetryCount}
+                                    </span>
+                                  )}
+                                  {delivery.failedCount > 0 && (
+                                    <span className="inline-flex items-center gap-1 text-[10px] text-red-600">
+                                      <MailX className="w-3 h-3" />
+                                      {isRtl ? 'فشل' : 'Failed'} {delivery.failedCount}
+                                    </span>
+                                  )}
+                                  {suppressedCount > 0 && (
+                                    <span className="inline-flex items-center gap-1 text-[10px] text-gray-500">
+                                      <MailX className="w-3 h-3" />
+                                      {isRtl ? 'مستثنى' : 'Suppressed'} {suppressedCount}
+                                    </span>
+                                  )}
+                                  {delivery.trackedCount === 0 && (
+                                    <span className="inline-flex items-center gap-1 text-[10px] text-gray-400">
+                                      <Mail className="w-3 h-3" />
+                                      {isRtl ? 'لا توجد حالة بريد مسجلة' : 'No email status recorded'}
+                                    </span>
+                                  )}
+                                </>
+                              ) : n.emailSentCount > 0 && (
                                 <span className="inline-flex items-center gap-1 text-[10px] text-emerald-600">
                                   <MailCheck className="w-3 h-3" />
                                   {n.emailSentCount}/{n.recipientCount}
@@ -754,8 +868,15 @@ export default function AdminNotifications() {
                         {/* Expanded recipient list */}
                         {isExpanded && (
                           <div className="border-t dark:border-slate-700 bg-gray-50/50 dark:bg-slate-900/30">
-                            <div className="px-3 py-2 text-xs font-medium text-muted-foreground border-b dark:border-slate-700">
-                              {isRtl ? 'المستلمون' : 'Recipients'}
+                            <div className="px-3 py-2 text-xs text-muted-foreground border-b dark:border-slate-700">
+                              <span className="font-medium">{isRtl ? 'المستلمون' : 'Recipients'}</span>
+                              {isRecommendationBatch && (
+                                <p className="mt-1 text-[10px] font-normal leading-4">
+                                  {isRtl
+                                    ? 'قبول مزود البريد يعني أن الطلب قُبل للإرسال، ولا يضمن ظهوره في صندوق الوارد.'
+                                    : 'Provider acceptance means the request was accepted for sending; it does not guarantee inbox placement.'}
+                                </p>
+                              )}
                             </div>
                             {recipientsLoading ? (
                               <div className="flex justify-center py-4"><Loader2 className="w-4 h-4 animate-spin" /></div>
@@ -765,21 +886,41 @@ export default function AdminNotifications() {
                               </p>
                             ) : (
                               <div className="max-h-48 overflow-y-auto divide-y dark:divide-slate-700">
-                                {batchRecipients.map((r: any) => (
-                                  <div key={r.userId} className="flex items-center gap-2 px-3 py-2 text-xs">
-                                    <span className="font-medium truncate">{r.name || r.email}</span>
-                                    <span className="text-muted-foreground ms-auto truncate max-w-[200px]">{r.email}</span>
-                                    {r.emailSent ? (
-                                      <span className="inline-flex items-center gap-0.5 text-emerald-600 shrink-0" title={isRtl ? 'تم إرسال البريد' : 'Email sent'}>
-                                        <MailCheck className="w-3.5 h-3.5" />
-                                      </span>
-                                    ) : (
-                                      <span className="inline-flex items-center gap-0.5 text-gray-400 shrink-0" title={isRtl ? 'لم يُرسل بريد' : 'No email sent'}>
-                                        <MailX className="w-3.5 h-3.5" />
-                                      </span>
-                                    )}
-                                  </div>
-                                ))}
+                                {batchRecipients.map((r: any) => {
+                                  const recommendationStatus = isRecommendationBatch
+                                    ? getRecommendationDeliveryStatusPresentation(
+                                        r.recommendationDeliveryStatus as RecommendationDeliveryStatus | null,
+                                        !!r.emailSent,
+                                        isRtl,
+                                      )
+                                    : null;
+                                  return (
+                                    <div key={r.userId} className="flex items-center gap-2 px-3 py-2 text-xs">
+                                      <span className="font-medium truncate">{r.name || r.email}</span>
+                                      <span className="text-muted-foreground ms-auto truncate max-w-[200px]">{r.email}</span>
+                                      {recommendationStatus ? (
+                                        <span className={`inline-flex items-center gap-1 shrink-0 ${recommendationStatus.className}`} title={recommendationStatus.label}>
+                                          {recommendationStatus.state === 'accepted' ? (
+                                            <MailCheck className="w-3.5 h-3.5" />
+                                          ) : recommendationStatus.state === 'pending' ? (
+                                            <Mail className="w-3.5 h-3.5" />
+                                          ) : (
+                                            <MailX className="w-3.5 h-3.5" />
+                                          )}
+                                          <span className="hidden sm:inline text-[10px]">{recommendationStatus.label}</span>
+                                        </span>
+                                      ) : r.emailSent ? (
+                                        <span className="inline-flex items-center gap-0.5 text-emerald-600 shrink-0" title={isRtl ? 'تم إرسال البريد' : 'Email sent'}>
+                                          <MailCheck className="w-3.5 h-3.5" />
+                                        </span>
+                                      ) : (
+                                        <span className="inline-flex items-center gap-0.5 text-gray-400 shrink-0" title={isRtl ? 'لم يُرسل بريد' : 'No email sent'}>
+                                          <MailX className="w-3.5 h-3.5" />
+                                        </span>
+                                      )}
+                                    </div>
+                                  );
+                                })}
                               </div>
                             )}
                           </div>

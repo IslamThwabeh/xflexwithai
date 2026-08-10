@@ -13,6 +13,7 @@ vi.mock("../backend/db", async () => {
     hasAnyRole: vi.fn().mockResolvedValue(true),
     setNeedsHuman: vi.fn().mockResolvedValue(undefined),
     createSupportMessage: vi.fn(),
+    recordSupportAiDecision: vi.fn().mockResolvedValue({ id: 1 }),
     createNotification: vi.fn().mockResolvedValue(undefined),
     enqueueEmailOutbox: vi.fn().mockResolvedValue(true),
     enqueueSupportReplyDigestEmail: vi.fn().mockResolvedValue(true),
@@ -58,6 +59,8 @@ function supportAiResponse(overrides: Record<string, unknown> = {}) {
   return {
     ok: true,
     json: async () => ({
+      id: "chatcmpl-support-test",
+      model: "gpt-4o-mini-2024-07-18",
       choices: [{
         message: {
           content: JSON.stringify({
@@ -105,6 +108,7 @@ describe("support chat staff notifications", () => {
   const getUserById = vi.mocked(db.getUserById);
   const setNeedsHuman = vi.mocked(db.setNeedsHuman);
   const createSupportMessage = vi.mocked(db.createSupportMessage);
+  const recordSupportAiDecision = vi.mocked(db.recordSupportAiDecision);
   const createNotification = vi.mocked(db.createNotification);
   const enqueueSupportReplyDigestEmail = vi.mocked(db.enqueueSupportReplyDigestEmail);
   const notifyStaffByEvent = vi.mocked(db.notifyStaffByEvent);
@@ -293,6 +297,9 @@ describe("support chat staff notifications", () => {
     expect(parsedBody.messages?.[0]?.content).toContain("duration of LexAI and Recommendations is configured");
     expect(parsedBody.messages?.[0]?.content).toContain("eight learning levels with checkpoint quizzes");
     expect(parsedBody.messages?.[0]?.content).toContain("Start with one concrete self-service step");
+    expect(parsedBody.messages?.[0]?.content).toContain('Arabic phrases such as "حجز الأرباح"');
+    expect(parsedBody.messages?.[0]?.content).toContain("Never invent a dashboard page, button, or workflow");
+    expect(parsedBody.messages?.[0]?.content).toContain('escalationReason must be "none" exactly when needsHuman=false');
     expect(parsedBody.temperature).toBe(0.2);
     expect(parsedBody.response_format).toMatchObject({
       type: "json_schema",
@@ -307,6 +314,21 @@ describe("support chat staff notifications", () => {
       senderType: "bot",
       content: "Hello from AI",
     });
+    expect(recordSupportAiDecision).toHaveBeenCalledWith(expect.objectContaining({
+      conversationId: 10,
+      userId: 123,
+      actionType: "support_auto_reply",
+      decisionSource: "openai",
+      providerRequestId: "chatcmpl-support-test",
+      model: "gpt-4o-mini-2024-07-18",
+      intent: "technical_issue",
+      confidence: 0.95,
+      needsHuman: false,
+      escalationReason: "none",
+      validationOutcome: "valid",
+      validationIssue: null,
+    }));
+    expect(recordSupportAiDecision.mock.calls[0]?.[0]).not.toHaveProperty("content");
     expect(notifyStaffByEvent).not.toHaveBeenCalled();
   });
 
@@ -399,6 +421,102 @@ describe("support chat staff notifications", () => {
       "human_escalation",
       expect.objectContaining({ metadata: { userId: 123, conversationId: 10 } }),
     );
+  });
+
+  it("normalizes needsHuman=true with reason=none before escalating", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(supportAiResponse({
+      intent: "other",
+      answer: "هل تقصد سحب الأرباح من الوسيط أم شيئاً آخر؟",
+      confidence: 0.73,
+      needsHuman: true,
+      escalationReason: "none",
+    })));
+    createSupportMessage
+      .mockResolvedValueOnce({ id: 92, conversationId: 10, content: "للارباح" } as any)
+      .mockResolvedValueOnce({ id: 93, conversationId: 10, content: "هل تقصد سحب الأرباح من الوسيط أم شيئاً آخر؟" } as any);
+    getSupportMessages.mockResolvedValue([
+      { id: 92, senderType: "client", content: "للارباح" },
+    ] as any);
+
+    await createAuthedCaller().supportChat.send({ content: "للارباح" });
+
+    expect(setNeedsHuman).toHaveBeenCalledWith(10, true);
+    expect(notifyStaffByEvent).toHaveBeenCalledWith(
+      "human_escalation",
+      expect.objectContaining({
+        contentEn: expect.stringContaining("low_confidence"),
+        metadata: { userId: 123, conversationId: 10 },
+      }),
+    );
+    expect(recordSupportAiDecision).toHaveBeenCalledWith(expect.objectContaining({
+      conversationId: 10,
+      triggerMessageId: 92,
+      botMessageId: 93,
+      needsHuman: true,
+      escalationReason: "low_confidence",
+      validationOutcome: "normalized",
+      validationIssue: "needs_human_with_none_reason",
+    }));
+  });
+
+  it("honors a non-none human reason when the AI boolean contradicts it", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(supportAiResponse({
+      intent: "activation_key",
+      answer: "A team member must verify the account data.",
+      confidence: 0.91,
+      needsHuman: false,
+      escalationReason: "account_data_required",
+    })));
+    createSupportMessage
+      .mockResolvedValueOnce({ id: 94, conversationId: 10, content: "My key is wrong" } as any)
+      .mockResolvedValueOnce({ id: 95, conversationId: 10, content: "A team member must verify the account data." } as any);
+    getSupportMessages.mockResolvedValue([
+      { id: 94, senderType: "client", content: "My key is wrong" },
+    ] as any);
+
+    await createAuthedCaller().supportChat.send({ content: "My key is wrong" });
+
+    expect(setNeedsHuman).toHaveBeenCalledWith(10, true);
+    expect(recordSupportAiDecision).toHaveBeenCalledWith(expect.objectContaining({
+      needsHuman: true,
+      escalationReason: "account_data_required",
+      validationOutcome: "normalized",
+      validationIssue: "non_none_reason_without_needs_human",
+    }));
+  });
+
+  it("keeps an ambiguous Arabic profit question in AI clarification flow", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(supportAiResponse({
+      intent: "other",
+      answer: "هل تقصد سحب الأرباح من حساب الوسيط، أم إغلاق صفقة رابحة، أم ميزة داخل الأكاديمية؟",
+      confidence: 0.9,
+      needsHuman: false,
+      escalationReason: "none",
+    })));
+    createSupportMessage
+      .mockResolvedValueOnce({ id: 96, conversationId: 10, content: "كيف اعمل حجز للارباح" } as any)
+      .mockResolvedValueOnce({ id: 97, conversationId: 10, content: "clarification" } as any);
+    getSupportMessages.mockResolvedValue([
+      { id: 96, senderType: "client", content: "كيف اعمل حجز للارباح" },
+    ] as any);
+
+    await createAuthedCaller().supportChat.send({ content: "كيف اعمل حجز للارباح" });
+
+    expect(setNeedsHuman).not.toHaveBeenCalled();
+    expect(notifyStaffByEvent).not.toHaveBeenCalled();
+    expect(createSupportMessage).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      senderType: "bot",
+      content: expect.stringContaining("هل تقصد"),
+    }));
+    expect(recordSupportAiDecision).toHaveBeenCalledWith(expect.objectContaining({
+      intent: "other",
+      needsHuman: false,
+      escalationReason: "none",
+      validationOutcome: "valid",
+    }));
   });
 
   it("treats an explicit typed human request as an escalation and skips AI", async () => {

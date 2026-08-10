@@ -33,6 +33,7 @@ import {
   userRoles, UserRole, InsertUserRole,
   supportConversations, SupportConversation, InsertSupportConversation,
   supportMessages, SupportMessage, InsertSupportMessage,
+  supportAiDecisions, InsertSupportAiDecision,
   bugReports, BugReport,
   // Package system imports
   packages, Package, InsertPackage,
@@ -12102,6 +12103,20 @@ export async function createSupportMessage(msg: {
   return message;
 }
 
+export async function recordSupportAiDecision(
+  input: Omit<InsertSupportAiDecision, "id" | "createdAt">,
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const [decision] = await db.insert(supportAiDecisions).values({
+    ...input,
+    createdAt: new Date().toISOString(),
+  }).returning({ id: supportAiDecisions.id });
+
+  return decision ?? null;
+}
+
 export async function getSupportMessages(conversationId: number, limit: number = 200) {
   const db = await getDb();
   if (!db) return [];
@@ -15392,10 +15407,43 @@ export async function getStudentsForNotification(): Promise<{ id: number; name: 
   return students.map(s => ({ ...s, hasActivePackage: activeUserIds.has(s.id) }));
 }
 
+type RecommendationNotificationDeliverySummary = {
+  preparedCount: number;
+  processingCount: number;
+  providerAcceptedCount: number;
+  pendingRetryCount: number;
+  failedCount: number;
+  suppressedCount: number;
+  skippedCount: number;
+  trackedCount: number;
+};
+
+function getRecommendationEventKeyFromNotificationBatchId(batchId: string | null): string | null {
+  if (!batchId) return null;
+  const messageMatch = /^rec_live_(\d+)$/.exec(batchId);
+  if (messageMatch) return `rec_msg:${messageMatch[1]}`;
+  const alertMatch = /^rec_alert_(\d+)_\d+$/.exec(batchId);
+  if (alertMatch) return `rec_alert:${alertMatch[1]}`;
+  return null;
+}
+
+function createEmptyRecommendationDeliverySummary(): RecommendationNotificationDeliverySummary {
+  return {
+    preparedCount: 0,
+    processingCount: 0,
+    providerAcceptedCount: 0,
+    pendingRetryCount: 0,
+    failedCount: 0,
+    suppressedCount: 0,
+    skippedCount: 0,
+    trackedCount: 0,
+  };
+}
+
 export async function getRecentSentNotifications(limit = 30) {
   const db = await getDb();
   if (!db) return [];
-  return db.select({
+  const history = await db.select({
     batchId: userNotifications.batchId,
     titleEn: userNotifications.titleEn,
     titleAr: userNotifications.titleAr,
@@ -15410,12 +15458,56 @@ export async function getRecentSentNotifications(limit = 30) {
     .groupBy(userNotifications.batchId)
     .orderBy(desc(userNotifications.createdAt))
     .limit(limit);
+
+  const eventKeyByBatchId = new Map<string, string>();
+  for (const notification of history) {
+    const eventKey = getRecommendationEventKeyFromNotificationBatchId(notification.batchId);
+    if (notification.batchId && eventKey) eventKeyByBatchId.set(notification.batchId, eventKey);
+  }
+
+  const summariesByEventKey = new Map<string, RecommendationNotificationDeliverySummary>();
+  const eventKeys = [...new Set(eventKeyByBatchId.values())];
+  if (eventKeys.length) {
+    const statusRows = await db.select({
+      eventKey: recommendationDeliveries.eventKey,
+      status: recommendationDeliveries.status,
+      count: sql<number>`COUNT(*)`,
+    }).from(recommendationDeliveries)
+      .where(inArray(recommendationDeliveries.eventKey, eventKeys))
+      .groupBy(recommendationDeliveries.eventKey, recommendationDeliveries.status);
+
+    for (const row of statusRows) {
+      const summary = summariesByEventKey.get(row.eventKey) ?? createEmptyRecommendationDeliverySummary();
+      const count = Number(row.count) || 0;
+      summary.trackedCount += count;
+      switch (row.status) {
+        case 'pending': summary.preparedCount += count; break;
+        case 'processing': summary.processingCount += count; break;
+        case 'sent': summary.providerAcceptedCount += count; break;
+        case 'failed': summary.pendingRetryCount += count; break;
+        case 'dead_letter': summary.failedCount += count; break;
+        case 'skipped_suppressed': summary.suppressedCount += count; break;
+        case 'skipped': summary.skippedCount += count; break;
+      }
+      summariesByEventKey.set(row.eventKey, summary);
+    }
+  }
+
+  return history.map((notification) => {
+    const eventKey = getRecommendationEventKeyFromNotificationBatchId(notification.batchId);
+    return {
+      ...notification,
+      recommendationDelivery: eventKey
+        ? (summariesByEventKey.get(eventKey) ?? createEmptyRecommendationDeliverySummary())
+        : null,
+    };
+  });
 }
 
 export async function getNotificationRecipients(batchId: string) {
   const db = await getDb();
   if (!db) return [];
-  return db.select({
+  const recipients = await db.select({
     userId: userNotifications.userId,
     emailSent: userNotifications.emailSent,
     name: users.name,
@@ -15424,6 +15516,23 @@ export async function getNotificationRecipients(batchId: string) {
     .innerJoin(users, eq(userNotifications.userId, users.id))
     .where(eq(userNotifications.batchId, batchId))
     .orderBy(users.name);
+
+  const eventKey = getRecommendationEventKeyFromNotificationBatchId(batchId);
+  if (!eventKey || !recipients.length) {
+    return recipients.map((recipient) => ({ ...recipient, recommendationDeliveryStatus: null }));
+  }
+
+  const deliveryRows = await db.select({
+    userId: recommendationDeliveries.userId,
+    status: recommendationDeliveries.status,
+  }).from(recommendationDeliveries)
+    .where(eq(recommendationDeliveries.eventKey, eventKey));
+  const statusByUserId = new Map(deliveryRows.map((row) => [row.userId, row.status]));
+
+  return recipients.map((recipient) => ({
+    ...recipient,
+    recommendationDeliveryStatus: statusByUserId.get(recipient.userId) ?? null,
+  }));
 }
 
 export async function markNotificationEmailSent(batchId: string, userId: number) {

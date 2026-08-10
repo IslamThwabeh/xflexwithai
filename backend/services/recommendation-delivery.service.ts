@@ -18,6 +18,30 @@ export type RecommendationDrainResult = {
   batches: number;
 };
 
+function getNotificationBatchId(
+  rows: Array<{ metadataJson: string | null }>,
+): string | null {
+  const batchIds = new Set<string>();
+
+  for (const row of rows) {
+    if (!row.metadataJson) return null;
+    try {
+      const metadata = JSON.parse(row.metadataJson) as { batchId?: unknown };
+      if (
+        typeof metadata.batchId !== "string"
+        || !/^rec_(?:live|alert)_[A-Za-z0-9_-]+$/.test(metadata.batchId)
+      ) {
+        return null;
+      }
+      batchIds.add(metadata.batchId);
+    } catch {
+      return null;
+    }
+  }
+
+  return batchIds.size === 1 ? [...batchIds][0] : null;
+}
+
 export function getRemainingGenericEmailBudget(
   recommendationProviderRequests: number,
   totalBudget: number = EMAIL_PROVIDER_REQUEST_BUDGET,
@@ -119,6 +143,7 @@ export async function drainRecommendationDeliveryQueue(input: {
       const sentUserIds = new Set(emailResult.sentUserIds);
       const skippedUserIds = new Set(emailResult.skippedUserIds);
       const sentIds = rows.filter((row) => sentUserIds.has(row.userId)).map((row) => row.id);
+      const acceptedUserIds = rows.filter((row) => sentUserIds.has(row.userId)).map((row) => row.userId);
       const skippedIds = rows.filter((row) => skippedUserIds.has(row.userId)).map((row) => row.id);
 
       await Promise.all([
@@ -137,6 +162,25 @@ export async function drainRecommendationDeliveryQueue(input: {
       ]);
       result.sent += sentIds.length;
       result.skippedSuppressed += skippedIds.length;
+
+      // Keep the legacy in-app notification indicator aligned with the
+      // authoritative recommendation outbox. This is reporting-only: if the
+      // compatibility update fails after the provider accepted the email, do
+      // not mark the delivery failed or retry it (which could duplicate mail).
+      const notificationBatchId = getNotificationBatchId(rows);
+      if (notificationBatchId && acceptedUserIds.length) {
+        try {
+          await db.markNotificationEmailsSent(notificationBatchId, acceptedUserIds);
+        } catch (error) {
+          logger.warn("[RECOMMENDATION DELIVERY] Could not sync notification email indicator", {
+            source: input.source,
+            eventKey: first.eventKey,
+            notificationBatchId,
+            acceptedCount: acceptedUserIds.length,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
     } catch (error) {
       await db.markRecommendationDeliveryBatchFailed({
         ids: batchIds,

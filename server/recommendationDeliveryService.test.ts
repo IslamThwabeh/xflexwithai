@@ -6,6 +6,7 @@ vi.mock("../backend/db", () => ({
   markRecommendationDeliveryBatchSent: vi.fn(),
   markRecommendationDeliveryBatchSuppressed: vi.fn(),
   markRecommendationDeliveryBatchFailed: vi.fn(),
+  markNotificationEmailsSent: vi.fn(),
 }));
 
 vi.mock("../backend/_core/email", () => ({
@@ -30,6 +31,7 @@ describe("recommendation delivery service", () => {
       total: 0,
     });
     vi.mocked(db.claimNextRecommendationDeliveryBatch).mockResolvedValue([]);
+    vi.mocked(db.markNotificationEmailsSent).mockResolvedValue(undefined);
   });
 
   it("reserves the shared budget by provider request rather than recipient count", () => {
@@ -53,6 +55,7 @@ describe("recommendation delivery service", () => {
           subject: "New recommendation",
           bodyText: "Open the recommendations page.",
           bodyHtml: "<p>Open the recommendations page.</p>",
+          metadataJson: JSON.stringify({ batchId: "rec_live_101" }),
           attempts: 0,
         } as any,
         {
@@ -66,6 +69,7 @@ describe("recommendation delivery service", () => {
           subject: "New recommendation",
           bodyText: "Open the recommendations page.",
           bodyHtml: "<p>Open the recommendations page.</p>",
+          metadataJson: JSON.stringify({ batchId: "rec_live_101" }),
           attempts: 0,
         } as any,
       ])
@@ -99,6 +103,7 @@ describe("recommendation delivery service", () => {
       providerRequestId: "request-123",
       providerBatchKey: "rec_msg:101:ar:1:2:1",
     });
+    expect(db.markNotificationEmailsSent).toHaveBeenCalledWith("rec_live_101", [7, 8]);
     expect(result).toEqual({
       claimed: 2,
       sent: 2,
@@ -108,6 +113,97 @@ describe("recommendation delivery service", () => {
       providerRequests: 1,
       batches: 1,
     });
+  });
+
+  it("does not retry provider-accepted email when notification reporting sync fails", async () => {
+    vi.mocked(db.claimNextRecommendationDeliveryBatch)
+      .mockResolvedValueOnce([
+        {
+          id: 5,
+          eventKey: "rec_msg:105",
+          eventKind: "recommendation",
+          refId: 105,
+          userId: 11,
+          recipientEmail: "client@example.com",
+          language: "ar",
+          subject: "New recommendation",
+          bodyText: "Open the recommendations page.",
+          bodyHtml: null,
+          metadataJson: JSON.stringify({ batchId: "rec_live_105" }),
+          attempts: 0,
+        } as any,
+      ])
+      .mockResolvedValueOnce([]);
+    vi.mocked(sendRecommendationBccBatch).mockResolvedValue({
+      provider: "zeptomail",
+      attemptedProviders: ["zeptomail"],
+      providerRequestId: "request-105",
+      recipientCount: 1,
+      sentUserIds: [11],
+      skippedUserIds: [],
+    });
+    vi.mocked(db.markNotificationEmailsSent).mockRejectedValueOnce(new Error("Reporting database unavailable"));
+
+    const result = await drainRecommendationDeliveryQueue({ source: "publish" });
+
+    expect(result.sent).toBe(1);
+    expect(result.failed).toBe(0);
+    expect(db.markRecommendationDeliveryBatchSent).toHaveBeenCalledOnce();
+    expect(db.markRecommendationDeliveryBatchFailed).not.toHaveBeenCalled();
+  });
+
+  it("marks only provider-accepted recipients in notification reporting", async () => {
+    vi.mocked(db.claimNextRecommendationDeliveryBatch)
+      .mockResolvedValueOnce([
+        {
+          id: 6,
+          eventKey: "rec_msg:106",
+          eventKind: "update",
+          refId: 106,
+          userId: 12,
+          recipientEmail: "accepted@example.com",
+          language: "en",
+          subject: "Recommendation update",
+          bodyText: "Updated.",
+          bodyHtml: null,
+          metadataJson: JSON.stringify({ batchId: "rec_live_106" }),
+          attempts: 0,
+        } as any,
+        {
+          id: 7,
+          eventKey: "rec_msg:106",
+          eventKind: "update",
+          refId: 106,
+          userId: 13,
+          recipientEmail: "suppressed@example.com",
+          language: "en",
+          subject: "Recommendation update",
+          bodyText: "Updated.",
+          bodyHtml: null,
+          metadataJson: JSON.stringify({ batchId: "rec_live_106" }),
+          attempts: 0,
+        } as any,
+      ])
+      .mockResolvedValueOnce([]);
+    vi.mocked(sendRecommendationBccBatch).mockResolvedValue({
+      provider: "zeptomail",
+      attemptedProviders: ["zeptomail"],
+      providerRequestId: "request-106",
+      recipientCount: 1,
+      sentUserIds: [12],
+      skippedUserIds: [13],
+    });
+
+    const result = await drainRecommendationDeliveryQueue({ source: "scheduled" });
+
+    expect(db.markNotificationEmailsSent).toHaveBeenCalledWith("rec_live_106", [12]);
+    expect(db.markRecommendationDeliveryBatchSuppressed).toHaveBeenCalledWith({
+      ids: [7],
+      reason: "Recipient is permanently suppressed",
+      providerBatchKey: "rec_msg:106:en:6:7:1",
+    });
+    expect(result.sent).toBe(1);
+    expect(result.skippedSuppressed).toBe(1);
   });
 
   it("returns the entire provider batch to retry after a provider failure", async () => {

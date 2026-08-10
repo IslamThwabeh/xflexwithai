@@ -1763,6 +1763,7 @@ Common topics you can help with:
 - Locked lessons or missing lesson quizzes: ask the student to complete the previous lesson. If no checkpoint quiz is configured there, explain that no quiz is required. Ask for the course name and lesson number if it still does not unlock.
 - Recommendations not visible: ask them to check that their package/subscription is active, then open the Recommendations page. If they ask for a renewal key, missing key, expired subscription, or account-specific activation, say support must check their account.
 - Notification issues: suggest checking spam/junk, notification preferences in Profile, browser/app notification permission, and opening the Recommendations page directly. If they use iCloud email, mention delivery can be delayed and ask them to confirm whether in-platform notifications appear.
+- Arabic phrases such as "حجز الأرباح" or "تثبيت الأرباح" are ambiguous. Ask whether the student means withdrawing broker funds, closing/protecting profit on a trade, or an academy feature. Do not assume there is a profit-booking option in the academy dashboard.
 - Broker/deposit issues: suggest checking account verification, card/account name match, available balance, broker payment restrictions, and contacting broker support. If they need to switch broker, reverse an onboarding step, or resolve a stuck broker account, say support must review it.
 - Trading/how much to deposit/lot size/leverage: do not give financial advice. Redirect to course risk-management material and say a coach can review educational questions if needed.
 - Attachments, screenshots, or voice notes: explain that you cannot inspect the attachment directly in the automatic reply. Ask for one short text description of what is shown, and tell them the support team can review the evidence.
@@ -1780,70 +1781,103 @@ Rules:
 - Set needsHuman=true for refunds, payment disputes, account ownership/key corrections, private account changes, security concerns, an explicit human request, or when the same troubleshooting step already failed.
 - Set needsHuman=true when verified account data is required and no such data was provided.
 - Set needsHuman=false when a safe self-service answer or one useful clarifying question can move the issue forward.
+- When the student's meaning is ambiguous, ask one precise clarifying question, set needsHuman=false, and use escalationReason="none".
 - If the student explicitly asks for a human/support person, acknowledge that request instead of continuing troubleshooting.
 - If asked who Rawan is or what she represents to the academy, explain that she is the founder of XFlex Trading Academy using only the public bio above. Do not say you lack information about her unless the user asks for private details beyond that bio.
 - Never make up information about prices, features, or policies you're unsure about.
+- Never invent a dashboard page, button, or workflow. If the supplied academy facts do not establish that it exists, ask a clarifying question or state the verified limitation.
 - Be friendly but professional. Use the student's context when available.
 - Do NOT discuss competitor platforms or give financial/trading advice.
 - Return a decision matching the required JSON schema. The answer field is the only text shown to the student.
+- Decision invariant: escalationReason must be "none" exactly when needsHuman=false. When needsHuman=true, choose the single non-"none" reason that best explains the escalation.
 - Confidence means confidence that the answer is correct and sufficient using only the supplied facts and conversation.`;
 
 const SUPPORT_AI_AUTO_HANDLE_CONFIDENCE = 0.8;
+
+const SUPPORT_AI_INTENTS = [
+  "package_information",
+  "course_access",
+  "course_progress",
+  "quiz",
+  "recommendations",
+  "lexai",
+  "activation_key",
+  "subscription_renewal",
+  "notifications",
+  "broker_onboarding",
+  "technical_issue",
+  "billing_or_refund",
+  "account_change",
+  "security",
+  "financial_advice",
+  "human_request",
+  "other",
+] as const;
+
+const SUPPORT_AI_ESCALATION_REASONS = [
+  "none",
+  "explicit_request",
+  "billing_or_refund",
+  "account_ownership",
+  "account_change",
+  "security",
+  "account_data_required",
+  "repeated_failed_step",
+  "unsupported_attachment",
+  "low_confidence",
+] as const;
+
+type SupportAIIntent = typeof SUPPORT_AI_INTENTS[number];
+type SupportAIEscalationReason = typeof SUPPORT_AI_ESCALATION_REASONS[number];
 
 const SUPPORT_AI_RESPONSE_SCHEMA = {
   type: "object",
   properties: {
     intent: {
       type: "string",
-      enum: [
-        "package_information",
-        "course_access",
-        "course_progress",
-        "quiz",
-        "recommendations",
-        "lexai",
-        "activation_key",
-        "subscription_renewal",
-        "notifications",
-        "broker_onboarding",
-        "technical_issue",
-        "billing_or_refund",
-        "account_change",
-        "security",
-        "financial_advice",
-        "human_request",
-        "other",
-      ],
+      enum: SUPPORT_AI_INTENTS,
+      description: "The single best category for the student's latest message.",
     },
-    answer: { type: "string" },
+    answer: {
+      type: "string",
+      description: "A concise answer in the student's language using only verified academy facts; ask one question when meaning is ambiguous.",
+    },
     confidence: { type: "number", minimum: 0, maximum: 1 },
-    needsHuman: { type: "boolean" },
+    needsHuman: {
+      type: "boolean",
+      description: "True only when a human must review the case; false when self-service or one clarifying question can safely continue.",
+    },
     escalationReason: {
       type: "string",
-      enum: [
-        "none",
-        "explicit_request",
-        "billing_or_refund",
-        "account_ownership",
-        "account_change",
-        "security",
-        "account_data_required",
-        "repeated_failed_step",
-        "unsupported_attachment",
-        "low_confidence",
-      ],
+      enum: SUPPORT_AI_ESCALATION_REASONS,
+      description: "Must be none when needsHuman is false, and must be a non-none reason when needsHuman is true.",
     },
   },
   required: ["intent", "answer", "confidence", "needsHuman", "escalationReason"],
   additionalProperties: false,
 } as const;
 
-type SupportAIReply = {
-  intent: string;
+type SupportAIReplyCore = {
+  intent: SupportAIIntent;
   answer: string;
   confidence: number;
   needsHuman: boolean;
-  escalationReason: string;
+  escalationReason: SupportAIEscalationReason;
+};
+
+type SupportAIReply = SupportAIReplyCore & {
+  decisionSource: "openai" | "local_attachment";
+  providerRequestId: string | null;
+  model: string | null;
+  validationOutcome: "valid" | "normalized";
+  validationIssue: string | null;
+  latencyMs: number | null;
+};
+
+type ParsedSupportAIReply = {
+  reply: SupportAIReplyCore;
+  validationOutcome: "valid" | "normalized";
+  validationIssue: string | null;
 };
 
 function isExplicitHumanSupportRequest(content: string) {
@@ -1888,15 +1922,22 @@ function getSupportAttachmentAutoReply(content: string, isArabicPreferred: boole
       : "I received the attachment. I cannot inspect images or voice notes automatically here, so please write one short sentence describing what it shows.\n\nوصلتني المرفقات. لا أستطيع قراءة الصورة أو الرسالة الصوتية تلقائياً هنا، فاكتب/ي بجملة قصيرة ما المشكلة.",
     confidence: 0.5,
     needsHuman: false,
-    escalationReason: "unsupported_attachment",
+    escalationReason: "none",
+    decisionSource: "local_attachment",
+    providerRequestId: null,
+    model: null,
+    validationOutcome: "valid",
+    validationIssue: null,
+    latencyMs: 0,
   };
 }
 
-function parseSupportAIReply(value: unknown): SupportAIReply | null {
+function parseSupportAIReply(value: unknown): ParsedSupportAIReply | null {
   if (!value || typeof value !== "object") return null;
   const candidate = value as Record<string, unknown>;
   if (
     typeof candidate.intent !== "string"
+    || !SUPPORT_AI_INTENTS.includes(candidate.intent as SupportAIIntent)
     || typeof candidate.answer !== "string"
     || !candidate.answer.trim()
     || typeof candidate.confidence !== "number"
@@ -1905,16 +1946,35 @@ function parseSupportAIReply(value: unknown): SupportAIReply | null {
     || candidate.confidence > 1
     || typeof candidate.needsHuman !== "boolean"
     || typeof candidate.escalationReason !== "string"
+    || !SUPPORT_AI_ESCALATION_REASONS.includes(candidate.escalationReason as SupportAIEscalationReason)
   ) {
     return null;
   }
 
+  let needsHuman = candidate.needsHuman;
+  let escalationReason = candidate.escalationReason as SupportAIEscalationReason;
+  let validationIssue: string | null = null;
+
+  if (needsHuman && escalationReason === "none") {
+    escalationReason = "low_confidence";
+    validationIssue = "needs_human_with_none_reason";
+  } else if (!needsHuman && escalationReason !== "none") {
+    // A non-none escalation reason is stronger safety evidence than the
+    // contradictory boolean. Preserve the answer but keep the case visible.
+    needsHuman = true;
+    validationIssue = "non_none_reason_without_needs_human";
+  }
+
   return {
-    intent: candidate.intent,
-    answer: candidate.answer.trim(),
-    confidence: candidate.confidence,
-    needsHuman: candidate.needsHuman,
-    escalationReason: candidate.escalationReason,
+    reply: {
+      intent: candidate.intent as SupportAIIntent,
+      answer: candidate.answer.trim(),
+      confidence: candidate.confidence,
+      needsHuman,
+      escalationReason,
+    },
+    validationOutcome: validationIssue ? "normalized" : "valid",
+    validationIssue,
   };
 }
 
@@ -1928,6 +1988,7 @@ async function generateSupportAIReply(
   },
 ): Promise<SupportAIReply | null> {
   if (!ENV.openaiApiKey) return null;
+  const startedAt = Date.now();
 
   // getSupportMessages returns newest-first. Restore chronological order before
   // taking the latest context, and retain real bot replies so the assistant
@@ -1980,7 +2041,20 @@ async function generateSupportAIReply(
     const text = data?.choices?.[0]?.message?.content?.trim();
     if (!text) return null;
     try {
-      return parseSupportAIReply(JSON.parse(text));
+      const parsed = parseSupportAIReply(JSON.parse(text));
+      if (!parsed) {
+        logger.warn("[Support AI] Structured reply failed application validation");
+        return null;
+      }
+      return {
+        ...parsed.reply,
+        decisionSource: "openai",
+        providerRequestId: typeof data?.id === "string" ? data.id : null,
+        model: typeof data?.model === "string" ? data.model : null,
+        validationOutcome: parsed.validationOutcome,
+        validationIssue: parsed.validationIssue,
+        latencyMs: Math.max(0, Date.now() - startedAt),
+      };
     } catch (error) {
       logger.warn("[Support AI] Invalid structured reply", {
         error: error instanceof Error ? error.message : String(error),
@@ -1990,6 +2064,49 @@ async function generateSupportAIReply(
   } catch (err) {
     logger.error('[Support AI] Failed to generate reply', { error: String(err) });
     return null;
+  }
+}
+
+function getSupportMessageId(value: unknown): number | null {
+  if (!value || typeof value !== "object") return null;
+  const id = (value as { id?: unknown }).id;
+  return typeof id === "number" && Number.isInteger(id) && id > 0 ? id : null;
+}
+
+async function recordSupportAiDecisionSafely(input: {
+  conversationId: number;
+  userId?: number | null;
+  triggerMessageId?: number | null;
+  botMessageId?: number | null;
+  actionType: "support_auto_reply" | "support_suggest_reply";
+  decision: SupportAIReply;
+}) {
+  try {
+    await db.recordSupportAiDecision({
+      conversationId: input.conversationId,
+      userId: input.userId ?? null,
+      triggerMessageId: input.triggerMessageId ?? null,
+      botMessageId: input.botMessageId ?? null,
+      actionType: input.actionType,
+      decisionSource: input.decision.decisionSource,
+      providerRequestId: input.decision.providerRequestId,
+      model: input.decision.model,
+      intent: input.decision.intent,
+      confidence: input.decision.confidence,
+      needsHuman: input.decision.needsHuman,
+      escalationReason: input.decision.escalationReason,
+      validationOutcome: input.decision.validationOutcome,
+      validationIssue: input.decision.validationIssue,
+      latencyMs: input.decision.latencyMs,
+    });
+  } catch (error) {
+    // Decision observability must never prevent the student from receiving a
+    // support reply. Deployment order still applies migration 083 first.
+    logger.warn("[Support AI] Failed to persist decision audit", {
+      conversationId: input.conversationId,
+      actionType: input.actionType,
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 }
 
@@ -5339,11 +5456,19 @@ export const appRouter = router({
             },
           );
           if (aiDecision) {
-            await db.createSupportMessage({
+            const botMessage = await db.createSupportMessage({
               conversationId: conv.id,
               senderId: 0, // bot has no real user ID
               senderType: 'bot',
               content: aiDecision.answer,
+            });
+            await recordSupportAiDecisionSafely({
+              conversationId: conv.id,
+              userId: ctx.user.id,
+              triggerMessageId: getSupportMessageId(msg),
+              botMessageId: getSupportMessageId(botMessage),
+              actionType: "support_auto_reply",
+              decision: aiDecision,
             });
 
             if (aiDecision.needsHuman) {
@@ -5712,6 +5837,12 @@ export const appRouter = router({
         if (!suggestion) {
           throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'AI suggestion unavailable' });
         }
+        await recordSupportAiDecisionSafely({
+          conversationId: input.conversationId,
+          triggerMessageId: getSupportMessageId(allMessages[0]),
+          actionType: "support_suggest_reply",
+          decision: suggestion,
+        });
         return { suggestion: suggestion.answer };
       }),
 

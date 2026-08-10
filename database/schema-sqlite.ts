@@ -744,6 +744,38 @@ export type SupportMessage = typeof supportMessages.$inferSelect;
 export type InsertSupportMessage = typeof supportMessages.$inferInsert;
 
 /**
+ * Structured support-AI decisions kept separately from message content so
+ * escalation behavior can be audited without copying private conversations.
+ */
+export const supportAiDecisions = sqliteTable("support_ai_decisions", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  conversationId: integer("conversation_id").notNull(),
+  userId: integer("user_id"),
+  triggerMessageId: integer("trigger_message_id"),
+  botMessageId: integer("bot_message_id"),
+  actionType: text("action_type", { length: 40 }).notNull(),
+  decisionSource: text("decision_source", { length: 20 }).notNull(),
+  providerRequestId: text("provider_request_id"),
+  model: text("model"),
+  intent: text("intent", { length: 40 }).notNull(),
+  confidence: real("confidence").notNull(),
+  needsHuman: integer("needs_human", { mode: "boolean" }).notNull(),
+  escalationReason: text("escalation_reason", { length: 40 }).notNull(),
+  validationOutcome: text("validation_outcome", { length: 20 }).notNull(),
+  validationIssue: text("validation_issue"),
+  latencyMs: integer("latency_ms"),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
+}, (table) => ({
+  conversationCreatedIdx: index("idx_support_ai_decisions_conversation_created")
+    .on(table.conversationId, table.createdAt, table.id),
+  validationCreatedIdx: index("idx_support_ai_decisions_validation_created")
+    .on(table.validationOutcome, table.createdAt, table.id),
+}));
+
+export type SupportAiDecision = typeof supportAiDecisions.$inferSelect;
+export type InsertSupportAiDecision = typeof supportAiDecisions.$inferInsert;
+
+/**
  * Bug reports submitted by clients for manual review and point rewards.
  */
 export const bugReports = sqliteTable("bug_reports", {
