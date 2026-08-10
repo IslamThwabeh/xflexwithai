@@ -423,11 +423,11 @@ export default {
           }, headers);
         }
 
-        const activePackage = await db.getUserActivePackage(authContext.user.id);
-        if (!activePackage) {
+        const courseAccess = await db.getUserCourseDocumentAccess(authContext.user.id);
+        if (!courseAccess) {
           return jsonResponse(403, {
             status: "forbidden",
-            message: "An activated package is required to access student documents",
+            message: "Paid course access is required to access student documents",
           }, headers);
         }
 

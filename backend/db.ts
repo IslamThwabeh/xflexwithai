@@ -13054,6 +13054,38 @@ export async function getAllPackageSubscriptions(): Promise<PackageSubscription[
   return db.select().from(packageSubscriptions).orderBy(desc(packageSubscriptions.createdAt));
 }
 
+/**
+ * Course documents are a lifetime course entitlement, not a timed package
+ * service. An enrollment remains the source of truth after LexAI or
+ * Recommendations expire. Explicit refund/service revocation is respected via
+ * the enrollment activity and payment-status fields.
+ */
+export async function getUserCourseDocumentAccess(userId: number) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const rows = await db.select({
+    enrollment: enrollments,
+    course: courses,
+  })
+    .from(enrollments)
+    .innerJoin(courses, eq(courses.id, enrollments.courseId))
+    .where(and(
+      eq(enrollments.userId, userId),
+      eq(enrollments.isSubscriptionActive, true),
+      ne(enrollments.paymentStatus, "refunded"),
+      or(
+        eq(enrollments.paymentStatus, "completed"),
+        eq(enrollments.activatedViaKey, true),
+        eq(enrollments.isAdminSkipped, true),
+      ),
+    ))
+    .orderBy(desc(enrollments.enrolledAt), desc(enrollments.id))
+    .limit(1);
+
+  return rows[0] ?? null;
+}
+
 export async function listPublishedStudentDocuments(): Promise<StudentDocument[]> {
   const db = await getDb();
   if (!db) return [];

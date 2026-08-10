@@ -22,9 +22,7 @@ export default function StudentPackages() {
   const isBasic = pkg?.slug === 'basic';
   const isComprehensive = pkg?.slug === 'comprehensive';
   const hasPackage = !!pkg;
-  const { data: documentLibrary } = trpc.documents.myLibrary.useQuery(undefined, {
-    enabled: hasPackage,
-  });
+  const { data: documentLibrary } = trpc.documents.myLibrary.useQuery();
   const { data: subscriptions, isLoading: subsLoading } = trpc.subscriptions.mySubscriptions.useQuery();
   const { data: activationStatus, isLoading: activationStatusLoading } = trpc.subscriptions.activationStatus.useQuery();
   const { data: frozenStatus } = trpc.subscriptions.frozenStatus.useQuery();
@@ -376,7 +374,7 @@ export default function StudentPackages() {
           </div>
         )}
 
-        {hasPackage && (
+        {(hasPackage || documentLibrary?.hasAccess) && (
           <Card className="mb-8 border-teal-100 bg-white">
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-lg">
@@ -388,8 +386,8 @@ export default function StudentPackages() {
               <p className="text-sm text-gray-600">
                 {documentLibrary?.hasAccess
                   ? (isRtl
-                    ? 'هذه الملفات متاحة لك بشكل دائم ما دام لديك باقة مفعّلة. يمكنك فتح كل ملف بصيغة PDF أو تنزيله، مع خيار تنزيل الكل مرة واحدة.'
-                    : 'These files stay available to you permanently after package activation. Open each file as PDF, download it individually, or download the full bundle once.')
+                    ? 'هذه الملفات متاحة لك بشكل دائم مع امتلاك الدورة، حتى بعد انتهاء الخدمات الشهرية. يمكنك فتح كل ملف بصيغة PDF أو تنزيله، مع خيار تنزيل الكل مرة واحدة.'
+                    : 'These files remain available permanently with course ownership, even after timed services expire. Open each PDF, download it individually, or download the full bundle.')
                   : (isRtl
                     ? 'ستظهر ملفات الدورة هنا بعد تفعيل أي باقة.'
                     : 'Course documents will appear here after you activate any package.')}

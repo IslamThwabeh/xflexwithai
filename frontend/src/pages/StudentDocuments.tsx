@@ -76,8 +76,8 @@ export default function StudentDocuments() {
                 <CardTitle>{isRtl ? 'الملفات غير متاحة بعد' : 'Documents Are Locked'}</CardTitle>
                 <CardDescription>
                   {isRtl
-                    ? 'فعّل أي باقة أولاً حتى يظهر لك أرشيف ملفات الدورة مع أزرار الفتح والتنزيل.'
-                    : 'Activate any package first to unlock the course document library with preview and download access.'}
+                    ? 'تتوفر الملفات بشكل دائم بعد امتلاك دورة مدفوعة. إذا كنت تملك الدورة ولا تظهر الملفات، تواصل مع الدعم لمراجعة حسابك.'
+                    : 'Documents remain available permanently after paid course access is granted. If you own the course but cannot see them, contact support to review your account.'}
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex justify-center">

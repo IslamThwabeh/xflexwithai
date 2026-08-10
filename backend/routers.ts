@@ -6872,11 +6872,17 @@ export const appRouter = router({
   // STUDENT DOCUMENTS
   // =============================================
   documents: router({
+    myAccess: protectedProcedure.query(async ({ ctx }) => {
+      if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+      const access = await db.getUserCourseDocumentAccess(ctx.user.id);
+      return { hasAccess: !!access };
+    }),
+
     myLibrary: protectedProcedure.query(async ({ ctx }) => {
       if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
 
-      const activePackage = await db.getUserActivePackage(ctx.user.id);
-      if (!activePackage) {
+      const courseAccess = await db.getUserCourseDocumentAccess(ctx.user.id);
+      if (!courseAccess) {
         return {
           hasAccess: false,
           packageNameEn: null,
@@ -6907,8 +6913,8 @@ export const appRouter = router({
 
       return {
         hasAccess: true,
-        packageNameEn: activePackage.package?.nameEn ?? null,
-        packageNameAr: activePackage.package?.nameAr ?? null,
+        packageNameEn: courseAccess.course.titleEn ?? null,
+        packageNameAr: courseAccess.course.titleAr ?? null,
         documents,
         bulkDownloadPath: bulkArchive ? `/api/student-documents/${bulkArchive.id}/download` : null,
       };

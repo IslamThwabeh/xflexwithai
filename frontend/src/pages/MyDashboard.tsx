@@ -49,7 +49,7 @@ export default function MyDashboard() {
     refetchOnWindowFocus: false,
   });
 
-  const { data: activePackage } = trpc.subscriptions.myActivePackage.useQuery(undefined, {
+  const { data: documentAccess } = trpc.documents.myAccess.useQuery(undefined, {
     enabled: isAuthenticated,
     retry: false,
     refetchOnWindowFocus: false,
@@ -96,7 +96,7 @@ export default function MyDashboard() {
   const dashboardProofItems = testimonialProofs && testimonialProofs.length > 0
     ? testimonialProofs
     : DEFAULT_TESTIMONIAL_PROOFS.filter((item) => item.showProofOnDashboard).slice(0, 2);
-  const hasDocumentLibraryAccess = !!(activePackage as any)?.package;
+  const hasDocumentLibraryAccess = !!documentAccess?.hasAccess;
 
   if (loading || enrollmentsLoading) {
     return (
