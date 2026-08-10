@@ -1,6 +1,6 @@
 # XFLEX Project Memory
 
-Last updated: 2026-08-09
+Last updated: 2026-08-10
 
 ## Project Overview
 
@@ -85,6 +85,15 @@ Last updated: 2026-08-09
   3. Deploy the Cloudflare Pages frontend.
   4. Run recommendation, support-email, and multi-tab staff-session smoke tests.
 - Wrangler Pages deploy can fail because Cloudflare returns `POST /pages/assets/upload -> 502 Bad Gateway`; if it recurs, manual dashboard upload of `dist/public` is a practical fallback.
+- D1 hot-path index production rollout on 2026-08-10:
+  - GitHub PR `#8` (`Add D1 hot-path indexes`) merged verified commit `5c3012fb57e26587ce8889296c284585770ede96` into `main` as merge commit `c46f532794d792b7d61005ef513784292004ea67`. The merged tree exactly matched the validated branch tree.
+  - Before the production D1 write, a full local SQL export was saved at `tmp/prd-backups/xflexwithai-db-before-081-20260810-112933.sql` (246,847,292 bytes; SHA-256 `853F6F3CF858ED9E9114A399C5543817DD68720703E51DBC55016011DF9C0E88`). It restored into a separate local SQLite database with `integrity_check = ok`.
+  - Pre-change Time Travel bookmark: `0000106e-0000014c-000050c3-5288ca43baa54ad3e18478d3881b8301`. Migration `081_d1_hot_path_indexes.sql` added six non-unique, idempotent indexes and was recorded in `schema_migrations` with source `manual` after verification.
+  - All six production indexes exist and representative query plans select them. Known episode-progress duplicates remained unchanged at 57 groups and 64 extra rows. A PII-free support inbox query-shape measurement read 804 rows versus the previous 33,912-row average, approximately 97.6% fewer.
+  - Final merged-main gates passed: 20 focused D1/support/episode-progress tests, `pnpm run check`, and `pnpm run build`; Vite emitted only the existing large-chunk warning. The migration was not rerun during application deployment.
+  - Worker bundle SHA-256 `E372C3001722ABDE7BA23D8C9A0E5C1903E65084638E20548059F564453F8214` deployed as production version `1608a8a7-1002-4d42-94f1-97f23b26235e` with the D1/R2 bindings and both scheduled triggers intact.
+  - Pages production deployment `1868029b-9e5e-4c49-9626-5876a7139daa` deployed source `c46f532`; preview URL: `https://1868029b.xflexwithai.pages.dev`.
+  - Final timeout-bounded smoke passed across both Worker health endpoints, direct D1 connectivity, Pages preview, `/`, `/ar`, `/en`, `/auth`, `/support`, `/admin/support`, and `/course/1`. All app routes served `assets/index-BLh6jTdK.js`; checked private routes retained `X-Robots-Tag: noindex, nofollow` and `Cache-Control: no-store, private`.
 
 ## Email And Notifications
 
