@@ -411,12 +411,26 @@ export default function MyDashboard() {
                               </p>
                             </div>
                           </div>
-                          <Link href={`/course/${enrollment.courseId}`}>
-                            <Button size="sm" variant="outline" className="gap-1">
-                              <Play className="h-3 w-3" />
-                              {t('dashboard.review')}
-                            </Button>
-                          </Link>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Link href={`/course/${enrollment.courseId}`}>
+                              <Button size="sm" variant="outline" className="gap-1">
+                                <Play className="h-3 w-3" />
+                                {t('dashboard.review')}
+                              </Button>
+                            </Link>
+                            <Link href={hasDocumentLibraryAccess ? "/documents" : "/activate-key"}>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="gap-1 border-teal-200 text-teal-700 hover:bg-teal-50 hover:text-teal-800"
+                              >
+                                <FileText className="h-3 w-3" />
+                                {hasDocumentLibraryAccess
+                                  ? (isRTL ? "ملفات الدورة" : "Course Files")
+                                  : (isRTL ? "فعّل الباقة لفتح الملفات" : "Activate to Open Files")}
+                              </Button>
+                            </Link>
+                          </div>
                         </div>
                       </CardContent>
                     </Card>
@@ -465,22 +479,36 @@ export default function MyDashboard() {
                             <Progress value={progress} className="h-3" />
                           </div>
 
-                          {/* Action Button */}
-                          <Link href={`/course/${enrollment.courseId}`}>
-                            <Button size="lg" variant={isCompleted ? "outline" : "default"} className="w-full sm:w-auto">
-                              {isCompleted ? (
-                                <>
-                                  <CheckCircle2 className="h-4 w-4" />
-                                  {t('dashboard.review')}
-                                </>
-                              ) : (
-                                <>
-                                  <Play className="h-4 w-4" />
-                                  {t('dashboard.continue')}
-                                </>
-                              )}
-                            </Button>
-                          </Link>
+                          {/* Course and document actions */}
+                          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                            <Link href={`/course/${enrollment.courseId}`}>
+                              <Button size="lg" variant={isCompleted ? "outline" : "default"} className="w-full sm:w-auto">
+                                {isCompleted ? (
+                                  <>
+                                    <CheckCircle2 className="h-4 w-4" />
+                                    {t('dashboard.review')}
+                                  </>
+                                ) : (
+                                  <>
+                                    <Play className="h-4 w-4" />
+                                    {t('dashboard.continue')}
+                                  </>
+                                )}
+                              </Button>
+                            </Link>
+                            <Link href={hasDocumentLibraryAccess ? "/documents" : "/activate-key"}>
+                              <Button
+                                size="lg"
+                                variant="outline"
+                                className="w-full gap-2 border-teal-200 text-teal-700 hover:bg-teal-50 hover:text-teal-800 sm:w-auto"
+                              >
+                                <FileText className="h-4 w-4" />
+                                {hasDocumentLibraryAccess
+                                  ? (isRTL ? "ملفات الدورة" : "Course Files")
+                                  : (isRTL ? "فعّل الباقة لفتح الملفات" : "Activate to Open Files")}
+                              </Button>
+                            </Link>
+                          </div>
                         </div>
                       </div>
                     </CardContent>
