@@ -165,7 +165,7 @@ export default function AdminStudents() {
     { key: 'phone', en: 'Phone', ar: 'الهاتف' },
     { key: 'location', en: 'Location', ar: 'الموقع' },
     { key: 'package', en: 'Package', ar: 'الباقة' },
-    { key: 'spent', en: 'Spent', ar: 'الإنفاق' },
+    { key: 'spent', en: 'Net Paid', ar: 'صافي المدفوع' },
     { key: 'renewals', en: 'Renewals', ar: 'التجديدات' },
     { key: 'registered', en: 'Registered', ar: 'التسجيل' },
     { key: 'lastSignIn', en: 'Last Sign In', ar: 'آخر دخول' },
@@ -261,7 +261,7 @@ export default function AdminStudents() {
       "Registered",
       "Last Sign In",
       "Active Packages",
-      ...(canViewFinancials ? ["Spent (₪)"] : []),
+      ...(canViewFinancials ? ["Net Paid (₪)", "Refunded (₪)"] : []),
       "Renewals",
     ];
     const rows = filtered.map((s: any) => [
@@ -275,7 +275,10 @@ export default function AdminStudents() {
         ? new Date(s.lastSignedIn).toLocaleDateString("en-US")
         : "",
       (s.activePackages || []).join("; "),
-      ...(canViewFinancials ? [formatAdminCurrencyFromIls(s.totalSpentIls || 0, language)] : []),
+      ...(canViewFinancials ? [
+        formatAdminCurrencyFromIls(s.totalSpentIls || 0, language),
+        formatAdminCurrencyFromIls(s.refundedIls || 0, language),
+      ] : []),
       s.renewalCount || 0,
     ]);
     const csv = [
@@ -550,11 +553,16 @@ export default function AdminStudents() {
                         )}
                         {canViewFinancials && <div>
                           <span className="text-gray-400 block">
-                            {isRtl ? "الإنفاق" : "Spent"}
+                            {isRtl ? "صافي المدفوع" : "Net Paid"}
                           </span>
                           <span className="font-medium text-emerald-600">
                             {s.totalSpentIls > 0 ? formatAdminCurrencyFromIls(s.totalSpentIls, language) : "—"}
                           </span>
+                          {s.refundedIls > 0 && (
+                            <span className="mt-1 block text-xs text-rose-600">
+                              {isRtl ? "مسترد" : "Refunded"}: {formatAdminCurrencyFromIls(s.refundedIls, language)}
+                            </span>
+                          )}
                         </div>}
                         <div>
                           <span className="text-gray-400 block">
@@ -700,7 +708,7 @@ export default function AdminStudents() {
                           <SortableHeader label={isRtl ? "الباقة" : "Package"} sortKey="package" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} />
                         </TableHead>}
                         {canViewFinancials && visibleCols.has('spent') && <TableHead>
-                          <SortableHeader label={isRtl ? "الإنفاق" : "Spent"} sortKey="spent" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} />
+                          <SortableHeader label={isRtl ? "صافي المدفوع" : "Net Paid"} sortKey="spent" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} />
                         </TableHead>}
                         {visibleCols.has('renewals') && <TableHead>
                           <SortableHeader label={isRtl ? "التجديدات" : "Renewals"} sortKey="renewals" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} />
@@ -775,7 +783,12 @@ export default function AdminStudents() {
                               )}
                             </TableCell>}
                             {canViewFinancials && visibleCols.has('spent') && <TableCell className="text-sm font-medium text-emerald-600">
-                              {s.totalSpentIls > 0 ? formatAdminCurrencyFromIls(s.totalSpentIls, language) : "—"}
+                              <div>{s.totalSpentIls > 0 ? formatAdminCurrencyFromIls(s.totalSpentIls, language) : "—"}</div>
+                              {s.refundedIls > 0 && (
+                                <div className="text-xs font-normal text-rose-600">
+                                  {isRtl ? "مسترد" : "Refunded"}: {formatAdminCurrencyFromIls(s.refundedIls, language)}
+                                </div>
+                              )}
                             </TableCell>}
                             {visibleCols.has('renewals') && <TableCell className="text-center">
                               {s.renewalCount > 0 ? (

@@ -131,6 +131,15 @@ export async function createContext(
               logger.error('❌ [AUTH DEBUG] User not found in database', {
                 userId: decoded.userId,
               });
+            } else if (regularUser.loginBlockedAt) {
+              logger.info('⛔ [AUTH DEBUG] Blocked client session rejected', {
+                userId: regularUser.id,
+              });
+
+              opts.res.clearCookie(COOKIE_NAME, toExpressCookieOptions({
+                ...getSessionCookieOptions(opts.req, 'user'),
+                maxAge: -1,
+              }));
             } else if (
               regularUser.isStaff &&
               (!decoded.sessionId || !await db.validateActiveStaffSession(regularUser.id, decoded.sessionId))

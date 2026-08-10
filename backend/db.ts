@@ -40,6 +40,7 @@ import {
   orders, Order, InsertOrder,
   userTermsAcceptances, UserTermsAcceptance, InsertUserTermsAcceptance,
   orderStatusHistory, InsertOrderStatusHistory,
+  accountAccessAuditLogs, accountRefunds,
   orderItems, OrderItem, InsertOrderItem,
   packageSubscriptions, PackageSubscription, InsertPackageSubscription,
   studentDocuments, StudentDocument, InsertStudentDocument,
@@ -140,7 +141,6 @@ import { isLikelyValidEmail, normalizeEmailAddress } from '../shared/emailValida
 import type { EmailDeliveryEventCategory } from "../shared/emailDeliveryCategories";
 import {
   getPackageKeyPriceIls,
-  PACKAGE_KEY_USD_TO_ILS_RATE,
 } from '../shared/packageKeyPricing';
 import { hashUnsubscribeToken, type EmailCategory } from './_core/emailPreferences';
 import type { StaffPerformanceStatus } from './services/staff-performance.service';
@@ -4115,7 +4115,6 @@ export async function getDashboardStats() {
       activeEnrollments: 0,
       totalKeySales: 0,
       activatedPackageKeys: 0,
-      totalRevenue: 0,
       totalRevenueIls: 0,
       pendingOrders: 0,
     };
@@ -4137,13 +4136,11 @@ export async function getDashboardStats() {
   const activatedPackageKeyFilter = and(
     sql`${registrationKeys.packageId} IS NOT NULL`,
     sql`${registrationKeys.activatedAt} IS NOT NULL`,
-    eq(registrationKeys.isActive, true),
     sql`${registrationKeys.price} > 0`,
   );
 
-  // Revenue is derived from activated paid package keys only. Preserve the
-  // source-currency total while also returning the exact staff-facing ILS
-  // total for fixed package prices.
+  // Staff-facing finance is ILS-only. Activated keys preserve gross sales;
+  // the append-only refund ledger is subtracted to produce net revenue.
   const revenueKeys = await db.select({
     price: registrationKeys.price,
     currency: registrationKeys.currency,
@@ -4154,14 +4151,12 @@ export async function getDashboardStats() {
   }).from(registrationKeys)
     .leftJoin(packages, eq(packages.id, registrationKeys.packageId))
     .where(activatedPackageKeyFilter);
-  const totalRevenue = revenueKeys.reduce((sum, key) => {
-    const price = Number(key.price ?? 0);
-    const currency = key.currency?.trim().toUpperCase();
-    return sum + ((currency === 'ILS' || currency === 'NIS')
-      ? price / PACKAGE_KEY_USD_TO_ILS_RATE
-      : price);
-  }, 0);
-  const totalRevenueIls = revenueKeys.reduce((sum, key) => sum + getPackageKeyPriceIls(key), 0);
+  const grossRevenueIls = revenueKeys.reduce((sum, key) => sum + getPackageKeyPriceIls(key), 0);
+  const [refundTotal] = await db.select({
+    amountIlsAgorot: sql<number>`COALESCE(SUM(${accountRefunds.amountIlsAgorot}), 0)`,
+  }).from(accountRefunds);
+  const refundedRevenueIls = Number(refundTotal?.amountIlsAgorot ?? 0) / 100;
+  const totalRevenueIls = grossRevenueIls - refundedRevenueIls;
 
   return {
     totalUsers: Number(totalUsersResult?.count ?? 0),
@@ -4170,8 +4165,9 @@ export async function getDashboardStats() {
     activeEnrollments: Number(activeEnrollmentsResult?.count ?? 0),
     totalKeySales: Number(packageKeyStats.total),
     activatedPackageKeys: Number(packageKeyStats.activated),
-    totalRevenue,
     totalRevenueIls,
+    grossRevenueIls,
+    refundedRevenueIls,
     pendingOrders: Number(pendingOrdersResult?.count ?? 0),
   };
 }
@@ -11067,7 +11063,7 @@ export async function getAdminClientProfile(userId: number, options?: { includeT
   const user = await getUserById(userId);
   const normalizedEmail = user?.email?.trim().toLowerCase() ?? null;
 
-  const [activePackageSubs, serviceContext, adminEmailCollision, keySummary, termsAcceptanceOrders, termsAcceptances, termsAcceptanceStatus] = await Promise.all([
+  const [activePackageSubs, serviceContext, adminEmailCollision, keySummary, termsAcceptanceOrders, termsAcceptances, termsAcceptanceStatus, accountManagement] = await Promise.all([
     getUserPackageSubscriptions(userId),
     getSharedClientServiceContext(userId, options),
     normalizedEmail ? getAdminByEmail(normalizedEmail) : Promise.resolve(null),
@@ -11083,6 +11079,7 @@ export async function getAdminClientProfile(userId: number, options?: { includeT
     getTermsAcceptanceOrdersByUser(userId),
     getTermsAcceptancesByUser(userId),
     getUserTermsAcceptanceStatus(userId, normalizedEmail),
+    getClientAccountManagementContext(userId),
   ]);
 
   const activePackages = await Promise.all(
@@ -11114,6 +11111,10 @@ export async function getAdminClientProfile(userId: number, options?: { includeT
       loginSecurityMode: user?.loginSecurityMode ?? null,
       userType: user?.user_type ?? null,
       isStaff: !!user?.isStaff,
+      loginBlockedAt: user?.loginBlockedAt ?? null,
+      loginBlockedReason: user?.loginBlockedReason ?? null,
+      loginBlockedByType: user?.loginBlockedByType ?? null,
+      loginBlockedById: user?.loginBlockedById ?? null,
       adminEmailCollision: !!adminEmailCollision,
       isDeleted: !user,
     },
@@ -11124,8 +11125,350 @@ export async function getAdminClientProfile(userId: number, options?: { includeT
     termsAcceptanceOrders,
     termsAcceptances,
     termsAcceptanceStatus,
+    accountManagement,
     ...serviceContext,
   };
+}
+
+type AccountRestrictionActor = {
+  type: "admin" | "support";
+  id: number;
+};
+
+type AccountRefundInput = {
+  requestId: string;
+  registrationKeyId: number;
+  amountIls: number;
+  method: "bank_transfer" | "cash" | "other";
+  reference?: string | null;
+  refundedAt: string;
+};
+
+export async function getClientAccountManagementContext(userId: number) {
+  const db = await getDb();
+  if (!db) return { sales: [], refunds: [], accessAudit: [] };
+
+  const user = await getUserById(userId);
+  if (!user) return { sales: [], refunds: [], accessAudit: [] };
+  const normalizedEmail = user.email.trim().toLowerCase();
+
+  const [sales, refunds, accessAudit, allPackages] = await Promise.all([
+    db.select({
+      registrationKeyId: registrationKeys.id,
+      orderId: registrationKeys.orderId,
+      price: registrationKeys.price,
+      currency: registrationKeys.currency,
+      activatedAt: registrationKeys.activatedAt,
+      isActive: registrationKeys.isActive,
+      isUpgrade: registrationKeys.isUpgrade,
+      isRenewal: registrationKeys.isRenewal,
+      packageId: registrationKeys.packageId,
+      orderStatus: orders.status,
+    }).from(registrationKeys)
+      .leftJoin(orders, eq(orders.id, registrationKeys.orderId))
+      .where(and(
+        sql`lower(trim(${registrationKeys.email})) = ${normalizedEmail}`,
+        isNotNull(registrationKeys.packageId),
+        isNotNull(registrationKeys.activatedAt),
+        gt(registrationKeys.price, 0),
+      ))
+      .orderBy(desc(registrationKeys.activatedAt), desc(registrationKeys.id)),
+    db.select().from(accountRefunds)
+      .where(eq(accountRefunds.userId, userId))
+      .orderBy(desc(accountRefunds.refundedAt), desc(accountRefunds.id)),
+    db.select().from(accountAccessAuditLogs)
+      .where(eq(accountAccessAuditLogs.userId, userId))
+      .orderBy(desc(accountAccessAuditLogs.createdAt), desc(accountAccessAuditLogs.id))
+      .limit(30),
+    db.select().from(packages),
+  ]);
+
+  const packageMap = new Map(allPackages.map((pkg) => [pkg.id, pkg]));
+  const refundedByKey = new Map<number, number>();
+  for (const refund of refunds) {
+    refundedByKey.set(
+      refund.registrationKeyId,
+      (refundedByKey.get(refund.registrationKeyId) ?? 0) + Number(refund.amountIlsAgorot),
+    );
+  }
+
+  return {
+    sales: sales.map((sale) => {
+      const pkg = sale.packageId ? packageMap.get(sale.packageId) : undefined;
+      const grossIls = getPackageKeyPriceIls({
+        price: sale.price,
+        currency: sale.currency,
+        packageSlug: pkg?.slug,
+        includesLexai: pkg?.includesLexai,
+        isRenewal: sale.isRenewal,
+        isUpgrade: sale.isUpgrade,
+      });
+      const refundedIls = (refundedByKey.get(sale.registrationKeyId) ?? 0) / 100;
+      return {
+        registrationKeyId: sale.registrationKeyId,
+        orderId: sale.orderId ?? null,
+        packageId: sale.packageId ?? null,
+        packageName: pkg?.nameEn ?? `Package #${sale.packageId ?? "-"}`,
+        packageNameAr: pkg?.nameAr ?? pkg?.nameEn ?? `باقة #${sale.packageId ?? "-"}`,
+        activatedAt: sale.activatedAt,
+        isActive: !!sale.isActive,
+        isUpgrade: !!sale.isUpgrade,
+        isRenewal: !!sale.isRenewal,
+        orderStatus: sale.orderStatus ?? null,
+        grossIls,
+        refundedIls,
+        remainingRefundableIls: Math.max(0, grossIls - refundedIls),
+      };
+    }),
+    refunds: refunds.map((refund) => ({
+      ...refund,
+      amountIls: Number(refund.amountIlsAgorot) / 100,
+      grossAmountIls: Number(refund.grossAmountIlsAgorot) / 100,
+    })),
+    accessAudit,
+  };
+}
+
+export async function blockClientAccount(input: {
+  userId: number;
+  reason: string;
+  actor: AccountRestrictionActor;
+  deactivateServices: boolean;
+  refund?: AccountRefundInput | null;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const user = await getUserById(input.userId);
+  if (!user || user.isStaff) throw new Error("Only a client account can be restricted");
+  const reason = input.reason.trim();
+  if (reason.length < 5 || reason.length > 1000) {
+    throw new Error("A clear reason of 5 to 1000 characters is required");
+  }
+
+  if (input.refund) {
+    const [duplicate] = await db.select({ id: accountRefunds.id }).from(accountRefunds)
+      .where(eq(accountRefunds.requestId, input.refund.requestId))
+      .limit(1);
+    if (duplicate) {
+      return getAdminClientProfile(input.userId, { includeTimeline: false });
+    }
+  }
+
+  const now = new Date().toISOString();
+  let refundValues: typeof accountRefunds.$inferInsert | null = null;
+  let fullyRefundedOrder: { id: number; previousStatus: string } | null = null;
+
+  if (input.refund) {
+    const [sale] = await db.select({
+      key: registrationKeys,
+      packageSlug: packages.slug,
+      packageIncludesLexai: packages.includesLexai,
+      orderUserId: orders.userId,
+      orderStatus: orders.status,
+    }).from(registrationKeys)
+      .leftJoin(packages, eq(packages.id, registrationKeys.packageId))
+      .leftJoin(orders, eq(orders.id, registrationKeys.orderId))
+      .where(eq(registrationKeys.id, input.refund.registrationKeyId))
+      .limit(1);
+
+    const belongsToClient = !!sale && (
+      sale.orderUserId === input.userId
+      || sale.key.email?.trim().toLowerCase() === user.email.trim().toLowerCase()
+    );
+    if (!sale || !belongsToClient || !sale.key.activatedAt || !sale.key.packageId) {
+      throw new Error("Select an activated paid package sale belonging to this client");
+    }
+
+    const grossIls = getPackageKeyPriceIls({
+      price: sale.key.price,
+      currency: sale.key.currency,
+      packageSlug: sale.packageSlug,
+      includesLexai: sale.packageIncludesLexai,
+      isRenewal: sale.key.isRenewal,
+      isUpgrade: sale.key.isUpgrade,
+    });
+    const grossAmountIlsAgorot = Math.round(grossIls * 100);
+    const amountIlsAgorot = Math.round(input.refund.amountIls * 100);
+    const [previousRefunds] = await db.select({
+      amount: sql<number>`COALESCE(SUM(${accountRefunds.amountIlsAgorot}), 0)`,
+    }).from(accountRefunds)
+      .where(eq(accountRefunds.registrationKeyId, sale.key.id));
+    const alreadyRefundedAgorot = Number(previousRefunds?.amount ?? 0);
+
+    if (!Number.isFinite(amountIlsAgorot) || amountIlsAgorot <= 0) {
+      throw new Error("Refund amount must be greater than ₪0");
+    }
+    if (alreadyRefundedAgorot + amountIlsAgorot > grossAmountIlsAgorot) {
+      throw new Error("Refund amount exceeds the remaining ILS sale value");
+    }
+
+    const refundedAt = new Date(input.refund.refundedAt);
+    if (Number.isNaN(refundedAt.getTime()) || refundedAt.getTime() > Date.now() + 5 * 60_000) {
+      throw new Error("Refund date is invalid or in the future");
+    }
+
+    refundValues = {
+      requestId: input.refund.requestId,
+      userId: input.userId,
+      orderId: sale.key.orderId ?? null,
+      registrationKeyId: sale.key.id,
+      amountIlsAgorot,
+      grossAmountIlsAgorot,
+      reason,
+      refundMethod: input.refund.method,
+      refundReference: input.refund.reference?.trim().slice(0, 255) || null,
+      refundedAt: refundedAt.toISOString(),
+      recordedByType: input.actor.type,
+      recordedById: input.actor.id,
+      createdAt: now,
+    };
+
+    if (sale.key.orderId) {
+      const orderSales = await db.select({
+        keyId: registrationKeys.id,
+        price: registrationKeys.price,
+        currency: registrationKeys.currency,
+        isUpgrade: registrationKeys.isUpgrade,
+        isRenewal: registrationKeys.isRenewal,
+        packageSlug: packages.slug,
+        includesLexai: packages.includesLexai,
+      }).from(registrationKeys)
+        .leftJoin(packages, eq(packages.id, registrationKeys.packageId))
+        .where(and(
+          eq(registrationKeys.orderId, sale.key.orderId),
+          isNotNull(registrationKeys.activatedAt),
+          gt(registrationKeys.price, 0),
+        ));
+      const orderRefunds = await db.select({
+        keyId: accountRefunds.registrationKeyId,
+        amount: sql<number>`COALESCE(SUM(${accountRefunds.amountIlsAgorot}), 0)`,
+      }).from(accountRefunds)
+        .where(eq(accountRefunds.orderId, sale.key.orderId))
+        .groupBy(accountRefunds.registrationKeyId);
+      const refundMap = new Map(orderRefunds.map((row) => [row.keyId, Number(row.amount)]));
+      refundMap.set(sale.key.id, (refundMap.get(sale.key.id) ?? 0) + amountIlsAgorot);
+      const orderIsFullyRefunded = orderSales.length > 0 && orderSales.every((orderSale) => {
+        const saleGrossAgorot = Math.round(getPackageKeyPriceIls({
+          price: orderSale.price,
+          currency: orderSale.currency,
+          packageSlug: orderSale.packageSlug,
+          includesLexai: orderSale.includesLexai,
+          isRenewal: orderSale.isRenewal,
+          isUpgrade: orderSale.isUpgrade,
+        }) * 100);
+        return (refundMap.get(orderSale.keyId) ?? 0) >= saleGrossAgorot;
+      });
+      if (orderIsFullyRefunded && sale.orderStatus !== "refunded") {
+        fullyRefundedOrder = { id: sale.key.orderId, previousStatus: sale.orderStatus ?? "completed" };
+      }
+    }
+  }
+
+  const statements: any[] = [];
+  if (refundValues) statements.push(db.insert(accountRefunds).values(refundValues));
+  statements.push(db.update(users).set({
+    loginBlockedAt: now,
+    loginBlockedReason: reason,
+    loginBlockedByType: input.actor.type,
+    loginBlockedById: input.actor.id,
+    updatedAt: now,
+  }).where(and(eq(users.id, input.userId), eq(users.isStaff, false))));
+
+  if (input.deactivateServices) {
+    statements.push(
+      db.update(registrationKeys).set({ isActive: false }).where(and(
+        sql`lower(trim(${registrationKeys.email})) = ${user.email.trim().toLowerCase()}`,
+        isNotNull(registrationKeys.packageId),
+      )),
+      db.update(packageSubscriptions).set({ isActive: false, updatedAt: now }).where(eq(packageSubscriptions.userId, input.userId)),
+      db.update(enrollments).set({
+        isSubscriptionActive: false,
+      }).where(eq(enrollments.userId, input.userId)),
+      db.update(lexaiSubscriptions).set({
+        isActive: false,
+        updatedAt: now,
+      }).where(eq(lexaiSubscriptions.userId, input.userId)),
+      db.update(recommendationSubscriptions).set({
+        isActive: false,
+        updatedAt: now,
+      }).where(eq(recommendationSubscriptions.userId, input.userId)),
+      db.update(flexaiSubscriptions).set({ status: "inactive", updatedAt: now }).where(eq(flexaiSubscriptions.userId, input.userId)),
+    );
+  }
+
+  if (fullyRefundedOrder) {
+    statements.push(
+      db.update(orders).set({ status: "refunded", updatedAt: now }).where(eq(orders.id, fullyRefundedOrder.id)),
+      db.insert(orderStatusHistory).values({
+        orderId: fullyRefundedOrder.id,
+        userId: input.userId,
+        previousStatus: fullyRefundedOrder.previousStatus,
+        newStatus: "refunded",
+        actorType: input.actor.type === "admin" ? "admin" : "staff",
+        actorId: input.actor.id,
+        reason,
+        createdAt: now,
+      }),
+    );
+  }
+
+  statements.push(db.insert(accountAccessAuditLogs).values({
+    userId: input.userId,
+    action: "blocked",
+    reason,
+    actorType: input.actor.type,
+    actorId: input.actor.id,
+    servicesDeactivated: input.deactivateServices,
+    createdAt: now,
+  }));
+
+  try {
+    await db.batch(statements as any);
+  } catch (error) {
+    if (/ACCOUNT_REFUND_EXCEEDS_ILS_SALE/i.test(error instanceof Error ? error.message : String(error))) {
+      throw new Error("Refund amount exceeds the remaining ILS sale value");
+    }
+    throw error;
+  }
+
+  return getAdminClientProfile(input.userId, { includeTimeline: false });
+}
+
+export async function restoreClientAccountAccess(input: {
+  userId: number;
+  reason: string;
+  actor: AccountRestrictionActor;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const user = await getUserById(input.userId);
+  if (!user || user.isStaff) throw new Error("Only a client account can be restored");
+  if (!user.loginBlockedAt) throw new Error("This account is not currently blocked");
+  const reason = input.reason.trim();
+  if (reason.length < 5 || reason.length > 1000) {
+    throw new Error("A clear reason of 5 to 1000 characters is required");
+  }
+  const now = new Date().toISOString();
+  await db.batch([
+    db.update(users).set({
+      loginBlockedAt: null,
+      loginBlockedReason: null,
+      loginBlockedByType: null,
+      loginBlockedById: null,
+      updatedAt: now,
+    }).where(and(eq(users.id, input.userId), eq(users.isStaff, false))),
+    db.insert(accountAccessAuditLogs).values({
+      userId: input.userId,
+      action: "restored",
+      reason,
+      actorType: input.actor.type,
+      actorId: input.actor.id,
+      servicesDeactivated: false,
+      createdAt: now,
+    }),
+  ] as any);
+  return getAdminClientProfile(input.userId, { includeTimeline: false });
 }
 
 export async function getLexaiSupportCase(caseId: number) {
@@ -13590,6 +13933,7 @@ export async function getSubscribersReport(): Promise<any[]> {
   // Get all activated keys (the real revenue source)
   const allKeys = await db.select().from(registrationKeys)
     .where(sql`${registrationKeys.packageId} IS NOT NULL`);
+  const allRefunds = await db.select().from(accountRefunds);
   // Get enrollments for skip status
   const allEnrollments = await db.select({
     userId: enrollments.userId,
@@ -13600,6 +13944,13 @@ export async function getSubscribersReport(): Promise<any[]> {
   }).from(enrollments);
 
   const pkgMap = new Map(allPackages.map(p => [p.id, p]));
+  const refundedByUser = new Map<number, number>();
+  for (const refund of allRefunds) {
+    refundedByUser.set(
+      refund.userId,
+      (refundedByUser.get(refund.userId) ?? 0) + Number(refund.amountIlsAgorot) / 100,
+    );
+  }
 
   return allUsers.map(u => {
     const normalizedEmail = (u.email || '').trim().toLowerCase();
@@ -13607,14 +13958,7 @@ export async function getSubscribersReport(): Promise<any[]> {
     const userKeys = allKeys.filter(k =>
       k.activatedAt && (k.email || '').trim().toLowerCase() === normalizedEmail
     );
-    const totalSpent = userKeys.reduce((sum, key) => {
-      const price = Number(key.price ?? 0);
-      const currency = key.currency?.trim().toUpperCase();
-      return sum + ((currency === 'ILS' || currency === 'NIS')
-        ? price / PACKAGE_KEY_USD_TO_ILS_RATE
-        : price);
-    }, 0);
-    const totalSpentIls = userKeys.reduce((sum, key) => {
+    const grossSpentIls = userKeys.reduce((sum, key) => {
       const pkg = key.packageId ? pkgMap.get(key.packageId) : undefined;
       return sum + getPackageKeyPriceIls({
         price: key.price,
@@ -13625,6 +13969,8 @@ export async function getSubscribersReport(): Promise<any[]> {
         isUpgrade: key.isUpgrade,
       });
     }, 0);
+    const refundedIls = refundedByUser.get(u.id) ?? 0;
+    const totalSpentIls = grossSpentIls - refundedIls;
     // Count renewal keys
     const renewalCount = userKeys.filter(k => k.isRenewal).length;
 
@@ -13651,8 +13997,9 @@ export async function getSubscribersReport(): Promise<any[]> {
     return {
       ...u,
       totalKeys: userKeys.length,
-      totalSpent,
       totalSpentIls,
+      grossSpentIls,
+      refundedIls,
       activePackages: activePackageNames,
       activePackagesAr: activePackageNamesAr,
       subscriptionCount: userSubs.length,
@@ -13667,15 +14014,18 @@ export async function getSubscribersReport(): Promise<any[]> {
  * Get monthly revenue report
  */
 export async function getRevenueReport(): Promise<{
-  totalRevenue: number;
   totalRevenueIls: number;
+  grossRevenueIls: number;
+  refundedRevenueIls: number;
+  netRevenueIls: number;
   totalKeySales: number;
-  monthlyRevenue: { month: string; revenue: number; revenueIls: number; count: number }[];
-  packageRevenue: { packageId: number; packageName: string; packageNameAr: string; revenue: number; revenueIls: number; count: number }[];
-  recentActivations: { id: number; keyCode: string; price: number; priceIls: number; packageName: string; packageNameAr: string; userName: string; userEmail: string; activatedAt: string; isUpgrade: boolean; isRenewal: boolean }[];
+  monthlyRevenue: { month: string; revenueIls: number; grossRevenueIls: number; refundedRevenueIls: number; netRevenueIls: number; count: number; refundCount: number }[];
+  packageRevenue: { packageId: number; packageName: string; packageNameAr: string; revenueIls: number; grossRevenueIls: number; refundedRevenueIls: number; netRevenueIls: number; count: number }[];
+  recentActivations: { id: number; keyCode: string; priceIls: number; refundedIls: number; netIls: number; packageName: string; packageNameAr: string; userName: string; userEmail: string; activatedAt: string; isUpgrade: boolean; isRenewal: boolean }[];
+  refunds: { id: number; userId: number; userName: string; registrationKeyId: number; orderId: number | null; amountIls: number; reason: string; method: string; reference: string | null; refundedAt: string }[];
 }> {
   const db = await getDb();
-  if (!db) return { totalRevenue: 0, totalRevenueIls: 0, totalKeySales: 0, monthlyRevenue: [], packageRevenue: [], recentActivations: [] };
+  if (!db) return { totalRevenueIls: 0, grossRevenueIls: 0, refundedRevenueIls: 0, netRevenueIls: 0, totalKeySales: 0, monthlyRevenue: [], packageRevenue: [], recentActivations: [], refunds: [] };
 
   // All activated keys with price > 0 = actual sales
   const activatedKeys = await db.select().from(registrationKeys)
@@ -13684,17 +14034,12 @@ export async function getRevenueReport(): Promise<{
 
   const allPackages = await db.select().from(packages);
   const allUsers = await db.select({ id: users.id, name: users.name, email: users.email }).from(users);
+  const refundRows = await db.select().from(accountRefunds)
+    .orderBy(desc(accountRefunds.refundedAt), desc(accountRefunds.id));
 
   const pkgMap = new Map(allPackages.map(p => [p.id, p]));
   const userByEmail = new Map(allUsers.map(u => [u.email?.toLowerCase(), u]));
 
-  const getKeyPriceUsd = (key: typeof activatedKeys[number]) => {
-    const price = Number(key.price ?? 0);
-    const currency = key.currency?.trim().toUpperCase();
-    return (currency === 'ILS' || currency === 'NIS')
-      ? price / PACKAGE_KEY_USD_TO_ILS_RATE
-      : price;
-  };
   const getKeyPriceIls = (key: typeof activatedKeys[number]) => {
     const pkg = key.packageId ? pkgMap.get(key.packageId) : undefined;
     return getPackageKeyPriceIls({
@@ -13706,18 +14051,39 @@ export async function getRevenueReport(): Promise<{
       isUpgrade: key.isUpgrade,
     });
   };
-  const totalRevenue = activatedKeys.reduce((sum, key) => sum + getKeyPriceUsd(key), 0);
-  const totalRevenueIls = activatedKeys.reduce((sum, key) => sum + getKeyPriceIls(key), 0);
+  const grossRevenueIls = activatedKeys.reduce((sum, key) => sum + getKeyPriceIls(key), 0);
+  const refundedRevenueIls = refundRows.reduce((sum, refund) => sum + Number(refund.amountIlsAgorot) / 100, 0);
+  const netRevenueIls = grossRevenueIls - refundedRevenueIls;
+  const totalRevenueIls = netRevenueIls;
   const totalKeySales = activatedKeys.length;
 
+  const refundsByKey = new Map<number, number>();
+  for (const refund of refundRows) {
+    refundsByKey.set(
+      refund.registrationKeyId,
+      (refundsByKey.get(refund.registrationKeyId) ?? 0) + Number(refund.amountIlsAgorot) / 100,
+    );
+  }
+
   // Monthly revenue by activatedAt month
-  const monthMap = new Map<string, { revenue: number; revenueIls: number; count: number }>();
+  const monthMap = new Map<string, { revenueIls: number; grossRevenueIls: number; refundedRevenueIls: number; netRevenueIls: number; count: number; refundCount: number }>();
   for (const k of activatedKeys) {
     const month = k.activatedAt ? k.activatedAt.substring(0, 7) : 'unknown';
-    const existing = monthMap.get(month) || { revenue: 0, revenueIls: 0, count: 0 };
-    existing.revenue += getKeyPriceUsd(k);
-    existing.revenueIls += getKeyPriceIls(k);
+    const existing = monthMap.get(month) || { revenueIls: 0, grossRevenueIls: 0, refundedRevenueIls: 0, netRevenueIls: 0, count: 0, refundCount: 0 };
+    existing.grossRevenueIls += getKeyPriceIls(k);
+    existing.netRevenueIls += getKeyPriceIls(k);
+    existing.revenueIls = existing.netRevenueIls;
     existing.count += 1;
+    monthMap.set(month, existing);
+  }
+  for (const refund of refundRows) {
+    const month = refund.refundedAt.substring(0, 7);
+    const existing = monthMap.get(month) || { revenueIls: 0, grossRevenueIls: 0, refundedRevenueIls: 0, netRevenueIls: 0, count: 0, refundCount: 0 };
+    const amountIls = Number(refund.amountIlsAgorot) / 100;
+    existing.refundedRevenueIls += amountIls;
+    existing.netRevenueIls -= amountIls;
+    existing.revenueIls = existing.netRevenueIls;
+    existing.refundCount += 1;
     monthMap.set(month, existing);
   }
   const monthlyRevenue = Array.from(monthMap.entries())
@@ -13725,12 +14091,16 @@ export async function getRevenueReport(): Promise<{
     .sort((a, b) => b.month.localeCompare(a.month));
 
   // Revenue by package
-  const pkgRevMap = new Map<number, { revenue: number; revenueIls: number; count: number }>();
+  const pkgRevMap = new Map<number, { revenueIls: number; grossRevenueIls: number; refundedRevenueIls: number; netRevenueIls: number; count: number }>();
   for (const k of activatedKeys) {
     const pid = k.packageId || 0;
-    const existing = pkgRevMap.get(pid) || { revenue: 0, revenueIls: 0, count: 0 };
-    existing.revenue += getKeyPriceUsd(k);
-    existing.revenueIls += getKeyPriceIls(k);
+    const existing = pkgRevMap.get(pid) || { revenueIls: 0, grossRevenueIls: 0, refundedRevenueIls: 0, netRevenueIls: 0, count: 0 };
+    const grossIls = getKeyPriceIls(k);
+    const refundedIls = refundsByKey.get(k.id) ?? 0;
+    existing.grossRevenueIls += grossIls;
+    existing.refundedRevenueIls += refundedIls;
+    existing.netRevenueIls += grossIls - refundedIls;
+    existing.revenueIls = existing.netRevenueIls;
     existing.count += 1;
     pkgRevMap.set(pid, existing);
   }
@@ -13750,8 +14120,9 @@ export async function getRevenueReport(): Promise<{
     return {
       id: k.id,
       keyCode: k.keyCode,
-      price: getKeyPriceUsd(k),
       priceIls: getKeyPriceIls(k),
+      refundedIls: refundsByKey.get(k.id) ?? 0,
+      netIls: getKeyPriceIls(k) - (refundsByKey.get(k.id) ?? 0),
       packageName: pkg?.nameEn || 'Unknown',
       packageNameAr: pkg?.nameAr || 'غير معروف',
       userName: user?.name || k.email || 'Unknown',
@@ -13762,7 +14133,21 @@ export async function getRevenueReport(): Promise<{
     };
   });
 
-  return { totalRevenue, totalRevenueIls, totalKeySales, monthlyRevenue, packageRevenue, recentActivations };
+  const userById = new Map(allUsers.map((user) => [user.id, user]));
+  const refunds = refundRows.map((refund) => ({
+    id: refund.id,
+    userId: refund.userId,
+    userName: userById.get(refund.userId)?.name || userById.get(refund.userId)?.email || `Client #${refund.userId}`,
+    registrationKeyId: refund.registrationKeyId,
+    orderId: refund.orderId ?? null,
+    amountIls: Number(refund.amountIlsAgorot) / 100,
+    reason: refund.reason,
+    method: refund.refundMethod,
+    reference: refund.refundReference ?? null,
+    refundedAt: refund.refundedAt,
+  }));
+
+  return { totalRevenueIls, grossRevenueIls, refundedRevenueIls, netRevenueIls, totalKeySales, monthlyRevenue, packageRevenue, recentActivations, refunds };
 }
 
 /**

@@ -348,7 +348,12 @@ export default function AdminDashboard() {
                     maximumFractionDigits: 0,
                   })}
             </p>
-            <p className="text-[11px] text-green-700 leading-tight">{t('admin.totalRevenue')}</p>
+            <p className="text-[11px] text-green-700 leading-tight">{isRtl ? 'صافي الدخل' : 'Net Income'}</p>
+            {!statsLoading && (stats?.refundedRevenueIls || 0) > 0 && (
+              <p className="text-[10px] text-rose-600 leading-tight">
+                {isRtl ? 'مسترد' : 'Refunded'}: {formatAdminCurrencyFromIls(stats?.refundedRevenueIls || 0, language)}
+              </p>
+            )}
           </div>
 
           <div className="border rounded-lg px-3 py-2 text-center bg-white">

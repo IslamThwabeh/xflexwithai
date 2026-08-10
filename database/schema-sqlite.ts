@@ -28,6 +28,10 @@ export const users = sqliteTable("users", {
   brokerOnboardingComplete: integer("brokerOnboardingComplete", { mode: 'boolean' }).default(false).notNull(),
   firstPackageActivatedAt: text("firstPackageActivatedAt"),
   staffNotificationPrefs: text("staffNotificationPrefs").default("{}"),
+  loginBlockedAt: text("login_blocked_at"),
+  loginBlockedReason: text("login_blocked_reason"),
+  loginBlockedByType: text("login_blocked_by_type"), // admin | support
+  loginBlockedById: integer("login_blocked_by_id"),
 });
 
 export type User = typeof users.$inferSelect;
@@ -898,6 +902,49 @@ export const orderStatusHistory = sqliteTable("order_status_history", {
 
 export type OrderStatusHistory = typeof orderStatusHistory.$inferSelect;
 export type InsertOrderStatusHistory = typeof orderStatusHistory.$inferInsert;
+
+/** Append-only access decisions made by an admin or support operator. */
+export const accountAccessAuditLogs = sqliteTable("account_access_audit_logs", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull(),
+  action: text("action").notNull(), // blocked | restored
+  reason: text("reason").notNull(),
+  actorType: text("actor_type").notNull(), // admin | support
+  actorId: integer("actor_id").notNull(),
+  servicesDeactivated: integer("services_deactivated", { mode: "boolean" }).default(false).notNull(),
+  refundId: integer("refund_id"),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
+}, (table) => ({
+  userCreatedIndex: index("idx_account_access_audit_user_created").on(table.userId, table.createdAt),
+}));
+
+export type AccountAccessAuditLog = typeof accountAccessAuditLogs.$inferSelect;
+export type InsertAccountAccessAuditLog = typeof accountAccessAuditLogs.$inferInsert;
+
+/** Financial refunds are preserved separately from the original ILS sale. */
+export const accountRefunds = sqliteTable("account_refunds", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  requestId: text("request_id").notNull().unique(),
+  userId: integer("user_id").notNull(),
+  orderId: integer("order_id"),
+  registrationKeyId: integer("registration_key_id").notNull(),
+  amountIlsAgorot: integer("amount_ils_agorot").notNull(),
+  grossAmountIlsAgorot: integer("gross_amount_ils_agorot").notNull(),
+  reason: text("reason").notNull(),
+  refundMethod: text("refund_method").notNull(), // bank_transfer | cash | other
+  refundReference: text("refund_reference"),
+  refundedAt: text("refunded_at").notNull(),
+  recordedByType: text("recorded_by_type").notNull(), // admin | support
+  recordedById: integer("recorded_by_id").notNull(),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
+}, (table) => ({
+  userRefundedIndex: index("idx_account_refunds_user_refunded").on(table.userId, table.refundedAt),
+  keyRefundedIndex: index("idx_account_refunds_key_refunded").on(table.registrationKeyId, table.refundedAt),
+  orderRefundedIndex: index("idx_account_refunds_order_refunded").on(table.orderId, table.refundedAt),
+}));
+
+export type AccountRefund = typeof accountRefunds.$inferSelect;
+export type InsertAccountRefund = typeof accountRefunds.$inferInsert;
 
 export const orderItems = sqliteTable("orderItems", {
   id: int("id").primaryKey({ autoIncrement: true }),

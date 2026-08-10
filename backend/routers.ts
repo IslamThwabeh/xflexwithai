@@ -2268,6 +2268,12 @@ export const appRouter = router({
           return { success: true };
         }
 
+        // Keep the public response neutral while preventing blocked accounts
+        // from receiving a usable login credential.
+        if (existingUser.loginBlockedAt) {
+          return { success: true };
+        }
+
         // Users can disable OTP login from profile.
         if (existingUser.loginSecurityMode === "password_only" || existingUser.loginSecurityMode === "password_plus_otp") {
           return { success: true };
@@ -2363,6 +2369,13 @@ export const appRouter = router({
           });
         }
 
+        if (user.loginBlockedAt) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Account access is restricted. Please contact support.",
+          });
+        }
+
         if (user.loginSecurityMode === "password_only") {
           throw new TRPCError({
             code: "FORBIDDEN",
@@ -2442,6 +2455,13 @@ export const appRouter = router({
         const isValid = await verifyPassword(input.password, user.passwordHash);
         if (!isValid) {
           throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Invalid email or password' });
+        }
+
+        if (user.loginBlockedAt) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: 'Account access is restricted. Please contact support.',
+          });
         }
         
         // If user enforces password + OTP, send a step-up OTP and require verification.
@@ -7740,14 +7760,87 @@ export const appRouter = router({
         }
 
         const canViewTimeline = !!ctx.admin || await db.hasAnyRole(ctx.user.id, ['view_progress']);
+        const canManageAccountAccess = !!ctx.admin || await db.hasAnyRole(ctx.user.id, ['support']);
         const profile = await db.getAdminClientProfile(input.userId, { includeTimeline: canViewTimeline });
 
         return {
           ...profile,
           permissions: {
             canViewTimeline,
+            canManageAccountAccess,
           },
         };
+      }),
+    blockAccess: adminOrRoleProcedure(['support'])
+      .input(z.object({
+        userId: z.number().int().positive(),
+        reason: z.string().trim().min(5).max(1000),
+        deactivateServices: z.boolean().default(false),
+        refund: z.object({
+          requestId: z.string().uuid(),
+          registrationKeyId: z.number().int().positive(),
+          amountIls: z.number().positive().max(1_000_000),
+          method: z.enum(['bank_transfer', 'cash', 'other']),
+          reference: z.string().trim().max(255).nullable().optional(),
+          refundedAt: z.string().datetime(),
+        }).nullable().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const actor = ctx.admin
+          ? { type: 'admin' as const, id: ctx.admin.id }
+          : { type: 'support' as const, id: ctx.user.id };
+        try {
+          return await db.blockClientAccount({ ...input, actor });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : '';
+          const isSafeBusinessError = [
+            /Only a client account/,
+            /clear reason/,
+            /Select an activated paid package sale/,
+            /Refund amount/,
+            /Refund date/,
+          ].some((pattern) => pattern.test(message));
+          if (!isSafeBusinessError) {
+            logger.error('[ACCOUNT_ACCESS] Failed to restrict client account', {
+              userId: input.userId,
+              error: message || 'Unknown error',
+            });
+          }
+          throw new TRPCError({
+            code: isSafeBusinessError ? 'BAD_REQUEST' : 'INTERNAL_SERVER_ERROR',
+            message: isSafeBusinessError ? message : 'The account decision could not be saved',
+          });
+        }
+      }),
+    restoreAccess: adminOrRoleProcedure(['support'])
+      .input(z.object({
+        userId: z.number().int().positive(),
+        reason: z.string().trim().min(5).max(1000),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const actor = ctx.admin
+          ? { type: 'admin' as const, id: ctx.admin.id }
+          : { type: 'support' as const, id: ctx.user.id };
+        try {
+          return await db.restoreClientAccountAccess({ ...input, actor });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : '';
+          const isSafeBusinessError = [
+            /Only a client account/,
+            /not currently blocked/,
+            /clear reason/,
+          ].some((pattern) => pattern.test(message));
+          if (!isSafeBusinessError) {
+            logger.error('[ACCOUNT_ACCESS] Failed to restore client account', {
+              userId: input.userId,
+              error: message || 'Unknown error',
+            });
+          }
+          throw new TRPCError({
+            code: isSafeBusinessError ? 'BAD_REQUEST' : 'INTERNAL_SERVER_ERROR',
+            message: isSafeBusinessError ? message : 'The account decision could not be saved',
+          });
+        }
       }),
   }),
 
