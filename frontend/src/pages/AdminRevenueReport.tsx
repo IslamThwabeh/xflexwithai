@@ -6,7 +6,7 @@ import { formatLocalizedDate } from '@/lib/dateLocale';
 import { formatAdminCurrencyFromIls } from '@/lib/adminCurrency';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Download, Wallet, TrendingUp, Key, FileText, Search } from 'lucide-react';
+import { Download, Wallet, TrendingUp, Key, FileText, Search, ReceiptText, Scale } from 'lucide-react';
 import DashboardLayout from '@/components/DashboardLayout';
 import { DataTablePagination, SortableHeader, useDataTable, zebraRow } from '@/components/DataTable';
 
@@ -34,10 +34,6 @@ export default function AdminRevenueReport() {
   const [monthFilter, setMonthFilter] = useState('');
 
   const fmt = (shekels: number) => formatAdminCurrencyFromIls(shekels, language);
-
-  const avgKeyValue = (data?.totalKeySales || 0) > 0
-    ? (data?.totalRevenueIls || 0) / (data?.totalKeySales || 1)
-    : 0;
 
   const activations = useMemo(() => data?.recentActivations ?? [], [data?.recentActivations]);
   const packages = useMemo(() => {
@@ -94,10 +90,10 @@ export default function AdminRevenueReport() {
 
   const exportCSV = () => {
     if (!filteredActivations.length) return;
-    const headers = ['Key Code', 'User', 'Email', 'Package', 'Price (₪)', 'Upgrade', 'Renewal', 'Activated'];
+    const headers = ['Key Code', 'User', 'Email', 'Package', 'Gross (₪)', 'Refunded (₪)', 'Net (₪)', 'Upgrade', 'Renewal', 'Activated'];
     const rows = filteredActivations.map((a: any) => [
       a.keyCode, a.userName || '', a.userEmail || '',
-      a.packageName || '', fmt(a.priceIls || 0),
+      a.packageName || '', fmt(a.priceIls || 0), fmt(a.refundedIls || 0), fmt(a.netIls || 0),
       a.isUpgrade ? 'Yes' : 'No', a.isRenewal ? 'Yes' : 'No',
       a.activatedAt ? formatLocalizedDate(a.activatedAt, language) : '',
     ]);
@@ -145,13 +141,27 @@ export default function AdminRevenueReport() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-gradient-to-br from-green-500 to-green-700 text-white rounded-xl p-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        <div className="bg-white border rounded-xl p-5">
           <div className="flex items-center gap-2 mb-2 opacity-90">
             <Wallet className="w-5 h-5" />
-            <span className="text-sm font-medium">{isRtl ? 'إجمالي الإيرادات' : 'Total Revenue'}</span>
+            <span className="text-sm font-medium">{isRtl ? 'إجمالي المبيعات' : 'Gross Sales'}</span>
           </div>
-          <div className="text-3xl font-bold">{fmt(data?.totalRevenueIls || 0)}</div>
+          <div className="text-3xl font-bold text-gray-900">{fmt(data?.grossRevenueIls || 0)}</div>
+        </div>
+        <div className="bg-white border border-rose-200 rounded-xl p-5">
+          <div className="flex items-center gap-2 mb-2 text-rose-700">
+            <ReceiptText className="w-5 h-5" />
+            <span className="text-sm font-medium">{isRtl ? 'المبالغ المستردة' : 'Refunds'}</span>
+          </div>
+          <div className="text-3xl font-bold text-rose-700">{fmt(data?.refundedRevenueIls || 0)}</div>
+        </div>
+        <div className="bg-gradient-to-br from-green-500 to-green-700 text-white rounded-xl p-5">
+          <div className="flex items-center gap-2 mb-2 opacity-90">
+            <Scale className="w-5 h-5" />
+            <span className="text-sm font-medium">{isRtl ? 'صافي الدخل' : 'Net Income'}</span>
+          </div>
+          <div className="text-3xl font-bold">{fmt(data?.netRevenueIls || 0)}</div>
         </div>
         <div className="bg-white border rounded-xl p-5">
           <div className="flex items-center gap-2 mb-2 text-muted-foreground">
@@ -159,13 +169,6 @@ export default function AdminRevenueReport() {
             <span className="text-sm font-medium">{isRtl ? 'مفاتيح مُفعّلة' : 'Keys Activated'}</span>
           </div>
           <div className="text-3xl font-bold text-gray-900">{data?.totalKeySales || 0}</div>
-        </div>
-        <div className="bg-white border rounded-xl p-5">
-          <div className="flex items-center gap-2 mb-2 text-muted-foreground">
-            <TrendingUp className="w-5 h-5" />
-            <span className="text-sm font-medium">{isRtl ? 'متوسط قيمة المفتاح' : 'Avg Key Value'}</span>
-          </div>
-          <div className="text-3xl font-bold text-gray-900">{fmt(avgKeyValue)}</div>
         </div>
       </div>
 
@@ -175,16 +178,22 @@ export default function AdminRevenueReport() {
         {data?.monthlyRevenue?.length ? (
           <div className="space-y-2">
             {data.monthlyRevenue.map((m: any) => {
-              const maxRevenue = Math.max(...data.monthlyRevenue.map((x: any) => x.revenueIls), 1);
-              const pct = (m.revenueIls / maxRevenue) * 100;
+              const maxRevenue = Math.max(...data.monthlyRevenue.map((x: any) => x.grossRevenueIls), 1);
+              const pct = (m.grossRevenueIls / maxRevenue) * 100;
               return (
-                <div key={m.month} className="flex items-center gap-3">
-                  <span className="text-sm font-mono w-20 shrink-0">{m.month}</span>
-                  <div className="flex-1 bg-gray-100 rounded-full h-6 overflow-hidden">
-                    <div className="bg-green-500 h-full rounded-full transition-all" style={{ width: `${Math.max(pct, 2)}%` }} />
+                <div key={m.month} className="rounded-lg border p-3">
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-mono w-20 shrink-0">{m.month}</span>
+                    <div className="flex-1 bg-gray-100 rounded-full h-3 overflow-hidden">
+                      <div className="bg-green-500 h-full rounded-full transition-all" style={{ width: `${Math.max(pct, 2)}%` }} />
+                    </div>
+                    <span className="text-sm font-bold text-emerald-700">{fmt(m.netRevenueIls)}</span>
                   </div>
-                  <span className="text-sm font-bold w-24 text-end">{fmt(m.revenueIls)}</span>
-                  <span className="text-xs text-muted-foreground w-16 text-end">{m.count} {isRtl ? 'مفتاح' : 'keys'}</span>
+                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                    <span>{isRtl ? 'المبيعات' : 'Gross'}: {fmt(m.grossRevenueIls)}</span>
+                    <span className="text-rose-700">{isRtl ? 'المسترد' : 'Refunded'}: {fmt(m.refundedRevenueIls)}</span>
+                    <span>{m.count} {isRtl ? 'مفتاح' : 'keys'} · {m.refundCount} {isRtl ? 'استرداد' : 'refunds'}</span>
+                  </div>
                 </div>
               );
             })}
@@ -205,12 +214,53 @@ export default function AdminRevenueReport() {
                   <div className="font-medium text-sm">{isRtl ? (p.packageNameAr || p.packageName) : p.packageName}</div>
                   <div className="text-xs text-muted-foreground">{p.count} {isRtl ? 'مفتاح' : 'keys'}</div>
                 </div>
-                <div className="font-bold text-green-700">{fmt(p.revenueIls)}</div>
+                <div className="text-end">
+                  <div className="font-bold text-green-700">{fmt(p.netRevenueIls)}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {isRtl ? 'إجمالي' : 'Gross'} {fmt(p.grossRevenueIls)} · <span className="text-rose-700">{isRtl ? 'مسترد' : 'Refunded'} {fmt(p.refundedRevenueIls)}</span>
+                  </div>
+                </div>
               </div>
             ))}
           </div>
         ) : (
           <p className="text-muted-foreground text-sm">{isRtl ? 'لا توجد بيانات' : 'No data'}</p>
+        )}
+      </div>
+
+      {/* Refund Ledger */}
+      <div className="bg-white border rounded-xl p-5">
+        <h2 className="text-lg font-bold mb-1">{isRtl ? 'سجل الاستردادات بالشيكل' : 'ILS Refund Ledger'}</h2>
+        <p className="mb-4 text-sm text-muted-foreground">
+          {isRtl ? 'يحافظ على عملية البيع الأصلية ويعرض المبلغ المسترد وسببه ومرجعه.' : 'Preserves the original sale and records the refunded amount, reason, and reference.'}
+        </p>
+        {data?.refunds?.length ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50">
+                <tr>
+                  <th className="px-3 py-2 text-start">{isRtl ? 'العميل' : 'Client'}</th>
+                  <th className="px-3 py-2 text-start">{isRtl ? 'الطلب / المفتاح' : 'Order / Key'}</th>
+                  <th className="px-3 py-2 text-start">{isRtl ? 'السبب' : 'Reason'}</th>
+                  <th className="px-3 py-2 text-center">{isRtl ? 'المبلغ' : 'Amount'}</th>
+                  <th className="px-3 py-2 text-start">{isRtl ? 'التاريخ' : 'Date'}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {data.refunds.map((refund: any, index: number) => (
+                  <tr key={refund.id} className={zebraRow(index)}>
+                    <td className="px-3 py-2 font-medium">{refund.userName}</td>
+                    <td className="px-3 py-2 text-xs">{refund.orderId ? `#${refund.orderId}` : '—'} / #{refund.registrationKeyId}</td>
+                    <td className="max-w-sm px-3 py-2 text-xs" dir="auto">{refund.reason}</td>
+                    <td className="px-3 py-2 text-center font-bold text-rose-700">-{fmt(refund.amountIls)}</td>
+                    <td className="px-3 py-2 text-xs text-muted-foreground">{formatLocalizedDate(refund.refundedAt, language)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">{isRtl ? 'لا توجد استردادات مسجلة.' : 'No refunds recorded.'}</p>
         )}
       </div>
 
@@ -283,8 +333,10 @@ export default function AdminRevenueReport() {
                   <SortableHeader label={isRtl ? 'الباقة' : 'Package'} sortKey="package" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} />
                 </th>
                 <th className="px-3 py-2.5 text-center font-medium">
-                  <SortableHeader label={isRtl ? 'السعر' : 'Price'} sortKey="price" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} />
+                  <SortableHeader label={isRtl ? 'الإجمالي' : 'Gross'} sortKey="price" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} />
                 </th>
+                <th className="px-3 py-2.5 text-center font-medium">{isRtl ? 'المسترد' : 'Refunded'}</th>
+                <th className="px-3 py-2.5 text-center font-medium">{isRtl ? 'الصافي' : 'Net'}</th>
                 <th className="px-3 py-2.5 text-center font-medium">{isRtl ? 'النوع' : 'Type'}</th>
                 <th className="px-3 py-2.5 text-start font-medium">
                   <SortableHeader label={isRtl ? 'التاريخ' : 'Date'} sortKey="date" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} />
@@ -301,6 +353,8 @@ export default function AdminRevenueReport() {
                   </td>
                   <td className="px-3 py-2 text-xs">{isRtl ? (a.packageNameAr || a.packageName) : (a.packageName || '—')}</td>
                   <td className="px-3 py-2 text-center font-medium">{fmt(a.priceIls || 0)}</td>
+                  <td className="px-3 py-2 text-center font-medium text-rose-700">{a.refundedIls ? `-${fmt(a.refundedIls)}` : '—'}</td>
+                  <td className="px-3 py-2 text-center font-bold text-emerald-700">{fmt(a.netIls || 0)}</td>
                   <td className="px-3 py-2 text-center">
                     {a.isUpgrade ? (
                       <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">{isRtl ? 'ترقية' : 'Upgrade'}</span>
@@ -316,7 +370,7 @@ export default function AdminRevenueReport() {
                 </tr>
               ))}
               {paged.length === 0 && (
-                <tr><td colSpan={6} className="px-3 py-8 text-center text-muted-foreground">
+                <tr><td colSpan={8} className="px-3 py-8 text-center text-muted-foreground">
                   {isRtl ? 'لا توجد تفعيلات' : 'No activations found'}
                 </td></tr>
               )}

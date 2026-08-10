@@ -1,15 +1,23 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Textarea } from "@/components/ui/textarea";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { formatAdminCurrencyFromIls } from "@/lib/adminCurrency";
 import { getLegalVersionLinks } from "@/lib/legalVersions";
 import { trpc } from "@/lib/trpc";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { useLocation } from "wouter";
+import { toast } from "sonner";
 import {
   Bot,
+  Ban,
   Building2,
   CheckCircle2,
   Clock3,
@@ -21,8 +29,10 @@ import {
   MessageSquare,
   Package,
   Phone,
+  ReceiptText,
   ShieldAlert,
   ShieldCheck,
+  Undo2,
   TrendingUp,
   UserRound,
 } from "lucide-react";
@@ -148,6 +158,18 @@ export default function AdminClientProfileSheet({
   const { language } = useLanguage();
   const isRtl = language === "ar";
   const locale = isRtl ? "ar-EG" : "en-US";
+  const utils = trpc.useUtils();
+  const [blockDialogOpen, setBlockDialogOpen] = useState(false);
+  const [restoreDialogOpen, setRestoreDialogOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  const [restoreReason, setRestoreReason] = useState("");
+  const [recordRefund, setRecordRefund] = useState(false);
+  const [selectedSaleId, setSelectedSaleId] = useState("");
+  const [refundAmountIls, setRefundAmountIls] = useState("");
+  const [refundMethod, setRefundMethod] = useState<"bank_transfer" | "cash" | "other">("bank_transfer");
+  const [refundReference, setRefundReference] = useState("");
+  const [refundedAt, setRefundedAt] = useState(() => new Date().toISOString().slice(0, 16));
+  const [deactivateServices, setDeactivateServices] = useState(false);
 
   const { data, isLoading, error } = trpc.clientProfiles.getProfile.useQuery(
     { userId: userId ?? 0 },
@@ -159,6 +181,39 @@ export default function AdminClientProfileSheet({
   );
 
   const profile = data;
+  const refundableSales = profile?.accountManagement?.sales?.filter((sale: any) => sale.remainingRefundableIls > 0) ?? [];
+  const selectedSale = refundableSales.find((sale: any) => String(sale.registrationKeyId) === selectedSaleId);
+  const invalidateAccountViews = async () => {
+    await Promise.all([
+      utils.clientProfiles.getProfile.invalidate(),
+      utils.reports.revenue.invalidate(),
+      utils.reports.subscribers.invalidate(),
+      utils.dashboard.stats.invalidate(),
+    ]);
+  };
+  const blockMutation = trpc.clientProfiles.blockAccess.useMutation({
+    onSuccess: async () => {
+      await invalidateAccountViews();
+      toast.success(isRtl ? "تم تقييد دخول الحساب وتسجيل القرار" : "Account access was restricted and audited");
+      setBlockDialogOpen(false);
+      setReason("");
+      setRecordRefund(false);
+      setSelectedSaleId("");
+      setRefundAmountIls("");
+      setRefundReference("");
+      setDeactivateServices(false);
+    },
+    onError: (mutationError) => toast.error(mutationError.message),
+  });
+  const restoreMutation = trpc.clientProfiles.restoreAccess.useMutation({
+    onSuccess: async () => {
+      await invalidateAccountViews();
+      toast.success(isRtl ? "تم السماح بالدخول مجدداً وتسجيل القرار" : "Account access was restored and audited");
+      setRestoreDialogOpen(false);
+      setRestoreReason("");
+    },
+    onError: (mutationError) => toast.error(mutationError.message),
+  });
   const displayName = getDisplayName(profile, isRtl);
   const secondaryLabel = getSecondaryLabel(profile, isRtl);
   const packageCount = profile?.packageSummary?.activePackages?.length ?? 0;
@@ -277,6 +332,66 @@ export default function AdminClientProfileSheet({
     });
   }
 
+  const openBlockDialog = () => {
+    const firstSale = refundableSales[0];
+    setReason("");
+    setRecordRefund(false);
+    setSelectedSaleId(firstSale ? String(firstSale.registrationKeyId) : "");
+    setRefundAmountIls(firstSale ? String(firstSale.remainingRefundableIls) : "");
+    setRefundMethod("bank_transfer");
+    setRefundReference("");
+    setRefundedAt(new Date().toISOString().slice(0, 16));
+    setDeactivateServices(false);
+    setBlockDialogOpen(true);
+  };
+
+  const changeSelectedSale = (registrationKeyId: string) => {
+    setSelectedSaleId(registrationKeyId);
+    const sale = refundableSales.find((item: any) => String(item.registrationKeyId) === registrationKeyId);
+    setRefundAmountIls(sale ? String(sale.remainingRefundableIls) : "");
+  };
+
+  const submitBlock = () => {
+    if (!profile || reason.trim().length < 5) {
+      toast.error(isRtl ? "أدخل سبباً واضحاً لا يقل عن 5 أحرف" : "Enter a clear reason of at least 5 characters");
+      return;
+    }
+    const amountIls = Number(refundAmountIls);
+    if (recordRefund && (!selectedSale || !Number.isFinite(amountIls) || amountIls <= 0 || amountIls > selectedSale.remainingRefundableIls)) {
+      toast.error(isRtl ? "تحقق من عملية البيع ومبلغ الاسترداد بالشيكل" : "Check the sale and ILS refund amount");
+      return;
+    }
+    const refundDate = new Date(refundedAt);
+    if (recordRefund && Number.isNaN(refundDate.getTime())) {
+      toast.error(isRtl ? "تاريخ الاسترداد غير صحيح" : "Refund date is invalid");
+      return;
+    }
+
+    blockMutation.mutate({
+      userId: profile.user.id,
+      reason: reason.trim(),
+      deactivateServices,
+      refund: recordRefund && selectedSale
+        ? {
+            requestId: crypto.randomUUID(),
+            registrationKeyId: selectedSale.registrationKeyId,
+            amountIls,
+            method: refundMethod,
+            reference: refundReference.trim() || null,
+            refundedAt: refundDate.toISOString(),
+          }
+        : null,
+    });
+  };
+
+  const submitRestore = () => {
+    if (!profile || restoreReason.trim().length < 5) {
+      toast.error(isRtl ? "أدخل سبباً واضحاً لا يقل عن 5 أحرف" : "Enter a clear reason of at least 5 characters");
+      return;
+    }
+    restoreMutation.mutate({ userId: profile.user.id, reason: restoreReason.trim() });
+  };
+
   const openLexai = () => {
     if (onOpenLexai) {
       onOpenLexai(lexaiCaseId);
@@ -294,6 +409,7 @@ export default function AdminClientProfileSheet({
   };
 
   return (
+    <>
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side={isRtl ? "left" : "right"}
@@ -401,6 +517,108 @@ export default function AdminClientProfileSheet({
                   </div>
                 </CardContent>
               </Card>
+
+              {profile.permissions.canManageAccountAccess && (
+                <Card className={profile.user.loginBlockedAt ? "border-rose-300 bg-rose-50/80" : "border-slate-200 bg-white/95"}>
+                  <CardHeader className="pb-3">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <CardTitle className="flex items-center gap-2 text-base">
+                          {profile.user.loginBlockedAt
+                            ? <Ban className="h-5 w-5 text-rose-600" />
+                            : <ShieldCheck className="h-5 w-5 text-emerald-600" />}
+                          {isRtl ? "الدخول والاستردادات" : "Account Access & Refunds"}
+                        </CardTitle>
+                        <CardDescription className="mt-1">
+                          {profile.user.loginBlockedAt
+                            ? (isRtl ? "الدخول موقوف حالياً، ويُرفض أيضاً أي اتصال من جلسة قديمة." : "Login is currently blocked, including requests from an existing session.")
+                            : (isRtl ? "الدخول مسموح. يمكن تقييده بسبب موثق مع قرار مستقل للخدمات والاسترداد." : "Login is allowed. Restriction requires a reason and separate service/refund decisions.")}
+                        </CardDescription>
+                      </div>
+                      <Badge className={profile.user.loginBlockedAt ? "bg-rose-100 text-rose-800" : "bg-emerald-100 text-emerald-800"}>
+                        {profile.user.loginBlockedAt
+                          ? (isRtl ? "الدخول موقوف" : "Login Blocked")
+                          : (isRtl ? "الدخول مسموح" : "Login Allowed")}
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-3 text-sm">
+                    {profile.user.loginBlockedAt && (
+                      <div className="rounded-xl border border-rose-200 bg-white px-4 py-3">
+                        <p className="font-medium text-rose-900" dir="auto">{profile.user.loginBlockedReason}</p>
+                        <p className="mt-1 text-xs text-rose-700">
+                          {formatDate(profile.user.loginBlockedAt, locale)}
+                        </p>
+                      </div>
+                    )}
+
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <InfoLine
+                        label={isRtl ? "إجمالي المبيعات" : "Gross Sales"}
+                        value={formatAdminCurrencyFromIls(profile.accountManagement.sales.reduce((sum: number, sale: any) => sum + sale.grossIls, 0), language)}
+                      />
+                      <InfoLine
+                        label={isRtl ? "المبالغ المستردة" : "Refunds"}
+                        value={formatAdminCurrencyFromIls(profile.accountManagement.refunds.reduce((sum: number, refund: any) => sum + refund.amountIls, 0), language)}
+                      />
+                      <InfoLine
+                        label={isRtl ? "الصافي" : "Net"}
+                        value={formatAdminCurrencyFromIls(
+                          profile.accountManagement.sales.reduce((sum: number, sale: any) => sum + sale.grossIls, 0)
+                            - profile.accountManagement.refunds.reduce((sum: number, refund: any) => sum + refund.amountIls, 0),
+                          language,
+                        )}
+                      />
+                    </div>
+
+                    {profile.accountManagement.refunds.length > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-xs font-semibold text-slate-600">{isRtl ? "سجل الاستردادات بالشيكل" : "ILS Refund History"}</p>
+                        {profile.accountManagement.refunds.slice(0, 5).map((refund: any) => (
+                          <div key={refund.id} className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <span className="font-semibold text-rose-700">-{formatAdminCurrencyFromIls(refund.amountIls, language)}</span>
+                              <span className="text-xs text-muted-foreground">{formatDate(refund.refundedAt, locale)}</span>
+                            </div>
+                            <p className="mt-1 text-xs text-slate-700" dir="auto">{refund.reason}</p>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {refund.orderId ? `${isRtl ? "طلب" : "Order"} #${refund.orderId} · ` : ""}
+                              {isRtl ? "مفتاح" : "Key"} #{refund.registrationKeyId}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {!profile.user.isDeleted && !profile.user.isStaff && (
+                      <div className="flex flex-wrap gap-2">
+                        {profile.user.loginBlockedAt ? (
+                          <>
+                            <Button variant="outline" onClick={() => setRestoreDialogOpen(true)}>
+                              <Undo2 className="me-2 h-4 w-4" />
+                              {isRtl ? "السماح بالدخول مجدداً" : "Restore Login"}
+                            </Button>
+                            <Button variant="destructive" onClick={openBlockDialog}>
+                              <ReceiptText className="me-2 h-4 w-4" />
+                              {isRtl ? "تسجيل استرداد أو تحديث القرار" : "Record Refund or Update Decision"}
+                            </Button>
+                          </>
+                        ) : (
+                          <Button variant="destructive" onClick={openBlockDialog}>
+                            <Ban className="me-2 h-4 w-4" />
+                            {isRtl ? "تقييد دخول الحساب" : "Restrict Account Login"}
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                    <p className="text-xs leading-5 text-muted-foreground">
+                      {isRtl
+                        ? "تقييد الدخول، إيقاف الخدمات، وتسجيل الاسترداد قرارات منفصلة. الاسترداد لا يحذف عملية البيع الأصلية؛ التقارير تعرض الإجمالي والاستردادات والصافي بالشيكل."
+                        : "Login restriction, service deactivation, and refund recording are separate decisions. Refunds preserve the original sale; reports show gross, refunds, and net in ILS."}
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
 
               <Card className="border-emerald-100 bg-white/95">
                 <CardHeader className="pb-3">
@@ -687,6 +905,160 @@ export default function AdminClientProfileSheet({
         )}
       </SheetContent>
     </Sheet>
+
+    <Dialog open={blockDialogOpen} onOpenChange={(nextOpen) => !blockMutation.isPending && setBlockDialogOpen(nextOpen)}>
+      <DialogContent className="max-h-[90dvh] max-w-2xl overflow-y-auto" dir={isRtl ? "rtl" : "ltr"}>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Ban className="h-5 w-5 text-rose-600" />
+            {isRtl ? "تقييد دخول الحساب" : "Restrict Account Login"}
+          </DialogTitle>
+          <DialogDescription>
+            {isRtl
+              ? "سيُرفض تسجيل الدخول بكلمة المرور أو رمز البريد، وستتوقف الجلسات الحالية عند الطلب التالي. حدّد بشكل مستقل إن كنت تريد تسجيل استرداد أو إيقاف الخدمات."
+              : "Password and email-code login will be rejected, and existing sessions stop on their next request. Decide separately whether to record a refund or deactivate services."}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-5 py-2">
+          <div className="space-y-2">
+            <Label htmlFor="account-block-reason">{isRtl ? "سبب تقييد الدخول *" : "Restriction reason *"}</Label>
+            <Textarea
+              id="account-block-reason"
+              dir="auto"
+              maxLength={1000}
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+              placeholder={isRtl ? "اكتب السبب الذي سيظهر في سجل الإدارة والدعم..." : "Enter the reason shown in the admin/support audit trail..."}
+            />
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 p-4">
+            <label className="flex cursor-pointer items-start gap-3">
+              <Checkbox checked={recordRefund} onCheckedChange={(checked) => setRecordRefund(checked === true)} />
+              <span>
+                <span className="block text-sm font-semibold">{isRtl ? "تسجيل استرداد مالي الآن" : "Record a financial refund now"}</span>
+                <span className="mt-1 block text-xs text-muted-foreground">
+                  {isRtl ? "جميع المبالغ بالشيكل. ستبقى عملية البيع الأصلية محفوظة ويُخصم الاسترداد من صافي الدخل." : "All amounts are in ILS. The original sale remains preserved and the refund reduces net income."}
+                </span>
+              </span>
+            </label>
+
+            {recordRefund && (
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2 sm:col-span-2">
+                  <Label htmlFor="refund-sale">{isRtl ? "عملية البيع" : "Sale"}</Label>
+                  <select
+                    id="refund-sale"
+                    value={selectedSaleId}
+                    onChange={(event) => changeSelectedSale(event.target.value)}
+                    className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                  >
+                    <option value="">{isRtl ? "اختر عملية بيع مفعّلة" : "Select an activated sale"}</option>
+                    {refundableSales.map((sale: any) => (
+                      <option key={sale.registrationKeyId} value={sale.registrationKeyId}>
+                        {`${isRtl ? sale.packageNameAr : sale.packageName} · ${isRtl ? "مفتاح" : "Key"} #${sale.registrationKeyId}${sale.orderId ? ` · ${isRtl ? "طلب" : "Order"} #${sale.orderId}` : ""} · ${formatAdminCurrencyFromIls(sale.remainingRefundableIls, language)} ${isRtl ? "متاح" : "available"}`}
+                      </option>
+                    ))}
+                  </select>
+                  {refundableSales.length === 0 && (
+                    <p className="text-xs text-rose-700">{isRtl ? "لا توجد عملية بيع مفعّلة لها مبلغ متبقٍ للاسترداد." : "No activated sale has a remaining refundable ILS amount."}</p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="refund-amount">{isRtl ? "المبلغ المسترد (₪)" : "Refund Amount (₪)"}</Label>
+                  <Input
+                    id="refund-amount"
+                    type="number"
+                    inputMode="decimal"
+                    min="0.01"
+                    step="0.01"
+                    max={selectedSale?.remainingRefundableIls}
+                    value={refundAmountIls}
+                    onChange={(event) => setRefundAmountIls(event.target.value)}
+                  />
+                  {selectedSale && (
+                    <p className="text-xs text-muted-foreground">
+                      {isRtl ? "الحد المتبقي:" : "Remaining limit:"} {formatAdminCurrencyFromIls(selectedSale.remainingRefundableIls, language)}
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="refund-method">{isRtl ? "طريقة الاسترداد" : "Refund Method"}</Label>
+                  <select
+                    id="refund-method"
+                    value={refundMethod}
+                    onChange={(event) => setRefundMethod(event.target.value as typeof refundMethod)}
+                    className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                  >
+                    <option value="bank_transfer">{isRtl ? "حوالة بنكية" : "Bank Transfer"}</option>
+                    <option value="cash">{isRtl ? "نقداً" : "Cash"}</option>
+                    <option value="other">{isRtl ? "أخرى" : "Other"}</option>
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="refund-date">{isRtl ? "تاريخ ووقت الاسترداد" : "Refund Date & Time"}</Label>
+                  <Input id="refund-date" type="datetime-local" value={refundedAt} onChange={(event) => setRefundedAt(event.target.value)} />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="refund-reference">{isRtl ? "مرجع الحوالة أو ملاحظة" : "Transfer Reference or Note"}</Label>
+                  <Input id="refund-reference" dir="auto" maxLength={255} value={refundReference} onChange={(event) => setRefundReference(event.target.value)} />
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+            <label className="flex cursor-pointer items-start gap-3">
+              <Checkbox checked={deactivateServices} onCheckedChange={(checked) => setDeactivateServices(checked === true)} />
+              <span>
+                <span className="block text-sm font-semibold text-amber-950">{isRtl ? "إيقاف الباقة والخدمات الحالية أيضاً" : "Also deactivate current package and services"}</span>
+                <span className="mt-1 block text-xs leading-5 text-amber-800">
+                  {isRtl ? "يشمل الباقة والدورة وLexAI والتوصيات. إلغاء تقييد الدخول لاحقاً لا يعيد هذه الخدمات تلقائياً." : "Includes package, course, LexAI, and Recommendations. Restoring login later does not reactivate these services automatically."}
+                </span>
+              </span>
+            </label>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" disabled={blockMutation.isPending} onClick={() => setBlockDialogOpen(false)}>
+            {isRtl ? "إلغاء" : "Cancel"}
+          </Button>
+          <Button variant="destructive" disabled={blockMutation.isPending} onClick={submitBlock}>
+            {blockMutation.isPending ? <Loader2 className="me-2 h-4 w-4 animate-spin" /> : <Ban className="me-2 h-4 w-4" />}
+            {isRtl ? "تأكيد وتسجيل القرار" : "Confirm & Audit Decision"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog open={restoreDialogOpen} onOpenChange={(nextOpen) => !restoreMutation.isPending && setRestoreDialogOpen(nextOpen)}>
+      <DialogContent className="max-w-lg" dir={isRtl ? "rtl" : "ltr"}>
+        <DialogHeader>
+          <DialogTitle>{isRtl ? "السماح بالدخول مجدداً" : "Restore Account Login"}</DialogTitle>
+          <DialogDescription>
+            {isRtl ? "هذا يعيد تسجيل الدخول فقط. لا يلغي الاستردادات ولا يعيد الخدمات التي أوقفت سابقاً." : "This restores login only. It does not reverse refunds or reactivate previously deactivated services."}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2 py-2">
+          <Label htmlFor="account-restore-reason">{isRtl ? "سبب إعادة الدخول *" : "Restore reason *"}</Label>
+          <Textarea id="account-restore-reason" dir="auto" maxLength={1000} value={restoreReason} onChange={(event) => setRestoreReason(event.target.value)} />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" disabled={restoreMutation.isPending} onClick={() => setRestoreDialogOpen(false)}>{isRtl ? "إلغاء" : "Cancel"}</Button>
+          <Button disabled={restoreMutation.isPending} onClick={submitRestore}>
+            {restoreMutation.isPending ? <Loader2 className="me-2 h-4 w-4 animate-spin" /> : <Undo2 className="me-2 h-4 w-4" />}
+            {isRtl ? "السماح بالدخول" : "Restore Login"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
 

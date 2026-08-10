@@ -33,6 +33,9 @@ vi.mock("../backend/db", async () => {
 import { appRouter } from "../backend/routers";
 import * as db from "../backend/db";
 
+const futureSurveyDueAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+const futureSurveyBlockAt = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+
 function createCaller(userId = 9, email = `student${userId}@example.com`) {
   return appRouter.createCaller({
     req: { headers: {}, method: "POST", path: "/api/trpc/studentSurveys" },
@@ -169,8 +172,8 @@ describe("student survey routes", () => {
     await expect(caller.assignAudience({
       surveyId: 3,
       audience: { mode: "single", userIds: [10] },
-      dueAt: "2026-08-10T10:00:00.000Z",
-      blockAt: "2026-08-12T10:00:00.000Z",
+      dueAt: futureSurveyDueAt,
+      blockAt: futureSurveyBlockAt,
       expectedRecipientIds: [10],
       expectedMatchedStudentIds: [10],
       confirmed: true,
@@ -356,8 +359,8 @@ describe("student survey routes", () => {
     await expect(createCaller(1, "admin@example.com").studentSurveys.assignSurvey({
       surveyId: 3,
       userId: 9,
-      dueAt: "2026-08-10T10:00:00.000Z",
-      blockAt: "2026-08-12T10:00:00.000Z",
+      dueAt: futureSurveyDueAt,
+      blockAt: futureSurveyBlockAt,
     })).rejects.toMatchObject({
       code: "PRECONDITION_FAILED",
       message: "Preview the student audience and use the confirmed distribution workflow",
@@ -452,8 +455,8 @@ describe("student survey routes", () => {
     await expect(createCaller(1, "admin@example.com").studentSurveys.assignAudience({
       surveyId: 3,
       audience: { mode: "single", userIds: [10] },
-      dueAt: "2026-08-10T10:00:00.000Z",
-      blockAt: "2026-08-12T10:00:00.000Z",
+      dueAt: futureSurveyDueAt,
+      blockAt: futureSurveyBlockAt,
       expectedRecipientIds: [12],
       expectedMatchedStudentIds: [10],
       confirmed: true,
@@ -474,8 +477,8 @@ describe("student survey routes", () => {
     await expect(createCaller(1, "admin@example.com").studentSurveys.assignAudience({
       surveyId: 3,
       audience: { mode: "active_package", userIds: [] },
-      dueAt: "2026-08-10T10:00:00.000Z",
-      blockAt: "2026-08-12T10:00:00.000Z",
+      dueAt: futureSurveyDueAt,
+      blockAt: futureSurveyBlockAt,
       expectedRecipientIds: [10],
       expectedMatchedStudentIds: [10],
       confirmed: true,
@@ -499,8 +502,8 @@ describe("student survey routes", () => {
     await expect(createCaller(1, "admin@example.com").studentSurveys.assignAudience({
       surveyId: 3,
       audience: { mode: "selected", userIds: [10, 11, 10] },
-      dueAt: "2026-08-10T10:00:00.000Z",
-      blockAt: "2026-08-12T10:00:00.000Z",
+      dueAt: futureSurveyDueAt,
+      blockAt: futureSurveyBlockAt,
       expectedRecipientIds: [11, 10],
       expectedMatchedStudentIds: [10, 11],
       confirmed: true,
@@ -515,8 +518,8 @@ describe("student survey routes", () => {
     expect(db.assignStudentSurveyAudience).toHaveBeenCalledWith({
       surveyId: 3,
       userIds: [10, 11],
-      dueAt: "2026-08-10T10:00:00.000Z",
-      blockAt: "2026-08-12T10:00:00.000Z",
+      dueAt: futureSurveyDueAt,
+      blockAt: futureSurveyBlockAt,
       actorUserId: 1,
     });
     expect(db.sendStudentSurveyAssignmentReminder).not.toHaveBeenCalled();
@@ -534,8 +537,8 @@ describe("student survey routes", () => {
     await expect(createCaller(1, "admin@example.com").studentSurveys.assignAudience({
       surveyId: 3,
       audience: { mode: "single", userIds: [10] },
-      dueAt: "2026-08-10T10:00:00.000Z",
-      blockAt: "2026-08-12T10:00:00.000Z",
+      dueAt: futureSurveyDueAt,
+      blockAt: futureSurveyBlockAt,
       expectedRecipientIds: [10],
       expectedMatchedStudentIds: [10],
       confirmed: true,
@@ -812,8 +815,8 @@ describe("student survey routes", () => {
     await expect(createCaller(1, "admin@example.com").studentSurveys.assignAudience({
       surveyId: 3,
       audience: { mode: "single", userIds: [10] },
-      dueAt: "2026-08-10T10:00:00.000Z",
-      blockAt: "2026-08-12T10:00:00.000Z",
+      dueAt: futureSurveyDueAt,
+      blockAt: futureSurveyBlockAt,
       expectedRecipientIds: [10],
       expectedMatchedStudentIds: [10],
       confirmed: true,

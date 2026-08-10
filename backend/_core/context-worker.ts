@@ -68,7 +68,12 @@ export async function createWorkerContext(
       } else {
         const regularUser = await db.getUserById(decoded.userId);
 
-        if (
+        if (regularUser?.loginBlockedAt) {
+          logger.info("[AUTH] Blocked client session rejected", {
+            userId: regularUser.id,
+          });
+          clearCookie(COOKIE_NAME, getSessionCookieOptions(req, "user"));
+        } else if (
           regularUser?.isStaff &&
           (!decoded.sessionId || !await db.validateActiveStaffSession(regularUser.id, decoded.sessionId))
         ) {

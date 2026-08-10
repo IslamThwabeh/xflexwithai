@@ -13,6 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { APP_TITLE, getLoginUrl } from "@/const";
+import { formatAdminCurrency } from "@/lib/adminCurrency";
 import { formatPendingActivationDate, getPendingActivationDaysLeft, getPendingActivationWindow } from "@/lib/pendingActivation";
 import { trpc } from "@/lib/trpc";
 import { 
@@ -572,7 +573,13 @@ export default function CourseWatch() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="text-center">
-              <p className="text-2xl font-bold text-emerald-600">${course.price}</p>
+              <p className="text-2xl font-bold text-emerald-600">
+                {formatAdminCurrency(course.price, language, {
+                  sourceCurrency: course.currency,
+                  minimumFractionDigits: 0,
+                  maximumFractionDigits: 2,
+                })}
+              </p>
               <p className="text-sm text-muted-foreground">{t('course.oneTimePayment')}</p>
             </div>
             <Button className="w-full" size="lg">
