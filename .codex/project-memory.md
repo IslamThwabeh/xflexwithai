@@ -1,6 +1,6 @@
 # XFLEX Project Memory
 
-Last updated: 2026-08-12
+Last updated: 2026-08-13
 
 ## Project Overview
 
@@ -38,7 +38,15 @@ Last updated: 2026-08-12
 - For production D1 verification where result rows matter, prefer one `SELECT` per Wrangler command. Multi-statement SQL files may return only execution summaries instead of each result set.
 - Latest production Worker deploy completed on 2026-08-12 with version `cf6d9a5e-1c0e-475f-9be4-1a28c137ecbd` from recommendation-notification protection commit `baf568a`.
 - Latest successful Pages deployment completed on 2026-08-12 from recommendation-notification protection commit `baf568a`, deployment ID `68c6f8d2-b73b-4dc2-88d6-6af2204bb9fd`, preview `https://68c6f8d2.xflexwithai.pages.dev`. A historical 2026-06-05 upload failed with `POST /pages/assets/upload -> 502 Bad Gateway`; if that Cloudflare error recurs, manual dashboard upload of `dist/public` remains the fallback.
-- Latest production D1 migration applied as of 2026-08-12 is `database/migrations/084_client_notification_controls.sql`.
+- Latest production D1 migration applied as of 2026-08-13 is `database/migrations/085_timed_service_activation_reminders.sql`.
+- Timed-service activation reminder release completed on 2026-08-13 (Asia/Amman):
+  - Release commit `8ce7fc3 Improve timed service activation notifications` was pushed directly to `origin/main` following the repository's established deployment workflow.
+  - Migration `database/migrations/085_timed_service_activation_reminders.sql` was applied additively to production D1 before the Worker deploy and recorded as `schema_migrations.id = 26` with `source = codex_wrangler`. It added nullable notification dedupe columns plus partial unique indexes; existing notification row counts stayed unchanged at 29,768 client rows and 20,188 staff rows.
+  - Pre-migration Cloudflare Time Travel recovery bookmark: `0000108a-00000952-000050c5-fdfd0449b72bfcb47f327de02810735c`. Post-migration bookmark: `0000108a-00000958-000050c5-aefe514ec3b54d07a4b1747b1875f76a`. A local full export was intentionally not created because copying the production customer database into the workspace was rejected as an unnecessary sensitive-data transfer; Time Travel is the recovery mechanism for this release.
+  - Production Worker version `c714816e-0732-4c24-9660-cbda32ccb127` deployed successfully with both schedules preserved. Pages production deployment ID `57295b14-12aa-46f0-b570-1510d5dbd1b0` deployed source `8ce7fc3`; preview URL: `https://57295b14.xflexwithai.pages.dev`.
+  - The release sends bilingual in-app and email reminders at the 3-day and 24-hour windows for eligible pending LexAI/Recommendations services, includes exact Amman activation dates, retains non-blocking automatic activation, and sends review-only admin/Key Manager alerts for legacy deadline activation without a valid activated package key. Disabled/deleted accounts remain suppressed by both queue-time and send-time controls.
+  - First production cron verification created and sent 3 genuinely due reminder emails, with 3 matching in-app notifications, 0 duplicate reminder groups, 0 reminders for blocked accounts, 0 reminders without an eligible pending service, and 0 legacy-review alerts. No synthetic email or notification was sent for QA.
+  - Release gates passed: TypeScript, all 496 tests across 85 files, migration verifier, production application build, Worker build, D1 schema/count reconciliation, Worker health, public Arabic/English/auth routes, private LexAI/Recommendations cache/noindex headers, and aggregate-only post-cron delivery checks.
 - The email-reliability and recommendation-freshness release was committed as `5063172 Harden email delivery and recommendation freshness`, pushed to `origin/main`, and deployed by Codex on 2026-07-28. Production backup: `tmp/prod-backups/xflexwithai-before-email-suppression-077-20260728-160332.sql` (221,541,962 bytes). Migration `077_email_hard_bounce_suppressions.sql` was applied at Cloudflare bookmark `00000fc3-00000084-000050b6-6bc163a40b405eb03eab9eabf879346e` and recorded in `schema_migrations` with `source = codex_wrangler`.
 - On 2026-06-21, the user reported completing the Worker/frontend deployment for the timed-service activation and email reliability release. The exact Cloudflare deployment version/commit was not recorded in this session.
 - Production D1 migration `database/migrations/055_timed_service_activation_email_outbox.sql` was applied by Codex on 2026-06-21 before deployment.
