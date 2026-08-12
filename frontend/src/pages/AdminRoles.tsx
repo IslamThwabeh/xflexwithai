@@ -14,6 +14,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -34,6 +35,7 @@ const ROLE_LABELS: Record<string, { labelKey: string; color: string; group: stri
   view_subscriptions: { labelKey: "admin.roles.viewSubs", color: "bg-cyan-100 text-cyan-800", group: "Support Permissions" },
   view_quizzes: { labelKey: "admin.roles.viewQuizzes", color: "bg-orange-100 text-orange-800", group: "Support Permissions" },
   client_lookup: { labelKey: "admin.roles.clientLookup", color: "bg-emerald-100 text-emerald-800", group: "Support Permissions" },
+  manage_client_notifications: { labelKey: "admin.roles.manageClientNotifications", color: "bg-amber-100 text-amber-800", group: "Support Permissions" },
   staff_performance_employee: { labelKey: "admin.roles.performanceEmployee", color: "bg-sky-100 text-sky-800", group: "Performance Roles" },
   staff_performance_manager: { labelKey: "admin.roles.performanceManager", color: "bg-violet-100 text-violet-800", group: "Performance Roles" },
   student_surveys_manager: { labelKey: "admin.roles.studentSurveysManager", color: "bg-indigo-100 text-indigo-800", group: "Feature Roles" },
@@ -43,7 +45,7 @@ const ROLE_LABELS: Record<string, { labelKey: string; color: string; group: stri
   email_logs_viewer: { labelKey: "admin.roles.emailLogsViewer", color: "bg-slate-100 text-slate-800", group: "Support Permissions" },
 };
 
-type RoleKey = "analyst" | "support" | "lexai_support" | "key_manager" | "plan_manager" | "view_progress" | "view_recommendations" | "view_subscriptions" | "view_quizzes" | "client_lookup" | "staff_performance_employee" | "staff_performance_manager" | "student_surveys_manager" | "loyalty_rewards_manager" | "student_community_moderator" | "student_job_eligibility_manager" | "email_logs_viewer";
+type RoleKey = "analyst" | "support" | "lexai_support" | "key_manager" | "plan_manager" | "view_progress" | "view_recommendations" | "view_subscriptions" | "view_quizzes" | "client_lookup" | "manage_client_notifications" | "staff_performance_employee" | "staff_performance_manager" | "student_surveys_manager" | "loyalty_rewards_manager" | "student_community_moderator" | "student_job_eligibility_manager" | "email_logs_viewer";
 
 const FEATURE_ACCESS_FOCUS: Record<string, {
   titleEn: string;
@@ -259,9 +261,18 @@ export default function AdminRoles() {
                   <span className="sm:hidden">{isRtl ? 'أدوار' : 'Roles'}</span>
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-md">
+              <DialogContent
+                className="max-h-[90dvh] max-w-md overflow-y-auto"
+                closeLabel={isRtl ? 'إغلاق' : 'Close'}
+                dir={isRtl ? 'rtl' : 'ltr'}
+              >
                 <DialogHeader>
                   <DialogTitle>{isRtl ? 'تعديل أدوار الموظف' : 'Edit Staff Roles'}</DialogTitle>
+                  <DialogDescription>
+                    {isRtl
+                      ? 'اختر موظفاً وامنحه فقط الأدوار والصلاحيات التي يحتاجها.'
+                      : 'Select a staff member and grant only the roles and permissions they need.'}
+                  </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4 pt-2">
                   {/* Step 1: Select staff member */}
@@ -406,9 +417,18 @@ export default function AdminRoles() {
                   <span className="sm:hidden">{isRtl ? 'موظف' : 'Staff'}</span>
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-md">
+              <DialogContent
+                className="max-h-[90dvh] max-w-md overflow-y-auto"
+                closeLabel={isRtl ? 'إغلاق' : 'Close'}
+                dir={isRtl ? 'rtl' : 'ltr'}
+              >
                 <DialogHeader>
                   <DialogTitle>{isRtl ? 'إضافة موظف جديد' : 'Add New Staff Member'}</DialogTitle>
+                  <DialogDescription>
+                    {isRtl
+                      ? 'أنشئ حساب الموظف، ثم امنحه فقط الأدوار التي يحتاجها.'
+                      : 'Create the staff account, then grant only the roles they need.'}
+                  </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4 pt-2">
                   <div>

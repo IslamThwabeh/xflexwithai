@@ -5,6 +5,7 @@ vi.mock("../backend/db", () => ({
   markEmailOutboxSent: vi.fn(),
   markEmailOutboxSkipped: vi.fn(),
   markEmailOutboxFailed: vi.fn(),
+  getEmailOutboxRecipientBlockReason: vi.fn(),
 }));
 
 vi.mock("../backend/_core/email", () => ({
@@ -39,6 +40,7 @@ describe("email outbox service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(db.claimEmailOutboxBatch).mockResolvedValue([]);
+    vi.mocked(db.getEmailOutboxRecipientBlockReason).mockResolvedValue(null);
     vi.mocked(sendEmail).mockResolvedValue({
       provider: "zeptomail",
       attemptedProviders: ["zeptomail"],
@@ -113,6 +115,25 @@ describe("email outbox service", () => {
       "skipped_unsubscribed",
     );
     expect(db.markEmailOutboxSent).not.toHaveBeenCalled();
+    expect(result).toEqual({ claimed: 1, sent: 0, failed: 0, skipped: 1 });
+  });
+
+  it("suppresses lifecycle mail for a disabled or deleted recipient before provider delivery", async () => {
+    vi.mocked(db.claimEmailOutboxBatch).mockResolvedValueOnce([outboxRow({
+      id: 5,
+      eventType: "timed_service_activation",
+      templateId: "timed_service_activation",
+    })]);
+    vi.mocked(db.getEmailOutboxRecipientBlockReason).mockResolvedValueOnce("recipient_account_disabled");
+
+    const result = await drainGenericEmailOutbox({ limit: 1 });
+
+    expect(sendEmail).not.toHaveBeenCalled();
+    expect(db.markEmailOutboxSkipped).toHaveBeenCalledWith(
+      5,
+      "recipient_account_disabled",
+      "skipped_suppressed",
+    );
     expect(result).toEqual({ claimed: 1, sent: 0, failed: 0, skipped: 1 });
   });
 });

@@ -16,6 +16,12 @@ export async function drainGenericEmailOutbox(input: {
 
   for (const row of rows) {
     try {
+      const accountBlockReason = await db.getEmailOutboxRecipientBlockReason(row);
+      if (accountBlockReason) {
+        await db.markEmailOutboxSkipped(row.id, accountBlockReason, "skipped_suppressed");
+        result.skipped += 1;
+        continue;
+      }
       let metadata: Record<string, unknown> | undefined;
       if (row.metadataJson) {
         try {

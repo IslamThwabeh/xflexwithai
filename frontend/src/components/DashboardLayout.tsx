@@ -917,7 +917,7 @@ function DashboardLayoutContent({
       </Sidebar>
 
       <div
-        className={`absolute top-0 h-full cursor-col-resize hover:bg-emerald-500/30 transition-colors ${isCollapsed ? "hidden" : ""}`}
+        className={`absolute top-0 h-full cursor-col-resize hover:bg-emerald-500/30 transition-colors ${isCollapsed ? "hidden" : "hidden md:block"}`}
         onMouseDown={() => {
           if (isCollapsed) return;
           setIsResizing(true);

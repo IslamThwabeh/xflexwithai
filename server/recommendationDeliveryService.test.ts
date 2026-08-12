@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../backend/db", () => ({
   reconcileStaleRecommendationDeliveries: vi.fn(),
   claimNextRecommendationDeliveryBatch: vi.fn(),
+  partitionRecommendationDeliveriesByEligibility: vi.fn(),
+  markRecommendationDeliveryBatchSkipped: vi.fn(),
   markRecommendationDeliveryBatchSent: vi.fn(),
   markRecommendationDeliveryBatchSuppressed: vi.fn(),
   markRecommendationDeliveryBatchFailed: vi.fn(),
@@ -31,6 +33,10 @@ describe("recommendation delivery service", () => {
       total: 0,
     });
     vi.mocked(db.claimNextRecommendationDeliveryBatch).mockResolvedValue([]);
+    vi.mocked(db.partitionRecommendationDeliveriesByEligibility).mockImplementation(async (rows) => ({
+      eligible: rows,
+      ineligible: [],
+    }));
     vi.mocked(db.markNotificationEmailsSent).mockResolvedValue(undefined);
   });
 
@@ -110,9 +116,62 @@ describe("recommendation delivery service", () => {
       failed: 0,
       skippedMissingPayload: 0,
       skippedSuppressed: 0,
+      skippedIneligible: 0,
       providerRequests: 1,
       batches: 1,
     });
+  });
+
+  it("revalidates a mixed claimed batch and never sends ineligible recipients", async () => {
+    const eligible = {
+      id: 21,
+      eventKey: "rec_msg:121",
+      eventKind: "recommendation",
+      refId: 121,
+      userId: 31,
+      recipientEmail: "eligible@example.com",
+      language: "en",
+      subject: "New recommendation",
+      bodyText: "Open the recommendations page.",
+      bodyHtml: null,
+      metadataJson: JSON.stringify({ batchId: "rec_live_121" }),
+      attempts: 0,
+    } as any;
+    const disabled = { ...eligible, id: 22, userId: 32, recipientEmail: "disabled@example.com" } as any;
+    const expired = { ...eligible, id: 23, userId: 33, recipientEmail: "expired@example.com" } as any;
+    vi.mocked(db.claimNextRecommendationDeliveryBatch)
+      .mockResolvedValueOnce([eligible, disabled, expired])
+      .mockResolvedValueOnce([]);
+    vi.mocked(db.partitionRecommendationDeliveriesByEligibility).mockResolvedValue({
+      eligible: [eligible],
+      ineligible: [
+        { delivery: disabled, reason: "account_disabled" },
+        { delivery: expired, reason: "subscription_ineligible" },
+      ],
+    });
+    vi.mocked(sendRecommendationBccBatch).mockResolvedValue({
+      provider: "zeptomail",
+      attemptedProviders: ["zeptomail"],
+      providerRequestId: "request-121",
+      recipientCount: 1,
+      sentUserIds: [31],
+      skippedUserIds: [],
+    });
+
+    const result = await drainRecommendationDeliveryQueue({ source: "scheduled" });
+
+    expect(db.markRecommendationDeliveryBatchSkipped).toHaveBeenCalledWith({
+      items: [
+        { id: 22, reason: "account_disabled" },
+        { id: 23, reason: "subscription_ineligible" },
+      ],
+    });
+    expect(sendRecommendationBccBatch).toHaveBeenCalledWith(expect.objectContaining({
+      recipients: [{ email: "eligible@example.com", userId: 31 }],
+      providerBatchKey: "rec_msg:121:en:21:21:1",
+    }));
+    expect(result.skippedIneligible).toBe(2);
+    expect(result.sent).toBe(1);
   });
 
   it("does not retry provider-accepted email when notification reporting sync fails", async () => {

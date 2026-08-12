@@ -163,6 +163,7 @@ const ASSIGNABLE_STAFF_ROLES = [
   'view_subscriptions',
   'view_quizzes',
   'client_lookup',
+  'manage_client_notifications',
   'staff_performance_employee',
   'staff_performance_manager',
   'student_surveys_manager',
@@ -6097,6 +6098,7 @@ export const appRouter = router({
           view_subscriptions: 'View Subscriptions / عرض الاشتراكات',
           view_quizzes: 'View Quizzes / عرض الاختبارات',
           client_lookup: 'Client Lookup / بحث العملاء',
+          manage_client_notifications: 'Manage Client Notifications / إدارة إشعارات العملاء',
           staff_performance_employee: 'Performance Employee / موظف',
           staff_performance_manager: 'Performance Manager / مدير الأداء',
           student_surveys_manager: 'Student Surveys Manager / مدير استبيانات الطلاب',
@@ -6249,7 +6251,7 @@ export const appRouter = router({
         return {
           isAdmin: true,
           isAnalyst: true,
-          permissions: ['support', 'lexai_support', 'analyst', 'client_lookup', 'view_progress', 'view_recommendations', 'view_subscriptions', 'view_quizzes', 'key_manager'],
+          permissions: ['support', 'lexai_support', 'analyst', 'client_lookup', 'view_progress', 'view_recommendations', 'view_subscriptions', 'view_quizzes', 'key_manager', 'manage_client_notifications'],
         };
       }
       const roles = await db.getUserRoles(ctx.user.id);
@@ -7889,6 +7891,7 @@ export const appRouter = router({
       'view_recommendations',
       'view_subscriptions',
       'view_quizzes',
+      'manage_client_notifications',
     ])
       .input(z.object({ userId: z.number() }))
       .query(async ({ ctx, input }) => {
@@ -7898,6 +7901,7 @@ export const appRouter = router({
 
         const canViewTimeline = !!ctx.admin || await db.hasAnyRole(ctx.user.id, ['view_progress']);
         const canManageAccountAccess = !!ctx.admin || await db.hasAnyRole(ctx.user.id, ['support']);
+        const canManageClientNotifications = !!ctx.admin || await db.hasAnyRole(ctx.user.id, ['manage_client_notifications']);
         const profile = await db.getAdminClientProfile(input.userId, { includeTimeline: canViewTimeline });
 
         return {
@@ -7905,6 +7909,7 @@ export const appRouter = router({
           permissions: {
             canViewTimeline,
             canManageAccountAccess,
+            canManageClientNotifications,
           },
         };
       }),
@@ -7946,6 +7951,36 @@ export const appRouter = router({
           throw new TRPCError({
             code: isSafeBusinessError ? 'BAD_REQUEST' : 'INTERNAL_SERVER_ERROR',
             message: isSafeBusinessError ? message : 'The account decision could not be saved',
+          });
+        }
+      }),
+    setRecommendationNotifications: adminOrRoleProcedure(['manage_client_notifications'])
+      .input(z.object({
+        userId: z.number().int().positive(),
+        disabled: z.boolean(),
+        reason: z.string().trim().min(5).max(1000),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const actor = ctx.admin
+          ? { type: 'admin' as const, id: ctx.admin.id }
+          : { type: 'support' as const, id: ctx.user.id };
+        try {
+          return await db.setClientRecommendationNotifications({ ...input, actor });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : '';
+          const isSafeBusinessError = [
+            /Only a client account/,
+            /clear reason/,
+          ].some((pattern) => pattern.test(message));
+          if (!isSafeBusinessError) {
+            logger.error('[CLIENT_NOTIFICATIONS] Failed to update recommendation notifications', {
+              userId: input.userId,
+              error: message || 'Unknown error',
+            });
+          }
+          throw new TRPCError({
+            code: isSafeBusinessError ? 'BAD_REQUEST' : 'INTERNAL_SERVER_ERROR',
+            message: isSafeBusinessError ? message : 'The notification decision could not be saved',
           });
         }
       }),

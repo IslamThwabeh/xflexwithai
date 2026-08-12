@@ -18,6 +18,8 @@ import { toast } from "sonner";
 import {
   Bot,
   Ban,
+  BellOff,
+  BellRing,
   Building2,
   CheckCircle2,
   Clock3,
@@ -161,8 +163,10 @@ export default function AdminClientProfileSheet({
   const utils = trpc.useUtils();
   const [blockDialogOpen, setBlockDialogOpen] = useState(false);
   const [restoreDialogOpen, setRestoreDialogOpen] = useState(false);
+  const [notificationDialogOpen, setNotificationDialogOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [restoreReason, setRestoreReason] = useState("");
+  const [notificationReason, setNotificationReason] = useState("");
   const [recordRefund, setRecordRefund] = useState(false);
   const [selectedSaleId, setSelectedSaleId] = useState("");
   const [refundAmountIls, setRefundAmountIls] = useState("");
@@ -211,6 +215,15 @@ export default function AdminClientProfileSheet({
       toast.success(isRtl ? "تم السماح بالدخول مجدداً وتسجيل القرار" : "Account access was restored and audited");
       setRestoreDialogOpen(false);
       setRestoreReason("");
+    },
+    onError: (mutationError) => toast.error(mutationError.message),
+  });
+  const notificationMutation = trpc.clientProfiles.setRecommendationNotifications.useMutation({
+    onSuccess: async () => {
+      await utils.clientProfiles.getProfile.invalidate();
+      toast.success(isRtl ? "تم تحديث إشعارات التوصيات وتسجيل القرار" : "Recommendation notifications were updated and audited");
+      setNotificationDialogOpen(false);
+      setNotificationReason("");
     },
     onError: (mutationError) => toast.error(mutationError.message),
   });
@@ -390,6 +403,18 @@ export default function AdminClientProfileSheet({
       return;
     }
     restoreMutation.mutate({ userId: profile.user.id, reason: restoreReason.trim() });
+  };
+
+  const submitNotificationDecision = () => {
+    if (!profile || notificationReason.trim().length < 5) {
+      toast.error(isRtl ? "أدخل سبباً واضحاً لا يقل عن 5 أحرف" : "Enter a clear reason of at least 5 characters");
+      return;
+    }
+    notificationMutation.mutate({
+      userId: profile.user.id,
+      disabled: !profile.recommendationNotifications.isDisabled,
+      reason: notificationReason.trim(),
+    });
   };
 
   const openLexai = () => {
@@ -615,6 +640,64 @@ export default function AdminClientProfileSheet({
                       {isRtl
                         ? "تقييد الدخول، إيقاف الخدمات، وتسجيل الاسترداد قرارات منفصلة. الاسترداد لا يحذف عملية البيع الأصلية؛ التقارير تعرض الإجمالي والاستردادات والصافي بالشيكل."
                         : "Login restriction, service deactivation, and refund recording are separate decisions. Refunds preserve the original sale; reports show gross, refunds, and net in ILS."}
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+
+              {profile.permissions.canManageClientNotifications && (
+                <Card className={profile.recommendationNotifications.isDisabled ? "border-amber-300 bg-amber-50/80" : "border-emerald-100 bg-white/95"}>
+                  <CardHeader className="pb-3">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <CardTitle className="flex items-center gap-2 text-base">
+                          {profile.recommendationNotifications.isDisabled
+                            ? <BellOff className="h-5 w-5 text-amber-700" />
+                            : <BellRing className="h-5 w-5 text-emerald-600" />}
+                          {isRtl ? "إشعارات التوصيات" : "Recommendation Notifications"}
+                        </CardTitle>
+                        <CardDescription className="mt-1">
+                          {isRtl
+                            ? "يتحكم في رسائل البريد والتنبيهات داخل الموقع للتوصيات المستقبلية فقط. لا يؤثر على رسائل الأمان أو الفوترة أو الدعم."
+                            : "Controls future recommendation emails and in-app alerts only. Security, billing, and support messages are unaffected."}
+                        </CardDescription>
+                      </div>
+                      <Badge className={profile.recommendationNotifications.isDisabled ? "bg-amber-100 text-amber-900" : "bg-emerald-100 text-emerald-800"}>
+                        {profile.recommendationNotifications.isDisabled
+                          ? (isRtl ? "متوقفة لهذا العميل" : "Disabled for Client")
+                          : (isRtl ? "مفعّلة" : "Enabled")}
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-3 text-sm">
+                    {profile.recommendationNotifications.control && (
+                      <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+                        <p className="font-medium text-slate-900" dir="auto">{profile.recommendationNotifications.control.reason}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {formatDate(profile.recommendationNotifications.control.updatedAt, locale)}
+                        </p>
+                      </div>
+                    )}
+                    {!profile.user.isDeleted && !profile.user.isStaff && (
+                      <Button
+                        variant={profile.recommendationNotifications.isDisabled ? "outline" : "destructive"}
+                        onClick={() => {
+                          setNotificationReason("");
+                          setNotificationDialogOpen(true);
+                        }}
+                      >
+                        {profile.recommendationNotifications.isDisabled
+                          ? <BellRing className="me-2 h-4 w-4" />
+                          : <BellOff className="me-2 h-4 w-4" />}
+                        {profile.recommendationNotifications.isDisabled
+                          ? (isRtl ? "إعادة تفعيل الإشعارات" : "Enable Notifications")
+                          : (isRtl ? "إيقاف الإشعارات لهذا العميل" : "Disable for This Client")}
+                      </Button>
+                    )}
+                    <p className="text-xs leading-5 text-muted-foreground">
+                      {isRtl
+                        ? "يتطلب هذا الإجراء صلاحية يمنحها المسؤول. سيتم عزل الرسائل المنتظرة، لكن لا يمكن سحب رسالة قَبِلها مزود البريد بالفعل."
+                        : "This action requires an admin-granted permission. Queued messages are quarantined, but a message already accepted by the email provider cannot be recalled."}
                     </p>
                   </CardContent>
                 </Card>
@@ -907,7 +990,7 @@ export default function AdminClientProfileSheet({
     </Sheet>
 
     <Dialog open={blockDialogOpen} onOpenChange={(nextOpen) => !blockMutation.isPending && setBlockDialogOpen(nextOpen)}>
-      <DialogContent className="max-h-[90dvh] max-w-2xl overflow-y-auto" dir={isRtl ? "rtl" : "ltr"}>
+      <DialogContent className="max-h-[90dvh] max-w-2xl overflow-y-auto" closeLabel={isRtl ? "إغلاق" : "Close"} dir={isRtl ? "rtl" : "ltr"}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Ban className="h-5 w-5 text-rose-600" />
@@ -1038,7 +1121,7 @@ export default function AdminClientProfileSheet({
     </Dialog>
 
     <Dialog open={restoreDialogOpen} onOpenChange={(nextOpen) => !restoreMutation.isPending && setRestoreDialogOpen(nextOpen)}>
-      <DialogContent className="max-w-lg" dir={isRtl ? "rtl" : "ltr"}>
+      <DialogContent className="max-w-lg" closeLabel={isRtl ? "إغلاق" : "Close"} dir={isRtl ? "rtl" : "ltr"}>
         <DialogHeader>
           <DialogTitle>{isRtl ? "السماح بالدخول مجدداً" : "Restore Account Login"}</DialogTitle>
           <DialogDescription>
@@ -1054,6 +1137,56 @@ export default function AdminClientProfileSheet({
           <Button disabled={restoreMutation.isPending} onClick={submitRestore}>
             {restoreMutation.isPending ? <Loader2 className="me-2 h-4 w-4 animate-spin" /> : <Undo2 className="me-2 h-4 w-4" />}
             {isRtl ? "السماح بالدخول" : "Restore Login"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog open={notificationDialogOpen} onOpenChange={(nextOpen) => !notificationMutation.isPending && setNotificationDialogOpen(nextOpen)}>
+      <DialogContent className="max-w-lg" closeLabel={isRtl ? "إغلاق" : "Close"} dir={isRtl ? "rtl" : "ltr"}>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            {profile?.recommendationNotifications?.isDisabled
+              ? <BellRing className="h-5 w-5 text-emerald-600" />
+              : <BellOff className="h-5 w-5 text-amber-700" />}
+            {profile?.recommendationNotifications?.isDisabled
+              ? (isRtl ? "إعادة تفعيل إشعارات التوصيات" : "Enable Recommendation Notifications")
+              : (isRtl ? "إيقاف إشعارات التوصيات" : "Disable Recommendation Notifications")}
+          </DialogTitle>
+          <DialogDescription>
+            {profile?.recommendationNotifications?.isDisabled
+              ? (isRtl ? "ستصل التنبيهات المستقبلية فقط إذا كان اشتراك التوصيات نشطاً وغير مجمّد أو منتهي." : "Future alerts will resume only while the recommendation subscription is active, unfrozen, and unexpired.")
+              : (isRtl ? "سيتم منع رسائل وتنبيهات التوصيات المستقبلية وعزل الرسائل المنتظرة. لن تتأثر رسائل الأمان أو الفوترة أو الدعم." : "Future recommendation emails and alerts will be blocked and queued deliveries quarantined. Security, billing, and support messages remain enabled.")}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2 py-2">
+          <Label htmlFor="notification-control-reason">{isRtl ? "سبب القرار *" : "Decision reason *"}</Label>
+          <Textarea
+            id="notification-control-reason"
+            dir="auto"
+            maxLength={1000}
+            value={notificationReason}
+            onChange={(event) => setNotificationReason(event.target.value)}
+            placeholder={isRtl ? "اكتب السبب الذي سيظهر في سجل التدقيق..." : "Enter the reason shown in the audit trail..."}
+          />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" disabled={notificationMutation.isPending} onClick={() => setNotificationDialogOpen(false)}>
+            {isRtl ? "إلغاء" : "Cancel"}
+          </Button>
+          <Button
+            variant={profile?.recommendationNotifications?.isDisabled ? "default" : "destructive"}
+            disabled={notificationMutation.isPending}
+            onClick={submitNotificationDecision}
+          >
+            {notificationMutation.isPending
+              ? <Loader2 className="me-2 h-4 w-4 animate-spin" />
+              : profile?.recommendationNotifications?.isDisabled
+                ? <BellRing className="me-2 h-4 w-4" />
+                : <BellOff className="me-2 h-4 w-4" />}
+            {profile?.recommendationNotifications?.isDisabled
+              ? (isRtl ? "تفعيل وتسجيل القرار" : "Enable & Audit")
+              : (isRtl ? "إيقاف وتسجيل القرار" : "Disable & Audit")}
           </Button>
         </DialogFooter>
       </DialogContent>

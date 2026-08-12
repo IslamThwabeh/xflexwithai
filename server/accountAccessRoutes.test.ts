@@ -10,6 +10,7 @@ vi.mock("../backend/db", async () => {
     logStaffAction: vi.fn(),
     blockClientAccount: vi.fn(),
     restoreClientAccountAccess: vi.fn(),
+    setClientRecommendationNotifications: vi.fn(),
   };
 });
 
@@ -50,6 +51,7 @@ describe("account access routes", () => {
     vi.mocked(db.getUserRoles).mockResolvedValue([{ role: "support" }] as any);
     vi.mocked(db.blockClientAccount).mockResolvedValue({ ok: true } as any);
     vi.mocked(db.restoreClientAccountAccess).mockResolvedValue({ ok: true } as any);
+    vi.mocked(db.setClientRecommendationNotifications).mockResolvedValue({ ok: true } as any);
   });
 
   it("passes a support actor and an ILS refund decision to the atomic service", async () => {
@@ -144,5 +146,33 @@ describe("account access routes", () => {
       reason: "Support review completed",
       actor: { type: "support", id: 9 },
     });
+  });
+
+  it("allows only an admin-granted notification manager to update a client", async () => {
+    vi.mocked(db.hasAnyRole).mockImplementation(async (_userId, roles) => roles.includes("manage_client_notifications"));
+
+    await createCaller().clientProfiles.setRecommendationNotifications({
+      userId: 102,
+      disabled: true,
+      reason: "Client requested recommendation alerts to stop",
+    });
+
+    expect(db.setClientRecommendationNotifications).toHaveBeenCalledWith({
+      userId: 102,
+      disabled: true,
+      reason: "Client requested recommendation alerts to stop",
+      actor: { type: "support", id: 9 },
+    });
+  });
+
+  it("does not grant notification control to ordinary support by default", async () => {
+    vi.mocked(db.hasAnyRole).mockImplementation(async (_userId, roles) => !roles.includes("manage_client_notifications"));
+
+    await expect(createCaller().clientProfiles.setRecommendationNotifications({
+      userId: 102,
+      disabled: true,
+      reason: "Attempt without the dedicated permission",
+    })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(db.setClientRecommendationNotifications).not.toHaveBeenCalled();
   });
 });

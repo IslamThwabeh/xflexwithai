@@ -109,7 +109,8 @@ describe("recommendations workflow", () => {
 
   const emptyDiagnostics = {
     totalSubs: 0, activeSubs: 0, pending: 0, paused: 0, expired: 0,
-    optedOut: 0, staffExcluded: 0, malformedPrefs: 0, missingEmail: 0, eligibleCount: 0,
+    optedOut: 0, staffExcluded: 0, malformedPrefs: 0, missingEmail: 0,
+    accountUnavailable: 0, accountDisabled: 0, notificationsDisabled: 0, eligibleCount: 0,
   };
 
   beforeEach(() => {

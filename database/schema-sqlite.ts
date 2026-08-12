@@ -473,6 +473,52 @@ export type RecommendationDelivery = typeof recommendationDeliveries.$inferSelec
 export type InsertRecommendationDelivery = typeof recommendationDeliveries.$inferInsert;
 
 /**
+ * Per-client controls for non-transactional notification categories.
+ * This intentionally does not cover security, billing, or support messages.
+ */
+export const clientNotificationControls = sqliteTable("client_notification_controls", {
+  userId: integer("user_id").notNull(),
+  category: text("category", { length: 40 }).notNull(),
+  isDisabled: integer("is_disabled", { mode: "boolean" }).default(false).notNull(),
+  reason: text("reason"),
+  updatedByType: text("updated_by_type", { length: 20 }).notNull(),
+  updatedById: integer("updated_by_id").notNull(),
+  disabledAt: text("disabled_at"),
+  updatedAt: text("updated_at").default(sql`(datetime('now'))`).notNull(),
+}, (table) => ({
+  userCategoryUnique: unique("unique_client_notification_control").on(table.userId, table.category),
+  categoryDisabledIdx: index("idx_client_notification_controls_category_disabled").on(
+    table.category,
+    table.isDisabled,
+  ),
+}));
+
+export type ClientNotificationControl = typeof clientNotificationControls.$inferSelect;
+export type InsertClientNotificationControl = typeof clientNotificationControls.$inferInsert;
+
+/** Append-only audit trail for every admin-authorized client notification change. */
+export const clientNotificationControlAudit = sqliteTable("client_notification_control_audit", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull(),
+  category: text("category", { length: 40 }).notNull(),
+  action: text("action", { length: 20 }).notNull(),
+  reason: text("reason").notNull(),
+  actorType: text("actor_type", { length: 20 }).notNull(),
+  actorId: integer("actor_id").notNull(),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
+}, (table) => ({
+  userCategoryCreatedIdx: index("idx_client_notification_audit_user_category_created").on(
+    table.userId,
+    table.category,
+    table.createdAt,
+    table.id,
+  ),
+}));
+
+export type ClientNotificationControlAudit = typeof clientNotificationControlAudit.$inferSelect;
+export type InsertClientNotificationControlAudit = typeof clientNotificationControlAudit.$inferInsert;
+
+/**
  * Generic persistent email outbox used for transactional activation notices
  * and large admin announcements that must not fan out inside one Worker request.
  */

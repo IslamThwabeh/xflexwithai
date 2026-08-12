@@ -14,6 +14,7 @@ export type RecommendationDrainResult = {
   failed: number;
   skippedMissingPayload: number;
   skippedSuppressed: number;
+  skippedIneligible: number;
   providerRequests: number;
   batches: number;
 };
@@ -78,15 +79,46 @@ export async function drainRecommendationDeliveryQueue(input: {
     failed: 0,
     skippedMissingPayload: 0,
     skippedSuppressed: 0,
+    skippedIneligible: 0,
     providerRequests: 0,
     batches: 0,
   };
 
   for (let batchIndex = 0; batchIndex < maxBatches; batchIndex += 1) {
-    const rows = await db.claimNextRecommendationDeliveryBatch(limit, input.eventKey);
-    if (!rows.length) break;
-    result.claimed += rows.length;
+    const claimedRows = await db.claimNextRecommendationDeliveryBatch(limit, input.eventKey);
+    if (!claimedRows.length) break;
+    result.claimed += claimedRows.length;
     result.batches += 1;
+
+    let rows = claimedRows;
+    try {
+      const eligibility = await db.partitionRecommendationDeliveriesByEligibility(claimedRows);
+      if (eligibility.ineligible.length) {
+        await db.markRecommendationDeliveryBatchSkipped({
+          items: eligibility.ineligible.map(({ delivery, reason }) => ({ id: delivery.id, reason })),
+        });
+        result.skippedIneligible += eligibility.ineligible.length;
+      }
+      rows = eligibility.eligible;
+    } catch (error) {
+      const firstClaimed = claimedRows[0];
+      const claimedIds = claimedRows.map((row) => row.id);
+      await db.markRecommendationDeliveryBatchFailed({
+        ids: claimedIds,
+        errorCategory: "eligibility_check",
+        errorMessage: error instanceof Error ? error.message : String(error),
+        providerBatchKey: [
+          firstClaimed.eventKey,
+          firstClaimed.language,
+          claimedIds[0],
+          claimedIds[claimedIds.length - 1],
+          firstClaimed.attempts + 1,
+        ].join(":"),
+      });
+      result.failed += claimedRows.length;
+      continue;
+    }
+    if (!rows.length) continue;
 
     const first = rows[0];
     const batchIds = rows.map((row) => row.id);

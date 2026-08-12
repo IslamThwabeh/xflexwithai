@@ -17,6 +17,7 @@ import {
   recommendationAlerts, RecommendationAlert, InsertRecommendationAlert,
   recommendationMessages, RecommendationMessage, InsertRecommendationMessage,
   recommendationDeliveries, RecommendationDelivery, InsertRecommendationDelivery,
+  clientNotificationControls, clientNotificationControlAudit,
   recommendationReactions, RecommendationReaction, InsertRecommendationReaction,
   recommendationThreadMutes,
   authEmailOtps, AuthEmailOtp, InsertAuthEmailOtp,
@@ -4467,8 +4468,9 @@ export async function processExpiredFreezes(): Promise<{ email: string; name: st
     ));
   for (const sub of expiredLexai) {
     await resumeLexaiSubscription(sub.id);
-    const [user] = await db.select({ email: users.email, name: users.name }).from(users).where(eq(users.id, sub.userId)).limit(1);
-    if (user?.email) notified.push({ email: user.email, name: user.name });
+    const [user] = await db.select({ email: users.email, name: users.name, loginBlockedAt: users.loginBlockedAt })
+      .from(users).where(eq(users.id, sub.userId)).limit(1);
+    if (user?.email && !user.loginBlockedAt) notified.push({ email: user.email, name: user.name });
   }
 
   // Expired recommendation freezes
@@ -4482,9 +4484,10 @@ export async function processExpiredFreezes(): Promise<{ email: string; name: st
     ));
   for (const sub of expiredRec) {
     await resumeRecommendationSubscription(sub.id);
-    const [user] = await db.select({ email: users.email, name: users.name }).from(users).where(eq(users.id, sub.userId)).limit(1);
+    const [user] = await db.select({ email: users.email, name: users.name, loginBlockedAt: users.loginBlockedAt })
+      .from(users).where(eq(users.id, sub.userId)).limit(1);
     // Only add once per user (they may have both types)
-    if (user?.email && !notified.find(n => n.email === user.email)) {
+    if (user?.email && !user.loginBlockedAt && !notified.find(n => n.email === user.email)) {
       notified.push({ email: user.email, name: user.name });
     }
   }
@@ -4545,8 +4548,9 @@ export async function getExpiringSubscriptions(withinDays: number): Promise<{ us
 
   const results: { userId: number; email: string; name: string | null; daysLeft: number; packageName: string }[] = [];
   for (const sub of expiring) {
-    const [user] = await db.select({ email: users.email, name: users.name }).from(users).where(eq(users.id, sub.userId)).limit(1);
-    if (!user?.email) continue;
+    const [user] = await db.select({ email: users.email, name: users.name, loginBlockedAt: users.loginBlockedAt })
+      .from(users).where(eq(users.id, sub.userId)).limit(1);
+    if (!user?.email || user.loginBlockedAt) continue;
     // Look up the user's active package for display name
     const [pkgSub] = await db.select({ packageId: packageSubscriptions.packageId })
       .from(packageSubscriptions)
@@ -4732,11 +4736,16 @@ export async function getRenewalReminderCandidates(offsetDays: number[]): Promis
     const daysLeft = Math.round((endMs - todayMs) / (24 * 60 * 60 * 1000));
     if (!targetOffsets.has(daysLeft)) continue;
 
-    const [user] = await db.select({ email: users.email, name: users.name, notificationPrefs: users.notificationPrefs })
+    const [user] = await db.select({
+      email: users.email,
+      name: users.name,
+      notificationPrefs: users.notificationPrefs,
+      loginBlockedAt: users.loginBlockedAt,
+    })
       .from(users)
       .where(and(eq(users.id, row.userId), eq(users.isStaff, false)))
       .limit(1);
-    if (!user?.email) continue;
+    if (!user?.email || user.loginBlockedAt) continue;
 
     const [pkgSub] = await db.select({ packageId: packageSubscriptions.packageId })
       .from(packageSubscriptions)
@@ -5250,6 +5259,9 @@ export type RecommendationDeliveryDiagnostics = {
   staffExcluded: number;
   malformedPrefs: number;
   missingEmail: number;
+  accountUnavailable: number;
+  accountDisabled: number;
+  notificationsDisabled: number;
   eligibleCount: number;
 };
 
@@ -5290,6 +5302,9 @@ export async function getRecommendationDeliveryFunnel(): Promise<RecommendationD
     staffExcluded: 0,
     malformedPrefs: 0,
     missingEmail: 0,
+    accountUnavailable: 0,
+    accountDisabled: 0,
+    notificationsDisabled: 0,
     eligibleCount: 0,
   };
 
@@ -5312,9 +5327,16 @@ export async function getRecommendationDeliveryFunnel(): Promise<RecommendationD
       lastInteractiveAt: users.lastInteractiveAt,
       notificationPrefs: users.notificationPrefs,
       isStaff: users.isStaff,
+      accountUserId: users.id,
+      loginBlockedAt: users.loginBlockedAt,
+      notificationsDisabled: clientNotificationControls.isDisabled,
     })
     .from(recommendationSubscriptions)
     .leftJoin(users, eq(users.id, recommendationSubscriptions.userId))
+    .leftJoin(clientNotificationControls, and(
+      eq(clientNotificationControls.userId, recommendationSubscriptions.userId),
+      eq(clientNotificationControls.category, RECOMMENDATION_PREFS_KEY),
+    ))
     .where(eq(recommendationSubscriptions.isActive, true));
 
   const diagnostics: RecommendationDeliveryDiagnostics = { ...empty, totalSubs: rows.length };
@@ -5327,8 +5349,11 @@ export async function getRecommendationDeliveryFunnel(): Promise<RecommendationD
     if (row.endDate && row.endDate < nowIso) { diagnostics.expired += 1; continue; }
     diagnostics.activeSubs += 1;
 
+    if (!row.accountUserId) { diagnostics.accountUnavailable += 1; continue; }
+    if (row.loginBlockedAt) { diagnostics.accountDisabled += 1; continue; }
     if (row.isStaff) { diagnostics.staffExcluded += 1; continue; }
     if (!row.email) { diagnostics.missingEmail += 1; continue; }
+    if (row.notificationsDisabled) { diagnostics.notificationsDisabled += 1; continue; }
 
     const prefs = parseRecommendationPrefs(row.notificationPrefs);
     if (prefs.malformed) {
@@ -5352,6 +5377,108 @@ export async function getRecommendationDeliveryFunnel(): Promise<RecommendationD
 
   diagnostics.eligibleCount = eligible.length;
   return { eligible, diagnostics };
+}
+
+export type RecommendationDeliveryIneligibilityReason =
+  | 'account_missing'
+  | 'account_disabled'
+  | 'staff_account'
+  | 'recipient_changed'
+  | 'subscription_ineligible'
+  | 'client_notifications_disabled'
+  | 'preference_opted_out'
+  | 'malformed_preferences';
+
+/**
+ * Revalidate claimed rows immediately before provider delivery. Queue-time
+ * eligibility is not sufficient because a subscription or account can change
+ * while a delivery is waiting or retrying.
+ */
+export async function partitionRecommendationDeliveriesByEligibility(
+  deliveries: RecommendationDelivery[],
+): Promise<{
+  eligible: RecommendationDelivery[];
+  ineligible: Array<{
+    delivery: RecommendationDelivery;
+    reason: RecommendationDeliveryIneligibilityReason;
+  }>;
+}> {
+  if (!deliveries.length) return { eligible: [], ineligible: [] };
+  const db = await getDb();
+  if (!db) {
+    return {
+      eligible: [],
+      ineligible: deliveries.map((delivery) => ({ delivery, reason: 'account_missing' as const })),
+    };
+  }
+
+  const userIds = deliveries.map((delivery) => delivery.userId);
+  const nowIso = new Date().toISOString();
+  const [accountRows, subscriptionRows, controlRows] = await Promise.all([
+    collectChunkedRows(userIds, (chunk) => db.select({
+      id: users.id,
+      email: users.email,
+      isStaff: users.isStaff,
+      loginBlockedAt: users.loginBlockedAt,
+      notificationPrefs: users.notificationPrefs,
+    }).from(users).where(inArray(users.id, chunk))),
+    collectChunkedRows(userIds, (chunk) => db.select({
+      userId: recommendationSubscriptions.userId,
+      isPaused: recommendationSubscriptions.isPaused,
+      isPendingActivation: recommendationSubscriptions.isPendingActivation,
+      endDate: recommendationSubscriptions.endDate,
+    }).from(recommendationSubscriptions).where(and(
+      inArray(recommendationSubscriptions.userId, chunk),
+      eq(recommendationSubscriptions.isActive, true),
+    ))),
+    collectChunkedRows(userIds, (chunk) => db.select({
+      userId: clientNotificationControls.userId,
+      isDisabled: clientNotificationControls.isDisabled,
+    }).from(clientNotificationControls).where(and(
+      inArray(clientNotificationControls.userId, chunk),
+      eq(clientNotificationControls.category, RECOMMENDATION_PREFS_KEY),
+      eq(clientNotificationControls.isDisabled, true),
+    ))),
+  ]);
+
+  const accounts = new Map(accountRows.map((account) => [account.id, account]));
+  const eligibleSubscriptionUserIds = new Set(
+    subscriptionRows
+      .filter((subscription) => (
+        !subscription.isPaused
+        && !subscription.isPendingActivation
+        && !!subscription.endDate
+        && subscription.endDate >= nowIso
+      ))
+      .map((subscription) => subscription.userId),
+  );
+  const disabledUserIds = new Set(controlRows.map((control) => control.userId));
+  const eligible: RecommendationDelivery[] = [];
+  const ineligible: Array<{
+    delivery: RecommendationDelivery;
+    reason: RecommendationDeliveryIneligibilityReason;
+  }> = [];
+
+  for (const delivery of deliveries) {
+    const account = accounts.get(delivery.userId);
+    let reason: RecommendationDeliveryIneligibilityReason | null = null;
+    if (!account) reason = 'account_missing';
+    else if (account.loginBlockedAt) reason = 'account_disabled';
+    else if (account.isStaff) reason = 'staff_account';
+    else if (account.email.trim().toLowerCase() !== delivery.recipientEmail.trim().toLowerCase()) reason = 'recipient_changed';
+    else if (disabledUserIds.has(delivery.userId)) reason = 'client_notifications_disabled';
+    else {
+      const prefs = parseRecommendationPrefs(account.notificationPrefs);
+      if (prefs.malformed) reason = 'malformed_preferences';
+      else if (prefs.optedOut) reason = 'preference_opted_out';
+      else if (!eligibleSubscriptionUserIds.has(delivery.userId)) reason = 'subscription_ineligible';
+    }
+
+    if (reason) ineligible.push({ delivery, reason });
+    else eligible.push(delivery);
+  }
+
+  return { eligible, ineligible };
 }
 
 
@@ -5760,6 +5887,39 @@ export async function markRecommendationDeliveryBatchSuppressed(args: {
       inArray(recommendationDeliveries.id, args.ids),
       eq(recommendationDeliveries.status, 'processing'),
     ));
+}
+
+export async function markRecommendationDeliveryBatchSkipped(args: {
+  items: Array<{ id: number; reason: RecommendationDeliveryIneligibilityReason }>;
+}): Promise<void> {
+  const db = await getDb();
+  if (!db || !args.items.length) return;
+  const nowIso = new Date().toISOString();
+  const idsByReason = new Map<RecommendationDeliveryIneligibilityReason, number[]>();
+  for (const item of args.items) {
+    const ids = idsByReason.get(item.reason) ?? [];
+    ids.push(item.id);
+    idsByReason.set(item.reason, ids);
+  }
+
+  await db.batch([...idsByReason.entries()].map(([reason, ids]) => db
+    .update(recommendationDeliveries)
+    .set({
+      status: 'skipped',
+      skipReason: reason,
+      provider: null,
+      providerRequestId: null,
+      providerBatchKey: null,
+      attemptedProviders: null,
+      errorCategory: null,
+      errorMessage: null,
+      lastAttemptAt: nowIso,
+      updatedAt: nowIso,
+    })
+    .where(and(
+      inArray(recommendationDeliveries.id, ids),
+      eq(recommendationDeliveries.status, 'processing'),
+    ))) as any);
 }
 
 export async function markRecommendationDeliveryBatchFailed(args: {
@@ -6410,6 +6570,32 @@ export async function claimEmailOutboxBatch(
     if (rows[0]) claimed.push(rows[0]);
   }
   return claimed;
+}
+
+/**
+ * Account-level send-time guard for non-essential outbox mail. Transactional
+ * support/security/billing messages remain deliverable; timed activation is
+ * explicitly treated as lifecycle mail even though its legacy category is
+ * transactional.
+ */
+export async function getEmailOutboxRecipientBlockReason(
+  row: EmailOutbox,
+): Promise<'recipient_account_missing' | 'recipient_account_disabled' | 'recipient_changed' | null> {
+  const isAccountScopedLifecycle = row.emailCategory === 'service_lifecycle'
+    || row.emailCategory === 'marketing'
+    || row.eventType === 'timed_service_activation';
+  if (!isAccountScopedLifecycle || !row.recipientUserId) return null;
+
+  const db = await getDb();
+  if (!db) return 'recipient_account_missing';
+  const [user] = await db.select({ email: users.email, loginBlockedAt: users.loginBlockedAt })
+    .from(users)
+    .where(eq(users.id, row.recipientUserId))
+    .limit(1);
+  if (!user) return 'recipient_account_missing';
+  if (user.loginBlockedAt) return 'recipient_account_disabled';
+  if (normalizeEmailAddress(user.email) !== normalizeEmailAddress(row.recipientEmail)) return 'recipient_changed';
+  return null;
 }
 
 export async function markEmailOutboxSent(input: {
@@ -11064,7 +11250,7 @@ export async function getAdminClientProfile(userId: number, options?: { includeT
   const user = await getUserById(userId);
   const normalizedEmail = user?.email?.trim().toLowerCase() ?? null;
 
-  const [activePackageSubs, serviceContext, adminEmailCollision, keySummary, termsAcceptanceOrders, termsAcceptances, termsAcceptanceStatus, accountManagement] = await Promise.all([
+  const [activePackageSubs, serviceContext, adminEmailCollision, keySummary, termsAcceptanceOrders, termsAcceptances, termsAcceptanceStatus, accountManagement, recommendationNotifications] = await Promise.all([
     getUserPackageSubscriptions(userId),
     getSharedClientServiceContext(userId, options),
     normalizedEmail ? getAdminByEmail(normalizedEmail) : Promise.resolve(null),
@@ -11081,6 +11267,7 @@ export async function getAdminClientProfile(userId: number, options?: { includeT
     getTermsAcceptancesByUser(userId),
     getUserTermsAcceptanceStatus(userId, normalizedEmail),
     getClientAccountManagementContext(userId),
+    getClientRecommendationNotificationContext(userId),
   ]);
 
   const activePackages = await Promise.all(
@@ -11127,6 +11314,7 @@ export async function getAdminClientProfile(userId: number, options?: { includeT
     termsAcceptances,
     termsAcceptanceStatus,
     accountManagement,
+    recommendationNotifications,
     ...serviceContext,
   };
 }
@@ -11135,6 +11323,95 @@ type AccountRestrictionActor = {
   type: "admin" | "support";
   id: number;
 };
+
+export async function getClientRecommendationNotificationContext(userId: number) {
+  const db = await getDb();
+  if (!db) return { isDisabled: false, control: null, audit: [] };
+
+  const [controlRows, audit] = await Promise.all([
+    db.select().from(clientNotificationControls).where(and(
+      eq(clientNotificationControls.userId, userId),
+      eq(clientNotificationControls.category, RECOMMENDATION_PREFS_KEY),
+    )).limit(1),
+    db.select().from(clientNotificationControlAudit).where(and(
+      eq(clientNotificationControlAudit.userId, userId),
+      eq(clientNotificationControlAudit.category, RECOMMENDATION_PREFS_KEY),
+    )).orderBy(desc(clientNotificationControlAudit.createdAt), desc(clientNotificationControlAudit.id)).limit(30),
+  ]);
+  const control = controlRows[0] ?? null;
+  return { isDisabled: !!control?.isDisabled, control, audit };
+}
+
+export async function setClientRecommendationNotifications(input: {
+  userId: number;
+  disabled: boolean;
+  reason: string;
+  actor: AccountRestrictionActor;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const user = await getUserById(input.userId);
+  if (!user || user.isStaff) throw new Error("Only a client account can be updated");
+  const reason = input.reason.trim();
+  if (reason.length < 5 || reason.length > 1000) {
+    throw new Error("A clear reason of 5 to 1000 characters is required");
+  }
+
+  const current = await getClientRecommendationNotificationContext(input.userId);
+  if (current.control && current.isDisabled === input.disabled) {
+    return getAdminClientProfile(input.userId, { includeTimeline: false });
+  }
+
+  const now = new Date().toISOString();
+  const statements: any[] = [
+    db.insert(clientNotificationControls).values({
+      userId: input.userId,
+      category: RECOMMENDATION_PREFS_KEY,
+      isDisabled: input.disabled,
+      reason,
+      updatedByType: input.actor.type,
+      updatedById: input.actor.id,
+      disabledAt: input.disabled ? now : null,
+      updatedAt: now,
+    }).onConflictDoUpdate({
+      target: [clientNotificationControls.userId, clientNotificationControls.category],
+      set: {
+        isDisabled: input.disabled,
+        reason,
+        updatedByType: input.actor.type,
+        updatedById: input.actor.id,
+        disabledAt: input.disabled ? now : null,
+        updatedAt: now,
+      },
+    }),
+    db.insert(clientNotificationControlAudit).values({
+      userId: input.userId,
+      category: RECOMMENDATION_PREFS_KEY,
+      action: input.disabled ? 'disabled' : 'enabled',
+      reason,
+      actorType: input.actor.type,
+      actorId: input.actor.id,
+      createdAt: now,
+    }),
+  ];
+
+  if (input.disabled) {
+    statements.push(db.update(recommendationDeliveries).set({
+      status: 'skipped',
+      skipReason: 'client_notifications_disabled',
+      errorCategory: null,
+      errorMessage: null,
+      lastAttemptAt: now,
+      updatedAt: now,
+    }).where(and(
+      eq(recommendationDeliveries.userId, input.userId),
+      inArray(recommendationDeliveries.status, ['pending', 'failed']),
+    )));
+  }
+
+  await db.batch(statements as any);
+  return getAdminClientProfile(input.userId, { includeTimeline: false });
+}
 
 type AccountRefundInput = {
   requestId: string;
@@ -11375,6 +11652,35 @@ export async function blockClientAccount(input: {
     loginBlockedById: input.actor.id,
     updatedAt: now,
   }).where(and(eq(users.id, input.userId), eq(users.isStaff, false))));
+  // Login-disabled clients must not receive deliveries that were queued while
+  // their subscription was still eligible. Processing rows are revalidated by
+  // the drain immediately before the provider request.
+  statements.push(db.update(recommendationDeliveries).set({
+    status: 'skipped',
+    skipReason: 'account_disabled',
+    errorCategory: null,
+    errorMessage: null,
+    lastAttemptAt: now,
+    updatedAt: now,
+  }).where(and(
+    eq(recommendationDeliveries.userId, input.userId),
+    inArray(recommendationDeliveries.status, ['pending', 'failed']),
+  )));
+  statements.push(db.update(emailOutbox).set({
+    status: 'skipped_suppressed',
+    lockedAt: null,
+    errorCategory: 'account_disabled',
+    errorMessage: 'Non-essential email suppressed because the client account is disabled',
+    updatedAt: now,
+  }).where(and(
+    eq(emailOutbox.recipientUserId, input.userId),
+    inArray(emailOutbox.status, ['pending', 'failed']),
+    or(
+      eq(emailOutbox.emailCategory, 'service_lifecycle'),
+      eq(emailOutbox.emailCategory, 'marketing'),
+      eq(emailOutbox.eventType, 'timed_service_activation'),
+    ),
+  )));
 
   if (input.deactivateServices) {
     statements.push(
@@ -13223,9 +13529,9 @@ async function queueTimedServiceActivationEmail(input: {
 }) {
   const db = await getDb();
   if (!db || !input.services.length) return;
-  const [user] = await db.select({ email: users.email, name: users.name })
+  const [user] = await db.select({ email: users.email, name: users.name, loginBlockedAt: users.loginBlockedAt })
     .from(users).where(eq(users.id, input.userId)).limit(1);
-  if (!user?.email) return;
+  if (!user?.email || user.loginBlockedAt) return;
 
   const firstService = input.services[0];
   const serviceNames = input.services.map((service) => service.name).join(" + ");
