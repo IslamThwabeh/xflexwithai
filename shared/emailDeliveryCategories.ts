@@ -70,6 +70,7 @@ export function getEmailDeliveryEventCategory(eventType: string): EmailDeliveryE
     eventType.includes("onboarding") ||
     eventType.includes("quiz") ||
     eventType.includes("freeze") ||
+    eventType.startsWith("timed_service") ||
     eventType.startsWith("lexai_expiry")
   ) return "lifecycle";
   return "system";

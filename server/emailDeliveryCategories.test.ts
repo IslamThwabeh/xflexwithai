@@ -28,6 +28,8 @@ describe("email delivery feature categories", () => {
     ["staff_performance_submitted", "staff_performance"],
     ["lexai_case_assigned", "support"],
     ["lexai_expiry_soon", "lifecycle"],
+    ["timed_service_activation", "lifecycle"],
+    ["timed_service_activation_reminder", "lifecycle"],
   ] as const)("classifies %s as %s", (eventType, expected) => {
     expect(getEmailDeliveryEventCategory(eventType)).toBe(expected);
   });

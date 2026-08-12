@@ -1726,8 +1726,11 @@ export const userNotifications = sqliteTable("user_notifications", {
   isRead: integer("is_read", { mode: 'boolean' }).default(false).notNull(),
   batchId: text("batch_id"),
   emailSent: integer("email_sent", { mode: 'boolean' }).default(false).notNull(),
+  dedupeKey: text("dedupe_key"),
   createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
-});
+}, (table) => ({
+  dedupeKeyUnique: unique("uq_user_notifications_dedupe_key").on(table.dedupeKey),
+}));
 
 export type UserNotification = typeof userNotifications.$inferSelect;
 export type InsertUserNotification = typeof userNotifications.$inferInsert;
@@ -2252,8 +2255,11 @@ export const staffNotifications = sqliteTable("staff_notifications", {
   actionUrl: text("actionUrl"),
   metadata: text("metadata"), // JSON
   isRead: integer("isRead", { mode: 'boolean' }).default(false).notNull(),
+  dedupeKey: text("dedupe_key"),
   createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
-});
+}, (table) => ({
+  userDedupeUnique: unique("uq_staff_notifications_user_dedupe_key").on(table.userId, table.dedupeKey),
+}));
 
 export type StaffNotification = typeof staffNotifications.$inferSelect;
 export type InsertStaffNotification = typeof staffNotifications.$inferInsert;

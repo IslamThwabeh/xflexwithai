@@ -125,10 +125,17 @@ import {
 } from './services/package-key-access.service';
 import {
   getPendingServiceWindow,
+  getTimedServiceReminderStage,
   getTimedServiceActivationWindow,
+  shouldNotifyLegacyTimedServiceAutoActivation,
   shouldAutoActivateTimedServices,
   type TimedServiceActivationReason,
 } from './services/timed-service-activation.service';
+import {
+  buildTimedServiceActivationContent,
+  buildTimedServiceReminderContent,
+  type TimedServiceName,
+} from './services/timed-service-notifications.service';
 import {
   BUG_REPORT_RISK_LEVELS,
   COOKIE_MAX_AGE_USER,
@@ -4885,6 +4892,114 @@ export async function getRecommendationServiceAccessSummary(userId: number): Pro
   return buildTimedServiceAccessSummary(subscription);
 }
 
+async function queuePendingTimedServiceReminders(userId: number, now: Date = new Date()) {
+  const db = await getDb();
+  if (!db) return;
+
+  const packageId = await getUserLatestActivatedPackageId(userId);
+  if (packageId) {
+    const readiness = await getUserTimedServiceReadiness(userId, packageId);
+    if (readiness.ready) return;
+  }
+
+  const [userRows, lexaiRows, recommendationRows] = await Promise.all([
+    db.select({
+      email: users.email,
+      name: users.name,
+      loginBlockedAt: users.loginBlockedAt,
+    }).from(users).where(and(eq(users.id, userId), eq(users.isStaff, false))).limit(1),
+    db.select({ maxActivationDate: lexaiSubscriptions.maxActivationDate })
+      .from(lexaiSubscriptions)
+      .where(and(
+        eq(lexaiSubscriptions.userId, userId),
+        eq(lexaiSubscriptions.isActive, true),
+        eq(lexaiSubscriptions.isPaused, false),
+        eq(lexaiSubscriptions.isPendingActivation, true),
+        isNotNull(lexaiSubscriptions.maxActivationDate),
+      )),
+    db.select({ maxActivationDate: recommendationSubscriptions.maxActivationDate })
+      .from(recommendationSubscriptions)
+      .where(and(
+        eq(recommendationSubscriptions.userId, userId),
+        eq(recommendationSubscriptions.isActive, true),
+        eq(recommendationSubscriptions.isPaused, false),
+        eq(recommendationSubscriptions.isPendingActivation, true),
+        isNotNull(recommendationSubscriptions.maxActivationDate),
+      )),
+  ]);
+
+  const user = userRows[0];
+  if (!user?.email || user.loginBlockedAt) return;
+
+  const servicesByDeadline = new Map<string, Set<TimedServiceName>>();
+  const addService = (deadline: string | null, service: TimedServiceName) => {
+    if (!deadline) return;
+    const services = servicesByDeadline.get(deadline) ?? new Set<TimedServiceName>();
+    services.add(service);
+    servicesByDeadline.set(deadline, services);
+  };
+  lexaiRows.forEach((row) => addService(row.maxActivationDate, "LexAI"));
+  recommendationRows.forEach((row) => addService(row.maxActivationDate, "Recommendations"));
+
+  if ([...servicesByDeadline.keys()].some((deadline) => {
+    const parsed = new Date(deadline);
+    return !Number.isNaN(parsed.getTime()) && parsed <= now;
+  })) return;
+
+  for (const [deadline, serviceSet] of servicesByDeadline) {
+    const stage = getTimedServiceReminderStage({ now, maxActivationDate: deadline });
+    if (!stage) continue;
+    const services = [...serviceSet];
+    const content = buildTimedServiceReminderContent({
+      clientName: user.name,
+      services,
+      deadline,
+      stage,
+    });
+    const dedupeKey = `timed_activation_reminder:${userId}:${deadline}:${stage}`;
+    const actionUrl = services.length === 1
+      ? services[0] === "LexAI" ? "/lexai" : "/recommendations"
+      : "/packages";
+
+    await createNotification({
+      userId,
+      type: "info",
+      titleAr: content.titleAr,
+      titleEn: content.titleEn,
+      contentAr: content.contentAr,
+      contentEn: content.contentEn,
+      actionUrl,
+      batchId: dedupeKey,
+      dedupeKey,
+    });
+
+    const html = `<!doctype html><html><body style="font-family:Arial,sans-serif;background:#f4f4f7;padding:24px">
+      <div style="max-width:600px;margin:auto;background:#fff;border-radius:12px;padding:28px">
+        <h2 style="color:#1d4ed8">${escapeEmailHtml(content.titleAr)}</h2>
+        <p>${escapeEmailHtml(content.contentAr)}</p>
+        <p><strong>موعد التفعيل:</strong> ${escapeEmailHtml(content.deadlineAr)}</p>
+        <hr style="border:0;border-top:1px solid #e5e7eb;margin:24px 0">
+        <h2 style="color:#1d4ed8">${escapeEmailHtml(content.titleEn)}</h2>
+        <p>${escapeEmailHtml(content.contentEn)}</p>
+        <p><strong>Activation date:</strong> ${escapeEmailHtml(content.deadlineEn)}</p>
+      </div></body></html>`;
+
+    await enqueueEmailOutbox({
+      dedupeKey,
+      batchId: dedupeKey,
+      recipientUserId: userId,
+      recipientEmail: user.email,
+      eventType: "timed_service_activation_reminder",
+      templateId: `timed_service_activation_reminder_${stage}`,
+      emailCategory: "service_lifecycle",
+      subject: content.subject,
+      bodyText: content.text,
+      bodyHtml: html,
+      metadata: { stage, deadline, services },
+    });
+  }
+}
+
 async function repairDueTimedServiceStates() {
   const db = await getDb();
   if (!db) return;
@@ -4938,6 +5053,7 @@ async function repairDueTimedServiceStates() {
   ]));
   for (const userId of pendingUserIds) {
     try {
+      await queuePendingTimedServiceReminders(userId);
       await ensureTimedServicesActivatedIfDue(userId);
     } catch (error) {
       let alertUser: { name: string | null; email: string | null } | undefined;
@@ -6545,6 +6661,7 @@ export async function claimEmailOutboxBatch(
       sql`CASE ${emailOutbox.eventType}
         WHEN 'support_client_reply' THEN 0
         WHEN 'timed_service_activation' THEN 1
+        WHEN 'timed_service_activation_reminder' THEN 1
         WHEN 'recommendation_alert' THEN 2
         WHEN 'recommendation_new' THEN 2
         WHEN 'recommendation_update' THEN 2
@@ -13534,52 +13651,37 @@ async function queueTimedServiceActivationEmail(input: {
   if (!user?.email || user.loginBlockedAt) return;
 
   const firstService = input.services[0];
-  const serviceNames = input.services.map((service) => service.name).join(" + ");
-  const policyActivated = input.activationReason === "protection_expired";
-  const reasonEn = policyActivated
-    ? "Your protection period ended, so the service gates were waived automatically by policy."
-    : "Your service requirements were completed.";
-  const reasonAr = policyActivated
-    ? "انتهت فترة الحماية، لذلك تم تجاوز شروط بدء الخدمة تلقائياً حسب السياسة."
-    : "تم استكمال متطلبات بدء الخدمة.";
-  const waiverEn = [
-    input.courseWaivedByPolicy ? "Course gate waived by policy." : null,
-    input.brokerWaivedByPolicy ? "Broker gate waived by policy." : null,
-  ].filter(Boolean).join(" ");
-  const waiverAr = [
-    input.courseWaivedByPolicy ? "تم تجاوز شرط الدورة حسب السياسة." : null,
-    input.brokerWaivedByPolicy ? "تم تجاوز شرط الوسيط حسب السياسة." : null,
-  ].filter(Boolean).join(" ");
+  const content = buildTimedServiceActivationContent({
+    clientName: user.name,
+    activationReason: input.activationReason,
+    courseWaivedByPolicy: input.courseWaivedByPolicy,
+    brokerWaivedByPolicy: input.brokerWaivedByPolicy,
+    services: input.services,
+  });
   const subject = "[XFlex Trading Academy] تم تفعيل خدماتك | Your Services Are Active";
   const text = [
     `مرحباً ${user.name || ""}`,
-    reasonAr,
-    waiverAr,
-    `الخدمات: ${serviceNames}`,
-    `بداية الخدمة: ${firstService.startDate}`,
-    `نهاية الخدمة: ${firstService.endDate}`,
+    content.reasonAr,
+    content.waiverAr,
+    content.detailsAr,
     "",
     `Hello ${user.name || ""}`,
-    reasonEn,
-    waiverEn,
-    `Services: ${serviceNames}`,
-    `Effective start: ${firstService.startDate}`,
-    `Expires: ${firstService.endDate}`,
+    content.reasonEn,
+    content.waiverEn,
+    content.detailsEn,
   ].filter(Boolean).join("\n");
+  const rowsAr = content.rows.map((row) => `<li><strong>${escapeEmailHtml(row.nameAr)}</strong>: ${escapeEmailHtml(row.startAr)} — ${escapeEmailHtml(row.endAr)}</li>`).join("");
+  const rowsEn = content.rows.map((row) => `<li><strong>${escapeEmailHtml(row.nameEn)}</strong>: ${escapeEmailHtml(row.startEn)} — ${escapeEmailHtml(row.endEn)}</li>`).join("");
   const html = `<!doctype html><html><body style="font-family:Arial,sans-serif;background:#f4f4f7;padding:24px">
     <div style="max-width:600px;margin:auto;background:#fff;border-radius:12px;padding:28px">
       <h2 style="color:#047857">تم تفعيل خدماتك | Your Services Are Active</h2>
       <p>مرحباً ${escapeEmailHtml(user.name || "")}</p>
-      <p>${escapeEmailHtml(reasonAr)} ${escapeEmailHtml(waiverAr)}</p>
-      <p><strong>الخدمات:</strong> ${escapeEmailHtml(serviceNames)}<br>
-      <strong>البداية:</strong> ${escapeEmailHtml(firstService.startDate)}<br>
-      <strong>النهاية:</strong> ${escapeEmailHtml(firstService.endDate)}</p>
+      <p>${escapeEmailHtml(content.reasonAr)} ${escapeEmailHtml(content.waiverAr)}</p>
+      <ul>${rowsAr}</ul>
       <hr style="border:0;border-top:1px solid #e5e7eb;margin:24px 0">
       <p>Hello ${escapeEmailHtml(user.name || "")}</p>
-      <p>${escapeEmailHtml(reasonEn)} ${escapeEmailHtml(waiverEn)}</p>
-      <p><strong>Services:</strong> ${escapeEmailHtml(serviceNames)}<br>
-      <strong>Effective start:</strong> ${escapeEmailHtml(firstService.startDate)}<br>
-      <strong>Expires:</strong> ${escapeEmailHtml(firstService.endDate)}</p>
+      <p>${escapeEmailHtml(content.reasonEn)} ${escapeEmailHtml(content.waiverEn)}</p>
+      <ul>${rowsEn}</ul>
     </div></body></html>`;
 
   await enqueueEmailOutbox({
@@ -13639,6 +13741,38 @@ export async function activateStudentSubscriptions(
     .select()
     .from(recommendationSubscriptions)
     .where(and(eq(recommendationSubscriptions.userId, userId), eq(recommendationSubscriptions.isPendingActivation, true)));
+
+  let legacyAutoActivationWithoutKey = false;
+  if (isAutoActivation && (pendingLexai.length > 0 || pendingRec.length > 0)) {
+    const linkedRecommendationKeyIds = pendingRec
+      .map((subscription) => subscription.registrationKeyId)
+      .filter((keyId): keyId is number => typeof keyId === "number");
+    const [userRow] = await db.select({ email: users.email }).from(users)
+      .where(eq(users.id, userId)).limit(1);
+    const [linkedKeyRow] = linkedRecommendationKeyIds.length > 0
+      ? await db.select({ id: registrationKeys.id }).from(registrationKeys)
+          .where(and(
+            inArray(registrationKeys.id, linkedRecommendationKeyIds),
+            isNotNull(registrationKeys.packageId),
+            isNotNull(registrationKeys.activatedAt),
+          ))
+          .limit(1)
+      : [];
+    const [emailKeyRow] = !linkedKeyRow && userRow?.email
+      ? await db.select({ id: registrationKeys.id }).from(registrationKeys)
+          .where(and(
+            isNotNull(registrationKeys.packageId),
+            isNotNull(registrationKeys.activatedAt),
+            sql`lower(trim(${registrationKeys.email})) = ${userRow.email.trim().toLowerCase()}`,
+          ))
+          .limit(1)
+      : [];
+    legacyAutoActivationWithoutKey = shouldNotifyLegacyTimedServiceAutoActivation({
+      activationReason,
+      hasPendingTimedService: pendingLexai.length > 0 || pendingRec.length > 0,
+      hasActivatedPackageKey: !!linkedKeyRow || !!emailKeyRow,
+    });
+  }
 
   const nowStr = now.toISOString();
   const activatedServices: Array<{ name: "LexAI" | "Recommendations"; startDate: string; endDate: string }> = [];
@@ -13709,27 +13843,43 @@ export async function activateStudentSubscriptions(
     if (updated.length) activatedServices.push({ name: "Recommendations", startDate: startStr, endDate: endStr });
   }
 
-  // Notify student that LexAI/Rec access is now active
-  if (activatedServices.some((service) => service.name === "LexAI")) {
+  const activationContent = activatedServices.length > 0
+    ? buildTimedServiceActivationContent({
+        activationReason,
+        courseWaivedByPolicy,
+        brokerWaivedByPolicy,
+        services: activatedServices,
+      })
+    : null;
+
+  // Notify student that LexAI/Rec access is now active, including the exact
+  // effective dates and why activation occurred.
+  const lexaiService = activatedServices.find((service) => service.name === "LexAI");
+  if (lexaiService && activationContent) {
+    const lexaiRow = activationContent.rows.find((row) => row.name === "LexAI");
     await createNotification({
       userId,
       type: 'success',
       titleAr: 'تم تفعيل LexAI 🌟',
       titleEn: 'LexAI Access Activated 🌟',
-      contentAr: `يمكنك الآن استخدام LexAI. اشتراكك فعّال لمدة ${entitlementDays} يوم.`,
-      contentEn: `You now have LexAI access. Your subscription is active for ${entitlementDays} days.`,
+      contentAr: `${activationContent.reasonAr} ${lexaiRow?.nameAr}: من ${lexaiRow?.startAr} حتى ${lexaiRow?.endAr}.`,
+      contentEn: `${activationContent.reasonEn} LexAI: ${lexaiRow?.startEn} to ${lexaiRow?.endEn}.`,
       actionUrl: '/lexai',
+      dedupeKey: `timed_activation_confirm:${userId}:lexai:${lexaiService.startDate}`,
     }).catch(() => {});
   }
-  if (activatedServices.some((service) => service.name === "Recommendations")) {
+  const recommendationService = activatedServices.find((service) => service.name === "Recommendations");
+  if (recommendationService && activationContent) {
+    const recommendationRow = activationContent.rows.find((row) => row.name === "Recommendations");
     await createNotification({
       userId,
       type: 'success',
       titleAr: 'تم تفعيل قروب التوصيات 📈',
       titleEn: 'Recommendations Access Activated 📈',
-      contentAr: `يمكنك الآن الوصول لقروب التوصيات. اشتراكك فعّال لمدة ${entitlementDays} يوم.`,
-      contentEn: `You now have Recommendations access. Your subscription is active for ${entitlementDays} days.`,
+      contentAr: `${activationContent.reasonAr} التوصيات: من ${recommendationRow?.startAr} حتى ${recommendationRow?.endAr}.`,
+      contentEn: `${activationContent.reasonEn} Recommendations: ${recommendationRow?.startEn} to ${recommendationRow?.endEn}.`,
       actionUrl: '/recommendations',
+      dedupeKey: `timed_activation_confirm:${userId}:recommendations:${recommendationService.startDate}`,
     }).catch(() => {});
   }
 
@@ -13741,6 +13891,31 @@ export async function activateStudentSubscriptions(
       brokerWaivedByPolicy,
       services: activatedServices,
     }).catch((error) => logger.error("[ACTIVATION] Failed to queue activation email", {
+      userId,
+      error: error instanceof Error ? error.message : String(error),
+    }));
+  }
+
+  if (activatedServices.length > 0 && legacyAutoActivationWithoutKey) {
+    const [client] = await db.select({ name: users.name, email: users.email }).from(users)
+      .where(eq(users.id, userId)).limit(1);
+    const serviceNames = activatedServices.map((service) => service.name).join(" + ");
+    await notifyStaffByEvent("timed_service_legacy_auto_activation", {
+      titleEn: `Legacy service auto-activated without a package key — client #${userId}`,
+      titleAr: `تم تفعيل خدمة قديمة تلقائياً دون مفتاح — العميل #${userId}`,
+      contentEn: `${client?.name || "Client"} (${client?.email || `#${userId}`}) had ${serviceNames} auto-activated at the protection deadline. No activated package key is linked to the account. Activation was not stopped; review only if needed.`,
+      contentAr: `تم تفعيل ${serviceNames} تلقائياً للعميل ${client?.name || `#${userId}`} عند انتهاء مهلة الحماية، ولا يوجد مفتاح باقة مفعّل مرتبط بالحساب. لم يتم إيقاف التفعيل؛ التنبيه للمراجعة عند الحاجة فقط.`,
+      actionUrl: "/admin/students",
+      dedupeKey: `legacy_timed_activation:${userId}:${activatedServices[0].startDate}`,
+      metadata: {
+        userId,
+        userName: client?.name ?? null,
+        userEmail: client?.email ?? null,
+        activationReason,
+        services: activatedServices,
+        reviewOnly: true,
+      },
+    }).catch((error) => logger.error("[ACTIVATION] Failed to notify staff about legacy auto-activation", {
       userId,
       error: error instanceof Error ? error.message : String(error),
     }));
@@ -15687,12 +15862,17 @@ export async function getUnreadNotificationCount(userId: number): Promise<number
 export async function createNotification(notif: {
   userId: number; type?: string; titleEn: string; titleAr: string;
   contentEn?: string; contentAr?: string; actionUrl?: string;
+  batchId?: string; dedupeKey?: string;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const [row] = await db.insert(userNotifications).values({
-    ...notif, type: notif.type || 'info', createdAt: new Date().toISOString(),
-  }).returning();
+    ...notif,
+    batchId: notif.batchId ?? null,
+    dedupeKey: notif.dedupeKey ?? null,
+    type: notif.type || 'info',
+    createdAt: new Date().toISOString(),
+  }).onConflictDoNothing().returning();
   return row;
 }
 
@@ -20570,6 +20750,7 @@ export async function notifyStaffByEvent(
     emailContentHtmlEn?: string;
     emailActionLabelEn?: string;
     actionUrl?: string;
+    dedupeKey?: string;
     metadata?: Record<string, unknown>;
   },
 ) {
@@ -20639,9 +20820,14 @@ export async function notifyStaffByEvent(
     contentAr: data.contentAr,
     actionUrl,
     metadata: metadataStr,
+    dedupeKey: data.dedupeKey ?? null,
     createdAt: now,
   }));
-  await db.insert(staffNotifications).values(notifValues);
+  const insertedNotifications = data.dedupeKey
+    ? await db.insert(staffNotifications).values(notifValues).onConflictDoNothing().returning({ userId: staffNotifications.userId })
+    : (await db.insert(staffNotifications).values(notifValues), targetUserIds.map((userId) => ({ userId })));
+  if (insertedNotifications.length === 0) return;
+  const insertedTargetUserIds = insertedNotifications.map((row) => row.userId);
 
   // These events drive actionable task-bar badges. Keep them in-portal to
   // avoid turning routine workflow updates into unsolicited staff email.
@@ -20674,7 +20860,7 @@ export async function notifyStaffByEvent(
       addRecipient(adminRow.email, -Number(adminRow.id));
     }
 
-    const staffTargetUserIds = targetUserIds.filter((userId) => userId > 0);
+    const staffTargetUserIds = insertedTargetUserIds.filter((userId) => userId > 0);
     for (const userIdChunk of chunkValues(staffTargetUserIds)) {
       const staffRows = userIdChunk.length
         ? await db.select({
@@ -20724,7 +20910,7 @@ export async function notifyStaffByEvent(
   for (const notificationEmail of notificationEmails) {
     addDirectEmailRecipient(notificationEmail, "configured");
   }
-  for (const userId of targetUserIds) {
+  for (const userId of insertedTargetUserIds) {
     if (userId < 0) continue;
 
     try {

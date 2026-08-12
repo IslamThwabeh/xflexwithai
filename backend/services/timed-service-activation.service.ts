@@ -50,6 +50,39 @@ export type TimedServiceActivationReason =
   | "renewal"
   | "legacy";
 
+export type TimedServiceReminderStage = "three_days" | "one_day";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Returns the single reminder that is currently actionable. The wider windows
+ * let a delayed cron recover without emitting a stale three-day reminder after
+ * the one-day window has already started.
+ */
+export function getTimedServiceReminderStage(input: {
+  now: Date;
+  maxActivationDate?: string | null;
+}): TimedServiceReminderStage | null {
+  if (!input.maxActivationDate) return null;
+  const deadline = new Date(input.maxActivationDate);
+  if (Number.isNaN(deadline.getTime())) return null;
+  const remainingMs = deadline.getTime() - input.now.getTime();
+  if (remainingMs <= 0) return null;
+  if (remainingMs <= DAY_MS) return "one_day";
+  if (remainingMs <= 3 * DAY_MS) return "three_days";
+  return null;
+}
+
+export function shouldNotifyLegacyTimedServiceAutoActivation(input: {
+  activationReason: TimedServiceActivationReason;
+  hasPendingTimedService: boolean;
+  hasActivatedPackageKey: boolean;
+}) {
+  return input.activationReason === "protection_expired"
+    && input.hasPendingTimedService
+    && !input.hasActivatedPackageKey;
+}
+
 export function getTimedServiceActivationWindow(input: {
   processedAt: Date;
   maxActivationDate?: string | null;

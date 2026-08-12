@@ -114,6 +114,7 @@ export const STAFF_NOTIFICATION_EVENTS = {
   recommendation_delivery_anomaly: { labelEn: "Recommendation Delivery Anomaly", labelAr: "خلل في توصيل التوصيات", roles: [], actionUrl: "/admin/recommendations" },
   email_delivery_anomaly: { labelEn: "Email Delivery Anomaly", labelAr: "خلل في توصيل البريد", roles: [], actionUrl: "/admin/email-logs" },
   timed_service_activation_failure: { labelEn: "Timed Service Activation Failure", labelAr: "فشل تفعيل خدمة زمنية", roles: ["support", "key_manager"], actionUrl: "/admin/expiry-report" },
+  timed_service_legacy_auto_activation: { labelEn: "Legacy Timed Service Auto-Activation", labelAr: "تفعيل تلقائي لخدمة قديمة دون مفتاح", roles: ["key_manager"], actionUrl: "/admin/students" },
   recommendation_published: { labelEn: "Recommendation Published", labelAr: "تم نشر توصية", roles: [], actionUrl: "/admin/recommendations" },
   student_survey_submitted: { labelEn: "Student Survey Submitted", labelAr: "تم إرسال استبيان طالب", roles: ["student_surveys_manager"], actionUrl: "/admin/student-surveys" },
   loyalty_reward_requested: { labelEn: "Reward Requested", labelAr: "تم طلب مكافأة", roles: ["loyalty_rewards_manager"], actionUrl: "/admin/points" },
