@@ -1,6 +1,6 @@
 # XFLEX Project Memory
 
-Last updated: 2026-08-10
+Last updated: 2026-08-12
 
 ## Project Overview
 
@@ -14,7 +14,7 @@ Last updated: 2026-08-10
 - Main router: `backend/routers.ts`.
 - Database wrapper/helpers: `backend/db.ts`.
 - SQLite schema source: `database/schema-sqlite.ts`.
-- Key tables to remember: `admin_settings`, `supportMessages`, `userRoles`, `users`, `email_delivery_logs`, `email_suppressions`, `recommendationSubscriptions`, `lexaiSubscriptions`, `registrationKeys`, `packageSubscriptions`.
+- Key tables to remember: `admin_settings`, `supportMessages`, `userRoles`, `users`, `email_delivery_logs`, `email_suppressions`, `recommendationSubscriptions`, `lexaiSubscriptions`, `registrationKeys`, `packageSubscriptions`, `client_notification_controls`, `client_notification_control_audit`.
 
 ## Deployment
 
@@ -36,9 +36,9 @@ Last updated: 2026-08-10
 - During investigations, Codex may inspect the production D1 database directly with Wrangler read-only `SELECT` queries to collect evidence. Any production write, repair, migration, or data change needs separate explicit user approval.
 - When writing raw Wrangler SQL against `email_delivery_logs`, use the physical snake_case column names: `recipient_email`, `recipient_user_id`, `event_type`, `template_id`, `error_message`, and `created_at`. Drizzle maps these to camelCase in TypeScript (`recipientEmail`, `eventType`, etc.), but raw D1 SQL with camelCase will fail.
 - For production D1 verification where result rows matter, prefer one `SELECT` per Wrangler command. Multi-statement SQL files may return only execution summaries instead of each result set.
-- Latest production Worker deploy completed on 2026-08-10 with version `3a8a5262-e2a8-4c0d-8c24-f17bda2a7461` from lifetime-document hotfix commit `d1d8af7`.
-- Latest successful Pages deployment completed on 2026-08-10 from lifetime-document hotfix commit `d1d8af7`, deployment ID `0eea81d7-47af-45b8-9d71-c1b57542eda4`, preview `https://0eea81d7.xflexwithai.pages.dev`. A historical 2026-06-05 upload failed with `POST /pages/assets/upload -> 502 Bad Gateway`; if that Cloudflare error recurs, manual dashboard upload of `dist/public` remains the fallback.
-- Latest production D1 migration applied as of 2026-08-10 is `database/migrations/083_support_ai_decision_audit.sql`.
+- Latest production Worker deploy completed on 2026-08-12 with version `cf6d9a5e-1c0e-475f-9be4-1a28c137ecbd` from recommendation-notification protection commit `baf568a`.
+- Latest successful Pages deployment completed on 2026-08-12 from recommendation-notification protection commit `baf568a`, deployment ID `68c6f8d2-b73b-4dc2-88d6-6af2204bb9fd`, preview `https://68c6f8d2.xflexwithai.pages.dev`. A historical 2026-06-05 upload failed with `POST /pages/assets/upload -> 502 Bad Gateway`; if that Cloudflare error recurs, manual dashboard upload of `dist/public` remains the fallback.
+- Latest production D1 migration applied as of 2026-08-12 is `database/migrations/084_client_notification_controls.sql`.
 - The email-reliability and recommendation-freshness release was committed as `5063172 Harden email delivery and recommendation freshness`, pushed to `origin/main`, and deployed by Codex on 2026-07-28. Production backup: `tmp/prod-backups/xflexwithai-before-email-suppression-077-20260728-160332.sql` (221,541,962 bytes). Migration `077_email_hard_bounce_suppressions.sql` was applied at Cloudflare bookmark `00000fc3-00000084-000050b6-6bc163a40b405eb03eab9eabf879346e` and recorded in `schema_migrations` with `source = codex_wrangler`.
 - On 2026-06-21, the user reported completing the Worker/frontend deployment for the timed-service activation and email reliability release. The exact Cloudflare deployment version/commit was not recorded in this session.
 - Production D1 migration `database/migrations/055_timed_service_activation_email_outbox.sql` was applied by Codex on 2026-06-21 before deployment.
@@ -135,6 +135,13 @@ Last updated: 2026-08-10
   - Read-only production reconciliation found 84 qualifying lifetime document owners. All 78 users with an active package were included, and six valid lifetime course owners without an active package were the exact group restored by the new rule. No D1 migration, repair, or production data write was required.
   - Validation passed the focused 3-test lifetime-document suite, the complete 84-file/485-test suite, TypeScript, the full production build, Worker build, and diff checks. Production Worker version is `3a8a5262-e2a8-4c0d-8c24-f17bda2a7461`; Pages deployment is `0eea81d7-47af-45b8-9d71-c1b57542eda4`, source `d1d8af7`, preview `https://0eea81d7.xflexwithai.pages.dev`.
   - Post-deploy smoke passed both Worker health endpoints, production `/courses` and `/documents`, and the Pages preview. Private routes retained `Cache-Control: no-store, private` and `X-Robots-Tag: noindex, nofollow`; anonymous direct document access remained `401`.
+- Recommendation-notification eligibility and per-client controls rollout on 2026-08-12:
+  - Release commit `baf568a Harden client recommendation notifications` was pushed directly to `origin/main` using the established production workflow. Recommendation delivery now revalidates account and recommendation-subscription eligibility immediately before provider submission: expired, frozen, pending/not-yet-active, login-blocked, and deleted/missing accounts are skipped. Generic queued client email also refuses login-blocked or deleted/missing accounts before provider submission.
+  - Per-client recommendation alerts, updates, and trade-result emails can be disabled independently through audited controls. The capability is governed by `manage_client_notifications`; main admins retain it, while support users receive it only after an admin explicitly grants the role. Migration defaults created zero controls and zero audit entries, so no client was silently disabled and no support permission was automatically granted.
+  - Desktop/mobile Chrome QA covered 1440x900 and 390x844 in English and Arabic. The role dialog is mobile-scrollable, localized dialog descriptions and close labels are present, and the desktop sidebar resize handle is hidden on mobile. Validation passed 489/489 tests, TypeScript, the production build, Worker build, SEO/private-route checks, migration verification, and diff hygiene.
+  - Before production migration 084, D1 Time Travel bookmark `00001084-0000002a-000050c5-2fae95ff7e42411435e479e3631b0377` and export `tmp/prod-backups/xflexwithai-before-client-notification-controls-084-20260812-102159.sql` were captured. The export is 254,429,179 bytes with SHA-256 `DDDF985246B3A3CB086CD6B748F80538C70A172A08066C75B8C060B66CF436C0`.
+  - Migration `084_client_notification_controls.sql` completed at bookmark `00001084-00000030-000050c5-7be3c2821b85d4ad9d8f6e89f126667e` and is recorded once in `schema_migrations` as ledger id 25 with `source = codex_wrangler`. Post-migration verification confirmed both tables and indexes, zero control/audit rows, and no foreign-key violations.
+  - Production Worker version is `cf6d9a5e-1c0e-475f-9be4-1a28c137ecbd`; Pages deployment is `68c6f8d2-b73b-4dc2-88d6-6af2204bb9fd`, source `baf568a`, preview `https://68c6f8d2.xflexwithai.pages.dev`. Both Worker health endpoints returned 200/status ok. Production and preview `/ar`, `/en`, `/auth`, `/admin/students`, `/admin/roles`, `/recommendations`, `/documents`, and `/support` served `assets/index-D7FglslU.js`; private routes retained `Cache-Control: private, no-store` and `X-Robots-Tag: noindex, nofollow`. Final D1 reconciliation found no pending/failed recommendation or generic email queue rows.
 
 ## Email And Notifications
 
