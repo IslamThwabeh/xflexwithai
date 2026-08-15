@@ -1,6 +1,6 @@
 # XFLEX Project Memory
 
-Last updated: 2026-08-13
+Last updated: 2026-08-15
 
 ## Project Overview
 
@@ -36,9 +36,18 @@ Last updated: 2026-08-13
 - During investigations, Codex may inspect the production D1 database directly with Wrangler read-only `SELECT` queries to collect evidence. Any production write, repair, migration, or data change needs separate explicit user approval.
 - When writing raw Wrangler SQL against `email_delivery_logs`, use the physical snake_case column names: `recipient_email`, `recipient_user_id`, `event_type`, `template_id`, `error_message`, and `created_at`. Drizzle maps these to camelCase in TypeScript (`recipientEmail`, `eventType`, etc.), but raw D1 SQL with camelCase will fail.
 - For production D1 verification where result rows matter, prefer one `SELECT` per Wrangler command. Multi-statement SQL files may return only execution summaries instead of each result set.
-- Latest production Worker deploy completed on 2026-08-13 (Asia/Amman) with version `c714816e-0732-4c24-9660-cbda32ccb127` from timed-service notification commit `8ce7fc3`.
-- Latest successful Pages deployment completed on 2026-08-13 (Asia/Amman) from timed-service notification commit `8ce7fc3`, deployment ID `57295b14-12aa-46f0-b570-1510d5dbd1b0`, preview `https://57295b14.xflexwithai.pages.dev`. A historical 2026-06-05 upload failed with `POST /pages/assets/upload -> 502 Bad Gateway`; if that Cloudflare error recurs, manual dashboard upload of `dist/public` remains the fallback.
-- Latest production D1 migration applied as of 2026-08-13 is `database/migrations/085_timed_service_activation_reminders.sql`.
+- Latest production Worker deploy completed on 2026-08-15 (Asia/Amman) with version `e4b40cf4-017f-4643-a56a-45e79164911b` from client-notification and pricing commit `cc1b95e`.
+- Latest successful Pages deployment completed on 2026-08-15 (Asia/Amman) from client-notification and pricing commit `cc1b95e`, deployment ID `b74a60e7-3251-4c07-8d99-4f3089ee4d8b`, preview `https://b74a60e7.xflexwithai.pages.dev`. A historical 2026-06-05 upload failed with `POST /pages/assets/upload -> 502 Bad Gateway`; if that Cloudflare error recurs, manual dashboard upload of `dist/public` remains the fallback.
+- Latest production D1 migration applied as of 2026-08-15 is `database/migrations/086_student_survey_continuous_notifications.sql`.
+- Client awareness, survey reminders, and canonical order-pricing release completed on 2026-08-15 (Asia/Amman):
+  - Release commit `cc1b95e Add continuous client alerts and correct order pricing` was pushed directly to `origin/main` using the established workflow.
+  - Migration `database/migrations/086_student_survey_continuous_notifications.sql` was applied additively before the Worker and recorded as `schema_migrations.id = 27` with `source = codex_wrangler`. It adds five scheduling columns and one partial due index. All 59 existing assignments remained unscheduled with zero notification count, so deployment created no catch-up reminders.
+  - Pre-migration Time Travel bookmark: `000010bf-000010ee-000050c8-90066cb329adeef8d5f54fe1a5db7bd3`. Post-migration/ledger bookmark: `000010bf-000010f8-000050c8-5dbba9ca56323322eac2060e3d05fd64`. A local production export was intentionally not created because Time Travel provides recovery without copying customer data to the workspace.
+  - Future approved community posts create language-specific durable campaigns. Eligible non-staff, non-blocked, non-suspended clients are grouped into privacy-safe BCC batches of at most 50; the author is excluded, marketing suppressions remain enforced, and recommendation delivery retains first priority. The 5 existing posts and 9 comments generated zero retroactive campaign, outbox, or delivery rows.
+  - Survey assignments created after the release receive immediate dashboard/email notification plus continuous reminders according to the configured cadence. Existing assignments do not opt in automatically.
+  - Comprehensive orders remain stored in historic USD cents, but Admin Orders, My Orders, Order Detail, and reports now project the canonical commercial price of ₪1,700 instead of the generic ₪1,750 conversion. Production baseline contained 17 standard $500 Comprehensive orders and 3 $300 upgrades.
+  - Worker version `e4b40cf4-017f-4643-a56a-45e79164911b` deployed successfully with both cron schedules preserved. Pages deployment `b74a60e7-3251-4c07-8d99-4f3089ee4d8b` serves source `cc1b95e` and exact bundle `assets/index-9T33DuSD.js` on production and preview.
+  - Verification passed TypeScript, the full automated suite plus final focused event-category regression, production frontend/server and Worker builds, both Worker health endpoints, aggregate-only D1 reconciliation, zero foreign-key violations, and 20 route/asset/header checks across production and preview. No synthetic survey assignment, community post, notification, or email was created for QA.
 - Timed-service activation reminder release completed on 2026-08-13 (Asia/Amman):
   - Release commit `8ce7fc3 Improve timed service activation notifications` was pushed directly to `origin/main` following the repository's established deployment workflow.
   - Migration `database/migrations/085_timed_service_activation_reminders.sql` was applied additively to production D1 before the Worker deploy and recorded as `schema_migrations.id = 26` with `source = codex_wrangler`. It added nullable notification dedupe columns plus partial unique indexes; existing notification row counts stayed unchanged at 29,768 client rows and 20,188 staff rows.
