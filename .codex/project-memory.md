@@ -14,7 +14,7 @@ Last updated: 2026-08-15
 - Main router: `backend/routers.ts`.
 - Database wrapper/helpers: `backend/db.ts`.
 - SQLite schema source: `database/schema-sqlite.ts`.
-- Key tables to remember: `admin_settings`, `supportMessages`, `userRoles`, `users`, `email_delivery_logs`, `email_suppressions`, `recommendationSubscriptions`, `lexaiSubscriptions`, `registrationKeys`, `packageSubscriptions`, `client_notification_controls`, `client_notification_control_audit`.
+- Key tables to remember: `admin_settings`, `supportMessages`, `userRoles`, `users`, `email_delivery_logs`, `email_suppressions`, `recommendationSubscriptions`, `lexaiSubscriptions`, `registrationKeys`, `packageSubscriptions`, `client_notification_controls`, `client_notification_control_audit`, `seo_owner_intake`, `seo_owner_intake_answers`.
 
 ## Deployment
 
@@ -36,9 +36,18 @@ Last updated: 2026-08-15
 - During investigations, Codex may inspect the production D1 database directly with Wrangler read-only `SELECT` queries to collect evidence. Any production write, repair, migration, or data change needs separate explicit user approval.
 - When writing raw Wrangler SQL against `email_delivery_logs`, use the physical snake_case column names: `recipient_email`, `recipient_user_id`, `event_type`, `template_id`, `error_message`, and `created_at`. Drizzle maps these to camelCase in TypeScript (`recipientEmail`, `eventType`, etc.), but raw D1 SQL with camelCase will fail.
 - For production D1 verification where result rows matter, prefer one `SELECT` per Wrangler command. Multi-statement SQL files may return only execution summaries instead of each result set.
-- Latest production Worker deploy completed on 2026-08-15 (Asia/Amman) with version `e4b40cf4-017f-4643-a56a-45e79164911b` from client-notification and pricing commit `cc1b95e`.
-- Latest successful Pages deployment completed on 2026-08-15 (Asia/Amman) from client-notification and pricing commit `cc1b95e`, deployment ID `b74a60e7-3251-4c07-8d99-4f3089ee4d8b`, preview `https://b74a60e7.xflexwithai.pages.dev`. A historical 2026-06-05 upload failed with `POST /pages/assets/upload -> 502 Bad Gateway`; if that Cloudflare error recurs, manual dashboard upload of `dist/public` remains the fallback.
-- Latest production D1 migration applied as of 2026-08-15 is `database/migrations/086_student_survey_continuous_notifications.sql`.
+- Latest production Worker deploy completed on 2026-08-15 (Asia/Amman) with version `e35742a5-4953-4a8c-8f79-3026c89eaadd` from organic-search intake and analytics commit `b0ec15d`.
+- Latest successful Pages deployment completed on 2026-08-15 (Asia/Amman) from organic-search intake and analytics commit `b0ec15d`, preview `https://406642b4.xflexwithai.pages.dev`. A historical 2026-06-05 upload failed with `POST /pages/assets/upload -> 502 Bad Gateway`; if that Cloudflare error recurs, manual dashboard upload of `dist/public` remains the fallback.
+- Latest production D1 migration applied as of 2026-08-15 is `database/migrations/087_seo_owner_intake.sql`.
+- Organic-search measurement and owner-intake release completed on 2026-08-15 (Asia/Amman):
+  - Release commit `b0ec15d Add organic search intake and analytics` was pushed directly to `origin/main` before production changes.
+  - GA4 property `G-FF2Z99PWHG` is now a production build default (still environment-overridable) and is rendered once on all 42 prerendered Arabic/English public pages. The sitemap was submitted by the user in Google Search Console.
+  - The 90-day Palestine/Jordan-first organic-search roadmap, first Arabic beginner-content brief, owner checklist, and 61-question Arabic business-owner questionnaire are stored under `docs/`.
+  - Full admins can complete the shared questionnaire at `/admin/seo-owner-intake`. Answers autosave per question after 900 ms and on blur, persist in D1, are visible to full admins reopening the same route, and require a separate explicit “send for review” action after the first-article facts are complete. The private route retains `noindex, nofollow` and `no-store, private`; anonymous API access returns 401.
+  - Migration `087_seo_owner_intake.sql` additively created the singleton intake metadata table, per-question answer table, and update index. Pre-migration Time Travel bookmark: `000010bf-00001d40-000050c8-028ef9ef38db5fd39c5b7a47f5a47bcd`; post-migration/ledger bookmark: `000010bf-00001df0-000050c8-da1f47762202b78797931226e7660445`. It is recorded as `schema_migrations.id = 28` with `source = codex_wrangler`.
+  - Production reconciliation after deployment found one empty draft, zero answer rows, and zero foreign-key violations. No production admin, questionnaire response, email, or other synthetic business record was created for QA.
+  - Validation passed TypeScript, all 503 tests across 88 files, SEO/private-route checks for 36 static pages and six article pages, the frontend/server build, Worker build, diff hygiene, and local desktop/mobile browser QA of autosave/reload and anonymous redirect behavior. Final production smoke passed both Worker health endpoints, Arabic/English GA4 markup, the production and preview intake routes, the intake asset, private headers, and anonymous API protection.
+  - Worker version `e35742a5-4953-4a8c-8f79-3026c89eaadd` deployed with both cron triggers preserved. Pages preview: `https://406642b4.xflexwithai.pages.dev`; the intake chunk is `assets/AdminSeoOwnerIntake-DoHv8Sz8.js`.
 - Client awareness, survey reminders, and canonical order-pricing release completed on 2026-08-15 (Asia/Amman):
   - Release commit `cc1b95e Add continuous client alerts and correct order pricing` was pushed directly to `origin/main` using the established workflow.
   - Migration `database/migrations/086_student_survey_continuous_notifications.sql` was applied additively before the Worker and recorded as `schema_migrations.id = 27` with `source = codex_wrangler`. It adds five scheduling columns and one partial due index. All 59 existing assignments remained unscheduled with zero notification count, so deployment created no catch-up reminders.
