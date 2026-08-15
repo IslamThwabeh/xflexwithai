@@ -4,6 +4,7 @@ import type { D1Database } from "@cloudflare/workers-types";
 import {
   InsertUser, users,
   InsertAdmin, admins,
+  seoOwnerIntake, seoOwnerIntakeAnswers,
   courses, Course, InsertCourse,
   episodes, Episode, InsertEpisode,
   enrollments, Enrollment, InsertEnrollment,
@@ -3893,6 +3894,100 @@ export async function countStudentsAffectedBySurveyBlocking(): Promise<number> {
       ),
     );
   return Number(row?.total ?? 0);
+}
+
+// ============================================================================
+// SEO business-owner intake
+// ============================================================================
+
+export async function getSeoOwnerIntake() {
+  const db = await getDb();
+  if (!db) {
+    return {
+      status: "draft" as const,
+      submittedAt: null,
+      updatedAt: null,
+      answers: {} as Record<string, string>,
+    };
+  }
+
+  const [metaRows, answerRows] = await db.batch([
+    db.select().from(seoOwnerIntake).where(eq(seoOwnerIntake.id, 1)).limit(1),
+    db.select().from(seoOwnerIntakeAnswers).orderBy(asc(seoOwnerIntakeAnswers.questionId)),
+  ]);
+  const meta = metaRows[0] ?? null;
+  return {
+    status: meta?.status === "submitted" ? "submitted" as const : "draft" as const,
+    submittedAt: meta?.submittedAt ?? null,
+    updatedAt: meta?.updatedAt ?? null,
+    answers: Object.fromEntries(answerRows.map(row => [row.questionId, row.answerText])),
+  };
+}
+
+export async function saveSeoOwnerIntakeAnswers(
+  answers: Record<string, string>,
+  adminId: number,
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const now = new Date().toISOString();
+  const statements = Object.entries(answers).map(([questionId, answerText]) =>
+    db.insert(seoOwnerIntakeAnswers).values({
+      questionId,
+      answerText,
+      updatedByAdminId: adminId,
+      createdAt: now,
+      updatedAt: now,
+    }).onConflictDoUpdate({
+      target: seoOwnerIntakeAnswers.questionId,
+      set: { answerText, updatedByAdminId: adminId, updatedAt: now },
+    })
+  );
+
+  statements.push(
+    db.insert(seoOwnerIntake).values({
+      id: 1,
+      status: "draft",
+      submittedByAdminId: null,
+      submittedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    }).onConflictDoUpdate({
+      target: seoOwnerIntake.id,
+      set: {
+        status: "draft",
+        submittedByAdminId: null,
+        submittedAt: null,
+        updatedAt: now,
+      },
+    }) as any,
+  );
+
+  await db.batch(statements as any);
+  return { savedAt: now, savedCount: Object.keys(answers).length };
+}
+
+export async function submitSeoOwnerIntake(adminId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const now = new Date().toISOString();
+  await db.insert(seoOwnerIntake).values({
+    id: 1,
+    status: "submitted",
+    submittedByAdminId: adminId,
+    submittedAt: now,
+    createdAt: now,
+    updatedAt: now,
+  }).onConflictDoUpdate({
+    target: seoOwnerIntake.id,
+    set: {
+      status: "submitted",
+      submittedByAdminId: adminId,
+      submittedAt: now,
+      updatedAt: now,
+    },
+  });
+  return { submittedAt: now };
 }
 
 async function suppressPendingStudentSurveyEmails(

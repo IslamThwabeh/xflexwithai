@@ -238,6 +238,11 @@ const menuSectionsDef: MenuSection[] = [
         path: "/admin/articles",
       },
       {
+        icon: ClipboardCheck,
+        labelKey: "admin.sidebar.seoOwnerIntake",
+        path: "/admin/seo-owner-intake",
+      },
+      {
         icon: CalendarDays,
         labelKey: "admin.sidebar.events",
         path: "/admin/events",

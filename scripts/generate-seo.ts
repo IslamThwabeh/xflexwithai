@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import {
+  DEFAULT_GA_MEASUREMENT_ID,
   DEFAULT_SOCIAL_IMAGE,
   SEO_ROUTES,
   SITE_NAME,
@@ -79,7 +80,7 @@ function setMeta(html: string, selector: RegExp, replacement: string) {
 }
 
 function analyticsMarkup() {
-  const measurementId = process.env.VITE_GA_MEASUREMENT_ID?.trim();
+  const measurementId = process.env.VITE_GA_MEASUREMENT_ID?.trim() || DEFAULT_GA_MEASUREMENT_ID;
   if (!measurementId) return "";
   return `
     <script async src="https://www.googletagmanager.com/gtag/js?id=${escapeHtml(measurementId)}"></script>

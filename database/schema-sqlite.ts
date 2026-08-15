@@ -76,6 +76,31 @@ export type Admin = typeof admins.$inferSelect;
 export type InsertAdmin = typeof admins.$inferInsert;
 
 /**
+ * Shared SEO/business-owner intake. Full admins collaborate on one response set;
+ * per-question rows keep autosave updates isolated and auditable.
+ */
+export const seoOwnerIntake = sqliteTable("seo_owner_intake", {
+  id: integer("id").primaryKey().default(1),
+  status: text("status").notNull().default("draft"),
+  submittedByAdminId: integer("submitted_by_admin_id").references(() => admins.id, { onDelete: "set null" }),
+  submittedAt: text("submitted_at"),
+  createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+  updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+});
+
+export type SeoOwnerIntake = typeof seoOwnerIntake.$inferSelect;
+
+export const seoOwnerIntakeAnswers = sqliteTable("seo_owner_intake_answers", {
+  questionId: text("question_id").primaryKey(),
+  answerText: text("answer_text").notNull().default(""),
+  updatedByAdminId: integer("updated_by_admin_id").references(() => admins.id, { onDelete: "set null" }),
+  createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+  updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+});
+
+export type SeoOwnerIntakeAnswer = typeof seoOwnerIntakeAnswers.$inferSelect;
+
+/**
  * Courses table - stores trading course information
  */
 export const courses = sqliteTable("courses", {

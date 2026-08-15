@@ -36,6 +36,7 @@ const AdminStudentSurveys = lazy(() => import("./pages/AdminStudentSurveys"));
 const AdminPackages = lazy(() => import("./pages/AdminPackages"));
 const AdminEvents = lazy(() => import("./pages/AdminEvents"));
 const AdminArticles = lazy(() => import("./pages/AdminArticles"));
+const AdminSeoOwnerIntake = lazy(() => import("./pages/AdminSeoOwnerIntake"));
 const AdminOrders = lazy(() => import("./pages/AdminOrders"));
 const AdminQuizzes = lazy(() => import("./pages/AdminQuizzes"));
 const AdminCoupons = lazy(() => import("./pages/AdminCoupons"));
@@ -271,6 +272,11 @@ function Router() {
       <Route path={"/admin/articles"}>
         <AdminRoute>
           <AdminArticles />
+        </AdminRoute>
+      </Route>
+      <Route path={"/admin/seo-owner-intake"}>
+        <AdminRoute>
+          <AdminSeoOwnerIntake />
         </AdminRoute>
       </Route>
       <Route path={"/admin/coupons"}>

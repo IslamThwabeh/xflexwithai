@@ -1,6 +1,10 @@
 export const SITE_ORIGIN = "https://xflexacademy.com";
 export const SITE_NAME = "XFlex Trading Academy";
 export const DEFAULT_SOCIAL_IMAGE = `${SITE_ORIGIN}/xflex-logo-2026-transparent.png`;
+// GA4 measurement IDs are public identifiers. Keep the production default here
+// so direct-upload builds cannot silently omit analytics; CI/build environments
+// may still override it with VITE_GA_MEASUREMENT_ID.
+export const DEFAULT_GA_MEASUREMENT_ID = "G-FF2Z99PWHG";
 
 export type SeoLanguage = "ar" | "en";
 export type SeoPageType =

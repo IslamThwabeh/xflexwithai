@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { CURATED_ARTICLES } from "../shared/curatedArticles";
-import { SEO_ROUTES, localizedPath, type SeoLanguage } from "../shared/seo";
+import { DEFAULT_GA_MEASUREMENT_ID, SEO_ROUTES, localizedPath, type SeoLanguage } from "../shared/seo";
 
 const outputRoot = path.resolve(process.cwd(), "dist/public");
 const languages: SeoLanguage[] = ["ar", "en"];
@@ -36,6 +36,16 @@ for (const route of SEO_ROUTES) {
     }
   }
 }
+
+const arabicHome = await readPublicPath("/ar");
+assert(
+  arabicHome.includes(`googletagmanager.com/gtag/js?id=${DEFAULT_GA_MEASUREMENT_ID}`),
+  "Arabic home must include the configured GA4 loader",
+);
+assert(
+  arabicHome.includes(`gtag('config', '${DEFAULT_GA_MEASUREMENT_ID}'`),
+  "Arabic home must initialize the configured GA4 property",
+);
 
 for (const article of CURATED_ARTICLES) {
   for (const language of languages) {

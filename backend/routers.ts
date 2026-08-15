@@ -18,6 +18,10 @@ import {
   getCuratedArticleBySlug,
   type PublicArticleTheme,
 } from "../shared/curatedArticles";
+import {
+  SEO_OWNER_INTAKE_QUESTION_IDS,
+  SEO_OWNER_INTAKE_REQUIRED_IDS,
+} from "../shared/seoOwnerIntake";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { authenticatedProcedure, publicProcedure, protectedProcedure, router } from "./_core/trpc";
@@ -11664,6 +11668,61 @@ ${qaText}`;
         await db.logAdminAction(ctx.admin.id, input.staffUserId, "terminate_staff_session", {
           sessionRecordId: input.sessionRecordId,
           terminated: result.terminated,
+        });
+        return result;
+      }),
+  }),
+
+  // ============================================================================
+  // Organic search business-owner intake (full admins only)
+  // ============================================================================
+  seoOwnerIntake: router({
+    get: adminProcedure.query(async () => db.getSeoOwnerIntake()),
+
+    save: adminProcedure
+      .input(z.object({
+        answers: z.record(z.string().max(64), z.string().max(5000)),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const invalidQuestionIds = Object.keys(input.answers).filter(
+          questionId => !SEO_OWNER_INTAKE_QUESTION_IDS.has(questionId),
+        );
+        if (invalidQuestionIds.length > 0) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Unknown intake questions: ${invalidQuestionIds.join(", ")}`,
+          });
+        }
+        if (Object.keys(input.answers).length === 0) {
+          return { savedAt: new Date().toISOString(), savedCount: 0 };
+        }
+        return db.saveSeoOwnerIntakeAnswers(input.answers, ctx.admin.id);
+      }),
+
+    submit: adminProcedure
+      .input(z.object({
+        answers: z.record(z.string().max(64), z.string().max(5000)),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const invalidQuestionIds = Object.keys(input.answers).filter(
+          questionId => !SEO_OWNER_INTAKE_QUESTION_IDS.has(questionId),
+        );
+        if (invalidQuestionIds.length > 0) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Unknown intake question." });
+        }
+        const missingQuestionIds = SEO_OWNER_INTAKE_REQUIRED_IDS.filter(
+          questionId => !input.answers[questionId]?.trim(),
+        );
+        if (missingQuestionIds.length > 0) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Complete the required first-article answers: ${missingQuestionIds.join(", ")}`,
+          });
+        }
+        await db.saveSeoOwnerIntakeAnswers(input.answers, ctx.admin.id);
+        const result = await db.submitSeoOwnerIntake(ctx.admin.id);
+        await db.logAdminAction(ctx.admin.id, ctx.admin.id, "submit_seo_owner_intake", {
+          answeredCount: Object.values(input.answers).filter(value => value.trim()).length,
         });
         return result;
       }),
