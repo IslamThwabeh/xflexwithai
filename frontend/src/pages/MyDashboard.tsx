@@ -5,7 +5,7 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { getLoginUrl } from "@/const";
 import { trpc } from "@/lib/trpc";
-import { BookOpen, GraduationCap, Play, CheckCircle2, Calendar, FileText, MessageSquareQuote, Newspaper, AlertCircle, Bot, TrendingUp, Trophy, Building2, ArrowRight } from "lucide-react";
+import { BookOpen, GraduationCap, Play, CheckCircle2, Calendar, FileText, MessageSquareQuote, Newspaper, AlertCircle, Bot, TrendingUp, Trophy, Building2, ArrowRight, ClipboardCheck } from "lucide-react";
 import { Link } from "wouter";
 import { format } from "date-fns";
 import { useEffect, useState } from "react";
@@ -66,6 +66,12 @@ export default function MyDashboard() {
   );
 
   const { data: onboardingStatus } = trpc.onboarding.getStatus.useQuery(undefined, {
+    enabled: isAuthenticated,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+
+  const { data: surveyAvailability } = trpc.studentSurveys.availability.useQuery(undefined, {
     enabled: isAuthenticated,
     retry: false,
     refetchOnWindowFocus: false,
@@ -193,6 +199,30 @@ export default function MyDashboard() {
               {t('dashboard.subtitle')}
             </p>
           </div>
+
+          {surveyAvailability?.enabled && surveyAvailability.access === "student" && surveyAvailability.outstandingCount > 0 && (
+            <Card className="border-amber-200 bg-amber-50/80 shadow-sm">
+              <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-start gap-3">
+                  <div className="rounded-full bg-amber-100 p-2 text-amber-700"><ClipboardCheck className="h-5 w-5" /></div>
+                  <div>
+                    <h2 className="font-semibold text-amber-950">
+                      {isRTL
+                        ? `${surveyAvailability.outstandingCount} استبيان بانتظار إجابتك`
+                        : `${surveyAvailability.outstandingCount} survey${surveyAvailability.outstandingCount === 1 ? "" : "s"} awaiting your response`}
+                    </h2>
+                    {surveyAvailability.nearestDueAt && (
+                      <p className="mt-1 text-sm text-amber-800">
+                        {isRTL ? "أقرب موعد: " : "Nearest deadline: "}
+                        {new Date(surveyAvailability.nearestDueAt).toLocaleString(isRTL ? "ar-JO" : "en-GB", { timeZone: "Asia/Amman" })}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <Link href="/surveys"><Button>{isRTL ? "فتح الاستبيانات" : "Open surveys"}</Button></Link>
+              </CardContent>
+            </Card>
+          )}
 
           {/* JOURNEY PROGRESS — visual step tracker */}
           {totalCourses > 0 && (() => {

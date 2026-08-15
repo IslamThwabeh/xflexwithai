@@ -23,6 +23,64 @@ function absoluteUrl(actionUrl: string) {
   return `${ENV.siteUrl.replace(/\/+$/, "")}${actionUrl.startsWith("/") ? actionUrl : `/${actionUrl}`}`;
 }
 
+export function buildStudentCommunityPostAnnouncementEmail(input: {
+  postId: number;
+  language: "ar" | "en";
+}) {
+  const actionPath = `/community?postId=${input.postId}`;
+  const actionUrl = absoluteUrl(actionPath);
+  const copy = input.language === "ar"
+    ? {
+        subject: "منشور جديد في مجتمع الطلاب",
+        heading: "منشور جديد بانتظارك",
+        body: "تم نشر منشور جديد ومعتمد في مجتمع الطلاب. افتح المجتمع للاطلاع عليه والمشاركة في النقاش.",
+        greeting: "مرحباً،",
+        actionLabel: "فتح المنشور",
+        direction: "rtl" as const,
+        language: "ar",
+      }
+    : {
+        subject: "New post in the student community",
+        heading: "A new community post is waiting for you",
+        body: "A new approved post has been published in the student community. Open the community to read it and join the discussion.",
+        greeting: "Hello,",
+        actionLabel: "Open post",
+        direction: "ltr" as const,
+        language: "en",
+      };
+
+  const text = [
+    copy.greeting,
+    copy.heading,
+    copy.body,
+    `${copy.actionLabel}: ${actionUrl}`,
+  ].join("\n\n");
+  const html = `<!doctype html>
+<html lang="${copy.language}" dir="${copy.direction}">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;background:#f4f7f6;font-family:Arial,sans-serif;color:#1f2937">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+    <tr><td align="center" style="padding:24px 12px">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:620px;background:#fff;border:1px solid #d1fae5;border-radius:16px;overflow:hidden">
+        <tr><td style="background:#047857;color:#fff;padding:22px 26px">
+          <div style="font-size:12px;opacity:.85">XFlex Academy</div>
+          <h1 style="margin:8px 0 0;font-size:23px">${escapeHtml(copy.heading)}</h1>
+        </td></tr>
+        <tr><td style="padding:26px">
+          <p style="margin:0 0 14px;line-height:1.8">${escapeHtml(copy.greeting)}</p>
+          <p style="margin:0;line-height:1.9">${escapeHtml(copy.body)}</p>
+          <div style="text-align:center;margin:24px 0 0">
+            <a href="${escapeHtml(actionUrl)}" style="display:inline-block;background:#059669;color:#fff;text-decoration:none;padding:12px 24px;border-radius:999px;font-weight:700">${escapeHtml(copy.actionLabel)}</a>
+          </div>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+
+  return { subject: copy.subject, text, html, actionUrl: actionPath };
+}
+
 function formatSuspensionExpiry(value?: string | null) {
   if (!value) return null;
   const parsed = new Date(value);

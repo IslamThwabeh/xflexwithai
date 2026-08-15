@@ -35,6 +35,30 @@ export function getOrderDisplayTotalIls(input: {
   return major * PACKAGE_KEY_USD_TO_ILS_RATE;
 }
 
+export function getOrderDisplayAmountsIls(input: {
+  subtotal: number;
+  discountAmount?: number | null;
+  vatAmount: number;
+  totalAmount: number;
+  currency?: string | null;
+  packageSlug?: string | null;
+  isUpgrade?: boolean;
+}) {
+  const convert = (amount: number) => getOrderDisplayTotalIls({
+    totalAmount: amount,
+    currency: input.currency,
+    packageSlug: input.packageSlug,
+    isUpgrade: input.isUpgrade,
+  });
+
+  return {
+    displaySubtotalIls: convert(input.subtotal),
+    displayDiscountIls: convert(input.discountAmount ?? 0),
+    displayVatIls: convert(input.vatAmount),
+    displayTotalIls: convert(input.totalAmount),
+  };
+}
+
 export function formatOrderTotalIls(amountIls: number) {
   return `₪${amountIls.toLocaleString('en-US', {
     minimumFractionDigits: Number.isInteger(amountIls) ? 0 : 2,

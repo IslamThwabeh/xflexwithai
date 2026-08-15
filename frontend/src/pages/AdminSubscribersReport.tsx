@@ -29,7 +29,7 @@ const subSortFns: Record<string, (a: any, b: any) => number> = {
   country: (a, b) => (a.country || '').localeCompare(b.country || ''),
   registered: (a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime(),
   keys: (a, b) => (a.totalKeys || 0) - (b.totalKeys || 0),
-  spent: (a, b) => (a.totalSpent || 0) - (b.totalSpent || 0),
+  spent: (a, b) => (a.totalSpentIls || 0) - (b.totalSpentIls || 0),
   renewals: (a, b) => (a.renewalCount || 0) - (b.renewalCount || 0),
 };
 
@@ -112,11 +112,14 @@ export default function AdminSubscribersReport() {
 
   const exportCSV = () => {
     if (!filtered.length) return;
-    const headers = ['Name', 'Email', 'Phone', 'City', 'Country', 'Registered', 'Total Keys', 'Total Spent ($)', 'Active Packages', 'Renewals'];
+    const headers = ['Name', 'Email', 'Phone', 'City', 'Country', 'Registered', 'Total Keys', 'Gross Spent (ILS)', 'Refunded (ILS)', 'Net Spent (ILS)', 'Active Packages', 'Renewals'];
     const rows = filtered.map((s: any) => [
       s.name || '', s.email, s.phone || '', s.city || '', s.country || '',
       s.createdAt ? formatLocalizedDate(s.createdAt, language) : '',
-      s.totalKeys || 0, (s.totalSpent || 0).toFixed(2),
+      s.totalKeys || 0,
+      (s.grossSpentIls || 0).toFixed(2),
+      (s.refundedIls || 0).toFixed(2),
+      (s.totalSpentIls || 0).toFixed(2),
       (s.activePackages || []).join('; '), s.renewalCount,
     ]);
     const csv = [headers.join(','), ...rows.map(r => r.map((v: any) => `"${v}"`).join(','))].join('\n');
@@ -230,7 +233,7 @@ export default function AdminSubscribersReport() {
                   </td>}
                   {visibleCols.has('keys') && <td className="px-3 py-2.5 text-center">{s.totalKeys || 0}</td>}
                   {visibleCols.has('spent') && <td className="px-3 py-2.5 text-center font-medium text-green-700">
-                    ${(s.totalSpent || 0).toFixed(0)}
+                    ₪{(s.totalSpentIls || 0).toFixed(0)}
                   </td>}
                   {visibleCols.has('packages') && <td className="px-3 py-2.5">
                     {(s.activePackages || []).length > 0

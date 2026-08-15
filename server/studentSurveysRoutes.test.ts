@@ -10,6 +10,7 @@ vi.mock("../backend/db", async () => {
     getUserById: vi.fn(),
     logStaffAction: vi.fn(),
     listStudentSurveyAssignmentsForUser: vi.fn(),
+    getStudentSurveyOutstandingSummaryForUser: vi.fn(),
     listStudentSurveyBlockingAssignmentsForUser: vi.fn(),
     createStudentSurvey: vi.fn(),
     updateStudentSurvey: vi.fn(),
@@ -18,6 +19,7 @@ vi.mock("../backend/db", async () => {
     createStudentSurveyQuestion: vi.fn(),
     assignStudentSurvey: vi.fn(),
     assignStudentSurveyAudience: vi.fn(),
+    materializeDueStudentSurveyNotifications: vi.fn(),
     getStudentsForNotification: vi.fn(),
     listStudentSurveyAssignedUserIds: vi.fn(),
     listStudentSurveyAssignmentsForAdmin: vi.fn(),
@@ -83,10 +85,19 @@ describe("student survey routes", () => {
     vi.mocked(db.getAdminByEmail).mockResolvedValue(null);
     vi.mocked(db.hasAnyRole).mockResolvedValue(false);
     vi.mocked(db.listStudentSurveyAssignmentsForUser).mockResolvedValue([]);
+    vi.mocked(db.getStudentSurveyOutstandingSummaryForUser).mockResolvedValue({
+      outstandingCount: 0,
+      nearestDueAt: null,
+    });
     vi.mocked(db.listStudentSurveyBlockingAssignmentsForUser).mockResolvedValue([]);
     vi.mocked(db.getStudentsForNotification).mockResolvedValue([]);
     vi.mocked(db.listStudentSurveyAssignedUserIds).mockResolvedValue([]);
     vi.mocked(db.notifyStaffByEvent).mockResolvedValue(undefined as any);
+    vi.mocked(db.materializeDueStudentSurveyNotifications).mockResolvedValue({
+      processed: 0,
+      dashboardCreated: 0,
+      emailsQueued: 0,
+    });
   });
 
   it("rejects ordinary students from survey data routes while delivery is disabled", async () => {
@@ -112,6 +123,8 @@ describe("student survey routes", () => {
       blockingEnabled: false,
       access: null,
       accessState: "clear",
+      outstandingCount: 0,
+      nearestDueAt: null,
     });
     expect(db.getAdminByEmail).toHaveBeenCalledWith("student9@example.com");
   });
@@ -486,7 +499,7 @@ describe("student survey routes", () => {
     expect(db.assignStudentSurveyAudience).not.toHaveBeenCalled();
   });
 
-  it("assigns a confirmed selected audience idempotently without notification fanout", async () => {
+  it("assigns a confirmed selected audience idempotently and schedules exact recipients", async () => {
     vi.mocked(db.getAdminByEmail).mockResolvedValue({ id: 1, email: "admin@example.com" } as any);
     vi.mocked(db.getStudentSurvey).mockResolvedValue({ id: 3, isActive: true, questions: [{ id: 1 }] } as any);
     vi.mocked(db.getStudentsForNotification).mockResolvedValue([
@@ -499,6 +512,11 @@ describe("student survey routes", () => {
       capacityExceeded: false,
     } as any);
 
+    vi.mocked(db.materializeDueStudentSurveyNotifications).mockResolvedValue({
+      processed: 1,
+      dashboardCreated: 1,
+      emailsQueued: 1,
+    });
     await expect(createCaller(1, "admin@example.com").studentSurveys.assignAudience({
       surveyId: 3,
       audience: { mode: "selected", userIds: [10, 11, 10] },
@@ -513,7 +531,12 @@ describe("student survey routes", () => {
       alreadyAssignedCount: 1,
       replayedAssignmentCount: 0,
       matchedCount: 2,
-      notificationsSent: 0,
+      notificationsSent: 1,
+      emailsQueued: 1,
+    });
+    expect(db.materializeDueStudentSurveyNotifications).toHaveBeenCalledWith({
+      assignmentIds: [70],
+      limit: 1,
     });
     expect(db.assignStudentSurveyAudience).toHaveBeenCalledWith({
       surveyId: 3,

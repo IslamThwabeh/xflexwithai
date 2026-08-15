@@ -95,6 +95,11 @@ type AssignmentSummary = {
   postponementsUsed: number;
   maxPostponements: number;
   submittedAt: string | null;
+  notificationScheduleStartedAt?: string | null;
+  nextNotificationAt?: string | null;
+  lastNotificationAt?: string | null;
+  lastNotificationStage?: string | null;
+  notificationCount?: number;
   surveyIsActive: boolean;
   surveyIsRequired: boolean;
   studentName?: string | null;
@@ -352,7 +357,7 @@ export default function AdminStudentSurveys() {
   const sendReminder = trpc.studentSurveys.sendAssignmentReminder.useMutation({
     onSuccess: async () => {
       await utils.studentSurveys.listAssignments.invalidate();
-      toast.success(copy.reminderSent);
+      toast.success(copy.reminderQueued);
     },
     onError: (error) => toast.error(error.message),
   });
@@ -1169,7 +1174,7 @@ function DistributionTab(props: any) {
                 {preview.students.length > 25 && <p className="p-3 text-center text-xs text-slate-500">+{preview.students.length - 25} {copy.more}</p>}
               </div>
               <div className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-xs leading-5 text-sky-900">
-                <Bell className="me-2 inline h-4 w-4" />{copy.noAutomaticMessages}
+                <Bell className="me-2 inline h-4 w-4" />{copy.automaticMessages}
               </div>
               <label className={`flex items-start gap-3 rounded-xl border p-3 text-sm ${confirmed ? "border-emerald-300 bg-emerald-50" : "border-slate-200"}`}>
                 <input className="mt-1" type="checkbox" checked={confirmed} onChange={(event) => onConfirmed(event.target.checked)} />
@@ -1262,6 +1267,8 @@ function ResponsesTab(props: any) {
                   <div className="mt-3 grid gap-1 text-xs text-slate-500 sm:grid-cols-2">
                     <span>{copy.responseDue}: {formatDateTime(assignment.dueAt, isRtl)}</span>
                     <span>{copy.submittedAt}: {formatDateTime(assignment.submittedAt, isRtl)}</span>
+                    <span>{copy.lastReminder}: {formatDateTime(assignment.lastNotificationAt, isRtl)}</span>
+                    <span>{copy.nextReminder}: {formatDateTime(assignment.nextNotificationAt, isRtl)}</span>
                   </div>
                 </button>
               ))}
@@ -1280,11 +1287,11 @@ function ResponsesTab(props: any) {
                       <Button
                         size="sm"
                         variant="outline"
-                        title={remindersEnabled ? copy.reminderHelp : copy.remindersDisabled}
+                        title={remindersEnabled ? copy.reminderDeliveryHelp : copy.remindersDisabled}
                         onClick={() => onReminder(selectedAssignment.id)}
                         disabled={!remindersEnabled || reminderPending || selectedAssignment.status === "submitted"}
                       >
-                        {reminderPending ? <Loader2 className="animate-spin" /> : <Bell />}{copy.sendOneReminder}
+                        {reminderPending ? <Loader2 className="animate-spin" /> : <Bell />}{copy.sendReminderNow}
                       </Button>
                     </div>
                   </div>
@@ -1299,11 +1306,19 @@ function ResponsesTab(props: any) {
                       isRtl,
                       blockingEnabled && selectedAssignment.surveyIsActive && selectedAssignment.surveyIsRequired,
                     )} />
+                    <MetricCard label={copy.reminderCount} value={String(selectedAssignment.notificationCount ?? 0)} />
+                    <MetricCard label={copy.reminderStatus} value={selectedAssignment.status === "submitted"
+                      ? copy.reminderStopped
+                      : !selectedAssignment.surveyIsActive
+                        ? copy.reminderPaused
+                        : selectedAssignment.notificationScheduleStartedAt
+                          ? copy.reminderScheduled
+                          : copy.reminderLegacy} />
                   </div>
                   <p className={`rounded-xl border p-3 text-xs leading-5 ${remindersEnabled
                     ? "border-sky-200 bg-sky-50 text-sky-900"
                     : "border-amber-200 bg-amber-50 text-amber-900"}`}>
-                    {remindersEnabled ? copy.reminderHelp : copy.remindersDisabled}
+                    {remindersEnabled ? copy.reminderDeliveryHelp : copy.remindersDisabled}
                   </p>
                   {!selectedAssignment.answers.length ? <EmptyMini text={copy.noAnswers} /> : (
                     <div className="space-y-3">
@@ -1827,6 +1842,18 @@ function csvEscapeCell(value: string | number | boolean | null | undefined) {
 
 function getCopy(isRtl: boolean): Record<string, string> {
   return isRtl ? {
+    reminderQueued: "تم إنشاء إشعار داخل المنصة وإضافة البريد إلى قائمة الإرسال",
+    automaticMessages: "يرسل التعيين إشعاراً داخل المنصة وبريداً فورياً، ثم تذكيراً قبل الموعد وعند الموعد وكل 24 ساعة بعده حتى الإرسال.",
+    reminderDeliveryHelp: "إرسال الآن ينشئ إشعاراً داخل المنصة ويضيف بريداً إلى قائمة الإرسال لهذا الطالب. التذكيرات التلقائية تستمر حتى يرسل الإجابة.",
+    sendReminderNow: "إرسال الآن",
+    lastReminder: "آخر إشعار",
+    nextReminder: "الإشعار التالي",
+    reminderCount: "عدد الإشعارات",
+    reminderStatus: "حالة التذكير",
+    reminderStopped: "متوقف — تم الإرسال",
+    reminderPaused: "متوقف — الاستبيان غير فعال",
+    reminderScheduled: "مجدول تلقائياً",
+    reminderLegacy: "قديم — لا توجد حملة استدراكية",
     workspaceUnavailable: "تعذر فتح مساحة الاستبيانات",
     workspaceUnavailableBody: "لم نتمكن من التحقق من حالة الميزة أو صلاحياتك. أعد المحاولة قبل إجراء أي تغيير.",
     retry: "إعادة المحاولة",
@@ -1861,6 +1888,18 @@ function getCopy(isRtl: boolean): Record<string, string> {
     activationRequiredBody: "الأسئلة جاهزة، لكن المسودة لا يمكن تعيينها لأي طالب. اضغط التفعيل للانتقال بأمان إلى خطوة التوزيع.",
     loading: "جار التحميل...", title: "استبيانات الطلاب", subtitle: "أنشئ الاستبيان، اختر جمهوره بدقة، راقب الردود، واعرض تجربة الطالب كاملة من حساب المدير دون تسجيل دخول آخر.", available: "متاح للإدارة", protectionOn: "حماية الوصول مفعّلة", protectionOff: "حماية الوصول متوقفة", previewAsStudent: "معاينة كطالب", newSurvey: "استبيان جديد", workspaceSections: "أقسام إدارة الاستبيانات", overview: "نظرة عامة", builder: "تصميم الاستبيان", distribution: "التوزيع", responses: "الردود", studentPreview: "معاينة الطالب", workingSurvey: "الاستبيان الحالي", noAccess: "صلاحية إدارة الاستبيانات مطلوبة", noAccessBody: "اطلب دور مدير استبيانات الطلاب من المسؤول الرئيسي.", surveyCreated: "تم إنشاء الاستبيان كمسودة آمنة", questionAdded: "تمت إضافة السؤال", reminderSent: "تم إرسال تذكير واحد داخل المنصة", nothingToExport: "لا توجد بيانات للتصدير", surveys: "الاستبيانات", configured: "تم إعدادها", totalAssignments: "إجمالي التعيينات", studentsReached: "طالباً مستهدفاً", awaiting: "بانتظار الرد", needResponse: "تحتاج إجابة", overdue: "متأخرة", pastDue: "تجاوزت موعد الرد", submitted: "مرسلة", readyToReview: "جاهزة للمراجعة", quickDemo: "جولة العرض السريعة", quickDemoHelp: "استخدم هذه الخطوات لإظهار الميزة لصاحبة العمل من حساب المدير.", builderAction: "اعرض الأسئلة وإعدادات كل استبيان.", distributionAction: "اختر طالباً أو مجموعة وشاهد العدد قبل التأكيد.", previewAction: "اعرض واجهة الطالب بأمان دون حفظ أي بيانات.", pilotReadiness: "جاهزية التجربة", readinessSurvey: "تم إنشاء استبيان واحد على الأقل", readinessQuestions: "الاستبيان المحدد يحتوي على أسئلة", readinessActive: "الاستبيان متاح للتعيين", readinessPilot: "تم تعيين مجموعة تجريبية", readinessSafeBlocking: "حماية الوصول متوقفة أثناء التجربة", noSurveysTitle: "ابدأ باستبيان واضح وبسيط", noSurveysBody: "لا توجد استبيانات بعد. أنشئ مسودة، أضف الأسئلة، ثم عاينها قبل اختيار أي طالب.", createFirstSurvey: "إنشاء أول استبيان", new: "جديد", active: "متاح", draft: "مسودة", reference: "مرجع داخلي", automaticReference: "مرجع داخلي تلقائي", automaticReferenceHelp: "ينشئ النظام هذا المرجع تلقائياً؛ يمكنك كتابة العنوان والوصف والأسئلة بالعربية.", noSurveySelected: "اختر استبياناً", chooseOrCreate: "اختر استبياناً من القائمة أو أنشئ مسودة جديدة.", required: "مطلوب", optional: "اختياري", availableForAssignment: "متاح للتعيين", preview: "معاينة", postponements: "مرات التأجيل", postponeWindow: "مدة التأجيل (ساعة)", finalDeadlineWindow: "المهلة النهائية (ساعة)", questions: "الأسئلة", questionsHelp: "رتّب ما سيراه الطالب. لن يحدث أي توزيع من هذه الصفحة.", addQuestion: "إضافة سؤال", noQuestionsTitle: "الاستبيان بحاجة إلى أسئلة", noQuestionsBody: "أضف سؤالاً واحداً على الأقل قبل المعاينة أو التوزيع.", addFirstQuestion: "إضافة أول سؤال", audience: "الجمهور", chooseAudience: "من سيستلم هذا الاستبيان؟", oneStudent: "طالب واحد", oneStudentHelp: "الأفضل لأول تجربة آمنة.", selectedStudents: "طلاب محددون", selectedStudentsHelp: "اختر الأسماء واحداً تلو الآخر.", activeStudents: "طلاب باقة نشطة", activeStudentsHelp: "كل الطلاب ذوي الباقة النشطة حالياً.", inactiveStudents: "طلاب دون باقة نشطة", inactiveStudentsHelp: "كل الطلاب الذين لا يملكون باقة نشطة.", allStudents: "جميع الطلاب", allStudentsHelp: "استخدمه فقط بعد مراجعة العدد الكامل.", searchStudents: "ابحث بالاسم أو البريد", showing: "عرض", of: "من", selected: "محدد", noStudentsMatch: "لا يوجد طلاب مطابقون للبحث.", activePackage: "باقة نشطة", noActivePackage: "دون باقة نشطة", alreadyAssigned: "معيّن مسبقاً", schedule: "الجدولة", setDeadlines: "حدد موعد الرد والمهلة النهائية", responseDue: "موعد الرد", finalDeadline: "المهلة النهائية", deadlineError: "يجب أن تكون المهلة النهائية بعد موعد الرد.", blockingWarningTitle: "تنبيه مهم: حماية الوصول مفعّلة", blockingWarningBody: "قد يفقد الطالب الوصول إلى أجزاء من المنصة إذا لم يرسل الاستبيان قبل المهلة النهائية. راجع الجمهور والموعد بعناية قبل التأكيد.", safePilotTitle: "تجربة آمنة: وصول الطالب لن يتغير", safePilotBody: "يتم تسجيل المهلة النهائية للمتابعة فقط. لا يتم حجب أي طالب ما دامت حماية الوصول متوقفة.", reviewConfirm: "المراجعة والتأكيد", recipientPreview: "معاينة المستلمين", chooseRecipientsPrompt: "اختر طالباً أو جمهوراً لعرض العدد الدقيق.", previewUnavailable: "تعذرت معاينة الجمهور. حدّث الصفحة وحاول مرة أخرى.", matching: "مطابق", newAssignments: "جديد", audienceTooLarge: "هذا الجمهور أكبر من حد الأمان (500). اختر مجموعة أصغر.", studentsUnavailable: "بعض الطلاب المحددين لم يعودوا متاحين. راجع اختيارك.", assigned: "معيّن", more: "إضافي", noAutomaticMessages: "التعيين لا يرسل بريداً أو تذكيراً تلقائياً. يمكن إرسال تذكير فردي لاحقاً من صفحة الردود.", assignTo: "تعيين إلى", students: "طالب", chooseSurveyFirst: "اختر استبياناً أولاً", chooseSurveyFirstBody: "اختر الاستبيان الذي تريد توزيعه من أداة الاختيار أعلاه.", openBuilder: "فتح التصميم", questionsRequired: "أضف الأسئلة قبل التوزيع", questionsRequiredBody: "لا يمكن توزيع استبيان فارغ. أضف سؤالاً ثم ارجع إلى هذه الصفحة.", addQuestions: "إضافة الأسئلة", all: "الكل", accessRestricted: "الوصول مقيّد", finalDeadlinePassed: "تجاوز المهلة", responsesAssignments: "التعيينات وردود الطلاب", responsesHelp: "تابع كل طالب، راجع الإجابات، وأرسل تذكيراً فردياً عند الحاجة.", exportAssignments: "تصدير التعيينات", distributeSurvey: "توزيع الاستبيان", noAssignmentsTitle: "لا توجد تعيينات بعد", noAssignmentsBody: "ابدأ بطالب واحد أو مجموعة تجريبية صغيرة، وراجع العدد قبل التأكيد.", noResultsForFilter: "لا توجد نتائج ضمن هذا الفلتر.", submittedAt: "أرسل في", selectAssignment: "اختر تعييناً لعرض التفاصيل.", studentResponse: "إجابة الطالب", exportAnswers: "تصدير الإجابات", sendOneReminder: "تذكير واحد", reminderHelp: "يرسل تذكيراً واحداً داخل المنصة لهذا الطالب فقط؛ لا يتم إرسال بريد جماعي.", status: "الحالة", deadlineState: "حالة الموعد", noAnswers: "لم يرسل الطالب إجابات بعد.", previewHelp: "هذه معاينة تفاعلية محلية فقط. لا تحفظ الردود، ولا ترسل إشعارات، ولا تغيّر وصول الطالب.", notLive: "غير متاح للطلاب حالياً", disabledBody: "مساحة الاستبيانات غير مفعّلة حالياً. يمكنك مع ذلك عرض تجربة الطالب النموذجية بأمان ومراجعة خطوات الإعداد قبل إطلاق تجربة صغيرة.", reviewActivation: "مراجعة التفعيل", prepare: "الإعداد", prepareBody: "جهّز العنوان والأسئلة والجمهور التجريبي.", previewSetupBody: "اعرض التجربة من حساب المدير دون تغيير أي بيانات.", pilot: "تجربة صغيرة", pilotBody: "ابدأ بطالب واحد وراجع الرد قبل التوسع.", sampleStudentPreview: "معاينة نموذجية للطالب", disabledPreviewHelp: "بيانات توضيحية فقط؛ لا اتصال بأي حساب طالب.", previewWithoutActivation: "يمكنك العرض دون تفعيل الميزة", previewWithoutActivationBody: "افتح معاينة نموذجية كاملة الآن لتشرح الشكل والتدفق لصاحبة العمل بأمان.", openSafePreview: "فتح المعاينة الآمنة", createSurveyHelp: "يبدأ الاستبيان كمسودة. إنشاء الاستبيان وحده لا يعيّنه لأي طالب.", surveyTitle: "عنوان الاستبيان", description: "الوصف", referenceHelp: "مرجع تقني ثابت يُنشأ تلقائياً ولا يظهر للطالب.", requiredSurvey: "استبيان مطلوب", requiredSurveyHelp: "يظهر للطالب كاستبيان مطلوب، لكن الوصول لا يتغير إلا عند تفعيل الحماية بشكل منفصل.", activeHelp: "يسمح باختياره للتوزيع بعد إضافة الأسئلة.", createSafetyNote: "إنشاء هذه المسودة لا يرسل إشعاراً ولا يغيّر حساب أي طالب.", cancel: "إلغاء", createSurvey: "إنشاء المسودة", questionText: "نص السؤال", questionType: "نوع السؤال", sortOrder: "الترتيب", options: "الخيارات", optionsHelp: "اكتب كل خيار في سطر مستقل.", requiredQuestion: "إجابة مطلوبة", requiredQuestionHelp: "يجب على الطالب الإجابة قبل الإرسال.",
   } : {
+    reminderQueued: "Dashboard notification created and email queued",
+    automaticMessages: "Assignment sends an immediate dashboard notification and email, then reminders 24 hours before due, at due time, and every 24 hours after due until submission.",
+    reminderDeliveryHelp: "Send now creates a dashboard notification and queues an email for this student. Automatic reminders continue until submission.",
+    sendReminderNow: "Send now",
+    lastReminder: "Last notification",
+    nextReminder: "Next notification",
+    reminderCount: "Notification count",
+    reminderStatus: "Reminder status",
+    reminderStopped: "Stopped — submitted",
+    reminderPaused: "Paused — survey inactive",
+    reminderScheduled: "Automatically scheduled",
+    reminderLegacy: "Legacy — no catch-up campaign",
     workspaceUnavailable: "Survey workspace unavailable",
     workspaceUnavailableBody: "The feature status or your access could not be verified. Retry before making any change.",
     retry: "Retry",

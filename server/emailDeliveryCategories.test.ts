@@ -24,6 +24,7 @@ describe("email delivery feature categories", () => {
     ["student_survey_submitted", "surveys"],
     ["loyalty_reward_requested", "rewards"],
     ["community_client_reply", "community"],
+    ["student_community_post_published", "community"],
     ["job_eligibility_review_requested", "jobs"],
     ["staff_performance_submitted", "staff_performance"],
     ["lexai_case_assigned", "support"],

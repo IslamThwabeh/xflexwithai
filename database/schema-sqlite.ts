@@ -2527,12 +2527,20 @@ export const studentSurveyAssignments = sqliteTable("student_survey_assignments"
   postponementsUsed: integer("postponements_used").notNull().default(0),
   lastPostponedAt: text("last_postponed_at"),
   submittedAt: text("submitted_at"),
+  // NULL for assignments created before automated reminders were introduced.
+  // This is intentional: deployment must not start a catch-up campaign.
+  notificationScheduleStartedAt: text("notification_schedule_started_at"),
+  nextNotificationAt: text("next_notification_at"),
+  lastNotificationAt: text("last_notification_at"),
+  lastNotificationStage: text("last_notification_stage"),
+  notificationCount: integer("notification_count").notNull().default(0),
   // Signed actor context id: users/staff are positive; full admins are negative.
   createdByUserId: integer("created_by_user_id").notNull(),
   createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
   updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
 }, (table) => ({
   uniqueSurveyUser: unique("ux_student_survey_assignment_survey_user").on(table.surveyId, table.userId),
+  notificationDueIdx: index("idx_student_survey_assignments_notification_due").on(table.nextNotificationAt, table.status),
 }));
 
 export type StudentSurveyAssignment = typeof studentSurveyAssignments.$inferSelect;

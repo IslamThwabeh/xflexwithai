@@ -23,6 +23,8 @@ vi.mock("../backend/db", async () => {
     listStudentCommunityPosts: vi.fn(),
     getStudentCommunityPost: vi.fn(),
     createStudentCommunityPost: vi.fn(),
+    listStudentCommunityPostEmailRecipients: vi.fn(),
+    createEmailOutboxCampaign: vi.fn(),
     createStudentCommunityComment: vi.fn(),
     reportStudentCommunityContent: vi.fn(),
     listStudentCommunityReportsForAdmin: vi.fn(),
@@ -104,6 +106,8 @@ describe("student community routes", () => {
     vi.mocked(db.notifyStaffByEvent).mockResolvedValue(undefined);
     vi.mocked(db.createNotification).mockResolvedValue({ id: 1 } as any);
     vi.mocked(db.enqueueEmailOutbox).mockResolvedValue(true);
+    vi.mocked(db.listStudentCommunityPostEmailRecipients).mockResolvedValue([]);
+    vi.mocked(db.createEmailOutboxCampaign).mockResolvedValue(0);
     vi.mocked(db.getStudentCommunityContentNotificationContext).mockResolvedValue(null);
     vi.mocked(db.listOpenStudentCommunityReportNotificationContexts).mockResolvedValue([]);
     vi.mocked(db.getStudentCommunityReportNotificationContext).mockResolvedValue(null);
@@ -186,6 +190,10 @@ describe("student community routes", () => {
 
   it("creates posts as the signed-in student", async () => {
     vi.mocked(db.createStudentCommunityPost).mockResolvedValue({ id: 1, userId: 9 } as any);
+    vi.mocked(db.listStudentCommunityPostEmailRecipients).mockResolvedValue([
+      { userId: 10, email: "arabic@example.com", language: "ar" },
+      { userId: 11, email: "english@example.com", language: "en" },
+    ]);
 
     await expect(createCaller().community.createPost({
       title: "How should I study risk?",
@@ -211,6 +219,22 @@ describe("student community routes", () => {
         },
       }),
     );
+    expect(db.listStudentCommunityPostEmailRecipients).toHaveBeenCalledWith({ excludeUserId: 9 });
+    expect(db.createEmailOutboxCampaign).toHaveBeenCalledTimes(2);
+    expect(db.createEmailOutboxCampaign).toHaveBeenCalledWith(expect.objectContaining({
+      batchId: "student-community-post:1:ar",
+      recipients: [{ userId: 10, email: "arabic@example.com", language: "ar" }],
+      eventType: "student_community_post_published",
+      emailCategory: "marketing",
+      metadata: expect.objectContaining({ postId: 1, language: "ar" }),
+    }));
+    expect(db.createEmailOutboxCampaign).toHaveBeenCalledWith(expect.objectContaining({
+      batchId: "student-community-post:1:en",
+      recipients: [{ userId: 11, email: "english@example.com", language: "en" }],
+      eventType: "student_community_post_published",
+      emailCategory: "marketing",
+      metadata: expect.objectContaining({ postId: 1, language: "en" }),
+    }));
   });
 
   it("emails community moderators when an approved comment is created", async () => {

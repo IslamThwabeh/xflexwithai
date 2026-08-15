@@ -6,17 +6,23 @@ vi.mock("../backend/db", () => ({
   markEmailOutboxSkipped: vi.fn(),
   markEmailOutboxFailed: vi.fn(),
   getEmailOutboxRecipientBlockReason: vi.fn(),
+  getStudentCommunityPostEmailOutboxBlockReason: vi.fn(),
+  getStudentSurveyEmailOutboxBlockReason: vi.fn(),
+  releaseEmailOutboxClaims: vi.fn(),
 }));
 
 vi.mock("../backend/_core/email", () => ({
   sendEmail: vi.fn(),
+  sendAdminNotificationEmail: vi.fn(),
 }));
 
-import { sendEmail } from "../backend/_core/email";
+import { sendAdminNotificationEmail, sendEmail } from "../backend/_core/email";
 import * as db from "../backend/db";
 import {
   drainDueEmailOutbox,
   drainGenericEmailOutbox,
+  drainStudentCommunityPostEmailOutbox,
+  drainStudentSurveyEmailOutbox,
   SUPPORT_REPLY_EMAIL_DRAIN_LIMIT,
 } from "../backend/services/email-outbox.service";
 
@@ -41,9 +47,20 @@ describe("email outbox service", () => {
     vi.clearAllMocks();
     vi.mocked(db.claimEmailOutboxBatch).mockResolvedValue([]);
     vi.mocked(db.getEmailOutboxRecipientBlockReason).mockResolvedValue(null);
+    vi.mocked(db.getStudentCommunityPostEmailOutboxBlockReason).mockResolvedValue(null);
+    vi.mocked(db.getStudentSurveyEmailOutboxBlockReason).mockResolvedValue(null);
     vi.mocked(sendEmail).mockResolvedValue({
       provider: "zeptomail",
       attemptedProviders: ["zeptomail"],
+    } as any);
+    vi.mocked(sendAdminNotificationEmail).mockResolvedValue({
+      provider: "zeptomail",
+      attemptedProviders: ["zeptomail"],
+      providerRequestId: null,
+      sentUserIds: [7, 8],
+      skippedUserIds: [],
+      recipientCount: 2,
+      deliveryMode: "bcc_batch",
     } as any);
   });
 
@@ -91,9 +108,103 @@ describe("email outbox service", () => {
       eventTypes: ["support_client_reply"],
     });
     expect(db.claimEmailOutboxBatch).toHaveBeenNthCalledWith(2, 10, {
-      eventTypes: undefined,
+      excludedEventTypes: [
+        "student_survey_assigned",
+        "student_survey_reminder",
+        "student_community_post_published",
+      ],
     });
     expect(result.total).toEqual({ claimed: 2, sent: 2, failed: 0, skipped: 0 });
+  });
+
+  it("sends identical survey rows in one privacy-safe BCC provider request", async () => {
+    vi.mocked(db.claimEmailOutboxBatch).mockResolvedValueOnce([
+      outboxRow({
+        id: 10,
+        batchId: "student-survey:3:assigned:due:ar",
+        recipientUserId: 7,
+        recipientEmail: "first@example.com",
+        eventType: "student_survey_assigned",
+        templateId: "student_survey_assigned",
+        emailCategory: "marketing",
+        subject: "Survey",
+        bodyText: "Complete it",
+        bodyHtml: "<p>Complete it</p>",
+      }),
+      outboxRow({
+        id: 11,
+        batchId: "student-survey:3:assigned:due:ar",
+        recipientUserId: 8,
+        recipientEmail: "second@example.com",
+        eventType: "student_survey_assigned",
+        templateId: "student_survey_assigned",
+        emailCategory: "marketing",
+        subject: "Survey",
+        bodyText: "Complete it",
+        bodyHtml: "<p>Complete it</p>",
+      }),
+    ]);
+
+    const result = await drainStudentSurveyEmailOutbox();
+
+    expect(db.claimEmailOutboxBatch).toHaveBeenCalledWith(50, {
+      eventTypes: ["student_survey_assigned", "student_survey_reminder"],
+    });
+    expect(sendAdminNotificationEmail).toHaveBeenCalledTimes(1);
+    expect(sendAdminNotificationEmail).toHaveBeenCalledWith(expect.objectContaining({
+      recipients: [
+        { userId: 7, email: "first@example.com" },
+        { userId: 8, email: "second@example.com" },
+      ],
+      providerBatchKey: "student-survey:3:assigned:due:ar",
+    }));
+    expect(sendEmail).not.toHaveBeenCalled();
+    expect(result).toEqual({ claimed: 2, sent: 2, failed: 0, skipped: 0, providerRequests: 1 });
+  });
+
+  it("sends an eligible community-post batch through one privacy-safe BCC request", async () => {
+    vi.mocked(db.claimEmailOutboxBatch).mockResolvedValueOnce([
+      outboxRow({
+        id: 20,
+        batchId: "student-community-post:14:ar",
+        recipientUserId: 7,
+        recipientEmail: "first@example.com",
+        eventType: "student_community_post_published",
+        templateId: "student_community_post_published_ar",
+        emailCategory: "marketing",
+        subject: "New post",
+        bodyText: "Open it",
+        bodyHtml: "<p>Open it</p>",
+      }),
+      outboxRow({
+        id: 21,
+        batchId: "student-community-post:14:ar",
+        recipientUserId: 8,
+        recipientEmail: "second@example.com",
+        eventType: "student_community_post_published",
+        templateId: "student_community_post_published_ar",
+        emailCategory: "marketing",
+        subject: "New post",
+        bodyText: "Open it",
+        bodyHtml: "<p>Open it</p>",
+      }),
+    ]);
+
+    const result = await drainStudentCommunityPostEmailOutbox();
+
+    expect(db.claimEmailOutboxBatch).toHaveBeenCalledWith(50, {
+      eventTypes: ["student_community_post_published"],
+    });
+    expect(sendAdminNotificationEmail).toHaveBeenCalledWith(expect.objectContaining({
+      recipients: [
+        { userId: 7, email: "first@example.com" },
+        { userId: 8, email: "second@example.com" },
+      ],
+      providerBatchKey: "student-community-post:14:ar",
+      metadata: expect.objectContaining({ deliveryMode: "privacy_bcc" }),
+    }));
+    expect(sendEmail).not.toHaveBeenCalled();
+    expect(result).toEqual({ claimed: 2, sent: 2, failed: 0, skipped: 0, providerRequests: 1 });
   });
 
   it("marks unsubscribed rows as skipped instead of sent", async () => {

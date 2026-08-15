@@ -58,6 +58,7 @@ import { buildRecommendationAlertEmail, buildRecommendationMessageEmail } from "
 import { buildSupportReplyEmail } from "./_core/supportEmails";
 import {
   buildStudentCommunityClientEmail,
+  buildStudentCommunityPostAnnouncementEmail,
   type StudentCommunityClientEmailKind,
 } from "./_core/communityEmails";
 import { buildAnnouncementEmail, sendOrderConfirmationEmail, sendPaymentReceivedEmail, sendAdminNewOrderNotification, sendStaffWelcomeEmail, sendJobInterviewInviteEmail } from "./_core/orderEmails";
@@ -65,7 +66,7 @@ import { ENV } from "./_core/env";
 import { generateNumericCode, generateSaltBase64, normalizeEmail, sha256Base64 } from "./_core/otp";
 import { verifyUnsubscribeToken } from "./_core/emailPreferences";
 import { getCourseQuizLevelForEpisodeOrder, isCourseQuizLevelEnd } from "./courseQuizLevels";
-import { getOrderDisplayTotalIls } from "../shared/orderPricing";
+import { getOrderDisplayAmountsIls, getOrderDisplayTotalIls } from "../shared/orderPricing";
 import {
   ADMIN_FEATURE_FLAG_KEYS,
   getAdminFeatureFlagUpdates,
@@ -2141,6 +2142,29 @@ function buildSupportStaffEmailContent(input: {
   }
 
   return lines.join("\n").slice(0, 1800);
+}
+
+function attachOrderDisplayPricing<
+  TOrder extends {
+    subtotal: number;
+    discountAmount?: number | null;
+    vatAmount: number;
+    totalAmount: number;
+    currency?: string | null;
+    isUpgrade?: boolean | null;
+  },
+  TPackageItem extends { packageSlug: string | null },
+>(order: TOrder, packageItems: TPackageItem[]) {
+  const pricing = getOrderDisplayAmountsIls({
+    subtotal: order.subtotal,
+    discountAmount: order.discountAmount,
+    vatAmount: order.vatAmount,
+    totalAmount: order.totalAmount,
+    currency: order.currency,
+    packageSlug: packageItems.length === 1 ? packageItems[0]?.packageSlug : null,
+    isUpgrade: !!order.isUpgrade,
+  });
+  return { ...order, ...pricing, packageItems };
 }
 
 export const appRouter = router({
@@ -6557,7 +6581,12 @@ export const appRouter = router({
     // User: get my orders
     myOrders: protectedProcedure.query(async ({ ctx }) => {
       if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
-      return db.getUserOrders(ctx.user.id);
+      const orders = await db.getUserOrders(ctx.user.id);
+      const packageItems = await db.getOrderPackageConfigurationSummaries(orders.map((order) => order.id));
+      return orders.map((order) => attachOrderDisplayPricing(
+        order,
+        packageItems.filter((item) => item.orderId === order.id),
+      ));
     }),
 
     // User: get order details
@@ -6574,7 +6603,8 @@ export const appRouter = router({
         }
         const items = await db.getOrderItems(input.id);
         const activationKeys = await db.getOrderActivationKeys(input.id);
-        return { ...order, items, activationKeys };
+        const packageItems = await db.getOrderPackageConfigurationSummaries([input.id]);
+        return { ...attachOrderDisplayPricing(order, packageItems), items, activationKeys };
       }),
 
     // User: upload payment proof (bank transfer)
@@ -6612,10 +6642,10 @@ export const appRouter = router({
           existing.push(item);
           itemsByOrder.set(item.orderId, existing);
         }
-        return orders.map((order) => ({
-          ...order,
-          packageItems: itemsByOrder.get(order.id) ?? [],
-        }));
+        return orders.map((order) => attachOrderDisplayPricing(
+          order,
+          itemsByOrder.get(order.id) ?? [],
+        ));
       }),
 
     // Admin/support: account-level compliance, including clients whose access
@@ -9338,6 +9368,39 @@ ${qaText}`;
             postId: post.id,
           },
         });
+        try {
+          const recipients = await db.listStudentCommunityPostEmailRecipients({
+            excludeUserId: ctx.user.id,
+          });
+          for (const language of ["ar", "en"] as const) {
+            const languageRecipients = recipients.filter((recipient) => recipient.language === language);
+            if (!languageRecipients.length) continue;
+            const email = buildStudentCommunityPostAnnouncementEmail({
+              postId: post.id,
+              language,
+            });
+            await db.createEmailOutboxCampaign({
+              batchId: `student-community-post:${post.id}:${language}`,
+              recipients: languageRecipients,
+              eventType: "student_community_post_published",
+              templateId: `student_community_post_published_${language}`,
+              emailCategory: "marketing",
+              subject: email.subject,
+              bodyText: email.text,
+              bodyHtml: email.html,
+              metadata: {
+                postId: post.id,
+                language,
+                actionUrl: email.actionUrl,
+              },
+            });
+          }
+        } catch (error) {
+          logger.error("[COMMUNITY] Failed to queue post announcement campaign", {
+            postId: post.id,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
         return post;
       }),
 
@@ -10353,6 +10416,8 @@ ${qaText}`;
             access === "admin" && isStudentSurveyBlockingEnabled(blockingFlag),
           access: access === "admin" ? access : null,
           accessState: "clear" as const,
+          outstandingCount: 0,
+          nearestDueAt: null as string | null,
         };
       }
 
@@ -10363,12 +10428,16 @@ ${qaText}`;
         ? await db.listStudentSurveyBlockingAssignmentsForUser(ctx.user.id)
         : [];
       const accessState = getStudentSurveyBlockingAccessState(blockingAssignments);
+      const outstanding = access === "student" && ctx.user?.id
+        ? await db.getStudentSurveyOutstandingSummaryForUser(ctx.user.id)
+        : { outstandingCount: 0, nearestDueAt: null };
 
       return {
         enabled: true,
         blockingEnabled: isStudentSurveyBlockingEnabled(blockingFlag),
         access,
         accessState,
+        ...outstanding,
       };
     }),
 
@@ -10680,6 +10749,12 @@ ${qaText}`;
             message: `The survey reached its ${MAX_STUDENT_SURVEY_ASSIGNMENTS_PER_SURVEY}-student limit. Preview the audience again.`,
           });
         }
+        const notificationResult = result.assignments.length > 0
+          ? await db.materializeDueStudentSurveyNotifications({
+              assignmentIds: result.assignments.map((assignment) => assignment.id),
+              limit: result.assignments.length,
+            }).catch(() => ({ processed: 0, dashboardCreated: 0, emailsQueued: 0 }))
+          : { processed: 0, dashboardCreated: 0, emailsQueued: 0 };
         return {
           success: true,
           assignedCount: result.assignments.length,
@@ -10688,7 +10763,8 @@ ${qaText}`;
           replayedAssignmentCount:
             input.expectedRecipientIds.length - actualRecipientIds.length,
           matchedCount: audience.matchedStudents.length,
-          notificationsSent: 0 as const,
+          notificationsSent: notificationResult.dashboardCreated,
+          emailsQueued: notificationResult.emailsQueued,
         };
       }),
 

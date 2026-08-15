@@ -3,7 +3,7 @@ import { ShoppingBag, Clock, CheckCircle, XCircle, ChevronRight, ArrowLeft } fro
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { formatAdminCurrency } from '@/lib/adminCurrency';
+import { formatAdminCurrencyFromIls } from '@/lib/adminCurrency';
 import { formatPaymentMethodLabel } from '@/lib/paymentMethodLabel';
 import { trpc } from '@/lib/trpc';
 import ClientLayout from '@/components/ClientLayout';
@@ -91,7 +91,7 @@ export default function MyOrders() {
                     </div>
                     <div className="flex items-center gap-3">
                       <span className="font-bold text-lg">
-                        {formatAdminCurrency(order.totalAmount, language, { sourceCurrency: order.currency, fromCents: true })}
+                        {formatAdminCurrencyFromIls(order.displayTotalIls, language)}
                       </span>
                       <ChevronRight className={`w-4 h-4 text-gray-400 ${isRtl ? 'rotate-180' : ''}`} />
                     </div>

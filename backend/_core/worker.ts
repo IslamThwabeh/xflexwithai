@@ -17,7 +17,11 @@ import {
 } from "./inactivityDigest";
 import {
   drainGenericEmailOutbox,
+  drainStudentCommunityPostEmailOutbox,
+  drainStudentSurveyEmailOutbox,
   GENERIC_EMAIL_OUTBOX_DRAIN_LIMIT,
+  STUDENT_COMMUNITY_EMAIL_BCC_LIMIT,
+  STUDENT_COMMUNITY_POST_EMAIL_EVENT,
   SUPPORT_REPLY_EMAIL_DRAIN_LIMIT,
 } from "../services/email-outbox.service";
 import {
@@ -50,16 +54,66 @@ async function runFrequentTimedServiceAndEmailJobs() {
     source: "scheduled",
   });
 
+  // Survey events are first materialized into the durable outbox. Existing
+  // pre-Phase-1 assignments have no schedule and are never picked up here.
+  let surveyProviderRequests = 0;
+  try {
+    await db.materializeDueStudentSurveyNotifications({ limit: 50 });
+    const surveyBudget = Math.min(
+      2,
+      getRemainingGenericEmailBudget(recommendationDrain.providerRequests),
+    );
+    if (surveyBudget > 0) {
+      const surveyDrain = await drainStudentSurveyEmailOutbox({ providerRequestLimit: surveyBudget });
+      surveyProviderRequests = surveyDrain.providerRequests;
+    }
+  } catch (error) {
+    logger.error("[CRON] Student survey notification jobs failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
   await drainGenericEmailOutbox({
     limit: SUPPORT_REPLY_EMAIL_DRAIN_LIMIT,
     eventTypes: ["support_client_reply"],
   });
 
-  const genericBudget = getRemainingGenericEmailBudget(recommendationDrain.providerRequests);
+  // Community announcements are bulk awareness mail. Keep them behind live
+  // recommendations and support replies, materialize at most one 50-client
+  // BCC batch, and preserve the generic transactional capacity calculation.
+  let communityProviderRequests = 0;
+  try {
+    const communityBudget = Math.min(
+      2,
+      getRemainingGenericEmailBudget(
+        recommendationDrain.providerRequests + surveyProviderRequests,
+      ),
+    );
+    if (communityBudget > 0) {
+      await db.materializeEmailOutboxCampaigns(STUDENT_COMMUNITY_EMAIL_BCC_LIMIT, {
+        eventTypes: [STUDENT_COMMUNITY_POST_EMAIL_EVENT],
+        maxBatchSize: STUDENT_COMMUNITY_EMAIL_BCC_LIMIT,
+      });
+      const communityDrain = await drainStudentCommunityPostEmailOutbox({
+        providerRequestLimit: communityBudget,
+      });
+      communityProviderRequests = communityDrain.providerRequests;
+    }
+  } catch (error) {
+    logger.error("[CRON] Student community post email jobs failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  const genericBudget = getRemainingGenericEmailBudget(
+    recommendationDrain.providerRequests + surveyProviderRequests + communityProviderRequests,
+  );
   const genericLimit = Math.min(GENERIC_EMAIL_OUTBOX_DRAIN_LIMIT, genericBudget);
 
   if (genericLimit > 0) {
-    await db.materializeEmailOutboxCampaigns(genericLimit);
+    await db.materializeEmailOutboxCampaigns(genericLimit, {
+      excludedEventTypes: [STUDENT_COMMUNITY_POST_EMAIL_EVENT],
+    });
   }
   if (genericLimit > 0) {
     await drainGenericEmailOutbox({ limit: genericLimit });

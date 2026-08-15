@@ -1,4 +1,4 @@
-import { eq, desc, and, or, sql, ne, inArray, isNotNull, isNull, gte, lte, lt, gt, like, asc, type SQL } from "drizzle-orm";
+import { eq, desc, and, or, sql, ne, inArray, notInArray, isNotNull, isNull, gte, lte, lt, gt, like, asc, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import type { D1Database } from "@cloudflare/workers-types";
 import {
@@ -157,12 +157,23 @@ import {
   MAX_STUDENT_SURVEY_ASSIGNMENTS_PER_SURVEY,
   getStudentSurveyAccessState,
   haveSameStudentSurveyAnswers,
+  isStudentSurveysEnabled,
   nextPostponedDueAt,
   type StudentSurveyAssignmentStatus,
 } from './services/student-surveys.service';
+import {
+  buildStudentSurveyNotificationContent,
+  buildStudentSurveyNotificationDedupeKey,
+  getNextStudentSurveyNotificationAt,
+  getStudentSurveyNotificationLanguage,
+  getStudentSurveyNotificationStage,
+  type StudentSurveyNotificationStage,
+} from './services/student-survey-notifications.service';
 import type { LoyaltyRewardRedemptionStatus } from './services/loyalty-rewards.service';
 import {
   isStudentCommunityBanActive,
+  isStudentCommunityEnabled,
+  STUDENT_COMMUNITY_FEATURE_FLAG,
   type StudentCommunityAccessState,
   type StudentCommunityContentStatus,
   type StudentCommunityReportStatus,
@@ -3517,6 +3528,9 @@ export async function assignStudentSurvey(input: {
     dueAt: input.dueAt,
     blockAt: input.blockAt,
     postponementsUsed: 0,
+    notificationScheduleStartedAt: now,
+    nextNotificationAt: now,
+    notificationCount: 0,
     createdByUserId: input.actorUserId,
     createdAt: now,
     updatedAt: now,
@@ -3565,6 +3579,9 @@ export async function assignStudentSurveyAudience(input: {
           dueAt: input.dueAt,
           blockAt: input.blockAt,
           postponementsUsed: 0,
+          notificationScheduleStartedAt: now,
+          nextNotificationAt: now,
+          notificationCount: 0,
           createdByUserId: input.actorUserId,
           createdAt: now,
           updatedAt: now,
@@ -3646,6 +3663,11 @@ export async function getStudentSurveyAssignment(id: number) {
     postponementsUsed: studentSurveyAssignments.postponementsUsed,
     lastPostponedAt: studentSurveyAssignments.lastPostponedAt,
     submittedAt: studentSurveyAssignments.submittedAt,
+    notificationScheduleStartedAt: studentSurveyAssignments.notificationScheduleStartedAt,
+    nextNotificationAt: studentSurveyAssignments.nextNotificationAt,
+    lastNotificationAt: studentSurveyAssignments.lastNotificationAt,
+    lastNotificationStage: studentSurveyAssignments.lastNotificationStage,
+    notificationCount: studentSurveyAssignments.notificationCount,
     createdByUserId: studentSurveyAssignments.createdByUserId,
     createdAt: studentSurveyAssignments.createdAt,
     updatedAt: studentSurveyAssignments.updatedAt,
@@ -3696,6 +3718,11 @@ export async function listStudentSurveyAssignmentsForUser(userId: number, limit 
     postponementsUsed: studentSurveyAssignments.postponementsUsed,
     lastPostponedAt: studentSurveyAssignments.lastPostponedAt,
     submittedAt: studentSurveyAssignments.submittedAt,
+    notificationScheduleStartedAt: studentSurveyAssignments.notificationScheduleStartedAt,
+    nextNotificationAt: studentSurveyAssignments.nextNotificationAt,
+    lastNotificationAt: studentSurveyAssignments.lastNotificationAt,
+    lastNotificationStage: studentSurveyAssignments.lastNotificationStage,
+    notificationCount: studentSurveyAssignments.notificationCount,
     surveyCode: studentSurveys.code,
     surveyTitle: studentSurveys.title,
     surveyIsActive: studentSurveys.isActive,
@@ -3792,6 +3819,11 @@ export async function listStudentSurveyAssignmentsForAdmin(input: {
     postponementsUsed: studentSurveyAssignments.postponementsUsed,
     lastPostponedAt: studentSurveyAssignments.lastPostponedAt,
     submittedAt: studentSurveyAssignments.submittedAt,
+    notificationScheduleStartedAt: studentSurveyAssignments.notificationScheduleStartedAt,
+    nextNotificationAt: studentSurveyAssignments.nextNotificationAt,
+    lastNotificationAt: studentSurveyAssignments.lastNotificationAt,
+    lastNotificationStage: studentSurveyAssignments.lastNotificationStage,
+    notificationCount: studentSurveyAssignments.notificationCount,
     createdAt: studentSurveyAssignments.createdAt,
     updatedAt: studentSurveyAssignments.updatedAt,
     surveyCode: studentSurveys.code,
@@ -3863,6 +3895,28 @@ export async function countStudentsAffectedBySurveyBlocking(): Promise<number> {
   return Number(row?.total ?? 0);
 }
 
+async function suppressPendingStudentSurveyEmails(
+  assignmentId: number,
+  reason: string,
+  includeAssignment: boolean = true,
+) {
+  const db = await getDb();
+  if (!db) return;
+  const now = new Date().toISOString();
+  await db.update(emailOutbox).set({
+    status: "skipped_suppressed",
+    lockedAt: null,
+    errorMessage: reason,
+    updatedAt: now,
+  }).where(and(
+    inArray(emailOutbox.status, ["pending", "failed"]),
+    inArray(emailOutbox.eventType, includeAssignment
+      ? ["student_survey_assigned", "student_survey_reminder"]
+      : ["student_survey_reminder"]),
+    like(emailOutbox.dedupeKey, `student_survey:${assignmentId}:%`),
+  ));
+}
+
 export async function postponeStudentSurveyAssignment(input: {
   id: number;
   userId: number;
@@ -3885,6 +3939,12 @@ export async function postponeStudentSurveyAssignment(input: {
   const [updated] = await db.update(studentSurveyAssignments).set({
     status: "postponed",
     dueAt: nextDueAt,
+    nextNotificationAt: getNextStudentSurveyNotificationAt({
+      dueAt: nextDueAt,
+      stage: "assigned",
+      now,
+    }),
+    lastNotificationStage: null,
     postponementsUsed: assignment.postponementsUsed + 1,
     lastPostponedAt: nowIso,
     updatedAt: nowIso,
@@ -3894,6 +3954,8 @@ export async function postponeStudentSurveyAssignment(input: {
     eq(studentSurveyAssignments.status, fromStatus),
   )).returning();
   if (!updated) return null;
+
+  await suppressPendingStudentSurveyEmails(input.id, "survey_postponed", false);
 
   await logStudentSurveyAudit({
     entityType: "assignment",
@@ -3963,6 +4025,7 @@ export async function submitStudentSurveyAssignment(input: {
   const updateAssignmentStatement = db.update(studentSurveyAssignments).set({
     status: "submitted",
     submittedAt: now,
+    nextNotificationAt: null,
     updatedAt: now,
   }).where(and(
     eq(studentSurveyAssignments.id, input.id),
@@ -3981,6 +4044,7 @@ export async function submitStudentSurveyAssignment(input: {
     const updatedRows = batchResults.at(-1) ?? [];
     const updated = updatedRows[0];
     if (!updated) throw new Error("STUDENT_SURVEY_SUBMISSION_INVARIANT_FAILED");
+    await suppressPendingStudentSurveyEmails(input.id, "survey_already_submitted");
     return { assignment: updated, submittedNow: true };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -4040,19 +4104,44 @@ export async function sendStudentSurveyAssignmentReminder(input: {
   if (!assignment) return null;
 
   const now = new Date().toISOString();
-  const deadlinePassed = assignment.accessState === "blocked";
+  const [recipient] = await db.select({
+    email: users.email,
+    notificationPrefs: users.notificationPrefs,
+    loginBlockedAt: users.loginBlockedAt,
+  }).from(users).where(eq(users.id, assignment.userId)).limit(1);
+  if (!recipient || recipient.loginBlockedAt) return null;
+  const surveyUrl = `${ENV.siteUrl.replace(/\/+$/, "")}/surveys`;
+  const english = buildStudentSurveyNotificationContent({
+    surveyTitle: assignment.surveyTitle,
+    dueAt: assignment.dueAt,
+    stage: "manual",
+    language: "en",
+    surveyUrl,
+  });
+  const arabic = buildStudentSurveyNotificationContent({
+    surveyTitle: assignment.surveyTitle,
+    dueAt: assignment.dueAt,
+    stage: "manual",
+    language: "ar",
+    surveyUrl,
+  });
+  const language = getStudentSurveyNotificationLanguage(recipient.notificationPrefs);
+  const email = language === "ar" ? arabic : english;
+  const dedupeKey = buildStudentSurveyNotificationDedupeKey({
+    assignmentId: input.assignmentId,
+    stage: "manual",
+    dueAt: assignment.dueAt,
+    scheduledAt: now,
+  });
   const notificationStatement = db.insert(userNotifications).values({
     userId: assignment.userId,
     type: "action",
-    titleEn: "Survey reminder",
-    titleAr: "تذكير بالاستبيان",
-    contentEn: deadlinePassed
-      ? `Please complete the "${assignment.surveyTitle}" survey. You can still submit it after the final deadline.`
-      : `Please complete the "${assignment.surveyTitle}" survey before the deadline.`,
-    contentAr: deadlinePassed
-      ? `يرجى تعبئة استبيان "${assignment.surveyTitle}". لا يزال بإمكانك إرساله بعد الموعد النهائي.`
-      : `يرجى تعبئة استبيان "${assignment.surveyTitle}" قبل الموعد المحدد.`,
+    titleEn: english.title,
+    titleAr: arabic.title,
+    contentEn: english.body,
+    contentAr: arabic.body,
     actionUrl: "/surveys",
+    dedupeKey,
     createdAt: now,
   }).returning();
 
@@ -4066,7 +4155,8 @@ export async function sendStudentSurveyAssignmentReminder(input: {
       actorUserId: input.actorUserId,
       action: "reminder_sent",
       details: JSON.stringify({
-        channel: "in_app",
+        channel: "in_app_and_email",
+        stage: "manual",
         status: assignment.status,
         dueAt: assignment.dueAt,
         blockAt: assignment.blockAt,
@@ -4074,16 +4164,45 @@ export async function sendStudentSurveyAssignmentReminder(input: {
       createdAt: now,
     })
     .returning({ id: studentSurveyAuditLogs.id });
+  const updateStatement = db.update(studentSurveyAssignments).set({
+    lastNotificationAt: now,
+    lastNotificationStage: "manual",
+    notificationCount: sql`${studentSurveyAssignments.notificationCount} + 1`,
+    updatedAt: now,
+  }).where(and(
+    eq(studentSurveyAssignments.id, input.assignmentId),
+    ne(studentSurveyAssignments.status, "submitted"),
+  ));
 
   try {
     const [notificationRows] = await db.batch([
       notificationStatement,
       auditStatement,
+      updateStatement,
     ]);
     const notification = notificationRows[0];
     if (!notification) {
       throw new Error("STUDENT_SURVEY_REMINDER_INVARIANT_FAILED");
     }
+    await enqueueEmailOutbox({
+      dedupeKey,
+      batchId: `student-survey:${assignment.surveyId}:manual:${language}`,
+      recipientUserId: assignment.userId,
+      recipientEmail: recipient.email,
+      eventType: "student_survey_reminder",
+      templateId: "student_survey_manual",
+      emailCategory: "marketing",
+      subject: email.subject,
+      bodyText: email.text,
+      bodyHtml: email.html,
+      metadata: {
+        assignmentId: input.assignmentId,
+        surveyId: assignment.surveyId,
+        stage: "manual",
+        dueAt: assignment.dueAt,
+        language,
+      },
+    });
     return notification;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -4890,6 +5009,178 @@ export async function getRecommendationServiceAccessSummary(userId: number): Pro
   await ensureTimedServicesActivatedIfDue(userId);
   const subscription = await getAnyRecommendationSubscription(userId);
   return buildTimedServiceAccessSummary(subscription);
+}
+
+export async function getStudentSurveyOutstandingSummaryForUser(userId: number) {
+  const db = await getDb();
+  if (!db) return { outstandingCount: 0, nearestDueAt: null as string | null };
+  const [row] = await db.select({
+    outstandingCount: sql<number>`COUNT(*)`,
+    nearestDueAt: sql<string | null>`MIN(${studentSurveyAssignments.dueAt})`,
+  }).from(studentSurveyAssignments)
+    .innerJoin(studentSurveys, eq(studentSurveyAssignments.surveyId, studentSurveys.id))
+    .where(and(
+      eq(studentSurveyAssignments.userId, userId),
+      ne(studentSurveyAssignments.status, "submitted"),
+      eq(studentSurveys.isActive, true),
+    ));
+  return {
+    outstandingCount: Number(row?.outstandingCount ?? 0),
+    nearestDueAt: row?.nearestDueAt ?? null,
+  };
+}
+
+/**
+ * Materialize due survey events into the dashboard and persistent email queue.
+ * Existing assignments have a NULL schedule and are intentionally ignored.
+ */
+export async function materializeDueStudentSurveyNotifications(input?: {
+  assignmentIds?: number[];
+  limit?: number;
+}) {
+  const db = await getDb();
+  if (!db) return { processed: 0, dashboardCreated: 0, emailsQueued: 0 };
+  if (!isStudentSurveysEnabled(await getAdminSetting("student_surveys_enabled"))) {
+    return { processed: 0, dashboardCreated: 0, emailsQueued: 0 };
+  }
+
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const filters: SQL[] = [
+    isNotNull(studentSurveyAssignments.notificationScheduleStartedAt),
+    isNotNull(studentSurveyAssignments.nextNotificationAt),
+    lte(studentSurveyAssignments.nextNotificationAt, nowIso),
+    ne(studentSurveyAssignments.status, "submitted"),
+    eq(studentSurveys.isActive, true),
+    isNull(users.loginBlockedAt),
+  ];
+  const assignmentIds = Array.from(new Set(input?.assignmentIds ?? [])).filter((id) => id > 0);
+  if (assignmentIds.length) filters.push(inArray(studentSurveyAssignments.id, assignmentIds));
+
+  const rows = await db.select({
+    id: studentSurveyAssignments.id,
+    surveyId: studentSurveyAssignments.surveyId,
+    userId: studentSurveyAssignments.userId,
+    dueAt: studentSurveyAssignments.dueAt,
+    blockAt: studentSurveyAssignments.blockAt,
+    nextNotificationAt: studentSurveyAssignments.nextNotificationAt,
+    lastNotificationStage: studentSurveyAssignments.lastNotificationStage,
+    notificationCount: studentSurveyAssignments.notificationCount,
+    createdByUserId: studentSurveyAssignments.createdByUserId,
+    surveyTitle: studentSurveys.title,
+    email: users.email,
+    notificationPrefs: users.notificationPrefs,
+  }).from(studentSurveyAssignments)
+    .innerJoin(studentSurveys, eq(studentSurveyAssignments.surveyId, studentSurveys.id))
+    .innerJoin(users, eq(studentSurveyAssignments.userId, users.id))
+    .where(and(...filters))
+    .orderBy(asc(studentSurveyAssignments.nextNotificationAt), asc(studentSurveyAssignments.id))
+    .limit(Math.min(Math.max(input?.limit ?? 50, 1), 50));
+
+  let dashboardCreated = 0;
+  let emailsQueued = 0;
+  for (const row of rows) {
+    const stage = getStudentSurveyNotificationStage({
+      dueAt: row.dueAt,
+      notificationCount: row.notificationCount,
+      lastStage: row.lastNotificationStage,
+      now,
+    });
+    const scheduledAt = row.nextNotificationAt ?? nowIso;
+    const dedupeKey = buildStudentSurveyNotificationDedupeKey({
+      assignmentId: row.id,
+      stage,
+      dueAt: row.dueAt,
+      scheduledAt,
+    });
+    const surveyUrl = `${ENV.siteUrl.replace(/\/+$/, "")}/surveys`;
+    const english = buildStudentSurveyNotificationContent({
+      surveyTitle: row.surveyTitle,
+      dueAt: row.dueAt,
+      stage,
+      language: "en",
+      surveyUrl,
+    });
+    const arabic = buildStudentSurveyNotificationContent({
+      surveyTitle: row.surveyTitle,
+      dueAt: row.dueAt,
+      stage,
+      language: "ar",
+      surveyUrl,
+    });
+    const language = getStudentSurveyNotificationLanguage(row.notificationPrefs);
+    const email = language === "ar" ? arabic : english;
+
+    const notificationRows = await db.insert(userNotifications).values({
+      userId: row.userId,
+      type: stage === "overdue" || stage === "due" ? "warning" : "action",
+      titleEn: english.title,
+      titleAr: arabic.title,
+      contentEn: english.body,
+      contentAr: arabic.body,
+      actionUrl: "/surveys",
+      dedupeKey,
+      createdAt: nowIso,
+    }).onConflictDoNothing({ target: userNotifications.dedupeKey })
+      .returning({ id: userNotifications.id });
+    dashboardCreated += notificationRows.length;
+
+    const eventType = stage === "assigned" ? "student_survey_assigned" : "student_survey_reminder";
+    const queued = await enqueueEmailOutbox({
+      dedupeKey,
+      batchId: `student-survey:${row.surveyId}:${stage}:${row.dueAt}:${language}`,
+      recipientUserId: row.userId,
+      recipientEmail: row.email,
+      eventType,
+      templateId: `student_survey_${stage}`,
+      emailCategory: "marketing",
+      subject: email.subject,
+      bodyText: email.text,
+      bodyHtml: email.html,
+      metadata: {
+        assignmentId: row.id,
+        surveyId: row.surveyId,
+        stage,
+        dueAt: row.dueAt,
+        language,
+      },
+    });
+    if (queued) emailsQueued += 1;
+
+    const nextNotificationAt = getNextStudentSurveyNotificationAt({
+      dueAt: row.dueAt,
+      stage,
+      now,
+    });
+    await db.update(studentSurveyAssignments).set({
+      nextNotificationAt,
+      lastNotificationAt: nowIso,
+      lastNotificationStage: stage,
+      notificationCount: sql`${studentSurveyAssignments.notificationCount} + 1`,
+      updatedAt: nowIso,
+    }).where(and(
+      eq(studentSurveyAssignments.id, row.id),
+      eq(studentSurveyAssignments.nextNotificationAt, scheduledAt),
+      ne(studentSurveyAssignments.status, "submitted"),
+    ));
+
+    if (notificationRows.length) {
+      await logStudentSurveyAudit({
+        entityType: "assignment",
+        entityId: row.id,
+        surveyId: row.surveyId,
+        userId: row.userId,
+        actorUserId: row.createdByUserId,
+        action: stage === "assigned" ? "assignment_notification_scheduled" : "reminder_scheduled",
+        details: { channel: "in_app_and_email", stage, dueAt: row.dueAt, dedupeKey },
+      }).catch((error) => logger.warn("[SURVEYS] Notification audit write failed", {
+        assignmentId: row.id,
+        stage,
+        error: error instanceof Error ? error.message : String(error),
+      }));
+    }
+  }
+  return { processed: rows.length, dashboardCreated, emailsQueued };
 }
 
 async function queuePendingTimedServiceReminders(userId: number, now: Date = new Date()) {
@@ -6573,11 +6864,25 @@ export async function createEmailOutboxCampaign(input: {
   return recipients.length;
 }
 
-export async function materializeEmailOutboxCampaigns(limit: number = 10): Promise<number> {
+export async function materializeEmailOutboxCampaigns(
+  limit: number = 10,
+  options?: {
+    eventTypes?: string[];
+    excludedEventTypes?: string[];
+    maxBatchSize?: number;
+  },
+): Promise<number> {
   const db = await getDb();
   if (!db) return 0;
+  const conditions: SQL[] = [inArray(emailOutboxCampaigns.status, ["pending", "processing"])];
+  if (options?.eventTypes?.length) {
+    conditions.push(inArray(emailOutboxCampaigns.eventType, options.eventTypes));
+  }
+  if (options?.excludedEventTypes?.length) {
+    conditions.push(notInArray(emailOutboxCampaigns.eventType, options.excludedEventTypes));
+  }
   const [campaign] = await db.select().from(emailOutboxCampaigns)
-    .where(inArray(emailOutboxCampaigns.status, ["pending", "processing"]))
+    .where(and(...conditions))
     .orderBy(emailOutboxCampaigns.createdAt)
     .limit(1);
   if (!campaign) return 0;
@@ -6595,7 +6900,8 @@ export async function materializeEmailOutboxCampaigns(limit: number = 10): Promi
   }
 
   const cursor = Math.max(0, campaign.cursor);
-  const slice = recipients.slice(cursor, cursor + Math.max(1, Math.min(10, limit)));
+  const maxBatchSize = Math.min(Math.max(options?.maxBatchSize ?? 10, 1), 50);
+  const slice = recipients.slice(cursor, cursor + Math.max(1, Math.min(maxBatchSize, limit)));
   const metadata = parseOptionalJson(campaign.metadataJson) as Record<string, unknown> | null;
   let inserted = 0;
   for (const recipient of slice) {
@@ -6626,7 +6932,7 @@ export async function materializeEmailOutboxCampaigns(limit: number = 10): Promi
 
 export async function claimEmailOutboxBatch(
   limit: number = 10,
-  options?: { eventTypes?: string[] },
+  options?: { eventTypes?: string[]; excludedEventTypes?: string[] },
 ): Promise<EmailOutbox[]> {
   const db = await getDb();
   if (!db) return [];
@@ -6653,6 +6959,9 @@ export async function claimEmailOutboxBatch(
   ];
   if (options?.eventTypes?.length) {
     conditions.push(inArray(emailOutbox.eventType, options.eventTypes));
+  }
+  if (options?.excludedEventTypes?.length) {
+    conditions.push(notInArray(emailOutbox.eventType, options.excludedEventTypes));
   }
 
   const candidates = await db.select().from(emailOutbox)
@@ -6689,6 +6998,46 @@ export async function claimEmailOutboxBatch(
   return claimed;
 }
 
+export async function releaseEmailOutboxClaims(ids: number[]): Promise<void> {
+  const db = await getDb();
+  if (!db || ids.length === 0) return;
+  await db.update(emailOutbox).set({
+    status: "pending",
+    lockedAt: null,
+    updatedAt: new Date().toISOString(),
+  }).where(and(
+    inArray(emailOutbox.id, ids),
+    eq(emailOutbox.status, "processing"),
+  ));
+}
+
+export async function getStudentSurveyEmailOutboxBlockReason(
+  row: EmailOutbox,
+): Promise<string | null> {
+  if (row.eventType !== "student_survey_assigned" && row.eventType !== "student_survey_reminder") {
+    return null;
+  }
+  if (!isStudentSurveysEnabled(await getAdminSetting("student_surveys_enabled"))) {
+    return "student_surveys_disabled";
+  }
+  const metadata = parseOptionalJson<{ assignmentId?: number }>(row.metadataJson);
+  const assignmentId = Number(metadata?.assignmentId);
+  if (!Number.isInteger(assignmentId) || assignmentId <= 0) return "survey_assignment_missing";
+  const db = await getDb();
+  if (!db) return "survey_assignment_missing";
+  const [assignment] = await db.select({
+    status: studentSurveyAssignments.status,
+    surveyIsActive: studentSurveys.isActive,
+  }).from(studentSurveyAssignments)
+    .innerJoin(studentSurveys, eq(studentSurveyAssignments.surveyId, studentSurveys.id))
+    .where(eq(studentSurveyAssignments.id, assignmentId))
+    .limit(1);
+  if (!assignment) return "survey_assignment_missing";
+  if (!assignment.surveyIsActive) return "survey_inactive";
+  if (assignment.status === "submitted") return "survey_already_submitted";
+  return null;
+}
+
 /**
  * Account-level send-time guard for non-essential outbox mail. Transactional
  * support/security/billing messages remain deliverable; timed activation is
@@ -6712,6 +7061,60 @@ export async function getEmailOutboxRecipientBlockReason(
   if (!user) return 'recipient_account_missing';
   if (user.loginBlockedAt) return 'recipient_account_disabled';
   if (normalizeEmailAddress(user.email) !== normalizeEmailAddress(row.recipientEmail)) return 'recipient_changed';
+  return null;
+}
+
+export async function getStudentCommunityPostEmailOutboxBlockReason(
+  row: EmailOutbox,
+): Promise<
+  | 'community_disabled'
+  | 'community_post_unavailable'
+  | 'community_recipient_ineligible'
+  | 'community_recipient_suspended'
+  | null
+> {
+  if (row.eventType !== 'student_community_post_published') return null;
+  if (!isStudentCommunityEnabled(await getAdminSetting(STUDENT_COMMUNITY_FEATURE_FLAG))) {
+    return 'community_disabled';
+  }
+
+  let postId: number | null = null;
+  try {
+    const metadata = row.metadataJson ? JSON.parse(row.metadataJson) as { postId?: unknown } : null;
+    if (typeof metadata?.postId === 'number' && Number.isInteger(metadata.postId)) {
+      postId = metadata.postId;
+    }
+  } catch {
+    return 'community_post_unavailable';
+  }
+  if (!postId || !row.recipientUserId) return 'community_post_unavailable';
+
+  const db = await getDb();
+  if (!db) return 'community_post_unavailable';
+  const [[post], [recipient]] = await Promise.all([
+    db.select({ status: studentCommunityPosts.status })
+      .from(studentCommunityPosts)
+      .where(eq(studentCommunityPosts.id, postId))
+      .limit(1),
+    db.select({
+      isStaff: users.isStaff,
+      accessStatus: studentCommunityAccessControls.status,
+      accessExpiresAt: studentCommunityAccessControls.expiresAt,
+    }).from(users)
+      .leftJoin(
+        studentCommunityAccessControls,
+        eq(studentCommunityAccessControls.userId, users.id),
+      )
+      .where(eq(users.id, row.recipientUserId))
+      .limit(1),
+  ]);
+
+  if (!post || post.status !== 'visible') return 'community_post_unavailable';
+  if (!recipient || recipient.isStaff) return 'community_recipient_ineligible';
+  if (isStudentCommunityBanActive({
+    status: recipient.accessStatus,
+    expiresAt: recipient.accessExpiresAt,
+  })) return 'community_recipient_suspended';
   return null;
 }
 
@@ -13177,6 +13580,7 @@ export async function getOrderPackageConfigurationSummaries(orderIds: number[]) 
     .select({
       orderId: orderItems.orderId,
       packageId: packages.id,
+      packageSlug: packages.slug,
       packageNameEn: packages.nameEn,
       packageNameAr: packages.nameAr,
       defaultEntitlementDays: packages.durationDays,
@@ -16901,6 +17305,39 @@ const activeCommunityBanSql = sql<boolean>`COALESCE((
     OR julianday(${studentCommunityAccessControls.expiresAt}) > julianday('now')
   )
 ), 0)`;
+
+export async function listStudentCommunityPostEmailRecipients(input: {
+  excludeUserId: number;
+}): Promise<Array<{ userId: number; email: string; language: "ar" | "en" }>> {
+  const db = await getDb();
+  if (!db) return [];
+
+  const rows = await db.select({
+    userId: users.id,
+    email: users.email,
+    notificationPrefs: users.notificationPrefs,
+  }).from(users)
+    .leftJoin(
+      studentCommunityAccessControls,
+      eq(studentCommunityAccessControls.userId, users.id),
+    )
+    .where(and(
+      eq(users.isStaff, false),
+      isNull(users.loginBlockedAt),
+      ne(users.id, input.excludeUserId),
+      sql<boolean>`NOT ${activeCommunityBanSql}`,
+    ))
+    .orderBy(users.id);
+
+  return rows.flatMap((row) => {
+    if (!isLikelyValidEmail(row.email)) return [];
+    return [{
+      userId: row.userId,
+      email: normalizeEmailAddress(row.email),
+      language: getStudentSurveyNotificationLanguage(row.notificationPrefs),
+    }];
+  });
+}
 
 export async function listStudentCommunityMembers(input: {
   search?: string | null;

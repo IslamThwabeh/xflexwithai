@@ -47,7 +47,7 @@ export function getAdminFeatureNotificationEventType(
 export function getEmailDeliveryEventCategory(eventType: string): EmailDeliveryEventCategory {
   if (eventType.startsWith("student_survey")) return "surveys";
   if (eventType.startsWith("loyalty_reward")) return "rewards";
-  if (eventType.startsWith("community_")) return "community";
+  if (eventType.startsWith("community_") || eventType.startsWith("student_community_")) return "community";
   if (eventType.startsWith("job_eligibility")) return "jobs";
   if (eventType.startsWith("staff_performance")) return "staff_performance";
   if (eventType.startsWith("recommendation") || eventType === "trade_result") return "recommendations";

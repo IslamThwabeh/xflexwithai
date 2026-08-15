@@ -1,7 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { buildStudentCommunityClientEmail } from "../backend/_core/communityEmails";
+import {
+  buildStudentCommunityClientEmail,
+  buildStudentCommunityPostAnnouncementEmail,
+} from "../backend/_core/communityEmails";
 
 describe("student community client emails", () => {
+  it("builds language-specific generic post announcements suitable for BCC grouping", () => {
+    const arabic = buildStudentCommunityPostAnnouncementEmail({ postId: 42, language: "ar" });
+    const english = buildStudentCommunityPostAnnouncementEmail({ postId: 42, language: "en" });
+
+    expect(arabic.subject).toContain("منشور جديد");
+    expect(english.subject).toContain("New post");
+    expect(arabic.text).toContain("https://xflexacademy.com/community?postId=42");
+    expect(english.html).toContain("https://xflexacademy.com/community?postId=42");
+    expect(arabic.text).not.toContain("Student #");
+    expect(english.actionUrl).toBe("/community?postId=42");
+  });
+
   it("builds a bilingual reply email with a direct post link", () => {
     const email = buildStudentCommunityClientEmail({
       kind: "reply",

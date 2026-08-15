@@ -11,11 +11,15 @@ const blockingFlagMigrationPath = fileURLToPath(
 const assignmentCapMigrationPath = fileURLToPath(
   new URL("../database/migrations/079_student_survey_assignment_cap.sql", import.meta.url),
 );
+const continuousNotificationsMigrationPath = fileURLToPath(
+  new URL("../database/migrations/086_student_survey_continuous_notifications.sql", import.meta.url),
+);
 
 describe("student surveys migration", () => {
   const migrationSql = readFileSync(migrationPath, "utf8");
   const blockingFlagMigrationSql = readFileSync(blockingFlagMigrationPath, "utf8");
   const assignmentCapMigrationSql = readFileSync(assignmentCapMigrationPath, "utf8");
+  const continuousNotificationsMigrationSql = readFileSync(continuousNotificationsMigrationPath, "utf8");
 
   it("is additive and seeds the feature flag as disabled", () => {
     const statementsOnly = migrationSql.replace(/^--.*$/gm, "");
@@ -59,6 +63,43 @@ describe("student surveys migration", () => {
     expect(assignmentCapMigrationSql).toContain("student_survey_submission_audit_guard");
     expect(assignmentCapMigrationSql).toContain("student_survey_reminder_audit_guard");
     expect(assignmentCapMigrationSql).toContain("student_survey_submitted_answer_delete_guard");
+  });
+
+  it("adds reminder scheduling without backfilling existing assignments", () => {
+    expect(continuousNotificationsMigrationSql).toContain("notification_schedule_started_at");
+    expect(continuousNotificationsMigrationSql).toContain("next_notification_at");
+    expect(continuousNotificationsMigrationSql).toContain("notification_count");
+    expect(continuousNotificationsMigrationSql).not.toMatch(/\bUPDATE\s+student_survey_assignments\b/i);
+    expect(continuousNotificationsMigrationSql).not.toMatch(/\bINSERT\s+INTO\s+(?:email_outbox|user_notifications)\b/i);
+  });
+
+  it("leaves an existing outstanding assignment outside the reminder schedule", async () => {
+    const imported = await import("better-sqlite3");
+    const Database = (imported.default ?? imported) as any;
+    const database = new Database(":memory:");
+    try {
+      database.exec(`
+        PRAGMA foreign_keys = ON;
+        CREATE TABLE users (id INTEGER PRIMARY KEY);
+        CREATE TABLE admin_settings (settingKey TEXT PRIMARY KEY, settingValue TEXT, updatedAt TEXT);
+        ${migrationSql}
+        INSERT INTO users (id) VALUES (1);
+        INSERT INTO student_surveys (id, code, title, created_by_user_id)
+        VALUES (1, 'legacy', 'Legacy survey', 1);
+        INSERT INTO student_survey_assignments (survey_id, user_id, due_at, block_at, created_by_user_id)
+        VALUES (1, 1, '2026-08-10T10:00:00.000Z', '2026-08-12T10:00:00.000Z', 1);
+        ${continuousNotificationsMigrationSql}
+      `);
+      const row = database.prepare(`
+        SELECT notification_schedule_started_at AS scheduleStartedAt,
+               next_notification_at AS nextNotificationAt,
+               notification_count AS notificationCount
+        FROM student_survey_assignments WHERE id = 1
+      `).get();
+      expect(row).toEqual({ scheduleStartedAt: null, nextNotificationAt: null, notificationCount: 0 });
+    } finally {
+      database.close();
+    }
   });
 
   it("rejects assignment 501 without changing the first 500", async () => {

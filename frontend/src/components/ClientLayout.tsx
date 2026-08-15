@@ -210,7 +210,7 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
       label: t("dashboard.nav.surveys"),
       icon: <ClipboardCheck className="h-4 w-4" />,
       match: "/surveys",
-      badge: surveyAvailability?.accessState === "blocked" || surveyAvailability?.accessState === "survey_due" ? 1 : 0,
+      badge: surveyAvailability?.outstandingCount ?? 0,
     }] : []),
     {
       href: "/my-packages",

@@ -8,7 +8,7 @@ import {
   packageKeyPolicyRequiresAdminAuthorization,
   packageKeyPolicyRequiresOrder,
 } from '../backend/services/package-key-access.service';
-import { getOrderDisplayTotalIls } from '../shared/orderPricing';
+import { getOrderDisplayAmountsIls, getOrderDisplayTotalIls } from '../shared/orderPricing';
 
 describe('order-linked package activation policy', () => {
   it('uses the exact Basic and Comprehensive commercial ILS prices', () => {
@@ -20,6 +20,21 @@ describe('order-linked package activation policy', () => {
     expect(getOrderDisplayTotalIls({ totalAmount: 18_000, currency: 'USD', packageSlug: 'basic' })).toBe(630);
     expect(getOrderDisplayTotalIls({ totalAmount: 45_000, currency: 'USD', packageSlug: 'comprehensive' })).toBe(1530);
     expect(getOrderDisplayTotalIls({ totalAmount: 30_000, currency: 'USD', packageSlug: 'comprehensive', isUpgrade: true })).toBe(1000);
+  });
+
+  it('projects the Admin Orders comprehensive breakdown to the canonical ₪1,700 total', () => {
+    const pricing = getOrderDisplayAmountsIls({
+      subtotal: 42_373,
+      discountAmount: 0,
+      vatAmount: 7_627,
+      totalAmount: 50_000,
+      currency: 'USD',
+      packageSlug: 'comprehensive',
+    });
+
+    expect(pricing.displayTotalIls).toBe(1700);
+    expect(pricing.displaySubtotalIls + pricing.displayVatIls).toBeCloseTo(1700, 8);
+    expect(pricing.displayDiscountIls).toBe(0);
   });
 
   it('blocks unassigned inventory and keys assigned to another email', () => {

@@ -14,7 +14,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { formatAdminCurrency } from '@/lib/adminCurrency';
+import { formatAdminCurrencyFromIls } from '@/lib/adminCurrency';
 import { formatLocalizedDate } from '@/lib/dateLocale';
 import { getLegalVersionLinks } from '@/lib/legalVersions';
 import { formatPaymentMethodLabel } from '@/lib/paymentMethodLabel';
@@ -206,7 +206,7 @@ export default function AdminOrders() {
                     <p className="text-sm text-gray-500">
                       {(order as any).userName || (order as any).userEmail || `User #${order.userId}`}
                       {(order as any).userEmail ? ` (${(order as any).userEmail})` : ''}
-                      {' '}• {formatAdminCurrency(order.totalAmount, language, { sourceCurrency: order.currency, fromCents: true })}
+                      {' '}• {formatAdminCurrencyFromIls(order.displayTotalIls, language)}
                       • {formatPaymentMethodLabel(order.paymentMethod, language)}
                       • {formatLocalizedDate(String(order.createdAt).replace(' ', 'T'), language) || '—'}
                     </p>
@@ -231,15 +231,15 @@ export default function AdminOrders() {
                       </div>
                       <div>
                         <span className="text-gray-500">{language === 'ar' ? 'المبلغ الفرعي' : 'Subtotal'}:</span>{' '}
-                        {formatAdminCurrency(order.subtotal, language, { sourceCurrency: order.currency, fromCents: true })}
+                        {formatAdminCurrencyFromIls(order.displaySubtotalIls, language)}
                       </div>
                       <div>
                         <span className="text-gray-500">VAT ({order.vatRate}%):</span>{' '}
-                        {formatAdminCurrency(order.vatAmount, language, { sourceCurrency: order.currency, fromCents: true })}
+                        {formatAdminCurrencyFromIls(order.displayVatIls, language)}
                       </div>
                       <div>
                         <span className="text-gray-500">{language === 'ar' ? 'الإجمالي' : 'Total'}:</span>{' '}
-                        <strong>{formatAdminCurrency(order.totalAmount, language, { sourceCurrency: order.currency, fromCents: true })}</strong>
+                        <strong>{formatAdminCurrencyFromIls(order.displayTotalIls, language)}</strong>
                       </div>
                       <div>
                         <span className="text-gray-500">{language === 'ar' ? 'طريقة الدفع' : 'Payment'}:</span>{' '}
