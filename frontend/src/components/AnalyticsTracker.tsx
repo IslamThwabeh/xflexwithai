@@ -1,58 +1,95 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { useLanguage } from "@/contexts/LanguageContext";
-
-declare global {
-  interface Window {
-    gtag?: (...args: unknown[]) => void;
-  }
-}
-
-function classifyAiReferrer(referrer: string) {
-  const host = (() => {
-    try { return new URL(referrer).hostname.toLowerCase(); } catch { return ""; }
-  })();
-  if (host.includes("chatgpt") || host.includes("openai")) return "chatgpt";
-  if (host.includes("perplexity")) return "perplexity";
-  if (host.includes("gemini") || host.includes("bard.google")) return "gemini";
-  if (host.includes("copilot") || host.includes("bing.com")) return "copilot";
-  if (host.includes("claude")) return "claude";
-  return "";
-}
+import {
+  buildSafePageLocation,
+  buildSafeReferrer,
+  getAnalyticsLanguage,
+  getAnalyticsPageType,
+  getSessionAiReferrer,
+  isAnalyticsEligiblePath,
+  trackAnalyticsEvent,
+  trackContactClick,
+  trackPackageSelection,
+  trackRegistrationCta,
+} from "@/lib/analytics";
 
 export default function AnalyticsTracker() {
   const [location] = useLocation();
   const { language } = useLanguage();
+  const previousPageRef = useRef("");
+  const lastPageViewRef = useRef("");
 
   useEffect(() => {
-    const aiReferrer = classifyAiReferrer(document.referrer)
-      || window.sessionStorage.getItem("xflex_ai_referrer")
-      || "";
-    if (aiReferrer) window.sessionStorage.setItem("xflex_ai_referrer", aiReferrer);
-    window.gtag?.("event", "page_view", {
-      page_path: `${location}${window.location.search}`,
-      page_location: window.location.href,
-      content_language: language,
-      ai_referrer: aiReferrer || undefined,
-    });
+    const pathname = window.location.pathname;
+    if (!isAnalyticsEligiblePath(pathname)) return;
+    // Public pages are lazy-loaded and apply their localized SEO metadata after
+    // the route first mounts. A short delay prevents recording the shell title.
+    const timer = window.setTimeout(() => {
+      const pageLocation = buildSafePageLocation(window.location.href);
+      if (lastPageViewRef.current === pageLocation) return;
+      const contentLanguage = getAnalyticsLanguage(pathname, language);
+      const pageReferrer = previousPageRef.current || buildSafeReferrer(document.referrer);
+      trackAnalyticsEvent("page_view", {
+        page_path: pathname,
+        page_location: pageLocation,
+        page_referrer: pageReferrer || undefined,
+        page_title: document.title,
+        page_type: getAnalyticsPageType(pathname) || undefined,
+        content_language: contentLanguage,
+        ai_referrer: getSessionAiReferrer() || undefined,
+      }, pathname);
+      previousPageRef.current = pageLocation;
+      lastPageViewRef.current = pageLocation;
+    }, 500);
+    return () => window.clearTimeout(timer);
   }, [language, location]);
 
   useEffect(() => {
     const onClick = (event: MouseEvent) => {
+      const pathname = window.location.pathname;
+      if (!isAnalyticsEligiblePath(pathname)) return;
       const anchor = (event.target as HTMLElement | null)?.closest<HTMLAnchorElement>("a[href]");
       if (!anchor) return;
-      const href = anchor.href;
-      let conversionType = "";
-      if (/wa\.me|whatsapp/i.test(href)) conversionType = "whatsapp";
-      else if (/\/contact(?:[/?#]|$)/.test(href)) conversionType = "contact";
-      else if (/\/(?:register|signup)(?:[/?#]|$)/.test(href)) conversionType = "registration";
-      else if (/\/(?:ar|en)\/packages\//.test(href)) conversionType = "package_view";
-      if (!conversionType) return;
-      window.gtag?.("event", "seo_conversion", {
-        conversion_type: conversionType,
-        destination: href,
-        content_language: language,
-      });
+
+      const contentLanguage = getAnalyticsLanguage(pathname, language);
+      const rawHref = anchor.getAttribute("href") || "";
+      const destination = (() => {
+        try {
+          return new URL(rawHref, window.location.origin);
+        } catch {
+          return null;
+        }
+      })();
+      if (!destination) return;
+
+      const packageMatch = destination.pathname.match(/^\/(?:(?:ar|en)\/)?packages\/([a-z0-9-]+)\/?$/i);
+      if (packageMatch) {
+        trackPackageSelection(packageMatch[1], contentLanguage);
+        return;
+      }
+      if (destination.hostname === "wa.me" || /whatsapp/i.test(destination.hostname)) {
+        trackContactClick("whatsapp", contentLanguage, destination.hostname);
+        return;
+      }
+      if (destination.protocol === "mailto:") {
+        trackContactClick("email", contentLanguage);
+        return;
+      }
+      if (destination.protocol === "tel:") {
+        trackContactClick("phone", contentLanguage);
+        return;
+      }
+      if (/^\/(?:(?:ar|en)\/)?contact\/?$/.test(destination.pathname)) {
+        trackContactClick("contact_page", contentLanguage, destination.hostname);
+        return;
+      }
+      if (/^\/(?:(?:ar|en)\/)?(?:auth|register|signup)\/?$/.test(destination.pathname)
+          && (destination.pathname.includes("register")
+            || destination.pathname.includes("signup")
+            || destination.searchParams.get("mode") === "register")) {
+        trackRegistrationCta(contentLanguage);
+      }
     };
     document.addEventListener("click", onClick);
     return () => document.removeEventListener("click", onClick);

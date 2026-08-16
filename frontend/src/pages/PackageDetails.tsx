@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { useParams, Link } from 'wouter';
 import { CheckCircle, ChevronRight, ArrowLeft, X, Star, BookOpen, ShoppingCart, MessageSquareQuote, Trophy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -6,6 +7,7 @@ import CinematicPublicLayout from '@/components/public/CinematicPublicLayout';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { formatIlsAmount, getPackageDisplayPricing } from '@/lib/packagePricing';
 import { trpc } from '@/lib/trpc';
+import { trackPackageView } from '@/lib/analytics';
 
 export default function PackageDetails() {
   const { slug } = useParams<{ slug: string }>();
@@ -25,6 +27,21 @@ export default function PackageDetails() {
     { packageSlug: pkg?.slug, limit: 4 },
     { enabled: !!pkg?.slug }
   );
+  const trackedPackageView = useRef("");
+
+  useEffect(() => {
+    if (!pkg?.slug) return;
+    const trackingKey = `${language}:${pkg.slug}`;
+    if (trackedPackageView.current === trackingKey) return;
+    const pricing = getPackageDisplayPricing(pkg.slug, pkg.price, pkg.renewalPrice);
+    trackPackageView({
+      slug: pkg.slug,
+      name: language === "ar" ? pkg.nameAr : pkg.nameEn,
+      valueIls: pricing.ilsPrice,
+      language,
+    });
+    trackedPackageView.current = trackingKey;
+  }, [language, pkg]);
 
   if (isLoading) {
     return (

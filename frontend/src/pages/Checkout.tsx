@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useParams, useLocation } from 'wouter';
 import { ArrowLeft, Building2, ShieldCheck, Gift, Loader2, Tag, X, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,7 @@ import { CURRENT_TERMS_VERSION } from '@/lib/legalVersions';
 import { formatIlsAmount, getPackageDisplayPricing } from '@/lib/packagePricing';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
+import { trackBeginCheckout, trackOrderRequest } from '@/lib/analytics';
 
 export default function Checkout() {
   const { language, t } = useLanguage();
@@ -25,6 +26,7 @@ export default function Checkout() {
   const [giftMessage, setGiftMessage] = useState('');
   const [notes, setNotes] = useState('');
   const [termsAccepted, setTermsAccepted] = useState(false);
+  const trackedCheckout = useRef("");
 
   // Coupon state
   const [couponCode, setCouponCode] = useState('');
@@ -39,11 +41,34 @@ export default function Checkout() {
 
   const createOrder = trpc.orders.create.useMutation({
     onSuccess: (data) => {
+      if (pkg) {
+        const pricing = getPackageDisplayPricing(pkg.slug, pkg.price, pkg.renewalPrice);
+        trackOrderRequest({
+          slug: pkg.slug,
+          name: isRtl ? pkg.nameAr : pkg.nameEn,
+          valueIls: pricing.ilsPrice,
+          language,
+        });
+      }
       toast.success(isRtl ? 'تم إنشاء الطلب بنجاح' : 'Order created successfully');
       navigate(`/orders/${data.id}`);
     },
     onError: (e) => toast.error(e.message),
   });
+
+  useEffect(() => {
+    if (!pkg?.slug) return;
+    const trackingKey = `${language}:${pkg.slug}`;
+    if (trackedCheckout.current === trackingKey) return;
+    const pricing = getPackageDisplayPricing(pkg.slug, pkg.price, pkg.renewalPrice);
+    trackBeginCheckout({
+      slug: pkg.slug,
+      name: isRtl ? pkg.nameAr : pkg.nameEn,
+      valueIls: pricing.ilsPrice,
+      language,
+    });
+    trackedCheckout.current = trackingKey;
+  }, [isRtl, language, pkg]);
 
   if (isLoading) {
     return (

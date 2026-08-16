@@ -83,12 +83,29 @@ function analyticsMarkup() {
   const measurementId = process.env.VITE_GA_MEASUREMENT_ID?.trim() || DEFAULT_GA_MEASUREMENT_ID;
   if (!measurementId) return "";
   return `
-    <script async src="https://www.googletagmanager.com/gtag/js?id=${escapeHtml(measurementId)}"></script>
+    <script id="xflex-ga4-script" async src="https://www.googletagmanager.com/gtag/js?id=${escapeHtml(measurementId)}"></script>
     <script>
       window.dataLayer = window.dataLayer || [];
       function gtag(){dataLayer.push(arguments);}
+      window.gtag = window.gtag || gtag;
       gtag('js', new Date());
-      gtag('config', '${escapeHtml(measurementId)}', { anonymize_ip: true });
+      gtag('config', '${escapeHtml(measurementId)}', {
+        send_page_view: false,
+        anonymize_ip: true,
+        allow_google_signals: false,
+        allow_ad_personalization_signals: false,
+        page_location: window.location.origin + window.location.pathname,
+        page_referrer: (() => {
+          try {
+            const referrer = new URL(document.referrer);
+            return referrer.origin + referrer.pathname;
+          } catch {
+            return undefined;
+          }
+        })()
+      });
+      window.__xflexAnalyticsConfigured = true;
+      window.__xflexAnalyticsMeasurementId = '${escapeHtml(measurementId)}';
     </script>`;
 }
 

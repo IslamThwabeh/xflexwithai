@@ -46,6 +46,20 @@ assert(
   arabicHome.includes(`gtag('config', '${DEFAULT_GA_MEASUREMENT_ID}'`),
   "Arabic home must initialize the configured GA4 property",
 );
+assert(
+  arabicHome.includes("send_page_view: false"),
+  "Public pages must disable the automatic GA4 page view before manual SPA tracking",
+);
+assert(
+  arabicHome.includes("allow_google_signals: false")
+    && arabicHome.includes("allow_ad_personalization_signals: false"),
+  "Public pages must keep advertising signals disabled",
+);
+assert(
+  arabicHome.includes("page_location: window.location.origin + window.location.pathname")
+    && arabicHome.includes("return referrer.origin + referrer.pathname"),
+  "The initial GA4 configuration must not expose query parameters",
+);
 
 for (const article of CURATED_ARTICLES) {
   for (const language of languages) {

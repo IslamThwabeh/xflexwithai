@@ -3,11 +3,12 @@ import { trpc } from "@/lib/trpc";
 import { Loader2 } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { isLikelyValidEmail, normalizeEmailAddress } from "@shared/emailValidation";
+import { trackSignUp } from "@/lib/analytics";
 
 const inputClass = "w-full px-4 py-3 rounded-xl bg-black/[0.03] border border-black/[0.08] text-[var(--color-xf-dark)] placeholder:text-black/25 focus:outline-none focus:ring-2 focus:ring-[var(--color-xf-primary)]/40 focus:border-[var(--color-xf-primary)]/40 transition-all";
 
 export function RegisterForm({ onSuccess, referralCode }: { onSuccess?: () => void; referralCode?: string | null }) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -19,6 +20,7 @@ export function RegisterForm({ onSuccess, referralCode }: { onSuccess?: () => vo
 
   const registerMutation = trpc.auth.register.useMutation({
     onSuccess: async () => {
+      trackSignUp(language, !!referralCode);
       if (referralCode) {
         localStorage.removeItem("xflex_referral_code");
       }

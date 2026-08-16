@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { trpc } from '@/lib/trpc';
+import { trackGenerateLead } from '@/lib/analytics';
 import CinematicPublicLayout from '@/components/public/CinematicPublicLayout';
 
 export default function Contact() {
@@ -26,6 +27,7 @@ export default function Contact() {
     setError('');
     try {
       await contactMutation.mutateAsync({ email: email.trim(), message: message.trim() });
+      trackGenerateLead(language);
       setSent(true);
       setEmail('');
       setMessage('');

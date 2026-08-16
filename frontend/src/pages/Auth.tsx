@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { ArrowLeft, KeyRound, Loader2, Mail, ShieldCheck, Sparkles, TrendingUp } from "lucide-react";
 import { getStaffLandingPage } from "@shared/const";
 import CinematicPublicLayout from "@/components/public/CinematicPublicLayout";
+import { trackRegistrationStart } from "@/lib/analytics";
 
 function shouldOpenRegisterByDefault() {
   if (typeof window === "undefined") return false;
@@ -40,6 +41,7 @@ export default function Auth() {
   const { isAuthenticated, loading, logout } = useAuth();
   const [location, setLocation] = useLocation();
   const lastAutoSubmittedCode = useRef("");
+  const registrationStartTracked = useRef(false);
   const [clearingAdmin, setClearingAdmin] = useState(false);
 
   const nextPath = useMemo(() => {
@@ -78,6 +80,12 @@ export default function Auth() {
       setShowLogin(true);
     }
   }, [location]);
+
+  useEffect(() => {
+    if (showLogin || registrationStartTracked.current) return;
+    registrationStartTracked.current = true;
+    trackRegistrationStart(language);
+  }, [language, showLogin]);
 
   const prefillEmail = useMemo(() => {
     if (typeof window === "undefined") return "";

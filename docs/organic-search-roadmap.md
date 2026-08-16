@@ -79,7 +79,7 @@ Each important search intent gets one primary destination. Avoid creating multip
 - Validate Googlebot/Bingbot-visible HTML, canonical URLs, `hreflang`, structured data, sitemaps, redirects, true 404 behavior, private-route `noindex`, and mobile performance.
 - Configure and test article publish-to-rebuild behavior so a published or updated article reaches prerendered HTML and the sitemap promptly.
 - Improve article rendering to support meaningful H2/H3 sections, answer-first summaries, accessible source links, contextual internal links, and reviewed-by information.
-- Define the exact organic conversion events: WhatsApp click, contact action, registration start, and package view. Exclude admin and authenticated application activity from acquisition reporting.
+- Implement the privacy-safe acquisition event contract in [organic-measurement-plan.md](organic-measurement-plan.md): successful contact leads, registrations, order requests, and their diagnostic funnel events. Exclude admin and authenticated application activity from acquisition reporting.
 - Produce the final keyword map after Search Console and keyword-tool evidence is available.
 
 ### Exit criteria
