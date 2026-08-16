@@ -1,6 +1,6 @@
 # XFLEX Project Memory
 
-Last updated: 2026-08-15
+Last updated: 2026-08-16
 
 ## Project Overview
 
@@ -36,9 +36,17 @@ Last updated: 2026-08-15
 - During investigations, Codex may inspect the production D1 database directly with Wrangler read-only `SELECT` queries to collect evidence. Any production write, repair, migration, or data change needs separate explicit user approval.
 - When writing raw Wrangler SQL against `email_delivery_logs`, use the physical snake_case column names: `recipient_email`, `recipient_user_id`, `event_type`, `template_id`, `error_message`, and `created_at`. Drizzle maps these to camelCase in TypeScript (`recipientEmail`, `eventType`, etc.), but raw D1 SQL with camelCase will fail.
 - For production D1 verification where result rows matter, prefer one `SELECT` per Wrangler command. Multi-statement SQL files may return only execution summaries instead of each result set.
-- Latest production Worker deploy completed on 2026-08-15 (Asia/Amman) with version `e35742a5-4953-4a8c-8f79-3026c89eaadd` from organic-search intake and analytics commit `b0ec15d`.
-- Latest successful Pages deployment completed on 2026-08-15 (Asia/Amman) from organic-search intake and analytics commit `b0ec15d`, preview `https://406642b4.xflexwithai.pages.dev`. A historical 2026-06-05 upload failed with `POST /pages/assets/upload -> 502 Bad Gateway`; if that Cloudflare error recurs, manual dashboard upload of `dist/public` remains the fallback.
+- Latest production Worker deploy completed on 2026-08-16 (Asia/Amman) with version `8e9687e2-e0f9-488d-9abf-b0689190e2cf` from organic-acquisition measurement commit `deced92`.
+- Latest successful Pages deployment completed on 2026-08-16 (Asia/Amman) from organic-acquisition measurement commit `deced92`, preview `https://3b1376d1.xflexwithai.pages.dev`. A historical 2026-06-05 upload failed with `POST /pages/assets/upload -> 502 Bad Gateway`; if that Cloudflare error recurs, manual dashboard upload of `dist/public` remains the fallback.
 - Latest production D1 migration applied as of 2026-08-15 is `database/migrations/087_seo_owner_intake.sql`.
+- Organic acquisition measurement Phase 1 completed on 2026-08-16 (Asia/Amman):
+  - Release commit `deced92 Implement organic acquisition measurement` was pushed directly to `origin/main`; no database migration was required.
+  - GA4 measurement is restricted to explicit public/acquisition routes. Admin, dashboard, course, orders, support, community, recommendations, and other private application routes do not initialize application-owned GA tracking.
+  - Primary outcome events are successful `generate_lead`, `sign_up`, and `order_request`. Diagnostic events cover package views/selections, registration start, checkout start, contact clicks, registration CTAs, and manually controlled page views. Order creation is not reported as `purchase` because payment is not yet confirmed.
+  - All event context uses safe URLs: only UTM/Google click identifiers may remain, referrer query strings are removed, and names, emails, phone numbers, messages, passwords, order/user IDs, coupon codes, and referral values are not sent. Google signals and advertising-personalization signals remain disabled.
+  - The durable KPI/event contract and GA4 account follow-ups are in `docs/organic-measurement-plan.md`. The account owner must disable Enhanced Measurement's browser-history page views, mark `generate_lead`, `sign_up`, and `order_request` as key events after first arrival, register the documented custom dimensions if needed, and link Search Console to GA4.
+  - Validation passed TypeScript, all 511 tests across 90 files, the final eight focused analytics tests after privacy hardening, frontend/server and Worker builds, SEO/private-route checks for 36 static pages and six article pages, diff hygiene, and local desktop/mobile browser QA. Production smoke passed both Worker health endpoints, production/preview Arabic and English pages, exact asset `assets/index-D0WJizlU.js`, GA markup, URL sanitization, and admin noindex/private-cache/no-GA behavior.
+  - Worker version `8e9687e2-e0f9-488d-9abf-b0689190e2cf` deployed with both cron schedules preserved. Pages preview: `https://3b1376d1.xflexwithai.pages.dev`. Production browser QA blocked Google Tag Manager and inspected the local data layer only; no synthetic contact, registration, order, or analytics event was sent.
 - Organic-search measurement and owner-intake release completed on 2026-08-15 (Asia/Amman):
   - Release commit `b0ec15d Add organic search intake and analytics` was pushed directly to `origin/main` before production changes.
   - GA4 property `G-FF2Z99PWHG` is now a production build default (still environment-overridable) and is rendered once on all 42 prerendered Arabic/English public pages. The sitemap was submitted by the user in Google Search Console.
