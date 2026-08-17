@@ -38,12 +38,21 @@ import {
   Reply,
   UserPlus,
   Video,
+  ArrowLeft,
+  ArrowRight,
 } from "lucide-react";
 import { useState, useRef, useEffect, useMemo } from "react";
 import { toast } from "sonner";
 import VoiceRecorder from "@/components/VoiceRecorder";
 import AudioPlayer from "@/components/AudioPlayer";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
+import { getSupportStaffDisplayName } from "@/lib/supportSenderName";
+import {
+  ADMIN_SUPPORT_INBOX_PATH,
+  getAdminSupportConversationId,
+  getAdminSupportConversationPath,
+  getAdminSupportDraftKey,
+} from "@/lib/adminSupportNavigation";
 import {
   formatSupportFileSize,
   getSupportMediaKind,
@@ -57,7 +66,8 @@ import {
 
 export default function AdminSupport() {
   const [, setLocation] = useLocation();
-  const [selectedConvId, setSelectedConvId] = useState<number | null>(null);
+  const search = useSearch();
+  const selectedConvId = useMemo(() => getAdminSupportConversationId(search), [search]);
   const [profileUserId, setProfileUserId] = useState<number | null>(null);
   const [reply, setReply] = useState("");
   const [attachment, setAttachment] = useState<{ name: string; file: File; size: number; kind: SupportMediaKind; duration?: number } | null>(null);
@@ -65,8 +75,6 @@ export default function AdminSupport() {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const didHydrateConversationRef = useRef(false);
-  const didSyncQueryRef = useRef(false);
   const shouldStickToBottomRef = useRef(true);
   const [searchInput, setSearchInput] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -75,6 +83,8 @@ export default function AdminSupport() {
   const [editingMsgId, setEditingMsgId] = useState<number | null>(null);
   const [editContent, setEditContent] = useState("");
   const [replyToMessageId, setReplyToMessageId] = useState<number | null>(null);
+  const selectedConvIdRef = useRef<number | null>(selectedConvId);
+  selectedConvIdRef.current = selectedConvId;
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isPageVisible, setIsPageVisible] = useState(
     () => typeof document === "undefined" || document.visibilityState === "visible",
@@ -91,21 +101,26 @@ export default function AdminSupport() {
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
   const wasPageVisibleRef = useRef(isPageVisible);
 
-  const replaceSupportUrl = (conversationId: number | null) => {
-    if (typeof window === "undefined") return;
-    const nextUrl = conversationId ? `/admin/support?conversationId=${conversationId}` : "/admin/support";
-    window.history.replaceState(window.history.state, "", nextUrl);
-  };
-
   const clearSelectedConversation = () => {
-    replaceSupportUrl(null);
     shouldStickToBottomRef.current = true;
-    setSelectedConvId(null);
+    setLocation(ADMIN_SUPPORT_INBOX_PATH);
   };
 
   const handleConversationSelect = (conversationId: number) => {
     shouldStickToBottomRef.current = true;
-    setSelectedConvId(conversationId);
+    setLocation(getAdminSupportConversationPath(conversationId));
+  };
+
+  const updateReplyDraft = (value: string) => {
+    setReply(value);
+    if (!selectedConvId || typeof window === "undefined") return;
+
+    try {
+      if (value) sessionStorage.setItem(getAdminSupportDraftKey(selectedConvId), value);
+      else sessionStorage.removeItem(getAdminSupportDraftKey(selectedConvId));
+    } catch {
+      // Draft persistence is best-effort; replying must keep working if storage is unavailable.
+    }
   };
 
   // Debounce search input (300ms)
@@ -182,27 +197,25 @@ export default function AdminSupport() {
   );
 
   useEffect(() => {
-    if (didHydrateConversationRef.current || typeof window === "undefined" || loadingConvs) return;
-    didHydrateConversationRef.current = true;
-
-    const rawConversationId = new URLSearchParams(window.location.search).get("conversationId");
-    if (!rawConversationId) return;
-
-    const requestedConversationId = Number(rawConversationId);
-    if (!Number.isFinite(requestedConversationId) || requestedConversationId <= 0) {
-      replaceSupportUrl(null);
-      return;
+    const rawConversationId = new URLSearchParams(search).get("conversationId");
+    if (rawConversationId && selectedConvId === null) {
+      setLocation(ADMIN_SUPPORT_INBOX_PATH, { replace: true });
     }
-
-    setSelectedConvId(requestedConversationId);
-  }, [loadingConvs]);
+  }, [search, selectedConvId, setLocation]);
 
   useEffect(() => {
-    if (!didSyncQueryRef.current) {
-      didSyncQueryRef.current = true;
-      return;
+    let savedDraft = "";
+    if (selectedConvId && typeof window !== "undefined") {
+      try {
+        savedDraft = sessionStorage.getItem(getAdminSupportDraftKey(selectedConvId)) ?? "";
+      } catch {
+        // Continue with an empty draft when browser storage is unavailable.
+      }
     }
-    replaceSupportUrl(selectedConvId);
+
+    setReply(savedDraft);
+    setAttachment(null);
+    setReplyToMessageId(null);
   }, [selectedConvId]);
 
   const {
@@ -319,8 +332,13 @@ export default function AdminSupport() {
     : undefined;
 
   const replyMutation = trpc.supportChat.reply.useMutation({
-    onSuccess: () => {
-      setReply("");
+    onSuccess: (_result, variables) => {
+      try {
+        sessionStorage.removeItem(getAdminSupportDraftKey(variables.conversationId));
+      } catch {
+        // The reply succeeded; storage cleanup must not affect the support workflow.
+      }
+      if (selectedConvIdRef.current === variables.conversationId) setReply("");
       setReplyToMessageId(null);
       refetchMessages();
       refetchConvs();
@@ -348,7 +366,7 @@ export default function AdminSupport() {
 
   const suggestReplyMutation = trpc.supportChat.suggestReply.useMutation({
     onSuccess: (data) => {
-      setReply(data.suggestion);
+      updateReplyDraft(data.suggestion);
       toast.success(isRtl ? 'تم توليد اقتراح الرد' : 'AI suggestion generated');
     },
     onError: (err) => toast.error(err.message),
@@ -410,8 +428,7 @@ export default function AdminSupport() {
       setNewChatUserId(null);
       setNewChatMessage("");
       refetchConvs();
-      setSelectedConvId(result.conversationId);
-      replaceSupportUrl(result.conversationId);
+      handleConversationSelect(result.conversationId);
     },
     onError: (err) => toast.error(err.message),
   });
@@ -615,8 +632,12 @@ export default function AdminSupport() {
 
   return (
     <DashboardLayout>
-      <div className="space-y-4">
-        <div>
+      <div
+        className={selectedConvId
+          ? "h-[calc(100dvh-6rem)] overflow-hidden lg:flex lg:h-[calc(100dvh-7rem)] lg:flex-col lg:gap-4"
+          : "space-y-4"}
+      >
+        <div className={selectedConvId ? "hidden lg:block" : undefined}>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Headphones className="h-6 w-6" /> {t('admin.support.title')}
           </h1>
@@ -626,7 +647,7 @@ export default function AdminSupport() {
         </div>
 
         {/* Summary cards — clickable to filter */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+        <div className={`${selectedConvId ? "hidden lg:grid" : "grid"} grid-cols-2 gap-2 md:grid-cols-4`}>
           <button
             onClick={() => setStatusFilter("open")}
             className={`rounded-lg border px-3 py-2 text-center transition hover:shadow-sm ${statusFilter === "open" ? "ring-2 ring-inset ring-emerald-400 bg-emerald-50" : "bg-white"}`}
@@ -660,10 +681,16 @@ export default function AdminSupport() {
           </button>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div
+          className={`grid min-h-0 grid-cols-1 gap-4 lg:grid-cols-3 ${
+            selectedConvId
+              ? "h-full lg:h-auto lg:flex-1"
+              : "lg:h-[calc(100dvh-17rem)] lg:min-h-[600px]"
+          }`}
+        >
           {/* Conversation list — hidden on mobile when a conversation is selected */}
-          <Card className={`lg:col-span-1 ${selectedConvId ? 'hidden lg:block' : ''}`}>
-            <CardHeader className="pb-3 space-y-3">
+          <Card className={`gap-0 py-0 lg:col-span-1 lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:overflow-hidden ${selectedConvId ? 'hidden lg:flex' : ''}`}>
+            <CardHeader className="shrink-0 pb-3 space-y-3">
               <div className="flex items-center justify-between gap-2">
                 <CardTitle className="text-lg">{t('admin.support.convos')}</CardTitle>
                 <Button
@@ -715,7 +742,7 @@ export default function AdminSupport() {
                 ))}
               </div>
             </CardHeader>
-            <CardContent className="p-0">
+            <CardContent className="p-0 lg:min-h-0 lg:flex-1 lg:overflow-hidden">
               {loadingConvs ? (
                 <p className="text-center text-muted-foreground py-8">{t('admin.loading')}</p>
               ) : filteredConversations.length === 0 ? (
@@ -730,7 +757,7 @@ export default function AdminSupport() {
                   )}
                 </div>
               ) : (
-                <div className="divide-y max-h-[600px] overflow-y-auto">
+                <div className="max-h-[600px] divide-y overflow-y-auto overscroll-contain lg:h-full lg:max-h-none">
                   {filteredConversations.map((conv) => (
                     <button
                       key={conv.id}
@@ -812,7 +839,7 @@ export default function AdminSupport() {
           </Card>
 
           {/* Message view — full width on mobile when conversation selected */}
-          <Card className={`lg:col-span-2 flex flex-col ${!selectedConvId ? 'hidden lg:flex' : ''}`} style={{ minHeight: "600px" }}>
+          <Card className={`min-h-0 h-full gap-0 overflow-hidden py-0 lg:col-span-2 flex flex-col ${!selectedConvId ? 'hidden lg:flex' : ''}`}>
             {!selectedConvId ? (
               <div className="flex-1 flex items-center justify-center text-muted-foreground">
                 <div className="text-center">
@@ -823,16 +850,18 @@ export default function AdminSupport() {
             ) : (
               <>
                 {/* Conversation header */}
-                <CardHeader className="pb-2 border-b px-3 py-2">
+                <CardHeader className="z-10 shrink-0 border-b bg-white px-3 py-2 pb-2 dark:bg-slate-950">
                   <div className="flex items-center gap-2">
                     <Button
                       variant="ghost"
-                      size="icon"
-                      className="shrink-0 h-8 w-8"
+                      size="sm"
+                      className="h-9 shrink-0 gap-1.5 px-2"
                       type="button"
                       onClick={clearSelectedConversation}
+                      aria-label={isRtl ? 'العودة إلى المحادثات' : 'Back to conversations'}
                     >
-                      <X className="h-4 w-4" />
+                      {isRtl ? <ArrowRight className="h-4 w-4" /> : <ArrowLeft className="h-4 w-4" />}
+                      <span>{isRtl ? 'المحادثات' : 'Conversations'}</span>
                     </Button>
                     <p className="font-medium text-sm flex-1 min-w-0">
                       {(selectedConversation as any)?.userName ??
@@ -892,7 +921,7 @@ export default function AdminSupport() {
                 {/* Messages */}
                 <CardContent
                   ref={messagesContainerRef}
-                  className="flex-1 overflow-y-auto p-3 space-y-3"
+                  className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 space-y-3"
                   onScroll={handleMessagesScroll}
                 >
                   {loadingMessages ? (
@@ -937,9 +966,17 @@ export default function AdminSupport() {
                       const prevDate = idx > 0 ? new Date(arr[idx - 1].createdAt).toDateString() : null;
                       const showDateSeparator = idx === 0 || currentDate !== prevDate;
                       const previousMessage = idx > 0 ? arr[idx - 1] : null;
-                      const showSenderLabel = (isBot || !isClient) && (
-                        !previousMessage
+                      const senderDisplayName = msg.senderType === "support"
+                        ? getSupportStaffDisplayName(msg.senderName)
+                        : null;
+                      const previousSenderDisplayName = previousMessage?.senderType === "support"
+                        ? getSupportStaffDisplayName(previousMessage.senderName)
+                        : null;
+                      const showSenderLabel = !isClient && (
+                        !isBot
+                        || !previousMessage
                         || previousMessage.senderType !== msg.senderType
+                        || previousSenderDisplayName !== senderDisplayName
                         || new Date(previousMessage.createdAt).toDateString() !== currentDate
                       );
                       return (
@@ -1031,7 +1068,7 @@ export default function AdminSupport() {
                                       ? (isRtl ? 'المساعد الذكي' : 'AI Assistant')
                                       : replyTargetMessage.senderType === 'admin'
                                         ? t('admin.support.admin')
-                                        : t('admin.support.support')}
+                                        : getSupportStaffDisplayName(replyTargetMessage.senderName) ?? t('admin.support.support')}
                                 </span>
                                 <span className="line-clamp-2 break-words">{formatReplyPreview(replyTargetMessage)}</span>
                               </button>
@@ -1044,7 +1081,7 @@ export default function AdminSupport() {
                               >
                                 {isBot
                                   ? (isRtl ? '🤖 المساعد الذكي' : '🤖 AI Assistant')
-                                  : msg.senderType === "admin" ? t('admin.support.admin') : t('admin.support.support')}
+                                  : senderDisplayName ?? (msg.senderType === "admin" ? t('admin.support.admin') : t('admin.support.support'))}
                               </p>
                             )}
                             {editingMsgId === msg.id ? (
@@ -1172,7 +1209,7 @@ export default function AdminSupport() {
 
                 {/* Reply input */}
                 {selectedData?.conversation?.status === "open" && (
-                  <div className="border-t p-3">
+                  <div className="max-h-[45dvh] shrink-0 overflow-y-auto overscroll-contain border-t bg-white p-3 dark:bg-slate-950">
                     {replyTarget && (
                       <div className="mb-2 flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm">
                         <Reply className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
@@ -1182,9 +1219,9 @@ export default function AdminSupport() {
                               ? (isRtl ? 'العميل' : 'client')
                               : replyTarget.senderType === 'bot'
                                 ? (isRtl ? 'المساعد الذكي' : 'AI Assistant')
-                                : replyTarget.senderType === 'admin'
+                            : replyTarget.senderType === 'admin'
                                   ? t('admin.support.admin')
-                                  : t('admin.support.support')}
+                                  : getSupportStaffDisplayName(replyTarget.senderName) ?? t('admin.support.support')}
                           </p>
                           <p className="truncate text-xs text-emerald-800">{formatReplyPreview(replyTarget)}</p>
                         </div>
@@ -1246,7 +1283,7 @@ export default function AdminSupport() {
                       <div className="flex-1 relative">
                         <textarea
                           value={reply}
-                          onChange={(e) => { if (e.target.value.length <= 5000) setReply(e.target.value); }}
+                          onChange={(e) => { if (e.target.value.length <= 5000) updateReplyDraft(e.target.value); }}
                           onKeyDown={handleKeyDown}
                           placeholder={t('admin.support.replyPlaceholder')}
                           maxLength={5000}
@@ -1296,11 +1333,10 @@ export default function AdminSupport() {
         onOpenSupport={(conversationId) => {
           setProfileUserId(null);
           if (conversationId) {
-            setSelectedConvId(conversationId);
-            replaceSupportUrl(conversationId);
+            handleConversationSelect(conversationId);
             return;
           }
-          replaceSupportUrl(selectedConvId);
+          if (selectedConvId) handleConversationSelect(selectedConvId);
         }}
       />
 
