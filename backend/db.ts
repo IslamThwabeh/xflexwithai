@@ -1,4 +1,4 @@
-import { eq, desc, and, or, sql, ne, inArray, notInArray, isNotNull, isNull, gte, lte, lt, gt, like, asc, getTableColumns, type SQL } from "drizzle-orm";
+import { eq, desc, and, or, sql, ne, inArray, notInArray, isNotNull, isNull, gte, lte, lt, gt, like, asc, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import type { D1Database } from "@cloudflare/workers-types";
 import {
@@ -13024,14 +13024,6 @@ export async function createSupportMessage(msg: {
   return message;
 }
 
-const supportMessageWithSender = {
-  ...getTableColumns(supportMessages),
-  senderName: sql<string | null>`CASE
-    WHEN ${supportMessages.senderType} = 'support' THEN ${users.name}
-    ELSE NULL
-  END`.as("senderName"),
-};
-
 export async function recordSupportAiDecision(
   input: Omit<InsertSupportAiDecision, "id" | "createdAt">,
 ) {
@@ -13049,8 +13041,7 @@ export async function recordSupportAiDecision(
 export async function getSupportMessages(conversationId: number, limit: number = 200) {
   const db = await getDb();
   if (!db) return [];
-  return db.select(supportMessageWithSender).from(supportMessages)
-    .leftJoin(users, eq(supportMessages.senderId, users.id))
+  return db.select().from(supportMessages)
     .where(eq(supportMessages.conversationId, conversationId))
     .orderBy(desc(supportMessages.createdAt))
     .limit(limit);
@@ -18558,8 +18549,7 @@ export async function getSupportMessageHistory(options: {
       ),
     )!);
   }
-  const rows = await db.select(supportMessageWithSender).from(supportMessages)
-    .leftJoin(users, eq(supportMessages.senderId, users.id))
+  const rows = await db.select().from(supportMessages)
     .where(and(...filters))
     .orderBy(desc(supportMessages.createdAt), desc(supportMessages.id))
     .limit(limit + 1);
@@ -18580,8 +18570,7 @@ export async function getSupportMessageChanges(options: {
 }) {
   const db = await getDb();
   if (!db) return [];
-  return db.select(supportMessageWithSender).from(supportMessages)
-    .leftJoin(users, eq(supportMessages.senderId, users.id))
+  return db.select().from(supportMessages)
     .where(and(
       eq(supportMessages.conversationId, options.conversationId),
       or(

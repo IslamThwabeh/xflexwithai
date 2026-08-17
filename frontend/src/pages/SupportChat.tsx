@@ -9,7 +9,6 @@ import { toast } from "sonner";
 import VoiceRecorder from "@/components/VoiceRecorder";
 import AudioPlayer from "@/components/AudioPlayer";
 import { useLocation } from "wouter";
-import { getSupportStaffDisplayName } from "@/lib/supportSenderName";
 import {
   formatSupportFileSize,
   getSupportMediaKind,
@@ -591,17 +590,10 @@ export default function SupportChat() {
               const prevDate = idx > 0 ? new Date(messages[idx - 1].createdAt).toDateString() : null;
               const showDateSeparator = idx === 0 || currentDate !== prevDate;
               const previousMessage = idx > 0 ? messages[idx - 1] : null;
-              const senderDisplayName = msg.senderType === "support"
-                ? getSupportStaffDisplayName(msg.senderName)
-                : null;
-              const previousSenderDisplayName = previousMessage?.senderType === "support"
-                ? getSupportStaffDisplayName(previousMessage.senderName)
-                : null;
               const showSenderLabel = !isOwn && (
                 !isBot
                 || !previousMessage
                 || previousMessage.senderType !== msg.senderType
-                || previousSenderDisplayName !== senderDisplayName
                 || new Date(previousMessage.createdAt).toDateString() !== currentDate
               );
               const canCopy = !isDeleted && !!msg.content;
@@ -697,7 +689,7 @@ export default function SupportChat() {
                               ? (isRTL ? 'المساعد الذكي' : 'AI Assistant')
                             : replyTargetMessage.senderType === 'admin'
                                 ? t("support.admin")
-                                : getSupportStaffDisplayName(replyTargetMessage.senderName) ?? t("support.agent")}
+                                : t("support.agent")}
                         </span>
                         <span className="line-clamp-2 break-words">{formatReplyPreview(replyTargetMessage)}</span>
                       </button>
@@ -706,7 +698,7 @@ export default function SupportChat() {
                       <p className={`text-xs font-semibold mb-1 ${isBot ? 'text-amber-600' : 'text-emerald-600'}`}>
                         {isBot
                           ? (isRTL ? '🤖 المساعد الذكي' : '🤖 AI Assistant')
-                          : senderDisplayName ?? (msg.senderType === "admin" ? t("support.admin") : t("support.agent"))}
+                          : msg.senderType === "admin" ? t("support.admin") : t("support.agent")}
                       </p>
                     )}
                     {editingMsgId === msg.id ? (
@@ -848,7 +840,7 @@ export default function SupportChat() {
                       ? (isRTL ? 'المساعد الذكي' : 'AI Assistant')
                     : replyTarget.senderType === 'admin'
                         ? t("support.admin")
-                        : getSupportStaffDisplayName(replyTarget.senderName) ?? t("support.agent")}
+                        : t("support.agent")}
                 </p>
                 <p className="truncate text-xs text-emerald-800">{formatReplyPreview(replyTarget)}</p>
               </div>

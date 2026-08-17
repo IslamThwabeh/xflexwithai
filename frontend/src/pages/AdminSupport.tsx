@@ -46,7 +46,6 @@ import { toast } from "sonner";
 import VoiceRecorder from "@/components/VoiceRecorder";
 import AudioPlayer from "@/components/AudioPlayer";
 import { useLocation, useSearch } from "wouter";
-import { getSupportStaffDisplayName } from "@/lib/supportSenderName";
 import {
   ADMIN_SUPPORT_INBOX_PATH,
   getAdminSupportConversationId,
@@ -966,17 +965,10 @@ export default function AdminSupport() {
                       const prevDate = idx > 0 ? new Date(arr[idx - 1].createdAt).toDateString() : null;
                       const showDateSeparator = idx === 0 || currentDate !== prevDate;
                       const previousMessage = idx > 0 ? arr[idx - 1] : null;
-                      const senderDisplayName = msg.senderType === "support"
-                        ? getSupportStaffDisplayName(msg.senderName)
-                        : null;
-                      const previousSenderDisplayName = previousMessage?.senderType === "support"
-                        ? getSupportStaffDisplayName(previousMessage.senderName)
-                        : null;
                       const showSenderLabel = !isClient && (
                         !isBot
                         || !previousMessage
                         || previousMessage.senderType !== msg.senderType
-                        || previousSenderDisplayName !== senderDisplayName
                         || new Date(previousMessage.createdAt).toDateString() !== currentDate
                       );
                       return (
@@ -1068,7 +1060,7 @@ export default function AdminSupport() {
                                       ? (isRtl ? 'المساعد الذكي' : 'AI Assistant')
                                       : replyTargetMessage.senderType === 'admin'
                                         ? t('admin.support.admin')
-                                        : getSupportStaffDisplayName(replyTargetMessage.senderName) ?? t('admin.support.support')}
+                                        : t('admin.support.support')}
                                 </span>
                                 <span className="line-clamp-2 break-words">{formatReplyPreview(replyTargetMessage)}</span>
                               </button>
@@ -1081,7 +1073,7 @@ export default function AdminSupport() {
                               >
                                 {isBot
                                   ? (isRtl ? '🤖 المساعد الذكي' : '🤖 AI Assistant')
-                                  : senderDisplayName ?? (msg.senderType === "admin" ? t('admin.support.admin') : t('admin.support.support'))}
+                                  : msg.senderType === "admin" ? t('admin.support.admin') : t('admin.support.support')}
                               </p>
                             )}
                             {editingMsgId === msg.id ? (
@@ -1221,7 +1213,7 @@ export default function AdminSupport() {
                                 ? (isRtl ? 'المساعد الذكي' : 'AI Assistant')
                             : replyTarget.senderType === 'admin'
                                   ? t('admin.support.admin')
-                                  : getSupportStaffDisplayName(replyTarget.senderName) ?? t('admin.support.support')}
+                                  : t('admin.support.support')}
                           </p>
                           <p className="truncate text-xs text-emerald-800">{formatReplyPreview(replyTarget)}</p>
                         </div>

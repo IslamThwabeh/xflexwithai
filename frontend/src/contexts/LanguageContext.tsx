@@ -608,7 +608,7 @@ const translations = {
     'admin.support.send': 'Send',
     'admin.support.noConvos': 'No conversations yet',
     'admin.support.admin': 'Admin',
-    'admin.support.support': 'Support',
+    'admin.support.support': 'Support Team',
 
     // Admin Roles
     'admin.roles.title': 'Role Management',
@@ -1010,7 +1010,7 @@ const translations = {
     'support.empty': 'No messages yet',
     'support.emptyHint': 'Send a message to start a conversation with our support team',
     'support.placeholder': 'Type your message...',
-    'support.agent': 'Support',
+    'support.agent': 'Support Team',
     'support.admin': 'Admin',
 
     // Recommendations Page
@@ -1728,7 +1728,7 @@ const translations = {
     'admin.support.send': 'إرسال',
     'admin.support.noConvos': 'لا توجد محادثات بعد',
     'admin.support.admin': 'المدير',
-    'admin.support.support': 'الدعم',
+    'admin.support.support': 'فريق الدعم',
 
     // Admin Roles
     'admin.roles.title': 'إدارة الأدوار',
@@ -2130,7 +2130,7 @@ const translations = {
     'support.empty': 'لا توجد رسائل بعد',
     'support.emptyHint': 'أرسل رسالة لبدء محادثة مع فريق الدعم',
     'support.placeholder': 'اكتب رسالتك...',
-    'support.agent': 'الدعم',
+    'support.agent': 'فريق الدعم',
     'support.admin': 'المدير',
 
     // Recommendations Page
