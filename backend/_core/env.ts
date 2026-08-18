@@ -79,4 +79,7 @@ export const ENV = {
   get zeptoMailApiUrl() {
     return getEnvVar("ZEPTOMAIL_API_URL", "https://api.zeptomail.com/v1.1/email");
   },
+  get zeptoMailWebhookSecret() {
+    return getEnvVar("ZEPTOMAIL_WEBHOOK_SECRET", "");
+  },
 };

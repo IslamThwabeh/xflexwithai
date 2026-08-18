@@ -79,6 +79,10 @@ describe("permanent email suppression", () => {
       { email_address: { address: "admin@example.com" } },
       { email_address: { address: "ops@example.com" } },
     ]);
+    expect(dbMocks.logEmailDeliveryAttempt).toHaveBeenCalledWith(expect.objectContaining({
+      status: "sent",
+      providerRequestId: "request-1",
+    }));
   });
 
   it("removes permanently suppressed staff BCC recipients while keeping live recipients", async () => {
@@ -116,6 +120,7 @@ describe("permanent email suppression", () => {
       expect.objectContaining({
         recipientEmail: "live@example.com",
         status: "sent",
+        providerRequestId: "request-1",
       }),
     ]));
     expect(auditedRows).not.toEqual(expect.arrayContaining([

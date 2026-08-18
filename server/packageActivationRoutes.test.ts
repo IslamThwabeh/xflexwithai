@@ -7,6 +7,10 @@ vi.mock('../backend/db', async () => {
     getAdminByEmail: vi.fn(),
     hasAnyRole: vi.fn(),
     getOrderById: vi.fn(),
+    getOrderActivationKeys: vi.fn(),
+    updatePendingOrderActivationRecipient: vi.fn(),
+    logAdminAction: vi.fn(),
+    createOrder: vi.fn(),
     createOrderActivationKeys: vi.fn(),
     updateOrderStatus: vi.fn(),
     logOrderStatusHistory: vi.fn(),
@@ -71,6 +75,79 @@ describe('package activation routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(db.getAdminByEmail).mockResolvedValue({ id: 11, email: user.email, name: 'Admin' } as any);
+  });
+
+  it('rejects a malformed gift recipient before an order is created', async () => {
+    await expect(createCaller().orders.create({
+      items: [{ itemType: 'package', packageId: 1 }],
+      paymentMethod: 'bank_transfer',
+      isGift: true,
+      giftEmail: '1',
+      termsAcceptedAt: '2026-08-18T08:00:00.000Z',
+      termsAcceptedVersion: 'v2',
+    })).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+
+    expect(db.createOrder).not.toHaveBeenCalled();
+  });
+
+  it('corrects a pending non-gift recipient and records the audit details', async () => {
+    const order = {
+      id: 52,
+      userId: user.id,
+      status: 'awaiting_confirmation',
+      isGift: true,
+      giftEmail: '1',
+    } as any;
+    vi.mocked(db.getOrderById).mockResolvedValue(order);
+    vi.mocked(db.getOrderActivationKeys).mockResolvedValue([] as any);
+    vi.mocked(db.updatePendingOrderActivationRecipient).mockResolvedValue({
+      ...order,
+      isGift: false,
+      giftEmail: null,
+    });
+    vi.mocked(db.logAdminAction).mockResolvedValue(undefined as any);
+
+    const result = await createCaller().orders.adminCorrectActivationRecipient({
+      orderId: 52,
+      isGift: false,
+      giftEmail: null,
+      reason: 'Customer selected gift by mistake',
+    });
+
+    expect(result).toMatchObject({ id: 52, isGift: false, giftEmail: null });
+    expect(db.updatePendingOrderActivationRecipient).toHaveBeenCalledWith({
+      orderId: 52,
+      isGift: false,
+      giftEmail: null,
+    });
+    expect(db.logAdminAction).toHaveBeenCalledWith(11, user.id, 'correct_order_activation_recipient', expect.objectContaining({
+      orderId: 52,
+      actorType: 'admin',
+      previous: { isGift: true, giftEmail: '1' },
+      next: { isGift: false, giftEmail: null },
+      reason: 'Customer selected gift by mistake',
+    }));
+  });
+
+  it('refuses recipient correction after an activation key exists', async () => {
+    vi.mocked(db.getOrderById).mockResolvedValue({
+      id: 53,
+      userId: user.id,
+      status: 'paid',
+      isGift: false,
+      giftEmail: null,
+    } as any);
+    vi.mocked(db.getOrderActivationKeys).mockResolvedValue([{ id: 900 }] as any);
+
+    await expect(createCaller().orders.adminCorrectActivationRecipient({
+      orderId: 53,
+      isGift: false,
+      giftEmail: null,
+      reason: 'Requested recipient correction',
+    })).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+
+    expect(db.updatePendingOrderActivationRecipient).not.toHaveBeenCalled();
+    expect(db.logAdminAction).not.toHaveBeenCalled();
   });
 
   it('approves payment by issuing an assigned key without granting entitlements', async () => {

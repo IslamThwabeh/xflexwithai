@@ -29,6 +29,7 @@ import {
   getRemainingGenericEmailBudget,
   RECOMMENDATION_DELIVERY_BATCH_SIZE,
 } from "../services/recommendation-delivery.service";
+import { handleZeptoMailWebhookRequest } from "./zeptoMailWebhook";
 
 function appendCookieHeaders(headers: Headers, cookieHeaders: string[] | undefined) {
   if (!cookieHeaders?.length) return;
@@ -189,6 +190,7 @@ export interface Env {
   RESEND_API_KEY?: string;
   ZEPTOMAIL_TOKEN?: string;
   ZEPTOMAIL_API_URL?: string;
+  ZEPTOMAIL_WEBHOOK_SECRET?: string;
 }
 
 export default {
@@ -235,6 +237,10 @@ export default {
       }
 
       await db.getDb({ DB: env.DB });
+
+      if (pathname === "/api/webhooks/zeptomail") {
+        return handleZeptoMailWebhookRequest(request, env.ZEPTOMAIL_WEBHOOK_SECRET ?? "");
+      }
       
       // Health check endpoint
       if (pathname === "/health") {

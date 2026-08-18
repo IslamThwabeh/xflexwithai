@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { trpc } from "@/lib/trpc";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -46,6 +47,7 @@ import { toast } from "sonner";
 import VoiceRecorder from "@/components/VoiceRecorder";
 import AudioPlayer from "@/components/AudioPlayer";
 import { useLocation, useSearch } from "wouter";
+import { useAuth } from "@/_core/hooks/useAuth";
 import {
   ADMIN_SUPPORT_INBOX_PATH,
   getAdminSupportConversationId,
@@ -64,6 +66,9 @@ import {
 } from "@/lib/supportMedia";
 
 export default function AdminSupport() {
+  const { user: currentUser } = useAuth();
+  const { t, language } = useLanguage();
+  const isRtl = language === 'ar';
   const [, setLocation] = useLocation();
   const search = useSearch();
   const selectedConvId = useMemo(() => getAdminSupportConversationId(search), [search]);
@@ -94,6 +99,13 @@ export default function AdminSupport() {
     changedAfter: new Date().toISOString(),
   });
   const trpcUtils = trpc.useUtils();
+  const { data: adminCheck } = trpc.auth.isAdmin.useQuery();
+  const isAdmin = !!adminCheck?.isAdmin;
+  const { data: assignmentOptions = [] } = trpc.supportChat.assignmentOptions.useQuery();
+  const assigneeById = useMemo(
+    () => new Map(assignmentOptions.map((member) => [member.id, member.name || member.email])),
+    [assignmentOptions],
+  );
   const [olderConversationPages, setOlderConversationPages] = useState<any[]>([]);
   const [loadingMoreConversations, setLoadingMoreConversations] = useState(false);
   const [olderMessagePages, setOlderMessagePages] = useState<any[]>([]);
@@ -363,6 +375,15 @@ export default function AdminSupport() {
     onError: (err) => toast.error(err.message),
   });
 
+  const assignMutation = trpc.supportChat.assign.useMutation({
+    onSuccess: () => {
+      toast.success(isRtl ? 'تم تحديث مسؤول المحادثة' : 'Conversation assignment updated');
+      refetchConvs();
+      refetchMessages();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
   const suggestReplyMutation = trpc.supportChat.suggestReply.useMutation({
     onSuccess: (data) => {
       updateReplyDraft(data.suggestion);
@@ -480,9 +501,6 @@ export default function AdminSupport() {
     if (isNaN(date.getTime())) return null;
     return date.toLocaleString(isRtl ? 'ar-EG' : 'en-US');
   };
-
-  const { t, language } = useLanguage();
-  const isRtl = language === 'ar';
 
   const scrollToBottom = () => {
     const container = messagesContainerRef.current;
@@ -786,6 +804,16 @@ export default function AdminSupport() {
                               {isRtl ? 'بحاجة رد بشري' : 'Needs Human'}
                             </Badge>
                           )}
+                          {conv.assignedTo ? (
+                            <Badge variant="outline" className="text-xs">
+                              <User className="h-3 w-3 me-0.5" />
+                              {assigneeById.get(conv.assignedTo) || `#${conv.assignedTo}`}
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-xs text-gray-500">
+                              {isRtl ? 'غير معيّنة' : 'Unassigned'}
+                            </Badge>
+                          )}
                           {conv.status === "open" ? (
                             <Badge variant="default" className="bg-green-100 text-green-800 text-xs">
                               {t('admin.support.open')}
@@ -869,7 +897,7 @@ export default function AdminSupport() {
                         selectedConversationSummary?.userEmail}
                     </p>
                   </div>
-                  <div className="flex items-center gap-1 mt-1.5 ps-10">
+                  <div className="flex flex-wrap items-center gap-1 mt-1.5 ps-10">
                     <Button
                       variant="outline"
                       size="sm"
@@ -880,6 +908,63 @@ export default function AdminSupport() {
                       <User className="h-3 w-3 me-1" />
                       {isRtl ? 'ملف العميل' : 'Profile'}
                     </Button>
+                    {isAdmin ? (
+                      <Select
+                        value={selectedData?.conversation?.assignedTo ? String(selectedData.conversation.assignedTo) : 'unassigned'}
+                        onValueChange={(value) => assignMutation.mutate({
+                          conversationId: selectedConvId!,
+                          assignedTo: value === 'unassigned' ? null : Number(value),
+                          reason: value === 'unassigned' ? 'Admin unassigned conversation' : 'Admin assigned conversation',
+                        })}
+                        disabled={assignMutation.isPending}
+                      >
+                        <SelectTrigger className="h-7 w-[180px] text-xs">
+                          <SelectValue placeholder={isRtl ? 'تعيين المسؤول' : 'Assign owner'} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="unassigned">{isRtl ? 'غير معيّنة' : 'Unassigned'}</SelectItem>
+                          {assignmentOptions.map((member) => (
+                            <SelectItem key={member.id} value={String(member.id)}>
+                              {member.name || member.email}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : selectedData?.conversation?.assignedTo == null ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs px-2"
+                        disabled={!currentUser?.id || assignMutation.isPending}
+                        onClick={() => assignMutation.mutate({
+                          conversationId: selectedConvId!,
+                          assignedTo: currentUser!.id,
+                          reason: 'Support staff claimed conversation',
+                        })}
+                      >
+                        <UserPlus className="h-3 w-3 me-1" />
+                        {isRtl ? 'تعيين لي' : 'Assign to me'}
+                      </Button>
+                    ) : selectedData?.conversation?.assignedTo === currentUser?.id ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs px-2"
+                        disabled={assignMutation.isPending}
+                        onClick={() => assignMutation.mutate({
+                          conversationId: selectedConvId!,
+                          assignedTo: null,
+                          reason: 'Support staff released conversation',
+                        })}
+                      >
+                        {isRtl ? 'إلغاء تعييني' : 'Unassign me'}
+                      </Button>
+                    ) : (
+                      <Badge variant="outline" className="h-7 text-xs">
+                        <User className="h-3 w-3 me-1" />
+                        {assigneeById.get(selectedData?.conversation?.assignedTo) || `#${selectedData?.conversation?.assignedTo}`}
+                      </Badge>
+                    )}
                     {(selectedData?.conversation as any)?.needsHuman && (
                       <Button
                         variant="outline"

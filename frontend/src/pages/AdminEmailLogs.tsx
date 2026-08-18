@@ -14,7 +14,7 @@ import {
 type DeliveryLogView = 'grouped' | 'detailed';
 type DeliveryCategory = EmailDeliveryCategoryFilter;
 type DeliveryDatePreset = 'all' | 'today' | 'yesterday' | 'last7' | 'custom';
-type DeliveryStatus = 'all' | 'sent' | 'failed' | 'skipped_unsubscribed' | 'skipped_deduped' | 'skipped_renewed';
+type DeliveryStatus = 'all' | 'sent' | 'delivered' | 'bounced_soft' | 'bounced_hard' | 'complained' | 'failed' | 'skipped_unsubscribed' | 'skipped_suppressed' | 'skipped_deduped' | 'skipped_renewed';
 
 const DELIVERY_CATEGORIES: Array<{ key: DeliveryCategory; labelEn: string; labelAr: string }> = [
   { key: 'all', labelEn: 'All', labelAr: 'الكل' },
@@ -81,11 +81,14 @@ function buildDeliveryGroups(logs: any[] = []) {
         subject: log.subject,
         status: log.status,
         provider: log.provider,
+        providerRequestId: log.providerRequestId,
+        providerEventName: log.providerEventName,
+        providerEventAt: log.providerEventAt,
         errorMessage: log.errorMessage,
         metadata: log.metadata,
         latestCreatedAt: log.createdAt,
         recipientCount: 1,
-        sentCount: log.status === 'sent' ? 1 : 0,
+        sentCount: ['sent', 'delivered'].includes(log.status) ? 1 : 0,
         failedCount: log.status === 'failed' ? 1 : 0,
         skippedCount: String(log.status || '').startsWith('skipped_') ? 1 : 0,
         recipients: [log],
@@ -94,7 +97,7 @@ function buildDeliveryGroups(logs: any[] = []) {
     }
 
     current.recipientCount += 1;
-    current.sentCount += log.status === 'sent' ? 1 : 0;
+    current.sentCount += ['sent', 'delivered'].includes(log.status) ? 1 : 0;
     current.failedCount += log.status === 'failed' ? 1 : 0;
     current.skippedCount += String(log.status || '').startsWith('skipped_') ? 1 : 0;
     current.recipients.push(log);
@@ -140,17 +143,24 @@ function formatRelativeEmailAge(value: string | null | undefined, fallback: stri
 }
 
 function getStatusLabel(status: string, isRtl: boolean) {
-  if (status === 'sent') return isRtl ? 'تم الإرسال' : 'Sent';
+  if (status === 'sent') return isRtl ? 'قَبِلها المزود' : 'Provider accepted';
+  if (status === 'delivered') return isRtl ? 'تم التسليم' : 'Delivered';
+  if (status === 'bounced_soft') return isRtl ? 'ارتداد مؤقت' : 'Soft bounce';
+  if (status === 'bounced_hard') return isRtl ? 'ارتداد نهائي' : 'Hard bounce';
+  if (status === 'complained') return isRtl ? 'شكوى بريد مزعج' : 'Spam complaint';
   if (status === 'failed') return isRtl ? 'فشل' : 'Failed';
   if (status === 'skipped_unsubscribed') return isRtl ? 'تخطي: إلغاء الاشتراك' : 'Skipped: Unsubscribed';
+  if (status === 'skipped_suppressed') return isRtl ? 'تخطي: محظور نهائياً' : 'Skipped: Suppressed';
   if (status === 'skipped_deduped') return isRtl ? 'تخطي: مكرر' : 'Skipped: Deduped';
   if (status === 'skipped_renewed') return isRtl ? 'تخطي: تم التجديد' : 'Skipped: Renewed';
   return status;
 }
 
 function getStatusBadgeClass(status: string) {
-  if (status === 'sent') return 'bg-emerald-100 text-emerald-800 hover:bg-emerald-100 dark:bg-emerald-900/40 dark:text-emerald-200';
-  if (status === 'failed') return 'bg-red-100 text-red-800 hover:bg-red-100 dark:bg-red-900/40 dark:text-red-200';
+  if (status === 'delivered') return 'bg-emerald-100 text-emerald-800 hover:bg-emerald-100 dark:bg-emerald-900/40 dark:text-emerald-200';
+  if (status === 'sent') return 'bg-blue-100 text-blue-800 hover:bg-blue-100 dark:bg-blue-900/40 dark:text-blue-200';
+  if (status === 'failed' || status === 'bounced_hard' || status === 'complained') return 'bg-red-100 text-red-800 hover:bg-red-100 dark:bg-red-900/40 dark:text-red-200';
+  if (status === 'bounced_soft') return 'bg-orange-100 text-orange-800 hover:bg-orange-100 dark:bg-orange-900/40 dark:text-orange-200';
   return 'bg-amber-100 text-amber-800 hover:bg-amber-100 dark:bg-amber-900/40 dark:text-amber-200';
 }
 
@@ -235,6 +245,9 @@ export default function AdminEmailLogs() {
     return {
       total: deliverySummary?.total ?? logs.length,
       sent: deliverySummary?.sent ?? logs.filter((log: any) => log.status === 'sent').length,
+      delivered: deliverySummary?.delivered ?? logs.filter((log: any) => log.status === 'delivered').length,
+      bounced: (deliverySummary?.bounced ?? logs.filter((log: any) => String(log.status).startsWith('bounced_')).length)
+        + (deliverySummary?.complained ?? logs.filter((log: any) => log.status === 'complained').length),
       failed: deliverySummary?.failed ?? logs.filter((log: any) => log.status === 'failed').length,
       skipped: deliverySummary?.skipped ?? logs.filter((log: any) => String(log.status || '').startsWith('skipped_')).length,
       grouped: deliveryGroups.length,
@@ -453,14 +466,22 @@ export default function AdminEmailLogs() {
               </div>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-7">
               <div className="rounded-lg border bg-slate-50 px-3 py-2 dark:bg-slate-900/40">
                 <p className="text-xs text-muted-foreground">{isRtl ? 'المحاولات المطابقة' : 'Matching Attempts'}</p>
                 <p className="text-lg font-semibold">{deliverySummaryLoading ? '...' : deliveryStats.total}</p>
               </div>
               <div className="rounded-lg border bg-emerald-50 px-3 py-2 dark:bg-emerald-900/10">
-                <p className="text-xs text-emerald-700 dark:text-emerald-300">{isRtl ? 'تم الإرسال' : 'Sent'}</p>
+                <p className="text-xs text-emerald-700 dark:text-emerald-300">{isRtl ? 'قَبِلها المزود' : 'Provider Accepted'}</p>
                 <p className="text-lg font-semibold text-emerald-700 dark:text-emerald-300">{deliverySummaryLoading ? '...' : deliveryStats.sent}</p>
+              </div>
+              <div className="rounded-lg border bg-emerald-50 px-3 py-2 dark:bg-emerald-900/10">
+                <p className="text-xs text-emerald-700 dark:text-emerald-300">{isRtl ? 'تم التسليم' : 'Delivered'}</p>
+                <p className="text-lg font-semibold text-emerald-700 dark:text-emerald-300">{deliverySummaryLoading ? '...' : deliveryStats.delivered}</p>
+              </div>
+              <div className="rounded-lg border bg-orange-50 px-3 py-2 dark:bg-orange-900/10">
+                <p className="text-xs text-orange-700 dark:text-orange-300">{isRtl ? 'مرتد / شكوى' : 'Bounced / complaints'}</p>
+                <p className="text-lg font-semibold text-orange-700 dark:text-orange-300">{deliverySummaryLoading ? '...' : deliveryStats.bounced}</p>
               </div>
               <div className="rounded-lg border bg-red-50 px-3 py-2 dark:bg-red-900/10">
                 <p className="text-xs text-red-700 dark:text-red-300">{isRtl ? 'فشل' : 'Failed'}</p>
@@ -531,9 +552,14 @@ export default function AdminEmailLogs() {
                   className="w-full mt-1 border rounded px-3 py-2 text-sm dark:bg-slate-900 dark:border-slate-700"
                 >
                   <option value="all">{isRtl ? 'الكل' : 'All'}</option>
-                  <option value="sent">{isRtl ? 'تم الإرسال' : 'Sent'}</option>
+                  <option value="sent">{isRtl ? 'قَبِلها المزود' : 'Provider accepted'}</option>
+                  <option value="delivered">{isRtl ? 'تم التسليم' : 'Delivered'}</option>
+                  <option value="bounced_soft">{isRtl ? 'ارتداد مؤقت' : 'Soft bounce'}</option>
+                  <option value="bounced_hard">{isRtl ? 'ارتداد نهائي' : 'Hard bounce'}</option>
+                  <option value="complained">{isRtl ? 'شكوى بريد مزعج' : 'Spam complaint'}</option>
                   <option value="failed">{isRtl ? 'فشل' : 'Failed'}</option>
                   <option value="skipped_unsubscribed">{isRtl ? 'تخطي: إلغاء الاشتراك' : 'Skipped: Unsubscribed'}</option>
+                  <option value="skipped_suppressed">{isRtl ? 'تخطي: محظور نهائياً' : 'Skipped: Suppressed'}</option>
                   <option value="skipped_deduped">{isRtl ? 'تخطي: مكرر' : 'Skipped: Deduped'}</option>
                   <option value="skipped_renewed">{isRtl ? 'تخطي: تم التجديد' : 'Skipped: Renewed'}</option>
                 </select>
@@ -573,7 +599,7 @@ export default function AdminEmailLogs() {
               <p>{isRtl ? 'إذا لم تجد أي صف: لم تُسجَّل محاولة إرسال من هذا المسار بعد.' : 'If you find no rows: no send attempt has been logged for that flow yet.'}</p>
               <p>{isRtl ? 'تنبيهات انتهاء الاشتراك، LexAI، التجديد، الترحيب، الإنجازات، والخمول موجودة تحت تصنيف الاشتراكات.' : 'Subscription expiry, LexAI expiry, renewal, welcome, milestone, and inactivity emails are under Lifecycle.'}</p>
               <p>{isRtl ? 'إذا كانت الحالة فشل: راجع رسالة الخطأ لمعرفة رفض ZeptoMail أو فشل المزود.' : 'If status is failed: inspect the error message for provider rejection or transport failure.'}</p>
-              <p>{isRtl ? 'إذا كانت الحالة تم الإرسال: التطبيق سلّم الرسالة للمزود، ثم افحص البريد المزعج أو لوحة المزود.' : 'If status is sent: the app handed the email to the provider, so next check spam or the provider dashboard.'}</p>
+              <p>{isRtl ? 'قَبِلها المزود تعني أن ZeptoMail استلم الطلب؛ تم التسليم تعني أن خادم بريد المستلم أكّد الاستلام عبر Webhook.' : 'Provider accepted means ZeptoMail accepted the request; Delivered means the recipient mail server confirmed delivery through the webhook.'}</p>
               <p>{isRtl ? 'ردود الدعم البشري تُرسل الآن كإشعار داخل المنصة وبريد إلكتروني للعميل دائماً، بغض النظر عن حالة اتصاله.' : 'Human support replies now create both an in-app notification and a client email, regardless of online status.'}</p>
               {!!deliverySummary?.legacyTimestampCount && (
                 <p>
@@ -683,7 +709,7 @@ export default function AdminEmailLogs() {
                                   <div className="font-medium text-gray-900 dark:text-gray-100">{recipient.recipientName || recipient.recipientEmail}</div>
                                   {recipient.recipientName && <div className="text-muted-foreground">{recipient.recipientEmail}</div>}
                                   <div className="mt-1 flex items-center gap-2">
-                                    {recipient.status === 'sent'
+                                    {['sent', 'delivered'].includes(recipient.status)
                                       ? <MailCheck className="h-3.5 w-3.5 text-emerald-600" />
                                       : <MailX className={`h-3.5 w-3.5 ${String(recipient.status || '').startsWith('skipped_') ? 'text-amber-600' : 'text-red-600'}`} />}
                                     <span className="text-muted-foreground">{formatDeliveryLogTimestamp(recipient.createdAt, isRtl ? 'ar-EG' : 'en-US', unavailableDateLabel)}</span>
@@ -745,7 +771,12 @@ export default function AdminEmailLogs() {
                                 {getStatusLabel(log.status, isRtl)}
                               </Badge>
                             </td>
-                            <td className="px-4 py-3 whitespace-nowrap text-xs">{log.provider || '-'}</td>
+                            <td className="px-4 py-3 whitespace-nowrap text-xs">
+                              <div>{log.provider || '-'}</div>
+                              {log.providerEventName && <div className="mt-1 text-muted-foreground">{log.providerEventName}</div>}
+                              {log.providerEventAt && <div className="mt-1 text-muted-foreground">{formatDeliveryLogTimestamp(log.providerEventAt, isRtl ? 'ar-EG' : 'en-US', unavailableDateLabel)}</div>}
+                              {log.providerRequestId && <div className="mt-1 max-w-[180px] truncate text-muted-foreground" title={log.providerRequestId}>{log.providerRequestId}</div>}
+                            </td>
                             <td className="px-4 py-3 min-w-[260px]">
                               {log.errorMessage ? (
                                 <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded p-2 dark:bg-red-950/20 dark:border-red-900/40 dark:text-red-300">

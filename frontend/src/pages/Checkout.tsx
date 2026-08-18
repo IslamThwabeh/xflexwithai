@@ -12,6 +12,7 @@ import { formatIlsAmount, getPackageDisplayPricing } from '@/lib/packagePricing'
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
 import { trackBeginCheckout, trackOrderRequest } from '@/lib/analytics';
+import { isLikelyValidEmail, normalizeEmailAddress } from '@shared/emailValidation';
 
 export default function Checkout() {
   const { language, t } = useLanguage();
@@ -101,6 +102,8 @@ export default function Checkout() {
   const vatRate = 16;
   const vatIls = totalIls * vatRate / (100 + vatRate);
   const subtotalIls = totalIls - vatIls;
+  const normalizedGiftEmail = normalizeEmailAddress(giftEmail);
+  const giftEmailValid = !isGift || isLikelyValidEmail(normalizedGiftEmail);
 
   const handleApplyCoupon = async () => {
     if (!couponCode.trim()) return;
@@ -127,12 +130,16 @@ export default function Checkout() {
   };
 
   const handleSubmit = () => {
+    if (!giftEmailValid) {
+      toast.error(isRtl ? 'أدخل بريدًا إلكترونيًا صحيحًا لمستلم الهدية' : 'Enter a valid gift recipient email');
+      return;
+    }
     createOrder.mutate({
       items: [{ itemType: 'package', packageId: pkg.id }],
       paymentMethod,
       isGift,
-      giftEmail: isGift ? giftEmail : undefined,
-      giftMessage: isGift ? giftMessage : undefined,
+      giftEmail: isGift ? normalizedGiftEmail : undefined,
+      giftMessage: isGift ? giftMessage.trim() || undefined : undefined,
       notes: notes || undefined,
       couponCode: appliedCoupon?.code || undefined,
       termsAcceptedAt: new Date().toISOString(),
@@ -209,7 +216,20 @@ export default function Checkout() {
                 <div className="mt-4 space-y-3 ps-7">
                   <div>
                     <Label>{isRtl ? 'بريد المستلم' : "Recipient's email"}</Label>
-                    <Input value={giftEmail} onChange={(e) => setGiftEmail(e.target.value)} type="email" className="mt-1" />
+                    <Input
+                      value={giftEmail}
+                      onChange={(e) => setGiftEmail(e.target.value)}
+                      type="email"
+                      inputMode="email"
+                      autoComplete="email"
+                      aria-invalid={giftEmail.trim().length > 0 && !giftEmailValid}
+                      className="mt-1"
+                    />
+                    {giftEmail.trim().length > 0 && !giftEmailValid && (
+                      <p className="mt-1 text-xs text-red-600">
+                        {isRtl ? 'بريد المستلم غير صحيح' : 'Recipient email is not valid'}
+                      </p>
+                    )}
                   </div>
                   <div>
                     <Label>{isRtl ? 'رسالة الهدية (اختياري)' : 'Gift message (optional)'}</Label>
@@ -329,7 +349,7 @@ export default function Checkout() {
 
               <Button
                 onClick={handleSubmit}
-                disabled={createOrder.isPending || (isGift && !giftEmail) || !termsAccepted}
+                disabled={createOrder.isPending || !giftEmailValid || !termsAccepted}
                 className="w-full h-12 text-base"
                 size="lg"
               >

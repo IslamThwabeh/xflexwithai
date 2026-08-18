@@ -1872,7 +1872,7 @@ type SupportAIReplyCore = {
 };
 
 type SupportAIReply = SupportAIReplyCore & {
-  decisionSource: "openai" | "local_attachment";
+  decisionSource: "openai" | "local_attachment" | "local_rule";
   providerRequestId: string | null;
   model: string | null;
   validationOutcome: "valid" | "normalized";
@@ -1934,6 +1934,54 @@ function getSupportAttachmentAutoReply(content: string, isArabicPreferred: boole
     model: null,
     validationOutcome: "valid",
     validationIssue: null,
+    latencyMs: 0,
+  };
+}
+
+function getRepeatedNotificationFailureAutoReply(
+  conversationMessages: Array<{ senderType: string; content: string }>,
+  latestContent: string,
+  isArabicPreferred: boolean,
+): SupportAIReply | null {
+  const latest = latestContent.trim();
+  if (!latest) return null;
+
+  const notificationTopic = /(?:\b(?:e-?mail|notification|spam|junk|inbox)\b|(?:إشعار|اشعار|إيميل|ايميل|بريد|سبام|الرسائل))/i;
+  const failedAfterTrying = /(?:\b(?:still|already|tried|checked|never|nothing|not|no|doesn['’]?t|didn['’]?t|can['’]?t)\b|(?:لسا|لسه|ما\s*زال|مازال|مش|مو|لم|ولا|جرب|شيك|فتش|تأكد))/i;
+  if (!notificationTopic.test(latest) || !failedAfterTrying.test(latest)) return null;
+
+  let skippedLatest = false;
+  const earlierMessages = conversationMessages.filter((message) => {
+    if (!skippedLatest && message.senderType === "client" && message.content.trim() === latest) {
+      skippedLatest = true;
+      return false;
+    }
+    return true;
+  });
+  const hasPreviousNotificationComplaint = earlierMessages.some((message) => (
+    message.senderType === "client" && notificationTopic.test(message.content)
+  ));
+  const troubleshootingStep = /(?:\b(?:check|enable|settings|preferences|profile|verify|try|look|spam|junk|inbox)\b|(?:راجع|تحقق|تأكد|جرب|شيك|فتش|الإعدادات|الاعدادات|الملف|سبام|البريد))/i;
+  const hasPreviousTroubleshooting = earlierMessages.some((message) => (
+    message.senderType !== "client"
+    && notificationTopic.test(message.content)
+    && troubleshootingStep.test(message.content)
+  ));
+  if (!hasPreviousNotificationComplaint || !hasPreviousTroubleshooting) return null;
+
+  return {
+    intent: "notifications",
+    answer: isArabicPreferred
+      ? "واضح أنك جرّبت الخطوات المقترحة وما زالت إشعارات البريد لا تصلك. حوّلت المحادثة الآن لفريق الدعم ليتحقق من حسابك وحالة تسليم البريد."
+      : "You already tried the suggested steps and email notifications still are not arriving. I have escalated this conversation so the support team can check your account and email-delivery status.",
+    confidence: 1,
+    needsHuman: true,
+    escalationReason: "repeated_failed_step",
+    decisionSource: "local_rule",
+    providerRequestId: null,
+    model: null,
+    validationOutcome: "valid",
+    validationIssue: "deterministic_repeated_notification_failure",
     latencyMs: 0,
   };
 }
@@ -5476,7 +5524,14 @@ export const appRouter = router({
             ? getSupportAttachmentAutoReply(input.content, isArabicPreferred)
             : null;
           const allMessages = attachmentDecision ? [] : await db.getSupportMessages(conv.id);
-          const aiDecision = attachmentDecision ?? await generateSupportAIReply(
+          const deterministicDecision = attachmentDecision
+            ? null
+            : getRepeatedNotificationFailureAutoReply(
+              allMessages.map(m => ({ senderType: m.senderType, content: m.content })),
+              input.content,
+              isArabicPreferred,
+            );
+          const aiDecision = attachmentDecision ?? deterministicDecision ?? await generateSupportAIReply(
             allMessages.map(m => ({ senderType: m.senderType, content: m.content })),
             {
               userId: ctx.user.id,
@@ -5604,6 +5659,48 @@ export const appRouter = router({
         return db.getAllSupportConversations(input?.search);
       }),
 
+    assignmentOptions: supportStaffProcedure.query(async () => {
+      return db.getSupportAssignmentOptions();
+    }),
+
+    assign: supportStaffProcedure
+      .input(z.object({
+        conversationId: z.number().int().positive(),
+        assignedTo: z.number().int().positive().nullable(),
+        reason: z.string().trim().max(500).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const conversation = await db.getSupportConversation(input.conversationId);
+        if (!conversation) throw new TRPCError({ code: 'NOT_FOUND', message: 'Conversation not found' });
+        const isAdmin = !!ctx.admin;
+        if (!isAdmin) {
+          if (input.assignedTo !== null && input.assignedTo !== ctx.user.id) {
+            throw new TRPCError({ code: 'FORBIDDEN', message: 'Support staff can only assign a conversation to themselves.' });
+          }
+          if (input.assignedTo === null && conversation.assignedTo !== null && conversation.assignedTo !== ctx.user.id) {
+            throw new TRPCError({ code: 'FORBIDDEN', message: 'Only the current assignee or an admin can unassign this conversation.' });
+          }
+        }
+        if (input.assignedTo !== null) {
+          const [assignee, hasSupportRole] = await Promise.all([
+            db.getUserById(input.assignedTo),
+            db.hasAnyRole(input.assignedTo, ['support']),
+          ]);
+          if (!assignee || !hasSupportRole || !(assignee as any).isStaff) {
+            throw new TRPCError({ code: 'BAD_REQUEST', message: 'The selected assignee is not an active support staff member.' });
+          }
+        }
+        const updated = await db.assignSupportConversation({
+          conversationId: conversation.id,
+          assignedTo: input.assignedTo,
+          actorType: isAdmin ? 'admin' : 'support',
+          actorId: ctx.admin?.id ?? ctx.user.id,
+          reason: input.reason,
+        });
+        if (!updated) throw new TRPCError({ code: 'NOT_FOUND', message: 'Conversation not found' });
+        return updated;
+      }),
+
     inboxPage: supportStaffProcedure
       .input(z.object({
         limit: z.number().int().min(1).max(50).default(30),
@@ -5729,6 +5826,16 @@ export const appRouter = router({
           attachmentDuration: normalizedAttachmentDuration && normalizedAttachmentDuration > 0 ? normalizedAttachmentDuration : undefined,
         });
 
+        if (!isAdmin && conv.assignedTo == null) {
+          await db.assignSupportConversation({
+            conversationId: conv.id,
+            assignedTo: ctx.user.id,
+            actorType: 'support',
+            actorId: ctx.user.id,
+            reason: 'Automatically assigned on first human reply',
+          });
+        }
+
         // A human reply means the staff team has taken ownership. Keep AI
         // paused until staff or the client explicitly resumes it.
         if (!conv.needsHuman) {
@@ -5805,6 +5912,16 @@ export const appRouter = router({
           senderType: isAdmin ? 'admin' : 'support',
           content: input.content,
         });
+
+        if (!isAdmin && conv.assignedTo == null) {
+          await db.assignSupportConversation({
+            conversationId: conv.id,
+            assignedTo: ctx.user.id,
+            actorType: 'support',
+            actorId: ctx.user.id,
+            reason: 'Automatically assigned when support started the conversation',
+          });
+        }
 
         if (!conv.needsHuman) {
           await db.setNeedsHuman(conv.id, true);
@@ -6438,12 +6555,20 @@ export const appRouter = router({
         })),
         paymentMethod: z.literal('bank_transfer'),
         isGift: z.boolean().default(false),
-        giftEmail: z.string().optional(),
-        giftMessage: z.string().optional(),
+        giftEmail: z.string().max(320).optional(),
+        giftMessage: z.string().max(2000).optional(),
         notes: z.string().optional(),
         couponCode: z.string().optional(),
         termsAcceptedAt: z.string().optional(),
         termsAcceptedVersion: z.string().optional(),
+      }).superRefine((input, ctx) => {
+        if (input.isGift && !isValidEmail(normalizeEmailAddress(input.giftEmail ?? ''))) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['giftEmail'],
+            message: 'A valid gift recipient email is required',
+          });
+        }
       }))
       .mutation(async ({ input, ctx }) => {
         if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
@@ -6500,8 +6625,8 @@ export const appRouter = router({
           currency: 'USD',
           paymentMethod: input.paymentMethod,
           isGift: input.isGift,
-          giftEmail: input.giftEmail || null,
-          giftMessage: input.giftMessage || null,
+          giftEmail: input.isGift ? normalizeEmailAddress(input.giftEmail ?? '') : null,
+          giftMessage: input.isGift ? input.giftMessage?.trim() || null : null,
           notes: input.notes || null,
           termsAcceptedAt,
           termsAcceptedVersion: CURRENT_TERMS_VERSION,
@@ -6650,6 +6775,67 @@ export const appRouter = router({
           order,
           itemsByOrder.get(order.id) ?? [],
         ));
+      }),
+
+    // Admin/Key Manager: correct the activation recipient before any key is issued.
+    adminCorrectActivationRecipient: adminOrRoleProcedure(['key_manager'])
+      .input(z.object({
+        orderId: z.number().int().positive(),
+        isGift: z.boolean(),
+        giftEmail: z.string().max(320).nullable().optional(),
+        reason: z.string().trim().min(10).max(500),
+      }).superRefine((input, ctx) => {
+        if (input.isGift && !isValidEmail(normalizeEmailAddress(input.giftEmail ?? ''))) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['giftEmail'],
+            message: 'A valid gift recipient email is required',
+          });
+        }
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const order = await db.getOrderById(input.orderId);
+        if (!order) throw new TRPCError({ code: 'NOT_FOUND' });
+        if (!['pending', 'awaiting_confirmation', 'paid'].includes(order.status)) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'The activation recipient can only be corrected before the order is completed.',
+          });
+        }
+        const existingKeys = await db.getOrderActivationKeys(order.id);
+        if (existingKeys.length) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'This order already has an activation key and can no longer be corrected here.',
+          });
+        }
+
+        const normalizedGiftEmail = input.isGift
+          ? normalizeEmailAddress(input.giftEmail ?? '')
+          : null;
+        const updated = await db.updatePendingOrderActivationRecipient({
+          orderId: order.id,
+          isGift: input.isGift,
+          giftEmail: normalizedGiftEmail,
+        });
+        if (!updated) {
+          throw new TRPCError({
+            code: 'CONFLICT',
+            message: 'The order changed while it was being corrected. Refresh and try again.',
+          });
+        }
+
+        const actorType = ctx.admin ? 'admin' as const : 'staff' as const;
+        const actorId = ctx.admin?.id ?? ctx.user.id;
+        await db.logAdminAction(actorId, order.userId, 'correct_order_activation_recipient', {
+          orderId: order.id,
+          actorType,
+          previous: { isGift: order.isGift, giftEmail: order.giftEmail },
+          next: { isGift: updated.isGift, giftEmail: updated.giftEmail },
+          reason: input.reason.trim(),
+          ipAddress: getRequestIp(ctx.req) || null,
+        });
+        return updated;
       }),
 
     // Admin/support: account-level compliance, including clients whose access
@@ -11824,7 +12010,7 @@ ${qaText}`;
         recipientUserId: z.number().optional(),
         eventType: z.string().optional(),
         eventCategory: z.enum(EMAIL_DELIVERY_EVENT_CATEGORIES).optional(),
-        status: z.enum(['sent', 'failed', 'skipped_unsubscribed', 'skipped_deduped', 'skipped_renewed']).optional(),
+        status: z.enum(['sent', 'delivered', 'bounced_soft', 'bounced_hard', 'complained', 'failed', 'skipped_unsubscribed', 'skipped_suppressed', 'skipped_deduped', 'skipped_renewed']).optional(),
         fromDate: z.string().optional(),
         toDate: z.string().optional(),
       }).optional())
@@ -11847,7 +12033,7 @@ ${qaText}`;
         recipientUserId: z.number().optional(),
         eventType: z.string().optional(),
         eventCategory: z.enum(EMAIL_DELIVERY_EVENT_CATEGORIES).optional(),
-        status: z.enum(['sent', 'failed', 'skipped_unsubscribed', 'skipped_deduped', 'skipped_renewed']).optional(),
+        status: z.enum(['sent', 'delivered', 'bounced_soft', 'bounced_hard', 'complained', 'failed', 'skipped_unsubscribed', 'skipped_suppressed', 'skipped_deduped', 'skipped_renewed']).optional(),
         fromDate: z.string().optional(),
         toDate: z.string().optional(),
       }).optional())

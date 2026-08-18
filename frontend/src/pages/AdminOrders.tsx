@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ShoppingCart, CheckCircle, XCircle, Eye, ChevronDown, ChevronUp, FileCheck } from 'lucide-react';
+import { ShoppingCart, CheckCircle, XCircle, Eye, ChevronDown, ChevronUp, FileCheck, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -22,6 +22,7 @@ import { trpc } from '@/lib/trpc';
 import DashboardLayout from '@/components/DashboardLayout';
 import { useDataTable, DataTablePagination } from '@/components/DataTable';
 import { toast } from 'sonner';
+import { isLikelyValidEmail, normalizeEmailAddress } from '@shared/emailValidation';
 
 const orderSortFns: Record<string, (a: any, b: any) => number> = {
   created: (a, b) => new Date(String(a.createdAt).replace(' ', 'T')).getTime() - new Date(String(b.createdAt).replace(' ', 'T')).getTime(),
@@ -50,6 +51,10 @@ export default function AdminOrders() {
   const utils = trpc.useUtils();
   const [filter, setFilter] = useState<string | undefined>(undefined);
   const [issueOrder, setIssueOrder] = useState<any | null>(null);
+  const [recipientOrder, setRecipientOrder] = useState<any | null>(null);
+  const [correctedIsGift, setCorrectedIsGift] = useState(false);
+  const [correctedGiftEmail, setCorrectedGiftEmail] = useState('');
+  const [correctionReason, setCorrectionReason] = useState('');
   const [keyConfigurations, setKeyConfigurations] = useState<Record<number, {
     entitlementDays: string;
     expiresAt: string;
@@ -66,6 +71,16 @@ export default function AdminOrders() {
         setIssueOrder(null);
         setKeyConfigurations({});
       }
+    },
+    onError: (error) => toast.error(error.message),
+  });
+  const correctRecipientMutation = trpc.orders.adminCorrectActivationRecipient.useMutation({
+    onSuccess: () => {
+      utils.orders.adminList.invalidate();
+      toast.success(language === 'ar' ? 'تم تصحيح مستلم التفعيل وتسجيل العملية' : 'Activation recipient corrected and audited');
+      setRecipientOrder(null);
+      setCorrectedGiftEmail('');
+      setCorrectionReason('');
     },
     onError: (error) => toast.error(error.message),
   });
@@ -100,6 +115,28 @@ export default function AdminOrders() {
     }
     setKeyConfigurations(initial);
     setIssueOrder(order);
+  };
+
+  const openRecipientCorrection = (order: any) => {
+    setRecipientOrder(order);
+    setCorrectedIsGift(Boolean(order.isGift));
+    setCorrectedGiftEmail(order.giftEmail || '');
+    setCorrectionReason('');
+  };
+
+  const saveRecipientCorrection = async () => {
+    if (!recipientOrder) return;
+    const normalizedEmail = normalizeEmailAddress(correctedGiftEmail);
+    if (correctedIsGift && !isLikelyValidEmail(normalizedEmail)) {
+      toast.error(language === 'ar' ? 'أدخل بريدًا إلكترونيًا صحيحًا لمستلم الهدية' : 'Enter a valid gift recipient email');
+      return;
+    }
+    await correctRecipientMutation.mutateAsync({
+      orderId: recipientOrder.id,
+      isGift: correctedIsGift,
+      giftEmail: correctedIsGift ? normalizedEmail : null,
+      reason: correctionReason.trim(),
+    }).catch(() => undefined);
   };
 
   const updateKeyConfiguration = (
@@ -309,6 +346,12 @@ export default function AdminOrders() {
 
                     {/* Status Actions */}
                     <div className="flex flex-wrap gap-2">
+                      {['pending', 'awaiting_confirmation', 'paid'].includes(order.status) && (
+                        <Button size="sm" variant="outline" onClick={() => openRecipientCorrection(order)}>
+                          <Pencil className="w-3.5 h-3.5 me-1" />
+                          {language === 'ar' ? 'تصحيح مستلم التفعيل' : 'Correct activation recipient'}
+                        </Button>
+                      )}
                       {order.status === 'pending' && (
                         <>
                           <Button size="sm" disabled={updateMutation.isPending} onClick={() => openIssueDialog(order)}>
@@ -461,6 +504,82 @@ export default function AdminOrders() {
                 {updateMutation.isPending
                   ? (language === 'ar' ? 'جاري الإصدار...' : 'Issuing...')
                   : (language === 'ar' ? 'تأكيد الدفع وإصدار المفتاح' : 'Confirm payment and issue key')}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={!!recipientOrder} onOpenChange={(open) => {
+          if (!open && !correctRecipientMutation.isPending) setRecipientOrder(null);
+        }}>
+          <DialogContent className="max-w-lg" dir={language === 'ar' ? 'rtl' : 'ltr'}>
+            <DialogHeader>
+              <DialogTitle>
+                {language === 'ar'
+                  ? `تصحيح مستلم تفعيل الطلب #${recipientOrder?.id ?? ''}`
+                  : `Correct activation recipient for order #${recipientOrder?.id ?? ''}`}
+              </DialogTitle>
+              <DialogDescription>
+                {language === 'ar'
+                  ? 'يُسمح بهذا التصحيح قبل إصدار أي مفتاح فقط، وسيتم حفظ السبب والتغيير في سجل التدقيق.'
+                  : 'This is allowed only before any key is issued. The reason and change are saved in the audit log.'}
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 py-2">
+              <div className="rounded-lg border bg-gray-50 px-3 py-2 text-sm">
+                <span className="text-gray-500">{language === 'ar' ? 'بريد العميل' : 'Customer email'}:</span>{' '}
+                <span className="font-medium">{recipientOrder?.userEmail || '—'}</span>
+              </div>
+              <label className="flex items-center gap-3 text-sm font-medium">
+                <input
+                  type="checkbox"
+                  checked={correctedIsGift}
+                  onChange={(event) => setCorrectedIsGift(event.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300"
+                />
+                {language === 'ar' ? 'هذا الطلب هدية' : 'This order is a gift'}
+              </label>
+              {correctedIsGift && (
+                <div className="space-y-2">
+                  <Label>{language === 'ar' ? 'بريد مستلم الهدية *' : 'Gift recipient email *'}</Label>
+                  <Input
+                    type="email"
+                    inputMode="email"
+                    dir="ltr"
+                    value={correctedGiftEmail}
+                    onChange={(event) => setCorrectedGiftEmail(event.target.value)}
+                  />
+                </div>
+              )}
+              <div className="space-y-2">
+                <Label>{language === 'ar' ? 'سبب التصحيح *' : 'Correction reason *'}</Label>
+                <Textarea
+                  minLength={10}
+                  maxLength={500}
+                  value={correctionReason}
+                  onChange={(event) => setCorrectionReason(event.target.value)}
+                  placeholder={language === 'ar' ? 'مثال: اختار العميل خيار الهدية بالخطأ...' : 'Example: customer selected the gift option by mistake...'}
+                />
+                <p className="text-xs text-gray-500">
+                  {language === 'ar' ? '10 أحرف على الأقل' : 'At least 10 characters'}
+                </p>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" disabled={correctRecipientMutation.isPending} onClick={() => setRecipientOrder(null)}>
+                {language === 'ar' ? 'إلغاء' : 'Cancel'}
+              </Button>
+              <Button
+                disabled={correctRecipientMutation.isPending
+                  || correctionReason.trim().length < 10
+                  || (correctedIsGift && !isLikelyValidEmail(normalizeEmailAddress(correctedGiftEmail)))}
+                onClick={saveRecipientCorrection}
+              >
+                {correctRecipientMutation.isPending
+                  ? (language === 'ar' ? 'جاري الحفظ...' : 'Saving...')
+                  : (language === 'ar' ? 'حفظ التصحيح' : 'Save correction')}
               </Button>
             </DialogFooter>
           </DialogContent>

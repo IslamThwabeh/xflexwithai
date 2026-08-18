@@ -846,6 +846,24 @@ export const supportAiDecisions = sqliteTable("support_ai_decisions", {
 export type SupportAiDecision = typeof supportAiDecisions.$inferSelect;
 export type InsertSupportAiDecision = typeof supportAiDecisions.$inferInsert;
 
+/** Immutable history for support conversation ownership changes. */
+export const supportAssignmentHistory = sqliteTable("support_assignment_history", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  conversationId: integer("conversation_id").notNull(),
+  previousAssignedTo: integer("previous_assigned_to"),
+  newAssignedTo: integer("new_assigned_to"),
+  actorType: text("actor_type").notNull(), // admin | support
+  actorId: integer("actor_id").notNull(),
+  reason: text("reason"),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
+}, (table) => ({
+  conversationCreatedIdx: index("idx_support_assignment_history_conversation_created")
+    .on(table.conversationId, table.createdAt, table.id),
+}));
+
+export type SupportAssignmentHistory = typeof supportAssignmentHistory.$inferSelect;
+export type InsertSupportAssignmentHistory = typeof supportAssignmentHistory.$inferInsert;
+
 /**
  * Bug reports submitted by clients for manual review and point rewards.
  */
@@ -2190,6 +2208,10 @@ export const emailDeliveryLogs = sqliteTable("email_delivery_logs", {
   subject: text("subject").notNull(),
   status: text("status").notNull(),
   provider: text("provider"),
+  providerRequestId: text("provider_request_id"),
+  providerEventName: text("provider_event_name"),
+  providerEventAt: text("provider_event_at"),
+  finalStatusAt: text("final_status_at"),
   errorMessage: text("error_message"),
   metadata: text("metadata"),
   createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
@@ -2197,6 +2219,26 @@ export const emailDeliveryLogs = sqliteTable("email_delivery_logs", {
 
 export type EmailDeliveryLog = typeof emailDeliveryLogs.$inferSelect;
 export type InsertEmailDeliveryLog = typeof emailDeliveryLogs.$inferInsert;
+
+/** Idempotency and minimal audit data for inbound email-provider webhooks. */
+export const emailProviderWebhookEvents = sqliteTable("email_provider_webhook_events", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  provider: text("provider").notNull(),
+  providerEventId: text("provider_event_id").notNull(),
+  providerRequestId: text("provider_request_id").notNull(),
+  eventName: text("event_name").notNull(),
+  recipientEmail: text("recipient_email"),
+  diagnostic: text("diagnostic"),
+  eventAt: text("event_at"),
+  matchedLogCount: integer("matched_log_count").default(0).notNull(),
+  receivedAt: text("received_at").default(sql`(datetime('now'))`).notNull(),
+}, (table) => ({
+  providerEventUnique: unique("uq_email_provider_webhook_event").on(table.provider, table.providerEventId),
+  providerRequestIdx: index("idx_email_provider_webhook_request").on(table.provider, table.providerRequestId),
+}));
+
+export type EmailProviderWebhookEvent = typeof emailProviderWebhookEvents.$inferSelect;
+export type InsertEmailProviderWebhookEvent = typeof emailProviderWebhookEvents.$inferInsert;
 
 export const emailUnsubscribes = sqliteTable("email_unsubscribes", {
   id: int("id").primaryKey({ autoIncrement: true }),

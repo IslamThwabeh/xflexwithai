@@ -36,6 +36,7 @@ import {
   supportConversations, SupportConversation, InsertSupportConversation,
   supportMessages, SupportMessage, InsertSupportMessage,
   supportAiDecisions, InsertSupportAiDecision,
+  supportAssignmentHistory,
   bugReports, BugReport,
   // Package system imports
   packages, Package, InsertPackage,
@@ -86,6 +87,7 @@ import {
   brokerOnboarding, BrokerOnboarding, InsertBrokerOnboarding,
   emailLog, EmailLog, InsertEmailLog,
   emailDeliveryLogs, EmailDeliveryLog, InsertEmailDeliveryLog,
+  emailProviderWebhookEvents,
   emailOutbox, EmailOutbox, InsertEmailOutbox,
   emailOutboxCampaigns, EmailOutboxCampaign, InsertEmailOutboxCampaign,
   emailUnsubscribes, EmailUnsubscribe, InsertEmailUnsubscribe,
@@ -13619,6 +13621,67 @@ export async function getOrderById(id: number): Promise<Order | null> {
   return order ?? null;
 }
 
+export async function getSupportAssignmentOptions() {
+  const staff = await getStaffMembers();
+  return staff
+    .filter((member) => member.roles.includes('support'))
+    .map((member) => ({ id: member.id, name: member.name, email: member.email }));
+}
+
+export async function assignSupportConversation(input: {
+  conversationId: number;
+  assignedTo: number | null;
+  actorType: 'admin' | 'support';
+  actorId: number;
+  reason?: string | null;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error('Database not available');
+  const [conversation] = await db.select().from(supportConversations)
+    .where(eq(supportConversations.id, input.conversationId))
+    .limit(1);
+  if (!conversation) return null;
+  if (conversation.assignedTo === input.assignedTo) return conversation;
+
+  const now = new Date().toISOString();
+  await db.batch([
+    db.update(supportConversations).set({
+      assignedTo: input.assignedTo,
+      updatedAt: now,
+    }).where(eq(supportConversations.id, input.conversationId)),
+    db.insert(supportAssignmentHistory).values({
+      conversationId: input.conversationId,
+      previousAssignedTo: conversation.assignedTo,
+      newAssignedTo: input.assignedTo,
+      actorType: input.actorType,
+      actorId: input.actorId,
+      reason: input.reason?.trim() || null,
+      createdAt: now,
+    }),
+  ]);
+  return { ...conversation, assignedTo: input.assignedTo, updatedAt: now };
+}
+
+export async function updatePendingOrderActivationRecipient(input: {
+  orderId: number;
+  isGift: boolean;
+  giftEmail: string | null;
+}): Promise<Order | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const [updated] = await db.update(orders).set({
+    isGift: input.isGift,
+    giftEmail: input.isGift ? input.giftEmail : null,
+    giftMessage: input.isGift ? undefined : null,
+    updatedAt: new Date().toISOString(),
+  }).where(and(
+    eq(orders.id, input.orderId),
+    inArray(orders.status, ['pending', 'awaiting_confirmation', 'paid']),
+    sql`NOT EXISTS (SELECT 1 FROM registrationKeys WHERE registrationKeys.orderId = ${input.orderId})`,
+  )).returning();
+  return updated ?? null;
+}
+
 export async function getUserOrders(userId: number): Promise<Order[]> {
   const db = await getDb();
   if (!db) return [];
@@ -20216,6 +20279,10 @@ export async function hasEmailBeenSent(userId: number, emailType: string): Promi
 
 export type EmailDeliveryStatus =
   | 'sent'
+  | 'delivered'
+  | 'bounced_soft'
+  | 'bounced_hard'
+  | 'complained'
   | 'failed'
   | 'skipped_unsubscribed'
   | 'skipped_suppressed'
@@ -20397,6 +20464,7 @@ export async function logEmailDeliveryAttempt(input: {
   subject: string;
   status: EmailDeliveryStatus;
   provider?: string | null;
+  providerRequestId?: string | null;
   errorMessage?: string | null;
   metadata?: Record<string, unknown> | null;
 }): Promise<void> {
@@ -20412,6 +20480,7 @@ export async function logEmailDeliveryAttempt(input: {
       subject: input.subject,
       status: input.status,
       provider: input.provider ?? null,
+      providerRequestId: input.providerRequestId ?? null,
       errorMessage: input.errorMessage ?? null,
       metadata: input.metadata ? JSON.stringify(input.metadata) : null,
       createdAt: getEmailAuditTimestamp(),
@@ -20564,6 +20633,7 @@ export async function logEmailDeliveryAttempts(inputs: Array<{
   subject: string;
   status: EmailDeliveryStatus;
   provider?: string | null;
+  providerRequestId?: string | null;
   errorMessage?: string | null;
   metadata?: Record<string, unknown> | null;
 }>): Promise<void> {
@@ -20582,6 +20652,7 @@ export async function logEmailDeliveryAttempts(inputs: Array<{
         subject: input.subject,
         status: input.status,
         provider: input.provider ?? null,
+        providerRequestId: input.providerRequestId ?? null,
         errorMessage: input.errorMessage ?? null,
         metadata: input.metadata ? JSON.stringify(input.metadata) : null,
         createdAt,
@@ -20594,6 +20665,94 @@ export async function logEmailDeliveryAttempts(inputs: Array<{
       error: error instanceof Error ? error.message : String(error),
     });
   }
+}
+
+export async function recordZeptoMailWebhookEvent(input: {
+  providerEventId: string;
+  providerRequestId: string;
+  eventName: string;
+  deliveryStatus: 'delivered' | 'bounced_soft' | 'bounced_hard' | 'complained' | null;
+  recipientEmail: string | null;
+  subject: string | null;
+  diagnostic: string | null;
+  eventAt: string | null;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error('Database not available');
+  const receivedAt = new Date().toISOString();
+  const [inserted] = await db.insert(emailProviderWebhookEvents).values({
+    provider: 'zeptomail',
+    providerEventId: input.providerEventId,
+    providerRequestId: input.providerRequestId,
+    eventName: input.eventName,
+    recipientEmail: input.recipientEmail,
+    diagnostic: input.diagnostic,
+    eventAt: input.eventAt,
+    matchedLogCount: 0,
+    receivedAt,
+  }).onConflictDoNothing({
+    target: [emailProviderWebhookEvents.provider, emailProviderWebhookEvents.providerEventId],
+  }).returning({ id: emailProviderWebhookEvents.id });
+  if (!inserted) return { duplicate: true, matchedLogCount: 0 };
+
+  const conditions = [
+    eq(emailDeliveryLogs.provider, 'zeptomail'),
+    eq(emailDeliveryLogs.providerRequestId, input.providerRequestId),
+  ];
+  if (input.recipientEmail) {
+    conditions.push(eq(emailDeliveryLogs.recipientEmail, normalizeEmailAddress(input.recipientEmail)));
+  }
+  const matchedLogs = await db.select({ id: emailDeliveryLogs.id })
+    .from(emailDeliveryLogs)
+    .where(and(...conditions));
+  const matchedLogIds = matchedLogs.map((row) => row.id);
+
+  if (matchedLogIds.length) {
+    const nextStatus = input.deliveryStatus;
+    const resolvedStatus = nextStatus
+      ? sql`CASE
+          WHEN ${emailDeliveryLogs.status} IN ('bounced_hard', 'complained') THEN ${emailDeliveryLogs.status}
+          ELSE ${nextStatus}
+        END`
+      : emailDeliveryLogs.status;
+    const isFinal = nextStatus === 'delivered' || nextStatus === 'bounced_hard' || nextStatus === 'complained';
+    const errorMessage = nextStatus === 'bounced_soft' || nextStatus === 'bounced_hard' || nextStatus === 'complained'
+      ? input.diagnostic || `ZeptoMail ${input.eventName}`
+      : nextStatus === 'delivered'
+        ? null
+        : undefined;
+    await db.update(emailDeliveryLogs).set({
+      status: resolvedStatus,
+      providerEventName: input.eventName,
+      providerEventAt: input.eventAt ?? receivedAt,
+      finalStatusAt: isFinal ? input.eventAt ?? receivedAt : undefined,
+      errorMessage,
+    }).where(inArray(emailDeliveryLogs.id, matchedLogIds));
+  }
+
+  await db.update(emailProviderWebhookEvents).set({
+    matchedLogCount: matchedLogIds.length,
+  }).where(eq(emailProviderWebhookEvents.id, inserted.id));
+
+  if (
+    input.recipientEmail
+    && (input.deliveryStatus === 'bounced_hard' || input.deliveryStatus === 'complained')
+    && isLikelyValidEmail(input.recipientEmail)
+  ) {
+    await recordPermanentEmailSuppression({
+      email: input.recipientEmail,
+      reason: input.diagnostic || `ZeptoMail ${input.eventName}`,
+      source: 'zeptomail_webhook',
+      provider: 'zeptomail',
+      metadata: {
+        providerEventId: input.providerEventId,
+        providerRequestId: input.providerRequestId,
+        eventName: input.eventName,
+      },
+    });
+  }
+
+  return { duplicate: false, matchedLogCount: matchedLogIds.length };
 }
 
 export async function getEmailDeliveryLogs(filters?: EmailDeliveryLogFilters & {
@@ -20609,6 +20768,10 @@ export async function getEmailDeliveryLogs(filters?: EmailDeliveryLogFilters & {
   subject: string;
   status: string;
   provider: string | null;
+  providerRequestId: string | null;
+  providerEventName: string | null;
+  providerEventAt: string | null;
+  finalStatusAt: string | null;
   errorMessage: string | null;
   metadata: string | null;
   createdAt: string;
@@ -20631,6 +20794,10 @@ export async function getEmailDeliveryLogs(filters?: EmailDeliveryLogFilters & {
     subject: emailDeliveryLogs.subject,
     status: emailDeliveryLogs.status,
     provider: emailDeliveryLogs.provider,
+    providerRequestId: emailDeliveryLogs.providerRequestId,
+    providerEventName: emailDeliveryLogs.providerEventName,
+    providerEventAt: emailDeliveryLogs.providerEventAt,
+    finalStatusAt: emailDeliveryLogs.finalStatusAt,
     errorMessage: emailDeliveryLogs.errorMessage,
     metadata: emailDeliveryLogs.metadata,
     createdAt: emailDeliveryLogs.createdAt,
@@ -20651,6 +20818,9 @@ export async function getEmailDeliveryLogs(filters?: EmailDeliveryLogFilters & {
 export async function getEmailDeliveryLogSummary(filters?: EmailDeliveryLogFilters): Promise<{
   total: number;
   sent: number;
+  delivered: number;
+  bounced: number;
+  complained: number;
   failed: number;
   skipped: number;
   oldestCreatedAt: string | null;
@@ -20660,7 +20830,7 @@ export async function getEmailDeliveryLogSummary(filters?: EmailDeliveryLogFilte
 }> {
   const db = await getDb();
   if (!db) {
-    return { total: 0, sent: 0, failed: 0, skipped: 0, oldestCreatedAt: null, newestCreatedAt: null, legacyTimestampCount: 0, topEventTypes: [] };
+    return { total: 0, sent: 0, delivered: 0, bounced: 0, complained: 0, failed: 0, skipped: 0, oldestCreatedAt: null, newestCreatedAt: null, legacyTimestampCount: 0, topEventTypes: [] };
   }
 
   const conditions = buildEmailDeliveryLogConditions(filters);
@@ -20670,6 +20840,9 @@ export async function getEmailDeliveryLogSummary(filters?: EmailDeliveryLogFilte
   const summaryBase = db.select({
     total: sql<number>`count(*)`,
     sent: sql<number>`sum(case when ${emailDeliveryLogs.status} = 'sent' then 1 else 0 end)`,
+    delivered: sql<number>`sum(case when ${emailDeliveryLogs.status} = 'delivered' then 1 else 0 end)`,
+    bounced: sql<number>`sum(case when ${emailDeliveryLogs.status} in ('bounced_soft', 'bounced_hard') then 1 else 0 end)`,
+    complained: sql<number>`sum(case when ${emailDeliveryLogs.status} = 'complained' then 1 else 0 end)`,
     failed: sql<number>`sum(case when ${emailDeliveryLogs.status} = 'failed' then 1 else 0 end)`,
     skipped: sql<number>`sum(case when ${emailDeliveryLogs.status} like 'skipped_%' then 1 else 0 end)`,
     oldestCreatedAt: sql<string | null>`min(${validCreatedAt})`,
@@ -20695,6 +20868,9 @@ export async function getEmailDeliveryLogSummary(filters?: EmailDeliveryLogFilte
   return {
     total: Number(summary?.total ?? 0),
     sent: Number(summary?.sent ?? 0),
+    delivered: Number(summary?.delivered ?? 0),
+    bounced: Number(summary?.bounced ?? 0),
+    complained: Number(summary?.complained ?? 0),
     failed: Number(summary?.failed ?? 0),
     skipped: Number(summary?.skipped ?? 0),
     oldestCreatedAt: summary?.oldestCreatedAt ?? null,

@@ -9,6 +9,8 @@ vi.mock("../backend/db", async () => {
     getOrCreateSupportConversation: vi.fn(),
     getSupportMessages: vi.fn(),
     getSupportConversation: vi.fn(),
+    getSupportAssignmentOptions: vi.fn(),
+    assignSupportConversation: vi.fn(),
     getUserById: vi.fn(),
     hasAnyRole: vi.fn().mockResolvedValue(true),
     setNeedsHuman: vi.fn().mockResolvedValue(undefined),
@@ -105,6 +107,7 @@ describe("support chat staff notifications", () => {
   const getOrCreateSupportConversation = vi.mocked(db.getOrCreateSupportConversation);
   const getSupportMessages = vi.mocked(db.getSupportMessages);
   const getSupportConversation = vi.mocked(db.getSupportConversation);
+  const assignSupportConversation = vi.mocked(db.assignSupportConversation);
   const getUserById = vi.mocked(db.getUserById);
   const setNeedsHuman = vi.mocked(db.setNeedsHuman);
   const createSupportMessage = vi.mocked(db.createSupportMessage);
@@ -127,6 +130,10 @@ describe("support chat staff notifications", () => {
     setNeedsHuman.mockResolvedValue(undefined as any);
     createSupportMessage.mockResolvedValue(55 as any);
     getSupportConversation.mockResolvedValue(null);
+    assignSupportConversation.mockImplementation(async (input) => ({
+      id: input.conversationId,
+      assignedTo: input.assignedTo,
+    } as any));
     getUserById.mockResolvedValue(null);
     createNotification.mockResolvedValue(undefined as any);
     enqueueSupportReplyDigestEmail.mockResolvedValue(true);
@@ -171,6 +178,41 @@ describe("support chat staff notifications", () => {
       buildEmail: expect.any(Function),
     }));
     expect(setNeedsHuman).toHaveBeenCalledWith(10, true);
+    expect(assignSupportConversation).toHaveBeenCalledWith(expect.objectContaining({
+      conversationId: 10,
+      assignedTo: 456,
+      actorType: "support",
+    }));
+  });
+
+  it("lets support staff assign an unassigned conversation to themselves", async () => {
+    getSupportConversation.mockResolvedValue({ id: 10, assignedTo: null } as any);
+    getUserById.mockResolvedValue({ id: 456, isStaff: true } as any);
+
+    await createSupportStaffCaller().supportChat.assign({
+      conversationId: 10,
+      assignedTo: 456,
+      reason: "Taking ownership",
+    });
+
+    expect(assignSupportConversation).toHaveBeenCalledWith({
+      conversationId: 10,
+      assignedTo: 456,
+      actorType: "support",
+      actorId: 456,
+      reason: "Taking ownership",
+    });
+  });
+
+  it("prevents support staff from assigning a conversation to another user", async () => {
+    getSupportConversation.mockResolvedValue({ id: 10, assignedTo: null } as any);
+
+    await expect(createSupportStaffCaller().supportChat.assign({
+      conversationId: 10,
+      assignedTo: 789,
+    })).rejects.toMatchObject({ code: "FORBIDDEN" });
+
+    expect(assignSupportConversation).not.toHaveBeenCalled();
   });
 
   it("pauses AI when support starts a conversation for a client", async () => {
@@ -421,6 +463,61 @@ describe("support chat staff notifications", () => {
       "human_escalation",
       expect.objectContaining({ metadata: { userId: 123, conversationId: 10 } }),
     );
+  });
+
+  it("deterministically escalates a repeated notification failure without asking AI again", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    createSupportMessage
+      .mockResolvedValueOnce({ id: 90, conversationId: 10, content: "الرسائل مش موجودة بالسبام كمان" } as any)
+      .mockResolvedValueOnce({ id: 91, conversationId: 10, senderType: "bot" } as any);
+    getSupportMessages.mockResolvedValue([
+      { senderType: "client", content: "الرسائل مش موجودة بالسبام كمان" },
+      { senderType: "bot", content: "يرجى التحقق من مجلد السبام في البريد ومن إعدادات الإشعارات" },
+      { senderType: "client", content: "لا تصلني إشعارات البريد" },
+    ] as any);
+
+    await createAuthedCaller().supportChat.send({ content: "الرسائل مش موجودة بالسبام كمان" });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(createSupportMessage).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      conversationId: 10,
+      senderType: "bot",
+      content: expect.stringContaining("حوّلت المحادثة الآن لفريق الدعم"),
+    }));
+    expect(recordSupportAiDecision).toHaveBeenCalledWith(expect.objectContaining({
+      conversationId: 10,
+      decisionSource: "local_rule",
+      intent: "notifications",
+      needsHuman: true,
+      escalationReason: "repeated_failed_step",
+      validationIssue: "deterministic_repeated_notification_failure",
+    }));
+    expect(setNeedsHuman).toHaveBeenCalledWith(10, true);
+    expect(notifyStaffByEvent).toHaveBeenCalledWith("human_escalation", expect.objectContaining({
+      actionUrl: "/admin/support?conversationId=10",
+    }));
+  });
+
+  it("keeps a first notification complaint in the normal AI flow", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
+    const fetchMock = vi.fn().mockResolvedValue(supportAiResponse({ intent: "notifications" }));
+    vi.stubGlobal("fetch", fetchMock);
+    createSupportMessage
+      .mockResolvedValueOnce({ id: 92, conversationId: 10, content: "I am not receiving email notifications" } as any)
+      .mockResolvedValueOnce({ id: 93, conversationId: 10, content: "Hello from AI" } as any);
+    getSupportMessages.mockResolvedValue([
+      { senderType: "client", content: "I am not receiving email notifications" },
+    ] as any);
+
+    await createAuthedCaller().supportChat.send({ content: "I am not receiving email notifications" });
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(recordSupportAiDecision).toHaveBeenCalledWith(expect.objectContaining({
+      decisionSource: "openai",
+      intent: "notifications",
+      needsHuman: false,
+    }));
   });
 
   it("normalizes needsHuman=true with reason=none before escalating", async () => {
