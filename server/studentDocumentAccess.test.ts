@@ -7,6 +7,7 @@ vi.mock("../backend/db", async () => {
     ...actual,
     getUserCourseDocumentAccess: vi.fn(),
     listPublishedStudentDocuments: vi.fn(),
+    trackEngagement: vi.fn(),
   };
 });
 
@@ -37,9 +38,11 @@ function createCaller() {
 describe("lifetime student-document access", () => {
   const getAccess = vi.mocked(db.getUserCourseDocumentAccess);
   const listDocuments = vi.mocked(db.listPublishedStudentDocuments);
+  const trackEngagement = vi.mocked(db.trackEngagement);
 
   beforeEach(() => {
     vi.clearAllMocks();
+    trackEngagement.mockResolvedValue(undefined);
   });
 
   it("denies the library when permanent paid-course ownership is absent", async () => {
@@ -72,10 +75,17 @@ describe("lifetime student-document access", () => {
       documents: [{ id: 2, viewPath: "/api/student-documents/2/view" }],
       bulkDownloadPath: "/api/student-documents/11/download",
     });
+    expect(trackEngagement).toHaveBeenCalledWith(expect.objectContaining({
+      userId: 42,
+      eventType: "student_document_library_opened",
+      entityType: "student_document_library",
+    }));
   });
 
   it("uses the same lifetime-course check for direct view and download requests", () => {
     expect(workerSource).toContain("db.getUserCourseDocumentAccess(authContext.user.id)");
     expect(workerSource).toContain("Paid course access is required to access student documents");
+    expect(workerSource).toContain('eventType: action === "view" ? "student_document_viewed" : "student_document_downloaded"');
+    expect(workerSource).toContain("ctx.waitUntil(db.trackEngagement");
   });
 });

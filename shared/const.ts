@@ -17,6 +17,9 @@ export const COOKIE_MAX_AGE_ADMIN = 2 * 60 * 60;     // 2 h
 export const IDLE_TIMEOUT_USER_MS  = 30 * 60 * 1000;  // 30 min
 export const IDLE_TIMEOUT_STAFF_MS = 15 * 60 * 1000;  // 15 min
 export const IDLE_TIMEOUT_ADMIN_MS = 15 * 60 * 1000;  // 15 min
+export const SESSION_IDLE_WARNING_MS = 2 * 60 * 1000; // warn with 2 min remaining
+export const SESSION_HEARTBEAT_INTERVAL_MS = 60 * 1000;
+export const SESSION_HEARTBEAT_RETRY_MS = 10 * 1000;
 
 // ── Staff Role → Admin Page Access Mapping ───────────────────────────
 // Maps each role to the admin pages it grants access to.

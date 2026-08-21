@@ -113,6 +113,7 @@ export function useIdleTimeout({
         // Storage may be unavailable in private/restricted browser modes.
       }
     }
+    onActivityRef.current?.();
 
     const handleActivity = (event?: Event) => {
       if (event && "isTrusted" in event && !event.isTrusted) return;
@@ -150,6 +151,8 @@ export function useIdleTimeout({
       if (document.visibilityState !== "visible") return;
       const latestSharedActivityAt = readSharedActivityAt();
       resetTimer(latestSharedActivityAt ?? Date.now());
+      // Keep the server-side staff session aligned with the browser timer.
+      onActivityRef.current?.();
     };
     document.addEventListener("visibilitychange", handleVisibility);
 

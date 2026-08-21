@@ -1067,7 +1067,8 @@ export default function AdminSupport() {
                           )}
                         <div
                           className={`group flex ${isClient ? "justify-start" : isBot ? "justify-start" : "justify-end"}`}
-                          onTouchStart={() => {
+                          onTouchStart={(event) => {
+                            if ((event.target as HTMLElement).closest('[data-support-message-text]')) return;
                             if (!canEdit && !canDelete && !canCopy && !canReply) return;
                             longPressTimer.current = setTimeout(() => setActiveMenuMsgId(msg.id), 500);
                           }}
@@ -1188,7 +1189,10 @@ export default function AdminSupport() {
                                 </div>
                               </div>
                             ) : (
-                              <p className="text-sm whitespace-pre-wrap break-words">
+                              <p
+                                data-support-message-text
+                                className="cursor-text select-text text-sm whitespace-pre-wrap break-words"
+                              >
                                 {msg.content}
                               </p>
                             )}

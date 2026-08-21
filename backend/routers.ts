@@ -3045,15 +3045,29 @@ export const appRouter = router({
     interaction: protectedProcedure.mutation(async ({ ctx }) => {
       if (!ctx.user.isStaff) {
         await db.touchUserInteraction(ctx.user.id);
-        return { active: true };
+        return { active: true as const };
       }
       if (!ctx.sessionId) {
+        logger.warn("[STAFF SESSION] Heartbeat rejected", {
+          staffUserId: ctx.user.id,
+          reason: "missing_session_key",
+        });
         throw new TRPCError({ code: "UNAUTHORIZED", message: "Staff session is missing." });
       }
       const result = await db.touchStaffSessionInteraction(ctx.user.id, ctx.sessionId);
       if (!result.active) {
+        logger.warn("[STAFF SESSION] Heartbeat rejected", {
+          staffUserId: ctx.user.id,
+          reason: "inactive_session",
+        });
         throw new TRPCError({ code: "UNAUTHORIZED", message: "Staff session expired." });
       }
+      logger.info("[STAFF SESSION] Heartbeat accepted", {
+        staffUserId: ctx.user.id,
+        lastInteractionAt: result.lastInteractionAt.toISOString(),
+        idleExpiresAt: result.idleExpiresAt.toISOString(),
+        idleTimeoutMinutes: result.idleTimeoutMs / 60_000,
+      });
       return result;
     }),
   }),
@@ -4032,29 +4046,15 @@ export const appRouter = router({
 
     paymentProof: protectedProcedure
       .input(z.object({
-        fileName: z.string(),
-        fileData: z.string(), // base64 encoded
-        contentType: z.string(),
+        fileName: z.string().max(255),
+        fileData: z.string().max(14_000_000),
+        contentType: z.string().max(100),
       }))
-      .mutation(async ({ input }) => {
-        logger.info('[Upload] Uploading payment proof', { fileName: input.fileName });
-
-        const env = getWorkerEnv();
-        if (!env?.VIDEOS_BUCKET) {
-          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'R2 bucket not configured' });
-        }
-
-        try {
-          const randomSuffix = Math.random().toString(36).substring(7);
-          const fileKey = `payment-proofs/${Date.now()}-${randomSuffix}-${input.fileName}`;
-          const buffer = Buffer.from(input.fileData, 'base64');
-          const result = await storagePutR2(env.VIDEOS_BUCKET, fileKey, buffer, input.contentType);
-          logger.info('[Upload] Payment proof uploaded successfully', { url: result.url });
-          return { url: result.url, key: result.key };
-        } catch (error) {
-          logger.error('[Upload] Payment proof upload failed', { error });
-          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to upload payment proof' });
-        }
+      .mutation(async () => {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Legacy payment-proof uploads are disabled. Upload through the authenticated order page.',
+        });
       }),
   }),
 
@@ -5007,7 +5007,7 @@ export const appRouter = router({
       .input(z.object({
         messageId: z.number(),
         outcome: z.enum(['win', 'loss']),
-        pips: z.number().positive().max(100000),
+        pips: z.number().positive().finite(),
       }))
       .mutation(async ({ ctx, input }) => {
         await ensureRecommendationPublishAccess(ctx);
@@ -6743,17 +6743,10 @@ export const appRouter = router({
         paymentProofUrl: z.string().url(),
         paymentReference: z.string().optional(),
       }))
-      .mutation(async ({ input, ctx }) => {
-        if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
-        const order = await db.getOrderById(input.orderId);
-        if (!order) throw new TRPCError({ code: 'NOT_FOUND' });
-        if (order.userId !== ctx.user.id) throw new TRPCError({ code: 'FORBIDDEN' });
-        if (!isTrustedPaymentProofUrl(input.paymentProofUrl)) {
-          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Payment evidence must be uploaded through the order page.' });
-        }
-        return db.updateOrderStatus(input.orderId, 'awaiting_confirmation', {
-          paymentProofUrl: input.paymentProofUrl,
-          paymentReference: input.paymentReference,
+      .mutation(async () => {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Legacy payment-proof linking is disabled. Upload through the authenticated order page.',
         });
       }),
 
@@ -7132,6 +7125,21 @@ export const appRouter = router({
             : null,
           downloadPath: `/api/student-documents/${document.id}/download`,
         }));
+
+      await db.trackEngagement({
+        userId: ctx.user.id,
+        eventType: 'student_document_library_opened',
+        entityType: 'student_document_library',
+        metadata: JSON.stringify({
+          documentCount: documents.length,
+          hasBulkDownload: !!bulkArchive,
+        }),
+      }).catch((error) => {
+        logger.warn('[DOCUMENTS] Failed to track library access', {
+          userId: ctx.user?.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
 
       return {
         hasAccess: true,

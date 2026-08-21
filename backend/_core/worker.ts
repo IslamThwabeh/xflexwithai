@@ -30,6 +30,12 @@ import {
   RECOMMENDATION_DELIVERY_BATCH_SIZE,
 } from "../services/recommendation-delivery.service";
 import { handleZeptoMailWebhookRequest } from "./zeptoMailWebhook";
+import { storageDeleteR2, storagePutR2 } from "../storage-r2";
+import {
+  PAYMENT_PROOF_MAX_BYTES,
+  PaymentProofUploadError,
+  processPaymentProofUpload,
+} from "../services/payment-proof-upload.service";
 
 function appendCookieHeaders(headers: Headers, cookieHeaders: string[] | undefined) {
   if (!cookieHeaders?.length) return;
@@ -237,6 +243,140 @@ export default {
       }
 
       await db.getDb({ DB: env.DB });
+
+      if (pathname === "/api/uploads/payment-proof") {
+        const headers = new Headers();
+        corsHeaders.forEach((value, key) => {
+          headers.set(key, value);
+        });
+
+        if (request.method === "OPTIONS") {
+          headers.set(
+            "Access-Control-Allow-Headers",
+            request.headers.get("access-control-request-headers") || "content-type"
+          );
+          headers.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+          return new Response(null, { status: 204, headers });
+        }
+        if (request.method !== "POST") {
+          return jsonResponse(405, {
+            status: "method_not_allowed",
+            code: "method_not_allowed",
+            message: "Use POST to upload a payment proof.",
+          }, headers);
+        }
+
+        const authContext = await createWorkerContext({ req: request, env, executionCtx: ctx });
+        const cookieHeaders = (authContext as { cookieHeaders?: string[] }).cookieHeaders;
+        appendCookieHeaders(headers, cookieHeaders);
+        if (!authContext.user || authContext.user.id <= 0) {
+          return jsonResponse(401, {
+            status: "unauthorized",
+            code: "unauthorized",
+            message: "Please login before uploading a payment proof.",
+          }, headers);
+        }
+
+        const orderId = Number(url.searchParams.get("orderId"));
+        if (!Number.isInteger(orderId) || orderId <= 0) {
+          return jsonResponse(400, {
+            status: "invalid_request",
+            code: "invalid_order_id",
+            message: "A valid order is required.",
+          }, headers);
+        }
+
+        const declaredLength = Number(request.headers.get("content-length"));
+        if (Number.isFinite(declaredLength) && declaredLength > PAYMENT_PROOF_MAX_BYTES) {
+          return jsonResponse(413, {
+            status: "invalid_request",
+            code: "file_too_large",
+            message: "Payment proof must be 10 MB or smaller.",
+          }, headers);
+        }
+
+        try {
+          const bytes = new Uint8Array(await request.arrayBuffer());
+          const result = await processPaymentProofUpload({
+            userId: authContext.user.id,
+            orderId,
+            bytes,
+            declaredContentType: request.headers.get("content-type"),
+            paymentReference: url.searchParams.get("reference"),
+          }, {
+            getOrder: db.getOrderById,
+            putObject: (key, body, contentType) => storagePutR2(
+              env.VIDEOS_BUCKET,
+              key,
+              body,
+              contentType,
+            ),
+            submitOrderProof: db.submitOrderPaymentProof,
+            deleteObject: async (key) => {
+              await storageDeleteR2(env.VIDEOS_BUCKET, key);
+              const remaining = await env.VIDEOS_BUCKET.head(key);
+              if (remaining) {
+                throw new Error(`R2 object still exists after delete: ${key}`);
+              }
+            },
+            recordEvent: ({ eventType, orderId: eventOrderId, metadata }) => db.trackEngagement({
+              userId: authContext.user!.id,
+              eventType,
+              entityType: "order",
+              entityId: eventOrderId,
+              metadata: JSON.stringify(metadata),
+            }),
+            recordStatusTransition: (transition) => db.logOrderStatusHistory({
+              orderId: transition.orderId,
+              userId: transition.userId,
+              previousStatus: transition.previousStatus,
+              newStatus: transition.newStatus,
+              actorType: "user",
+              actorId: transition.userId,
+              reason: "Payment proof uploaded by order owner",
+              ipAddress: request.headers.get("cf-connecting-ip"),
+              createdAt: new Date().toISOString(),
+            }),
+          });
+
+          logger.info("[PAYMENT PROOF] Upload completed", {
+            userId: authContext.user.id,
+            orderId,
+            objectKey: result.key,
+            sizeBytes: result.sizeBytes,
+            contentType: result.contentType,
+          });
+          return jsonResponse(200, {
+            status: "success",
+            order: result.order,
+            proof: {
+              key: result.key,
+              url: result.url,
+              sizeBytes: result.sizeBytes,
+              contentType: result.contentType,
+            },
+          }, headers);
+        } catch (error) {
+          const uploadError = error instanceof PaymentProofUploadError
+            ? error
+            : new PaymentProofUploadError(
+                500,
+                "upload_failed",
+                "Payment proof upload failed. Please retry.",
+              );
+          logger.error("[PAYMENT PROOF] Upload rejected", {
+            userId: authContext.user.id,
+            orderId,
+            code: uploadError.code,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          return jsonResponse(uploadError.status, {
+            status: "error",
+            code: uploadError.code,
+            message: uploadError.message,
+          }, headers);
+        }
+      }
 
       if (pathname === "/api/webhooks/zeptomail") {
         return handleZeptoMailWebhookRequest(request, env.ZEPTOMAIL_WEBHOOK_SECRET ?? "");
@@ -534,6 +674,25 @@ export default {
         if (request.method === "HEAD") {
           return new Response(null, { status: 200, headers });
         }
+
+        ctx.waitUntil(db.trackEngagement({
+          userId: authContext.user.id,
+          eventType: action === "view" ? "student_document_viewed" : "student_document_downloaded",
+          entityType: "student_document",
+          entityId: document.id,
+          metadata: JSON.stringify({
+            isBulkArchive: !!document.isBulkArchive,
+            mimeType: document.mimeType,
+            fileSizeBytes: document.fileSizeBytes ?? object.size ?? null,
+          }),
+        }).catch((error) => {
+          logger.warn("[DOCUMENTS] Failed to track document access", {
+            userId: authContext.user?.id,
+            documentId: document.id,
+            action,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }));
 
         return new Response(object.body, { status: 200, headers });
       }

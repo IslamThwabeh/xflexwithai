@@ -1,16 +1,16 @@
 import { Link, useParams } from 'wouter';
-import { ArrowLeft, ShoppingBag, Upload, CheckCircle, Clock, XCircle } from 'lucide-react';
+import { ArrowLeft, ShoppingBag, Upload, CheckCircle, Clock, FileText, Loader2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { FileUpload } from '@/components/FileUpload';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { formatAdminCurrencyFromIls } from '@/lib/adminCurrency';
 import { formatPaymentMethodLabel } from '@/lib/paymentMethodLabel';
+import { apiFetch } from '@/lib/apiBase';
 import { trpc } from '@/lib/trpc';
 import ClientLayout from '@/components/ClientLayout';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 const statusColors: Record<string, string> = {
@@ -29,16 +29,23 @@ export default function OrderDetail() {
   const orderId = Number(params.id);
   const utils = trpc.useUtils();
   const { data: order, isLoading } = trpc.orders.byId.useQuery({ id: orderId });
-  const uploadMutation = trpc.orders.uploadProof.useMutation({
-    onSuccess: () => {
-      toast.success(isRtl ? 'تم رفع الإيصال بنجاح' : 'Proof uploaded successfully');
-      utils.orders.byId.invalidate({ id: orderId });
-    },
-    onError: (e) => toast.error(e.message),
-  });
-  const [uploadedUrl, setUploadedUrl] = useState('');
   const [reference, setReference] = useState('');
-  const uploadPaymentProof = trpc.upload.paymentProof.useMutation();
+  const [proofFile, setProofFile] = useState<File | null>(null);
+  const [proofPreviewUrl, setProofPreviewUrl] = useState('');
+  const [proofUploadError, setProofUploadError] = useState('');
+  const [isUploadingProof, setIsUploadingProof] = useState(false);
+  const proofInputRef = useRef<HTMLInputElement>(null);
+  const uploadTelemetry = trpc.engagement.track.useMutation();
+
+  useEffect(() => {
+    if (!proofFile || proofFile.type === 'application/pdf') {
+      setProofPreviewUrl('');
+      return;
+    }
+    const previewUrl = URL.createObjectURL(proofFile);
+    setProofPreviewUrl(previewUrl);
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [proofFile]);
 
   const statusLabel = (status: string) => {
     const labels: Record<string, { en: string; ar: string }> = {
@@ -74,13 +81,131 @@ export default function OrderDetail() {
     );
   }
 
-  const handleUploadProof = () => {
-    if (!uploadedUrl) return;
-    uploadMutation.mutate({
-      orderId: order.id,
-      paymentProofUrl: uploadedUrl,
-      paymentReference: reference.trim() || undefined,
-    });
+  const getPaymentProofError = (code?: string) => {
+    const messages: Record<string, { en: string; ar: string }> = {
+      file_too_large: {
+        en: 'The receipt must be 10 MB or smaller.',
+        ar: 'يجب ألا يتجاوز حجم الإيصال 10 ميجابايت.',
+      },
+      unsupported_file_type: {
+        en: 'Use a JPEG, PNG, WebP, HEIC, or PDF receipt.',
+        ar: 'استخدم إيصالاً بصيغة JPEG أو PNG أو WebP أو HEIC أو PDF.',
+      },
+      invalid_order_status: {
+        en: 'This order no longer accepts payment-proof uploads.',
+        ar: 'هذا الطلب لم يعد يقبل رفع إثبات الدفع.',
+      },
+      storage_failed: {
+        en: 'Storage was temporarily unavailable. Please retry the same file.',
+        ar: 'تعذر الوصول إلى التخزين مؤقتاً. يرجى إعادة محاولة رفع الملف نفسه.',
+      },
+      order_update_failed: {
+        en: 'The receipt was not linked to the order. Please retry.',
+        ar: 'لم يتم ربط الإيصال بالطلب. يرجى المحاولة مرة أخرى.',
+      },
+      unauthorized: {
+        en: 'Your session expired. Please sign in and retry.',
+        ar: 'انتهت جلستك. يرجى تسجيل الدخول والمحاولة مرة أخرى.',
+      },
+    };
+    const selected = code ? messages[code] : undefined;
+    return selected
+      ? (isRtl ? selected.ar : selected.en)
+      : (isRtl ? 'تعذر رفع إثبات الدفع. يرجى المحاولة مرة أخرى.' : 'Payment-proof upload failed. Please retry.');
+  };
+
+  const clearProofFile = () => {
+    setProofFile(null);
+    setProofUploadError('');
+    if (proofInputRef.current) proofInputRef.current.value = '';
+  };
+
+  const recordClientUploadFailure = (input: {
+    errorCode: string;
+    fileSize?: number;
+    contentType?: string;
+    stage: 'client_validation' | 'request';
+  }) => {
+    void uploadTelemetry.mutateAsync({
+      eventType: 'payment_proof_upload_failed',
+      entityType: 'order',
+      entityId: orderId,
+      metadata: JSON.stringify({
+        ...input,
+        outcome: 'failed',
+        reportedBy: 'client',
+      }),
+    }).catch(() => undefined);
+  };
+
+  const handleProofFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = event.target.files?.[0] ?? null;
+    setProofUploadError('');
+    if (!selected) {
+      setProofFile(null);
+      return;
+    }
+    if (selected.size > 10 * 1024 * 1024) {
+      const message = getPaymentProofError('file_too_large');
+      setProofUploadError(message);
+      setProofFile(null);
+      event.target.value = '';
+      recordClientUploadFailure({
+        errorCode: 'file_too_large',
+        fileSize: selected.size,
+        contentType: selected.type || 'unknown',
+        stage: 'client_validation',
+      });
+      return;
+    }
+    setProofFile(selected);
+  };
+
+  const handleUploadProof = async () => {
+    if (!proofFile || isUploadingProof) return;
+    setIsUploadingProof(true);
+    setProofUploadError('');
+
+    try {
+      const params = new URLSearchParams({ orderId: String(order.id) });
+      if (reference.trim()) params.set('reference', reference.trim());
+      const response = await apiFetch(`/api/uploads/payment-proof?${params.toString()}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': proofFile.type || 'application/octet-stream',
+        },
+        body: proofFile,
+      });
+      const payload = await response.json().catch(() => ({})) as {
+        code?: string;
+        message?: string;
+      };
+      if (!response.ok) {
+        throw Object.assign(new Error(payload.message || 'Payment-proof upload failed'), {
+          code: payload.code,
+        });
+      }
+
+      toast.success(isRtl ? 'تم رفع الإيصال وإرساله للمراجعة' : 'Receipt uploaded and submitted for review');
+      clearProofFile();
+      setReference('');
+      await utils.orders.byId.invalidate({ id: orderId });
+    } catch (error) {
+      const code = typeof error === 'object' && error && 'code' in error
+        ? String((error as { code?: unknown }).code ?? '')
+        : '';
+      const message = getPaymentProofError(code);
+      setProofUploadError(message);
+      toast.error(message);
+      recordClientUploadFailure({
+        errorCode: code || 'request_failed',
+        fileSize: proofFile.size,
+        contentType: proofFile.type || 'unknown',
+        stage: 'request',
+      });
+    } finally {
+      setIsUploadingProof(false);
+    }
   };
 
   return (
@@ -141,39 +266,74 @@ export default function OrderDetail() {
         </div>
 
         {/* Upload proof for bank transfer orders */}
-        {order.paymentMethod === 'bank_transfer' && order.status === 'pending' && (
+        {order.paymentMethod === 'bank_transfer' && ['pending', 'awaiting_confirmation'].includes(order.status) && (
           <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-6">
             <h3 className="font-bold mb-2 flex items-center gap-2">
               <Upload className="w-5 h-5 text-emerald-600" />
-              {isRtl ? 'رفع إيصال الدفع' : 'Upload Payment Proof'}
+              {order.status === 'awaiting_confirmation'
+                ? (isRtl ? 'استبدال إيصال الدفع' : 'Replace Payment Proof')
+                : (isRtl ? 'رفع إيصال الدفع' : 'Upload Payment Proof')}
             </h3>
             <p className="text-sm text-gray-600 mb-4">
-              {isRtl ? 'يرجى رفع صورة إيصال التحويل البنكي لتأكيد طلبك' : 'Please upload a screenshot/image of your bank transfer receipt to confirm your order.'}
+              {order.status === 'awaiting_confirmation'
+                ? (isRtl ? 'يمكنك استبدال الإيصال الحالي إذا رفعت ملفاً غير صحيح.' : 'You can replace the current receipt if you uploaded the wrong file.')
+                : (isRtl ? 'يرجى رفع صورة إيصال التحويل البنكي لتأكيد طلبك' : 'Please upload a screenshot/image of your bank transfer receipt to confirm your order.')}
             </p>
             <div className="space-y-3">
-              <div>
-                <FileUpload
-                  accept="image/*"
-                  maxSize={10}
-                  preview="image"
-                  label={isRtl ? 'صورة إيصال التحويل البنكي' : 'Bank Transfer Receipt Image'}
-                  onUpload={async (file) => {
-                    const base64 = await new Promise<string>((resolve, reject) => {
-                      const reader = new FileReader();
-                      reader.onload = () => resolve((reader.result as string).split(',')[1]);
-                      reader.onerror = reject;
-                      reader.readAsDataURL(file);
-                    });
-                    const result = await uploadPaymentProof.mutateAsync({
-                      fileName: file.name,
-                      fileData: base64,
-                      contentType: file.type,
-                    });
-                    return result.url;
-                  }}
-                  onUrlChange={(url) => setUploadedUrl(url)}
-                  currentUrl={uploadedUrl}
+              <div className="space-y-2">
+                <Label htmlFor="payment-proof-file">
+                  {isRtl ? 'صورة أو ملف إيصال التحويل البنكي' : 'Bank Transfer Receipt'}
+                </Label>
+                <input
+                  ref={proofInputRef}
+                  id="payment-proof-file"
+                  data-testid="payment-proof-input"
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf"
+                  onChange={handleProofFileChange}
+                  disabled={isUploadingProof}
+                  className="block w-full rounded-lg border border-gray-300 bg-white text-sm file:me-3 file:border-0 file:bg-emerald-100 file:px-4 file:py-3 file:font-medium file:text-emerald-800 hover:file:bg-emerald-200 disabled:opacity-60"
                 />
+                <p className="text-xs text-gray-500">
+                  {isRtl
+                    ? 'JPEG أو PNG أو WebP أو HEIC أو PDF — حتى 10 ميجابايت.'
+                    : 'JPEG, PNG, WebP, HEIC, or PDF — up to 10 MB.'}
+                </p>
+                {proofFile && (
+                  <div className="rounded-xl border border-emerald-200 bg-white p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">{proofFile.name}</p>
+                        <p className="text-xs text-gray-500">{(proofFile.size / (1024 * 1024)).toFixed(2)} MB</p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={clearProofFile}
+                        disabled={isUploadingProof}
+                        aria-label={isRtl ? 'إزالة الملف' : 'Remove file'}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    {proofPreviewUrl ? (
+                      <img
+                        src={proofPreviewUrl}
+                        alt={isRtl ? 'معاينة إيصال الدفع' : 'Payment receipt preview'}
+                        className="mt-3 max-h-64 w-full rounded-lg bg-gray-50 object-contain"
+                      />
+                    ) : proofFile.type === 'application/pdf' ? (
+                      <div className="mt-3 flex items-center gap-2 rounded-lg bg-gray-50 p-3 text-sm text-gray-600">
+                        <FileText className="h-5 w-5" />
+                        PDF
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+                {proofUploadError && (
+                  <p className="text-sm text-red-600" role="alert">{proofUploadError}</p>
+                )}
               </div>
               <div>
                 <Label>{isRtl ? 'رقم المرجع (اختياري)' : 'Reference Number (optional)'}</Label>
@@ -184,8 +344,19 @@ export default function OrderDetail() {
                   className="mt-1"
                 />
               </div>
-              <Button onClick={handleUploadProof} disabled={!uploadedUrl || uploadMutation.isPending}>
-                {uploadMutation.isPending ? (isRtl ? 'جاري الإرسال...' : 'Submitting...') : (isRtl ? 'رفع الإيصال' : 'Submit Proof')}
+              <Button
+                data-testid="payment-proof-submit"
+                onClick={handleUploadProof}
+                disabled={!proofFile || isUploadingProof}
+              >
+                {isUploadingProof ? (
+                  <>
+                    <Loader2 className="me-2 h-4 w-4 animate-spin" />
+                    {isRtl ? 'جاري الرفع والإرسال...' : 'Uploading and submitting...'}
+                  </>
+                ) : (
+                  isRtl ? 'رفع الإيصال وإرساله للمراجعة' : 'Upload and submit proof'
+                )}
               </Button>
             </div>
           </div>

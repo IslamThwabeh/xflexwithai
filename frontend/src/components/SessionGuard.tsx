@@ -1,10 +1,16 @@
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { useIdleTimeout } from "@/hooks/useIdleTimeout";
-import { IDLE_TIMEOUT_USER_MS, IDLE_TIMEOUT_STAFF_MS, IDLE_TIMEOUT_ADMIN_MS } from "../../../shared/const";
+import {
+  IDLE_TIMEOUT_USER_MS,
+  IDLE_TIMEOUT_STAFF_MS,
+  IDLE_TIMEOUT_ADMIN_MS,
+  SESSION_HEARTBEAT_INTERVAL_MS,
+  SESSION_HEARTBEAT_RETRY_MS,
+  SESSION_IDLE_WARNING_MS,
+} from "../../../shared/const";
 import { toast } from "sonner";
-import { useRef } from "react";
 
 /**
  * Invisible component that sits near the top of the React tree.
@@ -24,7 +30,8 @@ export default function SessionGuard() {
   const isAdmin = Boolean(adminCheck?.isAdmin);
   const isStaff = Boolean(adminCheck?.isStaff);
   const interactionMutation = trpc.auth.interaction.useMutation();
-  const lastHeartbeatAtRef = useRef(0);
+  const lastHeartbeatAttemptAtRef = useRef(0);
+  const lastHeartbeatSucceededAtRef = useRef(0);
   const timeoutMs = isAdmin
     ? IDLE_TIMEOUT_ADMIN_MS
     : isStaff
@@ -44,27 +51,47 @@ export default function SessionGuard() {
 
   const handleActivity = useCallback(() => {
     const now = Date.now();
-    if (now - lastHeartbeatAtRef.current < 60_000 || interactionMutation.isPending) return;
-    lastHeartbeatAtRef.current = now;
+    if (interactionMutation.isPending) return;
+    if (now - lastHeartbeatAttemptAtRef.current < SESSION_HEARTBEAT_RETRY_MS) return;
+    if (now - lastHeartbeatSucceededAtRef.current < SESSION_HEARTBEAT_INTERVAL_MS) return;
+
+    lastHeartbeatAttemptAtRef.current = now;
     interactionMutation.mutate(undefined, {
-      onError: () => {
+      onSuccess: (result) => {
+        lastHeartbeatSucceededAtRef.current = Date.now();
+        if (isStaff && "idleExpiresAt" in result) {
+          console.info("[STAFF SESSION] Heartbeat accepted", {
+            lastInteractionAt: result.lastInteractionAt,
+            idleExpiresAt: result.idleExpiresAt,
+            idleTimeoutMinutes: IDLE_TIMEOUT_STAFF_MS / 60_000,
+          });
+        }
+      },
+      onError: (error) => {
+        console.warn("[SESSION] Interaction heartbeat failed", {
+          role: isAdmin ? "admin" : isStaff ? "staff" : "user",
+          code: error.data?.code,
+          message: error.message,
+        });
         // Global auth handling redirects if the server has already expired the session.
       },
     });
-  }, [interactionMutation]);
+  }, [interactionMutation, isAdmin, isStaff]);
 
   const handleWarning = useCallback(() => {
     toast.warning(
-      isAdmin
-        ? "Your admin session will expire in 2 minutes due to inactivity."
-        : "Your session will expire in 2 minutes due to inactivity.",
+      isStaff
+        ? "Staff sessions use a 15-minute inactivity limit. 2 minutes remain; clicking or typing keeps you signed in."
+        : isAdmin
+          ? "Admin sessions use a 15-minute inactivity limit. 2 minutes remain; clicking or typing keeps you signed in."
+          : "Your session will expire in 2 minutes due to inactivity.",
     );
-  }, [isAdmin]);
+  }, [isAdmin, isStaff]);
 
   useIdleTimeout({
     timeoutMs,
     onIdle: handleIdle,
-    warningMs: 2 * 60 * 1000,
+    warningMs: SESSION_IDLE_WARNING_MS,
     onWarning: handleWarning,
     onActivity: handleActivity,
     enabled: isAuthenticated,

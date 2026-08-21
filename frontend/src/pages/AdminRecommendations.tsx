@@ -32,6 +32,9 @@ type MonthlyTradeReportRow = {
   content: string;
   outcome: TradeOutcome;
   pips: number;
+  periodStartPips: number;
+  cumulativePips: number;
+  milestoneCount: number;
   source: "manual" | "explicit" | "derived";
 };
 
@@ -72,11 +75,14 @@ type MonthlyTradeReport = {
     unresolved: number;
     resultMessages: number;
     updateMessagesIgnored: number;
+    pipUpdateMessagesScored: number;
+    scoringEvents: number;
+    cumulativeAdjustments: number;
     rootRecommendationsOpened: number;
     closedRootRecommendations: number;
     openRootRecommendations: number;
   };
-  basis: "result_created_month";
+  basis: "cumulative_state_delta_month";
 };
 
 function getCurrentMonthValue() {
@@ -95,7 +101,7 @@ function buildMonthlyReportCsv(month: string, report: MonthlyTradeReport | undef
   const lines: string[] = [];
 
   lines.push(["Monthly Trade Summary", month].map(escapeCsvCell).join(","));
-  lines.push(["Date", "Symbol", "Side", "Outcome", "Pips", "Source", "Message ID", "Trade ID", "Content"].map(escapeCsvCell).join(","));
+  lines.push(["Date", "Symbol", "Side", "Outcome", "Period Pips", "Period Start Pips", "Cumulative Pips", "Milestones", "Source", "Message ID", "Trade ID", "Content"].map(escapeCsvCell).join(","));
   for (const trade of report?.trades || []) {
     const date = trade.closedAt ? new Date(trade.closedAt).toISOString().slice(0, 10) : "";
     const outcome = trade.outcome === "win" ? "WIN" : "LOSS";
@@ -105,6 +111,9 @@ function buildMonthlyReportCsv(month: string, report: MonthlyTradeReport | undef
       trade.side,
       outcome,
       trade.pips,
+      trade.periodStartPips,
+      trade.cumulativePips,
+      trade.milestoneCount,
       trade.source,
       trade.messageId,
       trade.tradeId,
@@ -119,7 +128,10 @@ function buildMonthlyReportCsv(month: string, report: MonthlyTradeReport | undef
   lines.push(["Losing Trades", report?.summary?.losingTrades ?? 0].map(escapeCsvCell).join(","));
   lines.push(["Win Rate", `${report?.summary?.winRate ?? 0}%`].map(escapeCsvCell).join(","));
   lines.push(["Result Replies Used", report?.coverage?.resultMessages ?? 0].map(escapeCsvCell).join(","));
-  lines.push(["Update Replies Ignored", report?.coverage?.updateMessagesIgnored ?? 0].map(escapeCsvCell).join(","));
+  lines.push(["Pip Update Replies Scored", report?.coverage?.pipUpdateMessagesScored ?? 0].map(escapeCsvCell).join(","));
+  lines.push(["Non-pip Update Replies Ignored", report?.coverage?.updateMessagesIgnored ?? 0].map(escapeCsvCell).join(","));
+  lines.push(["Scoring Events Collapsed", report?.coverage?.scoringEvents ?? 0].map(escapeCsvCell).join(","));
+  lines.push(["Duplicate Milestones Removed", report?.coverage?.cumulativeAdjustments ?? 0].map(escapeCsvCell).join(","));
   lines.push(["Root Recommendations Opened", report?.coverage?.rootRecommendationsOpened ?? 0].map(escapeCsvCell).join(","));
 
   lines.push("");
@@ -154,6 +166,9 @@ const FOLLOW_UP_PRESET_GROUPS = [
       { key: "p50", labelEn: "+50", labelAr: "+50", valueEn: "+50 pips ✅", valueAr: "+50 نقاط ✅" },
       { key: "p100", labelEn: "+100", labelAr: "+100", valueEn: "+100 pips ✅", valueAr: "+100 نقاط ✅" },
       { key: "p150", labelEn: "+150", labelAr: "+150", valueEn: "+150 pips ✅", valueAr: "+150 نقاط ✅" },
+      { key: "p200", labelEn: "+200", labelAr: "+200", valueEn: "+200 pips ✅", valueAr: "+200 نقاط ✅" },
+      { key: "p250", labelEn: "+250", labelAr: "+250", valueEn: "+250 pips ✅", valueAr: "+250 نقاط ✅" },
+      { key: "p300", labelEn: "+300", labelAr: "+300", valueEn: "+300 pips ✅", valueAr: "+300 نقاط ✅" },
     ],
   },
   {
@@ -328,6 +343,7 @@ function AnalystView() {
 
   const [type, setType] = useState<RecommendationType>("recommendation");
   const [content, setContent] = useState("");
+  const [customPips, setCustomPips] = useState("");
   const [symbol, setSymbol] = useState("XAUUSD");
   const [side, setSide] = useState("");
   const [entryPrice, setEntryPrice] = useState("");
@@ -422,6 +438,7 @@ function AnalystView() {
             : (isRTL ? "تم نشر التوصية" : "Recommendation published")
       );
       setContent("");
+      setCustomPips("");
       setSide("");
       setEntryPrice("");
       setStopLoss("");
@@ -440,6 +457,7 @@ function AnalystView() {
       utils.recommendations.threadSummary.invalidate();
       utils.recommendations.threadMessages.invalidate();
       utils.recommendations.openThreads.invalidate();
+      utils.recommendations.monthlyTradeReport.invalidate();
       utils.recommendations.publishState.invalidate();
       utils.recommendations.activeAlerts.invalidate();
     },
@@ -452,6 +470,7 @@ function AnalystView() {
       utils.recommendations.threadSummary.invalidate();
       utils.recommendations.threadMessages.invalidate();
       utils.recommendations.openThreads.invalidate();
+      utils.recommendations.monthlyTradeReport.invalidate();
     },
     onError: (error) => toast.error(error.message),
   });
@@ -462,6 +481,7 @@ function AnalystView() {
       utils.recommendations.threadSummary.invalidate();
       utils.recommendations.threadMessages.invalidate();
       utils.recommendations.openThreads.invalidate();
+      utils.recommendations.monthlyTradeReport.invalidate();
     },
     onError: (error) => toast.error(formatRecommendationUiError(error.message, isRTL)),
   });
@@ -499,6 +519,7 @@ function AnalystView() {
       setParentMessage(null);
       setType("recommendation");
       setContent("");
+      setCustomPips("");
       setSide("");
       setEntryPrice("");
       setStopLoss("");
@@ -511,6 +532,7 @@ function AnalystView() {
       utils.recommendations.threadSummary.invalidate();
       utils.recommendations.threadMessages.invalidate();
       utils.recommendations.openThreads.invalidate();
+      utils.recommendations.monthlyTradeReport.invalidate();
     },
     onError: (error) => toast.error(formatRecommendationUiError(error.message, isRTL)),
   });
@@ -647,6 +669,16 @@ function AnalystView() {
     });
   };
 
+  const applyCustomPips = () => {
+    const parsed = Number(customPips.replace(/,/g, ".").trim());
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      toast.error(isRTL ? "أدخل قيمة نقاط موجبة وصحيحة." : "Enter a valid positive pips value.");
+      return;
+    }
+    const normalized = Math.round(parsed * 100) / 100;
+    setContent(isRTL ? `+${normalized} نقاط ✅` : `+${normalized} pips ✅`);
+  };
+
   const onParseDraft = () => {
     if (!content.trim()) {
       toast.error(isRTL ? "اكتب نص التوصية أولاً" : "Write the recommendation text first");
@@ -682,6 +714,7 @@ function AnalystView() {
     setParentMessage(null);
     setType("recommendation");
     setContent("");
+    setCustomPips("");
     setSide("");
     setEntryPrice("");
     setStopLoss("");
@@ -702,6 +735,7 @@ function AnalystView() {
     setType(nextType);
     setParentMessage(parent);
     setContent("");
+    setCustomPips("");
     setShowTradeDetails(false);
     setActivePresetGroup(nextType === "result" ? "outcome" : "pips");
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -1359,13 +1393,32 @@ function AnalystView() {
                       {isRTL ? preset.labelAr : preset.labelEn}
                     </Button>
                   ))}
+                  {activePresetConfig.key === "pips" && (
+                    <div className="flex items-center gap-2 basis-full pt-1 sm:basis-auto sm:pt-0">
+                      <Input
+                        inputMode="decimal"
+                        value={customPips}
+                        onChange={(event) => setCustomPips(event.target.value)}
+                        placeholder={isRTL ? "قيمة أخرى" : "Custom pips"}
+                        className="h-9 w-[130px] bg-white dark:bg-slate-950"
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={isWaitingForUnlock || !customPips.trim()}
+                        onClick={applyCustomPips}
+                      >
+                        {isRTL ? "استخدام" : "Apply"}
+                      </Button>
+                    </div>
+                  )}
                 </div>
               )}
 
               <p className="text-xs text-muted-foreground">
                 {isRTL
-                  ? "النقاط الصغيرة تبقى الأسرع للوصول، بينما القيم الأكبر موجودة داخل نفس المجموعة عند الحاجة."
-                  : "Smaller pip moves stay quickest to reach, while larger outcomes remain available inside the same group when needed."}
+                  ? "يمكنك اختيار قيمة سريعة أو كتابة أي هدف تراكمي بدون حد ثابت. التقرير يحتسب آخر قيمة فقط ويزيل التكرار."
+                  : "Choose a quick value or enter any cumulative target without a fixed ceiling. The report keeps the latest value and removes duplication."}
               </p>
             </div>
           )}
@@ -1612,8 +1665,8 @@ function AnalystView() {
               <CardTitle>{isRTL ? "تقرير الأداء الشهري" : "Monthly Trade Report"}</CardTitle>
               <CardDescription>
                 {isRTL
-                  ? "يعتمد على رسائل النتيجة المنشورة خلال الشهر. التحديثات تظهر كسياق ولا تدخل في نسبة النجاح تلقائياً."
-                  : "Based on result replies posted during the month. Updates are context and are not counted automatically."}
+                  ? "كل قيمة نقاط هي الإجمالي التراكمي للصفقة. يحسب التقرير آخر قيمة مطروحاً منها رصيد الصفقة قبل بداية الشهر، لذلك لا تتكرر أهداف 50 ثم 100 ثم 250."
+                  : "Each pips value is the trade's cumulative state. The report uses the latest value minus its pre-month state, so +50, +100, then +250 is never double-counted."}
               </CardDescription>
             </div>
 
@@ -1676,8 +1729,8 @@ function AnalystView() {
             </div>
             <div className="mt-3 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900 dark:border-sky-800/40 dark:bg-sky-900/10 dark:text-sky-100">
               {isRTL
-                ? `مصدر التقرير: ${monthlyReport.coverage.resultMessages} رسائل نتيجة، وتم تجاهل ${monthlyReport.coverage.updateMessagesIgnored} تحديثات من الحساب الرسمي. توصيات افتتحت هذا الشهر: ${monthlyReport.coverage.rootRecommendationsOpened}.`
-                : `Report basis: ${monthlyReport.coverage.resultMessages} result replies, with ${monthlyReport.coverage.updateMessagesIgnored} update replies ignored from official scoring. Root recommendations opened this month: ${monthlyReport.coverage.rootRecommendationsOpened}.`}
+                ? `مصدر التقرير: ${monthlyReport.coverage.scoringEvents} تحديثات نقاط جُمعت في ${monthlyReport.summary.totalTrades} صفقات؛ أزيل ${monthlyReport.coverage.cumulativeAdjustments} هدف متدرج من التكرار. توصيات افتتحت هذا الشهر: ${monthlyReport.coverage.rootRecommendationsOpened}.`
+                : `Report basis: ${monthlyReport.coverage.scoringEvents} pip events collapsed into ${monthlyReport.summary.totalTrades} trades; ${monthlyReport.coverage.cumulativeAdjustments} progressive milestones were de-duplicated. Root recommendations opened this month: ${monthlyReport.coverage.rootRecommendationsOpened}.`}
             </div>
           </CardContent>
         )}
@@ -1708,13 +1761,17 @@ function AnalystView() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-6">
                 <div className="rounded-xl border border-sky-200 bg-sky-50 p-3 dark:border-sky-800/40 dark:bg-sky-900/10">
                   <p className="text-xs text-sky-700 dark:text-sky-200">{isRTL ? "رسائل نتيجة" : "Result Replies"}</p>
                   <p className="text-lg font-semibold text-sky-800 dark:text-sky-100">{monthlyReport.coverage.resultMessages}</p>
                 </div>
                 <div className="rounded-xl border p-3">
-                  <p className="text-xs text-muted-foreground">{isRTL ? "تحديثات غير محسوبة" : "Updates Ignored"}</p>
+                  <p className="text-xs text-muted-foreground">{isRTL ? "تحديثات نقاط محسوبة" : "Pip Updates Scored"}</p>
+                  <p className="text-lg font-semibold">{monthlyReport.coverage.pipUpdateMessagesScored}</p>
+                </div>
+                <div className="rounded-xl border p-3">
+                  <p className="text-xs text-muted-foreground">{isRTL ? "تحديثات سياقية غير محسوبة" : "Context Updates Ignored"}</p>
                   <p className="text-lg font-semibold">{monthlyReport.coverage.updateMessagesIgnored}</p>
                 </div>
                 <div className="rounded-xl border p-3">
@@ -1774,7 +1831,9 @@ function AnalystView() {
                           <TableHead>{isRTL ? "الزوج" : "Symbol"}</TableHead>
                           <TableHead>{isRTL ? "الاتجاه" : "Side"}</TableHead>
                           <TableHead>{isRTL ? "النتيجة" : "Outcome"}</TableHead>
-                          <TableHead>{isRTL ? "النقاط" : "Pips"}</TableHead>
+                          <TableHead>{isRTL ? "تغير الشهر" : "Month Change"}</TableHead>
+                          <TableHead>{isRTL ? "الإجمالي التراكمي" : "Cumulative"}</TableHead>
+                          <TableHead>{isRTL ? "المراحل" : "Milestones"}</TableHead>
                           <TableHead>{isRTL ? "المصدر" : "Source"}</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -1790,6 +1849,8 @@ function AnalystView() {
                               </Badge>
                             </TableCell>
                             <TableCell className={trade.pips >= 0 ? "text-emerald-700" : "text-red-700"}>{trade.pips}</TableCell>
+                            <TableCell className={trade.cumulativePips >= 0 ? "text-emerald-700" : "text-red-700"}>{trade.cumulativePips}</TableCell>
+                            <TableCell>{trade.milestoneCount}</TableCell>
                             <TableCell>{trade.source}</TableCell>
                           </TableRow>
                         ))}

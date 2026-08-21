@@ -117,6 +117,7 @@ import {
   validateRenewalPackageTransition,
 } from './services/package-key-lifecycle.service';
 import { getRecommendationThreadRootId } from './services/recommendation-thread.service';
+import { buildRecommendationPeriodTradeStates } from './services/recommendation-report.service';
 import {
   getPackageKeyAssignmentFailure,
   hasValidPackageKeyAdminAuthorization,
@@ -139,6 +140,10 @@ import {
   buildTimedServiceReminderContent,
   type TimedServiceName,
 } from './services/timed-service-notifications.service';
+import {
+  runTimedServiceRepairWithRetry,
+  TimedServiceRepairRetryError,
+} from './services/timed-service-repair.service';
 import {
   BUG_REPORT_RISK_LEVELS,
   COOKIE_MAX_AGE_USER,
@@ -254,8 +259,10 @@ const RECOMMENDATION_ALERT_UNLOCK_MS = 60 * 1000;
 const RECOMMENDATION_ALERT_EXPIRY_MS = 15 * 60 * 1000;
 const RECOMMENDATION_MESSAGE_EDIT_WINDOW_MS = 60 * 1000;
 const RECOMMENDATION_REPORT_MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
-const RECOMMENDATION_REPORT_EXPLICIT_PIPS_RE = /([+-]\d+(?:[.,]\d+)?)/;
-const RECOMMENDATION_REPORT_MAX_ABS_EXPLICIT_PIPS = 200;
+const RECOMMENDATION_REPORT_SIGNED_PIPS_RE = /([+-]\s*\d+(?:[.,]\d+)?)\s*(pips?|points?|نقاط|نقطة)?/i;
+const RECOMMENDATION_REPORT_UNSIGNED_PIPS_RE = /(\d+(?:[.,]\d+)?)\s*(?:pips?|points?|نقاط|نقطة)/i;
+const RECOMMENDATION_REPORT_UNSIGNED_PIPS_PREFIX_RE = /(?:pips?|points?|نقاط|نقطة)\s*(\d+(?:[.,]\d+)?)/i;
+const RECOMMENDATION_REPORT_REQUIRE_UNIT_ABOVE_ABS_PIPS = 200;
 let hasLoggedMissingEngagementEventsTable = false;
 let hasLoggedMissingOpenAiUsageEventsTable = false;
 
@@ -270,6 +277,9 @@ export type RecommendationTradeReportRow = {
   content: string;
   outcome: RecommendationReportOutcome;
   pips: number;
+  periodStartPips: number;
+  cumulativePips: number;
+  milestoneCount: number;
   source: 'manual' | 'explicit' | 'derived';
 };
 
@@ -312,11 +322,14 @@ export type RecommendationMonthlyTradeReport = {
     unresolved: number;
     resultMessages: number;
     updateMessagesIgnored: number;
+    pipUpdateMessagesScored: number;
+    scoringEvents: number;
+    cumulativeAdjustments: number;
     rootRecommendationsOpened: number;
     closedRootRecommendations: number;
     openRootRecommendations: number;
   };
-  basis: 'result_created_month';
+  basis: 'cumulative_state_delta_month';
 };
 
 export type RecommendationThreadStatusFilter = 'all' | 'open' | 'closed';
@@ -773,6 +786,12 @@ function isSchemaMismatchError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   return /no such column|no such table|SQLITE_ERROR|D1_ERROR|Failed query/i.test(message)
     && /isAdminSkipped|maxActivationDate|isPendingActivation|activationReason|activationProcessedAt|courseWaivedByPolicy|brokerWaivedByPolicy|enrollments|lexaiSubscriptions|recommendationSubscriptions/i.test(message);
+}
+
+function isLikelyTransientTimedServiceRepairError(error: unknown) {
+  if (isSchemaMismatchError(error)) return false;
+  const message = error instanceof Error ? error.message : String(error);
+  return /Failed query|D1_ERROR|SQLITE_BUSY|database.*(?:busy|locked)|timeout|network|connection/i.test(message);
 }
 
 type TimedServiceRepairAlertUserContext = {
@@ -4795,7 +4814,20 @@ export async function getExpiringSubscriptions(withinDays: number): Promise<{ us
 
 export async function validateActiveStaffSession(staffUserId: number, sessionKey: string): Promise<boolean> {
   const db = await getDb();
-  if (!db || !sessionKey) return false;
+  if (!db) {
+    logger.warn("[STAFF SESSION] Session validation unavailable", {
+      staffUserId,
+      reason: "database_unavailable",
+    });
+    return false;
+  }
+  if (!sessionKey) {
+    logger.info("[STAFF SESSION] Session validation rejected", {
+      staffUserId,
+      reason: "missing_session_key",
+    });
+    return false;
+  }
 
   const [row] = await db.select({
     id: staffSessions.id,
@@ -4808,15 +4840,46 @@ export async function validateActiveStaffSession(staffUserId: number, sessionKey
     eq(staffSessions.sessionKey, sessionKey),
   )).limit(1);
 
-  if (!row || row.endedAt) return false;
+  if (!row) {
+    logger.info("[STAFF SESSION] Session validation rejected", {
+      staffUserId,
+      reason: "session_not_found",
+    });
+    return false;
+  }
+  if (row.endedAt) {
+    logger.info("[STAFF SESSION] Session validation rejected", {
+      staffUserId,
+      sessionRecordId: row.id,
+      reason: "session_already_ended",
+      endedAt: coerceTimestampToDate(row.endedAt)?.toISOString() ?? null,
+    });
+    return false;
+  }
   const loginAt = coerceTimestampToDate(row.loginAt) ?? new Date(0);
   const lastInteractionAt = getStaffSessionLastActivityAt(loginAt, row.lastInteractionAt);
   const hardExpiresAt = coerceTimestampToDate(row.hardExpiresAt);
   if (hardExpiresAt && hardExpiresAt.getTime() <= Date.now()) {
+    logger.info("[STAFF SESSION] Session validation rejected", {
+      staffUserId,
+      sessionRecordId: row.id,
+      reason: "hard_expiry",
+      lastInteractionAt: lastInteractionAt.toISOString(),
+      hardExpiresAt: hardExpiresAt.toISOString(),
+    });
     await endActiveStaffSessions(staffUserId, hardExpiresAt, "jwt_expired", sessionKey);
     return false;
   }
   if (lastInteractionAt.getTime() <= Date.now() - IDLE_TIMEOUT_STAFF_MS) {
+    const idleExpiresAt = new Date(lastInteractionAt.getTime() + IDLE_TIMEOUT_STAFF_MS);
+    logger.info("[STAFF SESSION] Session validation rejected", {
+      staffUserId,
+      sessionRecordId: row.id,
+      reason: "idle_timeout",
+      lastInteractionAt: lastInteractionAt.toISOString(),
+      idleExpiresAt: idleExpiresAt.toISOString(),
+      idleTimeoutMinutes: IDLE_TIMEOUT_STAFF_MS / 60_000,
+    });
     await endActiveStaffSessions(staffUserId, new Date(), "timeout", sessionKey);
     return false;
   }
@@ -4825,8 +4888,8 @@ export async function validateActiveStaffSession(staffUserId: number, sessionKey
 
 export async function touchStaffSessionInteraction(staffUserId: number, sessionKey: string, at = new Date()) {
   const db = await getDb();
-  if (!db || !sessionKey) return { active: false };
-  if (!await validateActiveStaffSession(staffUserId, sessionKey)) return { active: false };
+  if (!db || !sessionKey) return { active: false as const };
+  if (!await validateActiveStaffSession(staffUserId, sessionKey)) return { active: false as const };
 
   await db.update(staffSessions).set({ lastInteractionAt: at })
     .where(and(
@@ -4838,7 +4901,12 @@ export async function touchStaffSessionInteraction(staffUserId: number, sessionK
     lastInteractiveAt: at.toISOString(),
     lastActiveAt: at.toISOString(),
   }).where(eq(users.id, staffUserId));
-  return { active: true, lastInteractionAt: at };
+  return {
+    active: true as const,
+    lastInteractionAt: at,
+    idleExpiresAt: new Date(at.getTime() + IDLE_TIMEOUT_STAFF_MS),
+    idleTimeoutMs: IDLE_TIMEOUT_STAFF_MS,
+  };
 }
 
 export async function closeExpiredStaffSessions(now = new Date()) {
@@ -5441,9 +5509,17 @@ async function repairDueTimedServiceStates() {
   ]));
   for (const userId of pendingUserIds) {
     try {
-      await queuePendingTimedServiceReminders(userId);
-      await ensureTimedServicesActivatedIfDue(userId);
+      await runTimedServiceRepairWithRetry(async () => {
+        await queuePendingTimedServiceReminders(userId);
+        await ensureTimedServicesActivatedIfDue(userId);
+      }, {
+        maxAttempts: 3,
+        delayMs: 100,
+        shouldRetry: isLikelyTransientTimedServiceRepairError,
+      });
     } catch (error) {
+      const retryError = error instanceof TimedServiceRepairRetryError ? error : null;
+      const underlyingError = retryError?.originalError ?? error;
       let alertUser: { name: string | null; email: string | null } | undefined;
       try {
         const [userRow] = await db
@@ -5462,25 +5538,28 @@ async function repairDueTimedServiceStates() {
         userId,
         userName: alertUser?.name,
         userEmail: alertUser?.email,
-        error,
+        error: underlyingError,
       });
       logger.warn('[RECOMMENDATIONS] Failed to repair pending subscriber state', {
         userId,
         userName: alertUser?.name,
         userEmail: alertUser?.email,
-        error: error instanceof Error ? error.message : String(error),
+        attempts: retryError?.attempts ?? 1,
+        error: underlyingError instanceof Error ? underlyingError.message : String(underlyingError),
       });
       await notifyStaffByEvent("timed_service_activation_failure", {
         titleEn: alert.titleEn,
         titleAr: alert.titleAr,
         contentEn: alert.contentEn,
         contentAr: alert.contentAr,
+        actionUrl: `/admin/expiry-report?userId=${userId}`,
         metadata: {
           userId,
           userName: alertUser?.name ?? null,
           userEmail: alertUser?.email ?? null,
           reason: alert.reason,
-          rawError: error instanceof Error ? error.message : String(error),
+          attempts: retryError?.attempts ?? 1,
+          rawError: underlyingError instanceof Error ? underlyingError.message : String(underlyingError),
         },
       }).catch(() => {});
     }
@@ -7561,14 +7640,25 @@ function parsePrice(value: string | null | undefined): number | null {
 }
 
 export function extractRecommendationExplicitSignedPips(content: string): number | null {
-  const match = content.match(RECOMMENDATION_REPORT_EXPLICIT_PIPS_RE);
-  if (!match?.[1]) return null;
+  const signedMatch = content.match(RECOMMENDATION_REPORT_SIGNED_PIPS_RE);
+  if (signedMatch?.[1]) {
+    const parsed = parsePrice(signedMatch[1].replace(/\s+/g, ''));
+    if (parsed === null) return null;
 
-  const parsed = parsePrice(match[1]);
-  if (parsed === null) return null;
-  if (Math.abs(parsed) > RECOMMENDATION_REPORT_MAX_ABS_EXPLICIT_PIPS) return null;
+    // Large signed values without a pips/points unit are usually prices such
+    // as "move SL to +2414.50". A unit makes the value explicit and removes
+    // the old 200-pip ceiling, allowing +250, +300, and higher targets.
+    const hasPipsUnit = Boolean(signedMatch[2]);
+    if (Math.abs(parsed) > RECOMMENDATION_REPORT_REQUIRE_UNIT_ABOVE_ABS_PIPS && !hasPipsUnit) {
+      return null;
+    }
+    return parsed;
+  }
 
-  return parsed;
+  const unsignedMatch = content.match(RECOMMENDATION_REPORT_UNSIGNED_PIPS_RE)
+    ?? content.match(RECOMMENDATION_REPORT_UNSIGNED_PIPS_PREFIX_RE);
+  if (!unsignedMatch?.[1]) return null;
+  return parsePrice(unsignedMatch[1]);
 }
 
 function extractPrice(text: string, pattern: RegExp): number | null {
@@ -7749,12 +7839,15 @@ function emptyRecommendationMonthlyTradeReport(
       unresolved: 0,
       resultMessages: 0,
       updateMessagesIgnored: 0,
+      pipUpdateMessagesScored: 0,
+      scoringEvents: 0,
+      cumulativeAdjustments: 0,
       rootRecommendationsOpened: 0,
       closedRootRecommendations: 0,
       openRootRecommendations: 0,
       ...coverage,
     },
-    basis: 'result_created_month',
+    basis: 'cumulative_state_delta_month',
   };
 }
 
@@ -8167,6 +8260,9 @@ export async function getRecommendationMonthlyTradeReport(month: string): Promis
   if (!db) throw new Error('Database not available');
 
   const normalizedMonth = normalizeReportMonth(month);
+  const [year, monthNumber] = normalizedMonth.split('-').map(Number);
+  const periodStart = new Date(Date.UTC(year, monthNumber - 1, 1)).toISOString();
+  const periodEnd = new Date(Date.UTC(year, monthNumber, 1)).toISOString();
 
   const [monthStats] = await db
     .select({
@@ -8174,14 +8270,13 @@ export async function getRecommendationMonthlyTradeReport(month: string): Promis
       closedRootRecommendations: sql<number>`SUM(CASE WHEN ${recommendationMessages.parentId} IS NULL AND ${recommendationMessages.type} = 'recommendation' AND ${recommendationMessages.threadStatus} = 'closed' THEN 1 ELSE 0 END)`,
       openRootRecommendations: sql<number>`SUM(CASE WHEN ${recommendationMessages.parentId} IS NULL AND ${recommendationMessages.type} = 'recommendation' AND (${recommendationMessages.threadStatus} IS NULL OR ${recommendationMessages.threadStatus} <> 'closed') THEN 1 ELSE 0 END)`,
       resultMessages: sql<number>`SUM(CASE WHEN ${recommendationMessages.parentId} IS NOT NULL AND ${recommendationMessages.type} = 'result' THEN 1 ELSE 0 END)`,
-      updateMessagesIgnored: sql<number>`SUM(CASE WHEN ${recommendationMessages.parentId} IS NOT NULL AND ${recommendationMessages.type} = 'update' THEN 1 ELSE 0 END)`,
+      updateMessages: sql<number>`SUM(CASE WHEN ${recommendationMessages.parentId} IS NOT NULL AND ${recommendationMessages.type} = 'update' THEN 1 ELSE 0 END)`,
     })
     .from(recommendationMessages)
     .where(sql`${recommendationMessages.createdAt} LIKE ${`${normalizedMonth}%`}`);
 
-  const baseCoverage = {
+  const rootCoverage = {
     resultMessages: Number(monthStats?.resultMessages ?? 0),
-    updateMessagesIgnored: Number(monthStats?.updateMessagesIgnored ?? 0),
     rootRecommendationsOpened: Number(monthStats?.rootRecommendationsOpened ?? 0),
     closedRootRecommendations: Number(monthStats?.closedRootRecommendations ?? 0),
     openRootRecommendations: Number(monthStats?.openRootRecommendations ?? 0),
@@ -8193,14 +8288,17 @@ export async function getRecommendationMonthlyTradeReport(month: string): Promis
     .where(
       and(
         isNotNull(recommendationMessages.parentId),
-        eq(recommendationMessages.type, 'result'),
-        sql`${recommendationMessages.createdAt} LIKE ${`${normalizedMonth}%`}`,
+        inArray(recommendationMessages.type, ['update', 'result']),
+        sql`datetime(${recommendationMessages.createdAt}) < datetime(${periodEnd})`,
       )
     )
-    .orderBy(asc(recommendationMessages.createdAt));
+    .orderBy(asc(recommendationMessages.createdAt), asc(recommendationMessages.id));
 
   if (!messages.length) {
-    return emptyRecommendationMonthlyTradeReport(normalizedMonth, baseCoverage);
+    return emptyRecommendationMonthlyTradeReport(normalizedMonth, {
+      ...rootCoverage,
+      updateMessagesIgnored: Number(monthStats?.updateMessages ?? 0),
+    });
   }
 
   const parentIds = Array.from(new Set(messages
@@ -8219,29 +8317,39 @@ export async function getRecommendationMonthlyTradeReport(month: string): Promis
     parentMap.set(parent.id, parent);
   }
 
-  const byTrade = new Map<number, RecommendationParsedCandidate[]>();
-  for (const message of messages) {
-    if (!message.parentId) continue;
-    const parent = parentMap.get(message.parentId) ?? null;
-    const parsed = parseRecommendationCandidate(message, parent);
-    const list = byTrade.get(message.parentId) || [];
-    list.push(parsed);
-    byTrade.set(message.parentId, list);
-  }
+  const parsedCandidates = messages
+    .filter((message) => typeof message.parentId === 'number')
+    .map((message) => parseRecommendationCandidate(
+      message,
+      parentMap.get(message.parentId as number) ?? null,
+    ));
+  const isInPeriod = (candidate: RecommendationParsedCandidate) => {
+    const createdAt = new Date(candidate.message.createdAt).getTime();
+    return createdAt >= new Date(periodStart).getTime() && createdAt < new Date(periodEnd).getTime();
+  };
+  const isScored = (candidate: RecommendationParsedCandidate) => (
+    candidate.outcome !== null && candidate.pips !== null
+  );
+  const periodCandidates = parsedCandidates.filter(isInPeriod);
+  const scoredCandidates = parsedCandidates.filter(isScored);
+  const periodScoredCandidates = periodCandidates.filter(isScored);
 
-  const selectedCandidates: RecommendationParsedCandidate[] = [];
-  for (const [, candidates] of byTrade) {
-    const selected = [...candidates].sort((a, b) => {
-      const rankDiff = rankRecommendationCandidate(b) - rankRecommendationCandidate(a);
-      if (rankDiff !== 0) return rankDiff;
-      return new Date(b.message.createdAt).getTime() - new Date(a.message.createdAt).getTime();
-    })[0];
-    if (selected) selectedCandidates.push(selected);
-  }
+  const periodStates = buildRecommendationPeriodTradeStates({
+    periodStart,
+    periodEnd,
+    events: scoredCandidates.map((candidate) => ({
+      messageId: candidate.message.id,
+      tradeId: candidate.message.parentId as number,
+      occurredAt: candidate.message.createdAt,
+      outcome: candidate.outcome as RecommendationReportOutcome,
+      cumulativePips: candidate.pips as number,
+      candidate,
+    })),
+  });
 
-  const trades: RecommendationTradeReportRow[] = selectedCandidates
-    .filter((candidate) => candidate.outcome !== null && candidate.pips !== null)
-    .map((candidate) => {
+  const trades: RecommendationTradeReportRow[] = periodStates
+    .map((state) => {
+      const candidate = state.latestEvent.candidate;
       const source: RecommendationTradeReportRow['source'] = candidate.source === 'manual'
         ? 'manual'
         : candidate.source === 'derived'
@@ -8255,15 +8363,38 @@ export async function getRecommendationMonthlyTradeReport(month: string): Promis
         symbol: parseSymbol(candidate.message, candidate.parent),
         side: parseSide(candidate.message, candidate.parent),
         content: candidate.message.content,
-        outcome: candidate.outcome as RecommendationReportOutcome,
-        pips: candidate.pips as number,
+        outcome: state.outcome,
+        pips: state.periodPips,
+        periodStartPips: state.periodStartPips,
+        cumulativePips: state.cumulativePips,
+        milestoneCount: state.milestoneCount,
         source,
       };
     })
     .sort((a, b) => new Date(a.closedAt).getTime() - new Date(b.closedAt).getTime());
 
-  const unresolved: RecommendationTradeReportUnresolvedRow[] = selectedCandidates
-    .filter((candidate) => !(candidate.outcome !== null && candidate.pips !== null))
+  const finalizedTradeIds = new Set(trades.map((trade) => trade.tradeId));
+  const unresolvedByTrade = new Map<number, RecommendationParsedCandidate[]>();
+  for (const candidate of periodCandidates) {
+    const tradeId = candidate.message.parentId as number;
+    if (
+      candidate.message.type !== 'result'
+      || isScored(candidate)
+      || finalizedTradeIds.has(tradeId)
+    ) continue;
+    const list = unresolvedByTrade.get(tradeId) ?? [];
+    list.push(candidate);
+    unresolvedByTrade.set(tradeId, list);
+  }
+  const unresolvedCandidates = Array.from(unresolvedByTrade.values())
+    .map((candidates) => [...candidates].sort((a, b) => {
+      const rankDiff = rankRecommendationCandidate(b) - rankRecommendationCandidate(a);
+      if (rankDiff !== 0) return rankDiff;
+      return new Date(b.message.createdAt).getTime() - new Date(a.message.createdAt).getTime();
+    })[0])
+    .filter((candidate): candidate is RecommendationParsedCandidate => Boolean(candidate));
+
+  const unresolved: RecommendationTradeReportUnresolvedRow[] = unresolvedCandidates
     .map((candidate) => ({
       messageId: candidate.message.id,
       tradeId: candidate.message.parentId as number,
@@ -8288,6 +8419,20 @@ export async function getRecommendationMonthlyTradeReport(month: string): Promis
     .filter((trade) => trade.pips < 0)
     .reduce((sum, trade) => sum + trade.pips, 0));
   const netPips = roundTo2(totalPipsWon + totalPipsLost);
+  const pipUpdateMessagesScored = periodScoredCandidates
+    .filter((candidate) => candidate.message.type === 'update').length;
+  const updateMessagesIgnored = Math.max(
+    0,
+    Number(monthStats?.updateMessages ?? 0) - pipUpdateMessagesScored,
+  );
+  const candidateTradeIds = new Set([
+    ...periodCandidates
+      .filter((candidate) => candidate.message.type === 'result')
+      .map((candidate) => candidate.message.parentId as number),
+    ...periodScoredCandidates
+      .filter((candidate) => candidate.message.type === 'update')
+      .map((candidate) => candidate.message.parentId as number),
+  ]);
 
   return {
     month: normalizedMonth,
@@ -8309,12 +8454,19 @@ export async function getRecommendationMonthlyTradeReport(month: string): Promis
       },
     },
     coverage: {
-      candidates: selectedCandidates.length,
+      candidates: candidateTradeIds.size,
       finalized: trades.length,
       unresolved: unresolved.length,
-      ...baseCoverage,
+      updateMessagesIgnored,
+      pipUpdateMessagesScored,
+      scoringEvents: periodScoredCandidates.length,
+      cumulativeAdjustments: periodStates.reduce(
+        (sum, state) => sum + Math.max(0, state.milestoneCount - 1),
+        0,
+      ),
+      ...rootCoverage,
     },
-    basis: 'result_created_month',
+    basis: 'cumulative_state_delta_month',
   };
 }
 
@@ -13971,6 +14123,34 @@ export async function updateOrderStatus(
   }
   if (status === 'paid' || status === 'completed') updates.completedAt = new Date().toISOString();
   const [updated] = await db.update(orders).set(updates).where(eq(orders.id, id)).returning();
+  return updated ?? null;
+}
+
+export async function submitOrderPaymentProof(input: {
+  orderId: number;
+  userId: number;
+  paymentProofUrl: string;
+  paymentReference: string | null;
+}): Promise<Order | null> {
+  const db = await getDb();
+  if (!db) return null;
+
+  const [updated] = await db
+    .update(orders)
+    .set({
+      status: "awaiting_confirmation",
+      paymentProofUrl: input.paymentProofUrl,
+      paymentReference: input.paymentReference,
+      updatedAt: new Date().toISOString(),
+    })
+    .where(and(
+      eq(orders.id, input.orderId),
+      eq(orders.userId, input.userId),
+      eq(orders.paymentMethod, "bank_transfer"),
+      inArray(orders.status, ["pending", "awaiting_confirmation"]),
+    ))
+    .returning();
+
   return updated ?? null;
 }
 
