@@ -24,6 +24,7 @@ import {
 import { APP_LOGO, APP_TITLE } from "@/const";
 import { getLanguageSwitchLabel } from "@/lib/languageToggle";
 import { trpc } from "@/lib/trpc";
+import { getStaffLandingPage } from "@shared/const";
 import {
   GraduationCap,
   Sparkles,
@@ -70,6 +71,7 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
   const hydratedLanguageForUserIdRef = useRef<number | null>(null);
 
   const { data: unreadNotifData } = trpc.notifications.unreadCount.useQuery(undefined, { refetchInterval: 30_000 });
+  const { data: adminCheck } = trpc.auth.isAdmin.useQuery(undefined, { retry: false });
   const { data: surveyAvailability } = trpc.studentSurveys.availability.useQuery(undefined, { retry: false });
   const { data: communityAvailability } = trpc.community.availability.useQuery(undefined, { retry: false });
   const { data: jobEligibilityAvailability } = trpc.studentJobEligibility.availability.useQuery(undefined, { retry: false });
@@ -81,6 +83,9 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
     communityAvailability?.enabled === true
     && communityAvailability.access === "allowed";
   const showJobEligibilityNav = jobEligibilityAvailability?.enabled === true;
+  const staffWorkspacePath = adminCheck?.isStaff && !adminCheck?.isAdmin
+    ? getStaffLandingPage(adminCheck.staffRoles ?? [])
+    : null;
 
   useEffect(() => {
     if (!user?.id) {
@@ -300,6 +305,20 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
 
             {/* Right side */}
             <div className="flex items-center gap-1.5 sm:gap-2">
+              {staffWorkspacePath && (
+                <Link href={staffWorkspacePath}>
+                  <button
+                    className="inline-flex items-center gap-1.5 rounded-full bg-slate-900 px-2.5 py-1.5 text-[11px] font-semibold text-white transition hover:bg-slate-700 sm:text-xs"
+                    title={isRTL ? "العودة إلى مساحة عمل الموظفين" : "Return to staff workspace"}
+                  >
+                    <Briefcase className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">
+                      {isRTL ? "مساحة العمل" : "Staff workspace"}
+                    </span>
+                  </button>
+                </Link>
+              )}
+
               {/* Language Toggle */}
               <button
                 onClick={toggleLanguagePreference}
@@ -406,6 +425,17 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
 
           {/* Footer actions */}
           <div className="border-t p-3 space-y-2">
+            {staffWorkspacePath && (
+              <Link href={staffWorkspacePath}>
+                <button
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 transition"
+                >
+                  <Briefcase className="h-4 w-4" />
+                  {isRTL ? "العودة إلى مساحة عمل الموظفين" : "Return to staff workspace"}
+                </button>
+              </Link>
+            )}
             <button
               onClick={() => { toggleLanguagePreference(); setMobileMenuOpen(false); }}
               className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-100 transition"

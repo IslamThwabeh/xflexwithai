@@ -373,6 +373,20 @@ const menuSectionsDef: MenuSection[] = [
   // },
 ];
 
+const employeeTrainingSection: MenuSection = {
+  icon: GraduationCap,
+  labelKey: "admin.sidebar.learning",
+  label: { en: "Employee Training", ar: "تدريب الموظفين" },
+  items: [
+    {
+      icon: BookOpen,
+      labelKey: "admin.sidebar.courses",
+      label: { en: "My Course", ar: "دورتي التدريبية" },
+      path: "/courses",
+    },
+  ],
+};
+
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
 const DEFAULT_WIDTH = 280;
 const MIN_WIDTH = 200;
@@ -474,6 +488,14 @@ function DashboardLayoutContent({
   // Check admin/staff status for sidebar filtering
   const { data: adminCheck } = trpc.auth.isAdmin.useQuery();
   const staffRolesForAvailability = adminCheck?.staffRoles ?? [];
+  const { data: staffEnrollments } = trpc.enrollments.myEnrollments.useQuery(
+    undefined,
+    {
+      enabled: adminCheck?.isStaff === true && adminCheck?.isAdmin !== true,
+      retry: false,
+    }
+  );
+  const hasEmployeeTraining = (staffEnrollments?.length ?? 0) > 0;
   const canReadStaffNotifications =
     !!adminCheck?.isAdmin || !!adminCheck?.isStaff;
   const { data: performanceAvailability } =
@@ -605,17 +627,21 @@ function DashboardLayoutContent({
       }
     }
 
-    return filterUnavailableFeatures(
-      menuSectionsDef
+    const roleSections = menuSectionsDef
         .map(section => ({
           ...section,
           items: section.items.filter(item => accessiblePaths.has(item.path)),
         }))
-        .filter(section => section.items.length > 0)
-    );
+        .filter(section => section.items.length > 0);
+
+    return filterUnavailableFeatures([
+      ...(hasEmployeeTraining ? [employeeTrainingSection] : []),
+      ...roleSections,
+    ]);
   }, [
     adminCheck,
     canPrepareRewards,
+    hasEmployeeTraining,
     performanceAvailability?.enabled,
     performanceAvailability?.access,
     surveyAvailability?.enabled,
