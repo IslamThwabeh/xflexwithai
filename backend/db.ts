@@ -12191,6 +12191,16 @@ type AccountRefundInput = {
   refundedAt: string;
 };
 
+async function databaseTableExists(db: any, tableName: string): Promise<boolean> {
+  const rows = await db.all(sql`
+    SELECT 1 AS present
+    FROM sqlite_master
+    WHERE type = 'table' AND name = ${tableName}
+    LIMIT 1
+  `) as Array<{ present?: number }>;
+  return rows.length > 0;
+}
+
 export async function getClientAccountManagementContext(userId: number) {
   const db = await getDb();
   if (!db) return { sales: [], refunds: [], accessAudit: [] };
@@ -12469,8 +12479,22 @@ export async function blockClientAccount(input: {
         isActive: false,
         updatedAt: now,
       }).where(eq(recommendationSubscriptions.userId, input.userId)),
-      db.update(flexaiSubscriptions).set({ status: "inactive", updatedAt: now }).where(eq(flexaiSubscriptions.userId, input.userId)),
     );
+
+    // FlexAI is a legacy service that is absent from some D1 deployments,
+    // including production. Keep its cleanup when the legacy table exists,
+    // but never let that optional cleanup roll back the supported services.
+    if (await databaseTableExists(db, "flexaiSubscriptions")) {
+      statements.push(
+        db.update(flexaiSubscriptions)
+          .set({ status: "inactive", updatedAt: now })
+          .where(eq(flexaiSubscriptions.userId, input.userId)),
+      );
+    } else {
+      logger.warn('[ACCOUNT_ACCESS] Legacy FlexAI deactivation skipped because its table is absent', {
+        userId: input.userId,
+      });
+    }
   }
 
   if (fullyRefundedOrder) {

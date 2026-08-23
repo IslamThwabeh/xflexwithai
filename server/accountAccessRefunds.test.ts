@@ -31,6 +31,15 @@ describe("account restriction and ILS refund workflow", () => {
     expect(dbSource).toContain('action: "restored"');
   });
 
+  it("does not roll back supported service deactivation when the legacy FlexAI table is absent", () => {
+    const flexaiGuardIndex = dbSource.indexOf('if (await databaseTableExists(db, "flexaiSubscriptions"))');
+    const flexaiUpdateIndex = dbSource.indexOf("db.update(flexaiSubscriptions)", flexaiGuardIndex);
+
+    expect(flexaiGuardIndex).toBeGreaterThan(-1);
+    expect(flexaiUpdateIndex).toBeGreaterThan(flexaiGuardIndex);
+    expect(dbSource).toContain("Legacy FlexAI deactivation skipped because its table is absent");
+  });
+
   it("uses an append-only ILS refund ledger and prevents over-refunds", () => {
     expect(migrationSource).toContain("amount_ils_agorot");
     expect(migrationSource).toContain("ACCOUNT_REFUND_EXCEEDS_ILS_SALE");
