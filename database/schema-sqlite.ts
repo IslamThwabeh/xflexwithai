@@ -14,9 +14,9 @@ export const users = sqliteTable("users", {
   city: text("city", { length: 100 }),
   country: text("country", { length: 100 }),
   emailVerified: integer("emailVerified", { mode: 'boolean' }).default(false).notNull(),
-  createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
-  updatedAt: text("updatedAt").default("CURRENT_TIMESTAMP").notNull(),
-  lastSignedIn: text("lastSignedIn").default("CURRENT_TIMESTAMP").notNull(),
+  createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
+  updatedAt: text("updatedAt").default(sql`(datetime('now'))`).notNull(),
+  lastSignedIn: text("lastSignedIn").default(sql`(datetime('now'))`).notNull(),
   lastActiveAt: text("lastActiveAt"),
   lastInteractiveAt: text("lastInteractiveAt"),
   notificationPrefs: text("notificationPrefs").default("{}"),
@@ -52,7 +52,7 @@ export const authEmailOtps = sqliteTable("authEmailOtps", {
   sentAtMs: integer("sentAtMs").notNull(),
   expiresAtMs: integer("expiresAtMs").notNull(),
   attempts: integer("attempts").default(0).notNull(),
-  createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
+  createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
 });
 
 export type AuthEmailOtp = typeof authEmailOtps.$inferSelect;
@@ -67,9 +67,9 @@ export const admins = sqliteTable("admins", {
   passwordHash: text("passwordHash", { length: 255 }).notNull(),
   name: text("name"),
   passwordChangedAt: text("passwordChangedAt"),
-  createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
-  updatedAt: text("updatedAt").default("CURRENT_TIMESTAMP").notNull(),
-  lastSignedIn: text("lastSignedIn").default("CURRENT_TIMESTAMP").notNull(),
+  createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
+  updatedAt: text("updatedAt").default(sql`(datetime('now'))`).notNull(),
+  lastSignedIn: text("lastSignedIn").default(sql`(datetime('now'))`).notNull(),
 });
 
 export type Admin = typeof admins.$inferSelect;
@@ -120,8 +120,8 @@ export const courses = sqliteTable("courses", {
   hasPdf: integer("hasPdf", { mode: 'boolean' }).default(false),
   hasIntroVideo: integer("hasIntroVideo", { mode: 'boolean' }).default(false),
   pdfUrl: text("pdfUrl"),
-  createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
-  updatedAt: text("updatedAt").default("CURRENT_TIMESTAMP").notNull(),
+  createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
+  updatedAt: text("updatedAt").default(sql`(datetime('now'))`).notNull(),
 });
 
 export type Course = typeof courses.$inferSelect;
@@ -141,8 +141,8 @@ export const episodes = sqliteTable("episodes", {
   duration: integer("duration"),
   order: integer("order").notNull(),
   isFree: integer("isFree", { mode: 'boolean' }).default(false).notNull(),
-  createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
-  updatedAt: text("updatedAt").default("CURRENT_TIMESTAMP").notNull(),
+  createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
+  updatedAt: text("updatedAt").default(sql`(datetime('now'))`).notNull(),
 });
 
 export type Episode = typeof episodes.$inferSelect;
@@ -155,8 +155,8 @@ export const enrollments = sqliteTable("enrollments", {
   id: int("id").primaryKey({ autoIncrement: true }),
   userId: integer("userId").notNull(),
   courseId: integer("courseId").notNull(),
-  enrolledAt: text("enrolledAt").default("CURRENT_TIMESTAMP").notNull(),
-  lastAccessed: text("lastAccessed").default("CURRENT_TIMESTAMP").notNull(),
+  enrolledAt: text("enrolledAt").default(sql`(datetime('now'))`).notNull(),
+  lastAccessed: text("lastAccessed").default(sql`(datetime('now'))`).notNull(),
   progressPercentage: integer("progressPercentage").default(0).notNull(),
   completedEpisodes: integer("completedEpisodes").default(0).notNull(),
   completedAt: text("completedAt"),
@@ -189,7 +189,7 @@ export const registrationKeys = sqliteTable("registrationKeys", {
   isRenewal: integer("isRenewal", { mode: 'boolean' }).default(false), // true if this key extends (renews) an existing subscription
   referredBy: text("referredBy"), // team member who convinced the user to upgrade
   activatedAt: text("activatedAt"),
-  createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
+  createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
   createdBy: integer("createdBy").notNull(),
   isActive: integer("isActive", { mode: 'boolean' }).default(true).notNull(),
   notes: text("notes"),
@@ -271,7 +271,7 @@ export const episodeProgress = sqliteTable("episodeProgress", {
   courseId: integer("courseId").notNull(),
   watchedDuration: integer("watchedDuration").default(0).notNull(),
   isCompleted: integer("isCompleted", { mode: 'boolean' }).default(false).notNull(),
-  lastWatchedAt: text("lastWatchedAt").default("CURRENT_TIMESTAMP").notNull(),
+  lastWatchedAt: text("lastWatchedAt").default(sql`(datetime('now'))`).notNull(),
 }, (table) => ({
   userCourseWatchedIdx: index("idx_episode_progress_user_course_watched")
     .on(table.userId, table.courseId, table.lastWatchedAt),
@@ -297,7 +297,7 @@ export const lexaiSubscriptions = sqliteTable("lexaiSubscriptions", {
   activationProcessedAt: text("activationProcessedAt"),
   courseWaivedByPolicy: integer("courseWaivedByPolicy", { mode: 'boolean' }).default(false).notNull(),
   brokerWaivedByPolicy: integer("brokerWaivedByPolicy", { mode: 'boolean' }).default(false).notNull(),
-  startDate: text("startDate").default("CURRENT_TIMESTAMP").notNull(),
+  startDate: text("startDate").default(sql`(datetime('now'))`).notNull(),
   endDate: text("endDate").notNull(),
   autoRenew: integer("autoRenew", { mode: 'boolean' }).default(true).notNull(),
   paymentStatus: text("paymentStatus", { length: 20 }).default("pending").notNull(),
@@ -309,8 +309,8 @@ export const lexaiSubscriptions = sqliteTable("lexaiSubscriptions", {
   pausedReason: text("pausedReason"),
   pausedRemainingDays: integer("pausedRemainingDays"),
   frozenUntil: text("frozenUntil"),
-  createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
-  updatedAt: text("updatedAt").default("CURRENT_TIMESTAMP").notNull(),
+  createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
+  updatedAt: text("updatedAt").default(sql`(datetime('now'))`).notNull(),
 });
 
 export type LexaiSubscription = typeof lexaiSubscriptions.$inferSelect;
@@ -330,7 +330,7 @@ export const lexaiMessages = sqliteTable("lexaiMessages", {
   confidence: integer("confidence"),
   apiRequestId: text("apiRequestId", { length: 255 }),
   apiStatus: text("apiStatus", { length: 20 }).default("pending"), // 'pending' | 'success' | 'failed'
-  createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
+  createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
 });
 
 export type LexaiMessage = typeof lexaiMessages.$inferSelect;
@@ -344,10 +344,10 @@ export const flexaiSubscriptions = sqliteTable("flexaiSubscriptions", {
   userId: integer("userId").notNull(),
   registrationKeyId: integer("registrationKeyId"),
   status: text("status", { length: 20 }).default("active"),
-  activatedAt: text("activatedAt").default("CURRENT_TIMESTAMP"),
+  activatedAt: text("activatedAt").default(sql`(datetime('now'))`),
   expiresAt: text("expiresAt").notNull(),
-  createdAt: text("createdAt").default("CURRENT_TIMESTAMP"),
-  updatedAt: text("updatedAt").default("CURRENT_TIMESTAMP"),
+  createdAt: text("createdAt").default(sql`(datetime('now'))`),
+  updatedAt: text("updatedAt").default(sql`(datetime('now'))`),
 });
 
 export type FlexaiSubscription = typeof flexaiSubscriptions.$inferSelect;
@@ -366,7 +366,7 @@ export const flexaiMessages = sqliteTable("flexaiMessages", {
   analysisResult: text("analysisResult"), // JSON as text
   analysisType: text("analysisType", { length: 50 }),
   timeframe: text("timeframe", { length: 10 }),
-  createdAt: text("createdAt").default("CURRENT_TIMESTAMP"),
+  createdAt: text("createdAt").default(sql`(datetime('now'))`),
 });
 
 export type FlexaiMessage = typeof flexaiMessages.$inferSelect;
@@ -388,7 +388,7 @@ export const recommendationSubscriptions = sqliteTable("recommendationSubscripti
   activationProcessedAt: text("activationProcessedAt"),
   courseWaivedByPolicy: integer("courseWaivedByPolicy", { mode: 'boolean' }).default(false).notNull(),
   brokerWaivedByPolicy: integer("brokerWaivedByPolicy", { mode: 'boolean' }).default(false).notNull(),
-  startDate: text("startDate").default("CURRENT_TIMESTAMP").notNull(),
+  startDate: text("startDate").default(sql`(datetime('now'))`).notNull(),
   endDate: text("endDate").notNull(),
   paymentStatus: text("paymentStatus", { length: 20 }).default("key").notNull(),
   paymentAmount: integer("paymentAmount").default(100).notNull(),
@@ -397,8 +397,8 @@ export const recommendationSubscriptions = sqliteTable("recommendationSubscripti
   pausedReason: text("pausedReason"),
   pausedRemainingDays: integer("pausedRemainingDays"),
   frozenUntil: text("frozenUntil"),
-  createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
-  updatedAt: text("updatedAt").default("CURRENT_TIMESTAMP").notNull(),
+  createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
+  updatedAt: text("updatedAt").default(sql`(datetime('now'))`).notNull(),
 });
 
 export type RecommendationSubscription = typeof recommendationSubscriptions.$inferSelect;
@@ -417,8 +417,8 @@ export const recommendationAlerts = sqliteTable("recommendationAlerts", {
   status: text("status", { length: 20 }).default("pending").notNull(),
   cancelledAt: text("cancelledAt"),
   deliveryDiagnosticsJson: text("deliveryDiagnosticsJson"),
-  createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
-  updatedAt: text("updatedAt").default("CURRENT_TIMESTAMP").notNull(),
+  createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
+  updatedAt: text("updatedAt").default(sql`(datetime('now'))`).notNull(),
 });
 
 export type RecommendationAlert = typeof recommendationAlerts.$inferSelect;
@@ -447,7 +447,7 @@ export const recommendationMessages = sqliteTable("recommendationMessages", {
   closedAt: text("closedAt"),
   closedByUserId: integer("closedByUserId"),
   deliveryDiagnosticsJson: text("deliveryDiagnosticsJson"),
-  createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
+  createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
 });
 
 export type RecommendationMessage = typeof recommendationMessages.$inferSelect;
@@ -609,7 +609,7 @@ export const recommendationReactions = sqliteTable("recommendationReactions", {
   messageId: integer("messageId").notNull(),
   userId: integer("userId").notNull(),
   reaction: text("reaction", { length: 20 }).notNull(), // like | love | sad | fire | rocket
-  createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
+  createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
 }, (table) => ({
   uniqueMessageReactionByUser: unique("unique_message_reaction_by_user").on(table.messageId, table.userId),
 }));
@@ -625,7 +625,7 @@ export const recommendationThreadMutes = sqliteTable("recommendationThreadMutes"
   id: int("id").primaryKey({ autoIncrement: true }),
   userId: integer("userId").notNull(),
   threadRootMessageId: integer("threadRootMessageId").notNull(),
-  createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
+  createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
 }, (table) => ({
   uniqueThreadMuteByUser: unique("unique_thread_mute_by_user").on(table.userId, table.threadRootMessageId),
 }));
@@ -642,8 +642,8 @@ export const quizzes = sqliteTable("quizzes", {
   title: text("title").notNull(),
   description: text("description"),
   passingScore: integer("passing_score").notNull().default(50),
-  createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
-  updatedAt: text("updated_at").default("CURRENT_TIMESTAMP").notNull(),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
+  updatedAt: text("updated_at").default(sql`(datetime('now'))`).notNull(),
 });
 
 export type Quiz = typeof quizzes.$inferSelect;
@@ -657,8 +657,8 @@ export const quizQuestions = sqliteTable("quiz_questions", {
   quizId: integer("quiz_id").notNull(),
   questionText: text("question_text").notNull(),
   orderNum: integer("order_num").notNull(),
-  createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
-  updatedAt: text("updated_at").default("CURRENT_TIMESTAMP").notNull(),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
+  updatedAt: text("updated_at").default(sql`(datetime('now'))`).notNull(),
 });
 
 export type QuizQuestion = typeof quizQuestions.$inferSelect;
@@ -673,7 +673,7 @@ export const quizOptions = sqliteTable("quiz_options", {
   optionId: text("option_id", { length: 1 }).notNull(),
   optionText: text("option_text").notNull(),
   isCorrect: integer("is_correct", { mode: 'boolean' }).notNull().default(false),
-  createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
 });
 
 export type QuizOption = typeof quizOptions.$inferSelect;
@@ -690,8 +690,8 @@ export const quizAttempts = sqliteTable("quiz_attempts", {
   totalQuestions: integer("total_questions").notNull(),
   percentage: text("percentage").notNull(), // Store as text instead of decimal
   passed: integer("passed", { mode: 'boolean' }).notNull(),
-  startedAt: text("started_at").default("CURRENT_TIMESTAMP").notNull(),
-  completedAt: text("completed_at").default("CURRENT_TIMESTAMP").notNull(),
+  startedAt: text("started_at").default(sql`(datetime('now'))`).notNull(),
+  completedAt: text("completed_at").default(sql`(datetime('now'))`).notNull(),
   timeTakenSeconds: integer("time_taken_seconds"),
 });
 
@@ -707,7 +707,7 @@ export const quizAnswers = sqliteTable("quiz_answers", {
   questionId: integer("question_id").notNull(),
   selectedOptionId: text("selected_option_id", { length: 1 }).notNull(),
   isCorrect: integer("is_correct", { mode: 'boolean' }).notNull(),
-  createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
 });
 
 export type QuizAnswer = typeof quizAnswers.$inferSelect;
@@ -728,8 +728,8 @@ export const userQuizProgress = sqliteTable("user_quiz_progress", {
   bestPercentage: text("best_percentage").default("0"), // Store as text instead of decimal
   attemptsCount: integer("attempts_count").default(0),
   lastAttemptAt: text("last_attempt_at"),
-  createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
-  updatedAt: text("updated_at").default("CURRENT_TIMESTAMP").notNull(),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
+  updatedAt: text("updated_at").default(sql`(datetime('now'))`).notNull(),
 }, (table) => ({
   uniqueUserQuiz: unique("unique_user_quiz").on(table.userId, table.quizId),
 }));
@@ -751,7 +751,7 @@ export const userRoles = sqliteTable("userRoles", {
   id: int("id").primaryKey({ autoIncrement: true }),
   userId: integer("userId").notNull(),
   role: text("role", { length: 30 }).notNull(), // 'analyst' | 'support' | 'key_manager'
-  assignedAt: text("assignedAt").default("CURRENT_TIMESTAMP").notNull(),
+  assignedAt: text("assignedAt").default(sql`(datetime('now'))`).notNull(),
   assignedBy: integer("assignedBy"), // admin id who assigned
 }, (table) => ({
   uniqueUserRole: unique("unique_user_role").on(table.userId, table.role),
@@ -912,8 +912,8 @@ export const packages = sqliteTable("packages", {
   displayOrder: integer("displayOrder").default(0).notNull(),
   thumbnailUrl: text("thumbnailUrl"),
   upgradePrice: integer("upgradePrice").default(0), // in cents — price to upgrade from a lower-tier package to this one
-  createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
-  updatedAt: text("updatedAt").default("CURRENT_TIMESTAMP").notNull(),
+  createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
+  updatedAt: text("updatedAt").default(sql`(datetime('now'))`).notNull(),
 });
 
 export type Package = typeof packages.$inferSelect;
@@ -932,8 +932,8 @@ export const studentDocuments = sqliteTable("studentDocuments", {
   sortOrder: integer("sortOrder").default(0).notNull(),
   isPublished: integer("isPublished", { mode: 'boolean' }).default(true).notNull(),
   isBulkArchive: integer("isBulkArchive", { mode: 'boolean' }).default(false).notNull(),
-  createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
-  updatedAt: text("updatedAt").default("CURRENT_TIMESTAMP").notNull(),
+  createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
+  updatedAt: text("updatedAt").default(sql`(datetime('now'))`).notNull(),
 });
 
 export type StudentDocument = typeof studentDocuments.$inferSelect;
@@ -978,8 +978,8 @@ export const orders = sqliteTable("orders", {
   termsAcceptedVersion: text("termsAcceptedVersion"),
   termsAcceptedIpAddress: text("termsAcceptedIpAddress"),
   termsAcceptedUserAgent: text("termsAcceptedUserAgent"),
-  createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
-  updatedAt: text("updatedAt").default("CURRENT_TIMESTAMP").notNull(),
+  createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
+  updatedAt: text("updatedAt").default(sql`(datetime('now'))`).notNull(),
   completedAt: text("completedAt"),
 });
 
@@ -1090,14 +1090,14 @@ export const packageSubscriptions = sqliteTable("packageSubscriptions", {
   packageId: integer("packageId").notNull(),
   orderId: integer("orderId"),
   isActive: integer("isActive", { mode: 'boolean' }).default(true).notNull(),
-  startDate: text("startDate").default("CURRENT_TIMESTAMP").notNull(),
+  startDate: text("startDate").default(sql`(datetime('now'))`).notNull(),
   endDate: text("endDate"),
   renewalDueDate: text("renewalDueDate"),
   autoRenew: integer("autoRenew", { mode: 'boolean' }).default(false).notNull(),
   upgradedFromPackageId: integer("upgradedFromPackageId"),
   upgradedAt: text("upgradedAt"),
-  createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
-  updatedAt: text("updatedAt").default("CURRENT_TIMESTAMP").notNull(),
+  createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
+  updatedAt: text("updatedAt").default(sql`(datetime('now'))`).notNull(),
 });
 
 export type PackageSubscription = typeof packageSubscriptions.$inferSelect;
@@ -1119,8 +1119,8 @@ export const events = sqliteTable("events", {
   imageUrl: text("imageUrl"),
   linkUrl: text("linkUrl"),
   isPublished: integer("isPublished", { mode: 'boolean' }).default(false).notNull(),
-  createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
-  updatedAt: text("updatedAt").default("CURRENT_TIMESTAMP").notNull(),
+  createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
+  updatedAt: text("updatedAt").default(sql`(datetime('now'))`).notNull(),
 });
 
 export type Event = typeof events.$inferSelect;
@@ -1154,8 +1154,8 @@ export const articles = sqliteTable("articles", {
   authorId: integer("authorId"),
   isPublished: integer("isPublished", { mode: 'boolean' }).default(false).notNull(),
   publishedAt: text("publishedAt"),
-  createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
-  updatedAt: text("updatedAt").default("CURRENT_TIMESTAMP").notNull(),
+  createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
+  updatedAt: text("updatedAt").default(sql`(datetime('now'))`).notNull(),
 });
 
 export type Article = typeof articles.$inferSelect;
@@ -1467,8 +1467,8 @@ export const coupons = sqliteTable("coupons", {
   validUntil: text("valid_until"),
   isActive: integer("is_active", { mode: 'boolean' }).notNull().default(false),
   packageId: integer("package_id"), // null = applies to all packages
-  createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
-  updatedAt: text("updated_at").default("CURRENT_TIMESTAMP").notNull(),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
+  updatedAt: text("updated_at").default(sql`(datetime('now'))`).notNull(),
 });
 
 export type Coupon = typeof coupons.$inferSelect;
@@ -1496,7 +1496,7 @@ export const testimonials = sqliteTable("testimonials", {
   showProofOnHome: integer("show_proof_on_home", { mode: 'boolean' }).notNull().default(false),
   showProofOnDashboard: integer("show_proof_on_dashboard", { mode: 'boolean' }).notNull().default(false),
   isPublished: integer("is_published", { mode: 'boolean' }).notNull().default(true),
-  createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
 });
 
 export type Testimonial = typeof testimonials.$inferSelect;
@@ -1514,8 +1514,8 @@ export const jobs = sqliteTable("jobs", {
   descriptionEn: text("description_en"),
   isActive: integer("is_active", { mode: 'boolean' }).notNull().default(true),
   sortOrder: integer("sort_order").notNull().default(0),
-  createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
-  updatedAt: text("updated_at").default("CURRENT_TIMESTAMP").notNull(),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
+  updatedAt: text("updated_at").default(sql`(datetime('now'))`).notNull(),
 });
 
 export type Job = typeof jobs.$inferSelect;
@@ -1543,8 +1543,8 @@ export const jobApplications = sqliteTable("job_applications", {
   cvFileUrl: text("cv_file_url"),
   cvFileKey: text("cv_file_key"),
   status: text("status", { length: 20 }).notNull().default("new"), // new | reviewed | shortlisted | rejected
-  submittedAt: text("submitted_at").default("CURRENT_TIMESTAMP").notNull(),
-  updatedAt: text("updated_at").default("CURRENT_TIMESTAMP").notNull(),
+  submittedAt: text("submitted_at").default(sql`(datetime('now'))`).notNull(),
+  updatedAt: text("updated_at").default(sql`(datetime('now'))`).notNull(),
   interviewInviteSentAt: text("interview_invite_sent_at"),
   // AI scoring fields (future)
   aiScore: integer("ai_score"),
@@ -1575,7 +1575,7 @@ export const jobInviteLogs = sqliteTable("job_invite_logs", {
   errorMessage: text("error_message"),
   templateKey: text("template_key").notNull().default("jobs_interview_invite_v1"),
   sentByAdminId: integer("sent_by_admin_id"),
-  sentAt: text("sent_at").default("CURRENT_TIMESTAMP").notNull(),
+  sentAt: text("sent_at").default(sql`(datetime('now'))`).notNull(),
 });
 
 export type JobInviteLog = typeof jobInviteLogs.$inferSelect;
@@ -1591,8 +1591,8 @@ export const studentJobProfiles = sqliteTable("student_job_profiles", {
   cvUrl: text("cv_url"),
   preferredRole: text("preferred_role"),
   availability: text("availability"),
-  updatedAt: text("updated_at").default("CURRENT_TIMESTAMP").notNull(),
-  createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
+  updatedAt: text("updated_at").default(sql`(datetime('now'))`).notNull(),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
 });
 
 export type StudentJobProfile = typeof studentJobProfiles.$inferSelect;
@@ -1612,8 +1612,8 @@ export const studentJobEligibilityRules = sqliteTable("student_job_eligibility_r
   // Signed actor context id: users/staff are positive; full admins are negative.
   createdByUserId: integer("created_by_user_id"),
   updatedByUserId: integer("updated_by_user_id"),
-  updatedAt: text("updated_at").default("CURRENT_TIMESTAMP").notNull(),
-  createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
+  updatedAt: text("updated_at").default(sql`(datetime('now'))`).notNull(),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
 });
 
 export type StudentJobEligibilityRule = typeof studentJobEligibilityRules.$inferSelect;
@@ -1632,9 +1632,9 @@ export const studentJobEligibilityReviews = sqliteTable("student_job_eligibility
   // Signed actor context id: users/staff are positive; full admins are negative.
   reviewedByUserId: integer("reviewed_by_user_id"),
   reviewedAt: text("reviewed_at"),
-  submittedAt: text("submitted_at").default("CURRENT_TIMESTAMP").notNull(),
-  updatedAt: text("updated_at").default("CURRENT_TIMESTAMP").notNull(),
-  createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
+  submittedAt: text("submitted_at").default(sql`(datetime('now'))`).notNull(),
+  updatedAt: text("updated_at").default(sql`(datetime('now'))`).notNull(),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
 }, (table) => ({
   uniqUserJob: unique().on(table.userId, table.jobId),
 }));
@@ -1652,7 +1652,7 @@ export const studentJobEligibilityAuditLogs = sqliteTable("student_job_eligibili
   fromStatus: text("from_status"),
   toStatus: text("to_status"),
   details: text("details"),
-  createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
 });
 
 export type StudentJobEligibilityAuditLog = typeof studentJobEligibilityAuditLogs.$inferSelect;
@@ -1714,8 +1714,8 @@ export const courseReviews = sqliteTable("course_reviews", {
   rating: integer("rating").notNull().default(5), // 1-5
   comment: text("comment"),
   isApproved: integer("is_approved", { mode: 'boolean' }).default(false).notNull(),
-  createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
-  updatedAt: text("updated_at").default("CURRENT_TIMESTAMP").notNull(),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
+  updatedAt: text("updated_at").default(sql`(datetime('now'))`).notNull(),
 }, (table) => ({
   uniqueUserCourse: unique().on(table.userId, table.courseId),
 }));
@@ -1733,7 +1733,7 @@ export const offerAgreements = sqliteTable("offer_agreements", {
   email: text("email").notNull(),
   phone: text("phone").default(""),
   offerSlug: text("offerSlug").notNull().default("eid-fitr-2026"),
-  agreedAt: text("agreedAt").default("CURRENT_TIMESTAMP").notNull(),
+  agreedAt: text("agreedAt").default(sql`(datetime('now'))`).notNull(),
   ipAddress: text("ipAddress").default(""),
 }, (table) => ({
   uniqueEmailSlug: unique().on(table.email, table.offerSlug),
@@ -1770,7 +1770,7 @@ export const userNotifications = sqliteTable("user_notifications", {
   batchId: text("batch_id"),
   emailSent: integer("email_sent", { mode: 'boolean' }).default(false).notNull(),
   dedupeKey: text("dedupe_key"),
-  createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
 }, (table) => ({
   dedupeKeyUnique: unique("uq_user_notifications_dedupe_key").on(table.dedupeKey),
 }));
@@ -1795,7 +1795,7 @@ export const adminActions = sqliteTable("admin_actions", {
   userId: integer("userId").notNull(),
   action: text("action").notNull(),
   details: text("details"), // JSON string
-  createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
+  createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
 });
 
 export type AdminAction = typeof adminActions.$inferSelect;
@@ -1815,8 +1815,8 @@ export const planProgress = sqliteTable("plan_progress", {
   currentPhase: integer("currentPhase").default(1).notNull(),
   phaseApprovals: text("phaseApprovals").default("{}").notNull(), // JSON: phase -> boolean
   adminNotes: text("adminNotes").default(""),
-  createdAt: text("createdAt").default("CURRENT_TIMESTAMP").notNull(),
-  updatedAt: text("updatedAt").default("CURRENT_TIMESTAMP").notNull(),
+  createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
+  updatedAt: text("updatedAt").default(sql`(datetime('now'))`).notNull(),
 }, (table) => ({
   uniqueEmail: unique().on(table.email),
 }));
@@ -1837,7 +1837,7 @@ export const pointsTransactions = sqliteTable("points_transactions", {
   reasonAr: text("reason_ar"),
   referenceId: integer("reference_id"),
   referenceType: text("reference_type", { length: 30 }), // order | quiz | review | course_complete | login | referral
-  createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
 });
 
 export type PointsTransaction = typeof pointsTransactions.$inferSelect;
@@ -1865,8 +1865,8 @@ export const loyaltyRewardItems = sqliteTable("loyalty_reward_items", {
   isActive: integer("is_active", { mode: "boolean" }).default(false).notNull(),
   sortOrder: integer("sort_order").default(0).notNull(),
   createdByUserId: integer("created_by_user_id").notNull(),
-  createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
-  updatedAt: text("updated_at").default("CURRENT_TIMESTAMP").notNull(),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
+  updatedAt: text("updated_at").default(sql`(datetime('now'))`).notNull(),
 });
 
 export type LoyaltyRewardItem = typeof loyaltyRewardItems.$inferSelect;
@@ -1880,11 +1880,11 @@ export const loyaltyRewardRedemptions = sqliteTable("loyalty_reward_redemptions"
   pointsCost: integer("points_cost").notNull(),
   pointsTransactionId: integer("points_transaction_id"),
   adminNote: text("admin_note"),
-  requestedAt: text("requested_at").default("CURRENT_TIMESTAMP").notNull(),
+  requestedAt: text("requested_at").default(sql`(datetime('now'))`).notNull(),
   reviewedAt: text("reviewed_at"),
   reviewedByUserId: integer("reviewed_by_user_id"),
   fulfilledAt: text("fulfilled_at"),
-  updatedAt: text("updated_at").default("CURRENT_TIMESTAMP").notNull(),
+  updatedAt: text("updated_at").default(sql`(datetime('now'))`).notNull(),
 });
 
 export type LoyaltyRewardRedemption = typeof loyaltyRewardRedemptions.$inferSelect;
@@ -1899,7 +1899,7 @@ export const loyaltyRewardAuditLogs = sqliteTable("loyalty_reward_audit_logs", {
   fromStatus: text("from_status", { length: 20 }),
   toStatus: text("to_status", { length: 20 }),
   details: text("details"),
-  createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
 });
 
 export type LoyaltyRewardAuditLog = typeof loyaltyRewardAuditLogs.$inferSelect;
@@ -1916,8 +1916,8 @@ export const studentCommunityPosts = sqliteTable("student_community_posts", {
   body: text("body").notNull(),
   status: text("status", { length: 20 }).default("visible").notNull(),
   pinnedAt: text("pinned_at"),
-  createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
-  updatedAt: text("updated_at").default("CURRENT_TIMESTAMP").notNull(),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
+  updatedAt: text("updated_at").default(sql`(datetime('now'))`).notNull(),
 });
 
 export type StudentCommunityPost = typeof studentCommunityPosts.$inferSelect;
@@ -1929,8 +1929,8 @@ export const studentCommunityComments = sqliteTable("student_community_comments"
   userId: integer("user_id").notNull(),
   body: text("body").notNull(),
   status: text("status", { length: 20 }).default("visible").notNull(),
-  createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
-  updatedAt: text("updated_at").default("CURRENT_TIMESTAMP").notNull(),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
+  updatedAt: text("updated_at").default(sql`(datetime('now'))`).notNull(),
 });
 
 export type StudentCommunityComment = typeof studentCommunityComments.$inferSelect;
@@ -1946,8 +1946,8 @@ export const studentCommunityReports = sqliteTable("student_community_reports", 
   status: text("status", { length: 20 }).default("open").notNull(),
   reviewedByUserId: integer("reviewed_by_user_id"),
   reviewedAt: text("reviewed_at"),
-  createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
-  updatedAt: text("updated_at").default("CURRENT_TIMESTAMP").notNull(),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
+  updatedAt: text("updated_at").default(sql`(datetime('now'))`).notNull(),
 });
 
 export type StudentCommunityReport = typeof studentCommunityReports.$inferSelect;
@@ -1962,7 +1962,7 @@ export const studentCommunityAuditLogs = sqliteTable("student_community_audit_lo
   fromStatus: text("from_status", { length: 20 }),
   toStatus: text("to_status", { length: 20 }),
   details: text("details"),
-  createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
 });
 
 export type StudentCommunityAuditLog = typeof studentCommunityAuditLogs.$inferSelect;
@@ -1977,7 +1977,7 @@ export const studentCommunityAccessControls = sqliteTable("student_community_acc
   expiresAt: text("expires_at"),
   restoredByUserId: integer("restored_by_user_id"),
   restoredAt: text("restored_at"),
-  updatedAt: text("updated_at").default("CURRENT_TIMESTAMP").notNull(),
+  updatedAt: text("updated_at").default(sql`(datetime('now'))`).notNull(),
 });
 
 export type StudentCommunityAccessControl = typeof studentCommunityAccessControls.$inferSelect;
@@ -1990,7 +1990,7 @@ export const studentCommunityAccessAuditLogs = sqliteTable("student_community_ac
   action: text("action", { length: 20 }).notNull(),
   reason: text("reason"),
   expiresAt: text("expires_at"),
-  createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
 });
 
 export type StudentCommunityAccessAuditLog = typeof studentCommunityAccessAuditLogs.$inferSelect;
@@ -2003,8 +2003,8 @@ export const studentCommunityPolicyTerms = sqliteTable("student_community_policy
   category: text("category", { length: 30 }).default("competitor").notNull(),
   isActive: integer("is_active", { mode: "boolean" }).default(true).notNull(),
   createdByUserId: integer("created_by_user_id").notNull(),
-  createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
-  updatedAt: text("updated_at").default("CURRENT_TIMESTAMP").notNull(),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
+  updatedAt: text("updated_at").default(sql`(datetime('now'))`).notNull(),
 });
 
 export type StudentCommunityPolicyTerm = typeof studentCommunityPolicyTerms.$inferSelect;
@@ -2024,7 +2024,7 @@ export const studentCommunityModerationDecisions = sqliteTable("student_communit
   matchedPolicyTermId: integer("matched_policy_term_id"),
   contentHash: text("content_hash").notNull(),
   durationMs: integer("duration_ms"),
-  createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
 });
 
 export type StudentCommunityModerationDecision = typeof studentCommunityModerationDecisions.$inferSelect;
@@ -2041,7 +2041,7 @@ export const engagementEvents = sqliteTable("engagement_events", {
   entityType: text("entity_type"), // course | episode | package | article | event
   entityId: integer("entity_id"),
   metadata: text("metadata"), // JSON
-  createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
 });
 
 export type EngagementEvent = typeof engagementEvents.$inferSelect;
@@ -2077,7 +2077,7 @@ export const openAiUsageEvents = sqliteTable("openai_usage_events", {
   success: integer("success", { mode: "boolean" }).default(true).notNull(),
   errorMessage: text("error_message"),
   metadata: text("metadata"),
-  createdAt: text("created_at").default("CURRENT_TIMESTAMP").notNull(),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
 });
 
 export type OpenAiUsageEvent = typeof openAiUsageEvents.$inferSelect;
