@@ -15,6 +15,10 @@ describe("admin support message copying", () => {
 
   it("does not open the touch action menu while selecting message text", () => {
     expect(source).toContain("closest('[data-support-message-text]')");
-    expect(source).toContain("navigator.clipboard.writeText(content)");
+  });
+
+  it("provides a directly accessible mobile copy action", () => {
+    expect(source).toContain("aria-label={isRtl ? 'نسخ الرسالة' : 'Copy message'}");
+    expect(source).toContain("lg:hidden");
   });
 });

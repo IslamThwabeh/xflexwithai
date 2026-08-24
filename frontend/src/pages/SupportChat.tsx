@@ -19,6 +19,7 @@ import {
   MAX_SUPPORT_VIDEO_SECONDS,
   type SupportMediaKind,
 } from "@/lib/supportMedia";
+import { copyTextToClipboard } from "@/lib/copyText";
 
 function getRequestedSupportTab() {
   if (typeof window === "undefined") return "chat" as const;
@@ -408,10 +409,10 @@ export default function SupportChat() {
   };
 
   const copyMessage = async (content: string) => {
-    try {
-      await navigator.clipboard.writeText(content);
+    const copied = await copyTextToClipboard(content);
+    if (copied) {
       toast.success(isRTL ? 'تم نسخ الرسالة' : 'Message copied');
-    } catch {
+    } else {
       toast.error(isRTL ? 'تعذر نسخ الرسالة' : 'Failed to copy message');
     }
   };
@@ -611,7 +612,8 @@ export default function SupportChat() {
                   )}
                   <div
                     className={`group flex ${isOwn ? (isRTL ? "justify-start" : "justify-end") : (isRTL ? "justify-end" : "justify-start")}`}
-                    onTouchStart={() => {
+                    onTouchStart={(event) => {
+                      if ((event.target as HTMLElement).closest('[data-support-message-text]')) return;
                       if (!canOpenMenu) return;
                       longPressTimer.current = setTimeout(() => setActiveMenuMsgId(msg.id), 500);
                     }}
@@ -724,7 +726,13 @@ export default function SupportChat() {
                         </div>
                       </div>
                     ) : (
-                      <p className="text-sm whitespace-pre-wrap break-words select-text">{msg.content}</p>
+                      <p
+                        data-support-message-text
+                        className="cursor-text select-text text-sm whitespace-pre-wrap break-words"
+                        style={{ WebkitUserSelect: 'text', userSelect: 'text' }}
+                      >
+                        {msg.content}
+                      </p>
                     )}
                     {msg.attachmentUrl && (msg as any).attachmentType === 'voice' ? (
                       <div className="mt-1">
@@ -761,6 +769,19 @@ export default function SupportChat() {
                           return isNaN(d.getTime()) ? '' : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                         })()}
                       </p>
+                      {canCopy && (
+                        <button
+                          type="button"
+                          className={`ms-auto inline-flex h-7 w-7 items-center justify-center rounded-md lg:hidden ${
+                            isOwn ? 'text-emerald-100 hover:bg-white/15' : 'text-gray-500 hover:bg-gray-200'
+                          }`}
+                          onClick={() => void copyMessage(msg.content)}
+                          aria-label={isRTL ? 'نسخ الرسالة' : 'Copy message'}
+                          title={isRTL ? 'نسخ الرسالة' : 'Copy message'}
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                        </button>
+                      )}
                     </div>
                       </>
                     )}

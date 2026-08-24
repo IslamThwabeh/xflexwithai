@@ -64,6 +64,7 @@ import {
   MAX_SUPPORT_VIDEO_SECONDS,
   type SupportMediaKind,
 } from "@/lib/supportMedia";
+import { copyTextToClipboard } from "@/lib/copyText";
 
 export default function AdminSupport() {
   const { user: currentUser } = useAuth();
@@ -634,10 +635,10 @@ export default function AdminSupport() {
   };
 
   const copyMessage = async (content: string) => {
-    try {
-      await navigator.clipboard.writeText(content);
+    const copied = await copyTextToClipboard(content);
+    if (copied) {
       toast.success(isRtl ? 'تم نسخ الرسالة' : 'Message copied');
-    } catch {
+    } else {
       toast.error(isRtl ? 'تعذر نسخ الرسالة' : 'Failed to copy message');
     }
   };
@@ -1192,6 +1193,7 @@ export default function AdminSupport() {
                               <p
                                 data-support-message-text
                                 className="cursor-text select-text text-sm whitespace-pre-wrap break-words"
+                                style={{ WebkitUserSelect: 'text', userSelect: 'text' }}
                               >
                                 {msg.content}
                               </p>
@@ -1233,6 +1235,19 @@ export default function AdminSupport() {
                                   return isNaN(d.getTime()) ? '' : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                                 })()}
                               </p>
+                              {canCopy && (
+                                <button
+                                  type="button"
+                                  className={`ms-auto inline-flex h-7 w-7 items-center justify-center rounded-md lg:hidden ${
+                                    isClient ? 'text-gray-500 hover:bg-gray-200' : 'text-emerald-100 hover:bg-white/15'
+                                  }`}
+                                  onClick={() => void copyMessage(msg.content)}
+                                  aria-label={isRtl ? 'نسخ الرسالة' : 'Copy message'}
+                                  title={isRtl ? 'نسخ الرسالة' : 'Copy message'}
+                                >
+                                  <Copy className="h-3.5 w-3.5" />
+                                </button>
+                              )}
                             </div>
                               </>
                             )}
