@@ -36,6 +36,7 @@ import {
   PaymentProofUploadError,
   processPaymentProofUpload,
 } from "../services/payment-proof-upload.service";
+import { checkScheduledEmailOutboxHealth } from "../services/email-outbox-health-monitor.service";
 
 function appendCookieHeaders(headers: Headers, cookieHeaders: string[] | undefined) {
   if (!cookieHeaders?.length) return;
@@ -746,16 +747,7 @@ export default {
       }
 
       try {
-        const health = await db.getEmailOutboxHealth(5);
-        if (health.staleDuePending > 0 || health.deadLetter > 0) {
-          await db.notifyStaffByEvent("email_delivery_anomaly", {
-            titleEn: `Email outbox delay detected (${health.staleDuePending} stale due)`,
-            titleAr: `تم رصد تأخير في صندوق البريد (${health.staleDuePending} مستحقة ومتأخرة)`,
-            contentEn: `${health.duePending} due pending, ${health.failedDue} failed due for retry, ${health.deadLetter} dead-lettered. Oldest pending: ${health.oldestPendingCreatedAt || "none"}.`,
-            contentAr: `${health.duePending} رسائل مستحقة، ${health.failedDue} فاشلة مستحقة لإعادة المحاولة، ${health.deadLetter} فاشلة نهائياً. أقدم رسالة معلقة: ${health.oldestPendingCreatedAt || "لا يوجد"}.`,
-            metadata: health,
-          }).catch(() => {});
-        }
+        await checkScheduledEmailOutboxHealth(5);
       } catch (error) {
         logger.error("[CRON] Email outbox health check failed", {
           error: error instanceof Error ? error.message : String(error),

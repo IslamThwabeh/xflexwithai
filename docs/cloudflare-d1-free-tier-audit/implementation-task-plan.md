@@ -7,7 +7,9 @@ Local implementation progress on 2026-08-24:
 
 - Task 0.2 completed locally: `pnpm run test:critical-cycle` covers 21 files / 149 tests.
 - Task 1.1 completed locally: the indexed anomaly probe exists but is not connected to the scheduler.
-- SQL contract, TypeScript, 104 files / 579 full tests, application build, Worker build, and diff hygiene passed.
+- Task 1.2 completed locally: the minute scheduler now gates the full diagnostic behind the indexed anomaly probe while keeping delivery work first.
+- Updated critical-cycle coverage passes 22 files / 154 tests.
+- SQL contract, TypeScript, 105 files / 584 full tests, application build, Worker build, and diff hygiene passed.
 - No production query behavior, migration, deployment, schedule, or data changed.
 
 ## Goal
