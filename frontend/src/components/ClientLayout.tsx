@@ -43,6 +43,7 @@ import {
   Menu,
   Building2,
   Briefcase,
+  Key,
 } from "lucide-react";
 
 interface ClientLayoutProps {
@@ -222,6 +223,12 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
       label: language === "ar" ? "باقتي" : "My Package",
       icon: <Package className="h-4 w-4" />,
       match: "/my-packages",
+    },
+    {
+      href: "/activate-key",
+      label: language === "ar" ? "تفعيل / تجديد مفتاح" : "Activate / Renew Key",
+      icon: <Key className="h-4 w-4" />,
+      match: "/activate-key",
     },
     {
       href: "/broker-onboarding",

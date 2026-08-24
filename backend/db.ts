@@ -4575,6 +4575,22 @@ export async function getAnyRecommendationSubscription(userId: number) {
   return rows[0];
 }
 
+async function getLatestExpiredRecommendationSubscription(userId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const nowIso = new Date().toISOString();
+  const rows = await db
+    .select()
+    .from(recommendationSubscriptions)
+    .where(and(
+      eq(recommendationSubscriptions.userId, userId),
+      lte(recommendationSubscriptions.endDate, nowIso),
+    ))
+    .orderBy(desc(recommendationSubscriptions.endDate), desc(recommendationSubscriptions.createdAt))
+    .limit(1);
+  return rows[0];
+}
+
 /** Returns the frozen (paused) Recommendation subscription if one exists, or undefined. */
 export async function getFrozenRecommendationSubscription(userId: number) {
   const db = await getDb();
@@ -5172,7 +5188,8 @@ export async function getUserRecommendationsAccess(userId: number) {
 
 export async function getRecommendationServiceAccessSummary(userId: number): Promise<TimedServiceAccessSummary> {
   await ensureTimedServicesActivatedIfDue(userId);
-  const subscription = await getAnyRecommendationSubscription(userId);
+  const subscription = await getAnyRecommendationSubscription(userId)
+    ?? await getLatestExpiredRecommendationSubscription(userId);
   return buildTimedServiceAccessSummary(subscription);
 }
 
@@ -11423,7 +11440,8 @@ export async function getUserLexaiSubscription(userId: number) {
 
 export async function getLexaiServiceAccessSummary(userId: number): Promise<TimedServiceAccessSummary> {
   await ensureTimedServicesActivatedIfDue(userId);
-  const subscription = await getAnyLexaiSubscription(userId);
+  const subscription = await getAnyLexaiSubscription(userId)
+    ?? await getLatestExpiredLexaiSubscription(userId);
   return buildTimedServiceAccessSummary(subscription);
 }
 
@@ -11439,6 +11457,22 @@ export async function getAnyLexaiSubscription(userId: number) {
     .orderBy(desc(lexaiSubscriptions.endDate), desc(lexaiSubscriptions.createdAt))
     .limit(1);
   return result.length > 0 ? result[0] : undefined;
+}
+
+async function getLatestExpiredLexaiSubscription(userId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const nowIso = new Date().toISOString();
+  const rows = await db
+    .select()
+    .from(lexaiSubscriptions)
+    .where(and(
+      eq(lexaiSubscriptions.userId, userId),
+      lte(lexaiSubscriptions.endDate, nowIso),
+    ))
+    .orderBy(desc(lexaiSubscriptions.endDate), desc(lexaiSubscriptions.createdAt))
+    .limit(1);
+  return rows[0];
 }
 
 /** Returns the frozen (paused) LexAI subscription if one exists, or undefined. */
