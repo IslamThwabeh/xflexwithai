@@ -1,0 +1,336 @@
+# Cloudflare D1 Free-Tier Optimization — Small-Task Release Plan
+
+Date: 2026-08-24
+Status: local implementation in progress; no production migration, deployment, or production data write has been performed.
+
+Local implementation progress on 2026-08-24:
+
+- Task 0.2 completed locally: `pnpm run test:critical-cycle` covers 21 files / 149 tests.
+- Task 1.1 completed locally: the indexed anomaly probe exists but is not connected to the scheduler.
+- SQL contract, TypeScript, 104 files / 579 full tests, application build, Worker build, and diff hygiene passed.
+- No production query behavior, migration, deployment, schedule, or data changed.
+
+## Goal
+
+Reduce production D1 reads from the observed 10.9 million rows per trailing 24 hours to below 3.5 million rows per complete UTC day, while preserving every customer, support, recommendation, email, course, key, and staff-session rule.
+
+The work is intentionally split into small releases. A task is not allowed to share a release with the next task. The next task starts only after the current task passes its local gates, production smoke, reconciliation, and short soak.
+
+## Non-negotiable protected cycle
+
+Every task must preserve all of these behaviors, even when the task does not directly edit that area:
+
+- The `* * * * *` Worker schedule and bounded email/recommendation drain remain active.
+- Human support replies keep their reserved transactional email lane and approximately one-minute delivery target.
+- Recommendation deliveries retain priority, BCC privacy, suppression checks, dedupe, stale-delivery reconciliation, eligibility revalidation, and provider-acceptance audit.
+- New top-level recommendations keep the client-notification wait/lock. Old-thread updates and results keep their established behavior. The analyst `publishState` one-second refresh is not part of this optimization.
+- Recommendation thread mute, result-before-close, cumulative-pips reporting, and current recipient eligibility remain unchanged.
+- Staff inactivity remains 15 minutes with a two-minute warning. Polling must never count as real interaction.
+- Course access remains lifetime for qualifying paid-course enrollment owners. Quiz progression, explicit failed-quiz bypass, and soft watch-progress repair remain unchanged.
+- Basic and Comprehensive package rules remain unchanged, including old-student blocking, renewal stacking, Basic-to-Comprehensive upgrade handling, Comprehensive-to-Basic protection, configurable study period, terms evidence, order-linked activation, and pending timed-service activation.
+- Account suspension, refund, service deactivation, and key activation protections remain server-enforced.
+- Existing operational history is not deleted, deduplicated, rewritten, or backfilled by these tasks.
+- Indexes are additive, idempotent, and non-unique. Past migrations are never edited.
+- Private routes retain authentication, `noindex`, and private/no-store behavior.
+
+## Gate applied to every task
+
+1. Record the exact base commit and a read-only production baseline relevant to the task.
+2. Add or update a focused regression test before changing behavior.
+3. Make one narrowly scoped change and one meaningful commit.
+4. Run focused tests, `pnpm run check`, the complete test suite, `pnpm run build`, `pnpm run build:worker`, and `git diff --check`.
+5. Every new or changed SQL statement must pass a production-shaped SQL contract test before PRD: execute the exact application query against an isolated SQLite fixture with the physical production table and column names, bind realistic values, cover null/empty/legacy cases relevant to the query, and fail on any missing column or SQLite syntax error. TypeScript compilation or a mocked database test alone is not sufficient.
+6. Every optimized read query must also pass `EXPLAIN QUERY PLAN` against that fixture. Assert the intended index name or bounded primary-key search and reject an unexpected full scan where the task exists to remove one. Raw production verification must use the physical column names from `sqlite_master`/`PRAGMA table_info`; do not infer names from Drizzle property names.
+7. For a migration: test twice on isolated SQLite, prove it contains no `ALTER`, `DROP`, `DELETE`, `UPDATE`, `INSERT`, or unique index, capture a production Time Travel bookmark, get explicit production-write approval, then apply only that migration.
+8. Reconcile row counts and foreign keys after a migration. Use individual read-only production `EXPLAIN QUERY PLAN` commands, not a Wrangler SQL file.
+9. Deploy only the component that changed. If both changed, Worker precedes Pages.
+10. Run production smoke for the affected flow and the protected-cycle matrix below. Do not create synthetic client emails, recommendations, keys, orders, or entitlements.
+11. Observe errors and D1 Insights for at least 30–60 minutes. After each optimization wave, measure one complete UTC day before claiming savings.
+12. If any gate fails, stop. Roll back application code to the prior Worker/Pages version. Do not automatically reverse a D1 migration; an unused additive index may remain while the safest recovery is reviewed.
+
+## Task 0 — Freeze the baseline and regression matrix
+
+### 0.1 Capture the release baseline
+
+- Change: none; save base commit, Worker version, Pages deployment, both cron schedules, D1 24-hour totals, top query families, and relevant table counts.
+- Verify: all commands are read-only and report `rows_written = 0` / `changed_db = false` where Cloudflare exposes them.
+- Pass: the baseline is sufficient to compare each later task.
+- Rollback: not applicable.
+
+### 0.2 Add the cross-cycle test command/list
+
+- Change: create a documented focused suite covering email outbox, support notification delivery, recommendation workflow/delivery/mute, package lifecycle/renewal, timed-service activation/access, course progression, terms, account access, and idle activity.
+- Verify: run it unchanged against the current base first.
+- Pass: the base is green, so later failures can be attributed to the task under test.
+- Rollback: remove only the test-command/document change.
+
+## Recommendation 1 — Stop the minute full-table outbox health scan
+
+### 1.1 Add an indexed anomaly probe without using it
+
+- Change: add a database helper that uses bounded `EXISTS`/`LIMIT 1` searches for stale due rows and dead letters. Keep `getEmailOutboxHealth()` unchanged for detailed admin diagnostics.
+- Files: `backend/db.ts` and a focused outbox-health test.
+- Verify: isolated SQLite `EXPLAIN QUERY PLAN` uses `idx_email_outbox_status_next_attempt`; helper returns true for stale pending/dead-letter fixtures and false for healthy/sent-only fixtures.
+- Pass: no call site changes and the full suite remains green.
+- Rollback: revert the helper commit.
+
+### 1.2 Gate the scheduled diagnostic behind the anomaly probe
+
+- Change: in `backend/_core/worker.ts`, run the lightweight probe each minute and call the full health aggregation only when the probe detects an anomaly.
+- Verify: scheduled-job tests prove `runFrequentTimedServiceAndEmailJobs()` still runs every minute, healthy state skips the full aggregate, anomaly state still creates the same throttled staff alert, and an anomaly-check failure remains non-fatal.
+- Pass: support-reply and recommendation delivery priority tests remain unchanged and green; both cron expressions remain present in the Worker deployment dry run.
+- Rollback: restore the prior scheduled health block; the helper may safely remain unused.
+
+### 1.3 Reduce passive Admin Email Logs health refresh
+
+- Change: keep an explicit/manual detailed refresh, but stop full diagnostic polling while the tab is hidden and use a slower visible interval.
+- Files: `frontend/src/pages/AdminEmailLogs.tsx` plus a focused source/UI test.
+- Verify: opening the page still shows every current health field; “Drain due now” still invalidates and refreshes health immediately.
+- Pass: no email send/drain behavior changes.
+- Rollback: restore the previous query options.
+
+## Recommendation 2 — Consolidate and slow staff badge reads
+
+### 2.1 Add the staff-badge covering index
+
+- Change: one additive migration for a non-unique index supporting unread totals and grouping by route for one user.
+- Verify: migration is idempotent; duplicate notifications survive; production pre/post row counts and unread counts match; `EXPLAIN` searches the new index.
+- Pass: notification creation/read behavior is unchanged.
+- Rollback: stop before code changes; do not drop the index automatically.
+
+### 2.2 Add one combined badge query and endpoint
+
+- Change: add one backend response `{ total, byRoute }` computed by a single grouped query. Keep the two old endpoints temporarily.
+- Files: `backend/db.ts`, `backend/routers.ts`, and a focused route/database test.
+- Verify: fixtures with null routes, several routes, read rows, and different users exactly match the two legacy endpoint results.
+- Pass: authorization remains `supportStaffProcedure`; no frontend change yet.
+- Rollback: revert the new endpoint commit.
+
+### 2.3 Switch the dashboard to the combined endpoint at the existing cadence
+
+- Change: `DashboardLayout` consumes the combined response but keeps 30-second polling initially.
+- Verify: bell total and every sidebar route badge match before/after fixtures; mark-one, mark-route, and mark-all actions invalidate the combined query immediately.
+- Pass: there is no visible badge behavior change, only one request instead of two.
+- Rollback: point the layout back to the two legacy endpoints.
+
+### 2.4 Make badge polling visible-only
+
+- Change: pause badge polling when the document is hidden; refetch on visible/focus.
+- Verify: fake-timer/browser test records no hidden-tab requests and an immediate refresh on return.
+- Pass: staff idle timers are not reset by polling or visibility refresh.
+- Rollback: restore the prior query options.
+
+### 2.5 Change the visible badge interval to two minutes
+
+- Change: only the interval, from 30 seconds to 120 seconds.
+- Verify: read-action invalidation still updates badges immediately; a newly created alert appears within two minutes without navigation.
+- Pass: business accepts the maximum passive badge delay; support inbox message polling remains unchanged.
+- Rollback: return the interval to 30 seconds.
+
+## Recommendation 3 — Reduce recommendation summary and open-thread polling
+
+### 3.1 Add recommendation root/child indexes
+
+- Change: one additive migration containing only the non-unique indexes required by root status/order and child parent/type lookups.
+- Verify: existing message/thread counts are identical; duplicate/legacy-compatible rows remain valid; `EXPLAIN` removes root and child scans.
+- Pass: recommendation workflow tests, monthly reporting, mute, and delivery tests all pass.
+- Rollback: do not drop the indexes automatically.
+
+### 3.2 Replace the correlated thread-summary scan
+
+- Change: rewrite only `getRecommendationThreadSummary()` using an indexed/pre-aggregated child result set while returning the exact existing shape.
+- Verify: old and new queries are run against the same rich fixture and produce byte-equivalent normalized results for open, closed, no-result, result, update, and legacy-null status threads.
+- Pass: no router or polling changes in this task.
+- Rollback: restore the old query; the indexes may remain.
+
+### 3.3 Slow only the admin thread summary
+
+- Change: move the admin `threadSummary` passive refresh from 30 seconds to five minutes, visible only.
+- Verify: publish, update, result, close, delete, override, and mute mutations still invalidate the summary immediately.
+- Pass: the one-second analyst `publishState` refresh is untouched.
+- Rollback: restore 30 seconds.
+
+### 3.4 Slow only the admin open-thread feed
+
+- Change: move admin `openThreads` to 60 seconds, visible only, with focus refresh.
+- Verify: every existing mutation invalidates the feed; newly published/updated threads appear immediately after the local mutation and within 60 seconds if changed elsewhere.
+- Pass: history/archive queries and reporting are untouched.
+- Rollback: restore 30 seconds.
+
+### 3.5 Slow only the client open-thread feed
+
+- Risk: high because recommendations are time-sensitive.
+- Change: move client `openThreads` from three seconds/background polling to 60 seconds while visible, disable background polling, and refetch immediately on focus.
+- Verify: local browser timing proves a remotely published recommendation appears within 60 seconds on a visible page and immediately after returning to a hidden page; reactions and mute still invalidate immediately.
+- Pass: the business accepts the up-to-60-second post-publication display delay, and email delivery timing is unchanged.
+- Rollback: restore the three-second settings without touching backend queries or indexes.
+
+### 3.6 Re-measure before touching active-alert or publish-state polling
+
+- Change: none.
+- Verify: one complete UTC-day D1 sample after Tasks 3.1–3.5.
+- Pass: only create a later active-alert task if it is still a material driver. Do not optimize the one-second `publishState` loop without a separate workflow design.
+
+## Recommendation 4 — Add the remaining narrow indexes
+
+Each item below is its own migration, approval, application, reconciliation, and production `EXPLAIN` check. An index is created only if the current query and production plan prove it is needed.
+
+### 4.1 Enrollment lookup index
+
+- Target: user/course entitlement lookups.
+- Protected tests: lifetime course ownership, refund/revocation, package access, and course watch progression.
+
+### 4.2 Episode course/order index
+
+- Target: static episode listing by course and order.
+- Protected tests: eight level checkpoints, no-quiz behavior, watch-progress repair, and admin episode ordering.
+
+### 4.3 Client-notification indexes
+
+- Target: user/read counts and batch/user lookups.
+- Protected tests: notification controls, read/unread state, recommendation eligibility, and per-client suppression.
+
+### 4.4 Points ledger index
+
+- Target: user/reference/date lookups only after a current plan proves a scan.
+- Protected tests: ledger integrity and duplicate-reference behavior. Do not add uniqueness.
+
+### 4.5 LexAI history index
+
+- Target: user/date history only after a current plan proves a scan.
+- Protected tests: Comprehensive eligibility, pending activation, expiry, freeze, and account restriction.
+
+### 4.6 Run optimization maintenance separately
+
+- Change: run `PRAGMA optimize` only after the required indexes are deployed and only with explicit production-write approval.
+- Verify: schema/index catalog, foreign keys, key table counts, and query plans before/after.
+- Pass: no business-row count or value changes.
+
+## Recommendation 5 — Remove function-wrapped email joins and correlated key listing
+
+### 5.1 Prove and lock write-time email normalization
+
+- Change: centralize or test the existing normalization contract for every runtime write to `users.email` and `registrationKeys.email`. Do not rewrite production rows.
+- Verify: mixed-case/space input is stored normalized, blank nullable key emails remain supported where intended, and uniqueness/business rules remain unchanged.
+- Pass: read-only production check still reports zero non-normalized nonblank emails.
+- Rollback: revert the normalization-code/test commit.
+
+### 5.2 Rewrite single registration-key email lookups
+
+- Change: replace runtime `LOWER`/`TRIM` predicates only where Task 5.1 proves both sides are normalized.
+- Verify: activated, unused, order-linked, email-bound, expired, and missing-key fixtures return exactly the same result; `EXPLAIN` searches the email index.
+- Pass: no key lifecycle decision code changes.
+- Rollback: restore the original predicate.
+
+### 5.3 Rewrite user-to-key joins and terms client detection
+
+- Change: separately replace normalized-email function joins used for entitlement/terms detection.
+- Verify: a result-equivalence test covers manual legacy entitlement, order evidence, fresh/old student, staff, no-entitlement, and current/missing terms acceptance.
+- Pass: `TermsAcceptanceGate` remains fail-closed on verification errors.
+- Rollback: restore the original joins.
+
+### 5.4 Rewrite the admin package-key listing
+
+- Risk: high because the page informs key-management decisions.
+- Change: replace correlated latest-subscription lookups with joined/pre-aggregated latest LexAI and Recommendation rows. Do not alter activation or redemption mutations.
+- Verify: old/new result equivalence covers Basic, Comprehensive, renewals, upgrades, active, expired, frozen, pending, unused, activated, duplicate history, nulls, exact ILS prices, service days, client name, and expiry.
+- Pass: package-key lifecycle, renewal eligibility, pricing, configuration immutability, terms, order-linked activation, and timed-service suites all pass.
+- Rollback: restore only the listing query.
+
+## Recommendation 6 — Cache stable reads and throttle activity writes
+
+### 6.1 Confirm the existing terms cache; do not duplicate it
+
+- Current finding: `TermsAcceptanceGate` already uses a five-minute `staleTime`, disables focus refetch, and invalidates after acceptance.
+- Change: add a regression test if coverage is missing; make no runtime change unless measurement shows another repeated terms call.
+- Pass: acceptance immediately clears the gate and errors remain fail-closed.
+
+### 6.2 Cache public course metadata
+
+- Change: add appropriate client query `staleTime` for published course metadata only. Do not cache user access, enrollment, progress, quiz, or timed-service state as static data.
+- Verify: course/episode admin mutations invalidate the affected public queries; a student still receives updated course content after invalidation/reload.
+- Pass: lifetime access and progression tests remain green.
+- Rollback: remove the cache options.
+
+### 6.3 Throttle `lastActiveAt` writes with one conditional update
+
+- Risk: medium-high because activity supports online/inactivity decisions.
+- Change: make `touchUserActivity()` write at most once per chosen short window using a conditional `UPDATE`; do not add a read-before-write. Do not change `lastInteractiveAt` or staff-session heartbeat behavior.
+- Verify: repeated authenticated polling produces one write per window; a genuine request refreshes an expired value; five-minute online detection, inactivity outreach boundaries, 15-minute staff idle, and cross-tab/IME activity tests remain correct.
+- Pass: polling never extends real staff interaction and recommendation behavior remains based on `lastInteractiveAt` where designed.
+- Rollback: restore unconditional non-blocking touch behavior.
+
+### 6.4 Measure writes as well as reads
+
+- Change: none.
+- Verify: one complete UTC day after Task 6.3, comparing rows written and inactivity/email outcomes to baseline.
+- Pass: writes decrease with no missed genuine-activity state transition.
+
+## Recommendation 7 — Redesign persistent support alerts only if still necessary
+
+These tasks are intentionally blocked until Batch 1 is measured and the business owner approves notification semantics. They must not be mixed with query/index optimization.
+
+### 7.1 Approve the notification contract
+
+- Decide whether unread truth belongs to the support conversation, whether one staff alert per conversation/assignee is sufficient, when reopening should occur, and which events still require separate alerts/emails.
+- No code or data change.
+
+### 7.2 Profile the proposed rule read-only
+
+- Quantify affected staff, conversations, unread rows, escalations, assignments, and the exact one-time reconciliation impact.
+- No personal message content is selected.
+
+### 7.3 Implement future-alert dedupe/upsert only
+
+- Change future `new_support_message` notification creation so repeated messages update one actionable conversation alert according to the approved contract.
+- Do not touch historical rows in the same task.
+- Verify client/admin support, assignment, escalation, email, unread inbox, and direct-route behavior.
+
+### 7.4 Align read behavior
+
+- Make opening the correct conversation/route mark only the approved alert scope read, including direct page/deep-link entry.
+- Verify another conversation's alert remains unread and polling does not mark messages read accidentally.
+
+### 7.5 Reconcile old unread support alerts separately
+
+- Risk: destructive production data change.
+- Requires a written owner rule, exact preview counts, Time Travel bookmark, explicit production-write approval, audited bounded SQL, and post-write reconciliation.
+- Never infer or fabricate historical read state.
+
+### 7.6 Define retention separately
+
+- No deletion is allowed until legal/support retention, audit fields to preserve, age threshold, backup, dry-run counts, rollback, and monitoring are approved.
+
+## Production verification matrix
+
+After every deployed task, run only the rows relevant to the change plus all critical rows marked below:
+
+| Flow | Minimum verification |
+|---|---|
+| Worker schedules | Both cron expressions present; health endpoints 200 |
+| Support email | Existing queue/service tests; no live synthetic email |
+| Recommendation | Workflow, delivery, BCC, mute, summary/feed tests; no live synthetic recommendation |
+| Staff alerts | Role authorization, badge totals/routes, read invalidation |
+| Package/key | Lifecycle, renewal, pricing, configuration, activation navigation |
+| Timed services | Pending/readiness/deadline/access and retry tests |
+| Course | Lifetime entitlement, episode progression, quiz gates/bypass |
+| Terms/order | Fail-closed status, acceptance invalidation, order evidence/key boundary |
+| Account access | Suspend/login restriction/refund/service deactivation tests |
+| Staff sessions | 15-minute policy, real interaction, cross-tab, hidden polling |
+| Data integrity | Relevant pre/post counts; `foreign_key_check`; no history deletion |
+| Privacy/security | Protected endpoint authorization and private route headers |
+
+## Measurement checkpoints and stop rules
+
+- After Recommendation 1: confirm the outbox-health family collapses without delivery anomalies.
+- After Recommendation 2: confirm staff badge query count and rows read decrease, with badge freshness accepted by staff.
+- After Recommendation 3: measure a complete UTC day. This is the first major go/no-go point.
+- After Recommendations 4–6: measure another complete UTC day.
+- Target: below 3.5 million reads/day. Stop optimization and monitor if stable.
+- Caution: 3.5–4.5 million. Continue only with the remaining proven hot path.
+- Unsafe: above 4.5 million. Design counters/cache or proceed to the approved support-alert redesign before relying on Free.
+- Any functional regression, missing notification, incorrect entitlement, altered package rule, idle-session defect, authorization failure, or data mismatch stops the sequence immediately, regardless of D1 savings.
+
+## Recommended first executable task
+
+Start with Task 0.2, then Task 1.1. Task 1.1 is additive application code with no call-site effect, so it gives us the safest first proof that the test-and-release discipline works before changing production query behavior.

@@ -7474,6 +7474,56 @@ export async function getEmailOutboxHealth(staleAfterMinutes: number = 5): Promi
   };
 }
 
+type EmailOutboxAnomalyQueryDatabase = {
+  select: (fields: { id: typeof emailOutbox.id }) => any;
+};
+
+/**
+ * Build the exact indexed probes used by the scheduled outbox anomaly check.
+ * Exported so the production query itself can be executed against a
+ * production-shaped SQLite fixture before deployment.
+ */
+export function buildEmailOutboxAnomalyQueries(
+  database: EmailOutboxAnomalyQueryDatabase,
+  staleCutoffIso: string,
+) {
+  return {
+    staleDue: database
+      .select({ id: emailOutbox.id })
+      .from(emailOutbox)
+      .where(and(
+        eq(emailOutbox.status, "pending"),
+        lte(emailOutbox.nextAttemptAt, staleCutoffIso),
+      ))
+      .limit(1),
+    deadLetter: database
+      .select({ id: emailOutbox.id })
+      .from(emailOutbox)
+      .where(eq(emailOutbox.status, "dead_letter"))
+      .limit(1),
+  };
+}
+
+/**
+ * Cheap anomaly existence check for the minute scheduler. This helper is
+ * deliberately not wired into the scheduler until its separate release task.
+ */
+export async function hasEmailOutboxAnomaly(staleAfterMinutes: number = 5): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+
+  const staleCutoffIso = new Date(
+    Date.now() - Math.max(1, staleAfterMinutes) * 60 * 1000,
+  ).toISOString();
+  const queries = buildEmailOutboxAnomalyQueries(db, staleCutoffIso);
+  const [staleDueRows, deadLetterRows] = await Promise.all([
+    queries.staleDue,
+    queries.deadLetter,
+  ]);
+
+  return staleDueRows.length > 0 || deadLetterRows.length > 0;
+}
+
 export async function hasRecommendationResultChild(parentId: number) {
   const db = await getDb();
   if (!db) return false;
