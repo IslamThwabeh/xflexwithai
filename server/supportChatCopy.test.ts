@@ -13,7 +13,7 @@ describe("support chat clipboard behavior", () => {
     expect(writeText).toHaveBeenCalledWith("رسالة للدعم");
   });
 
-  it("falls back to a selected textarea when the Clipboard API is rejected", async () => {
+  it("uses the synchronous selection path before a standalone app can reject the Clipboard API", async () => {
     const textarea = {
       value: "",
       readOnly: false,
@@ -26,6 +26,7 @@ describe("support chat clipboard behavior", () => {
     };
     const appendChild = vi.fn();
     const execCommand = vi.fn().mockReturnValue(true);
+    const writeText = vi.fn().mockRejectedValue(new Error("denied"));
     const fakeDocument = {
       body: { appendChild },
       activeElement: null,
@@ -34,7 +35,7 @@ describe("support chat clipboard behavior", () => {
     } as unknown as Document;
 
     await expect(copyTextToClipboard("fallback message", {
-      clipboard: { writeText: vi.fn().mockRejectedValue(new Error("denied")) },
+      clipboard: { writeText },
       document: fakeDocument,
     })).resolves.toBe(true);
     expect(textarea.value).toBe("fallback message");
@@ -42,5 +43,20 @@ describe("support chat clipboard behavior", () => {
     expect(textarea.select).toHaveBeenCalled();
     expect(execCommand).toHaveBeenCalledWith("copy");
     expect(textarea.remove).toHaveBeenCalled();
+    expect(writeText).not.toHaveBeenCalled();
+  });
+
+  it("uses the modern Clipboard API when the synchronous browser command is unavailable", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    const fakeDocument = {
+      body: {},
+      execCommand: undefined,
+    } as unknown as Document;
+
+    await expect(copyTextToClipboard("modern fallback", {
+      clipboard: { writeText },
+      document: fakeDocument,
+    })).resolves.toBe(true);
+    expect(writeText).toHaveBeenCalledWith("modern fallback");
   });
 });
