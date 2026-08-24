@@ -5216,6 +5216,24 @@ export async function getStudentSurveyOutstandingSummaryForUser(userId: number) 
  * Materialize due survey events into the dashboard and persistent email queue.
  * Existing assignments have a NULL schedule and are intentionally ignored.
  */
+type StudentSurveyDashboardNotificationInsertDatabase = {
+  insert: (table: typeof userNotifications) => any;
+};
+
+/**
+ * Build the exact dashboard-notification insert used by the survey scheduler.
+ * Exported so its SQLite conflict clause is tested against the production
+ * partial unique index before deployment.
+ */
+export function buildStudentSurveyDashboardNotificationInsert(
+  database: StudentSurveyDashboardNotificationInsertDatabase,
+  values: InsertUserNotification,
+) {
+  return database.insert(userNotifications).values(values)
+    .onConflictDoNothing()
+    .returning({ id: userNotifications.id });
+}
+
 export async function materializeDueStudentSurveyNotifications(input?: {
   assignmentIds?: number[];
   limit?: number;
@@ -5293,7 +5311,7 @@ export async function materializeDueStudentSurveyNotifications(input?: {
     const language = getStudentSurveyNotificationLanguage(row.notificationPrefs);
     const email = language === "ar" ? arabic : english;
 
-    const notificationRows = await db.insert(userNotifications).values({
+    const notificationRows = await buildStudentSurveyDashboardNotificationInsert(db, {
       userId: row.userId,
       type: stage === "overdue" || stage === "due" ? "warning" : "action",
       titleEn: english.title,
@@ -5303,8 +5321,7 @@ export async function materializeDueStudentSurveyNotifications(input?: {
       actionUrl: "/surveys",
       dedupeKey,
       createdAt: nowIso,
-    }).onConflictDoNothing({ target: userNotifications.dedupeKey })
-      .returning({ id: userNotifications.id });
+    });
     dashboardCreated += notificationRows.length;
 
     const eventType = stage === "assigned" ? "student_survey_assigned" : "student_survey_reminder";

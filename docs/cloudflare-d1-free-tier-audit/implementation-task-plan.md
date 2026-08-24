@@ -1,7 +1,7 @@
 # Cloudflare D1 Free-Tier Optimization — Small-Task Release Plan
 
 Date: 2026-08-24
-Status: local implementation in progress; no production migration, deployment, or production data write has been performed.
+Status: Recommendation 1 is deployed; the separately discovered survey-notification SQL hotfix is validated locally and pending a Worker-only release. No migration or production data repair is required.
 
 Local implementation progress on 2026-08-24:
 
@@ -9,8 +9,10 @@ Local implementation progress on 2026-08-24:
 - Task 1.1 completed locally: an exact-SQL, indexed anomaly probe was added and validated independently before scheduler integration.
 - Task 1.2 completed locally: the minute scheduler now gates the full diagnostic behind the indexed anomaly probe while keeping delivery work first.
 - Task 1.3 completed locally: detailed Admin Email Logs health refresh is now five minutes while visible, pauses while hidden, refreshes on focus, and still invalidates immediately after a manual drain.
-- SQL contract, TypeScript, 106 files / 586 full tests, application build, Worker build, and diff hygiene passed.
-- No production migration, deployment, schedule, or data changed; these local application changes are not live.
+- Recommendation 1 deployed from `ebb3aca`: Worker `0330d947-a12b-44a1-942a-1221c0a84bd8` and Pages `9d06e2aa-dd1f-4867-8523-33baf0784821`. Both schedules, health endpoints, private headers, exact frontend asset, production index plans, and bounded live probes passed.
+- Immediate monitoring exposed an unchanged survey-notification insert using `ON CONFLICT(dedupe_key)` against production's partial unique index. The exact application SQL now uses targetless `ON CONFLICT DO NOTHING`; a production-shaped contract test covers non-null dedupe and repeatable null keys.
+- Hotfix gates pass: 24 files / 158 critical-cycle tests, 107 files / 588 full tests, TypeScript, application build, Worker build, focused survey tests, and diff hygiene.
+- No database migration, production data repair, schedule change, or Pages redeploy is required for the survey hotfix.
 
 ## Goal
 
