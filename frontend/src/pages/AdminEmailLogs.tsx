@@ -31,6 +31,7 @@ const DELIVERY_CATEGORIES: Array<{ key: DeliveryCategory; labelEn: string; label
   { key: 'system', labelEn: 'System', labelAr: 'النظام' },
 ];
 const DELIVERY_PAGE_SIZE = 50;
+const OUTBOX_HEALTH_REFRESH_MS = 5 * 60_000;
 
 function getAmmanDateValue(offsetDays = 0) {
   const formatter = new Intl.DateTimeFormat('en-CA', {
@@ -185,7 +186,18 @@ export default function AdminEmailLogs() {
   const [deliveryCategory, setDeliveryCategory] = useState<DeliveryCategory>(requestedFeatureCategory);
   const [deliveryDatePreset, setDeliveryDatePreset] = useState<DeliveryDatePreset>('all');
   const [expandedDeliveryGroups, setExpandedDeliveryGroups] = useState<Record<string, boolean>>({});
+  const [isPageVisible, setIsPageVisible] = useState(
+    () => typeof document === 'undefined' || document.visibilityState === 'visible',
+  );
   const deliveryListTopRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      setIsPageVisible(document.visibilityState === 'visible');
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, []);
 
   const deliveryFilters = useMemo(() => ({
     limit: DELIVERY_PAGE_SIZE,
@@ -217,7 +229,12 @@ export default function AdminEmailLogs() {
   );
   const { data: outboxHealth, isLoading: outboxHealthLoading } = trpc.adminEmail.outboxHealth.useQuery(
     undefined,
-    { enabled: isAdmin, refetchInterval: 60000 }
+    {
+      enabled: isAdmin,
+      refetchInterval: isAdmin && isPageVisible ? OUTBOX_HEALTH_REFRESH_MS : false,
+      refetchIntervalInBackground: false,
+      refetchOnWindowFocus: true,
+    }
   );
   const drainDueOutboxMutation = trpc.adminEmail.drainDueOutbox.useMutation({
     onSuccess: async () => {
