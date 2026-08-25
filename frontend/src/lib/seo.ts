@@ -3,9 +3,11 @@ import {
   DEFAULT_SOCIAL_IMAGE,
   SITE_NAME,
   SITE_ORIGIN,
+  getSeoLanguageAlternates,
   getSeoCopy,
   localizedPath,
   type SeoLanguage,
+  type SeoLanguageAlternate,
   type SeoRouteKey,
 } from "@shared/seo";
 
@@ -15,6 +17,7 @@ type SeoOverride = {
   image?: string;
   canonicalPath?: string;
   type?: "website" | "article";
+  availableLanguages?: SeoLanguage[];
   jsonLd?: Record<string, unknown> | Array<Record<string, unknown>>;
 };
 
@@ -41,6 +44,11 @@ function setLink(rel: string, href: string, hreflang?: string) {
   element.href = href;
 }
 
+function syncLanguageAlternates(alternates: SeoLanguageAlternate[]) {
+  document.head.querySelectorAll('link[rel="alternate"][hreflang]').forEach((node) => node.remove());
+  alternates.forEach((alternate) => setLink("alternate", alternate.href, alternate.hreflang));
+}
+
 export function applySeoMetadata(key: SeoRouteKey, language: SeoLanguage, override: SeoOverride = {}) {
   const { route, copy } = getSeoCopy(key, language);
   const title = override.title || copy.title;
@@ -48,8 +56,7 @@ export function applySeoMetadata(key: SeoRouteKey, language: SeoLanguage, overri
   const image = override.image || route.image || DEFAULT_SOCIAL_IMAGE;
   const canonicalPath = override.canonicalPath || localizedPath(route.path, language);
   const canonical = `${SITE_ORIGIN}${canonicalPath}`;
-  const alternateLanguage = language === "ar" ? "en" : "ar";
-  const alternate = `${SITE_ORIGIN}${localizedPath(route.path, alternateLanguage)}`;
+  const languageAlternates = getSeoLanguageAlternates(canonicalPath, override.availableLanguages);
 
   document.title = title;
   document.documentElement.lang = language;
@@ -68,9 +75,7 @@ export function applySeoMetadata(key: SeoRouteKey, language: SeoLanguage, overri
   setMeta('meta[name="twitter:description"]', { name: "twitter:description", content: description });
   setMeta('meta[name="twitter:image"]', { name: "twitter:image", content: image });
   setLink("canonical", canonical);
-  setLink("alternate", canonical, language);
-  setLink("alternate", alternate, alternateLanguage);
-  setLink("alternate", `${SITE_ORIGIN}/ar${route.path}`, "x-default");
+  syncLanguageAlternates(languageAlternates);
 
   document.head.querySelectorAll('script[data-xflex-seo="json-ld"]').forEach((node) => node.remove());
   const schemas = override.jsonLd
@@ -87,6 +92,7 @@ export function applySeoMetadata(key: SeoRouteKey, language: SeoLanguage, overri
 
 export function useSeoMetadata(key: SeoRouteKey, language: SeoLanguage, override: SeoOverride = {}) {
   const serializedJsonLd = JSON.stringify(override.jsonLd || null);
+  const serializedAvailableLanguages = JSON.stringify(override.availableLanguages || null);
   useEffect(() => {
     applySeoMetadata(key, language, override);
     // The serialized value keeps structured-data updates deterministic.
@@ -99,6 +105,7 @@ export function useSeoMetadata(key: SeoRouteKey, language: SeoLanguage, override
     override.image,
     override.canonicalPath,
     override.type,
+    serializedAvailableLanguages,
     serializedJsonLd,
   ]);
 }

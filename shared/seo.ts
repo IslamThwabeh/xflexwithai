@@ -7,6 +7,33 @@ export const DEFAULT_SOCIAL_IMAGE = `${SITE_ORIGIN}/xflex-logo-2026-transparent.
 export const DEFAULT_GA_MEASUREMENT_ID = "G-FF2Z99PWHG";
 
 export type SeoLanguage = "ar" | "en";
+export type SeoLanguageAlternate = {
+  hreflang: SeoLanguage | "x-default";
+  href: string;
+};
+
+export function getSeoLanguageAlternates(
+  canonicalPath: string,
+  availableLanguages: SeoLanguage[] = ["ar", "en"],
+): SeoLanguageAlternate[] {
+  const uniqueLanguages = [...new Set<SeoLanguage>(availableLanguages)];
+  const languages: SeoLanguage[] = uniqueLanguages.length > 0 ? uniqueLanguages : ["ar", "en"];
+  const localizedPathFor = (targetLanguage: SeoLanguage) =>
+    canonicalPath.replace(/^\/(ar|en)(?=\/|$)/, `/${targetLanguage}`);
+  const defaultLanguage: SeoLanguage = languages.includes("ar") ? "ar" : languages[0]!;
+
+  return [
+    ...languages.map((targetLanguage) => ({
+      hreflang: targetLanguage,
+      href: `${SITE_ORIGIN}${localizedPathFor(targetLanguage)}`,
+    })),
+    {
+      hreflang: "x-default",
+      href: `${SITE_ORIGIN}${localizedPathFor(defaultLanguage)}`,
+    },
+  ];
+}
+
 export type SeoPageType =
   | "home"
   | "about"

@@ -11,6 +11,7 @@ import {
   parseArticleSources,
   type ArticleInlineToken,
 } from '@shared/articleContent';
+import { getArticleAvailableLanguages } from '@shared/curatedArticles';
 
 function ArticleInlineContent({ tokens }: { tokens: ArticleInlineToken[] }) {
   return tokens.map((token, index) => (
@@ -57,6 +58,7 @@ export default function ArticleDetail() {
       : undefined,
     canonicalPath: localizedArticlePath,
     type: 'article',
+    availableLanguages: article ? getArticleAvailableLanguages(article) : undefined,
     jsonLd: article ? {
       '@context': 'https://schema.org',
       '@type': 'Article',
