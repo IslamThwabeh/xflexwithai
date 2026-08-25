@@ -33,7 +33,11 @@ export default function ArticleDetail() {
   const { language, t } = useLanguage();
   const isRtl = language === 'ar';
   const params = useParams<{ slug: string }>();
-  const { data: article, isLoading } = trpc.articles.bySlug.useQuery({ slug: params.slug || '' });
+  const articleLanguage = isRtl ? 'ar' : 'en';
+  const { data: article, isLoading } = trpc.articles.bySlug.useQuery({
+    slug: params.slug || '',
+    language: articleLanguage,
+  });
   const localizedArticlePath = `/${isRtl ? 'ar' : 'en'}/articles/${params.slug || ''}`;
   const seoTitle = article
     ? ((isRtl ? article.seoTitleAr : article.seoTitleEn) || (isRtl ? article.titleAr : article.titleEn))

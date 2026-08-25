@@ -16,6 +16,7 @@ import {
   CURATED_ARTICLES,
   estimateReadingTimeMinutes,
   getCuratedArticleBySlug,
+  isArticleAvailableInLanguage,
   type PublicArticleTheme,
 } from "../shared/curatedArticles";
 import {
@@ -7730,15 +7731,20 @@ export const appRouter = router({
 
     // Public: get article by slug
     bySlug: publicProcedure
-      .input(z.object({ slug: z.string() }))
+      .input(z.object({ slug: z.string(), language: z.enum(["ar", "en"]).optional() }))
       .query(async ({ input }) => {
         const curatedArticle = getCuratedArticleBySlug(input.slug);
         if (curatedArticle) {
+          if (input.language && !isArticleAvailableInLanguage(curatedArticle, input.language)) {
+            throw new TRPCError({ code: 'NOT_FOUND', message: 'Article not found' });
+          }
           return curatedArticle;
         }
 
         const article = await db.getArticleBySlug(input.slug);
-        if (!article || !article.isPublished) throw new TRPCError({ code: 'NOT_FOUND', message: 'Article not found' });
+        if (!article || !article.isPublished || (input.language && !isArticleAvailableInLanguage(article, input.language))) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Article not found' });
+        }
         return toPublicArticle(article);
       }),
 

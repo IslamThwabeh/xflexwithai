@@ -15,6 +15,7 @@ import KeyActivationPrompt from "@/components/KeyActivationPrompt";
 import TestimonialProofCard from "@/components/TestimonialProofCard";
 import FreeLibrarySection from "@/components/FreeLibrarySection";
 import ArticlePreviewCard from "@/components/ArticlePreviewCard";
+import { isArticleAvailableInLanguage } from "@shared/curatedArticles";
 import { DEFAULT_TESTIMONIAL_PROOFS } from "@/lib/defaultTestimonialProofs";
 
 function formatSafeDate(
@@ -79,7 +80,9 @@ export default function MyDashboard() {
 
   const { data: articles } = trpc.articles.list.useQuery();
   const { data: freeLibrary } = trpc.freeLibrary.list.useQuery();
-  const dashboardArticles = articles?.slice(0, 2) ?? [];
+  const dashboardArticles = articles
+    ?.filter((article) => isArticleAvailableInLanguage(article, isRTL ? "ar" : "en"))
+    .slice(0, 2) ?? [];
 
   // Computed values (safe before early returns)
   const totalCourses = enrollments?.length || 0;

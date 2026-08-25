@@ -15,6 +15,7 @@ import { getLanguageSwitchLabel } from '@/lib/languageToggle';
 import { formatIlsAmount, getPackageDisplayPricing } from '@/lib/packagePricing';
 import { HOMEPAGE_FEEDBACK_PROOFS } from '@/lib/homepageFeedbackProofs';
 import { trpc } from '@/lib/trpc';
+import { isArticleAvailableInLanguage } from '@shared/curatedArticles';
 import { APP_TITLE } from '@/const';
 import {
   CINEMATIC_PRIMARY_NAV_ITEMS,
@@ -1881,7 +1882,9 @@ function ExploreMoreSection() {
   useScrollReveal(ref);
   const { data: articles, isLoading } = trpc.articles.list.useQuery();
 
-  const latestArticles = articles?.slice(0, 2) ?? [];
+  const latestArticles = articles
+    ?.filter((article) => isArticleAvailableInLanguage(article, isArabic ? 'ar' : 'en'))
+    .slice(0, 2) ?? [];
   const giftItems = isArabic
     ? ['قالب دفتر التداول', 'قائمة ما قبل الصفقة', 'الوصول للفعاليات المباشرة']
     : ['Trading journal template', 'Pre-trade checklist', 'Live event access'];

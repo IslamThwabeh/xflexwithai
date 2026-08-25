@@ -6,6 +6,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { trpc } from '@/lib/trpc';
 import CinematicPublicLayout from '@/components/public/CinematicPublicLayout';
 import FreeLibrarySection from '@/components/FreeLibrarySection';
+import { isArticleAvailableInLanguage } from '@shared/curatedArticles';
 
 export default function FreeContent() {
   const { language, t } = useLanguage();
@@ -15,7 +16,9 @@ export default function FreeContent() {
   const { data: freeLibrary, isLoading: freeLibraryLoading } = trpc.freeLibrary.list.useQuery();
   const [location] = useLocation();
   const selectedVideoSlug = new URLSearchParams(location.split('?')[1] ?? '').get('video');
-  const featuredArticles = articles?.slice(0, 3) ?? [];
+  const featuredArticles = articles
+    ?.filter((article) => isArticleAvailableInLanguage(article, isRtl ? 'ar' : 'en'))
+    .slice(0, 3) ?? [];
 
   return (
     <CinematicPublicLayout>

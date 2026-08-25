@@ -4,11 +4,13 @@ import ArticlePreviewCard from '@/components/ArticlePreviewCard';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { trpc } from '@/lib/trpc';
 import CinematicPublicLayout from '@/components/public/CinematicPublicLayout';
+import { isArticleAvailableInLanguage } from '@shared/curatedArticles';
 
 export default function Articles() {
   const { language, t } = useLanguage();
   const isRtl = language === 'ar';
   const { data: articles, isLoading } = trpc.articles.list.useQuery();
+  const localizedArticles = articles?.filter((article) => isArticleAvailableInLanguage(article, isRtl ? 'ar' : 'en'));
 
   return (
     <CinematicPublicLayout>
@@ -31,7 +33,7 @@ export default function Articles() {
           </p>
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3 text-sm text-white/80">
             <span className="rounded-full border border-white/12 bg-white/[0.06] px-4 py-2 backdrop-blur-sm">
-              {isRtl ? `${articles?.length ?? 0} مقالات منشورة` : `${articles?.length ?? 0} published reads`}
+              {isRtl ? `${localizedArticles?.length ?? 0} مقالات منشورة` : `${localizedArticles?.length ?? 0} published reads`}
             </span>
             <span className="rounded-full border border-white/12 bg-white/[0.06] px-4 py-2 backdrop-blur-sm">
               {isRtl ? 'عربي + English' : 'Arabic + English'}
@@ -52,7 +54,7 @@ export default function Articles() {
               <div key={i} className="h-80 animate-pulse rounded-[26px] border border-white/8 bg-white/[0.05]" />
             ))}
           </div>
-        ) : !articles?.length ? (
+        ) : !localizedArticles?.length ? (
           <div className="py-20 text-center">
             <Newspaper className="mx-auto mb-4 h-16 w-16 text-white/24" />
             <p className="mb-2 text-xl font-semibold text-white/72">
@@ -64,7 +66,7 @@ export default function Articles() {
           </div>
         ) : (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {articles.map((article) => (
+            {localizedArticles.map((article) => (
               <ArticlePreviewCard key={article.id} article={article} isRtl={isRtl} />
             ))}
           </div>

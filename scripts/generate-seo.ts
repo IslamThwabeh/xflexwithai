@@ -10,7 +10,11 @@ import {
   localizedPath,
   type SeoLanguage,
 } from "../shared/seo";
-import { CURATED_ARTICLES } from "../shared/curatedArticles";
+import {
+  CURATED_ARTICLES,
+  getArticleAvailableLanguages,
+  isArticleAvailableInLanguage,
+} from "../shared/curatedArticles";
 import { renderArticleContentHtml, renderArticleSourcesHtml } from "../shared/articleContent";
 
 const outputRoot = path.resolve(process.cwd(), "dist/public");
@@ -146,9 +150,10 @@ function prerenderShell(language: SeoLanguage, heading: string, summary: string,
 
 function articleCollectionBody(language: SeoLanguage, articles: PublicArticle[]) {
   const isArabic = language === "ar";
+  const localizedArticles = articles.filter((article) => isArticleAvailableInLanguage(article, language));
   return `<section aria-labelledby="published-articles">
     <h2 id="published-articles">${isArabic ? "المقالات المنشورة" : "Published articles"}</h2>
-    <ul>${articles.map((article) => {
+    <ul>${localizedArticles.map((article) => {
       const title = isArabic ? article.titleAr : article.titleEn;
       const excerpt = isArabic ? article.excerptAr || article.excerptEn : article.excerptEn || article.excerptAr;
       return `<li><a href="/${language}/articles/${escapeHtml(article.slug)}">${escapeHtml(title)}</a><p>${escapeHtml(excerpt)}</p></li>`;
@@ -215,10 +220,15 @@ function routeHtml(
   image = DEFAULT_SOCIAL_IMAGE,
   body = "",
   pageType: "website" | "article" = "website",
+  availableLanguages: SeoLanguage[] = languages,
 ) {
   const canonical = `${SITE_ORIGIN}${canonicalPath}`;
-  const alternateLanguage = language === "ar" ? "en" : "ar";
-  const alternatePath = canonicalPath.replace(/^\/(ar|en)(?=\/|$)/, `/${alternateLanguage}`);
+  const localizedPathFor = (targetLanguage: SeoLanguage) =>
+    canonicalPath.replace(/^\/(ar|en)(?=\/|$)/, `/${targetLanguage}`);
+  const hreflangLinks = availableLanguages.map((targetLanguage) =>
+    `<link rel="alternate" hreflang="${targetLanguage}" href="${escapeHtml(`${SITE_ORIGIN}${localizedPathFor(targetLanguage)}`)}" />`,
+  ).join("\n    ");
+  const defaultLanguage = availableLanguages.includes("ar") ? "ar" : availableLanguages[0] ?? language;
   let html = template.replace(
     /<html\b[^>]*>/i,
     `<html lang="${language}" dir="${language === "ar" ? "rtl" : "ltr"}" class="notranslate" translate="no">`,
@@ -237,9 +247,8 @@ function routeHtml(
   html = html.replace("</head>", `
     <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1" />
     <meta property="og:locale" content="${language === "ar" ? "ar_AR" : "en_US"}" />
-    <link rel="alternate" hreflang="${language}" href="${escapeHtml(canonical)}" />
-    <link rel="alternate" hreflang="${alternateLanguage}" href="${escapeHtml(`${SITE_ORIGIN}${alternatePath}`)}" />
-    <link rel="alternate" hreflang="x-default" href="${escapeHtml(`${SITE_ORIGIN}${canonicalPath.replace(/^\/(ar|en)/, "/ar")}`)}" />
+    ${hreflangLinks}
+    <link rel="alternate" hreflang="x-default" href="${escapeHtml(`${SITE_ORIGIN}${localizedPathFor(defaultLanguage)}`)}" />
     ${verificationMarkup()}
     ${schemas.map((schema) => `<script type="application/ld+json">${JSON.stringify(schema).replaceAll("<", "\\u003c")}</script>`).join("\n    ")}
     ${analyticsMarkup()}
@@ -287,9 +296,23 @@ function articleSchema(article: PublicArticle, language: SeoLanguage) {
   };
 }
 
-function sitemapUrl(loc: string, lastmod?: string, alternatePath?: string) {
+function sitemapUrl(
+  loc: string,
+  lastmod?: string,
+  alternatePath?: string,
+  availableLanguages: SeoLanguage[] = languages,
+) {
+  const alternateLinks = alternatePath === undefined
+    ? ""
+    : availableLanguages.map((language) =>
+      `<xhtml:link rel="alternate" hreflang="${language}" href="${SITE_ORIGIN}/${language}${alternatePath}"/>`,
+    ).join("");
+  const defaultLanguage = availableLanguages.includes("ar") ? "ar" : availableLanguages[0];
+  const defaultLink = alternatePath !== undefined && defaultLanguage
+    ? `<xhtml:link rel="alternate" hreflang="x-default" href="${SITE_ORIGIN}/${defaultLanguage}${alternatePath}"/>`
+    : "";
   return `<url><loc>${escapeXml(loc)}</loc>${lastmod ? `<lastmod>${escapeXml(lastmod.slice(0, 10))}</lastmod>` : ""}${alternatePath !== undefined
-    ? `<xhtml:link rel="alternate" hreflang="ar" href="${SITE_ORIGIN}/ar${alternatePath}"/><xhtml:link rel="alternate" hreflang="en" href="${SITE_ORIGIN}/en${alternatePath}"/><xhtml:link rel="alternate" hreflang="x-default" href="${SITE_ORIGIN}/ar${alternatePath}"/>`
+    ? `${alternateLinks}${defaultLink}`
     : ""}</url>`;
 }
 
@@ -332,7 +355,8 @@ async function main() {
   }
 
   for (const article of articles) {
-    for (const language of languages) {
+    const availableLanguages = getArticleAvailableLanguages(article);
+    for (const language of availableLanguages) {
       const isArabic = language === "ar";
       const title = (isArabic ? article.seoTitleAr : article.seoTitleEn)
         || (isArabic ? article.titleAr : article.titleEn);
@@ -357,6 +381,7 @@ async function main() {
         absoluteUrl(article.socialImageUrl || article.thumbnailUrl),
         `<div>${articleBody}</div>${sources}`,
         "article",
+        availableLanguages,
       );
       await writeRoute(canonicalPath, html);
     }
@@ -373,9 +398,17 @@ async function main() {
     );
   }
 
-  const articleUrls = articles.flatMap((article) => languages.map((language) =>
-    sitemapUrl(`${SITE_ORIGIN}/${language}/articles/${article.slug}`, article.updatedAt || article.publishedAt, `/articles/${article.slug}`),
-  )).join("");
+  const articleUrls = articles.flatMap((article) => {
+    const availableLanguages = getArticleAvailableLanguages(article);
+    return availableLanguages.map((language) =>
+      sitemapUrl(
+        `${SITE_ORIGIN}/${language}/articles/${article.slug}`,
+        article.updatedAt || article.publishedAt,
+        `/articles/${article.slug}`,
+        availableLanguages,
+      ),
+    );
+  }).join("");
   await fs.writeFile(
     path.join(outputRoot, "sitemap-articles.xml"),
     `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">${articleUrls}</urlset>`,
@@ -390,7 +423,7 @@ async function main() {
 
   for (const language of languages) {
     const isArabic = language === "ar";
-    const items = articles.map((article) => {
+    const items = articles.filter((article) => isArticleAvailableInLanguage(article, language)).map((article) => {
       const title = isArabic ? article.titleAr : article.titleEn;
       const description = isArabic ? article.excerptAr || article.excerptEn : article.excerptEn || article.excerptAr;
       return `<item><title>${escapeXml(title)}</title><link>${SITE_ORIGIN}/${language}/articles/${escapeXml(article.slug)}</link><guid>${SITE_ORIGIN}/${language}/articles/${escapeXml(article.slug)}</guid><pubDate>${new Date(article.publishedAt).toUTCString()}</pubDate><description>${escapeXml(description)}</description></item>`;
@@ -474,11 +507,15 @@ async function main() {
   await fs.writeFile(path.join(outputRoot, "seo-manifest.json"), JSON.stringify({
     generatedAt,
     staticPages: SEO_ROUTES.length * languages.length,
-    articlePages: articles.length * languages.length,
+    articlePages: articles.reduce((total, article) => total + getArticleAvailableLanguages(article).length, 0),
     articleSlugs: articles.map((article) => article.slug),
   }, null, 2));
 
-  console.log(`[seo] Generated ${SEO_ROUTES.length * languages.length} public pages and ${articles.length * languages.length} article pages.`);
+  const generatedArticlePageCount = articles.reduce(
+    (total, article) => total + getArticleAvailableLanguages(article).length,
+    0,
+  );
+  console.log(`[seo] Generated ${SEO_ROUTES.length * languages.length} public pages and ${generatedArticlePageCount} article pages.`);
 }
 
 await main();

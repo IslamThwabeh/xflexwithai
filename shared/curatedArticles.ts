@@ -1,4 +1,5 @@
 export type PublicArticleTheme = "emerald" | "teal" | "amber";
+export type PublicArticleLanguage = "ar" | "en";
 
 export type CuratedArticle = {
   id: number;
@@ -115,6 +116,19 @@ export const CURATED_ARTICLES: CuratedArticle[] = [
 
 export function getCuratedArticleBySlug(slug: string) {
   return CURATED_ARTICLES.find((article) => article.slug === slug) ?? null;
+}
+
+export function getArticleAvailableLanguages(article: { languageAvailability?: string | null }): PublicArticleLanguage[] {
+  if (article.languageAvailability === "ar") return ["ar"];
+  if (article.languageAvailability === "en") return ["en"];
+  return ["ar", "en"];
+}
+
+export function isArticleAvailableInLanguage(
+  article: { languageAvailability?: string | null },
+  language: PublicArticleLanguage,
+) {
+  return getArticleAvailableLanguages(article).includes(language);
 }
 
 export function estimateReadingTimeMinutes(content?: string | null) {
