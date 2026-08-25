@@ -11,6 +11,7 @@ import {
   type SeoLanguage,
 } from "../shared/seo";
 import { CURATED_ARTICLES } from "../shared/curatedArticles";
+import { renderArticleContentHtml, renderArticleSourcesHtml } from "../shared/articleContent";
 
 const outputRoot = path.resolve(process.cwd(), "dist/public");
 const templatePath = path.join(outputRoot, "index.html");
@@ -340,9 +341,9 @@ async function main() {
         || "";
       const content = (isArabic ? article.contentAr || article.contentEn : article.contentEn || article.contentAr) || "";
       const canonicalPath = `/${language}/articles/${article.slug}`;
-      const paragraphs = content.split(/\n{2,}/).filter(Boolean).map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join("");
+      const articleBody = renderArticleContentHtml(content);
       const sources = article.sources
-        ? `<section><h2>${isArabic ? "المصادر" : "Sources"}</h2><p>${escapeHtml(article.sources)}</p></section>`
+        ? `<section><h2>${isArabic ? "المصادر" : "Sources"}</h2><ul>${renderArticleSourcesHtml(article.sources)}</ul></section>`
         : "";
       const html = routeHtml(
         template,
@@ -354,7 +355,7 @@ async function main() {
         description,
         [articleSchema(article, language)],
         absoluteUrl(article.socialImageUrl || article.thumbnailUrl),
-        `<div>${paragraphs}</div>${sources}`,
+        `<div>${articleBody}</div>${sources}`,
         "article",
       );
       await writeRoute(canonicalPath, html);

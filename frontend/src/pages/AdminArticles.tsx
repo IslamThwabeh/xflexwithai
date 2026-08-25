@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Newspaper, Plus, Edit2, Trash2, Eye, EyeOff, Save, X } from 'lucide-react';
+import { AlertTriangle, Newspaper, Plus, Edit2, Trash2, Eye, EyeOff, Save, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -11,6 +11,7 @@ export default function AdminArticles() {
   const { language } = useLanguage();
   const utils = trpc.useUtils();
   const { data: articles, isLoading } = trpc.articles.adminList.useQuery();
+  const { data: rebuildStatus } = trpc.articles.rebuildStatus.useQuery();
   const createMutation = trpc.articles.create.useMutation({ onSuccess: () => utils.articles.adminList.invalidate() });
   const updateMutation = trpc.articles.update.useMutation({ onSuccess: () => utils.articles.adminList.invalidate() });
   const deleteMutation = trpc.articles.delete.useMutation({ onSuccess: () => utils.articles.adminList.invalidate() });
@@ -71,6 +72,22 @@ export default function AdminArticles() {
             {language === 'ar' ? 'مقالة جديدة' : 'New Article'}
           </Button>
         </div>
+
+        {rebuildStatus && !rebuildStatus.configured ? (
+          <div role="status" className="mb-6 flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-950">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+            <div>
+              <p className="font-semibold">
+                {language === 'ar' ? 'تحديث SEO التلقائي غير مُعدّ' : 'Automatic SEO rebuild is not configured'}
+              </p>
+              <p className="mt-1 text-sm leading-6">
+                {language === 'ar'
+                  ? 'سيتم حفظ المقال في قاعدة البيانات، لكن نشره لا يضمن تحديث HTML المسبق وخريطة الموقع حتى يتم إعداد خطاف إعادة البناء أو تنفيذ نشر Pages.'
+                  : 'The article will be saved in the database, but publishing it will not refresh prerendered HTML or the sitemap until the rebuild hook is configured or Pages is deployed.'}
+              </p>
+            </div>
+          </div>
+        ) : null}
 
         {/* Edit/Create Form */}
         {editing && (
@@ -140,11 +157,17 @@ export default function AdminArticles() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Content (EN)</label>
                 <textarea className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[200px]"
                   value={editing.contentEn || ''} onChange={(e) => setEditing({ ...editing, contentEn: e.target.value })} dir="ltr" />
+                <p className="mt-1 text-xs text-gray-500" dir="ltr">
+                  Formatting: ## heading, ### subheading, - list item, 1. numbered item, &gt; note, [link text](/en/path or https://...).
+                </p>
               </div>
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">المحتوى (عربي)</label>
                 <textarea className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[200px]"
                   value={editing.contentAr || ''} onChange={(e) => setEditing({ ...editing, contentAr: e.target.value })} dir="rtl" />
+                <p className="mt-1 text-xs text-gray-500" dir="rtl">
+                  التنسيق: ## عنوان، ### عنوان فرعي، - عنصر قائمة، 1. عنصر مرقّم، &gt; ملاحظة، [نص الرابط](/ar/path أو https://...).
+                </p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Author (EN)</label>
@@ -163,9 +186,14 @@ export default function AdminArticles() {
                 <Input value={editing.reviewerNameAr || ''} onChange={(e) => setEditing({ ...editing, reviewerNameAr: e.target.value })} dir="rtl" />
               </div>
               <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">{language === 'ar' ? 'المصادر (رابط في كل سطر)' : 'Sources (one URL per line)'}</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{language === 'ar' ? 'المصادر (مصدر في كل سطر)' : 'Sources (one source per line)'}</label>
                 <textarea className="flex min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                   value={editing.sources || ''} onChange={(e) => setEditing({ ...editing, sources: e.target.value })} dir="ltr" />
+                <p className="mt-1 text-xs text-gray-500" dir={language === 'ar' ? 'rtl' : 'ltr'}>
+                  {language === 'ar'
+                    ? 'استخدم: اسم المصدر | https://example.com أو رابطاً واحداً في كل سطر.'
+                    : 'Use: Source name | https://example.com, or one URL per line.'}
+                </p>
               </div>
             </div>
 

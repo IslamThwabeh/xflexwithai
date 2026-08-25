@@ -7756,6 +7756,13 @@ export const appRouter = router({
       return db.getAllArticles(false);
     }),
 
+    // Admin: report whether article changes can refresh prerendered SEO output.
+    // Never expose the webhook URL or secret to the client.
+    rebuildStatus: adminProcedure.query(() => ({
+      configured: Boolean(process.env.SEO_REBUILD_WEBHOOK_URL?.trim()),
+      authenticationConfigured: Boolean(process.env.SEO_REBUILD_WEBHOOK_SECRET?.trim()),
+    })),
+
     // Admin: create article
     create: adminProcedure
       .input(z.object({

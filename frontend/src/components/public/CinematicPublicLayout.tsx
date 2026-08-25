@@ -172,7 +172,7 @@ export default function CinematicPublicLayout({
     if (href === '/') return localePrefix;
     if (href.startsWith('/#')) return `${localePrefix}${href.slice(1)}`;
     if (href.startsWith('/auth') || href.startsWith('/register')) return href;
-    if (href.startsWith('/ar/') || href.startsWith('/en/')) return href;
+    if (/^\/(ar|en)(?:\/|$)/.test(href)) return href;
     return `${localePrefix}${href}`;
   };
   const switchLanguage = () => {
@@ -258,10 +258,8 @@ export default function CinematicPublicLayout({
 
       <header className={`cin-public-nav fixed inset-x-0 top-0 z-50 ${scrolled ? 'cin-public-nav-scrolled' : ''}`}>
         <div className="container mx-auto flex h-16 items-center justify-between px-4 md:h-20 md:px-8" dir={isRTL ? 'rtl' : 'ltr'}>
-          <Link href={localePrefix}>
-            <a className="flex shrink-0 items-center gap-2">
-              <img src={BRAND_LOGO_SRC} alt={APP_TITLE} className="cin-public-logo cin-public-logo-header" />
-            </a>
+          <Link href={localePrefix} className="flex shrink-0 items-center gap-2">
+            <img src={BRAND_LOGO_SRC} alt={APP_TITLE} className="cin-public-logo cin-public-logo-header" />
           </Link>
 
           <nav className="hidden items-center gap-7 text-sm font-medium text-white/65 md:flex">
@@ -364,24 +362,24 @@ export default function CinematicPublicLayout({
               <div className="flex flex-col gap-3">
                 <p className="text-xs font-semibold uppercase tracking-widest text-white/22">{isArabic ? 'التصفح' : 'Browse'}</p>
                 {footerLinks.slice(0, 3).map((link) => (
-                  <Link key={link.href} href={localizePublicHref(link.href)}>
-                    <a className="cin-public-footer-link">{link.label}</a>
+                  <Link key={link.href} href={localizePublicHref(link.href)} className="cin-public-footer-link">
+                    {link.label}
                   </Link>
                 ))}
               </div>
               <div className="flex flex-col gap-3">
                 <p className="text-xs font-semibold uppercase tracking-widest text-white/22">{isArabic ? 'المحتوى' : 'Content'}</p>
                 {footerLinks.slice(3, 6).map((link) => (
-                  <Link key={link.href} href={localizePublicHref(link.href)}>
-                    <a className="cin-public-footer-link">{link.label}</a>
+                  <Link key={link.href} href={localizePublicHref(link.href)} className="cin-public-footer-link">
+                    {link.label}
                   </Link>
                 ))}
               </div>
               <div className="flex flex-col gap-3">
                 <p className="text-xs font-semibold uppercase tracking-widest text-white/22">{isArabic ? 'الحساب' : 'Account'}</p>
                 {footerLinks.slice(6).map((link) => (
-                  <Link key={link.href} href={localizePublicHref(link.href)}>
-                    <a className="cin-public-footer-link">{link.label}</a>
+                  <Link key={link.href} href={localizePublicHref(link.href)} className="cin-public-footer-link">
+                    {link.label}
                   </Link>
                 ))}
               </div>

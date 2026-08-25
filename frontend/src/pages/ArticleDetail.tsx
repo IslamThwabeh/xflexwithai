@@ -1,3 +1,4 @@
+import { Fragment } from 'react';
 import { Link, useParams } from 'wouter';
 import { ArrowLeft, ArrowRight, Clock, FileText } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -5,6 +6,28 @@ import { trpc } from '@/lib/trpc';
 import CinematicPublicLayout from '@/components/public/CinematicPublicLayout';
 import { useSeoMetadata } from '@/lib/seo';
 import { SITE_ORIGIN } from '@shared/seo';
+import {
+  parseArticleContent,
+  parseArticleSources,
+  type ArticleInlineToken,
+} from '@shared/articleContent';
+
+function ArticleInlineContent({ tokens }: { tokens: ArticleInlineToken[] }) {
+  return tokens.map((token, index) => (
+    <Fragment key={`${token.type}-${index}`}>
+      {token.type === 'text' ? token.value : (
+        <a
+          href={token.href}
+          target={token.external ? '_blank' : undefined}
+          rel={token.external ? 'noopener noreferrer' : undefined}
+          className="font-medium text-emerald-700 underline decoration-emerald-300 underline-offset-4 hover:text-emerald-900"
+        >
+          {token.label}
+        </a>
+      )}
+    </Fragment>
+  ));
+}
 
 export default function ArticleDetail() {
   const { language, t } = useLanguage();
@@ -45,6 +68,12 @@ export default function ArticleDetail() {
         name: (isRtl ? article.authorNameAr : article.authorNameEn) || 'XFlex Editorial Team',
         url: `${SITE_ORIGIN}/${isRtl ? 'ar' : 'en'}/authors/xflex-editorial-team`,
       },
+      reviewedBy: (isRtl ? article.reviewerNameAr || article.reviewerNameEn : article.reviewerNameEn || article.reviewerNameAr)
+        ? {
+          '@type': 'Person',
+          name: isRtl ? article.reviewerNameAr || article.reviewerNameEn : article.reviewerNameEn || article.reviewerNameAr,
+        }
+        : undefined,
       publisher: { '@id': `${SITE_ORIGIN}/#organization` },
     } : undefined,
   });
@@ -81,7 +110,11 @@ export default function ArticleDetail() {
   const content = isRtl ? (article.contentAr || article.contentEn) : (article.contentEn || article.contentAr);
   const authorName = (isRtl ? article.authorNameAr : article.authorNameEn)
     || (isRtl ? 'فريق XFlex التحريري' : 'XFlex Editorial Team');
-  const reviewerName = isRtl ? article.reviewerNameAr : article.reviewerNameEn;
+  const reviewerName = isRtl
+    ? article.reviewerNameAr || article.reviewerNameEn
+    : article.reviewerNameEn || article.reviewerNameAr;
+  const contentBlocks = parseArticleContent(content);
+  const sources = parseArticleSources(article.sources);
   const BackIcon = isRtl ? ArrowRight : ArrowLeft;
   const themeClass = article.theme === 'amber'
     ? 'from-amber-950 via-amber-900 to-slate-950'
@@ -149,25 +182,64 @@ export default function ArticleDetail() {
         <div className="mx-auto max-w-3xl px-4 py-12 md:px-6 md:py-16">
           <div className="rounded-[28px] border border-white/10 bg-[#F6F3EC] px-6 py-8 shadow-[0_18px_50px_rgba(15,23,42,0.18)] md:px-9 md:py-10">
             <div className="space-y-6">
-              {content?.split('\n\n').map((paragraph, index) => (
-                paragraph.trim() ? (
-                  <p key={index} className="text-[15px] leading-8 text-slate-700 md:text-[17px]">
-                    {paragraph}
-                  </p>
-                ) : null
-              ))}
+              {contentBlocks.map((block, index) => {
+                if (block.type === 'heading2') {
+                  return (
+                    <h2 key={`h2-${index}`} className="pt-4 text-2xl font-bold leading-tight text-slate-950 md:text-3xl">
+                      <ArticleInlineContent tokens={block.content} />
+                    </h2>
+                  );
+                }
+                if (block.type === 'heading3') {
+                  return (
+                    <h3 key={`h3-${index}`} className="pt-2 text-xl font-bold leading-tight text-slate-900 md:text-2xl">
+                      <ArticleInlineContent tokens={block.content} />
+                    </h3>
+                  );
+                }
+                if (block.type === 'blockquote') {
+                  return (
+                    <blockquote key={`quote-${index}`} className="border-s-4 border-emerald-500 bg-emerald-50/70 px-5 py-4 text-[15px] leading-8 text-slate-700 md:text-[17px]">
+                      <ArticleInlineContent tokens={block.content} />
+                    </blockquote>
+                  );
+                }
+                if (block.type === 'unorderedList' || block.type === 'orderedList') {
+                  const ListTag = block.type === 'unorderedList' ? 'ul' : 'ol';
+                  return (
+                    <ListTag
+                      key={`${block.type}-${index}`}
+                      className={`${block.type === 'unorderedList' ? 'list-disc' : 'list-decimal'} space-y-2 ps-6 text-[15px] leading-8 text-slate-700 md:text-[17px]`}
+                    >
+                      {block.items.map((item, itemIndex) => (
+                        <li key={itemIndex}><ArticleInlineContent tokens={item} /></li>
+                      ))}
+                    </ListTag>
+                  );
+                }
+                if (block.type === 'paragraph') {
+                  return (
+                    <p key={`paragraph-${index}`} className="text-[15px] leading-8 text-slate-700 md:text-[17px]">
+                      <ArticleInlineContent tokens={block.content} />
+                    </p>
+                  );
+                }
+                return null;
+              })}
             </div>
 
             <div className="mt-10 border-t border-slate-200/80 pt-6">
-              {article.sources ? (
+              {sources.length > 0 ? (
                 <section className="mb-8">
                   <h2 className="text-lg font-bold text-slate-900">{isRtl ? 'المصادر' : 'Sources'}</h2>
                   <ul className="mt-3 list-disc space-y-2 ps-5 text-sm text-slate-600">
-                    {article.sources.split(/\r?\n/).filter(Boolean).map((source) => (
-                      <li key={source}>
-                        <a href={source} rel="noreferrer" target="_blank" className="break-all text-emerald-700 underline">
-                          {source}
-                        </a>
+                    {sources.map((source, index) => (
+                      <li key={`${source.label}-${index}`}>
+                        {source.href ? (
+                          <a href={source.href} rel="noopener noreferrer" target="_blank" className="break-words text-emerald-700 underline">
+                            {source.label}
+                          </a>
+                        ) : source.label}
                       </li>
                     ))}
                   </ul>
