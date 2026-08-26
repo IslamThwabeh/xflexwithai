@@ -1,7 +1,7 @@
 # Cloudflare D1 Free-Tier Optimization — Small-Task Release Plan
 
 Date: 2026-08-24
-Status: Recommendation 1, the survey-notification SQL hotfix, Tasks 2.2-2.4, sent-history Task 7.1, and recommendation Tasks 3.1-3.4 are deployed. The first complete post-release UTC day remained above the free-tier target; the next decision still requires a complete post-release UTC-day measurement.
+Status: Recommendation 1, the survey-notification SQL hotfix, Tasks 2.2-2.4, sent-history Task 7.1, and recommendation Tasks 3.1-3.4 are deployed. Recommendation Task 3.5 is locally validated and awaiting its isolated Pages rollout. The next decision still requires a complete post-Task-3.5 UTC-day measurement.
 
 Local implementation progress on 2026-08-24:
 
@@ -44,6 +44,9 @@ Local implementation progress on 2026-08-24:
 - Task 3.4 is locally validated as a frontend-only change: authorized admins/analysts poll `openThreads` every 60 seconds only while visible, hidden and unauthorized/logged-out states make no passive feed requests, and focus or hidden-to-visible return refreshes immediately. Existing mutation invalidations remain intact; `publishState` remains one second and admin `threadSummary` remains 60 seconds.
 - Task 3.4 gates pass: two focused polling contracts, 32 files / 175 critical-cycle tests, 120 files / 620 full tests, TypeScript, the application/server production build, the Worker build, and diff hygiene. No Worker change, D1 migration, or production data write belongs to this task.
 - Task 3.4 deployed from commit `b01fd9a` as Pages deployment `5f9fe5f0` (`https://5f9fe5f0.xflexwithai.pages.dev`). Production and preview route/header smoke passed and served the same exact `AdminRecommendations-r9TlUXrY.js` bundle with both protected 60-second cadences, visible/focus behavior, the unchanged one-second `publishState`, and immediate open-thread invalidations. The unchanged Worker health returned 200/production and anonymous open-thread access returned 401. No Worker deploy or D1 write occurred.
+- Task 3.5 is locally validated as a frontend-only change: eligible signed-in clients poll `openThreads` every 60 seconds only while visible; hidden, ineligible, and logged-out states make no passive feed requests; focus or hidden-to-visible return refreshes immediately. Reaction, mute, and unmute invalidations remain immediate, while `activeAlerts` remains 15 seconds and recommendation email delivery is unchanged.
+- Task 3.5 gates pass: three focused polling contracts / 9 tests, 33 files / 178 critical-cycle tests, 121 files / 623 full tests, TypeScript, the application/server production build, the Worker build, formatting, and diff hygiene. A local static-browser smoke served `/recommendations` and loaded the compiled app shell; authenticated API timing is covered by the focused contract because the static preview intentionally has no `/api/trpc` backend. No Worker change, D1 migration, production API mutation, or production data write belongs to this task.
+- Task 3.5 permits a maximum passive visible-page delay of 60 seconds for a recommendation published elsewhere; returning to the page refreshes immediately, and email delivery timing is unchanged. Task 3.6 must measure one complete UTC day before any decision about the 15-second `activeAlerts` or one-second analyst `publishState` loops.
 
 ## Goal
 
