@@ -1,7 +1,7 @@
 # Cloudflare D1 Free-Tier Optimization — Small-Task Release Plan
 
 Date: 2026-08-24
-Status: Recommendation 1, the survey-notification SQL hotfix, Tasks 2.2-2.4, sent-history Task 7.1, and recommendation Tasks 3.1-3.2 are deployed. The first complete post-release UTC day remained above the free-tier target; the next decision still requires a complete post-release UTC-day measurement.
+Status: Recommendation 1, the survey-notification SQL hotfix, Tasks 2.2-2.4, sent-history Task 7.1, and recommendation Tasks 3.1-3.2 are deployed. Recommendation Task 3.3 is locally validated and awaiting its Pages-only rollout. The first complete post-release UTC day remained above the free-tier target; the next decision still requires a complete post-release UTC-day measurement.
 
 Local implementation progress on 2026-08-24:
 
@@ -38,6 +38,8 @@ Local implementation progress on 2026-08-24:
 - Local Task 3.2 gates passed: 29/29 protected recommendation tests, 169/169 critical-cycle tests across 30 files, 614/614 full tests across 118 files, TypeScript, the application/server production build, and the Worker build. No migration or production data write belongs to this task.
 - Task 3.2 deployed from commit `c56d41f` as Worker version `1ce2c5b9-d52b-46c7-8b28-bdbd9ea800c7`. Both health endpoints returned 200, anonymous `recommendations.threadSummary` returned 401, and both existing cron schedules were preserved.
 - Read-only production reconciliation returned 348 roots (17 open, 331 closed, 1 needing a result), 729 result messages, and 47 updates with `changed_db = false` and `rows_written = 0`. Root and child aggregates read 365 and 776 rows respectively (1,141 total), equal to the already-indexed post-091 legacy probe. Therefore Task 3.2 removes the plan-level table scan and locks index-safe growth, but its current-data row saving must not be counted in addition to Task 3.1's approximately 94.7% reduction.
+- Task 3.3 is locally validated as a frontend-only change: authorized admins/analysts poll `threadSummary` every 60 seconds only while the document is visible, hidden and unauthorized/logged-out states make no passive summary requests, and focus or hidden-to-visible return refreshes immediately. All existing mutation invalidations remain intact; `publishState` remains one second and admin `openThreads` remains 30 seconds for their separate decisions.
+- Task 3.3 gates pass: focused polling contracts, 31 files / 172 critical-cycle tests, 119 files / 617 full tests, and TypeScript. The application and Worker production builds remain required before rollout. No Worker change, D1 migration, or production data write belongs to this task.
 
 ## Goal
 
@@ -173,9 +175,9 @@ Every task must preserve all of these behaviors, even when the task does not dir
 
 ### 3.3 Slow only the admin thread summary
 
-- Change: move the admin `threadSummary` passive refresh from 30 seconds to five minutes, visible only.
-- Verify: publish, update, result, close, delete, override, and mute mutations still invalidate the summary immediately.
-- Pass: the one-second analyst `publishState` refresh is untouched.
+- Change: move the admin `threadSummary` passive refresh from 30 seconds to 60 seconds while an authorized admin/analyst keeps the document visible; stop passive refreshes while hidden or unauthorized/logged out, and refresh on focus or hidden-to-visible return.
+- Verify: publish, update, result, close, delete, override, and mute mutations still invalidate the summary immediately; the focused source contract protects the visibility listener, cleanup, authorization gate, interval, focus behavior, and mutation invalidation.
+- Pass: the one-second analyst `publishState` refresh and the admin `openThreads` 30-second cadence are untouched.
 - Rollback: restore 30 seconds.
 
 ### 3.4 Slow only the admin open-thread feed

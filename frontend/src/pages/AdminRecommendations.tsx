@@ -22,6 +22,7 @@ type FollowUpPresetGroupKey = "pips" | "management" | "outcome";
 type TradeOutcome = "win" | "loss";
 type ThreadFilter = "open" | "needsResult" | "closed" | "all";
 const THREAD_PAGE_SIZE = 50;
+const ADMIN_THREAD_SUMMARY_REFRESH_MS = 60_000;
 
 type MonthlyTradeReportRow = {
   messageId: number;
@@ -364,6 +365,20 @@ function AnalystView() {
   const [threadPage, setThreadPage] = useState(0);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const workspaceTopRef = useRef<HTMLDivElement | null>(null);
+  const [isPageVisible, setIsPageVisible] = useState(
+    () =>
+      typeof document === "undefined" || document.visibilityState === "visible"
+  );
+  const wasPageVisibleRef = useRef(isPageVisible);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      setIsPageVisible(document.visibilityState === "visible");
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () =>
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, []);
 
   const { data: me } = trpc.recommendations.me.useQuery();
   const { data: adminCheck } = trpc.auth.isAdmin.useQuery();
@@ -372,10 +387,28 @@ function AnalystView() {
     enabled: canManageChannel,
     refetchInterval: canManageChannel ? 1000 : false,
   });
-  const { data: threadSummary } = trpc.recommendations.threadSummary.useQuery(undefined, {
-    enabled: canManageChannel,
-    refetchInterval: canManageChannel ? 30_000 : false,
-  });
+  // This aggregate is a measured D1 hot path. Keep hidden and unauthorized
+  // polling disabled; mutations below invalidate it immediately, and returning
+  // to the tab triggers a fresh read. Protect this cadence with the polling test.
+  const { data: threadSummary, refetch: refetchThreadSummary } =
+    trpc.recommendations.threadSummary.useQuery(undefined, {
+      enabled: canManageChannel,
+      refetchInterval:
+        canManageChannel && isPageVisible
+          ? ADMIN_THREAD_SUMMARY_REFRESH_MS
+          : false,
+      refetchIntervalInBackground: false,
+      refetchOnWindowFocus: true,
+      retry: false,
+    });
+
+  useEffect(() => {
+    const wasVisible = wasPageVisibleRef.current;
+    wasPageVisibleRef.current = isPageVisible;
+    if (!wasVisible && isPageVisible && canManageChannel) {
+      void refetchThreadSummary();
+    }
+  }, [canManageChannel, isPageVisible, refetchThreadSummary]);
   const { data: openThreadFeed = [], isLoading: openThreadFeedLoading } = trpc.recommendations.openThreads.useQuery(
     undefined,
     { enabled: canManageChannel, refetchInterval: canManageChannel ? 30_000 : false }
