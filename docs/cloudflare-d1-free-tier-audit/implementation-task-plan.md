@@ -1,7 +1,7 @@
 # Cloudflare D1 Free-Tier Optimization — Small-Task Release Plan
 
 Date: 2026-08-24
-Status: Recommendation 1 and the survey-notification SQL hotfix are deployed. The first complete post-release UTC day remained above the free-tier target, so the next isolated optimization is being prepared locally. No migration or production data repair is required for the current task.
+Status: Recommendation 1, the survey-notification SQL hotfix, and Task 2.2 are deployed. Task 2.3 is validated locally as a separate Pages-only release. The first complete post-release UTC day remained above the free-tier target. No migration or production data repair is required for the current task.
 
 Local implementation progress on 2026-08-24:
 
@@ -18,6 +18,9 @@ Local implementation progress on 2026-08-24:
 - Production already has `idx_staff_notif_isRead` and `idx_staff_notif_actionUrl`, and read-only `EXPLAIN QUERY PLAN` confirmed both badge queries use covering index searches. Task 2.1 is therefore skipped: adding another overlapping index would increase writes/storage without improving this plan.
 - Task 2.2 is implemented locally: one grouped staff-badge query and protected endpoint return `{ total, byRoute }` while the two legacy endpoints remain available. The dashboard has not switched to the new endpoint yet.
 - Task 2.2 local gates pass: exact production-shaped SQL and index-plan tests, authorization tests, 26 files / 162 critical-cycle tests, 114 files / 607 full tests, TypeScript, application build, Worker build, and diff hygiene.
+- Task 2.2 was released from commit `75840c6` as Worker version `83f692e6-fd30-4a5c-9d50-0d6535d3bab5`. Both health domains returned 200, both cron schedules were preserved, and anonymous access to `staffNotifications.badgeCounts` returned 401. The frontend still used the legacy endpoints during this stage.
+- Task 2.3 is validated locally: `DashboardLayout` now uses the combined endpoint at the unchanged 30-second cadence and invalidates it immediately after route notifications are marked read. The legacy endpoints remain available for rollback.
+- Task 2.3 gates pass: focused badge contracts, 27 files / 164 critical-cycle tests, 115 files / 609 full tests, TypeScript, application build, Worker build, and diff hygiene.
 
 ## Goal
 

@@ -473,6 +473,7 @@ function DashboardLayoutContent({
   setSidebarWidth,
 }: DashboardLayoutContentProps) {
   const { user, logout } = useAuth();
+  const utils = trpc.useUtils();
   const [location, setLocation] = useLocation();
   const { t, language, setLanguage, isRTL } = useLanguage();
   const menuLabel = (entry: { labelKey: string; label?: LocalizedMenuLabel }) =>
@@ -541,14 +542,8 @@ function DashboardLayoutContent({
     }
   );
 
-  // Staff notifications — bell badge + sidebar route badges (30s polling)
-  const { data: unreadCountData } =
-    trpc.staffNotifications.unreadCount.useQuery(undefined, {
-      enabled: canReadStaffNotifications,
-      refetchInterval: canReadStaffNotifications ? 30_000 : false,
-      retry: false,
-    });
-  const { data: routeBadges } = trpc.staffNotifications.countByRoute.useQuery(
+  // Staff notifications — one request for the bell + sidebar route badges.
+  const { data: staffNotificationBadges } = trpc.staffNotifications.badgeCounts.useQuery(
     undefined,
     {
       enabled: canReadStaffNotifications,
@@ -556,7 +551,11 @@ function DashboardLayoutContent({
       retry: false,
     }
   );
-  const markReadByRoute = trpc.staffNotifications.markReadByRoute.useMutation();
+  const routeBadges = staffNotificationBadges?.byRoute;
+  const unreadNotificationCount = staffNotificationBadges?.total ?? 0;
+  const markReadByRoute = trpc.staffNotifications.markReadByRoute.useMutation({
+    onSuccess: () => utils.staffNotifications.badgeCounts.invalidate(),
+  });
   const canPrepareRewards = staffRolesForAvailability.includes(
     "loyalty_rewards_manager"
   );
@@ -1012,11 +1011,11 @@ function DashboardLayoutContent({
                   title={t("admin.sidebar.notifications")}
                 >
                   <Bell className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-                  {(unreadCountData?.count ?? 0) > 0 && (
+                  {unreadNotificationCount > 0 && (
                     <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center animate-pulse">
-                      {unreadCountData!.count > 99
+                      {unreadNotificationCount > 99
                         ? "99+"
-                        : unreadCountData!.count}
+                        : unreadNotificationCount}
                     </span>
                   )}
                 </button>
