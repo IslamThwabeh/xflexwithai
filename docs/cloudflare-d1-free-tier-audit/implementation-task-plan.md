@@ -1,7 +1,7 @@
 # Cloudflare D1 Free-Tier Optimization — Small-Task Release Plan
 
 Date: 2026-08-24
-Status: Recommendation 1, the survey-notification SQL hotfix, Tasks 2.2-2.4, sent-history Task 7.1, and recommendation Tasks 3.1-3.4 are deployed. Recommendation Task 3.5 is locally validated and awaiting its isolated Pages rollout. The next decision still requires a complete post-Task-3.5 UTC-day measurement.
+Status: Recommendation 1, the survey-notification SQL hotfix, Tasks 2.2-2.4, sent-history Task 7.1, and recommendation Tasks 3.1-3.5 are deployed. Task 3.6 is measurement-only; the next decision requires the complete UTC 2026-08-27 post-release sample, available after 2026-08-28 03:00 Asia/Amman.
 
 Local implementation progress on 2026-08-24:
 
@@ -47,6 +47,8 @@ Local implementation progress on 2026-08-24:
 - Task 3.5 is locally validated as a frontend-only change: eligible signed-in clients poll `openThreads` every 60 seconds only while visible; hidden, ineligible, and logged-out states make no passive feed requests; focus or hidden-to-visible return refreshes immediately. Reaction, mute, and unmute invalidations remain immediate, while `activeAlerts` remains 15 seconds and recommendation email delivery is unchanged.
 - Task 3.5 gates pass: three focused polling contracts / 9 tests, 33 files / 178 critical-cycle tests, 121 files / 623 full tests, TypeScript, the application/server production build, the Worker build, formatting, and diff hygiene. A local static-browser smoke served `/recommendations` and loaded the compiled app shell; authenticated API timing is covered by the focused contract because the static preview intentionally has no `/api/trpc` backend. No Worker change, D1 migration, production API mutation, or production data write belongs to this task.
 - Task 3.5 permits a maximum passive visible-page delay of 60 seconds for a recommendation published elsewhere; returning to the page refreshes immediately, and email delivery timing is unchanged. Task 3.6 must measure one complete UTC day before any decision about the 15-second `activeAlerts` or one-second analyst `publishState` loops.
+- Task 3.5 deployed from commit `a866c3c` as Pages deployment `95b59d6a` (`https://95b59d6a.xflexwithai.pages.dev`) after the isolated Task 3.4 soak remained clean. Production and preview served the exact locally validated `Recommendations-D9PHm4BO.js` bundle with SHA-256 `79BF7400C0D3FAA6F2943BDA5687D90CE84AE1CD27EAA0CDD419621558256040`; private route headers remained `noindex, nofollow` and `no-store, private`; API health returned 200 and anonymous open-thread access returned 401. No Worker deploy, migration, D1 write, or production API mutation occurred.
+- Task 3.6 collection window: Task 3.5 went live during UTC 2026-08-26. Use UTC 2026-08-27 as the first complete post-release day; it closes at 2026-08-28 03:00 Asia/Amman. The tomorrow-night review must capture total D1 rows read/written, rows and runs for recommendation summary/open-root/open-thread/stale-reconciliation fingerprints, and Worker error/limit evidence. Do not tune `activeAlerts` or `publishState` before this evidence is reviewed.
 
 ## Goal
 
