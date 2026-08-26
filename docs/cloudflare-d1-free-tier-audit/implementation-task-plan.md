@@ -1,7 +1,7 @@
 # Cloudflare D1 Free-Tier Optimization — Small-Task Release Plan
 
 Date: 2026-08-24
-Status: Recommendation 1, the survey-notification SQL hotfix, Tasks 2.2-2.4, sent-history Task 7.1, and recommendation Task 3.1 are deployed. The first complete post-release UTC day remained above the free-tier target. Recommendation Task 3.2 is locally validated as a separate Worker-code release and is awaiting production rollout/reconciliation.
+Status: Recommendation 1, the survey-notification SQL hotfix, Tasks 2.2-2.4, sent-history Task 7.1, and recommendation Tasks 3.1-3.2 are deployed. The first complete post-release UTC day remained above the free-tier target; the next decision still requires a complete post-release UTC-day measurement.
 
 Local implementation progress on 2026-08-24:
 
@@ -36,6 +36,8 @@ Local implementation progress on 2026-08-24:
 - Task 3.2 keeps the public summary shape unchanged but splits the former unfiltered table aggregate into root-only and child-only aggregates executed in parallel. Both predicates align with `idx_recommendation_messages_parent_type_created_id`; do not recombine them into one unfiltered aggregate without first passing the exact production-shaped plan contract.
 - Task 3.2's SQL contract executes the ORM-generated SQL against physical production column names, proves exact equivalence with the legacy aggregate for empty, null-status, open, closed, duplicate-result, orphan-update, root-result, and child-recommendation cases, and rejects any plan that scans `recommendationMessages` or the correlated `child` table.
 - Local Task 3.2 gates passed: 29/29 protected recommendation tests, 169/169 critical-cycle tests across 30 files, 614/614 full tests across 118 files, TypeScript, the application/server production build, and the Worker build. No migration or production data write belongs to this task.
+- Task 3.2 deployed from commit `c56d41f` as Worker version `1ce2c5b9-d52b-46c7-8b28-bdbd9ea800c7`. Both health endpoints returned 200, anonymous `recommendations.threadSummary` returned 401, and both existing cron schedules were preserved.
+- Read-only production reconciliation returned 348 roots (17 open, 331 closed, 1 needing a result), 729 result messages, and 47 updates with `changed_db = false` and `rows_written = 0`. Root and child aggregates read 365 and 776 rows respectively (1,141 total), equal to the already-indexed post-091 legacy probe. Therefore Task 3.2 removes the plan-level table scan and locks index-safe growth, but its current-data row saving must not be counted in addition to Task 3.1's approximately 94.7% reduction.
 
 ## Goal
 
