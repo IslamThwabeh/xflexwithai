@@ -476,9 +476,21 @@ function DashboardLayoutContent({
   const utils = trpc.useUtils();
   const [location, setLocation] = useLocation();
   const { t, language, setLanguage, isRTL } = useLanguage();
+  const [isPageVisible, setIsPageVisible] = useState(
+    () => typeof document === "undefined" || document.visibilityState === "visible",
+  );
+  const wasPageVisibleRef = useRef(isPageVisible);
   const menuLabel = (entry: { labelKey: string; label?: LocalizedMenuLabel }) =>
     entry.label?.[language] ?? t(entry.labelKey);
   const { state, toggleSidebar, setOpenMobile } = useSidebar();
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      setIsPageVisible(document.visibilityState === "visible");
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, []);
   const { theme, toggleTheme } = useTheme();
   const isCollapsed = state === "collapsed";
   const [isResizing, setIsResizing] = useState(false);
@@ -543,11 +555,17 @@ function DashboardLayoutContent({
   );
 
   // Staff notifications — one request for the bell + sidebar route badges.
-  const { data: staffNotificationBadges } = trpc.staffNotifications.badgeCounts.useQuery(
+  const {
+    data: staffNotificationBadges,
+    refetch: refetchStaffNotificationBadges,
+  } = trpc.staffNotifications.badgeCounts.useQuery(
     undefined,
     {
       enabled: canReadStaffNotifications,
-      refetchInterval: canReadStaffNotifications ? 30_000 : false,
+      refetchInterval:
+        canReadStaffNotifications && isPageVisible ? 30_000 : false,
+      refetchIntervalInBackground: false,
+      refetchOnWindowFocus: true,
       retry: false,
     }
   );
@@ -556,6 +574,14 @@ function DashboardLayoutContent({
   const markReadByRoute = trpc.staffNotifications.markReadByRoute.useMutation({
     onSuccess: () => utils.staffNotifications.badgeCounts.invalidate(),
   });
+
+  useEffect(() => {
+    const wasVisible = wasPageVisibleRef.current;
+    wasPageVisibleRef.current = isPageVisible;
+    if (!wasVisible && isPageVisible && canReadStaffNotifications) {
+      void refetchStaffNotificationBadges();
+    }
+  }, [canReadStaffNotifications, isPageVisible, refetchStaffNotificationBadges]);
   const canPrepareRewards = staffRolesForAvailability.includes(
     "loyalty_rewards_manager"
   );

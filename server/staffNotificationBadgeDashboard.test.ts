@@ -10,7 +10,9 @@ const source = readFileSync(
 describe("Dashboard staff notification badges", () => {
   it("uses one combined badge endpoint at the existing cadence", () => {
     expect(source).toContain("trpc.staffNotifications.badgeCounts.useQuery");
-    expect(source).toContain("refetchInterval: canReadStaffNotifications ? 30_000 : false");
+    expect(source).toContain(
+      "canReadStaffNotifications && isPageVisible ? 30_000 : false",
+    );
     expect(source).toContain("staffNotificationBadges?.byRoute");
     expect(source).toContain("staffNotificationBadges?.total ?? 0");
     expect(source).not.toContain("trpc.staffNotifications.unreadCount.useQuery");
@@ -19,5 +21,17 @@ describe("Dashboard staff notification badges", () => {
 
   it("refreshes the combined badge result after route notifications are read", () => {
     expect(source).toContain("utils.staffNotifications.badgeCounts.invalidate()");
+  });
+
+  it("pauses polling while hidden and refreshes when the dashboard becomes visible", () => {
+    expect(source).toContain("document.visibilityState === \"visible\"");
+    expect(source).toContain('document.addEventListener("visibilitychange", handleVisibilityChange)');
+    expect(source).toContain('document.removeEventListener("visibilitychange", handleVisibilityChange)');
+    expect(source).toContain(
+      "canReadStaffNotifications && isPageVisible ? 30_000 : false",
+    );
+    expect(source).toContain("refetchIntervalInBackground: false");
+    expect(source).toContain("refetchOnWindowFocus: true");
+    expect(source).toContain("void refetchStaffNotificationBadges()");
   });
 });
