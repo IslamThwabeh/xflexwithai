@@ -1,7 +1,7 @@
 # Cloudflare D1 Free-Tier Optimization — Small-Task Release Plan
 
 Date: 2026-08-24
-Status: Recommendation 1, the survey-notification SQL hotfix, Tasks 2.2-2.4, and sent-history Task 7.1 are deployed. Recommendation Task 3.1 is validated locally but not applied to production. The first complete post-release UTC day remained above the free-tier target.
+Status: Recommendation 1, the survey-notification SQL hotfix, Tasks 2.2-2.4, sent-history Task 7.1, and recommendation Task 3.1 are deployed. The first complete post-release UTC day remained above the free-tier target. Task 3.2 remains a separate Worker-code task.
 
 Local implementation progress on 2026-08-24:
 
@@ -30,6 +30,9 @@ Local implementation progress on 2026-08-24:
 - The August 26 rolling-day sample identifies the recommendation family as the September 1 blocker: thread summary used 4,037,990 rows across 187 runs, stale delivery reconciliation used 1,049,497 across 398 runs, and open-root listing used 570,934 across 526 runs. These three alone exceed the 5 million daily allowance.
 - Production `recommendationMessages` has 1,125 rows (348 roots, 729 results, 47 updates) but only separate `threadStatus, createdAt` and `createdAt` indexes. The exact summary plan scans both the outer table and its correlated child lookup.
 - Task 3.1 is validated locally as migration 091: one non-unique composite index covers root ordering plus child/result lookups without adding overlapping indexes. Its production-shaped test preserves null-status, duplicate-result, and orphan legacy rows; removes child/root scans; and passes 29 files / 167 protected tests, 117 files / 612 full tests, TypeScript, both builds, and diff hygiene.
+- Before Task 3.1, a full production D1 export was saved under the ignored private backup directory at `tmp/private-backups/2026-08-26-before-091-recommendation-index/xflexwithai-production-before-091-20260826-181028.sql` (310,908,725 bytes; SHA-256 `8F194BA673BC48CA72E0B9BC23926DE3C6BF66BCB08C6BF5963AFFDCD462946D`). Pre-migration Time Travel bookmark: `00001175-0000038f-000050d3-9acef8d1bd406a489f378f1318802e61`.
+- Migration 091 was applied from commit `6beec09`; post-index bookmark: `00001175-00000395-000050d3-3b1ed2666eaa8ece208674dca39d5972`. It created 1,126 index entries without changing any of the 1,125 recommendation-message rows and is recorded once as `schema_migrations.id = 32`.
+- Production plans now search the new index for summary result existence, open roots, child hydration, and stale-delivery result checks. Foreign-key integrity is clean. The exact aggregate summary probe returned the same totals while reading 1,141 rows versus the prior 21,593-row average, an immediate approximately 94.7% reduction.
 
 ## Goal
 

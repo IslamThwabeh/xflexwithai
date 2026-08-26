@@ -40,6 +40,19 @@ const openRootsSql = `
   ORDER BY createdAt DESC, id DESC
 `;
 
+const schemaMigrationRecordSql = `
+  INSERT INTO schema_migrations (migration_name, source, notes)
+  SELECT
+    '091_recommendation_message_thread_index.sql',
+    'codex_wrangler',
+    'Add non-unique recommendation parent/type/order index'
+  WHERE NOT EXISTS (
+    SELECT 1
+    FROM schema_migrations
+    WHERE migration_name = '091_recommendation_message_thread_index.sql'
+  )
+`;
+
 describe("recommendation message thread index migration", () => {
   it("is additive, idempotent, non-unique, data preserving, and indexed", async () => {
     const statementsOnly = migrationSql.replace(/^--.*$/gm, "");
@@ -80,6 +93,13 @@ describe("recommendation message thread index migration", () => {
           ON recommendationMessages(threadStatus, createdAt);
         CREATE INDEX idx_recommendationMessages_createdAt
           ON recommendationMessages(createdAt);
+        CREATE TABLE schema_migrations (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          migration_name TEXT NOT NULL,
+          source TEXT NOT NULL DEFAULT 'manual',
+          notes TEXT,
+          applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
         INSERT INTO recommendationMessages
           (id, userId, type, content, createdAt, parentId, threadStatus)
         VALUES
@@ -100,11 +120,23 @@ describe("recommendation message thread index migration", () => {
 
       database.exec(migrationSql);
       database.exec(migrationSql);
+      database.exec(schemaMigrationRecordSql);
+      database.exec(schemaMigrationRecordSql);
 
       expect(database.prepare(summarySql).get()).toEqual(before);
       expect(
         database.prepare("SELECT COUNT(*) AS count FROM recommendationMessages").get(),
       ).toEqual(beforeCount);
+      expect(
+        database.prepare(`
+          SELECT migration_name, source, notes
+          FROM schema_migrations
+        `).get(),
+      ).toEqual({
+        migration_name: "091_recommendation_message_thread_index.sql",
+        source: "codex_wrangler",
+        notes: "Add non-unique recommendation parent/type/order index",
+      });
 
       const planDetails = (sql: string, ...params: unknown[]) => database
         .prepare(`EXPLAIN QUERY PLAN ${sql}`)
