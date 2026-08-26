@@ -1,7 +1,7 @@
 # Cloudflare D1 Free-Tier Optimization — Small-Task Release Plan
 
 Date: 2026-08-24
-Status: Recommendation 1, the survey-notification SQL hotfix, Tasks 2.2-2.4, and sent-history Task 7.1 are deployed. The first complete post-release UTC day remained above the free-tier target. Task 7.2 must remain a separate Worker release.
+Status: Recommendation 1, the survey-notification SQL hotfix, Tasks 2.2-2.4, and sent-history Task 7.1 are deployed. Recommendation Task 3.1 is validated locally but not applied to production. The first complete post-release UTC day remained above the free-tier target.
 
 Local implementation progress on 2026-08-24:
 
@@ -27,6 +27,9 @@ Local implementation progress on 2026-08-24:
 - Read-only production profiling found 28,559 batched `user_notifications` rows: 861 in one day, 1,330 in three days, 2,687 in seven days, and 8,182 in thirty days. The current and date-filtered plans both scan the full table because production has no `created_at` index; a UI-only date cap would therefore not reduce D1 rows read.
 - Task 7.1 was applied from commit `7abda83` after all local gates passed. Pre-migration Time Travel bookmark: `00001175-000002e8-000050d3-a6b6310d56b44467c65800eb30afdcc9`; post-index bookmark: `00001175-000002ef-000050d3-e840ed51130789d8430773c81793a144`.
 - Index construction wrote 29,280 index entries and did not update notification records. Production reconciliation confirmed the non-unique partial index on physical columns `created_at, batch_id`, zero foreign-key violations, no row loss during concurrent notification growth, and an indexed `created_at>?` range search with no `user_notifications` table scan. Migration 090 is recorded exactly once as `schema_migrations.id = 31`.
+- The August 26 rolling-day sample identifies the recommendation family as the September 1 blocker: thread summary used 4,037,990 rows across 187 runs, stale delivery reconciliation used 1,049,497 across 398 runs, and open-root listing used 570,934 across 526 runs. These three alone exceed the 5 million daily allowance.
+- Production `recommendationMessages` has 1,125 rows (348 roots, 729 results, 47 updates) but only separate `threadStatus, createdAt` and `createdAt` indexes. The exact summary plan scans both the outer table and its correlated child lookup.
+- Task 3.1 is validated locally as migration 091: one non-unique composite index covers root ordering plus child/result lookups without adding overlapping indexes. Its production-shaped test preserves null-status, duplicate-result, and orphan legacy rows; removes child/root scans; and passes 29 files / 167 protected tests, 117 files / 612 full tests, TypeScript, both builds, and diff hygiene.
 
 ## Goal
 
@@ -146,10 +149,10 @@ Every task must preserve all of these behaviors, even when the task does not dir
 
 ## Recommendation 3 — Reduce recommendation summary and open-thread polling
 
-### 3.1 Add recommendation root/child indexes
+### 3.1 Add recommendation root/child index coverage
 
-- Change: one additive migration containing only the non-unique indexes required by root status/order and child parent/type lookups.
-- Verify: existing message/thread counts are identical; duplicate/legacy-compatible rows remain valid; `EXPLAIN` removes root and child scans.
+- Change: one additive migration containing one non-unique composite index on `parentId, type, createdAt DESC, id DESC`. Its prefix covers child/result lookups and its suffix covers deterministic root ordering, avoiding overlapping indexes.
+- Verify: existing message/thread counts are identical; duplicate/legacy-compatible rows remain valid; `EXPLAIN` makes open-root and child-hydration queries search the named index and removes the summary's correlated `SCAN child`. The summary's outer aggregate scan remains until Task 3.2.
 - Pass: recommendation workflow tests, monthly reporting, mute, and delivery tests all pass.
 - Rollback: do not drop the indexes automatically.
 
