@@ -29,6 +29,19 @@ const boundedHistorySql = `
   LIMIT ?
 `;
 
+const schemaMigrationRecordSql = `
+  INSERT INTO schema_migrations (migration_name, source, notes)
+  SELECT
+    '090_user_notification_history_index.sql',
+    'codex_wrangler',
+    'Add non-unique partial sent-history range index'
+  WHERE NOT EXISTS (
+    SELECT 1
+    FROM schema_migrations
+    WHERE migration_name = '090_user_notification_history_index.sql'
+  )
+`;
+
 describe("user notification history index migration", () => {
   it("is additive, idempotent, non-unique, and data preserving", async () => {
     const statementsOnly = migrationSql.replace(/^--.*$/gm, "");
@@ -58,6 +71,13 @@ describe("user notification history index migration", () => {
           email_sent INTEGER NOT NULL DEFAULT 0,
           dedupe_key TEXT
         );
+        CREATE TABLE schema_migrations (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          migration_name TEXT NOT NULL,
+          source TEXT NOT NULL DEFAULT 'manual',
+          notes TEXT,
+          applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
         INSERT INTO user_notifications
           (user_id, type, title_en, title_ar, content_en, content_ar,
            action_url, is_read, created_at, batch_id, email_sent, dedupe_key)
@@ -74,6 +94,8 @@ describe("user notification history index migration", () => {
            '2026-08-25 11:00:00', NULL, 0, NULL);
         ${migrationSql}
         ${migrationSql}
+        ${schemaMigrationRecordSql};
+        ${schemaMigrationRecordSql};
       `);
 
       expect(
@@ -86,6 +108,18 @@ describe("user notification history index migration", () => {
           )
           .get(),
       ).toEqual({ count: 2 });
+      expect(
+        database
+          .prepare(`
+            SELECT migration_name, source, notes
+            FROM schema_migrations
+          `)
+          .get(),
+      ).toEqual({
+        migration_name: "090_user_notification_history_index.sql",
+        source: "codex_wrangler",
+        notes: "Add non-unique partial sent-history range index",
+      });
 
       const rows = database
         .prepare(boundedHistorySql)

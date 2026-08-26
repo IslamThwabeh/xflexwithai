@@ -1,7 +1,7 @@
 # Cloudflare D1 Free-Tier Optimization — Small-Task Release Plan
 
 Date: 2026-08-24
-Status: Recommendation 1, the survey-notification SQL hotfix, and Tasks 2.2-2.4 are deployed. The sent-history range-index task is validated locally but not applied to production. The first complete post-release UTC day remained above the free-tier target.
+Status: Recommendation 1, the survey-notification SQL hotfix, Tasks 2.2-2.4, and sent-history Task 7.1 are deployed. The first complete post-release UTC day remained above the free-tier target. Task 7.2 must remain a separate Worker release.
 
 Local implementation progress on 2026-08-24:
 
@@ -25,6 +25,8 @@ Local implementation progress on 2026-08-24:
 - Task 2.4 gates pass: focused visibility contracts, 27 files / 165 critical-cycle tests, 115 files / 610 full tests, TypeScript, application build, Worker build, and diff hygiene. The unauthenticated local preview rendered the app shell; authenticated request timing remains a production smoke/measurement item because local preview has no staff session or API proxy.
 - Task 2.4 was released from commit `ac53dd2` as Pages deployment `4ccb41cb`. Production and preview returned 200 with identical dashboard assets; visibility handling and the combined endpoint were present, both legacy passive badge queries were absent, private admin headers remained intact, and the production API health check passed.
 - Read-only production profiling found 28,559 batched `user_notifications` rows: 861 in one day, 1,330 in three days, 2,687 in seven days, and 8,182 in thirty days. The current and date-filtered plans both scan the full table because production has no `created_at` index; a UI-only date cap would therefore not reduce D1 rows read.
+- Task 7.1 was applied from commit `7abda83` after all local gates passed. Pre-migration Time Travel bookmark: `00001175-000002e8-000050d3-a6b6310d56b44467c65800eb30afdcc9`; post-index bookmark: `00001175-000002ef-000050d3-e840ed51130789d8430773c81793a144`.
+- Index construction wrote 29,280 index entries and did not update notification records. Production reconciliation confirmed the non-unique partial index on physical columns `created_at, batch_id`, zero foreign-key violations, no row loss during concurrent notification growth, and an indexed `created_at>?` range search with no `user_notifications` table scan. Migration 090 is recorded exactly once as `schema_migrations.id = 31`.
 
 ## Goal
 
