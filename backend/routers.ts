@@ -10585,6 +10585,10 @@ ${qaText}`;
       return db.getUnreadStaffNotificationCountByRoute(ctx.user.id);
     }),
 
+    badgeCounts: supportStaffProcedure.query(async ({ ctx }) => {
+      return db.getUnreadStaffNotificationBadges(ctx.user.id);
+    }),
+
     markRead: supportStaffProcedure
       .input(z.object({ notificationId: z.number() }))
       .mutation(async ({ ctx, input }) => {

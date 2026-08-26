@@ -1,7 +1,7 @@
 # Cloudflare D1 Free-Tier Optimization — Small-Task Release Plan
 
 Date: 2026-08-24
-Status: Recommendation 1 is deployed; the separately discovered survey-notification SQL hotfix is validated locally and pending a Worker-only release. No migration or production data repair is required.
+Status: Recommendation 1 and the survey-notification SQL hotfix are deployed. The first complete post-release UTC day remained above the free-tier target, so the next isolated optimization is being prepared locally. No migration or production data repair is required for the current task.
 
 Local implementation progress on 2026-08-24:
 
@@ -13,6 +13,11 @@ Local implementation progress on 2026-08-24:
 - Immediate monitoring exposed an unchanged survey-notification insert using `ON CONFLICT(dedupe_key)` against production's partial unique index. The exact application SQL now uses targetless `ON CONFLICT DO NOTHING`; a production-shaped contract test covers non-null dedupe and repeatable null keys.
 - Hotfix gates pass: 24 files / 158 critical-cycle tests, 107 files / 588 full tests, TypeScript, application build, Worker build, focused survey tests, and diff hygiene.
 - No database migration, production data repair, schedule change, or Pages redeploy is required for the survey hotfix.
+- August 25, 2026 (complete UTC day) used 7,628,225 rows read and 25,385 rows written. Reads fell 33.28% from August 24's 11,434,205, but remained 52.56% above the 5,000,000-row free limit and 117.95% above the 3,500,000 internal target.
+- The latest rolling-24-hour sample on August 26 reported 8,650,778 rows read, down 20.72% from the original 10,912,314 sample. The outbox-health family itself fell from approximately 1.46 million rows/day to about 70 thousand rows in the latest rolling day, confirming Recommendation 1 worked but was insufficient by itself.
+- Production already has `idx_staff_notif_isRead` and `idx_staff_notif_actionUrl`, and read-only `EXPLAIN QUERY PLAN` confirmed both badge queries use covering index searches. Task 2.1 is therefore skipped: adding another overlapping index would increase writes/storage without improving this plan.
+- Task 2.2 is implemented locally: one grouped staff-badge query and protected endpoint return `{ total, byRoute }` while the two legacy endpoints remain available. The dashboard has not switched to the new endpoint yet.
+- Task 2.2 local gates pass: exact production-shaped SQL and index-plan tests, authorization tests, 26 files / 162 critical-cycle tests, 114 files / 607 full tests, TypeScript, application build, Worker build, and diff hygiene.
 
 ## Goal
 
@@ -97,10 +102,9 @@ Every task must preserve all of these behaviors, even when the task does not dir
 
 ### 2.1 Add the staff-badge covering index
 
-- Change: one additive migration for a non-unique index supporting unread totals and grouping by route for one user.
-- Verify: migration is idempotent; duplicate notifications survive; production pre/post row counts and unread counts match; `EXPLAIN` searches the new index.
-- Pass: notification creation/read behavior is unchanged.
-- Rollback: stop before code changes; do not drop the index automatically.
+- Decision: skipped after production verification. Existing indexes `idx_staff_notif_isRead (userId, isRead)` and `idx_staff_notif_actionUrl (userId, isRead, actionUrl)` already cover the exact count and grouped-route predicates.
+- Evidence: production `EXPLAIN QUERY PLAN` reports covering index searches for both legacy queries with zero rows read/written by the diagnostic commands.
+- Safety: do not add a duplicate index. Revisit only if the application query shape changes and a new production plan proves the existing indexes insufficient.
 
 ### 2.2 Add one combined badge query and endpoint
 

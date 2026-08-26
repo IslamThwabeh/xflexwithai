@@ -21726,6 +21726,54 @@ export async function getUnreadStaffNotificationCountByRoute(userId: number): Pr
   return result;
 }
 
+type StaffNotificationBadgeQueryDatabase = {
+  select: (fields: {
+    actionUrl: typeof staffNotifications.actionUrl;
+    count: unknown;
+  }) => any;
+};
+
+/**
+ * Build the single grouped query used for both the staff notification bell and
+ * route badges. Exported so the exact production SQL can be executed against a
+ * production-shaped SQLite fixture before release.
+ */
+export function buildUnreadStaffNotificationBadgeQuery(
+  database: StaffNotificationBadgeQueryDatabase,
+  userId: number,
+) {
+  return database
+    .select({
+      actionUrl: staffNotifications.actionUrl,
+      count: sql<number>`COUNT(*)`.as("count"),
+    })
+    .from(staffNotifications)
+    .where(and(
+      eq(staffNotifications.userId, userId),
+      eq(staffNotifications.isRead, false),
+    ))
+    .groupBy(staffNotifications.actionUrl);
+}
+
+export async function getUnreadStaffNotificationBadges(userId: number): Promise<{
+  total: number;
+  byRoute: Record<string, number>;
+}> {
+  const db = await getDb();
+  if (!db) return { total: 0, byRoute: {} };
+
+  const rows = await buildUnreadStaffNotificationBadgeQuery(db, userId);
+  const byRoute: Record<string, number> = {};
+  let total = 0;
+  for (const row of rows) {
+    const count = Number(row.count ?? 0);
+    total += count;
+    if (row.actionUrl) byRoute[row.actionUrl] = count;
+  }
+
+  return { total, byRoute };
+}
+
 export async function markStaffNotificationRead(notificationId: number, userId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
