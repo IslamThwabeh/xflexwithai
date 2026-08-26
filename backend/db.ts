@@ -8710,44 +8710,90 @@ export async function getRecommendationMessagesFeed(userId: number, limit: numbe
   return hydrateRecommendationFeedMessages(userId, messages);
 }
 
-export async function getRecommendationThreadSummary(): Promise<RecommendationThreadSummary> {
-  const db = await getDb();
-  if (!db) {
-    return {
-      total: 0,
-      open: 0,
-      needsResult: 0,
-      closed: 0,
-      resultMessages: 0,
-      updateMessages: 0,
-      oldestRecommendationAt: null,
-      newestRecommendationAt: null,
-    };
-  }
+type RecommendationThreadSummaryQueryDatabase = {
+  select: (fields: Record<string, unknown>) => any;
+};
 
-  const [row] = await db
+function createEmptyRecommendationThreadSummary(): RecommendationThreadSummary {
+  return {
+    total: 0,
+    open: 0,
+    needsResult: 0,
+    closed: 0,
+    resultMessages: 0,
+    updateMessages: 0,
+    oldestRecommendationAt: null,
+    newestRecommendationAt: null,
+  };
+}
+
+/**
+ * Keep these aggregates split and aligned with
+ * idx_recommendation_messages_parent_type_created_id. The previous single
+ * unfiltered aggregate made D1 scan every message and repeatedly scan result
+ * children. Do not merge it back unless the production-shaped contract in
+ * server/recommendationThreadSummaryQuery.test.ts proves equivalent results
+ * and indexed plans without a recommendationMessages/child scan.
+ */
+export function buildRecommendationThreadSummaryQueries(
+  database: RecommendationThreadSummaryQueryDatabase,
+) {
+  const roots = database
     .select({
-      total: sql<number>`SUM(CASE WHEN ${recommendationMessages.parentId} IS NULL AND ${recommendationMessages.type} = 'recommendation' THEN 1 ELSE 0 END)`,
-      open: sql<number>`SUM(CASE WHEN ${recommendationMessages.parentId} IS NULL AND ${recommendationMessages.type} = 'recommendation' AND (${recommendationMessages.threadStatus} IS NULL OR ${recommendationMessages.threadStatus} <> 'closed') THEN 1 ELSE 0 END)`,
-      needsResult: sql<number>`SUM(CASE WHEN ${recommendationMessages.parentId} IS NULL AND ${recommendationMessages.type} = 'recommendation' AND (${recommendationMessages.threadStatus} IS NULL OR ${recommendationMessages.threadStatus} <> 'closed') AND NOT EXISTS (SELECT 1 FROM recommendationMessages child WHERE child.parentId = recommendationMessages.id AND child.type = 'result') THEN 1 ELSE 0 END)`,
-      closed: sql<number>`SUM(CASE WHEN ${recommendationMessages.parentId} IS NULL AND ${recommendationMessages.type} = 'recommendation' AND ${recommendationMessages.threadStatus} = 'closed' THEN 1 ELSE 0 END)`,
-      resultMessages: sql<number>`SUM(CASE WHEN ${recommendationMessages.parentId} IS NOT NULL AND ${recommendationMessages.type} = 'result' THEN 1 ELSE 0 END)`,
-      updateMessages: sql<number>`SUM(CASE WHEN ${recommendationMessages.parentId} IS NOT NULL AND ${recommendationMessages.type} = 'update' THEN 1 ELSE 0 END)`,
-      oldestRecommendationAt: sql<string | null>`MIN(CASE WHEN ${recommendationMessages.parentId} IS NULL AND ${recommendationMessages.type} = 'recommendation' THEN ${recommendationMessages.createdAt} ELSE NULL END)`,
-      newestRecommendationAt: sql<string | null>`MAX(CASE WHEN ${recommendationMessages.parentId} IS NULL AND ${recommendationMessages.type} = 'recommendation' THEN ${recommendationMessages.createdAt} ELSE NULL END)`,
+      total: sql<number>`COUNT(*)`.as("total"),
+      open: sql<number>`SUM(CASE WHEN ${recommendationMessages.threadStatus} IS NULL OR ${recommendationMessages.threadStatus} <> 'closed' THEN 1 ELSE 0 END)`.as("open"),
+      needsResult: sql<number>`SUM(CASE WHEN (${recommendationMessages.threadStatus} IS NULL OR ${recommendationMessages.threadStatus} <> 'closed') AND NOT EXISTS (SELECT 1 FROM recommendationMessages child WHERE child.parentId = recommendationMessages.id AND child.type = 'result') THEN 1 ELSE 0 END)`.as("needs_result"),
+      closed: sql<number>`SUM(CASE WHEN ${recommendationMessages.threadStatus} = 'closed' THEN 1 ELSE 0 END)`.as("closed"),
+      oldestRecommendationAt: sql<string | null>`MIN(${recommendationMessages.createdAt})`.as("oldest_recommendation_at"),
+      newestRecommendationAt: sql<string | null>`MAX(${recommendationMessages.createdAt})`.as("newest_recommendation_at"),
     })
-    .from(recommendationMessages);
+    .from(recommendationMessages)
+    .where(and(
+      isNull(recommendationMessages.parentId),
+      eq(recommendationMessages.type, "recommendation"),
+    ));
+
+  const children = database
+    .select({
+      resultMessages: sql<number>`SUM(CASE WHEN ${recommendationMessages.type} = 'result' THEN 1 ELSE 0 END)`.as("result_messages"),
+      updateMessages: sql<number>`SUM(CASE WHEN ${recommendationMessages.type} = 'update' THEN 1 ELSE 0 END)`.as("update_messages"),
+    })
+    .from(recommendationMessages)
+    .where(and(
+      isNotNull(recommendationMessages.parentId),
+      inArray(recommendationMessages.type, ["result", "update"]),
+    ));
+
+  return { roots, children };
+}
+
+export async function readRecommendationThreadSummary(
+  database: RecommendationThreadSummaryQueryDatabase,
+): Promise<RecommendationThreadSummary> {
+  const queries = buildRecommendationThreadSummaryQueries(database);
+  const [rootRows, childRows] = await Promise.all([
+    queries.roots,
+    queries.children,
+  ]);
+  const root = rootRows[0];
+  const child = childRows[0];
 
   return {
-    total: Number(row?.total ?? 0),
-    open: Number(row?.open ?? 0),
-    needsResult: Number(row?.needsResult ?? 0),
-    closed: Number(row?.closed ?? 0),
-    resultMessages: Number(row?.resultMessages ?? 0),
-    updateMessages: Number(row?.updateMessages ?? 0),
-    oldestRecommendationAt: row?.oldestRecommendationAt ?? null,
-    newestRecommendationAt: row?.newestRecommendationAt ?? null,
+    total: Number(root?.total ?? 0),
+    open: Number(root?.open ?? 0),
+    needsResult: Number(root?.needsResult ?? 0),
+    closed: Number(root?.closed ?? 0),
+    resultMessages: Number(child?.resultMessages ?? 0),
+    updateMessages: Number(child?.updateMessages ?? 0),
+    oldestRecommendationAt: root?.oldestRecommendationAt ?? null,
+    newestRecommendationAt: root?.newestRecommendationAt ?? null,
   };
+}
+
+export async function getRecommendationThreadSummary(): Promise<RecommendationThreadSummary> {
+  const db = await getDb();
+  if (!db) return createEmptyRecommendationThreadSummary();
+  return readRecommendationThreadSummary(db);
 }
 
 function buildRecommendationThreadRootConditions(input?: {

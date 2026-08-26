@@ -1,7 +1,7 @@
 # Cloudflare D1 Free-Tier Optimization — Small-Task Release Plan
 
 Date: 2026-08-24
-Status: Recommendation 1, the survey-notification SQL hotfix, Tasks 2.2-2.4, sent-history Task 7.1, and recommendation Task 3.1 are deployed. The first complete post-release UTC day remained above the free-tier target. Task 3.2 remains a separate Worker-code task.
+Status: Recommendation 1, the survey-notification SQL hotfix, Tasks 2.2-2.4, sent-history Task 7.1, and recommendation Task 3.1 are deployed. The first complete post-release UTC day remained above the free-tier target. Recommendation Task 3.2 is locally validated as a separate Worker-code release and is awaiting production rollout/reconciliation.
 
 Local implementation progress on 2026-08-24:
 
@@ -33,6 +33,9 @@ Local implementation progress on 2026-08-24:
 - Before Task 3.1, a full production D1 export was saved under the ignored private backup directory at `tmp/private-backups/2026-08-26-before-091-recommendation-index/xflexwithai-production-before-091-20260826-181028.sql` (310,908,725 bytes; SHA-256 `8F194BA673BC48CA72E0B9BC23926DE3C6BF66BCB08C6BF5963AFFDCD462946D`). Pre-migration Time Travel bookmark: `00001175-0000038f-000050d3-9acef8d1bd406a489f378f1318802e61`.
 - Migration 091 was applied from commit `6beec09`; post-index bookmark: `00001175-00000395-000050d3-3b1ed2666eaa8ece208674dca39d5972`. It created 1,126 index entries without changing any of the 1,125 recommendation-message rows and is recorded once as `schema_migrations.id = 32`.
 - Production plans now search the new index for summary result existence, open roots, child hydration, and stale-delivery result checks. Foreign-key integrity is clean. The exact aggregate summary probe returned the same totals while reading 1,141 rows versus the prior 21,593-row average, an immediate approximately 94.7% reduction.
+- Task 3.2 keeps the public summary shape unchanged but splits the former unfiltered table aggregate into root-only and child-only aggregates executed in parallel. Both predicates align with `idx_recommendation_messages_parent_type_created_id`; do not recombine them into one unfiltered aggregate without first passing the exact production-shaped plan contract.
+- Task 3.2's SQL contract executes the ORM-generated SQL against physical production column names, proves exact equivalence with the legacy aggregate for empty, null-status, open, closed, duplicate-result, orphan-update, root-result, and child-recommendation cases, and rejects any plan that scans `recommendationMessages` or the correlated `child` table.
+- Local Task 3.2 gates passed: 29/29 protected recommendation tests, 169/169 critical-cycle tests across 30 files, 614/614 full tests across 118 files, TypeScript, the application/server production build, and the Worker build. No migration or production data write belongs to this task.
 
 ## Goal
 
