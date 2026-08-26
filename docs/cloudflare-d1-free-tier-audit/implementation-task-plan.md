@@ -1,7 +1,7 @@
 # Cloudflare D1 Free-Tier Optimization — Small-Task Release Plan
 
 Date: 2026-08-24
-Status: Recommendation 1, the survey-notification SQL hotfix, Tasks 2.2-2.4, sent-history Task 7.1, and recommendation Tasks 3.1-3.3 are deployed. Recommendation Task 3.4 is locally validated and awaiting its isolated Pages rollout. The first complete post-release UTC day remained above the free-tier target; the next decision still requires a complete post-release UTC-day measurement.
+Status: Recommendation 1, the survey-notification SQL hotfix, Tasks 2.2-2.4, sent-history Task 7.1, and recommendation Tasks 3.1-3.4 are deployed. The first complete post-release UTC day remained above the free-tier target; the next decision still requires a complete post-release UTC-day measurement.
 
 Local implementation progress on 2026-08-24:
 
@@ -43,6 +43,7 @@ Local implementation progress on 2026-08-24:
 - Task 3.3 deployed from commit `bab3a4e` as Pages deployment `08b3e864` (`https://08b3e864.xflexwithai.pages.dev`). Production and preview returned 200 for public, auth, and admin-recommendation routes; private headers remained `noindex, nofollow` and `no-store, private`; both served the same exact `AdminRecommendations-BiPIw0XC.js` bundle with the visibility gate, 60-second summary cadence, focus refresh, one-second `publishState`, 30-second admin `openThreads`, and mutation invalidations. The unchanged Worker health returned 200/production and anonymous summary access returned 401. No Worker deploy or D1 write occurred.
 - Task 3.4 is locally validated as a frontend-only change: authorized admins/analysts poll `openThreads` every 60 seconds only while visible, hidden and unauthorized/logged-out states make no passive feed requests, and focus or hidden-to-visible return refreshes immediately. Existing mutation invalidations remain intact; `publishState` remains one second and admin `threadSummary` remains 60 seconds.
 - Task 3.4 gates pass: two focused polling contracts, 32 files / 175 critical-cycle tests, 120 files / 620 full tests, TypeScript, the application/server production build, the Worker build, and diff hygiene. No Worker change, D1 migration, or production data write belongs to this task.
+- Task 3.4 deployed from commit `b01fd9a` as Pages deployment `5f9fe5f0` (`https://5f9fe5f0.xflexwithai.pages.dev`). Production and preview route/header smoke passed and served the same exact `AdminRecommendations-r9TlUXrY.js` bundle with both protected 60-second cadences, visible/focus behavior, the unchanged one-second `publishState`, and immediate open-thread invalidations. The unchanged Worker health returned 200/production and anonymous open-thread access returned 401. No Worker deploy or D1 write occurred.
 
 ## Goal
 
