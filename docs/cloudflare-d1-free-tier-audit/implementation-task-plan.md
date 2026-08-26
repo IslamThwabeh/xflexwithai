@@ -1,7 +1,7 @@
 # Cloudflare D1 Free-Tier Optimization — Small-Task Release Plan
 
 Date: 2026-08-24
-Status: Recommendation 1, the survey-notification SQL hotfix, and Tasks 2.2-2.3 are deployed. Task 2.4 is validated locally as a separate Pages-only release. The first complete post-release UTC day remained above the free-tier target. No migration or production data repair is required for the current task.
+Status: Recommendation 1, the survey-notification SQL hotfix, and Tasks 2.2-2.4 are deployed. The sent-history range-index task is validated locally but not applied to production. The first complete post-release UTC day remained above the free-tier target.
 
 Local implementation progress on 2026-08-24:
 
@@ -23,6 +23,8 @@ Local implementation progress on 2026-08-24:
 - Task 2.3 gates pass: focused badge contracts, 27 files / 164 critical-cycle tests, 115 files / 609 full tests, TypeScript, application build, Worker build, and diff hygiene.
 - Task 2.4 is validated locally: combined badge polling pauses while the document is hidden and refetches on visible/focus without changing the 30-second visible cadence or any support-inbox polling.
 - Task 2.4 gates pass: focused visibility contracts, 27 files / 165 critical-cycle tests, 115 files / 610 full tests, TypeScript, application build, Worker build, and diff hygiene. The unauthenticated local preview rendered the app shell; authenticated request timing remains a production smoke/measurement item because local preview has no staff session or API proxy.
+- Task 2.4 was released from commit `ac53dd2` as Pages deployment `4ccb41cb`. Production and preview returned 200 with identical dashboard assets; visibility handling and the combined endpoint were present, both legacy passive badge queries were absent, private admin headers remained intact, and the production API health check passed.
+- Read-only production profiling found 28,559 batched `user_notifications` rows: 861 in one day, 1,330 in three days, 2,687 in seven days, and 8,182 in thirty days. The current and date-filtered plans both scan the full table because production has no `created_at` index; a UI-only date cap would therefore not reduce D1 rows read.
 
 ## Goal
 
@@ -279,38 +281,67 @@ Each item below is its own migration, approval, application, reconciliation, and
 - Verify: one complete UTC day after Task 6.3, comparing rows written and inactivity/email outcomes to baseline.
 - Pass: writes decrease with no missed genuine-activity state transition.
 
-## Recommendation 7 — Redesign persistent support alerts only if still necessary
+## Recommendation 7 — Bound admin sent-notification history
+
+This is safe only for the explicitly historical admin view. It must not be reused for unread badges, entitlement/access checks, open recommendation threads, or any workflow where old unresolved state remains active.
+
+### 7.1 Add a partial sent-history range index
+
+- Change: add one idempotent, non-unique partial index on `user_notifications(created_at DESC, batch_id) WHERE batch_id IS NOT NULL`.
+- Verify: execute the migration twice against a production-shaped SQLite fixture; preserve duplicate, null-batch, empty-batch, and legacy-compatible rows; `EXPLAIN QUERY PLAN` for the bounded query must search the named index and must not scan `user_notifications`.
+- Production gate: capture a Time Travel bookmark and receive explicit production-write approval before applying this migration. Reconcile row count and `foreign_key_check` afterward.
+- Rollback: do not drop the additive index automatically; leave it unused while reviewing the safest recovery.
+
+### 7.2 Add a bounded endpoint without switching the UI
+
+- Change: accept a validated history period and compile an explicit `created_at >= ?` predicate for bounded periods. Keep an explicit all-history mode and the same 30-batch result limit.
+- Verify: exact application SQL executes against physical production column names with realistic cutoff, null, empty, and legacy fixtures. Three-day results match the equivalent slice of all history and the named index is used.
+- Pass: authorization remains admin-only; recipients, delivery summaries, send behavior, and existing invalidation remain unchanged.
+
+### 7.3 Default the admin history view to three days
+
+- Change: make three days the default on the admin sent-history panel and provide explicit 7-day, 30-day, and all-history choices. Changing the period refetches the same endpoint and collapses any expanded batch that is no longer visible.
+- Verify: the admin can retrieve older batches deliberately, expand a visible batch, send a notification, and see the new batch immediately under every compatible period.
+- Pass: only the historical listing is bounded; alert inbox, unread truth, and notification creation/delivery are unchanged.
+
+### 7.4 Measure the history family
+
+- Change: none.
+- Verify: compare the sent-history query fingerprint after one complete UTC day. Confirm default calls use an indexed range search and all-history calls occur only through explicit admin selection.
+- Pass: the family falls materially from the observed approximately 506 thousand rolling-day rows without a functional regression.
+
+## Recommendation 8 — Redesign persistent support alerts only if still necessary
 
 These tasks are intentionally blocked until Batch 1 is measured and the business owner approves notification semantics. They must not be mixed with query/index optimization.
 
-### 7.1 Approve the notification contract
+### 8.1 Approve the notification contract
 
 - Decide whether unread truth belongs to the support conversation, whether one staff alert per conversation/assignee is sufficient, when reopening should occur, and which events still require separate alerts/emails.
 - No code or data change.
 
-### 7.2 Profile the proposed rule read-only
+### 8.2 Profile the proposed rule read-only
 
 - Quantify affected staff, conversations, unread rows, escalations, assignments, and the exact one-time reconciliation impact.
 - No personal message content is selected.
 
-### 7.3 Implement future-alert dedupe/upsert only
+### 8.3 Implement future-alert dedupe/upsert only
 
 - Change future `new_support_message` notification creation so repeated messages update one actionable conversation alert according to the approved contract.
 - Do not touch historical rows in the same task.
 - Verify client/admin support, assignment, escalation, email, unread inbox, and direct-route behavior.
 
-### 7.4 Align read behavior
+### 8.4 Align read behavior
 
 - Make opening the correct conversation/route mark only the approved alert scope read, including direct page/deep-link entry.
 - Verify another conversation's alert remains unread and polling does not mark messages read accidentally.
 
-### 7.5 Reconcile old unread support alerts separately
+### 8.5 Reconcile old unread support alerts separately
 
 - Risk: destructive production data change.
 - Requires a written owner rule, exact preview counts, Time Travel bookmark, explicit production-write approval, audited bounded SQL, and post-write reconciliation.
 - Never infer or fabricate historical read state.
 
-### 7.6 Define retention separately
+### 8.6 Define retention separately
 
 - No deletion is allowed until legal/support retention, audit fields to preserve, age threshold, backup, dry-run counts, rollback, and monitoring are approved.
 

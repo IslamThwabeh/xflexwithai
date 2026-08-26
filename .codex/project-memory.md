@@ -1,6 +1,6 @@
 # XFLEX Project Memory
 
-Last updated: 2026-08-25
+Last updated: 2026-08-26
 
 ## Project Overview
 
@@ -43,9 +43,15 @@ Last updated: 2026-08-25
 - Do not add an index mechanically: confirm the predicate and ordering match the real query, prefer the narrowest useful non-unique index, account for extra rows written/storage, and contract-test the query plan by asserting the intended index name. Avoid expressions such as `LOWER(column)` or `TRIM(column)` on indexed lookup columns unless a matching expression index exists and is proven; normalize at write time when safe.
 - Before PRD, run the exact SQL through the repository SQL-contract tests plus `git diff --check`; use individual read-only Wrangler commands for production query plans rather than the `--file` import path. Any schema mismatch, SQL formatting/parser error, missing index, unexpected full scan, or changed business result stops the release until corrected and retested.
 - For SQLite partial unique indexes, an explicit `ON CONFLICT(column)` target is invalid unless its conflict-target predicate matches the index predicate. Prefer targetless `ON CONFLICT DO NOTHING` when the intended behavior is to ignore any applicable unique conflict, and contract-test both non-null duplicates and the partial index's allowed null/legacy cases against the production-shaped DDL.
-- Latest production Worker deploy completed on 2026-08-16 (Asia/Amman) with version `8e9687e2-e0f9-488d-9abf-b0689190e2cf` from organic-acquisition measurement commit `deced92`.
-- Latest successful Pages deployment completed on 2026-08-16 (Asia/Amman) from organic-acquisition measurement commit `deced92`, preview `https://3b1376d1.xflexwithai.pages.dev`. A historical 2026-06-05 upload failed with `POST /pages/assets/upload -> 502 Bad Gateway`; if that Cloudflare error recurs, manual dashboard upload of `dist/public` remains the fallback.
-- Latest production D1 migration applied as of 2026-08-15 is `database/migrations/087_seo_owner_intake.sql`.
+- Latest production Worker deploy completed on 2026-08-26 (Asia/Amman) with version `83f692e6-fd30-4a5c-9d50-0d6535d3bab5` from combined staff-badge commit `75840c6`; both cron schedules were preserved.
+- Latest successful Pages deployment completed on 2026-08-26 (Asia/Amman) from visible-only badge-polling commit `ac53dd2`, preview `https://4ccb41cb.xflexwithai.pages.dev`. A historical 2026-06-05 upload failed with `POST /pages/assets/upload -> 502 Bad Gateway`; if that Cloudflare error recurs, manual dashboard upload of `dist/public` remains the fallback.
+- Latest production D1 migration applied as of 2026-08-23 is `database/migrations/089_repair_literal_current_timestamps.sql`, recorded as `schema_migrations.id = 30` with source `codex_wrangler`. Migration `088_email_delivery_and_support_assignment.sql` is ledger ID 29.
+- D1 free-tier optimization on 2026-08-24 through 2026-08-26:
+  - The first complete measured UTC day after Recommendation 1 used 7,628,225 rows read and 25,385 rows written. The outbox-health family fell from about 1.46 million to about 70 thousand rolling-day rows, but total reads remain above the 5 million free limit.
+  - Combined staff badges shipped as Worker commit `75840c6`; the dashboard switch shipped as Pages commit `29513c9`; hidden-tab polling pause shipped as Pages commit `ac53dd2`. Keep the two legacy badge endpoints temporarily for rollback, but `DashboardLayout` must use only `staffNotifications.badgeCounts`.
+  - Date caps are allowed only on genuinely historical/reporting reads with an explicit older/all-history path. Never date-cap unread truth, unresolved/open recommendations, package/key/terms/access/entitlement checks, or other state whose age does not make it inactive.
+  - A date predicate saves D1 rows only when production `EXPLAIN QUERY PLAN` proves a matching range index search. On 2026-08-26, `user_notifications` contained 28,559 batched rows but only 1,330 from the latest three days; both the current query and a three-day predicate still scanned the table without a `created_at` index.
+  - Migration `090_user_notification_history_index.sql` is prepared and locally validated but is not applied to production. Before application, capture a fresh Time Travel bookmark, obtain explicit production-write approval, apply only this migration, then reconcile row count, indexes, foreign keys, and the exact production query plan.
 - Organic acquisition measurement Phase 1 completed on 2026-08-16 (Asia/Amman):
   - Release commit `deced92 Implement organic acquisition measurement` was pushed directly to `origin/main`; no database migration was required.
   - GA4 measurement is restricted to explicit public/acquisition routes. Admin, dashboard, course, orders, support, community, recommendations, and other private application routes do not initialize application-owned GA tracking.
