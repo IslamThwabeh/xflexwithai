@@ -36,15 +36,12 @@ describe("Admin recommendation summary polling", () => {
     expect(source).toContain("void refetchThreadSummary()");
   });
 
-  it("preserves immediate mutation refreshes and unrelated live cadences", () => {
+  it("preserves immediate mutation refreshes and the publication cadence", () => {
     expect(source).toContain(
       "utils.recommendations.threadSummary.invalidate()"
     );
     expect(source).toContain(
       "refetchInterval: canManageChannel ? 1000 : false"
-    );
-    expect(source).toContain(
-      "{ enabled: canManageChannel, refetchInterval: canManageChannel ? 30_000 : false }"
     );
   });
 });

@@ -23,6 +23,7 @@ type TradeOutcome = "win" | "loss";
 type ThreadFilter = "open" | "needsResult" | "closed" | "all";
 const THREAD_PAGE_SIZE = 50;
 const ADMIN_THREAD_SUMMARY_REFRESH_MS = 60_000;
+const ADMIN_OPEN_THREADS_REFRESH_MS = 60_000;
 
 type MonthlyTradeReportRow = {
   messageId: number;
@@ -402,17 +403,35 @@ function AnalystView() {
       retry: false,
     });
 
+  // Open-thread hydration is another measured D1 hot path. Mutations keep the
+  // local admin view immediate; passive refresh is needed only while the
+  // authorized channel workspace is visible.
+  const {
+    data: openThreadFeed = [],
+    isLoading: openThreadFeedLoading,
+    refetch: refetchOpenThreadFeed,
+  } = trpc.recommendations.openThreads.useQuery(undefined, {
+    enabled: canManageChannel,
+    refetchInterval:
+      canManageChannel && isPageVisible ? ADMIN_OPEN_THREADS_REFRESH_MS : false,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
+    retry: false,
+  });
+
   useEffect(() => {
     const wasVisible = wasPageVisibleRef.current;
     wasPageVisibleRef.current = isPageVisible;
     if (!wasVisible && isPageVisible && canManageChannel) {
       void refetchThreadSummary();
+      void refetchOpenThreadFeed();
     }
-  }, [canManageChannel, isPageVisible, refetchThreadSummary]);
-  const { data: openThreadFeed = [], isLoading: openThreadFeedLoading } = trpc.recommendations.openThreads.useQuery(
-    undefined,
-    { enabled: canManageChannel, refetchInterval: canManageChannel ? 30_000 : false }
-  );
+  }, [
+    canManageChannel,
+    isPageVisible,
+    refetchOpenThreadFeed,
+    refetchThreadSummary,
+  ]);
   const historyStatus = threadFilter === "closed" ? "closed" : threadFilter === "all" ? "all" : null;
   const {
     data: historyThreadFeed,
