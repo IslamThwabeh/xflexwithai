@@ -1,7 +1,7 @@
 # Cloudflare D1 Free-Tier Optimization — Small-Task Release Plan
 
 Date: 2026-08-24
-Status: Recommendation 1, the survey-notification SQL hotfix, Tasks 2.2-2.4, sent-history Task 7.1, and recommendation Tasks 3.1-3.5 are deployed. Task 3.6 is measurement-only; the next decision requires the complete UTC 2026-08-27 post-release sample, available after 2026-08-28 03:00 Asia/Amman.
+Status: Recommendation 1, the survey-notification SQL hotfix, Tasks 2.2-2.4, sent-history Task 7.1, and recommendation Tasks 3.1-3.5 are deployed. The Task 3.6 D1 stop-rule checkpoint passed on 2026-08-28; a separately discovered Workers Free CPU-limit issue in the minute cron must be handled as its own small task before the overall Free-tier work is closed.
 
 Local implementation progress on 2026-08-24:
 
@@ -49,6 +49,9 @@ Local implementation progress on 2026-08-24:
 - Task 3.5 permits a maximum passive visible-page delay of 60 seconds for a recommendation published elsewhere; returning to the page refreshes immediately, and email delivery timing is unchanged. Task 3.6 must measure one complete UTC day before any decision about the 15-second `activeAlerts` or one-second analyst `publishState` loops.
 - Task 3.5 deployed from commit `a866c3c` as Pages deployment `95b59d6a` (`https://95b59d6a.xflexwithai.pages.dev`) after the isolated Task 3.4 soak remained clean. Production and preview served the exact locally validated `Recommendations-D9PHm4BO.js` bundle with SHA-256 `79BF7400C0D3FAA6F2943BDA5687D90CE84AE1CD27EAA0CDD419621558256040`; private route headers remained `noindex, nofollow` and `no-store, private`; API health returned 200 and anonymous open-thread access returned 401. No Worker deploy, migration, D1 write, or production API mutation occurred.
 - Task 3.6 collection window: Task 3.5 went live during UTC 2026-08-26. Use UTC 2026-08-27 as the first complete post-release day; it closes at 2026-08-28 03:00 Asia/Amman. The tomorrow-night review must capture total D1 rows read/written, rows and runs for recommendation summary/open-root/open-thread/stale-reconciliation fingerprints, and Worker error/limit evidence. Do not tune `activeAlerts` or `publishState` before this evidence is reviewed.
+- Task 3.6 passed the post-release D1 stop rule under material recommendation activity. The measured day remained below both the internal target and the platform cap, and the protected recommendation hot paths showed a substantial directional reduction. Exact production measurements are intentionally retained only in the ignored local handoff.
+- Production health and aggregate read-only backlog checks passed at the checkpoint; no current actionable delivery backlog was found.
+- Error-only monitoring exposed a separate minute-cron CPU-ceiling condition. D1 optimization is successful, but the overall Free-tier phase must not be marked closed until this workload is reduced or split in a separately tested task and consecutive post-deploy cron invocations succeed without changing recommendation/support priority or delivery semantics.
 
 ## Goal
 
