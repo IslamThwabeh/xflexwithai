@@ -38,6 +38,7 @@ const AdminLivePackage = lazy(() => import("./pages/AdminLivePackage"));
 const AdminEvents = lazy(() => import("./pages/AdminEvents"));
 const AdminArticles = lazy(() => import("./pages/AdminArticles"));
 const AdminSeoOwnerIntake = lazy(() => import("./pages/AdminSeoOwnerIntake"));
+const AdminLivePackageReview = lazy(() => import("./pages/AdminLivePackageReview"));
 const AdminOrders = lazy(() => import("./pages/AdminOrders"));
 const AdminQuizzes = lazy(() => import("./pages/AdminQuizzes"));
 const AdminCoupons = lazy(() => import("./pages/AdminCoupons"));
@@ -306,6 +307,11 @@ function Router() {
       <Route path={"/admin/seo-owner-intake"}>
         <AdminRoute>
           <AdminSeoOwnerIntake />
+        </AdminRoute>
+      </Route>
+      <Route path={"/admin/live-package-review"}>
+        <AdminRoute>
+          <AdminLivePackageReview />
         </AdminRoute>
       </Route>
       <Route path={"/admin/coupons"}>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { CalendarPlus, Radio, Save, ShieldAlert, Upload } from 'lucide-react';
+import { CalendarPlus, ClipboardList, Eye, Radio, Save, ShieldAlert, Upload } from 'lucide-react';
+import { Link } from 'wouter';
 import DashboardLayout from '@/components/DashboardLayout';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -41,13 +42,14 @@ export default function AdminLivePackage() {
 
   const refresh = () => utils.livePackage.adminWorkspace.invalidate();
   const updateConfig = trpc.packages.updateLiveConfig.useMutation({ onSuccess: () => { toast.success(isAr ? 'تم حفظ الإعدادات' : 'Configuration saved'); refresh(); } });
+  const previewConfig = trpc.packages.previewLiveConfig.useMutation({ onError: (e) => toast.error(e.message) });
   const setCourses = trpc.packages.setCourses.useMutation({ onSuccess: () => { toast.success(isAr ? 'تم حفظ الدورات' : 'Courses saved'); refresh(); } });
   const createSession = trpc.livePackage.createSession.useMutation({ onSuccess: () => { toast.success(isAr ? 'تمت جدولة اللقاء' : 'Session scheduled'); setSession({ titleEn: '', titleAr: '', startsAt: '', endsAt: '', zoomJoinUrl: '' }); refresh(); }, onError: (e) => toast.error(e.message) });
   const updateSession = trpc.livePackage.updateSession.useMutation({ onSuccess: refresh });
   const updateRecording = trpc.livePackage.updateRecording.useMutation({ onSuccess: refresh });
   const grantAccess = trpc.livePackage.grantComplimentaryAccess.useMutation({ onSuccess: () => { toast.success(isAr ? 'تم منح الوصول وتسجيله' : 'Complimentary access granted and audited'); setGrant({ userId: '', reason: '' }); }, onError: (e) => toast.error(e.message) });
 
-  const saveConfig = () => updateConfig.mutate({
+  const configPayload = () => ({
     adminVisible: config.adminVisible,
     purchaseApproved: config.purchaseApproved,
     lifecycle: config.lifecycle,
@@ -59,6 +61,8 @@ export default function AdminLivePackage() {
     recordingPolicy: config.recordingPolicy,
     recordingAccessEndsAt: config.recordingPolicy === 'until_date' ? fromAmmanInput(config.recordingAccessEndsAt) : null,
   });
+  const saveConfig = () => updateConfig.mutate(configPayload());
+  const preview = () => previewConfig.mutate({ ...configPayload(), courseIds });
 
   const configDatesComplete = Boolean(
     config.salesStartsAt
@@ -109,6 +113,11 @@ export default function AdminLivePackage() {
 
       {!data.availability.deploymentEnabled && <div className="flex gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950"><ShieldAlert className="h-5 w-5 shrink-0" /><span>{isAr ? 'البكج مخفي عن الجمهور والشراء ممنوع مهما كانت إعدادات لوحة التحكم.' : 'Public visibility and purchase remain blocked regardless of the controls below until the deployment switch is explicitly enabled.'}</span></div>}
 
+      <section className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-sky-200 bg-sky-50 p-5">
+        <div><h2 className="flex items-center gap-2 font-bold text-sky-950"><ClipboardList className="h-5 w-5" />{isAr ? 'إجابات صاحبة العمل المتبقية' : 'Remaining owner decisions'}</h2><p className="mt-1 text-sm text-sky-900">{isAr ? 'نموذج قصير يحفظ كل إجابة تلقائياً ويحتفظ بسجل التعديلات.' : 'A short form that autosaves every answer and retains revision history.'}</p></div>
+        <Button asChild variant="outline"><Link href="/admin/live-package-review">{isAr ? 'فتح النموذج' : 'Open owner review'}</Link></Button>
+      </section>
+
       <section className="rounded-2xl border bg-white p-5">
         <h2 className="mb-4 text-lg font-bold">{isAr ? 'الجاهزية والتحكم' : 'Readiness and controls'}</h2>
         <div className="grid gap-4 md:grid-cols-2">
@@ -121,9 +130,18 @@ export default function AdminLivePackage() {
           {config.recordingPolicy === 'until_date' && <div><Label>{isAr ? 'نهاية الوصول للتسجيلات' : 'Recording access ends'}</Label><Input type="datetime-local" value={config.recordingAccessEndsAt} onChange={(e) => setConfig({ ...config, recordingAccessEndsAt: e.target.value })} /></div>}
         </div>
         <p className="mt-3 text-xs text-slate-500">{isAr ? 'جميع الأوقات معروضة بتوقيت عمّان.' : 'All date controls use Asia/Amman time.'}</p>
-        <div className="mt-4"><Button onClick={saveConfig} disabled={updateConfig.isPending || !configDatesComplete}><Save className="me-2 h-4 w-4" />{isAr ? 'حفظ' : 'Save configuration'}</Button></div>
+        <div className="mt-4 flex flex-wrap gap-2"><Button variant="outline" onClick={preview} disabled={previewConfig.isPending || !configDatesComplete || !courseIds.length}><Eye className="me-2 h-4 w-4" />{previewConfig.isPending ? (isAr ? 'جاري إنشاء المعاينة…' : 'Building preview…') : (isAr ? 'معاينة كما ستظهر عند التفعيل' : 'Preview as enabled')}</Button><Button onClick={saveConfig} disabled={updateConfig.isPending || !configDatesComplete}><Save className="me-2 h-4 w-4" />{isAr ? 'حفظ' : 'Save configuration'}</Button></div>
         {!!data.availability.errors.length && <ul className="mt-4 list-disc space-y-1 ps-5 text-sm text-red-700">{data.availability.errors.map((error) => <li key={error}>{error}</li>)}</ul>}
       </section>
+
+      {previewConfig.data && <section className="overflow-hidden rounded-3xl border-2 border-dashed border-violet-300 bg-white shadow-xl">
+        <div className="flex items-center gap-2 bg-violet-100 px-5 py-3 text-sm font-bold text-violet-950"><Eye className="h-4 w-4" />{isAr ? 'معاينة فقط — لم يتم حفظ أو تفعيل أي شيء' : 'Preview only — nothing was saved or enabled'}</div>
+        <div className="grid gap-6 p-6 lg:grid-cols-[1.3fr_1fr]">
+          <div><Badge className="mb-3 bg-emerald-700">{previewConfig.data.config.lifecycle === 'active' ? (isAr ? 'بكج مؤقت ومحدود' : 'Limited live package') : (isAr ? 'قريباً' : 'Coming soon')}</Badge><h2 className="text-3xl font-black">{isAr ? previewConfig.data.package?.nameAr : previewConfig.data.package?.nameEn}</h2><p className="mt-3 leading-7 text-slate-600">{isAr ? previewConfig.data.package?.descriptionAr : previewConfig.data.package?.descriptionEn}</p><div className="mt-5 text-3xl font-black text-emerald-700">₪2,000 <span className="text-sm font-medium text-slate-500">{isAr ? 'شامل الضريبة' : 'VAT inclusive'}</span></div><Button className="mt-5" disabled={!previewConfig.data.availability.purchasable}>{previewConfig.data.availability.purchasable ? (isAr ? 'اشترِ الآن' : 'Buy now') : (isAr ? 'ترقبوا الحدث الأضخم هالسنة' : 'Launching soon')}</Button></div>
+          <div className="rounded-2xl bg-slate-50 p-5"><h3 className="font-bold">{isAr ? 'ما يشمله البكج' : 'What is included'}</h3><ul className="mt-3 space-y-2 text-sm">{previewConfig.data.courses.map(course => <li key={course.id}>✓ {isAr ? course.titleAr : course.titleEn}</li>)}<li>✓ {isAr ? 'لقاءات مباشرة وتسجيلات محمية' : 'Live sessions and protected recordings'}</li><li>✓ {previewConfig.data.config.recordingPolicy === 'permanent' ? (isAr ? 'وصول دائم للتسجيلات' : 'Permanent recording access') : (isAr ? 'وصول للتسجيلات حتى التاريخ المحدد' : 'Recording access until the selected date')}</li></ul><div className="mt-4 border-t pt-4 text-xs text-slate-500">{isAr ? 'فترة اللقاءات' : 'Live period'}: {toAmmanInput(previewConfig.data.config.sessionStartsAt).replace('T', ' ')} — {toAmmanInput(previewConfig.data.config.sessionEndsAt).replace('T', ' ')}</div></div>
+        </div>
+        {!!previewConfig.data.availability.errors.length && <ul className="border-t bg-red-50 p-5 text-sm text-red-800">{previewConfig.data.availability.errors.map(error => <li key={error}>• {error}</li>)}</ul>}
+      </section>}
 
       <section className="rounded-2xl border bg-white p-5"><h2 className="mb-3 text-lg font-bold">{isAr ? 'الدورات الأساسية الدائمة' : 'Permanent base courses'}</h2><div className="grid gap-2 md:grid-cols-2">{allCourses?.map((course) => <label key={course.id} className="flex items-center gap-2 rounded-lg border p-3"><input type="checkbox" checked={courseIds.includes(course.id)} onChange={(e) => setCourseIds(e.target.checked ? [...courseIds, course.id] : courseIds.filter((id) => id !== course.id))} />{isAr ? course.titleAr : course.titleEn}</label>)}</div><Button className="mt-4" disabled={!courseIds.length} onClick={() => setCourses.mutate({ packageId: data.package!.id, courseIds })}>{isAr ? 'حفظ الدورات' : 'Save courses'}</Button></section>
 

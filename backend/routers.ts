@@ -23,6 +23,10 @@ import {
   SEO_OWNER_INTAKE_QUESTION_IDS,
   SEO_OWNER_INTAKE_REQUIRED_IDS,
 } from "../shared/seoOwnerIntake";
+import {
+  LIVE_PACKAGE_OWNER_REVIEW_QUESTION_IDS,
+  LIVE_PACKAGE_OWNER_REVIEW_REQUIRED_IDS,
+} from "../shared/livePackageOwnerReview";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { authenticatedProcedure, publicProcedure, protectedProcedure, router } from "./_core/trpc";
@@ -887,6 +891,32 @@ const getLivePackageContext = async (now = new Date()) => {
   });
   return { settings, pkg, courses, config, availability };
 };
+
+const livePackageConfigInput = z.object({
+  adminVisible: z.boolean(),
+  purchaseApproved: z.boolean(),
+  lifecycle: z.enum(LIVE_PACKAGE_LIFECYCLES),
+  cohortKey: z.string().trim().min(1).max(80),
+  salesStartsAt: z.string().datetime(),
+  salesEndsAt: z.string().datetime(),
+  sessionStartsAt: z.string().datetime(),
+  sessionEndsAt: z.string().datetime(),
+  recordingPolicy: z.enum(LIVE_PACKAGE_RECORDING_POLICIES),
+  recordingAccessEndsAt: z.string().datetime().nullable(),
+});
+
+const livePackageConfigUpdates = (input: z.infer<typeof livePackageConfigInput>): Array<[string, string]> => [
+  [LIVE_PACKAGE_SETTING_KEYS.adminVisible, String(input.adminVisible)],
+  [LIVE_PACKAGE_SETTING_KEYS.purchaseApproved, String(input.purchaseApproved)],
+  [LIVE_PACKAGE_SETTING_KEYS.lifecycle, input.lifecycle],
+  [LIVE_PACKAGE_SETTING_KEYS.cohortKey, input.cohortKey],
+  [LIVE_PACKAGE_SETTING_KEYS.salesStartsAt, input.salesStartsAt],
+  [LIVE_PACKAGE_SETTING_KEYS.salesEndsAt, input.salesEndsAt],
+  [LIVE_PACKAGE_SETTING_KEYS.sessionStartsAt, input.sessionStartsAt],
+  [LIVE_PACKAGE_SETTING_KEYS.sessionEndsAt, input.sessionEndsAt],
+  [LIVE_PACKAGE_SETTING_KEYS.recordingPolicy, input.recordingPolicy],
+  [LIVE_PACKAGE_SETTING_KEYS.recordingAccessEndsAt, input.recordingAccessEndsAt ?? ""],
+];
 
 const isTrustedZoomJoinUrl = (value: string) => {
   try {
@@ -6529,33 +6559,39 @@ export const appRouter = router({
       return { package: pkg, courses, config, availability };
     }),
 
+    previewLiveConfig: adminProcedure
+      .input(livePackageConfigInput.extend({ courseIds: z.array(z.number().int().positive()).min(1) }))
+      .mutation(async ({ input }) => {
+        const [current, allCourses] = await Promise.all([getLivePackageContext(), db.getAllCourses()]);
+        const uniqueCourseIds = [...new Set(input.courseIds)];
+        const selectedCourses = allCourses.filter(course => uniqueCourseIds.includes(course.id));
+        if (selectedCourses.length !== uniqueCourseIds.length) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "One or more preview courses no longer exist." });
+        }
+        const proposedConfig = parseLivePackageConfig(
+          Object.fromEntries(livePackageConfigUpdates(input)),
+          true,
+        );
+        const availability = getLivePackageAvailability({
+          config: proposedConfig,
+          packageRecord: current.pkg,
+          assignedCourseCount: selectedCourses.length,
+        });
+        return {
+          package: current.pkg,
+          courses: selectedCourses.map(course => ({ id: course.id, titleEn: course.titleEn, titleAr: course.titleAr })),
+          config: proposedConfig,
+          availability,
+          previewOnly: true as const,
+          persisted: false as const,
+        };
+      }),
+
     updateLiveConfig: adminProcedure
-      .input(z.object({
-        adminVisible: z.boolean(),
-        purchaseApproved: z.boolean(),
-        lifecycle: z.enum(LIVE_PACKAGE_LIFECYCLES),
-        cohortKey: z.string().trim().min(1).max(80),
-        salesStartsAt: z.string().datetime(),
-        salesEndsAt: z.string().datetime(),
-        sessionStartsAt: z.string().datetime(),
-        sessionEndsAt: z.string().datetime(),
-        recordingPolicy: z.enum(LIVE_PACKAGE_RECORDING_POLICIES),
-        recordingAccessEndsAt: z.string().datetime().nullable(),
-      }))
+      .input(livePackageConfigInput)
       .mutation(async ({ ctx, input }) => {
         const previous = await getLivePackageContext();
-        const updates: Array<[string, string]> = [
-          [LIVE_PACKAGE_SETTING_KEYS.adminVisible, String(input.adminVisible)],
-          [LIVE_PACKAGE_SETTING_KEYS.purchaseApproved, String(input.purchaseApproved)],
-          [LIVE_PACKAGE_SETTING_KEYS.lifecycle, input.lifecycle],
-          [LIVE_PACKAGE_SETTING_KEYS.cohortKey, input.cohortKey],
-          [LIVE_PACKAGE_SETTING_KEYS.salesStartsAt, input.salesStartsAt],
-          [LIVE_PACKAGE_SETTING_KEYS.salesEndsAt, input.salesEndsAt],
-          [LIVE_PACKAGE_SETTING_KEYS.sessionStartsAt, input.sessionStartsAt],
-          [LIVE_PACKAGE_SETTING_KEYS.sessionEndsAt, input.sessionEndsAt],
-          [LIVE_PACKAGE_SETTING_KEYS.recordingPolicy, input.recordingPolicy],
-          [LIVE_PACKAGE_SETTING_KEYS.recordingAccessEndsAt, input.recordingAccessEndsAt ?? ''],
-        ];
+        const updates = livePackageConfigUpdates(input);
         const proposedConfig = parseLivePackageConfig(Object.fromEntries(updates), previous.config.deploymentEnabled);
         const proposedAvailability = getLivePackageAvailability({
           config: proposedConfig,
@@ -12330,6 +12366,32 @@ ${qaText}`;
         await db.saveSeoOwnerIntakeAnswers(input.answers, ctx.admin.id);
         const result = await db.submitSeoOwnerIntake(ctx.admin.id);
         await db.logAdminAction(ctx.admin.id, ctx.admin.id, "submit_seo_owner_intake", {
+          answeredCount: Object.values(input.answers).filter(value => value.trim()).length,
+        });
+        return result;
+      }),
+  }),
+
+  livePackageOwnerReview: router({
+    get: adminProcedure.query(async () => db.getLivePackageOwnerReview()),
+    save: adminProcedure
+      .input(z.object({ answers: z.record(z.string().max(64), z.string().max(5000)) }))
+      .mutation(async ({ ctx, input }) => {
+        const invalidIds = Object.keys(input.answers).filter(id => !LIVE_PACKAGE_OWNER_REVIEW_QUESTION_IDS.has(id));
+        if (invalidIds.length) throw new TRPCError({ code: "BAD_REQUEST", message: `Unknown review questions: ${invalidIds.join(", ")}` });
+        if (!Object.keys(input.answers).length) return { savedAt: new Date().toISOString(), savedCount: 0 };
+        return db.saveLivePackageOwnerAnswers(input.answers, ctx.admin.id);
+      }),
+    submit: adminProcedure
+      .input(z.object({ answers: z.record(z.string().max(64), z.string().max(5000)) }))
+      .mutation(async ({ ctx, input }) => {
+        const invalidIds = Object.keys(input.answers).filter(id => !LIVE_PACKAGE_OWNER_REVIEW_QUESTION_IDS.has(id));
+        if (invalidIds.length) throw new TRPCError({ code: "BAD_REQUEST", message: "Unknown review question." });
+        const missingIds = LIVE_PACKAGE_OWNER_REVIEW_REQUIRED_IDS.filter(id => !input.answers[id]?.trim());
+        if (missingIds.length) throw new TRPCError({ code: "BAD_REQUEST", message: `Complete all required answers: ${missingIds.join(", ")}` });
+        await db.saveLivePackageOwnerAnswers(input.answers, ctx.admin.id);
+        const result = await db.submitLivePackageOwnerReview(ctx.admin.id);
+        await db.logAdminAction(ctx.admin.id, ctx.admin.id, "submit_live_package_owner_review", {
           answeredCount: Object.values(input.answers).filter(value => value.trim()).length,
         });
         return result;

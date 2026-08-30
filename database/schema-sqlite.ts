@@ -100,6 +100,31 @@ export const seoOwnerIntakeAnswers = sqliteTable("seo_owner_intake_answers", {
 
 export type SeoOwnerIntakeAnswer = typeof seoOwnerIntakeAnswers.$inferSelect;
 
+export const livePackageOwnerReview = sqliteTable("live_package_owner_review", {
+  id: integer("id").primaryKey().default(1),
+  status: text("status").notNull().default("draft"),
+  submittedByAdminId: integer("submitted_by_admin_id").references(() => admins.id, { onDelete: "set null" }),
+  submittedAt: text("submitted_at"),
+  createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+  updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+});
+
+export const livePackageOwnerAnswers = sqliteTable("live_package_owner_answers", {
+  questionId: text("question_id").primaryKey(),
+  answerText: text("answer_text").notNull().default(""),
+  updatedByAdminId: integer("updated_by_admin_id").references(() => admins.id, { onDelete: "set null" }),
+  createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+  updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+});
+
+export const livePackageOwnerAnswerHistory = sqliteTable("live_package_owner_answer_history", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  questionId: text("question_id").notNull(),
+  answerText: text("answer_text").notNull(),
+  updatedByAdminId: integer("updated_by_admin_id"),
+  createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+});
+
 /**
  * Courses table - stores trading course information
  */

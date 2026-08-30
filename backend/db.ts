@@ -5,6 +5,7 @@ import {
   InsertUser, users,
   InsertAdmin, admins,
   seoOwnerIntake, seoOwnerIntakeAnswers,
+  livePackageOwnerReview, livePackageOwnerAnswers, livePackageOwnerAnswerHistory,
   courses, Course, InsertCourse,
   episodes, Episode, InsertEpisode,
   enrollments, Enrollment, InsertEnrollment,
@@ -8733,6 +8734,57 @@ function createEmptyRecommendationThreadSummary(): RecommendationThreadSummary {
     oldestRecommendationAt: null,
     newestRecommendationAt: null,
   };
+}
+
+// ============================================================================
+// Live Package business-owner review
+// ============================================================================
+
+export async function getLivePackageOwnerReview() {
+  const db = await getDb();
+  if (!db) return { status: "draft" as const, submittedAt: null, updatedAt: null, answers: {} as Record<string, string> };
+  const [metaRows, answerRows] = await db.batch([
+    db.select().from(livePackageOwnerReview).where(eq(livePackageOwnerReview.id, 1)).limit(1),
+    db.select().from(livePackageOwnerAnswers).orderBy(asc(livePackageOwnerAnswers.questionId)),
+  ]);
+  const meta = metaRows[0] ?? null;
+  return {
+    status: meta?.status === "submitted" ? "submitted" as const : "draft" as const,
+    submittedAt: meta?.submittedAt ?? null,
+    updatedAt: meta?.updatedAt ?? null,
+    answers: Object.fromEntries(answerRows.map(row => [row.questionId, row.answerText])),
+  };
+}
+
+export async function saveLivePackageOwnerAnswers(answers: Record<string, string>, adminId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const now = new Date().toISOString();
+  const statements: any[] = [];
+  for (const [questionId, answerText] of Object.entries(answers)) {
+    statements.push(db.insert(livePackageOwnerAnswers).values({ questionId, answerText, updatedByAdminId: adminId, createdAt: now, updatedAt: now }).onConflictDoUpdate({
+      target: livePackageOwnerAnswers.questionId,
+      set: { answerText, updatedByAdminId: adminId, updatedAt: now },
+    }));
+    statements.push(db.insert(livePackageOwnerAnswerHistory).values({ questionId, answerText, updatedByAdminId: adminId, createdAt: now }));
+  }
+  statements.push(db.insert(livePackageOwnerReview).values({ id: 1, status: "draft", submittedByAdminId: null, submittedAt: null, createdAt: now, updatedAt: now }).onConflictDoUpdate({
+    target: livePackageOwnerReview.id,
+    set: { status: "draft", submittedByAdminId: null, submittedAt: null, updatedAt: now },
+  }));
+  await db.batch(statements as any);
+  return { savedAt: now, savedCount: Object.keys(answers).length };
+}
+
+export async function submitLivePackageOwnerReview(adminId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const now = new Date().toISOString();
+  await db.insert(livePackageOwnerReview).values({ id: 1, status: "submitted", submittedByAdminId: adminId, submittedAt: now, createdAt: now, updatedAt: now }).onConflictDoUpdate({
+    target: livePackageOwnerReview.id,
+    set: { status: "submitted", submittedByAdminId: adminId, submittedAt: now, updatedAt: now },
+  });
+  return { submittedAt: now };
 }
 
 /**

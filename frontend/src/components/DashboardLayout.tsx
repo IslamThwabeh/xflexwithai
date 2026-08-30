@@ -42,6 +42,7 @@ import {
   CalendarDays,
   FileText,
   ClipboardCheck,
+  ClipboardList,
   Tag,
   MessageSquareQuote,
   Clock,
@@ -178,6 +179,11 @@ const menuSectionsDef: MenuSection[] = [
         labelKey: "admin.sidebar.livePackage",
         label: { en: "Live Package", ar: "بكج لايف" },
         path: "/admin/live-package",
+      },
+      {
+        icon: ClipboardList,
+        labelKey: "admin.sidebar.livePackageReview",
+        path: "/admin/live-package-review",
       },
       { icon: Tag, labelKey: "admin.sidebar.coupons", path: "/admin/coupons" },
       {

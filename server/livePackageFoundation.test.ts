@@ -97,6 +97,17 @@ describe('Live package foundation contracts', () => {
     expect(router).toContain("hasZoomJoinUrl: true");
   });
 
+  it('builds an admin-only, unsaved enabled-state preview without changing settings', () => {
+    const preview = router.slice(router.indexOf('previewLiveConfig:'), router.indexOf('updateLiveConfig:'));
+    expect(preview).toContain('adminProcedure');
+    expect(preview).toContain('parseLivePackageConfig');
+    expect(preview).toContain('true,');
+    expect(preview).toContain('previewOnly: true');
+    expect(preview).toContain('persisted: false');
+    expect(preview).not.toContain('setAdminSettings');
+    expect(preview).not.toContain('logAdminAction');
+  });
+
   it('streams recordings only after authenticated entitlement checks and disallows advertised downloads', () => {
     expect(worker).toContain('getLivePackageRecordingForUser');
     expect(worker).toContain('Cache-Control", "private, no-store');
