@@ -28,6 +28,7 @@ import {
   drainRecommendationDeliveryQueue,
   getRemainingGenericEmailBudget,
   RECOMMENDATION_DELIVERY_BATCH_SIZE,
+  RECOMMENDATION_PROVIDER_BATCH_LIMIT,
 } from "../services/recommendation-delivery.service";
 import { handleZeptoMailWebhookRequest } from "./zeptoMailWebhook";
 import { storageDeleteR2, storagePutR2 } from "../storage-r2";
@@ -37,6 +38,11 @@ import {
   processPaymentProofUpload,
 } from "../services/payment-proof-upload.service";
 import { checkScheduledEmailOutboxHealth } from "../services/email-outbox-health-monitor.service";
+import { runPriorityDeliveryLanes } from "../services/worker-priority-delivery.service";
+
+const MINUTE_DELIVERY_CRON = "* * * * *";
+const TIMED_SERVICE_REPAIR_CRON = "*/5 * * * *";
+const DAILY_MAINTENANCE_CRON = "0 5 * * *";
 
 function appendCookieHeaders(headers: Headers, cookieHeaders: string[] | undefined) {
   if (!cookieHeaders?.length) return;
@@ -51,15 +57,23 @@ function jsonResponse(status: number, payload: unknown, headers?: Headers) {
   return new Response(JSON.stringify(payload), { status, headers: responseHeaders });
 }
 
-async function runFrequentTimedServiceAndEmailJobs() {
-  await db.runTimedServiceActivationRepair();
-
-  // Recommendation emails are operationally time-sensitive. Drain them before
-  // bulk/transactional outbox work so an announcement campaign cannot delay a
-  // live trading recommendation for hours.
-  const recommendationDrain = await drainRecommendationDeliveryQueue({
-    limit: RECOMMENDATION_DELIVERY_BATCH_SIZE,
-    source: "scheduled",
+async function runFrequentEmailJobs() {
+  // Recommendation and human-support delivery are the priority minute lanes.
+  // Keep both ahead of surveys, campaigns, and maintenance so Workers Free CPU
+  // exhaustion in lower-priority work cannot delay time-sensitive messages.
+  const priorityDrain = await runPriorityDeliveryLanes({
+    drainRecommendations: () => drainRecommendationDeliveryQueue({
+      limit: RECOMMENDATION_DELIVERY_BATCH_SIZE,
+      source: "scheduled",
+    }),
+    drainSupportReplies: () => drainGenericEmailOutbox({
+      limit: SUPPORT_REPLY_EMAIL_DRAIN_LIMIT,
+      eventTypes: ["support_client_reply"],
+    }),
+    recommendationFailureProviderRequests: RECOMMENDATION_PROVIDER_BATCH_LIMIT,
+    onError: (lane, error) => logger.error(`[CRON] Priority ${lane} delivery failed`, {
+      error: error instanceof Error ? error.message : String(error),
+    }),
   });
 
   // Survey events are first materialized into the durable outbox. Existing
@@ -69,7 +83,7 @@ async function runFrequentTimedServiceAndEmailJobs() {
     await db.materializeDueStudentSurveyNotifications({ limit: 50 });
     const surveyBudget = Math.min(
       2,
-      getRemainingGenericEmailBudget(recommendationDrain.providerRequests),
+      getRemainingGenericEmailBudget(priorityDrain.recommendationProviderRequests),
     );
     if (surveyBudget > 0) {
       const surveyDrain = await drainStudentSurveyEmailOutbox({ providerRequestLimit: surveyBudget });
@@ -81,11 +95,6 @@ async function runFrequentTimedServiceAndEmailJobs() {
     });
   }
 
-  await drainGenericEmailOutbox({
-    limit: SUPPORT_REPLY_EMAIL_DRAIN_LIMIT,
-    eventTypes: ["support_client_reply"],
-  });
-
   // Community announcements are bulk awareness mail. Keep them behind live
   // recommendations and support replies, materialize at most one 50-client
   // BCC batch, and preserve the generic transactional capacity calculation.
@@ -94,7 +103,7 @@ async function runFrequentTimedServiceAndEmailJobs() {
     const communityBudget = Math.min(
       2,
       getRemainingGenericEmailBudget(
-        recommendationDrain.providerRequests + surveyProviderRequests,
+        priorityDrain.recommendationProviderRequests + surveyProviderRequests,
       ),
     );
     if (communityBudget > 0) {
@@ -114,7 +123,7 @@ async function runFrequentTimedServiceAndEmailJobs() {
   }
 
   const genericBudget = getRemainingGenericEmailBudget(
-    recommendationDrain.providerRequests + surveyProviderRequests + communityProviderRequests,
+    priorityDrain.recommendationProviderRequests + surveyProviderRequests + communityProviderRequests,
   );
   const genericLimit = Math.min(GENERIC_EMAIL_OUTBOX_DRAIN_LIMIT, genericBudget);
 
@@ -737,11 +746,11 @@ export default {
   async scheduled(controller: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
     (globalThis as { ENV?: Env }).ENV = env;
     await db.getDb({ DB: env.DB });
-    if (controller.cron === "* * * * *") {
+    if (controller.cron === MINUTE_DELIVERY_CRON) {
       try {
-        await runFrequentTimedServiceAndEmailJobs();
+        await runFrequentEmailJobs();
       } catch (error) {
-        logger.error("[CRON] Frequent activation/email jobs failed", {
+        logger.error("[CRON] Frequent email jobs failed", {
           error: error instanceof Error ? error.message : String(error),
         });
       }
@@ -769,6 +778,27 @@ export default {
       }
       return;
     }
+
+    if (controller.cron === TIMED_SERVICE_REPAIR_CRON) {
+      // This repair can scan several future-pending users. Keep it outside the
+      // minute delivery invocation so it cannot consume that invocation's CPU.
+      try {
+        await db.runTimedServiceActivationRepair();
+      } catch (error) {
+        logger.error("[CRON] Timed-service activation repair failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      return;
+    }
+
+    if (controller.cron !== DAILY_MAINTENANCE_CRON) {
+      logger.warn("[CRON] Ignoring unknown schedule", {
+        cron: controller.cron,
+      });
+      return;
+    }
+
     try {
       await db.runStaffMonitoringRetention();
     } catch (error) {

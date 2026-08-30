@@ -31,7 +31,9 @@ bucket_name = "xflexwithai-videos"
 
 [env.production.triggers]
 # Daily lifecycle/reminder jobs run at 08:00 Asia/Amman (05:00 UTC).
-crons = ["* * * * *", "0 5 * * *"]
+# Timed-service repair has a separate invocation/CPU budget so future pending
+# work cannot prevent minute recommendation and human-support delivery.
+crons = ["* * * * *", "*/5 * * * *", "0 5 * * *"]
 
 [env.staging]
 name = "xflexacademy-api-staging"
