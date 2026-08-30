@@ -108,7 +108,7 @@ export default function AdminOrders() {
     const initial: typeof keyConfigurations = {};
     for (const item of order.packageItems ?? []) {
       initial[item.packageId] = {
-        entitlementDays: String(item.defaultEntitlementDays || 30),
+        entitlementDays: item.packageType === 'live' ? '1' : String(item.defaultEntitlementDays || 30),
         expiresAt: '',
         configurationNotes: '',
       };
@@ -165,16 +165,16 @@ export default function AdminOrders() {
       const days = Number(configuration?.entitlementDays);
       return {
         packageId: Number(item.packageId),
-        entitlementDays: days,
+        entitlementDays: item.packageType === 'live' ? 1 : days,
         expiresAt: configuration?.expiresAt
           ? new Date(`${configuration.expiresAt}T23:59:59.999Z`).toISOString()
           : null,
         configurationNotes: configuration?.configurationNotes?.trim() || null,
       };
     });
-    if (configurations.some((configuration: any) => !Number.isInteger(configuration.entitlementDays)
+    if (configurations.some((configuration: any, index: number) => packageItems[index]?.packageType !== 'live' && (!Number.isInteger(configuration.entitlementDays)
       || configuration.entitlementDays < 1
-      || configuration.entitlementDays > 3650)) {
+      || configuration.entitlementDays > 3650))) {
       toast.error(language === 'ar'
         ? 'يجب أن تكون مدة الخدمة بين يوم واحد و3650 يوماً'
         : 'Service duration must be between 1 and 3650 days');
@@ -439,7 +439,13 @@ export default function AdminOrders() {
                       </p>
                     </div>
 
-                    <div className="grid gap-4 sm:grid-cols-2">
+                    {item.packageType === 'live' ? (
+                      <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                        {language === 'ar'
+                          ? 'نافذة بكج لايف ثابتة وتُدار من لوحة بكج لايف؛ لا ينشئ هذا الطلب تجديداً.'
+                          : 'Live Package uses its fixed cohort window from the Live admin workspace; this order does not create a renewal.'}
+                      </div>
+                    ) : <div className="grid gap-4 sm:grid-cols-2">
                       <div className="space-y-2">
                         <Label>{language === 'ar' ? 'مدة الخدمة بالأيام *' : 'Service duration (days) *'}</Label>
                         <Input
@@ -464,7 +470,7 @@ export default function AdminOrders() {
                             : 'This does not change service duration; it only limits when the key can be redeemed.'}
                         </p>
                       </div>
-                    </div>
+                    </div>}
 
                     <div className="space-y-2">
                       <Label>{language === 'ar' ? 'ملاحظات إعداد المفتاح' : 'Key configuration notes'}</Label>

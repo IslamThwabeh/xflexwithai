@@ -41,6 +41,7 @@ import {
   // Package system imports
   packages, Package, InsertPackage,
   packageCourses, PackageCourse, InsertPackageCourse,
+  livePackageEntitlements, livePackageSessions, livePackageRecordings,
   orders, Order, InsertOrder,
   userTermsAcceptances, UserTermsAcceptance, InsertUserTermsAcceptance,
   orderStatusHistory, InsertOrderStatusHistory,
@@ -105,6 +106,11 @@ import {
   studentSurveyAnswers, studentSurveyAuditLogs,
 } from "../database/schema-sqlite.ts";
 import { ENV } from './_core/env';
+import {
+  getLivePackageConfigurationErrors,
+  LIVE_PACKAGE_SLUG,
+  parseLivePackageConfig,
+} from './services/live-package.service';
 import { logger } from './_core/logger';
 import { errorChainMatches, isSqliteUniqueConstraintError } from './_core/databaseErrors';
 import { sendWelcomeEmail, sendMilestoneEmail, sendQuizFeedbackEmail, sendStaffAlertEmail, sendStaffAlertBccEmail } from './_core/orderEmails';
@@ -968,10 +974,12 @@ async function getExistingStudentHistoryForKey(userId: number, email: string) {
     .where(eq(recommendationSubscriptions.userId, userId));
   const [activatedKeyCount] = await db.select({ count: sql<number>`count(*)` })
     .from(registrationKeys)
+    .innerJoin(packages, eq(packages.id, registrationKeys.packageId))
     .where(and(
       sql`${registrationKeys.packageId} IS NOT NULL`,
       sql`${registrationKeys.activatedAt} IS NOT NULL`,
       sql`lower(${registrationKeys.email}) = ${normalizedEmail}`,
+      eq(packages.packageType, 'standard'),
     ));
 
   return {
@@ -8996,6 +9004,18 @@ export async function syncUserEntitlementsFromKeys(userId: number, email: string
   for (const key of packageKeys) {
     const keyPackageId = Number(key.packageId);
     if (!Number.isFinite(keyPackageId)) continue;
+    const keyPackage = await getPackageById(keyPackageId);
+    if (keyPackage?.packageType === 'live') {
+      if (!key.isRenewal && !key.isUpgrade) {
+        await fulfillLivePackageEntitlement({
+          userId,
+          packageId: keyPackageId,
+          registrationKeyId: key.id,
+          orderId: key.orderId ?? undefined,
+        });
+      }
+      continue;
+    }
     if (activePackageIds.has(keyPackageId)) {
       console.log(`[syncEntitlements] SKIP key ${key.id} pkgId=${key.packageId} — already has active packageSub`);
       continue;
@@ -9302,6 +9322,11 @@ export async function createPackageKey(input: {
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
+  const packageRecord = await getPackageById(input.packageId);
+  if (!packageRecord) throw new Error('Package not found');
+  if (packageRecord.packageType === 'live' && (input.isRenewal || input.isUpgrade)) {
+    throw new Error('Live Package supports fresh one-time purchase keys only');
+  }
   const keyCode = generateRegistrationKeyCode();
   const values: InsertRegistrationKey = {
     keyCode,
@@ -9364,6 +9389,11 @@ export async function createBulkPackageKeys(input: {
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
+  const packageRecord = await getPackageById(input.packageId);
+  if (!packageRecord) throw new Error('Package not found');
+  if (packageRecord.packageType === 'live' && (input.isRenewal || input.isUpgrade)) {
+    throw new Error('Live Package does not support renewal or upgrade inventory');
+  }
 
   const values: InsertRegistrationKey[] = Array.from({ length: input.quantity }, () => ({
     keyCode: generateRegistrationKeyCode(),
@@ -9554,7 +9584,17 @@ export async function createOrderActivationKeys(input: {
   const created: Array<{ id: number; keyCode: string; packageId: number }> = [];
   for (const item of items) {
     if (item.itemType !== 'package' || !item.packageId) continue;
-    const configuration = configurationByPackage.get(Number(item.packageId));
+    const packageRecord = await getPackageById(item.packageId);
+    if (!packageRecord) throw new Error(`Package #${item.packageId} not found`);
+    const configured = configurationByPackage.get(Number(item.packageId));
+    const configuration = packageRecord.packageType === 'live'
+      ? {
+          packageId: item.packageId,
+          entitlementDays: 1,
+          expiresAt: parseLivePackageConfig(await getAllAdminSettings()).sessionEndsAt,
+          configurationNotes: 'Fixed Live cohort window; entitlementDays is not used for Live access.',
+        }
+      : configured;
     const entitlementDays = normalizePositiveInteger(configuration?.entitlementDays);
     if (!configuration || !entitlementDays || entitlementDays > 3650) {
       throw new Error(`A service duration between 1 and 3650 days is required for package #${item.packageId}`);
@@ -9894,7 +9934,40 @@ export async function activatePackageKey(
     }
   }
 
-  if (resolvedUserId && shouldBlockFreshKeyForExistingStudent({
+  if (pkg.packageType === 'live') {
+    if (key.isRenewal || key.isUpgrade) {
+      return fail({
+        keyId: key.id,
+        reason: 'live_package_one_time_only',
+        message: 'Live Package supports one-time purchase keys only.',
+        messageAr: 'بكج لايف مخصص لمفاتيح الشراء لمرة واحدة فقط.',
+      });
+    }
+    if (resolvedUserId) {
+      const [activationUser, existingLive] = await Promise.all([
+        getUserById(resolvedUserId),
+        getLivePackageEntitlement(resolvedUserId),
+      ]);
+      if (activationUser?.isStaff) {
+        return fail({
+          keyId: key.id,
+          reason: 'live_package_staff_requires_complimentary_grant',
+          message: 'Staff access requires an explicit complimentary grant by a full admin.',
+          messageAr: 'يتطلب وصول الموظف منحة مجانية صريحة من مدير كامل الصلاحية.',
+        });
+      }
+      if (existingLive) {
+        return fail({
+          keyId: key.id,
+          reason: 'live_package_already_owned',
+          message: 'This account already has Live Package access for the cohort.',
+          messageAr: 'هذا الحساب يملك وصول بكج لايف للفوج حالياً.',
+        });
+      }
+    }
+  }
+
+  if (pkg.packageType !== 'live' && resolvedUserId && shouldBlockFreshKeyForExistingStudent({
     isRenewal: key.isRenewal,
     isUpgrade: key.isUpgrade,
     history: await getExistingStudentHistoryForKey(resolvedUserId, normalizedEmail),
@@ -9997,8 +10070,34 @@ export async function activatePackageKey(
   }
 
   if (resolvedUserId) {
-    await ensureFirstPackageActivationAnchor(resolvedUserId, activatedAt);
-    if (key.isRenewal) {
+    if (pkg.packageType !== 'live') await ensureFirstPackageActivationAnchor(resolvedUserId, activatedAt);
+    if (pkg.packageType === 'live') {
+      try {
+        await fulfillLivePackageEntitlement({
+          userId: resolvedUserId,
+          packageId: key.packageId,
+          registrationKeyId: key.id,
+          orderId: key.orderId ?? undefined,
+        });
+      } catch (error) {
+        await db.update(registrationKeys).set({ activatedAt: null }).where(and(
+          eq(registrationKeys.id, key.id),
+          eq(registrationKeys.activatedAt, activatedAt),
+          sql`lower(${registrationKeys.email}) = ${normalizedEmail}`,
+        ));
+        logger.error('[LIVE PACKAGE] Activation fulfillment failed; key claim released', {
+          keyId: key.id,
+          userId: resolvedUserId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return fail({
+          keyId: key.id,
+          reason: 'live_package_fulfillment_failed',
+          message: 'Live Package activation could not be completed. The key remains available; please contact support.',
+          messageAr: 'تعذر إكمال تفعيل بكج لايف. بقي المفتاح متاحاً؛ يرجى التواصل مع الدعم.',
+        });
+      }
+    } else if (key.isRenewal) {
       await renewPackageEntitlements(resolvedUserId, key.packageId, key.id, key.entitlementDays ?? undefined);
     } else {
       await fulfillPackageEntitlements(
@@ -13920,10 +14019,358 @@ export async function getPackageCourses(packageId: number): Promise<(PackageCour
 export async function setPackageCourses(packageId: number, courseIds: number[]): Promise<void> {
   const db = await getDb();
   if (!db) return;
-  await db.delete(packageCourses).where(eq(packageCourses.packageId, packageId));
-  for (let i = 0; i < courseIds.length; i++) {
-    await db.insert(packageCourses).values({ packageId, courseId: courseIds[i], displayOrder: i + 1 });
+  const statements = [
+    db.delete(packageCourses).where(eq(packageCourses.packageId, packageId)),
+    ...courseIds.map((courseId, index) => db.insert(packageCourses).values({ packageId, courseId, displayOrder: index + 1 })),
+  ];
+  await db.batch(statements as [typeof statements[number], ...Array<typeof statements[number]>]);
+}
+
+export async function getLivePackageEntitlement(userId: number, cohortKey?: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const conditions = [eq(livePackageEntitlements.userId, userId), eq(livePackageEntitlements.isActive, true)];
+  if (cohortKey) conditions.push(eq(livePackageEntitlements.cohortKey, cohortKey));
+  const [row] = await db.select().from(livePackageEntitlements)
+    .where(and(...conditions))
+    .orderBy(desc(livePackageEntitlements.createdAt))
+    .limit(1);
+  return row ?? null;
+}
+
+export async function hasLivePackageOrderForRecipient(input: {
+  packageId: number;
+  purchaserUserId: number;
+  isGift: boolean;
+  giftEmail?: string | null;
+}) {
+  const db = await getDb();
+  if (!db) return false;
+  const recipientCondition = input.isGift
+    ? and(eq(orders.isGift, true), sql`lower(trim(${orders.giftEmail})) = ${normalizeEmailAddress(input.giftEmail ?? '')}`)
+    : and(eq(orders.isGift, false), eq(orders.userId, input.purchaserUserId));
+  const [row] = await db.select({ count: sql<number>`count(*)` })
+    .from(orderItems)
+    .innerJoin(orders, eq(orderItems.orderId, orders.id))
+    .where(and(
+      eq(orderItems.itemType, 'package'),
+      eq(orderItems.packageId, input.packageId),
+      inArray(orders.status, ['pending', 'completed']),
+      recipientCondition,
+    ));
+  return Number(row?.count ?? 0) > 0;
+}
+
+export async function hasLivePackageCommitments(packageId: number) {
+  const db = await getDb();
+  if (!db) return false;
+  const [orderRows, entitlementRows, sessionRows, recordingRows] = await Promise.all([
+    db.select({ count: sql<number>`count(*)` }).from(orderItems).innerJoin(orders, eq(orderItems.orderId, orders.id)).where(and(
+      eq(orderItems.itemType, 'package'),
+      eq(orderItems.packageId, packageId),
+      inArray(orders.status, ['pending', 'awaiting_confirmation', 'paid', 'completed']),
+    )),
+    db.select({ count: sql<number>`count(*)` }).from(livePackageEntitlements).where(eq(livePackageEntitlements.packageId, packageId)),
+    db.select({ count: sql<number>`count(*)` }).from(livePackageSessions).where(eq(livePackageSessions.packageId, packageId)),
+    db.select({ count: sql<number>`count(*)` }).from(livePackageRecordings).where(eq(livePackageRecordings.packageId, packageId)),
+  ]);
+  return [orderRows, entitlementRows, sessionRows, recordingRows]
+    .some((rows) => Number(rows[0]?.count ?? 0) > 0);
+}
+
+export async function fulfillLivePackageEntitlement(input: {
+  userId: number;
+  packageId: number;
+  registrationKeyId?: number;
+  orderId?: number;
+  accessSource?: 'purchase' | 'complimentary';
+  grantReason?: string;
+  grantedByAdminId?: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error('Database not available');
+  const [pkg, settings, user] = await Promise.all([
+    getPackageById(input.packageId),
+    getAllAdminSettings(),
+    getUserById(input.userId),
+  ]);
+  if (!pkg || pkg.packageType !== 'live' || pkg.slug !== LIVE_PACKAGE_SLUG) throw new Error('Invalid Live package');
+  if (!user) throw new Error('User not found');
+  const source = input.accessSource ?? 'purchase';
+  if (user.isStaff && source !== 'complimentary') throw new Error('Staff Live access requires an explicit complimentary admin grant');
+  if (source === 'complimentary' && (!input.grantedByAdminId || !input.grantReason?.trim())) {
+    throw new Error('Complimentary Live access requires an admin and reason');
   }
+  const config = parseLivePackageConfig(settings);
+  const packageCourseRows = await getPackageCourses(input.packageId);
+  const configurationErrors = getLivePackageConfigurationErrors({
+    config,
+    packageRecord: pkg,
+    assignedCourseCount: packageCourseRows.length,
+  });
+  if (configurationErrors.length) throw new Error(`Live package configuration is invalid: ${configurationErrors.join(' ')}`);
+  if (packageCourseRows.some((row) => !row.course)) throw new Error('Live package references a missing base course');
+  const existing = await getLivePackageEntitlement(input.userId, config.cohortKey);
+  if (existing) return existing;
+
+  const now = new Date().toISOString();
+  const entitlementStatement = db.insert(livePackageEntitlements).values({
+    userId: input.userId,
+    packageId: input.packageId,
+    registrationKeyId: input.registrationKeyId ?? null,
+    orderId: input.orderId ?? null,
+    cohortKey: config.cohortKey,
+    accessSource: source,
+    grantReason: input.grantReason?.trim() || null,
+    grantedByAdminId: input.grantedByAdminId ?? null,
+    sessionStartsAt: config.sessionStartsAt,
+    sessionEndsAt: config.sessionEndsAt,
+    recordingPolicy: config.recordingPolicy,
+    recordingAccessEndsAt: config.recordingAccessEndsAt,
+    isActive: true,
+    createdAt: now,
+    updatedAt: now,
+  }).returning();
+  const currentEnrollments = await Promise.all(
+    packageCourseRows.map((packageCourse) => getEnrollmentByUserAndCourse(input.userId, packageCourse.courseId)),
+  );
+  const enrollmentStatements = packageCourseRows.map((packageCourse, index) => {
+    const current = currentEnrollments[index];
+    if (current) {
+      return db.update(enrollments).set({
+        paymentStatus: 'completed',
+        isSubscriptionActive: true,
+        subscriptionEndDate: null,
+      }).where(eq(enrollments.id, current.id));
+    }
+    return db.insert(enrollments).values({
+        userId: input.userId,
+        courseId: packageCourse.courseId,
+        enrolledAt: now,
+        paymentStatus: 'completed',
+        isSubscriptionActive: true,
+        registrationKeyId: input.registrationKeyId ?? null,
+        activatedViaKey: Boolean(input.registrationKeyId),
+      });
+  });
+
+  try {
+    const results = (await db.batch([
+      entitlementStatement,
+      ...enrollmentStatements,
+    ] as any)) as unknown as Array<Array<typeof livePackageEntitlements.$inferSelect>>;
+    const entitlement = results[0]?.[0];
+    if (!entitlement) throw new Error('Live package entitlement insert did not return a row');
+    return entitlement;
+  } catch (error) {
+    if (isSqliteUniqueConstraintError(error)) {
+      const concurrent = await getLivePackageEntitlement(input.userId, config.cohortKey);
+      if (concurrent) return concurrent;
+    }
+    throw error;
+  }
+}
+
+export async function listLivePackageSessions(packageId: number, cohortKey: string) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({
+    id: livePackageSessions.id,
+    packageId: livePackageSessions.packageId,
+    cohortKey: livePackageSessions.cohortKey,
+    titleEn: livePackageSessions.titleEn,
+    titleAr: livePackageSessions.titleAr,
+    descriptionEn: livePackageSessions.descriptionEn,
+    descriptionAr: livePackageSessions.descriptionAr,
+    startsAt: livePackageSessions.startsAt,
+    endsAt: livePackageSessions.endsAt,
+    status: livePackageSessions.status,
+  }).from(livePackageSessions)
+    .where(and(eq(livePackageSessions.packageId, packageId), eq(livePackageSessions.cohortKey, cohortKey)))
+    .orderBy(livePackageSessions.startsAt);
+}
+
+export async function listLivePackageSessionsAdmin(packageId: number, cohortKey: string) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(livePackageSessions).where(and(
+    eq(livePackageSessions.packageId, packageId),
+    eq(livePackageSessions.cohortKey, cohortKey),
+  )).orderBy(livePackageSessions.startsAt);
+}
+
+export async function createLivePackageSession(input: {
+  packageId: number;
+  cohortKey: string;
+  titleEn: string;
+  titleAr: string;
+  descriptionEn?: string | null;
+  descriptionAr?: string | null;
+  startsAt: string;
+  endsAt: string;
+  zoomJoinUrl: string;
+  adminId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error('Database not available');
+  const now = new Date().toISOString();
+  const { adminId, ...sessionValues } = input;
+  const [row] = await db.insert(livePackageSessions).values({
+    ...sessionValues,
+    descriptionEn: input.descriptionEn?.trim() || null,
+    descriptionAr: input.descriptionAr?.trim() || null,
+    status: 'scheduled',
+    createdByAdminId: adminId,
+    updatedByAdminId: adminId,
+    createdAt: now,
+    updatedAt: now,
+  }).returning();
+  return row;
+}
+
+export async function updateLivePackageSession(input: {
+  id: number;
+  titleEn?: string;
+  titleAr?: string;
+  descriptionEn?: string | null;
+  descriptionAr?: string | null;
+  startsAt?: string;
+  endsAt?: string;
+  zoomJoinUrl?: string;
+  status?: 'scheduled' | 'cancelled' | 'completed';
+  adminId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error('Database not available');
+  const { id, adminId, ...updates } = input;
+  const [current] = await db.select().from(livePackageSessions).where(eq(livePackageSessions.id, id)).limit(1);
+  if (!current) return null;
+  const finalStartsAt = updates.startsAt ?? current.startsAt;
+  const finalEndsAt = updates.endsAt ?? current.endsAt;
+  const config = parseLivePackageConfig(await getAllAdminSettings());
+  if (Date.parse(finalStartsAt) >= Date.parse(finalEndsAt)) throw new Error('Session end must be after its start');
+  if (Date.parse(finalStartsAt) < Date.parse(config.sessionStartsAt) || Date.parse(finalEndsAt) > Date.parse(config.sessionEndsAt)) {
+    throw new Error('Session must remain inside the configured Live cohort window');
+  }
+  const [row] = await db.update(livePackageSessions).set({
+    ...updates,
+    updatedByAdminId: adminId,
+    updatedAt: new Date().toISOString(),
+  }).where(eq(livePackageSessions.id, id)).returning();
+  return row ?? null;
+}
+
+export async function createLivePackageRecording(input: {
+  packageId: number;
+  cohortKey: string;
+  sessionId?: number | null;
+  titleEn: string;
+  titleAr: string;
+  descriptionEn?: string | null;
+  descriptionAr?: string | null;
+  objectKey: string;
+  originalFileName: string;
+  mimeType: string;
+  fileSizeBytes: number;
+  adminId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error('Database not available');
+  const now = new Date().toISOString();
+  const { adminId, ...recordingValues } = input;
+  const [row] = await db.insert(livePackageRecordings).values({
+    ...recordingValues,
+    descriptionEn: input.descriptionEn?.trim() || null,
+    descriptionAr: input.descriptionAr?.trim() || null,
+    isPublished: false,
+    createdByAdminId: adminId,
+    updatedByAdminId: adminId,
+    createdAt: now,
+    updatedAt: now,
+  }).returning();
+  return row;
+}
+
+export async function listLivePackageRecordingsAdmin(packageId: number, cohortKey: string) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(livePackageRecordings).where(and(
+    eq(livePackageRecordings.packageId, packageId),
+    eq(livePackageRecordings.cohortKey, cohortKey),
+  )).orderBy(livePackageRecordings.sortOrder);
+}
+
+export async function updateLivePackageRecording(input: { id: number; isPublished: boolean; sortOrder?: number; adminId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error('Database not available');
+  const [row] = await db.update(livePackageRecordings).set({
+    isPublished: input.isPublished,
+    sortOrder: input.sortOrder,
+    updatedByAdminId: input.adminId,
+    updatedAt: new Date().toISOString(),
+  }).where(eq(livePackageRecordings.id, input.id)).returning();
+  return row ?? null;
+}
+
+export async function getLivePackageSessionJoinInfo(sessionId: number, userId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const entitlement = await getLivePackageEntitlement(userId);
+  if (!entitlement) return null;
+  const now = Date.now();
+  if (now < Date.parse(entitlement.sessionStartsAt) || now > Date.parse(entitlement.sessionEndsAt)) return null;
+  const [session] = await db.select().from(livePackageSessions).where(and(
+    eq(livePackageSessions.id, sessionId),
+    eq(livePackageSessions.packageId, entitlement.packageId),
+    eq(livePackageSessions.cohortKey, entitlement.cohortKey),
+    eq(livePackageSessions.status, 'scheduled'),
+  )).limit(1);
+  if (!session) return null;
+  const joinOpensAt = Date.parse(session.startsAt) - 15 * 60 * 1000;
+  if (now < joinOpensAt || now > Date.parse(session.endsAt)) return null;
+  return { id: session.id, titleEn: session.titleEn, titleAr: session.titleAr, startsAt: session.startsAt, endsAt: session.endsAt, zoomJoinUrl: session.zoomJoinUrl };
+}
+
+export async function listLivePackageRecordings(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const entitlement = await getLivePackageEntitlement(userId);
+  if (!entitlement) return [];
+  const now = Date.now();
+  const recordingAllowed = entitlement.recordingPolicy === 'permanent'
+    || Boolean(entitlement.recordingAccessEndsAt && now <= Date.parse(entitlement.recordingAccessEndsAt));
+  if (!recordingAllowed) return [];
+  return db.select({
+    id: livePackageRecordings.id,
+    titleEn: livePackageRecordings.titleEn,
+    titleAr: livePackageRecordings.titleAr,
+    descriptionEn: livePackageRecordings.descriptionEn,
+    descriptionAr: livePackageRecordings.descriptionAr,
+    mimeType: livePackageRecordings.mimeType,
+    fileSizeBytes: livePackageRecordings.fileSizeBytes,
+    streamPath: sql<string>`'/api/live-package-recordings/' || ${livePackageRecordings.id} || '/stream'`,
+  }).from(livePackageRecordings).where(and(
+    eq(livePackageRecordings.packageId, entitlement.packageId),
+    eq(livePackageRecordings.cohortKey, entitlement.cohortKey),
+    eq(livePackageRecordings.isPublished, true),
+  )).orderBy(livePackageRecordings.sortOrder);
+}
+
+export async function getLivePackageRecordingForUser(recordingId: number, userId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const entitlement = await getLivePackageEntitlement(userId);
+  if (!entitlement) return null;
+  const recordingAllowed = entitlement.recordingPolicy === 'permanent'
+    || Boolean(entitlement.recordingAccessEndsAt && Date.now() <= Date.parse(entitlement.recordingAccessEndsAt));
+  if (!recordingAllowed) return null;
+  const [recording] = await db.select().from(livePackageRecordings).where(and(
+    eq(livePackageRecordings.id, recordingId),
+    eq(livePackageRecordings.packageId, entitlement.packageId),
+    eq(livePackageRecordings.cohortKey, entitlement.cohortKey),
+    eq(livePackageRecordings.isPublished, true),
+  )).limit(1);
+  return recording ?? null;
 }
 
 // ============================================================================
@@ -14064,6 +14511,7 @@ export async function getOrderPackageConfigurationSummaries(orderIds: number[]) 
       packageSlug: packages.slug,
       packageNameEn: packages.nameEn,
       packageNameAr: packages.nameAr,
+      packageType: packages.packageType,
       defaultEntitlementDays: packages.durationDays,
     })
     .from(orderItems)
@@ -22128,6 +22576,22 @@ export async function setAdminSetting(key: string, value: string): Promise<void>
       VALUES (${key}, ${value}, datetime('now'))
     `);
   }
+}
+
+export async function setAdminSettings(updates: Array<{ key: string; value: string }>): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error('Database not available');
+  if (!updates.length) return;
+  const now = new Date().toISOString();
+  const statements = updates.map((update) => db.insert(adminSettings).values({
+    settingKey: update.key,
+    settingValue: update.value,
+    updatedAt: now,
+  }).onConflictDoUpdate({
+    target: adminSettings.settingKey,
+    set: { settingValue: update.value, updatedAt: now },
+  }));
+  await db.batch(statements as [typeof statements[number], ...Array<typeof statements[number]>]);
 }
 
 export async function getAllAdminSettings(): Promise<Record<string, string>> {

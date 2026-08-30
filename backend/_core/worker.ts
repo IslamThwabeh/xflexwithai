@@ -39,6 +39,7 @@ import {
 } from "../services/payment-proof-upload.service";
 import { checkScheduledEmailOutboxHealth } from "../services/email-outbox-health-monitor.service";
 import { runPriorityDeliveryLanes } from "../services/worker-priority-delivery.service";
+import { LIVE_PACKAGE_SLUG, parseLivePackageConfig } from "../services/live-package.service";
 
 const MINUTE_DELIVERY_CRON = "* * * * *";
 const TIMED_SERVICE_REPAIR_CRON = "*/5 * * * *";
@@ -207,6 +208,7 @@ export interface Env {
   ZEPTOMAIL_TOKEN?: string;
   ZEPTOMAIL_API_URL?: string;
   ZEPTOMAIL_WEBHOOK_SECRET?: string;
+  PACKAGE_LIVE_DEPLOYMENT_ENABLED?: string;
 }
 
 export default {
@@ -240,6 +242,7 @@ export default {
 
       const isAllowedOrigin =
         !!normalizedOrigin && (
+          normalizedOrigin === url.origin ||
           allowedOrigins.has(normalizedOrigin) ||
           originHost.endsWith(".xflexwithai.pages.dev") ||
           originHost.endsWith(".xflexacademy.pages.dev")
@@ -385,6 +388,70 @@ export default {
             code: uploadError.code,
             message: uploadError.message,
           }, headers);
+        }
+      }
+
+      if (pathname === "/api/live-package-recordings/upload") {
+        const headers = new Headers();
+        corsHeaders.forEach((value, key) => headers.set(key, value));
+        if (request.method === "OPTIONS") {
+          headers.set("Access-Control-Allow-Headers", "content-type");
+          headers.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+          return new Response(null, { status: 204, headers });
+        }
+        if (request.method !== "POST") return jsonResponse(405, { status: "method_not_allowed" }, headers);
+        if (!isAllowedOrigin) return jsonResponse(403, { status: "forbidden", message: "A trusted same-origin request is required" }, headers);
+        const authContext = await createWorkerContext({ req: request, env, executionCtx: ctx });
+        appendCookieHeaders(headers, (authContext as { cookieHeaders?: string[] }).cookieHeaders);
+        const admin = authContext.user?.email ? await db.getAdminByEmail(authContext.user.email) : null;
+        if (!authContext.user || !admin) return jsonResponse(403, { status: "forbidden", message: "Full admin access is required" }, headers);
+        const contentType = request.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() ?? "";
+        if (contentType !== "video/mp4" && contentType !== "video/webm") {
+          return jsonResponse(400, { status: "invalid_request", message: "Only MP4 or WebM recordings are accepted" }, headers);
+        }
+        const size = Number(request.headers.get("content-length"));
+        if (!Number.isFinite(size) || size <= 0 || size > 500 * 1024 * 1024) {
+          return jsonResponse(413, { status: "invalid_request", message: "Recording must declare a size between 1 byte and 500 MB" }, headers);
+        }
+        const titleEn = (url.searchParams.get("titleEn") ?? "").trim();
+        const titleAr = (url.searchParams.get("titleAr") ?? "").trim();
+        const originalFileName = (url.searchParams.get("fileName") ?? "recording").trim().slice(0, 255);
+        const sessionIdValue = Number(url.searchParams.get("sessionId"));
+        const sessionId = Number.isInteger(sessionIdValue) && sessionIdValue > 0 ? sessionIdValue : null;
+        if (!titleEn || !titleAr || titleEn.length > 200 || titleAr.length > 200) {
+          return jsonResponse(400, { status: "invalid_request", message: "Bilingual recording titles are required" }, headers);
+        }
+        const [pkg, settings] = await Promise.all([db.getPackageBySlug(LIVE_PACKAGE_SLUG), db.getAllAdminSettings()]);
+        if (!pkg || pkg.packageType !== "live") return jsonResponse(409, { status: "not_ready", message: "Live package is not configured" }, headers);
+        const config = parseLivePackageConfig(settings);
+        const safeName = originalFileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+        const objectKey = `protected/live-package/${config.cohortKey}/${Date.now()}-${safeName}`;
+        try {
+          if (!request.body) throw new Error("Recording body is missing");
+          await env.VIDEOS_BUCKET.put(objectKey, request.body, { httpMetadata: { contentType } });
+          const recording = await db.createLivePackageRecording({
+            packageId: pkg.id,
+            cohortKey: config.cohortKey,
+            sessionId,
+            titleEn,
+            titleAr,
+            objectKey,
+            originalFileName,
+            mimeType: contentType,
+            fileSizeBytes: size,
+            adminId: admin.id,
+          });
+          await db.logAdminAction(admin.id, admin.id, "upload_live_package_recording", {
+            recordingId: recording.id,
+            sessionId,
+            fileSizeBytes: size,
+            mimeType: contentType,
+          });
+          return jsonResponse(200, { status: "success", recording: { id: recording.id, isPublished: false } }, headers);
+        } catch (error) {
+          await env.VIDEOS_BUCKET.delete(objectKey).catch(() => undefined);
+          logger.error("[LIVE PACKAGE] Protected recording upload failed", { adminId: admin.id, error: error instanceof Error ? error.message : String(error) });
+          return jsonResponse(500, { status: "error", message: "Recording upload failed" }, headers);
         }
       }
 
@@ -609,6 +676,54 @@ export default {
         }
 
         return new Response(object.body, { status: 200, headers });
+      }
+
+      const liveRecordingMatch = pathname.match(/^\/api\/live-package-recordings\/(\d+)\/stream$/);
+      if (liveRecordingMatch) {
+        if (request.method !== "GET" && request.method !== "HEAD") {
+          return jsonResponse(405, { status: "method_not_allowed" });
+        }
+        const authContext = await createWorkerContext({ req: request, env });
+        const headers = new Headers();
+        corsHeaders.forEach((value, key) => headers.set(key, value));
+        appendCookieHeaders(headers, (authContext as { cookieHeaders?: string[] }).cookieHeaders);
+        headers.set("Cache-Control", "private, no-store, max-age=0");
+        headers.set("X-Content-Type-Options", "nosniff");
+        headers.set("X-Robots-Tag", "noindex, noarchive, nosnippet");
+        headers.set("Accept-Ranges", "bytes");
+        if (!authContext.user || authContext.user.id <= 0) {
+          return jsonResponse(401, { status: "unauthorized", message: "Please login to access this recording" }, headers);
+        }
+        const recording = await db.getLivePackageRecordingForUser(Number(liveRecordingMatch[1]), authContext.user.id);
+        if (!recording) {
+          return jsonResponse(404, { status: "not_found", message: "Recording not found" }, headers);
+        }
+        headers.set("Content-Type", recording.mimeType || "video/mp4");
+        headers.set("Content-Disposition", buildContentDisposition("inline", recording.originalFileName));
+        const rangeHeader = request.headers.get("range");
+        const totalSize = Number(recording.fileSizeBytes ?? 0);
+        if (rangeHeader && totalSize > 0) {
+          const range = parseRangeHeader(rangeHeader, totalSize);
+          if (!range) {
+            headers.set("Content-Range", `bytes */${totalSize}`);
+            return new Response(null, { status: 416, headers });
+          }
+          const length = range.end - range.start + 1;
+          const object = await env.VIDEOS_BUCKET.get(recording.objectKey, { range: { offset: range.start, length } } as any);
+          if (!object || !("body" in object) || !object.body) {
+            return jsonResponse(404, { status: "not_found", message: "Recording file is missing" }, headers);
+          }
+          headers.set("Content-Range", `bytes ${range.start}-${range.end}/${totalSize}`);
+          headers.set("Content-Length", String(length));
+          return new Response(request.method === "HEAD" ? null : object.body, { status: 206, headers });
+        }
+        const object = await env.VIDEOS_BUCKET.get(recording.objectKey);
+        if (!object || !("body" in object) || !object.body) {
+          return jsonResponse(404, { status: "not_found", message: "Recording file is missing" }, headers);
+        }
+        const size = totalSize || Number(object.size ?? 0);
+        if (size) headers.set("Content-Length", String(size));
+        return new Response(request.method === "HEAD" ? null : object.body, { status: 200, headers });
       }
 
       const studentDocumentMatch = pathname.match(/^\/api\/student-documents\/(\d+)\/(view|download)$/);

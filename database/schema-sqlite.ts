@@ -910,6 +910,7 @@ export const packages = sqliteTable("packages", {
   isLifetime: integer("isLifetime", { mode: 'boolean' }).default(true).notNull(),
   isPublished: integer("isPublished", { mode: 'boolean' }).default(false).notNull(),
   displayOrder: integer("displayOrder").default(0).notNull(),
+  packageType: text("packageType", { length: 20 }).default("standard").notNull(),
   thumbnailUrl: text("thumbnailUrl"),
   upgradePrice: integer("upgradePrice").default(0), // in cents — price to upgrade from a lower-tier package to this one
   createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
@@ -950,6 +951,67 @@ export const packageCourses = sqliteTable("packageCourses", {
 
 export type PackageCourse = typeof packageCourses.$inferSelect;
 export type InsertPackageCourse = typeof packageCourses.$inferInsert;
+
+export const livePackageEntitlements = sqliteTable("live_package_entitlements", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("userId").notNull(),
+  packageId: integer("packageId").notNull(),
+  registrationKeyId: integer("registrationKeyId"),
+  orderId: integer("orderId"),
+  cohortKey: text("cohortKey").notNull(),
+  accessSource: text("accessSource").default("purchase").notNull(),
+  grantReason: text("grantReason"),
+  grantedByAdminId: integer("grantedByAdminId"),
+  sessionStartsAt: text("sessionStartsAt").notNull(),
+  sessionEndsAt: text("sessionEndsAt").notNull(),
+  recordingPolicy: text("recordingPolicy").default("permanent").notNull(),
+  recordingAccessEndsAt: text("recordingAccessEndsAt"),
+  isActive: integer("isActive", { mode: "boolean" }).default(true).notNull(),
+  createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
+  updatedAt: text("updatedAt").default(sql`(datetime('now'))`).notNull(),
+}, (table) => ({
+  uniqueUserCohort: unique("uq_live_package_entitlements_user_cohort").on(table.userId, table.cohortKey),
+  uniqueRegistrationKey: unique("uq_live_package_entitlements_registration_key").on(table.registrationKeyId),
+}));
+
+export const livePackageSessions = sqliteTable("live_package_sessions", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  packageId: integer("packageId").notNull(),
+  cohortKey: text("cohortKey").notNull(),
+  titleEn: text("titleEn").notNull(),
+  titleAr: text("titleAr").notNull(),
+  descriptionEn: text("descriptionEn"),
+  descriptionAr: text("descriptionAr"),
+  startsAt: text("startsAt").notNull(),
+  endsAt: text("endsAt").notNull(),
+  zoomJoinUrl: text("zoomJoinUrl").notNull(),
+  status: text("status").default("scheduled").notNull(),
+  createdByAdminId: integer("createdByAdminId").notNull(),
+  updatedByAdminId: integer("updatedByAdminId").notNull(),
+  createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
+  updatedAt: text("updatedAt").default(sql`(datetime('now'))`).notNull(),
+});
+
+export const livePackageRecordings = sqliteTable("live_package_recordings", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  packageId: integer("packageId").notNull(),
+  cohortKey: text("cohortKey").notNull(),
+  sessionId: integer("sessionId"),
+  titleEn: text("titleEn").notNull(),
+  titleAr: text("titleAr").notNull(),
+  descriptionEn: text("descriptionEn"),
+  descriptionAr: text("descriptionAr"),
+  objectKey: text("objectKey").notNull().unique(),
+  originalFileName: text("originalFileName").notNull(),
+  mimeType: text("mimeType").default("video/mp4").notNull(),
+  fileSizeBytes: integer("fileSizeBytes"),
+  sortOrder: integer("sortOrder").default(0).notNull(),
+  isPublished: integer("isPublished", { mode: "boolean" }).default(false).notNull(),
+  createdByAdminId: integer("createdByAdminId").notNull(),
+  updatedByAdminId: integer("updatedByAdminId").notNull(),
+  createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
+  updatedAt: text("updatedAt").default(sql`(datetime('now'))`).notNull(),
+});
 
 // ============================================================================
 // Orders – shopping cart checkout

@@ -43,18 +43,20 @@ export function getPackageDisplayPricing(
   slug?: string | null,
   fallbackPriceCents = 0,
   fallbackRenewalCents?: number | null,
+  currency = 'USD',
 ) {
   const key = slug ?? '';
   const hasRenewal = typeof fallbackRenewalCents === 'number' && fallbackRenewalCents > 0;
+  const isIls = ['ILS', 'NIS'].includes(currency.trim().toUpperCase());
 
   return {
-    ilsPrice: PACKAGE_DISPLAY_ILS[key] ?? Math.round((fallbackPriceCents / 100) * 3.5),
-    usdPrice: PACKAGE_DISPLAY_USD[key] ?? fallbackPriceCents / 100,
+    ilsPrice: isIls ? fallbackPriceCents / 100 : (PACKAGE_DISPLAY_ILS[key] ?? Math.round((fallbackPriceCents / 100) * 3.5)),
+    usdPrice: isIls ? null : (PACKAGE_DISPLAY_USD[key] ?? fallbackPriceCents / 100),
     ilsRenewal: hasRenewal
-      ? (PACKAGE_RENEWAL_DISPLAY_ILS[key] ?? Math.round(((fallbackRenewalCents ?? 0) / 100) * 3.5))
+      ? (isIls ? (fallbackRenewalCents ?? 0) / 100 : (PACKAGE_RENEWAL_DISPLAY_ILS[key] ?? Math.round(((fallbackRenewalCents ?? 0) / 100) * 3.5)))
       : null,
     usdRenewal: hasRenewal
-      ? (PACKAGE_RENEWAL_DISPLAY_USD[key] ?? (fallbackRenewalCents ?? 0) / 100)
+      ? (isIls ? null : (PACKAGE_RENEWAL_DISPLAY_USD[key] ?? (fallbackRenewalCents ?? 0) / 100))
       : null,
   };
 }

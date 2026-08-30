@@ -550,7 +550,7 @@ export default function AdminPackageKeys() {
           <SelectValue placeholder={language === 'ar' ? 'اختر الباقة...' : 'Select package...'} />
         </SelectTrigger>
         <SelectContent>
-          {packages.map((pkg: any) => (
+          {packages.filter((pkg: any) => pkg.packageType !== 'live').map((pkg: any) => (
             <SelectItem key={pkg.id} value={String(pkg.id)}>
               <div className="flex items-center gap-2">
                 <Package className="w-4 h-4" />

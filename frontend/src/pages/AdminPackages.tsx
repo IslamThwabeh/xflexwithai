@@ -166,7 +166,7 @@ export default function AdminPackages() {
           <div className="text-gray-400 text-center py-8">{language === 'ar' ? 'جاري التحميل...' : 'Loading...'}</div>
         ) : (
           <div className="space-y-3">
-            {packages?.map((pkg) => (
+            {packages?.filter((pkg) => pkg.packageType !== 'live').map((pkg) => (
               <div key={pkg.id} className="bg-white border rounded-xl p-5 flex items-center justify-between shadow-sm">
                 <div>
                   <div className="flex items-center gap-2 mb-1">

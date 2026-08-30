@@ -65,6 +65,9 @@ export const ENV = {
   get businessPostalAddress() {
     return getEnvVar("BUSINESS_POSTAL_ADDRESS", "XFlex Trading Academy, Dubai, United Arab Emirates");
   },
+  get packageLiveDeploymentEnabled() {
+    return getEnvVar("PACKAGE_LIVE_DEPLOYMENT_ENABLED", "false").trim().toLowerCase() === "true";
+  },
   get emailUnsubscribeSecret() {
     return getEnvVar("EMAIL_UNSUBSCRIBE_SECRET", getEnvVar("JWT_SECRET", ""));
   },

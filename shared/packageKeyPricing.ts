@@ -3,6 +3,7 @@ export type PackageKeyPricingPackage = {
   price: number;
   slug?: string | null;
   includesLexai?: boolean | null;
+  currency?: string | null;
 };
 
 export const PACKAGE_KEY_USD_TO_ILS_RATE = 3.5;
@@ -19,7 +20,7 @@ function getCanonicalPackageKeyPricing(
   const isComprehensive = selectedPackage.slug === 'comprehensive'
     || selectedPackage.includesLexai === true;
   const isBasic = selectedPackage.slug === 'basic'
-    || selectedPackage.includesLexai === false;
+    || (!selectedPackage.slug && selectedPackage.includesLexai === false);
 
   if (options?.isRenewal) {
     if (isComprehensive) return { usd: 100, ils: 350 };
@@ -44,6 +45,10 @@ export function getSuggestedPackageKeyPrice(
 
   const selectedPackage = packages.find((pkg) => pkg.id === packageId);
   if (!selectedPackage) return 0;
+
+  if (selectedPackage.currency?.trim().toUpperCase() === 'ILS') {
+    return selectedPackage.price / 100;
+  }
 
   if (options?.isRenewal) {
     return selectedPackage.includesLexai ? 100 : 50;
@@ -80,6 +85,10 @@ export function getSuggestedPackageKeyPriceIls(
 
   const selectedPackage = packages.find((pkg) => pkg.id === packageId);
   if (!selectedPackage) return 0;
+
+  if (selectedPackage.currency?.trim().toUpperCase() === 'ILS') {
+    return selectedPackage.price / 100;
+  }
 
   const canonicalPricing = getCanonicalPackageKeyPricing(selectedPackage, options);
   if (canonicalPricing) return canonicalPricing.ils;
