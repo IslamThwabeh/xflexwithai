@@ -590,6 +590,17 @@ Last updated: 2026-08-28
   - Worker bundle SHA-256 `1F7DF4C5947ED1BF4432D4B4241DF4433398CA4498FAB80F1C03A68422AD155E` deployed as production version `9919edba-d5ed-4f15-98f3-6fb8e7fdbd34` with schedules `* * * * *`, `*/5 * * * *`, and `0 5 * * *`.
   - Both production health endpoints returned `status=ok`. Six consecutive new-version minute invocations and the first separate five-minute repair invocation completed with outcome `ok` and zero exceptions. No migration or production D1 write was performed.
 
+- Live Package and safe-SEO release candidate prepared locally on 2026-08-30:
+  - Stable product identity is `live-package` / `Live Package` / `بكج لايف`, modeled as package type `live` at native `ILS` minor-unit price `200000` (₪2,000 including VAT), with no renewal or upgrade path.
+  - Migration `092_live_package_foundation.sql` remains unapplied outside isolated in-memory tests. It seeds the product unpublished and all admin visibility/purchase settings off, adds fixed-cohort entitlement/session/recording tables, and includes dedicated access-path indexes.
+  - The environment deployment gate `PACKAGE_LIVE_DEPLOYMENT_ENABLED` defaults off. Public discovery and ordering require this gate plus separate admin visibility, purchase approval, lifecycle, sales-window, assigned-course, and scheduling readiness checks.
+  - Default Amman cohort dates are sales/session start `2026-09-04T21:00:00.000Z` and end `2026-12-31T20:59:00.000Z`. Base-course access is permanent; session access is fixed to the cohort; protected recording access defaults permanent and is independently configurable.
+  - Zoom links are omitted from public and student schedule payloads and released only through an entitled current-session join mutation. Recording objects stream inline from protected R2 routes after authentication and entitlement checks; downloads are not advertised.
+  - Staff/support receive no automatic Live access. A full admin may grant complimentary access only through an explicit reasoned and audited action. Commercial activation is one-time and rejects staff recipients, duplicates, renewals, and upgrades.
+  - Unsupported public student-volume/popularity/frequency/security claims were removed. The exact Arabic office address and appointment sentence and the approved English appointment-only sentence were applied without changing structured data.
+  - Verification passed: TypeScript, 124 test files / 641 tests, critical cycle 33 files / 182 tests, Live-focused tests including real migration and query plans, SEO/middleware checks, frontend/server build, Worker build, and `git diff --check`. Playwright verified Live `noindex`, removal of `+5,000`, and exact Arabic/English contact copy; Live data APIs intentionally errored locally because migration 092 was not applied.
+  - No production migration, deployment, flag change, customer write, or package activation was performed. Final business-owner review is stored privately at `tmp/private-handoffs/2026-08-30-live-package-review.md`; it contains only the requested Arabic checklist.
+
 ## Future Hardening
 
 - Installed local Codex skills for future implementation workflows on 2026-07-05: `cloudflare-deploy`, `playwright`, `security-best-practices`, `security-threat-model`, `gh-fix-ci`, and `gh-address-comments`. `openai-docs` is already available as a system skill, so do not duplicate-install it.

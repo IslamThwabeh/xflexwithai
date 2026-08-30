@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { onRequest } from "../functions/_middleware.js";
 
-function contextFor(url, assetHandler) {
+function contextFor(url, assetHandler, env = {}) {
   return {
     request: new Request(url),
-    env: { ASSETS: { fetch: assetHandler } },
+    env: { ASSETS: { fetch: assetHandler }, ...env },
     next: () => new Response("next", { status: 200 }),
   };
 }
@@ -65,6 +65,20 @@ const localizedRoot = await onRequest(contextFor("https://xflexacademy.com/ar/",
 }));
 assert.equal(localizedRoot.status, 200);
 assert.equal(localizedRoot.headers.get("location"), null);
+
+const disabledLivePackage = await onRequest(contextFor("https://xflexacademy.com/ar/packages/live-package", async (request) => {
+  assert.equal(new URL(request.url).pathname, "/404/");
+  return new Response("<html>missing</html>", { status: 200 });
+}));
+assert.equal(disabledLivePackage.status, 404);
+assert.equal(disabledLivePackage.headers.get("x-robots-tag"), "noindex, nofollow");
+
+const enabledLivePackage = await onRequest(contextFor("https://xflexacademy.com/en/packages/live-package", async (request) => {
+  assert.equal(new URL(request.url).pathname, "/app-shell/");
+  return new Response("<html>live preview</html>", { status: 200 });
+}, { PACKAGE_LIVE_DEPLOYMENT_ENABLED: "true" }));
+assert.equal(enabledLivePackage.status, 200);
+assert.equal(enabledLivePackage.headers.get("x-robots-tag"), "noindex, nofollow");
 
 const missing = await onRequest(contextFor("https://xflexacademy.com/ar/not-real", async (request) => {
   const pathname = new URL(request.url).pathname;

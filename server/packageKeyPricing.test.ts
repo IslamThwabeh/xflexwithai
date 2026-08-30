@@ -9,6 +9,7 @@ import {
 const packages = [
   { id: 1, slug: 'basic', price: 20000, includesLexai: false },
   { id: 2, slug: 'comprehensive', price: 50000, includesLexai: true },
+  { id: 3, slug: 'live-package', price: 200000, includesLexai: false, currency: 'ILS' },
 ];
 
 describe("getSuggestedPackageKeyPrice", () => {
@@ -35,6 +36,11 @@ describe("getSuggestedPackageKeyPrice", () => {
   it("uses the fixed ILS prices for new Comprehensive and Basic keys", () => {
     expect(getSuggestedPackageKeyPriceIls(packages, 2)).toBe(1700);
     expect(getSuggestedPackageKeyPriceIls(packages, 1)).toBe(700);
+  });
+
+  it("keeps the Live package in its native ILS currency without treating it as Basic", () => {
+    expect(getSuggestedPackageKeyPrice(packages, 3)).toBe(2000);
+    expect(getSuggestedPackageKeyPriceIls(packages, 3)).toBe(2000);
   });
 
   it("uses the fixed ILS prices for upgrades and renewals", () => {
