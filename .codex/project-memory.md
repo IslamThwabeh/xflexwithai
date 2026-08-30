@@ -583,6 +583,13 @@ Last updated: 2026-08-28
   - Worker version `985e18f8-700c-4514-8301-24ee53d5e5b5` deployed with D1/R2 bindings and both scheduled triggers intact. Pages production preview: `https://d806f921.xflexwithai.pages.dev`.
   - Post-deployment smoke returned 200 for custom-domain and workers.dev health, production `/`, `/ar`, `/en`, `/auth`, `/orders/56`, preview `/` and `/auth`, plus the exact `OrderDetail-pE-dCUjN.js` asset. Anonymous payment-proof POST returned the expected 401. Connected Chrome confirmed `/orders/56` redirected to `/auth?next=%2Forders%2F56` and rendered the Arabic authentication page cleanly. The next scheduled repair cycles produced zero new timed-service failure alerts; user 124's LexAI and Recommendations rows remained correctly active/pending with the shared 2026-09-01 deadline.
 
+- Cloudflare scheduled-work isolation production release on 2026-08-30:
+  - Time-sensitive recommendation and human-support delivery now run first on the minute schedule and are failure-isolated from each other.
+  - Timed-service activation repair is assigned a separate five-minute trigger so maintenance work has an independent Worker invocation/CPU budget; daily maintenance accepts only its explicit schedule.
+  - Local release commit `bfa7f7a` (`Isolate Cloudflare cron workloads`) contains the Worker, cron configuration, and focused tests. Direct push to shared `origin/main` was not authorized, so the remote repository remains unchanged.
+  - Worker bundle SHA-256 `1F7DF4C5947ED1BF4432D4B4241DF4433398CA4498FAB80F1C03A68422AD155E` deployed as production version `9919edba-d5ed-4f15-98f3-6fb8e7fdbd34` with schedules `* * * * *`, `*/5 * * * *`, and `0 5 * * *`.
+  - Both production health endpoints returned `status=ok`. Six consecutive new-version minute invocations and the first separate five-minute repair invocation completed with outcome `ok` and zero exceptions. No migration or production D1 write was performed.
+
 ## Future Hardening
 
 - Installed local Codex skills for future implementation workflows on 2026-07-05: `cloudflare-deploy`, `playwright`, `security-best-practices`, `security-threat-model`, `gh-fix-ci`, and `gh-address-comments`. `openai-docs` is already available as a system skill, so do not duplicate-install it.
