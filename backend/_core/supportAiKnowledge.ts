@@ -20,6 +20,9 @@ Academy and package facts:
 
 Activation and renewal facts:
 - A new package purchase creates an order-linked, email-bound activation key after approval. The student redeems the key to start package and course access.
+- If activation says a key is waiting for a matching completed order, the key is not usable yet. Support must check Order Management and the customer's existing keys; never advise generating another key when an unused matching key already exists. If the completed order already issued a key, direct the customer to that original order-linked key.
+- If that original order-linked key is unused but its redemption deadline passed, an authorized operator should extend the deadline through the audited key-settings control. Do not create a replacement key merely to change the redemption deadline.
+- When the student is already speaking inside the support chat, do not tell them generically to "contact support." Explain that the support team is checking the order/key link and state the next verified action without claiming it is complete.
 - The duration of LexAI and Recommendations is configured on the student's key/order. Do not assume every student has exactly 30 days.
 - For a fresh package, timed services wait until both readiness gates are complete: course completion (or an approved course skip) and broker onboarding completion (or an approved broker skip).
 - If the readiness gates are not completed first, timed services activate at the configured protection deadline. When activated, the student receives the full configured service duration.

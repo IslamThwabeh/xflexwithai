@@ -659,8 +659,8 @@ export default function AdminPackageKeys() {
                     />
                     <p className="text-xs text-muted-foreground">
                       {language === 'ar'
-                        ? 'إذا تركته فارغاً، سيتم إنشاء مفتاح غير معيّن ويجب تعيينه للعميل قبل مشاركته أو تفعيله.'
-                        : 'Leave blank to create unassigned inventory. Assign it to the client before sharing or activation.'}
+                        ? 'ابحثي أولاً عن بريد العميل واستخدمي المفتاح الموجود إن وُجد. يمنع النظام إنشاء مفتاح ثانٍ غير مستخدم لنفس العميل والباقة. إذا تركتِ البريد فارغاً فسيُنشأ مخزون غير معيّن.'
+                        : 'Search the customer first and use an existing key when present. The system blocks a second unused key for the same customer and package. Leave blank only for unassigned inventory.'}
                     </p>
                   </div>
                   <div className="space-y-2">

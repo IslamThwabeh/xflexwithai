@@ -9484,6 +9484,34 @@ export async function createBulkPackageKeys(input: {
   return values;
 }
 
+export async function getUnusedMatchingPackageKey(input: {
+  packageId: number;
+  email: string;
+  isUpgrade?: boolean;
+  isRenewal?: boolean;
+  excludeKeyId?: number;
+}) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const normalizedEmail = normalizeEmailAddress(input.email);
+  const rows = await db.select({
+    id: registrationKeys.id,
+    orderId: registrationKeys.orderId,
+    issuanceType: registrationKeys.issuanceType,
+    expiresAt: registrationKeys.expiresAt,
+    createdAt: registrationKeys.createdAt,
+  }).from(registrationKeys).where(and(
+    eq(registrationKeys.packageId, input.packageId),
+    sql`lower(trim(${registrationKeys.email})) = ${normalizedEmail}`,
+    eq(registrationKeys.isActive, true),
+    isNull(registrationKeys.activatedAt),
+    eq(registrationKeys.isUpgrade, !!input.isUpgrade),
+    eq(registrationKeys.isRenewal, !!input.isRenewal),
+    ...(input.excludeKeyId ? [ne(registrationKeys.id, input.excludeKeyId)] : []),
+  )).orderBy(desc(registrationKeys.createdAt), desc(registrationKeys.id)).limit(1);
+  return rows[0];
+}
+
 export async function assignPackageKey(input: {
   keyId: number;
   email: string;
@@ -9506,6 +9534,17 @@ export async function assignPackageKey(input: {
   }
   if (key.email && normalizeEmailAddress(key.email) !== normalizedEmail) {
     throw new Error('This key is already assigned to another customer');
+  }
+  const conflict = await getUnusedMatchingPackageKey({
+    packageId: key.packageId,
+    email: normalizedEmail,
+    isUpgrade: !!key.isUpgrade,
+    isRenewal: !!key.isRenewal,
+    excludeKeyId: key.id,
+  });
+  if (conflict) {
+    const expired = !!conflict.expiresAt && Date.parse(conflict.expiresAt) < Date.now();
+    throw new Error(`An unused matching key already exists (key #${conflict.id}${conflict.orderId ? `, order #${conflict.orderId}` : ''}). ${expired ? 'Extend its redemption deadline' : 'Use it'} or deactivate it before assigning another key.`);
   }
 
   const assignedAt = new Date().toISOString();

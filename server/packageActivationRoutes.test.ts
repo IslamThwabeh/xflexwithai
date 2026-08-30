@@ -24,6 +24,7 @@ vi.mock('../backend/db', async () => {
     activatePackageKey: vi.fn(),
     activateReferral: vi.fn(),
     createPackageKey: vi.fn(),
+    getUnusedMatchingPackageKey: vi.fn(),
     assignPackageKey: vi.fn(),
     updateUnusedPackageKeyConfiguration: vi.fn(),
     getPackageKeyConfigurationHistory: vi.fn(),
@@ -75,6 +76,7 @@ describe('package activation routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(db.getAdminByEmail).mockResolvedValue({ id: 11, email: user.email, name: 'Admin' } as any);
+    vi.mocked(db.getUnusedMatchingPackageKey).mockResolvedValue(undefined);
   });
 
   it('rejects a malformed gift recipient before an order is created', async () => {
@@ -259,6 +261,19 @@ describe('package activation routes', () => {
       authorizedByType: 'admin',
       authorizedById: 11,
     }));
+  });
+
+  it('refuses to issue a duplicate unused key for the same customer, package, and type', async () => {
+    vi.mocked(db.getUnusedMatchingPackageKey).mockResolvedValue({ id: 145, orderId: 55 } as any);
+
+    await expect(createCaller().packageKeys.generateKey({
+      packageId: 1,
+      email: user.email,
+      keyKind: 'fresh',
+      purpose: 'commercial',
+    })).rejects.toMatchObject({ code: 'CONFLICT' });
+
+    expect(db.createPackageKey).not.toHaveBeenCalled();
   });
 
   it('allows a full admin to authorize an internal employee renewal without an order', async () => {

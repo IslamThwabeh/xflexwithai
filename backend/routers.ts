@@ -8356,6 +8356,21 @@ export const appRouter = router({
         const actorType = ctx.admin ? 'admin' as const : 'staff' as const;
         const now = new Date().toISOString();
         const assignedEmail = input.email?.trim() || null;
+        if (assignedEmail) {
+          const existingKey = await db.getUnusedMatchingPackageKey({
+            packageId: input.packageId,
+            email: assignedEmail,
+            isUpgrade: policy.isUpgrade,
+            isRenewal: policy.isRenewal,
+          });
+          if (existingKey) {
+            const expired = !!existingKey.expiresAt && Date.parse(existingKey.expiresAt) < Date.now();
+            throw new TRPCError({
+              code: 'CONFLICT',
+              message: `يوجد مفتاح مطابق غير مستخدم #${existingKey.id}${existingKey.orderId ? ` مرتبط بالطلب #${existingKey.orderId}` : ''}. ${expired ? 'مدّدي آخر موعد لاستخدامه' : 'استخدميه'} أو عطّليه قبل إنشاء بديل. / An unused matching key already exists. ${expired ? 'Extend its redemption deadline' : 'Use it'} or deactivate it before issuing another.`,
+            });
+          }
+        }
         const result = await db.createPackageKey({
           packageId: input.packageId,
           createdBy: admin?.id ?? 0,
