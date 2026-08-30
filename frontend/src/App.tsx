@@ -4,8 +4,8 @@ import NotFound from "@/pages/NotFound";
 import { Route, Switch, Redirect, useParams } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
-import { LanguageProvider } from "./contexts/LanguageContext";
-import { lazy, Suspense, type ReactNode } from "react";
+import { LanguageProvider, useLanguage } from "./contexts/LanguageContext";
+import { lazy, Suspense, useEffect, type ReactNode } from "react";
 import AdminRoute from "./components/AdminRoute";
 import ProtectedRoute from "./components/ProtectedRoute";
 import WhatsAppFloat from "./components/WhatsAppFloat";
@@ -34,6 +34,7 @@ const AdminStaffReview = lazy(() => import("./pages/AdminStaffReview"));
 const AdminMyPerformance = lazy(() => import("./pages/AdminMyPerformance"));
 const AdminStudentSurveys = lazy(() => import("./pages/AdminStudentSurveys"));
 const AdminPackages = lazy(() => import("./pages/AdminPackages"));
+const AdminLivePackage = lazy(() => import("./pages/AdminLivePackage"));
 const AdminEvents = lazy(() => import("./pages/AdminEvents"));
 const AdminArticles = lazy(() => import("./pages/AdminArticles"));
 const AdminSeoOwnerIntake = lazy(() => import("./pages/AdminSeoOwnerIntake"));
@@ -64,6 +65,7 @@ const OrderDetail = lazy(() => import("./pages/OrderDetail"));
 const MySubscriptions = lazy(() => import("./pages/MySubscriptions"));
 const StudentPackages = lazy(() => import("./pages/StudentPackages"));
 const StudentDocuments = lazy(() => import("./pages/StudentDocuments"));
+const LivePackageWorkspace = lazy(() => import("./pages/LivePackageWorkspace"));
 const BrokerSelection = lazy(() => import("./pages/BrokerSelection"));
 const BrokerOnboarding = lazy(() => import("./pages/BrokerOnboarding"));
 const Upgrade = lazy(() => import("./pages/Upgrade"));
@@ -143,8 +145,30 @@ function LegacyPublicRedirect() {
 
 function LocalizedPackage({ language }: { language: SeoLanguage }) {
   const { slug } = useParams<{ slug: string }>();
+  if (slug === "live-package") return <UnindexedLivePackage language={language} />;
   const seoKey = slug === "comprehensive" ? "package-comprehensive" : "package-basic";
   return <Localized language={language} seoKey={seoKey}><PackageDetails /></Localized>;
+}
+
+function UnindexedLivePackage({ language }: { language: SeoLanguage }) {
+  const { setLanguage } = useLanguage();
+
+  useEffect(() => {
+    setLanguage(language);
+    document.title = language === "ar" ? "بكج لايف | XFlex" : "Live Package | XFlex";
+    document.documentElement.lang = language;
+    document.documentElement.dir = language === "ar" ? "rtl" : "ltr";
+    let robots = document.head.querySelector<HTMLMetaElement>('meta[name="robots"]');
+    if (!robots) {
+      robots = document.createElement("meta");
+      robots.name = "robots";
+      document.head.appendChild(robots);
+    }
+    robots.content = "noindex,nofollow,noarchive";
+    document.head.querySelectorAll('script[data-xflex-seo="json-ld"], link[rel="alternate"][hreflang]').forEach((node) => node.remove());
+  }, [language, setLanguage]);
+
+  return <PackageDetails />;
 }
 
 function Router() {
@@ -274,6 +298,11 @@ function Router() {
           <AdminArticles />
         </AdminRoute>
       </Route>
+      <Route path={"/admin/live-package"}>
+        <AdminRoute>
+          <AdminLivePackage />
+        </AdminRoute>
+      </Route>
       <Route path={"/admin/seo-owner-intake"}>
         <AdminRoute>
           <AdminSeoOwnerIntake />
@@ -354,6 +383,11 @@ function Router() {
       <Route path={"/recommendations"}>
         <ProtectedRoute>
           <Recommendations />
+        </ProtectedRoute>
+      </Route>
+      <Route path={"/live-package"}>
+        <ProtectedRoute>
+          <LivePackageWorkspace />
         </ProtectedRoute>
       </Route>
       <Route path={"/support"}>

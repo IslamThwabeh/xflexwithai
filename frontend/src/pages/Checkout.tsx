@@ -20,6 +20,7 @@ export default function Checkout() {
   const params = useParams<{ slug: string }>();
   const [, navigate] = useLocation();
   const { data: pkg, isLoading } = trpc.packages.bySlug.useQuery({ slug: params.slug || '' });
+  const { data: liveState } = trpc.packages.livePublicState.useQuery(undefined, { enabled: params.slug === 'live-package' });
 
   const paymentMethod = 'bank_transfer' as const;
   const [isGift, setIsGift] = useState(false);
@@ -43,7 +44,7 @@ export default function Checkout() {
   const createOrder = trpc.orders.create.useMutation({
     onSuccess: (data) => {
       if (pkg) {
-        const pricing = getPackageDisplayPricing(pkg.slug, pkg.price, pkg.renewalPrice);
+        const pricing = getPackageDisplayPricing(pkg.slug, pkg.price, pkg.renewalPrice, pkg.currency);
         trackOrderRequest({
           slug: pkg.slug,
           name: isRtl ? pkg.nameAr : pkg.nameEn,
@@ -61,7 +62,7 @@ export default function Checkout() {
     if (!pkg?.slug) return;
     const trackingKey = `${language}:${pkg.slug}`;
     if (trackedCheckout.current === trackingKey) return;
-    const pricing = getPackageDisplayPricing(pkg.slug, pkg.price, pkg.renewalPrice);
+    const pricing = getPackageDisplayPricing(pkg.slug, pkg.price, pkg.renewalPrice, pkg.currency);
     trackBeginCheckout({
       slug: pkg.slug,
       name: isRtl ? pkg.nameAr : pkg.nameEn,
@@ -92,7 +93,12 @@ export default function Checkout() {
     );
   }
 
-  const displayPricing = getPackageDisplayPricing(pkg.slug, pkg.price, pkg.renewalPrice);
+  const isLive = pkg.packageType === 'live';
+  if (isLive && !liveState?.purchasable) {
+    return <CinematicPublicLayout><div className="min-h-[60vh] bg-[#050505] px-4 py-20" dir={isRtl ? 'rtl' : 'ltr'}><div className="mx-auto max-w-lg rounded-3xl border border-white/10 bg-white p-8 text-center"><h1 className="text-2xl font-bold">{isRtl ? 'الشراء غير متاح حالياً' : 'Purchase is not currently available'}</h1><p className="mt-3 text-sm text-slate-500">{isRtl ? 'ترقبوا الحدث الأضخم هالسنة' : 'Live Package checkout will open only after the cohort is approved for sale.'}</p></div></div></CinematicPublicLayout>;
+  }
+
+  const displayPricing = getPackageDisplayPricing(pkg.slug, pkg.price, pkg.renewalPrice, pkg.currency);
   // Backend coupon `discount` is returned in USD cents (matches pkg.price). Convert to ILS
   // using the same 3.5x reference rate used by packagePricing.ts so the on-screen summary stays
   // consistent with the marketing ILS prices.
@@ -239,6 +245,8 @@ export default function Checkout() {
               )}
             </div>
 
+            {/* Coupons remain disabled for the native-ILS Live product until an ILS coupon policy is approved. */}
+            {!isLive && <>
             {/* Coupon Code */}
             <div className="bg-white border border-slate-200 rounded-[28px] p-6 shadow-[0_14px_36px_rgba(15,23,42,0.05)]">
               <div className="flex items-center gap-2 mb-3">
@@ -274,6 +282,7 @@ export default function Checkout() {
                 </div>
               )}
             </div>
+            </>}
 
             {/* Notes */}
             <div className="bg-white border border-slate-200 rounded-[28px] p-6 shadow-[0_14px_36px_rgba(15,23,42,0.05)]">

@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'wouter';
 import {
   ArrowUpRight, Award, Bot, CheckCircle, ChevronDown, Clock3,
-  Facebook, Gift, Instagram, Newspaper, Phone, Lock, Menu, MessageCircle, Quote, ShieldCheck,
+  Facebook, Gift, Instagram, Languages, Newspaper, Phone, Lock, Menu, MessageCircle, Quote, ShieldCheck,
   Sparkles, Star, Target, TrendingUp, Users, X, Zap,
 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -619,10 +619,10 @@ function HeroSection({ onScrollTo }: { onScrollTo: (id: string) => void }) {
   const heroHighlights = isArabic
     ? [
         {
-          id: 'students',
-          icon: TrendingUp,
-          label: 'الطلاب النشطون',
-          value: '+5,000',
+          id: 'languages',
+          icon: Languages,
+          label: 'لغات المحتوى العام',
+          value: 'لغتان',
           detail: null,
           valueClass: 'text-2xl',
           cardClass: 'border-white/15 bg-white/[0.07]',
@@ -673,10 +673,10 @@ function HeroSection({ onScrollTo }: { onScrollTo: (id: string) => void }) {
       ]
     : [
         {
-          id: 'students',
-          icon: TrendingUp,
-          label: 'Active students',
-          value: '+5,000',
+          id: 'languages',
+          icon: Languages,
+          label: 'Public content languages',
+          value: '2 languages',
           detail: null,
           valueClass: 'text-2xl',
           cardClass: 'border-white/15 bg-white/[0.07]',
@@ -779,7 +779,7 @@ function HeroSection({ onScrollTo }: { onScrollTo: (id: string) => void }) {
             <div className="cin-hero-5 mt-8 flex flex-wrap items-center gap-x-6 gap-y-3 text-xs font-medium text-white/55">
               <div className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-[#00C176]" />{isArabic ? 'دفع آمن' : 'Secure payments'}</div>
               <div className="flex items-center gap-2"><Lock className="h-4 w-4 text-[#00C176]" />{isArabic ? 'بيانات محمية' : 'Encrypted data'}</div>
-              <div className="flex items-center gap-2"><Star className="h-4 w-4 text-[#C8A96B]" />{isArabic ? '+5,000 طالب' : '+5,000 students'}</div>
+              <div className="flex items-center gap-2"><Languages className="h-4 w-4 text-[#C8A96B]" />{isArabic ? 'محتوى عام بلغتين' : 'Bilingual public content'}</div>
             </div>
 
             <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:hidden">
@@ -827,15 +827,15 @@ function TrustBadgesRow() {
   const badges = isArabic
     ? [
         { icon: ShieldCheck, title: 'دفع آمن',        sub: 'حوالة بنكية موثوقة' },
-        { icon: Lock,        title: 'بيانات محمية',   sub: 'تشفير من طرف لطرف' },
-        { icon: Award,       title: 'محتوى أصلي',     sub: 'منهج مبني على خبرة سنوات' },
-        { icon: MessageCircle, title: 'دعم بشري',     sub: 'فريق فعلي متاح يومياً' },
+        { icon: Lock,        title: 'بيانات محمية',   sub: 'ممارسات وصول محمية' },
+        { icon: Award,       title: 'محتوى أصلي',     sub: 'منهج تعليمي منظم' },
+        { icon: MessageCircle, title: 'دعم بشري',     sub: 'قنوات دعم مباشرة' },
       ]
     : [
         { icon: ShieldCheck, title: 'Secure payments',  sub: 'Trusted bank transfer' },
-        { icon: Lock,        title: 'Encrypted data',   sub: 'End-to-end protection' },
-        { icon: Award,       title: 'Original content', sub: 'Built on years of expertise' },
-        { icon: MessageCircle, title: 'Human support',  sub: 'Real team, daily availability' },
+        { icon: Lock,        title: 'Protected data',   sub: 'Protected-access practices' },
+        { icon: Award,       title: 'Original content', sub: 'Structured curriculum' },
+        { icon: MessageCircle, title: 'Human support',  sub: 'Direct support channels' },
       ];
   return (
     <section className="relative bg-[#070707] py-10 md:py-12" dir={isRTL ? 'rtl' : 'ltr'}>
@@ -864,8 +864,8 @@ function TrustBar() {
   const { language } = useLanguage();
   const isArabic = language === 'ar';
   const items = isArabic
-    ? ['+5,000 طالب', '8 مراحل تعليمية', 'توصيات يومية', 'LexAI للتحليل الذكي', 'دعم فوري', 'محتوى مدى الحياة', 'تداول موثوق']
-    : ['+5,000 students', '8 learning stages', 'Daily signals', 'LexAI intelligent analysis', 'Instant support', 'Lifetime access', 'Trusted trading'];
+    ? ['محتوى عام بلغتين', '8 مراحل تعليمية', 'توصيات مباشرة', 'LexAI للتحليل الذكي', 'دعم بشري', 'محتوى مدى الحياة', 'تعليم منظم']
+    : ['Bilingual public content', '8 learning stages', 'Live signals', 'LexAI intelligent analysis', 'Human support', 'Lifetime access', 'Structured learning'];
   const doubled = [...items, ...items];
   return (
     <div className="overflow-hidden border-y border-white/06 bg-[#0A0A0A] py-4">
@@ -1303,15 +1303,15 @@ function MentorSection() {
 
   const statItems = isArabic
     ? [
-        { value: '+5,000', label: 'طالب تخرج'      },
+        { value: 'منظم',   label: 'منهج تعليمي'    },
         { value: '8',      label: 'مراحل متكاملة'  },
-        { value: '100%',   label: 'شفافية كاملة'   },
+        { value: 'واضح',   label: 'مسار معلن'      },
         { value: 'LexAI',  label: 'تحليل ذكي'      },
       ]
     : [
-        { value: '+5,000', label: 'students trained'  },
+        { value: 'Structured', label: 'curriculum'     },
         { value: '8',      label: 'integrated stages' },
-        { value: '100%',   label: 'full transparency' },
+        { value: 'Clear',  label: 'published path'     },
         { value: 'LexAI',  label: 'AI analysis'       },
       ];
 
@@ -1432,7 +1432,7 @@ function CommunitySection() {
           <p className="mx-auto mt-6 max-w-xl text-base leading-8 text-white/60 md:text-lg">{isArabic ? 'انضم إلى مجتمع من المتداولين الجادين، شارك الأفكار، وتعلّم من تجارب زملائك في السوق.' : 'Join a community of serious traders, share insights, and learn from real market experiences alongside your peers.'}</p>
           <div className="mt-8 inline-flex items-center gap-2 rounded-full border border-white/18 bg-white/[0.10] px-6 py-3 text-sm font-semibold text-white backdrop-blur-md" style={{ boxShadow: '0 0 32px rgba(0,193,118,0.25)' }}>
             <Users className="h-4 w-4 text-[#00C176]" />
-            {isArabic ? '+5,000 متداول نشط' : '+5,000 active traders'}
+            {isArabic ? 'تعلّم وتبادل خبرات' : 'Learning and shared experience'}
           </div>
         </div>
       </div>
@@ -1473,16 +1473,16 @@ function ResultsSection() {
 
   const stats: ResultStat[] = isArabic
     ? [
-        { value: 5000, suffix: '+', label: 'طالب متخرج'              },
-        { value: 8,                  label: 'مراحل تعليمية متكاملة'  },
-        { display: '∞',              label: 'تحليلات يومية غير محدودة' },
-        { value: 2,                  label: 'خياران واضحان للاشتراك' },
+        { value: 8,  label: 'مراحل تعليمية منظمة' },
+        { value: 2,  label: 'لغتان للمحتوى العام' },
+        { value: 2,  label: 'خياران أساسيان للباقات' },
+        { value: 16, suffix: '%', label: 'ضريبة مشمولة في السعر' },
       ]
     : [
-        { value: 5000, suffix: '+', label: 'students trained'          },
-        { value: 8,                  label: 'integrated learning stages' },
-        { display: '∞',              label: 'unlimited daily analysis'   },
-        { value: 2,                  label: 'clear package options'      },
+        { value: 8,  label: 'structured learning stages' },
+        { value: 2,  label: 'public content languages' },
+        { value: 2,  label: 'core package options' },
+        { value: 16, suffix: '%', label: 'VAT included in pricing' },
       ];
 
   return (
@@ -1495,8 +1495,8 @@ function ResultsSection() {
 
       <div className="relative z-10 container mx-auto px-4 md:px-8">
         <div data-reveal className="mb-14 text-center">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#00C176]">{isArabic ? 'بالأرقام الحقيقية' : 'By the numbers'}</p>
-          <h2 className="mt-3 text-4xl font-extrabold tracking-[-0.03em] text-white md:text-5xl">{isArabic ? 'نتائج تتحدث عن نفسها' : 'Results speak for themselves'}</h2>
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#00C176]">{isArabic ? 'هيكل واضح' : 'Clear structure'}</p>
+          <h2 className="mt-3 text-4xl font-extrabold tracking-[-0.03em] text-white md:text-5xl">{isArabic ? 'المسار التعليمي بخطوات محددة' : 'A learning path with defined steps'}</h2>
         </div>
 
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
@@ -1668,6 +1668,7 @@ function PackagesSection() {
   const isArabic = language === 'ar';
   const basicPricing         = getPackageDisplayPricing('basic',         20000, 5000);
   const comprehensivePricing = getPackageDisplayPricing('comprehensive', 50000, 10000);
+  const { data: liveState } = trpc.packages.livePublicState.useQuery();
   const ref = useRef<HTMLElement | null>(null);
   const [countersOn, setCountersOn] = useState(false);
   const reduced = usePrefersReducedMotion();
@@ -1705,7 +1706,7 @@ function PackagesSection() {
       id:       'comprehensive' as const,
       icon:     Bot,
       name:     isArabic ? 'الباقة الشاملة' : 'Comprehensive',
-      eyebrow:  isArabic ? 'الأكثر طلباً' : 'Most requested',
+      eyebrow:  isArabic ? 'المسار الشامل' : 'The comprehensive path',
       pricing:  comprehensivePricing,
       featured: true,
       href:     '/packages/comprehensive',
@@ -1726,18 +1727,18 @@ function PackagesSection() {
       <div className="container mx-auto px-4 md:px-8">
         <div data-reveal className="mb-14 text-center">
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#00C176]">{isArabic ? 'اختر مسارك' : 'Choose your path'}</p>
-          <h2 className="mt-3 text-4xl font-extrabold tracking-[-0.03em] text-white md:text-5xl">{isArabic ? 'باقتان واضحتان. قرار واحد.' : 'Two clear packages. One decision.'}</h2>
+          <h2 className="mt-3 text-4xl font-extrabold tracking-[-0.03em] text-white md:text-5xl">{liveState?.visible ? (isArabic ? 'مسارات واضحة. قرار واحد.' : 'Clear package paths. One decision.') : (isArabic ? 'باقتان واضحتان. قرار واحد.' : 'Two clear packages. One decision.')}</h2>
           <p className="mx-auto mt-4 max-w-lg text-base text-white/52">{isArabic ? 'جميع الأسعار بالشيكل وتشمل ضريبة 16٪. المادة التعليمية تبقى مدى الحياة.' : 'All prices in ILS including 16% VAT. Learning content stays with you for life.'}</p>
         </div>
 
         <div data-reveal className="mb-12 grid grid-cols-2 gap-4 md:grid-cols-4">
           {(isArabic
-            ? [{ value: 5000, suffix: '+', label: 'طالب' }, { value: 8, label: 'مراحل' }, { display: 'مباشر', label: 'دعم فني' }, { value: 2, label: 'خياران' }]
-            : [{ value: 5000, suffix: '+', label: 'students' }, { value: 8, label: 'stages' }, { display: 'Live', label: 'support' }, { value: 2, label: 'packages' }]
+            ? [{ display: 'منظم', label: 'مسار تعليمي' }, { value: 8, label: 'مراحل' }, { display: 'مباشر', label: 'دعم فني' }, { value: 2, label: 'خياران' }]
+            : [{ display: 'Structured', label: 'learning path' }, { value: 8, label: 'stages' }, { display: 'Live', label: 'support' }, { value: 2, label: 'packages' }]
           ).map((s, i) => (
             <div key={i} className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-center transition-all duration-300 hover:border-[#00C176]/30">
               <p className="text-3xl font-extrabold text-[#00C176]">
-                {'display' in s ? s.display : <AnimatedCounter value={s.value} suffix={s.suffix} start={countersOn} reduced={reduced} />}
+                {'display' in s ? s.display : <AnimatedCounter value={s.value} start={countersOn} reduced={reduced} />}
               </p>
               <p className="mt-2 text-xs text-white/45">{s.label}</p>
             </div>
@@ -1845,6 +1846,13 @@ function PackagesSection() {
               </article>
             );
           })}
+          {liveState?.visible && <article data-reveal className="rounded-3xl border border-[#C8A96B]/30 bg-gradient-to-br from-[#C8A96B]/10 to-[#050505] p-7 md:col-span-2 md:p-9">
+            <div className="flex flex-wrap items-start justify-between gap-6">
+              <div className="max-w-2xl"><p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#C8A96B]">{isArabic ? 'بكج مؤقت ومحدود' : 'Limited educational cohort'}</p><h3 className="mt-3 text-3xl font-extrabold text-white">{isArabic ? liveState.nameAr : liveState.nameEn}</h3><p className="mt-3 text-sm leading-7 text-white/60">{isArabic ? 'لقاءان تعليميان مباشران مجدولان أسبوعياً، مع وصول دائم للدورات الأساسية المخصصة.' : 'Two scheduled educational Live sessions per week, with permanent access to the assigned base courses.'}</p></div>
+              <div className="text-start md:text-end"><p className="text-4xl font-extrabold text-[#00C176]">{formatIlsAmount(liveState.price / 100)}</p><p className="mt-1 text-xs text-white/45">{isArabic ? 'دفعة واحدة تشمل ضريبة القيمة المضافة' : 'One payment, VAT inclusive'}</p></div>
+            </div>
+            <div className="mt-6"><Link href={`/${isArabic ? 'ar' : 'en'}/packages/live-package`}><a className="cin-btn-ghost inline-flex items-center gap-2 rounded-full px-6 py-3.5 text-sm font-semibold text-white">{liveState.purchasable ? (isArabic ? 'اشترك الآن' : 'View Live Package') : (isArabic ? liveState.prelaunchCtaAr : 'Coming soon')}<ArrowUpRight className="h-4 w-4" /></a></Link></div>
+          </article>}
         </div>
 
         <div data-reveal className="mx-auto mt-10 max-w-5xl rounded-3xl border border-white/08 bg-white/[0.025] p-6 md:p-8">
@@ -2124,7 +2132,7 @@ function CinematicFooter() {
           <div>
             <img src={BRAND_LOGO_SRC} alt={APP_TITLE} className="cin-logo-img cin-logo-footer" />
             <p className="mt-3 max-w-xs text-sm text-white/40">
-              {isArabic ? 'أكاديمية التداول الأولى في فلسطين.' : 'Elite trading academy — Palestine.'}
+              {isArabic ? 'أكاديمية تعليم تداول عربية.' : 'Arabic-first trading education academy.'}
             </p>
           </div>
 

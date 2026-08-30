@@ -27,13 +27,14 @@ export default function PackageDetails() {
     { packageSlug: pkg?.slug, limit: 4 },
     { enabled: !!pkg?.slug }
   );
+  const { data: liveState } = trpc.packages.livePublicState.useQuery(undefined, { enabled: slug === 'live-package' });
   const trackedPackageView = useRef("");
 
   useEffect(() => {
     if (!pkg?.slug) return;
     const trackingKey = `${language}:${pkg.slug}`;
     if (trackedPackageView.current === trackingKey) return;
-    const pricing = getPackageDisplayPricing(pkg.slug, pkg.price, pkg.renewalPrice);
+    const pricing = getPackageDisplayPricing(pkg.slug, pkg.price, pkg.renewalPrice, pkg.currency);
     trackPackageView({
       slug: pkg.slug,
       name: language === "ar" ? pkg.nameAr : pkg.nameEn,
@@ -70,12 +71,17 @@ export default function PackageDetails() {
   }
 
   const isComprehensive = pkg.slug === 'comprehensive';
-  const displayPricing = getPackageDisplayPricing(pkg.slug, pkg.price, pkg.renewalPrice);
+  const isLive = pkg.packageType === 'live';
+  const displayPricing = getPackageDisplayPricing(pkg.slug, pkg.price, pkg.renewalPrice, pkg.currency);
   const priceFormatted = formatIlsAmount(displayPricing.ilsPrice);
   const renewalFormatted = displayPricing.ilsRenewal ? formatIlsAmount(displayPricing.ilsRenewal) : null;
   const vatIncludedLabel = language === 'ar' ? 'السعر يشمل ضريبة القيمة المضافة 16%' : 'Price includes 16% VAT';
 
-  const features = [
+  const features = isLive ? [
+    { key: 'sessions', label: language === 'ar' ? 'لقاءان تعليميان مباشران مجدولان أسبوعياً، مدة كل لقاء حوالي ساعة' : 'Two scheduled educational Live sessions per week, approximately one hour each', included: true },
+    { key: 'courses', label: language === 'ar' ? 'وصول دائم للدورات الأساسية المخصصة' : 'Permanent access to the assigned base courses', included: true },
+    { key: 'recordings', label: language === 'ar' ? 'وصول محمي للتسجيلات وفق سياسة الفوج' : 'Protected recording access under the cohort policy', included: true },
+  ] : [
     { key: 'courses', label: t('home.packages.courses'), included: true },
     { key: 'pdf', label: t('home.packages.pdf'), included: !!pkg.includesPdf },
     { key: 'introVideos', label: t('home.packages.introVideos'), included: true },
@@ -176,8 +182,8 @@ export default function PackageDetails() {
               </h2>
               <p className="text-sm text-gray-700 leading-relaxed">
                 {language === 'ar'
-                  ? 'هذه الباقة مناسبة للمتداول الذي يريد خطة واضحة، محتوى تدريجي، ودعم عملي يساعده على اتخاذ قرارات أكثر انضباطا.'
-                  : 'This package fits traders who want a clear roadmap, progressive learning content, and practical support to make more disciplined decisions.'}
+                  ? (isLive ? 'فوج تعليمي محدود المدة لمن يريد جدولاً منظماً للقاءات المباشرة مع محتوى أساسي مستمر.' : 'هذه الباقة مناسبة للمتداول الذي يريد خطة واضحة، محتوى تدريجي، ودعم عملي يساعده على اتخاذ قرارات أكثر انضباطا.')
+                  : (isLive ? 'A fixed-window educational cohort for learners who want a structured Live schedule with continuing access to assigned base content.' : 'This package fits traders who want a clear roadmap, progressive learning content, and practical support to make more disciplined decisions.')}
               </p>
             </div>
 
@@ -215,7 +221,7 @@ export default function PackageDetails() {
               <div className="text-center mb-6">
                 <div className="text-4xl font-extrabold mb-1">{priceFormatted}</div>
                 <p className={`text-sm ${isComprehensive ? 'text-emerald-100' : 'text-gray-500'}`}>
-                  {t('home.packages.price')} • {t('home.packages.lifetime')}
+                  {isLive ? (language === 'ar' ? 'دفعة واحدة • بكج مؤقت ومحدود' : 'One-time purchase • limited cohort') : `${t('home.packages.price')} • ${t('home.packages.lifetime')}`}
                 </p>
                 {renewalFormatted && (
                   <p className={`text-xs mt-2 ${isComprehensive ? 'text-emerald-200' : 'text-emerald-600'}`}>
@@ -230,7 +236,9 @@ export default function PackageDetails() {
                 </p>
               </div>
 
-              <Link href={`/checkout/${pkg.slug}`}>
+              {isLive && !liveState?.purchasable ? <Button size="lg" disabled className="w-full font-bold">
+                {language === 'ar' ? (liveState?.lifecycle === 'coming_soon' ? 'ترقبوا الحدث الأضخم هالسنة' : 'الشراء غير متاح حالياً') : (liveState?.lifecycle === 'coming_soon' ? 'Coming soon' : 'Purchase unavailable')}
+              </Button> : <Link href={`/checkout/${pkg.slug}`}>
                 <Button
                   size="lg"
                   className={`w-full font-bold ${
@@ -242,7 +250,7 @@ export default function PackageDetails() {
                   <ShoppingCart className="w-4 h-4" />
                   {t('home.packages.choosePlan')}
                 </Button>
-              </Link>
+              </Link>}
             </div>
           </div>
         </div>

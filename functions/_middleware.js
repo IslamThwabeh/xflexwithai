@@ -90,6 +90,18 @@ export async function onRequest(context) {
     return redirectTo(url, `/ar${url.pathname}`);
   }
 
+  if (/^\/(ar|en)\/packages\/live-package\/?$/.test(url.pathname)) {
+    if (String(context.env.PACKAGE_LIVE_DEPLOYMENT_ENABLED || "false").toLowerCase() !== "true") {
+      const notFound = await context.env.ASSETS.fetch(new Request(`${url.origin}/404/`, request));
+      return new Response(notFound.body, {
+        status: 404,
+        headers: { ...Object.fromEntries(notFound.headers), "X-Robots-Tag": "noindex, nofollow" },
+      });
+    }
+    const shellRequest = new Request(`${url.origin}/app-shell/`, request);
+    return withNoIndex(await context.env.ASSETS.fetch(shellRequest));
+  }
+
   if (url.pathname === "/business-owner/vip-trading-bot-plan" || url.pathname === "/vip-trading-bot-plan") {
     return redirectTo(url, "/ar/project/vip-bot-plan");
   }

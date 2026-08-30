@@ -37,6 +37,7 @@ import {
   Headphones,
   Globe,
   Package,
+  Radio,
   ShoppingCart,
   CalendarDays,
   FileText,
@@ -171,6 +172,12 @@ const menuSectionsDef: MenuSection[] = [
         icon: Package,
         labelKey: "admin.sidebar.packages",
         path: "/admin/packages",
+      },
+      {
+        icon: Radio,
+        labelKey: "admin.sidebar.livePackage",
+        label: { en: "Live Package", ar: "بكج لايف" },
+        path: "/admin/live-package",
       },
       { icon: Tag, labelKey: "admin.sidebar.coupons", path: "/admin/coupons" },
       {

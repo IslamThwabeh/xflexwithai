@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'wouter';
-import { Send, CheckCircle, Loader2, Phone, Mail, MessageCircle, ArrowUpRight } from 'lucide-react';
+import { Send, CheckCircle, Loader2, Phone, Mail, MessageCircle, ArrowUpRight, MapPin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -62,7 +62,7 @@ export default function Contact() {
               </p>
             </div>
 
-            <div className="mt-10 grid gap-4 md:grid-cols-3">
+            <div className="mt-10 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
               <a
                 href="https://wa.me/972597596030"
                 target="_blank"
@@ -92,6 +92,13 @@ export default function Contact() {
                 </p>
                 <p className="mt-4 text-sm font-semibold text-[#C8A96B]">support@xflexacademy.com</p>
               </a>
+
+              <div className="rounded-[1.8rem] border border-white/10 bg-white/[0.04] p-6 text-center backdrop-blur-sm">
+                <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10"><MapPin className="h-5 w-5 text-white/82" /></div>
+                <h2 className="text-lg font-semibold text-white">{isRtl ? 'المكتب' : 'Office visits'}</h2>
+                <p className="mt-2 text-sm leading-6 text-white/58">{isRtl ? 'مجمع قطوم التجاري، الطابق الرابع، البالوع' : 'Office visits in Ramallah are available by appointment only.'}</p>
+                {isRtl && <p className="mt-3 text-sm font-semibold text-[#C8A96B]">الزيارات متاحة بموعد مسبق فقط.</p>}
+              </div>
 
               <Link href="/auth?next=/support">
                 <a className="rounded-[1.8rem] border border-white/10 bg-white/[0.04] p-6 text-center backdrop-blur-sm transition hover:border-[#00C176]/22 hover:bg-white/[0.06]">

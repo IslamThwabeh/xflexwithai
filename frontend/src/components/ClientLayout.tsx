@@ -44,6 +44,7 @@ import {
   Building2,
   Briefcase,
   Key,
+  Radio,
 } from "lucide-react";
 
 interface ClientLayoutProps {
@@ -76,6 +77,7 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
   const { data: surveyAvailability } = trpc.studentSurveys.availability.useQuery(undefined, { retry: false });
   const { data: communityAvailability } = trpc.community.availability.useQuery(undefined, { retry: false });
   const { data: jobEligibilityAvailability } = trpc.studentJobEligibility.availability.useQuery(undefined, { retry: false });
+  const { data: livePackageAccess } = trpc.livePackage.myWorkspace.useQuery(undefined, { retry: false });
   const touchInteractionMutation = trpc.users.touchInteraction.useMutation();
   const updateNotificationPrefsMutation = trpc.users.updateNotificationPrefs.useMutation();
   const unreadNotifCount = unreadNotifData?.count ?? 0;
@@ -224,6 +226,12 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
       icon: <Package className="h-4 w-4" />,
       match: "/my-packages",
     },
+    ...(livePackageAccess?.hasAccess ? [{
+      href: "/live-package",
+      label: language === "ar" ? "بكج لايف" : "Live Package",
+      icon: <Radio className="h-4 w-4" />,
+      match: "/live-package",
+    }] : []),
     {
       href: "/activate-key",
       label: language === "ar" ? "تفعيل / تجديد مفتاح" : "Activate / Renew Key",
