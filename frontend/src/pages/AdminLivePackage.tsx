@@ -49,6 +49,11 @@ export default function AdminLivePackage() {
   const updateRecording = trpc.livePackage.updateRecording.useMutation({ onSuccess: refresh });
   const grantAccess = trpc.livePackage.grantComplimentaryAccess.useMutation({ onSuccess: () => { toast.success(isAr ? 'تم منح الوصول وتسجيله' : 'Complimentary access granted and audited'); setGrant({ userId: '', reason: '' }); }, onError: (e) => toast.error(e.message) });
 
+  // The query-backed form state is initialized by the effect after the first render.
+  // Keep the loading return before every config dereference so a slow/uncached response
+  // cannot trip the page error boundary while the admin workspace is still loading.
+  if (isLoading || !config || !data?.package) return <DashboardLayout><div className="p-8">{isAr ? 'جاري التحميل...' : 'Loading…'}</div></DashboardLayout>;
+
   const configPayload = () => ({
     adminVisible: config.adminVisible,
     purchaseApproved: config.purchaseApproved,
@@ -101,8 +106,6 @@ export default function AdminLivePackage() {
       setRecordingUploading(false);
     }
   };
-
-  if (isLoading || !config || !data?.package) return <DashboardLayout><div className="p-8">{isAr ? 'جاري التحميل...' : 'Loading…'}</div></DashboardLayout>;
 
   return <DashboardLayout>
     <main className="space-y-6 p-4 md:p-8" dir={isAr ? 'rtl' : 'ltr'}>

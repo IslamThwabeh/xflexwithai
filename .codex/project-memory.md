@@ -1,6 +1,6 @@
 # XFLEX Project Memory
 
-Last updated: 2026-08-28
+Last updated: 2026-08-31
 
 ## Project Overview
 
@@ -15,6 +15,13 @@ Last updated: 2026-08-28
 - Database wrapper/helpers: `backend/db.ts`.
 - SQLite schema source: `database/schema-sqlite.ts`.
 - Key tables to remember: `admin_settings`, `supportMessages`, `userRoles`, `users`, `email_delivery_logs`, `email_suppressions`, `recommendationSubscriptions`, `lexaiSubscriptions`, `registrationKeys`, `packageSubscriptions`, `client_notification_controls`, `client_notification_control_audit`, `seo_owner_intake`, `seo_owner_intake_answers`.
+
+## Mandatory Change Quality Requirements
+
+- For every code or configuration change, assess its effect on Worker/server CPU utilization and avoid any material increase unless the user explicitly approves a measured tradeoff. Prefer bounded work, reuse existing responses, avoid unnecessary polling/recomputation, and report the expected or measured CPU impact in the release handoff.
+- For every change that touches a database read path, assess D1/SQL rows read. Keep queries selective and bounded, prove new or changed read paths with production-shaped tests and `EXPLAIN QUERY PLAN`, and treat an unexpected scan or significant row-read increase as a release blocker. If a change adds no query, explicitly record that it adds zero SQL reads.
+- Add review-focused inline comments wherever they clarify non-obvious business rules, safety gates, lifecycle ordering, performance assumptions, query/index dependence, or failure handling. Keep comments accurate and useful; do not add noise that merely restates a self-explanatory line.
+- Verification must remain proportional to risk: run focused regression coverage plus the relevant type/build/runtime checks, while avoiding unrelated high-CPU work when a narrower gate proves the change safely.
 
 ## Deployment
 
@@ -600,6 +607,13 @@ Last updated: 2026-08-28
   - Unsupported public student-volume/popularity/frequency/security claims were removed. The exact Arabic office address and appointment sentence and the approved English appointment-only sentence were applied without changing structured data.
   - Verification passed: TypeScript, 124 test files / 641 tests, critical cycle 33 files / 182 tests, Live-focused tests including real migration and query plans, SEO/middleware checks, frontend/server build, Worker build, and `git diff --check`. Playwright verified Live `noindex`, removal of `+5,000`, and exact Arabic/English contact copy; Live data APIs intentionally errored locally because migration 092 was not applied.
   - No production migration, deployment, flag change, customer write, or package activation was performed. Final business-owner review is stored privately at `tmp/private-handoffs/2026-08-30-live-package-review.md`; it contains only the requested Arabic checklist.
+
+- Live Package production foundation and owner-control release completed on 2026-08-31:
+  - Migrations `092_live_package_foundation.sql` and `093_live_package_owner_review.sql` are applied in production. The admin can review the package at `/admin/live-package`, open the durable owner-answer form at `/admin/live-package-review`, and preview/enable/disable it from `/admin/features`.
+  - Approved defaults are `Live Package` / `بكج لايف`, price ₪2,000 including VAT, non-refundable, sales from 2026-09-04 through 2026-12-31, and cohort/session access through 2026-12-31. The unsupported 1,000–2,000 points/profit statement remains stored only as owner input and hidden from publication.
+  - Production's environment deployment gate is enabled, but marketing visibility and purchase approval remain off. Activation also remains blocked until at least one base course is assigned, so the package is safe for owner review without exposing it to clients.
+  - Feature Center controls and launch defaults shipped in commits `22a344b` and `d3bde04`; Pages deployment preview was `https://58ce7a04.xflexwithai.pages.dev`, and Worker version was `59228f58-71bb-4e9b-892a-22e37126c67c`.
+  - A first-render crash on `/admin/live-package` was reported after release: readiness calculation dereferenced the query-backed `config` while it was still `null`. The remediation makes that calculation null-safe and adds a focused regression test. It is frontend-only: no API call, Worker CPU work, SQL query, migration, or production data write is added.
 
 ## Future Hardening
 
