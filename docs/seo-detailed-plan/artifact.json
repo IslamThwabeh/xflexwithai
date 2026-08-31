@@ -1,0 +1,242 @@
+{
+  "surface": "report",
+  "manifest": {
+    "version": 1,
+    "surface": "report",
+    "title": "XFlex SEO Plan",
+    "description": "A gated 90-day SEO plan based on the completed owner questionnaire, current technical foundation, and Phase 1 evidence review.",
+    "generatedAt": "2026-08-24T18:26:46+03:00",
+    "filters": [],
+    "cards": [],
+    "charts": [
+      {
+        "id": "readiness-chart",
+        "title": "Owner-input readiness",
+        "subtitle": "61 submitted answers classified by the primary follow-up needed on 24 August 2026",
+        "showDescription": true,
+        "type": "bar",
+        "dataset": "owner_input_readiness",
+        "sourceId": "phase-1-review",
+        "encodings": {
+          "x": {
+            "field": "status",
+            "type": "nominal",
+            "aggregate": "none",
+            "label": "Primary status"
+          },
+          "y": {
+            "field": "count",
+            "type": "quantitative",
+            "aggregate": "none",
+            "label": "Questions"
+          },
+          "tooltip": [
+            {
+              "field": "count",
+              "type": "quantitative",
+              "label": "Questions"
+            },
+            {
+              "field": "share",
+              "type": "quantitative",
+              "format": "percent",
+              "label": "Share of 61"
+            },
+            {
+              "field": "planning_use",
+              "type": "text",
+              "label": "Planning use"
+            }
+          ]
+        },
+        "valueFormat": "number",
+        "maxRows": 4,
+        "compatibleTypes": ["bar"]
+      }
+    ],
+    "tables": [],
+    "sources": [
+      {
+        "id": "phase-1-review",
+        "label": "SEO Phase 1 readiness review",
+        "path": "docs/seo-phase-1/source-notes.md",
+        "query": {
+          "engine": "Cloudflare D1 and manual review",
+          "id": "seo-phase-1-readiness-2026-08-24",
+          "sql": "SELECT\n  i.status,\n  i.submitted_at,\n  a.question_id,\n  a.answer_text\nFROM seo_owner_intake AS i\nCROSS JOIN seo_owner_intake_answers AS a\nWHERE i.id = 1\nORDER BY a.question_id;",
+          "description": "Reads one submitted answer per question and applies the documented conservative planning-readiness rubric. Raw answers are excluded from this report snapshot.",
+          "language": "sql",
+          "executed_at": "2026-08-24T18:26:46+03:00",
+          "tables_used": [
+            "seo_owner_intake",
+            "seo_owner_intake_answers"
+          ],
+          "filters": [
+            "Questionnaire id = 1",
+            "All 61 defined questions",
+            "One primary readiness status per question",
+            "No raw answer text in the report snapshot"
+          ],
+          "metric_definitions": [
+            "Usable now: specific enough to shape planning, but not automatically approved for publication.",
+            "Follow-up population: clarification + evidence or permission + high-risk review.",
+            "Share: status count divided by 61."
+          ]
+        }
+      },
+      {
+        "id": "organic-roadmap",
+        "label": "XFlex 90-day organic search roadmap",
+        "path": "docs/organic-search-roadmap.md"
+      },
+      {
+        "id": "measurement-plan",
+        "label": "XFlex organic measurement plan",
+        "path": "docs/organic-measurement-plan.md"
+      },
+      {
+        "id": "content-strategy",
+        "label": "XFlex SEO content and measurement playbook",
+        "path": "docs/seo-content-strategy.md"
+      },
+      {
+        "id": "first-content-brief",
+        "label": "Beginner trading Arabic content brief",
+        "path": "docs/seo-content-brief-01-beginner-trading-ar.md"
+      },
+      {
+        "id": "seo-implementation",
+        "label": "Current SEO implementation",
+        "path": "shared/seo.ts",
+        "query": {
+          "engine": "repository and public HTTP",
+          "id": "seo-foundation-review-2026-08-24",
+          "description": "Read-only review of localized metadata, prerendering, sitemaps, analytics events, public endpoints, and article rebuild configuration.",
+          "executed_at": "2026-08-24T18:26:46+03:00",
+          "filters": [
+            "Public production endpoints and local repository only",
+            "No authenticated writes or configuration changes"
+          ],
+          "metric_definitions": []
+        }
+      }
+    ],
+    "blocks": [
+      {
+        "id": "report-title",
+        "type": "markdown",
+        "body": "# XFlex SEO Plan"
+      },
+      {
+        "id": "executive-summary",
+        "type": "markdown",
+        "body": "## Executive Summary\n\n- **Use a gated 90-day program, not immediate publication.** Begin with evidence and governance closure, then move through measurement readiness, content architecture, reviewed publishing, authority building, and iteration.\n- **The technical base is strong enough for planning.** Localized prerendering, metadata, sitemaps, crawler access, GA4 code, and true 404 behavior already exist; account validation and the article rebuild hook remain operational dependencies.\n- **Content must stay Arabic-first and trust-led.** The first sequence should answer beginner, risk, planning, psychology, and AI-tool questions without profit promises, unsupported performance claims, or unaccountable AI approval.\n- **Business targets come after evidence.** Ranking and traffic targets should be agreed only after the first complete 28-day Search Console and GA4 baseline."
+      },
+      {
+        "id": "readiness-definition",
+        "type": "markdown",
+        "sourceId": "phase-1-review",
+        "body": "## The plan can start, but publication remains gated\n\nAll 61 questionnaire fields are populated. Twenty-four answers can shape planning now, while 37 require clarification, evidence, permission, or high-risk review before they support public claims. The chart uses one mutually exclusive primary status per question; it measures planning readiness, not whether an answer is true or legally approved.\n\n**Implication:** build the detailed workflow now, but require Gate 0 approval before final copy, account changes, outreach, or publication."
+      },
+      {
+        "id": "readiness-chart-block",
+        "type": "chart",
+        "chartId": "readiness-chart"
+      },
+      {
+        "id": "gate-zero",
+        "type": "markdown",
+        "body": "## Gate 0 — Close evidence and governance gaps before publishing\n\n**Purpose:** turn owner intent into an approved fact pack that writers, developers, and reviewers can safely use. This gate may run immediately because it is data collection and planning only.\n\n### Required work\n\n1. Confirm the exact public brand, registered owner or entity wording, launch date, founder-experience timeline, address or service area, and official contact/profile links.\n2. Rank the first three target countries. Keep Palestine and Jordan provisional until the owner explicitly confirms the order and any service restrictions.\n3. Document the boundary between education, recommendations, consultations, broker selection, account-opening support, deposit/withdrawal help, and any referral, commission, or account-management relationship.\n4. Appoint named human reviewers for trading accuracy, Arabic, and English; record credentials, allowed topics, biography wording, photo permission, and review turnaround.\n5. Build a claims register for licences, qualifications, years of experience, student counts, performance percentages, university work, “first/only/leading” statements, and testimonials. Each claim must have an evidence owner and a publish/omit decision.\n6. Build an asset-rights register for videos, workshop materials, screenshots, diagrams, downloadable resources, and testimonial releases.\n7. Resolve the mistyped or incomplete answers, select the first free resource, and decide how broker and cryptocurrency topics may be handled.\n\n### Exit criteria\n\n- Critical service-boundary and performance-claim questions have an approved written decision.\n- Public identity, priority markets, and official channels are confirmed.\n- Accountable human reviewers are named.\n- Every proposed public claim and asset is marked approved, excluded, or awaiting evidence.\n- No password, private client record, session token, or secret is collected."
+      },
+      {
+        "id": "phase-one",
+        "type": "markdown",
+        "body": "## Phase 1 — Measurement and technical readiness\n\n**Timing:** target days 1–14 after the relevant access and implementation approvals. Planning tickets may be prepared during Gate 0, but production changes remain separately approved.\n\n### Workstreams\n\n- **Search ownership:** confirm the HTTPS apex property in Google Search Console, sitemap acceptance, page indexing samples, and Bing Webmaster Tools verification or import. HTML verification tags are not currently visible; DNS verification may still exist and must be checked in the account or DNS.\n- **GA4 account setup:** confirm page views and safe diagnostic clicks arrive, disable duplicate history-based page views if required, mark lead, registration, and order-request events as key events after they arrive, register only useful custom dimensions, and link Search Console when appropriate.\n- **Technical QA:** recheck indexable HTML, canonical URLs, reciprocal language annotations, structured data, redirects, true 404s, private-route exclusion, mobile usability, and performance.\n- **Publishing reliability:** configure and test the article publish-to-rebuild mechanism so approved updates reach prerendered HTML and sitemaps promptly.\n- **Article presentation:** support answer-first summaries, meaningful section headings, sources, internal links, author/reviewer information, and accessible media.\n\n### Owners and outputs\n\n- Developer/Codex: technical ticket set, test evidence, implementation proposal, and rollback notes.\n- Business/account owner: role-based Search Console, GA4, and Bing access or screenshots; no passwords.\n- Output: signed technical-readiness checklist and a scheduled 28-day baseline review.\n\n### Exit criteria\n\nSearch ownership is confirmed, sitemaps are accepted, approved acquisition events are visible without private-route contamination, priority pages remain indexable, private routes remain excluded, and the rebuild path is tested."
+      },
+      {
+        "id": "phase-two",
+        "type": "markdown",
+        "body": "## Phase 2 — Finalize keyword, page, and content architecture\n\n**Timing:** target weeks 2–4, after market priority and public identity are confirmed.\n\n### Workstreams\n\n1. Export Search Console queries and landing pages by country, device, language, brand versus non-brand, and page. Use external keyword-planning evidence only as a supplement, not a substitute for XFlex data.\n2. Finalize one primary destination per search intent to prevent competing pages. The initial map covers academy discovery, beginner learning, supported education, academy evaluation, risk management, technical analysis, psychology, recommendations, and AI-tool limitations.\n3. Keep Arabic as the source language. Use English for complete equivalents, brand/location discovery, and Arabic-learning intent rather than the globally broad “trading academy” head term.\n4. Create a page brief for every priority destination: intent, approved query set, reader need, answer promise, internal links, evidence, author/reviewer, call to action, risk wording, and update cadence.\n5. Decide whether the Basic package, Comprehensive package, free content, or contact path is the most relevant next action for each page. Do not force the same commercial call to action everywhere.\n\n### Exit criteria\n\nThe owner approves the country order and positioning; every priority intent has one destination; cannibalization risks are documented; the first eight briefs have evidence owners and review owners; and excluded topics or claims are recorded."
+      },
+      {
+        "id": "phase-three",
+        "type": "markdown",
+        "body": "## Phase 3 — Produce and publish the Arabic-first editorial sequence\n\n**Timing:** target weeks 3–10. Publish only after the relevant Gate 0 evidence and the article-specific approval chain are complete. Sustainable cadence is more important than volume.\n\n### Proposed sequence\n\n1. How to start learning trading from zero: a practical beginner path.\n2. How to choose a trustworthy trading academy: twelve questions before subscribing.\n3. Trading risk management: planned loss and position sizing.\n4. Stop loss: how it works and why it cannot prevent every loss.\n5. Building a usable trading plan and review checklist.\n6. Support and resistance for beginners, using approved original annotated examples.\n7. Trading psychology: revenge trading, overtrading, and journaling.\n8. What AI trading tools can and cannot do.\n\n### Article workflow\n\nBrief → evidence pack → Arabic draft → risk/claims check → subject-matter review → business approval → English adaptation → English human review → technical SEO/quality assurance → controlled publication → indexing and measurement check.\n\n### Non-negotiable standard\n\nEvery article needs an answer-first opening, one H1, useful H2/H3 sections, named human author and reviewer, authoritative sources, original XFlex value, visible dates, risk context, contextual internal links, accessible media, and one relevant next action. Do not publish win rates, guaranteed outcomes, profit targets, loss-recovery promises, copied definitions, fake comparisons, or “first/only/leading” claims without approval and evidence.\n\n### Exit criteria\n\nSix to eight expert-reviewed Arabic source articles and their reviewed English equivalents are published over the 90-day program, or the variance is documented with a quality reason. Every live article passes factual, editorial, technical, mobile, sitemap, and measurement checks."
+      },
+      {
+        "id": "phase-four",
+        "type": "markdown",
+        "body": "## Phase 4 — Build local trust and independent authority\n\n**Timing:** target weeks 5–12, after public identity and service-area eligibility are confirmed.\n\n### Workstreams\n\n- Confirm whether XFlex qualifies for a genuine Google Business Profile or service-area profile before creating or changing one; keep name, address/service area, phone, website, and profiles consistent.\n- Document the August 2026 Ramallah workshop only with approved dates, photos, attendance wording, and participant permissions.\n- Create a researched list of at least 20 relevant Palestinian, Jordanian, Arabic education, business, entrepreneurship, finance, university, podcast, and professional-community targets.\n- Pitch useful commentary, workshops, interviews, original educational material, or transparent methodology—not paid link packages.\n- Repurpose approved pillar content into short videos, social posts, and newsletters that link to the canonical guide.\n- Request honest reviews only from real clients with permission; never condition benefits on positive sentiment.\n\n### Exit criteria\n\nProfile eligibility and identity are verified, at least 20 suitable outreach targets are documented, at least five genuine conversations are initiated, and any mentions or reviews are recorded without treating them as guaranteed ranking gains."
+      },
+      {
+        "id": "phase-five",
+        "type": "markdown",
+        "body": "## Phase 5 — Establish the baseline, then optimize\n\n**Timing:** first directional check after 7 days of clean collection; first reliable baseline after one complete 28-day window; monthly thereafter.\n\n### Primary outcomes\n\n- Qualified organic actions: unpaid-search visitors who meaningfully view a package, contact XFlex, start registration, register, or submit an order request, reported by language and landing page.\n- Non-branded organic clicks: Google and Bing clicks from queries that do not contain XFlex brand variants.\n- Priority-query coverage: share of the approved query set with a relevant XFlex page in the top 20 and top 10, reviewed by country and device.\n\n### Drivers and guardrails\n\nTrack indexed priority pages, non-branded impressions by cluster, click-through rate after meaningful volume, reviewed publishing progress, referring domains, and independent brand mentions. Guard against private-page indexing, duplicate acquisition events, unsupported claims, mobile regressions, low-quality leads, and treating branded searches as generic discovery.\n\n### Decision cadence\n\n- First 48 hours: collection, duplication, private-path exclusion, and parameter safety.\n- Day 7: directional landing-page and event review; no ranking conclusions.\n- Day 28: baseline, targets, and first prioritization reset.\n- Monthly: page/query drivers, qualified actions, content updates, authority activity, and next-month decisions.\n- Quarterly: content refresh, market review, authority audit, and target reset.\n\n### Exit criteria\n\nThe 28-day baseline is complete, targets have explicit denominators and country/language scope, and the next content/technical priorities are selected from evidence rather than rank anecdotes."
+      },
+      {
+        "id": "roles-workflow",
+        "type": "markdown",
+        "body": "## Ownership and approval flow prevent silent risk\n\n- **Business owner:** approves public identity, markets, service boundary, commercial claims, evidence use, budget, and final publication.\n- **Subject-matter reviewer:** approves trading accuracy, risk wording, examples, and the boundary between general education and personalized advice.\n- **Arabic editor:** owns clarity, terminology, tone, and final Arabic language quality.\n- **English reviewer:** approves the adaptation as accurate English, not an unreviewed literal translation.\n- **Developer/Codex:** prepares technical work, implements only after approval, tests indexing/measurement behavior, and records evidence.\n- **Marketing/support:** supplies recurring questions, approved operational facts, lead-quality feedback, asset inventory, and distribution support.\n\nNo article moves forward merely because a draft exists. Publication requires the recorded human approvals and evidence relevant to that article."
+      },
+      {
+        "id": "planning-backlog",
+        "type": "markdown",
+        "body": "## Immediate planning backlog — no production changes\n\n### Workdays 1–3\n\n- Convert the 37 follow-up answers into one owner-facing clarification and evidence request.\n- Create the claims register, asset-rights register, reviewer register, and account-access checklist.\n- Reconcile the academy/founder timeline and provisional country order.\n\n### Workdays 4–7\n\n- Record owner decisions as approved, excluded, or pending.\n- Draft the final service-boundary statement for specialist review.\n- Update the first beginner brief with only approved course facts, questions, mistakes, free resource, and reviewer details.\n- Prepare technical tickets for account validation, rebuild automation, article rendering, and technical QA—without implementing them.\n\n### Workdays 8–10\n\n- Draft the provisional keyword-to-page map and cannibalization register.\n- Prepare the remaining seven article briefs at outline level.\n- Prepare the baseline-report template and measurement acceptance checklist.\n- Hold a single approval review with the owner before scheduling implementation or publication.\n\n**Planning-stage completion:** the evidence registers, ownership decisions, briefs, technical tickets, and approval record are complete enough to estimate and schedule the execution phases."
+      },
+      {
+        "id": "blocked-actions",
+        "type": "markdown",
+        "body": "## Actions that remain blocked during the current planning-only stage\n\n- Changing production code, Worker variables, DNS, analytics settings, Search Console, Bing, or business profiles.\n- Publishing, rewriting, or removing live pages or articles.\n- Publishing licences, qualifications, student counts, success rates, testimonials, workshop images, or leadership claims without evidence and permission.\n- Starting external outreach or requesting public reviews without owner approval.\n- Treating AI-generated language as final factual, legal, trading, Arabic, or English approval.\n- Setting firm traffic, conversion, ranking, or revenue targets before the first clean 28-day baseline."
+      },
+      {
+        "id": "further-decisions",
+        "type": "markdown",
+        "body": "## Decisions still required from the owner\n\n1. Rank the first three target countries and identify any countries that must not be targeted.\n2. Approve the exact public entity, address/service area, establishment timeline, and official channels.\n3. Approve a written description of what XFlex does and does not do regarding advice, recommendations, brokers, accounts, deposits, withdrawals, and commissions.\n4. Name the human trading, Arabic, and English reviewers and approve their public credentials.\n5. Provide or withdraw each licence, experience, student-count, performance, university, testimonial, and leadership claim.\n6. Approve the first free resource and the policy for broker and cryptocurrency content.\n7. Confirm Search Console, GA4, Bing, and eligible business-profile ownership through role access or screenshots—never passwords.\n8. Approve the first eight-topic editorial sequence and realistic monthly review capacity."
+      },
+      {
+        "id": "caveats",
+        "type": "markdown",
+        "body": "## Caveats and assumptions\n\nThis is a provisional planning document, not legal or regulatory advice and not authorization to implement or publish. Palestine and Jordan remain provisional starting markets because the newer owner response did not rank its broader audience. Search Console submission is recorded in the roadmap but was not independently confirmed inside the account. GA4 code is present, but account-side event receipt and key-event configuration remain unverified. No ranking position, AI citation, traffic level, conversion volume, or revenue result is guaranteed."
+      }
+    ]
+  },
+  "snapshot": {
+    "version": 1,
+    "generatedAt": "2026-08-24T18:26:46+03:00",
+    "status": "ready",
+    "datasets": {
+      "owner_input_readiness": [
+        {
+          "status": "Usable now",
+          "count": 24,
+          "share": 0.39344262295081966,
+          "planning_use": "May shape planning; publication still needs the relevant approval"
+        },
+        {
+          "status": "Clarify",
+          "count": 14,
+          "share": 0.22950819672131148,
+          "planning_use": "Resolve ambiguity, incompleteness, inconsistency, or apparent typo"
+        },
+        {
+          "status": "Evidence",
+          "count": 9,
+          "share": 0.14754098360655737,
+          "planning_use": "Obtain a document, public link, calculation, consent, or asset record"
+        },
+        {
+          "status": "High-risk review",
+          "count": 14,
+          "share": 0.22950819672131148,
+          "planning_use": "Require specialist or accountable human review before public use"
+        }
+      ]
+    }
+  },
+  "sources": [],
+  "package_info": {
+    "audience": "product stakeholders",
+    "scope": "Planning only; no production or publication authorization",
+    "decision": "Sequence and gate the next 90 days of SEO work"
+  }
+}

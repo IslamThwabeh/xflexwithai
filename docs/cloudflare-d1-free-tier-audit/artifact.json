@@ -1,0 +1,220 @@
+{
+  "surface": "report",
+  "manifest": {
+    "version": 1,
+    "surface": "report",
+    "title": "Cloudflare D1 Free-Tier Plan",
+    "description": "A production-read audit and gated optimization plan for keeping XFlex below Cloudflare D1 free-tier limits.",
+    "generatedAt": "2026-08-24T20:16:01+03:00",
+    "filters": [],
+    "cards": [],
+    "charts": [
+      {
+        "id": "d1-hot-reads-chart",
+        "title": "Largest recurring D1 read consumers",
+        "subtitle": "Rolling seven-day Insights totals divided by seven; average rows read per day",
+        "showDescription": true,
+        "type": "horizontalBar",
+        "dataset": "d1_hot_reads",
+        "sourceId": "d1-insights-7d",
+        "encodings": {
+          "x": {
+            "field": "query_family",
+            "type": "nominal",
+            "aggregate": "none",
+            "label": "Query family"
+          },
+          "y": {
+            "field": "rows_per_day",
+            "type": "quantitative",
+            "aggregate": "none",
+            "label": "Rows read per day"
+          },
+          "tooltip": [
+            {
+              "field": "rows_per_day",
+              "type": "quantitative",
+              "label": "Average rows/day"
+            },
+            {
+              "field": "seven_day_rows",
+              "type": "quantitative",
+              "label": "Seven-day rows"
+            },
+            {
+              "field": "runs",
+              "type": "quantitative",
+              "label": "Seven-day executions"
+            },
+            {
+              "field": "primary_action",
+              "type": "text",
+              "label": "Primary action"
+            }
+          ]
+        },
+        "valueFormat": "number",
+        "maxRows": 10,
+        "compatibleTypes": ["horizontalBar", "bar", "leaderboard"]
+      }
+    ],
+    "tables": [],
+    "sources": [
+      {
+        "id": "d1-info-24h",
+        "label": "Production D1 database metadata",
+        "path": "Cloudflare D1 database info for xflexwithai-db",
+        "query": {
+          "engine": "Cloudflare Wrangler",
+          "id": "d1-info-xflexwithai-db-2026-08-24",
+          "description": "Trailing-24-hour database size, query volume, rows read, and rows written returned by wrangler d1 info.",
+          "language": "wrangler",
+          "executed_at": "2026-08-24T19:03:00+03:00",
+          "tables_used": ["xflexwithai-db"],
+          "filters": ["Production database", "Trailing 24 hours"],
+          "metric_definitions": ["Rows read and rows written are D1 billing metrics; read and write query counts are diagnostic volume metrics."]
+        }
+      },
+      {
+        "id": "d1-insights-7d",
+        "label": "Production D1 query insights",
+        "path": "docs/cloudflare-d1-free-tier-audit/d1-insights-7d.json",
+        "query": {
+          "engine": "SQLite snapshot transformation",
+          "id": "d1-insights-7d-chart-rows-2026-08-24",
+          "sql": "WITH reviewed_insights(rank, query_family, seven_day_rows, runs, avg_rows_read, primary_action) AS (\n  VALUES\n    (1, 'Email outbox health', 10222609, 2819, 3626, 'Indexed anomaly pre-check'),\n    (2, 'Recommendation summary', 9863467, 627, 15731, 'Parent index and slower/event-driven refresh'),\n    (3, 'Staff unread count', 4882165, 2250, 2169, 'Combine badge endpoint and poll every two minutes'),\n    (4, 'Staff route badges', 3955872, 1774, 2229, 'Combine with unread total'),\n    (5, 'Recommendation open threads', 3323353, 3272, 1015, 'Selective root index and visible-only refresh'),\n    (6, 'Terms client detection', 3179467, 44525, 71, 'Cache terms status and index direct equality'),\n    (7, 'Registration-key lookup', 3152591, 22075, 142, 'Remove LOWER wrapper on normalized email'),\n    (8, 'Admin package-key listing', 3001242, 66, 45473, 'Replace correlated subqueries with pre-aggregated joins'),\n    (9, 'Staff alert dedupe', 2656544, 141, 18840, 'Composite event/action/date index'),\n    (10, 'Staff notification list', 2070192, 273, 7583, 'User/date index')\n)\nSELECT rank, query_family, seven_day_rows, ROUND(seven_day_rows / 7.0) AS rows_per_day, runs, avg_rows_read, primary_action\nFROM reviewed_insights\nORDER BY rank;",
+          "description": "Reproduces the report chart from the reviewed rolling-seven-day Cloudflare D1 Insights snapshot saved at the source path.",
+          "language": "sql",
+          "executed_at": "2026-08-24T20:20:00+03:00",
+          "tables_used": ["reviewed_insights snapshot values"],
+          "filters": ["Production database", "Rolling seven-day window", "Top ten by total rows read"],
+          "metric_definitions": ["Rows per day equals seven-day total rows read divided by seven.", "Bound parameter values are not captured by Cloudflare D1 Insights."]
+        }
+      },
+      {
+        "id": "production-shape",
+        "label": "Production aggregate and index checks",
+        "path": "docs/cloudflare-d1-free-tier-audit/query-plans.sql",
+        "query": {
+          "engine": "Cloudflare D1 / SQLite",
+          "id": "d1-shape-and-plans-2026-08-24",
+          "description": "Read-only aggregate checks, index catalog inspection, and EXPLAIN QUERY PLAN checks for the highest-volume tables.",
+          "language": "sql",
+          "executed_at": "2026-08-24T20:12:00+03:00",
+          "tables_used": ["sqlite_master", "email_outbox", "recommendationMessages", "staff_notifications", "registrationKeys", "users", "enrollments", "episodes", "user_notifications"],
+          "filters": ["Production database", "Aggregate counts only", "No personal values selected", "EXPLAIN statements do not execute underlying queries"],
+          "metric_definitions": ["Unread support share equals unread new_support_message rows divided by all unread staff notification rows."]
+        }
+      },
+      {
+        "id": "repository-review",
+        "label": "XFlex Worker and frontend query paths",
+        "path": "wrangler-worker.toml; backend/_core/worker.ts; backend/db.ts; backend/routers.ts; frontend/src",
+        "query": {
+          "engine": "Repository inspection",
+          "id": "xflex-d1-hot-path-review-2026-08-24",
+          "description": "Read-only review of scheduled jobs, SQL construction, authentication activity writes, and frontend polling intervals.",
+          "language": "typescript",
+          "executed_at": "2026-08-24T20:14:00+03:00",
+          "filters": ["Production configuration and active application paths", "Tests used only as supporting implementation context"]
+        }
+      },
+      {
+        "id": "cloudflare-limits",
+        "label": "Cloudflare D1 limits and optimization guidance",
+        "path": "https://developers.cloudflare.com/d1/platform/pricing/",
+        "query": {
+          "engine": "Official Cloudflare documentation",
+          "id": "cloudflare-d1-pricing-indexes-observability-2026-08-24",
+          "description": "Official free-tier limits, enforcement behavior, billing metric definitions, query insights, and index guidance.",
+          "language": "documentation",
+          "executed_at": "2026-08-24T19:08:00+03:00",
+          "filters": ["Official Cloudflare D1 documentation retrieved August 24, 2026"]
+        }
+      }
+    ],
+    "blocks": [
+      {
+        "id": "report-title",
+        "type": "markdown",
+        "body": "# Cloudflare D1 Free-Tier Plan"
+      },
+      {
+        "id": "executive-summary",
+        "type": "markdown",
+        "body": "## Executive Summary\n\n- **Stay on the Free plan for now.** The breach is driven by a small set of avoidable scans and polling loops, so optimization should be attempted before any upgrade.\n- **Reads are the risk; writes have substantial headroom.** Production is at 10.91M rows read in 24 hours versus the 5M daily cap, while writes are 27.2k versus the 100k cap.\n- **Use two controlled implementation batches.** First preserve product behavior while replacing full scans, adding targeted indexes, and reducing redundant polling. Then address accumulated support notifications only if the first complete UTC-day measurement is above target.\n- **Do not operate close to the cap.** The go/no-go target is below 3.5M rows read per UTC day, leaving 30% headroom for traffic spikes and background jobs."
+      },
+      {
+        "id": "current-state",
+        "type": "markdown",
+        "body": "## The current workload will be interrupted after enforcement\n\nProduction recorded **10,912,314 rows read** in the trailing 24 hours—218% of the free allowance. Reaching the cap requires a 54.18% reduction, while a safe 3.5M target requires about a 68% reduction. Writes are not the current constraint: **27,185 rows written** is 27% of the daily allowance. Database size is about 267MB, roughly half of the separate 500MB per-database free limit.\n\n**Implication:** query-count reduction alone is not enough; the work must reduce rows scanned per call and the frequency of the highest-scan calls."
+      },
+      {
+        "id": "concentration-finding",
+        "type": "markdown",
+        "sourceId": "d1-insights-7d",
+        "body": "## Ten recurring query families consume more than the whole free allowance\n\nThe top ten query families averaged **6.62M rows read per day** over the rolling seven-day window. The outbox health scan and recommendation summary alone averaged **2.87M/day**. Because the comparison uses a rolling seven-day average against a separately sampled trailing-24-hour total, treat shares as directional; the concentration and priority order are still clear.\n\n**Implication:** optimizing the first several families is more valuable than broad micro-optimization across all 107 tables."
+      },
+      {
+        "id": "hot-reads-chart-block",
+        "type": "chart",
+        "chartId": "d1-hot-reads-chart"
+      },
+      {
+        "id": "verified-causes",
+        "type": "markdown",
+        "body": "## Full scans and repeated exact counts explain the excess\n\n- **Email health:** a minute-triggered path computes eleven aggregates over all 3,742 outbox rows even when there are no pending, failed, or dead-letter records. The plan confirms `SCAN email_outbox`.\n- **Recommendations:** the summary scans the full message table and performs a correlated child scan; child and open-root feeds also lack selective parent/root indexes.\n- **Staff badges:** 19,914 unread notification rows are repeatedly counted. New support messages represent 90.44% of that unread inventory; support messages plus human escalations represent 97.47%.\n- **Key and terms access:** `LOWER`/`TRIM` wrappers prevent targeted use of the existing email-leading key index even though current nonblank user and key emails are already normalized.\n- **Course and notification paths:** enrollment lookups scan the table, episode lists lack a course/order index, and client unread counts have only a user/date index.\n\n**Implication:** the system can keep the same core features while changing how it detects work, refreshes screens, and reaches rows."
+      },
+      {
+        "id": "batch-one",
+        "type": "markdown",
+        "body": "## Batch 1 — Preserve behavior and remove the largest scans\n\nImplement as one tested code/index release, with an additive migration and rollback notes.\n\n1. **Outbox:** keep the one-minute delivery drain, but first run an indexed anomaly existence check. Call the full health aggregation only when a stale pending or dead-letter row exists.\n2. **Staff badges:** return the total and route breakdown from one grouped endpoint; poll every two minutes only while the page is visible; invalidate immediately after read actions.\n3. **Recommendations:** refresh summary every five minutes or after a recommendation mutation, refresh open threads every 60 seconds while visible, and stop background polling. Keep the fast publish-state check only if its indexed plan remains inexpensive.\n4. **Indexes:** add non-unique indexes for recommendation parent/type/root order, staff event/action/date and user/date, enrollment user/course, episode course/order, client notification user/read and batch/user, points user/reference/date, and other hot paths only after plan tests demonstrate a search.\n5. **Normalized joins:** replace function-wrapped key-email equality with direct equality against normalized input; rewrite the admin package-key list to join or pre-aggregate each latest subscription once.\n6. **Static/session caching:** keep terms status and static course metadata fresh through explicit invalidation instead of repeated refetch; throttle activity timestamps so polling does not write on every authenticated request.\n\n**Expected result:** these paths address more than 7M observed rows/day. That is opportunity coverage, not a guaranteed additive saving; success is determined by the next complete UTC day."
+      },
+      {
+        "id": "batch-two",
+        "type": "markdown",
+        "body": "## Batch 2 — Make support notifications sustainable if Batch 1 is not enough\n\nThe notification table is functioning as a permanent per-message fan-out log. That makes badge counts more expensive as history grows. After owner approval:\n\n- Use the support inbox as the source of truth for message/conversation unread state.\n- Create or update one actionable alert per conversation/assignee instead of one persistent unread row per message for every staff member.\n- Mark the support route read when staff open it, including direct links—not only sidebar navigation.\n- Approve a retention rule for old read alerts and a one-time decision for old unread support alerts; do not silently delete or mark them read.\n- If exact counts remain costly, maintain bounded per-staff counters transactionally and periodically reconcile them.\n\n**Implication:** this prevents the current 19.9k unread inventory from growing without bound and protects both read usage and database storage."
+      },
+      {
+        "id": "verification-gates",
+        "type": "markdown",
+        "body": "## Deployment gates determine whether Free is reliable\n\n### Before deployment\n\n- Run local query-plan tests and existing support, recommendation, email, course, notification, and authentication tests.\n- Apply every index through an idempotent migration; no unique constraints, data cleanup, or retention change in Batch 1.\n- Confirm scheduled email delivery, support freshness, recommendation freshness, and terms/access behavior remain acceptable.\n\n### After deployment\n\n- Watch errors and email queue health immediately.\n- Compare D1 Insights after two hours for obvious regressions, but make the decision only after one complete 00:00–24:00 UTC day.\n- **Pass:** below 3.5M rows read, below 60k rows written, no delivery backlog, and core screens pass production smoke tests.\n- **Caution:** 3.5–4.5M reads; implement Batch 2 and remeasure.\n- **Unsafe:** above 4.5M reads; add materialized counters or short-lived caching before relying on Free.\n\nNo upgrade is recommended before this measured optimization attempt."
+      },
+      {
+        "id": "further-questions",
+        "type": "markdown",
+        "body": "## Decisions required before implementation\n\n1. Is a two-minute staff notification badge delay acceptable if support-message changes inside an open conversation remain at five seconds?\n2. Is a 60-second recommendation feed refresh and five-minute aggregate-summary refresh acceptable, with immediate refresh after the current user publishes or changes a recommendation?\n3. Should old support notifications be automatically marked read after the related conversation is opened, and what retention period should apply to read alerts?\n4. Which operational screen must remain closest to real time: support inbox, recommendation feed, or email-delivery monitoring?"
+      },
+      {
+        "id": "caveats",
+        "type": "markdown",
+        "body": "## Caveats and assumptions\n\nD1 Insights is experimental and uses rolling windows; the reported query-family totals do not perfectly reconcile to the separately sampled trailing-24-hour database total. The recommendation therefore uses observed magnitude and concentration, while post-deploy UTC-day measurement controls the final decision. Estimated savings are not guarantees. This audit covers D1 only, not every Cloudflare or third-party quota. No application data, schema, indexes, schedules, settings, or production code were changed during this audit."
+      }
+    ]
+  },
+  "snapshot": {
+    "version": 1,
+    "generatedAt": "2026-08-24T20:16:01+03:00",
+    "status": "ready",
+    "datasets": {
+      "d1_hot_reads": [
+        {"rank": 1, "query_family": "Email outbox health", "seven_day_rows": 10222609, "rows_per_day": 1460373, "runs": 2819, "avg_rows_read": 3626, "primary_action": "Indexed anomaly pre-check"},
+        {"rank": 2, "query_family": "Recommendation summary", "seven_day_rows": 9863467, "rows_per_day": 1409067, "runs": 627, "avg_rows_read": 15731, "primary_action": "Parent index and slower/event-driven refresh"},
+        {"rank": 3, "query_family": "Staff unread count", "seven_day_rows": 4882165, "rows_per_day": 697452, "runs": 2250, "avg_rows_read": 2169, "primary_action": "Combine badge endpoint and poll every two minutes"},
+        {"rank": 4, "query_family": "Staff route badges", "seven_day_rows": 3955872, "rows_per_day": 565125, "runs": 1774, "avg_rows_read": 2229, "primary_action": "Combine with unread total"},
+        {"rank": 5, "query_family": "Recommendation open threads", "seven_day_rows": 3323353, "rows_per_day": 474765, "runs": 3272, "avg_rows_read": 1015, "primary_action": "Selective root index and visible-only refresh"},
+        {"rank": 6, "query_family": "Terms client detection", "seven_day_rows": 3179467, "rows_per_day": 454210, "runs": 44525, "avg_rows_read": 71, "primary_action": "Cache terms status and index direct equality"},
+        {"rank": 7, "query_family": "Registration-key lookup", "seven_day_rows": 3152591, "rows_per_day": 450370, "runs": 22075, "avg_rows_read": 142, "primary_action": "Remove LOWER wrapper on normalized email"},
+        {"rank": 8, "query_family": "Admin package-key listing", "seven_day_rows": 3001242, "rows_per_day": 428749, "runs": 66, "avg_rows_read": 45473, "primary_action": "Replace correlated subqueries with pre-aggregated joins"},
+        {"rank": 9, "query_family": "Staff alert dedupe", "seven_day_rows": 2656544, "rows_per_day": 379506, "runs": 141, "avg_rows_read": 18840, "primary_action": "Composite event/action/date index"},
+        {"rank": 10, "query_family": "Staff notification list", "seven_day_rows": 2070192, "rows_per_day": 295742, "runs": 273, "avg_rows_read": 7583, "primary_action": "User/date index"}
+      ]
+    }
+  },
+  "sources": [],
+  "package_info": {
+    "audience": "product stakeholders",
+    "scope": "Production read-only audit and implementation planning",
+    "decision": "Whether and how XFlex can remain within the Cloudflare D1 Free plan"
+  }
+}

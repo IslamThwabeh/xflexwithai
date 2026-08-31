@@ -1,0 +1,262 @@
+{
+  "surface": "report",
+  "manifest": {
+    "version": 1,
+    "surface": "report",
+    "title": "SEO Phase 1 Review",
+    "description": "Read-only review of the business-owner questionnaire, current SEO foundation, and evidence needed before detailed planning or publication.",
+    "generatedAt": "2026-08-24T17:55:09+03:00",
+    "filters": [],
+    "cards": [],
+    "charts": [
+      {
+        "id": "questionnaire-readiness-chart",
+        "title": "Questionnaire readiness classification",
+        "subtitle": "61 submitted answers, classified by the primary follow-up needed on 24 August 2026",
+        "showDescription": true,
+        "type": "bar",
+        "dataset": "questionnaire_readiness",
+        "sourceId": "seo-intake-production",
+        "encodings": {
+          "x": {
+            "field": "status",
+            "type": "nominal",
+            "aggregate": "none",
+            "label": "Primary status"
+          },
+          "y": {
+            "field": "count",
+            "type": "quantitative",
+            "aggregate": "none",
+            "label": "Questions"
+          },
+          "tooltip": [
+            {
+              "field": "count",
+              "type": "quantitative",
+              "label": "Questions"
+            },
+            {
+              "field": "share",
+              "type": "quantitative",
+              "format": "percent",
+              "label": "Share of 61"
+            },
+            {
+              "field": "meaning",
+              "type": "text",
+              "label": "Interpretation"
+            }
+          ]
+        },
+        "valueFormat": "number",
+        "maxRows": 4,
+        "compatibleTypes": ["bar"]
+      }
+    ],
+    "tables": [],
+    "sources": [
+      {
+        "id": "seo-intake-production",
+        "label": "Production SEO owner questionnaire",
+        "query": {
+          "engine": "Cloudflare D1",
+          "id": "seo-phase-1-owner-intake-review-2026-08-24",
+          "sql": "SELECT\n  i.status,\n  i.submitted_at,\n  a.question_id,\n  a.answer_text\nFROM seo_owner_intake AS i\nCROSS JOIN seo_owner_intake_answers AS a\nWHERE i.id = 1\nORDER BY a.question_id;",
+          "description": "Reads the submitted questionnaire at one row per question for a manual planning-readiness review. Raw answer text is not included in the report snapshot.",
+          "language": "sql",
+          "executed_at": "2026-08-24T17:55:09+03:00",
+          "tables_used": [
+            "seo_owner_intake",
+            "seo_owner_intake_answers"
+          ],
+          "filters": [
+            "Questionnaire id = 1",
+            "All 61 defined questions",
+            "No answer text exposed in the report dataset"
+          ],
+          "metric_definitions": [
+            "Answered question: stored answer_text remains non-empty after trimming whitespace.",
+            "Primary readiness status: one conservative manual classification per question based on specificity, evidence availability, publication risk, and reviewer accountability.",
+            "Share: question count in a status divided by 61."
+          ]
+        }
+      },
+      {
+        "id": "seo-roadmap",
+        "label": "Organic search roadmap",
+        "path": "docs/organic-search-roadmap.md"
+      },
+      {
+        "id": "seo-live-checks",
+        "label": "XFlex production SEO endpoints",
+        "href": "https://xflexacademy.com/ar",
+        "query": {
+          "engine": "HTTP",
+          "id": "seo-live-smoke-2026-08-24",
+          "description": "Read-only production smoke checks for public homepages, robots, sitemaps, llms.txt, canonical metadata, analytics markup, and a true 404.",
+          "executed_at": "2026-08-24T17:55:09+03:00",
+          "filters": [
+            "Public production URLs only",
+            "No authenticated routes",
+            "No state-changing requests"
+          ],
+          "metric_definitions": []
+        }
+      },
+      {
+        "id": "seo-implementation",
+        "label": "SEO and measurement implementation",
+        "path": "shared/seo.ts",
+        "query": {
+          "engine": "repository",
+          "id": "seo-implementation-review-2026-08-24",
+          "description": "Repository review covering localized SEO generation, GA4 events, owner intake, and article rebuild configuration.",
+          "executed_at": "2026-08-24T17:55:09+03:00",
+          "tables_used": [],
+          "filters": [
+            "Read-only repository inspection"
+          ],
+          "metric_definitions": []
+        }
+      }
+    ],
+    "blocks": [
+      {
+        "id": "report-title",
+        "type": "markdown",
+        "body": "# SEO Phase 1 Review"
+      },
+      {
+        "id": "executive-summary",
+        "type": "markdown",
+        "body": "## Executive Summary\n\n- **Phase 1 is complete enough to move into structured follow-up, not publication.** The owner submitted all 61 questionnaire fields on 24 August 2026.\n- **Completion does not equal readiness.** Twenty-four answers can shape planning now; 37 require clarification, documentary evidence, permission, or high-risk review before they support public SEO content.\n- **The technical SEO base is functioning.** Local tests passed for 36 static localized pages and 6 localized article pages, and the live sitemaps, robots file, canonical pages, analytics markup, and true 404 behavior responded correctly.\n- **The next step remains data governance.** Resolve the priority register, confirm accountable human reviewers, and validate analytics/search accounts before producing the detailed execution plan."
+      },
+      {
+        "id": "readiness-finding",
+        "type": "markdown",
+        "body": "## Every field is populated, but most still need follow-up\n\nThe questionnaire has complete row coverage and valid unique question identifiers. However, only 24 answers are sufficiently specific to shape planning without immediate follow-up. The remaining 37 are split between clarification, missing evidence or permission, and issues that need careful financial-promotion, regulatory, privacy, or editorial review.\n\n**Implication:** the questionnaire is a strong discovery source, but it should not be copied directly into public pages, metadata, biographies, or articles."
+      },
+      {
+        "id": "readiness-chart-block",
+        "type": "chart",
+        "chartId": "questionnaire-readiness-chart"
+      },
+      {
+        "id": "priority-finding",
+        "type": "markdown",
+        "body": "## Seven evidence areas determine whether the content plan is publishable\n\n1. **Education and financial-service boundary — Critical.** Reconcile education-only positioning with consultations, real-account readiness, recommendations, and broker-related assistance. We need a written service boundary and full disclosure of any broker relationship or operational support.\n2. **Performance and outcome claims — Critical.** Do not use success percentages, student-volume claims, leadership claims, profit targets, or high-success language without the source data, denominator, period, exclusions, calculation owner, and approval.\n3. **Human editorial accountability — High.** Assign named accountable human trading, Arabic, and English reviewers with publishable credentials and consent; AI may assist but should not approve.\n4. **Business identity and credentials — High.** Reconcile launch dates, experience history, legal entity wording, licences, qualifications, and public biographies with documents.\n5. **Geographic targeting — High.** Replace the whole-Arab-world scope with a ranked top three countries, service eligibility, language needs, and any jurisdiction restrictions.\n6. **Rights, evidence, and testimonials — Medium.** Build an asset register covering ownership, event evidence, source links, testimonial releases, and permitted publication channels.\n7. **Content boundaries and free resource — Medium.** Correct the apparent typo, select the first free resource, and decide whether broker and cryptocurrency topics are excluded or handled only as neutral educational risk content.\n\n**Implication:** ask for these documents and decisions in one controlled follow-up rather than repeatedly interrupting content production."
+      },
+      {
+        "id": "technical-readiness",
+        "type": "markdown",
+        "body": "## The technical foundation is healthy, with three operational checks still open\n\nThe public SEO endpoints are available, Arabic and English homepages contain canonical metadata and the GA4 measurement ID, invalid URLs return a real 404, and the local SEO suite passes. This means there is no urgent technical foundation failure blocking Phase 2 planning.\n\nThree operational checks remain: confirm Google Search Console ownership and sitemap status inside the account; confirm Bing Webmaster Tools verification or import; and confirm GA4 events are arriving and mark the agreed lead, registration, and order events as key events. The article publish-to-rebuild webhook is also not present in the production Worker secret inventory.\n\n**Implication:** account validation and webhook planning can run alongside owner follow-up, but no configuration should change during the current collection-only stage."
+      },
+      {
+        "id": "recommended-next-steps",
+        "type": "markdown",
+        "body": "## Recommended next steps remain data-only\n\n1. Send the owner one concise follow-up covering the seven priority evidence areas.\n2. Request supporting files through a controlled channel: registration or licence records, qualification links, calculation sheets for performance claims, event evidence, and signed content/testimonial permissions.\n3. Assign named human reviewers for trading accuracy, Arabic, and English. AI may assist drafting but should not be the accountable approver.\n4. Request read-only screenshots or access confirmation for Search Console, GA4, and Bing; do not change their settings yet.\n5. Create the detailed SEO plan only after the answers and evidence register are reconciled."
+      },
+      {
+        "id": "further-questions",
+        "type": "markdown",
+        "body": "## Questions that must be settled before the detailed plan is final\n\n- What is the exact registered business or owner name approved for public display?\n- Which three countries are the first commercial and content priorities?\n- Who are the named human technical, Arabic, and English reviewers, and what public credentials may be shown?\n- Which licence or registration documents support the proposed public claims?\n- Is there any broker referral, commission, preferred-broker, account-opening, deposit, withdrawal, or account-management relationship that requires disclosure?\n- What exact calculation method, period, denominator, exclusions, and evidence support every performance percentage or student-count claim?\n- Which testimonials, workshop materials, videos, images, and downloadable resources have explicit publication permission?\n- Should broker and cryptocurrency topics be excluded entirely, or discussed only in neutral educational and risk-focused content?"
+      },
+      {
+        "id": "caveats",
+        "type": "markdown",
+        "body": "## Caveats and assumptions\n\nThis review is for SEO planning and data quality; it is not legal or regulatory advice. A non-empty answer was not assumed to be complete, accurate, documented, or safe to publish. No licence files, consent records, analytics-console data, Search Console reports, or legal review were available. Search Console submission is recorded in the existing roadmap but was not independently confirmed inside the account."
+      }
+    ]
+  },
+  "snapshot": {
+    "version": 1,
+    "generatedAt": "2026-08-24T17:55:09+03:00",
+    "status": "ready",
+    "datasets": {
+      "questionnaire_readiness": [
+        {
+          "status": "Usable now",
+          "count": 24,
+          "share": 0.39344262295081966,
+          "meaning": "Specific enough to shape planning; not automatically approved for publication"
+        },
+        {
+          "status": "Clarify",
+          "count": 14,
+          "share": 0.22950819672131148,
+          "meaning": "Ambiguous, incomplete, broad, inconsistent, or apparently mistyped"
+        },
+        {
+          "status": "Evidence",
+          "count": 9,
+          "share": 0.14754098360655737,
+          "meaning": "Requires a document, public link, consent record, calculation, or asset inventory"
+        },
+        {
+          "status": "High-risk review",
+          "count": 14,
+          "share": 0.22950819672131148,
+          "meaning": "Requires careful financial-promotion, regulatory, privacy, or editorial review"
+        }
+      ],
+      "priority_followups": [
+        {
+          "priority_order": 1,
+          "severity": "Critical",
+          "area": "Education and financial-service boundary",
+          "finding": "Education-only positioning is not yet fully reconciled with consultations, real-account readiness, recommendations, and broker-related assistance.",
+          "needed": "Written service boundary, legal review where appropriate, and complete disclosure of broker relationships and operational support."
+        },
+        {
+          "priority_order": 2,
+          "severity": "Critical",
+          "area": "Performance and outcome claims",
+          "finding": "Success percentages, student volume, leadership claims, profit targets, and high-success language lack complete supporting methodology or evidence.",
+          "needed": "Source data, denominator, full period, exclusions, calculation owner, and explicit approval—or omit the claims."
+        },
+        {
+          "priority_order": 3,
+          "severity": "High",
+          "area": "Human editorial accountability",
+          "finding": "The technical reviewer is not clearly qualified and AI was named as an Arabic or English approver.",
+          "needed": "Named accountable human trading, Arabic, and English reviewers with publishable credentials and consent."
+        },
+        {
+          "priority_order": 4,
+          "severity": "High",
+          "area": "Business identity and credentials",
+          "finding": "Launch dates, experience history, legal entity naming, licences, qualifications, and public biography claims are not fully reconciled.",
+          "needed": "Official identity wording, timeline, registration or licence records, qualification evidence, and approved biography."
+        },
+        {
+          "priority_order": 5,
+          "severity": "High",
+          "area": "Geographic targeting",
+          "finding": "The stated audience covers the whole Arab world and Arabic speakers in Europe, which is too broad for a focused launch plan.",
+          "needed": "Ranked top three countries, service eligibility by country, language needs, and any jurisdiction-specific restrictions."
+        },
+        {
+          "priority_order": 6,
+          "severity": "Medium",
+          "area": "Rights, evidence, and testimonials",
+          "finding": "Social-media reuse, event evidence, testimonials, downloadable files, and images are not supported by a complete rights and consent inventory.",
+          "needed": "Asset register, ownership status, source links, model or testimonial releases, and permitted publication channels."
+        },
+        {
+          "priority_order": 7,
+          "severity": "Medium",
+          "area": "Content boundaries and free resource",
+          "finding": "One answer appears mistyped, the first free resource is not ready, and broker or cryptocurrency exclusions conflict with common customer questions.",
+          "needed": "Corrected answer, selected lead resource, and an explicit allowed/excluded topic policy."
+        }
+      ]
+    }
+  },
+  "sources": [],
+  "package_info": {
+    "audience": "product stakeholders",
+    "scope": "SEO Phase 1 data collection and planning only",
+    "privacy": "Raw questionnaire answers and personal contact details are excluded from the report snapshot."
+  }
+}

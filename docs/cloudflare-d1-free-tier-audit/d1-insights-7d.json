@@ -1,0 +1,20 @@
+{
+  "source": "Cloudflare D1 Insights",
+  "database": "xflexwithai-db",
+  "captured_at": "2026-08-24T19:11:00+03:00",
+  "window": "rolling 7d",
+  "sort": "total rows read descending",
+  "note": "Bound parameter values are not captured by Cloudflare. Query text is omitted here because the report groups it into business-readable families; exact normalized SQL remains available in the Wrangler output from this audit session.",
+  "rows": [
+    {"rank": 1, "query_family": "Email outbox health", "seven_day_rows": 10222609, "rows_per_day": 1460373, "runs": 2819, "avg_rows_read": 3626},
+    {"rank": 2, "query_family": "Recommendation summary", "seven_day_rows": 9863467, "rows_per_day": 1409067, "runs": 627, "avg_rows_read": 15731},
+    {"rank": 3, "query_family": "Staff unread count", "seven_day_rows": 4882165, "rows_per_day": 697452, "runs": 2250, "avg_rows_read": 2169},
+    {"rank": 4, "query_family": "Staff route badges", "seven_day_rows": 3955872, "rows_per_day": 565125, "runs": 1774, "avg_rows_read": 2229},
+    {"rank": 5, "query_family": "Recommendation open threads", "seven_day_rows": 3323353, "rows_per_day": 474765, "runs": 3272, "avg_rows_read": 1015},
+    {"rank": 6, "query_family": "Terms client detection", "seven_day_rows": 3179467, "rows_per_day": 454210, "runs": 44525, "avg_rows_read": 71},
+    {"rank": 7, "query_family": "Registration-key lookup", "seven_day_rows": 3152591, "rows_per_day": 450370, "runs": 22075, "avg_rows_read": 142},
+    {"rank": 8, "query_family": "Admin package-key listing", "seven_day_rows": 3001242, "rows_per_day": 428749, "runs": 66, "avg_rows_read": 45473},
+    {"rank": 9, "query_family": "Staff alert dedupe", "seven_day_rows": 2656544, "rows_per_day": 379506, "runs": 141, "avg_rows_read": 18840},
+    {"rank": 10, "query_family": "Staff notification list", "seven_day_rows": 2070192, "rows_per_day": 295742, "runs": 273, "avg_rows_read": 7583}
+  ]
+}

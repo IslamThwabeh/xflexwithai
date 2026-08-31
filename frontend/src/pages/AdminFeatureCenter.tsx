@@ -23,12 +23,14 @@ import {
   type LocalizedAdminText,
 } from "@shared/adminFeatureCatalog";
 import type { AdminFeatureFlagKey } from "@shared/featureFlags";
+import { LIVE_PACKAGE_OWNER_REVIEW_QUESTIONS } from "@shared/livePackageOwnerReview";
 import {
   AlertTriangle,
   ArrowRight,
   Award,
   BellRing,
   BriefcaseBusiness,
+  CalendarDays,
   Check,
   ClipboardCheck,
   Eye,
@@ -38,9 +40,11 @@ import {
   MailCheck,
   MessageSquareText,
   Power,
+  Radio,
   RefreshCw,
   Settings2,
   ShieldCheck,
+  ShoppingCart,
   Sparkles,
   Users,
   X,
@@ -71,6 +75,18 @@ interface PendingChange {
   label: string;
   highImpact?: boolean;
   impactCount?: number;
+}
+
+interface PendingLivePackageChange {
+  enabled: boolean;
+}
+
+function formatLivePackageDate(value: string, isRtl: boolean) {
+  return new Intl.DateTimeFormat(isRtl ? "ar-JO" : "en-GB", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Asia/Amman",
+  }).format(new Date(value));
 }
 
 const featureVisuals: Record<
@@ -441,11 +457,20 @@ export default function AdminFeatureCenter() {
   const [pendingChange, setPendingChange] = useState<PendingChange | null>(
     null
   );
+  const [pendingLivePackageChange, setPendingLivePackageChange] =
+    useState<PendingLivePackageChange | null>(null);
 
   const overviewQuery = trpc.adminSettings.featureOverview.useQuery(undefined, {
     retry: false,
   });
   const overview = overviewQuery.data;
+  const livePackageQuery = trpc.packages.liveAdminPreview.useQuery(undefined, {
+    retry: false,
+  });
+  const liveOwnerReviewQuery = trpc.livePackageOwnerReview.get.useQuery(
+    undefined,
+    { retry: false }
+  );
 
   const updateFeatureFlag = trpc.adminSettings.updateFeatureFlag.useMutation({
     onSuccess: async () => {
@@ -468,6 +493,27 @@ export default function AdminFeatureCenter() {
     onError: error => toast.error(error.message),
   });
 
+  const updateLivePackage = trpc.packages.updateLiveConfig.useMutation({
+    onSuccess: async () => {
+      toast.success(
+        pendingLivePackageChange?.enabled
+          ? isRtl
+            ? "تم تفعيل بكج لايف وتسجيل القرار"
+            : "Live Package enabled and the decision was recorded"
+          : isRtl
+            ? "تم إيقاف بكج لايف وتسجيل القرار"
+            : "Live Package disabled and the decision was recorded"
+      );
+      setPendingLivePackageChange(null);
+      await Promise.all([
+        utils.packages.liveAdminPreview.invalidate(),
+        utils.packages.livePublicState.invalidate(),
+        utils.livePackage.adminWorkspace.invalidate(),
+      ]);
+    },
+    onError: error => toast.error(error.message),
+  });
+
   const viewModels = useMemo(() => {
     if (!overview) return [];
     return ADMIN_FEATURE_CATALOG.map(feature => ({
@@ -485,6 +531,20 @@ export default function AdminFeatureCenter() {
   ).length;
   const surveys = overview?.modules.studentSurveys;
   const blockingAffectedStudents = surveys?.blockingAffectedStudents ?? 0;
+  const livePackage = livePackageQuery.data;
+  const liveOwnerAnswerCount = Object.values(
+    liveOwnerReviewQuery.data?.answers ?? {}
+  ).filter(answer => answer.trim().length > 0).length;
+  const livePackageEnabled = Boolean(
+    livePackage?.config.adminVisible &&
+    livePackage.config.purchaseApproved &&
+    livePackage.config.lifecycle === "active"
+  );
+  const livePackageActivationBlocked = Boolean(
+    !livePackage?.availability.deploymentEnabled ||
+    !livePackage?.availability.readiness ||
+    liveOwnerAnswerCount < LIVE_PACKAGE_OWNER_REVIEW_QUESTIONS.length
+  );
 
   const requestFeatureChange = (
     feature: AdminFeatureDefinition,
@@ -564,6 +624,280 @@ export default function AdminFeatureCenter() {
               : "Preview buttons open a clearly labelled demonstration that does not publish content, send notifications, or create real submissions."}
           </AlertDescription>
         </Alert>
+
+        <Card
+          data-feature-id="live-package"
+          className="overflow-hidden border-emerald-300 bg-gradient-to-br from-emerald-50 via-background to-sky-50 shadow-sm dark:border-emerald-900 dark:from-emerald-950/30 dark:to-sky-950/20"
+        >
+          <CardHeader className="border-b border-emerald-100 pb-5 dark:border-emerald-900/60">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="flex min-w-0 items-start gap-3">
+                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                  <Radio className="h-6 w-6" />
+                </span>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-xl font-bold">
+                      {isRtl ? "بكج لايف" : "Live Package"}
+                    </h2>
+                    <Badge
+                      variant="outline"
+                      className={
+                        livePackageEnabled
+                          ? "border-emerald-200 bg-emerald-100 text-emerald-800"
+                          : "border-slate-200 bg-slate-100 text-slate-700"
+                      }
+                    >
+                      {livePackageEnabled
+                        ? isRtl
+                          ? "مفعّل"
+                          : "Enabled"
+                        : isRtl
+                          ? "غير مفعّل"
+                          : "Disabled"}
+                    </Badge>
+                  </div>
+                  <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                    {isRtl
+                      ? "راجعي شكل البكج وقرارات صاحبة العمل، ثم فعّلي أو أوقفي الظهور والشراء من هنا."
+                      : "Review the package and owner decisions, then enable or disable public visibility and purchasing here."}
+                  </p>
+                </div>
+              </div>
+              <Button
+                type="button"
+                className="min-h-11"
+                variant={livePackageEnabled ? "destructive" : "default"}
+                disabled={
+                  livePackageQuery.isLoading ||
+                  updateLivePackage.isPending ||
+                  (!livePackageEnabled && livePackageActivationBlocked)
+                }
+                onClick={() =>
+                  setPendingLivePackageChange({ enabled: !livePackageEnabled })
+                }
+              >
+                <Power className="h-4 w-4" />
+                {livePackageEnabled
+                  ? isRtl
+                    ? "إيقاف البكج"
+                    : "Disable package"
+                  : isRtl
+                    ? "تفعيل البكج"
+                    : "Enable package"}
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-5 p-5">
+            {livePackageQuery.isLoading && (
+              <div className="grid gap-3 md:grid-cols-3">
+                <Skeleton className="h-24" />
+                <Skeleton className="h-24" />
+                <Skeleton className="h-24" />
+              </div>
+            )}
+            {livePackageQuery.isError && (
+              <Alert variant="destructive">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>
+                  {isRtl
+                    ? "تعذر تحميل بكج لايف"
+                    : "Live Package could not be loaded"}
+                </AlertTitle>
+                <AlertDescription>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="mt-2"
+                    onClick={() => livePackageQuery.refetch()}
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    {isRtl ? "إعادة المحاولة" : "Try again"}
+                  </Button>
+                </AlertDescription>
+              </Alert>
+            )}
+            {livePackage?.package && (
+              <>
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  {[
+                    {
+                      label: isRtl ? "الظهور العام" : "Public visibility",
+                      value: livePackage.config.adminVisible
+                        ? isRtl
+                          ? "مفعّل"
+                          : "On"
+                        : isRtl
+                          ? "متوقف"
+                          : "Off",
+                    },
+                    {
+                      label: isRtl ? "اعتماد الشراء" : "Purchase approval",
+                      value: livePackage.config.purchaseApproved
+                        ? isRtl
+                          ? "مفعّل"
+                          : "On"
+                        : isRtl
+                          ? "متوقف"
+                          : "Off",
+                    },
+                    {
+                      label: isRtl ? "إجابات صاحبة العمل" : "Owner answers",
+                      value: `${liveOwnerAnswerCount}/${LIVE_PACKAGE_OWNER_REVIEW_QUESTIONS.length}`,
+                    },
+                    {
+                      label: isRtl ? "الدورات الأساسية" : "Base courses",
+                      value: livePackage.courses.length,
+                    },
+                  ].map(item => (
+                    <div
+                      key={item.label}
+                      className="rounded-xl border bg-background/80 p-3 text-center"
+                    >
+                      <p className="text-lg font-bold">{item.value}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {item.label}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+
+                <section className="overflow-hidden rounded-2xl border-2 border-dashed border-violet-300 bg-background shadow-sm">
+                  <div className="flex items-center gap-2 bg-violet-100 px-4 py-2.5 text-xs font-bold text-violet-950 dark:bg-violet-950 dark:text-violet-100">
+                    <Eye className="h-4 w-4" />
+                    {isRtl
+                      ? "معاينة إدارية — هذا العرض لا ينشر البكج"
+                      : "Admin preview—this view does not publish the package"}
+                  </div>
+                  <div className="grid gap-5 p-5 lg:grid-cols-[1.25fr_1fr]">
+                    <div>
+                      <Badge className="mb-3 bg-emerald-700">
+                        {isRtl ? "بكج مؤقت ومحدود" : "Limited Live Package"}
+                      </Badge>
+                      <h3 className="text-2xl font-black">
+                        {isRtl
+                          ? livePackage.package.nameAr
+                          : livePackage.package.nameEn}
+                      </h3>
+                      <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                        {isRtl
+                          ? livePackage.package.descriptionAr
+                          : livePackage.package.descriptionEn}
+                      </p>
+                      <p className="mt-4 text-2xl font-black text-emerald-700">
+                        ₪
+                        {(livePackage.package.price / 100).toLocaleString(
+                          isRtl ? "ar-JO" : "en-GB"
+                        )}
+                        <span className="ms-2 text-xs font-medium text-muted-foreground">
+                          {isRtl ? "شامل الضريبة" : "VAT inclusive"}
+                        </span>
+                      </p>
+                    </div>
+                    <div className="space-y-3 rounded-xl bg-muted/60 p-4 text-sm">
+                      <p className="flex items-start gap-2">
+                        <CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" />
+                        <span>
+                          <strong>{isRtl ? "المبيعات: " : "Sales: "}</strong>
+                          {formatLivePackageDate(
+                            livePackage.config.salesStartsAt,
+                            isRtl
+                          )}{" "}
+                          —{" "}
+                          {formatLivePackageDate(
+                            livePackage.config.salesEndsAt,
+                            isRtl
+                          )}
+                        </span>
+                      </p>
+                      <p className="flex items-start gap-2">
+                        <Radio className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" />
+                        <span>
+                          <strong>
+                            {isRtl ? "اللقاءات: " : "Live period: "}
+                          </strong>
+                          {formatLivePackageDate(
+                            livePackage.config.sessionStartsAt,
+                            isRtl
+                          )}{" "}
+                          —{" "}
+                          {formatLivePackageDate(
+                            livePackage.config.sessionEndsAt,
+                            isRtl
+                          )}
+                        </span>
+                      </p>
+                      <p className="flex items-start gap-2">
+                        <ShoppingCart className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" />
+                        <span>
+                          {livePackage.availability.withinSalesWindow
+                            ? isRtl
+                              ? "الشراء يفتح فور التفعيل."
+                              : "Purchasing opens immediately when enabled."
+                            : isRtl
+                              ? "حتى بعد التفعيل، يبدأ الشراء تلقائياً عند بداية فترة المبيعات."
+                              : "After enabling, purchasing still waits for the configured sales window."}
+                        </span>
+                      </p>
+                    </div>
+                  </div>
+                </section>
+
+                {livePackageActivationBlocked && !livePackageEnabled && (
+                  <Alert className="border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertTitle>
+                      {isRtl
+                        ? "التفعيل متوقف حتى اكتمال الجاهزية"
+                        : "Activation is blocked until setup is ready"}
+                    </AlertTitle>
+                    <AlertDescription>
+                      {!livePackage.availability.deploymentEnabled
+                        ? isRtl
+                          ? "مفتاح النشر الآمن في الخادم متوقف."
+                          : "The server-side deployment safety switch is off."
+                        : liveOwnerAnswerCount <
+                            LIVE_PACKAGE_OWNER_REVIEW_QUESTIONS.length
+                          ? isRtl
+                            ? "راجعي وأكملي إجابات صاحبة العمل أولاً."
+                            : "Review and complete the owner decisions first."
+                          : livePackage.availability.errors.join(" ")}
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                <div className="grid gap-2 sm:grid-cols-3 [&>button]:min-h-11">
+                  <Button
+                    type="button"
+                    onClick={() => setLocation("/admin/live-package")}
+                  >
+                    <Settings2 className="h-4 w-4" />
+                    {isRtl
+                      ? "الإعداد والمعاينة الكاملة"
+                      : "Full setup & preview"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setLocation("/admin/live-package-review")}
+                  >
+                    <ClipboardCheck className="h-4 w-4" />
+                    {isRtl ? "مراجعة إجابات المالكة" : "Review owner answers"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => livePackageQuery.refetch()}
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    {isRtl ? "تحديث الحالة" : "Refresh status"}
+                  </Button>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
 
         {overviewQuery.isLoading && <FeatureCenterSkeleton />}
 
@@ -734,7 +1068,9 @@ export default function AdminFeatureCenter() {
                               setLocation("/admin/community?setup=policy")
                             }
                           >
-                            {isRtl ? "فتح إعداد سلامة المجتمع" : "Open community safety setup"}
+                            {isRtl
+                              ? "فتح إعداد سلامة المجتمع"
+                              : "Open community safety setup"}
                             <ArrowRight
                               className={`h-3.5 w-3.5 ${isRtl ? "rotate-180" : ""}`}
                             />
@@ -1160,6 +1496,90 @@ export default function AdminFeatureCenter() {
                   <Loader2 className="h-4 w-4 animate-spin" />
                 )}
                 {isRtl ? "تأكيد" : "Confirm"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog
+          open={Boolean(pendingLivePackageChange)}
+          onOpenChange={open =>
+            !open &&
+            !updateLivePackage.isPending &&
+            setPendingLivePackageChange(null)
+          }
+        >
+          <AlertDialogContent dir={isRtl ? "rtl" : "ltr"}>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {pendingLivePackageChange?.enabled
+                  ? isRtl
+                    ? "تأكيد تفعيل بكج لايف"
+                    : "Confirm Live Package activation"
+                  : isRtl
+                    ? "تأكيد إيقاف بكج لايف"
+                    : "Confirm Live Package deactivation"}
+              </AlertDialogTitle>
+              <AlertDialogDescription className="space-y-2">
+                <span className="block">
+                  {pendingLivePackageChange?.enabled
+                    ? isRtl
+                      ? "سيتم تشغيل الظهور العام واعتماد الشراء معاً. لن يقبل النظام الشراء قبل بداية فترة المبيعات المحددة."
+                      : "Public visibility and purchase approval will both be enabled. Checkout will still wait for the configured sales window."
+                    : isRtl
+                      ? "سيتم إخفاء البكج وإيقاف قبول أي طلب شراء جديد. لن تُحذف البيانات أو الاستحقاقات الحالية."
+                      : "The package will be hidden and new purchase requests will be blocked. Existing data and entitlements will not be deleted."}
+                </span>
+                <span className="block text-xs">
+                  {isRtl
+                    ? "سيُسجّل هذا القرار في سجل تدقيق الإدارة."
+                    : "This decision will be recorded in the admin audit trail."}
+                </span>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={updateLivePackage.isPending}>
+                {isRtl ? "إلغاء" : "Cancel"}
+              </AlertDialogCancel>
+              <AlertDialogAction
+                disabled={
+                  !pendingLivePackageChange || updateLivePackage.isPending
+                }
+                className={
+                  pendingLivePackageChange?.enabled
+                    ? "bg-emerald-700 text-white hover:bg-emerald-800"
+                    : "bg-red-600 text-white hover:bg-red-700"
+                }
+                onClick={event => {
+                  event.preventDefault();
+                  if (!pendingLivePackageChange || !livePackage) return;
+                  updateLivePackage.mutate({
+                    adminVisible: pendingLivePackageChange.enabled,
+                    purchaseApproved: pendingLivePackageChange.enabled,
+                    lifecycle: pendingLivePackageChange.enabled
+                      ? "active"
+                      : "coming_soon",
+                    cohortKey: livePackage.config.cohortKey,
+                    salesStartsAt: livePackage.config.salesStartsAt,
+                    salesEndsAt: livePackage.config.salesEndsAt,
+                    sessionStartsAt: livePackage.config.sessionStartsAt,
+                    sessionEndsAt: livePackage.config.sessionEndsAt,
+                    recordingPolicy: livePackage.config.recordingPolicy,
+                    recordingAccessEndsAt:
+                      livePackage.config.recordingAccessEndsAt,
+                  });
+                }}
+              >
+                {updateLivePackage.isPending && (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                )}
+                {pendingLivePackageChange?.enabled
+                  ? isRtl
+                    ? "تفعيل"
+                    : "Enable"
+                  : isRtl
+                    ? "إيقاف"
+                    : "Disable"}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
