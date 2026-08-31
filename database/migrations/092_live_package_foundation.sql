@@ -8,8 +8,8 @@ INSERT INTO packages (
 )
 SELECT
   'live-package', 'Live Package', 'بكج لايف',
-  'A limited, fixed-window educational cohort with two scheduled live sessions per week and permanent access to its assigned base courses.',
-  'بكج تعليمي مؤقت ومحدود، يتضمن لقاءين مباشرين مجدولين أسبوعياً ووصولاً دائماً للدورات الأساسية المخصصة له.',
+  'A limited, fixed-window educational Live Package with two scheduled Zoom sessions per week and permanent access to its recordings and assigned base-course content.',
+  'بكج تعليمي مباشر ومؤقت، يتضمن لقاءين مجدولين أسبوعياً عبر Zoom، مع وصول دائم إلى التسجيلات والمحتوى التعليمي الأساسي المخصص للبكج.',
   200000, 'ILS', 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 'live', datetime('now'), datetime('now')
 WHERE NOT EXISTS (SELECT 1 FROM packages WHERE slug = 'live-package');
 
@@ -92,7 +92,7 @@ INSERT OR IGNORE INTO admin_settings (settingKey, settingValue) VALUES
   ('package_live_purchase_approved', 'false'),
   ('package_live_lifecycle', 'coming_soon'),
   ('package_live_cohort_key', 'live-2026'),
-  ('package_live_sales_starts_at', '2026-09-04T21:00:00.000Z'),
+  ('package_live_sales_starts_at', '2026-09-03T21:00:00.000Z'),
   ('package_live_sales_ends_at', '2026-12-31T20:59:00.000Z'),
   ('package_live_session_starts_at', '2026-09-04T21:00:00.000Z'),
   ('package_live_session_ends_at', '2026-12-31T20:59:00.000Z'),
