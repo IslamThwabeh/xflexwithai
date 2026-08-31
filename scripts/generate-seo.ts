@@ -208,6 +208,65 @@ function packagePrerenderBody(language: SeoLanguage, routeKey: string) {
   </section>`;
 }
 
+/**
+ * Keep the crawlable shell useful even before the React bundle hydrates. Bing's
+ * thin-content signal is based on this HTML, so each public collection/info
+ * route gets a short, factual explanation and a few relevant internal links.
+ * Private routes and redirects are not generated here and remain intentionally
+ * excluded from discovery.
+ */
+function staticRoutePrerenderBody(language: SeoLanguage, routeKey: string) {
+  const isArabic = language === "ar";
+  switch (routeKey) {
+    case "about":
+      return isArabic
+        ? `<section><h2>منهج XFlex في تعليم التداول</h2><p>نبدأ بفهم السوق والتحليل وإدارة رأس المال، ثم نربط المعرفة بالتطبيق المنظم والمراجعة. الهدف هو مساعدة المتعلم على اتخاذ قرارات أوضح وبناء استقلاليته، لا تقديم وعود بنتائج مضمونة.</p><h2>مسارات التعلّم</h2><p>يمكنك البدء من <a href="/ar/packages/basic">الباقة الأساسية</a> أو مقارنة المسار مع <a href="/ar/packages/comprehensive">الباقة الشاملة</a>، ثم قراءة <a href="/ar/risk-disclosure">إفصاح المخاطر</a> قبل التسجيل.</p></section>`
+        : `<section><h2>How XFlex approaches trading education</h2><p>We start with market understanding, analysis, and capital management, then connect learning to structured practice and review. The goal is clearer decisions and learner independence, not guaranteed results.</p><h2>Learning paths</h2><p>Begin with the <a href="/en/packages/basic">Basic package</a>, compare the <a href="/en/packages/comprehensive">Comprehensive package</a>, and read the <a href="/en/risk-disclosure">risk disclosure</a> before registering.</p></section>`;
+    case "events":
+      return isArabic
+        ? `<section><h2>ما الذي تجده في الفعاليات؟</h2><p>تجمع الفعاليات التعليمية بين شرح المفاهيم، التحليل، إدارة المخاطر والأسئلة العملية. تختلف المواعيد والتسجيل حسب الحدث المنشور، لذلك راجع التفاصيل أو <a href="/ar/contact">تواصل مع الفريق</a> قبل الحضور.</p><h2>قبل المشاركة</h2><p>اطّلع على <a href="/ar/free-content">المحتوى المجاني</a> و<a href="/ar/risk-disclosure">إفصاح مخاطر التداول</a> لتعرف حدود التعليم وما تحتاجه من استعداد.</p></section>`
+        : `<section><h2>What to expect from events</h2><p>Educational events combine concept explanations, analysis, risk management, and practical questions. Dates and registration vary by published event, so check the details or <a href="/en/contact">contact the team</a> before attending.</p><h2>Before you join</h2><p>Review the <a href="/en/free-content">free content</a> and <a href="/en/risk-disclosure">trading risk disclosure</a> so you understand the educational scope and preparation required.</p></section>`;
+    case "free-content":
+      return isArabic
+        ? `<section><h2>ابدأ من الموارد المفتوحة</h2><p>تضم هذه الصفحة فيديوهات وأدلة قصيرة تساعدك على مراجعة أساسيات السوق، إدارة المخاطر والانضباط قبل اختيار برنامج مدفوع. استخدمها للتعلم والمقارنة، وليس كضمان لنتيجة مالية.</p><h2>خطوة تالية</h2><p>بعد بناء أساس أولي، اقرأ <a href="/ar/articles">المقالات التعليمية</a> أو قارن <a href="/ar/packages/basic">مسارات الباقات</a>، وتحقق دائماً من <a href="/ar/risk-disclosure">حدود المخاطر</a>.</p></section>`
+        : `<section><h2>Start with open resources</h2><p>This page provides short videos and guides for reviewing market basics, risk management, and discipline before choosing a paid program. Use them for learning and comparison, not as a promise of financial results.</p><h2>Choose a next step</h2><p>After building a foundation, read the <a href="/en/articles">education articles</a> or compare the <a href="/en/packages/basic">package paths</a>, and always review the <a href="/en/risk-disclosure">risk limits</a>.</p></section>`;
+    case "gifts":
+      return isArabic
+        ? `<section><h2>موارد عملية مجانية</h2><p>تجمع الهدايا روابط إلى مواد بداية مختارة، فيديوهات تعليمية ومقالات تساعدك على تنظيم الدراسة والممارسة. اختر المورد الذي يناسب مستواك ثم دوّن ما تعلمته في خطة واضحة.</p><h2>استخدمها بوعي</h2><p>الموارد التعليمية لا تلغي مخاطر السوق. ابدأ من <a href="/ar/free-content">المكتبة المجانية</a>، اقرأ <a href="/ar/articles">المقالات</a>، وراجع <a href="/ar/risk-disclosure">إفصاح المخاطر</a> قبل التداول.</p></section>`
+        : `<section><h2>Practical free resources</h2><p>These gifts link to selected starter materials, educational videos, and articles that help organize study and practice. Choose a resource for your level and record what you learn in a clear plan.</p><h2>Use them with context</h2><p>Educational resources do not remove market risk. Start with the <a href="/en/free-content">free library</a>, read the <a href="/en/articles">articles</a>, and review the <a href="/en/risk-disclosure">risk disclosure</a> before trading.</p></section>`;
+    case "contact":
+      return isArabic
+        ? `<section><h2>كيف يساعدك فريق XFlex؟</h2><p>يمكنك التواصل للاستفسار عن الباقات، التسجيل، الوصول إلى الحساب، الدعم أو المواعيد. أرسل تفاصيل السؤال العامة فقط، ولا ترسل كلمة المرور أو رموز التحقق أو بيانات البطاقة.</p><h2>قبل إرسال الطلب</h2><p>راجع <a href="/ar/faq">الأسئلة الشائعة</a> و<a href="/ar/refund-policy">سياسة الاشتراك والاسترجاع</a>، ثم استخدم القناة الرسمية المناسبة.</p></section>`
+        : `<section><h2>How the XFlex team can help</h2><p>Contact us about packages, registration, account access, support, or appointments. Share only general question details; never send passwords, verification codes, or card information.</p><h2>Before contacting us</h2><p>Review the <a href="/en/faq">frequently asked questions</a> and <a href="/en/refund-policy">subscription and refund policy</a>, then use the appropriate official channel.</p></section>`;
+    case "faq":
+      return isArabic
+        ? `<section><h2>أسئلة يطرحها المتعلمون</h2><ul><li><strong>هل الأرباح مضمونة؟</strong> لا؛ التداول ينطوي على مخاطر وقد تخسر رأس المال.</li><li><strong>هل المحتوى نصيحة مالية شخصية؟</strong> لا؛ هو تعليم عام لا يراعي وضع كل شخص.</li><li><strong>متى يبدأ الوصول؟</strong> يختلف حسب الباقة وشروط التسجيل الموضحة قبل الدفع.</li><li><strong>هل يمكن طلب استرجاع؟</strong> راجع السياسة المنشورة قبل الاشتراك.</li></ul><p>للتفاصيل، قارن <a href="/ar/packages/basic">الباقات</a> واقرأ <a href="/ar/risk-disclosure">إفصاح المخاطر</a> و<a href="/ar/refund-policy">سياسة الاسترجاع</a>.</p></section>`
+        : `<section><h2>Questions learners often ask</h2><ul><li><strong>Are profits guaranteed?</strong> No. Trading carries risk and capital can be lost.</li><li><strong>Is this personalized financial advice?</strong> No. It is general education and does not assess every person's situation.</li><li><strong>When does access begin?</strong> It depends on the package and the registration terms shown before payment.</li><li><strong>Can I request a refund?</strong> Review the published policy before subscribing.</li></ul><p>For details, compare the <a href="/en/packages/basic">packages</a>, read the <a href="/en/risk-disclosure">risk disclosure</a>, and review the <a href="/en/refund-policy">refund policy</a>.</p></section>`;
+    case "careers":
+      return isArabic
+        ? `<section><h2>العمل مع فريق XFlex</h2><p>تتطلب أدوار الأكاديمية وضوحاً ومسؤولية واهتماماً بجودة تجربة المتعلم. قد تشمل الفرص التعليم، الدعم، المحتوى، التقنية أو العمليات حسب الحاجة المنشورة.</p><h2>طريقة التقديم</h2><p>راجع الوظائف المتاحة وقدّم معلومات دقيقة عبر <a href="/ar/contact">القنوات الرسمية</a>. لا نطلب كلمات المرور أو رموز التحقق ضمن طلب التوظيف.</p></section>`
+        : `<section><h2>Working with the XFlex team</h2><p>Academy roles value clarity, responsibility, and a strong learner experience. Opportunities may cover education, support, content, technology, or operations depending on the published need.</p><h2>How to apply</h2><p>Review available roles and provide accurate information through the <a href="/en/contact">official channels</a>. We do not request passwords or verification codes in an application.</p></section>`;
+    case "terms":
+    case "privacy":
+    case "refund-policy":
+      return isArabic
+        ? `<section><h2>لماذا نطلب قراءة هذه الصفحة؟</h2><p>تشرح هذه الوثيقة القواعد التي تنظم استخدام المنصة والخدمات الرقمية، وما يتعلق بالبيانات أو الدفع أو الوصول بحسب نوع الصفحة. اقرأ النص الكامل قبل إنشاء الحساب أو الاشتراك.</p><p>يمكنك العودة إلى <a href="/ar/faq">الأسئلة الشائعة</a> أو <a href="/ar/contact">التواصل مع الفريق</a> إذا احتجت توضيحاً.</p></section>`
+        : `<section><h2>Why this page matters</h2><p>This document explains the rules for using the platform and digital services, including data, payment, or access topics depending on the page. Read the full text before creating an account or subscribing.</p><p>Return to the <a href="/en/faq">FAQ</a> or <a href="/en/contact">contact the team</a> if you need clarification.</p></section>`;
+    case "vip-bot-plan":
+      return isArabic
+        ? `<section><h2>نطاق الخطة التقنية</h2><p>تركز الخطة على جمع البيانات، اختبار الفرضيات، الضوابط التشغيلية، المراقبة وإدارة المخاطر قبل أي استخدام آلي. الأتمتة لا تجعل التداول آمناً ولا تضمن الربح.</p><h2>اقرأ قبل القرار</h2><p>راجع <a href="/ar/risk-disclosure">إفصاح المخاطر</a> و<a href="/ar/editorial-policy">السياسة التحريرية</a> لفهم حدود المعلومات المنشورة.</p></section>`
+        : `<section><h2>Technical plan scope</h2><p>The plan focuses on data collection, hypothesis testing, operational safeguards, monitoring, and risk management before automation is used. Automation does not make trading safe or guarantee profit.</p><h2>Review before deciding</h2><p>Read the <a href="/en/risk-disclosure">risk disclosure</a> and <a href="/en/editorial-policy">editorial policy</a> to understand the limits of published information.</p></section>`;
+    case "editorial-policy":
+    case "risk-disclosure":
+    case "author-editorial-team":
+      return isArabic
+        ? `<section><h2>الوضوح قبل الوعود</h2><p>نميز بين المعلومة التعليمية، الرأي التحليلي، والادعاء الذي يحتاج إلى مصدر أو مراجعة. نحدّث الصفحات عندما تتغير الحقائق ونوضح حدود المحتوى ومخاطر التداول.</p><p>ابدأ من <a href="/ar/articles">المقالات</a>، وتعرّف إلى <a href="/ar/authors/xflex-editorial-team">فريق التحرير</a>، واقرأ <a href="/ar/risk-disclosure">إفصاح المخاطر</a>.</p></section>`
+        : `<section><h2>Clarity before promises</h2><p>We distinguish educational information, analytical opinion, and claims that need sourcing or review. Pages are updated when facts change, with clear limits on content and trading risk.</p><p>Start with the <a href="/en/articles">articles</a>, meet the <a href="/en/authors/xflex-editorial-team">editorial team</a>, and read the <a href="/en/risk-disclosure">risk disclosure</a>.</p></section>`;
+    default:
+      return "";
+  }
+}
+
 function routeHtml(
   template: string,
   language: SeoLanguage,
@@ -337,7 +396,7 @@ async function main() {
           ? homePrerenderBody(language)
           : route.key === "package-basic" || route.key === "package-comprehensive"
             ? packagePrerenderBody(language, route.key)
-            : "";
+            : staticRoutePrerenderBody(language, route.key);
       const html = routeHtml(
         template,
         language,
