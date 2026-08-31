@@ -615,6 +615,7 @@ Last updated: 2026-08-31
   - Feature Center controls and launch defaults shipped in commits `22a344b` and `d3bde04`; Pages deployment preview was `https://58ce7a04.xflexwithai.pages.dev`, and Worker version was `59228f58-71bb-4e9b-892a-22e37126c67c`.
   - A first-render crash on `/admin/live-package` was reported after release: readiness calculation dereferenced the query-backed `config` while it was still `null`. The remediation makes that calculation null-safe and adds a focused regression test. It is frontend-only: no API call, Worker CPU work, SQL query, migration, or production data write is added.
   - The crash remediation shipped from commit `f26c4ee` to Pages preview `https://6fd251c1.xflexwithai.pages.dev`. Production `/admin/live-package` returned 200 with `noindex, nofollow` and `private, no-store`, and the custom domain served the new `AdminLivePackage-Z_SB_RJS.js` asset. No Worker deployment was performed because the change is frontend-only.
+  - The next admin-preview enhancement makes an always-available, admin-only three-tab demo from the existing `adminWorkspace` response: exact homepage placement beside Basic and Comprehensive, the real account/order/receipt journey with interactive local-only sample fields, and an accounting preview matching the revenue summary/package/activation-ledger presentation. It creates no order, account, key, accounting row, API request, Worker work, or additional SQL read; the existing server-validated launch preview remains separate for final readiness validation.
 
 ## Future Hardening
 

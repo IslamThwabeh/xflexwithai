@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { CalendarPlus, ClipboardList, Eye, Radio, Save, ShieldAlert, Upload } from 'lucide-react';
 import { Link } from 'wouter';
 import DashboardLayout from '@/components/DashboardLayout';
+import LivePackageJourneyPreview from '@/components/admin/LivePackageJourneyPreview';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -136,6 +137,10 @@ export default function AdminLivePackage() {
         <div className="mt-4 flex flex-wrap gap-2"><Button variant="outline" onClick={preview} disabled={previewConfig.isPending || !configDatesComplete || !courseIds.length}><Eye className="me-2 h-4 w-4" />{previewConfig.isPending ? (isAr ? 'جاري إنشاء المعاينة…' : 'Building preview…') : (isAr ? 'معاينة كما ستظهر عند التفعيل' : 'Preview as enabled')}</Button><Button onClick={saveConfig} disabled={updateConfig.isPending || !configDatesComplete}><Save className="me-2 h-4 w-4" />{isAr ? 'حفظ' : 'Save configuration'}</Button></div>
         {!!data.availability.errors.length && <ul className="mt-4 list-disc space-y-1 ps-5 text-sm text-red-700">{data.availability.errors.map((error) => <li key={error}>{error}</li>)}</ul>}
       </section>
+
+      {/* The journey demo intentionally uses the already-loaded admin workspace so the
+          owner can review it before courses and launch gates are fully configured. */}
+      <LivePackageJourneyPreview data={data} isAr={isAr} />
 
       {previewConfig.data && <section className="overflow-hidden rounded-3xl border-2 border-dashed border-violet-300 bg-white shadow-xl">
         <div className="flex items-center gap-2 bg-violet-100 px-5 py-3 text-sm font-bold text-violet-950"><Eye className="h-4 w-4" />{isAr ? 'معاينة فقط — لم يتم حفظ أو تفعيل أي شيء' : 'Preview only — nothing was saved or enabled'}</div>
