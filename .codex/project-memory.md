@@ -614,6 +614,7 @@ Last updated: 2026-08-31
   - Production's environment deployment gate is enabled, but marketing visibility and purchase approval remain off. Activation also remains blocked until at least one base course is assigned, so the package is safe for owner review without exposing it to clients.
   - Feature Center controls and launch defaults shipped in commits `22a344b` and `d3bde04`; Pages deployment preview was `https://58ce7a04.xflexwithai.pages.dev`, and Worker version was `59228f58-71bb-4e9b-892a-22e37126c67c`.
   - A first-render crash on `/admin/live-package` was reported after release: readiness calculation dereferenced the query-backed `config` while it was still `null`. The remediation makes that calculation null-safe and adds a focused regression test. It is frontend-only: no API call, Worker CPU work, SQL query, migration, or production data write is added.
+  - The crash remediation shipped from commit `f26c4ee` to Pages preview `https://6fd251c1.xflexwithai.pages.dev`. Production `/admin/live-package` returned 200 with `noindex, nofollow` and `private, no-store`, and the custom domain served the new `AdminLivePackage-Z_SB_RJS.js` asset. No Worker deployment was performed because the change is frontend-only.
 
 ## Future Hardening
 
