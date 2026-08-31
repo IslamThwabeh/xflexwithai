@@ -540,6 +540,10 @@ export default function AdminFeatureCenter() {
     livePackage.config.purchaseApproved &&
     livePackage.config.lifecycle === "active"
   );
+  // Live Package is managed outside ADMIN_FEATURE_CATALOG, but it is displayed
+  // as a sixth Feature Center item and must be included in the headline count.
+  const trackedFeatureCount = ADMIN_FEATURE_CATALOG.length + 1;
+  const trackedEnabledCount = enabledCount + Number(livePackageEnabled);
   const livePackageActivationBlocked = Boolean(
     !livePackage?.availability.deploymentEnabled ||
     !livePackage?.availability.readiness ||
@@ -584,7 +588,7 @@ export default function AdminFeatureCenter() {
               {[
                 {
                   value: overview
-                    ? `${enabledCount}/${ADMIN_FEATURE_CATALOG.length}`
+                    ? `${trackedEnabledCount}/${trackedFeatureCount}`
                     : "—",
                   label: isRtl ? "مفعّلة" : "Enabled",
                 },

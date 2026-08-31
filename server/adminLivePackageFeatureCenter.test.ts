@@ -36,4 +36,10 @@ describe("Live Package in Admin Feature Center", () => {
     expect(source).toContain("availability.readiness");
     expect(source).toContain("LIVE_PACKAGE_OWNER_REVIEW_QUESTIONS.length");
   });
+
+  it("includes Live Package in the Feature Center headline total", () => {
+    expect(source).toContain("const trackedFeatureCount = ADMIN_FEATURE_CATALOG.length + 1");
+    expect(source).toContain("const trackedEnabledCount = enabledCount + Number(livePackageEnabled)");
+    expect(source).toContain("`${trackedEnabledCount}/${trackedFeatureCount}`");
+  });
 });
