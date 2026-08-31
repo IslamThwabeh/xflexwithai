@@ -78,7 +78,7 @@ export function parseLivePackageConfig(
       "2026-09-03T21:00:00.000Z",
     salesEndsAt:
       settings[LIVE_PACKAGE_SETTING_KEYS.salesEndsAt] ||
-      "2026-12-31T20:59:00.000Z",
+      "2026-09-30T20:59:00.000Z",
     sessionStartsAt:
       settings[LIVE_PACKAGE_SETTING_KEYS.sessionStartsAt] ||
       "2026-09-04T21:00:00.000Z",

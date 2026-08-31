@@ -78,6 +78,7 @@ interface PendingChange {
 }
 
 interface PendingLivePackageChange {
+  control: "visibility" | "purchasing";
   enabled: boolean;
 }
 
@@ -495,14 +496,24 @@ export default function AdminFeatureCenter() {
 
   const updateLivePackage = trpc.packages.updateLiveConfig.useMutation({
     onSuccess: async () => {
+      const changedVisibility =
+        pendingLivePackageChange?.control === "visibility";
       toast.success(
-        pendingLivePackageChange?.enabled
-          ? isRtl
-            ? "تم تفعيل بكج لايف وتسجيل القرار"
-            : "Live Package enabled and the decision was recorded"
-          : isRtl
-            ? "تم إيقاف بكج لايف وتسجيل القرار"
-            : "Live Package disabled and the decision was recorded"
+        changedVisibility
+          ? pendingLivePackageChange?.enabled
+            ? isRtl
+              ? "تم إظهار بكج لايف على الموقع وتسجيل القرار"
+              : "Live Package is now visible and the decision was recorded"
+            : isRtl
+              ? "تم إخفاء بكج لايف وإغلاق الشراء وتسجيل القرار"
+              : "Live Package was hidden, purchasing was closed, and the decision was recorded"
+          : pendingLivePackageChange?.enabled
+            ? isRtl
+              ? "تم فتح شراء بكج لايف وتسجيل القرار"
+              : "Live Package purchasing was opened and the decision was recorded"
+            : isRtl
+              ? "تم إغلاق شراء بكج لايف وتسجيل القرار"
+              : "Live Package purchasing was closed and the decision was recorded"
       );
       setPendingLivePackageChange(null);
       await Promise.all([
@@ -535,15 +546,16 @@ export default function AdminFeatureCenter() {
   const liveOwnerAnswerCount = Object.values(
     liveOwnerReviewQuery.data?.answers ?? {}
   ).filter(answer => answer.trim().length > 0).length;
-  const livePackageEnabled = Boolean(
-    livePackage?.config.adminVisible &&
-    livePackage.config.purchaseApproved &&
-    livePackage.config.lifecycle === "active"
+  const livePackageVisible = Boolean(livePackage?.config.adminVisible);
+  const livePackagePurchasable = Boolean(
+    livePackageVisible &&
+      livePackage?.config.purchaseApproved &&
+      livePackage.config.lifecycle === "active"
   );
-  // Live Package is managed outside ADMIN_FEATURE_CATALOG, but it is displayed
-  // as a sixth Feature Center item and must be included in the headline count.
+  // The Feature Center counts a package once it appears publicly, even when its
+  // independently controlled checkout remains in the Coming Soon state.
   const trackedFeatureCount = ADMIN_FEATURE_CATALOG.length + 1;
-  const trackedEnabledCount = enabledCount + Number(livePackageEnabled);
+  const trackedEnabledCount = enabledCount + Number(livePackageVisible);
   const livePackageActivationBlocked = Boolean(
     !livePackage?.availability.deploymentEnabled ||
     !livePackage?.availability.readiness ||
@@ -647,49 +659,84 @@ export default function AdminFeatureCenter() {
                     <Badge
                       variant="outline"
                       className={
-                        livePackageEnabled
+                        livePackageVisible
                           ? "border-emerald-200 bg-emerald-100 text-emerald-800"
                           : "border-slate-200 bg-slate-100 text-slate-700"
                       }
                     >
-                      {livePackageEnabled
+                      {livePackagePurchasable
                         ? isRtl
-                          ? "مفعّل"
-                          : "Enabled"
-                        : isRtl
-                          ? "غير مفعّل"
-                          : "Disabled"}
+                          ? "ظاهر والشراء مفتوح"
+                          : "Visible · sales open"
+                        : livePackageVisible
+                          ? isRtl
+                            ? "ظاهر · قريباً"
+                            : "Visible · coming soon"
+                          : isRtl
+                            ? "مخفي"
+                            : "Hidden"}
                     </Badge>
                   </div>
                   <p className="mt-1 text-sm leading-6 text-muted-foreground">
                     {isRtl
-                      ? "راجعي شكل البكج وقرارات صاحبة العمل، ثم فعّلي أو أوقفي الظهور والشراء من هنا."
-                      : "Review the package and owner decisions, then enable or disable public visibility and purchasing here."}
+                      ? "تحكّمي في ظهور البكج والشراء بشكل مستقل: يمكن عرضه بحالة قريباً قبل فتح التسجيل."
+                      : "Control visibility and purchasing separately: the package can appear as Coming Soon before registration opens."}
                   </p>
                 </div>
               </div>
-              <Button
-                type="button"
-                className="min-h-11"
-                variant={livePackageEnabled ? "destructive" : "default"}
-                disabled={
-                  livePackageQuery.isLoading ||
-                  updateLivePackage.isPending ||
-                  (!livePackageEnabled && livePackageActivationBlocked)
-                }
-                onClick={() =>
-                  setPendingLivePackageChange({ enabled: !livePackageEnabled })
-                }
-              >
-                <Power className="h-4 w-4" />
-                {livePackageEnabled
-                  ? isRtl
-                    ? "إيقاف البكج"
-                    : "Disable package"
-                  : isRtl
-                    ? "تفعيل البكج"
-                    : "Enable package"}
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  className="min-h-11"
+                  variant={livePackageVisible ? "destructive" : "default"}
+                  disabled={
+                    livePackageQuery.isLoading ||
+                    updateLivePackage.isPending ||
+                    (!livePackageVisible &&
+                      !livePackage?.availability.deploymentEnabled)
+                  }
+                  onClick={() =>
+                    setPendingLivePackageChange({
+                      control: "visibility",
+                      enabled: !livePackageVisible,
+                    })
+                  }
+                >
+                  <Eye className="h-4 w-4" />
+                  {livePackageVisible
+                    ? isRtl
+                      ? "إخفاء من الموقع"
+                      : "Hide from website"
+                    : isRtl
+                      ? "إظهار على الموقع"
+                      : "Show on website"}
+                </Button>
+                <Button
+                  type="button"
+                  className="min-h-11"
+                  variant={livePackagePurchasable ? "destructive" : "outline"}
+                  disabled={
+                    livePackageQuery.isLoading ||
+                    updateLivePackage.isPending ||
+                    (!livePackagePurchasable && livePackageActivationBlocked)
+                  }
+                  onClick={() =>
+                    setPendingLivePackageChange({
+                      control: "purchasing",
+                      enabled: !livePackagePurchasable,
+                    })
+                  }
+                >
+                  <ShoppingCart className="h-4 w-4" />
+                  {livePackagePurchasable
+                    ? isRtl
+                      ? "إغلاق الشراء"
+                      : "Close purchasing"
+                    : isRtl
+                      ? "فتح الشراء"
+                      : "Open purchasing"}
+                </Button>
+              </div>
             </div>
           </CardHeader>
           <CardContent className="space-y-5 p-5">
@@ -848,7 +895,7 @@ export default function AdminFeatureCenter() {
                   </div>
                 </section>
 
-                {livePackageActivationBlocked && !livePackageEnabled && (
+                {livePackageActivationBlocked && !livePackagePurchasable && (
                   <Alert className="border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
                     <AlertTriangle className="h-4 w-4" />
                     <AlertTitle>
@@ -1516,23 +1563,39 @@ export default function AdminFeatureCenter() {
           <AlertDialogContent dir={isRtl ? "rtl" : "ltr"}>
             <AlertDialogHeader>
               <AlertDialogTitle>
-                {pendingLivePackageChange?.enabled
-                  ? isRtl
-                    ? "تأكيد تفعيل بكج لايف"
-                    : "Confirm Live Package activation"
-                  : isRtl
-                    ? "تأكيد إيقاف بكج لايف"
-                    : "Confirm Live Package deactivation"}
+                {pendingLivePackageChange?.control === "visibility"
+                  ? pendingLivePackageChange.enabled
+                    ? isRtl
+                      ? "تأكيد إظهار بكج لايف"
+                      : "Confirm website visibility"
+                    : isRtl
+                      ? "تأكيد إخفاء بكج لايف"
+                      : "Confirm hiding Live Package"
+                  : pendingLivePackageChange?.enabled
+                    ? isRtl
+                      ? "تأكيد فتح الشراء"
+                      : "Confirm opening purchases"
+                    : isRtl
+                      ? "تأكيد إغلاق الشراء"
+                      : "Confirm closing purchases"}
               </AlertDialogTitle>
               <AlertDialogDescription className="space-y-2">
                 <span className="block">
-                  {pendingLivePackageChange?.enabled
-                    ? isRtl
-                      ? "سيتم تشغيل الظهور العام واعتماد الشراء معاً. لن يقبل النظام الشراء قبل بداية فترة المبيعات المحددة."
-                      : "Public visibility and purchase approval will both be enabled. Checkout will still wait for the configured sales window."
-                    : isRtl
-                      ? "سيتم إخفاء البكج وإيقاف قبول أي طلب شراء جديد. لن تُحذف البيانات أو الاستحقاقات الحالية."
-                      : "The package will be hidden and new purchase requests will be blocked. Existing data and entitlements will not be deleted."}
+                  {pendingLivePackageChange?.control === "visibility"
+                    ? pendingLivePackageChange.enabled
+                      ? isRtl
+                        ? "سيظهر البكج على الموقع بحالة «قريباً». لن يُفتح الشراء إلا بقرار مستقل منك."
+                        : "The package will appear on the website as Coming Soon. Purchasing stays closed until you open it separately."
+                      : isRtl
+                        ? "سيُخفى البكج من الموقع ويُغلق الشراء تلقائياً للحماية. لن تُحذف البيانات أو الاستحقاقات الحالية."
+                        : "The package will be hidden and purchasing will automatically close for safety. Existing data and entitlements will not be deleted."
+                    : pendingLivePackageChange?.enabled
+                      ? isRtl
+                        ? "سيظهر البكج ويُفتح الشراء خلال فترة المبيعات فقط، بعد اكتمال الجاهزية."
+                        : "The package will be shown and checkout will open only within the configured sales window after readiness checks pass."
+                      : isRtl
+                        ? "سيبقى البكج ظاهراً بحالة «قريباً»، لكن لن يقبل طلبات شراء جديدة."
+                        : "The package will remain visible as Coming Soon, but it will stop accepting new purchase requests."}
                 </span>
                 <span className="block text-xs">
                   {isRtl
@@ -1557,12 +1620,24 @@ export default function AdminFeatureCenter() {
                 onClick={event => {
                   event.preventDefault();
                   if (!pendingLivePackageChange || !livePackage) return;
+                  const changesVisibility =
+                    pendingLivePackageChange.control === "visibility";
+                  // Hiding is fail-closed: it also disables checkout. Closing
+                  // checkout alone intentionally preserves Coming Soon visibility.
+                  const adminVisible = changesVisibility
+                    ? pendingLivePackageChange.enabled
+                    : pendingLivePackageChange.enabled
+                      ? true
+                      : livePackage.config.adminVisible;
+                  const purchaseApproved = changesVisibility
+                    ? pendingLivePackageChange.enabled
+                      ? livePackage.config.purchaseApproved
+                      : false
+                    : pendingLivePackageChange.enabled;
                   updateLivePackage.mutate({
-                    adminVisible: pendingLivePackageChange.enabled,
-                    purchaseApproved: pendingLivePackageChange.enabled,
-                    lifecycle: pendingLivePackageChange.enabled
-                      ? "active"
-                      : "coming_soon",
+                    adminVisible,
+                    purchaseApproved,
+                    lifecycle: purchaseApproved ? "active" : "coming_soon",
                     cohortKey: livePackage.config.cohortKey,
                     salesStartsAt: livePackage.config.salesStartsAt,
                     salesEndsAt: livePackage.config.salesEndsAt,
@@ -1577,13 +1652,7 @@ export default function AdminFeatureCenter() {
                 {updateLivePackage.isPending && (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 )}
-                {pendingLivePackageChange?.enabled
-                  ? isRtl
-                    ? "تفعيل"
-                    : "Enable"
-                  : isRtl
-                    ? "إيقاف"
-                    : "Disable"}
+                {isRtl ? "تأكيد" : "Confirm"}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

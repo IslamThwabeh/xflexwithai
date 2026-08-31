@@ -18,16 +18,19 @@ describe("Live Package in Admin Feature Center", () => {
     expect(source).toContain('setLocation("/admin/live-package")');
   });
 
-  it("uses the audited Live Package configuration mutation behind confirmation", () => {
+  it("controls appearance and purchasing independently behind confirmation", () => {
     expect(source).toContain("packages.updateLiveConfig.useMutation");
-    expect(source).toContain("Confirm Live Package activation");
-    expect(source).toContain("Confirm Live Package deactivation");
-    expect(source).toContain("adminVisible: pendingLivePackageChange.enabled");
+    expect(source).toContain('control: "visibility"');
+    expect(source).toContain('control: "purchasing"');
+    expect(source).toContain("Confirm website visibility");
+    expect(source).toContain("Confirm opening purchases");
     expect(source).toContain(
-      "purchaseApproved: pendingLivePackageChange.enabled"
+      "The package will appear on the website as Coming Soon"
     );
-    expect(source).toContain('? "active"');
-    expect(source).toContain(': "coming_soon"');
+    expect(source).toContain("const purchaseApproved = changesVisibility");
+    expect(source).toContain(
+      'lifecycle: purchaseApproved ? "active" : "coming_soon"'
+    );
   });
 
   it("keeps activation blocked until the package and owner decisions are ready", () => {
@@ -38,8 +41,12 @@ describe("Live Package in Admin Feature Center", () => {
   });
 
   it("includes Live Package in the Feature Center headline total", () => {
-    expect(source).toContain("const trackedFeatureCount = ADMIN_FEATURE_CATALOG.length + 1");
-    expect(source).toContain("const trackedEnabledCount = enabledCount + Number(livePackageEnabled)");
+    expect(source).toContain(
+      "const trackedFeatureCount = ADMIN_FEATURE_CATALOG.length + 1"
+    );
+    expect(source).toContain(
+      "const trackedEnabledCount = enabledCount + Number(livePackageVisible)"
+    );
     expect(source).toContain("`${trackedEnabledCount}/${trackedFeatureCount}`");
   });
 });

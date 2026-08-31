@@ -10,7 +10,7 @@ const settings = {
   package_live_lifecycle: "active",
   package_live_cohort_key: "live-2026",
   package_live_sales_starts_at: "2026-09-03T21:00:00.000Z",
-  package_live_sales_ends_at: "2026-12-31T20:59:00.000Z",
+  package_live_sales_ends_at: "2026-09-30T20:59:00.000Z",
   package_live_session_starts_at: "2026-09-04T21:00:00.000Z",
   package_live_session_ends_at: "2026-12-31T20:59:00.000Z",
   package_live_recording_policy: "permanent",
@@ -25,6 +25,12 @@ const packageRecord = {
 };
 
 describe("Live package availability", () => {
+  it("defaults enrollment and key activation to the September 30 cutoff", () => {
+    expect(parseLivePackageConfig({}, true).salesEndsAt).toBe(
+      "2026-09-30T20:59:00.000Z"
+    );
+  });
+
   it("cannot be visible or purchasable while the deployment switch is off", () => {
     const result = getLivePackageAvailability({
       config: parseLivePackageConfig(settings, false),
@@ -80,7 +86,7 @@ describe("Live package availability", () => {
         config,
         packageRecord,
         assignedCourseCount: 1,
-        now: new Date("2027-01-01T00:00:00.000Z"),
+        now: new Date("2026-09-30T21:00:00.000Z"),
       }).purchasable
     ).toBe(false);
   });

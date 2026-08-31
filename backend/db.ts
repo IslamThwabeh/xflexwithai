@@ -9678,12 +9678,19 @@ export async function createOrderActivationKeys(input: {
     const packageRecord = await getPackageById(item.packageId);
     if (!packageRecord) throw new Error(`Package #${item.packageId} not found`);
     const configured = configurationByPackage.get(Number(item.packageId));
-    const configuration = packageRecord.packageType === 'live'
+    // Reuse the settings read that Live-key creation already required; this
+    // changes the cutoff value without adding a query to standard packages.
+    const liveConfig = packageRecord.packageType === 'live'
+      ? parseLivePackageConfig(await getAllAdminSettings())
+      : null;
+    const configuration = liveConfig
       ? {
           packageId: item.packageId,
           entitlementDays: 1,
-          expiresAt: parseLivePackageConfig(await getAllAdminSettings()).sessionEndsAt,
-          configurationNotes: 'Fixed Live cohort window; entitlementDays is not used for Live access.',
+          // A Live key must be redeemed by enrollment close. Once redeemed,
+          // entitlement/session access still follows the separate cohort end.
+          expiresAt: liveConfig.salesEndsAt,
+          configurationNotes: 'Live enrollment cutoff; entitlementDays is not used for fixed-cohort access.',
         }
       : configured;
     const entitlementDays = normalizePositiveInteger(configuration?.entitlementDays);
