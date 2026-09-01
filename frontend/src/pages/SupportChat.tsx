@@ -114,7 +114,7 @@ export default function SupportChat() {
     changeCursor ?? { afterMessageId: 0, changedAfter: new Date(0).toISOString() },
     {
       enabled: Boolean(isChatTab && isPageVisible && data?.conversation?.id && changeCursor),
-      refetchInterval: isPageVisible ? 5000 : false,
+      refetchInterval: isPageVisible ? 15_000 : false,
       refetchIntervalInBackground: false,
       refetchOnWindowFocus: true,
     },

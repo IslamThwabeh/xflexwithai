@@ -194,7 +194,9 @@ export const enrollments = sqliteTable("enrollments", {
   registrationKeyId: integer("registrationKeyId"),
   activatedViaKey: integer("activatedViaKey", { mode: 'boolean' }).default(false).notNull(),
   isAdminSkipped: integer("isAdminSkipped", { mode: 'boolean' }).default(false).notNull(),
-});
+}, (table) => ({
+  userCourseIdx: index("idx_enrollments_user_course").on(table.userId, table.courseId),
+}));
 
 export type Enrollment = typeof enrollments.$inferSelect;
 export type InsertEnrollment = typeof enrollments.$inferInsert;
@@ -834,6 +836,15 @@ export const supportMessages = sqliteTable("supportMessages", {
   unreadClientIdx: index("idx_support_messages_unread_client")
     .on(table.conversationId, table.senderType, table.isRead)
     .where(sql`${table.senderType} = 'client' AND ${table.isRead} = 0`),
+  conversationEditedIdx: index("idx_support_messages_conversation_edited")
+    .on(table.conversationId, table.editedAt)
+    .where(sql`${table.editedAt} IS NOT NULL`),
+  conversationDeletedIdx: index("idx_support_messages_conversation_deleted")
+    .on(table.conversationId, table.deletedAt)
+    .where(sql`${table.deletedAt} IS NOT NULL`),
+  unreadNonClientIdx: index("idx_support_messages_unread_non_client")
+    .on(table.conversationId, table.isRead)
+    .where(sql`${table.senderType} <> 'client' AND ${table.isRead} = 0`),
 }));
 
 export type SupportMessage = typeof supportMessages.$inferSelect;
@@ -1925,7 +1936,10 @@ export const pointsTransactions = sqliteTable("points_transactions", {
   referenceId: integer("reference_id"),
   referenceType: text("reference_type", { length: 30 }), // order | quiz | review | course_complete | login | referral
   createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
-});
+}, (table) => ({
+  userReferenceCreatedIdx: index("idx_points_transactions_user_reference_created")
+    .on(table.userId, table.referenceType, table.createdAt),
+}));
 
 export type PointsTransaction = typeof pointsTransactions.$inferSelect;
 export type InsertPointsTransaction = typeof pointsTransactions.$inferInsert;
@@ -2413,6 +2427,10 @@ export const staffNotifications = sqliteTable("staff_notifications", {
   createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
 }, (table) => ({
   userDedupeUnique: unique("uq_staff_notifications_user_dedupe_key").on(table.userId, table.dedupeKey),
+  eventActionCreatedIdx: index("idx_staff_notif_event_action_created")
+    .on(table.eventType, table.actionUrl, table.createdAt),
+  userCreatedIdx: index("idx_staff_notif_user_created")
+    .on(table.userId, table.createdAt),
 }));
 
 export type StaffNotification = typeof staffNotifications.$inferSelect;

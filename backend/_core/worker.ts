@@ -28,7 +28,6 @@ import {
   drainRecommendationDeliveryQueue,
   getRemainingGenericEmailBudget,
   RECOMMENDATION_DELIVERY_BATCH_SIZE,
-  RECOMMENDATION_PROVIDER_BATCH_LIMIT,
 } from "../services/recommendation-delivery.service";
 import { handleZeptoMailWebhookRequest } from "./zeptoMailWebhook";
 import { storageDeleteR2, storagePutR2 } from "../storage-r2";
@@ -44,6 +43,9 @@ import { LIVE_PACKAGE_SLUG, parseLivePackageConfig } from "../services/live-pack
 const MINUTE_DELIVERY_CRON = "* * * * *";
 const TIMED_SERVICE_REPAIR_CRON = "*/5 * * * *";
 const DAILY_MAINTENANCE_CRON = "0 5 * * *";
+const FREE_PLAN_RECOMMENDATION_PROVIDER_BATCH_LIMIT = 1;
+const FREE_PLAN_LOWER_PRIORITY_PROVIDER_LIMIT = 1;
+const FREE_PLAN_SURVEY_MATERIALIZATION_LIMIT = 10;
 
 function appendCookieHeaders(headers: Headers, cookieHeaders: string[] | undefined) {
   if (!cookieHeaders?.length) return;
@@ -58,85 +60,85 @@ function jsonResponse(status: number, payload: unknown, headers?: Headers) {
   return new Response(JSON.stringify(payload), { status, headers: responseHeaders });
 }
 
-async function runFrequentEmailJobs() {
+async function runFrequentEmailJobs(scheduledMinute: number) {
   // Recommendation and human-support delivery are the priority minute lanes.
   // Keep both ahead of surveys, campaigns, and maintenance so Workers Free CPU
   // exhaustion in lower-priority work cannot delay time-sensitive messages.
   const priorityDrain = await runPriorityDeliveryLanes({
     drainRecommendations: () => drainRecommendationDeliveryQueue({
       limit: RECOMMENDATION_DELIVERY_BATCH_SIZE,
+      maxBatches: FREE_PLAN_RECOMMENDATION_PROVIDER_BATCH_LIMIT,
       source: "scheduled",
     }),
     drainSupportReplies: () => drainGenericEmailOutbox({
       limit: SUPPORT_REPLY_EMAIL_DRAIN_LIMIT,
       eventTypes: ["support_client_reply"],
     }),
-    recommendationFailureProviderRequests: RECOMMENDATION_PROVIDER_BATCH_LIMIT,
+    recommendationFailureProviderRequests: FREE_PLAN_RECOMMENDATION_PROVIDER_BATCH_LIMIT,
     onError: (lane, error) => logger.error(`[CRON] Priority ${lane} delivery failed`, {
       error: error instanceof Error ? error.message : String(error),
     }),
   });
 
-  // Survey events are first materialized into the durable outbox. Existing
-  // pre-Phase-1 assignments have no schedule and are never picked up here.
-  let surveyProviderRequests = 0;
-  try {
-    await db.materializeDueStudentSurveyNotifications({ limit: 50 });
-    const surveyBudget = Math.min(
-      2,
-      getRemainingGenericEmailBudget(priorityDrain.recommendationProviderRequests),
-    );
-    if (surveyBudget > 0) {
-      const surveyDrain = await drainStudentSurveyEmailOutbox({ providerRequestLimit: surveyBudget });
-      surveyProviderRequests = surveyDrain.providerRequests;
+  const lowerPriorityBudget = Math.min(
+    FREE_PLAN_LOWER_PRIORITY_PROVIDER_LIMIT,
+    getRemainingGenericEmailBudget(priorityDrain.recommendationProviderRequests),
+  );
+  if (lowerPriorityBudget <= 0) return;
+
+  // On Workers Free, run at most one lower-priority lane per invocation. Each
+  // lane remains durable and is revisited every five minutes, while live
+  // recommendations and human support still run first every minute.
+  const lowerPriorityLane = scheduledMinute % 5;
+  if (lowerPriorityLane === 1) {
+    try {
+      await db.materializeDueStudentSurveyNotifications({
+        limit: FREE_PLAN_SURVEY_MATERIALIZATION_LIMIT,
+      });
+      await drainStudentSurveyEmailOutbox({
+        providerRequestLimit: lowerPriorityBudget,
+      });
+    } catch (error) {
+      logger.error("[CRON] Student survey notification jobs failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
-  } catch (error) {
-    logger.error("[CRON] Student survey notification jobs failed", {
-      error: error instanceof Error ? error.message : String(error),
-    });
+    return;
   }
 
-  // Community announcements are bulk awareness mail. Keep them behind live
-  // recommendations and support replies, materialize at most one 50-client
-  // BCC batch, and preserve the generic transactional capacity calculation.
-  let communityProviderRequests = 0;
-  try {
-    const communityBudget = Math.min(
-      2,
-      getRemainingGenericEmailBudget(
-        priorityDrain.recommendationProviderRequests + surveyProviderRequests,
-      ),
-    );
-    if (communityBudget > 0) {
+  if (lowerPriorityLane === 2) {
+    try {
       await db.materializeEmailOutboxCampaigns(STUDENT_COMMUNITY_EMAIL_BCC_LIMIT, {
         eventTypes: [STUDENT_COMMUNITY_POST_EMAIL_EVENT],
         maxBatchSize: STUDENT_COMMUNITY_EMAIL_BCC_LIMIT,
       });
-      const communityDrain = await drainStudentCommunityPostEmailOutbox({
-        providerRequestLimit: communityBudget,
+      await drainStudentCommunityPostEmailOutbox({
+        providerRequestLimit: lowerPriorityBudget,
       });
-      communityProviderRequests = communityDrain.providerRequests;
+    } catch (error) {
+      logger.error("[CRON] Student community post email jobs failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
-  } catch (error) {
-    logger.error("[CRON] Student community post email jobs failed", {
-      error: error instanceof Error ? error.message : String(error),
-    });
+    return;
   }
 
-  const genericBudget = getRemainingGenericEmailBudget(
-    priorityDrain.recommendationProviderRequests + surveyProviderRequests + communityProviderRequests,
-  );
-  const genericLimit = Math.min(GENERIC_EMAIL_OUTBOX_DRAIN_LIMIT, genericBudget);
-
-  if (genericLimit > 0) {
-    await db.materializeEmailOutboxCampaigns(genericLimit, {
-      excludedEventTypes: [STUDENT_COMMUNITY_POST_EMAIL_EVENT],
-    });
+  if (lowerPriorityLane === 3) {
+    const genericLimit = Math.min(
+      GENERIC_EMAIL_OUTBOX_DRAIN_LIMIT,
+      lowerPriorityBudget,
+    );
+    try {
+      await db.materializeEmailOutboxCampaigns(genericLimit, {
+        excludedEventTypes: [STUDENT_COMMUNITY_POST_EMAIL_EVENT],
+      });
+      await drainGenericEmailOutbox({ limit: genericLimit });
+    } catch (error) {
+      logger.error("[CRON] Generic email outbox jobs failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
-  if (genericLimit > 0) {
-    await drainGenericEmailOutbox({ limit: genericLimit });
-  }
-
 }
 
 function buildContentDisposition(type: "inline" | "attachment", fileName: string) {
@@ -862,24 +864,26 @@ export default {
     (globalThis as { ENV?: Env }).ENV = env;
     await db.getDb({ DB: env.DB });
     if (controller.cron === MINUTE_DELIVERY_CRON) {
+      const scheduledMinute = new Date(controller.scheduledTime).getUTCMinutes();
       try {
-        await runFrequentEmailJobs();
+        await runFrequentEmailJobs(scheduledMinute);
       } catch (error) {
         logger.error("[CRON] Frequent email jobs failed", {
           error: error instanceof Error ? error.message : String(error),
         });
       }
 
-      try {
-        await checkScheduledEmailOutboxHealth(5);
-      } catch (error) {
-        logger.error("[CRON] Email outbox health check failed", {
-          error: error instanceof Error ? error.message : String(error),
-        });
+      if (scheduledMinute % 5 === 0) {
+        try {
+          await checkScheduledEmailOutboxHealth(5);
+        } catch (error) {
+          logger.error("[CRON] Email outbox health check failed", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
       }
 
-      const minute = new Date().getUTCMinutes();
-      if (minute === 0) {
+      if (scheduledMinute === 0) {
         const stats = await db.getEmailOutboxStats(new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
         if (stats.deadLetter > 0 || stats.pending + stats.failed > 100) {
           await db.notifyStaffByEvent("email_delivery_anomaly", {
@@ -1117,25 +1121,9 @@ export default {
       logger.error("[CRON] Auto-close stale conversations failed", { error: e instanceof Error ? e.message : String(e) });
     }
 
-    // --- Recommendation subscriber repair (moved off the hot send path) ---
-    try {
-      await db.runRecommendationSubscriberRepair();
-    } catch (e) {
-      logger.error("[CRON] Recommendation subscriber repair failed", { error: e instanceof Error ? e.message : String(e) });
-    }
-
-    // --- Recommendation delivery retry/drain ---
-    // Re-send pending/failed deliveries (capped attempts; dead-letter on the
-    // final failure). The stored subject/body lets us resend without
-    // recomputing template state.
-    try {
-      await drainRecommendationDeliveryQueue({
-        limit: RECOMMENDATION_DELIVERY_BATCH_SIZE,
-        source: "daily",
-      });
-    } catch (e) {
-      logger.error("[CRON] Recommendation delivery drain failed", { error: e instanceof Error ? e.message : String(e) });
-    }
+    // Recommendation repair and retry delivery already run on their bounded
+    // five-minute and minute schedules. Do not repeat them in the daily CPU
+    // budget; the durable queues preserve the same retry behavior.
 
     // --- Recommendation delivery anomaly check (rolling 24h) ---
     try {

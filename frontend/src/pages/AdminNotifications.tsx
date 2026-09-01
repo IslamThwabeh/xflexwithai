@@ -197,7 +197,7 @@ export default function AdminNotifications() {
   const [, setLocation] = useLocation();
 
   // Staff alerts inbox
-  const { data: staffAlerts, isLoading: alertsLoading } = trpc.staffNotifications.list.useQuery(undefined, { refetchInterval: 30_000 });
+  const { data: staffAlerts, isLoading: alertsLoading } = trpc.staffNotifications.list.useQuery(undefined, { refetchInterval: 120_000, refetchIntervalInBackground: false });
   const markRead = trpc.staffNotifications.markRead.useMutation({ onSuccess: () => utils.staffNotifications.invalidate() });
   const markAllRead = trpc.staffNotifications.markAllRead.useMutation({ onSuccess: () => utils.staffNotifications.invalidate() });
   const utils = trpc.useUtils();

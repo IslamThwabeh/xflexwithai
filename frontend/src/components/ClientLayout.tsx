@@ -72,7 +72,7 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
   const lastInteractionAtRef = useRef(0);
   const hydratedLanguageForUserIdRef = useRef<number | null>(null);
 
-  const { data: unreadNotifData } = trpc.notifications.unreadCount.useQuery(undefined, { refetchInterval: 30_000 });
+  const { data: unreadNotifData } = trpc.notifications.unreadCount.useQuery(undefined, { refetchInterval: 120_000, refetchIntervalInBackground: false });
   const { data: adminCheck } = trpc.auth.isAdmin.useQuery(undefined, { retry: false });
   const { data: surveyAvailability } = trpc.studentSurveys.availability.useQuery(undefined, { retry: false });
   const { data: communityAvailability } = trpc.community.availability.useQuery(undefined, { retry: false });

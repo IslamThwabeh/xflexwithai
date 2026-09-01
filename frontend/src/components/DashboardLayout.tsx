@@ -576,7 +576,7 @@ function DashboardLayoutContent({
     {
       enabled: canReadStaffNotifications,
       refetchInterval:
-        canReadStaffNotifications && isPageVisible ? 30_000 : false,
+        canReadStaffNotifications && isPageVisible ? 120_000 : false,
       refetchIntervalInBackground: false,
       refetchOnWindowFocus: true,
       retry: false,

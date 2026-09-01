@@ -93,3 +93,50 @@ progress, and recommendation queue smoke checks after either apply or rollback.
   student support all returned HTTP 200.
 - Audit record: `081_d1_hot_path_indexes.sql` was inserted into
   `schema_migrations` with source `manual` after verification succeeded.
+
+## Production execution record — 2026-09-01 (migration 096)
+
+- Cloudflare warned that daily Free-plan D1 reads had reached 81% of the
+  5,000,000-row allowance. The reset was scheduled for 2026-09-02 00:00 UTC.
+- The rolling production snapshot showed 5,526,290 rows read. The largest
+  measured two-hour query was staff-notification deduplication: 416,892 rows
+  across 21 executions, averaging about 19,852 rows per execution.
+- Pre-change Time Travel bookmark:
+  `000011a3-00000000-000050d9-56ba42c2c6c608f984a64e018d66917b`.
+- Migration `096_d1_remaining_hot_path_indexes.sql` added seven non-unique,
+  idempotent indexes for staff notification deduplication/listing, support
+  edit/delete/unread changes, enrollment ownership, and points history.
+- Migration SHA-256:
+  `F3DD074446E4D54193EC091DB140A9C664BAA2629BD179AB0EE97B5E26FFE18F`.
+- D1 executed all seven statements in 678.53 ms, reading 146,624 rows and
+  writing 49,029 index entries. It was recorded as `schema_migrations.id = 37`
+  with source `codex_wrangler` only after all seven production query plans
+  selected the intended indexes.
+- The direct post-release deduplication probe read one row and completed in
+  0.12 ms, down from the prior approximately 19,852-row average.
+- Incremental support changes now use three bounded, indexable branches and
+  deterministically merge/deduplicate at most 200 messages. Indexed email
+  lookups use the normalized stored email rather than applying functions to
+  the indexed database column.
+- Visible-tab polling changed from 5 to 15 seconds for active support changes,
+  8 to 30 seconds for the admin support inbox, and 30 to 120 seconds for client
+  notification and staff badge/list refreshes. Mutations and window focus
+  still refresh immediately; background tabs do not poll.
+- Scheduled Free-plan work is bounded: one recommendation provider batch per
+  minute, lower-priority lanes rotate across minutes, survey materialization is
+  capped at 10, health checks are reduced, and timed-service repair processes
+  one cursor-selected user per five-minute invocation.
+- Verification passed TypeScript, the Worker build, the production application
+  build, the new D1 contract tests, and all 185 critical-cycle tests across 33
+  files. Worker health, database health, Pages preview, and the production
+  domain returned HTTP 200.
+- Worker version: `13afcbd0-2641-41c4-b4cf-23f1c751462e`. Pages deployment:
+  `1223c794-49cf-4311-9bcc-1567b85868e9`.
+- Final Time Travel bookmark:
+  `000011a5-00000014-000050d9-9ea752aa11d71bd3ddad73583ecb7cba`.
+- Two full `user_notifications` composite indexes were deliberately deferred.
+  Production already has `idx_user_notifications_user_id`, and telemetry read
+  exactly 50 rows for a 50-row history page. With 37,389 notification rows and
+  70,715 rolling writes already consumed, either full index could cross the
+  100,000-row write limit. A partial unread index would cover 24,383 rows and
+  leave inadequate operational headroom, so it was also not applied.

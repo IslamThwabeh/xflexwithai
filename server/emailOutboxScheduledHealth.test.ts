@@ -105,7 +105,7 @@ describe("scheduled email outbox health monitor", () => {
       "if (controller.cron !== DAILY_MAINTENANCE_CRON)",
     );
     const deliveryCall = workerSource.indexOf(
-      "await runFrequentEmailJobs()",
+      "await runFrequentEmailJobs(scheduledMinute)",
       minuteBranchStart,
     );
     const healthCall = workerSource.indexOf(
@@ -123,7 +123,46 @@ describe("scheduled email outbox health monitor", () => {
     expect(repairBranchStart).toBeGreaterThan(healthCall);
     expect(repairCall).toBeGreaterThan(repairBranchStart);
     expect(dailyGuardStart).toBeGreaterThan(repairCall);
-    expect(workerSource).toContain("if (minute === 0)");
+    expect(workerSource).toContain("if (scheduledMinute % 5 === 0)");
+    expect(workerSource).toContain("if (scheduledMinute === 0)");
+  });
+
+  it("bounds Free-plan delivery work without changing priority order", () => {
+    const workerSource = readFileSync(
+      fileURLToPath(new URL("../backend/_core/worker.ts", import.meta.url)),
+      "utf8",
+    );
+
+    expect(workerSource).toContain(
+      "const FREE_PLAN_RECOMMENDATION_PROVIDER_BATCH_LIMIT = 1",
+    );
+    expect(workerSource).toContain("const lowerPriorityLane = scheduledMinute % 5");
+    expect(workerSource).toContain(
+      "maxBatches: FREE_PLAN_RECOMMENDATION_PROVIDER_BATCH_LIMIT",
+    );
+    expect(workerSource).not.toContain("source: \"daily\"");
+  });
+
+  it("repairs one pending timed-service user per invocation with a durable cursor", () => {
+    const dbSource = readFileSync(
+      fileURLToPath(new URL("../backend/db.ts", import.meta.url)),
+      "utf8",
+    );
+    const repairStart = dbSource.indexOf("async function repairDueTimedServiceStates()");
+    const repairEnd = dbSource.indexOf("export async function runRecommendationSubscriberRepair", repairStart);
+    const repairSource = dbSource.slice(repairStart, repairEnd);
+
+    expect(dbSource).toContain(
+      'const TIMED_SERVICE_REPAIR_CURSOR_KEY = "timed_service_repair_cursor_user_id"',
+    );
+    expect(dbSource).toContain("LIMIT 1");
+    expect(repairSource).toContain("await queuePendingTimedServiceReminders(userId)");
+    expect(repairSource).toContain("await ensureTimedServicesActivatedIfDue(userId)");
+    expect(repairSource.indexOf("await db.insert(adminSettings)")).toBeLessThan(
+      repairSource.indexOf("await queuePendingTimedServiceReminders(userId)"),
+    );
+    expect(repairSource).not.toContain("runTimedServiceRepairWithRetry");
+    expect(repairSource).not.toContain("for (const userId");
   });
 
   it("configures independent minute, timed-repair, and daily schedules", () => {

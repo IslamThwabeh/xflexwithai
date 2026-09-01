@@ -158,7 +158,7 @@ export default function AdminSupport() {
       search: debouncedSearch.length >= 2 ? debouncedSearch : undefined,
     },
     {
-      refetchInterval: isPageVisible ? 8000 : false,
+      refetchInterval: isPageVisible ? 30_000 : false,
       refetchOnWindowFocus: true,
     },
   );
@@ -287,7 +287,7 @@ export default function AdminSupport() {
     },
     {
       enabled: Boolean(selectedConvId && messageHistoryData && isPageVisible),
-      refetchInterval: isPageVisible ? 5000 : false,
+      refetchInterval: isPageVisible ? 15_000 : false,
       refetchOnWindowFocus: true,
     },
   );

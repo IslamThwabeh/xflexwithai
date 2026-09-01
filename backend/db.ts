@@ -148,10 +148,6 @@ import {
   type TimedServiceName,
 } from './services/timed-service-notifications.service';
 import {
-  runTimedServiceRepairWithRetry,
-  TimedServiceRepairRetryError,
-} from './services/timed-service-repair.service';
-import {
   BUG_REPORT_RISK_LEVELS,
   COOKIE_MAX_AGE_USER,
   IDLE_TIMEOUT_STAFF_MS,
@@ -648,6 +644,7 @@ async function getUserEntitlementDays(userId: number): Promise<number> {
   const [user] = await db.select({ email: users.email }).from(users)
     .where(eq(users.id, userId)).limit(1);
   if (!user?.email) return DEFAULT_KEY_ENTITLEMENT_DAYS;
+  const normalizedEmail = normalizeEmailAddress(user.email);
 
   // Find the latest activated package key for this user
   const [key] = await db.select({
@@ -655,7 +652,7 @@ async function getUserEntitlementDays(userId: number): Promise<number> {
     packageId: registrationKeys.packageId,
   }).from(registrationKeys)
     .where(and(
-      sql`LOWER(${registrationKeys.email}) = LOWER(${user.email})`,
+      eq(registrationKeys.email, normalizedEmail),
       sql`${registrationKeys.activatedAt} IS NOT NULL`,
       sql`${registrationKeys.packageId} IS NOT NULL`,
     ))
@@ -684,10 +681,11 @@ async function getUserLatestActivatedPackageId(userId: number): Promise<number |
   const [user] = await db.select({ email: users.email }).from(users)
     .where(eq(users.id, userId)).limit(1);
   if (!user?.email) return null;
+  const normalizedEmail = normalizeEmailAddress(user.email);
 
   const [key] = await db.select({ packageId: registrationKeys.packageId }).from(registrationKeys)
     .where(and(
-      sql`LOWER(${registrationKeys.email}) = LOWER(${user.email})`,
+      eq(registrationKeys.email, normalizedEmail),
       sql`${registrationKeys.activatedAt} IS NOT NULL`,
       sql`${registrationKeys.packageId} IS NOT NULL`,
     ))
@@ -793,12 +791,6 @@ function isSchemaMismatchError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   return /no such column|no such table|SQLITE_ERROR|D1_ERROR|Failed query/i.test(message)
     && /isAdminSkipped|maxActivationDate|isPendingActivation|activationReason|activationProcessedAt|courseWaivedByPolicy|brokerWaivedByPolicy|enrollments|lexaiSubscriptions|recommendationSubscriptions/i.test(message);
-}
-
-function isLikelyTransientTimedServiceRepairError(error: unknown) {
-  if (isSchemaMismatchError(error)) return false;
-  const message = error instanceof Error ? error.message : String(error);
-  return /Failed query|D1_ERROR|SQLITE_BUSY|database.*(?:busy|locked)|timeout|network|connection/i.test(message);
 }
 
 type TimedServiceRepairAlertUserContext = {
@@ -5499,6 +5491,33 @@ async function queuePendingTimedServiceReminders(userId: number, now: Date = new
   }
 }
 
+const TIMED_SERVICE_REPAIR_CURSOR_KEY = "timed_service_repair_cursor_user_id";
+
+async function getNextTimedServiceRepairUserId(
+  db: NonNullable<Awaited<ReturnType<typeof getDb>>>,
+  afterUserId: number,
+): Promise<number | null> {
+  const rows = await db.all(sql`
+    SELECT userId
+    FROM (
+      SELECT ${recommendationSubscriptions.userId} AS userId
+      FROM ${recommendationSubscriptions}
+      WHERE ${recommendationSubscriptions.isActive} = 1
+        AND ${recommendationSubscriptions.isPendingActivation} = 1
+      UNION
+      SELECT ${lexaiSubscriptions.userId} AS userId
+      FROM ${lexaiSubscriptions}
+      WHERE ${lexaiSubscriptions.isActive} = 1
+        AND ${lexaiSubscriptions.isPendingActivation} = 1
+    ) pending_users
+    WHERE userId > ${afterUserId}
+    ORDER BY userId ASC
+    LIMIT 1
+  `) as Array<{ userId?: number }>;
+  const userId = Number(rows[0]?.userId);
+  return Number.isSafeInteger(userId) && userId > 0 ? userId : null;
+}
+
 async function repairDueTimedServiceStates() {
   const db = await getDb();
   if (!db) return;
@@ -5525,87 +5544,79 @@ async function repairDueTimedServiceStates() {
     return;
   }
 
-  const [pendingRecommendationRows, pendingLexaiRows] = await Promise.all([
-    db
-    .select({ userId: recommendationSubscriptions.userId })
-    .from(recommendationSubscriptions)
-    .where(
-      and(
-        eq(recommendationSubscriptions.isActive, true),
-        eq(recommendationSubscriptions.isPendingActivation, true),
-      )
-    )
-    .limit(200),
-    db
-      .select({ userId: lexaiSubscriptions.userId })
-      .from(lexaiSubscriptions)
-      .where(and(
-        eq(lexaiSubscriptions.isActive, true),
-        eq(lexaiSubscriptions.isPendingActivation, true),
-      ))
-      .limit(200),
-  ]);
+  const [cursorRow] = await db
+    .select({ value: adminSettings.settingValue })
+    .from(adminSettings)
+    .where(eq(adminSettings.settingKey, TIMED_SERVICE_REPAIR_CURSOR_KEY))
+    .limit(1);
+  const parsedCursor = Number(cursorRow?.value ?? 0);
+  const cursor = Number.isSafeInteger(parsedCursor) && parsedCursor > 0
+    ? parsedCursor
+    : 0;
+  const userId = await getNextTimedServiceRepairUserId(db, cursor)
+    ?? (cursor > 0 ? await getNextTimedServiceRepairUserId(db, 0) : null);
+  if (!userId) return;
 
-  const pendingUserIds = Array.from(new Set([
-    ...pendingRecommendationRows.map((row) => row.userId),
-    ...pendingLexaiRows.map((row) => row.userId),
-  ]));
-  for (const userId of pendingUserIds) {
+  // Advance the durable cursor before doing per-user work. If Cloudflare
+  // terminates this invocation at the CPU limit, the next run can still make
+  // progress and this user will be revisited after the cursor wraps.
+  const now = new Date().toISOString();
+  await db.insert(adminSettings).values({
+    settingKey: TIMED_SERVICE_REPAIR_CURSOR_KEY,
+    settingValue: String(userId),
+    updatedAt: now,
+  }).onConflictDoUpdate({
+    target: adminSettings.settingKey,
+    set: { settingValue: String(userId), updatedAt: now },
+  });
+
+  try {
+    await queuePendingTimedServiceReminders(userId);
+    await ensureTimedServicesActivatedIfDue(userId);
+  } catch (error) {
+    const underlyingError = error;
+    let alertUser: { name: string | null; email: string | null } | undefined;
     try {
-      await runTimedServiceRepairWithRetry(async () => {
-        await queuePendingTimedServiceReminders(userId);
-        await ensureTimedServicesActivatedIfDue(userId);
-      }, {
-        maxAttempts: 3,
-        delayMs: 100,
-        shouldRetry: isLikelyTransientTimedServiceRepairError,
-      });
-    } catch (error) {
-      const retryError = error instanceof TimedServiceRepairRetryError ? error : null;
-      const underlyingError = retryError?.originalError ?? error;
-      let alertUser: { name: string | null; email: string | null } | undefined;
-      try {
-        const [userRow] = await db
-          .select({ name: users.name, email: users.email })
-          .from(users)
-          .where(eq(users.id, userId))
-          .limit(1);
-        alertUser = userRow;
-      } catch (lookupError) {
-        logger.warn('[RECOMMENDATIONS] Failed to load user context for timed-service repair alert', {
-          userId,
-          error: lookupError instanceof Error ? lookupError.message : String(lookupError),
-        });
-      }
-      const alert = getTimedServiceRepairAlertContent({
+      const [userRow] = await db
+        .select({ name: users.name, email: users.email })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+      alertUser = userRow;
+    } catch (lookupError) {
+      logger.warn('[RECOMMENDATIONS] Failed to load user context for timed-service repair alert', {
         userId,
-        userName: alertUser?.name,
-        userEmail: alertUser?.email,
-        error: underlyingError,
+        error: lookupError instanceof Error ? lookupError.message : String(lookupError),
       });
-      logger.warn('[RECOMMENDATIONS] Failed to repair pending subscriber state', {
-        userId,
-        userName: alertUser?.name,
-        userEmail: alertUser?.email,
-        attempts: retryError?.attempts ?? 1,
-        error: underlyingError instanceof Error ? underlyingError.message : String(underlyingError),
-      });
-      await notifyStaffByEvent("timed_service_activation_failure", {
-        titleEn: alert.titleEn,
-        titleAr: alert.titleAr,
-        contentEn: alert.contentEn,
-        contentAr: alert.contentAr,
-        actionUrl: `/admin/expiry-report?userId=${userId}`,
-        metadata: {
-          userId,
-          userName: alertUser?.name ?? null,
-          userEmail: alertUser?.email ?? null,
-          reason: alert.reason,
-          attempts: retryError?.attempts ?? 1,
-          rawError: underlyingError instanceof Error ? underlyingError.message : String(underlyingError),
-        },
-      }).catch(() => {});
     }
+    const alert = getTimedServiceRepairAlertContent({
+      userId,
+      userName: alertUser?.name,
+      userEmail: alertUser?.email,
+      error: underlyingError,
+    });
+    logger.warn('[RECOMMENDATIONS] Failed to repair pending subscriber state', {
+      userId,
+      userName: alertUser?.name,
+      userEmail: alertUser?.email,
+      attempts: 1,
+      error: underlyingError instanceof Error ? underlyingError.message : String(underlyingError),
+    });
+    await notifyStaffByEvent("timed_service_activation_failure", {
+      titleEn: alert.titleEn,
+      titleAr: alert.titleAr,
+      contentEn: alert.contentEn,
+      contentAr: alert.contentAr,
+      actionUrl: `/admin/expiry-report?userId=${userId}`,
+      metadata: {
+        userId,
+        userName: alertUser?.name ?? null,
+        userEmail: alertUser?.email ?? null,
+        reason: alert.reason,
+        attempts: 1,
+        rawError: underlyingError instanceof Error ? underlyingError.message : String(underlyingError),
+      },
+    }).catch(() => {});
   }
 }
 
@@ -14687,7 +14698,7 @@ export async function getUserTermsAcceptanceStatus(
           OR EXISTS (
             SELECT 1 FROM registrationKeys rk
             WHERE rk.packageId IS NOT NULL
-              AND lower(trim(COALESCE(rk.email, ''))) = ${normalizedEmail}
+              AND rk.email = ${normalizedEmail}
           )
           THEN 1 ELSE 0 END`,
       })
@@ -15412,6 +15423,7 @@ export async function getStudentTimeline(userId: number) {
     email: users.email,
     brokerOnboardingComplete: users.brokerOnboardingComplete,
   }).from(users).where(eq(users.id, userId)).limit(1);
+  const normalizedEmail = normalizeEmailAddress(user?.email ?? "");
   if (user?.createdAt) {
     events.push({ date: user.createdAt, type: 'registration', labelEn: 'Account Created', labelAr: 'إنشاء الحساب' });
   }
@@ -15423,7 +15435,7 @@ export async function getStudentTimeline(userId: number) {
         packageId: registrationKeys.packageId,
       }).from(registrationKeys)
         .where(and(
-          sql`LOWER(${registrationKeys.email}) = LOWER(${user.email})`,
+          eq(registrationKeys.email, normalizedEmail),
           sql`${registrationKeys.activatedAt} IS NOT NULL`,
           sql`${registrationKeys.packageId} IS NOT NULL`,
         ))
@@ -19523,6 +19535,53 @@ export async function getSupportMessageHistory(options: {
   };
 }
 
+type SupportMessageChangeQueryDatabase = {
+  select: () => any;
+};
+
+/**
+ * Split incremental support changes into indexable branches. SQLite otherwise
+ * scans every message in the conversation to evaluate the OR predicate even
+ * when no message changed.
+ */
+export function buildSupportMessageChangeQueries(
+  database: SupportMessageChangeQueryDatabase,
+  options: {
+    conversationId: number;
+    afterMessageId: number;
+    changedAfter: string;
+  },
+) {
+  const orderedLimit = (query: any) => query
+    .orderBy(asc(supportMessages.createdAt), asc(supportMessages.id))
+    .limit(200);
+
+  return {
+    newMessages: orderedLimit(database.select().from(supportMessages).where(and(
+      eq(supportMessages.conversationId, options.conversationId),
+      gt(supportMessages.id, options.afterMessageId),
+    ))),
+    editedMessages: orderedLimit(database.select().from(supportMessages).where(and(
+      eq(supportMessages.conversationId, options.conversationId),
+      gt(supportMessages.editedAt, options.changedAfter),
+    ))),
+    deletedMessages: orderedLimit(database.select().from(supportMessages).where(and(
+      eq(supportMessages.conversationId, options.conversationId),
+      gt(supportMessages.deletedAt, options.changedAfter),
+    ))),
+  };
+}
+
+export function mergeSupportMessageChanges(
+  ...groups: SupportMessage[][]
+): SupportMessage[] {
+  const merged = new Map<number, SupportMessage>();
+  for (const message of groups.flat()) merged.set(message.id, message);
+  return Array.from(merged.values())
+    .sort((left, right) => left.createdAt.localeCompare(right.createdAt) || left.id - right.id)
+    .slice(0, 200);
+}
+
 export async function getSupportMessageChanges(options: {
   conversationId: number;
   afterMessageId: number;
@@ -19530,17 +19589,14 @@ export async function getSupportMessageChanges(options: {
 }) {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(supportMessages)
-    .where(and(
-      eq(supportMessages.conversationId, options.conversationId),
-      or(
-        gt(supportMessages.id, options.afterMessageId),
-        gt(supportMessages.editedAt, options.changedAfter),
-        gt(supportMessages.deletedAt, options.changedAfter),
-      ),
-    ))
-    .orderBy(asc(supportMessages.createdAt), asc(supportMessages.id))
-    .limit(200);
+
+  const queries = buildSupportMessageChangeQueries(db, options);
+  const [newMessages, editedMessages, deletedMessages] = await Promise.all([
+    queries.newMessages,
+    queries.editedMessages,
+    queries.deletedMessages,
+  ]);
+  return mergeSupportMessageChanges(newMessages, editedMessages, deletedMessages);
 }
 
 export async function getOpenAiUsageReport(days = 7, filters: OpenAiUsageReportFilters = {}): Promise<OpenAiUsageReport> {
