@@ -26,29 +26,8 @@ SET descriptionEn = 'A standalone cohort-based Live program with scheduled sessi
     updatedAt = datetime('now')
 WHERE slug = 'live-package';
 
--- Issued Live keys remain redeemable after registration closes. Preserve an
--- append-only configuration record before removing the legacy sales cutoff.
-INSERT INTO package_key_configuration_history (
-  key_id, order_id, actor_type, actor_id,
-  previous_entitlement_days, new_entitlement_days,
-  previous_expires_at, new_expires_at,
-  previous_configuration_notes, new_configuration_notes,
-  reason, created_at
-)
-SELECT
-  registrationKeys.id, registrationKeys.orderId, 'system', 0,
-  registrationKeys.entitlementDays, registrationKeys.entitlementDays,
-  registrationKeys.expiresAt, NULL,
-  registrationKeys.configurationNotes,
-  'Live entitlement is cohort-based; manual registration state does not expire issued keys.',
-  'Phase A removed the legacy Live enrollment cutoff from issued keys.',
-  datetime('now')
-FROM registrationKeys
-JOIN packages ON packages.id = registrationKeys.packageId
-WHERE packages.slug = 'live-package'
-  AND registrationKeys.activatedAt IS NULL
-  AND registrationKeys.expiresAt IS NOT NULL;
-
+-- The production AFTER UPDATE trigger writes the single append-only audit row.
+-- Restrict the update so rerunning the migration does not rewrite timestamps.
 UPDATE registrationKeys
 SET expiresAt = NULL,
     configurationNotes = 'Live entitlement is cohort-based; manual registration state does not expire issued keys.',
@@ -56,4 +35,8 @@ SET expiresAt = NULL,
     configurationUpdatedByType = 'system',
     configurationUpdatedById = 0
 WHERE packageId = (SELECT id FROM packages WHERE slug = 'live-package')
-  AND activatedAt IS NULL;
+  AND activatedAt IS NULL
+  AND (
+    expiresAt IS NOT NULL
+    OR configurationNotes IS NOT 'Live entitlement is cohort-based; manual registration state does not expire issued keys.'
+  );
