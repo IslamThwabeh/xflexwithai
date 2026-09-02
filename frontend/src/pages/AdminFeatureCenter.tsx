@@ -496,24 +496,26 @@ export default function AdminFeatureCenter() {
 
   const updateLivePackage = trpc.packages.updateLiveConfig.useMutation({
     onSuccess: async () => {
-      const changedVisibility =
-        pendingLivePackageChange?.control === "visibility";
       toast.success(
-        changedVisibility
-          ? pendingLivePackageChange?.enabled
-            ? isRtl
-              ? "تم إظهار بكج لايف على الموقع وتسجيل القرار"
-              : "Live Package is now visible and the decision was recorded"
-            : isRtl
-              ? "تم إخفاء بكج لايف وإغلاق الشراء وتسجيل القرار"
-              : "Live Package was hidden, purchasing was closed, and the decision was recorded"
-          : pendingLivePackageChange?.enabled
-            ? isRtl
-              ? "تم فتح شراء بكج لايف وتسجيل القرار"
-              : "Live Package purchasing was opened and the decision was recorded"
-            : isRtl
-              ? "تم إغلاق شراء بكج لايف وتسجيل القرار"
-              : "Live Package purchasing was closed and the decision was recorded"
+        pendingLivePackageChange?.enabled
+          ? isRtl ? "تم إظهار بكج لايف وتسجيل القرار" : "Live Package is now visible and the decision was recorded"
+          : isRtl ? "تم إخفاء بكج لايف وتسجيل القرار" : "Live Package was hidden and the decision was recorded"
+      );
+      setPendingLivePackageChange(null);
+      await Promise.all([
+        utils.packages.liveAdminPreview.invalidate(),
+        utils.packages.livePublicState.invalidate(),
+        utils.livePackage.adminWorkspace.invalidate(),
+      ]);
+    },
+    onError: error => toast.error(error.message),
+  });
+  const setLiveRegistration = trpc.packages.setLiveRegistration.useMutation({
+    onSuccess: async () => {
+      toast.success(
+        pendingLivePackageChange?.enabled
+          ? isRtl ? "تم فتح التسجيل وتسجيل القرار" : "Registration was opened and audited"
+          : isRtl ? "تم إغلاق التسجيل وتسجيل القرار" : "Registration was closed and audited"
       );
       setPendingLivePackageChange(null);
       await Promise.all([
@@ -547,10 +549,9 @@ export default function AdminFeatureCenter() {
     liveOwnerReviewQuery.data?.answers ?? {}
   ).filter(answer => answer.trim().length > 0).length;
   const livePackageVisible = Boolean(livePackage?.config.adminVisible);
+  const liveRegistrationOpen = Boolean(livePackage?.config.registrationOpen);
   const livePackagePurchasable = Boolean(
-    livePackageVisible &&
-      livePackage?.config.purchaseApproved &&
-      livePackage.config.lifecycle === "active"
+    livePackage?.availability.purchasable
   );
   // The Feature Center counts a package once it appears publicly, even when its
   // independently controlled checkout remains in the Coming Soon state.
@@ -717,18 +718,18 @@ export default function AdminFeatureCenter() {
                   variant={livePackagePurchasable ? "destructive" : "outline"}
                   disabled={
                     livePackageQuery.isLoading ||
-                    updateLivePackage.isPending ||
-                    (!livePackagePurchasable && livePackageActivationBlocked)
+                    setLiveRegistration.isPending ||
+                    (!liveRegistrationOpen && livePackageActivationBlocked)
                   }
                   onClick={() =>
                     setPendingLivePackageChange({
                       control: "purchasing",
-                      enabled: !livePackagePurchasable,
+                      enabled: !liveRegistrationOpen,
                     })
                   }
                 >
                   <ShoppingCart className="h-4 w-4" />
-                  {livePackagePurchasable
+                  {liveRegistrationOpen
                     ? isRtl
                       ? "إغلاق الشراء"
                       : "Close purchasing"
@@ -784,8 +785,8 @@ export default function AdminFeatureCenter() {
                           : "Off",
                     },
                     {
-                      label: isRtl ? "اعتماد الشراء" : "Purchase approval",
-                      value: livePackage.config.purchaseApproved
+                      label: isRtl ? "التسجيل اليدوي" : "Manual registration",
+                      value: livePackage.config.registrationOpen
                         ? isRtl
                           ? "مفعّل"
                           : "On"
@@ -798,8 +799,8 @@ export default function AdminFeatureCenter() {
                       value: `${liveOwnerAnswerCount}/${LIVE_PACKAGE_OWNER_REVIEW_QUESTIONS.length}`,
                     },
                     {
-                      label: isRtl ? "الدورات الأساسية" : "Base courses",
-                      value: livePackage.courses.length,
+                      label: isRtl ? "حالة الفوج" : "Cohort status",
+                      value: livePackage.config.cohortStatus,
                     },
                   ].map(item => (
                     <div
@@ -850,16 +851,10 @@ export default function AdminFeatureCenter() {
                       <p className="flex items-start gap-2">
                         <CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" />
                         <span>
-                          <strong>{isRtl ? "المبيعات: " : "Sales: "}</strong>
-                          {formatLivePackageDate(
-                            livePackage.config.salesStartsAt,
-                            isRtl
-                          )}{" "}
-                          —{" "}
-                          {formatLivePackageDate(
-                            livePackage.config.salesEndsAt,
-                            isRtl
-                          )}
+                          <strong>{isRtl ? "التسجيل: " : "Registration: "}</strong>
+                          {livePackage.config.registrationOpen
+                            ? isRtl ? "مفتوح يدوياً" : "Manually open"
+                            : isRtl ? "مغلق يدوياً" : "Manually closed"}
                         </span>
                       </p>
                       <p className="flex items-start gap-2">
@@ -882,13 +877,9 @@ export default function AdminFeatureCenter() {
                       <p className="flex items-start gap-2">
                         <ShoppingCart className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" />
                         <span>
-                          {livePackage.availability.withinSalesWindow
-                            ? isRtl
-                              ? "الشراء يفتح فور التفعيل."
-                              : "Purchasing opens immediately when enabled."
-                            : isRtl
-                              ? "حتى بعد التفعيل، يبدأ الشراء تلقائياً عند بداية فترة المبيعات."
-                              : "After enabling, purchasing still waits for the configured sales window."}
+                          {isRtl
+                            ? "لا توجد نافذة زمنية تلقائية؛ مفتاح التسجيل اليدوي هو القرار الوحيد لإنشاء الطلبات."
+                            : "There is no automatic sales window; the manual registration switch is the only new-order decision."}
                         </span>
                       </p>
                     </div>
@@ -1557,6 +1548,7 @@ export default function AdminFeatureCenter() {
           onOpenChange={open =>
             !open &&
             !updateLivePackage.isPending &&
+            !setLiveRegistration.isPending &&
             setPendingLivePackageChange(null)
           }
         >
@@ -1587,30 +1579,39 @@ export default function AdminFeatureCenter() {
                         ? "سيظهر البكج على الموقع بحالة «قريباً». لن يُفتح الشراء إلا بقرار مستقل منك."
                         : "The package will appear on the website as Coming Soon. Purchasing stays closed until you open it separately."
                       : isRtl
-                        ? "سيُخفى البكج من الموقع ويُغلق الشراء تلقائياً للحماية. لن تُحذف البيانات أو الاستحقاقات الحالية."
-                        : "The package will be hidden and purchasing will automatically close for safety. Existing data and entitlements will not be deleted."
+                        ? "سيُخفى البكج من الموقع فقط. لن تتغير حالة التسجيل ولن تُحذف البيانات أو الاستحقاقات الحالية."
+                        : "Only website visibility will change. Registration state, data, and existing entitlements remain unchanged."
                     : pendingLivePackageChange?.enabled
                       ? isRtl
-                        ? "سيظهر البكج ويُفتح الشراء خلال فترة المبيعات فقط، بعد اكتمال الجاهزية."
-                        : "The package will be shown and checkout will open only within the configured sales window after readiness checks pass."
+                        ? "سيُفتح إنشاء الطلبات الجديدة فوراً بعد فحوص الجاهزية، بلا نافذة زمنية تلقائية."
+                        : "New-order creation opens immediately after readiness checks, with no automatic time window."
                       : isRtl
-                        ? "سيبقى البكج ظاهراً بحالة «قريباً»، لكن لن يقبل طلبات شراء جديدة."
-                        : "The package will remain visible as Coming Soon, but it will stop accepting new purchase requests."}
+                        ? "سيتوقف إنشاء الطلبات الجديدة فقط؛ مراجعة الدفعات وإصدار المفاتيح وتفعيلها والوصول الحالي لن تتأثر."
+                        : "Only new-order creation stops; payment review, key issuance, activation, and existing access are unaffected."}
                 </span>
                 <span className="block text-xs">
                   {isRtl
                     ? "سيُسجّل هذا القرار في سجل تدقيق الإدارة."
                     : "This decision will be recorded in the admin audit trail."}
                 </span>
+                {pendingLivePackageChange?.control === "purchasing" &&
+                  pendingLivePackageChange.enabled &&
+                  livePackage?.config.cohortStatus === "completed" && (
+                    <span className="block rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm font-bold text-amber-950">
+                      {isRtl
+                        ? "تحذير قوي: الفوج مكتمل. فتح التسجيل سيبيع وصول التسجيلات فقط، من دون وعد بلقاءات مباشرة مستقبلية."
+                        : "Strong warning: this cohort is completed. Reopening sells recording access only, with no promise of future live sessions."}
+                    </span>
+                  )}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel disabled={updateLivePackage.isPending}>
+              <AlertDialogCancel disabled={updateLivePackage.isPending || setLiveRegistration.isPending}>
                 {isRtl ? "إلغاء" : "Cancel"}
               </AlertDialogCancel>
               <AlertDialogAction
                 disabled={
-                  !pendingLivePackageChange || updateLivePackage.isPending
+                  !pendingLivePackageChange || updateLivePackage.isPending || setLiveRegistration.isPending
                 }
                 className={
                   pendingLivePackageChange?.enabled
@@ -1622,34 +1623,24 @@ export default function AdminFeatureCenter() {
                   if (!pendingLivePackageChange || !livePackage) return;
                   const changesVisibility =
                     pendingLivePackageChange.control === "visibility";
-                  // Hiding is fail-closed: it also disables checkout. Closing
-                  // checkout alone intentionally preserves Coming Soon visibility.
-                  const adminVisible = changesVisibility
-                    ? pendingLivePackageChange.enabled
-                    : pendingLivePackageChange.enabled
-                      ? true
-                      : livePackage.config.adminVisible;
-                  const purchaseApproved = changesVisibility
-                    ? pendingLivePackageChange.enabled
-                      ? livePackage.config.purchaseApproved
-                      : false
-                    : pendingLivePackageChange.enabled;
+                  if (!changesVisibility) {
+                    setLiveRegistration.mutate({ registrationOpen: pendingLivePackageChange.enabled });
+                    return;
+                  }
                   updateLivePackage.mutate({
-                    adminVisible,
-                    purchaseApproved,
-                    lifecycle: purchaseApproved ? "active" : "coming_soon",
+                    adminVisible: pendingLivePackageChange.enabled,
+                    lifecycle: livePackage.config.lifecycle,
                     cohortKey: livePackage.config.cohortKey,
-                    salesStartsAt: livePackage.config.salesStartsAt,
-                    salesEndsAt: livePackage.config.salesEndsAt,
                     sessionStartsAt: livePackage.config.sessionStartsAt,
                     sessionEndsAt: livePackage.config.sessionEndsAt,
-                    recordingPolicy: livePackage.config.recordingPolicy,
-                    recordingAccessEndsAt:
-                      livePackage.config.recordingAccessEndsAt,
+                    recordingPolicy: "permanent",
+                    recordingAccessEndsAt: null,
+                    targetSubscriberCount: livePackage.config.targetSubscriberCount,
+                    cohortStatus: livePackage.config.cohortStatus,
                   });
                 }}
               >
-                {updateLivePackage.isPending && (
+                {(updateLivePackage.isPending || setLiveRegistration.isPending) && (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 )}
                 {isRtl ? "تأكيد" : "Confirm"}

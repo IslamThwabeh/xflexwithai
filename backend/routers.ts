@@ -73,8 +73,8 @@ import {
 import { buildAnnouncementEmail, sendOrderConfirmationEmail, sendPaymentReceivedEmail, sendAdminNewOrderNotification, sendStaffWelcomeEmail, sendJobInterviewInviteEmail } from "./_core/orderEmails";
 import { ENV } from "./_core/env";
 import {
+  LIVE_PACKAGE_COHORT_STATUSES,
   LIVE_PACKAGE_LIFECYCLES,
-  LIVE_PACKAGE_RECORDING_POLICIES,
   LIVE_PACKAGE_SETTING_KEYS,
   LIVE_PACKAGE_SLUG,
   getLivePackageAvailability,
@@ -894,28 +894,30 @@ const getLivePackageContext = async (now = new Date()) => {
 
 const livePackageConfigInput = z.object({
   adminVisible: z.boolean(),
-  purchaseApproved: z.boolean(),
   lifecycle: z.enum(LIVE_PACKAGE_LIFECYCLES),
   cohortKey: z.string().trim().min(1).max(80),
-  salesStartsAt: z.string().datetime(),
-  salesEndsAt: z.string().datetime(),
   sessionStartsAt: z.string().datetime(),
   sessionEndsAt: z.string().datetime(),
-  recordingPolicy: z.enum(LIVE_PACKAGE_RECORDING_POLICIES),
-  recordingAccessEndsAt: z.string().datetime().nullable(),
+  recordingPolicy: z.literal("permanent"),
+  recordingAccessEndsAt: z.null(),
+  targetSubscriberCount: z.number().int().positive().nullable().optional(),
+  cohortStatus: z.enum(LIVE_PACKAGE_COHORT_STATUSES).optional(),
 });
 
 const livePackageConfigUpdates = (input: z.infer<typeof livePackageConfigInput>): Array<[string, string]> => [
   [LIVE_PACKAGE_SETTING_KEYS.adminVisible, String(input.adminVisible)],
-  [LIVE_PACKAGE_SETTING_KEYS.purchaseApproved, String(input.purchaseApproved)],
   [LIVE_PACKAGE_SETTING_KEYS.lifecycle, input.lifecycle],
   [LIVE_PACKAGE_SETTING_KEYS.cohortKey, input.cohortKey],
-  [LIVE_PACKAGE_SETTING_KEYS.salesStartsAt, input.salesStartsAt],
-  [LIVE_PACKAGE_SETTING_KEYS.salesEndsAt, input.salesEndsAt],
   [LIVE_PACKAGE_SETTING_KEYS.sessionStartsAt, input.sessionStartsAt],
   [LIVE_PACKAGE_SETTING_KEYS.sessionEndsAt, input.sessionEndsAt],
   [LIVE_PACKAGE_SETTING_KEYS.recordingPolicy, input.recordingPolicy],
   [LIVE_PACKAGE_SETTING_KEYS.recordingAccessEndsAt, input.recordingAccessEndsAt ?? ""],
+  ...(input.targetSubscriberCount !== undefined
+    ? [[LIVE_PACKAGE_SETTING_KEYS.targetSubscriberCount, input.targetSubscriberCount?.toString() ?? ""] as [string, string]]
+    : []),
+  ...(input.cohortStatus !== undefined
+    ? [[LIVE_PACKAGE_SETTING_KEYS.cohortStatus, input.cohortStatus] as [string, string]]
+    : []),
 ];
 
 const isTrustedZoomJoinUrl = (value: string) => {
@@ -6544,8 +6546,8 @@ export const appRouter = router({
         descriptionAr: pkg.descriptionAr,
         price: pkg.price,
         currency: pkg.currency,
-        salesStartsAt: config.salesStartsAt,
-        salesEndsAt: config.salesEndsAt,
+        registrationOpen: config.registrationOpen,
+        cohortStatus: config.cohortStatus,
         sessionStartsAt: config.sessionStartsAt,
         sessionEndsAt: config.sessionEndsAt,
         recordingPolicy: config.recordingPolicy,
@@ -6560,7 +6562,7 @@ export const appRouter = router({
     }),
 
     previewLiveConfig: adminProcedure
-      .input(livePackageConfigInput.extend({ courseIds: z.array(z.number().int().positive()).min(1) }))
+      .input(livePackageConfigInput.extend({ courseIds: z.array(z.number().int().positive()).default([]) }))
       .mutation(async ({ input }) => {
         const [current, allCourses] = await Promise.all([getLivePackageContext(), db.getAllCourses()]);
         const uniqueCourseIds = [...new Set(input.courseIds)];
@@ -6569,7 +6571,11 @@ export const appRouter = router({
           throw new TRPCError({ code: "BAD_REQUEST", message: "One or more preview courses no longer exist." });
         }
         const proposedConfig = parseLivePackageConfig(
-          Object.fromEntries(livePackageConfigUpdates(input)),
+          {
+            ...current.settings,
+            ...Object.fromEntries(livePackageConfigUpdates(input)),
+            [LIVE_PACKAGE_SETTING_KEYS.registrationOpen]: "true",
+          },
           true,
         );
         const availability = getLivePackageAvailability({
@@ -6592,7 +6598,10 @@ export const appRouter = router({
       .mutation(async ({ ctx, input }) => {
         const previous = await getLivePackageContext();
         const updates = livePackageConfigUpdates(input);
-        const proposedConfig = parseLivePackageConfig(Object.fromEntries(updates), previous.config.deploymentEnabled);
+        const proposedConfig = parseLivePackageConfig(
+          { ...previous.settings, ...Object.fromEntries(updates) },
+          previous.config.deploymentEnabled,
+        );
         const proposedAvailability = getLivePackageAvailability({
           config: proposedConfig,
           packageRecord: previous.pkg,
@@ -6600,8 +6609,6 @@ export const appRouter = router({
         });
         const lockedTermsChanged = [
           'cohortKey',
-          'salesStartsAt',
-          'salesEndsAt',
           'sessionStartsAt',
           'sessionEndsAt',
           'recordingPolicy',
@@ -6610,14 +6617,34 @@ export const appRouter = router({
         if (lockedTermsChanged && previous.pkg && await db.hasLivePackageCommitments(previous.pkg.id)) {
           throw new TRPCError({ code: 'CONFLICT', message: 'Cohort, schedule, and recording terms are locked after the first order or cohort content is created.' });
         }
-        if (input.purchaseApproved && proposedAvailability.errors.length) {
-          throw new TRPCError({ code: 'PRECONDITION_FAILED', message: proposedAvailability.errors.join(' ') });
-        }
         await db.setAdminSettings(updates.map(([key, value]) => ({ key, value })));
         await db.logAdminAction(ctx.admin.id, ctx.admin.id, 'update_live_package_config', {
           previous: previous.config,
           next: proposedConfig,
           deploymentEnabled: proposedConfig.deploymentEnabled,
+        });
+        return (await getLivePackageContext()).availability;
+      }),
+
+    setLiveRegistration: adminProcedure
+      .input(z.object({ registrationOpen: z.boolean() }))
+      .mutation(async ({ ctx, input }) => {
+        const previous = await getLivePackageContext();
+        if (input.registrationOpen && previous.availability.errors.length) {
+          throw new TRPCError({
+            code: 'PRECONDITION_FAILED',
+            message: previous.availability.errors.join(' '),
+          });
+        }
+        await db.setAdminSettings([{
+          key: LIVE_PACKAGE_SETTING_KEYS.registrationOpen,
+          value: String(input.registrationOpen),
+        }]);
+        await db.logAdminAction(ctx.admin.id, ctx.admin.id, 'set_live_package_registration', {
+          previousValue: previous.config.registrationOpen,
+          nextValue: input.registrationOpen,
+          cohortStatus: previous.config.cohortStatus,
+          changedAt: new Date().toISOString(),
         });
         return (await getLivePackageContext()).availability;
       }),
@@ -6726,11 +6753,8 @@ export const appRouter = router({
       }))
       .mutation(async ({ ctx, input }) => {
         const pkg = await db.getPackageById(input.packageId);
-        if (pkg?.packageType === 'live' && input.courseIds.length < 1) {
-          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Live package must keep at least one assigned base course.' });
-        }
-        if (pkg?.packageType === 'live' && await db.hasLivePackageCommitments(pkg.id)) {
-          throw new TRPCError({ code: 'CONFLICT', message: 'Live package course assignments are locked after the first order or cohort content is created.' });
+        if (pkg?.packageType === 'live') {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Live Package is standalone and cannot be linked to course entitlements.' });
         }
         if (new Set(input.courseIds).size !== input.courseIds.length) {
           throw new TRPCError({ code: 'BAD_REQUEST', message: 'Course assignments must be unique.' });
@@ -6740,12 +6764,6 @@ export const appRouter = router({
           throw new TRPCError({ code: 'BAD_REQUEST', message: 'One or more assigned courses do not exist.' });
         }
         await db.setPackageCourses(input.packageId, input.courseIds);
-        if (pkg?.packageType === 'live') {
-          await db.logAdminAction(ctx.admin.id, ctx.admin.id, 'update_live_package_courses', {
-            packageId: input.packageId,
-            courseIds: input.courseIds,
-          });
-        }
         return { success: true };
       }),
   }),
@@ -6754,6 +6772,23 @@ export const appRouter = router({
   // LIVE PACKAGE (separate cohort entitlement)
   // =============================================
   livePackage: router({
+    myPurchaseQuote: protectedProcedure.query(async ({ ctx }) => {
+      if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+      const context = await getLivePackageContext();
+      if (!context.pkg || !context.availability.visible) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Live package not found.' });
+      }
+      const [quote, entitlement] = await Promise.all([
+        db.getLivePackagePurchaseQuote(ctx.user.id),
+        db.getAnyLivePackageEntitlement(ctx.user.id, context.config.cohortKey),
+      ]);
+      return {
+        ...quote,
+        alreadyOwned: Boolean(entitlement),
+        registrationOpen: context.config.registrationOpen,
+        cohortStatus: context.config.cohortStatus,
+      };
+    }),
     myWorkspace: protectedProcedure.query(async ({ ctx }) => {
       if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
       const entitlement = await db.getLivePackageEntitlement(ctx.user.id);
@@ -6790,9 +6825,10 @@ export const appRouter = router({
     adminWorkspace: adminProcedure.query(async () => {
       const context = await getLivePackageContext();
       if (!context.pkg) throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Apply the Live package migration first.' });
-      const [sessions, recordings] = await Promise.all([
+      const [sessions, recordings, stats] = await Promise.all([
         db.listLivePackageSessionsAdmin(context.pkg.id, context.config.cohortKey),
         db.listLivePackageRecordingsAdmin(context.pkg.id, context.config.cohortKey),
+        db.getLivePackageAdminStats(context.pkg.id),
       ]);
       return {
         package: context.pkg,
@@ -6801,6 +6837,7 @@ export const appRouter = router({
         availability: context.availability,
         sessions,
         recordings,
+        stats,
       };
     }),
 
@@ -6920,8 +6957,8 @@ export const appRouter = router({
       .mutation(async ({ ctx, input }) => {
         const context = await getLivePackageContext();
         if (!context.pkg) throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Live package is not configured.' });
-        if (await db.getLivePackageEntitlement(input.userId, context.config.cohortKey)) {
-          throw new TRPCError({ code: 'CONFLICT', message: 'This user already has Live Package access for the cohort.' });
+        if (await db.getAnyLivePackageEntitlement(input.userId, context.config.cohortKey)) {
+          throw new TRPCError({ code: 'CONFLICT', message: 'This user already has Live Package history for the cohort.' });
         }
         const entitlement = await db.fulfillLivePackageEntitlement({
           userId: input.userId,
@@ -6984,28 +7021,38 @@ export const appRouter = router({
         // Calculate totals in the package's native minor currency unit.
         let subtotal = 0;
         let orderCurrency: 'USD' | 'ILS' = 'USD';
+        let liveUpgradeFromPackageId: number | null = null;
+        let liveIsAddon = false;
+        let containsLivePackage = false;
         const resolvedItems: Array<{ itemType: string; packageId?: number; courseId?: number; price: number; currency: string; packageSlug: string }> = [];
 
         for (const item of input.items) {
           if (item.itemType === 'package' && item.packageId) {
             const pkg = await db.getPackageById(item.packageId);
             if (!pkg) throw new TRPCError({ code: 'NOT_FOUND', message: `Package ${item.packageId} not found` });
+            let itemPrice = pkg.price;
             if (pkg.packageType === 'live') {
+              containsLivePackage = true;
               const { availability } = await getLivePackageContext();
               if (!availability.purchasable) throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Live package sales are not open.' });
-              const recipient = input.isGift ? await db.getUserByEmail(normalizeEmailAddress(input.giftEmail ?? '')) : ctx.user;
-              if (recipient?.isStaff) throw new TRPCError({ code: 'FORBIDDEN', message: 'Staff Live access requires an explicit complimentary admin grant.' });
-              if (recipient && await db.getLivePackageEntitlement(recipient.id)) {
-                throw new TRPCError({ code: 'CONFLICT', message: 'The recipient already owns Live Package access for this cohort.' });
+              if (input.isGift) {
+                throw new TRPCError({ code: 'BAD_REQUEST', message: 'Live Package gift checkout is not supported because subscriber eligibility must be verified on the purchasing account.' });
+              }
+              if (ctx.user.isStaff) throw new TRPCError({ code: 'FORBIDDEN', message: 'Staff Live access requires an explicit complimentary admin grant.' });
+              if (await db.getAnyLivePackageEntitlement(ctx.user.id)) {
+                throw new TRPCError({ code: 'CONFLICT', message: 'This account already has Live Package history for this cohort.' });
               }
               if (await db.hasLivePackageOrderForRecipient({
                 packageId: pkg.id,
                 purchaserUserId: ctx.user.id,
-                isGift: input.isGift,
-                giftEmail: input.giftEmail,
+                isGift: false,
               })) {
-                throw new TRPCError({ code: 'CONFLICT', message: 'A pending or completed Live Package order already exists for this recipient.' });
+                throw new TRPCError({ code: 'CONFLICT', message: 'An active Live Package order already exists for this account.' });
               }
+              const quote = await db.getLivePackagePurchaseQuote(ctx.user.id);
+              itemPrice = quote.price;
+              liveUpgradeFromPackageId = quote.upgradeFromPackageId;
+              liveIsAddon = quote.tier !== 'newSubscriber';
             } else if (!isPublicStandardPackage(pkg)) {
               throw new TRPCError({ code: 'NOT_FOUND', message: `Package ${item.packageId} not found` });
             }
@@ -7013,8 +7060,8 @@ export const appRouter = router({
               throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Unsupported package currency.' });
             }
             orderCurrency = pkg.currency;
-            subtotal += pkg.price;
-            resolvedItems.push({ itemType: 'package', packageId: item.packageId, price: pkg.price, currency: pkg.currency, packageSlug: pkg.slug });
+            subtotal += itemPrice;
+            resolvedItems.push({ itemType: 'package', packageId: item.packageId, price: itemPrice, currency: pkg.currency, packageSlug: pkg.slug });
           }
         }
 
@@ -7042,6 +7089,12 @@ export const appRouter = router({
         const vatAmount = Math.round(totalAmount * vatRate / (100 + vatRate));
         const subtotalExVat = totalAmount - vatAmount;
 
+        // Re-read the manual switch at the write boundary. A checkout page that
+        // was opened earlier cannot create an order after an admin closes registration.
+        if (containsLivePackage && !(await getLivePackageContext()).availability.purchasable) {
+          throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Live package registration was closed before the order was created.' });
+        }
+
         // Create order
         const order = await db.createOrder({
           userId: ctx.user.id,
@@ -7057,6 +7110,8 @@ export const appRouter = router({
           giftEmail: input.isGift ? normalizeEmailAddress(input.giftEmail ?? '') : null,
           giftMessage: input.isGift ? input.giftMessage?.trim() || null : null,
           notes: input.notes || null,
+          isUpgrade: liveIsAddon,
+          upgradeFromPackageId: liveUpgradeFromPackageId,
           termsAcceptedAt,
           termsAcceptedVersion: CURRENT_TERMS_VERSION,
           termsAcceptedIpAddress,
@@ -7351,6 +7406,7 @@ export const appRouter = router({
             order.id,
             `${input.status} by ${actorType} #${actorId}`,
           );
+          await db.revokeLivePackageEntitlementForOrder(order.id);
         }
 
         // If payment is approved, send the assigned key. Key redemption is the

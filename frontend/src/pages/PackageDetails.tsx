@@ -78,9 +78,8 @@ export default function PackageDetails() {
   const vatIncludedLabel = language === 'ar' ? 'السعر يشمل ضريبة القيمة المضافة 16%' : 'Price includes 16% VAT';
 
   const features = isLive ? [
-    { key: 'sessions', label: language === 'ar' ? 'لقاءان تعليميان مباشران مجدولان أسبوعياً، مدة كل لقاء حوالي ساعة' : 'Two scheduled educational Live sessions per week, approximately one hour each', included: true },
-    { key: 'courses', label: language === 'ar' ? 'وصول دائم للدورات الأساسية المخصصة' : 'Permanent access to the assigned base courses', included: true },
-    { key: 'recordings', label: language === 'ar' ? 'وصول محمي للتسجيلات وفق سياسة الفوج' : 'Protected recording access under the cohort policy', included: true },
+    { key: 'sessions', label: language === 'ar' ? 'لقاءات تعليمية وتداولية مباشرة مجدولة ضمن الفوج' : 'Scheduled educational and trading Live sessions for the cohort', included: liveState?.cohortStatus !== 'completed' },
+    { key: 'recordings', label: language === 'ar' ? 'وصول دائم إلى التسجيلات المنشورة ما لم يُلغَ الوصول أو يُسترد المبلغ' : 'Permanent access to published recordings unless access is revoked or refunded', included: true },
   ] : [
     { key: 'courses', label: t('home.packages.courses'), included: true },
     { key: 'pdf', label: t('home.packages.pdf'), included: !!pkg.includesPdf },
@@ -89,6 +88,7 @@ export default function PackageDetails() {
     { key: 'recommendations', label: t('home.packages.recommendations'), included: !!pkg.includesRecommendations },
     { key: 'lexai', label: t('home.packages.lexai'), included: !!pkg.includesLexai },
   ].filter((feature) => feature.included);
+  const visibleFeatures = features.filter((feature) => feature.included);
 
   return (
     <CinematicPublicLayout>
@@ -133,7 +133,7 @@ export default function PackageDetails() {
             <div className="mb-8 rounded-[28px] border border-slate-200 bg-white p-6 shadow-[0_14px_36px_rgba(15,23,42,0.05)] md:p-8">
               <h2 className="text-lg font-bold text-gray-900 mb-4">{t('home.packages.includes')}:</h2>
               <ul className="space-y-3">
-                {features.map((f) => (
+                {visibleFeatures.map((f) => (
                   <li key={f.key} className="flex items-center gap-3 text-sm text-gray-700">
                     <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
                     {f.label}
@@ -142,8 +142,8 @@ export default function PackageDetails() {
               </ul>
             </div>
 
-            {/* Courses in this package */}
-            {packageCourses && packageCourses.length > 0 && (
+            {/* Standard packages can include courses; Live is a standalone entitlement. */}
+            {!isLive && packageCourses && packageCourses.length > 0 && (
               <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-[0_14px_36px_rgba(15,23,42,0.05)] md:p-8">
                 <h2 className="text-lg font-bold text-gray-900 mb-4">
                   {language === 'ar' ? 'الدورات المشمولة' : 'Included Courses'}
@@ -182,8 +182,8 @@ export default function PackageDetails() {
               </h2>
               <p className="text-sm text-gray-700 leading-relaxed">
                 {language === 'ar'
-                  ? (isLive ? 'فوج تعليمي محدود المدة لمن يريد جدولاً منظماً للقاءات المباشرة مع محتوى أساسي مستمر.' : 'هذه الباقة مناسبة للمتداول الذي يريد خطة واضحة، محتوى تدريجي، ودعم عملي يساعده على اتخاذ قرارات أكثر انضباطا.')
-                  : (isLive ? 'A fixed-window educational cohort for learners who want a structured Live schedule with continuing access to assigned base content.' : 'This package fits traders who want a clear roadmap, progressive learning content, and practical support to make more disciplined decisions.')}
+                  ? (isLive ? 'فوج مستقل لمن يريد لقاءات مباشرة منظمة مع مكتبة تسجيلات محمية خاصة بالبكج.' : 'هذه الباقة مناسبة للمتداول الذي يريد خطة واضحة، محتوى تدريجي، ودعم عملي يساعده على اتخاذ قرارات أكثر انضباطا.')
+                  : (isLive ? 'A standalone cohort for learners who want structured Live sessions and a protected recording library dedicated to this package.' : 'This package fits traders who want a clear roadmap, progressive learning content, and practical support to make more disciplined decisions.')}
               </p>
             </div>
 
@@ -228,7 +228,11 @@ export default function PackageDetails() {
                     {t('home.packages.renewal')}: {renewalFormatted}{t('home.packages.perMonth')}
                   </p>
                 )}
+                {isLive && <p className="mt-3 text-xs leading-5 text-slate-500">{language === 'ar' ? 'السعر النهائي حسب الحساب: ₪2,000 للجديد، ₪1,000 لمشترك الأساسية الحالي، ₪350 لمشترك الشاملة الحالي.' : 'Account-based price: ₪2,000 new, ₪1,000 active Basic subscriber, or ₪350 active Comprehensive subscriber.'}</p>}
               </div>
+
+              {isLive && liveState?.cohortStatus === 'in_progress' && <div className="mb-4 rounded-xl border border-sky-200 bg-sky-50 p-3 text-xs leading-6 text-sky-950">{language === 'ar' ? 'الفوج قائم: تحصل على التسجيلات السابقة المنشورة واللقاءات القادمة وما تبقى من البث المباشر.' : 'Cohort in progress: includes prior published recordings, upcoming sessions, and remaining live sessions.'}</div>}
+              {isLive && liveState?.cohortStatus === 'completed' && <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs font-semibold leading-6 text-amber-950">{language === 'ar' ? 'الفوج مكتمل: الشراء يمنح التسجيلات المنشورة ولا يعد بلقاءات مستقبلية.' : 'Cohort completed: purchase grants published recordings and does not promise future sessions.'}</div>}
 
               <div className={`border-t ${isComprehensive ? 'border-white/20' : 'border-gray-100'} pt-4 mb-4`}>
                 <p className={`text-xs ${isComprehensive ? 'text-emerald-100' : 'text-gray-500'}`}>
@@ -237,7 +241,7 @@ export default function PackageDetails() {
               </div>
 
               {isLive && !liveState?.purchasable ? <Button size="lg" disabled className="w-full font-bold">
-                {language === 'ar' ? (liveState?.lifecycle === 'coming_soon' ? 'ترقبوا الحدث الأضخم هالسنة' : 'الشراء غير متاح حالياً') : (liveState?.lifecycle === 'coming_soon' ? 'Coming soon' : 'Purchase unavailable')}
+                {language === 'ar' ? 'التسجيل مغلق حالياً' : 'Registration is closed'}
               </Button> : <Link href={`/checkout/${pkg.slug}`}>
                 <Button
                   size="lg"

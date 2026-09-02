@@ -63,7 +63,7 @@ describe('Live package foundation contracts', () => {
     sqlite.close();
   });
 
-  it('models meeting, course, and recording lifetimes separately', () => {
+  it('models the standalone meeting and recording entitlement separately from courses', () => {
     expect(migration).toContain('CREATE TABLE IF NOT EXISTS live_package_entitlements');
     expect(migration).toContain('sessionStartsAt TEXT NOT NULL');
     expect(migration).toContain('sessionEndsAt TEXT NOT NULL');
@@ -72,19 +72,19 @@ describe('Live package foundation contracts', () => {
     expect(migration).toContain('CREATE TABLE IF NOT EXISTS live_package_recordings');
     const fulfillment = database.slice(database.indexOf('export async function fulfillLivePackageEntitlement'), database.indexOf('export async function listLivePackageSessions('));
     expect(fulfillment).toContain('getLivePackageConfigurationErrors');
-    expect(fulfillment).toContain('await db.batch([');
-    expect(fulfillment).toContain("subscriptionEndDate: null");
-    expect(fulfillment).toContain("isSubscriptionActive: true");
+    expect(fulfillment).toContain('await entitlementStatement');
+    expect(fulfillment).not.toContain('getPackageCourses');
+    expect(fulfillment).not.toContain('db.insert(enrollments)');
   });
 
-  it('blocks Live renewal, upgrade, duplicate, and automatic staff activation paths', () => {
-    expect(database).toContain("Live Package supports fresh one-time purchase keys only");
+  it('blocks Live renewal, duplicate, unlinked add-on, and automatic staff activation paths', () => {
+    expect(database).toContain("Live Package renewal or unlinked add-on keys are not supported");
     expect(database).toContain("reason: 'live_package_already_owned'");
     expect(database).toContain("reason: 'live_package_staff_requires_complimentary_grant'");
     expect(database).toContain("reason: 'live_package_fulfillment_failed'");
     expect(database).toContain("set({ activatedAt: null })");
     expect(router).toContain('hasLivePackageCommitments');
-    expect(router).toContain('course assignments are locked after the first order or cohort content is created');
+    expect(router).toContain('Live Package is standalone and cannot be linked to course entitlements.');
     expect(router).toContain("'grant_live_package_complimentary_access'");
   });
 

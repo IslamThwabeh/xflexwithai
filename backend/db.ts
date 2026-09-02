@@ -109,6 +109,7 @@ import {
 import { ENV } from './_core/env';
 import {
   getLivePackageConfigurationErrors,
+  getLivePackagePurchaseTier,
   LIVE_PACKAGE_SLUG,
   parseLivePackageConfig,
 } from './services/live-package.service';
@@ -9069,7 +9070,7 @@ export async function syncUserEntitlementsFromKeys(userId: number, email: string
     if (!Number.isFinite(keyPackageId)) continue;
     const keyPackage = await getPackageById(keyPackageId);
     if (keyPackage?.packageType === 'live') {
-      if (!key.isRenewal && !key.isUpgrade) {
+      if (!key.isRenewal && (!key.isUpgrade || key.orderId)) {
         await fulfillLivePackageEntitlement({
           userId,
           packageId: keyPackageId,
@@ -9387,8 +9388,11 @@ export async function createPackageKey(input: {
   if (!db) throw new Error("Database not available");
   const packageRecord = await getPackageById(input.packageId);
   if (!packageRecord) throw new Error('Package not found');
-  if (packageRecord.packageType === 'live' && (input.isRenewal || input.isUpgrade)) {
-    throw new Error('Live Package supports fresh one-time purchase keys only');
+  if (packageRecord.packageType === 'live' && input.isRenewal) {
+    throw new Error('Live Package renewal keys are not supported');
+  }
+  if (packageRecord.packageType === 'live' && input.isUpgrade && !input.orderId) {
+    throw new Error('Live Package add-on keys must be linked to an approved order');
   }
   const keyCode = generateRegistrationKeyCode();
   const values: InsertRegistrationKey = {
@@ -9689,19 +9693,14 @@ export async function createOrderActivationKeys(input: {
     const packageRecord = await getPackageById(item.packageId);
     if (!packageRecord) throw new Error(`Package #${item.packageId} not found`);
     const configured = configurationByPackage.get(Number(item.packageId));
-    // Reuse the settings read that Live-key creation already required; this
-    // changes the cutoff value without adding a query to standard packages.
-    const liveConfig = packageRecord.packageType === 'live'
-      ? parseLivePackageConfig(await getAllAdminSettings())
-      : null;
-    const configuration = liveConfig
+    const isLivePackage = packageRecord.packageType === 'live';
+    const configuration = isLivePackage
       ? {
           packageId: item.packageId,
           entitlementDays: 1,
-          // A Live key must be redeemed by enrollment close. Once redeemed,
-          // entitlement/session access still follows the separate cohort end.
-          expiresAt: liveConfig.salesEndsAt,
-          configurationNotes: 'Live enrollment cutoff; entitlementDays is not used for fixed-cohort access.',
+          // Closing registration blocks new orders only. Paid Live keys remain redeemable.
+          expiresAt: null,
+          configurationNotes: 'Live entitlement is cohort-based; manual registration state does not expire issued keys.',
         }
       : configured;
     const entitlementDays = normalizePositiveInteger(configuration?.entitlementDays);
@@ -9709,7 +9708,7 @@ export async function createOrderActivationKeys(input: {
       throw new Error(`A service duration between 1 and 3650 days is required for package #${item.packageId}`);
     }
     const expiresAt = normalizePackageKeyRedeemDeadline(configuration.expiresAt);
-    assertFuturePackageKeyRedeemDeadline(expiresAt);
+    if (!isLivePackage) assertFuturePackageKeyRedeemDeadline(expiresAt);
     const existing = existingOrderKeys
       .find((key) => Number(key.packageId) === Number(item.packageId));
     if (existing) {
@@ -9968,7 +9967,7 @@ export async function activatePackageKey(
     });
   }
 
-  if (key.expiresAt) {
+  if (pkg.packageType !== 'live' && key.expiresAt) {
     const expiresAt = new Date(key.expiresAt);
     if (!Number.isNaN(expiresAt.getTime()) && expiresAt.getTime() < Date.now()) {
       return fail({
@@ -10029,10 +10028,10 @@ export async function activatePackageKey(
           : orderOwner?.email ?? '',
       );
       const orderItems = await getOrderItems(linkedOrder.id);
-      const packageMatches = orderItems.some((item) => (
+      const packageItem = orderItems.find((item) => (
         item.itemType === 'package' && Number(item.packageId) === Number(key.packageId)
       ));
-      if (activationEmail !== normalizedEmail || !packageMatches || !!linkedOrder.isUpgrade !== !!key.isUpgrade) {
+      if (activationEmail !== normalizedEmail || !packageItem || !!linkedOrder.isUpgrade !== !!key.isUpgrade) {
         return fail({
           keyId: key.id,
           reason: 'order_key_mismatch',
@@ -10040,16 +10039,38 @@ export async function activatePackageKey(
           messageAr: 'لا يتطابق الطلب المرتبط مع عميل المفتاح أو الباقة أو نوع التفعيل.',
         });
       }
+      if (pkg.packageType === 'live') {
+        const sourcePackage = linkedOrder.upgradeFromPackageId
+          ? await getPackageById(linkedOrder.upgradeFromPackageId)
+          : null;
+        const expected = linkedOrder.isUpgrade
+          ? getLivePackagePurchaseTier(sourcePackage?.slug ? [sourcePackage.slug] : [])
+          : getLivePackagePurchaseTier([]);
+        const pricingMatches = (
+          Number(packageItem.priceAtPurchase) === expected.price
+          && (linkedOrder.isUpgrade
+            ? sourcePackage?.slug === expected.eligiblePackageSlug
+            : !linkedOrder.upgradeFromPackageId)
+        );
+        if (!pricingMatches || linkedOrder.isGift) {
+          return fail({
+            keyId: key.id,
+            reason: 'live_package_order_pricing_mismatch',
+            message: 'The linked Live order has invalid eligibility or pricing.',
+            messageAr: 'يحتوي طلب بكج لايف المرتبط على تسعير أو استحقاق غير صالح.',
+          });
+        }
+      }
     }
   }
 
   if (pkg.packageType === 'live') {
-    if (key.isRenewal || key.isUpgrade) {
+    if (key.isRenewal || (key.isUpgrade && !key.orderId)) {
       return fail({
         keyId: key.id,
         reason: 'live_package_one_time_only',
-        message: 'Live Package supports one-time purchase keys only.',
-        messageAr: 'بكج لايف مخصص لمفاتيح الشراء لمرة واحدة فقط.',
+        message: 'Live Package renewal or unlinked add-on keys are not supported.',
+        messageAr: 'لا يدعم بكج لايف مفاتيح التجديد أو مفاتيح الإضافة غير المرتبطة بطلب.',
       });
     }
     if (resolvedUserId) {
@@ -10170,6 +10191,39 @@ export async function activatePackageKey(
     .returning();
 
   if (!claimedKey) {
+    const [concurrentlyClaimed] = await db.select().from(registrationKeys)
+      .where(eq(registrationKeys.id, key.id))
+      .limit(1);
+    if (
+      concurrentlyClaimed?.activatedAt
+      && normalizeEmailAddress(concurrentlyClaimed.email ?? '') === normalizedEmail
+    ) {
+      if (resolvedUserId) {
+        if (pkg.packageType === 'live') {
+          await fulfillLivePackageEntitlement({
+            userId: resolvedUserId,
+            packageId: key.packageId,
+            registrationKeyId: key.id,
+            orderId: key.orderId ?? undefined,
+            accessSource: 'purchase',
+          });
+        } else {
+          await syncUserEntitlementsFromKeys(resolvedUserId, normalizedEmail);
+        }
+      }
+      await audit({ keyId: key.id, outcome: 'success', reason: 'concurrent_already_activated' });
+      return {
+        success: true,
+        message: 'Key already activated for this email',
+        messageAr: 'تم تفعيل هذا المفتاح مسبقاً لهذا الحساب.',
+        keyId: key.id,
+        packageName: pkg.nameEn || pkg.nameAr,
+        packageNameAr: pkg.nameAr || pkg.nameEn,
+        isUpgrade: key.isUpgrade ?? false,
+        isRenewal: key.isRenewal ?? false,
+        alreadyActivated: true,
+      };
+    }
     return fail({
       keyId: key.id,
       reason: 'concurrent_claim_lost',
@@ -12669,7 +12723,7 @@ export async function blockClientAccount(input: {
 
   const now = new Date().toISOString();
   let refundValues: typeof accountRefunds.$inferInsert | null = null;
-  let fullyRefundedOrder: { id: number; previousStatus: string } | null = null;
+  let fullyRefundedOrder: { id: number; previousStatus: string; livePackageId: number | null } | null = null;
 
   if (input.refund) {
     const [sale] = await db.select({
@@ -12772,7 +12826,11 @@ export async function blockClientAccount(input: {
         return (refundMap.get(orderSale.keyId) ?? 0) >= saleGrossAgorot;
       });
       if (orderIsFullyRefunded && sale.orderStatus !== "refunded") {
-        fullyRefundedOrder = { id: sale.key.orderId, previousStatus: sale.orderStatus ?? "completed" };
+        fullyRefundedOrder = {
+          id: sale.key.orderId,
+          previousStatus: sale.orderStatus ?? "completed",
+          livePackageId: sale.packageSlug === LIVE_PACKAGE_SLUG ? sale.key.packageId : null,
+        };
       }
     }
   }
@@ -12834,6 +12892,10 @@ export async function blockClientAccount(input: {
         isActive: false,
         updatedAt: now,
       }).where(eq(recommendationSubscriptions.userId, input.userId)),
+      db.update(livePackageEntitlements).set({
+        isActive: false,
+        updatedAt: now,
+      }).where(eq(livePackageEntitlements.userId, input.userId)),
     );
 
     // FlexAI is a legacy service that is absent from some D1 deployments,
@@ -12855,6 +12917,10 @@ export async function blockClientAccount(input: {
   if (fullyRefundedOrder) {
     statements.push(
       db.update(orders).set({ status: "refunded", updatedAt: now }).where(eq(orders.id, fullyRefundedOrder.id)),
+      db.update(livePackageEntitlements).set({ isActive: false, updatedAt: now }).where(and(
+        eq(livePackageEntitlements.orderId, fullyRefundedOrder.id),
+        eq(livePackageEntitlements.isActive, true),
+      )),
       db.insert(orderStatusHistory).values({
         orderId: fullyRefundedOrder.id,
         userId: input.userId,
@@ -12866,6 +12932,16 @@ export async function blockClientAccount(input: {
         createdAt: now,
       }),
     );
+    if (fullyRefundedOrder.livePackageId) {
+      statements.push(db.update(registrationKeys).set({
+        isActive: false,
+        notes: sql`CASE WHEN ${registrationKeys.notes} IS NULL OR trim(${registrationKeys.notes}) = '' THEN 'Live order refunded' ELSE ${registrationKeys.notes} || ' | Live order refunded' END`,
+      }).where(and(
+        eq(registrationKeys.orderId, fullyRefundedOrder.id),
+        eq(registrationKeys.packageId, fullyRefundedOrder.livePackageId),
+        eq(registrationKeys.isActive, true),
+      )));
+    }
   }
 
   statements.push(db.insert(accountAccessAuditLogs).values({
@@ -14147,6 +14223,55 @@ export async function getLivePackageEntitlement(userId: number, cohortKey?: stri
   return row ?? null;
 }
 
+export async function getAnyLivePackageEntitlement(userId: number, cohortKey?: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const conditions = [eq(livePackageEntitlements.userId, userId)];
+  if (cohortKey) conditions.push(eq(livePackageEntitlements.cohortKey, cohortKey));
+  const [row] = await db.select().from(livePackageEntitlements)
+    .where(and(...conditions))
+    .orderBy(desc(livePackageEntitlements.createdAt))
+    .limit(1);
+  return row ?? null;
+}
+
+export async function getLivePackagePurchaseQuote(userId: number) {
+  const [subscriptions, lexaiSubscription, recommendationSubscription] = await Promise.all([
+    getUserPackageSubscriptions(userId),
+    getAnyLexaiSubscription(userId),
+    getAnyRecommendationSubscription(userId),
+  ]);
+  const now = Date.now();
+  const hasCurrentLexai = Boolean(
+    lexaiSubscription?.isActive && Date.parse(lexaiSubscription.endDate) > now,
+  );
+  const hasCurrentRecommendations = Boolean(
+    recommendationSubscription?.isActive && Date.parse(recommendationSubscription.endDate) > now,
+  );
+  // Package subscriptions represent permanent course ownership and intentionally
+  // have no expiry. Live pricing must therefore be tied to a current timed
+  // service, otherwise an expired subscriber would retain the discount forever.
+  const activeSubscriptions = subscriptions.filter((subscription) => subscription.isActive);
+  const packageRows = await Promise.all(
+    activeSubscriptions.map((subscription) => getPackageById(subscription.packageId)),
+  );
+  const eligiblePackageRows = packageRows.filter((pkg) => (
+    (pkg?.slug === 'comprehensive' && hasCurrentLexai)
+    || (pkg?.slug === 'basic' && hasCurrentRecommendations)
+  ));
+  const pricing = getLivePackagePurchaseTier(
+    eligiblePackageRows.flatMap((pkg) => pkg?.slug ? [pkg.slug] : []),
+  );
+  const eligiblePackage = pricing.eligiblePackageSlug
+    ? eligiblePackageRows.find((pkg) => pkg?.slug === pricing.eligiblePackageSlug) ?? null
+    : null;
+  return {
+    ...pricing,
+    upgradeFromPackageId: eligiblePackage?.id ?? null,
+    currency: 'ILS' as const,
+  };
+}
+
 export async function hasLivePackageOrderForRecipient(input: {
   packageId: number;
   purchaserUserId: number;
@@ -14164,10 +14289,76 @@ export async function hasLivePackageOrderForRecipient(input: {
     .where(and(
       eq(orderItems.itemType, 'package'),
       eq(orderItems.packageId, input.packageId),
-      inArray(orders.status, ['pending', 'completed']),
+      inArray(orders.status, ['pending', 'awaiting_confirmation', 'paid', 'completed']),
       recipientCondition,
     ));
   return Number(row?.count ?? 0) > 0;
+}
+
+export async function getLivePackageAdminStats(packageId: number) {
+  const db = await getDb();
+  if (!db) return {
+    newOrders: 0,
+    awaitingConfirmation: 0,
+    paidOrders: 0,
+    activatedKeys: 0,
+    activeEntitlements: 0,
+  };
+  const [orderCounts, keyCount, entitlementCount] = await Promise.all([
+    db.select({
+      status: orders.status,
+      count: sql<number>`count(DISTINCT ${orders.id})`,
+    }).from(orderItems)
+      .innerJoin(orders, eq(orderItems.orderId, orders.id))
+      .where(and(eq(orderItems.itemType, 'package'), eq(orderItems.packageId, packageId)))
+      .groupBy(orders.status),
+    db.select({ count: sql<number>`count(*)` }).from(registrationKeys).where(and(
+      eq(registrationKeys.packageId, packageId),
+      isNotNull(registrationKeys.activatedAt),
+    )),
+    db.select({ count: sql<number>`count(*)` }).from(livePackageEntitlements).where(and(
+      eq(livePackageEntitlements.packageId, packageId),
+      eq(livePackageEntitlements.isActive, true),
+    )),
+  ]);
+  const byStatus = new Map(orderCounts.map((row) => [row.status, Number(row.count)]));
+  return {
+    newOrders: byStatus.get('pending') ?? 0,
+    awaitingConfirmation: byStatus.get('awaiting_confirmation') ?? 0,
+    paidOrders: (byStatus.get('paid') ?? 0) + (byStatus.get('completed') ?? 0),
+    activatedKeys: Number(keyCount[0]?.count ?? 0),
+    activeEntitlements: Number(entitlementCount[0]?.count ?? 0),
+  };
+}
+
+export async function revokeLivePackageEntitlementForOrder(orderId: number) {
+  const db = await getDb();
+  if (!db) return 0;
+  const now = new Date().toISOString();
+  const livePackage = await getPackageBySlug(LIVE_PACKAGE_SLUG);
+  const statements: any[] = [
+    db.update(livePackageEntitlements).set({
+      isActive: false,
+      updatedAt: now,
+    }).where(and(
+      eq(livePackageEntitlements.orderId, orderId),
+      eq(livePackageEntitlements.isActive, true),
+    )),
+  ];
+  if (livePackage) {
+    statements.push(db.update(registrationKeys).set({
+      isActive: false,
+      notes: sql`CASE WHEN ${registrationKeys.notes} IS NULL OR trim(${registrationKeys.notes}) = '' THEN 'Live order revoked' ELSE ${registrationKeys.notes} || ' | Live order revoked' END`,
+    }).where(and(
+      eq(registrationKeys.orderId, orderId),
+      eq(registrationKeys.packageId, livePackage.id),
+      eq(registrationKeys.isActive, true),
+    )));
+  }
+  const results = await db.batch(statements as [any, ...any[]]);
+  return results.reduce((sum, result) => (
+    sum + Number((result as any)?.meta?.changes ?? (result as any)?.changes ?? 0)
+  ), 0);
 }
 
 export async function hasLivePackageCommitments(packageId: number) {
@@ -14211,16 +14402,15 @@ export async function fulfillLivePackageEntitlement(input: {
     throw new Error('Complimentary Live access requires an admin and reason');
   }
   const config = parseLivePackageConfig(settings);
-  const packageCourseRows = await getPackageCourses(input.packageId);
   const configurationErrors = getLivePackageConfigurationErrors({
     config,
     packageRecord: pkg,
-    assignedCourseCount: packageCourseRows.length,
+    assignedCourseCount: 0,
   });
   if (configurationErrors.length) throw new Error(`Live package configuration is invalid: ${configurationErrors.join(' ')}`);
-  if (packageCourseRows.some((row) => !row.course)) throw new Error('Live package references a missing base course');
-  const existing = await getLivePackageEntitlement(input.userId, config.cohortKey);
-  if (existing) return existing;
+  const existing = await getAnyLivePackageEntitlement(input.userId, config.cohortKey);
+  if (existing?.isActive) return existing;
+  if (existing) throw new Error('Live Package access for this cohort was previously revoked and cannot be re-granted.');
 
   const now = new Date().toISOString();
   const entitlementStatement = db.insert(livePackageEntitlements).values({
@@ -14240,41 +14430,15 @@ export async function fulfillLivePackageEntitlement(input: {
     createdAt: now,
     updatedAt: now,
   }).returning();
-  const currentEnrollments = await Promise.all(
-    packageCourseRows.map((packageCourse) => getEnrollmentByUserAndCourse(input.userId, packageCourse.courseId)),
-  );
-  const enrollmentStatements = packageCourseRows.map((packageCourse, index) => {
-    const current = currentEnrollments[index];
-    if (current) {
-      return db.update(enrollments).set({
-        paymentStatus: 'completed',
-        isSubscriptionActive: true,
-        subscriptionEndDate: null,
-      }).where(eq(enrollments.id, current.id));
-    }
-    return db.insert(enrollments).values({
-        userId: input.userId,
-        courseId: packageCourse.courseId,
-        enrolledAt: now,
-        paymentStatus: 'completed',
-        isSubscriptionActive: true,
-        registrationKeyId: input.registrationKeyId ?? null,
-        activatedViaKey: Boolean(input.registrationKeyId),
-      });
-  });
-
   try {
-    const results = (await db.batch([
-      entitlementStatement,
-      ...enrollmentStatements,
-    ] as any)) as unknown as Array<Array<typeof livePackageEntitlements.$inferSelect>>;
-    const entitlement = results[0]?.[0];
+    const [entitlement] = await entitlementStatement;
     if (!entitlement) throw new Error('Live package entitlement insert did not return a row');
     return entitlement;
   } catch (error) {
     if (isSqliteUniqueConstraintError(error)) {
-      const concurrent = await getLivePackageEntitlement(input.userId, config.cohortKey);
-      if (concurrent) return concurrent;
+      const concurrent = await getAnyLivePackageEntitlement(input.userId, config.cohortKey);
+      if (concurrent?.isActive) return concurrent;
+      if (concurrent) throw new Error('Live Package access for this cohort was previously revoked and cannot be re-granted.');
     }
     throw error;
   }

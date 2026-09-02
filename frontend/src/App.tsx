@@ -172,6 +172,26 @@ function UnindexedLivePackage({ language }: { language: SeoLanguage }) {
   return <PackageDetails />;
 }
 
+function LocalizedCheckout({ language }: { language: SeoLanguage }) {
+  const { setLanguage } = useLanguage();
+
+  useEffect(() => {
+    setLanguage(language);
+    document.title = language === "ar" ? "إتمام الطلب | XFlex" : "Checkout | XFlex";
+    document.documentElement.lang = language;
+    document.documentElement.dir = language === "ar" ? "rtl" : "ltr";
+    let robots = document.head.querySelector<HTMLMetaElement>('meta[name="robots"]');
+    if (!robots) {
+      robots = document.createElement("meta");
+      robots.name = "robots";
+      document.head.appendChild(robots);
+    }
+    robots.content = "noindex,nofollow,noarchive";
+  }, [language, setLanguage]);
+
+  return <Checkout />;
+}
+
 function Router() {
   return (
     <Suspense fallback={<PageLoader />}>
@@ -434,6 +454,8 @@ function Router() {
       <Route path="/ar/packages/:slug"><LocalizedPackage language="ar" /></Route>
       <Route path="/en/packages/:slug"><LocalizedPackage language="en" /></Route>
       <Route path="/packages/:slug"><LegacyPublicRedirect /></Route>
+      <Route path="/ar/checkout/:slug"><LocalizedCheckout language="ar" /></Route>
+      <Route path="/en/checkout/:slug"><LocalizedCheckout language="en" /></Route>
       <Route path="/checkout/:slug" component={Checkout} />
       <Route path="/ar/about"><Localized language="ar" seoKey="about"><About /></Localized></Route>
       <Route path="/en/about"><Localized language="en" seoKey="about"><About /></Localized></Route>

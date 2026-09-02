@@ -20,6 +20,7 @@ describe("Live Package in Admin Feature Center", () => {
 
   it("controls appearance and purchasing independently behind confirmation", () => {
     expect(source).toContain("packages.updateLiveConfig.useMutation");
+    expect(source).toContain("packages.setLiveRegistration.useMutation");
     expect(source).toContain('control: "visibility"');
     expect(source).toContain('control: "purchasing"');
     expect(source).toContain("Confirm website visibility");
@@ -27,10 +28,9 @@ describe("Live Package in Admin Feature Center", () => {
     expect(source).toContain(
       "The package will appear on the website as Coming Soon"
     );
-    expect(source).toContain("const purchaseApproved = changesVisibility");
-    expect(source).toContain(
-      'lifecycle: purchaseApproved ? "active" : "coming_soon"'
-    );
+    expect(source).toContain("setLiveRegistration.mutate");
+    expect(source).toContain("Only website visibility will change");
+    expect(source).toContain("Only new-order creation stops");
   });
 
   it("keeps activation blocked until the package and owner decisions are ready", () => {

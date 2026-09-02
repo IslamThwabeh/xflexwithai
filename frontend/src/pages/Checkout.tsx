@@ -21,6 +21,10 @@ export default function Checkout() {
   const [, navigate] = useLocation();
   const { data: pkg, isLoading } = trpc.packages.bySlug.useQuery({ slug: params.slug || '' });
   const { data: liveState } = trpc.packages.livePublicState.useQuery(undefined, { enabled: params.slug === 'live-package' });
+  const { data: liveQuote, isLoading: liveQuoteLoading } = trpc.livePackage.myPurchaseQuote.useQuery(
+    undefined,
+    { enabled: params.slug === 'live-package' },
+  );
 
   const paymentMethod = 'bank_transfer' as const;
   const [isGift, setIsGift] = useState(false);
@@ -48,7 +52,7 @@ export default function Checkout() {
         trackOrderRequest({
           slug: pkg.slug,
           name: isRtl ? pkg.nameAr : pkg.nameEn,
-          valueIls: pricing.ilsPrice,
+          valueIls: pkg.packageType === 'live' && liveQuote ? liveQuote.price / 100 : pricing.ilsPrice,
           language,
         });
       }
@@ -60,19 +64,20 @@ export default function Checkout() {
 
   useEffect(() => {
     if (!pkg?.slug) return;
-    const trackingKey = `${language}:${pkg.slug}`;
+    if (pkg.packageType === 'live' && !liveQuote) return;
+    const trackingKey = `${language}:${pkg.slug}:${pkg.packageType === 'live' ? liveQuote?.price : pkg.price}`;
     if (trackedCheckout.current === trackingKey) return;
     const pricing = getPackageDisplayPricing(pkg.slug, pkg.price, pkg.renewalPrice, pkg.currency);
     trackBeginCheckout({
       slug: pkg.slug,
       name: isRtl ? pkg.nameAr : pkg.nameEn,
-      valueIls: pricing.ilsPrice,
+      valueIls: pkg.packageType === 'live' && liveQuote ? liveQuote.price / 100 : pricing.ilsPrice,
       language,
     });
     trackedCheckout.current = trackingKey;
-  }, [isRtl, language, pkg]);
+  }, [isRtl, language, liveQuote, pkg]);
 
-  if (isLoading) {
+  if (isLoading || (params.slug === 'live-package' && liveQuoteLoading)) {
     return (
       <CinematicPublicLayout>
         <div className="min-h-[60vh] flex items-center justify-center bg-[#050505]" dir={isRtl ? 'rtl' : 'ltr'}>
@@ -97,14 +102,29 @@ export default function Checkout() {
   if (isLive && !liveState?.purchasable) {
     return <CinematicPublicLayout><div className="min-h-[60vh] bg-[#050505] px-4 py-20" dir={isRtl ? 'rtl' : 'ltr'}><div className="mx-auto max-w-lg rounded-3xl border border-white/10 bg-white p-8 text-center"><h1 className="text-2xl font-bold">{isRtl ? 'الشراء غير متاح حالياً' : 'Purchase is not currently available'}</h1><p className="mt-3 text-sm text-slate-500">{isRtl ? 'ترقبوا الحدث الأضخم هالسنة' : 'Live Package checkout will open only after the cohort is approved for sale.'}</p></div></div></CinematicPublicLayout>;
   }
+  if (isLive && liveQuote?.alreadyOwned) {
+    return <CinematicPublicLayout><div className="min-h-[60vh] bg-[#050505] px-4 py-20" dir={isRtl ? 'rtl' : 'ltr'}><div className="mx-auto max-w-lg rounded-3xl border border-white/10 bg-white p-8 text-center"><h1 className="text-2xl font-bold">{isRtl ? 'لديك وصول بالفعل' : 'You already have access'}</h1><p className="mt-3 text-sm text-slate-500">{isRtl ? 'لا يمكن إنشاء طلب آخر لنفس فوج بكج لايف.' : 'Another order cannot be created for the same Live cohort.'}</p></div></div></CinematicPublicLayout>;
+  }
 
   const displayPricing = getPackageDisplayPricing(pkg.slug, pkg.price, pkg.renewalPrice, pkg.currency);
+  const effectivePriceIls = isLive && liveQuote ? liveQuote.price / 100 : displayPricing.ilsPrice;
+  const livePriceReason = !isLive || !liveQuote ? null : isRtl
+    ? (liveQuote.tier === 'comprehensiveSubscriber'
+        ? 'سعر مشترك الشاملة الحالي'
+        : liveQuote.tier === 'basicSubscriber'
+          ? 'سعر مشترك الأساسية الحالي'
+          : 'السعر القياسي للحساب غير المؤهل للخصم')
+    : (liveQuote.tier === 'comprehensiveSubscriber'
+        ? 'Active Comprehensive subscriber price'
+        : liveQuote.tier === 'basicSubscriber'
+          ? 'Active Basic subscriber price'
+          : 'Standard price for accounts without an active subscriber discount');
   // Backend coupon `discount` is returned in USD cents (matches pkg.price). Convert to ILS
   // using the same 3.5x reference rate used by packagePricing.ts so the on-screen summary stays
   // consistent with the marketing ILS prices.
   const USD_TO_ILS = 3.5;
   const discountIls = appliedCoupon ? (appliedCoupon.discount / 100) * USD_TO_ILS : 0;
-  const totalIls = Math.max(displayPricing.ilsPrice - discountIls, 0);
+  const totalIls = Math.max(effectivePriceIls - discountIls, 0);
   const vatRate = 16;
   const vatIls = totalIls * vatRate / (100 + vatRate);
   const subtotalIls = totalIls - vatIls;
@@ -176,11 +196,15 @@ export default function Checkout() {
               </div>
               <div className="rounded-[22px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
                 <p className="font-semibold">{isRtl ? pkg.nameAr : pkg.nameEn}</p>
-                <p className="mt-1 text-emerald-700">{pkg.isLifetime ? (isRtl ? 'وصول مدى الحياة' : 'Lifetime access') : ''}</p>
-                <p className="mt-1 text-emerald-700">{formatIlsAmount(displayPricing.ilsPrice)}</p>
+                <p className="mt-1 text-emerald-700">{isLive ? (isRtl ? 'وصول خاص بالفوج' : 'Cohort access') : pkg.isLifetime ? (isRtl ? 'وصول مدى الحياة' : 'Lifetime access') : ''}</p>
+                <p className="mt-1 text-emerald-700">{formatIlsAmount(effectivePriceIls)}</p>
+                {livePriceReason && <p className="mt-1 max-w-xs text-xs leading-5 text-emerald-800">{livePriceReason}</p>}
               </div>
             </div>
           </div>
+
+          {isLive && liveState?.cohortStatus === 'in_progress' && <div className="mb-6 rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm leading-7 text-sky-950">{isRtl ? 'الفوج قائم حالياً: يشمل طلبك التسجيلات المنشورة السابقة، اللقاءات القادمة المجدولة، وما تبقى من اللقاءات المباشرة.' : 'This cohort is already in progress: your purchase includes prior published recordings, scheduled upcoming sessions, and the remaining live sessions.'}</div>}
+          {isLive && liveState?.cohortStatus === 'completed' && <div className="mb-6 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm font-semibold leading-7 text-amber-950">{isRtl ? 'الفوج مكتمل. هذا الطلب يمنح وصولاً إلى التسجيلات المنشورة ولا يتضمن وعداً بلقاءات مباشرة مستقبلية.' : 'This cohort is completed. This purchase grants access to published recordings and does not promise future live sessions.'}</div>}
 
           <div className="grid gap-8 lg:grid-cols-3">
           {/* Left: Form */}
@@ -206,8 +230,8 @@ export default function Checkout() {
               </div>
             </div>
 
-            {/* Gift option */}
-            <div className="bg-white border border-slate-200 rounded-[28px] p-6 shadow-[0_14px_36px_rgba(15,23,42,0.05)]">
+            {/* Live eligibility is account-bound, so gifting is intentionally unavailable. */}
+            {!isLive && <div className="bg-white border border-slate-200 rounded-[28px] p-6 shadow-[0_14px_36px_rgba(15,23,42,0.05)]">
               <label className="flex items-center gap-3 cursor-pointer">
                 <input
                   type="checkbox"
@@ -243,7 +267,7 @@ export default function Checkout() {
                   </div>
                 </div>
               )}
-            </div>
+            </div>}
 
             {/* Coupons remain disabled for the native-ILS Live product until an ILS coupon policy is approved. */}
             {!isLive && <>
@@ -302,7 +326,8 @@ export default function Checkout() {
                 </div>
                 <div>
                   <p className="font-bold">{isRtl ? pkg.nameAr : pkg.nameEn}</p>
-                  <p className="text-sm text-gray-500">{pkg.isLifetime ? (isRtl ? 'مدى الحياة' : 'Lifetime') : ''}</p>
+                  <p className="text-sm text-gray-500">{isLive ? (isRtl ? 'خاص بالفوج' : 'Cohort access') : pkg.isLifetime ? (isRtl ? 'مدى الحياة' : 'Lifetime') : ''}</p>
+                  {livePriceReason && <p className="mt-1 text-xs leading-5 text-emerald-700">{livePriceReason}</p>}
                 </div>
               </div>
 

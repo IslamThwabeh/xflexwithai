@@ -3,6 +3,10 @@ import { ENV } from "../_core/env";
 export const LIVE_PACKAGE_SLUG = "live-package";
 export const LIVE_PACKAGE_SETTING_KEYS = {
   adminVisible: "package_live_admin_visible",
+  registrationOpen: "package_live_registration_open",
+  targetSubscriberCount: "package_live_target_subscriber_count",
+  cohortStatus: "package_live_cohort_status",
+  // Legacy settings retained for migration/history only. They no longer gate orders.
   purchaseApproved: "package_live_purchase_approved",
   lifecycle: "package_live_lifecycle",
   cohortKey: "package_live_cohort_key",
@@ -23,14 +27,33 @@ export const LIVE_PACKAGE_RECORDING_POLICIES = [
   "permanent",
   "until_date",
 ] as const;
+export const LIVE_PACKAGE_COHORT_STATUSES = [
+  "not_started",
+  "in_progress",
+  "completed",
+] as const;
 
 export type LivePackageLifecycle = (typeof LIVE_PACKAGE_LIFECYCLES)[number];
 export type LivePackageRecordingPolicy =
   (typeof LIVE_PACKAGE_RECORDING_POLICIES)[number];
+export type LivePackageCohortStatus =
+  (typeof LIVE_PACKAGE_COHORT_STATUSES)[number];
+
+export const LIVE_PACKAGE_PRICE_MINOR = {
+  newSubscriber: 200_000,
+  comprehensiveSubscriber: 35_000,
+  basicSubscriber: 100_000,
+} as const;
+
+export type LivePackagePurchaseTier = keyof typeof LIVE_PACKAGE_PRICE_MINOR;
 
 export type LivePackageConfig = {
   deploymentEnabled: boolean;
   adminVisible: boolean;
+  registrationOpen: boolean;
+  targetSubscriberCount: number | null;
+  cohortStatus: LivePackageCohortStatus;
+  /** @deprecated Historical value only; use registrationOpen. */
   purchaseApproved: boolean;
   lifecycle: LivePackageLifecycle;
   cohortKey: string;
@@ -62,9 +85,26 @@ export function parseLivePackageConfig(
   ] as LivePackageRecordingPolicy;
   const recordingAccessEndsAt =
     settings[LIVE_PACKAGE_SETTING_KEYS.recordingAccessEndsAt]?.trim() || null;
+  const cohortStatus = settings[
+    LIVE_PACKAGE_SETTING_KEYS.cohortStatus
+  ] as LivePackageCohortStatus;
+  const targetSubscriberCountValue = Number(
+    settings[LIVE_PACKAGE_SETTING_KEYS.targetSubscriberCount]
+  );
   return {
     deploymentEnabled,
     adminVisible: isTrue(settings[LIVE_PACKAGE_SETTING_KEYS.adminVisible]),
+    registrationOpen: isTrue(
+      settings[LIVE_PACKAGE_SETTING_KEYS.registrationOpen]
+    ),
+    targetSubscriberCount:
+      Number.isInteger(targetSubscriberCountValue) &&
+      targetSubscriberCountValue > 0
+        ? targetSubscriberCountValue
+        : null,
+    cohortStatus: LIVE_PACKAGE_COHORT_STATUSES.includes(cohortStatus)
+      ? cohortStatus
+      : "not_started",
     purchaseApproved: isTrue(
       settings[LIVE_PACKAGE_SETTING_KEYS.purchaseApproved]
     ),
@@ -74,11 +114,9 @@ export function parseLivePackageConfig(
     cohortKey:
       settings[LIVE_PACKAGE_SETTING_KEYS.cohortKey]?.trim() || "live-2026",
     salesStartsAt:
-      settings[LIVE_PACKAGE_SETTING_KEYS.salesStartsAt] ||
-      "2026-09-03T21:00:00.000Z",
+      settings[LIVE_PACKAGE_SETTING_KEYS.salesStartsAt] || "",
     salesEndsAt:
-      settings[LIVE_PACKAGE_SETTING_KEYS.salesEndsAt] ||
-      "2026-09-30T20:59:00.000Z",
+      settings[LIVE_PACKAGE_SETTING_KEYS.salesEndsAt] || "",
     sessionStartsAt:
       settings[LIVE_PACKAGE_SETTING_KEYS.sessionStartsAt] ||
       "2026-09-04T21:00:00.000Z",
@@ -102,7 +140,7 @@ export function getLivePackageConfigurationErrors(input: {
   } | null;
   assignedCourseCount: number;
 }) {
-  const { config, packageRecord, assignedCourseCount } = input;
+  const { config, packageRecord } = input;
   const errors: string[] = [];
   if (!packageRecord || packageRecord.packageType !== "live")
     errors.push("Live package row is missing or has the wrong type.");
@@ -112,19 +150,10 @@ export function getLivePackageConfigurationErrors(input: {
     errors.push("Live package cannot have a renewal price.");
   if (!config.cohortKey) errors.push("A cohort key is required.");
   for (const [label, value] of [
-    ["Sales start", config.salesStartsAt],
-    ["Sales end", config.salesEndsAt],
     ["Live start", config.sessionStartsAt],
     ["Live end", config.sessionEndsAt],
   ] as const) {
     if (!isValidDate(value)) errors.push(`${label} must be a valid timestamp.`);
-  }
-  if (
-    isValidDate(config.salesStartsAt) &&
-    isValidDate(config.salesEndsAt) &&
-    Date.parse(config.salesStartsAt) >= Date.parse(config.salesEndsAt)
-  ) {
-    errors.push("Sales end must be after sales start.");
   }
   if (
     isValidDate(config.sessionStartsAt) &&
@@ -141,8 +170,6 @@ export function getLivePackageConfigurationErrors(input: {
       "A recording access end is required for the until-date policy."
     );
   }
-  if (assignedCourseCount < 1)
-    errors.push("Assign at least one base course before sales can open.");
   return errors;
 }
 
@@ -151,30 +178,48 @@ export function getLivePackageAvailability(
     now?: Date;
   }
 ) {
-  const now = input.now ?? new Date();
   const errors = getLivePackageConfigurationErrors(input);
   const { config } = input;
   const deploymentEnabled = config.deploymentEnabled;
   const visible = deploymentEnabled && config.adminVisible;
-  const withinSalesWindow =
-    isValidDate(config.salesStartsAt) &&
-    isValidDate(config.salesEndsAt) &&
-    now.getTime() >= Date.parse(config.salesStartsAt) &&
-    now.getTime() <= Date.parse(config.salesEndsAt);
   const purchasable =
     visible &&
-    config.purchaseApproved &&
-    config.lifecycle === "active" &&
-    withinSalesWindow &&
+    config.registrationOpen &&
     errors.length === 0;
   return {
     deploymentEnabled,
     visible,
     purchasable,
-    withinSalesWindow,
+    registrationOpen: config.registrationOpen,
     readiness: errors.length === 0,
     errors,
     lifecycle: config.lifecycle,
+  };
+}
+
+export function getLivePackagePurchaseTier(activePackageSlugs: string[]): {
+  tier: LivePackagePurchaseTier;
+  price: number;
+  eligiblePackageSlug: "comprehensive" | "basic" | null;
+} {
+  if (activePackageSlugs.includes("comprehensive")) {
+    return {
+      tier: "comprehensiveSubscriber",
+      price: LIVE_PACKAGE_PRICE_MINOR.comprehensiveSubscriber,
+      eligiblePackageSlug: "comprehensive",
+    };
+  }
+  if (activePackageSlugs.includes("basic")) {
+    return {
+      tier: "basicSubscriber",
+      price: LIVE_PACKAGE_PRICE_MINOR.basicSubscriber,
+      eligiblePackageSlug: "basic",
+    };
+  }
+  return {
+    tier: "newSubscriber",
+    price: LIVE_PACKAGE_PRICE_MINOR.newSubscriber,
+    eligiblePackageSlug: null,
   };
 }
 
