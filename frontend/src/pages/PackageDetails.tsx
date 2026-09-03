@@ -78,7 +78,7 @@ export default function PackageDetails() {
   const vatIncludedLabel = language === 'ar' ? 'السعر يشمل ضريبة القيمة المضافة 16%' : 'Price includes 16% VAT';
 
   const features = isLive ? [
-    { key: 'sessions', label: language === 'ar' ? 'لقاءات تعليمية وتداولية مباشرة مجدولة ضمن الفوج' : 'Scheduled educational and trading Live sessions for the cohort', included: liveState?.cohortStatus !== 'completed' },
+    { key: 'sessions', label: language === 'ar' ? 'لقاءان تعليميان ولقاءان للتداول والتحليل المباشر أسبوعياً لمدة ثلاثة أشهر؛ يُعلن الجدول عند اعتماده' : 'Two educational and two live trading/analysis sessions weekly for three months; the schedule will be announced once approved', included: liveState?.cohortStatus !== 'completed' },
     { key: 'recordings', label: language === 'ar' ? 'وصول دائم إلى التسجيلات المنشورة ما لم يُلغَ الوصول أو يُسترد المبلغ' : 'Permanent access to published recordings unless access is revoked or refunded', included: true },
   ] : [
     { key: 'courses', label: t('home.packages.courses'), included: true },

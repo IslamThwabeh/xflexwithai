@@ -3489,6 +3489,23 @@ export const appRouter = router({
       }))
       .mutation(async ({ ctx, input }) => {
         logger.procedure('enrollments.enroll', input, ctx.user.id);
+        const course = await db.getCourseById(input.courseId);
+        if (!course) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Course not found' });
+        }
+
+        const isPublicFreeCourse = course.isPublished && course.price === 0;
+        const hasPaidEntitlement = isPublicFreeCourse
+          ? false
+          : await db.hasActivePackageCourseEntitlement(ctx.user.id, input.courseId);
+        if (!isPublicFreeCourse && !hasPaidEntitlement) {
+          logger.warn('Blocked paid course self-enrollment without entitlement', {
+            userId: ctx.user.id,
+            courseId: input.courseId,
+          });
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'A valid course entitlement is required' });
+        }
+
         // Check if already enrolled
         const existing = await db.getEnrollmentByCourseAndUser(input.courseId, ctx.user.id);
         if (existing) {
@@ -3499,9 +3516,9 @@ export const appRouter = router({
         const enrollmentId = await db.createEnrollment({
           userId: ctx.user.id,
           courseId: input.courseId,
-          paymentAmount: input.paymentAmount,
-          paymentCurrency: input.paymentCurrency,
-          paymentStatus: input.paymentAmount ? 'pending' : 'completed',
+          paymentAmount: isPublicFreeCourse ? 0 : undefined,
+          paymentCurrency: course.currency,
+          paymentStatus: 'completed',
           isSubscriptionActive: true,
         });
 
@@ -6548,8 +6565,8 @@ export const appRouter = router({
         currency: pkg.currency,
         registrationOpen: config.registrationOpen,
         cohortStatus: config.cohortStatus,
-        sessionStartsAt: config.sessionStartsAt,
-        sessionEndsAt: config.sessionEndsAt,
+        sessionStartsAt: config.cohortStatus === 'not_started' ? null : config.sessionStartsAt,
+        sessionEndsAt: config.cohortStatus === 'not_started' ? null : config.sessionEndsAt,
         recordingPolicy: config.recordingPolicy,
         prelaunchCtaAr: 'ترقبوا الحدث الأضخم هالسنة',
         activeLabelAr: 'بكج مؤقت ومحدود',
@@ -6797,14 +6814,18 @@ export const appRouter = router({
         db.listLivePackageSessions(entitlement.packageId, entitlement.cohortKey),
         db.listLivePackageRecordings(ctx.user.id),
       ]);
+      const context = await getLivePackageContext();
       const now = Date.now();
       return {
         hasAccess: true,
+        cohortStatus: context.config.cohortStatus,
         entitlement: {
           cohortKey: entitlement.cohortKey,
           sessionStartsAt: entitlement.sessionStartsAt,
           sessionEndsAt: entitlement.sessionEndsAt,
-          liveAccessActive: now >= Date.parse(entitlement.sessionStartsAt) && now <= Date.parse(entitlement.sessionEndsAt),
+          liveAccessActive: context.config.cohortStatus === 'in_progress'
+            && now >= Date.parse(entitlement.sessionStartsAt)
+            && now <= Date.parse(entitlement.sessionEndsAt),
           recordingPolicy: entitlement.recordingPolicy,
           recordingAccessEndsAt: entitlement.recordingAccessEndsAt,
         },
@@ -6817,6 +6838,10 @@ export const appRouter = router({
       .input(z.object({ sessionId: z.number().int().positive() }))
       .mutation(async ({ ctx, input }) => {
         if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        const context = await getLivePackageContext();
+        if (context.config.cohortStatus !== 'in_progress') {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'The Live cohort is not currently in progress.' });
+        }
         const session = await db.getLivePackageSessionJoinInfo(input.sessionId, ctx.user.id);
         if (!session) throw new TRPCError({ code: 'FORBIDDEN', message: 'An active Live entitlement is required.' });
         return session;

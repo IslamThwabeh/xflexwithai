@@ -17,6 +17,7 @@ EMAIL_FROM = "support@xflexacademy.com"
 EMAIL_FROM_NAME = "XFlex Academy"
 SITE_URL = "https://xflexacademy.com"
 BUSINESS_POSTAL_ADDRESS = "XFlex Trading Academy, Ramallah, Palestine | support@xflexacademy.com"
+PACKAGE_LIVE_DEPLOYMENT_ENABLED = "true"
 
 # D1 Database binding (production)
 [[env.production.d1_databases]]

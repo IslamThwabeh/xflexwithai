@@ -1992,6 +1992,28 @@ export async function getEnrollment(userId: number, courseId: number) {
   return result.length > 0 ? result[0] : undefined;
 }
 
+/**
+ * A paid course may be enrolled from the student-facing route only when an
+ * active standard package already grants that course. Live Package ownership
+ * is deliberately excluded because it is a standalone entitlement.
+ */
+export async function hasActivePackageCourseEntitlement(userId: number, courseId: number) {
+  const db = await getDb();
+  if (!db) return false;
+  const [row] = await db.select({ id: packageSubscriptions.id })
+    .from(packageSubscriptions)
+    .innerJoin(packageCourses, eq(packageCourses.packageId, packageSubscriptions.packageId))
+    .innerJoin(packages, eq(packages.id, packageSubscriptions.packageId))
+    .where(and(
+      eq(packageSubscriptions.userId, userId),
+      eq(packageSubscriptions.isActive, true),
+      eq(packageCourses.courseId, courseId),
+      eq(packages.packageType, 'standard'),
+    ))
+    .limit(1);
+  return Boolean(row);
+}
+
 export async function createEnrollment(enrollment: InsertEnrollment) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");

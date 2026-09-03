@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useParams, useLocation } from 'wouter';
-import { ArrowLeft, Building2, ShieldCheck, Gift, Loader2, Tag, X, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Building2, ShieldCheck, Gift, Loader2, Tag, X, CheckCircle, LogIn, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { RegisterForm } from '@/components/RegisterForm';
 import CinematicPublicLayout from '@/components/public/CinematicPublicLayout';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useAuth } from '@/_core/hooks/useAuth';
 import { CURRENT_TERMS_VERSION } from '@/lib/legalVersions';
 import { formatIlsAmount, getPackageDisplayPricing } from '@/lib/packagePricing';
 import { trpc } from '@/lib/trpc';
@@ -14,16 +16,149 @@ import { toast } from 'sonner';
 import { trackBeginCheckout, trackOrderRequest } from '@/lib/analytics';
 import { isLikelyValidEmail, normalizeEmailAddress } from '@shared/emailValidation';
 
+function CheckoutAccountGate({
+  packageName,
+  packageSlug,
+  isRtl,
+}: {
+  packageName: string;
+  packageSlug: string;
+  isRtl: boolean;
+}) {
+  const [mode, setMode] = useState<"register" | "login">("register");
+  const localizedCheckoutPath = `/${isRtl ? "ar" : "en"}/checkout/${packageSlug}`;
+  const loginHref = `/auth?mode=login&next=${encodeURIComponent(localizedCheckoutPath)}`;
+
+  return (
+    <CinematicPublicLayout>
+      <div className="bg-[#050505] py-10 md:py-14" dir={isRtl ? "rtl" : "ltr"}>
+        <div className="bg-[var(--color-xf-cream)] py-10 text-slate-900 md:py-14">
+          <div className="mx-auto max-w-2xl px-4">
+            <Link href={`/packages/${packageSlug}`}>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="mb-5 px-0 text-slate-500 hover:bg-transparent hover:text-emerald-700"
+              >
+                <ArrowLeft
+                  className={`h-4 w-4 ${isRtl ? "ms-2 rotate-180" : "me-2"}`}
+                />
+                {isRtl ? "العودة إلى تفاصيل الباقة" : "Back to package details"}
+              </Button>
+            </Link>
+
+            <div className="overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.10)]">
+              <div className="border-b border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-amber-50 px-6 py-7 sm:px-8">
+                <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white px-3 py-1.5 text-xs font-bold text-emerald-700 shadow-sm">
+                  <ShieldCheck className="h-4 w-4" />
+                  {isRtl ? "الخطوة 1 من 2" : "Step 1 of 2"}
+                </div>
+                <h1 className="mt-4 text-2xl font-black leading-tight text-slate-950 sm:text-3xl">
+                  {isRtl
+                    ? "أهلاً بك في XFlex — لنكمل طلبك معاً"
+                    : "Welcome to XFlex — let's complete your order"}
+                </h1>
+                <p className="mt-3 text-sm leading-7 text-slate-600 sm:text-base">
+                  {isRtl
+                    ? `اخترت ${packageName}. يرجى تعبئة البيانات أدناه لإنشاء حسابك، وبعدها ستكمل تفاصيل الطلب وترفع إيصال التحويل بسهولة.`
+                    : `You selected ${packageName}. Fill in the details below to create your account, then you can complete the order and upload your transfer receipt.`}
+                </p>
+                <div className="mt-4 flex items-center gap-2 text-xs font-medium text-slate-500">
+                  <CheckCircle className="h-4 w-4 text-emerald-600" />
+                  {isRtl
+                    ? "سيبقى اختيار الباقة محفوظاً خلال هذه الخطوات."
+                    : "Your package selection stays with you through these steps."}
+                </div>
+              </div>
+
+              <div className="p-5 sm:p-8">
+                <div
+                  className="mb-7 grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1.5"
+                  role="tablist"
+                  aria-label={
+                    isRtl
+                      ? "اختيار الدخول أو التسجيل"
+                      : "Choose login or registration"
+                  }
+                >
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={mode === "register"}
+                    onClick={() => setMode("register")}
+                    className={`inline-flex items-center justify-center gap-2 rounded-xl px-3 py-3 text-sm font-bold transition-all ${
+                      mode === "register"
+                        ? "bg-white text-emerald-700 shadow-sm"
+                        : "text-slate-500 hover:text-slate-800"
+                    }`}
+                  >
+                    <UserPlus className="h-4 w-4" />
+                    {isRtl ? "عميل جديد" : "New customer"}
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={mode === "login"}
+                    onClick={() => setMode("login")}
+                    className={`inline-flex items-center justify-center gap-2 rounded-xl px-3 py-3 text-sm font-bold transition-all ${
+                      mode === "login"
+                        ? "bg-white text-emerald-700 shadow-sm"
+                        : "text-slate-500 hover:text-slate-800"
+                    }`}
+                  >
+                    <LogIn className="h-4 w-4" />
+                    {isRtl ? "لدي حساب" : "I have an account"}
+                  </button>
+                </div>
+
+                {mode === "register" ? (
+                  <RegisterForm />
+                ) : (
+                  <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-5 text-center sm:p-6">
+                    <LogIn className="mx-auto h-8 w-8 text-emerald-600" />
+                    <h2 className="mt-3 text-lg font-bold text-slate-950">
+                      {isRtl ? "مرحباً بعودتك" : "Welcome back"}
+                    </h2>
+                    <p className="mx-auto mt-2 max-w-md text-sm leading-7 text-slate-600">
+                      {isRtl
+                        ? "سجّل الدخول بالطريقة المعتادة، وسنعيدك مباشرة إلى الباقة التي اخترتها لإكمال الطلب."
+                        : "Sign in using your usual method and we will bring you straight back to your selected package to complete the order."}
+                    </p>
+                    <Link href={loginHref}>
+                      <Button className="mt-5 w-full bg-emerald-600 text-white hover:bg-emerald-700">
+                        <LogIn className="h-4 w-4" />
+                        {isRtl
+                          ? "المتابعة لتسجيل الدخول"
+                          : "Continue to sign in"}
+                      </Button>
+                    </Link>
+                  </div>
+                )}
+
+                <p className="mt-6 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-center text-xs leading-6 text-slate-500">
+                  {isRtl
+                    ? "لن يتم إنشاء الطلب أو طلب التحويل قبل تسجيل الدخول ومراجعة الملخص النهائي."
+                    : "No order or transfer request is created until you sign in and review the final summary."}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </CinematicPublicLayout>
+  );
+}
 export default function Checkout() {
   const { language, t } = useLanguage();
   const isRtl = language === 'ar';
   const params = useParams<{ slug: string }>();
   const [, navigate] = useLocation();
+  const { isAuthenticated, loading: authLoading } = useAuth();
   const { data: pkg, isLoading } = trpc.packages.bySlug.useQuery({ slug: params.slug || '' });
   const { data: liveState } = trpc.packages.livePublicState.useQuery(undefined, { enabled: params.slug === 'live-package' });
   const { data: liveQuote, isLoading: liveQuoteLoading } = trpc.livePackage.myPurchaseQuote.useQuery(
     undefined,
-    { enabled: params.slug === 'live-package' },
+    { enabled: params.slug === 'live-package' && isAuthenticated },
   );
 
   const paymentMethod = 'bank_transfer' as const;
@@ -77,7 +212,7 @@ export default function Checkout() {
     trackedCheckout.current = trackingKey;
   }, [isRtl, language, liveQuote, pkg]);
 
-  if (isLoading || (params.slug === 'live-package' && liveQuoteLoading)) {
+  if (isLoading || authLoading || (params.slug === 'live-package' && isAuthenticated && liveQuoteLoading)) {
     return (
       <CinematicPublicLayout>
         <div className="min-h-[60vh] flex items-center justify-center bg-[#050505]" dir={isRtl ? 'rtl' : 'ltr'}>
@@ -104,6 +239,16 @@ export default function Checkout() {
   }
   if (isLive && liveQuote?.alreadyOwned) {
     return <CinematicPublicLayout><div className="min-h-[60vh] bg-[#050505] px-4 py-20" dir={isRtl ? 'rtl' : 'ltr'}><div className="mx-auto max-w-lg rounded-3xl border border-white/10 bg-white p-8 text-center"><h1 className="text-2xl font-bold">{isRtl ? 'لديك وصول بالفعل' : 'You already have access'}</h1><p className="mt-3 text-sm text-slate-500">{isRtl ? 'لا يمكن إنشاء طلب آخر لنفس فوج بكج لايف.' : 'Another order cannot be created for the same Live cohort.'}</p></div></div></CinematicPublicLayout>;
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <CheckoutAccountGate
+        packageName={isRtl ? pkg.nameAr : pkg.nameEn}
+        packageSlug={pkg.slug}
+        isRtl={isRtl}
+      />
+    );
   }
 
   const displayPricing = getPackageDisplayPricing(pkg.slug, pkg.price, pkg.renewalPrice, pkg.currency);
@@ -176,7 +321,7 @@ export default function Checkout() {
   return (
     <CinematicPublicLayout>
       <div className="bg-[#050505] py-10 md:py-14" dir={isRtl ? 'rtl' : 'ltr'}>
-        <div className="bg-[var(--color-xf-cream)] py-10 md:py-14">
+        <div className="bg-[var(--color-xf-cream)] py-10 text-slate-900 md:py-14">
         <div className="max-w-5xl mx-auto px-4">
           <div className="mb-8 rounded-[28px] border border-slate-200 bg-white px-6 py-6 shadow-[0_16px_40px_rgba(15,23,42,0.05)] md:px-8 md:py-8">
             <div className="flex flex-wrap items-center justify-between gap-4">

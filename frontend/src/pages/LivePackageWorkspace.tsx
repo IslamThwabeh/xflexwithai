@@ -38,7 +38,12 @@ export default function LivePackageWorkspace() {
             <p className="mt-2 text-sm text-slate-500">{isAr ? 'يظهر المحتوى هنا بعد تفعيل وصول الفوج.' : 'Cohort content appears here after your access is activated.'}</p>
           </section>
         ) : <>
-          <section className="rounded-2xl border bg-white p-5">
+          {data.cohortStatus === 'not_started' ? (
+            <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-amber-950">
+              <h2 className="font-semibold">{isAr ? 'سيُعلن الجدول قريباً' : 'Schedule will be announced'}</h2>
+              <p className="mt-2 text-sm leading-7">{isAr ? 'أنت مسجل في الفوج. ستظهر هنا مواعيد اللقاءات التعليمية ولقاءات التداول والتحليل المباشر فور نشرها.' : 'You are registered for the cohort. Educational and live trading/analysis session times will appear here as soon as they are published.'}</p>
+            </section>
+          ) : <section className="rounded-2xl border bg-white p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="font-semibold">{isAr ? 'نافذة اللقاءات المباشرة' : 'Live meeting window'}</h2>
@@ -48,7 +53,7 @@ export default function LivePackageWorkspace() {
                 {data.entitlement!.liveAccessActive ? (isAr ? 'متاح الآن' : 'Active now') : (isAr ? 'غير نشط حالياً' : 'Not active now')}
               </Badge>
             </div>
-          </section>
+          </section>}
 
           <section className="space-y-3">
             <h2 className="flex items-center gap-2 text-xl font-bold"><CalendarDays className="h-5 w-5" />{isAr ? 'اللقاءات' : 'Sessions'}</h2>
@@ -59,7 +64,7 @@ export default function LivePackageWorkspace() {
                   <ExternalLink className="me-2 h-4 w-4" />{isAr ? 'الانضمام للقاء' : 'Join session'}
                 </Button>
               </article>
-            )) : <p className="rounded-2xl border border-dashed p-6 text-sm text-slate-500">{isAr ? 'سيظهر الجدول هنا بعد نشره.' : 'The schedule will appear here after it is published.'}</p>}
+            )) : <p className="rounded-2xl border border-dashed p-6 text-sm text-slate-500">{isAr ? 'سيُعلن جدول اللقاءات هنا عند اعتماده، ولا يلزمك اتخاذ أي إجراء الآن.' : 'The session schedule will be announced here once approved; no action is required from you now.'}</p>}
           </section>
 
           <section className="space-y-3">

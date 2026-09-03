@@ -522,6 +522,7 @@ function CinematicNav({ onScrollTo }: { onScrollTo: (id: string) => void }) {
   const isArabic = language === 'ar';
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const { data: liveState } = trpc.packages.livePublicState.useQuery();
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 24);
@@ -572,6 +573,15 @@ function CinematicNav({ onScrollTo }: { onScrollTo: (id: string) => void }) {
           {menuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
         </button>
       </div>
+      {liveState?.purchasable && (
+        <Link href={`/${language}/packages/live-package`}>
+          <a className="flex min-h-10 items-center justify-center gap-2 border-y border-[#C8A96B]/25 bg-gradient-to-r from-[#7A5A1D] via-[#C8A96B] to-[#7A5A1D] px-4 py-2 text-center text-xs font-bold text-[#080808] shadow-[0_10px_35px_rgba(200,169,107,0.2)] md:text-sm">
+            <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-[#080808]" />
+            <span>{isArabic ? 'بكج لايف متاح الآن — التسجيل لفترة محدودة' : 'Live Package is open — registration is available for a limited time'}</span>
+            <ArrowUpRight className="h-4 w-4 shrink-0" />
+          </a>
+        </Link>
+      )}
       {menuOpen && (
         <div className="border-t border-white/10 bg-[#0A0A0A]/96 px-4 pb-6 pt-4 backdrop-blur-2xl md:hidden">
           <div className="flex flex-col gap-5">
@@ -593,6 +603,55 @@ function CinematicNav({ onScrollTo }: { onScrollTo: (id: string) => void }) {
         </div>
       )}
     </header>
+  );
+}
+
+// ─── Featured limited-time Live Package ─────────────────────────────────────
+function FeaturedLivePackageSection() {
+  const { language, isRTL } = useLanguage();
+  const isArabic = language === 'ar';
+  const { data: liveState } = trpc.packages.livePublicState.useQuery();
+  const ref = useRef<HTMLElement | null>(null);
+  useScrollReveal(ref);
+
+  if (!liveState?.purchasable) return null;
+
+  const cohortCopy = liveState.cohortStatus === 'in_progress'
+    ? (isArabic ? 'الفوج قائم الآن: احصل على التسجيلات المنشورة، واللقاءات القادمة، وما تبقى من الجلسات المباشرة.' : 'The cohort is underway: get published recordings, upcoming meetings, and the remaining live sessions.')
+    : (isArabic ? 'لقاءان تعليميان ولقاءان للتداول والتحليل المباشر أسبوعياً لمدة ثلاثة أشهر. يُعلن موعد البداية والجدول عند اعتمادهما.' : 'Two educational and two live trading/analysis sessions weekly for three months. The start date and schedule will be announced once approved.');
+
+  return (
+    <section ref={ref} className="relative overflow-hidden border-y border-[#C8A96B]/15 bg-[#080706] py-12 md:py-16" dir={isRTL ? 'rtl' : 'ltr'}>
+      <div className="cin-orb cin-orb-gold" style={{ width: 520, height: 520, top: '-70%', right: '-8%', opacity: 0.62 }} />
+      <div className="container relative mx-auto px-4 md:px-8">
+        <div data-reveal className="mx-auto grid max-w-6xl items-center gap-8 overflow-hidden rounded-[32px] border border-[#C8A96B]/35 bg-gradient-to-br from-[#C8A96B]/[0.18] via-white/[0.04] to-[#050505] p-7 shadow-[0_28px_90px_rgba(200,169,107,0.12)] md:grid-cols-[1fr_auto] md:p-10">
+          <div>
+            <div className="inline-flex items-center gap-2 rounded-full border border-[#C8A96B]/35 bg-[#C8A96B]/10 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.18em] text-[#E8CB8B]">
+              <Zap className="h-3.5 w-3.5 fill-current" />
+              {isArabic ? 'بكج مؤقت ومحدود' : 'Limited-time cohort'}
+            </div>
+            <h2 className="mt-5 text-3xl font-extrabold tracking-[-0.03em] text-white md:text-5xl">
+              {isArabic ? liveState.nameAr : liveState.nameEn}
+            </h2>
+            <p className="mt-4 max-w-3xl text-base leading-8 text-white/68 md:text-lg">{cohortCopy}</p>
+            <div className="mt-6 flex flex-wrap gap-x-6 gap-y-3 text-sm text-white/65">
+              <span className="inline-flex items-center gap-2"><Users className="h-4 w-4 text-[#C8A96B]" />{isArabic ? 'فوج تدريبي مباشر' : 'Live training cohort'}</span>
+              <span className="inline-flex items-center gap-2"><CheckCircle className="h-4 w-4 text-[#00C176]" />{isArabic ? 'السعر شامل الضريبة' : 'VAT-inclusive pricing'}</span>
+              <span className="inline-flex items-center gap-2"><Clock3 className="h-4 w-4 text-[#C8A96B]" />{isArabic ? 'التسجيل متاح الآن؛ الموعد يُعلن لاحقاً' : 'Registration open; dates to be announced'}</span>
+            </div>
+          </div>
+          <div className="min-w-[250px] rounded-3xl border border-white/10 bg-black/30 p-6 text-start md:text-center">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/45">{isArabic ? 'السعر الأساسي' : 'Standard price'}</p>
+            <p className="mt-2 text-4xl font-extrabold text-[#00C176]">{formatIlsAmount(liveState.price / 100)}</p>
+            <p className="mt-2 text-xs leading-5 text-white/48">{isArabic ? 'أسعار خاصة للمشتركين الحاليين تظهر بعد تسجيل الدخول.' : 'Existing subscribers see their special price after signing in.'}</p>
+            <div className="mt-5 grid gap-3">
+              <Link href={`/${language}/packages/live-package`}><a className="cin-btn-green inline-flex items-center justify-center gap-2 rounded-full px-6 py-3.5 text-sm font-bold text-white">{isArabic ? 'اشترك الآن' : 'Register now'}<ArrowUpRight className="h-4 w-4" /></a></Link>
+              <Link href={`/${language}/packages/live-package`}><a className="text-center text-sm font-semibold text-[#E8CB8B] transition-colors hover:text-white">{isArabic ? 'اكتشف التفاصيل' : 'View package details'}</a></Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -1848,7 +1907,7 @@ function PackagesSection() {
           })}
           {liveState?.visible && <article data-reveal className="rounded-3xl border border-[#C8A96B]/30 bg-gradient-to-br from-[#C8A96B]/10 to-[#050505] p-7 md:col-span-2 md:p-9">
             <div className="flex flex-wrap items-start justify-between gap-6">
-              <div className="max-w-2xl"><p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#C8A96B]">{isArabic ? 'بكج مستقل قائم على فوج' : 'Standalone cohort program'}</p><h3 className="mt-3 text-3xl font-extrabold text-white">{isArabic ? liveState.nameAr : liveState.nameEn}</h3><p className="mt-3 text-sm leading-7 text-white/60">{liveState.cohortStatus === 'completed' ? (isArabic ? 'الفوج مكتمل؛ يتاح وصول دائم إلى التسجيلات المنشورة من دون وعد بلقاءات مستقبلية.' : 'The cohort is completed; published recordings remain available without a promise of future sessions.') : liveState.cohortStatus === 'in_progress' ? (isArabic ? 'الفوج قائم ويشمل التسجيلات السابقة المنشورة واللقاءات القادمة وما تبقى من البث المباشر.' : 'The cohort is in progress and includes prior published recordings, upcoming sessions, and remaining live sessions.') : (isArabic ? 'لقاءات مباشرة مجدولة مع وصول دائم إلى التسجيلات المنشورة الخاصة بالبكج.' : 'Scheduled Live sessions with permanent access to the package’s published recordings.')}</p></div>
+              <div className="max-w-2xl"><p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#C8A96B]">{isArabic ? 'بكج مستقل قائم على فوج' : 'Standalone cohort program'}</p><h3 className="mt-3 text-3xl font-extrabold text-white">{isArabic ? liveState.nameAr : liveState.nameEn}</h3><p className="mt-3 text-sm leading-7 text-white/60">{liveState.cohortStatus === 'completed' ? (isArabic ? 'الفوج مكتمل؛ يتاح وصول دائم إلى التسجيلات المنشورة من دون وعد بلقاءات مستقبلية.' : 'The cohort is completed; published recordings remain available without a promise of future sessions.') : liveState.cohortStatus === 'in_progress' ? (isArabic ? 'الفوج قائم ويشمل التسجيلات السابقة المنشورة واللقاءات القادمة وما تبقى من البث المباشر.' : 'The cohort is in progress and includes prior published recordings, upcoming sessions, and remaining live sessions.') : (isArabic ? 'أربع جلسات مباشرة أسبوعياً لمدة ثلاثة أشهر؛ يُعلن موعد البداية والجدول عند اعتمادهما.' : 'Four live sessions weekly for three months; the start date and schedule will be announced once approved.')}</p></div>
               <div className="text-start md:text-end"><p className="text-4xl font-extrabold text-[#00C176]">{formatIlsAmount(liveState.price / 100)}</p><p className="mt-1 text-xs text-white/45">{isArabic ? 'دفعة واحدة تشمل ضريبة القيمة المضافة' : 'One payment, VAT inclusive'}</p></div>
             </div>
             <div className="mt-6"><Link href={`/${isArabic ? 'ar' : 'en'}/packages/live-package`}><a className="cin-btn-ghost inline-flex items-center gap-2 rounded-full px-6 py-3.5 text-sm font-semibold text-white">{liveState.purchasable ? (isArabic ? 'اشترك الآن' : 'View Live Package') : (isArabic ? 'التسجيل مغلق حالياً' : 'Registration closed')}<ArrowUpRight className="h-4 w-4" /></a></Link></div>
@@ -2209,6 +2268,7 @@ export default function CinematicHomePage() {
         <HeroSection onScrollTo={scrollTo} />
         <TrustBadgesRow />
         <TrustBar />
+        <FeaturedLivePackageSection />
         <StickyStorySection />
         <DashboardSection />
         <LexAISection onScrollTo={scrollTo} />
