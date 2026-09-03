@@ -49,4 +49,8 @@ describe('approved public-copy boundaries', () => {
     expect(workspace).toContain('سيُعلن الجدول قريباً');
     expect(workspace).toContain('no action is required from you now');
   });
+
+  it('keeps the package-detail return button readable on its white card', () => {
+    expect(packageDetails).toContain('bg-white px-4 text-slate-700 hover:bg-slate-50 hover:text-slate-950');
+  });
 });

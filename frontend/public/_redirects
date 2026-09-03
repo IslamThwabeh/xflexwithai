@@ -12,3 +12,5 @@
 /refund-policy /ar/refund-policy 301
 /packages/basic /ar/packages/basic 301
 /packages/comprehensive /ar/packages/comprehensive 301
+/ar/checkout/* /index.html 200
+/en/checkout/* /index.html 200

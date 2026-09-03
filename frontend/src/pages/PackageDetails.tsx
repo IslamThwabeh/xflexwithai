@@ -118,7 +118,7 @@ export default function PackageDetails() {
                 </p>
               </div>
               <Link href="/">
-                <Button variant="outline" size="sm" className="rounded-full border-slate-200 bg-white px-4">
+                <Button variant="outline" size="sm" className="rounded-full border-slate-200 bg-white px-4 text-slate-700 hover:bg-slate-50 hover:text-slate-950">
                   <ArrowLeft className="w-4 h-4 me-1" />
                   {language === 'ar' ? 'العودة للرئيسية' : 'Back Home'}
                 </Button>
