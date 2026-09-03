@@ -50,7 +50,7 @@ const PRIVATE_PREFIXES = [
   "/job-opportunities",
 ];
 
-const LOCALIZED_PRIVATE_PATH = /^\/(ar|en)\/(?:auth|login|register|signup)(?:\/|$)/;
+const LOCALIZED_PRIVATE_PATH = /^\/(ar|en)\/(?:auth|login|register|signup|checkout)(?:\/|$)/;
 
 function withNoIndex(response) {
   const headers = new Headers(response.headers);
