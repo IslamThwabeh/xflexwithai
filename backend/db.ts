@@ -14258,40 +14258,50 @@ export async function getAnyLivePackageEntitlement(userId: number, cohortKey?: s
 }
 
 export async function getLivePackagePurchaseQuote(userId: number) {
-  const [subscriptions, lexaiSubscription, recommendationSubscription] = await Promise.all([
-    getUserPackageSubscriptions(userId),
-    getAnyLexaiSubscription(userId),
-    getAnyRecommendationSubscription(userId),
-  ]);
-  const now = Date.now();
-  const hasCurrentLexai = Boolean(
-    lexaiSubscription?.isActive && Date.parse(lexaiSubscription.endDate) > now,
-  );
-  const hasCurrentRecommendations = Boolean(
-    recommendationSubscription?.isActive && Date.parse(recommendationSubscription.endDate) > now,
-  );
-  // Package subscriptions represent permanent course ownership and intentionally
-  // have no expiry. Live pricing must therefore be tied to a current timed
-  // service, otherwise an expired subscriber would retain the discount forever.
-  const activeSubscriptions = subscriptions.filter((subscription) => subscription.isActive);
-  const packageRows = await Promise.all(
-    activeSubscriptions.map((subscription) => getPackageById(subscription.packageId)),
-  );
-  const eligiblePackageRows = packageRows.filter((pkg) => (
-    (pkg?.slug === 'comprehensive' && hasCurrentLexai)
-    || (pkg?.slug === 'basic' && hasCurrentRecommendations)
-  ));
+  const eligiblePackage = await getLatestQualifyingPackagePurchaseForLiveQuote(userId);
   const pricing = getLivePackagePurchaseTier(
-    eligiblePackageRows.flatMap((pkg) => pkg?.slug ? [pkg.slug] : []),
+    eligiblePackage?.slug ? [eligiblePackage.slug] : [],
   );
-  const eligiblePackage = pricing.eligiblePackageSlug
-    ? eligiblePackageRows.find((pkg) => pkg?.slug === pricing.eligiblePackageSlug) ?? null
-    : null;
   return {
     ...pricing,
-    upgradeFromPackageId: eligiblePackage?.id ?? null,
+    upgradeFromPackageId: eligiblePackage?.packageId ?? null,
     currency: 'ILS' as const,
   };
+}
+
+export async function getLatestQualifyingPackagePurchaseForLiveQuote(userId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const [row] = await db.select({
+    packageId: packages.id,
+    slug: packages.slug,
+    orderId: orders.id,
+    purchasedAt: sql<string>`coalesce(${orders.completedAt}, ${orders.updatedAt}, ${orders.createdAt})`,
+  })
+    .from(orderItems)
+    .innerJoin(orders, eq(orderItems.orderId, orders.id))
+    .innerJoin(packages, eq(orderItems.packageId, packages.id))
+    .innerJoin(packageSubscriptions, and(
+      eq(packageSubscriptions.userId, orders.userId),
+      eq(packageSubscriptions.packageId, packages.id),
+      eq(packageSubscriptions.isActive, true),
+    ))
+    .where(and(
+      eq(orders.userId, userId),
+      eq(orders.isGift, false),
+      eq(orderItems.itemType, 'package'),
+      inArray(packages.slug, ['basic', 'comprehensive']),
+      inArray(orders.status, ['paid', 'completed']),
+    ))
+    .orderBy(
+      desc(sql`coalesce(${orders.completedAt}, ${orders.updatedAt}, ${orders.createdAt})`),
+      desc(orders.id),
+      desc(orderItems.id),
+      desc(packageSubscriptions.id),
+    )
+    .limit(1);
+  if (row?.slug !== 'basic' && row?.slug !== 'comprehensive') return null;
+  return { packageId: row.packageId, slug: row.slug, orderId: row.orderId, purchasedAt: row.purchasedAt };
 }
 
 export async function hasLivePackageOrderForRecipient(input: {
@@ -14398,6 +14408,17 @@ export async function hasLivePackageCommitments(packageId: number) {
   ]);
   return [orderRows, entitlementRows, sessionRows, recordingRows]
     .some((rows) => Number(rows[0]?.count ?? 0) > 0);
+}
+
+export async function hasLivePackageStarted(packageId: number, nowIso = new Date().toISOString()) {
+  const db = await getDb();
+  if (!db) return false;
+  const [row] = await db.select({ count: sql<number>`count(*)` }).from(livePackageSessions).where(and(
+    eq(livePackageSessions.packageId, packageId),
+    inArray(livePackageSessions.status, ['scheduled', 'completed']),
+    sql`${livePackageSessions.startsAt} <= ${nowIso}`,
+  ));
+  return Number(row?.count ?? 0) > 0;
 }
 
 export async function fulfillLivePackageEntitlement(input: {
@@ -14612,8 +14633,10 @@ export async function getLivePackageSessionJoinInfo(sessionId: number, userId: n
   if (!db) return null;
   const entitlement = await getLivePackageEntitlement(userId);
   if (!entitlement) return null;
+  const config = parseLivePackageConfig(await getAllAdminSettings());
+  if (!config.sessionStartsAt || !config.sessionEndsAt) return null;
   const now = Date.now();
-  if (now < Date.parse(entitlement.sessionStartsAt) || now > Date.parse(entitlement.sessionEndsAt)) return null;
+  if (now < Date.parse(config.sessionStartsAt) || now > Date.parse(config.sessionEndsAt)) return null;
   const [session] = await db.select().from(livePackageSessions).where(and(
     eq(livePackageSessions.id, sessionId),
     eq(livePackageSessions.packageId, entitlement.packageId),

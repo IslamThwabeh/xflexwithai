@@ -896,8 +896,8 @@ const livePackageConfigInput = z.object({
   adminVisible: z.boolean(),
   lifecycle: z.enum(LIVE_PACKAGE_LIFECYCLES),
   cohortKey: z.string().trim().min(1).max(80),
-  sessionStartsAt: z.string().datetime(),
-  sessionEndsAt: z.string().datetime(),
+  sessionStartsAt: z.string().datetime().or(z.literal("")),
+  sessionEndsAt: z.string().datetime().or(z.literal("")),
   recordingPolicy: z.literal("permanent"),
   recordingAccessEndsAt: z.null(),
   targetSubscriberCount: z.number().int().positive().nullable().optional(),
@@ -6624,15 +6624,22 @@ export const appRouter = router({
           packageRecord: previous.pkg,
           assignedCourseCount: previous.courses.length,
         });
-        const lockedTermsChanged = [
+        const commercialTermsChanged = [
           'cohortKey',
-          'sessionStartsAt',
-          'sessionEndsAt',
           'recordingPolicy',
           'recordingAccessEndsAt',
         ].some((key) => previous.config[key as keyof typeof previous.config] !== proposedConfig[key as keyof typeof proposedConfig]);
-        if (lockedTermsChanged && previous.pkg && await db.hasLivePackageCommitments(previous.pkg.id)) {
-          throw new TRPCError({ code: 'CONFLICT', message: 'Cohort, schedule, and recording terms are locked after the first order or cohort content is created.' });
+        const scheduleChanged = previous.config.sessionStartsAt !== proposedConfig.sessionStartsAt
+          || previous.config.sessionEndsAt !== proposedConfig.sessionEndsAt;
+        if (commercialTermsChanged && previous.pkg && await db.hasLivePackageCommitments(previous.pkg.id)) {
+          throw new TRPCError({ code: 'CONFLICT', message: 'Cohort and recording terms are locked after the first order or cohort content is created.' });
+        }
+        if (scheduleChanged && previous.pkg && (
+          previous.config.cohortStatus !== 'not_started'
+          || proposedConfig.cohortStatus !== 'not_started'
+          || await db.hasLivePackageStarted(previous.pkg.id)
+        )) {
+          throw new TRPCError({ code: 'CONFLICT', message: 'Live cohort schedule is locked after the cohort or first session starts.' });
         }
         await db.setAdminSettings(updates.map(([key, value]) => ({ key, value })));
         await db.logAdminAction(ctx.admin.id, ctx.admin.id, 'update_live_package_config', {
@@ -6815,17 +6822,20 @@ export const appRouter = router({
         db.listLivePackageRecordings(ctx.user.id),
       ]);
       const context = await getLivePackageContext();
+      const scheduleStartsAt = context.config.sessionStartsAt || entitlement.sessionStartsAt;
+      const scheduleEndsAt = context.config.sessionEndsAt || entitlement.sessionEndsAt;
       const now = Date.now();
       return {
         hasAccess: true,
         cohortStatus: context.config.cohortStatus,
         entitlement: {
           cohortKey: entitlement.cohortKey,
-          sessionStartsAt: entitlement.sessionStartsAt,
-          sessionEndsAt: entitlement.sessionEndsAt,
+          sessionStartsAt: scheduleStartsAt,
+          sessionEndsAt: scheduleEndsAt,
           liveAccessActive: context.config.cohortStatus === 'in_progress'
-            && now >= Date.parse(entitlement.sessionStartsAt)
-            && now <= Date.parse(entitlement.sessionEndsAt),
+            && Boolean(scheduleStartsAt && scheduleEndsAt)
+            && now >= Date.parse(scheduleStartsAt)
+            && now <= Date.parse(scheduleEndsAt),
           recordingPolicy: entitlement.recordingPolicy,
           recordingAccessEndsAt: entitlement.recordingAccessEndsAt,
         },
@@ -6881,6 +6891,9 @@ export const appRouter = router({
         if (Date.parse(input.startsAt) >= Date.parse(input.endsAt)) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Session end must be after its start.' });
         const context = await getLivePackageContext();
         if (!context.pkg) throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Live package is not configured.' });
+        if (!context.config.sessionStartsAt || !context.config.sessionEndsAt) {
+          throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Set the Live cohort schedule before adding sessions.' });
+        }
         if (Date.parse(input.startsAt) < Date.parse(context.config.sessionStartsAt) || Date.parse(input.endsAt) > Date.parse(context.config.sessionEndsAt)) {
           throw new TRPCError({ code: 'BAD_REQUEST', message: 'Session must remain inside the configured Live cohort window.' });
         }

@@ -94,7 +94,7 @@ INSERT OR IGNORE INTO admin_settings (settingKey, settingValue) VALUES
   ('package_live_cohort_key', 'live-2026'),
   ('package_live_sales_starts_at', '2026-09-03T21:00:00.000Z'),
   ('package_live_sales_ends_at', '2026-12-31T20:59:00.000Z'),
-  ('package_live_session_starts_at', '2026-09-04T21:00:00.000Z'),
-  ('package_live_session_ends_at', '2026-12-31T20:59:00.000Z'),
+  ('package_live_session_starts_at', ''),
+  ('package_live_session_ends_at', ''),
   ('package_live_recording_policy', 'permanent'),
   ('package_live_recording_access_ends_at', '');

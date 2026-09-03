@@ -255,15 +255,15 @@ export default function Checkout() {
   const effectivePriceIls = isLive && liveQuote ? liveQuote.price / 100 : displayPricing.ilsPrice;
   const livePriceReason = !isLive || !liveQuote ? null : isRtl
     ? (liveQuote.tier === 'comprehensiveSubscriber'
-        ? 'سعر مشترك الشاملة الحالي'
+        ? 'سعر عميل سابق في الشاملة'
         : liveQuote.tier === 'basicSubscriber'
-          ? 'سعر مشترك الأساسية الحالي'
-          : 'السعر القياسي للحساب غير المؤهل للخصم')
+          ? 'سعر عميل سابق في الأساسية'
+          : 'السعر القياسي للحساب بدون شراء سابق مؤهل')
     : (liveQuote.tier === 'comprehensiveSubscriber'
-        ? 'Active Comprehensive subscriber price'
+        ? 'Previous Comprehensive customer price'
         : liveQuote.tier === 'basicSubscriber'
-          ? 'Active Basic subscriber price'
-          : 'Standard price for accounts without an active subscriber discount');
+          ? 'Previous Basic customer price'
+          : 'Standard price for accounts without a previous qualifying purchase');
   // Backend coupon `discount` is returned in USD cents (matches pkg.price). Convert to ILS
   // using the same 3.5x reference rate used by packagePricing.ts so the on-screen summary stays
   // consistent with the marketing ILS prices.

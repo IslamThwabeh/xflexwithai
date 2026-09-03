@@ -118,11 +118,9 @@ export function parseLivePackageConfig(
     salesEndsAt:
       settings[LIVE_PACKAGE_SETTING_KEYS.salesEndsAt] || "",
     sessionStartsAt:
-      settings[LIVE_PACKAGE_SETTING_KEYS.sessionStartsAt] ||
-      "2026-09-04T21:00:00.000Z",
+      settings[LIVE_PACKAGE_SETTING_KEYS.sessionStartsAt]?.trim() || "",
     sessionEndsAt:
-      settings[LIVE_PACKAGE_SETTING_KEYS.sessionEndsAt] ||
-      "2026-12-31T20:59:00.000Z",
+      settings[LIVE_PACKAGE_SETTING_KEYS.sessionEndsAt]?.trim() || "",
     recordingPolicy: LIVE_PACKAGE_RECORDING_POLICIES.includes(recordingPolicy)
       ? recordingPolicy
       : "permanent",
@@ -149,18 +147,21 @@ export function getLivePackageConfigurationErrors(input: {
   if ((packageRecord?.renewalPrice ?? 0) !== 0)
     errors.push("Live package cannot have a renewal price.");
   if (!config.cohortKey) errors.push("A cohort key is required.");
-  for (const [label, value] of [
-    ["Live start", config.sessionStartsAt],
-    ["Live end", config.sessionEndsAt],
-  ] as const) {
-    if (!isValidDate(value)) errors.push(`${label} must be a valid timestamp.`);
-  }
-  if (
-    isValidDate(config.sessionStartsAt) &&
-    isValidDate(config.sessionEndsAt) &&
-    Date.parse(config.sessionStartsAt) >= Date.parse(config.sessionEndsAt)
-  ) {
-    errors.push("Live end must be after Live start.");
+  const hasAnyScheduleDate = Boolean(config.sessionStartsAt || config.sessionEndsAt);
+  if (hasAnyScheduleDate) {
+    for (const [label, value] of [
+      ["Live start", config.sessionStartsAt],
+      ["Live end", config.sessionEndsAt],
+    ] as const) {
+      if (!isValidDate(value)) errors.push(`${label} must be a valid timestamp.`);
+    }
+    if (
+      isValidDate(config.sessionStartsAt) &&
+      isValidDate(config.sessionEndsAt) &&
+      Date.parse(config.sessionStartsAt) >= Date.parse(config.sessionEndsAt)
+    ) {
+      errors.push("Live end must be after Live start.");
+    }
   }
   if (
     config.recordingPolicy === "until_date" &&
@@ -171,6 +172,26 @@ export function getLivePackageConfigurationErrors(input: {
     );
   }
   return errors;
+}
+
+export type LivePackageHistoricalPurchase = {
+  packageSlug: "basic" | "comprehensive";
+  packageId: number;
+  purchasedAt: string;
+  recordId: number;
+  isValid: boolean;
+};
+
+export function selectLatestQualifyingLivePackagePurchase(
+  purchases: LivePackageHistoricalPurchase[],
+) {
+  return [...purchases]
+    .filter((purchase) => purchase.isValid)
+    .sort((a, b) => {
+      const timeDiff = Date.parse(b.purchasedAt) - Date.parse(a.purchasedAt);
+      if (timeDiff) return timeDiff;
+      return b.recordId - a.recordId;
+    })[0] ?? null;
 }
 
 export function getLivePackageAvailability(
@@ -221,6 +242,12 @@ export function getLivePackagePurchaseTier(activePackageSlugs: string[]): {
     price: LIVE_PACKAGE_PRICE_MINOR.newSubscriber,
     eligiblePackageSlug: null,
   };
+}
+
+export function getLivePackagePurchaseTierForLatestPackage(
+  latestPackageSlug: "basic" | "comprehensive" | null | undefined,
+) {
+  return getLivePackagePurchaseTier(latestPackageSlug ? [latestPackageSlug] : []);
 }
 
 export function isPublicStandardPackage(pkg: {

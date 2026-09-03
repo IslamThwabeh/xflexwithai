@@ -68,6 +68,8 @@ describe('Live package foundation contracts', () => {
     expect(migration).toContain('sessionStartsAt TEXT NOT NULL');
     expect(migration).toContain('sessionEndsAt TEXT NOT NULL');
     expect(migration).toContain("recordingPolicy TEXT NOT NULL DEFAULT 'permanent'");
+    expect(migration).toContain("('package_live_session_starts_at', '')");
+    expect(migration).toContain("('package_live_session_ends_at', '')");
     expect(migration).toContain('CREATE TABLE IF NOT EXISTS live_package_sessions');
     expect(migration).toContain('CREATE TABLE IF NOT EXISTS live_package_recordings');
     const fulfillment = database.slice(database.indexOf('export async function fulfillLivePackageEntitlement'), database.indexOf('export async function listLivePackageSessions('));

@@ -12,8 +12,8 @@ const settings = {
   package_live_cohort_key: "live-2026",
   package_live_sales_starts_at: "2026-09-03T21:00:00.000Z",
   package_live_sales_ends_at: "2026-09-30T20:59:00.000Z",
-  package_live_session_starts_at: "2026-09-04T21:00:00.000Z",
-  package_live_session_ends_at: "2026-12-31T20:59:00.000Z",
+  package_live_session_starts_at: "",
+  package_live_session_ends_at: "",
   package_live_recording_policy: "permanent",
   package_live_recording_access_ends_at: "",
 };
@@ -67,6 +67,17 @@ describe("Live package availability", () => {
     });
     expect(result.purchasable).toBe(true);
     expect(result.errors).toEqual([]);
+  });
+
+  it("supports purchasable registration before the owner approves schedule dates", () => {
+    const config = parseLivePackageConfig(settings, true);
+    expect(config.sessionStartsAt).toBe("");
+    expect(config.sessionEndsAt).toBe("");
+    expect(getLivePackageAvailability({
+      config,
+      packageRecord,
+      assignedCourseCount: 0,
+    })).toMatchObject({ visible: true, purchasable: true, errors: [] });
   });
 
   it("stays open across legacy sales dates until an admin closes it", () => {

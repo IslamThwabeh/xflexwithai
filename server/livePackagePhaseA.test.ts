@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   LIVE_PACKAGE_PRICE_MINOR,
+  selectLatestQualifyingLivePackagePurchase,
+  getLivePackagePurchaseTierForLatestPackage,
   getLivePackagePurchaseTier,
 } from "../backend/services/live-package.service";
 
@@ -31,16 +33,68 @@ describe("Live Package Phase A decisions", () => {
     });
   });
 
-  it("requires a current timed service before applying an existing-subscriber discount", () => {
+  it("prices from the latest qualifying historical package purchase", () => {
+    expect(getLivePackagePurchaseTierForLatestPackage(null)).toMatchObject({
+      tier: "newSubscriber",
+      price: 200_000,
+      eligiblePackageSlug: null,
+    });
+    expect(getLivePackagePurchaseTierForLatestPackage("basic")).toMatchObject({
+      tier: "basicSubscriber",
+      price: 100_000,
+      eligiblePackageSlug: "basic",
+    });
+    expect(getLivePackagePurchaseTierForLatestPackage("comprehensive")).toMatchObject({
+      tier: "comprehensiveSubscriber",
+      price: 35_000,
+      eligiblePackageSlug: "comprehensive",
+    });
+  });
+
+  it("selects the latest valid Basic or Comprehensive history deterministically", () => {
+    const base = "2026-08-01T10:00:00.000Z";
+    const later = "2026-08-20T10:00:00.000Z";
+    expect(selectLatestQualifyingLivePackagePurchase([])).toBeNull();
+    expect(selectLatestQualifyingLivePackagePurchase([
+      { packageSlug: "basic", packageId: 1, purchasedAt: base, recordId: 1, isValid: true },
+    ])?.packageSlug).toBe("basic");
+    expect(selectLatestQualifyingLivePackagePurchase([
+      { packageSlug: "comprehensive", packageId: 2, purchasedAt: base, recordId: 2, isValid: true },
+    ])?.packageSlug).toBe("comprehensive");
+    expect(selectLatestQualifyingLivePackagePurchase([
+      { packageSlug: "basic", packageId: 1, purchasedAt: base, recordId: 1, isValid: true },
+      { packageSlug: "comprehensive", packageId: 2, purchasedAt: later, recordId: 2, isValid: true },
+    ])?.packageSlug).toBe("comprehensive");
+    expect(selectLatestQualifyingLivePackagePurchase([
+      { packageSlug: "comprehensive", packageId: 2, purchasedAt: base, recordId: 1, isValid: true },
+      { packageSlug: "basic", packageId: 1, purchasedAt: later, recordId: 2, isValid: true },
+    ])?.packageSlug).toBe("basic");
+    expect(selectLatestQualifyingLivePackagePurchase([
+      { packageSlug: "basic", packageId: 1, purchasedAt: base, recordId: 1, isValid: true },
+      { packageSlug: "comprehensive", packageId: 2, purchasedAt: later, recordId: 2, isValid: false },
+    ])?.packageSlug).toBe("basic");
+    expect(selectLatestQualifyingLivePackagePurchase([
+      { packageSlug: "basic", packageId: 1, purchasedAt: base, recordId: 1, isValid: true },
+      { packageSlug: "comprehensive", packageId: 2, purchasedAt: base, recordId: 2, isValid: true },
+    ])?.packageSlug).toBe("comprehensive");
+  });
+
+  it("uses paid order history rather than current timed services for discounts", () => {
     const quote = database.slice(
       database.indexOf("export async function getLivePackagePurchaseQuote"),
       database.indexOf("export async function hasLivePackageOrderForRecipient"),
     );
-    expect(quote).toContain("getAnyLexaiSubscription");
-    expect(quote).toContain("getAnyRecommendationSubscription");
-    expect(quote).toContain("Date.parse(lexaiSubscription.endDate) > now");
-    expect(quote).toContain("Date.parse(recommendationSubscription.endDate) > now");
-    expect(quote).not.toContain("!subscription.endDate");
+    expect(quote).toContain("getLatestQualifyingPackagePurchaseForLiveQuote");
+    expect(quote).not.toContain("getAnyLexaiSubscription");
+    expect(quote).not.toContain("getAnyRecommendationSubscription");
+    const history = database.slice(
+      database.indexOf("export async function getLatestQualifyingPackagePurchaseForLiveQuote"),
+      database.indexOf("export async function hasLivePackageOrderForRecipient"),
+    );
+    expect(history).toContain("inArray(orders.status, ['paid', 'completed'])");
+    expect(history).toContain("inArray(packages.slug, ['basic', 'comprehensive'])");
+    expect(history).toContain("desc(orders.id)");
+    expect(history).toContain("eq(packageSubscriptions.isActive, true)");
   });
 
   it("uses a dedicated audited manual switch with old/new/admin/time evidence", () => {
@@ -68,6 +122,47 @@ describe("Live Package Phase A decisions", () => {
     expect(approveOrder).not.toContain("salesEndsAt");
     expect(activateLive).not.toContain("registrationOpen");
     expect(activateLive).not.toContain("salesEndsAt");
+  });
+
+  it("allows purchase and fulfillment while the cohort schedule is not yet approved", () => {
+    const service = readFileSync(new URL("../backend/services/live-package.service.ts", import.meta.url), "utf8");
+    expect(service).toContain("settings[LIVE_PACKAGE_SETTING_KEYS.sessionStartsAt]?.trim() || \"\"");
+    expect(service).toContain("settings[LIVE_PACKAGE_SETTING_KEYS.sessionEndsAt]?.trim() || \"\"");
+    expect(service).toContain("const hasAnyScheduleDate = Boolean(config.sessionStartsAt || config.sessionEndsAt)");
+    const fulfillment = database.slice(
+      database.indexOf("export async function fulfillLivePackageEntitlement"),
+      database.indexOf("export async function listLivePackageSessions("),
+    );
+    expect(fulfillment).toContain("sessionStartsAt: config.sessionStartsAt");
+    expect(fulfillment).toContain("sessionEndsAt: config.sessionEndsAt");
+  });
+
+  it("does not let pending orders lock undecided schedule while the cohort is not started", () => {
+    const updateConfig = router.slice(
+      router.indexOf("updateLiveConfig:"),
+      router.indexOf("setLiveRegistration:"),
+    );
+    expect(updateConfig).toContain("commercialTermsChanged");
+    expect(updateConfig).toContain("scheduleChanged");
+    expect(updateConfig).toContain("previous.config.cohortStatus !== 'not_started'");
+    expect(updateConfig).toContain("proposedConfig.cohortStatus !== 'not_started'");
+    expect(updateConfig).toContain("hasLivePackageStarted");
+    expect(updateConfig).not.toContain("'sessionStartsAt',\n          'sessionEndsAt'");
+  });
+
+  it("shares final approved schedule across early and late buyers and protects it after start", () => {
+    const workspace = router.slice(
+      router.indexOf("myWorkspace:"),
+      router.indexOf("joinSession:"),
+    );
+    expect(workspace).toContain("context.config.sessionStartsAt || entitlement.sessionStartsAt");
+    expect(workspace).toContain("context.config.sessionEndsAt || entitlement.sessionEndsAt");
+    const joinInfo = database.slice(
+      database.indexOf("export async function getLivePackageSessionJoinInfo"),
+      database.indexOf("export async function getLivePackageRecordingForUser"),
+    );
+    expect(joinInfo).toContain("parseLivePackageConfig(await getAllAdminSettings())");
+    expect(joinInfo).toContain("if (!config.sessionStartsAt || !config.sessionEndsAt) return null");
   });
 
   it("keeps Live independent from courses and preserves existing package subscriptions", () => {
@@ -127,6 +222,8 @@ describe("Live Package Phase A decisions", () => {
     expect(checkoutUi).toContain("prior published recordings");
     expect(checkoutUi).toContain("does not promise future live sessions");
     expect(checkoutUi).toContain("liveQuote.price / 100");
+    expect(checkoutUi).toContain("Previous Basic customer price");
+    expect(checkoutUi).toContain("Previous Comprehensive customer price");
     expect(checkoutUi).toContain("{!isLive && <div");
     expect(router).toContain("Live Package gift checkout is not supported");
   });
@@ -134,8 +231,8 @@ describe("Live Package Phase A decisions", () => {
   it("keeps localized checkout routes and Live-specific pricing copy", () => {
     expect(appUi).toContain('path="/ar/checkout/:slug"');
     expect(appUi).toContain('path="/en/checkout/:slug"');
-    expect(checkoutUi).toContain("Active Basic subscriber price");
-    expect(checkoutUi).toContain("Active Comprehensive subscriber price");
+    expect(checkoutUi).toContain("Previous Basic customer price");
+    expect(checkoutUi).toContain("Previous Comprehensive customer price");
     expect(checkoutUi).toContain("Cohort access");
     expect(checkoutUi).toContain("isLive ? (isRtl ? 'وصول خاص بالفوج' : 'Cohort access')");
   });

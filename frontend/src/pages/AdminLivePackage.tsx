@@ -23,8 +23,8 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
 
-const toAmmanInput = (iso: string) => new Date(Date.parse(iso) + 3 * 60 * 60 * 1000).toISOString().slice(0, 16);
-const fromAmmanInput = (value: string) => new Date(`${value}:00+03:00`).toISOString();
+const toAmmanInput = (iso: string) => iso ? new Date(Date.parse(iso) + 3 * 60 * 60 * 1000).toISOString().slice(0, 16) : '';
+const fromAmmanInput = (value: string) => value ? new Date(`${value}:00+03:00`).toISOString() : '';
 
 export default function AdminLivePackage() {
   const { language } = useLanguage();
@@ -80,10 +80,6 @@ export default function AdminLivePackage() {
   const saveConfig = () => updateConfig.mutate(configPayload());
   const preview = () => previewConfig.mutate({ ...configPayload(), courseIds: [] });
 
-  const configDatesComplete = Boolean(
-    config.sessionStartsAt
-    && config.sessionEndsAt,
-  );
   const sessionComplete = Boolean(
     session.titleEn.trim()
     && session.titleAr.trim()
@@ -167,7 +163,8 @@ export default function AdminLivePackage() {
           <div className="rounded-lg border bg-slate-50 p-3 text-sm"><Label>{isAr ? 'سياسة التسجيلات' : 'Recording policy'}</Label><p className="mt-2 font-semibold text-emerald-800">{isAr ? 'وصول دائم ما لم يُلغَ صراحةً أو يُسترد المبلغ' : 'Permanent unless explicitly revoked or refunded'}</p></div>
         </div>
         <p className="mt-3 text-xs text-slate-500">{isAr ? 'جميع الأوقات معروضة بتوقيت عمّان.' : 'All date controls use Asia/Amman time.'}</p>
-        <div className="mt-4 flex flex-wrap gap-2"><Button variant="outline" onClick={preview} disabled={previewConfig.isPending || !configDatesComplete}><Eye className="me-2 h-4 w-4" />{previewConfig.isPending ? (isAr ? 'جاري إنشاء المعاينة…' : 'Building preview…') : (isAr ? 'معاينة كما ستظهر عند التفعيل' : 'Preview as enabled')}</Button><Button onClick={saveConfig} disabled={updateConfig.isPending || !configDatesComplete}><Save className="me-2 h-4 w-4" />{isAr ? 'حفظ' : 'Save configuration'}</Button></div>
+        <p className="mt-3 text-xs text-slate-500">{isAr ? 'يمكن ترك تواريخ اللقاءات فارغة إلى أن تعتمد المالكة الجدول النهائي.' : 'Leave the meeting dates empty until the owner approves the final schedule.'}</p>
+        <div className="mt-4 flex flex-wrap gap-2"><Button variant="outline" onClick={preview} disabled={previewConfig.isPending}><Eye className="me-2 h-4 w-4" />{previewConfig.isPending ? (isAr ? 'جاري إنشاء المعاينة…' : 'Building preview…') : (isAr ? 'معاينة كما ستظهر عند التفعيل' : 'Preview as enabled')}</Button><Button onClick={saveConfig} disabled={updateConfig.isPending}><Save className="me-2 h-4 w-4" />{isAr ? 'حفظ' : 'Save configuration'}</Button></div>
         {!!data.availability.errors.length && <ul className="mt-4 list-disc space-y-1 ps-5 text-sm text-red-700">{data.availability.errors.map((error) => <li key={error}>{error}</li>)}</ul>}
       </section>
 
@@ -179,7 +176,7 @@ export default function AdminLivePackage() {
         <div className="flex items-center gap-2 bg-violet-100 px-5 py-3 text-sm font-bold text-violet-950"><Eye className="h-4 w-4" />{isAr ? 'معاينة فقط — لم يتم حفظ أو تفعيل أي شيء' : 'Preview only — nothing was saved or enabled'}</div>
         <div className="grid gap-6 p-6 lg:grid-cols-[1.3fr_1fr]">
           <div><Badge className="mb-3 bg-emerald-700">{previewConfig.data.config.lifecycle === 'active' ? (isAr ? 'بكج مؤقت ومحدود' : 'Limited live package') : (isAr ? 'قريباً' : 'Coming soon')}</Badge><h2 className="text-3xl font-black">{isAr ? previewConfig.data.package?.nameAr : previewConfig.data.package?.nameEn}</h2><p className="mt-3 leading-7 text-slate-600">{isAr ? previewConfig.data.package?.descriptionAr : previewConfig.data.package?.descriptionEn}</p><div className="mt-5 text-3xl font-black text-emerald-700">₪2,000 <span className="text-sm font-medium text-slate-500">{isAr ? 'شامل الضريبة' : 'VAT inclusive'}</span></div><Button className="mt-5" disabled={!previewConfig.data.availability.purchasable}>{previewConfig.data.availability.purchasable ? (isAr ? 'اشترِ الآن' : 'Buy now') : (isAr ? 'ترقبوا الحدث الأضخم هالسنة' : 'Launching soon')}</Button></div>
-          <div className="rounded-2xl bg-slate-50 p-5"><h3 className="font-bold">{isAr ? 'ما يشمله البكج' : 'What is included'}</h3><ul className="mt-3 space-y-2 text-sm"><li>✓ {isAr ? 'لقاءات مباشرة وتسجيلات محمية' : 'Live sessions and protected recordings'}</li><li>✓ {previewConfig.data.config.recordingPolicy === 'permanent' ? (isAr ? 'وصول دائم للتسجيلات' : 'Permanent recording access') : (isAr ? 'وصول للتسجيلات حتى التاريخ المحدد' : 'Recording access until the selected date')}</li></ul><div className="mt-4 border-t pt-4 text-xs text-slate-500">{isAr ? 'فترة اللقاءات' : 'Live period'}: {toAmmanInput(previewConfig.data.config.sessionStartsAt).replace('T', ' ')} — {toAmmanInput(previewConfig.data.config.sessionEndsAt).replace('T', ' ')}</div></div>
+          <div className="rounded-2xl bg-slate-50 p-5"><h3 className="font-bold">{isAr ? 'ما يشمله البكج' : 'What is included'}</h3><ul className="mt-3 space-y-2 text-sm"><li>✓ {isAr ? 'لقاءات مباشرة وتسجيلات محمية' : 'Live sessions and protected recordings'}</li><li>✓ {previewConfig.data.config.recordingPolicy === 'permanent' ? (isAr ? 'وصول دائم للتسجيلات' : 'Permanent recording access') : (isAr ? 'وصول للتسجيلات حتى التاريخ المحدد' : 'Recording access until the selected date')}</li></ul><div className="mt-4 border-t pt-4 text-xs text-slate-500">{isAr ? 'فترة اللقاءات' : 'Live period'}: {previewConfig.data.config.sessionStartsAt && previewConfig.data.config.sessionEndsAt ? `${toAmmanInput(previewConfig.data.config.sessionStartsAt).replace('T', ' ')} — ${toAmmanInput(previewConfig.data.config.sessionEndsAt).replace('T', ' ')}` : (isAr ? 'سيُعلن الجدول عند اعتماده' : 'Schedule will be announced once approved')}</div></div>
         </div>
         {!!previewConfig.data.availability.errors.length && <ul className="border-t bg-red-50 p-5 text-sm text-red-800">{previewConfig.data.availability.errors.map(error => <li key={error}>• {error}</li>)}</ul>}
       </section>}
