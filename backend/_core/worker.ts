@@ -431,6 +431,51 @@ export default {
         if (!authContext.user || !canUpload) return jsonResponse(403, { status: "forbidden", message: "Live recording upload permission is required" }, headers);
         const actorAdminId = admin?.id ?? authContext.user.id;
         const action = pathname.split("/").pop();
+        type LiveRecordingUploadPart = { partNumber: number; etag: string; sizeBytes?: number };
+        const parseCompletedLiveRecordingParts = (value: string | null | undefined): LiveRecordingUploadPart[] => {
+          if (!value) return [];
+          try {
+            const parsed = JSON.parse(value);
+            return Array.isArray(parsed)
+              ? parsed.filter((item): item is LiveRecordingUploadPart => Number.isInteger(item?.partNumber) && typeof item?.etag === "string")
+              : [];
+          } catch {
+            return [];
+          }
+        };
+        const validateCompletedLiveRecordingParts = (
+          parts: LiveRecordingUploadPart[],
+          expectedPartCount: number | null,
+          partSizeBytes: number | null,
+          expectedSizeBytes: number,
+        ) => {
+          if (!expectedPartCount || expectedPartCount < 1) {
+            if (!parts.length) return "Upload has no completed parts";
+            return null;
+          }
+          if (parts.length !== expectedPartCount) return "Upload is missing one or more completed parts";
+          const seen = new Set<number>();
+          let totalSize = 0;
+          for (const part of parts) {
+            if (!Number.isInteger(part.partNumber) || part.partNumber < 1 || part.partNumber > expectedPartCount) return "Upload contains an invalid part number";
+            if (seen.has(part.partNumber)) return "Upload contains duplicate parts";
+            seen.add(part.partNumber);
+            if (part.sizeBytes != null) totalSize += part.sizeBytes;
+          }
+          for (let partNumber = 1; partNumber <= expectedPartCount; partNumber += 1) {
+            if (!seen.has(partNumber)) return "Upload is missing one or more completed parts";
+          }
+          if (partSizeBytes && parts.every((part) => part.sizeBytes != null)) {
+            for (const part of parts) {
+              const expectedSize = part.partNumber === expectedPartCount
+                ? expectedSizeBytes - (partSizeBytes * (expectedPartCount - 1))
+                : partSizeBytes;
+              if (part.sizeBytes !== expectedSize) return "Upload part sizes do not match the declared recording size";
+            }
+            if (totalSize !== expectedSizeBytes) return "Completed upload size does not match the declared recording size";
+          }
+          return null;
+        };
         if (action === "initiate" && request.method === "POST") {
           const body = await request.json().catch(() => null) as null | {
             fileName?: string; contentType?: string; sizeBytes?: number; sessionId?: number | null;
@@ -447,8 +492,17 @@ export default {
           const [pkg, settings] = await Promise.all([db.getPackageBySlug(LIVE_PACKAGE_SLUG), db.getAllAdminSettings()]);
           if (!pkg || pkg.packageType !== "live") return jsonResponse(409, { status: "not_ready", message: "Live package is not configured" }, headers);
           const config = parseLivePackageConfig(settings);
+          if (body?.sessionId) {
+            await db.assertLivePackageRecordingSessionMatchesCohort({
+              sessionId: body.sessionId,
+              packageId: pkg.id,
+              cohortKey: config.cohortKey,
+            });
+          }
           const safeName = (body?.fileName || "recording").replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 255);
           const objectKey = `protected/live-package/${config.cohortKey}/${crypto.randomUUID()}-${safeName}`;
+          const partSizeBytes = 25 * 1024 * 1024;
+          const expectedPartCount = Math.ceil(size / partSizeBytes);
           const multipart = await (env.VIDEOS_BUCKET as any).createMultipartUpload(objectKey, { httpMetadata: { contentType } });
           const upload = await db.createLivePackageRecordingUpload({
             packageId: pkg.id,
@@ -459,13 +513,15 @@ export default {
             originalFileName: safeName,
             mimeType: contentType,
             expectedSizeBytes: size,
+            partSizeBytes,
+            expectedPartCount,
             adminId: actorAdminId,
           });
-          return jsonResponse(200, { status: "success", uploadToken: upload.uploadToken, uploadId: multipart.uploadId, partSizeBytes: 25 * 1024 * 1024 }, headers);
+          return jsonResponse(200, { status: "success", uploadToken: upload.uploadToken, uploadId: multipart.uploadId, partSizeBytes }, headers);
         }
         const token = url.searchParams.get("token") ?? "";
         const upload = token ? await db.getLivePackageRecordingUpload(token) : null;
-        if (!upload || upload.status === "aborted" || upload.status === "completed" || Date.parse(upload.expiresAt) < Date.now()) {
+        if (!upload || upload.status === "aborted" || Date.parse(upload.expiresAt) < Date.now()) {
           return jsonResponse(404, { status: "not_found", message: "Active upload session not found" }, headers);
         }
         if (action === "status" && request.method === "GET") {
@@ -475,33 +531,68 @@ export default {
               status: upload.status,
               uploadedSizeBytes: upload.uploadedSizeBytes,
               expectedSizeBytes: upload.expectedSizeBytes,
-              completedParts: upload.completedPartsJson ? JSON.parse(upload.completedPartsJson) : [],
+              completedParts: parseCompletedLiveRecordingParts(upload.completedPartsJson),
             },
           }, headers);
+        }
+        if (upload.status === "completed") {
+          if (action === "complete" && request.method === "POST") {
+            if (!upload.recordingId) return jsonResponse(409, { status: "upload_inconsistent", message: "Completed upload is missing a recording reference" }, headers);
+            return jsonResponse(200, { status: "success", recording: { id: upload.recordingId, isPublished: false } }, headers);
+          }
+          return jsonResponse(409, { status: "already_completed", message: "Upload has already been completed" }, headers);
         }
         if (action === "part" && request.method === "PUT") {
           const partNumber = Number(url.searchParams.get("partNumber"));
           if (!Number.isInteger(partNumber) || partNumber < 1 || partNumber > 10000 || !request.body) {
             return jsonResponse(400, { status: "invalid_request", message: "Valid partNumber and body are required" }, headers);
           }
+          if (!upload.r2UploadId) {
+            return jsonResponse(409, { status: "invalid_upload", message: "Upload session is not resumable" }, headers);
+          }
+          const expectedPartCount = upload.expectedPartCount ?? null;
+          const partSizeBytes = upload.partSizeBytes ?? null;
+          if (expectedPartCount && partNumber > expectedPartCount) {
+            return jsonResponse(400, { status: "invalid_request", message: "Part number exceeds the declared upload size" }, headers);
+          }
+          const declaredPartSize = Number(request.headers.get("content-length"));
+          if (!Number.isFinite(declaredPartSize) || declaredPartSize <= 0) {
+            return jsonResponse(400, { status: "invalid_request", message: "Each upload part must declare a valid size" }, headers);
+          }
+          if (expectedPartCount && partSizeBytes) {
+            const expectedSize = partNumber === expectedPartCount
+              ? upload.expectedSizeBytes - (partSizeBytes * (expectedPartCount - 1))
+              : partSizeBytes;
+            if (declaredPartSize !== expectedSize) {
+              return jsonResponse(400, { status: "invalid_request", message: "Upload part size does not match the declared recording size" }, headers);
+            }
+          }
           const multipart = (env.VIDEOS_BUCKET as any).resumeMultipartUpload(upload.objectKey, upload.r2UploadId);
           const part = await multipart.uploadPart(partNumber, request.body);
-          const existing = upload.completedPartsJson ? JSON.parse(upload.completedPartsJson) as Array<{ partNumber: number; etag: string }> : [];
-          const nextParts = [...existing.filter((item) => item.partNumber !== partNumber), { partNumber, etag: part.etag }]
+          const existing = parseCompletedLiveRecordingParts(upload.completedPartsJson);
+          const nextParts = [...existing.filter((item) => item.partNumber !== partNumber), { partNumber, etag: part.etag, sizeBytes: declaredPartSize }]
             .sort((a, b) => a.partNumber - b.partNumber);
-          const partSize = Number(request.headers.get("content-length") ?? 0);
           await db.markLivePackageRecordingUploadPart({
             uploadToken: token,
             completedParts: nextParts,
-            uploadedSizeBytes: Math.min(upload.expectedSizeBytes, upload.uploadedSizeBytes + (Number.isFinite(partSize) ? partSize : 0)),
+            uploadedSizeBytes: Math.min(upload.expectedSizeBytes, nextParts.reduce((sum, item) => sum + (item.sizeBytes ?? 0), 0)),
           });
           return jsonResponse(200, { status: "success", partNumber, etag: part.etag }, headers);
         }
         if (action === "complete" && request.method === "POST") {
           const body = await request.json().catch(() => null) as null | { titleEn?: string; titleAr?: string; descriptionEn?: string; descriptionAr?: string };
           if (!body?.titleEn?.trim() || !body?.titleAr?.trim()) return jsonResponse(400, { status: "invalid_request", message: "Bilingual recording titles are required" }, headers);
-          const parts = upload.completedPartsJson ? JSON.parse(upload.completedPartsJson) as Array<{ partNumber: number; etag: string }> : [];
-          if (!parts.length) return jsonResponse(400, { status: "invalid_request", message: "Upload has no completed parts" }, headers);
+          const parts = parseCompletedLiveRecordingParts(upload.completedPartsJson);
+          const validationError = validateCompletedLiveRecordingParts(
+            parts,
+            upload.expectedPartCount ?? null,
+            upload.partSizeBytes ?? null,
+            upload.expectedSizeBytes,
+          );
+          if (validationError) return jsonResponse(400, { status: "invalid_request", message: validationError }, headers);
+          if (!upload.r2UploadId) {
+            return jsonResponse(409, { status: "invalid_upload", message: "Upload session is not resumable" }, headers);
+          }
           const multipart = (env.VIDEOS_BUCKET as any).resumeMultipartUpload(upload.objectKey, upload.r2UploadId);
           await multipart.complete(parts);
           const recording = await db.createLivePackageRecording({
@@ -565,6 +656,13 @@ export default {
         const [pkg, settings] = await Promise.all([db.getPackageBySlug(LIVE_PACKAGE_SLUG), db.getAllAdminSettings()]);
         if (!pkg || pkg.packageType !== "live") return jsonResponse(409, { status: "not_ready", message: "Live package is not configured" }, headers);
         const config = parseLivePackageConfig(settings);
+        if (sessionId) {
+          await db.assertLivePackageRecordingSessionMatchesCohort({
+            sessionId,
+            packageId: pkg.id,
+            cohortKey: config.cohortKey,
+          });
+        }
         const safeName = originalFileName.replace(/[^a-zA-Z0-9._-]/g, "_");
         const actorAdminId = admin?.id ?? authContext.user.id;
         const objectKey = `protected/live-package/${config.cohortKey}/${crypto.randomUUID()}-${safeName}`;

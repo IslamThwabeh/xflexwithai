@@ -4,6 +4,8 @@ import Database from 'better-sqlite3';
 
 const migration092 = readFileSync(new URL('../database/migrations/092_live_package_foundation.sql', import.meta.url), 'utf8');
 const migration097 = readFileSync(new URL('../database/migrations/099_live_package_phase_2.sql', import.meta.url), 'utf8');
+const migration102 = readFileSync(new URL('../database/migrations/102_live_package_multipart_completion_guardrails.sql', import.meta.url), 'utf8');
+const migration103 = readFileSync(new URL('../database/migrations/103_live_package_phase_2_ledger_aliases.sql', import.meta.url), 'utf8');
 const schema = readFileSync(new URL('../database/schema-sqlite.ts', import.meta.url), 'utf8');
 const router = readFileSync(new URL('../backend/routers.ts', import.meta.url), 'utf8');
 const database = readFileSync(new URL('../backend/db.ts', import.meta.url), 'utf8');
@@ -20,6 +22,8 @@ describe('Live Package Phase 2 contracts', () => {
     expect(migrationNames).toContain('099_live_package_phase_2.sql');
     expect(migrationNames).toContain('100_live_package_multipart_upload_tracking.sql');
     expect(migrationNames).toContain('101_live_package_phase_2_hardening.sql');
+    expect(migrationNames).toContain('102_live_package_multipart_completion_guardrails.sql');
+    expect(migrationNames).toContain('103_live_package_phase_2_ledger_aliases.sql');
     expect(migrationNames).not.toContain('097_live_package_phase_2.sql');
     expect(migrationNames).not.toContain('098_live_package_multipart_upload_tracking.sql');
   });
@@ -52,12 +56,42 @@ describe('Live Package Phase 2 contracts', () => {
     `);
     sqlite.exec(migration092);
     sqlite.exec(migration097);
+    sqlite.exec(migration102);
     const columns = sqlite.prepare("PRAGMA table_info(live_package_sessions)").all().map((row: any) => row.name);
     expect(columns).toContain('session_type');
     expect(columns).toContain('recurrence_key');
+    const uploadColumns = sqlite.prepare("PRAGMA table_info(live_package_recording_uploads)").all().map((row: any) => row.name);
+    expect(uploadColumns).toContain('part_size_bytes');
+    expect(uploadColumns).toContain('expected_part_count');
+    expect(uploadColumns).toContain('completed_part_count');
     const plan = (sql: string) => sqlite.prepare(`EXPLAIN QUERY PLAN ${sql}`).all().map((row: any) => row.detail).join('\n');
     expect(plan("SELECT * FROM live_package_notification_jobs WHERE status = 'queued' AND scheduled_for <= '2026-09-05T00:00:00.000Z' ORDER BY scheduled_for, id")).toContain('idx_live_notification_jobs_status_scheduled');
     expect(plan("SELECT * FROM live_package_recording_uploads WHERE status = 'initiated' AND expires_at < '2026-09-05T00:00:00.000Z'")).toContain('idx_live_recording_uploads_status_expires');
+    sqlite.close();
+  });
+
+  it('reconciles production Live Phase 2 ledger aliases without business-data updates', () => {
+    const sqlite = new Database(':memory:');
+    sqlite.exec(`
+      CREATE TABLE schema_migrations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        migration_name TEXT NOT NULL UNIQUE,
+        source TEXT NOT NULL DEFAULT 'manual',
+        notes TEXT,
+        applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      INSERT INTO schema_migrations (migration_name, source, notes)
+      VALUES
+        ('097_live_package_phase_2.sql', 'codex_wrangler', 'earlier production numbering'),
+        ('098_live_package_multipart_upload_tracking.sql', 'codex_wrangler', 'earlier production numbering'),
+        ('101_live_package_phase_2_hardening.sql', 'codex_wrangler', 'release hardening');
+    `);
+    sqlite.exec(migration103);
+    const rows = sqlite.prepare("SELECT migration_name, source FROM schema_migrations ORDER BY migration_name").all();
+    expect(rows).toContainEqual({ migration_name: '099_live_package_phase_2.sql', source: 'codex_reconciliation' });
+    expect(rows).toContainEqual({ migration_name: '100_live_package_multipart_upload_tracking.sql', source: 'codex_reconciliation' });
+    expect(migration103).not.toMatch(/\bUPDATE\s+(orders|orderItems|registrationKeys|live_package_entitlements|live_package_sessions)/i);
+    expect(migration103).not.toMatch(/\bDELETE\b/i);
     sqlite.close();
   });
 
@@ -76,6 +110,9 @@ describe('Live Package Phase 2 contracts', () => {
     expect(router).toContain("z.enum(['educational', 'trading_analysis'])");
     expect(database).toContain('recordLivePackageSessionAudit');
     expect(database).toContain('Started Live sessions can no longer be rescheduled');
+    expect(database).toContain('assertLivePackageSessionSlotAvailable');
+    expect(database).toContain('assertLivePackageSessionBatchSlotsAvailable');
+    expect(database).toContain('Live session time conflicts');
     expect(adminPage).toContain('trading_analysis');
     expect(router).toContain('createSessions');
     expect(router).toContain("action: 'create'");
@@ -104,11 +141,16 @@ describe('Live Package Phase 2 contracts', () => {
     expect(worker).toContain('createLivePackageRecordingUpload');
     expect(worker).toContain('markLivePackageRecordingUploadPart');
     expect(worker).toContain('completeLivePackageRecordingUpload');
+    expect(worker).toContain('validateCompletedLiveRecordingParts');
+    expect(worker).toContain('expectedPartCount');
+    expect(worker).toContain('Completed upload size does not match the declared recording size');
+    expect(worker).toContain('already_completed');
     expect(worker).toContain('listExpiredLivePackageRecordingUploads');
     expect(worker).toContain('resumeMultipartUpload');
     expect(worker).toContain('VIDEOS_BUCKET.put(objectKey, request.body');
     expect(database).toContain('r2UploadId');
     expect(database).toContain('completedPartsJson');
+    expect(database).toContain('assertLivePackageRecordingSessionMatchesCohort');
     expect(database).toContain('replacedByRecordingId');
     expect(database).toContain('eq(livePackageRecordings.isPublished, true)');
     expect(worker).toContain('getLivePackageRecordingForUser');

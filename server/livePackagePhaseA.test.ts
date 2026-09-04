@@ -91,10 +91,12 @@ describe("Live Package Phase A decisions", () => {
       database.indexOf("export async function getLatestQualifyingPackagePurchaseForLiveQuote"),
       database.indexOf("export async function hasLivePackageOrderForRecipient"),
     );
-    expect(history).toContain("inArray(orders.status, ['paid', 'completed'])");
+    expect(history).toContain("const validOrderStatuses = ['paid', 'completed']");
+    expect(history).toContain("inArray(orders.status, validOrderStatuses)");
     expect(history).toContain("inArray(packages.slug, ['basic', 'comprehensive'])");
+    expect(history).toContain("lte(purchasedAt, asOfIso)");
     expect(history).toContain("desc(orders.id)");
-    expect(history).toContain("eq(packageSubscriptions.isActive, true)");
+    expect(history).not.toContain("packageSubscriptions");
   });
 
   it("uses a dedicated audited manual switch with old/new/admin/time evidence", () => {
@@ -224,6 +226,8 @@ describe("Live Package Phase A decisions", () => {
     expect(checkoutUi).toContain("liveQuote.price / 100");
     expect(checkoutUi).toContain("Previous Basic customer price");
     expect(checkoutUi).toContain("Previous Comprehensive customer price");
+    expect(packageUi).toContain("previous Basic customer");
+    expect(packageUi).toContain("previous Comprehensive customer");
     expect(checkoutUi).toContain("{!isLive && <div");
     expect(router).toContain("Live Package gift checkout is not supported");
   });

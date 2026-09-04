@@ -228,7 +228,7 @@ export default function PackageDetails() {
                     {t('home.packages.renewal')}: {renewalFormatted}{t('home.packages.perMonth')}
                   </p>
                 )}
-                {isLive && <p className="mt-3 text-xs leading-5 text-slate-500">{language === 'ar' ? 'السعر النهائي حسب الحساب: ₪2,000 للجديد، ₪1,000 لمشترك الأساسية الحالي، ₪350 لمشترك الشاملة الحالي.' : 'Account-based price: ₪2,000 new, ₪1,000 active Basic subscriber, or ₪350 active Comprehensive subscriber.'}</p>}
+                {isLive && <p className="mt-3 text-xs leading-5 text-slate-500">{language === 'ar' ? 'السعر النهائي حسب الحساب: ₪2,000 للجديد، ₪1,000 لمن لديه شراء سابق للباقة الأساسية، ₪350 لمن لديه شراء سابق للباقة الشاملة.' : 'Account-based price: ₪2,000 new, ₪1,000 previous Basic customer, or ₪350 previous Comprehensive customer.'}</p>}
               </div>
 
               {isLive && liveState?.cohortStatus === 'in_progress' && <div className="mb-4 rounded-xl border border-sky-200 bg-sky-50 p-3 text-xs leading-6 text-sky-950">{language === 'ar' ? 'الفوج قائم: تحصل على التسجيلات السابقة المنشورة واللقاءات القادمة وما تبقى من البث المباشر.' : 'Cohort in progress: includes prior published recordings, upcoming sessions, and remaining live sessions.'}</div>}

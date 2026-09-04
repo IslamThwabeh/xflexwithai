@@ -6952,6 +6952,15 @@ export const appRouter = router({
             throw new TRPCError({ code: 'BAD_REQUEST', message: 'Sessions must remain inside the configured Live cohort window.' });
           }
         }
+        db.assertLivePackageSessionBatchSlotsAvailable(input.sessions);
+        for (const session of input.sessions) {
+          await db.assertLivePackageSessionSlotAvailable({
+            packageId: context.pkg.id,
+            cohortKey: context.config.cohortKey,
+            startsAt: session.startsAt,
+            endsAt: session.endsAt,
+          });
+        }
         const actorAdminId = ctx.admin?.id ?? ctx.user!.id;
         const recurrenceKey = `recurrence:${Date.now()}:${crypto.randomUUID()}`;
         for (const session of input.sessions) {

@@ -110,7 +110,7 @@ import {
 import { ENV } from './_core/env';
 import {
   getLivePackageConfigurationErrors,
-  getLivePackagePurchaseTier,
+  getLivePackagePurchaseTierForLatestPackage,
   LIVE_PACKAGE_SLUG,
   parseLivePackageConfig,
 } from './services/live-package.service';
@@ -10066,16 +10066,11 @@ export async function activatePackageKey(
         });
       }
       if (pkg.packageType === 'live') {
-        const sourcePackage = linkedOrder.upgradeFromPackageId
-          ? await getPackageById(linkedOrder.upgradeFromPackageId)
-          : null;
-        const expected = linkedOrder.isUpgrade
-          ? getLivePackagePurchaseTier(sourcePackage?.slug ? [sourcePackage.slug] : [])
-          : getLivePackagePurchaseTier([]);
+        const expected = await getLivePackagePurchaseQuote(linkedOrder.userId, linkedOrder.createdAt);
         const pricingMatches = (
           Number(packageItem.priceAtPurchase) === expected.price
           && (linkedOrder.isUpgrade
-            ? sourcePackage?.slug === expected.eligiblePackageSlug
+            ? linkedOrder.upgradeFromPackageId === expected.upgradeFromPackageId
             : !linkedOrder.upgradeFromPackageId)
         );
         if (!pricingMatches || linkedOrder.isGift) {
@@ -14261,11 +14256,9 @@ export async function getAnyLivePackageEntitlement(userId: number, cohortKey?: s
   return row ?? null;
 }
 
-export async function getLivePackagePurchaseQuote(userId: number) {
-  const eligiblePackage = await getLatestQualifyingPackagePurchaseForLiveQuote(userId);
-  const pricing = getLivePackagePurchaseTier(
-    eligiblePackage?.slug ? [eligiblePackage.slug] : [],
-  );
+export async function getLivePackagePurchaseQuote(userId: number, asOfIso?: string | null) {
+  const eligiblePackage = await getLatestQualifyingPackagePurchaseForLiveQuote(userId, asOfIso);
+  const pricing = getLivePackagePurchaseTierForLatestPackage(eligiblePackage?.slug);
   return {
     ...pricing,
     upgradeFromPackageId: eligiblePackage?.packageId ?? null,
@@ -14273,39 +14266,37 @@ export async function getLivePackagePurchaseQuote(userId: number) {
   };
 }
 
-export async function getLatestQualifyingPackagePurchaseForLiveQuote(userId: number) {
+export async function getLatestQualifyingPackagePurchaseForLiveQuote(userId: number, asOfIso?: string | null) {
   const db = await getDb();
   if (!db) return null;
+  const purchasedAt = sql<string>`coalesce(${orders.completedAt}, ${orders.updatedAt}, ${orders.createdAt})`;
+  const validOrderStatuses = ['paid', 'completed'];
+  const conditions = [
+    eq(orders.userId, userId),
+    eq(orders.isGift, false),
+    eq(orderItems.itemType, 'package'),
+    inArray(packages.slug, ['basic', 'comprehensive']),
+    inArray(orders.status, validOrderStatuses),
+  ];
+  if (asOfIso) conditions.push(lte(purchasedAt, asOfIso));
   const [row] = await db.select({
     packageId: packages.id,
     slug: packages.slug,
     orderId: orders.id,
-    purchasedAt: sql<string>`coalesce(${orders.completedAt}, ${orders.updatedAt}, ${orders.createdAt})`,
+    purchasedAt,
   })
     .from(orderItems)
     .innerJoin(orders, eq(orderItems.orderId, orders.id))
     .innerJoin(packages, eq(orderItems.packageId, packages.id))
-    .innerJoin(packageSubscriptions, and(
-      eq(packageSubscriptions.userId, orders.userId),
-      eq(packageSubscriptions.packageId, packages.id),
-      eq(packageSubscriptions.isActive, true),
-    ))
-    .where(and(
-      eq(orders.userId, userId),
-      eq(orders.isGift, false),
-      eq(orderItems.itemType, 'package'),
-      inArray(packages.slug, ['basic', 'comprehensive']),
-      inArray(orders.status, ['paid', 'completed']),
-    ))
+    .where(and(...conditions))
     .orderBy(
-      desc(sql`coalesce(${orders.completedAt}, ${orders.updatedAt}, ${orders.createdAt})`),
+      desc(purchasedAt),
       desc(orders.id),
       desc(orderItems.id),
-      desc(packageSubscriptions.id),
     )
     .limit(1);
   if (row?.slug !== 'basic' && row?.slug !== 'comprehensive') return null;
-  return { packageId: row.packageId, slug: row.slug, orderId: row.orderId, purchasedAt: row.purchasedAt };
+  return { packageId: row.packageId, slug: row.slug as 'basic' | 'comprehensive', orderId: row.orderId, purchasedAt: row.purchasedAt };
 }
 
 export async function hasLivePackageOrderForRecipient(input: {
@@ -14550,6 +14541,42 @@ export async function recordLivePackageSessionAudit(input: {
   });
 }
 
+export async function assertLivePackageSessionSlotAvailable(input: {
+  packageId: number;
+  cohortKey: string;
+  startsAt: string;
+  endsAt: string;
+  excludeSessionId?: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error('Database not available');
+  const conditions = [
+    eq(livePackageSessions.packageId, input.packageId),
+    eq(livePackageSessions.cohortKey, input.cohortKey),
+    ne(livePackageSessions.status, 'cancelled'),
+    lt(livePackageSessions.startsAt, input.endsAt),
+    gt(livePackageSessions.endsAt, input.startsAt),
+  ];
+  if (input.excludeSessionId) conditions.push(ne(livePackageSessions.id, input.excludeSessionId));
+  const [conflict] = await db.select({ id: livePackageSessions.id })
+    .from(livePackageSessions)
+    .where(and(...conditions))
+    .limit(1);
+  if (conflict) {
+    throw new Error('Live session time conflicts with an existing session. يوجد تعارض مع لقاء لايف آخر في نفس الوقت.');
+  }
+}
+
+export function assertLivePackageSessionBatchSlotsAvailable(sessions: Array<{ startsAt: string; endsAt: string }>) {
+  for (let i = 0; i < sessions.length; i += 1) {
+    for (let j = i + 1; j < sessions.length; j += 1) {
+      if (sessions[i].startsAt < sessions[j].endsAt && sessions[i].endsAt > sessions[j].startsAt) {
+        throw new Error('Live session time conflicts inside the submitted batch. يوجد تعارض بين لقاءات التكرار المختارة.');
+      }
+    }
+  }
+}
+
 export async function createLivePackageSession(input: {
   packageId: number;
   cohortKey: string;
@@ -14566,6 +14593,12 @@ export async function createLivePackageSession(input: {
 }) {
   const db = await getDb();
   if (!db) throw new Error('Database not available');
+  await assertLivePackageSessionSlotAvailable({
+    packageId: input.packageId,
+    cohortKey: input.cohortKey,
+    startsAt: input.startsAt,
+    endsAt: input.endsAt,
+  });
   const now = new Date().toISOString();
   const { adminId, ...sessionValues } = input;
   const [row] = await db.insert(livePackageSessions).values({
@@ -14608,6 +14641,13 @@ export async function updateLivePackageSession(input: {
   if (config.sessionStartsAt && config.sessionEndsAt && (Date.parse(finalStartsAt) < Date.parse(config.sessionStartsAt) || Date.parse(finalEndsAt) > Date.parse(config.sessionEndsAt))) {
     throw new Error('Session must remain inside the configured Live cohort window');
   }
+  await assertLivePackageSessionSlotAvailable({
+    packageId: current.packageId,
+    cohortKey: current.cohortKey,
+    startsAt: finalStartsAt,
+    endsAt: finalEndsAt,
+    excludeSessionId: current.id,
+  });
   if (Date.now() >= Date.parse(current.startsAt) && (
     updates.startsAt !== undefined
     || updates.endsAt !== undefined
@@ -14844,10 +14884,19 @@ export async function createLivePackageRecordingUpload(input: {
   originalFileName: string;
   mimeType: string;
   expectedSizeBytes: number;
+  partSizeBytes?: number | null;
+  expectedPartCount?: number | null;
   adminId: number;
 }) {
   const db = await getDb();
   if (!db) throw new Error('Database not available');
+  if (input.sessionId) {
+    await assertLivePackageRecordingSessionMatchesCohort({
+      sessionId: input.sessionId,
+      packageId: input.packageId,
+      cohortKey: input.cohortKey,
+    });
+  }
   const now = new Date().toISOString();
   const uploadToken = crypto.randomUUID();
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
@@ -14862,6 +14911,9 @@ export async function createLivePackageRecordingUpload(input: {
     originalFileName: input.originalFileName,
     mimeType: input.mimeType,
     expectedSizeBytes: input.expectedSizeBytes,
+    partSizeBytes: input.partSizeBytes ?? null,
+    expectedPartCount: input.expectedPartCount ?? null,
+    completedPartCount: 0,
     uploadedSizeBytes: 0,
     status: 'initiated',
     expiresAt,
@@ -14872,9 +14924,23 @@ export async function createLivePackageRecordingUpload(input: {
   return row;
 }
 
+export async function assertLivePackageRecordingSessionMatchesCohort(input: {
+  sessionId: number;
+  packageId: number;
+  cohortKey: string;
+}) {
+  const session = await getLivePackageSessionById(input.sessionId);
+  if (!session) {
+    throw new Error('Selected Live session does not exist.');
+  }
+  if (session.packageId !== input.packageId || session.cohortKey !== input.cohortKey) {
+    throw new Error('Selected recording session does not belong to this Live cohort.');
+  }
+}
+
 export async function markLivePackageRecordingUploadPart(input: {
   uploadToken: string;
-  completedParts: Array<{ partNumber: number; etag: string }>;
+  completedParts: Array<{ partNumber: number; etag: string; sizeBytes?: number }>;
   uploadedSizeBytes: number;
 }) {
   const db = await getDb();
@@ -14882,6 +14948,7 @@ export async function markLivePackageRecordingUploadPart(input: {
   const [row] = await db.update(livePackageRecordingUploads).set({
     status: 'uploading',
     completedPartsJson: JSON.stringify(input.completedParts),
+    completedPartCount: input.completedParts.length,
     uploadedSizeBytes: input.uploadedSizeBytes,
     updatedAt: new Date().toISOString(),
   }).where(and(
