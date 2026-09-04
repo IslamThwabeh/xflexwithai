@@ -415,6 +415,110 @@ export default {
         }
       }
 
+      if (pathname.startsWith("/api/live-package-recordings/multipart/")) {
+        const headers = new Headers();
+        corsHeaders.forEach((value, key) => headers.set(key, value));
+        if (request.method === "OPTIONS") {
+          headers.set("Access-Control-Allow-Headers", "content-type");
+          headers.set("Access-Control-Allow-Methods", "POST, PUT, OPTIONS");
+          return new Response(null, { status: 204, headers });
+        }
+        if (!isAllowedOrigin) return jsonResponse(403, { status: "forbidden", message: "A trusted same-origin request is required" }, headers);
+        const authContext = await createWorkerContext({ req: request, env, executionCtx: ctx });
+        appendCookieHeaders(headers, (authContext as { cookieHeaders?: string[] }).cookieHeaders);
+        const admin = authContext.user?.email ? await db.getAdminByEmail(authContext.user.email) : null;
+        const canUpload = Boolean(admin) || Boolean(authContext.user && await db.hasAnyRole(authContext.user.id, ["live_recording_uploader"]));
+        if (!authContext.user || !canUpload) return jsonResponse(403, { status: "forbidden", message: "Live recording upload permission is required" }, headers);
+        const actorAdminId = admin?.id ?? authContext.user.id;
+        const action = pathname.split("/").pop();
+        if (action === "initiate" && request.method === "POST") {
+          const body = await request.json().catch(() => null) as null | {
+            fileName?: string; contentType?: string; sizeBytes?: number; sessionId?: number | null;
+          };
+          const contentType = body?.contentType?.trim().toLowerCase() ?? "";
+          const size = Number(body?.sizeBytes);
+          const maxRecordingBytes = Number(env.LIVE_RECORDING_MAX_BYTES ?? 5 * 1024 * 1024 * 1024);
+          if (contentType !== "video/mp4" && contentType !== "video/webm") {
+            return jsonResponse(400, { status: "invalid_request", message: "Only MP4 or WebM recordings are accepted" }, headers);
+          }
+          if (!Number.isFinite(size) || size <= 0 || size > maxRecordingBytes) {
+            return jsonResponse(413, { status: "invalid_request", message: "Recording size is outside the configured limit" }, headers);
+          }
+          const [pkg, settings] = await Promise.all([db.getPackageBySlug(LIVE_PACKAGE_SLUG), db.getAllAdminSettings()]);
+          if (!pkg || pkg.packageType !== "live") return jsonResponse(409, { status: "not_ready", message: "Live package is not configured" }, headers);
+          const config = parseLivePackageConfig(settings);
+          const safeName = (body?.fileName || "recording").replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 255);
+          const objectKey = `protected/live-package/${config.cohortKey}/${crypto.randomUUID()}-${safeName}`;
+          const multipart = await (env.VIDEOS_BUCKET as any).createMultipartUpload(objectKey, { httpMetadata: { contentType } });
+          const upload = await db.createLivePackageRecordingUpload({
+            packageId: pkg.id,
+            cohortKey: config.cohortKey,
+            sessionId: body?.sessionId ?? null,
+            r2UploadId: multipart.uploadId,
+            objectKey,
+            originalFileName: safeName,
+            mimeType: contentType,
+            expectedSizeBytes: size,
+            adminId: actorAdminId,
+          });
+          return jsonResponse(200, { status: "success", uploadToken: upload.uploadToken, uploadId: multipart.uploadId, partSizeBytes: 25 * 1024 * 1024 }, headers);
+        }
+        const token = url.searchParams.get("token") ?? "";
+        const upload = token ? await db.getLivePackageRecordingUpload(token) : null;
+        if (!upload || upload.status === "aborted" || upload.status === "completed" || Date.parse(upload.expiresAt) < Date.now()) {
+          return jsonResponse(404, { status: "not_found", message: "Active upload session not found" }, headers);
+        }
+        if (action === "part" && request.method === "PUT") {
+          const partNumber = Number(url.searchParams.get("partNumber"));
+          if (!Number.isInteger(partNumber) || partNumber < 1 || partNumber > 10000 || !request.body) {
+            return jsonResponse(400, { status: "invalid_request", message: "Valid partNumber and body are required" }, headers);
+          }
+          const multipart = (env.VIDEOS_BUCKET as any).resumeMultipartUpload(upload.objectKey, upload.r2UploadId);
+          const part = await multipart.uploadPart(partNumber, request.body);
+          const existing = upload.completedPartsJson ? JSON.parse(upload.completedPartsJson) as Array<{ partNumber: number; etag: string }> : [];
+          const nextParts = [...existing.filter((item) => item.partNumber !== partNumber), { partNumber, etag: part.etag }]
+            .sort((a, b) => a.partNumber - b.partNumber);
+          const partSize = Number(request.headers.get("content-length") ?? 0);
+          await db.markLivePackageRecordingUploadPart({
+            uploadToken: token,
+            completedParts: nextParts,
+            uploadedSizeBytes: Math.min(upload.expectedSizeBytes, upload.uploadedSizeBytes + (Number.isFinite(partSize) ? partSize : 0)),
+          });
+          return jsonResponse(200, { status: "success", partNumber, etag: part.etag }, headers);
+        }
+        if (action === "complete" && request.method === "POST") {
+          const body = await request.json().catch(() => null) as null | { titleEn?: string; titleAr?: string; descriptionEn?: string; descriptionAr?: string };
+          if (!body?.titleEn?.trim() || !body?.titleAr?.trim()) return jsonResponse(400, { status: "invalid_request", message: "Bilingual recording titles are required" }, headers);
+          const parts = upload.completedPartsJson ? JSON.parse(upload.completedPartsJson) as Array<{ partNumber: number; etag: string }> : [];
+          if (!parts.length) return jsonResponse(400, { status: "invalid_request", message: "Upload has no completed parts" }, headers);
+          const multipart = (env.VIDEOS_BUCKET as any).resumeMultipartUpload(upload.objectKey, upload.r2UploadId);
+          await multipart.complete(parts);
+          const recording = await db.createLivePackageRecording({
+            packageId: upload.packageId,
+            cohortKey: upload.cohortKey,
+            sessionId: upload.sessionId,
+            titleEn: body.titleEn.trim(),
+            titleAr: body.titleAr.trim(),
+            descriptionEn: body.descriptionEn?.trim() || null,
+            descriptionAr: body.descriptionAr?.trim() || null,
+            objectKey: upload.objectKey,
+            originalFileName: upload.originalFileName,
+            mimeType: upload.mimeType,
+            fileSizeBytes: upload.expectedSizeBytes,
+            adminId: actorAdminId,
+          });
+          await db.completeLivePackageRecordingUpload({ uploadToken: token, uploadedSizeBytes: upload.expectedSizeBytes, recordingId: recording.id });
+          return jsonResponse(200, { status: "success", recording: { id: recording.id, isPublished: false } }, headers);
+        }
+        if (action === "abort" && request.method === "POST") {
+          const multipart = (env.VIDEOS_BUCKET as any).resumeMultipartUpload(upload.objectKey, upload.r2UploadId);
+          await multipart.abort().catch(() => undefined);
+          await db.abortLivePackageRecordingUpload(token);
+          return jsonResponse(200, { status: "success" }, headers);
+        }
+        return jsonResponse(405, { status: "method_not_allowed" }, headers);
+      }
+
       if (pathname === "/api/live-package-recordings/upload") {
         const headers = new Headers();
         corsHeaders.forEach((value, key) => headers.set(key, value));

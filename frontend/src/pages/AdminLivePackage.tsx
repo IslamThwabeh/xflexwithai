@@ -37,6 +37,7 @@ export default function AdminLivePackage() {
   const [grant, setGrant] = useState({ userId: '', reason: '' });
   const [recording, setRecording] = useState({ titleEn: '', titleAr: '', file: null as File | null });
   const [recordingUploading, setRecordingUploading] = useState(false);
+  const [recordingProgress, setRecordingProgress] = useState(0);
 
   useEffect(() => {
     if (!data) return;
@@ -98,23 +99,53 @@ export default function AdminLivePackage() {
   const uploadRecordingFile = async () => {
     if (!recording.file) return;
     setRecordingUploading(true);
+    setRecordingProgress(0);
+    let uploadToken = '';
     try {
-      const params = new URLSearchParams({ titleEn: recording.titleEn.trim(), titleAr: recording.titleAr.trim(), fileName: recording.file.name });
-      const response = await fetch(`/api/live-package-recordings/upload?${params}`, {
+      const initiate = await fetch('/api/live-package-recordings/multipart/initiate', {
         method: 'POST',
         credentials: 'include',
-        headers: { 'Content-Type': recording.file.type },
-        body: recording.file,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileName: recording.file.name, contentType: recording.file.type, sizeBytes: recording.file.size }),
       });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.message || 'Recording upload failed');
+      const initiated = await initiate.json().catch(() => ({}));
+      if (!initiate.ok) throw new Error(initiated.message || 'Recording upload initiation failed');
+      uploadToken = initiated.uploadToken;
+      const partSize = Number(initiated.partSizeBytes || 25 * 1024 * 1024);
+      for (let offset = 0, partNumber = 1; offset < recording.file.size; offset += partSize, partNumber += 1) {
+        const chunk = recording.file.slice(offset, Math.min(recording.file.size, offset + partSize));
+        const part = await fetch(`/api/live-package-recordings/multipart/part?token=${encodeURIComponent(uploadToken)}&partNumber=${partNumber}`, {
+          method: 'PUT',
+          credentials: 'include',
+          headers: { 'Content-Type': recording.file.type },
+          body: chunk,
+        });
+        const partPayload = await part.json().catch(() => ({}));
+        if (!part.ok) throw new Error(partPayload.message || `Part ${partNumber} upload failed`);
+        setRecordingProgress(Math.round(Math.min(100, ((offset + chunk.size) / recording.file.size) * 100)));
+      }
+      const complete = await fetch(`/api/live-package-recordings/multipart/complete?token=${encodeURIComponent(uploadToken)}`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ titleEn: recording.titleEn.trim(), titleAr: recording.titleAr.trim() }),
+      });
+      const completed = await complete.json().catch(() => ({}));
+      if (!complete.ok) throw new Error(completed.message || 'Recording completion failed');
       toast.success(isAr ? 'تم رفع التسجيل كمسودة' : 'Recording uploaded as a draft');
       setRecording({ titleEn: '', titleAr: '', file: null });
       await refresh();
     } catch (error) {
+      if (uploadToken) {
+        await fetch(`/api/live-package-recordings/multipart/abort?token=${encodeURIComponent(uploadToken)}`, {
+          method: 'POST',
+          credentials: 'include',
+        }).catch(() => undefined);
+      }
       toast.error(error instanceof Error ? error.message : 'Recording upload failed');
     } finally {
       setRecordingUploading(false);
+      setRecordingProgress(0);
     }
   };
 
@@ -192,7 +223,7 @@ export default function AdminLivePackage() {
 
       <section className="rounded-2xl border bg-white p-5"><h2 className="mb-4 text-lg font-bold">{isAr ? 'إشعارات اللقاءات' : 'Live meeting notifications'}</h2><div className="grid gap-3 md:grid-cols-[1fr_auto_auto]"><select className="h-10 rounded-md border px-3" value={notificationSessionId} onChange={(e) => setNotificationSessionId(e.target.value)}><option value="">{isAr ? 'اختاري لقاء' : 'Choose a session'}</option>{data.sessions.filter((item) => item.status !== 'cancelled').map((item) => <option key={item.id} value={item.id}>{isAr ? item.titleAr : item.titleEn}</option>)}</select><Button variant="outline" disabled={!notificationSessionId || previewNotification.isFetching} onClick={() => previewNotification.refetch()}>{isAr ? 'معاينة العدد' : 'Preview count'}</Button><Button disabled={!notificationSessionId || scheduleNotification.isPending} onClick={() => scheduleNotification.mutate({ sessionId: Number(notificationSessionId), mode: 'now' })}>{isAr ? 'إرسال/جدولة الآن' : 'Queue now'}</Button></div>{previewNotification.data && <div className="mt-3 rounded-lg bg-slate-50 p-3 text-sm"><p>{isAr ? 'عدد المستلمين المؤهلين الآن' : 'Eligible recipients now'}: <b>{previewNotification.data.recipientCount}</b></p><p className="mt-1 text-slate-500">{previewNotification.data.subject}</p></div>}<div className="mt-5 space-y-2">{(data.notificationJobs ?? []).map((job: any) => <div key={job.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3 text-sm"><span>{job.status} · {toAmmanInput(job.scheduledFor).replace('T', ' ')} · {job.recipientCount} {isAr ? 'مستلم' : 'recipients'}</span>{job.status === 'queued' && <Button size="sm" variant="outline" onClick={() => cancelNotification.mutate({ id: job.id })}>{isAr ? 'إلغاء' : 'Cancel'}</Button>}</div>)}</div></section>
 
-      <section className="rounded-2xl border bg-white p-5"><h2 className="mb-4 flex items-center gap-2 text-lg font-bold"><Upload className="h-5 w-5" />{isAr ? 'التسجيلات المحمية' : 'Protected recordings'}</h2><div className="grid gap-3 md:grid-cols-2"><Input placeholder="English title" value={recording.titleEn} onChange={(e) => setRecording({ ...recording, titleEn: e.target.value })} /><Input placeholder="العنوان بالعربية" value={recording.titleAr} onChange={(e) => setRecording({ ...recording, titleAr: e.target.value })} /><Input className="md:col-span-2" type="file" accept="video/mp4,video/webm" onChange={(e) => setRecording({ ...recording, file: e.target.files?.[0] ?? null })} /></div><Button className="mt-3" disabled={!recording.file || recordingUploading || !recording.titleEn.trim() || !recording.titleAr.trim()} onClick={uploadRecordingFile}>{recordingUploading ? (isAr ? 'جاري الرفع...' : 'Uploading…') : (isAr ? 'رفع كمسودة' : 'Upload draft')}</Button><p className="mt-2 text-xs text-slate-500">{isAr ? 'يُرفع الملف مباشرة إلى التخزين المحمي ويبقى مسودة حتى نشره.' : 'The file streams directly to protected storage and stays draft until published.'}</p><div className="mt-5 space-y-2">{data.recordings.map((item) => <div key={item.id} className="flex items-center justify-between rounded-lg border p-3"><span>{isAr ? item.titleAr : item.titleEn}</span><Button size="sm" variant="outline" onClick={() => updateRecording.mutate({ id: item.id, isPublished: !item.isPublished })}>{item.isPublished ? 'Unpublish' : 'Publish'}</Button></div>)}</div></section>
+      <section className="rounded-2xl border bg-white p-5"><h2 className="mb-4 flex items-center gap-2 text-lg font-bold"><Upload className="h-5 w-5" />{isAr ? 'التسجيلات المحمية' : 'Protected recordings'}</h2><div className="grid gap-3 md:grid-cols-2"><Input placeholder="English title" value={recording.titleEn} onChange={(e) => setRecording({ ...recording, titleEn: e.target.value })} /><Input placeholder="العنوان بالعربية" value={recording.titleAr} onChange={(e) => setRecording({ ...recording, titleAr: e.target.value })} /><Input className="md:col-span-2" type="file" accept="video/mp4,video/webm" onChange={(e) => setRecording({ ...recording, file: e.target.files?.[0] ?? null })} /></div><Button className="mt-3" disabled={!recording.file || recordingUploading || !recording.titleEn.trim() || !recording.titleAr.trim()} onClick={uploadRecordingFile}>{recordingUploading ? `${isAr ? 'جاري الرفع' : 'Uploading'} ${recordingProgress}%` : (isAr ? 'رفع كمسودة' : 'Upload draft')}</Button><p className="mt-2 text-xs text-slate-500">{isAr ? 'يُرفع الملف على أجزاء إلى التخزين المحمي ويبقى مسودة حتى نشره.' : 'The file uploads in resumable private R2 parts and stays draft until published.'}</p><div className="mt-5 space-y-2">{data.recordings.map((item) => <div key={item.id} className="flex items-center justify-between rounded-lg border p-3"><span>{isAr ? item.titleAr : item.titleEn}</span><Button size="sm" variant="outline" onClick={() => updateRecording.mutate({ id: item.id, isPublished: !item.isPublished })}>{item.isPublished ? 'Unpublish' : 'Publish'}</Button></div>)}</div></section>
 
       <section className="rounded-2xl border bg-white p-5"><h2 className="mb-2 text-lg font-bold">{isAr ? 'منح وصول مجاني مدقق' : 'Audited complimentary access'}</h2><p className="mb-4 text-sm text-slate-500">{isAr ? 'لا يحصل الموظفون أو الدعم على وصول تلقائي.' : 'Employees and support staff never receive automatic access.'}</p><div className="grid gap-3 md:grid-cols-2"><Input type="number" placeholder="User ID" value={grant.userId} onChange={(e) => setGrant({ ...grant, userId: e.target.value })} /><Textarea placeholder="Required business reason (minimum 10 characters)" value={grant.reason} onChange={(e) => setGrant({ ...grant, reason: e.target.value })} /></div><Button className="mt-3" onClick={() => grantAccess.mutate({ userId: Number(grant.userId), reason: grant.reason })}>{isAr ? 'منح الوصول' : 'Grant access'}</Button></section>
     </main>

@@ -1107,6 +1107,8 @@ export const livePackageRecordingUploads = sqliteTable("live_package_recording_u
   cohortKey: text("cohort_key").notNull(),
   sessionId: integer("session_id"),
   recordingId: integer("recording_id"),
+  r2UploadId: text("r2_upload_id"),
+  completedPartsJson: text("completed_parts_json"),
   objectKey: text("object_key").notNull(),
   originalFileName: text("original_file_name").notNull(),
   mimeType: text("mime_type").notNull(),

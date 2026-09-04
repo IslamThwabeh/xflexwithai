@@ -14822,6 +14822,7 @@ export async function createLivePackageRecordingUpload(input: {
   packageId: number;
   cohortKey: string;
   sessionId?: number | null;
+  r2UploadId?: string | null;
   objectKey: string;
   originalFileName: string;
   mimeType: string;
@@ -14838,6 +14839,8 @@ export async function createLivePackageRecordingUpload(input: {
     packageId: input.packageId,
     cohortKey: input.cohortKey,
     sessionId: input.sessionId ?? null,
+    r2UploadId: input.r2UploadId ?? null,
+    completedPartsJson: null,
     objectKey: input.objectKey,
     originalFileName: input.originalFileName,
     mimeType: input.mimeType,
@@ -14850,6 +14853,25 @@ export async function createLivePackageRecordingUpload(input: {
     updatedAt: now,
   }).returning();
   return row;
+}
+
+export async function markLivePackageRecordingUploadPart(input: {
+  uploadToken: string;
+  completedParts: Array<{ partNumber: number; etag: string }>;
+  uploadedSizeBytes: number;
+}) {
+  const db = await getDb();
+  if (!db) return null;
+  const [row] = await db.update(livePackageRecordingUploads).set({
+    status: 'uploading',
+    completedPartsJson: JSON.stringify(input.completedParts),
+    uploadedSizeBytes: input.uploadedSizeBytes,
+    updatedAt: new Date().toISOString(),
+  }).where(and(
+    eq(livePackageRecordingUploads.uploadToken, input.uploadToken),
+    inArray(livePackageRecordingUploads.status, ['initiated', 'uploading']),
+  )).returning();
+  return row ?? null;
 }
 
 export async function getLivePackageRecordingUpload(uploadToken: string) {
