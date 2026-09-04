@@ -19,6 +19,16 @@ const migrationSql = readFileSync(
   "utf8",
 );
 
+const emailAndRecommendationStatusMigrationSql = readFileSync(
+  fileURLToPath(
+    new URL(
+      "../database/migrations/098_d1_email_and_recommendation_status_indexes.sql",
+      import.meta.url,
+    ),
+  ),
+  "utf8",
+);
+
 const backendSource = readFileSync(
   fileURLToPath(new URL("../backend/db.ts", import.meta.url)),
   "utf8",
@@ -65,6 +75,25 @@ const schemaSql = `
     reference_type TEXT,
     created_at TEXT NOT NULL
   );
+  CREATE TABLE user_notifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    batch_id TEXT,
+    email_sent INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+  CREATE TABLE recommendation_deliveries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    eventKey TEXT NOT NULL,
+    eventKind TEXT NOT NULL,
+    refId INTEGER NOT NULL,
+    userId INTEGER NOT NULL,
+    recipientEmail TEXT NOT NULL,
+    status TEXT NOT NULL,
+    createdAt TEXT NOT NULL
+  );
+  CREATE INDEX idx_rec_deliveries_status
+    ON recommendation_deliveries(status, createdAt);
 `;
 
 describe("remaining D1 hot-path safeguards", () => {
@@ -75,6 +104,16 @@ describe("remaining D1 hot-path safeguards", () => {
     );
     expect(migrationSql.match(/CREATE INDEX IF NOT EXISTS/g)).toHaveLength(7);
     expect(migrationSql).not.toMatch(/CREATE\s+UNIQUE\s+INDEX/i);
+  });
+
+  it("keeps the email and recommendation status migration additive, idempotent, and non-unique", () => {
+    const statementsOnly = emailAndRecommendationStatusMigrationSql.replace(/^--.*$/gm, "");
+    expect(statementsOnly).not.toMatch(
+      /(?:^|;)\s*(?:ALTER|DROP|DELETE|UPDATE|INSERT)\b/im,
+    );
+    expect(emailAndRecommendationStatusMigrationSql.match(/CREATE INDEX IF NOT EXISTS/g))
+      .toHaveLength(2);
+    expect(emailAndRecommendationStatusMigrationSql).not.toMatch(/CREATE\s+UNIQUE\s+INDEX/i);
   });
 
   it("gives every urgent scan an indexed local query plan", () => {
@@ -139,6 +178,39 @@ describe("remaining D1 hot-path safeguards", () => {
     }
   });
 
+  it("indexes notification email markers and rolling recommendation delivery stats", () => {
+    const database = new Database(":memory:");
+    try {
+      database.exec(`${schemaSql}${emailAndRecommendationStatusMigrationSql}${emailAndRecommendationStatusMigrationSql}`);
+      const plan = (sql: string, ...params: unknown[]) => database
+        .prepare(`EXPLAIN QUERY PLAN ${sql}`)
+        .all(...params)
+        .map((row: any) => String(row.detail))
+        .join("\n");
+
+      expect(plan(`
+        UPDATE user_notifications
+        SET email_sent = 1
+        WHERE batch_id = ? AND user_id = ?
+      `, "batch-1", 10)).toContain("idx_user_notifications_batch_user");
+
+      expect(plan(`
+        UPDATE user_notifications
+        SET email_sent = 1
+        WHERE batch_id = ? AND user_id IN (?, ?, ?)
+      `, "batch-1", 10, 20, 30)).toContain("idx_user_notifications_batch_user");
+
+      const statsPlan = plan(`
+        SELECT count(*)
+        FROM recommendation_deliveries
+        WHERE status = ? AND createdAt >= ?
+      `, "sent", "2026-09-03T00:00:00.000Z");
+      expect(statsPlan).toContain("idx_rec_deliveries_status");
+    } finally {
+      database.close();
+    }
+  });
+
   it("deduplicates and orders split support change results", () => {
     const base = {
       conversationId: 1,
@@ -184,6 +256,8 @@ describe("remaining D1 hot-path safeguards", () => {
       .toContain("refetchInterval: 120_000");
     expect(readSource("../frontend/src/pages/AdminSupport.tsx"))
       .toContain("refetchInterval: isPageVisible ? 15_000 : false");
+    expect(readSource("../frontend/src/pages/AdminSupport.tsx"))
+      .toContain("refetchInterval: isPageVisible && !hasActiveInboxSearch ? 30_000 : false");
     expect(readSource("../frontend/src/pages/SupportChat.tsx"))
       .toContain("refetchInterval: isPageVisible ? 15_000 : false");
   });

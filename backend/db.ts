@@ -6884,22 +6884,25 @@ export async function getRecommendationDeliveryStats(sinceIso: string): Promise<
 }> {
   const db = await getDb();
   if (!db) return { total: 0, sent: 0, failed: 0, pending: 0, skipped: 0, deadLetter: 0 };
-  const rows = await db
-    .select({ status: recommendationDeliveries.status, count: sql<number>`count(*)` })
-    .from(recommendationDeliveries)
-    .where(sql`${recommendationDeliveries.createdAt} >= ${sinceIso}`)
-    .groupBy(recommendationDeliveries.status);
   const result = { total: 0, sent: 0, failed: 0, pending: 0, skipped: 0, deadLetter: 0 };
-  for (const row of rows) {
-    const c = Number(row.count) || 0;
-    result.total += c;
-    switch (row.status) {
-      case 'sent': result.sent = c; break;
-      case 'failed': result.failed = c; break;
-      case 'pending': result.pending = c; break;
-      case 'skipped': result.skipped = c; break;
-      case 'dead_letter': result.deadLetter = c; break;
-    }
+  const statuses = [
+    ["sent", "sent"],
+    ["failed", "failed"],
+    ["pending", "pending"],
+    ["skipped", "skipped"],
+    ["dead_letter", "deadLetter"],
+  ] as const;
+  for (const [status, key] of statuses) {
+    const [row] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(recommendationDeliveries)
+      .where(and(
+        eq(recommendationDeliveries.status, status),
+        gte(recommendationDeliveries.createdAt, sinceIso),
+      ));
+    const count = Number(row?.count ?? 0);
+    result[key] = count;
+    result.total += count;
   }
   return result;
 }

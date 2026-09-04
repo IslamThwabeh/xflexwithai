@@ -112,6 +112,7 @@ export default function AdminSupport() {
   const [olderMessagePages, setOlderMessagePages] = useState<any[]>([]);
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
   const wasPageVisibleRef = useRef(isPageVisible);
+  const hasActiveInboxSearch = debouncedSearch.length >= 2;
 
   const clearSelectedConversation = () => {
     shouldStickToBottomRef.current = true;
@@ -155,10 +156,10 @@ export default function AdminSupport() {
     {
       limit: 30,
       status: statusFilter,
-      search: debouncedSearch.length >= 2 ? debouncedSearch : undefined,
+      search: hasActiveInboxSearch ? debouncedSearch : undefined,
     },
     {
-      refetchInterval: isPageVisible ? 30_000 : false,
+      refetchInterval: isPageVisible && !hasActiveInboxSearch ? 30_000 : false,
       refetchOnWindowFocus: true,
     },
   );
@@ -194,7 +195,7 @@ export default function AdminSupport() {
       const page = await trpcUtils.client.supportChat.inboxPage.query({
         limit: 30,
         status: statusFilter,
-        search: debouncedSearch.length >= 2 ? debouncedSearch : undefined,
+        search: hasActiveInboxSearch ? debouncedSearch : undefined,
         cursor: conversationNextCursor,
       });
       setOlderConversationPages((current) => [...current, page]);

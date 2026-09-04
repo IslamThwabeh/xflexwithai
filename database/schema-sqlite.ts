@@ -513,6 +513,7 @@ export const recommendationDeliveries = sqliteTable("recommendation_deliveries",
   updatedAt: text("updatedAt").default(sql`(datetime('now'))`).notNull(),
 }, (table) => ({
   uniqueDeliveryByEventUser: unique("unique_rec_delivery_event_user").on(table.eventKey, table.userId),
+  createdStatusIdx: index("idx_rec_deliveries_created_status").on(table.createdAt, table.status),
   statusKindCreatedIdx: index("idx_rec_deliveries_status_kind_created").on(
     table.status,
     table.eventKind,
@@ -1871,6 +1872,9 @@ export const userNotifications = sqliteTable("user_notifications", {
   createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
 }, (table) => ({
   dedupeKeyUnique: unique("uq_user_notifications_dedupe_key").on(table.dedupeKey),
+  batchUserIdx: index("idx_user_notifications_batch_user")
+    .on(table.batchId, table.userId)
+    .where(sql`${table.batchId} IS NOT NULL`),
 }));
 
 export type UserNotification = typeof userNotifications.$inferSelect;
