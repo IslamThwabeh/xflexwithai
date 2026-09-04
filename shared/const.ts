@@ -45,6 +45,10 @@ export const ROLE_PAGE_ACCESS: Record<string, string[]> = {
   student_community_moderator: ["/admin/community", "/admin/notifications"],
   student_job_eligibility_manager: ["/admin/job-eligibility", "/admin/notifications"],
   email_logs_viewer: ["/admin/email-logs"],
+  live_sessions_manager: ["/admin/live-package"],
+  live_notifications_manager: ["/admin/live-package"],
+  live_recording_uploader: ["/admin/live-package"],
+  live_recording_publisher: ["/admin/live-package"],
 };
 
 // All available staff roles
@@ -55,6 +59,7 @@ export const ALL_STAFF_ROLES = [
   "student_surveys_manager", "loyalty_rewards_manager", "student_community_moderator",
   "student_job_eligibility_manager",
   "email_logs_viewer",
+  "live_sessions_manager", "live_notifications_manager", "live_recording_uploader", "live_recording_publisher",
 ] as const;
 export type StaffRole = typeof ALL_STAFF_ROLES[number];
 

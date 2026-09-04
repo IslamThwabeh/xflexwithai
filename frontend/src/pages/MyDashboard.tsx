@@ -190,18 +190,18 @@ export default function MyDashboard() {
         hasLexai={!!(lexaiSubscription && 'isActive' in lexaiSubscription)}
         hasRecommendations={!!recommendationsAccess?.hasSubscription}
       />
-      <div className="bg-[var(--color-xf-cream)] min-h-[calc(100vh-64px)]">
-      <main className="container mx-auto px-4 py-8">
-        <div className="space-y-8">
-          {/* Welcome Section */}
-          <div>
-            <h1 className="text-3xl font-bold mb-1">
-              {t('dashboard.title').replace('{name}', user?.name?.split(' ')[0] || '')} 👋
-            </h1>
-            <p className="text-lg text-muted-foreground">
-              {t('dashboard.subtitle')}
-            </p>
-          </div>
+      <div className="flex-1 min-w-0 bg-[var(--color-xf-cream)]">
+        <main className="mx-auto w-full min-w-0 max-w-[1440px] px-4 py-8">
+          <div className="space-y-8">
+            {/* Welcome Section */}
+            <div>
+              <h1 className="text-3xl font-bold mb-1">
+                {t('dashboard.title').replace('{name}', user?.name?.split(' ')[0] || '')} 👋
+              </h1>
+              <p className="text-lg text-muted-foreground">
+                {t('dashboard.subtitle')}
+              </p>
+            </div>
 
           {surveyAvailability?.enabled && surveyAvailability.access === "student" && surveyAvailability.outstandingCount > 0 && (
             <Card className="border-amber-200 bg-amber-50/80 shadow-sm">
@@ -786,8 +786,8 @@ export default function MyDashboard() {
             </CardContent>
           </Card>
 
-        </div>
-      </main>
+          </div>
+        </main>
       </div>
     </ClientLayout>
   );

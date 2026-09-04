@@ -10,9 +10,13 @@ const STUDENT_SURVEY_EMAIL_EVENTS = ["student_survey_assigned", "student_survey_
 export const STUDENT_COMMUNITY_EMAIL_BCC_LIMIT = 50;
 export const STUDENT_COMMUNITY_PROVIDER_REQUEST_LIMIT = 2;
 export const STUDENT_COMMUNITY_POST_EMAIL_EVENT = "student_community_post_published";
+export const LIVE_SESSION_EMAIL_BCC_LIMIT = 50;
+export const LIVE_SESSION_PROVIDER_REQUEST_LIMIT = 1;
+export const LIVE_SESSION_EMAIL_EVENT = "live_session_reminder";
 const PRIVACY_BCC_EMAIL_EVENTS = [
   ...STUDENT_SURVEY_EMAIL_EVENTS,
   STUDENT_COMMUNITY_POST_EMAIL_EVENT,
+  LIVE_SESSION_EMAIL_EVENT,
 ];
 
 export async function drainGenericEmailOutbox(input: {
@@ -211,6 +215,30 @@ export async function drainStudentCommunityPostEmailOutbox(input?: {
     ),
     providerRequestLimit,
     additionalBlockReason: db.getStudentCommunityPostEmailOutboxBlockReason,
+  });
+}
+
+export async function drainLiveSessionEmailOutbox(input?: {
+  recipientLimit?: number;
+  providerRequestLimit?: number;
+}): Promise<{ claimed: number; sent: number; failed: number; skipped: number; providerRequests: number }> {
+  const providerRequestLimit = Math.min(
+    Math.max(input?.providerRequestLimit ?? LIVE_SESSION_PROVIDER_REQUEST_LIMIT, 1),
+    LIVE_SESSION_PROVIDER_REQUEST_LIMIT,
+  );
+  return drainPrivacyBccEmailOutbox({
+    eventTypes: [LIVE_SESSION_EMAIL_EVENT],
+    templateId: "live_session_reminder",
+    providerBatchPrefix: "live-session-outbox",
+    recipientLimit: Math.min(
+      Math.max(input?.recipientLimit ?? LIVE_SESSION_EMAIL_BCC_LIMIT, 1),
+      LIVE_SESSION_EMAIL_BCC_LIMIT,
+    ),
+    providerRequestLimit,
+    additionalBlockReason: async (row) => {
+      const metadata = row.metadataJson ? JSON.parse(row.metadataJson) as { sessionId?: number } : {};
+      return metadata.sessionId ? null : "live_session_missing_metadata";
+    },
   });
 }
 

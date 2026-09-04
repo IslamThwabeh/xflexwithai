@@ -266,13 +266,13 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
   ];
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex min-w-0 flex-col">
       {/* Sticky Nav — always LTR so buttons stay in place regardless of language */}
       <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50" dir="ltr">
-        <div className="container mx-auto px-3 sm:px-4 py-2 sm:py-3">
-          <div className="flex items-center justify-between">
+        <div className="mx-auto flex w-full min-w-0 max-w-[1440px] items-center gap-3 px-3 py-2 sm:px-4 sm:py-3">
+          <div className="flex min-w-0 flex-1 items-center justify-between gap-3">
             {/* Left: Hamburger (mobile) + Logo */}
-            <div className="flex items-center gap-2">
+            <div className="flex shrink-0 items-center gap-2">
               {/* Mobile hamburger */}
               <button
                 onClick={() => setMobileMenuOpen(true)}
@@ -292,14 +292,14 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
             </div>
 
             {/* Center Nav — desktop only */}
-            <nav className="hidden lg:flex items-center gap-1">
+            <nav className="hidden min-w-0 flex-1 flex-wrap items-center justify-center gap-x-1 gap-y-1 lg:flex">
               {navItems.map((item) => {
                 const isActive = location.startsWith(item.match);
                 const badgeCount = item.badge ?? 0;
                 return (
                   <Link key={item.href} href={item.href}>
                     <button
-                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                      className={`inline-flex max-w-[10.5rem] items-center gap-1.5 rounded-lg px-3 py-1.5 text-center text-sm font-medium leading-tight transition-all ${
                         isActive
                           ? "bg-[var(--color-xf-primary)] text-white shadow-sm shadow-emerald-500/20"
                           : "text-[var(--color-xf-dark)]/60 hover:text-[var(--color-xf-dark)] hover:bg-black/[0.04]"
@@ -319,7 +319,7 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
             </nav>
 
             {/* Right side */}
-            <div className="flex items-center gap-1.5 sm:gap-2">
+            <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
               {staffWorkspacePath && (
                 <Link href={staffWorkspacePath}>
                   <button
@@ -471,7 +471,7 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
 
       {/* Page Content */}
       {/* Main content — respects RTL */}
-      <main className="flex-1" dir={isRTL ? "rtl" : "ltr"}>{children}</main>
+      <main className="flex-1 min-w-0" dir={isRTL ? "rtl" : "ltr"}>{children}</main>
 
       {/* Logout Confirmation Dialog */}
       <AlertDialog open={showLogoutDialog} onOpenChange={setShowLogoutDialog}>

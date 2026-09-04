@@ -43,6 +43,7 @@ import {
   packages, Package, InsertPackage,
   packageCourses, PackageCourse, InsertPackageCourse,
   livePackageEntitlements, livePackageSessions, livePackageRecordings,
+  livePackageSessionAudit, livePackageNotificationJobs, livePackageRecordingUploads,
   orders, Order, InsertOrder,
   userTermsAcceptances, UserTermsAcceptance, InsertUserTermsAcceptance,
   orderStatusHistory, InsertOrderStatusHistory,
@@ -14497,6 +14498,7 @@ export async function listLivePackageSessions(packageId: number, cohortKey: stri
     id: livePackageSessions.id,
     packageId: livePackageSessions.packageId,
     cohortKey: livePackageSessions.cohortKey,
+    sessionType: livePackageSessions.sessionType,
     titleEn: livePackageSessions.titleEn,
     titleAr: livePackageSessions.titleAr,
     descriptionEn: livePackageSessions.descriptionEn,
@@ -14518,9 +14520,40 @@ export async function listLivePackageSessionsAdmin(packageId: number, cohortKey:
   )).orderBy(livePackageSessions.startsAt);
 }
 
+export async function getLivePackageSessionById(id: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const [row] = await db.select().from(livePackageSessions).where(eq(livePackageSessions.id, id)).limit(1);
+  return row ?? null;
+}
+
+export async function recordLivePackageSessionAudit(input: {
+  sessionId: number;
+  packageId: number;
+  cohortKey: string;
+  actorAdminId: number;
+  action: string;
+  before?: unknown;
+  after?: unknown;
+}) {
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(livePackageSessionAudit).values({
+    sessionId: input.sessionId,
+    packageId: input.packageId,
+    cohortKey: input.cohortKey,
+    actorAdminId: input.actorAdminId,
+    action: input.action,
+    beforeJson: input.before === undefined ? null : JSON.stringify(input.before),
+    afterJson: input.after === undefined ? null : JSON.stringify(input.after),
+    createdAt: new Date().toISOString(),
+  });
+}
+
 export async function createLivePackageSession(input: {
   packageId: number;
   cohortKey: string;
+  sessionType?: 'educational' | 'trading_analysis';
   titleEn: string;
   titleAr: string;
   descriptionEn?: string | null;
@@ -14528,6 +14561,7 @@ export async function createLivePackageSession(input: {
   startsAt: string;
   endsAt: string;
   zoomJoinUrl: string;
+  recurrenceKey?: string | null;
   adminId: number;
 }) {
   const db = await getDb();
@@ -14536,9 +14570,11 @@ export async function createLivePackageSession(input: {
   const { adminId, ...sessionValues } = input;
   const [row] = await db.insert(livePackageSessions).values({
     ...sessionValues,
+    sessionType: input.sessionType ?? 'educational',
     descriptionEn: input.descriptionEn?.trim() || null,
     descriptionAr: input.descriptionAr?.trim() || null,
     status: 'scheduled',
+    recurrenceKey: input.recurrenceKey ?? null,
     createdByAdminId: adminId,
     updatedByAdminId: adminId,
     createdAt: now,
@@ -14556,6 +14592,7 @@ export async function updateLivePackageSession(input: {
   startsAt?: string;
   endsAt?: string;
   zoomJoinUrl?: string;
+  sessionType?: 'educational' | 'trading_analysis';
   status?: 'scheduled' | 'cancelled' | 'completed';
   adminId: number;
 }) {
@@ -14568,14 +14605,33 @@ export async function updateLivePackageSession(input: {
   const finalEndsAt = updates.endsAt ?? current.endsAt;
   const config = parseLivePackageConfig(await getAllAdminSettings());
   if (Date.parse(finalStartsAt) >= Date.parse(finalEndsAt)) throw new Error('Session end must be after its start');
-  if (Date.parse(finalStartsAt) < Date.parse(config.sessionStartsAt) || Date.parse(finalEndsAt) > Date.parse(config.sessionEndsAt)) {
+  if (config.sessionStartsAt && config.sessionEndsAt && (Date.parse(finalStartsAt) < Date.parse(config.sessionStartsAt) || Date.parse(finalEndsAt) > Date.parse(config.sessionEndsAt))) {
     throw new Error('Session must remain inside the configured Live cohort window');
+  }
+  if (Date.now() >= Date.parse(current.startsAt) && (
+    updates.startsAt !== undefined
+    || updates.endsAt !== undefined
+    || updates.zoomJoinUrl !== undefined
+    || updates.sessionType !== undefined
+    || updates.status === 'cancelled'
+  )) {
+    throw new Error('Started Live sessions can no longer be rescheduled, cancelled, or materially changed.');
   }
   const [row] = await db.update(livePackageSessions).set({
     ...updates,
+    cancelledAt: updates.status === 'cancelled' ? new Date().toISOString() : updates.status === 'scheduled' ? null : current.cancelledAt,
     updatedByAdminId: adminId,
     updatedAt: new Date().toISOString(),
   }).where(eq(livePackageSessions.id, id)).returning();
+  await recordLivePackageSessionAudit({
+    sessionId: current.id,
+    packageId: current.packageId,
+    cohortKey: current.cohortKey,
+    actorAdminId: adminId,
+    action: updates.status === 'cancelled' ? 'cancel' : 'update',
+    before: { sessionType: current.sessionType, startsAt: current.startsAt, endsAt: current.endsAt, status: current.status },
+    after: row ? { sessionType: row.sessionType, startsAt: row.startsAt, endsAt: row.endsAt, status: row.status } : null,
+  });
   return row ?? null;
 }
 
@@ -14628,6 +14684,213 @@ export async function updateLivePackageRecording(input: { id: number; isPublishe
     updatedByAdminId: input.adminId,
     updatedAt: new Date().toISOString(),
   }).where(eq(livePackageRecordings.id, input.id)).returning();
+  return row ?? null;
+}
+
+export async function listLivePackageNotificationJobs(packageId: number, cohortKey: string) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(livePackageNotificationJobs).where(and(
+    eq(livePackageNotificationJobs.packageId, packageId),
+    eq(livePackageNotificationJobs.cohortKey, cohortKey),
+  )).orderBy(desc(livePackageNotificationJobs.createdAt)).limit(50);
+}
+
+export async function listLivePackageNotificationRecipients(packageId: number, cohortKey: string, limit = 5000) {
+  const db = await getDb();
+  if (!db) return [];
+  // Dispatch-time recipient resolution is intentional: newly approved customers
+  // are included, while refunded/revoked access is excluded by isActive=false.
+  return db.select({
+    userId: users.id,
+    email: users.email,
+  }).from(livePackageEntitlements)
+    .innerJoin(users, eq(users.id, livePackageEntitlements.userId))
+    .where(and(
+      eq(livePackageEntitlements.packageId, packageId),
+      eq(livePackageEntitlements.cohortKey, cohortKey),
+      eq(livePackageEntitlements.isActive, true),
+      eq(users.isStaff, false),
+    ))
+    .orderBy(livePackageEntitlements.id)
+    .limit(Math.max(1, Math.min(limit, 5000)));
+}
+
+export async function createLivePackageNotificationJob(input: {
+  sessionId: number;
+  packageId: number;
+  cohortKey: string;
+  subject: string;
+  bodyText: string;
+  bodyHtml?: string | null;
+  scheduledFor: string;
+  adminId: number;
+  previewRecipientCount: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error('Database not available');
+  const now = new Date().toISOString();
+  const batchId = `live-session:${input.sessionId}:${Date.parse(input.scheduledFor)}:${crypto.randomUUID()}`;
+  const [row] = await db.insert(livePackageNotificationJobs).values({
+    sessionId: input.sessionId,
+    packageId: input.packageId,
+    cohortKey: input.cohortKey,
+    batchId,
+    subject: input.subject,
+    bodyText: input.bodyText,
+    bodyHtml: input.bodyHtml ?? null,
+    scheduledFor: input.scheduledFor,
+    status: 'queued',
+    recipientCount: input.previewRecipientCount,
+    materializedCount: 0,
+    createdByAdminId: input.adminId,
+    createdAt: now,
+    updatedAt: now,
+  }).returning();
+  return row;
+}
+
+export async function cancelLivePackageNotificationJob(id: number, adminId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const now = new Date().toISOString();
+  const [row] = await db.update(livePackageNotificationJobs).set({
+    status: 'cancelled',
+    cancelledByAdminId: adminId,
+    cancelledAt: now,
+    updatedAt: now,
+  }).where(and(
+    eq(livePackageNotificationJobs.id, id),
+    eq(livePackageNotificationJobs.status, 'queued'),
+  )).returning();
+  return row ?? null;
+}
+
+export async function dispatchDueLivePackageNotificationJobs(limit = 2) {
+  const db = await getDb();
+  if (!db) return { processed: 0, materialized: 0 };
+  const nowIso = new Date().toISOString();
+  const jobs = await db.select().from(livePackageNotificationJobs)
+    .where(and(eq(livePackageNotificationJobs.status, 'queued'), lte(livePackageNotificationJobs.scheduledFor, nowIso)))
+    .orderBy(livePackageNotificationJobs.scheduledFor, livePackageNotificationJobs.id)
+    .limit(Math.max(1, Math.min(limit, 5)));
+  let materialized = 0;
+  for (const job of jobs) {
+    const claimed = await db.update(livePackageNotificationJobs).set({
+      status: 'processing',
+      updatedAt: nowIso,
+    }).where(and(eq(livePackageNotificationJobs.id, job.id), eq(livePackageNotificationJobs.status, 'queued'))).returning();
+    if (!claimed[0]) continue;
+    try {
+      const recipients = await listLivePackageNotificationRecipients(job.packageId, job.cohortKey);
+      let inserted = 0;
+      for (const recipient of recipients) {
+        if (await enqueueEmailOutbox({
+          dedupeKey: `${job.batchId}:${recipient.userId}`,
+          batchId: job.batchId,
+          recipientUserId: recipient.userId,
+          recipientEmail: recipient.email,
+          eventType: 'live_session_reminder',
+          templateId: 'live_session_reminder',
+          emailCategory: 'transactional',
+          subject: job.subject,
+          bodyText: job.bodyText,
+          bodyHtml: job.bodyHtml,
+          metadata: { sessionId: job.sessionId, livePackageNotificationJobId: job.id },
+        })) inserted += 1;
+      }
+      await db.update(livePackageNotificationJobs).set({
+        status: 'sent',
+        recipientCount: recipients.length,
+        materializedCount: inserted,
+        dispatchedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }).where(eq(livePackageNotificationJobs.id, job.id));
+      materialized += inserted;
+    } catch (error) {
+      await db.update(livePackageNotificationJobs).set({
+        status: 'failed',
+        errorMessage: error instanceof Error ? error.message.slice(0, 500) : String(error).slice(0, 500),
+        updatedAt: new Date().toISOString(),
+      }).where(eq(livePackageNotificationJobs.id, job.id));
+    }
+  }
+  return { processed: jobs.length, materialized };
+}
+
+export async function createLivePackageRecordingUpload(input: {
+  packageId: number;
+  cohortKey: string;
+  sessionId?: number | null;
+  objectKey: string;
+  originalFileName: string;
+  mimeType: string;
+  expectedSizeBytes: number;
+  adminId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error('Database not available');
+  const now = new Date().toISOString();
+  const uploadToken = crypto.randomUUID();
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  const [row] = await db.insert(livePackageRecordingUploads).values({
+    uploadToken,
+    packageId: input.packageId,
+    cohortKey: input.cohortKey,
+    sessionId: input.sessionId ?? null,
+    objectKey: input.objectKey,
+    originalFileName: input.originalFileName,
+    mimeType: input.mimeType,
+    expectedSizeBytes: input.expectedSizeBytes,
+    uploadedSizeBytes: 0,
+    status: 'initiated',
+    expiresAt,
+    createdByAdminId: input.adminId,
+    createdAt: now,
+    updatedAt: now,
+  }).returning();
+  return row;
+}
+
+export async function getLivePackageRecordingUpload(uploadToken: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const [row] = await db.select().from(livePackageRecordingUploads)
+    .where(eq(livePackageRecordingUploads.uploadToken, uploadToken))
+    .limit(1);
+  return row ?? null;
+}
+
+export async function completeLivePackageRecordingUpload(input: {
+  uploadToken: string;
+  uploadedSizeBytes: number;
+  recordingId: number;
+}) {
+  const db = await getDb();
+  if (!db) return null;
+  const now = new Date().toISOString();
+  const [row] = await db.update(livePackageRecordingUploads).set({
+    uploadedSizeBytes: input.uploadedSizeBytes,
+    recordingId: input.recordingId,
+    status: 'completed',
+    completedAt: now,
+    updatedAt: now,
+  }).where(eq(livePackageRecordingUploads.uploadToken, input.uploadToken)).returning();
+  return row ?? null;
+}
+
+export async function abortLivePackageRecordingUpload(uploadToken: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const now = new Date().toISOString();
+  const [row] = await db.update(livePackageRecordingUploads).set({
+    status: 'aborted',
+    abortedAt: now,
+    updatedAt: now,
+  }).where(and(
+    eq(livePackageRecordingUploads.uploadToken, uploadToken),
+    inArray(livePackageRecordingUploads.status, ['initiated', 'uploading']),
+  )).returning();
   return row ?? null;
 }
 

@@ -1015,6 +1015,7 @@ export const livePackageSessions = sqliteTable("live_package_sessions", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   packageId: integer("packageId").notNull(),
   cohortKey: text("cohortKey").notNull(),
+  sessionType: text("session_type").default("educational").notNull(),
   titleEn: text("titleEn").notNull(),
   titleAr: text("titleAr").notNull(),
   descriptionEn: text("descriptionEn"),
@@ -1023,11 +1024,16 @@ export const livePackageSessions = sqliteTable("live_package_sessions", {
   endsAt: text("endsAt").notNull(),
   zoomJoinUrl: text("zoomJoinUrl").notNull(),
   status: text("status").default("scheduled").notNull(),
+  recurrenceKey: text("recurrence_key"),
+  cancelledAt: text("cancelled_at"),
   createdByAdminId: integer("createdByAdminId").notNull(),
   updatedByAdminId: integer("updatedByAdminId").notNull(),
   createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
   updatedAt: text("updatedAt").default(sql`(datetime('now'))`).notNull(),
-});
+}, (table) => ({
+  cohortStartsIdx: index("idx_live_sessions_package_cohort_starts").on(table.packageId, table.cohortKey, table.startsAt),
+  statusStartsIdx: index("idx_live_sessions_status_starts").on(table.status, table.startsAt),
+}));
 
 export const livePackageRecordings = sqliteTable("live_package_recordings", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -1044,11 +1050,79 @@ export const livePackageRecordings = sqliteTable("live_package_recordings", {
   fileSizeBytes: integer("fileSizeBytes"),
   sortOrder: integer("sortOrder").default(0).notNull(),
   isPublished: integer("isPublished", { mode: "boolean" }).default(false).notNull(),
+  uploadStatus: text("upload_status").default("completed").notNull(),
+  replacedByRecordingId: integer("replaced_by_recording_id"),
   createdByAdminId: integer("createdByAdminId").notNull(),
   updatedByAdminId: integer("updatedByAdminId").notNull(),
   createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
   updatedAt: text("updatedAt").default(sql`(datetime('now'))`).notNull(),
-});
+}, (table) => ({
+  cohortPublishIdx: index("idx_live_recordings_package_cohort_publish").on(table.packageId, table.cohortKey, table.isPublished, table.sortOrder),
+  sessionIdx: index("idx_live_recordings_session").on(table.sessionId),
+}));
+
+export const livePackageSessionAudit = sqliteTable("live_package_session_audit", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  sessionId: integer("session_id").notNull(),
+  packageId: integer("package_id").notNull(),
+  cohortKey: text("cohort_key").notNull(),
+  actorAdminId: integer("actor_admin_id").notNull(),
+  action: text("action").notNull(),
+  beforeJson: text("before_json"),
+  afterJson: text("after_json"),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
+}, (table) => ({
+  sessionCreatedIdx: index("idx_live_session_audit_session_created").on(table.sessionId, table.createdAt),
+}));
+
+export const livePackageNotificationJobs = sqliteTable("live_package_notification_jobs", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  sessionId: integer("session_id").notNull(),
+  packageId: integer("package_id").notNull(),
+  cohortKey: text("cohort_key").notNull(),
+  batchId: text("batch_id").notNull().unique(),
+  subject: text("subject").notNull(),
+  bodyText: text("body_text").notNull(),
+  bodyHtml: text("body_html"),
+  scheduledFor: text("scheduled_for").notNull(),
+  status: text("status").default("queued").notNull(),
+  recipientCount: integer("recipient_count").default(0).notNull(),
+  materializedCount: integer("materialized_count").default(0).notNull(),
+  errorMessage: text("error_message"),
+  createdByAdminId: integer("created_by_admin_id").notNull(),
+  cancelledByAdminId: integer("cancelled_by_admin_id"),
+  cancelledAt: text("cancelled_at"),
+  dispatchedAt: text("dispatched_at"),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
+  updatedAt: text("updated_at").default(sql`(datetime('now'))`).notNull(),
+}, (table) => ({
+  statusScheduledIdx: index("idx_live_notification_jobs_status_scheduled").on(table.status, table.scheduledFor),
+  sessionIdx: index("idx_live_notification_jobs_session").on(table.sessionId),
+}));
+
+export const livePackageRecordingUploads = sqliteTable("live_package_recording_uploads", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  uploadToken: text("upload_token").notNull().unique(),
+  packageId: integer("package_id").notNull(),
+  cohortKey: text("cohort_key").notNull(),
+  sessionId: integer("session_id"),
+  recordingId: integer("recording_id"),
+  objectKey: text("object_key").notNull(),
+  originalFileName: text("original_file_name").notNull(),
+  mimeType: text("mime_type").notNull(),
+  expectedSizeBytes: integer("expected_size_bytes").notNull(),
+  uploadedSizeBytes: integer("uploaded_size_bytes").default(0).notNull(),
+  status: text("status").default("initiated").notNull(),
+  expiresAt: text("expires_at").notNull(),
+  createdByAdminId: integer("created_by_admin_id").notNull(),
+  completedAt: text("completed_at"),
+  abortedAt: text("aborted_at"),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
+  updatedAt: text("updated_at").default(sql`(datetime('now'))`).notNull(),
+}, (table) => ({
+  statusExpiresIdx: index("idx_live_recording_uploads_status_expires").on(table.status, table.expiresAt),
+  tokenIdx: index("idx_live_recording_uploads_token").on(table.uploadToken),
+}));
 
 // ============================================================================
 // Orders – shopping cart checkout

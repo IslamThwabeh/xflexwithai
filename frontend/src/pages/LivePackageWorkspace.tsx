@@ -59,7 +59,7 @@ export default function LivePackageWorkspace() {
             <h2 className="flex items-center gap-2 text-xl font-bold"><CalendarDays className="h-5 w-5" />{isAr ? 'اللقاءات' : 'Sessions'}</h2>
             {data.sessions.length ? data.sessions.map((session) => (
               <article key={session.id} className="flex flex-col gap-4 rounded-2xl border bg-white p-5 sm:flex-row sm:items-center sm:justify-between">
-                <div><h3 className="font-semibold">{isAr ? session.titleAr : session.titleEn}</h3><p className="mt-1 flex items-center gap-1 text-sm text-slate-500"><Clock className="h-4 w-4" />{formatDate(session.startsAt, language)}</p></div>
+                <div><div className="mb-2 flex flex-wrap gap-2"><Badge variant="outline">{session.sessionType === 'trading_analysis' ? (isAr ? 'تداول وتحليل' : 'Trading analysis') : (isAr ? 'تعليمي' : 'Educational')}</Badge><Badge variant={session.status === 'cancelled' ? 'destructive' : session.status === 'completed' ? 'secondary' : 'default'}>{session.status === 'cancelled' ? (isAr ? 'ملغي' : 'Cancelled') : session.status === 'completed' ? (isAr ? 'مكتمل' : 'Completed') : (isAr ? 'قادم' : 'Upcoming')}</Badge></div><h3 className="font-semibold">{isAr ? session.titleAr : session.titleEn}</h3><p className="mt-1 flex items-center gap-1 text-sm text-slate-500"><Clock className="h-4 w-4" />{formatDate(session.startsAt, language)}</p></div>
                 <Button disabled={!data.entitlement!.liveAccessActive || session.status !== 'scheduled' || join.isPending} onClick={() => join.mutate({ sessionId: session.id })}>
                   <ExternalLink className="me-2 h-4 w-4" />{isAr ? 'الانضمام للقاء' : 'Join session'}
                 </Button>

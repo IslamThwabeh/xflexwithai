@@ -17,9 +17,12 @@ import {
 } from "./inactivityDigest";
 import {
   drainGenericEmailOutbox,
+  drainLiveSessionEmailOutbox,
   drainStudentCommunityPostEmailOutbox,
   drainStudentSurveyEmailOutbox,
   GENERIC_EMAIL_OUTBOX_DRAIN_LIMIT,
+  LIVE_SESSION_EMAIL_BCC_LIMIT,
+  LIVE_SESSION_EMAIL_EVENT,
   STUDENT_COMMUNITY_EMAIL_BCC_LIMIT,
   STUDENT_COMMUNITY_POST_EMAIL_EVENT,
   SUPPORT_REPLY_EMAIL_DRAIN_LIMIT,
@@ -124,6 +127,24 @@ async function runFrequentEmailJobs(scheduledMinute: number) {
   }
 
   if (lowerPriorityLane === 3) {
+    try {
+      await db.dispatchDueLivePackageNotificationJobs();
+      await db.materializeEmailOutboxCampaigns(LIVE_SESSION_EMAIL_BCC_LIMIT, {
+        eventTypes: [LIVE_SESSION_EMAIL_EVENT],
+        maxBatchSize: LIVE_SESSION_EMAIL_BCC_LIMIT,
+      });
+      await drainLiveSessionEmailOutbox({
+        providerRequestLimit: lowerPriorityBudget,
+      });
+    } catch (error) {
+      logger.error("[CRON] Live package reminder jobs failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    return;
+  }
+
+  if (lowerPriorityLane === 4) {
     const genericLimit = Math.min(
       GENERIC_EMAIL_OUTBOX_DRAIN_LIMIT,
       lowerPriorityBudget,
@@ -198,6 +219,7 @@ export interface Env {
   JWT_SECRET: string;
   OPENAI_API_KEY: string;
   R2_PUBLIC_URL?: string;
+  LIVE_RECORDING_MAX_BYTES?: string;
   VITE_APP_TITLE: string;
   VITE_APP_LOGO: string;
   ENVIRONMENT: "production" | "staging" | "development";
@@ -406,14 +428,16 @@ export default {
         const authContext = await createWorkerContext({ req: request, env, executionCtx: ctx });
         appendCookieHeaders(headers, (authContext as { cookieHeaders?: string[] }).cookieHeaders);
         const admin = authContext.user?.email ? await db.getAdminByEmail(authContext.user.email) : null;
-        if (!authContext.user || !admin) return jsonResponse(403, { status: "forbidden", message: "Full admin access is required" }, headers);
+        const canUpload = Boolean(admin) || Boolean(authContext.user && await db.hasAnyRole(authContext.user.id, ["live_recording_uploader"]));
+        if (!authContext.user || !canUpload) return jsonResponse(403, { status: "forbidden", message: "Live recording upload permission is required" }, headers);
         const contentType = request.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() ?? "";
         if (contentType !== "video/mp4" && contentType !== "video/webm") {
           return jsonResponse(400, { status: "invalid_request", message: "Only MP4 or WebM recordings are accepted" }, headers);
         }
         const size = Number(request.headers.get("content-length"));
-        if (!Number.isFinite(size) || size <= 0 || size > 500 * 1024 * 1024) {
-          return jsonResponse(413, { status: "invalid_request", message: "Recording must declare a size between 1 byte and 500 MB" }, headers);
+        const maxRecordingBytes = Number(env.LIVE_RECORDING_MAX_BYTES ?? 5 * 1024 * 1024 * 1024);
+        if (!Number.isFinite(size) || size <= 0 || size > maxRecordingBytes) {
+          return jsonResponse(413, { status: "invalid_request", message: "Recording must declare a valid size within the configured Live recording limit" }, headers);
         }
         const titleEn = (url.searchParams.get("titleEn") ?? "").trim();
         const titleAr = (url.searchParams.get("titleAr") ?? "").trim();
@@ -427,7 +451,18 @@ export default {
         if (!pkg || pkg.packageType !== "live") return jsonResponse(409, { status: "not_ready", message: "Live package is not configured" }, headers);
         const config = parseLivePackageConfig(settings);
         const safeName = originalFileName.replace(/[^a-zA-Z0-9._-]/g, "_");
-        const objectKey = `protected/live-package/${config.cohortKey}/${Date.now()}-${safeName}`;
+        const actorAdminId = admin?.id ?? authContext.user.id;
+        const objectKey = `protected/live-package/${config.cohortKey}/${crypto.randomUUID()}-${safeName}`;
+        const upload = await db.createLivePackageRecordingUpload({
+          packageId: pkg.id,
+          cohortKey: config.cohortKey,
+          sessionId,
+          objectKey,
+          originalFileName,
+          mimeType: contentType,
+          expectedSizeBytes: size,
+          adminId: actorAdminId,
+        });
         try {
           if (!request.body) throw new Error("Recording body is missing");
           await env.VIDEOS_BUCKET.put(objectKey, request.body, { httpMetadata: { contentType } });
@@ -441,18 +476,28 @@ export default {
             originalFileName,
             mimeType: contentType,
             fileSizeBytes: size,
-            adminId: admin.id,
+            adminId: actorAdminId,
           });
-          await db.logAdminAction(admin.id, admin.id, "upload_live_package_recording", {
+          await db.completeLivePackageRecordingUpload({
+            uploadToken: upload.uploadToken,
+            uploadedSizeBytes: size,
+            recordingId: recording.id,
+          });
+          if (admin) await db.logAdminAction(admin.id, admin.id, "upload_live_package_recording", {
             recordingId: recording.id,
             sessionId,
             fileSizeBytes: size,
             mimeType: contentType,
           });
-          return jsonResponse(200, { status: "success", recording: { id: recording.id, isPublished: false } }, headers);
+          return jsonResponse(200, {
+            status: "success",
+            upload: { id: upload.id, status: "completed" },
+            recording: { id: recording.id, isPublished: false },
+          }, headers);
         } catch (error) {
           await env.VIDEOS_BUCKET.delete(objectKey).catch(() => undefined);
-          logger.error("[LIVE PACKAGE] Protected recording upload failed", { adminId: admin.id, error: error instanceof Error ? error.message : String(error) });
+          await db.abortLivePackageRecordingUpload(upload.uploadToken).catch(() => undefined);
+          logger.error("[LIVE PACKAGE] Protected recording upload failed", { actorAdminId, error: error instanceof Error ? error.message : String(error) });
           return jsonResponse(500, { status: "error", message: "Recording upload failed" }, headers);
         }
       }

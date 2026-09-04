@@ -1043,6 +1043,11 @@ const adminOrRoleProcedure = (roles: string[]) => protectedProcedure.use(async (
   return next({ ctx: { ...ctx, admin: null } });
 }).use(staffActivityTrackingMiddleware);
 
+const liveSessionManagerProcedure = adminOrRoleProcedure(['live_sessions_manager']);
+const liveNotificationManagerProcedure = adminOrRoleProcedure(['live_notifications_manager']);
+const liveRecordingUploadProcedure = adminOrRoleProcedure(['live_recording_uploader']);
+const liveRecordingPublishProcedure = adminOrRoleProcedure(['live_recording_publisher']);
+
 const staffPerformanceProcedure = protectedProcedure
   .use(async ({ ctx, next }) => {
     if (!ctx.user?.email) {
@@ -6857,13 +6862,14 @@ export const appRouter = router({
         return session;
       }),
 
-    adminWorkspace: adminProcedure.query(async () => {
+    adminWorkspace: adminOrRoleProcedure(['live_sessions_manager', 'live_notifications_manager', 'live_recording_uploader', 'live_recording_publisher']).query(async () => {
       const context = await getLivePackageContext();
       if (!context.pkg) throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Apply the Live package migration first.' });
-      const [sessions, recordings, stats] = await Promise.all([
+      const [sessions, recordings, stats, notificationJobs] = await Promise.all([
         db.listLivePackageSessionsAdmin(context.pkg.id, context.config.cohortKey),
         db.listLivePackageRecordingsAdmin(context.pkg.id, context.config.cohortKey),
         db.getLivePackageAdminStats(context.pkg.id),
+        db.listLivePackageNotificationJobs(context.pkg.id, context.config.cohortKey),
       ]);
       return {
         package: context.pkg,
@@ -6872,12 +6878,14 @@ export const appRouter = router({
         availability: context.availability,
         sessions,
         recordings,
+        notificationJobs,
         stats,
       };
     }),
 
-    createSession: adminProcedure
+    createSession: liveSessionManagerProcedure
       .input(z.object({
+        sessionType: z.enum(['educational', 'trading_analysis']).default('educational'),
         titleEn: z.string().trim().min(1).max(200),
         titleAr: z.string().trim().min(1).max(200),
         descriptionEn: z.string().trim().max(2000).optional(),
@@ -6891,19 +6899,25 @@ export const appRouter = router({
         if (Date.parse(input.startsAt) >= Date.parse(input.endsAt)) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Session end must be after its start.' });
         const context = await getLivePackageContext();
         if (!context.pkg) throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Live package is not configured.' });
-        if (!context.config.sessionStartsAt || !context.config.sessionEndsAt) {
-          throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Set the Live cohort schedule before adding sessions.' });
-        }
-        if (Date.parse(input.startsAt) < Date.parse(context.config.sessionStartsAt) || Date.parse(input.endsAt) > Date.parse(context.config.sessionEndsAt)) {
+        if (context.config.sessionStartsAt && context.config.sessionEndsAt && (Date.parse(input.startsAt) < Date.parse(context.config.sessionStartsAt) || Date.parse(input.endsAt) > Date.parse(context.config.sessionEndsAt))) {
           throw new TRPCError({ code: 'BAD_REQUEST', message: 'Session must remain inside the configured Live cohort window.' });
         }
+        const actorAdminId = ctx.admin?.id ?? ctx.user!.id;
         const session = await db.createLivePackageSession({
           ...input,
           packageId: context.pkg.id,
           cohortKey: context.config.cohortKey,
-          adminId: ctx.admin.id,
+          adminId: actorAdminId,
         });
-        await db.logAdminAction(ctx.admin.id, ctx.admin.id, 'create_live_package_session', {
+        await db.recordLivePackageSessionAudit({
+          sessionId: session.id,
+          packageId: context.pkg.id,
+          cohortKey: context.config.cohortKey,
+          actorAdminId,
+          action: 'create',
+          after: { sessionType: session.sessionType, startsAt: session.startsAt, endsAt: session.endsAt, status: session.status },
+        });
+        if (ctx.admin) await db.logAdminAction(ctx.admin.id, ctx.admin.id, 'create_live_package_session', {
           sessionId: session.id,
           startsAt: input.startsAt,
           endsAt: input.endsAt,
@@ -6912,9 +6926,10 @@ export const appRouter = router({
         return { ...session, zoomJoinUrl: '[protected]' };
       }),
 
-    updateSession: adminProcedure
+    updateSession: liveSessionManagerProcedure
       .input(z.object({
         id: z.number().int().positive(),
+        sessionType: z.enum(['educational', 'trading_analysis']).optional(),
         titleEn: z.string().trim().min(1).max(200).optional(),
         titleAr: z.string().trim().min(1).max(200).optional(),
         descriptionEn: z.string().trim().max(2000).nullable().optional(),
@@ -6927,9 +6942,9 @@ export const appRouter = router({
       .mutation(async ({ ctx, input }) => {
         if (input.zoomJoinUrl && !isTrustedZoomJoinUrl(input.zoomJoinUrl)) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Use an HTTPS zoom.us meeting URL.' });
         if (input.startsAt && input.endsAt && Date.parse(input.startsAt) >= Date.parse(input.endsAt)) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Session end must be after its start.' });
-        const session = await db.updateLivePackageSession({ ...input, adminId: ctx.admin.id });
+        const session = await db.updateLivePackageSession({ ...input, adminId: ctx.admin?.id ?? ctx.user!.id });
         if (!session) throw new TRPCError({ code: 'NOT_FOUND', message: 'Session not found.' });
-        await db.logAdminAction(ctx.admin.id, ctx.admin.id, 'update_live_package_session', {
+        if (ctx.admin) await db.logAdminAction(ctx.admin.id, ctx.admin.id, 'update_live_package_session', {
           sessionId: input.id,
           fields: Object.keys(input).filter((key) => key !== 'zoomJoinUrl' && key !== 'id'),
           zoomJoinUrlChanged: input.zoomJoinUrl !== undefined,
@@ -6937,7 +6952,7 @@ export const appRouter = router({
         return { ...session, zoomJoinUrl: '[protected]' };
       }),
 
-    uploadRecording: adminProcedure
+    uploadRecording: liveRecordingUploadProcedure
       .input(z.object({
         sessionId: z.number().int().positive().nullable().optional(),
         titleEn: z.string().trim().min(1).max(200),
@@ -6970,9 +6985,9 @@ export const appRouter = router({
           originalFileName: input.fileName,
           mimeType: input.contentType,
           fileSizeBytes: buffer.length,
-          adminId: ctx.admin.id,
+          adminId: ctx.admin?.id ?? ctx.user!.id,
         });
-        await db.logAdminAction(ctx.admin.id, ctx.admin.id, 'upload_live_package_recording', {
+        if (ctx.admin) await db.logAdminAction(ctx.admin.id, ctx.admin.id, 'upload_live_package_recording', {
           recordingId: recording.id,
           sessionId: input.sessionId ?? null,
           fileSizeBytes: buffer.length,
@@ -6981,13 +6996,79 @@ export const appRouter = router({
         return { id: recording.id, isPublished: recording.isPublished };
       }),
 
-    updateRecording: adminProcedure
+    updateRecording: liveRecordingPublishProcedure
       .input(z.object({ id: z.number().int().positive(), isPublished: z.boolean(), sortOrder: z.number().int().min(0).optional() }))
       .mutation(async ({ ctx, input }) => {
-        const recording = await db.updateLivePackageRecording({ ...input, adminId: ctx.admin.id });
+        const recording = await db.updateLivePackageRecording({ ...input, adminId: ctx.admin?.id ?? ctx.user!.id });
         if (!recording) throw new TRPCError({ code: 'NOT_FOUND', message: 'Recording not found.' });
-        await db.logAdminAction(ctx.admin.id, ctx.admin.id, 'update_live_package_recording', input);
+        if (ctx.admin) await db.logAdminAction(ctx.admin.id, ctx.admin.id, 'update_live_package_recording', input);
         return recording;
+      }),
+
+    previewNotification: liveNotificationManagerProcedure
+      .input(z.object({
+        sessionId: z.number().int().positive(),
+      }))
+      .query(async ({ input }) => {
+        const context = await getLivePackageContext();
+        if (!context.pkg) throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Live package is not configured.' });
+        const session = await db.getLivePackageSessionById(input.sessionId);
+        if (!session || session.packageId !== context.pkg.id || session.cohortKey !== context.config.cohortKey) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Session not found.' });
+        }
+        const recipients = await db.listLivePackageNotificationRecipients(context.pkg.id, context.config.cohortKey);
+        const ammanTime = new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Amman' }).format(new Date(session.startsAt));
+        const subject = `Live session reminder: ${session.titleEn}`;
+        const bodyText = `Live Package session: ${session.titleEn}\nTime: ${ammanTime} Asia/Amman\nJoin Zoom: ${session.zoomJoinUrl}\n\nThis message is sent with recipients hidden in BCC.`;
+        return { recipientCount: recipients.length, subject, bodyText };
+      }),
+
+    scheduleNotification: liveNotificationManagerProcedure
+      .input(z.object({
+        sessionId: z.number().int().positive(),
+        mode: z.enum(['now', 'after_hours', 'at']),
+        afterHours: z.number().int().min(1).max(168).optional(),
+        scheduledFor: z.string().datetime().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const context = await getLivePackageContext();
+        if (!context.pkg) throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Live package is not configured.' });
+        const session = await db.getLivePackageSessionById(input.sessionId);
+        if (!session || session.packageId !== context.pkg.id || session.cohortKey !== context.config.cohortKey) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Session not found.' });
+        }
+        const recipients = await db.listLivePackageNotificationRecipients(context.pkg.id, context.config.cohortKey);
+        const now = Date.now();
+        const scheduledFor = input.mode === 'now'
+          ? new Date(now).toISOString()
+          : input.mode === 'after_hours'
+            ? new Date(now + (input.afterHours ?? 1) * 60 * 60 * 1000).toISOString()
+            : input.scheduledFor;
+        if (!scheduledFor || Date.parse(scheduledFor) < now - 60_000) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Choose a valid notification time.' });
+        }
+        const ammanTime = new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Amman' }).format(new Date(session.startsAt));
+        const subject = `Live session reminder: ${session.titleEn}`;
+        const bodyText = `Live Package session: ${session.titleEn}\nTime: ${ammanTime} Asia/Amman\nJoin Zoom: ${session.zoomJoinUrl}\n\nRecipients are resolved at dispatch time and hidden in BCC.`;
+        const job = await db.createLivePackageNotificationJob({
+          sessionId: session.id,
+          packageId: context.pkg.id,
+          cohortKey: context.config.cohortKey,
+          subject,
+          bodyText,
+          scheduledFor,
+          adminId: ctx.admin?.id ?? ctx.user!.id,
+          previewRecipientCount: recipients.length,
+        });
+        return job;
+      }),
+
+    cancelNotification: liveNotificationManagerProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(async ({ ctx, input }) => {
+        const job = await db.cancelLivePackageNotificationJob(input.id, ctx.admin?.id ?? ctx.user!.id);
+        if (!job) throw new TRPCError({ code: 'NOT_FOUND', message: 'Queued notification not found or already dispatched.' });
+        return job;
       }),
 
     grantComplimentaryAccess: adminProcedure
