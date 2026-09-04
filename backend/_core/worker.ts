@@ -468,6 +468,17 @@ export default {
         if (!upload || upload.status === "aborted" || upload.status === "completed" || Date.parse(upload.expiresAt) < Date.now()) {
           return jsonResponse(404, { status: "not_found", message: "Active upload session not found" }, headers);
         }
+        if (action === "status" && request.method === "GET") {
+          return jsonResponse(200, {
+            status: "success",
+            upload: {
+              status: upload.status,
+              uploadedSizeBytes: upload.uploadedSizeBytes,
+              expectedSizeBytes: upload.expectedSizeBytes,
+              completedParts: upload.completedPartsJson ? JSON.parse(upload.completedPartsJson) : [],
+            },
+          }, headers);
+        }
         if (action === "part" && request.method === "PUT") {
           const partNumber = Number(url.searchParams.get("partNumber"));
           if (!Number.isInteger(partNumber) || partNumber < 1 || partNumber > 10000 || !request.body) {
@@ -1065,6 +1076,21 @@ export default {
         cron: controller.cron,
       });
       return;
+    }
+
+    try {
+      const abandonedUploads = await db.listExpiredLivePackageRecordingUploads(10);
+      for (const upload of abandonedUploads) {
+        try {
+          if (upload.r2UploadId) {
+            await (env.VIDEOS_BUCKET as any).resumeMultipartUpload(upload.objectKey, upload.r2UploadId).abort();
+          }
+        } finally {
+          await db.abortLivePackageRecordingUpload(upload.uploadToken);
+        }
+      }
+    } catch (e) {
+      logger.error("[CRON] Live recording multipart cleanup failed", { error: e instanceof Error ? e.message : String(e) });
     }
 
     try {

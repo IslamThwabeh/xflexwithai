@@ -14675,12 +14675,29 @@ export async function listLivePackageRecordingsAdmin(packageId: number, cohortKe
   )).orderBy(livePackageRecordings.sortOrder);
 }
 
-export async function updateLivePackageRecording(input: { id: number; isPublished: boolean; sortOrder?: number; adminId: number }) {
+export async function updateLivePackageRecording(input: {
+  id: number;
+  isPublished?: boolean;
+  sortOrder?: number;
+  titleEn?: string;
+  titleAr?: string;
+  descriptionEn?: string | null;
+  descriptionAr?: string | null;
+  sessionId?: number | null;
+  replacedByRecordingId?: number | null;
+  adminId: number;
+}) {
   const db = await getDb();
   if (!db) throw new Error('Database not available');
   const [row] = await db.update(livePackageRecordings).set({
-    isPublished: input.isPublished,
-    sortOrder: input.sortOrder,
+    ...(input.isPublished !== undefined ? { isPublished: input.isPublished } : {}),
+    ...(input.sortOrder !== undefined ? { sortOrder: input.sortOrder } : {}),
+    ...(input.titleEn !== undefined ? { titleEn: input.titleEn.trim() } : {}),
+    ...(input.titleAr !== undefined ? { titleAr: input.titleAr.trim() } : {}),
+    ...(input.descriptionEn !== undefined ? { descriptionEn: input.descriptionEn?.trim() || null } : {}),
+    ...(input.descriptionAr !== undefined ? { descriptionAr: input.descriptionAr?.trim() || null } : {}),
+    ...(input.sessionId !== undefined ? { sessionId: input.sessionId } : {}),
+    ...(input.replacedByRecordingId !== undefined ? { replacedByRecordingId: input.replacedByRecordingId } : {}),
     updatedByAdminId: input.adminId,
     updatedAt: new Date().toISOString(),
   }).where(eq(livePackageRecordings.id, input.id)).returning();
@@ -14881,6 +14898,15 @@ export async function getLivePackageRecordingUpload(uploadToken: string) {
     .where(eq(livePackageRecordingUploads.uploadToken, uploadToken))
     .limit(1);
   return row ?? null;
+}
+
+export async function listExpiredLivePackageRecordingUploads(limit = 10) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(livePackageRecordingUploads).where(and(
+    inArray(livePackageRecordingUploads.status, ['initiated', 'uploading']),
+    lt(livePackageRecordingUploads.expiresAt, new Date().toISOString()),
+  )).orderBy(livePackageRecordingUploads.expiresAt).limit(Math.max(1, Math.min(limit, 25)));
 }
 
 export async function completeLivePackageRecordingUpload(input: {

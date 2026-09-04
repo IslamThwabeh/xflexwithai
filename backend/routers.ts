@@ -6926,6 +6926,59 @@ export const appRouter = router({
         return { ...session, zoomJoinUrl: '[protected]' };
       }),
 
+    createSessions: liveSessionManagerProcedure
+      .input(z.object({
+        sessions: z.array(z.object({
+          sessionType: z.enum(['educational', 'trading_analysis']),
+          titleEn: z.string().trim().min(1).max(200),
+          titleAr: z.string().trim().min(1).max(200),
+          descriptionEn: z.string().trim().max(2000).optional(),
+          descriptionAr: z.string().trim().max(2000).optional(),
+          startsAt: z.string().datetime(),
+          endsAt: z.string().datetime(),
+          zoomJoinUrl: z.string().url().max(2000),
+        })).min(1).max(40),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const created = [];
+        for (const session of input.sessions) {
+          if (!isTrustedZoomJoinUrl(session.zoomJoinUrl)) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Use HTTPS zoom.us meeting URLs.' });
+          if (Date.parse(session.startsAt) >= Date.parse(session.endsAt)) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Session end must be after its start.' });
+        }
+        const context = await getLivePackageContext();
+        if (!context.pkg) throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Live package is not configured.' });
+        for (const session of input.sessions) {
+          if (context.config.sessionStartsAt && context.config.sessionEndsAt && (Date.parse(session.startsAt) < Date.parse(context.config.sessionStartsAt) || Date.parse(session.endsAt) > Date.parse(context.config.sessionEndsAt))) {
+            throw new TRPCError({ code: 'BAD_REQUEST', message: 'Sessions must remain inside the configured Live cohort window.' });
+          }
+        }
+        const actorAdminId = ctx.admin?.id ?? ctx.user!.id;
+        const recurrenceKey = `recurrence:${Date.now()}:${crypto.randomUUID()}`;
+        for (const session of input.sessions) {
+          const row = await db.createLivePackageSession({
+            ...session,
+            packageId: context.pkg.id,
+            cohortKey: context.config.cohortKey,
+            recurrenceKey,
+            adminId: actorAdminId,
+          });
+          await db.recordLivePackageSessionAudit({
+            sessionId: row.id,
+            packageId: context.pkg.id,
+            cohortKey: context.config.cohortKey,
+            actorAdminId,
+            action: 'create',
+            after: { sessionType: row.sessionType, startsAt: row.startsAt, endsAt: row.endsAt, status: row.status, recurrenceKey },
+          });
+          created.push({ ...row, zoomJoinUrl: '[protected]' });
+        }
+        if (ctx.admin) await db.logAdminAction(ctx.admin.id, ctx.admin.id, 'create_live_package_session_recurrence', {
+          recurrenceKey,
+          count: created.length,
+        });
+        return { count: created.length, sessions: created };
+      }),
+
     updateSession: liveSessionManagerProcedure
       .input(z.object({
         id: z.number().int().positive(),
@@ -6997,7 +7050,16 @@ export const appRouter = router({
       }),
 
     updateRecording: liveRecordingPublishProcedure
-      .input(z.object({ id: z.number().int().positive(), isPublished: z.boolean(), sortOrder: z.number().int().min(0).optional() }))
+      .input(z.object({
+        id: z.number().int().positive(),
+        isPublished: z.boolean().optional(),
+        sortOrder: z.number().int().min(0).optional(),
+        titleEn: z.string().trim().min(1).max(200).optional(),
+        titleAr: z.string().trim().min(1).max(200).optional(),
+        descriptionEn: z.string().trim().max(2000).nullable().optional(),
+        descriptionAr: z.string().trim().max(2000).nullable().optional(),
+        sessionId: z.number().int().positive().nullable().optional(),
+      }))
       .mutation(async ({ ctx, input }) => {
         const recording = await db.updateLivePackageRecording({ ...input, adminId: ctx.admin?.id ?? ctx.user!.id });
         if (!recording) throw new TRPCError({ code: 'NOT_FOUND', message: 'Recording not found.' });

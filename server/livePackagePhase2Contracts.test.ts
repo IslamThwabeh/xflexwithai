@@ -1,9 +1,9 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
 
 const migration092 = readFileSync(new URL('../database/migrations/092_live_package_foundation.sql', import.meta.url), 'utf8');
-const migration097 = readFileSync(new URL('../database/migrations/097_live_package_phase_2.sql', import.meta.url), 'utf8');
+const migration097 = readFileSync(new URL('../database/migrations/099_live_package_phase_2.sql', import.meta.url), 'utf8');
 const schema = readFileSync(new URL('../database/schema-sqlite.ts', import.meta.url), 'utf8');
 const router = readFileSync(new URL('../backend/routers.ts', import.meta.url), 'utf8');
 const database = readFileSync(new URL('../backend/db.ts', import.meta.url), 'utf8');
@@ -14,6 +14,16 @@ const workspace = readFileSync(new URL('../frontend/src/pages/LivePackageWorkspa
 const roles = readFileSync(new URL('../shared/const.ts', import.meta.url), 'utf8');
 
 describe('Live Package Phase 2 contracts', () => {
+  it('keeps Live Phase 2 migration filenames conflict-free after the release', () => {
+    const migrationNames = readdirSync(new URL('../database/migrations/', import.meta.url))
+      .filter((name) => /^\d+_.*\.sql$/.test(name));
+    expect(migrationNames).toContain('099_live_package_phase_2.sql');
+    expect(migrationNames).toContain('100_live_package_multipart_upload_tracking.sql');
+    expect(migrationNames).toContain('101_live_package_phase_2_hardening.sql');
+    expect(migrationNames).not.toContain('097_live_package_phase_2.sql');
+    expect(migrationNames).not.toContain('098_live_package_multipart_upload_tracking.sql');
+  });
+
   it('adds Phase 2 schema without mutating existing Live commercial state', () => {
     expect(migration097).toContain('ALTER TABLE live_package_sessions ADD COLUMN session_type');
     expect(migration097).toContain('CREATE TABLE IF NOT EXISTS live_package_session_audit');
@@ -67,6 +77,9 @@ describe('Live Package Phase 2 contracts', () => {
     expect(database).toContain('recordLivePackageSessionAudit');
     expect(database).toContain('Started Live sessions can no longer be rescheduled');
     expect(adminPage).toContain('trading_analysis');
+    expect(router).toContain('createSessions');
+    expect(router).toContain("action: 'create'");
+    expect(adminPage).toContain('Save recurrence preview');
     expect(workspace).toContain('Trading analysis');
   });
 
@@ -79,17 +92,30 @@ describe('Live Package Phase 2 contracts', () => {
     expect(worker).toContain('drainLiveSessionEmailOutbox');
     expect(adminPage).toContain('previewNotification');
     expect(adminPage).toContain('cancelNotification');
+    expect(adminPage).toContain('notificationTiming');
+    expect(adminPage).toContain('Preview count and message');
+    expect(adminPage).toContain('materializedCount');
   });
 
   it('keeps recording storage private, draft-first, upload-tracked, and entitlement-gated for late buyers', () => {
     expect(worker).toContain('/api/live-package-recordings/upload');
+    expect(worker).toContain('/api/live-package-recordings/multipart');
+    expect(worker).toContain('action === "status"');
     expect(worker).toContain('createLivePackageRecordingUpload');
+    expect(worker).toContain('markLivePackageRecordingUploadPart');
     expect(worker).toContain('completeLivePackageRecordingUpload');
+    expect(worker).toContain('listExpiredLivePackageRecordingUploads');
+    expect(worker).toContain('resumeMultipartUpload');
     expect(worker).toContain('VIDEOS_BUCKET.put(objectKey, request.body');
+    expect(database).toContain('r2UploadId');
+    expect(database).toContain('completedPartsJson');
+    expect(database).toContain('replacedByRecordingId');
     expect(database).toContain('eq(livePackageRecordings.isPublished, true)');
     expect(worker).toContain('getLivePackageRecordingForUser');
     expect(worker).toContain('Content-Disposition", buildContentDisposition("inline"');
     expect(adminPage).toContain('Upload draft');
     expect(adminPage).toContain('Publish');
+    expect(adminPage).toContain('completed parts can resume');
+    expect(adminPage).toContain('updateRecording.mutate({ id: item.id, titleEn');
   });
 });
