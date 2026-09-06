@@ -1849,6 +1849,10 @@ Common topics you can help with:
 - Broker onboarding steps (select broker → open & verify account → deposit the minimum amount required by the selected broker)
 - Trading recommendations (available after subscription activation)
 - LexAI access (Comprehensive only; timed-service activation follows the readiness/protection rules above)
+- Live Package questions: explain the fixed-cohort format and account-based pricing, then direct the student to the localized Live Package details page for current registration status or /live-package for owned access. Never guess a schedule, join link, or entitlement.
+- Course Documents at /documents and the public Free Starter Library at the localized /free-content page
+- Payment-proof upload or replacement from Order Details while the order awaits confirmation
+- Editing or deleting the student's own support-chat messages
 - Loyalty points and referral program
 - Technical issues (video not loading, login problems)
 
@@ -1880,6 +1884,7 @@ const SUPPORT_AI_INTENTS = [
   "quiz",
   "recommendations",
   "lexai",
+  "live_package",
   "activation_key",
   "subscription_renewal",
   "notifications",
