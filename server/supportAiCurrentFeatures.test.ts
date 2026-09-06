@@ -25,6 +25,16 @@ describe("support AI current academy knowledge", () => {
     expect(SUPPORT_AI_ACADEMY_KNOWLEDGE).toContain("deleted content cannot be restored");
   });
 
+  it("handles VT Markets account migration under Rawan with verified identifiers", () => {
+    expect(SUPPORT_AI_ACADEMY_KNOWLEDGE).toContain("agency number (رقم الوكالة / agency number) is 7447512");
+    expect(SUPPORT_AI_ACADEMY_KNOWLEDGE).toContain("referral code (رقم الإحالة / referral code) is dOwr0sLk");
+    expect(SUPPORT_AI_ACADEMY_KNOWLEDGE).toContain("existing VT Markets account");
+    expect(SUPPORT_AI_ACADEMY_KNOWLEDGE).toContain("do not tell the student to look for a referral-code field or open another account");
+    expect(routerSource).toContain("deterministic_vt_markets_account_migration");
+    expect(routerSource).toContain("getVtMarketsMigrationAutoReply(");
+    expect(routerSource).toContain("allMessages.map(m => ({ senderType: m.senderType, content: m.content }))");
+  });
+
   it("does not expose internal Live operations or unsupported profit claims", () => {
     expect(SUPPORT_AI_ACADEMY_KNOWLEDGE).not.toMatch(/targetSubscriberCount|cohortKey|purchaseApproved|adminVisible/);
     expect(SUPPORT_AI_ACADEMY_KNOWLEDGE).not.toMatch(/1,000.{0,12}2,000 points|profit statement/i);

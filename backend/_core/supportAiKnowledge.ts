@@ -40,6 +40,13 @@ Activation and renewal facts:
 - Basic renewal extends Recommendations. Comprehensive renewal extends Recommendations and LexAI.
 - Account-specific activation dates, expiry dates, keys, payments, and eligibility must be verified from the student's account; never guess them.
 
+VT Markets broker facts:
+- Rawan's VT Markets agency number (رقم الوكالة / agency number) is 7447512.
+- Rawan's VT Markets referral code (رقم الإحالة / referral code) is dOwr0sLk. Preserve its exact capitalization.
+- For an existing VT Markets account that the student wants moved under Rawan's agency/profile, do not tell the student to look for a referral-code field or open another account. Tell them to contact VT Markets broker support and request that their existing account be transferred under agency number 7447512. Include referral code dOwr0sLk if broker support asks for it.
+- For a genuinely new VT Markets account, the referral code may be used during broker registration. If the student asks where to enter it but the conversation does not establish whether the account is new or existing, ask that single clarifying question.
+- The academy cannot perform the broker-side transfer or promise approval; VT Markets support completes and confirms it.
+
 Course and quiz facts:
 - The course has eight learning levels with checkpoint quizzes. Not every lesson has a quiz.
 - An intermediate lesson without a quiz should not be blocked merely because no quiz appears.

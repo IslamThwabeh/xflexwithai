@@ -1843,7 +1843,7 @@ Common topics you can help with:
 - Recommendations not visible: ask them to check that their package/subscription is active, then open the Recommendations page. If they ask for a renewal key, missing key, expired subscription, or account-specific activation, say support must check their account.
 - Notification issues: suggest checking spam/junk, notification preferences in Profile, browser/app notification permission, and opening the Recommendations page directly. If they use iCloud email, mention delivery can be delayed and ask them to confirm whether in-platform notifications appear.
 - Arabic phrases such as "حجز الأرباح" or "تثبيت الأرباح" are ambiguous. Ask whether the student means withdrawing broker funds, closing/protecting profit on a trade, or an academy feature. Do not assume there is a profit-booking option in the academy dashboard.
-- Broker/deposit issues: suggest checking account verification, card/account name match, available balance, broker payment restrictions, and contacting broker support. If they need to switch broker, reverse an onboarding step, or resolve a stuck broker account, say support must review it.
+- Broker/deposit issues: suggest checking account verification, card/account name match, available balance, broker payment restrictions, and contacting broker support. For VT Markets, distinguish a new registration from transferring an existing account under Rawan; follow the exact VT Markets facts above. If they need to switch broker, reverse an academy onboarding step, or resolve a stuck broker account, say academy support must review it.
 - Trading/how much to deposit/lot size/leverage: do not give financial advice. Redirect to course risk-management material and say a coach can review educational questions if needed.
 - Attachments, screenshots, or voice notes: explain that you cannot inspect the attachment directly in the automatic reply. Ask for one short text description of what is shown, and tell them the support team can review the evidence.
 - Broker onboarding steps (select broker → open & verify account → deposit the minimum amount required by the selected broker)
@@ -2060,6 +2060,37 @@ function getRepeatedNotificationFailureAutoReply(
     model: null,
     validationOutcome: "valid",
     validationIssue: "deterministic_repeated_notification_failure",
+    latencyMs: 0,
+  };
+}
+
+function getVtMarketsMigrationAutoReply(
+  conversationMessages: Array<{ senderType: string; content: string }>,
+  latestContent: string,
+  isArabicPreferred: boolean,
+): SupportAIReply | null {
+  const latest = latestContent.trim();
+  if (!latest) return null;
+
+  const context = conversationMessages.slice(0, 30).map((message) => message.content).join("\n");
+  const hasVtContext = /(?:\bvt\s*markets?\b|في\s*تي\s*ماركت|7447512|dOwr0sLk)/i.test(context);
+  const hasMigrationContext = /(?:\b(?:transfer|move|migrate|existing account|agency)\b|انقل|نقل|تحويل|وكالة|تحت\s+(?:وكالة|حساب|بروفايل)|حساب(?:ي|ك)?\s+(?:الحالي|الموجود))/i.test(context);
+  const asksWhereOrWhatToDo = /(?:\b(?:where|how|what (?:do|should)|referral|code)\b|وين|اين|أين|كيف|شو\s*اعمل|الكود|كود|رقم\s*(?:الاحالة|الإحالة|الوكالة))/i.test(latest);
+  if (!hasVtContext || !hasMigrationContext || !asksWhereOrWhatToDo) return null;
+
+  return {
+    intent: "broker_onboarding",
+    answer: isArabicPreferred
+      ? "بما أن حسابك موجود مسبقاً لدى VT Markets وتريد نقله تحت وكالة الكوتش روان، لا تضع الكود في خانة تسجيل ولا تفتح حساباً جديداً. تواصل مع الدعم الفني لـ VT Markets واطلب نقل حسابك الحالي تحت رقم الوكالة 7447512. وإذا طلبوا كود الإحالة، أعطهم dOwr0sLk. عملية النقل وتأكيدها تتم من طرف دعم VT Markets."
+      : "Because you already have a VT Markets account and want it moved under Coach Rawan, do not enter the code in a new-registration field or open another account. Contact VT Markets support and ask them to transfer your existing account under agency number 7447512. If they request the referral code, provide dOwr0sLk. VT Markets support must complete and confirm the transfer.",
+    confidence: 1,
+    needsHuman: false,
+    escalationReason: "none",
+    decisionSource: "local_rule",
+    providerRequestId: null,
+    model: null,
+    validationOutcome: "valid",
+    validationIssue: "deterministic_vt_markets_account_migration",
     latencyMs: 0,
   };
 }
@@ -5621,7 +5652,11 @@ export const appRouter = router({
           const allMessages = attachmentDecision ? [] : await db.getSupportMessages(conv.id);
           const deterministicDecision = attachmentDecision
             ? null
-            : getRepeatedNotificationFailureAutoReply(
+            : getVtMarketsMigrationAutoReply(
+              allMessages.map(m => ({ senderType: m.senderType, content: m.content })),
+              input.content,
+              isArabicPreferred,
+            ) ?? getRepeatedNotificationFailureAutoReply(
               allMessages.map(m => ({ senderType: m.senderType, content: m.content })),
               input.content,
               isArabicPreferred,
