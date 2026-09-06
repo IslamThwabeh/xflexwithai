@@ -1273,18 +1273,35 @@ export default function AdminSupport() {
                                   return isNaN(d.getTime()) ? '' : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                                 })()}
                               </p>
-                              {canCopy && (
-                                <button
-                                  type="button"
-                                  className={`ms-auto inline-flex h-7 w-7 items-center justify-center rounded-md lg:hidden ${
-                                    isClient ? 'text-gray-500 hover:bg-gray-200' : 'text-emerald-100 hover:bg-white/15'
-                                  }`}
-                                  onClick={() => void copyMessage(msg.content)}
-                                  aria-label={isRtl ? 'نسخ الرسالة' : 'Copy message'}
-                                  title={isRtl ? 'نسخ الرسالة' : 'Copy message'}
-                                >
-                                  <Copy className="h-3.5 w-3.5" />
-                                </button>
+                              {(canCopy || canDelete) && (
+                                <div className="ms-auto flex items-center gap-1 lg:hidden">
+                                  {canCopy && (
+                                    <button
+                                      type="button"
+                                      className={`inline-flex h-8 w-8 items-center justify-center rounded-md ${
+                                        isClient ? 'text-gray-500 hover:bg-gray-200' : 'text-emerald-100 hover:bg-white/15'
+                                      }`}
+                                      onClick={() => void copyMessage(msg.content)}
+                                      aria-label={isRtl ? 'نسخ الرسالة' : 'Copy message'}
+                                      title={isRtl ? 'نسخ الرسالة' : 'Copy message'}
+                                    >
+                                      <Copy className="h-4 w-4" />
+                                    </button>
+                                  )}
+                                  {canDelete && (
+                                    <button
+                                      type="button"
+                                      className={`inline-flex h-8 w-8 items-center justify-center rounded-md ${
+                                        isClient ? 'text-red-600 hover:bg-red-100' : 'text-red-100 hover:bg-white/15 hover:text-white'
+                                      }`}
+                                      onClick={() => openDeleteDialog(msg.id)}
+                                      aria-label={isRtl ? 'حذف الرسالة' : 'Delete message'}
+                                      title={isRtl ? 'حذف الرسالة' : 'Delete message'}
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </button>
+                                  )}
+                                </div>
                               )}
                             </div>
                               </>

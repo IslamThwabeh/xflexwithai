@@ -17,6 +17,11 @@ vi.mock("../backend/db", async () => {
 import { appRouter } from "../backend/routers";
 import * as db from "../backend/db";
 
+const adminSupportSource = readFileSync(fileURLToPath(new URL(
+  "../frontend/src/pages/AdminSupport.tsx",
+  import.meta.url,
+)), "utf8");
+
 const migrationSql = readFileSync(fileURLToPath(new URL(
   "../database/migrations/104_support_message_moderation.sql",
   import.meta.url,
@@ -81,5 +86,10 @@ describe("support message moderation", () => {
       database.close();
     }
   });
-});
 
+  it("exposes a direct mobile delete control without requiring long press", () => {
+    expect(adminSupportSource).toContain("aria-label={isRtl ? 'حذف الرسالة' : 'Delete message'}");
+    expect(adminSupportSource).toContain("onClick={() => openDeleteDialog(msg.id)}");
+    expect(adminSupportSource).toContain('className="ms-auto flex items-center gap-1 lg:hidden"');
+  });
+});
