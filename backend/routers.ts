@@ -51,7 +51,7 @@ import {
   drainGenericEmailOutbox,
   SUPPORT_REPLY_IMMEDIATE_DRAIN_LIMIT,
 } from "./services/email-outbox.service";
-import { storagePutR2, storageArchiveR2 } from "./storage-r2";
+import { storagePutR2, storageArchiveR2, storageDeleteR2 } from "./storage-r2";
 import { analyzeLexai } from "./_core/lexai";
 import { invokeOpenAiChatCompletion } from "./_core/openai";
 import { SUPPORT_AI_ACADEMY_KNOWLEDGE } from "./_core/supportAiKnowledge";
@@ -1042,6 +1042,7 @@ const adminOrRoleProcedure = (roles: string[]) => protectedProcedure.use(async (
   }
   return next({ ctx: { ...ctx, admin: null } });
 }).use(staffActivityTrackingMiddleware);
+const supportModeratorProcedure = adminOrRoleProcedure(["support"]);
 
 const liveSessionManagerProcedure = adminOrRoleProcedure(['live_sessions_manager']);
 const liveNotificationManagerProcedure = adminOrRoleProcedure(['live_notifications_manager']);
@@ -6114,14 +6115,51 @@ export const appRouter = router({
         return { success: true, message: updated };
       }),
 
-    // Delete a message (client deletes own, staff deletes staff/bot messages)
+    messageDeletionAudits: supportModeratorProcedure
+      .input(z.object({ conversationId: z.number().int().positive() }))
+      .query(async ({ input }) => {
+        const conversation = await db.getSupportConversation(input.conversationId);
+        if (!conversation) throw new TRPCError({ code: "NOT_FOUND", message: "Conversation not found" });
+        return db.getSupportMessageDeletionAudits(input.conversationId);
+      }),
+
+    // Clients can delete their own messages. Full admins and support-role users
+    // can moderate any message, with a reason required when it is not their own.
     deleteMessage: protectedProcedure
-      .input(z.object({ messageId: z.number() }))
+      .input(z.object({
+        messageId: z.number().int().positive(),
+        reasonCategory: z.enum(["sensitive_information", "abusive_content", "accidental_message", "duplicate_spam", "other"]).optional(),
+        reasonDetails: z.string().trim().max(500).optional(),
+      }))
       .mutation(async ({ ctx, input }) => {
-        const isAdmin = !!(ctx.user.email && await db.getAdminByEmail(ctx.user.email));
-        const isStaff = isAdmin || !!ctx.user.isStaff;
-        const deleted = await db.deleteSupportMessage(input.messageId, ctx.user.id, isStaff);
+        const admin = ctx.user.email ? await db.getAdminByEmail(ctx.user.email) : null;
+        const hasSupportRole = !admin && await db.hasAnyRole(ctx.user.id, ["support"]);
+        const canModerate = Boolean(admin || hasSupportRole);
+        const deleted = await db.deleteSupportMessage({
+          messageId: input.messageId,
+          actorUserId: ctx.user.id,
+          actorAdminId: admin?.id ?? null,
+          actorType: admin ? "admin" : hasSupportRole ? "support" : "client",
+          canModerate,
+          reasonCategory: input.reasonCategory,
+          reasonDetails: input.reasonDetails,
+        });
         if (!deleted) throw new Error("Cannot delete this message");
+
+        const attachmentUrl = deleted.message.attachmentUrl;
+        const bucket = getWorkerEnv()?.VIDEOS_BUCKET;
+        if (attachmentUrl && bucket) {
+          const baseUrl = ENV.r2BucketUrl.replace(/\/+$/, "") + "/";
+          if (attachmentUrl.startsWith(baseUrl)) {
+            const key = decodeURIComponent(attachmentUrl.slice(baseUrl.length));
+            if (key.startsWith("support/")) {
+              await storageDeleteR2(bucket, key).catch((error) => logger.error("[SUPPORT] Failed to remove deleted attachment", {
+                messageId: input.messageId,
+                error: error instanceof Error ? error.message : String(error),
+              }));
+            }
+          }
+        }
         return { success: true };
       }),
   }),

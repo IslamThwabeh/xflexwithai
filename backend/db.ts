@@ -35,7 +35,7 @@ import {
   // RBAC & Support Chat imports
   userRoles, UserRole, InsertUserRole,
   supportConversations, SupportConversation, InsertSupportConversation,
-  supportMessages, SupportMessage, InsertSupportMessage,
+  supportMessages, SupportMessage, InsertSupportMessage, supportMessageDeletionAudit,
   supportAiDecisions, InsertSupportAiDecision,
   supportAssignmentHistory,
   bugReports, BugReport,
@@ -13691,20 +13691,61 @@ export async function editSupportMessage(messageId: number, senderId: number, ne
   return updated;
 }
 
-/** Soft-delete a support message. Returns true on success. */
-export async function deleteSupportMessage(messageId: number, senderId: number, isStaff: boolean) {
+export type SupportMessageDeletionReason = "sensitive_information" | "abusive_content" | "accidental_message" | "duplicate_spam" | "other" | "self_deleted";
+
+/** Soft-delete a support message and atomically append a content-free audit record. */
+export async function deleteSupportMessage(input: {
+  messageId: number;
+  actorUserId: number;
+  actorAdminId?: number | null;
+  actorType: "client" | "support" | "admin";
+  canModerate: boolean;
+  reasonCategory?: SupportMessageDeletionReason;
+  reasonDetails?: string;
+}) {
   const db = await getDb();
-  if (!db) return false;
-  const [msg] = await db.select().from(supportMessages).where(eq(supportMessages.id, messageId)).limit(1);
-  if (!msg) return false;
-  // Staff can delete any non-client message; clients can only delete their own
-  if (!isStaff && msg.senderId !== senderId) return false;
-  if (isStaff && msg.senderType === 'client') return false;
-  if (msg.deletedAt) return false; // already deleted
-  await db.update(supportMessages)
-    .set({ deletedAt: new Date().toISOString(), content: '' })
-    .where(eq(supportMessages.id, messageId));
-  return true;
+  if (!db) return null;
+  const [msg] = await db.select().from(supportMessages).where(eq(supportMessages.id, input.messageId)).limit(1);
+  if (!msg || msg.deletedAt) return null;
+  const deletingOwnMessage = msg.senderId === input.actorUserId;
+  if (!deletingOwnMessage && !input.canModerate) return null;
+  if (input.canModerate && !deletingOwnMessage && !input.reasonCategory) return null;
+
+  const deletedAt = new Date().toISOString();
+  const reasonCategory = input.reasonCategory ?? "self_deleted";
+  await db.batch([
+    db.update(supportMessages).set({
+      deletedAt,
+      content: "",
+      attachmentUrl: null,
+      attachmentName: null,
+      attachmentSize: null,
+      attachmentType: null,
+      attachmentDuration: null,
+    }).where(and(eq(supportMessages.id, input.messageId), sql`${supportMessages.deletedAt} IS NULL`)),
+    db.insert(supportMessageDeletionAudit).values({
+      messageId: input.messageId,
+      conversationId: msg.conversationId,
+      originalSenderId: msg.senderId,
+      originalSenderType: msg.senderType,
+      deletedByUserId: input.actorUserId,
+      deletedByAdminId: input.actorAdminId ?? null,
+      actorType: input.actorType,
+      reasonCategory,
+      reasonDetails: input.reasonDetails?.trim().slice(0, 500) || null,
+      hadAttachment: Boolean(msg.attachmentUrl),
+      createdAt: deletedAt,
+    }),
+  ]);
+  return { message: msg, deletedAt };
+}
+
+export async function getSupportMessageDeletionAudits(conversationId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(supportMessageDeletionAudit)
+    .where(eq(supportMessageDeletionAudit.conversationId, conversationId))
+    .orderBy(desc(supportMessageDeletionAudit.createdAt));
 }
 
 export async function getAllSupportConversations(searchQuery?: string) {

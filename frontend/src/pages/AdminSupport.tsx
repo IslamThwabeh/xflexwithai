@@ -87,6 +87,9 @@ export default function AdminSupport() {
   const [activeMenuMsgId, setActiveMenuMsgId] = useState<number | null>(null);
   const [editingMsgId, setEditingMsgId] = useState<number | null>(null);
   const [editContent, setEditContent] = useState("");
+  const [deleteTargetId, setDeleteTargetId] = useState<number | null>(null);
+  const [deleteReasonCategory, setDeleteReasonCategory] = useState("");
+  const [deleteReasonDetails, setDeleteReasonDetails] = useState("");
   const [replyToMessageId, setReplyToMessageId] = useState<number | null>(null);
   const selectedConvIdRef = useRef<number | null>(selectedConvId);
   selectedConvIdRef.current = selectedConvId;
@@ -415,10 +418,30 @@ export default function AdminSupport() {
   const deleteMessageMutation = trpc.supportChat.deleteMessage.useMutation({
     onSuccess: () => {
       setActiveMenuMsgId(null);
+      setDeleteTargetId(null);
+      setDeleteReasonCategory("");
+      setDeleteReasonDetails("");
       refetchMessages();
+      void trpcUtils.supportChat.messageDeletionAudits.invalidate();
+      toast.success(isRtl ? 'تم حذف الرسالة وتسجيل السبب' : 'Message deleted and audited');
     },
     onError: (err) => toast.error(err.message),
   });
+
+  const deletionAuditsQuery = trpc.supportChat.messageDeletionAudits.useQuery(
+    { conversationId: selectedConvId ?? 0 },
+    { enabled: Boolean(selectedConvId) },
+  );
+  const deletionAuditByMessageId = useMemo(
+    () => new Map((deletionAuditsQuery.data ?? []).map((audit) => [audit.messageId, audit])),
+    [deletionAuditsQuery.data],
+  );
+  const openDeleteDialog = (messageId: number) => {
+    setDeleteTargetId(messageId);
+    setDeleteReasonCategory("");
+    setDeleteReasonDetails("");
+    setActiveMenuMsgId(null);
+  };
 
   const uploadMutation = trpc.supportChat.uploadAttachment.useMutation();
   const selectedConversationUserId = selectedData?.conversation?.userId ?? selectedConversationSummary?.userId ?? null;
@@ -1044,7 +1067,8 @@ export default function AdminSupport() {
                       const isEdited = !!(msg as any).editedAt;
                       const replyTargetMessage = (msg as any).replyToMessageId ? messageMap.get((msg as any).replyToMessageId) : undefined;
                       const canEdit = !isClient && !isBot && !isDeleted;
-                      const canDelete = !isClient && !isDeleted;
+                      const canDelete = !isDeleted;
+                      const deletionAudit = deletionAuditByMessageId.get(msg.id);
                       const canCopy = !isDeleted && !!msg.content;
                       const canReply = !isDeleted;
                       // Date separator logic
@@ -1110,7 +1134,7 @@ export default function AdminSupport() {
                               {canDelete && (
                               <button
                                 className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-500"
-                                onClick={() => { if (confirm(isRtl ? 'هل تريد حذف هذه الرسالة؟' : 'Delete this message?')) deleteMessageMutation.mutate({ messageId: msg.id }); }}
+                                onClick={() => openDeleteDialog(msg.id)}
                                 title={isRtl ? 'حذف' : 'Delete'}
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
@@ -1130,7 +1154,20 @@ export default function AdminSupport() {
                             }`}
                           >
                             {isDeleted ? (
-                              <p className="text-sm">{isRtl ? 'تم حذف هذه الرسالة' : 'This message was deleted'}</p>
+                              <div>
+                                <p className="text-sm">{isRtl ? 'تم حذف هذه الرسالة' : 'This message was deleted'}</p>
+                                {deletionAudit && (
+                                  <p className="mt-1 text-[11px] not-italic text-gray-400">
+                                    {deletionAudit.actorType === 'admin'
+                                      ? `${isRtl ? 'المشرف' : 'Admin'} #${deletionAudit.deletedByAdminId ?? deletionAudit.deletedByUserId}`
+                                      : deletionAudit.actorType === 'support'
+                                        ? `${isRtl ? 'الدعم' : 'Support'} #${deletionAudit.deletedByUserId}`
+                                        : (isRtl ? 'حذفها العميل' : 'Deleted by client')}
+                                    {' · '}{deletionAudit.reasonCategory.replaceAll('_', ' ')}
+                                    {' · '}{new Date(deletionAudit.createdAt).toLocaleString(isRtl ? 'ar-JO' : 'en-US')}
+                                  </p>
+                                )}
+                              </div>
                             ) : (
                               <>
                             {replyTargetMessage && (
@@ -1287,7 +1324,7 @@ export default function AdminSupport() {
                                 {canDelete && (
                                   <button
                                     className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
-                                    onClick={() => { if (confirm(isRtl ? 'هل تريد حذف هذه الرسالة؟' : 'Delete this message?')) deleteMessageMutation.mutate({ messageId: msg.id }); setActiveMenuMsgId(null); }}
+                                    onClick={() => openDeleteDialog(msg.id)}
                                   >
                                     <Trash2 className="h-3.5 w-3.5" /> {isRtl ? 'حذف' : 'Delete'}
                                   </button>
@@ -1436,6 +1473,55 @@ export default function AdminSupport() {
           if (selectedConvId) handleConversationSelect(selectedConvId);
         }}
       />
+
+      <Dialog open={deleteTargetId !== null} onOpenChange={(open) => { if (!open && !deleteMessageMutation.isPending) setDeleteTargetId(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{isRtl ? 'حذف رسالة' : 'Delete message'}</DialogTitle>
+            <DialogDescription>
+              {isRtl
+                ? 'سيتم حذف المحتوى والمرفق نهائياً، وسيبقى سجل يوضح من حذف الرسالة والسبب.'
+                : 'The content and attachment will be permanently removed. An audit record will retain who deleted it and why.'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">{isRtl ? 'سبب الحذف' : 'Deletion reason'}</label>
+              <Select value={deleteReasonCategory} onValueChange={setDeleteReasonCategory}>
+                <SelectTrigger><SelectValue placeholder={isRtl ? 'اختر السبب' : 'Select a reason'} /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="sensitive_information">{isRtl ? 'معلومات شخصية أو حساسة' : 'Personal or sensitive information'}</SelectItem>
+                  <SelectItem value="abusive_content">{isRtl ? 'محتوى مسيء' : 'Abusive content'}</SelectItem>
+                  <SelectItem value="accidental_message">{isRtl ? 'رسالة أرسلت بالخطأ' : 'Accidental message'}</SelectItem>
+                  <SelectItem value="duplicate_spam">{isRtl ? 'مكرر أو مزعج' : 'Duplicate or spam'}</SelectItem>
+                  <SelectItem value="other">{isRtl ? 'سبب آخر' : 'Other'}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">{isRtl ? 'ملاحظات (اختياري)' : 'Notes (optional)'}</label>
+              <Textarea value={deleteReasonDetails} onChange={(event) => setDeleteReasonDetails(event.target.value)} maxLength={500} rows={3} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteTargetId(null)} disabled={deleteMessageMutation.isPending}>
+              {isRtl ? 'إلغاء' : 'Cancel'}
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={!deleteReasonCategory || deleteMessageMutation.isPending}
+              onClick={() => deleteTargetId && deleteMessageMutation.mutate({
+                messageId: deleteTargetId,
+                reasonCategory: deleteReasonCategory as 'sensitive_information' | 'abusive_content' | 'accidental_message' | 'duplicate_spam' | 'other',
+                reasonDetails: deleteReasonDetails.trim() || undefined,
+              })}
+            >
+              {deleteMessageMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+              {isRtl ? 'حذف نهائي' : 'Delete permanently'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={newChatOpen}

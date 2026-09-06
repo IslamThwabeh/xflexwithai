@@ -851,6 +851,26 @@ export const supportMessages = sqliteTable("supportMessages", {
 export type SupportMessage = typeof supportMessages.$inferSelect;
 export type InsertSupportMessage = typeof supportMessages.$inferInsert;
 
+export const supportMessageDeletionAudit = sqliteTable("support_message_deletion_audit", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  messageId: integer("message_id").notNull().unique(),
+  conversationId: integer("conversation_id").notNull(),
+  originalSenderId: integer("original_sender_id").notNull(),
+  originalSenderType: text("original_sender_type").notNull(),
+  deletedByUserId: integer("deleted_by_user_id").notNull(),
+  deletedByAdminId: integer("deleted_by_admin_id"),
+  actorType: text("actor_type").notNull(),
+  reasonCategory: text("reason_category").notNull(),
+  reasonDetails: text("reason_details"),
+  hadAttachment: integer("had_attachment", { mode: "boolean" }).default(false).notNull(),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
+}, (table) => ({
+  conversationCreatedIdx: index("idx_support_deletion_audit_conversation_created")
+    .on(table.conversationId, table.createdAt),
+}));
+
+export type SupportMessageDeletionAudit = typeof supportMessageDeletionAudit.$inferSelect;
+
 /**
  * Structured support-AI decisions kept separately from message content so
  * escalation behavior can be audited without copying private conversations.
