@@ -32,6 +32,7 @@ function formatSafeDate(
 export default function MyDashboard() {
   const { user, isAuthenticated, loading } = useAuth();
   const { t, isRTL, language } = useLanguage();
+  const [loadDashboardExtras, setLoadDashboardExtras] = useState(false);
 
   const { data: enrollments, isLoading: enrollmentsLoading } = trpc.enrollments.myEnrollments.useQuery(
     undefined,
@@ -58,12 +59,12 @@ export default function MyDashboard() {
 
   const { data: highlightedTestimonials } = trpc.testimonials.listWithContext.useQuery(
     { limit: 2 },
-    { enabled: true }
+    { enabled: loadDashboardExtras, staleTime: 10 * 60_000 }
   );
 
   const { data: testimonialProofs } = trpc.testimonials.listProofs.useQuery(
     { surface: "dashboard", limit: 2 },
-    { enabled: true }
+    { enabled: loadDashboardExtras, staleTime: 10 * 60_000 }
   );
 
   const { data: onboardingStatus } = trpc.onboarding.getStatus.useQuery(undefined, {
@@ -78,8 +79,14 @@ export default function MyDashboard() {
     refetchOnWindowFocus: false,
   });
 
-  const { data: articles } = trpc.articles.list.useQuery();
-  const { data: freeLibrary } = trpc.freeLibrary.list.useQuery();
+  const { data: articles } = trpc.articles.list.useQuery(undefined, {
+    enabled: loadDashboardExtras,
+    staleTime: 10 * 60_000,
+  });
+  const { data: freeLibrary } = trpc.freeLibrary.list.useQuery(undefined, {
+    enabled: loadDashboardExtras,
+    staleTime: 10 * 60_000,
+  });
   const dashboardArticles = articles
     ?.filter((article) => isArticleAvailableInLanguage(article, isRTL ? "ar" : "en"))
     .slice(0, 2) ?? [];
@@ -97,6 +104,26 @@ export default function MyDashboard() {
     if (localStorage.getItem(congratsKey)) return;
     setShowCongrats(true);
   }, [congratsKey]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const windowWithIdleCallback = window as typeof window & {
+      requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number;
+      cancelIdleCallback?: (handle: number) => void;
+    };
+
+    if (windowWithIdleCallback.requestIdleCallback) {
+      const idleHandle = windowWithIdleCallback.requestIdleCallback(
+        () => setLoadDashboardExtras(true),
+        { timeout: 1500 },
+      );
+      return () => windowWithIdleCallback.cancelIdleCallback?.(idleHandle);
+    }
+
+    const timer = window.setTimeout(() => setLoadDashboardExtras(true), 800);
+    return () => window.clearTimeout(timer);
+  }, [isAuthenticated]);
   const dismissCongrats = () => {
     if (congratsKey) localStorage.setItem(congratsKey, '1');
     setShowCongrats(false);

@@ -19,7 +19,7 @@ import {
 } from '@/components/public/cinematicPublicNav';
 
 const EASE = 'cubic-bezier(0.22, 1, 0.36, 1)';
-const BRAND_LOGO_SRC = '/xflex-logo-2026-transparent.png';
+const BRAND_LOGO_SRC = '/xflex-logo.png';
 
 type LayoutAction = {
   href: string;

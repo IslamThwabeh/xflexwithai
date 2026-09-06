@@ -64,7 +64,7 @@ export default function ArticleDetail() {
       '@type': 'Article',
       headline: seoTitle,
       description: seoDescription,
-      image: article.socialImageUrl || article.thumbnailUrl || `${SITE_ORIGIN}/xflex-logo-2026-transparent.png`,
+      image: article.socialImageUrl || article.thumbnailUrl || `${SITE_ORIGIN}/xflex-logo.png`,
       datePublished: article.publishedAt,
       dateModified: article.updatedAt || article.publishedAt,
       inLanguage: isRtl ? 'ar' : 'en',

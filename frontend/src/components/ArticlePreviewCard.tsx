@@ -69,6 +69,7 @@ export default function ArticlePreviewCard({ article, isRtl, variant = "grid", c
             <img
               src={article.thumbnailUrl}
               alt={title}
+              loading="lazy"
               className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
             />
           ) : (

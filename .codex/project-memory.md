@@ -57,6 +57,7 @@ Last updated: 2026-09-01
 
 ## Pending handoff after 2026-08-28
 
+- Weekend D1 optimization is planned for Friday–Saturday, 2026-09-04 through 2026-09-05. When the user types `go`, read `docs/d1-weekend-optimization-plan-2026-09-04.md`, re-baseline production read-only, preserve any unrelated Live Package work, and execute only one gated phase at a time. The four families are email-outbox health aggregation, notification email-status updates, recommendation delivery statistics, and staff badge aggregation; a phase may correctly end with no change when measured benefit does not justify write or consistency cost.
 - SEO content work is now limited to reviewed, evidence-backed public copy. Account verification, Bing IndexNow, GA4 key-event configuration, and Search Console/Bing follow-up remain operational tasks; do not publish unsupported financial claims.
 - The proposed temporary offer remains discovery-only. No code, migration, production configuration, or activation has been made; resume only after the business decisions and protected-cycle design are complete.
 - The D1 optimization checkpoint passed its internal stop rule. A separate minute-cron CPU reliability task remains open and must preserve priority recommendation/support delivery.

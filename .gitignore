@@ -104,6 +104,8 @@ temp/
 # Generated browser and investigation artifacts
 .playwright-cli/
 output/
+.tmp-layout-storage.json
+artifacts-courses-1920.png
 
 # Wrangler local state
 .wrangler/

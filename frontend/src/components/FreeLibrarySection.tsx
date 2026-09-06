@@ -63,6 +63,7 @@ function FreeVideoPlayer({ selectedVideo, isRtl, compact }: { selectedVideo: Fre
           key={selectedVideo.slug}
           src={videoSrc}
           controls
+          preload={compact ? "none" : "metadata"}
           controlsList="nodownload noplaybackrate"
           disablePictureInPicture
           onContextMenu={(event) => event.preventDefault()}
