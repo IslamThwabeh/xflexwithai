@@ -44,6 +44,7 @@ const PRIVATE_PREFIXES = [
   "/upgrade",
   "/notifications",
   "/my-points",
+  "/live-package",
   "/calculators",
   "/community",
   "/surveys",

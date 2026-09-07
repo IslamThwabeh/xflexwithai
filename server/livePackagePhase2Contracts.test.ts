@@ -14,6 +14,7 @@ const emailOutbox = readFileSync(new URL('../backend/services/email-outbox.servi
 const adminPage = readFileSync(new URL('../frontend/src/pages/AdminLivePackage.tsx', import.meta.url), 'utf8');
 const workspace = readFileSync(new URL('../frontend/src/pages/LivePackageWorkspace.tsx', import.meta.url), 'utf8');
 const roles = readFileSync(new URL('../shared/const.ts', import.meta.url), 'utf8');
+const pagesMiddleware = readFileSync(new URL('../functions/_middleware.js', import.meta.url), 'utf8');
 
 describe('Live Package Phase 2 contracts', () => {
   it('keeps Live Phase 2 migration filenames conflict-free after the release', () => {
@@ -163,6 +164,7 @@ describe('Live Package Phase 2 contracts', () => {
     expect(adminPage).toContain("import { apiFetch } from '@/lib/apiBase'");
     expect(adminPage).not.toMatch(/fetch\(`?\/api\/live-package-recordings\/multipart/);
     expect(workspace).toContain('src={withApiBase(recording.streamPath)}');
+    expect(pagesMiddleware).toContain('"/live-package"');
     expect(adminPage).toContain("Titles are optional; the file name is used when left blank.");
     expect(worker).toContain('const defaultTitle = upload.originalFileName');
     expect(router).toContain("titleEn: z.string().trim().max(200).optional().default('')");
