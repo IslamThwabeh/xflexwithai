@@ -108,11 +108,13 @@ export default function AdminRoles() {
   const [newName, setNewName] = useState("");
   const [newEmail, setNewEmail] = useState("");
   const [newPhone, setNewPhone] = useState("");
+  const [newPublicSupportName, setNewPublicSupportName] = useState("");
   const [selectedRoles, setSelectedRoles] = useState<RoleKey[]>([]);
 
   // Assign role to existing staff — checkbox-based editor
   const [assignStaffId, setAssignStaffId] = useState("");
   const [editingRoles, setEditingRoles] = useState<RoleKey[]>([]);
+  const [editingPublicSupportName, setEditingPublicSupportName] = useState("");
 
   const { t, language } = useLanguage();
   const isRtl = language === 'ar';
@@ -156,6 +158,7 @@ export default function AdminRoles() {
       setShowAssignRole(false);
       setAssignStaffId("");
       setEditingRoles([]);
+      setEditingPublicSupportName("");
     },
     onError: (err) => toast.error(err.message),
   });
@@ -173,6 +176,7 @@ export default function AdminRoles() {
     setNewName("");
     setNewEmail("");
     setNewPhone("");
+    setNewPublicSupportName("");
     setSelectedRoles([]);
   }
 
@@ -195,6 +199,7 @@ export default function AdminRoles() {
       name: newName.trim(),
       email: newEmail.trim().toLowerCase(),
       phone: newPhone.trim() || undefined,
+      publicSupportName: newPublicSupportName.trim() || undefined,
       roles: selectedRoles,
     });
   }
@@ -202,7 +207,11 @@ export default function AdminRoles() {
   function handleSaveRoles() {
     const id = parseInt(assignStaffId, 10);
     if (!id) return;
-    setRolesMutation.mutate({ userId: id, roles: editingRoles });
+    setRolesMutation.mutate({
+      userId: id,
+      roles: editingRoles,
+      publicSupportName: editingPublicSupportName.trim() || null,
+    });
   }
 
   function toggleEditRole(role: RoleKey) {
@@ -216,6 +225,7 @@ export default function AdminRoles() {
     setAssignStaffId(staffId);
     const member = (staffMembers ?? []).find(s => String(s.id) === staffId);
     setEditingRoles(member ? (member.roles as RoleKey[]) : []);
+    setEditingPublicSupportName(member?.publicSupportName ?? "");
   }
 
   // Filtered staff members
@@ -225,6 +235,7 @@ export default function AdminRoles() {
     const q = search.toLowerCase();
     return (
       s.name?.toLowerCase().includes(q) ||
+      s.publicSupportName?.toLowerCase().includes(q) ||
       s.email?.toLowerCase().includes(q) ||
       s.phone?.includes(q)
     );
@@ -253,7 +264,7 @@ export default function AdminRoles() {
           </div>
           <div className="flex gap-2">
             {/* Edit Roles for Existing Staff */}
-            <Dialog open={showAssignRole} onOpenChange={(open) => { setShowAssignRole(open); if (!open) { setAssignStaffId(""); setEditingRoles([]); } }}>
+            <Dialog open={showAssignRole} onOpenChange={(open) => { setShowAssignRole(open); if (!open) { setAssignStaffId(""); setEditingRoles([]); setEditingPublicSupportName(""); } }}>
               <DialogTrigger asChild>
                 <Button variant="outline" size="sm">
                   <Plus className={`h-4 w-4 ${isRtl ? 'ml-1' : 'mr-1'}`} />
@@ -297,6 +308,24 @@ export default function AdminRoles() {
                   {/* Step 2: Checkbox role grid (visible after selecting staff) */}
                   {assignStaffId && (
                     <div className="space-y-3">
+                      <div>
+                        <label className="mb-1 block text-sm font-medium">
+                          {isRtl ? 'الاسم الظاهر للعملاء' : 'Name shown to clients'}
+                        </label>
+                        <input
+                          type="text"
+                          value={editingPublicSupportName}
+                          onChange={(event) => setEditingPublicSupportName(event.target.value)}
+                          maxLength={80}
+                          placeholder={isRtl ? 'عضو الدعم 1' : 'Support Member 1'}
+                          className="w-full rounded-md border px-3 py-2 text-sm"
+                        />
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {isRtl
+                            ? 'يظهر هذا الاسم فقط في محادثة العميل. يبقى اسم الموظف الحقيقي خاصاً بلوحة الإدارة.'
+                            : 'Shown only in client chat. The employee’s real name remains private in the admin area.'}
+                        </p>
+                      </div>
                       {/* Core Roles */}
                       <div>
                         <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">
@@ -471,6 +500,24 @@ export default function AdminRoles() {
                   </div>
                   <div>
                     <label className="text-sm font-medium mb-1 block">
+                      {isRtl ? 'الاسم الظاهر للعملاء' : 'Name shown to clients'} ({isRtl ? 'اختياري' : 'optional'})
+                    </label>
+                    <input
+                      type="text"
+                      value={newPublicSupportName}
+                      onChange={(event) => setNewPublicSupportName(event.target.value)}
+                      maxLength={80}
+                      placeholder={isRtl ? 'عضو الدعم 1' : 'Support Member 1'}
+                      className="w-full border rounded-md px-3 py-2 text-sm"
+                    />
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {isRtl
+                        ? 'يستخدم في محادثة الدعم فقط، ولا يكشف اسم الموظف الحقيقي.'
+                        : 'Used only in support chat and does not expose the employee’s real name.'}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium mb-1 block">
                       {isRtl ? 'الأدوار' : 'Roles'} <span className="text-red-500">*</span>
                     </label>
                     <div className="flex flex-wrap gap-2 mt-1">
@@ -639,6 +686,11 @@ export default function AdminRoles() {
                       <div className="flex items-start justify-between">
                         <div className="min-w-0 flex-1">
                           <p className="font-semibold text-sm truncate">{s.name || '—'}</p>
+                          {s.publicSupportName && (
+                            <p className="mt-0.5 truncate text-xs font-medium text-emerald-700">
+                              {isRtl ? 'يظهر للعملاء: ' : 'Client alias: '}{s.publicSupportName}
+                            </p>
+                          )}
                           <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
                             <Mail className="h-3 w-3 flex-shrink-0" />
                             <span className="truncate" dir="ltr">{s.email}</span>
@@ -703,6 +755,7 @@ export default function AdminRoles() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>{isRtl ? 'الاسم' : 'Name'}</TableHead>
+                        <TableHead>{isRtl ? 'الاسم الظاهر' : 'Client Alias'}</TableHead>
                         <TableHead>{isRtl ? 'البريد' : 'Email'}</TableHead>
                         <TableHead>{isRtl ? 'الهاتف' : 'Phone'}</TableHead>
                         <TableHead>{isRtl ? 'الأدوار' : 'Roles'}</TableHead>
@@ -715,6 +768,7 @@ export default function AdminRoles() {
                       {filteredStaff.map((s) => (
                         <TableRow key={s.id}>
                           <TableCell className="font-medium">{s.name || '—'}</TableCell>
+                          <TableCell className="text-sm text-emerald-700">{s.publicSupportName || '—'}</TableCell>
                           <TableCell dir="ltr" className="text-sm">{s.email}</TableCell>
                           <TableCell dir="ltr" className="text-sm">{s.phone || '—'}</TableCell>
                           <TableCell>

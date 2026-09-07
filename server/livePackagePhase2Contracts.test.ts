@@ -132,6 +132,8 @@ describe('Live Package Phase 2 contracts', () => {
     expect(adminPage).toContain('notificationTiming');
     expect(adminPage).toContain('Preview count and message');
     expect(adminPage).toContain('materializedCount');
+    expect(adminPage).toContain('const queueNotification = () =>');
+    expect(adminPage).not.toContain('scheduledFor: fromAmmanInput(notificationTiming.scheduledFor) })');
   });
 
   it('keeps recording storage private, draft-first, upload-tracked, and entitlement-gated for late buyers', () => {
@@ -158,6 +160,12 @@ describe('Live Package Phase 2 contracts', () => {
     expect(adminPage).toContain('Upload draft');
     expect(adminPage).toContain('Publish');
     expect(adminPage).toContain('completed parts can resume');
+    expect(adminPage).toContain("import { apiFetch } from '@/lib/apiBase'");
+    expect(adminPage).not.toMatch(/fetch\(`?\/api\/live-package-recordings\/multipart/);
+    expect(workspace).toContain('src={withApiBase(recording.streamPath)}');
+    expect(adminPage).toContain("Titles are optional; the file name is used when left blank.");
+    expect(worker).toContain('const defaultTitle = upload.originalFileName');
+    expect(router).toContain("titleEn: z.string().trim().max(200).optional().default('')");
     expect(adminPage).toContain('updateRecording.mutate({ id: item.id, titleEn');
   });
 });

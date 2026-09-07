@@ -408,6 +408,13 @@ export default function SupportChat() {
     return target.content;
   };
 
+  const getSenderLabel = (target: typeof rawMessages[number]) => {
+    if (target.senderType === 'client') return isRTL ? 'أنت' : 'You';
+    if (target.senderType === 'bot') return isRTL ? 'المساعد الذكي' : 'AI Assistant';
+    if (target.senderType === 'admin') return t('support.admin');
+    return target.senderDisplayName?.trim() || t('support.agent');
+  };
+
   const copyMessage = async (content: string) => {
     const copied = await copyTextToClipboard(content);
     if (copied) {
@@ -685,22 +692,14 @@ export default function SupportChat() {
                         }`}
                       >
                         <span className="mb-1 block font-semibold">
-                          {replyTargetMessage.senderType === 'client'
-                            ? (isRTL ? 'أنت' : 'You')
-                            : replyTargetMessage.senderType === 'bot'
-                              ? (isRTL ? 'المساعد الذكي' : 'AI Assistant')
-                            : replyTargetMessage.senderType === 'admin'
-                                ? t("support.admin")
-                                : t("support.agent")}
+                          {getSenderLabel(replyTargetMessage)}
                         </span>
                         <span className="line-clamp-2 break-words">{formatReplyPreview(replyTargetMessage)}</span>
                       </button>
                     )}
                     {showSenderLabel && (
                       <p className={`text-xs font-semibold mb-1 ${isBot ? 'text-amber-600' : 'text-emerald-600'}`}>
-                        {isBot
-                          ? (isRTL ? '🤖 المساعد الذكي' : '🤖 AI Assistant')
-                          : msg.senderType === "admin" ? t("support.admin") : t("support.agent")}
+                        {isBot ? `🤖 ${getSenderLabel(msg)}` : getSenderLabel(msg)}
                       </p>
                     )}
                     {editingMsgId === msg.id ? (
@@ -743,7 +742,9 @@ export default function SupportChat() {
                         <video
                           src={msg.attachmentUrl}
                           controls
+                          controlsList="nodownload"
                           preload="metadata"
+                          onContextMenu={(event) => event.preventDefault()}
                           className="max-h-72 w-full bg-black object-contain"
                         />
                         <a
@@ -857,11 +858,7 @@ export default function SupportChat() {
                 <p className="text-xs font-semibold text-emerald-700">
                   {isRTL ? 'الرد على' : 'Replying to'} {replyTarget.senderType === 'client'
                     ? (isRTL ? 'رسالتك' : 'your message')
-                    : replyTarget.senderType === 'bot'
-                      ? (isRTL ? 'المساعد الذكي' : 'AI Assistant')
-                    : replyTarget.senderType === 'admin'
-                        ? t("support.admin")
-                        : t("support.agent")}
+                    : getSenderLabel(replyTarget)}
                 </p>
                 <p className="truncate text-xs text-emerald-800">{formatReplyPreview(replyTarget)}</p>
               </div>

@@ -581,7 +581,12 @@ export default {
         }
         if (action === "complete" && request.method === "POST") {
           const body = await request.json().catch(() => null) as null | { titleEn?: string; titleAr?: string; descriptionEn?: string; descriptionAr?: string };
-          if (!body?.titleEn?.trim() || !body?.titleAr?.trim()) return jsonResponse(400, { status: "invalid_request", message: "Bilingual recording titles are required" }, headers);
+          if ((body?.titleEn?.trim().length ?? 0) > 200 || (body?.titleAr?.trim().length ?? 0) > 200) {
+            return jsonResponse(400, { status: "invalid_request", message: "Recording titles cannot exceed 200 characters" }, headers);
+          }
+          const defaultTitle = upload.originalFileName.replace(/\.[^.]+$/, "").trim().slice(0, 200) || "Live recording";
+          const titleEn = body?.titleEn?.trim() || body?.titleAr?.trim() || defaultTitle;
+          const titleAr = body?.titleAr?.trim() || body?.titleEn?.trim() || defaultTitle;
           const parts = parseCompletedLiveRecordingParts(upload.completedPartsJson);
           const validationError = validateCompletedLiveRecordingParts(
             parts,
@@ -599,8 +604,8 @@ export default {
             packageId: upload.packageId,
             cohortKey: upload.cohortKey,
             sessionId: upload.sessionId,
-            titleEn: body.titleEn.trim(),
-            titleAr: body.titleAr.trim(),
+            titleEn,
+            titleAr,
             descriptionEn: body.descriptionEn?.trim() || null,
             descriptionAr: body.descriptionAr?.trim() || null,
             objectKey: upload.objectKey,
@@ -645,13 +650,16 @@ export default {
         if (!Number.isFinite(size) || size <= 0 || size > maxRecordingBytes) {
           return jsonResponse(413, { status: "invalid_request", message: "Recording must declare a valid size within the configured Live recording limit" }, headers);
         }
-        const titleEn = (url.searchParams.get("titleEn") ?? "").trim();
-        const titleAr = (url.searchParams.get("titleAr") ?? "").trim();
         const originalFileName = (url.searchParams.get("fileName") ?? "recording").trim().slice(0, 255);
+        const requestedTitleEn = (url.searchParams.get("titleEn") ?? "").trim();
+        const requestedTitleAr = (url.searchParams.get("titleAr") ?? "").trim();
+        const defaultTitle = originalFileName.replace(/\.[^.]+$/, "").trim().slice(0, 200) || "Live recording";
+        const titleEn = requestedTitleEn || requestedTitleAr || defaultTitle;
+        const titleAr = requestedTitleAr || requestedTitleEn || defaultTitle;
         const sessionIdValue = Number(url.searchParams.get("sessionId"));
         const sessionId = Number.isInteger(sessionIdValue) && sessionIdValue > 0 ? sessionIdValue : null;
-        if (!titleEn || !titleAr || titleEn.length > 200 || titleAr.length > 200) {
-          return jsonResponse(400, { status: "invalid_request", message: "Bilingual recording titles are required" }, headers);
+        if (titleEn.length > 200 || titleAr.length > 200) {
+          return jsonResponse(400, { status: "invalid_request", message: "Recording titles cannot exceed 200 characters" }, headers);
         }
         const [pkg, settings] = await Promise.all([db.getPackageBySlug(LIVE_PACKAGE_SLUG), db.getAllAdminSettings()]);
         if (!pkg || pkg.packageType !== "live") return jsonResponse(409, { status: "not_ready", message: "Live package is not configured" }, headers);

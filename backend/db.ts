@@ -13416,7 +13416,7 @@ export async function getAllRoleAssignments() {
  * Create a staff user account (for roles assignment).
  * Sets isStaff=true, emailVerified=true, dummy password (they login via OTP).
  */
-export async function createStaffUser(data: { name: string; email: string; phone?: string }): Promise<number> {
+export async function createStaffUser(data: { name: string; email: string; phone?: string; publicSupportName?: string }): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
@@ -13428,7 +13428,10 @@ export async function createStaffUser(data: { name: string; email: string; phone
       throw new Error("Staff member with this email already exists");
     }
     // Convert existing student to staff
-    await db.update(users).set({ isStaff: true }).where(eq(users.id, existing.id));
+    await db.update(users).set({
+      isStaff: true,
+      publicSupportName: data.publicSupportName?.trim() || null,
+    }).where(eq(users.id, existing.id));
     logger.db('Converted existing user to staff', { userId: existing.id, email: data.email });
     return existing.id;
   }
@@ -13439,6 +13442,7 @@ export async function createStaffUser(data: { name: string; email: string; phone
     email: data.email,
     name: data.name,
     phone: data.phone || null,
+    publicSupportName: data.publicSupportName?.trim() || null,
     passwordHash: '__staff_no_password__',
     emailVerified: true,
     isStaff: true,
@@ -13464,6 +13468,7 @@ export async function getStaffMembers() {
     name: users.name,
     email: users.email,
     phone: users.phone,
+    publicSupportName: users.publicSupportName,
     createdAt: users.createdAt,
     lastSignedIn: users.lastSignedIn,
   }).from(users).where(eq(users.isStaff, true)).orderBy(desc(users.createdAt));
@@ -13488,6 +13493,14 @@ export async function markUserAsStaff(userId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db.update(users).set({ isStaff: true }).where(eq(users.id, userId));
+}
+
+export async function updateStaffPublicSupportName(userId: number, publicSupportName?: string | null) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(users)
+    .set({ publicSupportName: publicSupportName?.trim() || null })
+    .where(eq(users.id, userId));
 }
 
 /**
@@ -13617,6 +13630,7 @@ export async function createSupportMessage(msg: {
   conversationId: number;
   senderId: number;
   senderType: string;
+  senderDisplayName?: string;
   content: string;
   replyToMessageId?: number;
   attachmentUrl?: string;
@@ -13636,6 +13650,7 @@ export async function createSupportMessage(msg: {
     conversationId: msg.conversationId,
     senderId: msg.senderId,
     senderType: msg.senderType,
+    senderDisplayName: msg.senderDisplayName?.trim() || null,
     content: msg.content,
     replyToMessageId: msg.replyToMessageId ?? null,
     attachmentUrl: msg.attachmentUrl || null,

@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { trpc } from '@/lib/trpc';
+import { withApiBase } from '@/lib/apiBase';
 import { toast } from 'sonner';
 
 const formatDate = (value: string, language: string) => new Intl.DateTimeFormat(language === 'ar' ? 'ar-JO' : 'en-GB', {
@@ -72,7 +73,7 @@ export default function LivePackageWorkspace() {
             {data.recordings.length ? data.recordings.map((recording) => (
               <article key={recording.id} className="rounded-2xl border bg-white p-5">
                 <h3 className="font-semibold">{isAr ? recording.titleAr : recording.titleEn}</h3>
-                <video className="mt-4 w-full rounded-xl bg-black" controls controlsList="nodownload" preload="metadata" src={recording.streamPath} />
+                <video className="mt-4 w-full rounded-xl bg-black" controls controlsList="nodownload" preload="metadata" src={withApiBase(recording.streamPath)} onContextMenu={(event) => event.preventDefault()} />
               </article>
             )) : <p className="rounded-2xl border border-dashed p-6 text-sm text-slate-500">{isAr ? 'ستظهر التسجيلات المنشورة هنا.' : 'Published recordings will appear here.'}</p>}
           </section>

@@ -10,6 +10,7 @@ export const users = sqliteTable("users", {
   passwordHash: text("passwordHash", { length: 255 }).notNull(),
   loginSecurityMode: text("loginSecurityMode", { length: 30 }).default("password_or_otp").notNull(),
   name: text("name"),
+  publicSupportName: text("publicSupportName", { length: 80 }),
   phone: text("phone", { length: 20 }),
   city: text("city", { length: 100 }),
   country: text("country", { length: 100 }),
@@ -821,6 +822,7 @@ export const supportMessages = sqliteTable("supportMessages", {
   conversationId: integer("conversationId").notNull(),
   senderId: integer("senderId").notNull(),
   senderType: text("senderType", { length: 20 }).notNull(), // 'client' | 'support' | 'admin' | 'bot'
+  senderDisplayName: text("senderDisplayName", { length: 80 }),
   content: text("content").notNull(),
   isRead: integer("isRead", { mode: 'boolean' }).default(false).notNull(),
   replyToMessageId: integer("replyToMessageId"),

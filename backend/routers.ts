@@ -5947,6 +5947,7 @@ export const appRouter = router({
           conversationId: input.conversationId,
           senderId: ctx.user.id,
           senderType: isAdmin ? 'admin' : 'support',
+          senderDisplayName: isAdmin ? undefined : ctx.user.publicSupportName?.trim() || undefined,
           content: input.content,
           replyToMessageId: input.replyToMessageId,
           attachmentUrl: input.attachmentUrl,
@@ -6040,6 +6041,7 @@ export const appRouter = router({
           conversationId: conv.id,
           senderId: ctx.user.id,
           senderType: isAdmin ? 'admin' : 'support',
+          senderDisplayName: isAdmin ? undefined : ctx.user.publicSupportName?.trim() || undefined,
           content: input.content,
         });
 
@@ -6359,12 +6361,16 @@ export const appRouter = router({
       .input(z.object({
         userId: z.number(),
         roles: z.array(z.enum(ASSIGNABLE_STAFF_ROLES)),
+        publicSupportName: z.string().trim().max(80).nullable().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
         const user = await db.getUserById(input.userId);
         if (!user) throw new TRPCError({ code: 'NOT_FOUND', message: 'User not found' });
         if (!(user as any).isStaff) throw new TRPCError({ code: 'BAD_REQUEST', message: 'User must be a staff member' });
         await db.setUserRoles(input.userId, input.roles, (ctx as any).admin?.id);
+        if (input.publicSupportName !== undefined) {
+          await db.updateStaffPublicSupportName(input.userId, input.publicSupportName);
+        }
         return { success: true };
       }),
 
@@ -6389,10 +6395,16 @@ export const appRouter = router({
         name: z.string().min(2),
         email: z.string().email(),
         phone: z.string().optional(),
+        publicSupportName: z.string().trim().max(80).optional(),
         roles: z.array(z.enum(ASSIGNABLE_STAFF_ROLES)).min(1),
       }))
       .mutation(async ({ ctx, input }) => {
-        const userId = await db.createStaffUser({ name: input.name, email: input.email, phone: input.phone });
+        const userId = await db.createStaffUser({
+          name: input.name,
+          email: input.email,
+          phone: input.phone,
+          publicSupportName: input.publicSupportName,
+        });
         // Assign all selected roles
         for (const role of input.roles) {
           await db.assignRole(userId, role, (ctx as any).admin?.id);
@@ -6964,8 +6976,8 @@ export const appRouter = router({
     createSession: liveSessionManagerProcedure
       .input(z.object({
         sessionType: z.enum(['educational', 'trading_analysis']).default('educational'),
-        titleEn: z.string().trim().min(1).max(200),
-        titleAr: z.string().trim().min(1).max(200),
+        titleEn: z.string().trim().max(200).optional().default(''),
+        titleAr: z.string().trim().max(200).optional().default(''),
         descriptionEn: z.string().trim().max(2000).optional(),
         descriptionAr: z.string().trim().max(2000).optional(),
         startsAt: z.string().datetime(),
@@ -6973,6 +6985,11 @@ export const appRouter = router({
         zoomJoinUrl: z.string().url().max(2000),
       }))
       .mutation(async ({ ctx, input }) => {
+        const normalizedInput = {
+          ...input,
+          titleEn: input.titleEn || (input.sessionType === 'trading_analysis' ? 'Live trading analysis' : 'Live educational session'),
+          titleAr: input.titleAr || (input.sessionType === 'trading_analysis' ? 'جلسة تداول وتحليل مباشر' : 'جلسة تعليمية مباشرة'),
+        };
         if (!isTrustedZoomJoinUrl(input.zoomJoinUrl)) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Use an HTTPS zoom.us meeting URL.' });
         if (Date.parse(input.startsAt) >= Date.parse(input.endsAt)) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Session end must be after its start.' });
         const context = await getLivePackageContext();
@@ -6982,7 +6999,7 @@ export const appRouter = router({
         }
         const actorAdminId = ctx.admin?.id ?? ctx.user!.id;
         const session = await db.createLivePackageSession({
-          ...input,
+          ...normalizedInput,
           packageId: context.pkg.id,
           cohortKey: context.config.cohortKey,
           adminId: actorAdminId,
@@ -7008,8 +7025,8 @@ export const appRouter = router({
       .input(z.object({
         sessions: z.array(z.object({
           sessionType: z.enum(['educational', 'trading_analysis']),
-          titleEn: z.string().trim().min(1).max(200),
-          titleAr: z.string().trim().min(1).max(200),
+          titleEn: z.string().trim().max(200).optional().default(''),
+          titleAr: z.string().trim().max(200).optional().default(''),
           descriptionEn: z.string().trim().max(2000).optional(),
           descriptionAr: z.string().trim().max(2000).optional(),
           startsAt: z.string().datetime(),
@@ -7018,20 +7035,25 @@ export const appRouter = router({
         })).min(1).max(40),
       }))
       .mutation(async ({ ctx, input }) => {
+        const normalizedSessions = input.sessions.map((session) => ({
+          ...session,
+          titleEn: session.titleEn || (session.sessionType === 'trading_analysis' ? 'Live trading analysis' : 'Live educational session'),
+          titleAr: session.titleAr || (session.sessionType === 'trading_analysis' ? 'جلسة تداول وتحليل مباشر' : 'جلسة تعليمية مباشرة'),
+        }));
         const created = [];
-        for (const session of input.sessions) {
+        for (const session of normalizedSessions) {
           if (!isTrustedZoomJoinUrl(session.zoomJoinUrl)) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Use HTTPS zoom.us meeting URLs.' });
           if (Date.parse(session.startsAt) >= Date.parse(session.endsAt)) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Session end must be after its start.' });
         }
         const context = await getLivePackageContext();
         if (!context.pkg) throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Live package is not configured.' });
-        for (const session of input.sessions) {
+        for (const session of normalizedSessions) {
           if (context.config.sessionStartsAt && context.config.sessionEndsAt && (Date.parse(session.startsAt) < Date.parse(context.config.sessionStartsAt) || Date.parse(session.endsAt) > Date.parse(context.config.sessionEndsAt))) {
             throw new TRPCError({ code: 'BAD_REQUEST', message: 'Sessions must remain inside the configured Live cohort window.' });
           }
         }
-        db.assertLivePackageSessionBatchSlotsAvailable(input.sessions);
-        for (const session of input.sessions) {
+        db.assertLivePackageSessionBatchSlotsAvailable(normalizedSessions);
+        for (const session of normalizedSessions) {
           await db.assertLivePackageSessionSlotAvailable({
             packageId: context.pkg.id,
             cohortKey: context.config.cohortKey,
@@ -7041,7 +7063,7 @@ export const appRouter = router({
         }
         const actorAdminId = ctx.admin?.id ?? ctx.user!.id;
         const recurrenceKey = `recurrence:${Date.now()}:${crypto.randomUUID()}`;
-        for (const session of input.sessions) {
+        for (const session of normalizedSessions) {
           const row = await db.createLivePackageSession({
             ...session,
             packageId: context.pkg.id,
@@ -7095,8 +7117,8 @@ export const appRouter = router({
     uploadRecording: liveRecordingUploadProcedure
       .input(z.object({
         sessionId: z.number().int().positive().nullable().optional(),
-        titleEn: z.string().trim().min(1).max(200),
-        titleAr: z.string().trim().min(1).max(200),
+        titleEn: z.string().trim().max(200).optional().default(''),
+        titleAr: z.string().trim().max(200).optional().default(''),
         descriptionEn: z.string().trim().max(2000).optional(),
         descriptionAr: z.string().trim().max(2000).optional(),
         fileName: z.string().trim().min(1).max(255),
@@ -7111,14 +7133,15 @@ export const appRouter = router({
         const context = await getLivePackageContext();
         if (!context.pkg) throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Live package is not configured.' });
         const safeName = input.fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const defaultTitle = input.fileName.replace(/\.[^.]+$/, '').trim().slice(0, 200) || 'Live recording';
         const objectKey = `protected/live-package/${context.config.cohortKey}/${Date.now()}-${safeName}`;
         await storagePutR2(env.VIDEOS_BUCKET, objectKey, buffer, input.contentType);
         const recording = await db.createLivePackageRecording({
           packageId: context.pkg.id,
           cohortKey: context.config.cohortKey,
           sessionId: input.sessionId,
-          titleEn: input.titleEn,
-          titleAr: input.titleAr,
+          titleEn: input.titleEn || input.titleAr || defaultTitle,
+          titleAr: input.titleAr || input.titleEn || defaultTitle,
           descriptionEn: input.descriptionEn,
           descriptionAr: input.descriptionAr,
           objectKey,
