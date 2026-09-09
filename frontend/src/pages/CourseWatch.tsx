@@ -37,6 +37,12 @@ type EpisodeQuizAnswer = {
   optionId: string;
 };
 
+// Course and episode definitions change only through admin mutations. Keeping
+// them fresh for a short window avoids re-reading the same published metadata
+// when a student navigates away from and back to the course. User-specific
+// enrollment and progress queries intentionally remain uncached here.
+const COURSE_METADATA_STALE_MS = 10 * 60_000;
+
 export default function CourseWatch() {
   const [, params] = useRoute("/course/:courseId");
   const courseId = params?.courseId ? parseInt(params.courseId) : null;
@@ -48,12 +54,12 @@ export default function CourseWatch() {
 
   const { data: course, isLoading: courseLoading } = trpc.courses.getById.useQuery(
     { id: courseId! },
-    { enabled: !!courseId }
+    { enabled: !!courseId, staleTime: COURSE_METADATA_STALE_MS }
   );
 
   const { data: episodes, isLoading: episodesLoading } = trpc.episodes.listByCourse.useQuery(
     { courseId: courseId! },
-    { enabled: !!courseId }
+    { enabled: !!courseId, staleTime: COURSE_METADATA_STALE_MS }
   );
   const sortedEpisodes = useMemo(() => (episodes ? [...episodes].sort((a, b) => a.order - b.order) : []), [episodes]);
 

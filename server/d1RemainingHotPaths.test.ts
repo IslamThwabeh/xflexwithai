@@ -52,6 +52,7 @@ const schemaSql = `
     conversationId INTEGER NOT NULL,
     senderId INTEGER NOT NULL,
     senderType TEXT NOT NULL,
+    senderDisplayName TEXT,
     content TEXT NOT NULL,
     isRead INTEGER NOT NULL DEFAULT 0,
     replyToMessageId INTEGER,
@@ -257,7 +258,7 @@ describe("remaining D1 hot-path safeguards", () => {
     expect(readSource("../frontend/src/pages/AdminSupport.tsx"))
       .toContain("refetchInterval: isPageVisible ? 15_000 : false");
     expect(readSource("../frontend/src/pages/AdminSupport.tsx"))
-      .toContain("refetchInterval: isPageVisible && !hasActiveInboxSearch ? 30_000 : false");
+      .toContain("refetchInterval: isPageVisible && !hasActiveInboxSearch ? 60_000 : false");
     expect(readSource("../frontend/src/pages/SupportChat.tsx"))
       .toContain("refetchInterval: isPageVisible ? 15_000 : false");
   });

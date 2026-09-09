@@ -162,7 +162,7 @@ export default function AdminSupport() {
       search: hasActiveInboxSearch ? debouncedSearch : undefined,
     },
     {
-      refetchInterval: isPageVisible && !hasActiveInboxSearch ? 30_000 : false,
+      refetchInterval: isPageVisible && !hasActiveInboxSearch ? 60_000 : false,
       refetchOnWindowFocus: true,
     },
   );
