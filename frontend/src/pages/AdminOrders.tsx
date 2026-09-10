@@ -60,6 +60,11 @@ export default function AdminOrders() {
     expiresAt: string;
     configurationNotes: string;
   }>>({});
+  const [financialPayment, setFinancialPayment] = useState({
+    paidAt: '',
+    baseAmountIls: '',
+    rationale: '',
+  });
   const { data: orders, isLoading } = trpc.orders.adminList.useQuery(filter ? { status: filter } : undefined);
   const updateMutation = trpc.orders.adminUpdateStatus.useMutation({
     onSuccess: (data) => {
@@ -70,6 +75,7 @@ export default function AdminOrders() {
           : 'Payment approved and an email-bound key was created. Course access starts after redemption.');
         setIssueOrder(null);
         setKeyConfigurations({});
+        setFinancialPayment({ paidAt: '', baseAmountIls: '', rationale: '' });
       }
     },
     onError: (error) => toast.error(error.message),
@@ -113,6 +119,14 @@ export default function AdminOrders() {
         configurationNotes: '',
       };
     }
+    const currency = String(order.currency || 'ILS').toUpperCase();
+    const totalAmount = Number(order.totalAmount || 0);
+    setFinancialPayment({
+      paidAt: new Date().toISOString().slice(0, 16),
+      baseAmountIls: Number(order.displayTotalIls
+        ?? (currency === 'ILS' || currency === 'NIS' ? totalAmount / 100 : 0)).toFixed(2),
+      rationale: '',
+    });
     setKeyConfigurations(initial);
     setIssueOrder(order);
   };
@@ -180,10 +194,23 @@ export default function AdminOrders() {
         : 'Service duration must be between 1 and 3650 days');
       return;
     }
+    const paidAt = new Date(financialPayment.paidAt);
+    const baseAmountIlsMinor = Math.round(Number(financialPayment.baseAmountIls) * 100);
+    if (Number.isNaN(paidAt.getTime()) || !Number.isSafeInteger(baseAmountIlsMinor) || baseAmountIlsMinor <= 0 || financialPayment.rationale.trim().length < 5) {
+      toast.error(language === 'ar'
+        ? 'أدخل تاريخ الدفع والمبلغ المؤكد بالشيكل وسبب الاعتماد (5 أحرف على الأقل).'
+        : 'Enter the paid date, confirmed ILS amount, and an approval rationale (at least 5 characters).');
+      return;
+    }
     await updateMutation.mutateAsync({
       orderId: issueOrder.id,
       status: 'completed',
       keyConfigurations: configurations,
+      financialPayment: {
+        paidAt: paidAt.toISOString(),
+        baseAmountIlsMinor,
+        rationale: financialPayment.rationale.trim(),
+      },
     }).catch(() => undefined);
   };
 
@@ -403,6 +430,7 @@ export default function AdminOrders() {
           if (!open && !updateMutation.isPending) {
             setIssueOrder(null);
             setKeyConfigurations({});
+            setFinancialPayment({ paidAt: '', baseAmountIls: '', rationale: '' });
           }
         }}>
           <DialogContent className="max-w-2xl" dir={language === 'ar' ? 'rtl' : 'ltr'}>
@@ -420,6 +448,37 @@ export default function AdminOrders() {
             </DialogHeader>
 
             <div className="max-h-[60vh] space-y-4 overflow-y-auto py-2">
+              <div className="space-y-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+                <div>
+                  <p className="font-semibold text-emerald-950">{language === 'ar' ? 'تأكيد مالي غير قابل للتعديل' : 'Immutable financial confirmation'}</p>
+                  <p className="text-xs text-emerald-800">
+                    {language === 'ar'
+                      ? 'يُسجّل الدخل في تاريخ تأكيد الدفع، وليس عند استخدام المفتاح أو تفعيله.'
+                      : 'Income is recorded on confirmed payment date, not on key issuance or activation.'}
+                  </p>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>{language === 'ar' ? 'تاريخ ووقت تأكيد الدفع *' : 'Confirmed payment date/time *'}</Label>
+                    <Input type="datetime-local" value={financialPayment.paidAt} onChange={(event) => setFinancialPayment((current) => ({ ...current, paidAt: event.target.value }))} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>{language === 'ar' ? 'المبلغ المؤكد بالشيكل *' : 'Confirmed ILS amount *'}</Label>
+                    <Input type="number" min="0.01" step="0.01" inputMode="decimal" value={financialPayment.baseAmountIls} onChange={(event) => setFinancialPayment((current) => ({ ...current, baseAmountIls: event.target.value }))} />
+                  </div>
+                </div>
+                {issueOrder && !['ILS', 'NIS'].includes(String(issueOrder.currency || '').toUpperCase()) && (
+                  <p className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                    {language === 'ar'
+                      ? 'هذا طلب قديم مخزن بعملة USD، لكن التأكيد المالي سيُسجل بالشيكل فقط وفق السعر التجاري الظاهر، دون استخدام سعر صرف.'
+                      : 'This legacy order is stored as USD, but its financial confirmation is recorded only in ILS using the displayed commercial price, without an exchange rate.'}
+                  </p>
+                )}
+                <div className="space-y-2">
+                  <Label>{language === 'ar' ? 'سبب اعتماد الدفع *' : 'Payment-approval rationale *'}</Label>
+                  <Textarea minLength={5} maxLength={500} value={financialPayment.rationale} onChange={(event) => setFinancialPayment((current) => ({ ...current, rationale: event.target.value }))} placeholder={language === 'ar' ? 'مثال: تمت مطابقة التحويل مع الإيصال وكشف البنك.' : 'Example: Transfer matched to the receipt and bank statement.'} />
+                </div>
+              </div>
               {(issueOrder?.packageItems ?? []).map((item: any) => {
                 const configuration = keyConfigurations[item.packageId] ?? {
                   entitlementDays: '',
@@ -498,6 +557,7 @@ export default function AdminOrders() {
                 onClick={() => {
                   setIssueOrder(null);
                   setKeyConfigurations({});
+                  setFinancialPayment({ paidAt: '', baseAmountIls: '', rationale: '' });
                 }}
               >
                 {language === 'ar' ? 'إلغاء' : 'Cancel'}

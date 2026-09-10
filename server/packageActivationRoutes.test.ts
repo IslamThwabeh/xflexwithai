@@ -12,6 +12,7 @@ vi.mock('../backend/db', async () => {
     logAdminAction: vi.fn(),
     createOrder: vi.fn(),
     createOrderActivationKeys: vi.fn(),
+    confirmOrderPayment: vi.fn(),
     updateOrderStatus: vi.fn(),
     logOrderStatusHistory: vi.fn(),
     getOrderItems: vi.fn(),
@@ -75,7 +76,7 @@ function createCaller(currentUser = user) {
 describe('package activation routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(db.getAdminByEmail).mockResolvedValue({ id: 11, email: user.email, name: 'Admin' } as any);
+    vi.mocked(db.getAdminByEmail).mockResolvedValue({ id: 1, email: user.email, name: 'Owner Admin' } as any);
     vi.mocked(db.getUnusedMatchingPackageKey).mockResolvedValue(undefined);
   });
 
@@ -122,7 +123,7 @@ describe('package activation routes', () => {
       isGift: false,
       giftEmail: null,
     });
-    expect(db.logAdminAction).toHaveBeenCalledWith(11, user.id, 'correct_order_activation_recipient', expect.objectContaining({
+    expect(db.logAdminAction).toHaveBeenCalledWith(1, user.id, 'correct_order_activation_recipient', expect.objectContaining({
       orderId: 52,
       actorType: 'admin',
       previous: { isGift: true, giftEmail: '1' },
@@ -160,7 +161,8 @@ describe('package activation routes', () => {
       isGift: false,
       giftEmail: null,
       isUpgrade: false,
-      currency: 'USD',
+      currency: 'ILS',
+      totalAmount: 70000,
       paymentMethod: 'bank_transfer',
       paymentProofUrl: 'https://videos.xflexacademy.com/payment-proofs/test-proof.jpg',
       termsAcceptedAt: '2026-07-18T08:00:00.000Z',
@@ -170,7 +172,7 @@ describe('package activation routes', () => {
     vi.mocked(db.createOrderActivationKeys).mockResolvedValue([
       { id: 116, keyCode: 'XFLEX-TEST1-TEST2-TEST3', packageId: 1 },
     ]);
-    vi.mocked(db.updateOrderStatus).mockResolvedValue({ ...order, status: 'completed' });
+    vi.mocked(db.confirmOrderPayment).mockResolvedValue({ confirmation: { id: 1, orderId: order.id }, idempotent: false } as any);
     vi.mocked(db.getOrderItems).mockResolvedValue([{ itemType: 'package', packageId: 1 }] as any);
     vi.mocked(db.getPackageById).mockResolvedValue({ id: 1, nameEn: 'Basic Package' } as any);
     vi.mocked(db.getUserById).mockResolvedValue(user as any);
@@ -187,22 +189,34 @@ describe('package activation routes', () => {
       orderId: 23,
       status: 'completed',
       keyConfigurations,
+      financialPayment: {
+        paidAt: '2026-07-18T08:00:00.000Z',
+        baseAmountIlsMinor: 70000,
+        rationale: 'Transfer matched to the receipt.',
+      },
     });
 
     expect(result.activationKeys).toHaveLength(1);
     expect(db.createOrderActivationKeys).toHaveBeenCalledWith({
       order,
       actorType: 'admin',
-      actorId: 11,
+      actorId: 1,
       configurations: keyConfigurations,
     });
+    expect(db.confirmOrderPayment).toHaveBeenCalledWith(expect.objectContaining({
+      order,
+      actorType: 'admin',
+      actorId: 1,
+      paidAt: '2026-07-18T08:00:00.000Z',
+      baseAmountIlsMinor: 70000,
+    }));
     expect(db.fulfillPackageEntitlements).not.toHaveBeenCalled();
     expect(db.logOrderStatusHistory).toHaveBeenCalledWith(expect.objectContaining({
       orderId: 23,
       previousStatus: 'awaiting_confirmation',
       newStatus: 'completed',
       actorType: 'admin',
-      actorId: 11,
+      actorId: 1,
     }));
     expect(sendPaymentReceivedEmail).toHaveBeenCalledWith(user.email, expect.objectContaining({
       activationKeys: ['XFLEX-TEST1-TEST2-TEST3'],
@@ -259,7 +273,7 @@ describe('package activation routes', () => {
       issuancePurpose: 'commercial',
       activationPolicy: 'order_required',
       authorizedByType: 'admin',
-      authorizedById: 11,
+      authorizedById: 1,
     }));
   });
 
@@ -296,7 +310,7 @@ describe('package activation routes', () => {
       activationPolicy: 'internal_authorized',
       authorizationReason: 'Employee package renewal for Batool',
       authorizedByType: 'admin',
-      authorizedById: 11,
+      authorizedById: 1,
     }));
   });
 
@@ -332,7 +346,8 @@ describe('package activation routes', () => {
       isGift: false,
       giftEmail: null,
       isUpgrade: false,
-      currency: 'USD',
+      currency: 'ILS',
+      totalAmount: 70000,
       paymentMethod: 'bank_transfer',
       paymentProofUrl: null,
       termsAcceptedAt: '2026-07-18T08:00:00.000Z',
@@ -344,8 +359,115 @@ describe('package activation routes', () => {
       orderId: order.id,
       status: 'completed',
       keyConfigurations: [{ packageId: 1, entitlementDays: 30 }],
+      financialPayment: {
+        paidAt: '2026-07-18T08:00:00.000Z',
+        baseAmountIlsMinor: 70000,
+        rationale: 'Transfer matched to the receipt.',
+      },
     })).rejects.toMatchObject({ code: 'BAD_REQUEST' });
     expect(db.createOrderActivationKeys).not.toHaveBeenCalled();
+  });
+
+  it('accepts a legacy USD-marked order as the canonical ILS amount without exchange-rate input', async () => {
+    const order = {
+      id: 29,
+      userId: user.id,
+      status: 'awaiting_confirmation',
+      isGift: false,
+      giftEmail: null,
+      isUpgrade: false,
+      currency: 'USD',
+      totalAmount: 20000,
+      paymentMethod: 'bank_transfer',
+      paymentProofUrl: 'https://videos.xflexacademy.com/payment-proofs/test-proof.jpg',
+      termsAcceptedAt: '2026-07-18T08:00:00.000Z',
+      termsAcceptedVersion: 'v2',
+    } as any;
+    vi.mocked(db.getOrderById).mockResolvedValue(order);
+    vi.mocked(db.getOrderItems).mockResolvedValue([{ itemType: 'package', packageId: 1 }] as any);
+    vi.mocked(db.getPackageById).mockResolvedValue({ id: 1, slug: 'basic', nameEn: 'Basic Package' } as any);
+    vi.mocked(db.createOrderActivationKeys).mockResolvedValue([
+      { id: 290, keyCode: 'XFLEX-LEGACY-ILS-TEST', packageId: 1 },
+    ]);
+    vi.mocked(db.confirmOrderPayment).mockResolvedValue({ confirmation: { id: 29, orderId: order.id }, idempotent: false } as any);
+
+    await expect(createCaller().orders.adminUpdateStatus({
+      orderId: order.id,
+      status: 'completed',
+      keyConfigurations: [{ packageId: 1, entitlementDays: 30 }],
+      financialPayment: {
+        paidAt: '2026-07-18T08:00:00.000Z',
+        baseAmountIlsMinor: 70000,
+        rationale: 'Transfer matched to the receipt.',
+      },
+    })).resolves.toMatchObject({ activationKeys: [{ id: 290 }] });
+
+    expect(db.createOrderActivationKeys).toHaveBeenCalledOnce();
+    expect(db.confirmOrderPayment).toHaveBeenCalledWith(expect.objectContaining({
+      order,
+      baseAmountIlsMinor: 70000,
+    }));
+  });
+
+  it('does not let a key manager with the finance_clerk role recognize cash', async () => {
+    const staffUser = { ...user, id: 4, email: 'keys@example.com', isStaff: true };
+    vi.mocked(db.getAdminByEmail).mockResolvedValue(null as any);
+    vi.mocked(db.hasAnyRole).mockImplementation(async (_userId, roles) => (
+      roles.includes('key_manager') || roles.includes('finance_clerk')
+    ));
+    vi.mocked(db.getOrderById).mockResolvedValue({
+      id: 31, userId: user.id, status: 'awaiting_confirmation', totalAmount: 12500,
+      currency: 'ILS', paymentMethod: 'bank_transfer', paymentProofUrl: 'https://videos.xflexacademy.com/payment-proofs/31.jpg',
+      termsAcceptedAt: '2026-07-18T08:00:00.000Z', termsAcceptedVersion: 'v2',
+    } as any);
+
+    await expect(createCaller(staffUser).orders.adminUpdateStatus({
+      orderId: 31,
+      status: 'completed',
+      keyConfigurations: [{ packageId: 1, entitlementDays: 30 }],
+      financialPayment: {
+        paidAt: '2026-07-18T08:00:00.000Z', baseAmountIlsMinor: 12500,
+        rationale: 'Transfer matched to the receipt.',
+      },
+    })).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    expect(db.createOrderActivationKeys).not.toHaveBeenCalled();
+    expect(db.confirmOrderPayment).not.toHaveBeenCalled();
+  });
+
+  it('does not treat a generic admin as the finance owner', async () => {
+    vi.mocked(db.getAdminByEmail).mockResolvedValue({ id: 2, email: user.email, name: 'Generic Admin' } as any);
+    vi.mocked(db.hasAnyRole).mockResolvedValue(false);
+    vi.mocked(db.getOrderById).mockResolvedValue({
+      id: 33, userId: user.id, status: 'awaiting_confirmation', totalAmount: 70000,
+      currency: 'ILS', paymentMethod: 'bank_transfer', paymentProofUrl: 'https://videos.xflexacademy.com/payment-proofs/33.jpg',
+      termsAcceptedAt: '2026-07-18T08:00:00.000Z', termsAcceptedVersion: 'v2',
+    } as any);
+
+    await expect(createCaller().orders.adminUpdateStatus({
+      orderId: 33,
+      status: 'completed',
+      keyConfigurations: [{ packageId: 1, entitlementDays: 30 }],
+      financialPayment: {
+        paidAt: '2026-07-18T08:00:00.000Z', baseAmountIlsMinor: 70000,
+        rationale: 'Transfer matched to the receipt.',
+      },
+    })).rejects.toMatchObject({ code: 'FORBIDDEN' });
+
+    expect(db.createOrderActivationKeys).not.toHaveBeenCalled();
+    expect(db.confirmOrderPayment).not.toHaveBeenCalled();
+  });
+
+  it('does not re-recognize a legacy completed order as a new cash event', async () => {
+    vi.mocked(db.getOrderById).mockResolvedValue({ id: 32, userId: user.id, status: 'completed' } as any);
+    await expect(createCaller().orders.adminUpdateStatus({
+      orderId: 32,
+      status: 'completed',
+      financialPayment: {
+        paidAt: '2026-07-18T08:00:00.000Z', baseAmountIlsMinor: 12500,
+        rationale: 'Transfer matched to the receipt.',
+      },
+    })).rejects.toMatchObject({ code: 'CONFLICT' });
+    expect(db.confirmOrderPayment).not.toHaveBeenCalled();
   });
 
   it('requires the key manager to select a duration before issuing an order key', async () => {
@@ -382,7 +504,7 @@ describe('package activation routes', () => {
       expiresAt: null,
       configurationNotes: 'Extended before activation',
       actorType: 'admin',
-      actorId: 11,
+      actorId: 1,
     });
   });
 
@@ -395,7 +517,7 @@ describe('package activation routes', () => {
       keyId: 200,
       email: user.email,
       assignedByType: 'admin',
-      assignedById: 11,
+      assignedById: 1,
     });
   });
 });

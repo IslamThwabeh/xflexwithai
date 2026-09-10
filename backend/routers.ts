@@ -190,6 +190,9 @@ const ASSIGNABLE_STAFF_ROLES = [
   'student_community_moderator',
   'student_job_eligibility_manager',
   'email_logs_viewer',
+  'finance_manager',
+  'finance_clerk',
+  'finance_viewer',
 ] as const;
 const staffPerformanceStatusSchema = z.enum(STAFF_PERFORMANCE_STATUSES);
 const performanceMonthSchema = z.string().refine(isValidPerformanceMonth, "Month must use YYYY-MM");
@@ -1043,6 +1046,11 @@ const adminOrRoleProcedure = (roles: string[]) => protectedProcedure.use(async (
   return next({ ctx: { ...ctx, admin: null } });
 }).use(staffActivityTrackingMiddleware);
 const supportModeratorProcedure = adminOrRoleProcedure(["support"]);
+
+// Production currently has one explicitly verified owner admin (id 1). Keep
+// finance access narrower than generic admin access until the granular
+// finance-owner assignment model replaces this bootstrap in Phase 2.
+const BOOTSTRAP_FINANCE_OWNER_ADMIN_ID = 1;
 
 const liveSessionManagerProcedure = adminOrRoleProcedure(['live_sessions_manager']);
 const liveNotificationManagerProcedure = adminOrRoleProcedure(['live_notifications_manager']);
@@ -6339,7 +6347,19 @@ export const appRouter = router({
         // Verify user exists
         const user = await db.getUserById(input.userId);
         if (!user) throw new TRPCError({ code: 'NOT_FOUND', message: 'User not found' });
-        await db.assignRole(input.userId, input.role, (ctx as any).admin?.id);
+        if (db.isFinanceStaffRole(input.role)) {
+          if (!(user as any).isStaff) {
+            throw new TRPCError({ code: 'BAD_REQUEST', message: 'Finance roles can be assigned only to staff members' });
+          }
+          await db.setFinanceRoleAssignment({
+            userId: input.userId,
+            role: input.role,
+            action: 'assigned',
+            performedByAdminId: (ctx as any).admin.id,
+          });
+        } else {
+          await db.assignRole(input.userId, input.role, (ctx as any).admin?.id);
+        }
 
         return { success: true };
       }),
@@ -6350,8 +6370,17 @@ export const appRouter = router({
         userId: z.number(),
         role: z.enum(ASSIGNABLE_STAFF_ROLES),
       }))
-      .mutation(async ({ input }) => {
-        await db.removeRole(input.userId, input.role);
+      .mutation(async ({ ctx, input }) => {
+        if (db.isFinanceStaffRole(input.role)) {
+          await db.setFinanceRoleAssignment({
+            userId: input.userId,
+            role: input.role,
+            action: 'removed',
+            performedByAdminId: (ctx as any).admin.id,
+          });
+        } else {
+          await db.removeRole(input.userId, input.role);
+        }
 
         return { success: true };
       }),
@@ -6367,7 +6396,22 @@ export const appRouter = router({
         const user = await db.getUserById(input.userId);
         if (!user) throw new TRPCError({ code: 'NOT_FOUND', message: 'User not found' });
         if (!(user as any).isStaff) throw new TRPCError({ code: 'BAD_REQUEST', message: 'User must be a staff member' });
-        await db.setUserRoles(input.userId, input.roles, (ctx as any).admin?.id);
+        const previousRoles = await db.getUserRoles(input.userId);
+        const priorFinanceRoles = new Set(previousRoles.map((row) => row.role).filter(db.isFinanceStaffRole));
+        const nextFinanceRoles = new Set(input.roles.filter(db.isFinanceStaffRole));
+        const preservedFinanceRoles = previousRoles.map((row) => row.role).filter(db.isFinanceStaffRole);
+        const requestedNonFinanceRoles = input.roles.filter((role) => !db.isFinanceStaffRole(role));
+        await db.setUserRoles(input.userId, [...requestedNonFinanceRoles, ...preservedFinanceRoles], (ctx as any).admin?.id);
+        for (const role of nextFinanceRoles) {
+          if (!priorFinanceRoles.has(role)) {
+            await db.setFinanceRoleAssignment({ userId: input.userId, role, action: 'assigned', performedByAdminId: (ctx as any).admin.id });
+          }
+        }
+        for (const role of priorFinanceRoles) {
+          if (!nextFinanceRoles.has(role)) {
+            await db.setFinanceRoleAssignment({ userId: input.userId, role, action: 'removed', performedByAdminId: (ctx as any).admin.id });
+          }
+        }
         if (input.publicSupportName !== undefined) {
           await db.updateStaffPublicSupportName(input.userId, input.publicSupportName);
         }
@@ -6407,7 +6451,11 @@ export const appRouter = router({
         });
         // Assign all selected roles
         for (const role of input.roles) {
-          await db.assignRole(userId, role, (ctx as any).admin?.id);
+          if (db.isFinanceStaffRole(role)) {
+            await db.setFinanceRoleAssignment({ userId, role, action: 'assigned', performedByAdminId: (ctx as any).admin.id });
+          } else {
+            await db.assignRole(userId, role, (ctx as any).admin?.id);
+          }
         }
 
         // Send welcome email to the new staff member
@@ -6429,6 +6477,9 @@ export const appRouter = router({
           loyalty_rewards_manager: 'Loyalty Rewards Manager / مدير نقاط الولاء',
           student_community_moderator: 'Community Moderator / مشرف المجتمع',
           student_job_eligibility_manager: 'Job Eligibility Manager / مدير أهلية الوظائف',
+          finance_manager: 'Finance Manager / مدير المالية',
+          finance_clerk: 'Finance Clerk / موظف المالية',
+          finance_viewer: 'Finance Viewer / مشاهد المالية',
         };
         try {
           await sendStaffWelcomeEmail(input.email, {
@@ -7618,6 +7669,11 @@ export const appRouter = router({
         status: z.enum(['pending', 'awaiting_confirmation', 'paid', 'completed', 'cancelled', 'refunded']),
         paymentReference: z.string().optional(),
         reason: z.string().max(500).optional(),
+        financialPayment: z.object({
+          paidAt: z.string().datetime(),
+          baseAmountIlsMinor: z.number().int().positive().max(1_000_000_000),
+          rationale: z.string().trim().min(5).max(500),
+        }).optional(),
         keyConfigurations: z.array(z.object({
           packageId: z.number().int().positive(),
           entitlementDays: z.number().int().min(1).max(3650),
@@ -7636,10 +7692,44 @@ export const appRouter = router({
         // Payment approval creates an email-bound entitlement credential. It
         // intentionally does not grant course/service access until redemption.
         if (input.status === 'completed') {
+          // Key-management access alone cannot recognize cash. Only the
+          // explicitly bootstrapped owner or a finance manager may confirm it.
+          if (ctx.admin?.id !== BOOTSTRAP_FINANCE_OWNER_ADMIN_ID
+            && !await db.hasAnyRole(ctx.user.id, ['finance_manager'])) {
+            throw new TRPCError({ code: 'FORBIDDEN', message: 'Finance approval access is required to confirm a payment.' });
+          }
+          // Never turn a historical completed order into revenue merely because
+          // someone revisits it. Those rows are handled through reconciliation.
+          if (order.status === 'completed') {
+            throw new TRPCError({
+              code: 'CONFLICT',
+              message: 'This completed order is historical. It must be reviewed through financial reconciliation, not re-approved.',
+            });
+          }
+          if (!input.financialPayment) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: 'Confirmed-payment date, ILS value, and rationale are required before approving this order.',
+            });
+          }
           const approvalItems = await db.getOrderItems(order.id);
           const approvalPackages = await Promise.all(approvalItems
             .filter((item) => item.itemType === 'package' && item.packageId)
             .map((item) => db.getPackageById(Number(item.packageId))));
+          const expectedIlsMinor = Math.round(getOrderDisplayTotalIls({
+            totalAmount: order.totalAmount,
+            currency: order.currency,
+            packageSlug: approvalPackages.length === 1 ? approvalPackages[0]?.slug : null,
+            isUpgrade: !!order.isUpgrade,
+          }) * 100);
+          if (!Number.isSafeInteger(expectedIlsMinor)
+            || expectedIlsMinor <= 0
+            || input.financialPayment.baseAmountIlsMinor !== expectedIlsMinor) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: 'The confirmed ILS amount must match the order commercial total shown to staff.',
+            });
+          }
           const requiresTimedServiceConfiguration = approvalPackages.some((pkg) => pkg?.packageType !== 'live');
           if (requiresTimedServiceConfiguration && !input.keyConfigurations?.length) {
             throw new TRPCError({
@@ -7674,9 +7764,29 @@ export const appRouter = router({
           }
         }
 
-        const updated = await db.updateOrderStatus(input.orderId, input.status, {
-          paymentReference: input.paymentReference,
-        });
+        const updated = input.status === 'completed'
+          ? await (async () => {
+            try {
+              await db.confirmOrderPayment({
+                order,
+                actorType,
+                actorId,
+                paidAt: input.financialPayment!.paidAt,
+                paymentReference: input.paymentReference,
+                rationale: input.financialPayment!.rationale,
+                baseAmountIlsMinor: input.financialPayment!.baseAmountIlsMinor,
+              });
+              return await db.getOrderById(order.id);
+            } catch (error) {
+              throw new TRPCError({
+                code: 'BAD_REQUEST',
+                message: error instanceof Error ? error.message : 'Failed to record the financial payment confirmation.',
+              });
+            }
+          })()
+          : await db.updateOrderStatus(input.orderId, input.status, {
+            paymentReference: input.paymentReference,
+          });
 
         if (!updated) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to update order' });
 

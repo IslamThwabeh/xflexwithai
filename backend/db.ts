@@ -48,6 +48,9 @@ import {
   userTermsAcceptances, UserTermsAcceptance, InsertUserTermsAcceptance,
   orderStatusHistory, InsertOrderStatusHistory,
   accountAccessAuditLogs, accountRefunds,
+  financialRoleAssignmentAudit,
+  orderPaymentConfirmations, financialLedgerEntries,
+  financialReconciliationItems, financialReconciliationEvents,
   orderItems, OrderItem, InsertOrderItem,
   packageSubscriptions, PackageSubscription, InsertPackageSubscription,
   studentDocuments, StudentDocument, InsertStudentDocument,
@@ -1144,6 +1147,11 @@ export async function getDb(env?: { DB: D1Database }) {
         logger.db('Local SQLite database connection established', {
           databaseUrl,
         });
+      } else if (process.env.NODE_ENV === 'test') {
+        // Router unit tests inject or mock their database boundary. A missing
+        // ambient Worker binding is expected there and must not emit a false
+        // production-style connection error for every caller invocation.
+        return null;
       } else {
         throw new Error("Database not available: D1 environment not provided");
       }
@@ -12857,7 +12865,39 @@ export async function blockClientAccount(input: {
   }
 
   const statements: any[] = [];
-  if (refundValues) statements.push(db.insert(accountRefunds).values(refundValues));
+  if (refundValues) {
+    statements.push(
+      db.insert(accountRefunds).values(refundValues),
+      // Cash-basis reporting recognizes the reversal on the actual refund date.
+      // The request ID is immutable and becomes the idempotency source key.
+      db.insert(financialLedgerEntries).values({
+        entryType: 'refund',
+        status: 'approved',
+        effectiveAt: refundValues.refundedAt,
+        reportingMonth: refundValues.refundedAt.slice(0, 7),
+        amountMinor: -refundValues.amountIlsAgorot,
+        currency: 'ILS',
+        baseAmountIlsMinor: -refundValues.amountIlsAgorot,
+        orderId: refundValues.orderId,
+        registrationKeyId: refundValues.registrationKeyId,
+        sourceType: 'account_refund',
+        sourceReference: refundValues.requestId,
+        paymentMethod: refundValues.refundMethod,
+        paymentReference: refundValues.refundReference,
+        description: `Refund for registration key #${refundValues.registrationKeyId}`,
+        reason: refundValues.reason,
+        createdByType: input.actor.type === 'admin' ? 'admin' : 'staff',
+        createdById: input.actor.id,
+        submittedByType: input.actor.type === 'admin' ? 'admin' : 'staff',
+        submittedById: input.actor.id,
+        approvedByType: input.actor.type === 'admin' ? 'admin' : 'staff',
+        approvedById: input.actor.id,
+        approvedAt: now,
+        auditMetadata: JSON.stringify({ accountRefundRequestId: refundValues.requestId, financialEventVersion: 1 }),
+        createdAt: now,
+      }),
+    );
+  }
   statements.push(db.update(users).set({
     loginBlockedAt: now,
     loginBlockedReason: reason,
@@ -13493,6 +13533,81 @@ export async function markUserAsStaff(userId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db.update(users).set({ isStaff: true }).where(eq(users.id, userId));
+}
+
+export const FINANCE_STAFF_ROLES = ['finance_manager', 'finance_clerk', 'finance_viewer'] as const;
+
+export function isFinanceStaffRole(role: string): role is typeof FINANCE_STAFF_ROLES[number] {
+  return (FINANCE_STAFF_ROLES as readonly string[]).includes(role);
+}
+
+/** Financial-role changes need their own append-only audit, separate from generic RBAC. */
+export async function logFinancialRoleAssignment(input: {
+  userId: number;
+  role: typeof FINANCE_STAFF_ROLES[number];
+  action: 'assigned' | 'removed';
+  performedByAdminId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error('Database not available');
+  await db.insert(financialRoleAssignmentAudit).values({
+    userId: input.userId,
+    role: input.role,
+    action: input.action,
+    performedByAdminId: input.performedByAdminId,
+    createdAt: new Date().toISOString(),
+  });
+}
+
+/**
+ * Changes a finance role and its immutable audit row together. Finance roles
+ * are intentionally handled apart from generic RBAC because later financial
+ * reporting must be able to prove who gained or lost access.
+ */
+export async function setFinanceRoleAssignment(input: {
+  userId: number;
+  role: typeof FINANCE_STAFF_ROLES[number];
+  action: 'assigned' | 'removed';
+  performedByAdminId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error('Database not available');
+  const [existing] = await db.select({ id: userRoles.id }).from(userRoles)
+    .where(and(eq(userRoles.userId, input.userId), eq(userRoles.role, input.role)))
+    .limit(1);
+
+  if (input.action === 'assigned') {
+    if (existing) return false;
+    await db.batch([
+      db.insert(userRoles).values({
+        userId: input.userId,
+        role: input.role,
+        assignedBy: input.performedByAdminId,
+        assignedAt: new Date().toISOString(),
+      }),
+      db.insert(financialRoleAssignmentAudit).values({
+        userId: input.userId,
+        role: input.role,
+        action: 'assigned',
+        performedByAdminId: input.performedByAdminId,
+        createdAt: new Date().toISOString(),
+      }),
+    ]);
+    return true;
+  }
+
+  if (!existing) return false;
+  await db.batch([
+    db.delete(userRoles).where(eq(userRoles.id, existing.id)),
+    db.insert(financialRoleAssignmentAudit).values({
+      userId: input.userId,
+      role: input.role,
+      action: 'removed',
+      performedByAdminId: input.performedByAdminId,
+      createdAt: new Date().toISOString(),
+    }),
+  ]);
+  return true;
 }
 
 export async function updateStaffPublicSupportName(userId: number, publicSupportName?: string | null) {
@@ -15144,6 +15259,256 @@ export async function getOrderById(id: number): Promise<Order | null> {
   if (!db) return null;
   const [order] = await db.select().from(orders).where(eq(orders.id, id)).limit(1);
   return order ?? null;
+}
+
+/**
+ * Returns the immutable financial confirmation for an order.  This is
+ * deliberately separate from orders.completedAt, which is an operational
+ * timestamp retained for compatibility with the existing access workflow.
+ */
+export async function getOrderPaymentConfirmation(orderId: number, database?: any) {
+  const db = database ?? await getDb();
+  if (!db) return null;
+  const [confirmation] = await db.select().from(orderPaymentConfirmations)
+    .where(eq(orderPaymentConfirmations.orderId, orderId))
+    .limit(1);
+  return confirmation ?? null;
+}
+
+export type ConfirmOrderPaymentInput = {
+  order: Order;
+  actorType: 'admin' | 'staff';
+  actorId: number;
+  paidAt: string;
+  paymentReference?: string | null;
+  rationale: string;
+  baseAmountIlsMinor: number;
+};
+
+/**
+ * Atomically records the cash event and moves a current order to completed.
+ * No key issuance or activation happens here: those remain operational
+ * actions so an old key can never create financial revenue.
+ */
+export async function confirmOrderPayment(input: ConfirmOrderPaymentInput, database?: any) {
+  const db = database ?? await getDb();
+  if (!db) throw new Error('Database not available');
+
+  const existing = await getOrderPaymentConfirmation(input.order.id, db);
+  if (existing) return { confirmation: existing, idempotent: true };
+
+  if (!['pending', 'awaiting_confirmation', 'paid'].includes(input.order.status)) {
+    throw new Error('Only a current uncompleted order can receive a new financial payment confirmation.');
+  }
+
+  const currency = input.order.currency.toUpperCase();
+  const amountMinor = Number(input.order.totalAmount);
+  if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0) {
+    throw new Error('This order has no valid positive total to confirm financially. Send it to reconciliation.');
+  }
+  if (!Number.isSafeInteger(input.baseAmountIlsMinor) || input.baseAmountIlsMinor <= 0) {
+    throw new Error('A documented positive ILS amount is required for financial confirmation.');
+  }
+  if ((currency === 'ILS' || currency === 'NIS') && input.baseAmountIlsMinor !== amountMinor) {
+    throw new Error('ILS orders must use the exact order total as the confirmed ILS amount.');
+  }
+
+  const now = new Date().toISOString();
+  const paymentReference = input.paymentReference?.trim() || input.order.paymentReference || null;
+  const sourceType = input.order.isUpgrade ? 'order_payment_upgrade' : 'order_payment_new_sale';
+  const evidenceMetadata = input.order.paymentProofUrl
+    ? JSON.stringify({ evidenceType: 'order_payment_proof', orderPaymentProofUrl: input.order.paymentProofUrl })
+    : null;
+  const confirmationValues = {
+    orderId: input.order.id,
+    paidAt: input.paidAt,
+    paymentMethod: input.order.paymentMethod,
+    paymentReference,
+    rationale: input.rationale.trim(),
+    evidenceMetadata,
+    confirmedByType: input.actorType,
+    confirmedById: input.actorId,
+    sourceType,
+    sourceReference: `order:${input.order.id}`,
+    createdAt: now,
+  };
+  const ledgerValues = {
+    entryType: 'payment',
+    status: 'approved',
+    effectiveAt: input.paidAt,
+    reportingMonth: input.paidAt.slice(0, 7),
+    amountMinor: input.baseAmountIlsMinor,
+    currency: 'ILS',
+    baseAmountIlsMinor: input.baseAmountIlsMinor,
+    exchangeRate: null,
+    exchangeRateSource: null,
+    orderId: input.order.id,
+    sourceType,
+    sourceReference: `order:${input.order.id}`,
+    paymentMethod: input.order.paymentMethod,
+    paymentReference,
+    description: `Confirmed payment for order #${input.order.id}`,
+    reason: input.rationale.trim(),
+    evidenceMetadata,
+    createdByType: input.actorType,
+    createdById: input.actorId,
+    submittedByType: input.actorType,
+    submittedById: input.actorId,
+    approvedByType: input.actorType,
+    approvedById: input.actorId,
+    approvedAt: now,
+    auditMetadata: JSON.stringify({
+      financialEventVersion: 1,
+      orderStatusAtConfirmation: input.order.status,
+      originalOrderAmountMinor: amountMinor,
+      originalOrderCurrency: currency,
+    }),
+    createdAt: now,
+  };
+
+  try {
+    await db.batch([
+      db.update(orders).set({
+        status: 'completed',
+        paymentReference: paymentReference ?? undefined,
+        // Compatibility-only operational timestamp. Financial reporting uses paidAt below.
+        completedAt: now,
+        updatedAt: now,
+      }).where(and(
+        eq(orders.id, input.order.id),
+        inArray(orders.status, ['pending', 'awaiting_confirmation', 'paid']),
+      )),
+      db.insert(orderPaymentConfirmations).values(confirmationValues),
+      db.insert(financialLedgerEntries).values(ledgerValues),
+    ]);
+  } catch (error) {
+    // A retried request can race after a successful batch. The immutable
+    // unique confirmation is the idempotency key; never create a second entry.
+    const racedConfirmation = await getOrderPaymentConfirmation(input.order.id, db);
+    if (racedConfirmation) return { confirmation: racedConfirmation, idempotent: true };
+    throw error;
+  }
+
+  const confirmation = await getOrderPaymentConfirmation(input.order.id, db);
+  if (!confirmation) throw new Error('Financial confirmation was not persisted.');
+  return { confirmation, idempotent: false };
+}
+
+type FinancialReconciliationActor = { actorType: 'admin' | 'staff'; actorId: number };
+
+/**
+ * Builds a review queue from legacy operational records. It intentionally does
+ * not create ledger entries or infer historic payments, exchange rates, or
+ * reporting dates. The owner must explicitly decide each treatment later.
+ */
+export async function prepareFinancialReconciliationQueue(input: FinancialReconciliationActor) {
+  const db = await getDb();
+  if (!db) throw new Error('Database not available');
+
+  const [legacyCompletedOrders, manualPricedKeys, renewalKeys] = await Promise.all([
+    db.select({ id: orders.id }).from(orders)
+      .leftJoin(orderPaymentConfirmations, eq(orderPaymentConfirmations.orderId, orders.id))
+      .where(and(eq(orders.status, 'completed'), isNull(orderPaymentConfirmations.id))),
+    db.select({ id: registrationKeys.id }).from(registrationKeys)
+      .where(and(isNull(registrationKeys.orderId), gt(registrationKeys.price, 0), eq(registrationKeys.isRenewal, false))),
+    db.select({ id: registrationKeys.id }).from(registrationKeys)
+      .where(and(isNull(registrationKeys.orderId), gt(registrationKeys.price, 0), eq(registrationKeys.isRenewal, true))),
+  ]);
+
+  const now = new Date().toISOString();
+  const candidates = [
+    ...legacyCompletedOrders.map((row) => ({
+      sourceType: 'order', sourceReference: String(row.id),
+      issueType: 'completed_order_without_cash_confirmation', confidenceLevel: 'medium',
+      proposedTreatment: 'owner_review_required',
+      notes: `Legacy completed order #${row.id} has no immutable confirmed-payment record.`,
+    })),
+    ...manualPricedKeys.map((row) => ({
+      sourceType: 'registration_key', sourceReference: String(row.id),
+      issueType: 'priced_key_without_order', confidenceLevel: 'low',
+      proposedTreatment: 'owner_review_required',
+      notes: `Priced key #${row.id} is not linked to an order; key activation is not payment evidence.`,
+    })),
+    ...renewalKeys.map((row) => ({
+      sourceType: 'renewal_key', sourceReference: String(row.id),
+      issueType: 'renewal_key_without_order_payment', confidenceLevel: 'low',
+      proposedTreatment: 'owner_review_required',
+      notes: `Renewal key #${row.id} has no linked confirmed-payment record.`,
+    })),
+  ];
+
+  if (candidates.length) {
+    const inserts = candidates.map((candidate) => db.insert(financialReconciliationItems).values({
+      ...candidate,
+      status: 'unresolved',
+      proposedAmountIlsMinor: null,
+      reviewerType: null,
+      reviewerId: null,
+      resolvedAt: null,
+      resolutionMetadata: JSON.stringify({ preparedBy: input.actorType, preparedById: input.actorId, queueVersion: 1 }),
+      createdAt: now,
+      updatedAt: now,
+    }).onConflictDoNothing());
+    await db.batch(inserts as [typeof inserts[number], ...typeof inserts[number][]]);
+  }
+
+  return {
+    candidatesExamined: candidates.length,
+    legacyCompletedOrders: legacyCompletedOrders.length,
+    manualPricedKeys: manualPricedKeys.length,
+    renewalKeys: renewalKeys.length,
+  };
+}
+
+export async function getFinancialReconciliationDashboard() {
+  const db = await getDb();
+  if (!db) return { items: [], counts: { unresolved: 0, resolved: 0 } };
+  const [items, grouped] = await Promise.all([
+    db.select({
+      id: financialReconciliationItems.id,
+      sourceType: financialReconciliationItems.sourceType,
+      sourceReference: financialReconciliationItems.sourceReference,
+      issueType: financialReconciliationItems.issueType,
+      confidenceLevel: financialReconciliationItems.confidenceLevel,
+      proposedTreatment: financialReconciliationItems.proposedTreatment,
+      status: financialReconciliationItems.status,
+      notes: financialReconciliationItems.notes,
+      createdAt: financialReconciliationItems.createdAt,
+      resolvedAt: financialReconciliationItems.resolvedAt,
+    }).from(financialReconciliationItems)
+      .orderBy(asc(financialReconciliationItems.status), desc(financialReconciliationItems.createdAt), desc(financialReconciliationItems.id))
+      .limit(250),
+    db.select({ status: financialReconciliationItems.status, total: sql<number>`count(*)` })
+      .from(financialReconciliationItems).groupBy(financialReconciliationItems.status),
+  ]);
+  const counts = { unresolved: 0, resolved: 0 };
+  for (const row of grouped) {
+    if (row.status === 'unresolved') counts.unresolved = Number(row.total);
+    else counts.resolved += Number(row.total);
+  }
+  return { items, counts };
+}
+
+/** Exclusion is an audited review decision; it never deletes source data or creates a ledger entry. */
+export async function excludeFinancialReconciliationItem(input: FinancialReconciliationActor & { itemId: number; reason: string }) {
+  const db = await getDb();
+  if (!db) throw new Error('Database not available');
+  const [item] = await db.select().from(financialReconciliationItems)
+    .where(eq(financialReconciliationItems.id, input.itemId)).limit(1);
+  if (!item) return null;
+  if (item.status !== 'unresolved') throw new Error('This reconciliation item has already been reviewed.');
+  const now = new Date().toISOString();
+  await db.batch([
+    db.update(financialReconciliationItems).set({
+      status: 'excluded', reviewerType: input.actorType, reviewerId: input.actorId,
+      resolvedAt: now, resolutionMetadata: JSON.stringify({ decision: 'excluded', reason: input.reason.trim() }), updatedAt: now,
+    }).where(and(eq(financialReconciliationItems.id, input.itemId), eq(financialReconciliationItems.status, 'unresolved'))),
+    db.insert(financialReconciliationEvents).values({
+      reconciliationItemId: input.itemId, action: 'excluded', previousStatus: 'unresolved', nextStatus: 'excluded',
+      actorType: input.actorType, actorId: input.actorId, reason: input.reason.trim(), createdAt: now,
+    }),
+  ]);
+  return { ...item, status: 'excluded', resolvedAt: now };
 }
 
 export async function getSupportAssignmentOptions() {

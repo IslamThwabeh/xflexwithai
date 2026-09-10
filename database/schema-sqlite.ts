@@ -1187,6 +1187,29 @@ export type Order = typeof orders.$inferSelect;
 export type InsertOrder = typeof orders.$inferInsert;
 
 /**
+ * Immutable cash-confirmation evidence. This is the financial paidAt
+ * equivalent for legacy-safe orders: one confirmed payment per order, without
+ * rewriting the order's operational status or completedAt timestamp.
+ */
+export const orderPaymentConfirmations = sqliteTable("order_payment_confirmations", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  orderId: integer("order_id").notNull().unique(),
+  paidAt: text("paid_at").notNull(),
+  paymentMethod: text("payment_method"),
+  paymentReference: text("payment_reference"),
+  rationale: text("rationale").notNull(),
+  evidenceMetadata: text("evidence_metadata"),
+  confirmedByType: text("confirmed_by_type").notNull(), // admin | staff | gateway
+  confirmedById: integer("confirmed_by_id"),
+  sourceType: text("source_type").notNull(),
+  sourceReference: text("source_reference"),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
+});
+
+export type OrderPaymentConfirmation = typeof orderPaymentConfirmations.$inferSelect;
+export type InsertOrderPaymentConfirmation = typeof orderPaymentConfirmations.$inferInsert;
+
+/**
  * Account-level, versioned legal acceptance evidence. This closes the gap
  * where a client can receive an entitlement outside the checkout flow.
  */
@@ -1266,6 +1289,160 @@ export const accountRefunds = sqliteTable("account_refunds", {
 
 export type AccountRefund = typeof accountRefunds.$inferSelect;
 export type InsertAccountRefund = typeof accountRefunds.$inferInsert;
+
+// ============================================================================
+// Financial management – append-only management reporting foundation
+// ============================================================================
+
+export const financialLedgerEntries = sqliteTable("financial_ledger_entries", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  entryType: text("entry_type").notNull(), // payment | refund | expense | opening_balance | adjustment | reversal
+  status: text("status").default("draft").notNull(), // draft | pending_approval | approved | reversed
+  effectiveAt: text("effective_at").notNull(),
+  reportingMonth: text("reporting_month").notNull(),
+  amountMinor: integer("amount_minor").notNull(),
+  currency: text("currency", { length: 3 }).notNull(),
+  baseAmountIlsMinor: integer("base_amount_ils_minor").notNull(),
+  exchangeRate: real("exchange_rate"),
+  exchangeRateSource: text("exchange_rate_source"),
+  orderId: integer("order_id"),
+  orderItemId: integer("order_item_id"),
+  registrationKeyId: integer("registration_key_id"),
+  refundId: integer("refund_id"),
+  expenseId: integer("expense_id"),
+  sourceType: text("source_type").notNull(),
+  sourceReference: text("source_reference"),
+  paymentMethod: text("payment_method"),
+  paymentReference: text("payment_reference"),
+  description: text("description"),
+  internalNotes: text("internal_notes"),
+  reason: text("reason"),
+  evidenceMetadata: text("evidence_metadata"),
+  createdByType: text("created_by_type").notNull(),
+  createdById: integer("created_by_id"),
+  submittedByType: text("submitted_by_type"),
+  submittedById: integer("submitted_by_id"),
+  approvedByType: text("approved_by_type"),
+  approvedById: integer("approved_by_id"),
+  approvedAt: text("approved_at"),
+  reversalOfEntryId: integer("reversal_of_entry_id"),
+  auditMetadata: text("audit_metadata"),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
+}, (table) => ({
+  approvedPeriodIndex: index("idx_financial_ledger_approved_period")
+    .on(table.status, table.reportingMonth, table.effectiveAt, table.id),
+  sourceLinkIndex: index("idx_financial_ledger_source_link")
+    .on(table.sourceType, table.sourceReference, table.id),
+}));
+
+export type FinancialLedgerEntry = typeof financialLedgerEntries.$inferSelect;
+export type InsertFinancialLedgerEntry = typeof financialLedgerEntries.$inferInsert;
+
+export const financialExpenses = sqliteTable("financial_expenses", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  status: text("status").default("draft").notNull(),
+  paidAt: text("paid_at").notNull(),
+  category: text("category").notNull(),
+  supplierOrPayee: text("supplier_or_payee"),
+  amountMinor: integer("amount_minor").notNull(),
+  currency: text("currency", { length: 3 }).notNull(),
+  baseAmountIlsMinor: integer("base_amount_ils_minor").notNull(),
+  exchangeRate: real("exchange_rate"),
+  exchangeRateSource: text("exchange_rate_source"),
+  vatRate: integer("vat_rate"),
+  vatAmountMinor: integer("vat_amount_minor"),
+  vatIncluded: integer("vat_included", { mode: "boolean" }),
+  paymentMethod: text("payment_method"),
+  paymentReference: text("payment_reference"),
+  description: text("description"),
+  internalNotes: text("internal_notes"),
+  receiptMetadata: text("receipt_metadata"),
+  createdByType: text("created_by_type").notNull(),
+  createdById: integer("created_by_id").notNull(),
+  submittedByType: text("submitted_by_type"),
+  submittedById: integer("submitted_by_id"),
+  approvedByType: text("approved_by_type"),
+  approvedById: integer("approved_by_id"),
+  approvedAt: text("approved_at"),
+  ledgerEntryId: integer("ledger_entry_id").unique(),
+  reversalOfExpenseId: integer("reversal_of_expense_id"),
+  correctionReason: text("correction_reason"),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
+  updatedAt: text("updated_at").default(sql`(datetime('now'))`).notNull(),
+}, (table) => ({
+  statusPaidIndex: index("idx_financial_expenses_status_paid").on(table.status, table.paidAt, table.id),
+  categoryPaidIndex: index("idx_financial_expenses_category_paid").on(table.category, table.paidAt, table.id),
+}));
+
+export type FinancialExpense = typeof financialExpenses.$inferSelect;
+export type InsertFinancialExpense = typeof financialExpenses.$inferInsert;
+
+export const financialPeriodLocks = sqliteTable("financial_period_locks", {
+  month: text("month", { length: 7 }).primaryKey(),
+  lockedByAdminId: integer("locked_by_admin_id").notNull(),
+  lockedAt: text("locked_at").default(sql`(datetime('now'))`).notNull(),
+  note: text("note").notNull(),
+});
+
+export const financialPeriodLockEvents = sqliteTable("financial_period_lock_events", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  month: text("month", { length: 7 }).notNull(),
+  action: text("action").notNull(), // locked | unlocked
+  performedByAdminId: integer("performed_by_admin_id").notNull(),
+  reason: text("reason").notNull(),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
+}, (table) => ({
+  monthCreatedIndex: index("idx_financial_period_lock_events_month_created").on(table.month, table.createdAt, table.id),
+}));
+
+export const financialReconciliationItems = sqliteTable("financial_reconciliation_items", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  sourceType: text("source_type").notNull(),
+  sourceReference: text("source_reference").notNull(),
+  issueType: text("issue_type").notNull(),
+  confidenceLevel: text("confidence_level").notNull(),
+  proposedTreatment: text("proposed_treatment").notNull(),
+  status: text("status").default("unresolved").notNull(),
+  proposedAmountIlsMinor: integer("proposed_amount_ils_minor"),
+  notes: text("notes"),
+  reviewerType: text("reviewer_type"),
+  reviewerId: integer("reviewer_id"),
+  resolvedAt: text("resolved_at"),
+  resolutionMetadata: text("resolution_metadata"),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
+  updatedAt: text("updated_at").default(sql`(datetime('now'))`).notNull(),
+}, (table) => ({
+  statusCreatedIndex: index("idx_financial_reconciliation_status_created").on(table.status, table.createdAt, table.id),
+  sourceIndex: index("idx_financial_reconciliation_source").on(table.sourceType, table.sourceReference),
+  uniqueSourceIssue: unique("uq_financial_reconciliation_source_issue").on(table.sourceType, table.sourceReference, table.issueType),
+}));
+
+export const financialReconciliationEvents = sqliteTable("financial_reconciliation_events", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  reconciliationItemId: integer("reconciliation_item_id").notNull(),
+  action: text("action").notNull(),
+  previousStatus: text("previous_status"),
+  nextStatus: text("next_status"),
+  actorType: text("actor_type").notNull(),
+  actorId: integer("actor_id"),
+  reason: text("reason"),
+  metadata: text("metadata"),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
+}, (table) => ({
+  itemCreatedIndex: index("idx_financial_reconciliation_events_item_created")
+    .on(table.reconciliationItemId, table.createdAt, table.id),
+}));
+
+export const financialRoleAssignmentAudit = sqliteTable("financial_role_assignment_audit", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull(),
+  role: text("role").notNull(),
+  action: text("action").notNull(),
+  performedByAdminId: integer("performed_by_admin_id").notNull(),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
+}, (table) => ({
+  userCreatedIndex: index("idx_financial_role_audit_user_created").on(table.userId, table.createdAt, table.id),
+}));
 
 export const orderItems = sqliteTable("orderItems", {
   id: int("id").primaryKey({ autoIncrement: true }),

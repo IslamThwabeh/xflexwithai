@@ -140,6 +140,13 @@ export default function AdminRevenueReport() {
         </Button>
       </div>
 
+      <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+        <strong>{isRtl ? 'تنبيه مهم: ' : 'Important: '}</strong>
+        {isRtl
+          ? 'هذا التقرير القديم مبني على تفعيل المفاتيح، وليس مصدرًا ماليًا موثوقًا. استخدم “تسوية البيانات المالية” لمراجعة السجلات القديمة، وستظهر تقارير الدخل النقدي الجديدة في المرحلة التالية.'
+          : 'This legacy report is based on key activations and is not a reliable financial source. Use Financial Reconciliation to review historic records; cash-based reporting arrives in the next phase.'}
+      </div>
+
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <div className="bg-white border rounded-xl p-5">
