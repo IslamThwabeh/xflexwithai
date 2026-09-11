@@ -29,6 +29,9 @@ export const ROLE_PAGE_ACCESS: Record<string, string[]> = {
   support: ["/admin/support", "/admin/bug-reports", "/admin/students", "/admin/notifications"],
   lexai_support: ["/admin/lexai", "/admin/notifications"],
   key_manager: ["/admin/package-keys", "/admin/students", "/admin/orders", "/admin/notifications"],
+  finance_manager: ["/admin/orders", "/admin/finance", "/admin/finance/expenses", "/admin/finance/controls", "/admin/finance/reconciliation"],
+  finance_clerk: ["/admin/finance/expenses"],
+  finance_viewer: ["/admin/finance"],
   analyst: ["/admin/recommendations", "/admin/notifications"], // analyst only posts recommendations
 
   // Support permissions (view-only, grant read access to specific data)
@@ -59,6 +62,7 @@ export const ALL_STAFF_ROLES = [
   "student_surveys_manager", "loyalty_rewards_manager", "student_community_moderator",
   "student_job_eligibility_manager",
   "email_logs_viewer",
+  "finance_manager", "finance_clerk", "finance_viewer",
   "live_sessions_manager", "live_notifications_manager", "live_recording_uploader", "live_recording_publisher",
 ] as const;
 export type StaffRole = typeof ALL_STAFF_ROLES[number];

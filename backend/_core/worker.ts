@@ -42,6 +42,13 @@ import {
 import { checkScheduledEmailOutboxHealth } from "../services/email-outbox-health-monitor.service";
 import { runPriorityDeliveryLanes } from "../services/worker-priority-delivery.service";
 import { LIVE_PACKAGE_SLUG, parseLivePackageConfig } from "../services/live-package.service";
+import {
+  FINANCIAL_RECEIPT_MAX_BYTES,
+  buildFinancialReceiptMetadata,
+  canAccessExpense,
+  canEditExpense,
+  parseFinancialReceiptMetadata,
+} from "../services/financial-expense.service";
 
 const MINUTE_DELIVERY_CRON = "* * * * *";
 const TIMED_SERVICE_REPAIR_CRON = "*/5 * * * *";
@@ -163,7 +170,7 @@ async function runFrequentEmailJobs(scheduledMinute: number) {
 }
 
 function buildContentDisposition(type: "inline" | "attachment", fileName: string) {
-  const asciiFallback = fileName.replace(/[\\/\r\n\"]/g, "_");
+  const asciiFallback = fileName.replace(/[\\/\r\n\"]/g, "_").replace(/[^\x20-\x7e]/g, "_");
   const encoded = encodeURIComponent(fileName);
   return `${type}; filename="${asciiFallback}"; filename*=UTF-8''${encoded}`;
 }
@@ -215,6 +222,9 @@ function parseRangeHeader(rangeHeader: string, totalSize: number) {
 export interface Env {
   DB: D1Database;
   VIDEOS_BUCKET: R2Bucket;
+  // Dedicated private bucket. Intentionally optional until infrastructure is
+  // approved and provisioned; finance routes fail closed when it is absent.
+  FINANCE_RECEIPTS_BUCKET?: R2Bucket;
   KV_CACHE?: KVNamespace;
   JWT_SECRET: string;
   OPENAI_API_KEY: string;
@@ -411,6 +421,108 @@ export default {
             status: "error",
             code: uploadError.code,
             message: uploadError.message,
+          }, headers);
+        }
+      }
+
+      const financeReceiptMatch = pathname.match(/^\/api\/finance\/expenses\/(\d+)\/receipt$/);
+      if (financeReceiptMatch) {
+        const headers = new Headers();
+        corsHeaders.forEach((value, key) => headers.set(key, value));
+        if (request.method === "OPTIONS") {
+          headers.set("Access-Control-Allow-Headers", "content-type,x-file-name");
+          headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+          return new Response(null, { status: 204, headers });
+        }
+        if (origin && !isAllowedOrigin) {
+          return jsonResponse(403, { status: "forbidden", message: "A trusted origin is required." }, headers);
+        }
+        if (request.method !== "GET" && request.method !== "POST") {
+          return jsonResponse(405, { status: "method_not_allowed", message: "Use GET or POST." }, headers);
+        }
+        const authContext = await createWorkerContext({ req: request, env, executionCtx: ctx });
+        appendCookieHeaders(headers, (authContext as { cookieHeaders?: string[] }).cookieHeaders);
+        if (!authContext.user?.email) {
+          return jsonResponse(401, { status: "unauthorized", message: "Please sign in." }, headers);
+        }
+        const admin = await db.getAdminByEmail(authContext.user.email);
+        const actor = await db.resolveFinanceActor({
+          adminId: admin?.id ?? null,
+          userId: authContext.user.id,
+        });
+        if (!actor || actor.access === "viewer") {
+          return jsonResponse(403, { status: "forbidden", message: "Expense evidence access is required." }, headers);
+        }
+        const expenseId = Number(financeReceiptMatch[1]);
+        const expense = await db.getFinancialExpense(expenseId);
+        if (!expense || !canAccessExpense(actor, expense)) {
+          return jsonResponse(404, { status: "not_found", message: "Expense not found." }, headers);
+        }
+        if (!env.FINANCE_RECEIPTS_BUCKET) {
+          return jsonResponse(503, {
+            status: "storage_not_configured",
+            message: "Private finance receipt storage is not configured.",
+          }, headers);
+        }
+
+        if (request.method === "GET") {
+          const metadata = parseFinancialReceiptMetadata(expense.receiptMetadata);
+          if (!metadata) return jsonResponse(404, { status: "not_found", message: "No receipt is attached." }, headers);
+          const object = await env.FINANCE_RECEIPTS_BUCKET.get(metadata.objectKey);
+          if (!object) return jsonResponse(404, { status: "not_found", message: "Receipt object is missing." }, headers);
+          headers.set("Content-Type", metadata.contentType);
+          headers.set("Content-Disposition", buildContentDisposition("attachment", metadata.originalName));
+          headers.set("Cache-Control", "private, no-store");
+          headers.set("X-Content-Type-Options", "nosniff");
+          return new Response(object.body, { status: 200, headers });
+        }
+
+        if (!canEditExpense(actor, expense)) {
+          return jsonResponse(409, {
+            status: "not_editable",
+            message: "Only the creator can attach a receipt while the expense is a draft.",
+          }, headers);
+        }
+        const declaredLength = Number(request.headers.get("content-length"));
+        if (Number.isFinite(declaredLength) && declaredLength > FINANCIAL_RECEIPT_MAX_BYTES) {
+          return jsonResponse(413, { status: "file_too_large", message: "Receipt must be 10 MB or smaller." }, headers);
+        }
+        try {
+          const bytes = new Uint8Array(await request.arrayBuffer());
+          const metadata = buildFinancialReceiptMetadata({
+            expenseId,
+            bytes,
+            declaredContentType: request.headers.get("content-type"),
+            originalName: request.headers.get("x-file-name"),
+            actor,
+          });
+          const previous = parseFinancialReceiptMetadata(expense.receiptMetadata);
+          await env.FINANCE_RECEIPTS_BUCKET.put(metadata.objectKey, bytes, {
+            httpMetadata: { contentType: metadata.contentType },
+            customMetadata: { expenseId: String(expenseId) },
+          });
+          try {
+            await db.attachFinancialExpenseReceipt({ actor, expenseId, metadata });
+          } catch (error) {
+            await env.FINANCE_RECEIPTS_BUCKET.delete(metadata.objectKey);
+            throw error;
+          }
+          if (previous?.objectKey && previous.objectKey !== metadata.objectKey) {
+            ctx.waitUntil(env.FINANCE_RECEIPTS_BUCKET.delete(previous.objectKey));
+          }
+          return jsonResponse(200, {
+            status: "success",
+            receipt: {
+              originalName: metadata.originalName,
+              contentType: metadata.contentType,
+              sizeBytes: metadata.sizeBytes,
+              uploadedAt: metadata.uploadedAt,
+            },
+          }, headers);
+        } catch (error) {
+          return jsonResponse(400, {
+            status: "invalid_receipt",
+            message: error instanceof Error ? error.message : "Receipt upload failed.",
           }, headers);
         }
       }

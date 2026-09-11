@@ -240,7 +240,26 @@ export const registrationKeys = sqliteTable("registrationKeys", {
   authorizedByType: text("authorizedByType"), // admin | staff | system
   authorizedById: integer("authorizedById"),
   authorizedAt: text("authorizedAt"),
-});
+}, (table) => ({
+  recentActivationIndex: index("idx_registration_keys_recent_activation")
+    .on(table.activatedAt, table.id)
+    .where(sql`${table.activatedAt} IS NOT NULL AND ${table.packageId} IS NOT NULL`),
+  financialReconciliationManualIndex: index("idx_registration_keys_financial_reconciliation_manual")
+    .on(table.id)
+    .where(sql`${table.orderId} IS NULL AND ${table.price} > 0 AND COALESCE(${table.isRenewal}, 0) = 0 AND COALESCE(${table.isUpgrade}, 0) = 0`),
+  financialReconciliationRenewalIndex: index("idx_registration_keys_financial_reconciliation_renewal")
+    .on(table.id)
+    .where(sql`${table.orderId} IS NULL AND ${table.price} > 0 AND ${table.isRenewal} = 1`),
+  financialReconciliationUpgradeIndex: index("idx_registration_keys_financial_reconciliation_upgrade")
+    .on(table.id)
+    .where(sql`${table.orderId} IS NULL AND ${table.price} > 0 AND COALESCE(${table.isRenewal}, 0) = 0 AND ${table.isUpgrade} = 1`),
+  financialReconciliationFreeIndex: index("idx_registration_keys_financial_reconciliation_free")
+    .on(table.id)
+    .where(sql`${table.orderId} IS NULL AND ${table.price} <= 0`),
+  orderActivationReconciliationIndex: index("idx_registration_keys_order_activation_reconciliation")
+    .on(table.activatedAt, table.id)
+    .where(sql`${table.orderId} IS NOT NULL`),
+}));
 
 export type RegistrationKey = typeof registrationKeys.$inferSelect;
 export type InsertRegistrationKey = typeof registrationKeys.$inferInsert;
@@ -1181,7 +1200,11 @@ export const orders = sqliteTable("orders", {
   createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
   updatedAt: text("updatedAt").default(sql`(datetime('now'))`).notNull(),
   completedAt: text("completedAt"),
-});
+}, (table) => ({
+  financialReconciliationStatusIndex: index("idx_orders_financial_reconciliation_status_id")
+    .on(table.status, table.id)
+    .where(sql`${table.status} IN ('paid', 'completed')`),
+}));
 
 export type Order = typeof orders.$inferSelect;
 export type InsertOrder = typeof orders.$inferInsert;
@@ -1204,7 +1227,9 @@ export const orderPaymentConfirmations = sqliteTable("order_payment_confirmation
   sourceType: text("source_type").notNull(),
   sourceReference: text("source_reference"),
   createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
-});
+}, (table) => ({
+  reconciliationCountIndex: index("idx_order_payment_confirmations_reconciliation_count").on(table.id),
+}));
 
 export type OrderPaymentConfirmation = typeof orderPaymentConfirmations.$inferSelect;
 export type InsertOrderPaymentConfirmation = typeof orderPaymentConfirmations.$inferInsert;
@@ -1331,6 +1356,9 @@ export const financialLedgerEntries = sqliteTable("financial_ledger_entries", {
 }, (table) => ({
   approvedPeriodIndex: index("idx_financial_ledger_approved_period")
     .on(table.status, table.reportingMonth, table.effectiveAt, table.id),
+  approvedEffectiveTypeIndex: index("idx_financial_ledger_approved_effective_type")
+    .on(table.effectiveAt, table.entryType, table.id)
+    .where(sql`${table.status} = 'approved'`),
   sourceLinkIndex: index("idx_financial_ledger_source_link")
     .on(table.sourceType, table.sourceReference, table.id),
 }));
@@ -1372,10 +1400,32 @@ export const financialExpenses = sqliteTable("financial_expenses", {
 }, (table) => ({
   statusPaidIndex: index("idx_financial_expenses_status_paid").on(table.status, table.paidAt, table.id),
   categoryPaidIndex: index("idx_financial_expenses_category_paid").on(table.category, table.paidAt, table.id),
+  creatorStatusUpdatedIndex: index("idx_financial_expenses_creator_status_updated")
+    .on(table.createdByType, table.createdById, table.status, table.updatedAt, table.id),
+  updatedIndex: index("idx_financial_expenses_updated").on(table.updatedAt, table.id),
 }));
 
 export type FinancialExpense = typeof financialExpenses.$inferSelect;
 export type InsertFinancialExpense = typeof financialExpenses.$inferInsert;
+
+export const financialExpenseEvents = sqliteTable("financial_expense_events", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  expenseId: integer("expense_id").notNull(),
+  action: text("action").notNull(), // created | updated | receipt_attached | submitted | approved | rejected
+  previousStatus: text("previous_status"),
+  nextStatus: text("next_status"),
+  actorType: text("actor_type").notNull(), // admin | staff
+  actorId: integer("actor_id").notNull(),
+  reason: text("reason"),
+  metadata: text("metadata"),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
+}, (table) => ({
+  expenseCreatedIndex: index("idx_financial_expense_events_expense_created")
+    .on(table.expenseId, table.createdAt, table.id),
+}));
+
+export type FinancialExpenseEvent = typeof financialExpenseEvents.$inferSelect;
+export type InsertFinancialExpenseEvent = typeof financialExpenseEvents.$inferInsert;
 
 export const financialPeriodLocks = sqliteTable("financial_period_locks", {
   month: text("month", { length: 7 }).primaryKey(),
@@ -1393,6 +1443,52 @@ export const financialPeriodLockEvents = sqliteTable("financial_period_lock_even
   createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
 }, (table) => ({
   monthCreatedIndex: index("idx_financial_period_lock_events_month_created").on(table.month, table.createdAt, table.id),
+}));
+
+export const financialAdjustmentRequests = sqliteTable("financial_adjustment_requests", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  status: text("status").default("draft").notNull(),
+  effectiveAt: text("effective_at").notNull(),
+  reportingMonth: text("reporting_month").notNull(),
+  amountIlsMinor: integer("amount_ils_minor").notNull(),
+  description: text("description").notNull(),
+  reason: text("reason").notNull(),
+  internalNotes: text("internal_notes"),
+  evidenceMetadata: text("evidence_metadata"),
+  createdByType: text("created_by_type").notNull(),
+  createdById: integer("created_by_id").notNull(),
+  submittedByType: text("submitted_by_type"),
+  submittedById: integer("submitted_by_id"),
+  submittedAt: text("submitted_at"),
+  reviewedByType: text("reviewed_by_type"),
+  reviewedById: integer("reviewed_by_id"),
+  reviewedAt: text("reviewed_at"),
+  reviewReason: text("review_reason"),
+  ledgerEntryId: integer("ledger_entry_id").unique(),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
+  updatedAt: text("updated_at").default(sql`(datetime('now'))`).notNull(),
+}, (table) => ({
+  statusUpdatedIndex: index("idx_financial_adjustments_status_updated")
+    .on(table.status, table.updatedAt, table.id),
+  creatorStatusUpdatedIndex: index("idx_financial_adjustments_creator_status_updated")
+    .on(table.createdByType, table.createdById, table.status, table.updatedAt, table.id),
+  updatedIndex: index("idx_financial_adjustments_updated").on(table.updatedAt, table.id),
+}));
+
+export const financialAdjustmentEvents = sqliteTable("financial_adjustment_events", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  adjustmentId: integer("adjustment_id").notNull(),
+  action: text("action").notNull(),
+  previousStatus: text("previous_status"),
+  nextStatus: text("next_status"),
+  actorType: text("actor_type").notNull(),
+  actorId: integer("actor_id").notNull(),
+  reason: text("reason"),
+  metadata: text("metadata"),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
+}, (table) => ({
+  itemCreatedIndex: index("idx_financial_adjustment_events_item_created")
+    .on(table.adjustmentId, table.createdAt, table.id),
 }));
 
 export const financialReconciliationItems = sqliteTable("financial_reconciliation_items", {
@@ -1413,6 +1509,7 @@ export const financialReconciliationItems = sqliteTable("financial_reconciliatio
   updatedAt: text("updated_at").default(sql`(datetime('now'))`).notNull(),
 }, (table) => ({
   statusCreatedIndex: index("idx_financial_reconciliation_status_created").on(table.status, table.createdAt, table.id),
+  statusUpdatedIndex: index("idx_financial_reconciliation_status_updated").on(table.status, table.updatedAt, table.id),
   sourceIndex: index("idx_financial_reconciliation_source").on(table.sourceType, table.sourceReference),
   uniqueSourceIssue: unique("uq_financial_reconciliation_source_issue").on(table.sourceType, table.sourceReference, table.issueType),
 }));
@@ -1442,6 +1539,33 @@ export const financialRoleAssignmentAudit = sqliteTable("financial_role_assignme
   createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
 }, (table) => ({
   userCreatedIndex: index("idx_financial_role_audit_user_created").on(table.userId, table.createdAt, table.id),
+}));
+
+/**
+ * Current owner-authority projection. Generic admin membership never implies
+ * finance ownership; authorization must resolve this explicit active row.
+ */
+export const financeOwnerAssignments = sqliteTable("finance_owner_assignments", {
+  adminId: integer("admin_id").primaryKey().references(() => admins.id, { onDelete: "restrict" }),
+  isActive: integer("is_active", { mode: "boolean" }).default(true).notNull(),
+  assignedByAdminId: integer("assigned_by_admin_id").notNull(),
+  assignedAt: text("assigned_at").default(sql`(datetime('now'))`).notNull(),
+  revokedByAdminId: integer("revoked_by_admin_id"),
+  revokedAt: text("revoked_at"),
+  reason: text("reason").notNull(),
+});
+
+/** Immutable events for initial owner assignment and any later transfer. */
+export const financeOwnerAssignmentAudit = sqliteTable("finance_owner_assignment_audit", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  adminId: integer("admin_id").notNull().references(() => admins.id, { onDelete: "restrict" }),
+  action: text("action").notNull(), // assigned | revoked
+  performedByAdminId: integer("performed_by_admin_id").notNull(),
+  reason: text("reason").notNull(),
+  eventKey: text("event_key").notNull().unique(),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
+}, (table) => ({
+  adminCreatedIndex: index("idx_finance_owner_audit_admin_created").on(table.adminId, table.createdAt, table.id),
 }));
 
 export const orderItems = sqliteTable("orderItems", {

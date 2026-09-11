@@ -40,6 +40,10 @@ const AdminArticles = lazy(() => import("./pages/AdminArticles"));
 const AdminSeoOwnerIntake = lazy(() => import("./pages/AdminSeoOwnerIntake"));
 const AdminLivePackageReview = lazy(() => import("./pages/AdminLivePackageReview"));
 const AdminOrders = lazy(() => import("./pages/AdminOrders"));
+const AdminExpenses = lazy(() => import("./pages/AdminExpenses"));
+const AdminFinancialDashboard = lazy(() => import("./pages/AdminFinancialDashboard"));
+const AdminFinancialControls = lazy(() => import("./pages/AdminFinancialControls"));
+const AdminFinancialReconciliation = lazy(() => import("./pages/AdminFinancialReconciliation"));
 const AdminQuizzes = lazy(() => import("./pages/AdminQuizzes"));
 const AdminCoupons = lazy(() => import("./pages/AdminCoupons"));
 const AdminTestimonials = lazy(() => import("./pages/AdminTestimonials"));
@@ -309,6 +313,26 @@ function Router() {
           <AdminOrders />
         </AdminRoute>
       </Route>
+      <Route path={"/admin/finance/expenses"}>
+        <AdminRoute>
+          <AdminExpenses />
+        </AdminRoute>
+      </Route>
+      <Route path={"/admin/finance/controls"}>
+        <AdminRoute>
+          <AdminFinancialControls />
+        </AdminRoute>
+      </Route>
+      <Route path={"/admin/finance/reconciliation"}>
+        <AdminRoute>
+          <AdminFinancialReconciliation />
+        </AdminRoute>
+      </Route>
+      <Route path={"/admin/finance"}>
+        <AdminRoute>
+          <AdminFinancialDashboard />
+        </AdminRoute>
+      </Route>
       <Route path={"/admin/events"}>
         <AdminRoute>
           <AdminEvents />
@@ -390,6 +414,9 @@ function Router() {
         </AdminRoute>
       </Route>
       <Route path={"/admin/reports/revenue"}>
+        <Redirect to="/admin/reports/activations" />
+      </Route>
+      <Route path={"/admin/reports/activations"}>
         <AdminRoute>
           <AdminRevenueReport />
         </AdminRoute>

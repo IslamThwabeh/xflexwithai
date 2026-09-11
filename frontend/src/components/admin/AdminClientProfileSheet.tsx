@@ -384,7 +384,7 @@ export default function AdminClientProfileSheet({
       userId: profile.user.id,
       reason: reason.trim(),
       deactivateServices,
-      refund: recordRefund && selectedSale
+      refund: recordRefund && profile?.permissions.canRecordFinancialRefund && selectedSale
         ? {
             requestId: crypto.randomUUID(),
             registrationKeyId: selectedSale.registrationKeyId,
@@ -1016,7 +1016,7 @@ export default function AdminClientProfileSheet({
             />
           </div>
 
-          <div className="rounded-2xl border border-slate-200 p-4">
+          {profile?.permissions.canRecordFinancialRefund && <div className="rounded-2xl border border-slate-200 p-4">
             <label className="flex cursor-pointer items-start gap-3">
               <Checkbox checked={recordRefund} onCheckedChange={(checked) => setRecordRefund(checked === true)} />
               <span>
@@ -1093,7 +1093,7 @@ export default function AdminClientProfileSheet({
                 </div>
               </div>
             )}
-          </div>
+          </div>}
 
           <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
             <label className="flex cursor-pointer items-start gap-3">

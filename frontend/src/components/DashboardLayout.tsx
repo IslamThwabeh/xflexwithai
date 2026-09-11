@@ -165,6 +165,26 @@ const menuSectionsDef: MenuSection[] = [
         path: "/admin/orders",
       },
       {
+        icon: DollarSign,
+        labelKey: "admin.sidebar.expenses",
+        path: "/admin/finance/expenses",
+      },
+      {
+        icon: BarChart3,
+        labelKey: "admin.sidebar.financialDashboard",
+        path: "/admin/finance",
+      },
+      {
+        icon: ShieldCheck,
+        labelKey: "admin.sidebar.financialControls",
+        path: "/admin/finance/controls",
+      },
+      {
+        icon: ClipboardCheck,
+        labelKey: "admin.sidebar.financialReconciliation",
+        path: "/admin/finance/reconciliation",
+      },
+      {
         icon: Key,
         labelKey: "admin.sidebar.activationKeys",
         path: "/admin/package-keys",
@@ -310,9 +330,9 @@ const menuSectionsDef: MenuSection[] = [
     labelKey: "admin.sidebar.reports",
     items: [
       {
-        icon: DollarSign,
+        icon: Key,
         labelKey: "admin.sidebar.revenue",
-        path: "/admin/reports/revenue",
+        path: "/admin/reports/activations",
       },
       {
         icon: Clock,
@@ -513,6 +533,10 @@ function DashboardLayoutContent({
 
   // Check admin/staff status for sidebar filtering
   const { data: adminCheck } = trpc.auth.isAdmin.useQuery();
+  const { data: financeAuthority } = trpc.roles.myFinanceAuthority.useQuery(undefined, {
+    enabled: adminCheck?.isAdmin === true,
+    retry: false,
+  });
   const staffRolesForAvailability = adminCheck?.staffRoles ?? [];
   const { data: staffEnrollments } = trpc.enrollments.myEnrollments.useQuery(
     undefined,
@@ -609,6 +633,24 @@ function DashboardLayoutContent({
             if (item.path === "/admin/features") {
               return false;
             }
+            if (item.path === "/admin/finance/expenses") {
+              return financeAuthority?.isFinanceOwner === true
+                || staffRolesForAvailability.includes("finance_manager")
+                || staffRolesForAvailability.includes("finance_clerk");
+            }
+            if (item.path === "/admin/finance") {
+              return financeAuthority?.isFinanceOwner === true
+                || staffRolesForAvailability.includes("finance_manager")
+                || staffRolesForAvailability.includes("finance_viewer");
+            }
+            if (item.path === "/admin/finance/controls") {
+              return financeAuthority?.isFinanceOwner === true
+                || staffRolesForAvailability.includes("finance_manager");
+            }
+            if (item.path === "/admin/finance/reconciliation") {
+              return financeAuthority?.isFinanceOwner === true
+                || staffRolesForAvailability.includes("finance_manager");
+            }
             if (item.path === "/admin/staff-performance") {
               return performanceAvailability?.access === "manager";
             }
@@ -648,9 +690,12 @@ function DashboardLayoutContent({
       return menuSectionsDef
         .map(section => ({
           ...section,
-          items: section.items.filter(
-            item => item.path !== "/admin/my-performance"
-          ),
+          items: section.items.filter(item => (
+            item.path !== "/admin/my-performance"
+            && (item.path !== "/admin/finance/expenses" || financeAuthority?.isFinanceOwner === true)
+            && (item.path !== "/admin/finance" || financeAuthority?.isFinanceOwner === true)
+            && (item.path !== "/admin/finance/controls" || financeAuthority?.isFinanceOwner === true)
+          )),
         }))
         .filter(section => section.items.length > 0);
     }
@@ -678,6 +723,7 @@ function DashboardLayoutContent({
     ]);
   }, [
     adminCheck,
+    financeAuthority?.isFinanceOwner,
     canPrepareRewards,
     hasEmployeeTraining,
     performanceAvailability?.enabled,
@@ -774,7 +820,7 @@ function DashboardLayoutContent({
     <div className="relative flex w-full" ref={sidebarRef} dir="ltr">
       <Sidebar
         collapsible="icon"
-        className="border-r-0"
+        className="no-print border-r-0"
         disableTransition={isResizing}
       >
         <SidebarHeader className="h-16 justify-center border-b border-white/[0.06]">
@@ -986,7 +1032,7 @@ function DashboardLayoutContent({
       </Sidebar>
 
       <div
-        className={`absolute top-0 h-full cursor-col-resize hover:bg-emerald-500/30 transition-colors ${isCollapsed ? "hidden" : "hidden md:block"}`}
+        className={`no-print absolute top-0 h-full cursor-col-resize hover:bg-emerald-500/30 transition-colors ${isCollapsed ? "hidden" : "hidden md:block"}`}
         onMouseDown={() => {
           if (isCollapsed) return;
           setIsResizing(true);

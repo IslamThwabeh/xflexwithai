@@ -81,6 +81,12 @@ import {
   isPublicStandardPackage,
   parseLivePackageConfig,
 } from "./services/live-package.service";
+import {
+  FINANCIAL_EXPENSE_CATEGORIES,
+  FINANCIAL_EXPENSE_PAYMENT_METHODS,
+  FINANCIAL_EXPENSE_STATUSES,
+  type FinanceActor,
+} from "./services/financial-expense.service";
 import { generateNumericCode, generateSaltBase64, normalizeEmail, sha256Base64 } from "./_core/otp";
 import { verifyUnsubscribeToken } from "./_core/emailPreferences";
 import { getCourseQuizLevelForEpisodeOrder, isCourseQuizLevelEnd } from "./courseQuizLevels";
@@ -1047,10 +1053,53 @@ const adminOrRoleProcedure = (roles: string[]) => protectedProcedure.use(async (
 }).use(staffActivityTrackingMiddleware);
 const supportModeratorProcedure = adminOrRoleProcedure(["support"]);
 
-// Production currently has one explicitly verified owner admin (id 1). Keep
-// finance access narrower than generic admin access until the granular
-// finance-owner assignment model replaces this bootstrap in Phase 2.
-const BOOTSTRAP_FINANCE_OWNER_ADMIN_ID = 1;
+const requireFinanceOwnerAdmin = async (adminId: number) => {
+  if (!await db.isFinanceOwnerAdmin(adminId)) {
+    throw new TRPCError({
+      code: 'FORBIDDEN',
+      message: 'Explicit finance-owner access is required.',
+    });
+  }
+};
+
+const financeExpenseProcedure = protectedProcedure.use(async ({ ctx, next }) => {
+  const admin = await db.getAdminByEmail(ctx.user.email);
+  const financeActor = await db.resolveFinanceActor({
+    adminId: admin?.id ?? null,
+    userId: ctx.user.id,
+  });
+  if (!financeActor || financeActor.access === 'viewer') {
+    throw new TRPCError({
+      code: 'FORBIDDEN',
+      message: 'Expense workflow access is required.',
+    });
+  }
+  return next({ ctx: { ...ctx, financeActor: financeActor as FinanceActor } });
+});
+
+const financeReportProcedure = protectedProcedure.use(async ({ ctx, next }) => {
+  const admin = await db.getAdminByEmail(ctx.user.email);
+  const financeActor = await db.resolveFinanceActor({
+    adminId: admin?.id ?? null,
+    userId: ctx.user.id,
+  });
+  if (!financeActor || financeActor.access === 'clerk') {
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'Financial report access is required.' });
+  }
+  return next({ ctx: { ...ctx, financeActor: financeActor as FinanceActor } });
+});
+
+const financeControlProcedure = protectedProcedure.use(async ({ ctx, next }) => {
+  const admin = await db.getAdminByEmail(ctx.user.email);
+  const financeActor = await db.resolveFinanceActor({
+    adminId: admin?.id ?? null,
+    userId: ctx.user.id,
+  });
+  if (!financeActor || (financeActor.access !== 'owner' && financeActor.access !== 'manager')) {
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'Financial control access is required.' });
+  }
+  return next({ ctx: { ...ctx, financeActor: financeActor as FinanceActor } });
+});
 
 const liveSessionManagerProcedure = adminOrRoleProcedure(['live_sessions_manager']);
 const liveNotificationManagerProcedure = adminOrRoleProcedure(['live_notifications_manager']);
@@ -6322,6 +6371,245 @@ export const appRouter = router({
   }),
 
   // =========================================================================
+  // Financial dashboard and management P&L (approved ledger only)
+  // =========================================================================
+  financialReports: router({
+    dashboard: financeReportProcedure
+      .input(z.object({
+        from: z.string(),
+        to: z.string(),
+        grouping: z.enum(['month', 'year']).default('month'),
+      }))
+      .query(async ({ ctx, input }) => ({
+        access: ctx.financeActor.access,
+        canViewLedger: ctx.financeActor.access === 'owner' || ctx.financeActor.access === 'manager',
+        ...(await db.getFinancialManagementDashboard({
+          ...input,
+          includeLedger: ctx.financeActor.access === 'owner' || ctx.financeActor.access === 'manager',
+          ledgerLimit: 100,
+        })),
+      })),
+  }),
+
+  // =========================================================================
+  // Adjustments, append-only reversals, and accounting-period locks
+  // =========================================================================
+  financialControls: router({
+    workspace: financeControlProcedure.query(async ({ ctx }) => ({
+      access: ctx.financeActor.access,
+      canReview: true,
+      canReverse: ctx.financeActor.access === 'owner',
+      canManageLocks: ctx.financeActor.access === 'owner',
+      ...(await db.getFinancialControlWorkspace(ctx.financeActor)),
+    })),
+
+    createAdjustment: financeControlProcedure
+      .input(z.object({
+        effectiveDate: z.string(),
+        amountIlsMinor: z.number().int().min(-100_000_000_00).max(100_000_000_00).refine(value => value !== 0),
+        description: z.string().trim().min(3).max(1000),
+        reason: z.string().trim().min(3).max(1000),
+        internalNotes: z.string().max(1000).nullable().optional(),
+      }))
+      .mutation(({ ctx, input }) => db.createFinancialAdjustmentDraft(ctx.financeActor, input)),
+
+    updateAdjustment: financeControlProcedure
+      .input(z.object({
+        adjustmentId: z.number().int().positive(),
+        effectiveDate: z.string(),
+        amountIlsMinor: z.number().int().min(-100_000_000_00).max(100_000_000_00).refine(value => value !== 0),
+        description: z.string().trim().min(3).max(1000),
+        reason: z.string().trim().min(3).max(1000),
+        internalNotes: z.string().max(1000).nullable().optional(),
+      }))
+      .mutation(({ ctx, input }) => {
+        const { adjustmentId, ...values } = input;
+        return db.updateFinancialAdjustmentDraft({ actor: ctx.financeActor, adjustmentId, values });
+      }),
+
+    submitAdjustment: financeControlProcedure
+      .input(z.object({ adjustmentId: z.number().int().positive() }))
+      .mutation(({ ctx, input }) => db.submitFinancialAdjustment({
+        actor: ctx.financeActor,
+        adjustmentId: input.adjustmentId,
+      })),
+
+    reviewAdjustment: financeControlProcedure
+      .input(z.object({
+        adjustmentId: z.number().int().positive(),
+        decision: z.enum(['approved', 'rejected']),
+        reason: z.string().trim().min(3).max(1000),
+      }))
+      .mutation(({ ctx, input }) => db.reviewFinancialAdjustment({
+        actor: ctx.financeActor,
+        adjustmentId: input.adjustmentId,
+        decision: input.decision,
+        reason: input.reason,
+      })),
+
+    setPeriodLock: financeControlProcedure
+      .input(z.object({
+        month: z.string(),
+        action: z.enum(['locked', 'unlocked']),
+        reason: z.string().trim().min(3).max(1000),
+      }))
+      .mutation(({ ctx, input }) => {
+        if (ctx.financeActor.access !== 'owner') {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Only the finance owner can manage period locks.' });
+        }
+        return db.setFinancialPeriodLock({ actor: ctx.financeActor, ...input });
+      }),
+
+    reverseEntry: financeControlProcedure
+      .input(z.object({
+        entryId: z.number().int().positive(),
+        effectiveDate: z.string(),
+        reason: z.string().trim().min(3).max(1000),
+        replacementAmountIlsMinor: z.number().int().min(-100_000_000_00).max(100_000_000_00).nullable().optional(),
+        replacementDescription: z.string().max(1000).nullable().optional(),
+      }))
+      .mutation(({ ctx, input }) => {
+        if (ctx.financeActor.access !== 'owner') {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Only the finance owner can reverse ledger entries.' });
+        }
+        return db.reverseFinancialLedgerEntry({ actor: ctx.financeActor, ...input });
+      }),
+  }),
+
+  // =========================================================================
+  // Historic financial reconciliation (source records remain read-only)
+  // =========================================================================
+  financialReconciliation: router({
+    preview: financeControlProcedure.query(({ ctx }) => db.previewFinancialReconciliation().then(result => ({
+      access: ctx.financeActor.access,
+      canMaterialize: true,
+      canManageDrafts: true,
+      canResolve: ctx.financeActor.access === 'owner',
+      ...result,
+    }))),
+
+    workspace: financeControlProcedure
+      .input(z.object({
+        status: z.enum(['unresolved', 'approved_opening_balance', 'approved_adjustment', 'excluded']).default('unresolved'),
+      }))
+      .query(async ({ ctx, input }) => ({
+        access: ctx.financeActor.access,
+        canMaterialize: true,
+        canManageDrafts: true,
+        canResolve: ctx.financeActor.access === 'owner',
+        ...(await db.getFinancialReconciliationDashboard(input.status)),
+      })),
+
+    materializeQueue: financeControlProcedure.mutation(({ ctx }) => db.prepareFinancialReconciliationQueue(ctx.financeActor)),
+
+    updateDraft: financeControlProcedure
+      .input(z.object({
+        itemId: z.number().int().positive(),
+        proposedTreatment: z.enum(['automatically_reconcilable', 'requires_owner_evidence', 'opening_balance_candidate', 'excluded']),
+        proposedAmountIlsMinor: z.number().int().min(-100_000_000_00).max(100_000_000_00).nullable().optional(),
+        notes: z.string().max(1000),
+      }))
+      .mutation(({ ctx, input }) => db.updateFinancialReconciliationDraft({ actor: ctx.financeActor, ...input })),
+
+    resolveItem: financeControlProcedure
+      .input(z.object({
+        itemId: z.number().int().positive(),
+        decision: z.enum(['excluded', 'approved_opening_balance', 'approved_adjustment']),
+        reason: z.string().trim().min(5).max(1000),
+        effectiveDate: z.string().nullable().optional(),
+        amountIlsMinor: z.number().int().min(-100_000_000_00).max(100_000_000_00).nullable().optional(),
+      }))
+      .mutation(({ ctx, input }) => {
+        if (ctx.financeActor.access !== 'owner') {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Only the finance owner can resolve historical financial items.' });
+        }
+        return db.resolveFinancialReconciliationItem({ actor: ctx.financeActor, ...input });
+      }),
+  }),
+
+  // =========================================================================
+  // Financial expense workflow (owner/manager/clerk; viewer is report-only)
+  // =========================================================================
+  financeExpenses: router({
+    access: financeExpenseProcedure.query(({ ctx }) => ({
+      access: ctx.financeActor.access,
+      canReview: ctx.financeActor.access === 'owner' || ctx.financeActor.access === 'manager',
+    })),
+
+    list: financeExpenseProcedure
+      .input(z.object({
+        status: z.enum(FINANCIAL_EXPENSE_STATUSES).optional(),
+        limit: z.number().int().min(1).max(200).default(100),
+      }).optional())
+      .query(({ ctx, input }) => db.listFinancialExpenses({
+        actor: ctx.financeActor,
+        status: input?.status,
+        limit: input?.limit,
+      })),
+
+    createDraft: financeExpenseProcedure
+      .input(z.object({
+        paidAt: z.string(),
+        category: z.enum(FINANCIAL_EXPENSE_CATEGORIES),
+        supplierOrPayee: z.string().max(200).nullable().optional(),
+        amountMinor: z.number().int().positive().max(100_000_000_00),
+        vatRateBps: z.number().int().min(0).max(10_000).nullable().optional(),
+        vatAmountMinor: z.number().int().min(0).nullable().optional(),
+        vatIncluded: z.boolean().nullable().optional(),
+        paymentMethod: z.enum(FINANCIAL_EXPENSE_PAYMENT_METHODS).nullable().optional(),
+        paymentReference: z.string().max(160).nullable().optional(),
+        description: z.string().max(1000).nullable().optional(),
+        internalNotes: z.string().max(1000).nullable().optional(),
+      }))
+      .mutation(({ ctx, input }) => db.createFinancialExpenseDraft(ctx.financeActor, input)),
+
+    updateDraft: financeExpenseProcedure
+      .input(z.object({
+        expenseId: z.number().int().positive(),
+        paidAt: z.string(),
+        category: z.enum(FINANCIAL_EXPENSE_CATEGORIES),
+        supplierOrPayee: z.string().max(200).nullable().optional(),
+        amountMinor: z.number().int().positive().max(100_000_000_00),
+        vatRateBps: z.number().int().min(0).max(10_000).nullable().optional(),
+        vatAmountMinor: z.number().int().min(0).nullable().optional(),
+        vatIncluded: z.boolean().nullable().optional(),
+        paymentMethod: z.enum(FINANCIAL_EXPENSE_PAYMENT_METHODS).nullable().optional(),
+        paymentReference: z.string().max(160).nullable().optional(),
+        description: z.string().max(1000).nullable().optional(),
+        internalNotes: z.string().max(1000).nullable().optional(),
+      }))
+      .mutation(({ ctx, input }) => {
+        const { expenseId, ...values } = input;
+        return db.updateFinancialExpenseDraft({ actor: ctx.financeActor, expenseId, values });
+      }),
+
+    submit: financeExpenseProcedure
+      .input(z.object({ expenseId: z.number().int().positive() }))
+      .mutation(({ ctx, input }) => db.submitFinancialExpense({
+        actor: ctx.financeActor,
+        expenseId: input.expenseId,
+      })),
+
+    review: financeExpenseProcedure
+      .input(z.object({
+        expenseId: z.number().int().positive(),
+        decision: z.enum(['approved', 'rejected']),
+        reason: z.string().trim().min(3).max(1000),
+      }))
+      .mutation(({ ctx, input }) => {
+        if (ctx.financeActor.access !== 'owner' && ctx.financeActor.access !== 'manager') {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Independent finance review access is required.' });
+        }
+        return db.reviewFinancialExpense({
+          actor: ctx.financeActor,
+          expenseId: input.expenseId,
+          decision: input.decision,
+          reason: input.reason,
+        });
+      }),
+  }),
+
+  // =========================================================================
   // Role Management (admin only)
   // =========================================================================
   roles: router({
@@ -6329,6 +6617,12 @@ export const appRouter = router({
     list: adminProcedure.query(async () => {
       return db.getAllRoleAssignments();
     }),
+
+    // UI convenience only; every finance mutation repeats the server-side
+    // owner check and never trusts this boolean from the browser.
+    myFinanceAuthority: adminProcedure.query(async ({ ctx }) => ({
+      isFinanceOwner: await db.isFinanceOwnerAdmin(ctx.admin.id),
+    })),
 
     // List users with a specific role
     byRole: adminProcedure
@@ -6348,6 +6642,7 @@ export const appRouter = router({
         const user = await db.getUserById(input.userId);
         if (!user) throw new TRPCError({ code: 'NOT_FOUND', message: 'User not found' });
         if (db.isFinanceStaffRole(input.role)) {
+          await requireFinanceOwnerAdmin(ctx.admin.id);
           if (!(user as any).isStaff) {
             throw new TRPCError({ code: 'BAD_REQUEST', message: 'Finance roles can be assigned only to staff members' });
           }
@@ -6372,6 +6667,7 @@ export const appRouter = router({
       }))
       .mutation(async ({ ctx, input }) => {
         if (db.isFinanceStaffRole(input.role)) {
+          await requireFinanceOwnerAdmin(ctx.admin.id);
           await db.setFinanceRoleAssignment({
             userId: input.userId,
             role: input.role,
@@ -6399,6 +6695,9 @@ export const appRouter = router({
         const previousRoles = await db.getUserRoles(input.userId);
         const priorFinanceRoles = new Set(previousRoles.map((row) => row.role).filter(db.isFinanceStaffRole));
         const nextFinanceRoles = new Set(input.roles.filter(db.isFinanceStaffRole));
+        const changesFinanceAccess = [...priorFinanceRoles].some((role) => !nextFinanceRoles.has(role))
+          || [...nextFinanceRoles].some((role) => !priorFinanceRoles.has(role));
+        if (changesFinanceAccess) await requireFinanceOwnerAdmin(ctx.admin.id);
         const preservedFinanceRoles = previousRoles.map((row) => row.role).filter(db.isFinanceStaffRole);
         const requestedNonFinanceRoles = input.roles.filter((role) => !db.isFinanceStaffRole(role));
         await db.setUserRoles(input.userId, [...requestedNonFinanceRoles, ...preservedFinanceRoles], (ctx as any).admin?.id);
@@ -6443,6 +6742,9 @@ export const appRouter = router({
         roles: z.array(z.enum(ASSIGNABLE_STAFF_ROLES)).min(1),
       }))
       .mutation(async ({ ctx, input }) => {
+        if (input.roles.some(db.isFinanceStaffRole)) {
+          await requireFinanceOwnerAdmin(ctx.admin.id);
+        }
         const userId = await db.createStaffUser({
           name: input.name,
           email: input.email,
@@ -6503,8 +6805,12 @@ export const appRouter = router({
     // Remove a staff member (reverts to student, removes all roles)
     removeStaff: adminProcedure
       .input(z.object({ userId: z.number() }))
-      .mutation(async ({ input }) => {
-        await db.removeStaffStatus(input.userId);
+      .mutation(async ({ input, ctx }) => {
+        const assignedRoles = await db.getUserRoles(input.userId);
+        if (assignedRoles.some((row) => db.isFinanceStaffRole(row.role))) {
+          await requireFinanceOwnerAdmin(ctx.admin.id);
+        }
+        await db.removeStaffStatus(input.userId, ctx.admin.id);
         return { success: true };
       }),
 
@@ -7577,7 +7883,7 @@ export const appRouter = router({
       }),
 
     // Admin/Key Manager: list all orders
-    adminList: adminOrRoleProcedure(['key_manager'])
+    adminList: adminOrRoleProcedure(['key_manager', 'finance_manager'])
       .input(z.object({
         status: z.string().optional(),
       }).optional())
@@ -7663,7 +7969,7 @@ export const appRouter = router({
       .query(async () => db.getClientTermsCompliance()),
 
     // Admin/Key Manager: update order status
-    adminUpdateStatus: adminOrRoleProcedure(['key_manager'])
+    adminUpdateStatus: adminOrRoleProcedure(['key_manager', 'finance_manager'])
       .input(z.object({
         orderId: z.number(),
         status: z.enum(['pending', 'awaiting_confirmation', 'paid', 'completed', 'cancelled', 'refunded']),
@@ -7694,8 +8000,10 @@ export const appRouter = router({
         if (input.status === 'completed') {
           // Key-management access alone cannot recognize cash. Only the
           // explicitly bootstrapped owner or a finance manager may confirm it.
-          if (ctx.admin?.id !== BOOTSTRAP_FINANCE_OWNER_ADMIN_ID
-            && !await db.hasAnyRole(ctx.user.id, ['finance_manager'])) {
+          const canConfirmPayment = ctx.admin
+            ? await db.isFinanceOwnerAdmin(ctx.admin.id)
+            : await db.hasAnyRole(ctx.user.id, ['finance_manager']);
+          if (!canConfirmPayment) {
             throw new TRPCError({ code: 'FORBIDDEN', message: 'Finance approval access is required to confirm a payment.' });
           }
           // Never turn a historical completed order into revenue merely because
@@ -7762,6 +8070,10 @@ export const appRouter = router({
               message: error instanceof Error ? error.message : 'Failed to create the assigned activation key',
             });
           }
+        } else if (!ctx.admin && !await db.hasAnyRole(ctx.user.id, ['key_manager'])) {
+          // Finance managers can confirm cash without inheriting unrelated
+          // cancellation, refund-status, or operational key-manager powers.
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Key-management access is required for this order status change.' });
         }
 
         const updated = input.status === 'completed'
@@ -9048,6 +9360,8 @@ export const appRouter = router({
         const canViewTimeline = !!ctx.admin || await db.hasAnyRole(ctx.user.id, ['view_progress']);
         const canManageAccountAccess = !!ctx.admin || await db.hasAnyRole(ctx.user.id, ['support']);
         const canManageClientNotifications = !!ctx.admin || await db.hasAnyRole(ctx.user.id, ['manage_client_notifications']);
+        const financeActor = await db.resolveFinanceActor({ adminId: ctx.admin?.id ?? null, userId: ctx.user.id });
+        const canRecordFinancialRefund = financeActor?.access === 'owner' || financeActor?.access === 'manager';
         const profile = await db.getAdminClientProfile(input.userId, { includeTimeline: canViewTimeline });
 
         return {
@@ -9056,6 +9370,7 @@ export const appRouter = router({
             canViewTimeline,
             canManageAccountAccess,
             canManageClientNotifications,
+            canRecordFinancialRefund,
           },
         };
       }),
@@ -9074,6 +9389,12 @@ export const appRouter = router({
         }).nullable().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
+        if (input.refund) {
+          const financeActor = await db.resolveFinanceActor({ adminId: ctx.admin?.id ?? null, userId: ctx.user.id });
+          if (!financeActor || (financeActor.access !== 'owner' && financeActor.access !== 'manager')) {
+            throw new TRPCError({ code: 'FORBIDDEN', message: 'Finance owner or manager authority is required to record a refund.' });
+          }
+        }
         const actor = ctx.admin
           ? { type: 'admin' as const, id: ctx.admin.id }
           : { type: 'support' as const, id: ctx.user.id };
@@ -9087,6 +9408,7 @@ export const appRouter = router({
             /Select an activated paid package sale/,
             /Refund amount/,
             /Refund date/,
+            /financial period is locked/i,
           ].some((pattern) => pattern.test(message));
           if (!isSafeBusinessError) {
             logger.error('[ACCOUNT_ACCESS] Failed to restrict client account', {
@@ -9171,6 +9493,9 @@ export const appRouter = router({
     }),
     revenue: adminProcedure.query(async () => {
       return db.getRevenueReport();
+    }),
+    activationActivity: adminProcedure.query(async () => {
+      return db.getActivationActivityReport(500);
     }),
     expirations: adminProcedure.query(async () => {
       return db.getSubscriptionExpiryReport();

@@ -1,24 +1,21 @@
 import { useMemo, useState } from 'react';
-import { trpc } from '@/lib/trpc';
-import { printReport } from '@/lib/printReport';
-import { useLanguage } from '@/contexts/LanguageContext';
-import { formatLocalizedDate } from '@/lib/dateLocale';
-import { formatAdminCurrencyFromIls } from '@/lib/adminCurrency';
+import { Download, Key, Search } from 'lucide-react';
+import DashboardLayout from '@/components/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Download, Wallet, TrendingUp, Key, FileText, Search, ReceiptText, Scale } from 'lucide-react';
-import DashboardLayout from '@/components/DashboardLayout';
 import { DataTablePagination, SortableHeader, useDataTable, zebraRow } from '@/components/DataTable';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { formatLocalizedDate } from '@/lib/dateLocale';
+import { trpc } from '@/lib/trpc';
 
-const activationSortFns: Record<string, (a: any, b: any) => number> = {
+const sortFns: Record<string, (a: any, b: any) => number> = {
   key: (a, b) => (a.keyCode || '').localeCompare(b.keyCode || ''),
   user: (a, b) => (a.userName || '').localeCompare(b.userName || ''),
   package: (a, b) => (a.packageName || '').localeCompare(b.packageName || ''),
-  price: (a, b) => (a.priceIls || 0) - (b.priceIls || 0),
   date: (a, b) => new Date(a.activatedAt || 0).getTime() - new Date(b.activatedAt || 0).getTime(),
 };
 
-function getActivationType(activation: any) {
+function activationType(activation: any) {
   if (activation.isUpgrade) return 'upgrade';
   if (activation.isRenewal) return 'renewal';
   return 'new';
@@ -27,374 +24,59 @@ function getActivationType(activation: any) {
 export default function AdminRevenueReport() {
   const { language } = useLanguage();
   const isRtl = language === 'ar';
-  const { data, isLoading } = trpc.reports.revenue.useQuery();
+  const { data, isLoading } = trpc.reports.activationActivity.useQuery(undefined, {
+    staleTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
+  });
   const [search, setSearch] = useState('');
   const [packageFilter, setPackageFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | 'new' | 'upgrade' | 'renewal'>('all');
   const [monthFilter, setMonthFilter] = useState('');
-
-  const fmt = (shekels: number) => formatAdminCurrencyFromIls(shekels, language);
-
-  const activations = useMemo(() => data?.recentActivations ?? [], [data?.recentActivations]);
-  const packages = useMemo(() => {
-    const names = new Set<string>();
-    for (const activation of activations) {
-      const name = isRtl
-        ? activation.packageNameAr || activation.packageName
-        : activation.packageName || activation.packageNameAr;
-      if (name) names.add(name);
-    }
-    return Array.from(names).sort();
-  }, [activations, isRtl]);
-  const months = useMemo(() => {
-    const values = new Set<string>();
-    for (const activation of activations) {
-      if (activation.activatedAt) values.add(String(activation.activatedAt).slice(0, 7));
-    }
-    return Array.from(values).sort().reverse();
-  }, [activations]);
-  const filteredActivations = useMemo(() => {
-    const query = search.trim().toLowerCase();
-
-    return activations.filter((activation: any) => {
-      const localizedPackage = isRtl
-        ? activation.packageNameAr || activation.packageName
-        : activation.packageName || activation.packageNameAr;
-      const matchesSearch = !query || [
-        activation.keyCode,
-        activation.userName,
-        activation.userEmail,
-        activation.packageName,
-        activation.packageNameAr,
-      ].filter(Boolean).some((value) => String(value).toLowerCase().includes(query));
-      const matchesPackage = !packageFilter || localizedPackage === packageFilter;
-      const matchesType = typeFilter === 'all' || getActivationType(activation) === typeFilter;
-      const matchesMonth = !monthFilter || String(activation.activatedAt || '').startsWith(monthFilter);
-
-      return matchesSearch && matchesPackage && matchesType && matchesMonth;
+  const activations = useMemo(() => data?.activations ?? [], [data?.activations]);
+  const packages = useMemo(() => Array.from(new Set(activations.map((item: any) => isRtl ? item.packageNameAr || item.packageName : item.packageName || item.packageNameAr).filter(Boolean))).sort() as string[], [activations, isRtl]);
+  const months = useMemo(() => Array.from(new Set(activations.map((item: any) => String(item.activatedAt || '').slice(0, 7)).filter(Boolean))).sort().reverse() as string[], [activations]);
+  const filtered = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return activations.filter((item: any) => {
+      const packageName = isRtl ? item.packageNameAr || item.packageName : item.packageName || item.packageNameAr;
+      return (!term || [item.keyCode, item.packageName, item.packageNameAr].filter(Boolean).some(value => String(value).toLowerCase().includes(term)))
+        && (!packageFilter || packageName === packageFilter)
+        && (typeFilter === 'all' || activationType(item) === typeFilter)
+        && (!monthFilter || String(item.activatedAt || '').startsWith(monthFilter));
     });
   }, [activations, isRtl, monthFilter, packageFilter, search, typeFilter]);
+  const counts = useMemo(() => ({
+    total: filtered.length,
+    new: filtered.filter((item: any) => activationType(item) === 'new').length,
+    renewal: filtered.filter((item: any) => activationType(item) === 'renewal').length,
+    upgrade: filtered.filter((item: any) => activationType(item) === 'upgrade').length,
+  }), [filtered]);
+  const table = useDataTable(filtered, sortFns);
 
-  const {
-    paged,
-    page,
-    pageSize,
-    totalPages,
-    totalItems,
-    sortKey,
-    sortDir,
-    setPage,
-    handleSort,
-    changePageSize,
-  } = useDataTable(filteredActivations, activationSortFns);
-
-  const exportCSV = () => {
-    if (!filteredActivations.length) return;
-    const headers = ['Key Code', 'User', 'Email', 'Package', 'Gross (₪)', 'Refunded (₪)', 'Net (₪)', 'Upgrade', 'Renewal', 'Activated'];
-    const rows = filteredActivations.map((a: any) => [
-      a.keyCode, a.userName || '', a.userEmail || '',
-      a.packageName || '', fmt(a.priceIls || 0), fmt(a.refundedIls || 0), fmt(a.netIls || 0),
-      a.isUpgrade ? 'Yes' : 'No', a.isRenewal ? 'Yes' : 'No',
-      a.activatedAt ? formatLocalizedDate(a.activatedAt, language) : '',
-    ]);
-    const csv = [headers.join(','), ...rows.map(r => r.map((v: any) => `"${v}"`).join(','))].join('\n');
-    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `revenue_report_${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click(); URL.revokeObjectURL(url);
+  const exportCsv = () => {
+    const rows = [
+      ['Key ID', 'Package', 'Type', 'Activated at'],
+      ...filtered.map((item: any) => [item.id, item.packageName || item.packageNameAr || '', activationType(item), item.activatedAt || '']),
+    ];
+    const csv = rows.map(row => row.map(value => `"${String(value ?? '').replace(/"/g, '""')}"`).join(',')).join('\r\n');
+    const url = URL.createObjectURL(new Blob(['\ufeff', csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `activation-activity-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
   };
 
-  if (isLoading) {
-    return (
-      <DashboardLayout>
-      <div className="p-4 md:p-6 space-y-6" dir={isRtl ? 'rtl' : 'ltr'}>
-        <div className="animate-pulse space-y-4">
-          <div className="h-8 bg-muted rounded w-48" />
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {[1,2,3].map(i => <div key={i} className="h-28 bg-muted rounded-lg" />)}
-          </div>
-          {[1,2,3,4,5].map(i => <div key={i} className="h-12 bg-muted rounded" />)}
-        </div>
-      </div>
-      </DashboardLayout>
-    );
-  }
-
-  return (
-    <DashboardLayout>
-    <div className="p-4 md:p-6 space-y-6" dir={isRtl ? 'rtl' : 'ltr'}>
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <TrendingUp className="w-6 h-6 text-green-600" />
-          {isRtl ? 'تقرير الإيرادات والمحاسبة' : 'Revenue & Accounting Report'}
-        </h1>
-        <Button onClick={exportCSV} variant="outline" size="sm" disabled={!filteredActivations.length}>
-          <Download className="w-4 h-4 me-2" />
-          {isRtl ? 'تصدير CSV' : 'Export CSV'}
-        </Button>
-        <Button onClick={() => printReport(isRtl ? 'تقرير الإيرادات' : 'Revenue Report')} variant="outline" size="sm" className="no-print">
-          <FileText className="w-4 h-4 me-2" />
-          {isRtl ? 'تصدير PDF' : 'Export PDF'}
-        </Button>
-      </div>
-
-      <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
-        <strong>{isRtl ? 'تنبيه مهم: ' : 'Important: '}</strong>
-        {isRtl
-          ? 'هذا التقرير القديم مبني على تفعيل المفاتيح، وليس مصدرًا ماليًا موثوقًا. استخدم “تسوية البيانات المالية” لمراجعة السجلات القديمة، وستظهر تقارير الدخل النقدي الجديدة في المرحلة التالية.'
-          : 'This legacy report is based on key activations and is not a reliable financial source. Use Financial Reconciliation to review historic records; cash-based reporting arrives in the next phase.'}
-      </div>
-
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        <div className="bg-white border rounded-xl p-5">
-          <div className="flex items-center gap-2 mb-2 opacity-90">
-            <Wallet className="w-5 h-5" />
-            <span className="text-sm font-medium">{isRtl ? 'إجمالي المبيعات' : 'Gross Sales'}</span>
-          </div>
-          <div className="text-3xl font-bold text-gray-900">{fmt(data?.grossRevenueIls || 0)}</div>
-        </div>
-        <div className="bg-white border border-rose-200 rounded-xl p-5">
-          <div className="flex items-center gap-2 mb-2 text-rose-700">
-            <ReceiptText className="w-5 h-5" />
-            <span className="text-sm font-medium">{isRtl ? 'المبالغ المستردة' : 'Refunds'}</span>
-          </div>
-          <div className="text-3xl font-bold text-rose-700">{fmt(data?.refundedRevenueIls || 0)}</div>
-        </div>
-        <div className="bg-gradient-to-br from-green-500 to-green-700 text-white rounded-xl p-5">
-          <div className="flex items-center gap-2 mb-2 opacity-90">
-            <Scale className="w-5 h-5" />
-            <span className="text-sm font-medium">{isRtl ? 'صافي الدخل' : 'Net Income'}</span>
-          </div>
-          <div className="text-3xl font-bold">{fmt(data?.netRevenueIls || 0)}</div>
-        </div>
-        <div className="bg-white border rounded-xl p-5">
-          <div className="flex items-center gap-2 mb-2 text-muted-foreground">
-            <Key className="w-5 h-5" />
-            <span className="text-sm font-medium">{isRtl ? 'مفاتيح مُفعّلة' : 'Keys Activated'}</span>
-          </div>
-          <div className="text-3xl font-bold text-gray-900">{data?.totalKeySales || 0}</div>
-        </div>
-      </div>
-
-      {/* Monthly Revenue */}
-      <div className="bg-white border rounded-xl p-5">
-        <h2 className="text-lg font-bold mb-4">{isRtl ? 'الإيرادات الشهرية' : 'Monthly Revenue'}</h2>
-        {data?.monthlyRevenue?.length ? (
-          <div className="space-y-2">
-            {data.monthlyRevenue.map((m: any) => {
-              const maxRevenue = Math.max(...data.monthlyRevenue.map((x: any) => x.grossRevenueIls), 1);
-              const pct = (m.grossRevenueIls / maxRevenue) * 100;
-              return (
-                <div key={m.month} className="rounded-lg border p-3">
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm font-mono w-20 shrink-0">{m.month}</span>
-                    <div className="flex-1 bg-gray-100 rounded-full h-3 overflow-hidden">
-                      <div className="bg-green-500 h-full rounded-full transition-all" style={{ width: `${Math.max(pct, 2)}%` }} />
-                    </div>
-                    <span className="text-sm font-bold text-emerald-700">{fmt(m.netRevenueIls)}</span>
-                  </div>
-                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                    <span>{isRtl ? 'المبيعات' : 'Gross'}: {fmt(m.grossRevenueIls)}</span>
-                    <span className="text-rose-700">{isRtl ? 'المسترد' : 'Refunded'}: {fmt(m.refundedRevenueIls)}</span>
-                    <span>{m.count} {isRtl ? 'مفتاح' : 'keys'} · {m.refundCount} {isRtl ? 'استرداد' : 'refunds'}</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <p className="text-muted-foreground text-sm">{isRtl ? 'لا توجد بيانات' : 'No data available'}</p>
-        )}
-      </div>
-
-      {/* Revenue by Package */}
-      <div className="bg-white border rounded-xl p-5">
-        <h2 className="text-lg font-bold mb-4">{isRtl ? 'الإيرادات حسب الباقة' : 'Revenue by Package'}</h2>
-        {data?.packageRevenue?.length ? (
-          <div className="space-y-3">
-            {data.packageRevenue.map((p: any) => (
-              <div key={p.packageId} className="flex items-center justify-between py-2 border-b last:border-0">
-                <div>
-                  <div className="font-medium text-sm">{isRtl ? (p.packageNameAr || p.packageName) : p.packageName}</div>
-                  <div className="text-xs text-muted-foreground">{p.count} {isRtl ? 'مفتاح' : 'keys'}</div>
-                </div>
-                <div className="text-end">
-                  <div className="font-bold text-green-700">{fmt(p.netRevenueIls)}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {isRtl ? 'إجمالي' : 'Gross'} {fmt(p.grossRevenueIls)} · <span className="text-rose-700">{isRtl ? 'مسترد' : 'Refunded'} {fmt(p.refundedRevenueIls)}</span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-muted-foreground text-sm">{isRtl ? 'لا توجد بيانات' : 'No data'}</p>
-        )}
-      </div>
-
-      {/* Refund Ledger */}
-      <div className="bg-white border rounded-xl p-5">
-        <h2 className="text-lg font-bold mb-1">{isRtl ? 'سجل الاستردادات بالشيكل' : 'ILS Refund Ledger'}</h2>
-        <p className="mb-4 text-sm text-muted-foreground">
-          {isRtl ? 'يحافظ على عملية البيع الأصلية ويعرض المبلغ المسترد وسببه ومرجعه.' : 'Preserves the original sale and records the refunded amount, reason, and reference.'}
-        </p>
-        {data?.refunds?.length ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50">
-                <tr>
-                  <th className="px-3 py-2 text-start">{isRtl ? 'العميل' : 'Client'}</th>
-                  <th className="px-3 py-2 text-start">{isRtl ? 'الطلب / المفتاح' : 'Order / Key'}</th>
-                  <th className="px-3 py-2 text-start">{isRtl ? 'السبب' : 'Reason'}</th>
-                  <th className="px-3 py-2 text-center">{isRtl ? 'المبلغ' : 'Amount'}</th>
-                  <th className="px-3 py-2 text-start">{isRtl ? 'التاريخ' : 'Date'}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {data.refunds.map((refund: any, index: number) => (
-                  <tr key={refund.id} className={zebraRow(index)}>
-                    <td className="px-3 py-2 font-medium">{refund.userName}</td>
-                    <td className="px-3 py-2 text-xs">{refund.orderId ? `#${refund.orderId}` : '—'} / #{refund.registrationKeyId}</td>
-                    <td className="max-w-sm px-3 py-2 text-xs" dir="auto">{refund.reason}</td>
-                    <td className="px-3 py-2 text-center font-bold text-rose-700">-{fmt(refund.amountIls)}</td>
-                    <td className="px-3 py-2 text-xs text-muted-foreground">{formatLocalizedDate(refund.refundedAt, language)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground">{isRtl ? 'لا توجد استردادات مسجلة.' : 'No refunds recorded.'}</p>
-        )}
-      </div>
-
-      {/* Recent Key Activations Table */}
-      <div className="bg-white border rounded-xl p-5">
-        <div className="mb-4 flex flex-col gap-1 md:flex-row md:items-start md:justify-between">
-          <div>
-            <h2 className="text-lg font-bold">{isRtl ? 'سجل التفعيلات' : 'Activation Ledger'}</h2>
-            <p className="text-sm text-muted-foreground">
-              {isRtl
-                ? `${filteredActivations.length.toLocaleString()} من ${activations.length.toLocaleString()} تفعيل`
-                : `${filteredActivations.length.toLocaleString()} of ${activations.length.toLocaleString()} activations`}
-            </p>
-          </div>
-        </div>
-
-        <div className="mb-4 grid gap-3 md:grid-cols-[minmax(220px,1fr)_180px_160px_160px]">
-          <div className="relative">
-            <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder={isRtl ? 'بحث بالمفتاح أو العميل أو الإيميل...' : 'Search key, client, email...'}
-              className="ps-9"
-            />
-          </div>
-          <select
-            value={packageFilter}
-            onChange={(event) => setPackageFilter(event.target.value)}
-            className="h-9 rounded-md border bg-background px-3 text-sm"
-          >
-            <option value="">{isRtl ? 'كل الباقات' : 'All Packages'}</option>
-            {packages.map((name) => (
-              <option key={name} value={name}>{name}</option>
-            ))}
-          </select>
-          <select
-            value={typeFilter}
-            onChange={(event) => setTypeFilter(event.target.value as typeof typeFilter)}
-            className="h-9 rounded-md border bg-background px-3 text-sm"
-          >
-            <option value="all">{isRtl ? 'كل الأنواع' : 'All Types'}</option>
-            <option value="new">{isRtl ? 'جديد' : 'New'}</option>
-            <option value="upgrade">{isRtl ? 'ترقية' : 'Upgrade'}</option>
-            <option value="renewal">{isRtl ? 'تجديد' : 'Renewal'}</option>
-          </select>
-          <select
-            value={monthFilter}
-            onChange={(event) => setMonthFilter(event.target.value)}
-            className="h-9 rounded-md border bg-background px-3 text-sm"
-          >
-            <option value="">{isRtl ? 'كل الأشهر' : 'All Months'}</option>
-            {months.map((month) => (
-              <option key={month} value={month}>{month}</option>
-            ))}
-          </select>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/50">
-              <tr>
-                <th className="px-3 py-2.5 text-start font-medium">
-                  <SortableHeader label={isRtl ? 'المفتاح' : 'Key'} sortKey="key" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} />
-                </th>
-                <th className="px-3 py-2.5 text-start font-medium">
-                  <SortableHeader label={isRtl ? 'المستخدم' : 'User'} sortKey="user" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} />
-                </th>
-                <th className="px-3 py-2.5 text-start font-medium">
-                  <SortableHeader label={isRtl ? 'الباقة' : 'Package'} sortKey="package" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} />
-                </th>
-                <th className="px-3 py-2.5 text-center font-medium">
-                  <SortableHeader label={isRtl ? 'الإجمالي' : 'Gross'} sortKey="price" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} />
-                </th>
-                <th className="px-3 py-2.5 text-center font-medium">{isRtl ? 'المسترد' : 'Refunded'}</th>
-                <th className="px-3 py-2.5 text-center font-medium">{isRtl ? 'الصافي' : 'Net'}</th>
-                <th className="px-3 py-2.5 text-center font-medium">{isRtl ? 'النوع' : 'Type'}</th>
-                <th className="px-3 py-2.5 text-start font-medium">
-                  <SortableHeader label={isRtl ? 'التاريخ' : 'Date'} sortKey="date" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} />
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {paged.map((a: any, index: number) => (
-                <tr key={a.id} className={zebraRow(index, "hover:bg-muted/30")}>
-                  <td className="px-3 py-2 font-mono text-xs">{a.keyCode}</td>
-                  <td className="px-3 py-2">
-                    <div className="font-medium text-xs">{a.userName || '—'}</div>
-                    <div className="text-xs text-muted-foreground" dir="ltr">{a.userEmail || '—'}</div>
-                  </td>
-                  <td className="px-3 py-2 text-xs">{isRtl ? (a.packageNameAr || a.packageName) : (a.packageName || '—')}</td>
-                  <td className="px-3 py-2 text-center font-medium">{fmt(a.priceIls || 0)}</td>
-                  <td className="px-3 py-2 text-center font-medium text-rose-700">{a.refundedIls ? `-${fmt(a.refundedIls)}` : '—'}</td>
-                  <td className="px-3 py-2 text-center font-bold text-emerald-700">{fmt(a.netIls || 0)}</td>
-                  <td className="px-3 py-2 text-center">
-                    {a.isUpgrade ? (
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">{isRtl ? 'ترقية' : 'Upgrade'}</span>
-                    ) : a.isRenewal ? (
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">{isRtl ? 'تجديد' : 'Renewal'}</span>
-                    ) : (
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-800">{isRtl ? 'جديد' : 'New'}</span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2 text-xs text-muted-foreground">
-                    {a.activatedAt ? new Date(a.activatedAt).toLocaleDateString(isRtl ? 'ar-EG' : 'en-US') : '—'}
-                  </td>
-                </tr>
-              ))}
-              {paged.length === 0 && (
-                <tr><td colSpan={8} className="px-3 py-8 text-center text-muted-foreground">
-                  {isRtl ? 'لا توجد تفعيلات' : 'No activations found'}
-                </td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-        <DataTablePagination
-          page={page}
-          pageSize={pageSize}
-          totalPages={totalPages}
-          totalItems={totalItems}
-          setPage={setPage}
-          changePageSize={changePageSize}
-          isRtl={isRtl}
-        />
-      </div>
-    </div>
-    </DashboardLayout>
-  );
+  return <DashboardLayout><main className="space-y-6 p-4 md:p-6" dir={isRtl ? 'rtl' : 'ltr'}>
+    <header className="flex flex-wrap items-start justify-between gap-3"><div><h1 className="flex items-center gap-2 text-2xl font-bold"><Key className="h-6 w-6 text-blue-700" />{isRtl ? 'نشاط تفعيل المفاتيح' : 'Key Activation Activity'}</h1><p className="mt-1 text-sm text-muted-foreground">{isRtl ? 'تقرير تشغيلي للوصول إلى الخدمات، وليس تقرير إيرادات أو إثبات دفع.' : 'Operational access activity—not a revenue report or proof of payment.'}</p></div><Button variant="outline" onClick={exportCsv} disabled={!filtered.length}><Download className="me-2 h-4 w-4" />{isRtl ? 'تصدير النشاط CSV' : 'Export activity CSV'}</Button></header>
+    <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950">{isRtl ? 'لا تدخل أسعار المفاتيح أو تواريخ التفعيل في لوحة الإدارة المالية. مصدر الأرقام المالية هو دفتر الحركات المعتمد حسب تاريخ الدفع أو الاسترداد.' : 'Key prices and activation dates do not enter the Financial Dashboard. Financial figures come only from the approved ledger using payment or refund dates.'}</div>
+    <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{[['total', isRtl ? 'كل التفعيلات' : 'All activations'], ['new', isRtl ? 'جديد' : 'New'], ['renewal', isRtl ? 'تجديد' : 'Renewal'], ['upgrade', isRtl ? 'ترقية' : 'Upgrade']].map(([key, label]) => <div key={key} className="rounded-xl border bg-card p-5"><p className="text-sm text-muted-foreground">{label}</p><p className="mt-2 text-3xl font-bold">{counts[key as keyof typeof counts]}</p></div>)}</section>
+    <section className="rounded-2xl border bg-card p-5 shadow-sm">
+      <div className="mb-4 grid gap-3 md:grid-cols-[minmax(220px,1fr)_180px_160px_160px]"><div className="relative"><Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input className="ps-9" value={search} onChange={event => setSearch(event.target.value)} placeholder={isRtl ? 'بحث بالمفتاح أو الباقة...' : 'Search key or package...'} /></div><select className="h-9 rounded-md border bg-background px-3 text-sm" value={packageFilter} onChange={event => setPackageFilter(event.target.value)}><option value="">{isRtl ? 'كل الباقات' : 'All packages'}</option>{packages.map(name => <option key={name}>{name}</option>)}</select><select className="h-9 rounded-md border bg-background px-3 text-sm" value={typeFilter} onChange={event => setTypeFilter(event.target.value as typeof typeFilter)}><option value="all">{isRtl ? 'كل الأنواع' : 'All types'}</option><option value="new">{isRtl ? 'جديد' : 'New'}</option><option value="renewal">{isRtl ? 'تجديد' : 'Renewal'}</option><option value="upgrade">{isRtl ? 'ترقية' : 'Upgrade'}</option></select><select className="h-9 rounded-md border bg-background px-3 text-sm" value={monthFilter} onChange={event => setMonthFilter(event.target.value)}><option value="">{isRtl ? 'كل الأشهر' : 'All months'}</option>{months.map(month => <option key={month}>{month}</option>)}</select></div>
+      {data?.truncated && <p className="mb-3 text-xs text-amber-700">{isRtl ? 'يعرض آخر 500 تفعيل لحماية استهلاك قاعدة البيانات.' : 'Showing the latest 500 activations to protect database usage.'}</p>}
+      {isLoading ? <p className="py-10 text-center text-muted-foreground">{isRtl ? 'جاري التحميل...' : 'Loading...'}</p> : <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-muted/50"><tr><th className="px-3 py-2 text-start"><SortableHeader label={isRtl ? 'المفتاح' : 'Key'} sortKey="key" currentSortKey={table.sortKey} currentSortDir={table.sortDir} onSort={table.handleSort} /></th><th className="px-3 py-2 text-start"><SortableHeader label={isRtl ? 'الباقة' : 'Package'} sortKey="package" currentSortKey={table.sortKey} currentSortDir={table.sortDir} onSort={table.handleSort} /></th><th className="px-3 py-2 text-center">{isRtl ? 'النوع' : 'Type'}</th><th className="px-3 py-2 text-start"><SortableHeader label={isRtl ? 'تاريخ التفعيل' : 'Activation date'} sortKey="date" currentSortKey={table.sortKey} currentSortDir={table.sortDir} onSort={table.handleSort} /></th></tr></thead><tbody className="divide-y">{table.paged.map((item: any, index) => <tr key={item.id} className={zebraRow(index)}><td className="px-3 py-2 font-mono text-xs">{item.keyCode}</td><td className="px-3 py-2">{isRtl ? item.packageNameAr || item.packageName : item.packageName || item.packageNameAr}</td><td className="px-3 py-2 text-center">{activationType(item) === 'upgrade' ? (isRtl ? 'ترقية' : 'Upgrade') : activationType(item) === 'renewal' ? (isRtl ? 'تجديد' : 'Renewal') : (isRtl ? 'جديد' : 'New')}</td><td className="px-3 py-2">{item.activatedAt ? formatLocalizedDate(item.activatedAt, language) : '—'}</td></tr>)}</tbody></table></div>}
+      {!isLoading && table.paged.length === 0 && <p className="py-8 text-center text-muted-foreground">{isRtl ? 'لا توجد تفعيلات.' : 'No activations found.'}</p>}
+      <DataTablePagination page={table.page} pageSize={table.pageSize} totalPages={table.totalPages} totalItems={table.totalItems} setPage={table.setPage} changePageSize={table.changePageSize} isRtl={isRtl} />
+    </section>
+  </main></DashboardLayout>;
 }

@@ -5,6 +5,7 @@ vi.mock('../backend/db', async () => {
   return {
     ...actual,
     getAdminByEmail: vi.fn(),
+    isFinanceOwnerAdmin: vi.fn(),
     hasAnyRole: vi.fn(),
     getOrderById: vi.fn(),
     getOrderActivationKeys: vi.fn(),
@@ -77,6 +78,7 @@ describe('package activation routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(db.getAdminByEmail).mockResolvedValue({ id: 1, email: user.email, name: 'Owner Admin' } as any);
+    vi.mocked(db.isFinanceOwnerAdmin).mockResolvedValue(true);
     vi.mocked(db.getUnusedMatchingPackageKey).mockResolvedValue(undefined);
   });
 
@@ -436,6 +438,7 @@ describe('package activation routes', () => {
 
   it('does not treat a generic admin as the finance owner', async () => {
     vi.mocked(db.getAdminByEmail).mockResolvedValue({ id: 2, email: user.email, name: 'Generic Admin' } as any);
+    vi.mocked(db.isFinanceOwnerAdmin).mockResolvedValue(false);
     vi.mocked(db.hasAnyRole).mockResolvedValue(false);
     vi.mocked(db.getOrderById).mockResolvedValue({
       id: 33, userId: user.id, status: 'awaiting_confirmation', totalAmount: 70000,
@@ -455,6 +458,45 @@ describe('package activation routes', () => {
 
     expect(db.createOrderActivationKeys).not.toHaveBeenCalled();
     expect(db.confirmOrderPayment).not.toHaveBeenCalled();
+  });
+
+  it('lets a finance manager confirm payment without granting key-manager status powers', async () => {
+    const financeManager = { ...user, id: 8, email: 'finance@example.com', isStaff: true };
+    vi.mocked(db.getAdminByEmail).mockResolvedValue(null as any);
+    vi.mocked(db.hasAnyRole).mockImplementation(async (_userId, roles) => roles.includes('finance_manager'));
+    const order = {
+      id: 34, userId: user.id, status: 'awaiting_confirmation', totalAmount: 70000,
+      currency: 'ILS', isUpgrade: false, paymentMethod: 'bank_transfer',
+      paymentProofUrl: 'https://videos.xflexacademy.com/payment-proofs/34.jpg',
+      termsAcceptedAt: '2026-07-18T08:00:00.000Z', termsAcceptedVersion: 'v2',
+    } as any;
+    vi.mocked(db.getOrderById).mockResolvedValue(order);
+    vi.mocked(db.getOrderItems).mockResolvedValue([{ itemType: 'package', packageId: 1 }] as any);
+    vi.mocked(db.getPackageById).mockResolvedValue({ id: 1, nameEn: 'Basic Package' } as any);
+    vi.mocked(db.createOrderActivationKeys).mockResolvedValue([{ id: 340, keyCode: 'XFLEX-FINANCE-MANAGER', packageId: 1 }]);
+    vi.mocked(db.confirmOrderPayment).mockResolvedValue({ confirmation: { id: 34 }, idempotent: false } as any);
+    vi.mocked(db.getUserById).mockResolvedValue(user as any);
+    vi.mocked(db.getUserByEmail).mockResolvedValue(user as any);
+
+    await expect(createCaller(financeManager).orders.adminUpdateStatus({
+      orderId: order.id,
+      status: 'completed',
+      keyConfigurations: [{ packageId: 1, entitlementDays: 30 }],
+      financialPayment: {
+        paidAt: '2026-07-18T08:00:00.000Z', baseAmountIlsMinor: 70000,
+        rationale: 'Transfer matched to the receipt.',
+      },
+    })).resolves.toMatchObject({ activationKeys: [{ id: 340 }] });
+
+    expect(db.confirmOrderPayment).toHaveBeenCalledWith(expect.objectContaining({
+      actorType: 'staff',
+      actorId: financeManager.id,
+    }));
+
+    await expect(createCaller(financeManager).orders.adminUpdateStatus({
+      orderId: order.id,
+      status: 'cancelled',
+    })).rejects.toMatchObject({ code: 'FORBIDDEN' });
   });
 
   it('does not re-recognize a legacy completed order as a new cash event', async () => {

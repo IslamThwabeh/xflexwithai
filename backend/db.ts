@@ -48,8 +48,9 @@ import {
   userTermsAcceptances, UserTermsAcceptance, InsertUserTermsAcceptance,
   orderStatusHistory, InsertOrderStatusHistory,
   accountAccessAuditLogs, accountRefunds,
-  financialRoleAssignmentAudit,
-  orderPaymentConfirmations, financialLedgerEntries,
+  financialRoleAssignmentAudit, financeOwnerAssignments,
+  orderPaymentConfirmations, financialLedgerEntries, financialExpenses, financialExpenseEvents,
+  financialPeriodLocks, financialPeriodLockEvents, financialAdjustmentRequests, financialAdjustmentEvents,
   financialReconciliationItems, financialReconciliationEvents,
   orderItems, OrderItem, InsertOrderItem,
   packageSubscriptions, PackageSubscription, InsertPackageSubscription,
@@ -205,6 +206,36 @@ import {
   canSubmitStudentJobEligibilityReview,
   type StudentJobEligibilityReviewStatus,
 } from './services/student-job-eligibility.service';
+import {
+  assertIndependentReviewer,
+  canAccessExpense,
+  canEditExpense,
+  normalizeExpensePaidDate,
+  validateExpenseAmounts,
+  type FinanceActor,
+  type FinancialReceiptMetadata,
+} from './services/financial-expense.service';
+import {
+  normalizeFinancialPeriodRows,
+  normalizeFinancialReportRange,
+  totalFinancialPeriods,
+  type FinancialReportGrouping,
+} from './services/financial-reporting.service';
+import {
+  assertIndependentAdjustmentReviewer,
+  canEditAdjustment,
+  normalizeFinancialMonth,
+  normalizeFinancialPostingDate,
+  validateAdjustmentAmount,
+} from './services/financial-control.service';
+import {
+  assertFinanceOwner,
+  assertReconciliationDraftAccess,
+  normalizeOpeningBalanceInput,
+  normalizeReconciliationReason,
+  type FinancialReconciliationStatus,
+  type FinancialReconciliationTreatment,
+} from './services/financial-reconciliation.service';
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -13021,6 +13052,9 @@ export async function blockClientAccount(input: {
     if (/ACCOUNT_REFUND_EXCEEDS_ILS_SALE/i.test(error instanceof Error ? error.message : String(error))) {
       throw new Error("Refund amount exceeds the remaining ILS sale value");
     }
+    if (errorChainMatches(error, 'financial_period_locked')) {
+      throw new Error('This financial period is locked. Post the refund in an open period or use the owner correction workflow.');
+    }
     throw error;
   }
 
@@ -13541,6 +13575,865 @@ export function isFinanceStaffRole(role: string): role is typeof FINANCE_STAFF_R
   return (FINANCE_STAFF_ROLES as readonly string[]).includes(role);
 }
 
+/**
+ * Resolves owner authority from its explicit current-state projection. Admin
+ * table membership alone intentionally grants no finance capability.
+ */
+export async function isFinanceOwnerAdmin(adminId: number, database?: any): Promise<boolean> {
+  const db = database ?? await getDb();
+  if (!db) return false;
+  const [assignment] = await db.select({ adminId: financeOwnerAssignments.adminId })
+    .from(financeOwnerAssignments)
+    .where(and(
+      eq(financeOwnerAssignments.adminId, adminId),
+      eq(financeOwnerAssignments.isActive, true),
+    ))
+    .limit(1);
+  return Boolean(assignment);
+}
+
+export async function resolveFinanceActor(input: {
+  adminId?: number | null;
+  userId: number;
+}, database?: any): Promise<FinanceActor | null> {
+  const db = database ?? await getDb();
+  if (!db) return null;
+  if (input.adminId && await isFinanceOwnerAdmin(input.adminId, db)) {
+    return { actorType: 'admin', actorId: input.adminId, access: 'owner' };
+  }
+  if (input.adminId) return null;
+  const roles = await db.select({ role: userRoles.role }).from(userRoles)
+    .where(eq(userRoles.userId, input.userId));
+  const names = new Set(roles.map((row: { role: string }) => row.role));
+  if (names.has('finance_manager')) return { actorType: 'staff', actorId: input.userId, access: 'manager' };
+  if (names.has('finance_clerk')) return { actorType: 'staff', actorId: input.userId, access: 'clerk' };
+  if (names.has('finance_viewer')) return { actorType: 'staff', actorId: input.userId, access: 'viewer' };
+  return null;
+}
+
+export type FinancialExpenseDraftInput = {
+  paidAt: string;
+  category: string;
+  supplierOrPayee?: string | null;
+  amountMinor: number;
+  vatRateBps?: number | null;
+  vatAmountMinor?: number | null;
+  vatIncluded?: boolean | null;
+  paymentMethod?: string | null;
+  paymentReference?: string | null;
+  description?: string | null;
+  internalNotes?: string | null;
+};
+
+function financialExpenseDraftValues(input: FinancialExpenseDraftInput) {
+  const paidAt = normalizeExpensePaidDate(input.paidAt);
+  validateExpenseAmounts(input);
+  const clean = (value?: string | null, max = 500) => value?.trim().slice(0, max) || null;
+  return {
+    paidAt,
+    category: input.category,
+    supplierOrPayee: clean(input.supplierOrPayee, 200),
+    amountMinor: input.amountMinor,
+    currency: 'ILS',
+    baseAmountIlsMinor: input.amountMinor,
+    exchangeRate: null,
+    exchangeRateSource: null,
+    vatRate: input.vatRateBps ?? null,
+    vatAmountMinor: input.vatAmountMinor ?? null,
+    vatIncluded: input.vatIncluded ?? null,
+    paymentMethod: clean(input.paymentMethod, 40),
+    paymentReference: clean(input.paymentReference, 160),
+    description: clean(input.description, 1000),
+    internalNotes: clean(input.internalNotes, 1000),
+  };
+}
+
+export async function createFinancialExpenseDraft(
+  actor: FinanceActor,
+  input: FinancialExpenseDraftInput,
+  database?: any,
+) {
+  if (actor.access === 'viewer') throw new Error('Read-only finance access cannot create expenses.');
+  const db = database ?? await getDb();
+  if (!db) throw new Error('Database not available');
+  const now = new Date().toISOString();
+  const [expense] = await db.insert(financialExpenses).values({
+    ...financialExpenseDraftValues(input),
+    status: 'draft',
+    createdByType: actor.actorType,
+    createdById: actor.actorId,
+    createdAt: now,
+    updatedAt: now,
+  }).returning();
+  await db.insert(financialExpenseEvents).values({
+    expenseId: expense.id,
+    action: 'created',
+    previousStatus: null,
+    nextStatus: 'draft',
+    actorType: actor.actorType,
+    actorId: actor.actorId,
+    metadata: JSON.stringify({ currency: 'ILS', workflowVersion: 1 }),
+    createdAt: now,
+  });
+  return expense;
+}
+
+export async function getFinancialExpense(expenseId: number, database?: any) {
+  const db = database ?? await getDb();
+  if (!db) return null;
+  const [expense] = await db.select().from(financialExpenses)
+    .where(eq(financialExpenses.id, expenseId)).limit(1);
+  return expense ?? null;
+}
+
+export async function listFinancialExpenses(input: {
+  actor: FinanceActor;
+  status?: string;
+  limit?: number;
+}, database?: any) {
+  const db = database ?? await getDb();
+  if (!db) return [];
+  if (input.actor.access === 'viewer') return [];
+  const predicates: SQL[] = [];
+  if (input.status) predicates.push(eq(financialExpenses.status, input.status));
+  if (input.actor.access === 'clerk') {
+    predicates.push(eq(financialExpenses.createdByType, input.actor.actorType));
+    predicates.push(eq(financialExpenses.createdById, input.actor.actorId));
+  }
+  return db.select().from(financialExpenses)
+    .where(predicates.length ? and(...predicates) : undefined)
+    .orderBy(desc(financialExpenses.updatedAt), desc(financialExpenses.id))
+    .limit(Math.min(Math.max(input.limit ?? 100, 1), 200));
+}
+
+export async function updateFinancialExpenseDraft(input: {
+  actor: FinanceActor;
+  expenseId: number;
+  values: FinancialExpenseDraftInput;
+}, database?: any) {
+  const db = database ?? await getDb();
+  if (!db) throw new Error('Database not available');
+  const expense = await getFinancialExpense(input.expenseId, db);
+  if (!expense || !canEditExpense(input.actor, expense)) {
+    throw new Error('Only the creator can edit this expense while it is a draft.');
+  }
+  const now = new Date().toISOString();
+  const [updated] = await db.update(financialExpenses).set({
+    ...financialExpenseDraftValues(input.values),
+    updatedAt: now,
+  }).where(and(eq(financialExpenses.id, input.expenseId), eq(financialExpenses.status, 'draft'))).returning();
+  if (!updated) throw new Error('Expense draft changed before it could be saved.');
+  await db.insert(financialExpenseEvents).values({
+    expenseId: input.expenseId,
+    action: 'updated',
+    previousStatus: 'draft',
+    nextStatus: 'draft',
+    actorType: input.actor.actorType,
+    actorId: input.actor.actorId,
+    createdAt: now,
+  });
+  return updated;
+}
+
+export async function attachFinancialExpenseReceipt(input: {
+  actor: FinanceActor;
+  expenseId: number;
+  metadata: FinancialReceiptMetadata;
+}, database?: any) {
+  const db = database ?? await getDb();
+  if (!db) throw new Error('Database not available');
+  const expense = await getFinancialExpense(input.expenseId, db);
+  if (!expense || !canEditExpense(input.actor, expense)) {
+    throw new Error('Only the creator can attach evidence while the expense is a draft.');
+  }
+  const now = new Date().toISOString();
+  const serialized = JSON.stringify(input.metadata);
+  const [updated] = await db.update(financialExpenses).set({ receiptMetadata: serialized, updatedAt: now })
+    .where(and(eq(financialExpenses.id, input.expenseId), eq(financialExpenses.status, 'draft')))
+    .returning();
+  if (!updated) throw new Error('Expense draft changed before the receipt could be attached.');
+  await db.insert(financialExpenseEvents).values({
+    expenseId: input.expenseId,
+    action: 'receipt_attached',
+    previousStatus: 'draft',
+    nextStatus: 'draft',
+    actorType: input.actor.actorType,
+    actorId: input.actor.actorId,
+    metadata: JSON.stringify({
+      objectKey: input.metadata.objectKey,
+      contentType: input.metadata.contentType,
+      sizeBytes: input.metadata.sizeBytes,
+    }),
+    createdAt: now,
+  });
+  return updated;
+}
+
+export async function submitFinancialExpense(input: {
+  actor: FinanceActor;
+  expenseId: number;
+}, database?: any) {
+  const db = database ?? await getDb();
+  if (!db) throw new Error('Database not available');
+  const expense = await getFinancialExpense(input.expenseId, db);
+  if (!expense || !canEditExpense(input.actor, expense)) {
+    throw new Error('Only the creator can submit this draft.');
+  }
+  const now = new Date().toISOString();
+  const [submitted] = await db.update(financialExpenses).set({
+    status: 'pending_approval',
+    submittedByType: input.actor.actorType,
+    submittedById: input.actor.actorId,
+    updatedAt: now,
+  }).where(and(eq(financialExpenses.id, input.expenseId), eq(financialExpenses.status, 'draft'))).returning();
+  if (!submitted) throw new Error('Expense draft changed before it could be submitted.');
+  await db.insert(financialExpenseEvents).values({
+    expenseId: input.expenseId,
+    action: 'submitted',
+    previousStatus: 'draft',
+    nextStatus: 'pending_approval',
+    actorType: input.actor.actorType,
+    actorId: input.actor.actorId,
+    createdAt: now,
+  });
+  return submitted;
+}
+
+export async function reviewFinancialExpense(input: {
+  actor: FinanceActor;
+  expenseId: number;
+  decision: 'approved' | 'rejected';
+  reason: string;
+}, database?: any) {
+  const db = database ?? await getDb();
+  if (!db) throw new Error('Database not available');
+  const expense = await getFinancialExpense(input.expenseId, db);
+  if (!expense) throw new Error('Expense not found.');
+  if (expense.status === 'approved' && input.decision === 'approved' && expense.ledgerEntryId) {
+    return { expense, idempotent: true };
+  }
+  if (expense.status !== 'pending_approval') throw new Error('Only a pending expense can be reviewed.');
+  assertIndependentReviewer(input.actor, expense);
+  const reason = input.reason.trim();
+  if (reason.length < 3) throw new Error('A review reason is required.');
+  const now = new Date().toISOString();
+
+  if (input.decision === 'rejected') {
+    const [rejected] = await db.update(financialExpenses).set({
+      status: 'rejected',
+      correctionReason: reason.slice(0, 1000),
+      updatedAt: now,
+    }).where(and(eq(financialExpenses.id, input.expenseId), eq(financialExpenses.status, 'pending_approval'))).returning();
+    if (!rejected) throw new Error('Expense changed before it could be rejected.');
+    await db.insert(financialExpenseEvents).values({
+      expenseId: input.expenseId,
+      action: 'rejected',
+      previousStatus: 'pending_approval',
+      nextStatus: 'rejected',
+      actorType: input.actor.actorType,
+      actorId: input.actor.actorId,
+      reason: reason.slice(0, 1000),
+      createdAt: now,
+    });
+    return { expense: rejected, idempotent: false };
+  }
+
+  const effectiveAt = `${expense.paidAt}T00:00:00.000Z`;
+  try {
+    await db.batch([
+      db.insert(financialLedgerEntries).values({
+        entryType: 'expense',
+        status: 'approved',
+        effectiveAt,
+        reportingMonth: expense.paidAt.slice(0, 7),
+        amountMinor: -expense.amountMinor,
+        currency: 'ILS',
+        baseAmountIlsMinor: -expense.baseAmountIlsMinor,
+        expenseId: expense.id,
+        sourceType: 'financial_expense',
+        sourceReference: `expense:${expense.id}`,
+        paymentMethod: expense.paymentMethod,
+        paymentReference: expense.paymentReference,
+        description: expense.description || `Approved expense #${expense.id}`,
+        internalNotes: expense.internalNotes,
+        reason: reason.slice(0, 1000),
+        evidenceMetadata: expense.receiptMetadata,
+        createdByType: expense.createdByType,
+        createdById: expense.createdById,
+        submittedByType: expense.submittedByType,
+        submittedById: expense.submittedById,
+        approvedByType: input.actor.actorType,
+        approvedById: input.actor.actorId,
+        approvedAt: now,
+        auditMetadata: JSON.stringify({ workflowVersion: 1, vatInformationalOnly: true }),
+        createdAt: now,
+      }),
+      db.update(financialExpenses).set({
+        status: 'approved',
+        approvedByType: input.actor.actorType,
+        approvedById: input.actor.actorId,
+        approvedAt: now,
+        ledgerEntryId: sql`(SELECT id FROM financial_ledger_entries WHERE entry_type = 'expense' AND expense_id = ${expense.id})`,
+        updatedAt: now,
+      }).where(and(eq(financialExpenses.id, expense.id), eq(financialExpenses.status, 'pending_approval'))),
+      db.insert(financialExpenseEvents).values({
+        expenseId: expense.id,
+        action: 'approved',
+        previousStatus: 'pending_approval',
+        nextStatus: 'approved',
+        actorType: input.actor.actorType,
+        actorId: input.actor.actorId,
+        reason: reason.slice(0, 1000),
+        metadata: JSON.stringify({ createsLedgerEntry: true, workflowVersion: 1 }),
+        createdAt: now,
+      }),
+    ]);
+  } catch (error) {
+    const raced = await getFinancialExpense(expense.id, db);
+    if (raced?.status === 'approved' && raced.ledgerEntryId) return { expense: raced, idempotent: true };
+    if (errorChainMatches(error, 'financial_period_locked')) {
+      throw new Error('This financial period is locked. Change the expense date or use the owner adjustment workflow.');
+    }
+    throw error;
+  }
+  const approved = await getFinancialExpense(expense.id, db);
+  if (!approved?.ledgerEntryId) throw new Error('Expense approval was not persisted with its ledger entry.');
+  return { expense: approved, idempotent: false };
+}
+
+type FinancialAdjustmentDraftInput = {
+  effectiveDate: string;
+  amountIlsMinor: number;
+  description: string;
+  reason: string;
+  internalNotes?: string | null;
+};
+
+function financialAdjustmentDraftValues(input: FinancialAdjustmentDraftInput) {
+  const effectiveAt = normalizeFinancialPostingDate(input.effectiveDate);
+  validateAdjustmentAmount(input.amountIlsMinor);
+  const description = input.description.trim();
+  const reason = input.reason.trim();
+  if (description.length < 3) throw new Error('Adjustment description is required.');
+  if (reason.length < 3) throw new Error('Adjustment reason is required.');
+  return {
+    effectiveAt,
+    reportingMonth: effectiveAt.slice(0, 7),
+    amountIlsMinor: input.amountIlsMinor,
+    description: description.slice(0, 1000),
+    reason: reason.slice(0, 1000),
+    internalNotes: input.internalNotes?.trim().slice(0, 1000) || null,
+  };
+}
+
+export async function getFinancialAdjustment(adjustmentId: number, database?: any) {
+  const db = database ?? await getDb();
+  if (!db) return null;
+  const [adjustment] = await db.select().from(financialAdjustmentRequests)
+    .where(eq(financialAdjustmentRequests.id, adjustmentId)).limit(1);
+  return adjustment ?? null;
+}
+
+export async function createFinancialAdjustmentDraft(
+  actor: FinanceActor,
+  input: FinancialAdjustmentDraftInput,
+  database?: any,
+) {
+  if (actor.access !== 'owner' && actor.access !== 'manager') {
+    throw new Error('Financial adjustment preparation access is required.');
+  }
+  const db = database ?? await getDb();
+  if (!db) throw new Error('Database not available');
+  const now = new Date().toISOString();
+  const [adjustment] = await db.insert(financialAdjustmentRequests).values({
+    ...financialAdjustmentDraftValues(input),
+    status: 'draft',
+    createdByType: actor.actorType,
+    createdById: actor.actorId,
+    createdAt: now,
+    updatedAt: now,
+  }).returning();
+  await db.insert(financialAdjustmentEvents).values({
+    adjustmentId: adjustment.id,
+    action: 'created',
+    previousStatus: null,
+    nextStatus: 'draft',
+    actorType: actor.actorType,
+    actorId: actor.actorId,
+    reason: adjustment.reason,
+    metadata: JSON.stringify({ currency: 'ILS', workflowVersion: 1 }),
+    createdAt: now,
+  });
+  return adjustment;
+}
+
+export async function updateFinancialAdjustmentDraft(input: {
+  actor: FinanceActor;
+  adjustmentId: number;
+  values: FinancialAdjustmentDraftInput;
+}, database?: any) {
+  const db = database ?? await getDb();
+  if (!db) throw new Error('Database not available');
+  const adjustment = await getFinancialAdjustment(input.adjustmentId, db);
+  if (!adjustment || !canEditAdjustment(input.actor, adjustment)) {
+    throw new Error('Only the creator can edit this adjustment while it is a draft.');
+  }
+  const now = new Date().toISOString();
+  await db.batch([
+    db.update(financialAdjustmentRequests).set({
+      ...financialAdjustmentDraftValues(input.values),
+      updatedAt: now,
+    }).where(and(eq(financialAdjustmentRequests.id, input.adjustmentId), eq(financialAdjustmentRequests.status, 'draft'))),
+    db.insert(financialAdjustmentEvents).values({
+      adjustmentId: input.adjustmentId,
+      action: 'updated',
+      previousStatus: 'draft',
+      nextStatus: 'draft',
+      actorType: input.actor.actorType,
+      actorId: input.actor.actorId,
+      reason: input.values.reason.trim().slice(0, 1000),
+      createdAt: now,
+    }),
+  ]);
+  return getFinancialAdjustment(input.adjustmentId, db);
+}
+
+export async function submitFinancialAdjustment(input: {
+  actor: FinanceActor;
+  adjustmentId: number;
+}, database?: any) {
+  const db = database ?? await getDb();
+  if (!db) throw new Error('Database not available');
+  const adjustment = await getFinancialAdjustment(input.adjustmentId, db);
+  if (!adjustment || !canEditAdjustment(input.actor, adjustment)) {
+    throw new Error('Only the creator can submit this adjustment draft.');
+  }
+  const now = new Date().toISOString();
+  await db.batch([
+    db.update(financialAdjustmentRequests).set({
+      status: 'pending_approval',
+      submittedByType: input.actor.actorType,
+      submittedById: input.actor.actorId,
+      submittedAt: now,
+      updatedAt: now,
+    }).where(and(eq(financialAdjustmentRequests.id, input.adjustmentId), eq(financialAdjustmentRequests.status, 'draft'))),
+    db.insert(financialAdjustmentEvents).values({
+      adjustmentId: input.adjustmentId,
+      action: 'submitted',
+      previousStatus: 'draft',
+      nextStatus: 'pending_approval',
+      actorType: input.actor.actorType,
+      actorId: input.actor.actorId,
+      reason: adjustment.reason,
+      createdAt: now,
+    }),
+  ]);
+  return getFinancialAdjustment(input.adjustmentId, db);
+}
+
+async function isFinancialMonthLocked(month: string, database: any) {
+  const [lock] = await database.select({ month: financialPeriodLocks.month }).from(financialPeriodLocks)
+    .where(eq(financialPeriodLocks.month, month)).limit(1);
+  return Boolean(lock);
+}
+
+export async function reviewFinancialAdjustment(input: {
+  actor: FinanceActor;
+  adjustmentId: number;
+  decision: 'approved' | 'rejected';
+  reason: string;
+}, database?: any) {
+  const db = database ?? await getDb();
+  if (!db) throw new Error('Database not available');
+  const adjustment = await getFinancialAdjustment(input.adjustmentId, db);
+  if (!adjustment) throw new Error('Adjustment not found.');
+  if (adjustment.status === 'approved' && input.decision === 'approved' && adjustment.ledgerEntryId) {
+    return { adjustment, idempotent: true };
+  }
+  if (adjustment.status !== 'pending_approval') throw new Error('Only a pending adjustment can be reviewed.');
+  assertIndependentAdjustmentReviewer(input.actor, adjustment);
+  const reviewReason = input.reason.trim();
+  if (reviewReason.length < 3) throw new Error('A review reason is required.');
+  const now = new Date().toISOString();
+
+  if (input.decision === 'rejected') {
+    await db.batch([
+      db.update(financialAdjustmentRequests).set({
+        status: 'rejected',
+        reviewedByType: input.actor.actorType,
+        reviewedById: input.actor.actorId,
+        reviewedAt: now,
+        reviewReason: reviewReason.slice(0, 1000),
+        updatedAt: now,
+      }).where(and(eq(financialAdjustmentRequests.id, adjustment.id), eq(financialAdjustmentRequests.status, 'pending_approval'))),
+      db.insert(financialAdjustmentEvents).values({
+        adjustmentId: adjustment.id,
+        action: 'rejected',
+        previousStatus: 'pending_approval',
+        nextStatus: 'rejected',
+        actorType: input.actor.actorType,
+        actorId: input.actor.actorId,
+        reason: reviewReason.slice(0, 1000),
+        createdAt: now,
+      }),
+    ]);
+    return { adjustment: await getFinancialAdjustment(adjustment.id, db), idempotent: false };
+  }
+
+  const locked = await isFinancialMonthLocked(adjustment.reportingMonth, db);
+  if (locked && (input.actor.access !== 'owner' || input.actor.actorType !== 'admin')) {
+    throw new Error('This period is locked. Only the finance owner can authorize a locked-period adjustment.');
+  }
+  const auditMetadata = JSON.stringify({
+    workflowVersion: 1,
+    adjustmentRequestId: adjustment.id,
+    ownerAuthorizedLockedPeriod: locked,
+  });
+  try {
+    await db.batch([
+      db.insert(financialLedgerEntries).values({
+        entryType: 'adjustment',
+        status: 'approved',
+        effectiveAt: adjustment.effectiveAt,
+        reportingMonth: adjustment.reportingMonth,
+        amountMinor: adjustment.amountIlsMinor,
+        currency: 'ILS',
+        baseAmountIlsMinor: adjustment.amountIlsMinor,
+        sourceType: 'financial_adjustment',
+        sourceReference: `adjustment:${adjustment.id}`,
+        description: adjustment.description,
+        internalNotes: adjustment.internalNotes,
+        reason: adjustment.reason,
+        evidenceMetadata: adjustment.evidenceMetadata,
+        createdByType: adjustment.createdByType,
+        createdById: adjustment.createdById,
+        submittedByType: adjustment.submittedByType,
+        submittedById: adjustment.submittedById,
+        approvedByType: input.actor.actorType,
+        approvedById: input.actor.actorId,
+        approvedAt: now,
+        auditMetadata,
+        createdAt: now,
+      }),
+      db.update(financialAdjustmentRequests).set({
+        status: 'approved',
+        reviewedByType: input.actor.actorType,
+        reviewedById: input.actor.actorId,
+        reviewedAt: now,
+        reviewReason: reviewReason.slice(0, 1000),
+        ledgerEntryId: sql`(SELECT id FROM financial_ledger_entries WHERE source_type = 'financial_adjustment' AND source_reference = ${`adjustment:${adjustment.id}`})`,
+        updatedAt: now,
+      }).where(and(eq(financialAdjustmentRequests.id, adjustment.id), eq(financialAdjustmentRequests.status, 'pending_approval'))),
+      db.insert(financialAdjustmentEvents).values({
+        adjustmentId: adjustment.id,
+        action: 'approved',
+        previousStatus: 'pending_approval',
+        nextStatus: 'approved',
+        actorType: input.actor.actorType,
+        actorId: input.actor.actorId,
+        reason: reviewReason.slice(0, 1000),
+        metadata: auditMetadata,
+        createdAt: now,
+      }),
+    ]);
+  } catch (error) {
+    const raced = await getFinancialAdjustment(adjustment.id, db);
+    if (raced?.status === 'approved' && raced.ledgerEntryId) return { adjustment: raced, idempotent: true };
+    if (errorChainMatches(error, 'financial_period_locked')) {
+      throw new Error('This financial period is locked. Only the finance owner can authorize this adjustment.');
+    }
+    throw error;
+  }
+  const approved = await getFinancialAdjustment(adjustment.id, db);
+  if (!approved?.ledgerEntryId) throw new Error('Adjustment approval was not persisted with its ledger entry.');
+  return { adjustment: approved, idempotent: false };
+}
+
+export async function getFinancialControlWorkspace(actor: FinanceActor, database?: any) {
+  if (actor.access !== 'owner' && actor.access !== 'manager') {
+    throw new Error('Financial control access is required.');
+  }
+  const db = database ?? await getDb();
+  if (!db) return { adjustments: [], locks: [], reversibleEntries: [] };
+  const adjustmentQuery = db.select().from(financialAdjustmentRequests)
+    .orderBy(desc(financialAdjustmentRequests.updatedAt), desc(financialAdjustmentRequests.id)).limit(100);
+  const lockQuery = db.select().from(financialPeriodLocks)
+    .orderBy(desc(financialPeriodLocks.month)).limit(120);
+  const client = (db as { $client?: D1Database }).$client;
+  if (!client) throw new Error('D1 client not available for financial controls');
+  const reversibleQuery = actor.access === 'owner'
+    ? client.prepare(`SELECT l.id, l.entry_type AS entryType, l.effective_at AS effectiveAt,
+        l.base_amount_ils_minor AS baseAmountIlsMinor, l.description,
+        l.source_reference AS sourceReference
+      FROM financial_ledger_entries l INDEXED BY idx_financial_ledger_approved_effective_type
+      WHERE l.status = 'approved' AND l.entry_type <> 'reversal'
+        AND NOT EXISTS (
+          SELECT 1 FROM financial_ledger_entries r
+          WHERE r.entry_type = 'reversal' AND r.reversal_of_entry_id = l.id
+        )
+      ORDER BY l.effective_at DESC, l.id DESC LIMIT 50`).all()
+      .then(result => result.results ?? [])
+    : Promise.resolve([]);
+  const [adjustments, locks, reversibleEntries] = await Promise.all([adjustmentQuery, lockQuery, reversibleQuery]);
+  return {
+    adjustments: adjustments.map((adjustment: any) => ({
+      ...adjustment,
+      canEdit: canEditAdjustment(actor, adjustment),
+      canReview: adjustment.status === 'pending_approval'
+        && !(adjustment.createdByType === actor.actorType && adjustment.createdById === actor.actorId)
+        && !(adjustment.submittedByType === actor.actorType && adjustment.submittedById === actor.actorId),
+    })),
+    locks,
+    reversibleEntries,
+  };
+}
+
+export async function setFinancialPeriodLock(input: {
+  actor: FinanceActor;
+  month: string;
+  action: 'locked' | 'unlocked';
+  reason: string;
+}, database?: any) {
+  if (input.actor.access !== 'owner' || input.actor.actorType !== 'admin') {
+    throw new Error('Only the finance owner can lock or unlock periods.');
+  }
+  const db = database ?? await getDb();
+  if (!db) throw new Error('Database not available');
+  const month = normalizeFinancialMonth(input.month);
+  const reason = input.reason.trim();
+  if (reason.length < 3) throw new Error('A lock or unlock reason is required.');
+  const [existing] = await db.select().from(financialPeriodLocks)
+    .where(eq(financialPeriodLocks.month, month)).limit(1);
+  if (input.action === 'locked' && existing) return { lock: existing, idempotent: true };
+  if (input.action === 'unlocked' && !existing) return { lock: null, idempotent: true };
+  const now = new Date().toISOString();
+  if (input.action === 'locked') {
+    await db.batch([
+      db.insert(financialPeriodLocks).values({
+        month,
+        lockedByAdminId: input.actor.actorId,
+        lockedAt: now,
+        note: reason.slice(0, 1000),
+      }),
+      db.insert(financialPeriodLockEvents).values({
+        month,
+        action: 'locked',
+        performedByAdminId: input.actor.actorId,
+        reason: reason.slice(0, 1000),
+        createdAt: now,
+      }),
+    ]);
+    const [lock] = await db.select().from(financialPeriodLocks).where(eq(financialPeriodLocks.month, month)).limit(1);
+    return { lock, idempotent: false };
+  }
+  await db.batch([
+    db.insert(financialPeriodLockEvents).values({
+      month,
+      action: 'unlocked',
+      performedByAdminId: input.actor.actorId,
+      reason: reason.slice(0, 1000),
+      createdAt: now,
+    }),
+    db.delete(financialPeriodLocks).where(eq(financialPeriodLocks.month, month)),
+  ]);
+  return { lock: null, idempotent: false };
+}
+
+export async function reverseFinancialLedgerEntry(input: {
+  actor: FinanceActor;
+  entryId: number;
+  effectiveDate: string;
+  reason: string;
+  replacementAmountIlsMinor?: number | null;
+  replacementDescription?: string | null;
+}, database?: any) {
+  if (input.actor.access !== 'owner' || input.actor.actorType !== 'admin') {
+    throw new Error('Only the finance owner can reverse approved entries.');
+  }
+  const db = database ?? await getDb();
+  if (!db) throw new Error('Database not available');
+  const [original] = await db.select().from(financialLedgerEntries)
+    .where(eq(financialLedgerEntries.id, input.entryId)).limit(1);
+  if (!original || original.status !== 'approved' || original.entryType === 'reversal') {
+    throw new Error('Only an approved non-reversal ledger entry can be reversed.');
+  }
+  const [existing] = await db.select().from(financialLedgerEntries)
+    .where(and(eq(financialLedgerEntries.entryType, 'reversal'), eq(financialLedgerEntries.reversalOfEntryId, original.id))).limit(1);
+  if (existing) return { reversal: existing, replacement: null, idempotent: true };
+  const effectiveAt = normalizeFinancialPostingDate(input.effectiveDate);
+  const reportingMonth = effectiveAt.slice(0, 7);
+  const reason = input.reason.trim();
+  if (reason.length < 3) throw new Error('A reversal reason is required.');
+  const hasReplacement = input.replacementAmountIlsMinor != null;
+  if (hasReplacement) {
+    validateAdjustmentAmount(input.replacementAmountIlsMinor!);
+    if (!input.replacementDescription?.trim()) throw new Error('A replacement description is required.');
+  }
+  const locked = await isFinancialMonthLocked(reportingMonth, db);
+  const now = new Date().toISOString();
+  const auditMetadata = JSON.stringify({
+    workflowVersion: 1,
+    ownerAuthorizedLockedPeriod: locked,
+    originalLedgerEntryId: original.id,
+  });
+  const reversalValues = {
+    entryType: 'reversal',
+    status: 'approved',
+    effectiveAt,
+    reportingMonth,
+    amountMinor: -original.amountMinor,
+    currency: original.currency,
+    baseAmountIlsMinor: -original.baseAmountIlsMinor,
+    exchangeRate: original.exchangeRate,
+    exchangeRateSource: original.exchangeRateSource,
+    orderId: original.orderId,
+    orderItemId: original.orderItemId,
+    registrationKeyId: original.registrationKeyId,
+    refundId: original.refundId,
+    expenseId: original.expenseId,
+    sourceType: 'financial_reversal',
+    sourceReference: `ledger:${original.id}:reversal`,
+    paymentMethod: original.paymentMethod,
+    paymentReference: original.paymentReference,
+    description: `Reversal of ledger entry #${original.id}`,
+    reason: reason.slice(0, 1000),
+    createdByType: input.actor.actorType,
+    createdById: input.actor.actorId,
+    submittedByType: input.actor.actorType,
+    submittedById: input.actor.actorId,
+    approvedByType: input.actor.actorType,
+    approvedById: input.actor.actorId,
+    approvedAt: now,
+    reversalOfEntryId: original.id,
+    auditMetadata,
+    createdAt: now,
+  };
+  const statements: any[] = [db.insert(financialLedgerEntries).values(reversalValues)];
+  if (hasReplacement) {
+    statements.push(db.insert(financialLedgerEntries).values({
+      entryType: 'adjustment',
+      status: 'approved',
+      effectiveAt,
+      reportingMonth,
+      amountMinor: input.replacementAmountIlsMinor!,
+      currency: 'ILS',
+      baseAmountIlsMinor: input.replacementAmountIlsMinor!,
+      orderId: original.orderId,
+      orderItemId: original.orderItemId,
+      registrationKeyId: original.registrationKeyId,
+      refundId: original.refundId,
+      expenseId: original.expenseId,
+      sourceType: 'financial_replacement',
+      sourceReference: `ledger:${original.id}:replacement`,
+      description: input.replacementDescription!.trim().slice(0, 1000),
+      reason: reason.slice(0, 1000),
+      createdByType: input.actor.actorType,
+      createdById: input.actor.actorId,
+      submittedByType: input.actor.actorType,
+      submittedById: input.actor.actorId,
+      approvedByType: input.actor.actorType,
+      approvedById: input.actor.actorId,
+      approvedAt: now,
+      auditMetadata: JSON.stringify({ ...JSON.parse(auditMetadata), replacementForLedgerEntryId: original.id }),
+      createdAt: now,
+    }));
+  }
+  try {
+    await db.batch(statements as [typeof statements[number], ...typeof statements[number][]]);
+  } catch (error) {
+    const [raced] = await db.select().from(financialLedgerEntries)
+      .where(and(eq(financialLedgerEntries.entryType, 'reversal'), eq(financialLedgerEntries.reversalOfEntryId, original.id))).limit(1);
+    if (raced) return { reversal: raced, replacement: null, idempotent: true };
+    if (errorChainMatches(error, 'financial_period_locked')) {
+      throw new Error('This financial period is locked. Owner authorization is required for this correction.');
+    }
+    throw error;
+  }
+  const [reversal] = await db.select().from(financialLedgerEntries)
+    .where(and(eq(financialLedgerEntries.entryType, 'reversal'), eq(financialLedgerEntries.reversalOfEntryId, original.id))).limit(1);
+  const [replacement] = hasReplacement
+    ? await db.select().from(financialLedgerEntries)
+      .where(and(eq(financialLedgerEntries.sourceType, 'financial_replacement'), eq(financialLedgerEntries.sourceReference, `ledger:${original.id}:replacement`))).limit(1)
+    : [null];
+  return { reversal, replacement: replacement ?? null, idempotent: false };
+}
+
+export async function getFinancialManagementDashboard(input: {
+  from: string;
+  to: string;
+  grouping: FinancialReportGrouping;
+  includeLedger: boolean;
+  ledgerLimit?: number;
+}, database?: any) {
+  const db = database ?? await getDb();
+  if (!db) throw new Error('Database not available');
+  const range = normalizeFinancialReportRange(input.from, input.to);
+  const client = (db as { $client?: D1Database }).$client;
+  if (!client) throw new Error('D1 client not available for financial reporting');
+  const periodExpression = input.grouping === 'year'
+    ? 'substr(reporting_month, 1, 4)'
+    : 'reporting_month';
+  const ledgerLimit = Math.min(Math.max(input.ledgerLimit ?? 100, 1), 100);
+  // INDEXED BY is deliberate: without it SQLite may favor the older grouping
+  // index and scan all approved history. Every report statement remains bounded
+  // by effective_at; activation/key timestamps never participate.
+  const statements = [
+    client.prepare(`SELECT ${periodExpression} AS period,
+      COALESCE(SUM(CASE WHEN entry_type = 'payment' THEN base_amount_ils_minor ELSE 0 END), 0) AS confirmedIncomeMinor,
+      COALESCE(SUM(CASE WHEN entry_type = 'refund' THEN base_amount_ils_minor ELSE 0 END), 0) AS refundsSignedMinor,
+      COALESCE(SUM(CASE WHEN entry_type = 'expense' THEN base_amount_ils_minor ELSE 0 END), 0) AS expensesSignedMinor,
+      COALESCE(SUM(CASE WHEN entry_type IN ('adjustment', 'reversal', 'opening_balance') THEN base_amount_ils_minor ELSE 0 END), 0) AS adjustmentsSignedMinor
+      FROM financial_ledger_entries INDEXED BY idx_financial_ledger_approved_effective_type
+      WHERE status = 'approved' AND effective_at >= ? AND effective_at < ?
+        AND entry_type IN ('payment', 'refund', 'expense', 'adjustment', 'reversal', 'opening_balance')
+      GROUP BY ${periodExpression} ORDER BY ${periodExpression}`)
+      .bind(range.fromTimestamp, range.endExclusiveTimestamp),
+    client.prepare(`SELECT e.category AS category,
+      COALESCE(-SUM(l.base_amount_ils_minor), 0) AS amountMinor
+      FROM financial_ledger_entries l INDEXED BY idx_financial_ledger_approved_effective_type
+      INNER JOIN financial_expenses e ON e.id = l.expense_id
+      WHERE l.status = 'approved' AND l.effective_at >= ? AND l.effective_at < ?
+        AND l.entry_type = 'expense'
+      GROUP BY e.category ORDER BY amountMinor DESC`)
+      .bind(range.fromTimestamp, range.endExclusiveTimestamp),
+  ];
+  if (input.includeLedger) {
+    statements.push(client.prepare(`SELECT id, entry_type AS entryType, effective_at AS effectiveAt,
+      base_amount_ils_minor AS baseAmountIlsMinor, source_type AS sourceType,
+      source_reference AS sourceReference, order_id AS orderId, refund_id AS refundId,
+      expense_id AS expenseId, description, payment_method AS paymentMethod
+      FROM financial_ledger_entries INDEXED BY idx_financial_ledger_approved_effective_type
+      WHERE status = 'approved' AND effective_at >= ? AND effective_at < ?
+        AND entry_type IN ('payment', 'refund', 'expense', 'adjustment', 'reversal', 'opening_balance')
+      ORDER BY effective_at DESC, id DESC LIMIT ?`)
+      .bind(range.fromTimestamp, range.endExclusiveTimestamp, ledgerLimit + 1));
+  }
+
+  const results = await client.batch(statements);
+  const rawPeriods = results[0]?.results ?? [];
+  const rawCategories = results[1]?.results ?? [];
+  const rawLedger = input.includeLedger ? (results[2]?.results ?? []) : [];
+  const periods = normalizeFinancialPeriodRows(rawPeriods as Array<Record<string, unknown>>);
+  const totals = totalFinancialPeriods(periods);
+  const ledgerRows = rawLedger as Array<Record<string, unknown>>;
+  return {
+    basis: 'cash' as const,
+    currency: 'ILS' as const,
+    from: range.from,
+    to: range.to,
+    grouping: input.grouping,
+    generatedAt: new Date().toISOString(),
+    periods,
+    totals,
+    categories: (rawCategories as Array<{ category: string; amountMinor: number }>).map((row) => ({
+      category: row.category,
+      amountMinor: Number(row.amountMinor),
+    })),
+    ledger: input.includeLedger ? ledgerRows.slice(0, ledgerLimit) : [],
+    ledgerTruncated: input.includeLedger && ledgerRows.length > ledgerLimit,
+  };
+}
+
 /** Financial-role changes need their own append-only audit, separate from generic RBAC. */
 export async function logFinancialRoleAssignment(input: {
   userId: number;
@@ -13569,8 +14462,8 @@ export async function setFinanceRoleAssignment(input: {
   role: typeof FINANCE_STAFF_ROLES[number];
   action: 'assigned' | 'removed';
   performedByAdminId: number;
-}) {
-  const db = await getDb();
+}, database?: any) {
+  const db = database ?? await getDb();
   if (!db) throw new Error('Database not available');
   const [existing] = await db.select({ id: userRoles.id }).from(userRoles)
     .where(and(eq(userRoles.userId, input.userId), eq(userRoles.role, input.role)))
@@ -13621,14 +14514,34 @@ export async function updateStaffPublicSupportName(userId: number, publicSupport
 /**
  * Remove staff status from a user (reverts to regular student)
  */
-export async function removeStaffStatus(userId: number) {
-  const db = await getDb();
+export async function removeStaffStatus(userId: number, performedByAdminId?: number, database?: any) {
+  const db = database ?? await getDb();
   if (!db) throw new Error("Database not available");
 
-  // Remove all roles first
-  await db.delete(userRoles).where(eq(userRoles.userId, userId));
-  // Remove staff flag
-  await db.update(users).set({ isStaff: false }).where(eq(users.id, userId));
+  const assignedRoles = await db.select({ role: userRoles.role }).from(userRoles)
+    .where(eq(userRoles.userId, userId));
+  const financeRoles = (assignedRoles as Array<{ role: string }>)
+    .map((row) => row.role)
+    .filter(isFinanceStaffRole);
+  if (financeRoles.length > 0 && !performedByAdminId) {
+    throw new Error('Removing finance staff access requires an accountable admin actor.');
+  }
+
+  const now = new Date().toISOString();
+  const statements = [
+    db.delete(userRoles).where(eq(userRoles.userId, userId)),
+    db.update(users).set({ isStaff: false }).where(eq(users.id, userId)),
+    ...financeRoles.map((role: typeof FINANCE_STAFF_ROLES[number]) => db.insert(financialRoleAssignmentAudit).values({
+      userId,
+      role,
+      action: 'removed',
+      performedByAdminId: performedByAdminId!,
+      createdAt: now,
+    })),
+  ];
+  // Revocation and the immutable evidence of that revocation must succeed or
+  // fail together; a direct bulk role delete must never erase the audit trail.
+  await db.batch(statements as [typeof statements[number], ...typeof statements[number][]]);
   logger.db('Staff status removed', { userId });
 }
 
@@ -15386,6 +16299,9 @@ export async function confirmOrderPayment(input: ConfirmOrderPaymentInput, datab
     // unique confirmation is the idempotency key; never create a second entry.
     const racedConfirmation = await getOrderPaymentConfirmation(input.order.id, db);
     if (racedConfirmation) return { confirmation: racedConfirmation, idempotent: true };
+    if (errorChainMatches(error, 'financial_period_locked')) {
+      throw new Error('This financial period is locked. Use an open payment date or the owner correction workflow.');
+    }
     throw error;
   }
 
@@ -15394,54 +16310,135 @@ export async function confirmOrderPayment(input: ConfirmOrderPaymentInput, datab
   return { confirmation, idempotent: false };
 }
 
-type FinancialReconciliationActor = { actorType: 'admin' | 'staff'; actorId: number };
-
 /**
- * Builds a review queue from legacy operational records. It intentionally does
- * not create ledger entries or infer historic payments, exchange rates, or
- * reporting dates. The owner must explicitly decide each treatment later.
+ * Read-only preview of historic candidates. It never infers payment, value, or
+ * date and never writes a queue/ledger/source row.
  */
-export async function prepareFinancialReconciliationQueue(input: FinancialReconciliationActor) {
-  const db = await getDb();
+export async function previewFinancialReconciliation(database?: any) {
+  const db = database ?? await getDb();
   if (!db) throw new Error('Database not available');
+  const client = (db as { $client?: D1Database }).$client;
+  if (!client) throw new Error('D1 client not available for financial reconciliation');
+  const result = await client.prepare(`SELECT
+    (SELECT COUNT(*) FROM orders AS o INDEXED BY idx_orders_financial_reconciliation_status_id
+      WHERE o.status IN ('paid', 'completed')
+        AND NOT EXISTS (SELECT 1 FROM order_payment_confirmations AS c WHERE c.order_id = o.id)) AS ordersWithoutConfirmation,
+    (SELECT COUNT(*) FROM orders AS o INDEXED BY idx_orders_financial_reconciliation_status_id
+      WHERE o.status IN ('paid', 'completed')
+        AND UPPER(o.currency) IN ('ILS', 'NIS') AND o.totalAmount > 0
+        AND (NULLIF(TRIM(o.paymentReference), '') IS NOT NULL OR NULLIF(TRIM(o.paymentProofUrl), '') IS NOT NULL)
+        AND NOT EXISTS (SELECT 1 FROM order_payment_confirmations AS c WHERE c.order_id = o.id)) AS openingBalanceCandidates,
+    (SELECT COUNT(*) FROM registrationKeys AS k INDEXED BY idx_registration_keys_financial_reconciliation_manual
+      WHERE k.orderId IS NULL AND k.price > 0
+        AND COALESCE(k.isRenewal, 0) = 0 AND COALESCE(k.isUpgrade, 0) = 0) AS manualPricedKeys,
+    (SELECT COUNT(*) FROM registrationKeys AS k INDEXED BY idx_registration_keys_financial_reconciliation_renewal
+      WHERE k.orderId IS NULL AND k.price > 0 AND k.isRenewal = 1) AS renewalKeys,
+    (SELECT COUNT(*) FROM registrationKeys AS k INDEXED BY idx_registration_keys_financial_reconciliation_upgrade
+      WHERE k.orderId IS NULL AND k.price > 0
+        AND COALESCE(k.isRenewal, 0) = 0 AND k.isUpgrade = 1) AS upgradeKeys,
+    (SELECT COUNT(*) FROM registrationKeys AS k INDEXED BY idx_registration_keys_financial_reconciliation_free
+      WHERE k.orderId IS NULL AND k.price <= 0) AS excludedFreeKeys`).first<Record<string, number>>();
+  const counts = {
+    ordersWithoutConfirmation: Number(result?.ordersWithoutConfirmation ?? 0),
+    manualPricedKeys: Number(result?.manualPricedKeys ?? 0),
+    renewalKeys: Number(result?.renewalKeys ?? 0),
+    upgradeKeys: Number(result?.upgradeKeys ?? 0),
+  };
+  const openingBalanceCandidates = Number(result?.openingBalanceCandidates ?? 0);
+  const totalCandidates = Object.values(counts).reduce((sum, count) => sum + count, 0);
+  return {
+    generatedAt: new Date().toISOString(),
+    readOnly: true as const,
+    counts,
+    classifications: {
+      automaticallyReconcilable: 0,
+      requiresOwnerEvidence: Math.max(0, totalCandidates - openingBalanceCandidates),
+      openingBalanceCandidates,
+      excludedByRule: Number(result?.excludedFreeKeys ?? 0),
+    },
+    totalCandidates,
+    safeToMaterialize: Object.values(counts).every(count => count <= 250),
+    perTypeSafetyLimit: 250,
+  };
+}
 
-  const [legacyCompletedOrders, manualPricedKeys, renewalKeys] = await Promise.all([
-    db.select({ id: orders.id }).from(orders)
-      .leftJoin(orderPaymentConfirmations, eq(orderPaymentConfirmations.orderId, orders.id))
-      .where(and(eq(orders.status, 'completed'), isNull(orderPaymentConfirmations.id))),
-    db.select({ id: registrationKeys.id }).from(registrationKeys)
-      .where(and(isNull(registrationKeys.orderId), gt(registrationKeys.price, 0), eq(registrationKeys.isRenewal, false))),
-    db.select({ id: registrationKeys.id }).from(registrationKeys)
-      .where(and(isNull(registrationKeys.orderId), gt(registrationKeys.price, 0), eq(registrationKeys.isRenewal, true))),
+/** Materializes only IDs into an idempotent review queue; source rows remain untouched. */
+export async function prepareFinancialReconciliationQueue(input: FinanceActor, database?: any) {
+  assertReconciliationDraftAccess(input);
+  const db = database ?? await getDb();
+  if (!db) throw new Error('Database not available');
+  const client = (db as { $client?: D1Database }).$client;
+  if (!client) throw new Error('D1 client not available for financial reconciliation');
+  const preview = await previewFinancialReconciliation(db);
+  if (!preview.safeToMaterialize) {
+    throw new Error('The historical candidate set exceeds the safe 250-per-type queue limit. Review a controlled batch plan first.');
+  }
+  const before = await client.prepare('SELECT COUNT(*) AS total FROM financial_reconciliation_items').first<{ total: number }>();
+  const sourceResults = await client.batch([
+    client.prepare(`SELECT o.id, o.status, o.totalAmount, o.currency,
+      o.paymentReference, o.paymentProofUrl
+      FROM orders AS o INDEXED BY idx_orders_financial_reconciliation_status_id
+      WHERE o.status IN ('paid', 'completed')
+        AND NOT EXISTS (SELECT 1 FROM order_payment_confirmations AS c WHERE c.order_id = o.id)
+      ORDER BY o.status, o.id LIMIT 251`),
+    client.prepare(`SELECT k.id FROM registrationKeys AS k INDEXED BY idx_registration_keys_financial_reconciliation_manual
+      WHERE k.orderId IS NULL AND k.price > 0
+        AND COALESCE(k.isRenewal, 0) = 0 AND COALESCE(k.isUpgrade, 0) = 0
+      ORDER BY k.id LIMIT 251`),
+    client.prepare(`SELECT k.id FROM registrationKeys AS k INDEXED BY idx_registration_keys_financial_reconciliation_renewal
+      WHERE k.orderId IS NULL AND k.price > 0 AND k.isRenewal = 1
+      ORDER BY k.id LIMIT 251`),
+    client.prepare(`SELECT k.id FROM registrationKeys AS k INDEXED BY idx_registration_keys_financial_reconciliation_upgrade
+      WHERE k.orderId IS NULL AND k.price > 0
+        AND COALESCE(k.isRenewal, 0) = 0 AND k.isUpgrade = 1
+      ORDER BY k.id LIMIT 251`),
   ]);
+  const orderRows = sourceResults[0]?.results ?? [];
+  const manualRows = sourceResults[1]?.results ?? [];
+  const renewalRows = sourceResults[2]?.results ?? [];
+  const upgradeRows = sourceResults[3]?.results ?? [];
 
   const now = new Date().toISOString();
   const candidates = [
-    ...legacyCompletedOrders.map((row) => ({
-      sourceType: 'order', sourceReference: String(row.id),
-      issueType: 'completed_order_without_cash_confirmation', confidenceLevel: 'medium',
-      proposedTreatment: 'owner_review_required',
-      notes: `Legacy completed order #${row.id} has no immutable confirmed-payment record.`,
-    })),
-    ...manualPricedKeys.map((row) => ({
+    ...orderRows.map((row: any) => {
+      const currency = String(row.currency ?? '').toUpperCase();
+      const storedAmount = Number(row.totalAmount);
+      const hasEvidenceReference = Boolean(String(row.paymentReference ?? '').trim() || String(row.paymentProofUrl ?? '').trim());
+      const isIlsCandidate = ['ILS', 'NIS'].includes(currency) && Number.isSafeInteger(storedAmount) && storedAmount > 0 && hasEvidenceReference;
+      return {
+        sourceType: 'order', sourceReference: String(row.id),
+        issueType: 'completed_order_without_cash_confirmation', confidenceLevel: isIlsCandidate ? 'medium' : 'low',
+        proposedTreatment: isIlsCandidate ? 'opening_balance_candidate' : 'requires_owner_evidence',
+        proposedAmountIlsMinor: isIlsCandidate ? storedAmount : null,
+        notes: isIlsCandidate
+          ? `Historic ${row.status} order #${row.id} has an ILS amount and evidence reference but no immutable confirmation; owner review is still required.`
+          : `Historic ${row.status} order #${row.id} lacks a trustworthy confirmed ILS payment event; no conversion or payment date was inferred.`,
+      };
+    }),
+    ...manualRows.map((row: any) => ({
       sourceType: 'registration_key', sourceReference: String(row.id),
       issueType: 'priced_key_without_order', confidenceLevel: 'low',
-      proposedTreatment: 'owner_review_required',
+      proposedTreatment: 'requires_owner_evidence', proposedAmountIlsMinor: null,
       notes: `Priced key #${row.id} is not linked to an order; key activation is not payment evidence.`,
     })),
-    ...renewalKeys.map((row) => ({
+    ...renewalRows.map((row: any) => ({
       sourceType: 'renewal_key', sourceReference: String(row.id),
       issueType: 'renewal_key_without_order_payment', confidenceLevel: 'low',
-      proposedTreatment: 'owner_review_required',
+      proposedTreatment: 'requires_owner_evidence', proposedAmountIlsMinor: null,
       notes: `Renewal key #${row.id} has no linked confirmed-payment record.`,
+    })),
+    ...upgradeRows.map((row: any) => ({
+      sourceType: 'upgrade_key', sourceReference: String(row.id),
+      issueType: 'upgrade_key_without_order_payment', confidenceLevel: 'low',
+      proposedTreatment: 'requires_owner_evidence', proposedAmountIlsMinor: null,
+      notes: `Upgrade key #${row.id} has no linked confirmed-payment record.`,
     })),
   ];
 
-  if (candidates.length) {
-    const inserts = candidates.map((candidate) => db.insert(financialReconciliationItems).values({
+  for (let start = 0; start < candidates.length; start += 50) {
+    const inserts = candidates.slice(start, start + 50).map((candidate) => db.insert(financialReconciliationItems).values({
       ...candidate,
       status: 'unresolved',
-      proposedAmountIlsMinor: null,
       reviewerType: null,
       reviewerId: null,
       resolvedAt: null,
@@ -15451,64 +16448,275 @@ export async function prepareFinancialReconciliationQueue(input: FinancialReconc
     }).onConflictDoNothing());
     await db.batch(inserts as [typeof inserts[number], ...typeof inserts[number][]]);
   }
-
+  const after = await client.prepare('SELECT COUNT(*) AS total FROM financial_reconciliation_items').first<{ total: number }>();
   return {
-    candidatesExamined: candidates.length,
-    legacyCompletedOrders: legacyCompletedOrders.length,
-    manualPricedKeys: manualPricedKeys.length,
-    renewalKeys: renewalKeys.length,
+    ...preview,
+    queueBefore: Number(before?.total ?? 0),
+    queueAfter: Number(after?.total ?? 0),
+    itemsAdded: Number(after?.total ?? 0) - Number(before?.total ?? 0),
   };
 }
 
-export async function getFinancialReconciliationDashboard() {
-  const db = await getDb();
-  if (!db) return { items: [], counts: { unresolved: 0, resolved: 0 } };
-  const [items, grouped] = await Promise.all([
-    db.select({
-      id: financialReconciliationItems.id,
-      sourceType: financialReconciliationItems.sourceType,
-      sourceReference: financialReconciliationItems.sourceReference,
-      issueType: financialReconciliationItems.issueType,
-      confidenceLevel: financialReconciliationItems.confidenceLevel,
-      proposedTreatment: financialReconciliationItems.proposedTreatment,
-      status: financialReconciliationItems.status,
-      notes: financialReconciliationItems.notes,
-      createdAt: financialReconciliationItems.createdAt,
-      resolvedAt: financialReconciliationItems.resolvedAt,
-    }).from(financialReconciliationItems)
-      .orderBy(asc(financialReconciliationItems.status), desc(financialReconciliationItems.createdAt), desc(financialReconciliationItems.id))
-      .limit(250),
-    db.select({ status: financialReconciliationItems.status, total: sql<number>`count(*)` })
-      .from(financialReconciliationItems).groupBy(financialReconciliationItems.status),
-  ]);
-  const counts = { unresolved: 0, resolved: 0 };
-  for (const row of grouped) {
-    if (row.status === 'unresolved') counts.unresolved = Number(row.total);
-    else counts.resolved += Number(row.total);
-  }
-  return { items, counts };
-}
-
-/** Exclusion is an audited review decision; it never deletes source data or creates a ledger entry. */
-export async function excludeFinancialReconciliationItem(input: FinancialReconciliationActor & { itemId: number; reason: string }) {
-  const db = await getDb();
+/** Owner/manager draft proposal only; it has no ledger effect and remains owner-approved later. */
+export async function updateFinancialReconciliationDraft(input: {
+  actor: FinanceActor;
+  itemId: number;
+  proposedTreatment: FinancialReconciliationTreatment;
+  proposedAmountIlsMinor?: number | null;
+  notes: string;
+}, database?: any) {
+  assertReconciliationDraftAccess(input.actor);
+  if (input.proposedAmountIlsMinor != null) validateAdjustmentAmount(input.proposedAmountIlsMinor);
+  const db = database ?? await getDb();
   if (!db) throw new Error('Database not available');
   const [item] = await db.select().from(financialReconciliationItems)
     .where(eq(financialReconciliationItems.id, input.itemId)).limit(1);
   if (!item) return null;
-  if (item.status !== 'unresolved') throw new Error('This reconciliation item has already been reviewed.');
+  if (item.status !== 'unresolved') throw new Error('Only an unresolved reconciliation draft can be updated.');
   const now = new Date().toISOString();
+  const notes = input.notes.trim().slice(0, 1000);
+  const metadata = JSON.stringify({
+    reconciliationVersion: 1,
+    previousTreatment: item.proposedTreatment,
+    nextTreatment: input.proposedTreatment,
+    previousAmountIlsMinor: item.proposedAmountIlsMinor,
+    nextAmountIlsMinor: input.proposedAmountIlsMinor ?? null,
+  });
   await db.batch([
-    db.update(financialReconciliationItems).set({
-      status: 'excluded', reviewerType: input.actorType, reviewerId: input.actorId,
-      resolvedAt: now, resolutionMetadata: JSON.stringify({ decision: 'excluded', reason: input.reason.trim() }), updatedAt: now,
-    }).where(and(eq(financialReconciliationItems.id, input.itemId), eq(financialReconciliationItems.status, 'unresolved'))),
     db.insert(financialReconciliationEvents).values({
-      reconciliationItemId: input.itemId, action: 'excluded', previousStatus: 'unresolved', nextStatus: 'excluded',
-      actorType: input.actorType, actorId: input.actorId, reason: input.reason.trim(), createdAt: now,
+      reconciliationItemId: item.id,
+      action: 'draft_updated',
+      previousStatus: 'unresolved',
+      nextStatus: 'unresolved',
+      actorType: input.actor.actorType,
+      actorId: input.actor.actorId,
+      reason: 'Reconciliation draft proposal updated',
+      metadata,
+      createdAt: now,
     }),
+    db.update(financialReconciliationItems).set({
+      proposedTreatment: input.proposedTreatment,
+      proposedAmountIlsMinor: input.proposedAmountIlsMinor ?? null,
+      notes,
+      updatedAt: now,
+    }).where(and(eq(financialReconciliationItems.id, item.id), eq(financialReconciliationItems.status, 'unresolved'))),
   ]);
-  return { ...item, status: 'excluded', resolvedAt: now };
+  const [updated] = await db.select().from(financialReconciliationItems)
+    .where(eq(financialReconciliationItems.id, item.id)).limit(1);
+  return updated ?? null;
+}
+
+export async function getFinancialReconciliationDashboard(
+  status: FinancialReconciliationStatus = 'unresolved',
+  database?: any,
+) {
+  const db = database ?? await getDb();
+  if (!db) throw new Error('Database not available');
+  const client = (db as { $client?: D1Database }).$client;
+  if (!client) throw new Error('D1 client not available for financial reconciliation');
+  const results = await client.batch([
+    client.prepare(`SELECT id, source_type AS sourceType, source_reference AS sourceReference,
+      issue_type AS issueType, confidence_level AS confidenceLevel,
+      proposed_treatment AS proposedTreatment, status,
+      proposed_amount_ils_minor AS proposedAmountIlsMinor, notes,
+      reviewer_type AS reviewerType, reviewer_id AS reviewerId,
+      resolved_at AS resolvedAt, resolution_metadata AS resolutionMetadata,
+      created_at AS createdAt, updated_at AS updatedAt
+      FROM financial_reconciliation_items INDEXED BY idx_financial_reconciliation_status_updated
+      WHERE status = ? ORDER BY updated_at DESC, id DESC LIMIT 101`).bind(status),
+    client.prepare(`SELECT
+      SUM(CASE WHEN status = 'unresolved' THEN 1 ELSE 0 END) AS unresolved,
+      COALESCE(SUM(CASE WHEN status = 'unresolved' THEN proposed_amount_ils_minor ELSE 0 END), 0) AS unresolvedProposedMinor,
+      SUM(CASE WHEN status = 'approved_opening_balance' THEN 1 ELSE 0 END) AS approvedOpeningBalance,
+      SUM(CASE WHEN status = 'approved_adjustment' THEN 1 ELSE 0 END) AS approvedAdjustment,
+      SUM(CASE WHEN status = 'excluded' THEN 1 ELSE 0 END) AS excluded
+      FROM financial_reconciliation_items INDEXED BY idx_financial_reconciliation_status_updated`),
+    client.prepare(`SELECT COUNT(*) AS entries,
+      COALESCE(SUM(base_amount_ils_minor), 0) AS recognizedHistoricalMinor
+      FROM financial_ledger_entries INDEXED BY idx_financial_ledger_source_link
+      WHERE source_type = 'historical_reconciliation'
+        AND entry_type IN ('opening_balance', 'adjustment') AND status = 'approved'`),
+    client.prepare(`SELECT
+      (SELECT COUNT(*) FROM order_payment_confirmations INDEXED BY idx_order_payment_confirmations_reconciliation_count) AS confirmedPayments,
+      (SELECT COUNT(*) FROM registrationKeys INDEXED BY idx_registration_keys_order_activation_reconciliation
+        WHERE orderId IS NOT NULL) AS issuedOrderKeys,
+      (SELECT COUNT(*) FROM registrationKeys INDEXED BY idx_registration_keys_order_activation_reconciliation
+        WHERE orderId IS NOT NULL AND activatedAt IS NOT NULL) AS activatedOrderKeys`),
+  ]);
+  const rows = results[0]?.results ?? [];
+  const counts = (results[1]?.results?.[0] ?? {}) as Record<string, number>;
+  const recognized = (results[2]?.results?.[0] ?? {}) as Record<string, number>;
+  const operational = (results[3]?.results?.[0] ?? {}) as Record<string, number>;
+  return {
+    status,
+    items: rows.slice(0, 100),
+    truncated: rows.length > 100,
+    counts: {
+      unresolved: Number(counts.unresolved ?? 0),
+      approvedOpeningBalance: Number(counts.approvedOpeningBalance ?? 0),
+      approvedAdjustment: Number(counts.approvedAdjustment ?? 0),
+      excluded: Number(counts.excluded ?? 0),
+      unresolvedProposedMinor: Number(counts.unresolvedProposedMinor ?? 0),
+    },
+    recognized: {
+      entries: Number(recognized.entries ?? 0),
+      historicalNetMinor: Number(recognized.recognizedHistoricalMinor ?? 0),
+    },
+    operationalIndicators: {
+      confirmedPayments: Number(operational.confirmedPayments ?? 0),
+      issuedOrderKeys: Number(operational.issuedOrderKeys ?? 0),
+      activatedOrderKeys: Number(operational.activatedOrderKeys ?? 0),
+    },
+  };
+}
+
+/** Owner decision: exclude, or append one ILS opening/adjustment entry. Source data is never edited. */
+export async function resolveFinancialReconciliationItem(input: {
+  actor: FinanceActor;
+  itemId: number;
+  decision: 'excluded' | 'approved_opening_balance' | 'approved_adjustment';
+  reason: string;
+  effectiveDate?: string | null;
+  amountIlsMinor?: number | null;
+}, database?: any) {
+  assertFinanceOwner(input.actor);
+  const db = database ?? await getDb();
+  if (!db) throw new Error('Database not available');
+  const [item] = await db.select().from(financialReconciliationItems)
+    .where(eq(financialReconciliationItems.id, input.itemId)).limit(1);
+  if (!item) return null;
+  const sourceReference = `reconciliation:${item.id}`;
+  if (item.status !== 'unresolved') {
+    const [ledgerEntry] = await db.select().from(financialLedgerEntries)
+      .where(and(
+        eq(financialLedgerEntries.sourceType, 'historical_reconciliation'),
+        eq(financialLedgerEntries.sourceReference, sourceReference),
+      )).limit(1);
+    return { item, ledgerEntry: ledgerEntry ?? null, idempotent: true };
+  }
+  const reason = normalizeReconciliationReason(input.reason);
+  const now = new Date().toISOString();
+  const baseMetadata = {
+    reconciliationVersion: 1,
+    ownerReviewed: true,
+    sourceType: item.sourceType,
+    sourceReference: item.sourceReference,
+    issueType: item.issueType,
+    decision: input.decision,
+    reason,
+  };
+  try {
+    if (input.decision === 'excluded') {
+      const metadata = JSON.stringify({
+        ...baseMetadata,
+        before: { status: 'unresolved', recognizedIlsMinor: 0 },
+        after: { status: 'excluded', recognizedIlsMinor: 0 },
+        deltaIlsMinor: 0,
+      });
+      await db.batch([
+        db.insert(financialReconciliationEvents).values({
+          reconciliationItemId: input.itemId,
+          action: 'excluded',
+          previousStatus: 'unresolved',
+          nextStatus: 'excluded',
+          actorType: input.actor.actorType,
+          actorId: input.actor.actorId,
+          reason,
+          metadata,
+          createdAt: now,
+        }),
+        db.update(financialReconciliationItems).set({
+          status: 'excluded',
+          reviewerType: input.actor.actorType,
+          reviewerId: input.actor.actorId,
+          resolvedAt: now,
+          resolutionMetadata: metadata,
+          updatedAt: now,
+        }).where(and(eq(financialReconciliationItems.id, input.itemId), eq(financialReconciliationItems.status, 'unresolved'))),
+      ]);
+    } else {
+      const opening = normalizeOpeningBalanceInput(input);
+      const [lock] = await db.select({ month: financialPeriodLocks.month }).from(financialPeriodLocks)
+        .where(eq(financialPeriodLocks.month, opening.reportingMonth)).limit(1);
+      if (lock && input.decision === 'approved_opening_balance') {
+        throw new Error('This financial period is locked. Unlock it before approving a historical opening balance.');
+      }
+      const ledgerEntryType = input.decision === 'approved_adjustment' ? 'adjustment' : 'opening_balance';
+      const metadata = JSON.stringify({
+        ...baseMetadata,
+        effectiveAt: opening.effectiveAt,
+        before: { status: 'unresolved', recognizedIlsMinor: 0, ledgerEntries: 0 },
+        after: { status: input.decision, recognizedIlsMinor: opening.amountIlsMinor, ledgerEntries: 1 },
+        deltaIlsMinor: opening.amountIlsMinor,
+        ownerAuthorizedLockedPeriod: Boolean(lock && input.decision === 'approved_adjustment'),
+      });
+      await db.batch([
+        db.insert(financialLedgerEntries).values({
+          entryType: ledgerEntryType,
+          status: 'approved',
+          effectiveAt: opening.effectiveAt,
+          reportingMonth: opening.reportingMonth,
+          amountMinor: opening.amountIlsMinor,
+          currency: 'ILS',
+          baseAmountIlsMinor: opening.amountIlsMinor,
+          sourceType: 'historical_reconciliation',
+          sourceReference,
+          description: `Owner-reviewed historical ${ledgerEntryType.replace('_', ' ')} for ${item.sourceType} #${item.sourceReference}`,
+          reason,
+          createdByType: input.actor.actorType,
+          createdById: input.actor.actorId,
+          submittedByType: input.actor.actorType,
+          submittedById: input.actor.actorId,
+          approvedByType: input.actor.actorType,
+          approvedById: input.actor.actorId,
+          approvedAt: now,
+          auditMetadata: metadata,
+          createdAt: now,
+        }),
+        db.insert(financialReconciliationEvents).values({
+          reconciliationItemId: input.itemId,
+          action: input.decision,
+          previousStatus: 'unresolved',
+          nextStatus: input.decision,
+          actorType: input.actor.actorType,
+          actorId: input.actor.actorId,
+          reason,
+          metadata,
+          createdAt: now,
+        }),
+        db.update(financialReconciliationItems).set({
+          status: input.decision,
+          proposedAmountIlsMinor: opening.amountIlsMinor,
+          reviewerType: input.actor.actorType,
+          reviewerId: input.actor.actorId,
+          resolvedAt: now,
+          resolutionMetadata: metadata,
+          updatedAt: now,
+        }).where(and(eq(financialReconciliationItems.id, input.itemId), eq(financialReconciliationItems.status, 'unresolved'))),
+      ]);
+    }
+  } catch (error) {
+    const [raced] = await db.select().from(financialReconciliationItems)
+      .where(eq(financialReconciliationItems.id, input.itemId)).limit(1);
+    if (raced && raced.status !== 'unresolved') {
+      const [ledgerEntry] = await db.select().from(financialLedgerEntries)
+        .where(and(
+          eq(financialLedgerEntries.sourceType, 'historical_reconciliation'),
+          eq(financialLedgerEntries.sourceReference, sourceReference),
+        )).limit(1);
+      return { item: raced, ledgerEntry: ledgerEntry ?? null, idempotent: true };
+    }
+    throw error;
+  }
+  const [resolved] = await db.select().from(financialReconciliationItems)
+    .where(eq(financialReconciliationItems.id, input.itemId)).limit(1);
+  const [ledgerEntry] = await db.select().from(financialLedgerEntries)
+    .where(and(
+      eq(financialLedgerEntries.sourceType, 'historical_reconciliation'),
+      eq(financialLedgerEntries.sourceReference, sourceReference),
+    )).limit(1);
+  if (!resolved || resolved.status === 'unresolved') throw new Error('Reconciliation decision was not persisted.');
+  return { item: resolved, ledgerEntry: ledgerEntry ?? null, idempotent: false };
 }
 
 export async function getSupportAssignmentOptions() {
@@ -16914,6 +18122,30 @@ export async function deleteTestimonial(id: number): Promise<void> {
 // ============================================================================
 // Admin Reports
 // ============================================================================
+
+/**
+ * Bounded operational activation activity. This intentionally contains no
+ * prices, revenue totals, refunds, or payment dates.
+ */
+export async function getActivationActivityReport(limit = 500) {
+  const db = await getDb();
+  if (!db) return { activations: [], truncated: false };
+  const boundedLimit = Math.min(Math.max(limit, 1), 500);
+  const rows = await db.select({
+    id: registrationKeys.id,
+    keyCode: registrationKeys.keyCode,
+    packageName: packages.nameEn,
+    packageNameAr: packages.nameAr,
+    activatedAt: registrationKeys.activatedAt,
+    isUpgrade: registrationKeys.isUpgrade,
+    isRenewal: registrationKeys.isRenewal,
+  }).from(registrationKeys)
+    .leftJoin(packages, eq(packages.id, registrationKeys.packageId))
+    .where(and(isNotNull(registrationKeys.activatedAt), isNotNull(registrationKeys.packageId)))
+    .orderBy(desc(registrationKeys.activatedAt), desc(registrationKeys.id))
+    .limit(boundedLimit + 1);
+  return { activations: rows.slice(0, boundedLimit), truncated: rows.length > boundedLimit };
+}
 
 /**
  * Get subscribers report — all users with enriched data

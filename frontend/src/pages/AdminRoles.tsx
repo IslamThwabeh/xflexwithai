@@ -43,9 +43,14 @@ const ROLE_LABELS: Record<string, { labelKey: string; color: string; group: stri
   student_community_moderator: { labelKey: "admin.roles.communityModerator", color: "bg-purple-100 text-purple-800", group: "Feature Roles" },
   student_job_eligibility_manager: { labelKey: "admin.roles.jobEligibilityManager", color: "bg-blue-100 text-blue-800", group: "Feature Roles" },
   email_logs_viewer: { labelKey: "admin.roles.emailLogsViewer", color: "bg-slate-100 text-slate-800", group: "Support Permissions" },
+  finance_manager: { labelKey: "admin.roles.financeManager", color: "bg-emerald-100 text-emerald-800", group: "Finance Roles" },
+  finance_clerk: { labelKey: "admin.roles.financeClerk", color: "bg-cyan-100 text-cyan-800", group: "Finance Roles" },
+  finance_viewer: { labelKey: "admin.roles.financeViewer", color: "bg-slate-100 text-slate-800", group: "Finance Roles" },
 };
 
-type RoleKey = "analyst" | "support" | "lexai_support" | "key_manager" | "plan_manager" | "view_progress" | "view_recommendations" | "view_subscriptions" | "view_quizzes" | "client_lookup" | "manage_client_notifications" | "staff_performance_employee" | "staff_performance_manager" | "student_surveys_manager" | "loyalty_rewards_manager" | "student_community_moderator" | "student_job_eligibility_manager" | "email_logs_viewer";
+type RoleKey = "analyst" | "support" | "lexai_support" | "key_manager" | "plan_manager" | "view_progress" | "view_recommendations" | "view_subscriptions" | "view_quizzes" | "client_lookup" | "manage_client_notifications" | "staff_performance_employee" | "staff_performance_manager" | "student_surveys_manager" | "loyalty_rewards_manager" | "student_community_moderator" | "student_job_eligibility_manager" | "email_logs_viewer" | "finance_manager" | "finance_clerk" | "finance_viewer";
+
+const FINANCE_ROLE_KEYS = new Set<RoleKey>(['finance_manager', 'finance_clerk', 'finance_viewer']);
 
 const FEATURE_ACCESS_FOCUS: Record<string, {
   titleEn: string;
@@ -124,10 +129,13 @@ export default function AdminRoles() {
 
   const { data: staffMembers, isLoading, refetch: refetchStaff } = trpc.roles.listStaff.useQuery();
   const { data: roleAssignments, refetch: refetchRoles } = trpc.roles.list.useQuery();
+  const { data: financeAuthority } = trpc.roles.myFinanceAuthority.useQuery();
   // Admins must be able to prepare performance roles before enabling the
   // feature; hiding these roles while disabled creates an impossible setup
   // loop in the Feature Center readiness checklist.
-  const visibleRoleEntries = Object.entries(ROLE_LABELS);
+  const visibleRoleEntries = Object.entries(ROLE_LABELS).filter(([key]) => (
+    !FINANCE_ROLE_KEYS.has(key as RoleKey) || financeAuthority?.isFinanceOwner === true
+  ));
   const visibleRoles = visibleRoleEntries.map(([key]) => key as RoleKey);
 
   const createStaffMutation = trpc.roles.createStaff.useMutation({
@@ -349,6 +357,34 @@ export default function AdminRoles() {
                           ))}
                         </div>
                       </div>
+
+                      {financeAuthority?.isFinanceOwner === true && (
+                        <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-3 dark:border-emerald-900 dark:bg-emerald-950/20">
+                          <p className="text-xs font-semibold text-emerald-900 dark:text-emerald-100 mb-2 uppercase tracking-wide">
+                            {isRtl ? 'الأدوار المالية الخاصة' : 'Private Finance Roles'}
+                          </p>
+                          <p className="mb-2 text-xs text-muted-foreground">
+                            {isRtl
+                              ? 'تظهر هذه الأدوار للمالك المالي فقط. لا تمنح الموظف صلاحية مالك.'
+                              : 'Only the finance owner can manage these roles. They never grant owner authority.'}
+                          </p>
+                          <div className="space-y-2">
+                            {visibleRoleEntries.filter(([, v]) => v.group === "Finance Roles").map(([key, val]) => (
+                              <label key={key} className="flex items-center gap-3 p-2 rounded-lg border cursor-pointer hover:bg-muted/50 transition-colors">
+                                <input
+                                  type="checkbox"
+                                  checked={editingRoles.includes(key as RoleKey)}
+                                  onChange={() => toggleEditRole(key as RoleKey)}
+                                  className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 h-4 w-4"
+                                />
+                                <Badge variant="secondary" className={`text-xs ${val.color}`}>
+                                  {t(val.labelKey)}
+                                </Badge>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )}
 
                       <div>
                           <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">
@@ -706,6 +742,7 @@ export default function AdminRoles() {
                           variant="ghost"
                           size="icon"
                           className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50 flex-shrink-0"
+                          disabled={removeStaffMutation.isPending || (s.roles.some((role) => FINANCE_ROLE_KEYS.has(role as RoleKey)) && financeAuthority?.isFinanceOwner !== true)}
                           onClick={() => {
                             if (confirm(isRtl ? 'هل أنت متأكد من إزالة هذا الموظف؟' : 'Remove this staff member?')) {
                               removeStaffMutation.mutate({ userId: s.id });
@@ -723,13 +760,15 @@ export default function AdminRoles() {
                               <Badge variant="secondary" className={`text-[10px] ${info?.color ?? ''}`}>
                                 {info ? t(info.labelKey) : role}
                               </Badge>
-                              <button
-                                onClick={() => removeMutation.mutate({ userId: s.id, role: role as RoleKey })}
-                                className="text-muted-foreground hover:text-red-500 transition-colors"
-                                title={isRtl ? 'إزالة الدور' : 'Remove role'}
-                              >
-                                <X className="h-3 w-3" />
-                              </button>
+                              {(!FINANCE_ROLE_KEYS.has(role as RoleKey) || financeAuthority?.isFinanceOwner === true) && (
+                                <button
+                                  onClick={() => removeMutation.mutate({ userId: s.id, role: role as RoleKey })}
+                                  className="text-muted-foreground hover:text-red-500 transition-colors"
+                                  title={isRtl ? 'إزالة الدور' : 'Remove role'}
+                                >
+                                  <X className="h-3 w-3" />
+                                </button>
+                              )}
                             </div>
                           );
                         })}
@@ -780,13 +819,15 @@ export default function AdminRoles() {
                                     <Badge variant="secondary" className={`text-[10px] ${info?.color ?? ''}`}>
                                       {info ? t(info.labelKey) : role}
                                     </Badge>
-                                    <button
-                                      onClick={() => removeMutation.mutate({ userId: s.id, role: role as RoleKey })}
-                                      className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-500 transition-all"
-                                      title={isRtl ? 'إزالة الدور' : 'Remove role'}
-                                    >
-                                      <X className="h-3 w-3" />
-                                    </button>
+                                    {(!FINANCE_ROLE_KEYS.has(role as RoleKey) || financeAuthority?.isFinanceOwner === true) && (
+                                      <button
+                                        onClick={() => removeMutation.mutate({ userId: s.id, role: role as RoleKey })}
+                                        className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-500 transition-all"
+                                        title={isRtl ? 'إزالة الدور' : 'Remove role'}
+                                      >
+                                        <X className="h-3 w-3" />
+                                      </button>
+                                    )}
                                   </div>
                                 );
                               })}
@@ -811,7 +852,7 @@ export default function AdminRoles() {
                                   removeStaffMutation.mutate({ userId: s.id });
                                 }
                               }}
-                              disabled={removeStaffMutation.isPending}
+                              disabled={removeStaffMutation.isPending || (s.roles.some((role) => FINANCE_ROLE_KEYS.has(role as RoleKey)) && financeAuthority?.isFinanceOwner !== true)}
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
@@ -825,6 +866,35 @@ export default function AdminRoles() {
             )}
           </CardContent>
         </Card>
+
+        {financeAuthority?.isFinanceOwner === true && (
+          <Card className="border-emerald-200 dark:border-emerald-900">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg">{isRtl ? 'صلاحيات الإدارة المالية' : 'Financial Access'}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="mb-3 text-sm text-muted-foreground">
+                {isRtl
+                  ? 'المالك المالي فقط يستطيع منح أو سحب هذه الأدوار. لا يمكن تعيين دور المالك للموظفين.'
+                  : 'Only the finance owner can grant or revoke these roles. Staff can never be assigned the owner role.'}
+              </p>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                {roleCounts.filter(({ role }) => ROLE_LABELS[role]?.group === "Finance Roles").map(({ role, count }) => (
+                  <div
+                    key={role}
+                    className={`text-center p-3 rounded-lg border cursor-pointer transition-all ${
+                      filterRole === role ? 'ring-2 ring-primary bg-primary/5' : 'hover:bg-muted/50'
+                    }`}
+                    onClick={() => setFilterRole(filterRole === role ? 'all' : role)}
+                  >
+                    <p className="text-xl font-bold">{count}</p>
+                    <p className="text-xs text-muted-foreground">{t(ROLE_LABELS[role].labelKey)}</p>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Support Permissions Summary */}
         {roleCounts.some(({ role }) => ROLE_LABELS[role]?.group === "Support Permissions") && (

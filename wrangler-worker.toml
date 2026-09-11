@@ -30,6 +30,12 @@ database_id = "cf374361-2caa-4597-a38d-5cecced7827d"
 binding = "VIDEOS_BUCKET"
 bucket_name = "xflexwithai-videos"
 
+# Finance receipts remain private and separate from the public video domain.
+# Provision this bucket before deploying this configuration.
+[[env.production.r2_buckets]]
+binding = "FINANCE_RECEIPTS_BUCKET"
+bucket_name = "xflexacademy-finance-receipts"
+
 [env.production.triggers]
 # Daily lifecycle/reminder jobs run at 08:00 Asia/Amman (05:00 UTC).
 # Timed-service repair has a separate invocation/CPU budget so future pending
@@ -56,6 +62,11 @@ database_id = "cf374361-2caa-4597-a38d-5cecced7827d"
 [[env.staging.r2_buckets]]
 binding = "VIDEOS_BUCKET"
 bucket_name = "xflexwithai-videos"
+
+# Enable only after an approved staging bucket is provisioned:
+# [[env.staging.r2_buckets]]
+# binding = "FINANCE_RECEIPTS_BUCKET"
+# bucket_name = "xflexacademy-finance-receipts-staging"
 
 [env.development]
 name = "xflexacademy-api-dev"

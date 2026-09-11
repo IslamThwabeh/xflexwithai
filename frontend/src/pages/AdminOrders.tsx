@@ -65,6 +65,14 @@ export default function AdminOrders() {
     baseAmountIls: '',
     rationale: '',
   });
+  const { data: adminCheck } = trpc.auth.isAdmin.useQuery();
+  const { data: financeAuthority } = trpc.roles.myFinanceAuthority.useQuery(undefined, {
+    enabled: adminCheck?.isAdmin === true,
+    retry: false,
+  });
+  const staffRoles = adminCheck?.staffRoles ?? [];
+  const canManageOperationalOrders = adminCheck?.isAdmin === true || staffRoles.includes('key_manager');
+  const canConfirmPayment = financeAuthority?.isFinanceOwner === true || staffRoles.includes('finance_manager');
   const { data: orders, isLoading } = trpc.orders.adminList.useQuery(filter ? { status: filter } : undefined);
   const updateMutation = trpc.orders.adminUpdateStatus.useMutation({
     onSuccess: (data) => {
@@ -373,7 +381,7 @@ export default function AdminOrders() {
 
                     {/* Status Actions */}
                     <div className="flex flex-wrap gap-2">
-                      {['pending', 'awaiting_confirmation', 'paid'].includes(order.status) && (
+                      {canManageOperationalOrders && ['pending', 'awaiting_confirmation', 'paid'].includes(order.status) && (
                         <Button size="sm" variant="outline" onClick={() => openRecipientCorrection(order)}>
                           <Pencil className="w-3.5 h-3.5 me-1" />
                           {language === 'ar' ? 'تصحيح مستلم التفعيل' : 'Correct activation recipient'}
@@ -381,25 +389,33 @@ export default function AdminOrders() {
                       )}
                       {order.status === 'pending' && (
                         <>
-                          <Button size="sm" disabled={updateMutation.isPending} onClick={() => openIssueDialog(order)}>
-                            <CheckCircle className="w-3.5 h-3.5 me-1" />{language === 'ar' ? 'تأكيد الدفع وإصدار المفتاح' : 'Approve & issue key'}
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => handleStatusChange(order.id, 'cancelled')} className="text-red-600">
-                            <XCircle className="w-3.5 h-3.5 me-1" />{language === 'ar' ? 'إلغاء' : 'Cancel'}
-                          </Button>
+                          {canConfirmPayment && (
+                            <Button size="sm" disabled={updateMutation.isPending} onClick={() => openIssueDialog(order)}>
+                              <CheckCircle className="w-3.5 h-3.5 me-1" />{language === 'ar' ? 'تأكيد الدفع وإصدار المفتاح' : 'Approve & issue key'}
+                            </Button>
+                          )}
+                          {canManageOperationalOrders && (
+                            <Button size="sm" variant="outline" onClick={() => handleStatusChange(order.id, 'cancelled')} className="text-red-600">
+                              <XCircle className="w-3.5 h-3.5 me-1" />{language === 'ar' ? 'إلغاء' : 'Cancel'}
+                            </Button>
+                          )}
                         </>
                       )}
                       {order.status === 'awaiting_confirmation' && (
                         <>
-                          <Button size="sm" disabled={updateMutation.isPending} onClick={() => openIssueDialog(order)}>
-                            <CheckCircle className="w-3.5 h-3.5 me-1" />{language === 'ar' ? 'تأكيد الدفع وإصدار المفتاح' : 'Approve & issue key'}
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => handleStatusChange(order.id, 'cancelled')} className="text-red-600">
-                            <XCircle className="w-3.5 h-3.5 me-1" />{language === 'ar' ? 'رفض' : 'Reject'}
-                          </Button>
+                          {canConfirmPayment && (
+                            <Button size="sm" disabled={updateMutation.isPending} onClick={() => openIssueDialog(order)}>
+                              <CheckCircle className="w-3.5 h-3.5 me-1" />{language === 'ar' ? 'تأكيد الدفع وإصدار المفتاح' : 'Approve & issue key'}
+                            </Button>
+                          )}
+                          {canManageOperationalOrders && (
+                            <Button size="sm" variant="outline" onClick={() => handleStatusChange(order.id, 'cancelled')} className="text-red-600">
+                              <XCircle className="w-3.5 h-3.5 me-1" />{language === 'ar' ? 'رفض' : 'Reject'}
+                            </Button>
+                          )}
                         </>
                       )}
-                      {order.status === 'paid' && (
+                      {canConfirmPayment && order.status === 'paid' && (
                         <Button size="sm" disabled={updateMutation.isPending} onClick={() => openIssueDialog(order)}>
                           <CheckCircle className="w-3.5 h-3.5 me-1" />{language === 'ar' ? 'إصدار المفتاح' : 'Issue key'}
                         </Button>

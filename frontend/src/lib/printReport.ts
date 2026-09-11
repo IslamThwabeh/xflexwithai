@@ -15,6 +15,7 @@ export function printReport(title: string) {
   style.textContent = `
     @media print {
       nav, header, aside, .no-print, [data-no-print],
+      [data-slot="sidebar-gap"], [data-slot="sidebar-container"],
       button:not(.print-include), .print\\:hidden {
         display: none !important;
       }

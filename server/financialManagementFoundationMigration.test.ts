@@ -14,6 +14,26 @@ const sourceIdempotencyMigration = readFileSync(
   new URL('../database/migrations/108_financial_ledger_source_idempotency.sql', import.meta.url),
   'utf8',
 );
+const ownerAuthorityMigration = readFileSync(
+  new URL('../database/migrations/109_explicit_finance_owner_authority.sql', import.meta.url),
+  'utf8',
+);
+const expenseWorkflowMigration = readFileSync(
+  new URL('../database/migrations/110_financial_expense_workflow.sql', import.meta.url),
+  'utf8',
+);
+const reportingIndexesMigration = readFileSync(
+  new URL('../database/migrations/111_financial_reporting_indexes.sql', import.meta.url),
+  'utf8',
+);
+const financialControlsMigration = readFileSync(
+  new URL('../database/migrations/112_financial_controls.sql', import.meta.url),
+  'utf8',
+);
+const historicalReconciliationMigration = readFileSync(
+  new URL('../database/migrations/113_historical_financial_reconciliation.sql', import.meta.url),
+  'utf8',
+);
 
 describe('financial management foundation migration', () => {
   it('is additive and idempotent on a production-shaped SQLite fixture', () => {
@@ -21,10 +41,15 @@ describe('financial management foundation migration', () => {
     sqlite.exec(`
       CREATE TABLE orders (id INTEGER PRIMARY KEY, status TEXT NOT NULL);
       CREATE TABLE orderItems (id INTEGER PRIMARY KEY, orderId INTEGER NOT NULL);
-      CREATE TABLE registrationKeys (id INTEGER PRIMARY KEY);
+      CREATE TABLE registrationKeys (
+        id INTEGER PRIMARY KEY, activatedAt TEXT, packageId INTEGER,
+        orderId INTEGER, price INTEGER NOT NULL DEFAULT 0,
+        isRenewal INTEGER DEFAULT 0, isUpgrade INTEGER DEFAULT 0
+      );
       CREATE TABLE account_refunds (id INTEGER PRIMARY KEY);
       CREATE TABLE users (id INTEGER PRIMARY KEY);
       CREATE TABLE admins (id INTEGER PRIMARY KEY);
+      INSERT INTO admins (id) VALUES (1), (2);
       CREATE TABLE schema_migrations (migration_name TEXT NOT NULL UNIQUE, source TEXT NOT NULL, notes TEXT, applied_at TEXT);
     `);
 
@@ -34,11 +59,51 @@ describe('financial management foundation migration', () => {
     expect(() => sqlite.exec(paymentGuardMigration)).not.toThrow();
     expect(() => sqlite.exec(sourceIdempotencyMigration)).not.toThrow();
     expect(() => sqlite.exec(sourceIdempotencyMigration)).not.toThrow();
+    expect(() => sqlite.exec(ownerAuthorityMigration)).not.toThrow();
+    expect(() => sqlite.exec(ownerAuthorityMigration)).not.toThrow();
+    expect(() => sqlite.exec(expenseWorkflowMigration)).not.toThrow();
+    expect(() => sqlite.exec(expenseWorkflowMigration)).not.toThrow();
+    expect(() => sqlite.exec(reportingIndexesMigration)).not.toThrow();
+    expect(() => sqlite.exec(reportingIndexesMigration)).not.toThrow();
+    expect(() => sqlite.exec(financialControlsMigration)).not.toThrow();
+    expect(() => sqlite.exec(financialControlsMigration)).not.toThrow();
+    expect(() => sqlite.exec(historicalReconciliationMigration)).not.toThrow();
+    expect(() => sqlite.exec(historicalReconciliationMigration)).not.toThrow();
     expect(sqlite.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'financial_ledger_entries'").get()).toBeTruthy();
     expect(sqlite.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'order_payment_confirmations'").get()).toBeTruthy();
     expect(sqlite.prepare("SELECT migration_name FROM schema_migrations WHERE migration_name = '106_financial_management_foundation.sql'").get()).toBeTruthy();
     expect(sqlite.prepare("SELECT migration_name FROM schema_migrations WHERE migration_name = '107_financial_payment_confirmation_guard.sql'").get()).toBeTruthy();
     expect(sqlite.prepare("SELECT migration_name FROM schema_migrations WHERE migration_name = '108_financial_ledger_source_idempotency.sql'").get()).toBeTruthy();
+    expect(sqlite.prepare("SELECT migration_name FROM schema_migrations WHERE migration_name = '109_explicit_finance_owner_authority.sql'").get()).toBeTruthy();
+    expect(sqlite.prepare("SELECT migration_name FROM schema_migrations WHERE migration_name = '110_financial_expense_workflow.sql'").get()).toBeTruthy();
+    expect(sqlite.prepare("SELECT migration_name FROM schema_migrations WHERE migration_name = '111_financial_reporting_indexes.sql'").get()).toBeTruthy();
+    expect(sqlite.prepare("SELECT migration_name FROM schema_migrations WHERE migration_name = '112_financial_controls.sql'").get()).toBeTruthy();
+    expect(sqlite.prepare("SELECT migration_name FROM schema_migrations WHERE migration_name = '113_historical_financial_reconciliation.sql'").get()).toBeTruthy();
+    expect(sqlite.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'financial_adjustment_requests'").get()).toBeTruthy();
+    expect(sqlite.prepare('SELECT admin_id FROM finance_owner_assignments WHERE is_active = 1').all()).toEqual([{ admin_id: 1 }]);
+    expect(sqlite.prepare('SELECT COUNT(*) AS total FROM finance_owner_assignment_audit').get()).toEqual({ total: 1 });
+    sqlite.close();
+  });
+
+  it('makes owner authority explicit, indexed, and audit events append-only', () => {
+    const sqlite = new Database(':memory:');
+    sqlite.exec(`
+      PRAGMA foreign_keys = ON;
+      CREATE TABLE admins (id INTEGER PRIMARY KEY);
+      CREATE TABLE schema_migrations (migration_name TEXT NOT NULL UNIQUE, source TEXT NOT NULL, notes TEXT, applied_at TEXT);
+      INSERT INTO admins (id) VALUES (1), (2);
+    `);
+    sqlite.exec(ownerAuthorityMigration);
+
+    expect(sqlite.prepare('SELECT is_active FROM finance_owner_assignments WHERE admin_id = 1').get()).toEqual({ is_active: 1 });
+    expect(sqlite.prepare('SELECT is_active FROM finance_owner_assignments WHERE admin_id = 2').get()).toBeUndefined();
+    const plan = sqlite.prepare(`EXPLAIN QUERY PLAN
+      SELECT admin_id FROM finance_owner_assignments
+      WHERE admin_id = 1 AND is_active = 1
+      LIMIT 1`).all() as Array<{ detail: string }>;
+    expect(plan.map((row) => row.detail).join('\n')).toMatch(/INTEGER PRIMARY KEY|PRIMARY KEY/i);
+    expect(() => sqlite.prepare("UPDATE finance_owner_assignment_audit SET reason = 'changed' WHERE id = 1").run()).toThrow(/append_only/);
+    expect(() => sqlite.prepare('DELETE FROM finance_owner_assignment_audit WHERE id = 1').run()).toThrow(/append_only/);
     sqlite.close();
   });
 

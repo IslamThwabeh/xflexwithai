@@ -7,6 +7,7 @@ vi.mock("../backend/db", async () => {
     getAdminByEmail: vi.fn(),
     hasAnyRole: vi.fn(),
     getUserRoles: vi.fn(),
+    resolveFinanceActor: vi.fn(),
     logStaffAction: vi.fn(),
     blockClientAccount: vi.fn(),
     restoreClientAccountAccess: vi.fn(),
@@ -49,13 +50,30 @@ describe("account access routes", () => {
     vi.mocked(db.getAdminByEmail).mockResolvedValue(null);
     vi.mocked(db.hasAnyRole).mockResolvedValue(true);
     vi.mocked(db.getUserRoles).mockResolvedValue([{ role: "support" }] as any);
+    vi.mocked(db.resolveFinanceActor).mockResolvedValue(null);
     vi.mocked(db.blockClientAccount).mockResolvedValue({ ok: true } as any);
     vi.mocked(db.restoreClientAccountAccess).mockResolvedValue({ ok: true } as any);
     vi.mocked(db.setClientRecommendationNotifications).mockResolvedValue({ ok: true } as any);
   });
 
-  it("passes a support actor and an ILS refund decision to the atomic service", async () => {
+  it("requires explicit finance authority before support can include a refund", async () => {
     const refundedAt = "2026-08-10T08:00:00.000Z";
+    await expect(createCaller().clientProfiles.blockAccess({
+      userId: 102,
+      reason: "Refund approved after service complaint",
+      deactivateServices: true,
+      refund: {
+        requestId: "f6e98a9d-3189-4ca5-91cb-b868c31f82d5",
+        registrationKeyId: 123,
+        amountIls: 700,
+        method: "bank_transfer",
+        reference: "Bank reference 42",
+        refundedAt,
+      },
+    })).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    expect(db.blockClientAccount).not.toHaveBeenCalled();
+
+    vi.mocked(db.resolveFinanceActor).mockResolvedValue({ actorType: 'staff', actorId: 9, access: 'manager' });
     const result = await createCaller().clientProfiles.blockAccess({
       userId: 102,
       reason: "Refund approved after service complaint",

@@ -6,7 +6,8 @@ const workerContextSource = readFileSync(new URL("../backend/_core/context-worke
 const nodeContextSource = readFileSync(new URL("../backend/_core/context.ts", import.meta.url), "utf8");
 const dbSource = readFileSync(new URL("../backend/db.ts", import.meta.url), "utf8");
 const profileSource = readFileSync(new URL("../frontend/src/components/admin/AdminClientProfileSheet.tsx", import.meta.url), "utf8");
-const revenueSource = readFileSync(new URL("../frontend/src/pages/AdminRevenueReport.tsx", import.meta.url), "utf8");
+const dashboardSource = readFileSync(new URL("../frontend/src/pages/AdminFinancialDashboard.tsx", import.meta.url), "utf8");
+const activationSource = readFileSync(new URL("../frontend/src/pages/AdminRevenueReport.tsx", import.meta.url), "utf8");
 const migrationSource = readFileSync(new URL("../database/migrations/082_account_access_and_ils_refunds.sql", import.meta.url), "utf8");
 
 describe("account restriction and ILS refund workflow", () => {
@@ -21,6 +22,9 @@ describe("account restriction and ILS refund workflow", () => {
     expect(routerSource).toContain("restoreAccess: adminOrRoleProcedure(['support'])");
     expect(routerSource).toContain("reason: z.string().trim().min(5).max(1000)");
     expect(routerSource).toContain("canManageAccountAccess");
+    expect(routerSource).toContain("canRecordFinancialRefund");
+    expect(routerSource).toContain("Finance owner or manager authority is required to record a refund");
+    expect(profileSource).toContain("profile?.permissions.canRecordFinancialRefund");
   });
 
   it("keeps login, services, and refund as separate audited decisions", () => {
@@ -52,7 +56,9 @@ describe("account restriction and ILS refund workflow", () => {
   it("shows only shekel-denominated financial decisions in the new admin UI", () => {
     expect(profileSource).toContain("Refund Amount (₪)");
     expect(profileSource).toContain("All amounts are in ILS");
-    expect(revenueSource).toContain("ILS Refund Ledger");
-    expect(revenueSource).toContain("Gross (₪)");
+    expect(dashboardSource).toContain("Currency', 'ILS");
+    expect(dashboardSource).toContain("Refunds (ILS)");
+    expect(dashboardSource).toContain("refunds on refund date");
+    expect(activationSource).toMatch(/not a revenue report/i);
   });
 });
