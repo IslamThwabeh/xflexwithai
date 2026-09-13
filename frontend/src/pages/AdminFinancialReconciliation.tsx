@@ -10,7 +10,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { toast } from 'sonner';
 
 type QueueStatus = 'unresolved' | 'approved_opening_balance' | 'approved_adjustment' | 'excluded';
-type Treatment = 'automatically_reconcilable' | 'requires_owner_evidence' | 'opening_balance_candidate' | 'excluded';
+type Treatment = 'genuine_current_new_sale' | 'genuine_current_renewal' | 'genuine_upgrade' | 'legacy_migration_no_financial_impact' | 'historical_payment_known_date' | 'historical_payment_unknown' | 'requires_owner_review' | 'possible_duplicate' | 'excluded_nonfinancial';
 type QueueItem = { id: number; sourceType: string; sourceReference: string; issueType: string; confidenceLevel: string; status: string; proposedTreatment: Treatment; proposedAmountIlsMinor?: number | null; notes?: string | null };
 
 const money = (minor: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'ILS' }).format(minor / 100);
@@ -24,7 +24,7 @@ export default function AdminFinancialReconciliation() {
   const [selected, setSelected] = useState<QueueItem | null>(null);
   const [decision, setDecision] = useState<'excluded' | 'approved_opening_balance' | 'approved_adjustment'>('excluded');
   const [draft, setDraft] = useState<QueueItem | null>(null);
-  const [draftTreatment, setDraftTreatment] = useState<Treatment>('requires_owner_evidence');
+  const [draftTreatment, setDraftTreatment] = useState<Treatment>('requires_owner_review');
   const [draftAmount, setDraftAmount] = useState('');
   const [draftNotes, setDraftNotes] = useState('');
   const [reason, setReason] = useState('');
@@ -99,7 +99,7 @@ export default function AdminFinancialReconciliation() {
 
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
           <div className="flex gap-2 font-semibold"><AlertTriangle className="h-5 w-5 shrink-0" />{isRtl ? 'هذه المعاينة لا تسجل دخلاً ولا تفترض تاريخ دفع.' : 'This preview records no income and assumes no payment date.'}</div>
-          <p className="mt-1 ps-7">{isRtl ? 'اعتماد مبلغ يحتاج قرار المالك، مبلغًا موثقًا بالشيكل، وتاريخ رصيد افتتاحي واضحًا. الاستبعاد لا يحذف شيئًا.' : 'Recognizing an amount requires an owner decision, documented ILS value, and a clear opening-balance date. Exclusion deletes nothing.'}</p>
+          <p className="mt-1 ps-7">{isRtl ? 'الدفع التاريخي لا يدخل التقارير إلا كتسوية موثقة بتاريخ الدفع الحقيقي. المبلغ أو التاريخ غير المؤكد يبقى خارج قائمة الدخل، والاستبعاد لا يحذف شيئًا.' : 'Historic payment enters reports only as a documented adjustment on the genuine payment date. Unknown amount/date stays outside P&L, and exclusion deletes nothing.'}</p>
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -114,8 +114,8 @@ export default function AdminFinancialReconciliation() {
         <div className="rounded-xl border bg-slate-50 p-4 text-sm">
           <p className="font-semibold">{isRtl ? 'تصنيف المعاينة' : 'Dry-run classification'}</p>
           <p className="mt-1 text-muted-foreground">{isRtl
-            ? `قابل آليًا: ${classifications?.automaticallyReconcilable ?? 0} · يحتاج إثبات المالك: ${classifications?.requiresOwnerEvidence ?? 0} · مرشح رصيد افتتاحي: ${classifications?.openingBalanceCandidates ?? 0} · مستبعد مجانًا: ${classifications?.excludedByRule ?? 0}`
-            : `Automatically reconcilable: ${classifications?.automaticallyReconcilable ?? 0} · Requires owner evidence: ${classifications?.requiresOwnerEvidence ?? 0} · Opening-balance candidates: ${classifications?.openingBalanceCandidates ?? 0} · Free/non-financial excluded: ${classifications?.excludedByRule ?? 0}`}</p>
+            ? `يحتاج قرار المالك: ${classifications?.requiresOwnerReview ?? 0} · دفع تاريخي بتاريخ غير مؤكد: ${classifications?.historicalPaymentUnknown ?? 0} · مستبعد غير مالي: ${classifications?.excludedNonfinancial ?? 0}`
+            : `Requires owner review: ${classifications?.requiresOwnerReview ?? 0} · Historic payment with unknown date: ${classifications?.historicalPaymentUnknown ?? 0} · Non-financial excluded: ${classifications?.excludedNonfinancial ?? 0}`}</p>
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
@@ -157,11 +157,10 @@ export default function AdminFinancialReconciliation() {
 
       <Dialog open={!!selected} onOpenChange={open => { if (!open && !resolve.isPending) setSelected(null); }}>
         <DialogContent dir={isRtl ? 'rtl' : 'ltr'}>
-          <DialogHeader><DialogTitle>{isRtl ? 'قرار المطابقة' : 'Reconciliation decision'}</DialogTitle><DialogDescription>{isRtl ? 'السجل الأصلي لن يتغير. الرصيد الافتتاحي ينشئ قيدًا جديدًا واحدًا فقط.' : 'The source record will not change. An opening balance creates exactly one new ledger entry.'}</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>{isRtl ? 'قرار المطابقة' : 'Reconciliation decision'}</DialogTitle><DialogDescription>{isRtl ? 'السجل الأصلي لن يتغير. لا تعتمد تسوية إلا بعد توثيق تاريخ الدفع الحقيقي والمبلغ.' : 'The source record will not change. Approve an adjustment only after verifying the genuine payment date and amount.'}</DialogDescription></DialogHeader>
           <div className="space-y-3">
             <select className="w-full rounded-md border bg-background px-3 py-2" value={decision} onChange={event => setDecision(event.target.value as typeof decision)}>
               <option value="excluded">{isRtl ? 'استبعاد — قبل وبعد: ₪0' : 'Exclude — before and after: ₪0'}</option>
-              <option value="approved_opening_balance">{isRtl ? 'اعتماد رصيد افتتاحي' : 'Approve opening balance'}</option>
               <option value="approved_adjustment">{isRtl ? 'اعتماد تسوية تاريخية' : 'Approve historical adjustment'}</option>
             </select>
             {decision !== 'excluded' && <div className="grid gap-3 sm:grid-cols-2"><div><label className="text-sm">{isRtl ? 'تاريخ القيد' : 'Posting date'}</label><Input type="date" value={effectiveDate} max={today()} onChange={event => setEffectiveDate(event.target.value)} /></div><div><label className="text-sm">{isRtl ? 'المبلغ بالشيكل (+ أو -)' : 'ILS amount (+ or -)'}</label><Input type="number" step="0.01" value={amount} onChange={event => setAmount(event.target.value)} /></div></div>}
@@ -177,10 +176,15 @@ export default function AdminFinancialReconciliation() {
           <DialogHeader><DialogTitle>{isRtl ? 'تحديث مسودة المطابقة' : 'Update reconciliation draft'}</DialogTitle><DialogDescription>{isRtl ? 'هذا اقتراح فقط ولا يدخل أي مبلغ في التقارير.' : 'This is only a proposal and recognizes no amount.'}</DialogDescription></DialogHeader>
           <div className="space-y-3">
             <select className="w-full rounded-md border bg-background px-3 py-2" value={draftTreatment} onChange={event => setDraftTreatment(event.target.value as Treatment)}>
-              <option value="automatically_reconcilable">{isRtl ? 'قابل للمطابقة آليًا' : 'Automatically reconcilable'}</option>
-              <option value="requires_owner_evidence">{isRtl ? 'يحتاج إثبات المالك' : 'Requires owner evidence'}</option>
-              <option value="opening_balance_candidate">{isRtl ? 'مرشح رصيد افتتاحي' : 'Opening-balance candidate'}</option>
-              <option value="excluded">{isRtl ? 'مقترح للاستبعاد' : 'Proposed exclusion'}</option>
+              <option value="genuine_current_new_sale">{isRtl ? 'بيع جديد حالي صحيح' : 'Genuine current new sale'}</option>
+              <option value="genuine_current_renewal">{isRtl ? 'تجديد حالي صحيح' : 'Genuine current renewal'}</option>
+              <option value="genuine_upgrade">{isRtl ? 'ترقية صحيحة' : 'Genuine upgrade'}</option>
+              <option value="legacy_migration_no_financial_impact">{isRtl ? 'ترحيل قديم — بلا أثر مالي' : 'Legacy migration — no financial impact'}</option>
+              <option value="historical_payment_known_date">{isRtl ? 'دفعة تاريخية بتاريخ معروف' : 'Historical payment — known date'}</option>
+              <option value="historical_payment_unknown">{isRtl ? 'دفعة تاريخية غير مؤكدة' : 'Historical payment — unknown'}</option>
+              <option value="requires_owner_review">{isRtl ? 'يتطلب مراجعة المالك' : 'Requires owner review'}</option>
+              <option value="possible_duplicate">{isRtl ? 'تكرار محتمل' : 'Possible duplicate'}</option>
+              <option value="excluded_nonfinancial">{isRtl ? 'مستبعد غير مالي' : 'Excluded non-financial'}</option>
             </select>
             <Input type="number" step="0.01" value={draftAmount} onChange={event => setDraftAmount(event.target.value)} placeholder={isRtl ? 'مبلغ مقترح بالشيكل (اختياري)' : 'Proposed ILS amount (optional)'} />
             <Textarea value={draftNotes} maxLength={1000} onChange={event => setDraftNotes(event.target.value)} placeholder={isRtl ? 'ملاحظات وإثباتات المسودة' : 'Draft evidence notes'} />

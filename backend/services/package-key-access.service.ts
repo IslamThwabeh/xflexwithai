@@ -4,7 +4,7 @@ export const PACKAGE_KEY_KINDS = ['fresh', 'upgrade', 'renewal'] as const;
 export type PackageKeyKind = typeof PACKAGE_KEY_KINDS[number];
 
 export const PACKAGE_KEY_ISSUANCE_PURPOSES = ['commercial', 'internal', 'compensation'] as const;
-export type PackageKeyIssuancePurpose = typeof PACKAGE_KEY_ISSUANCE_PURPOSES[number];
+export type PackageKeyIssuancePurpose = typeof PACKAGE_KEY_ISSUANCE_PURPOSES[number] | 'migration';
 
 export type PackageKeyActivationPolicy =
   | 'legacy'
@@ -22,13 +22,13 @@ export function getPackageKeyIssuancePolicy(input: {
     ?? (input.isRenewal ? 'renewal' : input.isUpgrade ? 'upgrade' : 'fresh');
   const purpose = input.purpose ?? 'commercial';
 
-  const activationPolicy: PackageKeyActivationPolicy = purpose === 'internal'
+  const activationPolicy: PackageKeyActivationPolicy = purpose === 'internal' || purpose === 'migration'
     ? 'internal_authorized'
     : purpose === 'compensation'
       ? 'admin_exception'
       : keyKind === 'renewal'
-        // Preserve the established renewal workflow until renewal orders have
-        // their own first-class order type.
+        // Compatibility value for historic renewal keys. New commercial
+        // renewals are issued only from a confirmed first-class renewal order.
         ? 'legacy'
         : 'order_required';
 

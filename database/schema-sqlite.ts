@@ -234,12 +234,14 @@ export const registrationKeys = sqliteTable("registrationKeys", {
   configurationUpdatedAt: text("configurationUpdatedAt"),
   configurationUpdatedByType: text("configurationUpdatedByType"), // admin | staff | system
   configurationUpdatedById: integer("configurationUpdatedById"),
-  issuancePurpose: text("issuancePurpose").default("legacy").notNull(), // commercial | internal | compensation | legacy
+  issuancePurpose: text("issuancePurpose").default("legacy").notNull(), // commercial | internal | compensation | migration | legacy
   activationPolicy: text("activationPolicy").default("legacy").notNull(), // order_required | internal_authorized | admin_exception | legacy
   authorizationReason: text("authorizationReason"),
   authorizedByType: text("authorizedByType"), // admin | staff | system
   authorizedById: integer("authorizedById"),
   authorizedAt: text("authorizedAt"),
+  transactionPurpose: text("transactionPurpose"), // new_sale | renewal | upgrade | legacy_migration; null only for unreconciled history
+  legacyMigrationId: integer("legacyMigrationId"),
 }, (table) => ({
   recentActivationIndex: index("idx_registration_keys_recent_activation")
     .on(table.activatedAt, table.id)
@@ -1193,6 +1195,7 @@ export const orders = sqliteTable("orders", {
   notes: text("notes"),
   isUpgrade: integer("isUpgrade", { mode: 'boolean' }).default(false).notNull(),
   upgradeFromPackageId: integer("upgradeFromPackageId"),
+  transactionPurpose: text("transactionPurpose"), // explicit for all new orders; null only for unreconciled history
   termsAcceptedAt: text("termsAcceptedAt"),
   termsAcceptedVersion: text("termsAcceptedVersion"),
   termsAcceptedIpAddress: text("termsAcceptedIpAddress"),
@@ -1226,6 +1229,7 @@ export const orderPaymentConfirmations = sqliteTable("order_payment_confirmation
   confirmedById: integer("confirmed_by_id"),
   sourceType: text("source_type").notNull(),
   sourceReference: text("source_reference"),
+  transactionPurpose: text("transaction_purpose"),
   createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
 }, (table) => ({
   reconciliationCountIndex: index("idx_order_payment_confirmations_reconciliation_count").on(table.id),
@@ -1352,6 +1356,7 @@ export const financialLedgerEntries = sqliteTable("financial_ledger_entries", {
   approvedAt: text("approved_at"),
   reversalOfEntryId: integer("reversal_of_entry_id"),
   auditMetadata: text("audit_metadata"),
+  transactionPurpose: text("transaction_purpose"),
   createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
 }, (table) => ({
   approvedPeriodIndex: index("idx_financial_ledger_approved_period")
@@ -1576,7 +1581,84 @@ export const orderItems = sqliteTable("orderItems", {
   courseId: integer("courseId"),
   priceAtPurchase: integer("priceAtPurchase").default(0).notNull(),
   currency: text("currency", { length: 3 }).default("USD").notNull(),
+  transactionPurpose: text("transactionPurpose"),
 });
+
+/** Immutable snapshot of the commercial and operational promise shown for a renewal order. */
+export const orderRenewalDetails = sqliteTable("order_renewal_details", {
+  orderId: integer("order_id").primaryKey(),
+  userId: integer("user_id").notNull(),
+  packageId: integer("package_id").notNull(),
+  entitlementDays: integer("entitlement_days").notNull(),
+  amountIlsMinor: integer("amount_ils_minor").notNull(),
+  recommendationsCurrentEndAt: text("recommendations_current_end_at"),
+  lexaiCurrentEndAt: text("lexai_current_end_at"),
+  recommendationsProjectedEndAt: text("recommendations_projected_end_at"),
+  lexaiProjectedEndAt: text("lexai_projected_end_at"),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
+});
+
+export const orderTransactionPurposeEvents = sqliteTable("order_transaction_purpose_events", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  orderId: integer("order_id").notNull(),
+  previousPurpose: text("previous_purpose"),
+  nextPurpose: text("next_purpose").notNull(),
+  actorType: text("actor_type").notNull(),
+  actorId: integer("actor_id").notNull(),
+  reason: text("reason").notNull(),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
+}, (table) => ({
+  orderCreatedIndex: index("idx_order_transaction_purpose_events_order_created").on(table.orderId, table.createdAt, table.id),
+}));
+
+export const legacyCustomerMigrations = sqliteTable("legacy_customer_migrations", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  status: text("status").default("draft").notNull(),
+  userId: integer("user_id").notNull(),
+  packageId: integer("package_id").notNull(),
+  originalPurchaseDate: text("original_purchase_date"),
+  oldReference: text("old_reference"),
+  oldReceiptMetadata: text("old_receipt_metadata"),
+  originalAmountMinor: integer("original_amount_minor"),
+  originalCurrency: text("original_currency"),
+  timedServicesEndAt: text("timed_services_end_at"),
+  reason: text("reason").notNull(),
+  notes: text("notes"),
+  transactionPurpose: text("transaction_purpose").default("legacy_migration").notNull(),
+  financialImpact: text("financial_impact").default("none").notNull(),
+  createdByType: text("created_by_type").notNull(),
+  createdById: integer("created_by_id").notNull(),
+  submittedByType: text("submitted_by_type"),
+  submittedById: integer("submitted_by_id"),
+  submittedAt: text("submitted_at"),
+  reviewedByAdminId: integer("reviewed_by_admin_id"),
+  reviewedAt: text("reviewed_at"),
+  reviewReason: text("review_reason"),
+  migratedAt: text("migrated_at"),
+  migratedByAdminId: integer("migrated_by_admin_id"),
+  migrationKeyId: integer("migration_key_id").unique(),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
+  updatedAt: text("updated_at").default(sql`(datetime('now'))`).notNull(),
+}, (table) => ({
+  statusUpdatedIndex: index("idx_legacy_customer_migrations_status_updated").on(table.status, table.updatedAt, table.id),
+  creatorStatusUpdatedIndex: index("idx_legacy_customer_migrations_creator_status_updated").on(table.createdByType, table.createdById, table.status, table.updatedAt, table.id),
+  userPackageIndex: index("idx_legacy_customer_migrations_user_package").on(table.userId, table.packageId, table.id),
+}));
+
+export const legacyCustomerMigrationEvents = sqliteTable("legacy_customer_migration_events", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  migrationId: integer("migration_id").notNull(),
+  action: text("action").notNull(),
+  previousStatus: text("previous_status"),
+  nextStatus: text("next_status"),
+  actorType: text("actor_type").notNull(),
+  actorId: integer("actor_id").notNull(),
+  reason: text("reason"),
+  metadata: text("metadata"),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
+}, (table) => ({
+  migrationCreatedIndex: index("idx_legacy_customer_migration_events_migration_created").on(table.migrationId, table.createdAt, table.id),
+}));
 
 export type OrderItem = typeof orderItems.$inferSelect;
 export type InsertOrderItem = typeof orderItems.$inferInsert;

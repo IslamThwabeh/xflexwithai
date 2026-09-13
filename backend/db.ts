@@ -52,6 +52,8 @@ import {
   orderPaymentConfirmations, financialLedgerEntries, financialExpenses, financialExpenseEvents,
   financialPeriodLocks, financialPeriodLockEvents, financialAdjustmentRequests, financialAdjustmentEvents,
   financialReconciliationItems, financialReconciliationEvents,
+  orderRenewalDetails, orderTransactionPurposeEvents,
+  legacyCustomerMigrations, legacyCustomerMigrationEvents,
   orderItems, OrderItem, InsertOrderItem,
   packageSubscriptions, PackageSubscription, InsertPackageSubscription,
   studentDocuments, StudentDocument, InsertStudentDocument,
@@ -236,6 +238,21 @@ import {
   type FinancialReconciliationStatus,
   type FinancialReconciliationTreatment,
 } from './services/financial-reconciliation.service';
+import { buildRenewalProjection } from './services/paid-renewal.service';
+import {
+  assertLegacyMigrationOwner,
+  canAccessLegacyMigration,
+  normalizeHistoricDate,
+  normalizeLegacyServiceEnd,
+  validateLegacyOriginalAmount,
+  type LegacyMigrationPreparer,
+} from './services/legacy-customer-migration.service';
+import {
+  isFinancialTransactionPurpose,
+  paymentSourceTypeForPurpose,
+  purposeFromPaymentSourceType,
+  type FinancialTransactionPurpose,
+} from '../shared/financialTransactionPurpose';
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -1254,8 +1271,8 @@ export async function getUserByEmail(email: string) {
 /**
  * Get user by ID
  */
-export async function getUserById(id: number) {
-  const db = await getDb();
+export async function getUserById(id: number, database?: any) {
+  const db = database ?? await getDb();
   if (!db) {
     logger.warn('Cannot get user: database not available');
     return undefined;
@@ -4622,8 +4639,8 @@ export async function getActiveRecommendationSubscription(userId: number) {
 }
 
 /** Returns ANY existing Recommendation subscription for the user (including pending), for create-or-update logic. */
-export async function getAnyRecommendationSubscription(userId: number) {
-  const db = await getDb();
+export async function getAnyRecommendationSubscription(userId: number, database?: any) {
+  const db = database ?? await getDb();
   if (!db) return undefined;
   const rows = await db
     .select()
@@ -9448,10 +9465,14 @@ export async function createPackageKey(input: {
   authorizedByType?: 'admin' | 'staff' | 'system' | null;
   authorizedById?: number | null;
   authorizedAt?: string | null;
-}) {
-  const db = await getDb();
+  transactionPurpose?: FinancialTransactionPurpose | null;
+  legacyMigrationId?: number | null;
+  activatedAt?: string | null;
+  isActive?: boolean;
+}, database?: any) {
+  const db = database ?? await getDb();
   if (!db) throw new Error("Database not available");
-  const packageRecord = await getPackageById(input.packageId);
+  const packageRecord = await getPackageById(input.packageId, db);
   if (!packageRecord) throw new Error('Package not found');
   if (packageRecord.packageType === 'live' && input.isRenewal) {
     throw new Error('Live Package renewal keys are not supported');
@@ -9466,8 +9487,8 @@ export async function createPackageKey(input: {
     packageId: input.packageId,
     createdBy: input.createdBy,
     email: input.email ? normalizeEmailAddress(input.email) : null,
-    isActive: true,
-    activatedAt: null,
+    isActive: input.isActive ?? true,
+    activatedAt: input.activatedAt ?? null,
     notes: input.notes ?? null,
     price: input.price ?? 0,
     currency: input.currency ?? "USD",
@@ -9492,6 +9513,8 @@ export async function createPackageKey(input: {
     authorizedByType: input.authorizedByType ?? null,
     authorizedById: input.authorizedById ?? null,
     authorizedAt: input.authorizedAt ?? null,
+    transactionPurpose: input.transactionPurpose ?? null,
+    legacyMigrationId: input.legacyMigrationId ?? null,
   };
   const result = await db.insert(registrationKeys).values(values).returning({ id: registrationKeys.id });
   return { id: result[0].id, keyCode };
@@ -9518,6 +9541,7 @@ export async function createBulkPackageKeys(input: {
   authorizedByType?: 'admin' | 'staff' | 'system' | null;
   authorizedById?: number | null;
   authorizedAt?: string | null;
+  transactionPurpose?: Exclude<FinancialTransactionPurpose, 'legacy_migration'> | null;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -9558,6 +9582,7 @@ export async function createBulkPackageKeys(input: {
     authorizedByType: input.authorizedByType ?? null,
     authorizedById: input.authorizedById ?? null,
     authorizedAt: input.authorizedAt ?? null,
+    transactionPurpose: input.transactionPurpose ?? null,
   }));
 
   await db.insert(registrationKeys).values(values);
@@ -9712,6 +9737,7 @@ export async function getOrderActivationKeys(orderId: number) {
     entitlementDays: registrationKeys.entitlementDays,
     configurationNotes: registrationKeys.configurationNotes,
     issuanceType: registrationKeys.issuanceType,
+    transactionPurpose: registrationKeys.transactionPurpose,
   }).from(registrationKeys)
     .where(eq(registrationKeys.orderId, orderId))
     .orderBy(asc(registrationKeys.id));
@@ -9739,6 +9765,15 @@ export async function createOrderActivationKeys(input: {
 }) {
   const db = await getDb();
   if (!db) throw new Error('Database not available');
+  const transactionPurpose = input.order.transactionPurpose;
+  if (!isFinancialTransactionPurpose(transactionPurpose) || transactionPurpose === 'legacy_migration') {
+    throw new Error('The order must have an explicit commercial transaction purpose before key issuance.');
+  }
+  if (!await getOrderPaymentConfirmation(input.order.id, db)) {
+    throw new Error('Payment must be confirmed before an order-backed key can be issued.');
+  }
+  const isRenewalOrder = transactionPurpose === 'renewal';
+  const isUpgradeOrder = transactionPurpose === 'upgrade';
   const targetEmail = input.order.isGift && input.order.giftEmail
     ? normalizeEmailAddress(input.order.giftEmail)
     : normalizeEmailAddress((await getUserById(input.order.userId))?.email ?? '');
@@ -9783,6 +9818,16 @@ export async function createOrderActivationKeys(input: {
       if (existing.issuanceType !== 'order') {
         throw new Error(`Order #${input.order.id} has an invalid activation-key source`);
       }
+      if (existing.transactionPurpose && existing.transactionPurpose !== transactionPurpose) {
+        throw new Error(`Order #${input.order.id} already has a key with a conflicting transaction purpose`);
+      }
+      if (!existing.transactionPurpose && !existing.activatedAt) {
+        await db.update(registrationKeys).set({ transactionPurpose }).where(and(
+          eq(registrationKeys.id, existing.id),
+          isNull(registrationKeys.transactionPurpose),
+          isNull(registrationKeys.activatedAt),
+        ));
+      }
       if (!existing.activatedAt) {
         await updateUnusedPackageKeyConfiguration({
           keyId: existing.id,
@@ -9798,7 +9843,7 @@ export async function createOrderActivationKeys(input: {
       continue;
     }
 
-    const pendingManualKeys = await db.select().from(registrationKeys)
+    const pendingManualKeys = isRenewalOrder ? [] : await db.select().from(registrationKeys)
       .where(and(
         eq(registrationKeys.packageId, item.packageId),
         sql`lower(trim(${registrationKeys.email})) = ${targetEmail}`,
@@ -9807,7 +9852,7 @@ export async function createOrderActivationKeys(input: {
         isNull(registrationKeys.orderId),
         eq(registrationKeys.issuancePurpose, 'commercial'),
         eq(registrationKeys.activationPolicy, 'order_required'),
-        eq(registrationKeys.isUpgrade, !!input.order.isUpgrade),
+        eq(registrationKeys.isUpgrade, isUpgradeOrder),
         eq(registrationKeys.isRenewal, false),
       ))
       .orderBy(desc(registrationKeys.createdAt), desc(registrationKeys.id))
@@ -9831,6 +9876,7 @@ export async function createOrderActivationKeys(input: {
       const [linkedKey] = await db.update(registrationKeys).set({
         orderId: input.order.id,
         issuanceType: 'order',
+        transactionPurpose,
         notes: sql`CASE
           WHEN ${registrationKeys.notes} IS NULL OR ${registrationKeys.notes} = ''
             THEN ${`Order #${input.order.id} payment approved`}
@@ -9870,13 +9916,15 @@ export async function createOrderActivationKeys(input: {
       configurationUpdatedAt: new Date().toISOString(),
       configurationUpdatedByType: input.actorType,
       configurationUpdatedById: input.actorId,
-      isUpgrade: input.order.isUpgrade,
+      isUpgrade: isUpgradeOrder,
+      isRenewal: isRenewalOrder,
       issuancePurpose: 'commercial',
       activationPolicy: 'order_required',
       authorizationReason: `Completed order #${input.order.id}`,
       authorizedByType: input.actorType,
       authorizedById: input.actorId,
       authorizedAt: new Date().toISOString(),
+      transactionPurpose,
     });
     created.push({ ...result, packageId: item.packageId });
   }
@@ -11881,8 +11929,8 @@ export async function getLexaiServiceAccessSummary(userId: number): Promise<Time
 }
 
 /** Returns ANY existing LexAI subscription for the user (including pending), for create-or-update logic. */
-export async function getAnyLexaiSubscription(userId: number) {
-  const db = await getDb();
+export async function getAnyLexaiSubscription(userId: number, database?: any) {
+  const db = database ?? await getDb();
   if (!db) return undefined;
   const result = await db.select().from(lexaiSubscriptions)
     .where(and(
@@ -14162,9 +14210,15 @@ export async function getFinancialControlWorkspace(actor: FinanceActor, database
   const client = (db as { $client?: D1Database }).$client;
   if (!client) throw new Error('D1 client not available for financial controls');
   const reversibleQuery = actor.access === 'owner'
-    ? client.prepare(`SELECT l.id, l.entry_type AS entryType, l.effective_at AS effectiveAt,
+      ? client.prepare(`SELECT l.id, l.entry_type AS entryType, l.effective_at AS effectiveAt,
         l.base_amount_ils_minor AS baseAmountIlsMinor, l.description,
-        l.source_reference AS sourceReference
+        l.source_reference AS sourceReference, l.source_type AS sourceType,
+        COALESCE(l.transaction_purpose,
+          CASE l.source_type
+            WHEN 'order_payment_new_sale' THEN 'new_sale'
+            WHEN 'order_payment_renewal' THEN 'renewal'
+            WHEN 'order_payment_upgrade' THEN 'upgrade'
+          END) AS transactionPurpose
       FROM financial_ledger_entries l INDEXED BY idx_financial_ledger_approved_effective_type
       WHERE l.status = 'approved' AND l.entry_type <> 'reversal'
         AND NOT EXISTS (
@@ -14276,6 +14330,9 @@ export async function reverseFinancialLedgerEntry(input: {
     ownerAuthorizedLockedPeriod: locked,
     originalLedgerEntryId: original.id,
   });
+  const originalPurpose = isFinancialTransactionPurpose(original.transactionPurpose)
+    ? original.transactionPurpose
+    : purposeFromPaymentSourceType(original.sourceType);
   const reversalValues = {
     entryType: 'reversal',
     status: 'approved',
@@ -14306,6 +14363,7 @@ export async function reverseFinancialLedgerEntry(input: {
     approvedAt: now,
     reversalOfEntryId: original.id,
     auditMetadata,
+    transactionPurpose: originalPurpose,
     createdAt: now,
   };
   const statements: any[] = [db.insert(financialLedgerEntries).values(reversalValues)];
@@ -14335,6 +14393,7 @@ export async function reverseFinancialLedgerEntry(input: {
       approvedById: input.actor.actorId,
       approvedAt: now,
       auditMetadata: JSON.stringify({ ...JSON.parse(auditMetadata), replacementForLedgerEntryId: original.id }),
+      transactionPurpose: originalPurpose,
       createdAt: now,
     }));
   }
@@ -14356,6 +14415,119 @@ export async function reverseFinancialLedgerEntry(input: {
       .where(and(eq(financialLedgerEntries.sourceType, 'financial_replacement'), eq(financialLedgerEntries.sourceReference, `ledger:${original.id}:replacement`))).limit(1)
     : [null];
   return { reversal, replacement: replacement ?? null, idempotent: false };
+}
+
+/**
+ * Reclassifies a confirmed payment without changing the payment, order, paidAt,
+ * or total cash. The balanced adjustment pair moves only the management-report
+ * category and is idempotent by immutable source references.
+ */
+export async function reclassifyFinancialPaymentPurpose(input: {
+  actor: FinanceActor;
+  entryId: number;
+  nextPurpose: Exclude<FinancialTransactionPurpose, 'legacy_migration'>;
+  reason: string;
+}, database?: any) {
+  if (input.actor.access !== 'owner' || input.actor.actorType !== 'admin') {
+    throw new Error('Only the finance owner can reclassify a confirmed payment.');
+  }
+  const db = database ?? await getDb();
+  if (!db) throw new Error('Database not available');
+  const [original] = await db.select().from(financialLedgerEntries)
+    .where(eq(financialLedgerEntries.id, input.entryId)).limit(1);
+  if (!original || original.status !== 'approved' || original.entryType !== 'payment') {
+    throw new Error('Only an approved confirmed-payment entry can be reclassified.');
+  }
+  const previousPurpose = (isFinancialTransactionPurpose(original.transactionPurpose)
+    ? original.transactionPurpose
+    : purposeFromPaymentSourceType(original.sourceType));
+  if (!previousPurpose || previousPurpose === 'legacy_migration') {
+    throw new Error('The original payment purpose is missing or invalid.');
+  }
+  if (previousPurpose === input.nextPurpose) {
+    return { previousPurpose, nextPurpose: input.nextPurpose, entries: [], idempotent: true };
+  }
+  const reason = input.reason.trim();
+  if (reason.length < 5) throw new Error('A documented reclassification reason is required.');
+  const debitReference = `ledger:${original.id}:reclass:${previousPurpose}:debit`;
+  const creditReference = `ledger:${original.id}:reclass:${input.nextPurpose}:credit`;
+  const existing = await db.select().from(financialLedgerEntries).where(and(
+    eq(financialLedgerEntries.sourceType, 'financial_reclassification'),
+    like(financialLedgerEntries.sourceReference, `ledger:${original.id}:reclass:%`),
+  ));
+  const existingReferences = new Set(existing.map((row: any) => row.sourceReference));
+  if (existing.length === 2 && existingReferences.has(debitReference) && existingReferences.has(creditReference)) {
+    return { previousPurpose, nextPurpose: input.nextPurpose, entries: existing, idempotent: true };
+  }
+  if (existing.length !== 0) throw new Error('This payment already has a different or incomplete reclassification; manual investigation is required.');
+  const reportingMonth = original.effectiveAt.slice(0, 7);
+  const locked = await isFinancialMonthLocked(reportingMonth, db);
+  const now = new Date().toISOString();
+  const common = {
+    entryType: 'adjustment' as const,
+    status: 'approved',
+    effectiveAt: original.effectiveAt,
+    reportingMonth,
+    currency: 'ILS',
+    orderId: original.orderId,
+    orderItemId: original.orderItemId,
+    registrationKeyId: original.registrationKeyId,
+    paymentMethod: original.paymentMethod,
+    paymentReference: original.paymentReference,
+    sourceType: 'financial_reclassification',
+    reason: reason.slice(0, 1000),
+    createdByType: input.actor.actorType,
+    createdById: input.actor.actorId,
+    submittedByType: input.actor.actorType,
+    submittedById: input.actor.actorId,
+    approvedByType: input.actor.actorType,
+    approvedById: input.actor.actorId,
+    approvedAt: now,
+    createdAt: now,
+  };
+  const audit = {
+    workflowVersion: 1,
+    ownerAuthorizedLockedPeriod: locked,
+    originalLedgerEntryId: original.id,
+    originalPaidAt: original.effectiveAt,
+    previousPurpose,
+    nextPurpose: input.nextPurpose,
+    totalCashDeltaIlsMinor: 0,
+  };
+  try {
+    await db.batch([
+      db.insert(financialLedgerEntries).values({
+        ...common,
+        amountMinor: -original.baseAmountIlsMinor,
+        baseAmountIlsMinor: -original.baseAmountIlsMinor,
+        sourceReference: debitReference,
+        description: `Reclassify payment #${original.id} out of ${previousPurpose}`,
+        transactionPurpose: previousPurpose,
+        auditMetadata: JSON.stringify({ ...audit, leg: 'debit' }),
+      }),
+      db.insert(financialLedgerEntries).values({
+        ...common,
+        amountMinor: original.baseAmountIlsMinor,
+        baseAmountIlsMinor: original.baseAmountIlsMinor,
+        sourceReference: creditReference,
+        description: `Reclassify payment #${original.id} into ${input.nextPurpose}`,
+        transactionPurpose: input.nextPurpose,
+        auditMetadata: JSON.stringify({ ...audit, leg: 'credit' }),
+      }),
+    ]);
+  } catch (error) {
+    const raced = await db.select().from(financialLedgerEntries).where(and(
+      eq(financialLedgerEntries.sourceType, 'financial_reclassification'),
+      inArray(financialLedgerEntries.sourceReference, [debitReference, creditReference]),
+    ));
+    if (raced.length === 2) return { previousPurpose, nextPurpose: input.nextPurpose, entries: raced, idempotent: true };
+    throw error;
+  }
+  const entries = await db.select().from(financialLedgerEntries).where(and(
+    eq(financialLedgerEntries.sourceType, 'financial_reclassification'),
+    inArray(financialLedgerEntries.sourceReference, [debitReference, creditReference]),
+  ));
+  return { previousPurpose, nextPurpose: input.nextPurpose, entries, idempotent: false };
 }
 
 export async function getFinancialManagementDashboard(input: {
@@ -14380,9 +14552,19 @@ export async function getFinancialManagementDashboard(input: {
   const statements = [
     client.prepare(`SELECT ${periodExpression} AS period,
       COALESCE(SUM(CASE WHEN entry_type = 'payment' THEN base_amount_ils_minor ELSE 0 END), 0) AS confirmedIncomeMinor,
+      COALESCE(SUM(CASE WHEN (entry_type = 'payment' OR (entry_type = 'adjustment' AND source_type IN ('financial_reclassification','financial_replacement')) OR (entry_type = 'reversal' AND transaction_purpose IS NOT NULL)) AND COALESCE(transaction_purpose, CASE source_type WHEN 'order_payment_new_sale' THEN 'new_sale' WHEN 'order_payment_renewal' THEN 'renewal' WHEN 'order_payment_upgrade' THEN 'upgrade' END) = 'new_sale' THEN base_amount_ils_minor ELSE 0 END), 0) AS newSalesMinor,
+      COALESCE(SUM(CASE WHEN (entry_type = 'payment' OR (entry_type = 'adjustment' AND source_type IN ('financial_reclassification','financial_replacement')) OR (entry_type = 'reversal' AND transaction_purpose IS NOT NULL)) AND COALESCE(transaction_purpose, CASE source_type WHEN 'order_payment_new_sale' THEN 'new_sale' WHEN 'order_payment_renewal' THEN 'renewal' WHEN 'order_payment_upgrade' THEN 'upgrade' END) = 'renewal' THEN base_amount_ils_minor ELSE 0 END), 0) AS renewalsMinor,
+      COALESCE(SUM(CASE WHEN (entry_type = 'payment' OR (entry_type = 'adjustment' AND source_type IN ('financial_reclassification','financial_replacement')) OR (entry_type = 'reversal' AND transaction_purpose IS NOT NULL)) AND COALESCE(transaction_purpose, CASE source_type WHEN 'order_payment_new_sale' THEN 'new_sale' WHEN 'order_payment_renewal' THEN 'renewal' WHEN 'order_payment_upgrade' THEN 'upgrade' END) = 'upgrade' THEN base_amount_ils_minor ELSE 0 END), 0) AS upgradesMinor,
+      COALESCE(SUM(CASE WHEN entry_type = 'payment'
+        OR (entry_type = 'adjustment' AND source_type IN ('financial_reclassification','financial_replacement'))
+        OR (entry_type = 'reversal' AND transaction_purpose IS NOT NULL)
+        THEN base_amount_ils_minor ELSE 0 END), 0) AS recognizedIncomeMinor,
       COALESCE(SUM(CASE WHEN entry_type = 'refund' THEN base_amount_ils_minor ELSE 0 END), 0) AS refundsSignedMinor,
       COALESCE(SUM(CASE WHEN entry_type = 'expense' THEN base_amount_ils_minor ELSE 0 END), 0) AS expensesSignedMinor,
-      COALESCE(SUM(CASE WHEN entry_type IN ('adjustment', 'reversal', 'opening_balance') THEN base_amount_ils_minor ELSE 0 END), 0) AS adjustmentsSignedMinor
+      COALESCE(SUM(CASE WHEN entry_type = 'opening_balance'
+        OR (entry_type = 'adjustment' AND source_type NOT IN ('financial_reclassification','financial_replacement'))
+        OR (entry_type = 'reversal' AND transaction_purpose IS NULL)
+        THEN base_amount_ils_minor ELSE 0 END), 0) AS adjustmentsSignedMinor
       FROM financial_ledger_entries INDEXED BY idx_financial_ledger_approved_effective_type
       WHERE status = 'approved' AND effective_at >= ? AND effective_at < ?
         AND entry_type IN ('payment', 'refund', 'expense', 'adjustment', 'reversal', 'opening_balance')
@@ -14402,6 +14584,7 @@ export async function getFinancialManagementDashboard(input: {
       base_amount_ils_minor AS baseAmountIlsMinor, source_type AS sourceType,
       source_reference AS sourceReference, order_id AS orderId, refund_id AS refundId,
       expense_id AS expenseId, description, payment_method AS paymentMethod
+      , transaction_purpose AS transactionPurpose
       FROM financial_ledger_entries INDEXED BY idx_financial_ledger_approved_effective_type
       WHERE status = 'approved' AND effective_at >= ? AND effective_at < ?
         AND entry_type IN ('payment', 'refund', 'expense', 'adjustment', 'reversal', 'opening_balance')
@@ -15257,8 +15440,8 @@ export async function getAllPackages(publishedOnly = false): Promise<Package[]> 
   return db.select().from(packages).orderBy(packages.displayOrder);
 }
 
-export async function getPackageById(id: number): Promise<Package | null> {
-  const db = await getDb();
+export async function getPackageById(id: number, database?: any): Promise<Package | null> {
+  const db = database ?? await getDb();
   if (!db) return null;
   const [pkg] = await db.select().from(packages).where(eq(packages.id, id)).limit(1);
   return pkg ?? null;
@@ -16174,6 +16357,499 @@ export async function getOrderById(id: number): Promise<Order | null> {
   return order ?? null;
 }
 
+export async function getOrderRenewalDetail(orderId: number, database?: any) {
+  const db = database ?? await getDb();
+  if (!db) return null;
+  const [row] = await db.select().from(orderRenewalDetails)
+    .where(eq(orderRenewalDetails.orderId, orderId)).limit(1);
+  return row ?? null;
+}
+
+export async function getPaidRenewalQuote(userId: number, database?: any) {
+  const db = database ?? await getDb();
+  if (!db) throw new Error('Database not available');
+  const active = await getUserActivePackage(userId, db);
+  const pkg = active?.package;
+  if (!active || !pkg) throw new Error('An active Basic or Comprehensive package is required for renewal.');
+  const [recommendations, lexai] = await Promise.all([
+    pkg.includesRecommendations ? getAnyRecommendationSubscription(userId, db) : Promise.resolve(undefined),
+    pkg.includesLexai ? getAnyLexaiSubscription(userId, db) : Promise.resolve(undefined),
+  ]);
+  const projection = buildRenewalProjection({
+    pkg,
+    recommendationsCurrentEndAt: recommendations?.endDate ?? null,
+    lexaiCurrentEndAt: lexai?.endDate ?? null,
+  });
+  return {
+    userId,
+    packageId: pkg.id,
+    packageSlug: pkg.slug,
+    packageNameEn: pkg.nameEn,
+    packageNameAr: pkg.nameAr,
+    includesRecommendations: Boolean(pkg.includesRecommendations),
+    includesLexai: Boolean(pkg.includesLexai),
+    courseAccessUnchanged: true as const,
+    ...projection,
+  };
+}
+
+export async function createPaidRenewalOrder(input: {
+  userId: number;
+  paymentMethod: 'bank_transfer';
+  termsAcceptedAt: string;
+  termsAcceptedVersion: string;
+  termsAcceptedIpAddress?: string | null;
+  termsAcceptedUserAgent?: string | null;
+  notes?: string | null;
+}, database?: any) {
+  const db = database ?? await getDb();
+  if (!db) throw new Error('Database not available');
+  const [existing] = await db.select().from(orders).where(and(
+    eq(orders.userId, input.userId),
+    eq(orders.transactionPurpose, 'renewal'),
+    inArray(orders.status, ['pending', 'awaiting_confirmation', 'paid']),
+  )).orderBy(desc(orders.id)).limit(1);
+  if (existing) return { order: existing, detail: await getOrderRenewalDetail(existing.id, db), idempotent: true };
+
+  const quote = await getPaidRenewalQuote(input.userId, db);
+  const vatRate = 16;
+  const vatAmount = Math.round(quote.amountIlsMinor * vatRate / (100 + vatRate));
+  const now = new Date().toISOString();
+  const [order] = await db.insert(orders).values({
+    userId: input.userId,
+    status: 'pending',
+    subtotal: quote.amountIlsMinor - vatAmount,
+    discountAmount: 0,
+    vatRate,
+    vatAmount,
+    totalAmount: quote.amountIlsMinor,
+    currency: 'ILS',
+    paymentMethod: input.paymentMethod,
+    isGift: false,
+    isUpgrade: false,
+    transactionPurpose: 'renewal',
+    notes: input.notes?.trim() || `Paid renewal for ${quote.packageNameEn}`,
+    termsAcceptedAt: input.termsAcceptedAt,
+    termsAcceptedVersion: input.termsAcceptedVersion,
+    termsAcceptedIpAddress: input.termsAcceptedIpAddress ?? null,
+    termsAcceptedUserAgent: input.termsAcceptedUserAgent ?? null,
+    createdAt: now,
+    updatedAt: now,
+  }).returning();
+  if (!order) throw new Error('Failed to create the renewal order.');
+  await db.batch([
+    db.insert(orderItems).values({
+      orderId: order.id,
+      itemType: 'package',
+      packageId: quote.packageId,
+      courseId: null,
+      priceAtPurchase: quote.amountIlsMinor,
+      currency: 'ILS',
+      transactionPurpose: 'renewal',
+    }),
+    db.insert(orderRenewalDetails).values({
+      orderId: order.id,
+      userId: input.userId,
+      packageId: quote.packageId,
+      entitlementDays: quote.entitlementDays,
+      amountIlsMinor: quote.amountIlsMinor,
+      recommendationsCurrentEndAt: quote.recommendationsCurrentEndAt,
+      lexaiCurrentEndAt: quote.lexaiCurrentEndAt,
+      recommendationsProjectedEndAt: quote.recommendationsProjectedEndAt,
+      lexaiProjectedEndAt: quote.lexaiProjectedEndAt,
+      createdAt: now,
+    }),
+  ]);
+  return { order, detail: await getOrderRenewalDetail(order.id, db), idempotent: false };
+}
+
+/** One-time classification for pre-release open orders. Never changes a classified source. */
+export async function classifyOpenOrderTransactionPurpose(input: {
+  orderId: number;
+  purpose: Exclude<FinancialTransactionPurpose, 'legacy_migration'>;
+  actorType: 'admin' | 'staff';
+  actorId: number;
+  reason: string;
+}, database?: any) {
+  const db = database ?? await getDb();
+  if (!db) throw new Error('Database not available');
+  const [order] = await db.select().from(orders).where(eq(orders.id, input.orderId)).limit(1);
+  if (!order) throw new Error('Order not found.');
+  if (order.transactionPurpose) {
+    if (order.transactionPurpose === input.purpose) return order;
+    throw new Error('The order transaction purpose is immutable.');
+  }
+  if (!['pending', 'awaiting_confirmation', 'paid'].includes(order.status)) {
+    throw new Error('Only an open historical order can be classified before confirmation.');
+  }
+  if ((input.purpose === 'upgrade') !== Boolean(order.isUpgrade)) {
+    throw new Error('The selected purpose conflicts with the order upgrade flag.');
+  }
+  const reason = input.reason.trim();
+  if (reason.length < 5) throw new Error('A classification reason is required.');
+  const now = new Date().toISOString();
+  await db.batch([
+    db.insert(orderTransactionPurposeEvents).values({
+      orderId: order.id,
+      previousPurpose: null,
+      nextPurpose: input.purpose,
+      actorType: input.actorType,
+      actorId: input.actorId,
+      reason: reason.slice(0, 1000),
+      createdAt: now,
+    }),
+    db.update(orders).set({ transactionPurpose: input.purpose, updatedAt: now })
+      .where(and(eq(orders.id, order.id), isNull(orders.transactionPurpose))),
+    db.update(orderItems).set({ transactionPurpose: input.purpose })
+      .where(and(eq(orderItems.orderId, order.id), isNull(orderItems.transactionPurpose))),
+  ]);
+  return getOrderById(order.id);
+}
+
+export type LegacyCustomerMigrationDraftInput = {
+  userId: number;
+  packageId: number;
+  originalPurchaseDate?: string | null;
+  oldReference?: string | null;
+  originalAmountMinor?: number | null;
+  originalCurrency?: string | null;
+  timedServicesEndAt?: string | null;
+  reason: string;
+  notes?: string | null;
+};
+
+function legacyMigrationDraftValues(input: LegacyCustomerMigrationDraftInput) {
+  const historicAmount = validateLegacyOriginalAmount(input.originalAmountMinor, input.originalCurrency);
+  const reason = input.reason.trim();
+  if (reason.length < 5) throw new Error('A clear migration reason is required.');
+  return {
+    userId: input.userId,
+    packageId: input.packageId,
+    originalPurchaseDate: normalizeHistoricDate(input.originalPurchaseDate),
+    oldReference: input.oldReference?.trim().slice(0, 300) || null,
+    originalAmountMinor: historicAmount.amountMinor,
+    originalCurrency: historicAmount.currency,
+    timedServicesEndAt: normalizeLegacyServiceEnd(input.timedServicesEndAt),
+    reason: reason.slice(0, 1000),
+    notes: input.notes?.trim().slice(0, 1000) || null,
+    transactionPurpose: 'legacy_migration' as const,
+    financialImpact: 'none' as const,
+  };
+}
+
+export async function createLegacyCustomerMigrationDraft(input: {
+  actor: LegacyMigrationPreparer;
+  values: LegacyCustomerMigrationDraftInput;
+}, database?: any) {
+  const db = database ?? await getDb();
+  if (!db) throw new Error('Database not available');
+  const [user, pkg] = await Promise.all([
+    getUserById(input.values.userId, db),
+    getPackageById(input.values.packageId, db),
+  ]);
+  if (!user) throw new Error('Client account not found. Create or verify the account first.');
+  if (!pkg || pkg.packageType === 'live' || !['basic', 'comprehensive'].includes(pkg.slug)) {
+    throw new Error('Only Basic or Comprehensive can be selected for legacy migration.');
+  }
+  const now = new Date().toISOString();
+  const values = legacyMigrationDraftValues(input.values);
+  const [record] = await db.insert(legacyCustomerMigrations).values({
+    ...values,
+    status: 'draft',
+    createdByType: input.actor.actorType,
+    createdById: input.actor.actorId,
+    createdAt: now,
+    updatedAt: now,
+  }).returning();
+  await db.insert(legacyCustomerMigrationEvents).values({
+    migrationId: record.id,
+    action: 'created',
+    previousStatus: null,
+    nextStatus: 'draft',
+    actorType: input.actor.actorType,
+    actorId: input.actor.actorId,
+    reason: values.reason,
+    metadata: JSON.stringify({ transactionPurpose: 'legacy_migration', financialImpact: 'none' }),
+    createdAt: now,
+  });
+  return record;
+}
+
+export async function getLegacyCustomerMigration(id: number, database?: any) {
+  const db = database ?? await getDb();
+  if (!db) return null;
+  const [record] = await db.select().from(legacyCustomerMigrations)
+    .where(eq(legacyCustomerMigrations.id, id)).limit(1);
+  return record ?? null;
+}
+
+export async function listLegacyCustomerMigrations(input: {
+  actor: LegacyMigrationPreparer;
+  status?: string;
+  limit?: number;
+}, database?: any) {
+  const db = database ?? await getDb();
+  if (!db) return [];
+  const limit = Math.min(Math.max(input.limit ?? 100, 1), 100);
+  const conditions = input.actor.canReviewAll
+    ? (input.status ? [eq(legacyCustomerMigrations.status, input.status)] : [])
+    : [
+        eq(legacyCustomerMigrations.createdByType, input.actor.actorType),
+        eq(legacyCustomerMigrations.createdById, input.actor.actorId),
+        ...(input.status ? [eq(legacyCustomerMigrations.status, input.status)] : []),
+      ];
+  return db.select({
+    id: legacyCustomerMigrations.id,
+    status: legacyCustomerMigrations.status,
+    userId: legacyCustomerMigrations.userId,
+    packageId: legacyCustomerMigrations.packageId,
+    packageNameEn: packages.nameEn,
+    packageNameAr: packages.nameAr,
+    originalPurchaseDate: legacyCustomerMigrations.originalPurchaseDate,
+    oldReference: legacyCustomerMigrations.oldReference,
+    hasOldReceipt: sql<number>`CASE WHEN ${legacyCustomerMigrations.oldReceiptMetadata} IS NULL THEN 0 ELSE 1 END`,
+    originalAmountMinor: legacyCustomerMigrations.originalAmountMinor,
+    originalCurrency: legacyCustomerMigrations.originalCurrency,
+    timedServicesEndAt: legacyCustomerMigrations.timedServicesEndAt,
+    reason: legacyCustomerMigrations.reason,
+    notes: legacyCustomerMigrations.notes,
+    transactionPurpose: legacyCustomerMigrations.transactionPurpose,
+    financialImpact: legacyCustomerMigrations.financialImpact,
+    migratedAt: legacyCustomerMigrations.migratedAt,
+    migrationKeyId: legacyCustomerMigrations.migrationKeyId,
+    createdByType: legacyCustomerMigrations.createdByType,
+    createdById: legacyCustomerMigrations.createdById,
+    updatedAt: legacyCustomerMigrations.updatedAt,
+  }).from(legacyCustomerMigrations)
+    .innerJoin(packages, eq(packages.id, legacyCustomerMigrations.packageId))
+    .where(conditions.length ? and(...conditions) : undefined)
+    .orderBy(desc(legacyCustomerMigrations.updatedAt), desc(legacyCustomerMigrations.id))
+    .limit(limit);
+}
+
+export async function updateLegacyCustomerMigrationDraft(input: {
+  actor: LegacyMigrationPreparer;
+  migrationId: number;
+  values: LegacyCustomerMigrationDraftInput;
+}, database?: any) {
+  const db = database ?? await getDb();
+  if (!db) throw new Error('Database not available');
+  const record = await getLegacyCustomerMigration(input.migrationId, db);
+  if (!record || !canAccessLegacyMigration(input.actor, record)) throw new Error('Legacy migration draft not found.');
+  if (record.status !== 'draft') throw new Error('Only a draft legacy migration can be edited.');
+  if (record.userId !== input.values.userId || record.packageId !== input.values.packageId) {
+    throw new Error('Client and package are immutable after draft creation; reject and create a corrected draft.');
+  }
+  const values = legacyMigrationDraftValues(input.values);
+  const now = new Date().toISOString();
+  await db.batch([
+    db.update(legacyCustomerMigrations).set({ ...values, updatedAt: now })
+      .where(and(eq(legacyCustomerMigrations.id, record.id), eq(legacyCustomerMigrations.status, 'draft'))),
+    db.insert(legacyCustomerMigrationEvents).values({
+      migrationId: record.id,
+      action: 'updated', previousStatus: 'draft', nextStatus: 'draft',
+      actorType: input.actor.actorType, actorId: input.actor.actorId,
+      reason: values.reason, metadata: JSON.stringify({ financialImpact: 'none' }), createdAt: now,
+    }),
+  ]);
+  return getLegacyCustomerMigration(record.id, db);
+}
+
+export async function submitLegacyCustomerMigration(input: {
+  actor: LegacyMigrationPreparer;
+  migrationId: number;
+}, database?: any) {
+  const db = database ?? await getDb();
+  if (!db) throw new Error('Database not available');
+  const record = await getLegacyCustomerMigration(input.migrationId, db);
+  if (!record || !canAccessLegacyMigration(input.actor, record)) throw new Error('Legacy migration draft not found.');
+  if (record.status !== 'draft') throw new Error('Only a draft migration can be submitted.');
+  const now = new Date().toISOString();
+  await db.batch([
+    db.insert(legacyCustomerMigrationEvents).values({
+      migrationId: record.id, action: 'submitted', previousStatus: 'draft', nextStatus: 'pending_approval',
+      actorType: input.actor.actorType, actorId: input.actor.actorId,
+      reason: 'Submitted for finance-owner approval', createdAt: now,
+    }),
+    db.update(legacyCustomerMigrations).set({
+      status: 'pending_approval', submittedByType: input.actor.actorType,
+      submittedById: input.actor.actorId, submittedAt: now, updatedAt: now,
+    }).where(and(eq(legacyCustomerMigrations.id, record.id), eq(legacyCustomerMigrations.status, 'draft'))),
+  ]);
+  return getLegacyCustomerMigration(record.id, db);
+}
+
+async function applyLegacyMigrationEntitlements(record: typeof legacyCustomerMigrations.$inferSelect, keyId: number, database: any) {
+  const db = database;
+  const pkg = await getPackageById(record.packageId, db);
+  if (!pkg) throw new Error('Migration package not found.');
+  const now = new Date().toISOString();
+  const startAt = record.originalPurchaseDate ? `${record.originalPurchaseDate}T00:00:00.000Z` : now;
+  const existingPackages = await getUserPackageSubscriptions(record.userId, db);
+  const existingPackage = existingPackages.find((row) => Number(row.packageId) === Number(record.packageId));
+  if (existingPackage) {
+    await db.update(packageSubscriptions).set({ isActive: true, updatedAt: now })
+      .where(eq(packageSubscriptions.id, existingPackage.id));
+  } else {
+    await createPackageSubscription({
+      userId: record.userId, packageId: record.packageId, orderId: null,
+      isActive: true, startDate: startAt, endDate: null, renewalDueDate: null, autoRenew: false,
+      createdAt: now, updatedAt: now,
+    });
+  }
+  const packageCourses = await getPackageCourses(record.packageId);
+  const courseIds = packageCourses.length ? packageCourses.map((row) => row.courseId) : (await getPublishedCourses()).map((row) => row.id);
+  for (const courseId of courseIds) {
+    const existing = await getEnrollmentByUserAndCourse(record.userId, courseId);
+    if (existing) {
+      await db.update(enrollments).set({
+        isSubscriptionActive: true, paymentStatus: 'completed', registrationKeyId: keyId, activatedViaKey: true,
+      }).where(eq(enrollments.id, existing.id));
+    } else {
+      await createEnrollment({
+        userId: record.userId, courseId, paymentStatus: 'completed', paymentAmount: 0,
+        paymentCurrency: 'ILS', isSubscriptionActive: true, registrationKeyId: keyId,
+        activatedViaKey: true, subscriptionStartDate: startAt, subscriptionEndDate: null,
+      });
+    }
+  }
+  if (!record.timedServicesEndAt) return;
+  const endAt = record.timedServicesEndAt;
+  const isActive = Date.parse(endAt) > Date.now();
+  if (pkg.includesRecommendations) {
+    const current = await getAnyRecommendationSubscription(record.userId, db);
+    const keptEnd = current?.endDate && Date.parse(current.endDate) > Date.parse(endAt) ? current.endDate : endAt;
+    if (current) await updateRecommendationSubscription(current.id, {
+      isActive: Date.parse(keptEnd) > Date.now(), isPaused: false, isPendingActivation: false,
+      studentActivatedAt: current.studentActivatedAt || startAt, maxActivationDate: null,
+      activationReason: 'legacy', activationProcessedAt: now, startDate: current.startDate || startAt,
+      endDate: keptEnd, paymentStatus: 'completed', registrationKeyId: keyId,
+    });
+    else await createRecommendationSubscription({
+      userId: record.userId, isActive, isPaused: false, isPendingActivation: false,
+      studentActivatedAt: startAt, maxActivationDate: null, activationReason: 'legacy', activationProcessedAt: now,
+      startDate: startAt, endDate: endAt, paymentStatus: 'completed', paymentAmount: 0,
+      paymentCurrency: 'ILS', registrationKeyId: keyId,
+    });
+  }
+  if (pkg.includesLexai) {
+    const current = await getAnyLexaiSubscription(record.userId, db);
+    const keptEnd = current?.endDate && Date.parse(current.endDate) > Date.parse(endAt) ? current.endDate : endAt;
+    if (current) await updateLexaiSubscription(current.id, {
+      isActive: Date.parse(keptEnd) > Date.now(), isPaused: false, isPendingActivation: false,
+      studentActivatedAt: current.studentActivatedAt || startAt, maxActivationDate: null,
+      activationReason: 'legacy', activationProcessedAt: now, startDate: current.startDate || startAt,
+      endDate: keptEnd, paymentStatus: 'completed',
+    });
+    else await createLexaiSubscription({
+      userId: record.userId, isActive, isPaused: false, isPendingActivation: false,
+      studentActivatedAt: startAt, maxActivationDate: null, activationReason: 'legacy', activationProcessedAt: now,
+      startDate: startAt, endDate: endAt, paymentStatus: 'completed', paymentAmount: 0,
+      paymentCurrency: 'ILS', messagesUsed: 0, messagesLimit: 100,
+    });
+  }
+}
+
+export async function reviewLegacyCustomerMigration(input: {
+  owner: FinanceActor;
+  migrationId: number;
+  decision: 'approved' | 'rejected';
+  reason: string;
+}, database?: any) {
+  assertLegacyMigrationOwner(input.owner);
+  const db = database ?? await getDb();
+  if (!db) throw new Error('Database not available');
+  const record = await getLegacyCustomerMigration(input.migrationId, db);
+  if (!record) throw new Error('Legacy migration not found.');
+  if (record.status !== 'pending_approval') throw new Error('Only a submitted legacy migration can be reviewed.');
+  const reason = input.reason.trim();
+  if (reason.length < 5) throw new Error('A review reason is required.');
+  const now = new Date().toISOString();
+  if (input.decision === 'rejected') {
+    await db.batch([
+      db.insert(legacyCustomerMigrationEvents).values({
+        migrationId: record.id, action: 'rejected', previousStatus: 'pending_approval', nextStatus: 'rejected',
+        actorType: 'admin', actorId: input.owner.actorId, reason, createdAt: now,
+      }),
+      db.update(legacyCustomerMigrations).set({
+        status: 'rejected', reviewedByAdminId: input.owner.actorId, reviewedAt: now,
+        reviewReason: reason, updatedAt: now,
+      }).where(and(eq(legacyCustomerMigrations.id, record.id), eq(legacyCustomerMigrations.status, 'pending_approval'))),
+    ]);
+    return getLegacyCustomerMigration(record.id, db);
+  }
+  const user = await getUserById(record.userId, db);
+  if (!user?.email) throw new Error('Migration client account is missing a valid email.');
+  let key = record.migrationKeyId ? { id: record.migrationKeyId } : (await db.select({ id: registrationKeys.id })
+    .from(registrationKeys).where(eq(registrationKeys.legacyMigrationId, record.id)).limit(1))[0] ?? null;
+  if (!key) {
+    try {
+      key = await createPackageKey({
+        packageId: record.packageId, createdBy: input.owner.actorId, email: user.email,
+        notes: `Zero-impact legacy migration #${record.id}`, price: 0, currency: 'ILS',
+        isUpgrade: false, isRenewal: false, issuanceType: 'manual', assignedAt: now,
+        assignedByType: 'admin', assignedById: input.owner.actorId,
+        issuancePurpose: 'migration', activationPolicy: 'internal_authorized',
+        authorizationReason: reason, authorizedByType: 'admin', authorizedById: input.owner.actorId,
+        authorizedAt: now, transactionPurpose: 'legacy_migration', legacyMigrationId: record.id, activatedAt: now, isActive: false,
+      }, db);
+    } catch (error) {
+      const [racedKey] = await db.select({ id: registrationKeys.id }).from(registrationKeys)
+        .where(eq(registrationKeys.legacyMigrationId, record.id)).limit(1);
+      if (!racedKey) throw error;
+      key = racedKey;
+    }
+  }
+  await applyLegacyMigrationEntitlements(record, key.id, db);
+  await db.batch([
+    db.insert(legacyCustomerMigrationEvents).values({
+      migrationId: record.id, action: 'approved_and_migrated', previousStatus: 'pending_approval', nextStatus: 'approved',
+      actorType: 'admin', actorId: input.owner.actorId, reason,
+      metadata: JSON.stringify({ migrationKeyId: key.id, financialImpact: 'none', ledgerEntriesCreated: 0 }), createdAt: now,
+    }),
+    db.update(legacyCustomerMigrations).set({
+      status: 'approved', reviewedByAdminId: input.owner.actorId, reviewedAt: now,
+      reviewReason: reason, migratedAt: now, migratedByAdminId: input.owner.actorId,
+      migrationKeyId: key.id, updatedAt: now,
+    }).where(and(eq(legacyCustomerMigrations.id, record.id), eq(legacyCustomerMigrations.status, 'pending_approval'))),
+  ]);
+  return getLegacyCustomerMigration(record.id, db);
+}
+
+export async function attachLegacyMigrationReceipt(input: {
+  actor: LegacyMigrationPreparer;
+  migrationId: number;
+  metadata: FinancialReceiptMetadata;
+}, database?: any) {
+  const db = database ?? await getDb();
+  if (!db) throw new Error('Database not available');
+  const record = await getLegacyCustomerMigration(input.migrationId, db);
+  if (!record || !canAccessLegacyMigration(input.actor, record)) throw new Error('Legacy migration draft not found.');
+  if (record.status !== 'draft') throw new Error('Receipt evidence can be attached only while the migration is a draft.');
+  const now = new Date().toISOString();
+  await db.batch([
+    db.update(legacyCustomerMigrations).set({ oldReceiptMetadata: JSON.stringify(input.metadata), updatedAt: now })
+      .where(and(eq(legacyCustomerMigrations.id, record.id), eq(legacyCustomerMigrations.status, 'draft'))),
+    db.insert(legacyCustomerMigrationEvents).values({
+      migrationId: record.id, action: 'receipt_attached', previousStatus: 'draft', nextStatus: 'draft',
+      actorType: input.actor.actorType, actorId: input.actor.actorId,
+      metadata: JSON.stringify({ contentType: input.metadata.contentType, sizeBytes: input.metadata.sizeBytes }), createdAt: now,
+    }),
+  ]);
+}
+
+export async function logLegacyMigrationEvidenceAccess(input: {
+  actor: LegacyMigrationPreparer;
+  migrationId: number;
+}, database?: any) {
+  const db = database ?? await getDb();
+  if (!db) return;
+  await db.insert(legacyCustomerMigrationEvents).values({
+    migrationId: input.migrationId, action: 'receipt_viewed', actorType: input.actor.actorType,
+    actorId: input.actor.actorId, reason: 'Private historic evidence accessed', createdAt: new Date().toISOString(),
+  });
+}
+
 /**
  * Returns the immutable financial confirmation for an order.  This is
  * deliberately separate from orders.completedAt, which is an operational
@@ -16213,6 +16889,13 @@ export async function confirmOrderPayment(input: ConfirmOrderPaymentInput, datab
   if (!['pending', 'awaiting_confirmation', 'paid'].includes(input.order.status)) {
     throw new Error('Only a current uncompleted order can receive a new financial payment confirmation.');
   }
+  const transactionPurpose = input.order.transactionPurpose;
+  if (!isFinancialTransactionPurpose(transactionPurpose) || transactionPurpose === 'legacy_migration') {
+    throw new Error('An explicit new-sale, paid-renewal, or upgrade purpose is required before payment confirmation.');
+  }
+  if ((transactionPurpose === 'upgrade') !== Boolean(input.order.isUpgrade)) {
+    throw new Error('The order upgrade flag conflicts with its immutable transaction purpose.');
+  }
 
   const currency = input.order.currency.toUpperCase();
   const amountMinor = Number(input.order.totalAmount);
@@ -16228,7 +16911,7 @@ export async function confirmOrderPayment(input: ConfirmOrderPaymentInput, datab
 
   const now = new Date().toISOString();
   const paymentReference = input.paymentReference?.trim() || input.order.paymentReference || null;
-  const sourceType = input.order.isUpgrade ? 'order_payment_upgrade' : 'order_payment_new_sale';
+  const sourceType = paymentSourceTypeForPurpose(transactionPurpose);
   const evidenceMetadata = input.order.paymentProofUrl
     ? JSON.stringify({ evidenceType: 'order_payment_proof', orderPaymentProofUrl: input.order.paymentProofUrl })
     : null;
@@ -16243,6 +16926,7 @@ export async function confirmOrderPayment(input: ConfirmOrderPaymentInput, datab
     confirmedById: input.actorId,
     sourceType,
     sourceReference: `order:${input.order.id}`,
+    transactionPurpose,
     createdAt: now,
   };
   const ledgerValues = {
@@ -16276,6 +16960,7 @@ export async function confirmOrderPayment(input: ConfirmOrderPaymentInput, datab
       originalOrderAmountMinor: amountMinor,
       originalOrderCurrency: currency,
     }),
+    transactionPurpose,
     createdAt: now,
   };
 
@@ -16351,10 +17036,15 @@ export async function previewFinancialReconciliation(database?: any) {
     readOnly: true as const,
     counts,
     classifications: {
-      automaticallyReconcilable: 0,
-      requiresOwnerEvidence: Math.max(0, totalCandidates - openingBalanceCandidates),
-      openingBalanceCandidates,
-      excludedByRule: Number(result?.excludedFreeKeys ?? 0),
+      genuineCurrentNewSale: 0,
+      genuineCurrentRenewal: 0,
+      genuineUpgrade: 0,
+      legacyMigrationNoFinancialImpact: 0,
+      historicalPaymentKnownDate: 0,
+      historicalPaymentUnknown: openingBalanceCandidates,
+      requiresOwnerReview: totalCandidates,
+      possibleDuplicate: 0,
+      excludedNonfinancial: Number(result?.excludedFreeKeys ?? 0),
     },
     totalCandidates,
     safeToMaterialize: Object.values(counts).every(count => count <= 250),
@@ -16408,7 +17098,7 @@ export async function prepareFinancialReconciliationQueue(input: FinanceActor, d
       return {
         sourceType: 'order', sourceReference: String(row.id),
         issueType: 'completed_order_without_cash_confirmation', confidenceLevel: isIlsCandidate ? 'medium' : 'low',
-        proposedTreatment: isIlsCandidate ? 'opening_balance_candidate' : 'requires_owner_evidence',
+        proposedTreatment: isIlsCandidate ? 'historical_payment_unknown' : 'requires_owner_review',
         proposedAmountIlsMinor: isIlsCandidate ? storedAmount : null,
         notes: isIlsCandidate
           ? `Historic ${row.status} order #${row.id} has an ILS amount and evidence reference but no immutable confirmation; owner review is still required.`
@@ -16418,19 +17108,19 @@ export async function prepareFinancialReconciliationQueue(input: FinanceActor, d
     ...manualRows.map((row: any) => ({
       sourceType: 'registration_key', sourceReference: String(row.id),
       issueType: 'priced_key_without_order', confidenceLevel: 'low',
-      proposedTreatment: 'requires_owner_evidence', proposedAmountIlsMinor: null,
+      proposedTreatment: 'requires_owner_review', proposedAmountIlsMinor: null,
       notes: `Priced key #${row.id} is not linked to an order; key activation is not payment evidence.`,
     })),
     ...renewalRows.map((row: any) => ({
       sourceType: 'renewal_key', sourceReference: String(row.id),
       issueType: 'renewal_key_without_order_payment', confidenceLevel: 'low',
-      proposedTreatment: 'requires_owner_evidence', proposedAmountIlsMinor: null,
+      proposedTreatment: 'requires_owner_review', proposedAmountIlsMinor: null,
       notes: `Renewal key #${row.id} has no linked confirmed-payment record.`,
     })),
     ...upgradeRows.map((row: any) => ({
       sourceType: 'upgrade_key', sourceReference: String(row.id),
       issueType: 'upgrade_key_without_order_payment', confidenceLevel: 'low',
-      proposedTreatment: 'requires_owner_evidence', proposedAmountIlsMinor: null,
+      proposedTreatment: 'requires_owner_review', proposedAmountIlsMinor: null,
       notes: `Upgrade key #${row.id} has no linked confirmed-payment record.`,
     })),
   ];
@@ -16442,7 +17132,19 @@ export async function prepareFinancialReconciliationQueue(input: FinanceActor, d
       reviewerType: null,
       reviewerId: null,
       resolvedAt: null,
-      resolutionMetadata: JSON.stringify({ preparedBy: input.actorType, preparedById: input.actorId, queueVersion: 1 }),
+      resolutionMetadata: JSON.stringify({
+        preparedBy: input.actorType,
+        preparedById: input.actorId,
+        queueVersion: 2,
+        currentFinancialTreatment: 'outside_official_pl_no_confirmed_payment',
+        proposedCorrectedTreatment: candidate.proposedTreatment,
+        currentReportingMonth: null,
+        proposedEffectiveMonth: null,
+        deltaByMonthIlsMinor: {},
+        confidence: candidate.confidenceLevel,
+        evidence: candidate.notes,
+        ownerActionRequired: candidate.proposedTreatment !== 'excluded_nonfinancial',
+      }),
       createdAt: now,
       updatedAt: now,
     }).onConflictDoNothing());
@@ -16635,20 +17337,23 @@ export async function resolveFinancialReconciliationItem(input: {
         }).where(and(eq(financialReconciliationItems.id, input.itemId), eq(financialReconciliationItems.status, 'unresolved'))),
       ]);
     } else {
+      if (input.decision === 'approved_opening_balance') {
+        throw new Error('Opening balances are not ordinary historic revenue. Keep the item unresolved or use a documented historical adjustment with the genuine payment date.');
+      }
+      if (item.proposedTreatment !== 'historical_payment_known_date') {
+        throw new Error('A historical adjustment requires an owner-verified genuine payment date and amount classification. Unknown payments stay outside official P&L.');
+      }
       const opening = normalizeOpeningBalanceInput(input);
       const [lock] = await db.select({ month: financialPeriodLocks.month }).from(financialPeriodLocks)
         .where(eq(financialPeriodLocks.month, opening.reportingMonth)).limit(1);
-      if (lock && input.decision === 'approved_opening_balance') {
-        throw new Error('This financial period is locked. Unlock it before approving a historical opening balance.');
-      }
-      const ledgerEntryType = input.decision === 'approved_adjustment' ? 'adjustment' : 'opening_balance';
+      const ledgerEntryType = 'adjustment' as const;
       const metadata = JSON.stringify({
         ...baseMetadata,
         effectiveAt: opening.effectiveAt,
         before: { status: 'unresolved', recognizedIlsMinor: 0, ledgerEntries: 0 },
         after: { status: input.decision, recognizedIlsMinor: opening.amountIlsMinor, ledgerEntries: 1 },
         deltaIlsMinor: opening.amountIlsMinor,
-        ownerAuthorizedLockedPeriod: Boolean(lock && input.decision === 'approved_adjustment'),
+        ownerAuthorizedLockedPeriod: Boolean(lock),
       });
       await db.batch([
         db.insert(financialLedgerEntries).values({
@@ -16809,6 +17514,7 @@ export async function getAllOrders(status?: string) {
       notes: orders.notes,
       isUpgrade: orders.isUpgrade,
       upgradeFromPackageId: orders.upgradeFromPackageId,
+      transactionPurpose: orders.transactionPurpose,
       termsAcceptedAt: orders.termsAcceptedAt,
       termsAcceptedVersion: orders.termsAcceptedVersion,
       termsAcceptedIpAddress: orders.termsAcceptedIpAddress,
@@ -16841,9 +17547,17 @@ export async function getOrderPackageConfigurationSummaries(orderIds: number[]) 
       packageNameAr: packages.nameAr,
       packageType: packages.packageType,
       defaultEntitlementDays: packages.durationDays,
+      transactionPurpose: orderItems.transactionPurpose,
+      renewalEntitlementDays: orderRenewalDetails.entitlementDays,
+      renewalAmountIlsMinor: orderRenewalDetails.amountIlsMinor,
+      recommendationsCurrentEndAt: orderRenewalDetails.recommendationsCurrentEndAt,
+      lexaiCurrentEndAt: orderRenewalDetails.lexaiCurrentEndAt,
+      recommendationsProjectedEndAt: orderRenewalDetails.recommendationsProjectedEndAt,
+      lexaiProjectedEndAt: orderRenewalDetails.lexaiProjectedEndAt,
     })
     .from(orderItems)
     .innerJoin(packages, eq(packages.id, orderItems.packageId))
+    .leftJoin(orderRenewalDetails, eq(orderRenewalDetails.orderId, orderItems.orderId))
     .where(and(
       inArray(orderItems.orderId, chunk),
       eq(orderItems.itemType, 'package'),
@@ -17140,15 +17854,15 @@ export async function createPackageSubscription(input: Omit<InsertPackageSubscri
   return sub ?? null;
 }
 
-export async function getUserPackageSubscriptions(userId: number): Promise<PackageSubscription[]> {
-  const db = await getDb();
+export async function getUserPackageSubscriptions(userId: number, database?: any): Promise<PackageSubscription[]> {
+  const db = database ?? await getDb();
   if (!db) return [];
   return db.select().from(packageSubscriptions)
     .where(and(eq(packageSubscriptions.userId, userId), eq(packageSubscriptions.isActive, true)));
 }
 
-export async function getUserActivePackage(userId: number): Promise<(PackageSubscription & { package: Package | null }) | null> {
-  const db = await getDb();
+export async function getUserActivePackage(userId: number, database?: any): Promise<(PackageSubscription & { package: Package | null }) | null> {
+  const db = database ?? await getDb();
   if (!db) return null;
   const subs = await db.select().from(packageSubscriptions)
     .where(and(eq(packageSubscriptions.userId, userId), eq(packageSubscriptions.isActive, true)))
@@ -17156,7 +17870,7 @@ export async function getUserActivePackage(userId: number): Promise<(PackageSubs
     .limit(1);
   if (subs.length === 0) return null;
   const sub = subs[0];
-  const pkg = await getPackageById(sub.packageId);
+  const pkg = await getPackageById(sub.packageId, db);
   return { ...sub, package: pkg };
 }
 
@@ -18172,7 +18886,7 @@ export async function getSubscribersReport(): Promise<any[]> {
   const allPkgSubs = await db.select().from(packageSubscriptions);
   // Get all packages
   const allPackages = await db.select().from(packages);
-  // Get all activated keys (the real revenue source)
+  // Operational activated-key history only. It must never be treated as paid revenue.
   const allKeys = await db.select().from(registrationKeys)
     .where(sql`${registrationKeys.packageId} IS NOT NULL`);
   const allRefunds = await db.select().from(accountRefunds);
@@ -18196,7 +18910,7 @@ export async function getSubscribersReport(): Promise<any[]> {
 
   return allUsers.map(u => {
     const normalizedEmail = (u.email || '').trim().toLowerCase();
-    // Key-based revenue: sum of prices from activated keys matching this user's email
+    // Legacy list-price indicator from activated keys; this is not payment evidence or revenue.
     const userKeys = allKeys.filter(k =>
       k.activatedAt && (k.email || '').trim().toLowerCase() === normalizedEmail
     );

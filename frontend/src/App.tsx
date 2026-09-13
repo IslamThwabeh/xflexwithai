@@ -44,6 +44,7 @@ const AdminExpenses = lazy(() => import("./pages/AdminExpenses"));
 const AdminFinancialDashboard = lazy(() => import("./pages/AdminFinancialDashboard"));
 const AdminFinancialControls = lazy(() => import("./pages/AdminFinancialControls"));
 const AdminFinancialReconciliation = lazy(() => import("./pages/AdminFinancialReconciliation"));
+const AdminLegacyMigrations = lazy(() => import("./pages/AdminLegacyMigrations"));
 const AdminQuizzes = lazy(() => import("./pages/AdminQuizzes"));
 const AdminCoupons = lazy(() => import("./pages/AdminCoupons"));
 const AdminTestimonials = lazy(() => import("./pages/AdminTestimonials"));
@@ -326,6 +327,11 @@ function Router() {
       <Route path={"/admin/finance/reconciliation"}>
         <AdminRoute>
           <AdminFinancialReconciliation />
+        </AdminRoute>
+      </Route>
+      <Route path={"/admin/finance/legacy-migrations"}>
+        <AdminRoute>
+          <AdminLegacyMigrations />
         </AdminRoute>
       </Route>
       <Route path={"/admin/finance"}>
@@ -621,7 +627,9 @@ function Router() {
         </ProtectedRoute>
       </Route>
       <Route path="/subscriptions">
-        <Redirect to="/my-packages" />
+        <ProtectedRoute>
+          <MySubscriptions />
+        </ProtectedRoute>
       </Route>
       <Route path="/my-packages">
         <ProtectedRoute>

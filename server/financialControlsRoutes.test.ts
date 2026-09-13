@@ -13,6 +13,7 @@ vi.mock('../backend/db', async () => {
     reviewFinancialAdjustment: vi.fn(),
     setFinancialPeriodLock: vi.fn(),
     reverseFinancialLedgerEntry: vi.fn(),
+    reclassifyFinancialPaymentPurpose: vi.fn(),
   };
 });
 
@@ -43,6 +44,7 @@ describe('financial control route authorization', () => {
     vi.mocked(db.reviewFinancialAdjustment).mockResolvedValue({ adjustment: { id: 1 }, idempotent: false } as any);
     vi.mocked(db.setFinancialPeriodLock).mockResolvedValue({ lock: null, idempotent: false } as any);
     vi.mocked(db.reverseFinancialLedgerEntry).mockResolvedValue({ reversal: { id: 2 }, replacement: null, idempotent: false } as any);
+    vi.mocked(db.reclassifyFinancialPaymentPurpose).mockResolvedValue({ entries: [{ id: 2 }, { id: 3 }], idempotent: false } as any);
   });
 
   it.each([null, 'clerk', 'viewer'] as const)('denies workspace access to %s authority', async access => {
@@ -61,6 +63,7 @@ describe('financial control route authorization', () => {
     });
     await expect(caller().financialControls.setPeriodLock({ month: '2026-07', action: 'locked', reason: 'Monthly close' })).rejects.toMatchObject({ code: 'FORBIDDEN' });
     await expect(caller().financialControls.reverseEntry({ entryId: 1, effectiveDate: '2026-09-11', reason: 'Correction needed' })).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    await expect(caller().financialControls.reclassifyPayment({ entryId: 1, nextPurpose: 'renewal', reason: 'Verified renewal' })).rejects.toMatchObject({ code: 'FORBIDDEN' });
     expect(db.setFinancialPeriodLock).not.toHaveBeenCalled();
     expect(db.reverseFinancialLedgerEntry).not.toHaveBeenCalled();
   });
@@ -75,6 +78,7 @@ describe('financial control route authorization', () => {
       replacementAmountIlsMinor: 9000,
       replacementDescription: 'Corrected entry',
     });
+    await caller().financialControls.reclassifyPayment({ entryId: 1, nextPurpose: 'renewal', reason: 'Verified renewal' });
     expect(db.setFinancialPeriodLock).toHaveBeenCalledWith({ actor: actor('owner'), month: '2026-07', action: 'locked', reason: 'Monthly close' });
     expect(db.reverseFinancialLedgerEntry).toHaveBeenCalledWith({
       actor: actor('owner'),
@@ -83,6 +87,9 @@ describe('financial control route authorization', () => {
       reason: 'Owner-approved correction',
       replacementAmountIlsMinor: 9000,
       replacementDescription: 'Corrected entry',
+    });
+    expect(db.reclassifyFinancialPaymentPurpose).toHaveBeenCalledWith({
+      actor: actor('owner'), entryId: 1, nextPurpose: 'renewal', reason: 'Verified renewal',
     });
   });
 });

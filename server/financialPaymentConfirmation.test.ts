@@ -27,6 +27,7 @@ async function createFinancialFixture() {
       paymentReference TEXT,
       paymentProofUrl TEXT,
       isUpgrade INTEGER NOT NULL DEFAULT 0,
+      transactionPurpose TEXT,
       completedAt TEXT,
       updatedAt TEXT NOT NULL
     );
@@ -36,11 +37,12 @@ async function createFinancialFixture() {
     CREATE TABLE users (id INTEGER PRIMARY KEY);
     CREATE TABLE admins (id INTEGER PRIMARY KEY);
     CREATE TABLE schema_migrations (migration_name TEXT NOT NULL UNIQUE, source TEXT NOT NULL, notes TEXT, applied_at TEXT);
-    INSERT INTO orders (id, userId, status, totalAmount, currency, paymentMethod, paymentProofUrl, isUpgrade, updatedAt)
-    VALUES (41, 7, 'awaiting_confirmation', 12500, 'ILS', 'bank_transfer', 'https://videos.xflexacademy.com/payment-proofs/41.jpg', 0, '2026-09-10T00:00:00.000Z');
+    INSERT INTO orders (id, userId, status, totalAmount, currency, paymentMethod, paymentProofUrl, isUpgrade, transactionPurpose, updatedAt)
+    VALUES (41, 7, 'awaiting_confirmation', 12500, 'ILS', 'bank_transfer', 'https://videos.xflexacademy.com/payment-proofs/41.jpg', 0, 'new_sale', '2026-09-10T00:00:00.000Z');
   `);
   sqlite.exec(migration);
   sqlite.exec(paymentGuardMigration);
+  sqlite.exec('ALTER TABLE order_payment_confirmations ADD COLUMN transaction_purpose TEXT; ALTER TABLE financial_ledger_entries ADD COLUMN transaction_purpose TEXT;');
   sqlite.close();
   const database = await createLocalD1Database(filename);
   return { database, orm: drizzle(database) };
@@ -57,7 +59,7 @@ describe('financial payment confirmation', () => {
       const order = {
         id: 41, userId: 7, status: 'awaiting_confirmation', totalAmount: 12500,
         currency: 'ILS', paymentMethod: 'bank_transfer', paymentReference: null,
-        paymentProofUrl: 'https://videos.xflexacademy.com/payment-proofs/41.jpg', isUpgrade: false,
+        paymentProofUrl: 'https://videos.xflexacademy.com/payment-proofs/41.jpg', isUpgrade: false, transactionPurpose: 'new_sale',
       } as any;
       const input = {
         order,
@@ -86,11 +88,11 @@ describe('financial payment confirmation', () => {
   it('records a legacy USD-marked upgrade as an ILS cash entry without an exchange rate', async () => {
     const { database, orm } = await createFinancialFixture();
     try {
-      await database.prepare("UPDATE orders SET currency = 'USD', totalAmount = 10000, isUpgrade = 1 WHERE id = 41").run();
+      await database.prepare("UPDATE orders SET currency = 'USD', totalAmount = 10000, isUpgrade = 1, transactionPurpose = 'upgrade' WHERE id = 41").run();
       const order = {
         id: 41, userId: 7, status: 'awaiting_confirmation', totalAmount: 10000,
         currency: 'USD', paymentMethod: 'bank_transfer', paymentReference: null,
-        paymentProofUrl: null, isUpgrade: true,
+        paymentProofUrl: null, isUpgrade: true, transactionPurpose: 'upgrade',
       } as any;
       await confirmOrderPayment({
         order, actorType: 'admin', actorId: 11, paidAt: '2026-09-09T14:30:00.000Z',
@@ -113,7 +115,7 @@ describe('financial payment confirmation', () => {
       const staleOrder = {
         id: 41, userId: 7, status: 'awaiting_confirmation', totalAmount: 12500,
         currency: 'ILS', paymentMethod: 'bank_transfer', paymentReference: null,
-        paymentProofUrl: null, isUpgrade: false,
+        paymentProofUrl: null, isUpgrade: false, transactionPurpose: 'new_sale',
       } as any;
       await expect(confirmOrderPayment({
         order: staleOrder, actorType: 'admin', actorId: 11,

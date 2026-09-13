@@ -9,10 +9,15 @@ export const FINANCIAL_RECONCILIATION_STATUSES = [
 ] as const;
 
 export const FINANCIAL_RECONCILIATION_TREATMENTS = [
-  'automatically_reconcilable',
-  'requires_owner_evidence',
-  'opening_balance_candidate',
-  'excluded',
+  'genuine_current_new_sale',
+  'genuine_current_renewal',
+  'genuine_upgrade',
+  'legacy_migration_no_financial_impact',
+  'historical_payment_known_date',
+  'historical_payment_unknown',
+  'requires_owner_review',
+  'possible_duplicate',
+  'excluded_nonfinancial',
 ] as const;
 export type FinancialReconciliationTreatment = typeof FINANCIAL_RECONCILIATION_TREATMENTS[number];
 

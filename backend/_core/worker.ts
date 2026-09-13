@@ -49,6 +49,12 @@ import {
   canEditExpense,
   parseFinancialReceiptMetadata,
 } from "../services/financial-expense.service";
+import {
+  buildLegacyMigrationReceiptMetadata,
+  canAccessLegacyMigration,
+  parseLegacyMigrationReceiptMetadata,
+  type LegacyMigrationPreparer,
+} from "../services/legacy-customer-migration.service";
 
 const MINUTE_DELIVERY_CRON = "* * * * *";
 const TIMED_SERVICE_REPAIR_CRON = "*/5 * * * *";
@@ -422,6 +428,71 @@ export default {
             code: uploadError.code,
             message: uploadError.message,
           }, headers);
+        }
+      }
+
+      const legacyReceiptMatch = pathname.match(/^\/api\/finance\/legacy-migrations\/(\d+)\/receipt$/);
+      if (legacyReceiptMatch) {
+        const headers = new Headers();
+        corsHeaders.forEach((value, key) => headers.set(key, value));
+        if (request.method === "OPTIONS") {
+          headers.set("Access-Control-Allow-Headers", "content-type,x-file-name");
+          headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+          return new Response(null, { status: 204, headers });
+        }
+        if (origin && !isAllowedOrigin) return jsonResponse(403, { status: "forbidden", message: "A trusted origin is required." }, headers);
+        if (request.method !== "GET" && request.method !== "POST") return jsonResponse(405, { status: "method_not_allowed", message: "Use GET or POST." }, headers);
+        const authContext = await createWorkerContext({ req: request, env, executionCtx: ctx });
+        appendCookieHeaders(headers, (authContext as { cookieHeaders?: string[] }).cookieHeaders);
+        if (!authContext.user?.email) return jsonResponse(401, { status: "unauthorized", message: "Please sign in." }, headers);
+        const admin = await db.getAdminByEmail(authContext.user.email);
+        const financeActor = await db.resolveFinanceActor({ adminId: admin?.id ?? null, userId: authContext.user.id });
+        const roles = admin ? [] : (await db.getUserRoles(authContext.user.id)).map(row => row.role);
+        const allowed = Boolean(admin) || Boolean(financeActor && financeActor.access !== "viewer")
+          || roles.some(role => role === "key_manager" || role === "support");
+        if (!allowed) return jsonResponse(403, { status: "forbidden", message: "Legacy migration evidence access is required." }, headers);
+        const actor: LegacyMigrationPreparer = {
+          actorType: admin ? "admin" : "staff",
+          actorId: admin?.id ?? authContext.user.id,
+          canReviewAll: financeActor?.access === "owner" || financeActor?.access === "manager",
+        };
+        const migrationId = Number(legacyReceiptMatch[1]);
+        const migration = await db.getLegacyCustomerMigration(migrationId);
+        if (!migration || !canAccessLegacyMigration(actor, migration)) return jsonResponse(404, { status: "not_found", message: "Legacy migration not found." }, headers);
+        if (!env.FINANCE_RECEIPTS_BUCKET) return jsonResponse(503, { status: "storage_not_configured", message: "Private finance receipt storage is not configured." }, headers);
+        if (request.method === "GET") {
+          const metadata = parseLegacyMigrationReceiptMetadata(migration.oldReceiptMetadata);
+          if (!metadata) return jsonResponse(404, { status: "not_found", message: "No historic receipt is attached." }, headers);
+          const object = await env.FINANCE_RECEIPTS_BUCKET.get(metadata.objectKey);
+          if (!object) return jsonResponse(404, { status: "not_found", message: "Receipt object is missing." }, headers);
+          await db.logLegacyMigrationEvidenceAccess({ actor, migrationId });
+          headers.set("Content-Type", metadata.contentType);
+          headers.set("Content-Disposition", buildContentDisposition("attachment", metadata.originalName));
+          headers.set("Cache-Control", "private, no-store");
+          headers.set("X-Content-Type-Options", "nosniff");
+          return new Response(object.body, { status: 200, headers });
+        }
+        if (migration.status !== "draft" || migration.createdByType !== actor.actorType || migration.createdById !== actor.actorId) {
+          return jsonResponse(409, { status: "not_editable", message: "Only the creator can attach evidence while the migration is a draft." }, headers);
+        }
+        const declaredLength = Number(request.headers.get("content-length"));
+        if (Number.isFinite(declaredLength) && declaredLength > FINANCIAL_RECEIPT_MAX_BYTES) return jsonResponse(413, { status: "file_too_large", message: "Receipt must be 10 MB or smaller." }, headers);
+        try {
+          const bytes = new Uint8Array(await request.arrayBuffer());
+          const metadata = buildLegacyMigrationReceiptMetadata({
+            migrationId, bytes, declaredContentType: request.headers.get("content-type"),
+            originalName: request.headers.get("x-file-name"), actor,
+          });
+          const previous = parseLegacyMigrationReceiptMetadata(migration.oldReceiptMetadata);
+          await env.FINANCE_RECEIPTS_BUCKET.put(metadata.objectKey, bytes, {
+            httpMetadata: { contentType: metadata.contentType }, customMetadata: { migrationId: String(migrationId) },
+          });
+          try { await db.attachLegacyMigrationReceipt({ actor, migrationId, metadata }); }
+          catch (error) { await env.FINANCE_RECEIPTS_BUCKET.delete(metadata.objectKey); throw error; }
+          if (previous?.objectKey && previous.objectKey !== metadata.objectKey) ctx.waitUntil(env.FINANCE_RECEIPTS_BUCKET.delete(previous.objectKey));
+          return jsonResponse(200, { status: "uploaded", receipt: { originalName: metadata.originalName, contentType: metadata.contentType, sizeBytes: metadata.sizeBytes, uploadedAt: metadata.uploadedAt } }, headers);
+        } catch (error) {
+          return jsonResponse(400, { status: "upload_failed", message: error instanceof Error ? error.message : "Receipt upload failed." }, headers);
         }
       }
 

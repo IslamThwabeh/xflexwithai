@@ -2161,7 +2161,10 @@ function AdminView() {
                   const parsedEndDate = subscription.endDate ? new Date(subscription.endDate) : null;
                   const isExpired = !!parsedEndDate && !Number.isNaN(parsedEndDate.getTime()) && parsedEndDate.getTime() < Date.now();
                   const isInactive = !subscription.isActive;
-                  const canToggleFreeze = !isInactive && !isExpired;
+                  // A frozen subscription retains its saved balance and can be
+                  // resumed even if its original end date has passed. Hiding the
+                  // action in that state left admins unable to unfreeze it.
+                  const canToggleFreeze = subscription.isPaused || (!isInactive && !isExpired);
                   const statusVariant: "default" | "secondary" | "outline" = subscription.isPaused
                     ? "secondary"
                     : (isInactive || isExpired ? "outline" : "default");

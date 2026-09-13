@@ -87,6 +87,11 @@ import {
   FINANCIAL_EXPENSE_STATUSES,
   type FinanceActor,
 } from "./services/financial-expense.service";
+import {
+  LEGACY_MIGRATION_STATUSES,
+  type LegacyMigrationPreparer,
+} from "./services/legacy-customer-migration.service";
+import { FINANCIAL_RECONCILIATION_TREATMENTS } from "./services/financial-reconciliation.service";
 import { generateNumericCode, generateSaltBase64, normalizeEmail, sha256Base64 } from "./_core/otp";
 import { verifyUnsubscribeToken } from "./_core/emailPreferences";
 import { getCourseQuizLevelForEpisodeOrder, isCourseQuizLevelEnd } from "./courseQuizLevels";
@@ -1099,6 +1104,22 @@ const financeControlProcedure = protectedProcedure.use(async ({ ctx, next }) => 
     throw new TRPCError({ code: 'FORBIDDEN', message: 'Financial control access is required.' });
   }
   return next({ ctx: { ...ctx, financeActor: financeActor as FinanceActor } });
+});
+
+const legacyMigrationProcedure = protectedProcedure.use(async ({ ctx, next }) => {
+  const admin = await db.getAdminByEmail(ctx.user.email);
+  const financeActor = await db.resolveFinanceActor({ adminId: admin?.id ?? null, userId: ctx.user.id });
+  const roles = admin ? [] : (await db.getUserRoles(ctx.user.id)).map(row => row.role);
+  const allowed = Boolean(admin)
+    || Boolean(financeActor && financeActor.access !== 'viewer')
+    || roles.some(role => role === 'key_manager' || role === 'support');
+  if (!allowed) throw new TRPCError({ code: 'FORBIDDEN', message: 'Legacy customer migration access is required.' });
+  const legacyActor: LegacyMigrationPreparer = {
+    actorType: admin ? 'admin' : 'staff',
+    actorId: admin?.id ?? ctx.user.id,
+    canReviewAll: financeActor?.access === 'owner' || financeActor?.access === 'manager',
+  };
+  return next({ ctx: { ...ctx, admin, financeActor: financeActor as FinanceActor | null, legacyActor } });
 });
 
 const liveSessionManagerProcedure = adminOrRoleProcedure(['live_sessions_manager']);
@@ -6474,6 +6495,19 @@ export const appRouter = router({
         }
         return db.reverseFinancialLedgerEntry({ actor: ctx.financeActor, ...input });
       }),
+
+    reclassifyPayment: financeControlProcedure
+      .input(z.object({
+        entryId: z.number().int().positive(),
+        nextPurpose: z.enum(['new_sale', 'renewal', 'upgrade']),
+        reason: z.string().trim().min(5).max(1000),
+      }))
+      .mutation(({ ctx, input }) => {
+        if (ctx.financeActor.access !== 'owner') {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Only the finance owner can reclassify payments.' });
+        }
+        return db.reclassifyFinancialPaymentPurpose({ actor: ctx.financeActor, ...input });
+      }),
   }),
 
   // =========================================================================
@@ -6505,7 +6539,7 @@ export const appRouter = router({
     updateDraft: financeControlProcedure
       .input(z.object({
         itemId: z.number().int().positive(),
-        proposedTreatment: z.enum(['automatically_reconcilable', 'requires_owner_evidence', 'opening_balance_candidate', 'excluded']),
+        proposedTreatment: z.enum(FINANCIAL_RECONCILIATION_TREATMENTS),
         proposedAmountIlsMinor: z.number().int().min(-100_000_000_00).max(100_000_000_00).nullable().optional(),
         notes: z.string().max(1000),
       }))
@@ -7760,6 +7794,7 @@ export const appRouter = router({
           notes: input.notes || null,
           isUpgrade: liveIsAddon,
           upgradeFromPackageId: liveUpgradeFromPackageId,
+          transactionPurpose: liveIsAddon ? 'upgrade' : 'new_sale',
           termsAcceptedAt,
           termsAcceptedVersion: CURRENT_TERMS_VERSION,
           termsAcceptedIpAddress,
@@ -7786,6 +7821,7 @@ export const appRouter = router({
             courseId: item.courseId || null,
             priceAtPurchase: item.price,
             currency: item.currency,
+            transactionPurpose: liveIsAddon ? 'upgrade' : 'new_sale',
           });
           if (item.packageId) {
             const pkg = await db.getPackageById(item.packageId);
@@ -7902,6 +7938,24 @@ export const appRouter = router({
         ));
       }),
 
+    adminClassifyPurpose: adminOrRoleProcedure(['finance_manager'])
+      .input(z.object({
+        orderId: z.number().int().positive(),
+        purpose: z.enum(['new_sale', 'renewal', 'upgrade']),
+        reason: z.string().trim().min(5).max(1000),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const allowed = ctx.admin
+          ? await db.isFinanceOwnerAdmin(ctx.admin.id)
+          : await db.hasAnyRole(ctx.user.id, ['finance_manager']);
+        if (!allowed) throw new TRPCError({ code: 'FORBIDDEN', message: 'Finance approval access is required.' });
+        return db.classifyOpenOrderTransactionPurpose({
+          ...input,
+          actorType: ctx.admin ? 'admin' : 'staff',
+          actorId: ctx.admin?.id ?? ctx.user.id,
+        });
+      }),
+
     // Admin/Key Manager: correct the activation recipient before any key is issued.
     adminCorrectActivationRecipient: adminOrRoleProcedure(['key_manager'])
       .input(z.object({
@@ -7994,9 +8048,10 @@ export const appRouter = router({
         const actorType = ctx.admin ? 'admin' as const : 'staff' as const;
         const actorId = ctx.admin?.id ?? ctx.user.id;
         let activationKeys: Array<{ id: number; keyCode: string; packageId: number }> = [];
+        let resolvedKeyConfigurations = input.keyConfigurations ?? [];
 
-        // Payment approval creates an email-bound entitlement credential. It
-        // intentionally does not grant course/service access until redemption.
+        // Financial confirmation is persisted before the email-bound
+        // entitlement credential. Redemption remains operational only.
         if (input.status === 'completed') {
           // Key-management access alone cannot recognize cash. Only the
           // explicitly bootstrapped owner or a finance manager may confirm it.
@@ -8008,13 +8063,14 @@ export const appRouter = router({
           }
           // Never turn a historical completed order into revenue merely because
           // someone revisits it. Those rows are handled through reconciliation.
-          if (order.status === 'completed') {
+          const existingConfirmation = await db.getOrderPaymentConfirmation(order.id);
+          if (order.status === 'completed' && !existingConfirmation) {
             throw new TRPCError({
               code: 'CONFLICT',
               message: 'This completed order is historical. It must be reviewed through financial reconciliation, not re-approved.',
             });
           }
-          if (!input.financialPayment) {
+          if (!existingConfirmation && !input.financialPayment) {
             throw new TRPCError({
               code: 'BAD_REQUEST',
               message: 'Confirmed-payment date, ILS value, and rationale are required before approving this order.',
@@ -8024,22 +8080,32 @@ export const appRouter = router({
           const approvalPackages = await Promise.all(approvalItems
             .filter((item) => item.itemType === 'package' && item.packageId)
             .map((item) => db.getPackageById(Number(item.packageId))));
+          if (order.transactionPurpose === 'renewal') {
+            const detail = await db.getOrderRenewalDetail(order.id);
+            if (!detail) throw new TRPCError({ code: 'BAD_REQUEST', message: 'This renewal order is missing its immutable renewal terms.' });
+            resolvedKeyConfigurations = [{
+              packageId: detail.packageId,
+              entitlementDays: detail.entitlementDays,
+              expiresAt: null,
+              configurationNotes: `Paid renewal order #${order.id}; duration fixed at checkout`,
+            }];
+          }
           const expectedIlsMinor = Math.round(getOrderDisplayTotalIls({
             totalAmount: order.totalAmount,
             currency: order.currency,
             packageSlug: approvalPackages.length === 1 ? approvalPackages[0]?.slug : null,
             isUpgrade: !!order.isUpgrade,
           }) * 100);
-          if (!Number.isSafeInteger(expectedIlsMinor)
+          if (!existingConfirmation && (!Number.isSafeInteger(expectedIlsMinor)
             || expectedIlsMinor <= 0
-            || input.financialPayment.baseAmountIlsMinor !== expectedIlsMinor) {
+            || input.financialPayment!.baseAmountIlsMinor !== expectedIlsMinor)) {
             throw new TRPCError({
               code: 'BAD_REQUEST',
               message: 'The confirmed ILS amount must match the order commercial total shown to staff.',
             });
           }
           const requiresTimedServiceConfiguration = approvalPackages.some((pkg) => pkg?.packageType !== 'live');
-          if (requiresTimedServiceConfiguration && !input.keyConfigurations?.length) {
+          if (requiresTimedServiceConfiguration && !resolvedKeyConfigurations.length) {
             throw new TRPCError({
               code: 'BAD_REQUEST',
               message: 'The key manager must select the service duration before issuing the key.',
@@ -8057,19 +8123,6 @@ export const appRouter = router({
               message: 'Bank-transfer payment evidence must be uploaded before this order can be approved.',
             });
           }
-          try {
-            activationKeys = await db.createOrderActivationKeys({
-              order,
-              actorType,
-              actorId,
-              configurations: input.keyConfigurations ?? [],
-            });
-          } catch (error) {
-            throw new TRPCError({
-              code: 'BAD_REQUEST',
-              message: error instanceof Error ? error.message : 'Failed to create the assigned activation key',
-            });
-          }
         } else if (!ctx.admin && !await db.hasAnyRole(ctx.user.id, ['key_manager'])) {
           // Finance managers can confirm cash without inheriting unrelated
           // cancellation, refund-status, or operational key-manager powers.
@@ -8079,15 +8132,17 @@ export const appRouter = router({
         const updated = input.status === 'completed'
           ? await (async () => {
             try {
-              await db.confirmOrderPayment({
-                order,
-                actorType,
-                actorId,
-                paidAt: input.financialPayment!.paidAt,
-                paymentReference: input.paymentReference,
-                rationale: input.financialPayment!.rationale,
-                baseAmountIlsMinor: input.financialPayment!.baseAmountIlsMinor,
-              });
+              if (!await db.getOrderPaymentConfirmation(order.id)) {
+                await db.confirmOrderPayment({
+                  order,
+                  actorType,
+                  actorId,
+                  paidAt: input.financialPayment!.paidAt,
+                  paymentReference: input.paymentReference,
+                  rationale: input.financialPayment!.rationale,
+                  baseAmountIlsMinor: input.financialPayment!.baseAmountIlsMinor,
+                });
+              }
               return await db.getOrderById(order.id);
             } catch (error) {
               throw new TRPCError({
@@ -8102,7 +8157,23 @@ export const appRouter = router({
 
         if (!updated) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to update order' });
 
-        await db.logOrderStatusHistory({
+        if (input.status === 'completed') {
+          try {
+            activationKeys = await db.createOrderActivationKeys({
+              order: updated,
+              actorType,
+              actorId,
+              configurations: resolvedKeyConfigurations,
+            });
+          } catch (error) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: `Payment is confirmed, but key issuance needs a safe retry: ${error instanceof Error ? error.message : 'unknown key error'}`,
+            });
+          }
+        }
+
+        if (order.status !== input.status) await db.logOrderStatusHistory({
           orderId: order.id,
           userId: order.userId,
           previousStatus: order.status,
@@ -8284,6 +8355,138 @@ export const appRouter = router({
     adminList: adminProcedure.query(async () => {
       return db.getAllPackageSubscriptions();
     }),
+  }),
+
+  // =============================================
+  // PAID RENEWALS — cash is recognized only after finance confirmation
+  // =============================================
+  renewals: router({
+    quote: protectedProcedure.query(async ({ ctx }) => {
+      if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+      try {
+        return await db.getPaidRenewalQuote(ctx.user.id);
+      } catch (error) {
+        throw new TRPCError({ code: 'PRECONDITION_FAILED', message: error instanceof Error ? error.message : 'Renewal is unavailable.' });
+      }
+    }),
+
+    createOrder: protectedProcedure
+      .input(z.object({
+        paymentMethod: z.literal('bank_transfer'),
+        termsAcceptedAt: z.string().min(1),
+        termsAcceptedVersion: z.string().min(1),
+        notes: z.string().max(1000).nullable().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        if (input.termsAcceptedVersion !== CURRENT_TERMS_VERSION) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Current Terms acceptance is required.' });
+        }
+        try {
+          return await db.createPaidRenewalOrder({
+            userId: ctx.user.id,
+            paymentMethod: input.paymentMethod,
+            termsAcceptedAt: new Date().toISOString(),
+            termsAcceptedVersion: CURRENT_TERMS_VERSION,
+            termsAcceptedIpAddress: getRequestIp(ctx.req) || null,
+            termsAcceptedUserAgent: getRequestUserAgent(ctx.req) || null,
+            notes: input.notes,
+          });
+        } catch (error) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: error instanceof Error ? error.message : 'Renewal order could not be created.' });
+        }
+      }),
+
+    adminQuote: adminOrRoleProcedure(['key_manager', 'support', 'finance_manager'])
+      .input(z.object({ userId: z.number().int().positive() }))
+      .query(({ input }) => db.getPaidRenewalQuote(input.userId)),
+
+    adminPrepareOrder: adminOrRoleProcedure(['key_manager', 'support', 'finance_manager'])
+      .input(z.object({ userId: z.number().int().positive(), notes: z.string().max(1000).nullable().optional() }))
+      .mutation(async ({ input }) => {
+        const user = await db.getUserById(input.userId);
+        if (!user) throw new TRPCError({ code: 'NOT_FOUND', message: 'Client account not found.' });
+        const terms = await db.getUserTermsAcceptanceStatus(user.id, user.email);
+        if (!terms.accepted || !terms.latestAcceptance) {
+          throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'The client must accept the Terms before staff can prepare a renewal order.' });
+        }
+        return db.createPaidRenewalOrder({
+          userId: user.id,
+          paymentMethod: 'bank_transfer',
+          termsAcceptedAt: terms.latestAcceptance.acceptedAt,
+          termsAcceptedVersion: terms.latestAcceptance.termsVersion,
+          notes: input.notes,
+        });
+      }),
+  }),
+
+  // =============================================
+  // LEGACY CUSTOMER MIGRATION — entitlement only, never current revenue
+  // =============================================
+  legacyMigrations: router({
+    access: legacyMigrationProcedure.query(({ ctx }) => ({
+      canReviewAll: ctx.legacyActor.canReviewAll,
+      canApprove: ctx.financeActor?.access === 'owner' && ctx.legacyActor.actorType === 'admin',
+      canCreateClient: Boolean(ctx.admin),
+    })),
+
+    lookupClient: legacyMigrationProcedure
+      .input(z.object({ email: z.string().email() }))
+      .mutation(async ({ input }) => {
+        const user = await db.getUserByEmail(normalizeEmailAddress(input.email));
+        return user ? { id: user.id, email: user.email, name: user.name } : null;
+      }),
+
+    createClientAccount: legacyMigrationProcedure
+      .input(z.object({ email: z.string().email(), name: z.string().trim().min(2).max(200) }))
+      .mutation(async ({ ctx, input }) => {
+        if (!ctx.admin) throw new TRPCError({ code: 'FORBIDDEN', message: 'A full admin login is required to create a client account.' });
+        const email = normalizeEmailAddress(input.email);
+        const existing = await db.getUserByEmail(email);
+        if (existing) return { id: existing.id, email: existing.email, name: existing.name, idempotent: true };
+        const passwordHash = await hashPassword(crypto.randomUUID());
+        const userId = await db.createUser({ email, name: input.name.trim(), passwordHash });
+        await db.logAdminAction(ctx.admin.id, userId, 'legacy_migration_client_created', { purpose: 'legacy_migration', financialImpact: 'none' });
+        return { id: userId, email, name: input.name.trim(), idempotent: false };
+      }),
+
+    list: legacyMigrationProcedure
+      .input(z.object({ status: z.enum(LEGACY_MIGRATION_STATUSES).optional(), limit: z.number().int().min(1).max(100).default(100) }).optional())
+      .query(({ ctx, input }) => db.listLegacyCustomerMigrations({ actor: ctx.legacyActor, status: input?.status, limit: input?.limit })),
+
+    createDraft: legacyMigrationProcedure
+      .input(z.object({
+        userId: z.number().int().positive(), packageId: z.number().int().positive(),
+        originalPurchaseDate: z.string().nullable().optional(), oldReference: z.string().max(300).nullable().optional(),
+        originalAmountMinor: z.number().int().min(0).nullable().optional(), originalCurrency: z.string().max(3).nullable().optional(),
+        timedServicesEndAt: z.string().nullable().optional(), reason: z.string().trim().min(5).max(1000), notes: z.string().max(1000).nullable().optional(),
+      }))
+      .mutation(({ ctx, input }) => db.createLegacyCustomerMigrationDraft({ actor: ctx.legacyActor, values: input })),
+
+    updateDraft: legacyMigrationProcedure
+      .input(z.object({
+        migrationId: z.number().int().positive(), userId: z.number().int().positive(), packageId: z.number().int().positive(),
+        originalPurchaseDate: z.string().nullable().optional(), oldReference: z.string().max(300).nullable().optional(),
+        originalAmountMinor: z.number().int().min(0).nullable().optional(), originalCurrency: z.string().max(3).nullable().optional(),
+        timedServicesEndAt: z.string().nullable().optional(), reason: z.string().trim().min(5).max(1000), notes: z.string().max(1000).nullable().optional(),
+      }))
+      .mutation(({ ctx, input }) => {
+        const { migrationId, ...values } = input;
+        return db.updateLegacyCustomerMigrationDraft({ actor: ctx.legacyActor, migrationId, values });
+      }),
+
+    submit: legacyMigrationProcedure
+      .input(z.object({ migrationId: z.number().int().positive() }))
+      .mutation(({ ctx, input }) => db.submitLegacyCustomerMigration({ actor: ctx.legacyActor, migrationId: input.migrationId })),
+
+    review: legacyMigrationProcedure
+      .input(z.object({ migrationId: z.number().int().positive(), decision: z.enum(['approved', 'rejected']), reason: z.string().trim().min(5).max(1000) }))
+      .mutation(({ ctx, input }) => {
+        if (!ctx.financeActor || ctx.financeActor.access !== 'owner' || ctx.financeActor.actorType !== 'admin') {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Finance-owner approval is required.' });
+        }
+        return db.reviewLegacyCustomerMigration({ owner: ctx.financeActor, ...input });
+      }),
   }),
 
   // =============================================
@@ -8646,6 +8849,7 @@ export const appRouter = router({
           notes: input.notes || `Upgrade from ${eligibility.currentPackageName} to ${eligibility.targetPackageName}`,
           isUpgrade: true,
           upgradeFromPackageId: eligibility.currentPackageId,
+          transactionPurpose: 'upgrade',
           termsAcceptedAt,
           termsAcceptedVersion: CURRENT_TERMS_VERSION,
           termsAcceptedIpAddress,
@@ -8663,6 +8867,7 @@ export const appRouter = router({
           courseId: null,
           priceAtPurchase: totalAmount,
           currency: 'USD',
+          transactionPurpose: 'upgrade',
         });
 
         // In Workers, detached promises can be dropped before the provider call completes.
@@ -9108,6 +9313,12 @@ export const appRouter = router({
       .mutation(async ({ ctx, input }) => {
         const policy = getPackageKeyIssuancePolicy(input);
         const isFullAdmin = !!ctx.admin;
+        if (policy.keyKind === 'renewal' && policy.purpose === 'commercial') {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Paid renewals must start from a renewal order and confirmed payment. Manual renewal keys are limited to explicit internal or compensation cases.',
+          });
+        }
         if (!isFullAdmin && (policy.keyKind !== 'renewal' || policy.purpose !== 'commercial')) {
           throw new TRPCError({
             code: 'BAD_REQUEST',
@@ -9166,6 +9377,9 @@ export const appRouter = router({
           authorizedByType: actorType,
           authorizedById: admin?.id ?? 0,
           authorizedAt: now,
+          transactionPurpose: policy.purpose === 'commercial'
+            ? (policy.isUpgrade ? 'upgrade' : policy.isRenewal ? 'renewal' : 'new_sale')
+            : null,
         });
         return result;
       }),
@@ -9186,10 +9400,13 @@ export const appRouter = router({
       }))
       .mutation(async ({ ctx, input }) => {
         const policy = getPackageKeyIssuancePolicy({ ...input, purpose: 'commercial' });
-        if (!ctx.admin && policy.keyKind !== 'renewal') {
+        if (policy.keyKind === 'renewal') {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Commercial renewal inventory is disabled. Prepare a paid renewal order instead.' });
+        }
+        if (!ctx.admin) {
           throw new TRPCError({
             code: 'BAD_REQUEST',
-            message: 'Staff Key Managers can create bulk renewal inventory only. Use a full admin login for fresh or upgrade inventory.',
+            message: 'Bulk commercial key inventory requires a full admin login.',
           });
         }
         const admin = ctx.admin ?? ctx.user;
@@ -9220,6 +9437,7 @@ export const appRouter = router({
           authorizedByType: actorType,
           authorizedById: admin?.id ?? 0,
           authorizedAt: now,
+          transactionPurpose: policy.isUpgrade ? 'upgrade' : 'new_sale',
         });
         return { count: keys.length };
       }),
@@ -9492,7 +9710,10 @@ export const appRouter = router({
       return db.getSubscribersReport();
     }),
     revenue: adminProcedure.query(async () => {
-      return db.getRevenueReport();
+      throw new TRPCError({
+        code: 'PRECONDITION_FAILED',
+        message: 'The activation-based revenue endpoint is retired. Use financialReports.dashboard for cash-basis revenue or reports.activationActivity for operational activation activity.',
+      });
     }),
     activationActivity: adminProcedure.query(async () => {
       return db.getActivationActivityReport(500);

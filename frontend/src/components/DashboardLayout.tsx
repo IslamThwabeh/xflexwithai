@@ -185,6 +185,12 @@ const menuSectionsDef: MenuSection[] = [
         path: "/admin/finance/reconciliation",
       },
       {
+        icon: ClipboardList,
+        labelKey: "admin.sidebar.legacyMigrations",
+        label: { en: "Legacy migrations", ar: "ترحيل العملاء القدامى" },
+        path: "/admin/finance/legacy-migrations",
+      },
+      {
         icon: Key,
         labelKey: "admin.sidebar.activationKeys",
         path: "/admin/package-keys",
@@ -650,6 +656,10 @@ function DashboardLayoutContent({
             if (item.path === "/admin/finance/reconciliation") {
               return financeAuthority?.isFinanceOwner === true
                 || staffRolesForAvailability.includes("finance_manager");
+            }
+            if (item.path === "/admin/finance/legacy-migrations") {
+              return financeAuthority?.isFinanceOwner === true
+                || staffRolesForAvailability.some(role => ['finance_manager', 'finance_clerk', 'key_manager', 'support'].includes(role));
             }
             if (item.path === "/admin/staff-performance") {
               return performanceAvailability?.access === "manager";

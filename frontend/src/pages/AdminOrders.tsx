@@ -46,6 +46,12 @@ const statusLabels: Record<string, { en: string; ar: string }> = {
   refunded: { en: 'Refunded', ar: 'مسترد' },
 };
 
+const purposeLabels: Record<string, { en: string; ar: string }> = {
+  new_sale: { en: 'New sale', ar: 'شراء جديد' },
+  renewal: { en: 'Paid renewal', ar: 'تجديد مدفوع' },
+  upgrade: { en: 'Upgrade', ar: 'ترقية' },
+};
+
 export default function AdminOrders() {
   const { language } = useLanguage();
   const utils = trpc.useUtils();
@@ -65,6 +71,7 @@ export default function AdminOrders() {
     baseAmountIls: '',
     rationale: '',
   });
+  const [purposeDrafts, setPurposeDrafts] = useState<Record<number, { purpose: 'new_sale' | 'renewal' | 'upgrade'; reason: string }>>({});
   const { data: adminCheck } = trpc.auth.isAdmin.useQuery();
   const { data: financeAuthority } = trpc.roles.myFinanceAuthority.useQuery(undefined, {
     enabled: adminCheck?.isAdmin === true,
@@ -98,6 +105,10 @@ export default function AdminOrders() {
     },
     onError: (error) => toast.error(error.message),
   });
+  const classifyPurpose = trpc.orders.adminClassifyPurpose.useMutation({
+    onSuccess: async () => { toast.success(language === 'ar' ? 'تم تثبيت غرض المعاملة.' : 'Transaction purpose locked.'); await utils.orders.adminList.invalidate(); },
+    onError: error => toast.error(error.message),
+  });
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
   const allOrders = orders ?? [];
@@ -122,7 +133,7 @@ export default function AdminOrders() {
     const initial: typeof keyConfigurations = {};
     for (const item of order.packageItems ?? []) {
       initial[item.packageId] = {
-        entitlementDays: item.packageType === 'live' ? '1' : String(item.defaultEntitlementDays || 30),
+        entitlementDays: item.packageType === 'live' ? '1' : String(item.renewalEntitlementDays || item.defaultEntitlementDays || 30),
         expiresAt: '',
         configurationNotes: '',
       };
@@ -274,7 +285,10 @@ export default function AdminOrders() {
                       </Badge>
                       {order.isGift ? <Badge variant="outline" className="text-xs">🎁 Gift</Badge> : null}
                       {(order as any).isUpgrade ? <Badge variant="outline" className="text-xs text-amber-600 border-amber-300">⬆ Upgrade</Badge> : null}
+                      {order.transactionPurpose && <Badge variant="outline" className="text-xs text-blue-700 border-blue-300">{purposeLabels[order.transactionPurpose]?.[language] || order.transactionPurpose}</Badge>}
                     </div>
+
+                    {!order.transactionPurpose && ['pending', 'awaiting_confirmation', 'paid'].includes(order.status) && canConfirmPayment && <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3"><p className="mb-2 text-sm font-semibold text-amber-950">{language === 'ar' ? 'يجب تصنيف غرض المعاملة مرة واحدة قبل تأكيد الدفع.' : 'Classify the immutable transaction purpose before confirming payment.'}</p><div className="grid gap-2 md:grid-cols-[180px_1fr_auto]"><select className="h-10 rounded-md border bg-white px-3" value={(purposeDrafts[order.id]?.purpose || (order.isUpgrade ? 'upgrade' : 'new_sale'))} onChange={e => setPurposeDrafts({ ...purposeDrafts, [order.id]: { purpose: e.target.value as any, reason: purposeDrafts[order.id]?.reason || '' } })}><option value="new_sale">{purposeLabels.new_sale[language]}</option><option value="renewal">{purposeLabels.renewal[language]}</option><option value="upgrade">{purposeLabels.upgrade[language]}</option></select><Input placeholder={language === 'ar' ? 'سبب التصنيف (5 أحرف على الأقل)' : 'Classification reason (at least 5 characters)'} value={purposeDrafts[order.id]?.reason || ''} onChange={e => setPurposeDrafts({ ...purposeDrafts, [order.id]: { purpose: purposeDrafts[order.id]?.purpose || (order.isUpgrade ? 'upgrade' : 'new_sale'), reason: e.target.value } })} /><Button variant="outline" disabled={classifyPurpose.isPending} onClick={() => classifyPurpose.mutate({ orderId: order.id, purpose: purposeDrafts[order.id]?.purpose || (order.isUpgrade ? 'upgrade' : 'new_sale'), reason: purposeDrafts[order.id]?.reason || '' })}>{language === 'ar' ? 'تثبيت التصنيف' : 'Lock classification'}</Button></div></div>}
                     <p className="text-sm text-gray-500">
                       {(order as any).userName || (order as any).userEmail || `User #${order.userId}`}
                       {(order as any).userEmail ? ` (${(order as any).userEmail})` : ''}
@@ -389,7 +403,7 @@ export default function AdminOrders() {
                       )}
                       {order.status === 'pending' && (
                         <>
-                          {canConfirmPayment && (
+                          {canConfirmPayment && order.transactionPurpose && (
                             <Button size="sm" disabled={updateMutation.isPending} onClick={() => openIssueDialog(order)}>
                               <CheckCircle className="w-3.5 h-3.5 me-1" />{language === 'ar' ? 'تأكيد الدفع وإصدار المفتاح' : 'Approve & issue key'}
                             </Button>
@@ -403,7 +417,7 @@ export default function AdminOrders() {
                       )}
                       {order.status === 'awaiting_confirmation' && (
                         <>
-                          {canConfirmPayment && (
+                          {canConfirmPayment && order.transactionPurpose && (
                             <Button size="sm" disabled={updateMutation.isPending} onClick={() => openIssueDialog(order)}>
                               <CheckCircle className="w-3.5 h-3.5 me-1" />{language === 'ar' ? 'تأكيد الدفع وإصدار المفتاح' : 'Approve & issue key'}
                             </Button>
@@ -415,7 +429,7 @@ export default function AdminOrders() {
                           )}
                         </>
                       )}
-                      {canConfirmPayment && order.status === 'paid' && (
+                      {canConfirmPayment && order.transactionPurpose && order.status === 'paid' && (
                         <Button size="sm" disabled={updateMutation.isPending} onClick={() => openIssueDialog(order)}>
                           <CheckCircle className="w-3.5 h-3.5 me-1" />{language === 'ar' ? 'إصدار المفتاح' : 'Issue key'}
                         </Button>
@@ -520,7 +534,9 @@ export default function AdminOrders() {
                           ? 'نافذة بكج لايف ثابتة وتُدار من لوحة بكج لايف؛ لا ينشئ هذا الطلب تجديداً.'
                           : 'Live Package uses its fixed cohort window from the Live admin workspace; this order does not create a renewal.'}
                       </div>
-                    ) : <div className="grid gap-4 sm:grid-cols-2">
+                    ) : issueOrder?.transactionPurpose === 'renewal' ? <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+                      {language === 'ar' ? `مدة التجديد ثابتة: ${item.renewalEntitlementDays} يوم. التوصيات حتى ${formatLocalizedDate(item.recommendationsProjectedEndAt, language)}${item.lexaiProjectedEndAt ? `، وLexAI حتى ${formatLocalizedDate(item.lexaiProjectedEndAt, language)}` : ''}.` : `Fixed renewal duration: ${item.renewalEntitlementDays} days. Recommendations through ${formatLocalizedDate(item.recommendationsProjectedEndAt, language)}${item.lexaiProjectedEndAt ? `; LexAI through ${formatLocalizedDate(item.lexaiProjectedEndAt, language)}` : ''}.`}
+                    </div> : <div className="grid gap-4 sm:grid-cols-2">
                       <div className="space-y-2">
                         <Label>{language === 'ar' ? 'مدة الخدمة بالأيام *' : 'Service duration (days) *'}</Label>
                         <Input

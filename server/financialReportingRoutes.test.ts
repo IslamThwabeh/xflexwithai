@@ -39,7 +39,7 @@ const dashboardResult = {
   grouping: 'month' as const,
   generatedAt: '2026-09-11T00:00:00.000Z',
   periods: [],
-  totals: { confirmedIncomeMinor: 0, refundsMinor: 0, netRevenueMinor: 0, expensesMinor: 0, netAdjustmentsMinor: 0, operatingProfitLossMinor: 0 },
+  totals: { confirmedIncomeMinor: 0, newSalesMinor: 0, renewalsMinor: 0, upgradesMinor: 0, refundsMinor: 0, netRevenueMinor: 0, expensesMinor: 0, netAdjustmentsMinor: 0, operatingProfitLossMinor: 0 },
   categories: [],
   ledger: [],
   ledgerTruncated: false,

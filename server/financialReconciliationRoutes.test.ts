@@ -43,7 +43,7 @@ describe('financial reconciliation route authorization', () => {
     await expect(caller().financialReconciliation.preview()).resolves.toMatchObject({ access: 'manager', canMaterialize: true, canResolve: false });
     await expect(caller().financialReconciliation.workspace({ status: 'unresolved' })).resolves.toMatchObject({ access: 'manager', canManageDrafts: true });
     await expect(caller().financialReconciliation.materializeQueue()).resolves.toBeTruthy();
-    await expect(caller().financialReconciliation.updateDraft({ itemId: 1, proposedTreatment: 'requires_owner_evidence', proposedAmountIlsMinor: null, notes: 'Need owner statement' })).resolves.toBeTruthy();
+    await expect(caller().financialReconciliation.updateDraft({ itemId: 1, proposedTreatment: 'requires_owner_review', proposedAmountIlsMinor: null, notes: 'Need owner statement' })).resolves.toBeTruthy();
     await expect(caller().financialReconciliation.resolveItem({ itemId: 1, decision: 'excluded', reason: 'No evidence' })).rejects.toMatchObject({ code: 'FORBIDDEN' });
   });
 

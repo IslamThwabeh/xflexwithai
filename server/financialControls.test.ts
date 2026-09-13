@@ -8,6 +8,7 @@ import { createLocalD1Database } from '../backend/_core/localD1';
 import {
   createFinancialAdjustmentDraft,
   getFinancialManagementDashboard,
+  reclassifyFinancialPaymentPurpose,
   reverseFinancialLedgerEntry,
   reviewFinancialAdjustment,
   setFinancialPeriodLock,
@@ -38,6 +39,7 @@ async function fixture() {
     CREATE TABLE registrationKeys (id INTEGER PRIMARY KEY, activatedAt TEXT, packageId INTEGER);
   `);
   for (const migration of migrations) sqlite.exec(migration);
+  sqlite.exec('ALTER TABLE financial_ledger_entries ADD COLUMN transaction_purpose TEXT;');
   sqlite.prepare(`INSERT INTO financial_ledger_entries
     (entry_type, status, effective_at, reporting_month, amount_minor, currency, base_amount_ils_minor,
      order_id, source_type, source_reference, created_by_type, approved_by_type, approved_by_id, approved_at)
@@ -60,6 +62,7 @@ describe('financial adjustment and period controls', () => {
       CREATE TABLE registrationKeys (id INTEGER PRIMARY KEY, activatedAt TEXT, packageId INTEGER);
     `);
     for (const migration of migrations) sqlite.exec(migration);
+    sqlite.exec('ALTER TABLE financial_ledger_entries ADD COLUMN transaction_purpose TEXT;');
     const detail = (query: string, ...values: unknown[]) => (sqlite.prepare(`EXPLAIN QUERY PLAN ${query}`).all(...values) as Array<{ detail: string }>).map(row => row.detail).join('\n');
     expect(detail('SELECT id FROM financial_adjustment_requests ORDER BY updated_at DESC, id DESC LIMIT 100')).toContain('idx_financial_adjustments_updated');
     expect(detail('SELECT id FROM financial_adjustment_requests WHERE id = ? LIMIT 1', 1)).toMatch(/INTEGER PRIMARY KEY/);
@@ -180,11 +183,56 @@ describe('financial adjustment and period controls', () => {
       }, orm);
       expect(report.totals).toEqual({
         confirmedIncomeMinor: 10000,
+        newSalesMinor: 8000,
+        renewalsMinor: 0,
+        upgradesMinor: 0,
         refundsMinor: 0,
-        netRevenueMinor: 10000,
+        netRevenueMinor: 8000,
         expensesMinor: 0,
-        netAdjustmentsMinor: -2000,
+        netAdjustmentsMinor: 0,
         operatingProfitLossMinor: 8000,
+      });
+    } finally { (database as any).close(); }
+  });
+
+  it('reclassifies a confirmed payment without changing paidAt or total cash', async () => {
+    const { database, orm } = await fixture();
+    try {
+      const result = await reclassifyFinancialPaymentPurpose({
+        actor: owner,
+        entryId: 1,
+        nextPurpose: 'renewal',
+        reason: 'Owner verified this was a paid renewal',
+      }, orm);
+      expect(result).toMatchObject({ previousPurpose: 'new_sale', nextPurpose: 'renewal', idempotent: false });
+      await expect(reclassifyFinancialPaymentPurpose({
+        actor: manager,
+        entryId: 1,
+        nextPurpose: 'upgrade',
+        reason: 'Unauthorized attempt',
+      }, orm)).rejects.toThrow(/Only the finance owner/);
+      const retry = await reclassifyFinancialPaymentPurpose({
+        actor: owner,
+        entryId: 1,
+        nextPurpose: 'renewal',
+        reason: 'Idempotent retry',
+      }, orm);
+      expect(retry.idempotent).toBe(true);
+      const entries = await database.prepare("SELECT effective_at, base_amount_ils_minor, transaction_purpose FROM financial_ledger_entries WHERE source_type='financial_reclassification' ORDER BY id").all();
+      expect(entries.results).toEqual([
+        { effective_at: '2026-07-05T00:00:00.000Z', base_amount_ils_minor: -10000, transaction_purpose: 'new_sale' },
+        { effective_at: '2026-07-05T00:00:00.000Z', base_amount_ils_minor: 10000, transaction_purpose: 'renewal' },
+      ]);
+      const report = await getFinancialManagementDashboard({
+        from: '2026-01-01', to: '2026-12-31', grouping: 'year', includeLedger: true,
+      }, orm);
+      expect(report.totals).toMatchObject({
+        confirmedIncomeMinor: 10000,
+        newSalesMinor: 0,
+        renewalsMinor: 10000,
+        upgradesMinor: 0,
+        netAdjustmentsMinor: 0,
+        operatingProfitLossMinor: 10000,
       });
     } finally { (database as any).close(); }
   });

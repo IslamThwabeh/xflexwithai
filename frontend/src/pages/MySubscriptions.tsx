@@ -1,18 +1,33 @@
-import { Link } from 'wouter';
-import { Package, CheckCircle, AlertCircle, ArrowUpCircle } from 'lucide-react';
+import { useState } from 'react';
+import { Link, useLocation } from 'wouter';
+import { Package, CheckCircle, AlertCircle, ArrowUpCircle, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { formatLocalizedDate } from '@/lib/dateLocale';
 import { trpc } from '@/lib/trpc';
 import ClientLayout from '@/components/ClientLayout';
+import { Checkbox } from '@/components/ui/checkbox';
+import { CURRENT_TERMS_VERSION } from '@/lib/legalVersions';
+import { toast } from 'sonner';
 
 export default function MySubscriptions() {
   const { language, t } = useLanguage();
   const isRtl = language === 'ar';
+  const [, navigate] = useLocation();
+  const [accepted, setAccepted] = useState(false);
   const { data: subscriptions, isLoading } = trpc.subscriptions.mySubscriptions.useQuery();
   const { data: activePackage } = trpc.subscriptions.myActivePackage.useQuery();
   const pkg = (activePackage as any)?.package;
+  const renewal = trpc.renewals.quote.useQuery(undefined, { retry: false, refetchOnWindowFocus: false });
+  const createRenewal = trpc.renewals.createOrder.useMutation({
+    onSuccess: (result) => {
+      toast.success(isRtl ? 'تم إنشاء طلب التجديد. أرفقي إثبات الدفع لإرساله للمراجعة.' : 'Renewal order created. Attach payment proof for review.');
+      navigate(`/orders/${result.order.id}`);
+    },
+    onError: (error) => toast.error(error.message),
+  });
+  const money = (minor: number) => new Intl.NumberFormat(isRtl ? 'ar' : 'en', { style: 'currency', currency: 'ILS' }).format(minor / 100);
 
   return (
     <ClientLayout>
@@ -74,6 +89,23 @@ export default function MySubscriptions() {
               </Link>
             </div>
           </div>
+        )}
+
+        {renewal.data && (
+          <section className="mb-8 rounded-2xl border-2 border-emerald-200 bg-emerald-50 p-6" dir={isRtl ? 'rtl' : 'ltr'}>
+            <div className="mb-4 flex items-start gap-3"><RefreshCw className="mt-1 h-6 w-6 text-emerald-700" /><div><h2 className="text-lg font-bold text-emerald-950">{isRtl ? 'تجديد مدفوع للخدمات المحددة المدة' : 'Paid timed-services renewal'}</h2><p className="text-sm text-emerald-800">{isRtl ? 'التجديد يمدّد التوصيات وLexAI بحسب باقتك؛ الوصول للدورات يبقى كما هو.' : 'Renewal extends Recommendations and LexAI included in your package; course access remains unchanged.'}</p></div></div>
+            <div className="grid gap-3 rounded-xl bg-white p-4 text-sm md:grid-cols-2">
+              <p><strong>{isRtl ? 'الباقة:' : 'Package:'}</strong> {isRtl ? renewal.data.packageNameAr : renewal.data.packageNameEn}</p>
+              <p><strong>{isRtl ? 'السعر:' : 'Price:'}</strong> {money(renewal.data.amountIlsMinor)}</p>
+              <p><strong>{isRtl ? 'المدة:' : 'Duration:'}</strong> {renewal.data.entitlementDays} {isRtl ? 'يومًا' : 'days'}</p>
+              <p><strong>{isRtl ? 'الدورات:' : 'Courses:'}</strong> {isRtl ? 'لا تتغير' : 'Unchanged'}</p>
+              {renewal.data.includesRecommendations && <p><strong>{isRtl ? 'التوصيات حتى:' : 'Recommendations through:'}</strong> {formatLocalizedDate(renewal.data.recommendationsProjectedEndAt!, language)}</p>}
+              {renewal.data.includesLexai && <p><strong>LexAI {isRtl ? 'حتى:' : 'through:'}</strong> {formatLocalizedDate(renewal.data.lexaiProjectedEndAt!, language)}</p>}
+            </div>
+            <p className="mt-3 text-xs text-emerald-900">{isRtl ? 'يُسجّل الدخل مرة واحدة فقط عند تأكيد استلام دفعة التجديد. إنشاء الطلب أو إصدار المفتاح أو تفعيله لا يُنشئ إيرادًا.' : 'Income is recorded once only when the renewal payment is confirmed. Creating the order, issuing the key, or activating it does not create revenue.'}</p>
+            <label className="mt-4 flex items-start gap-2 text-sm"><Checkbox checked={accepted} onCheckedChange={(value) => setAccepted(value === true)} /><span>{isRtl ? 'أوافق على ' : 'I agree to the '}<Link className="font-semibold underline" href="/terms">{isRtl ? 'الشروط والأحكام' : 'Terms and Conditions'}</Link>.</span></label>
+            <Button className="mt-4" disabled={!accepted || createRenewal.isPending} onClick={() => createRenewal.mutate({ paymentMethod: 'bank_transfer', termsAcceptedAt: new Date().toISOString(), termsAcceptedVersion: CURRENT_TERMS_VERSION })}><RefreshCw className="me-2 h-4 w-4" />{createRenewal.isPending ? (isRtl ? 'جاري الإنشاء...' : 'Creating...') : (isRtl ? 'إنشاء طلب التجديد' : 'Create renewal order')}</Button>
+          </section>
         )}
 
         {/* Subscriptions List */}

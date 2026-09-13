@@ -42,6 +42,9 @@ export function normalizeFinancialReportRange(from: string, to: string): Financi
 export type FinancialPeriodRow = {
   period: string;
   confirmedIncomeMinor: number;
+  newSalesMinor: number;
+  renewalsMinor: number;
+  upgradesMinor: number;
   refundsMinor: number;
   netRevenueMinor: number;
   expensesMinor: number;
@@ -52,15 +55,24 @@ export type FinancialPeriodRow = {
 export function normalizeFinancialPeriodRows(rows: Array<Record<string, unknown>>): FinancialPeriodRow[] {
   return rows.map((row) => {
     const confirmedIncomeMinor = Number(row.confirmedIncomeMinor ?? 0);
+    const newSalesMinor = Number(row.newSalesMinor ?? 0);
+    const renewalsMinor = Number(row.renewalsMinor ?? 0);
+    const upgradesMinor = Number(row.upgradesMinor ?? 0);
     const refundsSignedMinor = Number(row.refundsSignedMinor ?? 0);
     const expensesSignedMinor = Number(row.expensesSignedMinor ?? 0);
     const netAdjustmentsMinor = Number(row.adjustmentsSignedMinor ?? 0);
     const refundsMinor = Math.abs(refundsSignedMinor);
     const expensesMinor = Math.abs(expensesSignedMinor);
-    const netRevenueMinor = confirmedIncomeMinor + refundsSignedMinor;
+    const recognizedIncomeMinor = row.recognizedIncomeMinor == null
+      ? confirmedIncomeMinor
+      : Number(row.recognizedIncomeMinor);
+    const netRevenueMinor = recognizedIncomeMinor + refundsSignedMinor;
     return {
       period: String(row.period),
       confirmedIncomeMinor,
+      newSalesMinor,
+      renewalsMinor,
+      upgradesMinor,
       refundsMinor,
       netRevenueMinor,
       expensesMinor,
@@ -73,6 +85,9 @@ export function normalizeFinancialPeriodRows(rows: Array<Record<string, unknown>
 export function totalFinancialPeriods(rows: FinancialPeriodRow[]) {
   return rows.reduce((total, row) => ({
     confirmedIncomeMinor: total.confirmedIncomeMinor + row.confirmedIncomeMinor,
+    newSalesMinor: total.newSalesMinor + row.newSalesMinor,
+    renewalsMinor: total.renewalsMinor + row.renewalsMinor,
+    upgradesMinor: total.upgradesMinor + row.upgradesMinor,
     refundsMinor: total.refundsMinor + row.refundsMinor,
     netRevenueMinor: total.netRevenueMinor + row.netRevenueMinor,
     expensesMinor: total.expensesMinor + row.expensesMinor,
@@ -80,6 +95,9 @@ export function totalFinancialPeriods(rows: FinancialPeriodRow[]) {
     operatingProfitLossMinor: total.operatingProfitLossMinor + row.operatingProfitLossMinor,
   }), {
     confirmedIncomeMinor: 0,
+    newSalesMinor: 0,
+    renewalsMinor: 0,
+    upgradesMinor: 0,
     refundsMinor: 0,
     netRevenueMinor: 0,
     expensesMinor: 0,
@@ -108,9 +126,12 @@ export function buildFinancialManagementCsv(input: {
     ['From', input.from],
     ['To', input.to],
     [],
-    ['Period', 'Confirmed income (ILS)', 'Refunds (ILS)', 'Net revenue (ILS)', 'Expenses (ILS)', 'Net adjustments/reversals (ILS)', 'Operating profit/loss (ILS)'],
+    ['Period', 'New sales (ILS)', 'Paid renewals (ILS)', 'Upgrades (ILS)', 'Confirmed income (ILS)', 'Refunds (ILS)', 'Net revenue (ILS)', 'Expenses (ILS)', 'Net adjustments/reversals (ILS)', 'Operating profit/loss (ILS)'],
     ...input.periods.map((row) => [
       row.period,
+      (row.newSalesMinor / 100).toFixed(2),
+      (row.renewalsMinor / 100).toFixed(2),
+      (row.upgradesMinor / 100).toFixed(2),
       (row.confirmedIncomeMinor / 100).toFixed(2),
       (row.refundsMinor / 100).toFixed(2),
       (row.netRevenueMinor / 100).toFixed(2),
@@ -120,6 +141,9 @@ export function buildFinancialManagementCsv(input: {
     ]),
     [
       'TOTAL',
+      (input.totals.newSalesMinor / 100).toFixed(2),
+      (input.totals.renewalsMinor / 100).toFixed(2),
+      (input.totals.upgradesMinor / 100).toFixed(2),
       (input.totals.confirmedIncomeMinor / 100).toFixed(2),
       (input.totals.refundsMinor / 100).toFixed(2),
       (input.totals.netRevenueMinor / 100).toFixed(2),

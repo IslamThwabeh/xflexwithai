@@ -49,7 +49,7 @@ export default function AdminSubscribersReport() {
     { key: 'country', en: 'Country', ar: 'البلد' },
     { key: 'registered', en: 'Registered', ar: 'تاريخ التسجيل' },
     { key: 'keys', en: 'Keys', ar: 'المفاتيح' },
-    { key: 'spent', en: 'Spent', ar: 'الإنفاق' },
+    { key: 'spent', en: 'Activated-key value (not revenue)', ar: 'قيمة المفاتيح المفعّلة (ليست إيرادًا)' },
     { key: 'packages', en: 'Active Packages', ar: 'الباقات النشطة' },
     { key: 'renewals', en: 'Renewals', ar: 'التجديدات' },
   ] as const;
@@ -112,7 +112,7 @@ export default function AdminSubscribersReport() {
 
   const exportCSV = () => {
     if (!filtered.length) return;
-    const headers = ['Name', 'Email', 'Phone', 'City', 'Country', 'Registered', 'Total Keys', 'Gross Spent (ILS)', 'Refunded (ILS)', 'Net Spent (ILS)', 'Active Packages', 'Renewals'];
+    const headers = ['Name', 'Email', 'Phone', 'City', 'Country', 'Registered', 'Total Keys', 'Legacy activated-key list value (ILS; not revenue)', 'Refund references (ILS)', 'Net legacy key indicator (ILS; not revenue)', 'Active Packages', 'Renewals'];
     const rows = filtered.map((s: any) => [
       s.name || '', s.email, s.phone || '', s.city || '', s.country || '',
       s.createdAt ? formatLocalizedDate(s.createdAt, language) : '',
@@ -215,7 +215,7 @@ export default function AdminSubscribersReport() {
                 {visibleCols.has('country') && <th className="px-3 py-3 text-start font-medium"><SortableHeader label={isRtl ? 'البلد' : 'Country'} sortKey="country" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>}
                 {visibleCols.has('registered') && <th className="px-3 py-3 text-start font-medium"><SortableHeader label={isRtl ? 'تاريخ التسجيل' : 'Registered'} sortKey="registered" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>}
                 {visibleCols.has('keys') && <th className="px-3 py-3 text-center font-medium"><SortableHeader label={isRtl ? 'المفاتيح' : 'Keys'} sortKey="keys" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>}
-                {visibleCols.has('spent') && <th className="px-3 py-3 text-center font-medium"><SortableHeader label={isRtl ? 'الإنفاق' : 'Spent'} sortKey="spent" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>}
+                {visibleCols.has('spent') && <th className="px-3 py-3 text-center font-medium"><SortableHeader label={isRtl ? 'قيمة مفاتيح تشغيلية (ليست إيرادًا)' : 'Operational key value (not revenue)'} sortKey="spent" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>}
                 {visibleCols.has('packages') && <th className="px-3 py-3 text-start font-medium">{isRtl ? 'الباقات النشطة' : 'Active Packages'}</th>}
                 {visibleCols.has('renewals') && <th className="px-3 py-3 text-center font-medium"><SortableHeader label={isRtl ? 'التجديدات' : 'Renewals'} sortKey="renewals" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>}
               </tr>

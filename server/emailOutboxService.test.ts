@@ -112,6 +112,7 @@ describe("email outbox service", () => {
         "student_survey_assigned",
         "student_survey_reminder",
         "student_community_post_published",
+        "live_session_reminder",
       ],
     });
     expect(result.total).toEqual({ claimed: 2, sent: 2, failed: 0, skipped: 0 });

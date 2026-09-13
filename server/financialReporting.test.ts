@@ -26,6 +26,7 @@ function createSqlite(filename = ':memory:') {
     CREATE TABLE registrationKeys (id INTEGER PRIMARY KEY, activatedAt TEXT, packageId INTEGER);
   `);
   for (const migration of migrations) sqlite.exec(migration);
+  sqlite.exec('ALTER TABLE financial_ledger_entries ADD COLUMN transaction_purpose TEXT;');
   return sqlite;
 }
 
@@ -37,11 +38,11 @@ async function fixture() {
   sqlite.exec(`
     INSERT INTO financial_ledger_entries
       (entry_type, status, effective_at, reporting_month, amount_minor, currency, base_amount_ils_minor,
-       source_type, source_reference, created_by_type, approved_by_type, approved_at)
+       source_type, source_reference, transaction_purpose, created_by_type, approved_by_type, approved_at)
     VALUES
-      ('payment', 'approved', '2026-07-05T12:00:00.000Z', '2026-07', 10000, 'ILS', 10000, 'order_payment_new_sale', 'order:1', 'admin', 'admin', '2026-07-05T12:00:00.000Z'),
-      ('refund', 'approved', '2026-07-20T12:00:00.000Z', '2026-07', -2000, 'ILS', -2000, 'account_refund', 'refund:1', 'admin', 'admin', '2026-07-20T12:00:00.000Z'),
-      ('payment', 'approved', '2026-08-02T12:00:00.000Z', '2026-08', 5000, 'ILS', 5000, 'order_payment_upgrade', 'order:2', 'staff', 'staff', '2026-08-02T12:00:00.000Z');
+      ('payment', 'approved', '2026-07-05T12:00:00.000Z', '2026-07', 10000, 'ILS', 10000, 'order_payment_new_sale', 'order:1', 'new_sale', 'admin', 'admin', '2026-07-05T12:00:00.000Z'),
+      ('refund', 'approved', '2026-07-20T12:00:00.000Z', '2026-07', -2000, 'ILS', -2000, 'account_refund', 'refund:1', NULL, 'admin', 'admin', '2026-07-20T12:00:00.000Z'),
+      ('payment', 'approved', '2026-08-02T12:00:00.000Z', '2026-08', 5000, 'ILS', 5000, 'order_payment_upgrade', 'order:2', 'upgrade', 'staff', 'staff', '2026-08-02T12:00:00.000Z');
     INSERT INTO financial_expenses
       (status, paid_at, category, amount_minor, currency, base_amount_ils_minor, created_by_type, created_by_id, submitted_by_type, submitted_by_id)
     VALUES ('pending_approval', '2026-07-25', 'software_and_subscriptions', 3000, 'ILS', 3000, 'staff', 20, 'staff', 20);
@@ -73,17 +74,17 @@ describe('financial management reporting', () => {
         from: '2026-07-01', to: '2026-08-31', grouping: 'month', includeLedger: true,
       }, orm);
       expect(monthly.periods).toEqual([
-        { period: '2026-07', confirmedIncomeMinor: 10000, refundsMinor: 2000, netRevenueMinor: 8000, expensesMinor: 3000, netAdjustmentsMinor: 0, operatingProfitLossMinor: 5000 },
-        { period: '2026-08', confirmedIncomeMinor: 5000, refundsMinor: 0, netRevenueMinor: 5000, expensesMinor: 0, netAdjustmentsMinor: 0, operatingProfitLossMinor: 5000 },
+        { period: '2026-07', confirmedIncomeMinor: 10000, newSalesMinor: 10000, renewalsMinor: 0, upgradesMinor: 0, refundsMinor: 2000, netRevenueMinor: 8000, expensesMinor: 3000, netAdjustmentsMinor: 0, operatingProfitLossMinor: 5000 },
+        { period: '2026-08', confirmedIncomeMinor: 5000, newSalesMinor: 0, renewalsMinor: 0, upgradesMinor: 5000, refundsMinor: 0, netRevenueMinor: 5000, expensesMinor: 0, netAdjustmentsMinor: 0, operatingProfitLossMinor: 5000 },
       ]);
-      expect(monthly.totals).toEqual({ confirmedIncomeMinor: 15000, refundsMinor: 2000, netRevenueMinor: 13000, expensesMinor: 3000, netAdjustmentsMinor: 0, operatingProfitLossMinor: 10000 });
+      expect(monthly.totals).toEqual({ confirmedIncomeMinor: 15000, newSalesMinor: 10000, renewalsMinor: 0, upgradesMinor: 5000, refundsMinor: 2000, netRevenueMinor: 13000, expensesMinor: 3000, netAdjustmentsMinor: 0, operatingProfitLossMinor: 10000 });
       expect(monthly.categories).toEqual([{ category: 'software_and_subscriptions', amountMinor: 3000 }]);
       expect(monthly.ledger).toHaveLength(4);
 
       const viewer = await getFinancialManagementDashboard({
         from: '2026-01-01', to: '2026-12-31', grouping: 'year', includeLedger: false,
       }, orm);
-      expect(viewer.periods).toEqual([{ period: '2026', confirmedIncomeMinor: 15000, refundsMinor: 2000, netRevenueMinor: 13000, expensesMinor: 3000, netAdjustmentsMinor: 0, operatingProfitLossMinor: 10000 }]);
+      expect(viewer.periods).toEqual([{ period: '2026', confirmedIncomeMinor: 15000, newSalesMinor: 10000, renewalsMinor: 0, upgradesMinor: 5000, refundsMinor: 2000, netRevenueMinor: 13000, expensesMinor: 3000, netAdjustmentsMinor: 0, operatingProfitLossMinor: 10000 }]);
       expect(viewer.ledger).toEqual([]);
     } finally { (database as any).close(); }
   });
@@ -94,7 +95,7 @@ describe('financial management reporting', () => {
     const periods = normalizeFinancialPeriodRows([{ period: '2026-07', confirmedIncomeMinor: 10000, refundsSignedMinor: -2000, expensesSignedMinor: -3000 }]);
     const totals = totalFinancialPeriods(periods);
     const csv = buildFinancialManagementCsv({ from: '2026-07-01', to: '2026-07-31', grouping: 'month', periods, totals, categories: [{ category: 'software', amountMinor: 3000 }] });
-    expect(csv).toContain('"TOTAL","100.00","20.00","80.00","30.00","0.00","50.00"');
+    expect(csv).toContain('"TOTAL","0.00","0.00","0.00","100.00","20.00","80.00","30.00","0.00","50.00"');
     expect(csv).toContain('"TOTAL EXPENSES","30.00"');
   });
 

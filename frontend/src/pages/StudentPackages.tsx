@@ -138,8 +138,8 @@ export default function StudentPackages() {
             </div>
             <p className="text-amber-900/80 mb-4 leading-7">
               {isRtl
-                ? `الدورة التعليمية وملفاتك ما زالت متاحة لك، لكن صلاحية ${timedServicesLabel || 'الخدمات المحددة المدة'} انتهت. أدخل مفتاح التجديد لاستعادة الوصول دون شراء الباقة من جديد.`
-                : `Your course and documents are still available, but ${timedServicesLabel || 'your timed services'} access has expired. Enter your renewal key to restore access without buying the package again.`}
+                ? `الدورة التعليمية وملفاتك ما زالت متاحة لك، لكن صلاحية ${timedServicesLabel || 'الخدمات المحددة المدة'} انتهت. أنشئ طلب تجديد مدفوع لاستعادة الوصول دون شراء الباقة من جديد.`
+                : `Your course and documents remain available, but ${timedServicesLabel || 'your timed services'} access has expired. Create a paid renewal order to restore timed access.`}
             </p>
             <div className="flex flex-wrap gap-2 mb-4">
               {relevantServices.map((service) => (
@@ -149,10 +149,10 @@ export default function StudentPackages() {
               ))}
             </div>
             <div className="flex flex-col gap-3 sm:flex-row">
-              <Link href="/activate-key">
+              <Link href="/subscriptions">
                 <Button className="w-full sm:w-auto bg-amber-600 hover:bg-amber-700">
                   <Key className="w-4 h-4 me-2" />
-                  {isRtl ? 'أدخل مفتاح التجديد' : 'Enter Renewal Key'}
+                  {isRtl ? 'إنشاء طلب تجديد' : 'Create Renewal Order'}
                 </Button>
               </Link>
               <Link href="/support">
@@ -179,8 +179,8 @@ export default function StudentPackages() {
             </div>
             <p className="text-amber-900/80 mb-4 leading-7">
               {isRtl
-                ? `محتوى الدورة سيبقى متاحاً لك، لكن صلاحية ${timedServicesLabel || 'الخدمات المحددة المدة'} ستنتهي قريباً. جهّز مفتاح التجديد الآن حتى لا ينقطع الوصول.`
-                : `Your course content stays available, but ${timedServicesLabel || 'your timed services'} will expire soon. Prepare your renewal key now to avoid interruption.`}
+                ? `محتوى الدورة سيبقى متاحاً لك، لكن صلاحية ${timedServicesLabel || 'الخدمات المحددة المدة'} ستنتهي قريباً. أنشئ طلب تجديد الآن حتى لا ينقطع الوصول.`
+                : `Your course content stays available, but ${timedServicesLabel || 'your timed services'} will expire soon. Create a renewal order now to avoid interruption.`}
             </p>
             <div className="flex items-center justify-between gap-3 rounded-xl bg-white/80 p-4 border border-amber-100 mb-4">
               <span className="text-sm text-amber-900 font-medium">
@@ -188,10 +188,10 @@ export default function StudentPackages() {
               </span>
               <span className="text-2xl font-bold text-amber-700">{timedDaysLeft ?? '-'}</span>
             </div>
-            <Link href="/activate-key">
+            <Link href="/subscriptions">
               <Button className="bg-amber-600 hover:bg-amber-700">
                 <Key className="w-4 h-4 me-2" />
-                {isRtl ? 'جهّز مفتاح التجديد' : 'Prepare Renewal Key'}
+                {isRtl ? 'إنشاء طلب تجديد' : 'Create Renewal Order'}
               </Button>
             </Link>
           </div>
@@ -232,7 +232,7 @@ export default function StudentPackages() {
                 <Progress value={Math.max(0, Math.min(100, (timedDaysLeft / timedServiceWindowDays) * 100))} className="h-2 bg-white/20" />
                 {timedDaysLeft <= 7 && (
                   <p className="text-amber-200 text-sm mt-2 font-medium">
-                    {isRtl ? '⚠️ اقترب موعد التجديد! جهّز مفتاح التجديد.' : '⚠️ Renewal approaching! Prepare your renewal key.'}
+                    {isRtl ? '⚠️ اقترب موعد التجديد! أنشئ طلب التجديد من صفحة التجديد.' : '⚠️ Renewal approaching! Create an order from the renewal page.'}
                   </p>
                 )}
               </div>

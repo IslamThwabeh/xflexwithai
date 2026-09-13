@@ -45,6 +45,7 @@ function createSqlite(filename = ':memory:') {
     );
   `);
   for (const migration of files) sqlite.exec(migration);
+  sqlite.exec('ALTER TABLE financial_ledger_entries ADD COLUMN transaction_purpose TEXT;');
   return sqlite;
 }
 
@@ -114,7 +115,7 @@ describe('historical financial reconciliation', () => {
         totalCandidates: 4,
         safeToMaterialize: true,
         counts: { ordersWithoutConfirmation: 1, manualPricedKeys: 1, renewalKeys: 1, upgradeKeys: 1 },
-        classifications: { automaticallyReconcilable: 0, requiresOwnerEvidence: 3, openingBalanceCandidates: 1, excludedByRule: 1 },
+        classifications: { historicalPaymentKnownDate: 0, historicalPaymentUnknown: 1, requiresOwnerReview: 4, excludedNonfinancial: 1 },
       });
       expect(await database.prepare('SELECT COUNT(*) AS total FROM financial_reconciliation_items').first('total')).toBe(0);
       await expect(prepareFinancialReconciliationQueue(manager, orm)).resolves.toMatchObject({ itemsAdded: 4 });
@@ -130,11 +131,11 @@ describe('historical financial reconciliation', () => {
       const updated = await updateFinancialReconciliationDraft({
         actor: manager,
         itemId: draft.id,
-        proposedTreatment: 'opening_balance_candidate',
+        proposedTreatment: 'historical_payment_known_date',
         proposedAmountIlsMinor: 10000,
         notes: 'Bank evidence requested from owner',
       }, orm);
-      expect(updated).toMatchObject({ proposedTreatment: 'opening_balance_candidate', proposedAmountIlsMinor: 10000 });
+      expect(updated).toMatchObject({ proposedTreatment: 'historical_payment_known_date', proposedAmountIlsMinor: 10000 });
       expect(await database.prepare("SELECT COUNT(*) FROM financial_reconciliation_events WHERE action = 'draft_updated'").first('COUNT(*)')).toBe(1);
       const retry = await prepareFinancialReconciliationQueue(owner, orm);
       expect(retry).toMatchObject({ queueBefore: 4, queueAfter: 4, itemsAdded: 0 });
@@ -143,7 +144,7 @@ describe('historical financial reconciliation', () => {
     } finally { (database as any).close(); }
   });
 
-  it('keeps owner decisions immutable and creates one opening balance with before/after metadata', async () => {
+  it('keeps owner decisions immutable and recognizes only a known-date historical adjustment', async () => {
     const { database, orm } = await fixture();
     try {
       await prepareFinancialReconciliationQueue(owner, orm);
@@ -152,9 +153,10 @@ describe('historical financial reconciliation', () => {
       const manualItem = queue.items.find((item: any) => item.sourceType === 'registration_key') as any;
       const excluded = await resolveFinancialReconciliationItem({ actor: owner, itemId: manualItem.id, decision: 'excluded', reason: 'No payment evidence exists' }, orm);
       expect(excluded).toMatchObject({ idempotent: false, item: { status: 'excluded' }, ledgerEntry: null });
-      const approved = await resolveFinancialReconciliationItem({ actor: owner, itemId: orderItem.id, decision: 'approved_opening_balance', reason: 'Owner verified the bank statement', effectiveDate: '2026-09-01', amountIlsMinor: 25000 }, orm);
-      expect(approved).toMatchObject({ idempotent: false, item: { status: 'approved_opening_balance' }, ledgerEntry: { entryType: 'opening_balance', baseAmountIlsMinor: 25000 } });
-      const retry = await resolveFinancialReconciliationItem({ actor: owner, itemId: orderItem.id, decision: 'approved_opening_balance', reason: 'Retry', effectiveDate: '2026-09-01', amountIlsMinor: 25000 }, orm);
+      await updateFinancialReconciliationDraft({ actor: manager, itemId: orderItem.id, proposedTreatment: 'historical_payment_known_date', proposedAmountIlsMinor: 25000, notes: 'Owner supplied dated bank evidence' }, orm);
+      const approved = await resolveFinancialReconciliationItem({ actor: owner, itemId: orderItem.id, decision: 'approved_adjustment', reason: 'Owner verified the bank statement and payment date', effectiveDate: '2026-09-01', amountIlsMinor: 25000 }, orm);
+      expect(approved).toMatchObject({ idempotent: false, item: { status: 'approved_adjustment' }, ledgerEntry: { entryType: 'adjustment', baseAmountIlsMinor: 25000 } });
+      const retry = await resolveFinancialReconciliationItem({ actor: owner, itemId: orderItem.id, decision: 'approved_adjustment', reason: 'Retry', effectiveDate: '2026-09-01', amountIlsMinor: 25000 }, orm);
       expect(retry.idempotent).toBe(true);
       expect(await database.prepare("SELECT COUNT(*) FROM financial_ledger_entries WHERE source_type = 'historical_reconciliation'").first('COUNT(*)')).toBe(1);
       const metadata = JSON.parse(String(await database.prepare('SELECT resolution_metadata FROM financial_reconciliation_items WHERE id = ?').bind(orderItem.id).first('resolution_metadata')));
@@ -165,20 +167,20 @@ describe('historical financial reconciliation', () => {
       expect(await database.prepare('SELECT price FROM registrationKeys WHERE id = 10').first('price')).toBe(200);
 
       const renewalItem = queue.items.find((item: any) => item.sourceType === 'renewal_key') as any;
+      await updateFinancialReconciliationDraft({ actor: manager, itemId: renewalItem.id, proposedTreatment: 'historical_payment_known_date', proposedAmountIlsMinor: 10000, notes: 'Dated renewal evidence supplied' }, orm);
       await database.prepare("INSERT INTO financial_period_locks (month, locked_by_admin_id, note) VALUES ('2026-07', 1, 'closed')").run();
       const adjusted = await resolveFinancialReconciliationItem({ actor: owner, itemId: renewalItem.id, decision: 'approved_adjustment', reason: 'Owner verified renewal cash evidence', effectiveDate: '2026-07-01', amountIlsMinor: 10000 }, orm);
       expect(adjusted).toMatchObject({ item: { status: 'approved_adjustment' }, ledgerEntry: { entryType: 'adjustment', baseAmountIlsMinor: 10000 } });
     } finally { (database as any).close(); }
   });
 
-  it('rejects owner opening balances in locked periods and direct ledger bypasses', async () => {
+  it('rejects ordinary historic opening balances and direct ledger bypasses', async () => {
     const { database, orm } = await fixture();
     try {
       await prepareFinancialReconciliationQueue(owner, orm);
       const queue = await getFinancialReconciliationDashboard('unresolved', orm);
       const item = queue.items[0] as any;
-      await database.prepare("INSERT INTO financial_period_locks (month, locked_by_admin_id, note) VALUES ('2026-08', 1, 'closed')").run();
-      await expect(resolveFinancialReconciliationItem({ actor: owner, itemId: item.id, decision: 'approved_opening_balance', reason: 'Verified evidence', effectiveDate: '2026-08-01', amountIlsMinor: 100 }, orm)).rejects.toThrow(/period is locked/i);
+      await expect(resolveFinancialReconciliationItem({ actor: owner, itemId: item.id, decision: 'approved_opening_balance', reason: 'Verified evidence', effectiveDate: '2026-08-01', amountIlsMinor: 100 }, orm)).rejects.toThrow(/Opening balances are not ordinary historic revenue/i);
       await expect(database.prepare("UPDATE financial_reconciliation_items SET status = 'excluded' WHERE id = ?").bind(item.id).run()).rejects.toThrow(/terminal_event_required/);
       await expect(database.prepare(`INSERT INTO financial_ledger_entries
         (entry_type, status, effective_at, reporting_month, amount_minor, currency, base_amount_ils_minor, source_type, source_reference, created_by_type, approved_by_type, approved_at)

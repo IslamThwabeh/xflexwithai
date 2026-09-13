@@ -35,6 +35,7 @@ async function fixture() {
   sqlite.exec('CREATE TABLE schema_migrations (migration_name TEXT NOT NULL UNIQUE, source TEXT NOT NULL, notes TEXT, applied_at TEXT);');
   sqlite.exec(foundation);
   sqlite.exec(workflow);
+  sqlite.exec('ALTER TABLE financial_ledger_entries ADD COLUMN transaction_purpose TEXT;');
   sqlite.close();
   const database = await createLocalD1Database(filename);
   return { database, orm: drizzle(database) };
