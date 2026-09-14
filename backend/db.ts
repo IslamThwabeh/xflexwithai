@@ -17597,6 +17597,47 @@ export type UserTermsAcceptanceStatus = {
   latestAcceptance: UserTermsAcceptance | null;
 };
 
+type UserTermsAcceptanceStatusDependencies = {
+  loadLatestAcceptance: () => Promise<UserTermsAcceptance | null>;
+  loadClientMarker: () => Promise<boolean>;
+  loadGateSetting: () => Promise<string | null>;
+};
+
+export async function resolveUserTermsAcceptanceStatus(
+  dependencies: UserTermsAcceptanceStatusDependencies,
+): Promise<UserTermsAcceptanceStatus> {
+  const [latestAcceptance, gateSetting] = await Promise.all([
+    dependencies.loadLatestAcceptance(),
+    dependencies.loadGateSetting(),
+  ]);
+  const gateEnabled = gateSetting === "true";
+  const accepted = TERMS_ACCEPTANCE_POLICY === "any_recorded_version"
+    ? !!latestAcceptance
+    : latestAcceptance?.termsVersion === CURRENT_TERMS_VERSION;
+
+  if (accepted) {
+    // Acceptance is only recorded after client eligibility is established. Keep
+    // that invariant explicit so repeat status checks avoid the six-source
+    // entitlement lookup without weakening the gate for unaccepted accounts.
+    return {
+      gateEnabled,
+      isClient: true,
+      accepted: true,
+      requiresAcceptance: false,
+      latestAcceptance,
+    };
+  }
+
+  const isClient = await dependencies.loadClientMarker();
+  return {
+    gateEnabled,
+    isClient,
+    accepted: false,
+    requiresAcceptance: gateEnabled && isClient,
+    latestAcceptance,
+  };
+}
+
 /**
  * A client relationship can be created by checkout, migration, or an assigned
  * key. Acceptance is therefore account-level and must not depend on an order
@@ -17612,15 +17653,15 @@ export async function getUserTermsAcceptanceStatus(
   }
 
   const normalizedEmail = normalizeEmailAddress(email ?? "");
-  const [latestAcceptance, clientMarker, gateSetting] = await Promise.all([
-    db
+  return resolveUserTermsAcceptanceStatus({
+    loadLatestAcceptance: () => db
       .select()
       .from(userTermsAcceptances)
       .where(eq(userTermsAcceptances.userId, userId))
       .orderBy(desc(userTermsAcceptances.acceptedAt), desc(userTermsAcceptances.id))
       .limit(1)
       .then((rows) => rows[0] ?? null),
-    db
+    loadClientMarker: () => db
       .select({
         isClient: sql<number>`CASE WHEN
           EXISTS (SELECT 1 FROM packageSubscriptions ps WHERE ps.userId = ${userId})
@@ -17638,22 +17679,9 @@ export async function getUserTermsAcceptanceStatus(
       .from(users)
       .where(eq(users.id, userId))
       .limit(1)
-      .then((rows) => rows[0] ?? { isClient: 0 }),
-    getAdminSetting('terms_acceptance_gate_enabled'),
-  ]);
-
-  const gateEnabled = gateSetting === 'true';
-  const isClient = Number(clientMarker.isClient) === 1;
-  const accepted = TERMS_ACCEPTANCE_POLICY === "any_recorded_version"
-    ? !!latestAcceptance
-    : latestAcceptance?.termsVersion === CURRENT_TERMS_VERSION;
-  return {
-    gateEnabled,
-    isClient,
-    accepted,
-    requiresAcceptance: gateEnabled && isClient && !accepted,
-    latestAcceptance,
-  };
+      .then((rows) => Number(rows[0]?.isClient ?? 0) === 1),
+    loadGateSetting: () => getAdminSetting("terms_acceptance_gate_enabled"),
+  });
 }
 
 export async function recordUserTermsAcceptance(input: {
