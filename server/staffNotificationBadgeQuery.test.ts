@@ -17,16 +17,19 @@ const STAFF_NOTIFICATION_PRODUCTION_SHAPED_DDL = `
     metadata TEXT,
     isRead INTEGER NOT NULL DEFAULT 0,
     dedupe_key TEXT,
-    createdAt TEXT NOT NULL DEFAULT (datetime('now'))
+    createdAt TEXT NOT NULL DEFAULT (datetime('now')),
+    archivedAt TEXT,
+    archiveReason TEXT,
+    archiveBatchKey TEXT
   );
 
-  CREATE INDEX idx_staff_notif_actionUrl
-    ON staff_notifications(userId, isRead, actionUrl);
+  CREATE INDEX idx_staff_notif_active_badges
+    ON staff_notifications(userId, isRead, archivedAt, actionUrl);
 `;
 
 function insertNotification(
   database: Database.Database,
-  input: { userId: number; isRead: number; actionUrl: string | null },
+  input: { userId: number; isRead: number; actionUrl: string | null; archivedAt?: string },
 ) {
   database.prepare(`
     INSERT INTO staff_notifications (
@@ -35,9 +38,10 @@ function insertNotification(
       titleEn,
       titleAr,
       actionUrl,
-      isRead
-    ) VALUES (?, 'test', 'Test', 'اختبار', ?, ?)
-  `).run(input.userId, input.actionUrl, input.isRead);
+      isRead,
+      archivedAt
+    ) VALUES (?, 'test', 'Test', 'اختبار', ?, ?, ?)
+  `).run(input.userId, input.actionUrl, input.isRead, input.archivedAt ?? null);
 }
 
 function normalizeBadgeRows(rows: Array<{ actionUrl: string | null; count: unknown }>) {
@@ -63,6 +67,12 @@ describe("staff notification badge SQL contract", () => {
       insertNotification(database, { userId: 9, isRead: 0, actionUrl: "" });
       insertNotification(database, { userId: 9, isRead: 1, actionUrl: "/admin/support" });
       insertNotification(database, { userId: 10, isRead: 0, actionUrl: "/admin/support" });
+      insertNotification(database, {
+        userId: 9,
+        isRead: 0,
+        actionUrl: "/admin/support",
+        archivedAt: "2026-09-15T00:00:00.000Z",
+      });
 
       const rows = await buildUnreadStaffNotificationBadgeQuery(drizzle(database), 9);
 
@@ -90,7 +100,7 @@ describe("staff notification badge SQL contract", () => {
         .map((row: any) => String(row.detail))
         .join("\n");
 
-      expect(plan).toContain("idx_staff_notif_actionUrl");
+      expect(plan).toContain("idx_staff_notif_active_badges");
       expect(plan).not.toContain("SCAN staff_notifications");
     } finally {
       database.close();

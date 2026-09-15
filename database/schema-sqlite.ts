@@ -2913,12 +2913,21 @@ export const staffNotifications = sqliteTable("staff_notifications", {
   isRead: integer("isRead", { mode: 'boolean' }).default(false).notNull(),
   dedupeKey: text("dedupe_key"),
   createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
+  archivedAt: text("archivedAt"),
+  archiveReason: text("archiveReason"),
+  archiveBatchKey: text("archiveBatchKey"),
 }, (table) => ({
   userDedupeUnique: unique("uq_staff_notifications_user_dedupe_key").on(table.userId, table.dedupeKey),
   eventActionCreatedIdx: index("idx_staff_notif_event_action_created")
     .on(table.eventType, table.actionUrl, table.createdAt),
   userCreatedIdx: index("idx_staff_notif_user_created")
     .on(table.userId, table.createdAt),
+  activeBadgeIdx: index("idx_staff_notif_active_badges")
+    .on(table.userId, table.isRead, table.archivedAt, table.actionUrl),
+  archiveCandidateIdx: index("idx_staff_notif_archive_candidates")
+    .on(table.eventType, table.archivedAt, table.createdAt, table.id),
+  archiveBatchIdx: index("idx_staff_notif_archive_batch")
+    .on(table.archiveBatchKey, table.id),
 }));
 
 export type StaffNotification = typeof staffNotifications.$inferSelect;

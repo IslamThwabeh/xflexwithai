@@ -25322,7 +25322,10 @@ export async function getStaffNotifications(userId: number, limit = 50) {
   const db = await getDb();
   if (!db) return [];
   return db.select().from(staffNotifications)
-    .where(eq(staffNotifications.userId, userId))
+    .where(and(
+      eq(staffNotifications.userId, userId),
+      isNull(staffNotifications.archivedAt),
+    ))
     .orderBy(desc(staffNotifications.createdAt))
     .limit(limit);
 }
@@ -25332,7 +25335,11 @@ export async function getUnreadStaffNotificationCount(userId: number): Promise<n
   if (!db) return 0;
   const [result] = await db.select({ count: sql<number>`COUNT(*)` })
     .from(staffNotifications)
-    .where(and(eq(staffNotifications.userId, userId), eq(staffNotifications.isRead, false)));
+    .where(and(
+      eq(staffNotifications.userId, userId),
+      eq(staffNotifications.isRead, false),
+      isNull(staffNotifications.archivedAt),
+    ));
   return Number(result?.count ?? 0);
 }
 
@@ -25349,6 +25356,7 @@ export async function getUnreadStaffNotificationCountByRoute(userId: number): Pr
       eq(staffNotifications.userId, userId),
       eq(staffNotifications.isRead, false),
       sql`${staffNotifications.actionUrl} IS NOT NULL`,
+      isNull(staffNotifications.archivedAt),
     ))
     .groupBy(staffNotifications.actionUrl);
 
@@ -25384,6 +25392,7 @@ export function buildUnreadStaffNotificationBadgeQuery(
     .where(and(
       eq(staffNotifications.userId, userId),
       eq(staffNotifications.isRead, false),
+      isNull(staffNotifications.archivedAt),
     ))
     .groupBy(staffNotifications.actionUrl);
 }
@@ -25407,11 +25416,141 @@ export async function getUnreadStaffNotificationBadges(userId: number): Promise<
   return { total, byRoute };
 }
 
+export const STAFF_NOTIFICATION_ARCHIVE_EVENT_TYPES = [
+  "new_support_message",
+  "human_escalation",
+] as const;
+
+export const STAFF_NOTIFICATION_ARCHIVE_BATCH_LIMIT = 500;
+
+type StaffNotificationArchiveQueryDatabase = {
+  select: (fields: { id: typeof staffNotifications.id }) => any;
+};
+
+export function buildStaffNotificationArchiveCandidateQuery(
+  database: StaffNotificationArchiveQueryDatabase,
+  input: { cutoffIso: string; limit: number },
+) {
+  return database
+    .select({ id: staffNotifications.id })
+    .from(staffNotifications)
+    .where(and(
+      isNull(staffNotifications.archivedAt),
+      inArray(staffNotifications.eventType, [...STAFF_NOTIFICATION_ARCHIVE_EVENT_TYPES]),
+      lt(staffNotifications.createdAt, input.cutoffIso),
+    ))
+    .orderBy(asc(staffNotifications.createdAt), asc(staffNotifications.id))
+    .limit(input.limit);
+}
+
+export function buildStaffNotificationArchiveRollbackCandidateQuery(
+  database: StaffNotificationArchiveQueryDatabase,
+  input: { batchKey: string; limit: number },
+) {
+  return database
+    .select({ id: staffNotifications.id })
+    .from(staffNotifications)
+    .where(eq(staffNotifications.archiveBatchKey, input.batchKey))
+    .orderBy(asc(staffNotifications.id))
+    .limit(input.limit);
+}
+
+function validateStaffNotificationArchiveBatchInput(input: {
+  batchKey: string;
+  limit?: number;
+}) {
+  const batchKey = input.batchKey.trim();
+  if (!/^[a-z0-9][a-z0-9:_-]{7,119}$/i.test(batchKey)) {
+    throw new Error("Invalid staff notification archive batch key");
+  }
+  const limit = input.limit ?? STAFF_NOTIFICATION_ARCHIVE_BATCH_LIMIT;
+  if (!Number.isInteger(limit) || limit < 1 || limit > STAFF_NOTIFICATION_ARCHIVE_BATCH_LIMIT) {
+    throw new Error(`Archive batch limit must be between 1 and ${STAFF_NOTIFICATION_ARCHIVE_BATCH_LIMIT}`);
+  }
+  return { batchKey, limit };
+}
+
+export async function archiveStaffNotificationsBatch(input: {
+  cutoffIso: string;
+  batchKey: string;
+  archivedAt?: string;
+  limit?: number;
+}): Promise<{ candidateCount: number; archivedCount: number }> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const { batchKey, limit } = validateStaffNotificationArchiveBatchInput(input);
+  const cutoff = new Date(input.cutoffIso);
+  if (!Number.isFinite(cutoff.getTime()) || cutoff.toISOString() !== input.cutoffIso) {
+    throw new Error("Archive cutoff must be a canonical ISO timestamp");
+  }
+  const archivedAt = input.archivedAt ?? new Date().toISOString();
+  if (!Number.isFinite(new Date(archivedAt).getTime())) {
+    throw new Error("Archive timestamp must be a valid timestamp");
+  }
+
+  const candidates = await buildStaffNotificationArchiveCandidateQuery(db, {
+    cutoffIso: input.cutoffIso,
+    limit,
+  });
+  const candidateIds = candidates
+    .map((row: { id: number }) => Number(row.id))
+    .filter((id: number) => id > 0);
+  if (candidateIds.length === 0) return { candidateCount: 0, archivedCount: 0 };
+
+  const archived = await db
+    .update(staffNotifications)
+    .set({
+      archivedAt,
+      archiveReason: "routine_support_notification_older_than_30_days",
+      archiveBatchKey: batchKey,
+    })
+    .where(and(
+      inArray(staffNotifications.id, candidateIds),
+      isNull(staffNotifications.archivedAt),
+      inArray(staffNotifications.eventType, [...STAFF_NOTIFICATION_ARCHIVE_EVENT_TYPES]),
+      lt(staffNotifications.createdAt, input.cutoffIso),
+    ))
+    .returning({ id: staffNotifications.id });
+
+  return { candidateCount: candidateIds.length, archivedCount: archived.length };
+}
+
+export async function rollbackStaffNotificationArchiveBatch(input: {
+  batchKey: string;
+  limit?: number;
+}): Promise<{ restoredCount: number }> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const { batchKey, limit } = validateStaffNotificationArchiveBatchInput(input);
+  const candidates = await buildStaffNotificationArchiveRollbackCandidateQuery(db, {
+    batchKey,
+    limit,
+  });
+  const candidateIds = candidates
+    .map((row: { id: number }) => Number(row.id))
+    .filter((id: number) => id > 0);
+  if (candidateIds.length === 0) return { restoredCount: 0 };
+
+  const restored = await db
+    .update(staffNotifications)
+    .set({ archivedAt: null, archiveReason: null, archiveBatchKey: null })
+    .where(and(
+      inArray(staffNotifications.id, candidateIds),
+      eq(staffNotifications.archiveBatchKey, batchKey),
+    ))
+    .returning({ id: staffNotifications.id });
+  return { restoredCount: restored.length };
+}
+
 export async function markStaffNotificationRead(notificationId: number, userId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db.update(staffNotifications).set({ isRead: true })
-    .where(and(eq(staffNotifications.id, notificationId), eq(staffNotifications.userId, userId)));
+    .where(and(
+      eq(staffNotifications.id, notificationId),
+      eq(staffNotifications.userId, userId),
+      isNull(staffNotifications.archivedAt),
+    ));
 }
 
 export async function markStaffNotificationsReadByRoute(userId: number, actionUrl: string) {
@@ -25422,6 +25561,7 @@ export async function markStaffNotificationsReadByRoute(userId: number, actionUr
       eq(staffNotifications.userId, userId),
       eq(staffNotifications.isRead, false),
       eq(staffNotifications.actionUrl, actionUrl),
+      isNull(staffNotifications.archivedAt),
     ));
 }
 
@@ -25429,7 +25569,11 @@ export async function markAllStaffNotificationsRead(userId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db.update(staffNotifications).set({ isRead: true })
-    .where(and(eq(staffNotifications.userId, userId), eq(staffNotifications.isRead, false)));
+    .where(and(
+      eq(staffNotifications.userId, userId),
+      eq(staffNotifications.isRead, false),
+      isNull(staffNotifications.archivedAt),
+    ));
 }
 
 /**

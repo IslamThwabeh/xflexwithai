@@ -89,10 +89,10 @@ delete rows, or change the 30-day window returns to Phase 1 for re-evaluation.
 Scope:
 
 1. Add nullable `archivedAt`, `archiveReason`, and `archiveBatchKey` columns to
-   `staff_notifications` in schema definitions and a new additive migration.
-2. Add an index designed for active badge access, validated by production-shaped
-   `EXPLAIN QUERY PLAN`. The final column order must be chosen from fixture plans,
-   not assumed in advance.
+   `staff_notifications` in schema definitions and an additive migration.
+2. Add separately deployable indexes for active badge access, archive-candidate
+   selection, and batch-key rollback, validated by production-shaped `EXPLAIN
+   QUERY PLAN`. Separating the migrations permits one index build per UTC day.
 3. Make the normal notification list and combined badge query exclude archived
    rows. Existing read/unread behavior inside the active set remains exact.
 4. Add a bounded archive-candidate query and mutation helper accepting cutoff,
@@ -162,19 +162,33 @@ Phase 4 blocks Phase 5 on any unexplained difference.
 
 ## Phase 5 — Deployment, migration, and controlled backfill
 
-### Phase 5A — Schema and application release
+### Phase 5A — Archive fields, active index, and application release
 
 1. Re-measure UTC-day D1 reads/writes and confirm the write-budget gate.
 2. Verify Cloudflare identity, production database, branch, and clean commit.
 3. Capture a Time Travel bookmark and pre-migration aggregate counts.
-4. Apply the additive migration first; old code safely ignores nullable columns.
+4. Apply migration 115 first; old code safely ignores nullable columns.
 5. Verify columns, indexes, migration ledger, and production query plans.
 6. Deploy the Worker. Deploy Pages only if Phase 3 added archive UI.
 7. Smoke-test health, database connectivity, authenticated badge/list behavior,
    mark-read actions, support-message notification creation, and email behavior.
-8. Stop for the remainder of the UTC day. Do not backfill historical rows.
+8. Stop for the remainder of the UTC day. Do not deploy the candidate index or
+   backfill historical rows.
 
-### Phase 5B — Reversible archive backfill on a later UTC day
+### Phase 5B — Archive-candidate index on a later UTC day
+
+1. Re-run the write-budget gate and capture a fresh Time Travel bookmark.
+2. Apply migration 116, verify its ledger entry and `EXPLAIN QUERY PLAN`, then
+   stop for the remainder of the UTC day.
+3. Do not archive historical rows on the index-creation day.
+
+### Phase 5C — Rollback index on a third UTC day
+
+1. Re-run the write-budget gate and capture a fresh Time Travel bookmark.
+2. Apply migration 117 and verify batch-key rollback uses the named index.
+3. Stop for the remainder of the UTC day and do not archive historical rows.
+
+### Phase 5D — Reversible archive backfill on a fourth UTC day
 
 1. Re-run the write-budget gate and capture a fresh Time Travel bookmark.
 2. Preview candidate count and event-type distribution; it must reconcile to the
