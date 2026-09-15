@@ -111,9 +111,8 @@ Scope:
 
 1. Add a paginated, newest-first archive endpoint restricted to authorized staff.
    It returns archived rows separately and never mixes them into active badges.
-2. Add a small Archive section to the staff notification page if product review
-   confirms staff need self-service history; otherwise retain API-only recovery
-   for the first release and avoid a Pages deployment.
+2. Add a small Archive section to the staff notification page so authorized staff
+   retain self-service access to preserved history.
 3. Introduce a support-specific coalescing key derived from conversation ID.
    Generic notification deduplication must retain its existing insert-once
    behavior.
@@ -188,7 +187,13 @@ Phase 4 blocks Phase 5 on any unexplained difference.
 2. Apply migration 117 and verify batch-key rollback uses the named index.
 3. Stop for the remainder of the UTC day and do not archive historical rows.
 
-### Phase 5D — Reversible archive backfill on a fourth UTC day
+### Phase 5D — Archive-history index on a fourth UTC day
+
+1. Re-run the write-budget gate and capture a fresh Time Travel bookmark.
+2. Apply migration 118 and verify paginated history uses the named index.
+3. Stop for the remainder of the UTC day and do not archive historical rows.
+
+### Phase 5E — Reversible archive backfill on a fifth UTC day
 
 1. Re-run the write-budget gate and capture a fresh Time Travel bookmark.
 2. Preview candidate count and event-type distribution; it must reconcile to the

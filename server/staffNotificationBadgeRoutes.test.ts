@@ -7,6 +7,7 @@ vi.mock("../backend/db", async () => {
     getAdminByEmail: vi.fn(),
     hasAnyRole: vi.fn(),
     getUnreadStaffNotificationBadges: vi.fn(),
+    getArchivedStaffNotifications: vi.fn(),
   };
 });
 
@@ -42,6 +43,9 @@ describe("staff notification badge route", () => {
       total: 5,
       byRoute: { "/admin/support": 3, "/admin/orders": 2 },
     });
+    vi.mocked(db.getArchivedStaffNotifications).mockResolvedValue({
+      items: [], total: 0, limit: 25, offset: 0,
+    });
   });
 
   it("returns the combined badge response for authorized staff", async () => {
@@ -59,5 +63,18 @@ describe("staff notification badge route", () => {
       code: "FORBIDDEN",
     });
     expect(db.getUnreadStaffNotificationBadges).not.toHaveBeenCalled();
+  });
+
+  it("returns bounded archive history for authorized staff", async () => {
+    await expect(createCaller().staffNotifications.archive({ limit: 25, offset: 50 }))
+      .resolves.toEqual({ items: [], total: 0, limit: 25, offset: 0 });
+    expect(db.getArchivedStaffNotifications).toHaveBeenCalledWith(9, 25, 50);
+  });
+
+  it("retains staff authorization on archive history", async () => {
+    vi.mocked(db.hasAnyRole).mockResolvedValue(false);
+    await expect(createCaller().staffNotifications.archive({ limit: 25, offset: 0 }))
+      .rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(db.getArchivedStaffNotifications).not.toHaveBeenCalled();
   });
 });

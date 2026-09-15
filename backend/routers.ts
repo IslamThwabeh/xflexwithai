@@ -5704,6 +5704,7 @@ export const appRouter = router({
             titleAr: `طلب تحويل لموظف من ${ctx.user.name || ctx.user.email}`,
             contentEn: 'A student asked to speak with a human support agent in chat.',
             contentAr: 'طالب طلب التحدث مع موظف دعم داخل المحادثة.',
+            coalesceKey: `support_conversation:${conv.id}`,
             metadata: { userId: ctx.user.id, conversationId: conv.id },
           });
           humanEscalationNotified = true;
@@ -5773,6 +5774,7 @@ export const appRouter = router({
                 contentEn: `The support assistant requested human review (${aiDecision.escalationReason}).`,
                 contentAr: `طلب المساعد الذكي مراجعة بشرية (${aiDecision.escalationReason}).`,
                 actionUrl: `/admin/support?conversationId=${conv.id}`,
+                coalesceKey: `support_conversation:${conv.id}`,
                 metadata: { userId: ctx.user.id, conversationId: conv.id },
               });
               humanEscalationNotified = true;
@@ -5808,6 +5810,7 @@ export const appRouter = router({
             contentEn: supportEmailContent,
             contentAr: supportEmailContent,
             actionUrl: supportActionUrl,
+            coalesceKey: `support_conversation:${conv.id}`,
             metadata: { userId: ctx.user.id, conversationId: conv.id },
           });
         }
@@ -5839,6 +5842,7 @@ export const appRouter = router({
         titleAr: `طلب تحويل لموظف من ${ctx.user.name || ctx.user.email}`,
         contentEn: 'A student has requested to speak with a human support agent.',
         contentAr: 'طالب يطلب التحدث مع موظف دعم.',
+        coalesceKey: `support_conversation:${conv.id}`,
         metadata: { userId: ctx.user.id, conversationId: conv.id },
       });
 
@@ -12027,6 +12031,15 @@ ${qaText}`;
     list: supportStaffProcedure.query(async ({ ctx }) => {
       return db.getStaffNotifications(ctx.user.id);
     }),
+
+    archive: supportStaffProcedure
+      .input(z.object({
+        limit: z.number().int().min(1).max(50).default(25),
+        offset: z.number().int().min(0).max(100_000).default(0),
+      }))
+      .query(async ({ ctx, input }) => {
+        return db.getArchivedStaffNotifications(ctx.user.id, input.limit, input.offset);
+      }),
 
     unreadCount: supportStaffProcedure.query(async ({ ctx }) => {
       return { count: await db.getUnreadStaffNotificationCount(ctx.user.id) };

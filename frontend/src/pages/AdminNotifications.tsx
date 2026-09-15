@@ -13,7 +13,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Bell, Send, Loader2, Users, Inbox, CheckCheck, ExternalLink, Filter, Search, UserCheck, UserX, User, Mail, Info, ChevronDown, ChevronUp, MailCheck, MailX, Eye, Sparkles } from 'lucide-react';
+import { Bell, Send, Loader2, Users, Inbox, CheckCheck, ExternalLink, Filter, Search, UserCheck, UserX, User, Mail, Info, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, MailCheck, MailX, Eye, Sparkles, Archive as ArchiveIcon } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import { toast } from 'sonner';
 import { STAFF_NOTIFICATION_EVENTS, type StaffNotificationEventType } from '@shared/const';
@@ -39,6 +39,7 @@ const EMPTY_NOTIFICATION_DRAFT: NotificationDraft = {
 };
 
 const ADMIN_NOTIFICATION_EMAIL_RECIPIENT_LIMIT = 499;
+const STAFF_NOTIFICATION_ARCHIVE_PAGE_SIZE = 25;
 
 type RecommendationDeliveryStatus =
   | 'pending'
@@ -182,7 +183,8 @@ export default function AdminNotifications() {
   const isAdmin = !!adminCheck?.isAdmin;
   const requestedFeature = new URLSearchParams(window.location.search).get('feature');
   const requestedTemplate = FEATURE_NOTIFICATION_TEMPLATES.find((template) => template.featureId === requestedFeature);
-  const [tab, setTab] = useState<'alerts' | 'send'>(() => requestedTemplate ? 'send' : 'alerts');
+  const [tab, setTab] = useState<'alerts' | 'archive' | 'send'>(() => requestedTemplate ? 'send' : 'alerts');
+  const [archivePage, setArchivePage] = useState(1);
   const [form, setForm] = useState<NotificationDraft>(() => ({
     ...(requestedTemplate?.draft ?? EMPTY_NOTIFICATION_DRAFT),
   }));
@@ -197,7 +199,18 @@ export default function AdminNotifications() {
   const [, setLocation] = useLocation();
 
   // Staff alerts inbox
-  const { data: staffAlerts, isLoading: alertsLoading } = trpc.staffNotifications.list.useQuery(undefined, { refetchInterval: 120_000, refetchIntervalInBackground: false });
+  const { data: staffAlerts, isLoading: alertsLoading } = trpc.staffNotifications.list.useQuery(undefined, {
+    enabled: tab === 'alerts',
+    refetchInterval: 120_000,
+    refetchIntervalInBackground: false,
+  });
+  const { data: archivedAlerts, isLoading: archiveLoading, isFetching: archiveFetching } = trpc.staffNotifications.archive.useQuery(
+    {
+      limit: STAFF_NOTIFICATION_ARCHIVE_PAGE_SIZE,
+      offset: (archivePage - 1) * STAFF_NOTIFICATION_ARCHIVE_PAGE_SIZE,
+    },
+    { enabled: tab === 'archive', retry: false },
+  );
   const markRead = trpc.staffNotifications.markRead.useMutation({ onSuccess: () => utils.staffNotifications.invalidate() });
   const markAllRead = trpc.staffNotifications.markAllRead.useMutation({ onSuccess: () => utils.staffNotifications.invalidate() });
   const utils = trpc.useUtils();
@@ -313,6 +326,10 @@ export default function AdminNotifications() {
   );
 
   const unreadCount = (staffAlerts ?? []).filter((a: any) => !a.isRead).length;
+  const archiveTotalPages = Math.max(
+    1,
+    Math.ceil((archivedAlerts?.total ?? 0) / STAFF_NOTIFICATION_ARCHIVE_PAGE_SIZE),
+  );
 
   return (
     <DashboardLayout>
@@ -340,6 +357,16 @@ export default function AdminNotifications() {
                 {unreadCount}
               </span>
             )}
+          </button>
+          <button onClick={() => setTab('archive')}
+            className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors flex items-center gap-2 ${
+              tab === 'archive'
+                ? 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border-b-2 border-slate-500'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <ArchiveIcon className="w-4 h-4" />
+            {isRtl ? 'الأرشيف' : 'Archive'}
           </button>
           {isAdmin && (
             <button onClick={() => setTab('send')}
@@ -447,6 +474,85 @@ export default function AdminNotifications() {
                     </div>
                   );
                 })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Tab: Archived staff alerts (read-only history) ── */}
+        {tab === 'archive' && (
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="font-semibold flex items-center gap-2">
+                  <ArchiveIcon className="w-4 h-4" />
+                  {isRtl ? 'سجل التنبيهات المؤرشفة' : 'Archived alert history'}
+                </h2>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {isRtl
+                    ? 'سجل للعرض فقط؛ تبقى المحادثات والرسائل الأصلية محفوظة.'
+                    : 'Read-only history; the original conversations and messages remain preserved.'}
+                </p>
+              </div>
+              <Badge variant="outline">
+                {isRtl ? `${archivedAlerts?.total ?? 0} مؤرشف` : `${archivedAlerts?.total ?? 0} archived`}
+              </Badge>
+            </div>
+
+            {archiveLoading ? (
+              <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin" /></div>
+            ) : !archivedAlerts?.items.length ? (
+              <div className="text-center py-12 text-muted-foreground border rounded-lg">
+                <ArchiveIcon className="w-10 h-10 mx-auto mb-3 text-gray-300" />
+                <p>{isRtl ? 'لا توجد تنبيهات مؤرشفة' : 'No archived alerts'}</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {archivedAlerts.items.map((alert: any) => {
+                  const eventDef = STAFF_NOTIFICATION_EVENTS[alert.eventType as StaffNotificationEventType];
+                  return (
+                    <div key={alert.id} className="bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-700 rounded-lg p-4 flex items-start gap-3">
+                      <ArchiveIcon className="w-4 h-4 mt-1 shrink-0 text-slate-400" />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-sm font-medium">{isRtl ? alert.titleAr : alert.titleEn}</p>
+                          {eventDef && <Badge variant="outline" className="text-[10px]">{isRtl ? eventDef.labelAr : eventDef.labelEn}</Badge>}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-0.5">{isRtl ? alert.contentAr : alert.contentEn}</p>
+                        <p className="text-[11px] text-gray-400 mt-1">
+                          {isRtl ? 'تاريخ التنبيه: ' : 'Alerted: '}
+                          {new Date(alert.createdAt).toLocaleString(isRtl ? 'ar-EG' : 'en-US')}
+                          {' · '}
+                          {isRtl ? 'تاريخ الأرشفة: ' : 'Archived: '}
+                          {new Date(alert.archivedAt).toLocaleString(isRtl ? 'ar-EG' : 'en-US')}
+                        </p>
+                      </div>
+                      {alert.actionUrl && (
+                        <button
+                          onClick={() => setLocation(alert.actionUrl)}
+                          className="w-7 h-7 rounded-md hover:bg-gray-100 dark:hover:bg-slate-700 flex items-center justify-center transition shrink-0"
+                          title={isRtl ? 'انتقل إلى السجل الأصلي' : 'Open source record'}
+                        >
+                          <ExternalLink className="w-3.5 h-3.5 text-gray-500" />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {(archivedAlerts?.total ?? 0) > STAFF_NOTIFICATION_ARCHIVE_PAGE_SIZE && (
+              <div className="flex items-center justify-center gap-3 pt-2">
+                <Button variant="outline" size="sm" disabled={archivePage <= 1 || archiveFetching} onClick={() => setArchivePage(page => Math.max(1, page - 1))}>
+                  {isRtl ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+                </Button>
+                <span className="text-xs text-muted-foreground">
+                  {isRtl ? `الصفحة ${archivePage} من ${archiveTotalPages}` : `Page ${archivePage} of ${archiveTotalPages}`}
+                </span>
+                <Button variant="outline" size="sm" disabled={archivePage >= archiveTotalPages || archiveFetching} onClick={() => setArchivePage(page => Math.min(archiveTotalPages, page + 1))}>
+                  {isRtl ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                </Button>
               </div>
             )}
           </div>

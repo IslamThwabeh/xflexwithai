@@ -263,6 +263,7 @@ describe("support chat staff notifications", () => {
       expect(notifyStaffByEvent).toHaveBeenCalledWith(
         "human_escalation",
         expect.objectContaining({
+          coalesceKey: "support_conversation:10",
           metadata: { userId: 123, conversationId: 10 },
         }),
       );
@@ -299,6 +300,7 @@ describe("support chat staff notifications", () => {
         "new_support_message",
         expect.objectContaining({
           actionUrl: "/admin/support?conversationId=10",
+          coalesceKey: "support_conversation:10",
           contentEn: expect.stringContaining("Client: Student User"),
           metadata: { userId: 123, conversationId: 10 },
         }),
@@ -461,7 +463,10 @@ describe("support chat staff notifications", () => {
     expect(notifyStaffByEvent).toHaveBeenCalledTimes(1);
     expect(notifyStaffByEvent).toHaveBeenCalledWith(
       "human_escalation",
-      expect.objectContaining({ metadata: { userId: 123, conversationId: 10 } }),
+      expect.objectContaining({
+        coalesceKey: "support_conversation:10",
+        metadata: { userId: 123, conversationId: 10 },
+      }),
     );
   });
 
@@ -496,6 +501,7 @@ describe("support chat staff notifications", () => {
     expect(setNeedsHuman).toHaveBeenCalledWith(10, true);
     expect(notifyStaffByEvent).toHaveBeenCalledWith("human_escalation", expect.objectContaining({
       actionUrl: "/admin/support?conversationId=10",
+      coalesceKey: "support_conversation:10",
     }));
   });
 
@@ -542,6 +548,7 @@ describe("support chat staff notifications", () => {
     expect(notifyStaffByEvent).toHaveBeenCalledWith(
       "human_escalation",
       expect.objectContaining({
+        coalesceKey: "support_conversation:10",
         contentEn: expect.stringContaining("low_confidence"),
         metadata: { userId: 123, conversationId: 10 },
       }),
@@ -638,6 +645,7 @@ describe("support chat staff notifications", () => {
     expect(notifyStaffByEvent).toHaveBeenCalledWith(
       "human_escalation",
       expect.objectContaining({
+        coalesceKey: "support_conversation:10",
         metadata: { userId: 123, conversationId: 10 },
       }),
     );

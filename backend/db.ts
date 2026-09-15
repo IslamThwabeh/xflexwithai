@@ -25330,6 +25330,39 @@ export async function getStaffNotifications(userId: number, limit = 50) {
     .limit(limit);
 }
 
+export async function getArchivedStaffNotifications(
+  userId: number,
+  limit = 25,
+  offset = 0,
+): Promise<{ items: StaffNotification[]; total: number; limit: number; offset: number }> {
+  const db = await getDb();
+  if (!db) return { items: [], total: 0, limit, offset };
+
+  const [items, countRows] = await Promise.all([
+    db.select().from(staffNotifications)
+      .where(and(
+        eq(staffNotifications.userId, userId),
+        isNotNull(staffNotifications.archivedAt),
+      ))
+      .orderBy(desc(staffNotifications.archivedAt), desc(staffNotifications.id))
+      .limit(limit)
+      .offset(offset),
+    db.select({ count: sql<number>`COUNT(*)` })
+      .from(staffNotifications)
+      .where(and(
+        eq(staffNotifications.userId, userId),
+        isNotNull(staffNotifications.archivedAt),
+      )),
+  ]);
+
+  return {
+    items,
+    total: Number(countRows[0]?.count ?? 0),
+    limit,
+    offset,
+  };
+}
+
 export async function getUnreadStaffNotificationCount(userId: number): Promise<number> {
   const db = await getDb();
   if (!db) return 0;
@@ -25576,6 +25609,75 @@ export async function markAllStaffNotificationsRead(userId: number) {
     ));
 }
 
+type CoalescedStaffNotificationValue = InsertStaffNotification & {
+  userId: number;
+  eventType: StaffNotificationEventType;
+  titleEn: string;
+  titleAr: string;
+  dedupeKey: string;
+  createdAt: string;
+};
+
+export async function upsertCoalescedStaffNotification(
+  database: any,
+  value: CoalescedStaffNotificationValue,
+): Promise<Array<{ userId: number }>> {
+  const updateValues = {
+    eventType: sql<string>`CASE
+      WHEN ${staffNotifications.eventType} = 'human_escalation'
+        AND ${value.eventType} = 'new_support_message'
+      THEN ${staffNotifications.eventType}
+      ELSE ${value.eventType}
+    END`,
+    titleEn: sql<string>`CASE
+      WHEN ${staffNotifications.eventType} = 'human_escalation'
+        AND ${value.eventType} = 'new_support_message'
+      THEN ${staffNotifications.titleEn}
+      ELSE ${value.titleEn}
+    END`,
+    titleAr: sql<string>`CASE
+      WHEN ${staffNotifications.eventType} = 'human_escalation'
+        AND ${value.eventType} = 'new_support_message'
+      THEN ${staffNotifications.titleAr}
+      ELSE ${value.titleAr}
+    END`,
+    contentEn: value.contentEn,
+    contentAr: value.contentAr,
+    actionUrl: value.actionUrl,
+    metadata: value.metadata,
+    isRead: false,
+    archivedAt: null,
+    archiveReason: null,
+    archiveBatchKey: null,
+    createdAt: value.createdAt,
+  };
+  let affected = await database.update(staffNotifications)
+    .set(updateValues)
+    .where(and(
+      eq(staffNotifications.userId, value.userId),
+      eq(staffNotifications.dedupeKey, value.dedupeKey),
+    ))
+    .returning({ userId: staffNotifications.userId });
+  if (affected.length === 0) {
+    affected = await database.insert(staffNotifications)
+      .values(value)
+      .onConflictDoNothing()
+      .returning({ userId: staffNotifications.userId });
+  }
+  // A concurrent insert may win after the first update. Re-run the update so
+  // the newest support activity still controls the coalesced task.
+  if (affected.length === 0) {
+    affected = await database.update(staffNotifications)
+      .set(updateValues)
+      .where(and(
+        eq(staffNotifications.userId, value.userId),
+        eq(staffNotifications.dedupeKey, value.dedupeKey),
+      ))
+      .returning({ userId: staffNotifications.userId });
+  }
+  return affected;
+}
+
 /**
  * Core dispatcher: notifies relevant admin + staff by event type.
  * Creates in-portal notifications, and sends email to offline users who have email enabled.
@@ -25589,6 +25691,7 @@ export async function notifyStaffByEvent(
     emailActionLabelEn?: string;
     actionUrl?: string;
     dedupeKey?: string;
+    coalesceKey?: string;
     metadata?: Record<string, unknown>;
   },
 ) {
@@ -25649,6 +25752,7 @@ export async function notifyStaffByEvent(
 
   // Create in-portal notifications for each target
   const now = new Date().toISOString();
+  const dedupeKey = data.coalesceKey ?? data.dedupeKey ?? null;
   const notifValues = targetUserIds.map(userId => ({
     userId,
     eventType,
@@ -25658,12 +25762,26 @@ export async function notifyStaffByEvent(
     contentAr: data.contentAr,
     actionUrl,
     metadata: metadataStr,
-    dedupeKey: data.dedupeKey ?? null,
+    dedupeKey,
     createdAt: now,
   }));
-  const insertedNotifications = data.dedupeKey
-    ? await db.insert(staffNotifications).values(notifValues).onConflictDoNothing().returning({ userId: staffNotifications.userId })
-    : (await db.insert(staffNotifications).values(notifValues), targetUserIds.map((userId) => ({ userId })));
+  const insertedNotifications: Array<{ userId: number }> = [];
+  if (data.coalesceKey) {
+    for (const value of notifValues) {
+      insertedNotifications.push(...await upsertCoalescedStaffNotification(
+        db,
+        value as CoalescedStaffNotificationValue,
+      ));
+    }
+  } else if (data.dedupeKey) {
+    insertedNotifications.push(...await db.insert(staffNotifications)
+      .values(notifValues)
+      .onConflictDoNothing()
+      .returning({ userId: staffNotifications.userId }));
+  } else {
+    await db.insert(staffNotifications).values(notifValues);
+    insertedNotifications.push(...targetUserIds.map((userId) => ({ userId })));
+  }
   if (insertedNotifications.length === 0) return;
   const insertedTargetUserIds = insertedNotifications.map((row) => row.userId);
 

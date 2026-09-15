@@ -2928,6 +2928,8 @@ export const staffNotifications = sqliteTable("staff_notifications", {
     .on(table.eventType, table.archivedAt, table.createdAt, table.id),
   archiveBatchIdx: index("idx_staff_notif_archive_batch")
     .on(table.archiveBatchKey, table.id),
+  archiveHistoryIdx: index("idx_staff_notif_archive_history")
+    .on(table.userId, table.archivedAt, table.id),
 }));
 
 export type StaffNotification = typeof staffNotifications.$inferSelect;
