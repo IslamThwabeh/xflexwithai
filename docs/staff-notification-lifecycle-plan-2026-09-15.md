@@ -159,6 +159,20 @@ Required fixture reconciliation:
 
 Phase 4 blocks Phase 5 on any unexplained difference.
 
+### Phase 4 verification result — 2026-09-15
+
+- PASS: 48 focused tests across nine notification, support, archive, badge, and
+  D1 hot-path suites.
+- PASS: 192 tests across the full critical-cycle suite.
+- PASS: TypeScript check, Worker production build, and full Pages/application
+  production build.
+- Migration fixtures preserve every legacy row and value, add the four expected
+  indexes, and contain no destructive notification-table SQL.
+- Archive fixtures reconcile original total = active + archived exactly; rollback
+  restores only its selected batch while preserving notification content,
+  metadata, source identifiers, and read state.
+- No production migration, backfill, deletion, or deployment occurred in Phase 4.
+
 ## Phase 5 — Deployment, migration, and controlled backfill
 
 ### Phase 5A — Archive fields, active index, and application release

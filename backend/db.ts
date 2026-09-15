@@ -25503,14 +25503,17 @@ function validateStaffNotificationArchiveBatchInput(input: {
   return { batchKey, limit };
 }
 
-export async function archiveStaffNotificationsBatch(input: {
+export type StaffNotificationArchiveBatchInput = {
   cutoffIso: string;
   batchKey: string;
   archivedAt?: string;
   limit?: number;
-}): Promise<{ candidateCount: number; archivedCount: number }> {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
+};
+
+export async function archiveStaffNotificationsBatchWithDatabase(
+  database: any,
+  input: StaffNotificationArchiveBatchInput,
+): Promise<{ candidateCount: number; archivedCount: number }> {
   const { batchKey, limit } = validateStaffNotificationArchiveBatchInput(input);
   const cutoff = new Date(input.cutoffIso);
   if (!Number.isFinite(cutoff.getTime()) || cutoff.toISOString() !== input.cutoffIso) {
@@ -25521,7 +25524,7 @@ export async function archiveStaffNotificationsBatch(input: {
     throw new Error("Archive timestamp must be a valid timestamp");
   }
 
-  const candidates = await buildStaffNotificationArchiveCandidateQuery(db, {
+  const candidates = await buildStaffNotificationArchiveCandidateQuery(database, {
     cutoffIso: input.cutoffIso,
     limit,
   });
@@ -25530,7 +25533,7 @@ export async function archiveStaffNotificationsBatch(input: {
     .filter((id: number) => id > 0);
   if (candidateIds.length === 0) return { candidateCount: 0, archivedCount: 0 };
 
-  const archived = await db
+  const archived = await database
     .update(staffNotifications)
     .set({
       archivedAt,
@@ -25548,14 +25551,25 @@ export async function archiveStaffNotificationsBatch(input: {
   return { candidateCount: candidateIds.length, archivedCount: archived.length };
 }
 
-export async function rollbackStaffNotificationArchiveBatch(input: {
-  batchKey: string;
-  limit?: number;
-}): Promise<{ restoredCount: number }> {
+export async function archiveStaffNotificationsBatch(
+  input: StaffNotificationArchiveBatchInput,
+): Promise<{ candidateCount: number; archivedCount: number }> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
+  return archiveStaffNotificationsBatchWithDatabase(db, input);
+}
+
+export type StaffNotificationArchiveRollbackInput = {
+  batchKey: string;
+  limit?: number;
+};
+
+export async function rollbackStaffNotificationArchiveBatchWithDatabase(
+  database: any,
+  input: StaffNotificationArchiveRollbackInput,
+): Promise<{ restoredCount: number }> {
   const { batchKey, limit } = validateStaffNotificationArchiveBatchInput(input);
-  const candidates = await buildStaffNotificationArchiveRollbackCandidateQuery(db, {
+  const candidates = await buildStaffNotificationArchiveRollbackCandidateQuery(database, {
     batchKey,
     limit,
   });
@@ -25564,7 +25578,7 @@ export async function rollbackStaffNotificationArchiveBatch(input: {
     .filter((id: number) => id > 0);
   if (candidateIds.length === 0) return { restoredCount: 0 };
 
-  const restored = await db
+  const restored = await database
     .update(staffNotifications)
     .set({ archivedAt: null, archiveReason: null, archiveBatchKey: null })
     .where(and(
@@ -25573,6 +25587,14 @@ export async function rollbackStaffNotificationArchiveBatch(input: {
     ))
     .returning({ id: staffNotifications.id });
   return { restoredCount: restored.length };
+}
+
+export async function rollbackStaffNotificationArchiveBatch(
+  input: StaffNotificationArchiveRollbackInput,
+): Promise<{ restoredCount: number }> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return rollbackStaffNotificationArchiveBatchWithDatabase(db, input);
 }
 
 export async function markStaffNotificationRead(notificationId: number, userId: number) {
