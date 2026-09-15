@@ -188,6 +188,40 @@ Phase 4 blocks Phase 5 on any unexplained difference.
 8. Stop for the remainder of the UTC day. Do not deploy the candidate index or
    backfill historical rows.
 
+#### Phase 5A deployment result — 2026-09-15
+
+- PASS: authenticated Cloudflare account `79e9ff531db92d17c6579430b86a5f3c`
+  and production D1 database `cf374361-2caa-4597-a38d-5cecced7827d` matched the
+  runbook.
+- Safety gate before migration: 3,494,789 rows read and 29,987 rows written in
+  the trailing 24 hours. Pre-migration notification count: 25,875.
+- Recovery bookmark before migration:
+  `00001259-0000062e-000050e7-4a749f0c90867428f6d58cb9acbb9945`.
+- Applied only `115_staff_notification_archiving.sql` (SHA-256
+  `6FB2961C6DDDD23C99CC134CABB15EA1CD2BA294E33ECD13D9BC4BAD957F304B`).
+  Migration bookmark:
+  `00001259-00000677-000050e7-6bfdcc93f7c35d9f90db09bbb82b2302`.
+- PASS: the ledger row exists exactly once; all 25,899 notifications observed at
+  final reconciliation remained active; zero rows had archive metadata; foreign
+  keys were clean; the active badge query used covering index
+  `idx_staff_notif_active_badges`.
+- Worker version: `f748d9ed-8ae7-42ae-adaa-be0ccc4b4c01`. All three schedules
+  were preserved; both health domains and D1 connectivity returned 200; anonymous
+  badge and archive access returned 401.
+- Pages deployment: `fbcc5700-1868-4653-b580-595a01302183` from commit
+  `39a8728`. Preview and production served the same 55,252-byte notification
+  bundle; private route headers remained `noindex, nofollow` and `private,
+  no-store`; the public site returned 200 after its canonical redirect.
+- Final bookmark:
+  `00001259-00000729-000050e7-758dc718c05f02b3b8fcf37cc015c3bd`.
+  Final trailing-24-hour usage was 3,696,603 rows read and 56,519 rows written.
+- A signed-in browser was not connected to the automation session, so the
+  authenticated visual walkthrough remains a manual follow-up. No production
+  notification, support-message, mark-read, email, archive, or rollback mutation
+  was triggered for smoke testing.
+- Stop rule active: no migration 116 and no historical archive backfill on this
+  UTC day.
+
 ### Phase 5B — Archive-candidate index on a later UTC day
 
 1. Re-run the write-budget gate and capture a fresh Time Travel bookmark.
