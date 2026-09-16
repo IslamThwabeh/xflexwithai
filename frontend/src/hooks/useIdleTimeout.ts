@@ -16,6 +16,25 @@ export const USER_ACTIVITY_EVENTS: (keyof WindowEventMap)[] = [
   "click",
 ];
 
+export const FRESH_LOGIN_ACTIVITY_KEY = "xflex:fresh-login-activity";
+
+export function markFreshLoginActivity(at: number = Date.now()) {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(FRESH_LOGIN_ACTIVITY_KEY, String(at));
+  } catch {
+    // Storage may be unavailable in private/restricted browser modes.
+  }
+}
+
+export function getInitialActivityAt(
+  now: number,
+  sharedActivityAt: number | null,
+  freshLoginActivityAt: number | null,
+): number {
+  return freshLoginActivityAt ?? sharedActivityAt ?? now;
+}
+
 export function getRemainingIdleDelay(
   lastActivityAt: number,
   now: number,
@@ -50,7 +69,9 @@ export function useIdleTimeout({
 }) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const warningTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastActivityAtRef = useRef(Date.now());
+  // Seeded by the initialization effect from explicit login, persisted genuine
+  // activity, or the current time only when neither exists.
+  const lastActivityAtRef = useRef(0);
   const lastBroadcastAtRef = useRef(0);
   const onIdleRef = useRef(onIdle);
   const onWarningRef = useRef(onWarning);
@@ -68,6 +89,17 @@ export function useIdleTimeout({
       return null;
     }
   }, [activityStorageKey]);
+
+  const consumeFreshLoginActivityAt = useCallback(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const value = Number(window.sessionStorage.getItem(FRESH_LOGIN_ACTIVITY_KEY));
+      window.sessionStorage.removeItem(FRESH_LOGIN_ACTIVITY_KEY);
+      return Number.isFinite(value) && value > 0 ? value : null;
+    } catch {
+      return null;
+    }
+  }, []);
 
   const resetTimer = useCallback((activityAt: number = Date.now()) => {
     lastActivityAtRef.current = Math.max(lastActivityAtRef.current, activityAt);
@@ -100,12 +132,18 @@ export function useIdleTimeout({
       return;
     }
 
-    // Mounting/reloading an authenticated app is itself a real interaction.
-    // Publish a fresh timestamp so an old value from a previous login cannot
-    // shorten the newly authenticated session.
-    const initialActivityAt = Date.now();
+    // A reload or restored tab is not user activity. Preserve the last genuine
+    // interaction across reloads, while an explicit successful login starts a
+    // fresh idle window.
+    const sharedActivityAt = readSharedActivityAt();
+    const freshLoginActivityAt = consumeFreshLoginActivityAt();
+    const initialActivityAt = getInitialActivityAt(
+      Date.now(),
+      sharedActivityAt,
+      freshLoginActivityAt,
+    );
     resetTimer(initialActivityAt);
-    if (activityStorageKey) {
+    if (activityStorageKey && (freshLoginActivityAt || !sharedActivityAt)) {
       lastBroadcastAtRef.current = initialActivityAt;
       try {
         window.localStorage.setItem(activityStorageKey, String(initialActivityAt));
@@ -113,7 +151,6 @@ export function useIdleTimeout({
         // Storage may be unavailable in private/restricted browser modes.
       }
     }
-    onActivityRef.current?.();
 
     const handleActivity = (event?: Event) => {
       if (event && "isTrusted" in event && !event.isTrusted) return;
@@ -145,14 +182,12 @@ export function useIdleTimeout({
     }
     window.addEventListener("storage", handleSharedActivity);
 
-    // Also reset when tab becomes visible again (prevents instant logout
-    // if the user switched tabs and came back within the window).
+    // Restoring a tab is not user activity. Recalculate from the last genuine
+    // local/shared interaction; an already-expired session logs out immediately.
     const handleVisibility = () => {
       if (document.visibilityState !== "visible") return;
       const latestSharedActivityAt = readSharedActivityAt();
-      resetTimer(latestSharedActivityAt ?? Date.now());
-      // Keep the server-side staff session aligned with the browser timer.
-      onActivityRef.current?.();
+      resetTimer(latestSharedActivityAt ?? lastActivityAtRef.current);
     };
     document.addEventListener("visibilitychange", handleVisibility);
 
@@ -165,5 +200,5 @@ export function useIdleTimeout({
       window.removeEventListener("storage", handleSharedActivity);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
-  }, [activityStorageKey, enabled, readSharedActivityAt, resetTimer, timeoutMs]);
+  }, [activityStorageKey, consumeFreshLoginActivityAt, enabled, readSharedActivityAt, resetTimer, timeoutMs]);
 }

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { Loader2 } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { markFreshLoginActivity } from "@/hooks/useIdleTimeout";
 
 const inputClass = "w-full px-4 py-3 rounded-xl bg-black/[0.03] border border-black/[0.08] text-[var(--color-xf-dark)] placeholder:text-black/25 focus:outline-none focus:ring-2 focus:ring-[var(--color-xf-primary)]/40 focus:border-[var(--color-xf-primary)]/40 transition-all";
 
@@ -17,6 +18,7 @@ export function LoginForm({ onSuccess, onRequireOtp, isAdmin = false }: { onSucc
         onRequireOtp?.(email, data?.message);
         return;
       }
+      markFreshLoginActivity();
       window.location.reload();
       onSuccess?.();
     },
@@ -27,6 +29,7 @@ export function LoginForm({ onSuccess, onRequireOtp, isAdmin = false }: { onSucc
 
   const adminLoginMutation = trpc.auth.adminLogin.useMutation({
     onSuccess: () => {
+      markFreshLoginActivity();
       window.location.reload();
       onSuccess?.();
     },
@@ -113,4 +116,3 @@ export function LoginForm({ onSuccess, onRequireOtp, isAdmin = false }: { onSucc
     </div>
   );
 }
-

@@ -9,6 +9,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { ArrowLeft, KeyRound, Loader2, Mail, ShieldCheck, Sparkles, TrendingUp } from "lucide-react";
 import { getStaffLandingPage } from "@shared/const";
+import { markFreshLoginActivity } from "@/hooks/useIdleTimeout";
 import CinematicPublicLayout from "@/components/public/CinematicPublicLayout";
 import { trackRegistrationStart } from "@/lib/analytics";
 
@@ -193,6 +194,7 @@ export default function Auth() {
 
     try {
       const result = await verifyLoginCode.mutateAsync({ email, code });
+      markFreshLoginActivity();
       if (result.isStaff) {
         window.location.href = getStaffLandingPage(result.staffRoles ?? []);
       } else {
