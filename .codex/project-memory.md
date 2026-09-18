@@ -16,11 +16,22 @@ Last updated: 2026-09-18
 - SQLite schema source: `database/schema-sqlite.ts`.
 - Key tables to remember: `admin_settings`, `supportMessages`, `userRoles`, `users`, `email_delivery_logs`, `email_suppressions`, `recommendationSubscriptions`, `lexaiSubscriptions`, `registrationKeys`, `packageSubscriptions`, `client_notification_controls`, `client_notification_control_audit`, `seo_owner_intake`, `seo_owner_intake_answers`.
 
+## Live Package coach recording release — 2026-09-18
+
+- User explicitly requested push and production deployment. Commit `ba13c34` (`Add reviewed coach uploads for Live Package`) was pushed to `origin/codex/live-package-phase-a`; `origin/main` remains behind this deployed release branch.
+- Coach staff accounts can receive `live_recording_uploader` alone. New uploads then remain private drafts until an admin approves and publishes them. Adding `live_recording_publisher` later while retaining uploader allows that coach's new uploads to publish immediately. Admin uploads remain draft-first.
+- Recording titles and English/Arabic short descriptions are optional. Descriptions appear on the entitled customer recording page when present. Staff see a recording-focused page instead of unrelated Live Package controls. Existing protected R2, entitlement, and upload-size rules remain in force.
+- Release gates passed: 11 Live-focused files / 60 tests, `pnpm run check`, full production build, Worker build, and staged diff hygiene. The ordinary Windows sandbox blocked Vitest/Vite config reads, so tests and builds ran successfully in the approved outside-sandbox context.
+- Production Worker version `75013ca0-0f64-40db-8b37-4977677d86c5` deployed with D1, video R2, finance receipt R2, and all three existing cron schedules. Pages production deployment `da742f1f-ceb6-4ff1-9425-9abd7cbb7114` reports source `ba13c34` and is available at `https://da742f1f.xflexwithai.pages.dev`; production serves `assets/index-TRqvOhQH.js` and `AdminLivePackage-BZGUmSqk.js`.
+- Post-deploy smoke: Worker health 200; production and preview `/admin/live-package` 200 with `noindex, nofollow` and `no-store, private`; production `/live-package` 200 with the same private headers; anonymous `livePackage.adminWorkspace` API 401; new Live Package asset 200. Authenticated coach/admin upload and playback were not exercised in production because no test account or customer record was created.
+- No schema migration, notification backfill, database repair, role assignment, coach account, or customer content was created by the release. The only new request-time lookup is one indexed `userRoles(userId, role)` check when a staff upload completes to decide whether to publish immediately. The staff page reuses the existing admin-workspace and auth queries; no polling or new SQL read path was added. Worker CPU impact is limited to that per-upload permission lookup.
+- The prior note below about no further September 18 production changes was superseded only for this explicitly requested application release. Notification Phase 5E remains deferred to a separate UTC day and its documented safety gates.
+
 ## Current D1 and notification handoff — 2026-09-18
 
 - Work is on `codex/live-package-phase-a`, pushed and synchronized with
   `origin/codex/live-package-phase-a`. The latest deployed application commit is
-  `fe3cf24` (`fix: enforce genuine idle session expiry`). Do not assume
+  `ba13c34` (`Add reviewed coach uploads for Live Package`). Do not assume
   `origin/main` contains these changes.
 - The detailed notification policy and release state live in
   `docs/staff-notification-lifecycle-plan-2026-09-15.md`. Treat that document as
@@ -79,7 +90,7 @@ Last updated: 2026-09-18
   `assets/index-B0eq02Fv.js`. Production/private-route headers and Worker health
   were verified. No Worker deploy, D1 migration, database write, or data cleanup
   occurred for this fix.
-- Safe next action: no further production change on 2026-09-18. On September 19,
+- Notification-work handoff at that point was to make no further production notification change on 2026-09-18. The owner later authorized the separate Live Package application release recorded above. On September 19,
   measure the complete September 18 UTC day, recheck health and migration/index
   plans, and reconcile active + archived totals. All 26,071 notifications are
   still active, so index-only releases are not expected to lower active badge
