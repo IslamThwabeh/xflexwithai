@@ -8,7 +8,7 @@ const source = readFileSync(
 
 describe('Admin Live Package loading state', () => {
   it('returns the loading UI before reading the query-backed config', () => {
-    const loadingGuard = source.indexOf('if (isLoading || !config || !data?.package)');
+    const loadingGuard = source.indexOf('if (isLoading || !access || !config || !data?.package)');
     const firstConfigRead = source.indexOf('const configPayload');
 
     // This ordering protects the initial render, when config is intentionally null

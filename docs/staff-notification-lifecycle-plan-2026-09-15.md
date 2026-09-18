@@ -229,17 +229,95 @@ Phase 4 blocks Phase 5 on any unexplained difference.
    stop for the remainder of the UTC day.
 3. Do not archive historical rows on the index-creation day.
 
+#### Phase 5B deployment result — 2026-09-17
+
+- PASS: executed only `116_staff_notification_archive_candidates.sql` from a
+  clean, detached worktree at application commit `fe3cf24`; existing local memory
+  edits were not included. The executed file's SHA-256 was
+  `6E27C487C7FB44CD64EA934641BFC5195BD23AA14CDE1BE9B9E66F78D23F8182`
+  (Git blob `ce1d11e6ad8010463c807c095dcb96c9bb760b8a`).
+- Preflight: Cloudflare account and database matched Phase 5A; migration 116
+  and its index were absent. There were 26,043 notifications, none archived.
+  The conservative 11-hour Insights window showed 12,061 writes; estimated
+  index entries plus the 40,000-row reserve gave 78,104, below 100,000.
+- Pre-migration Time Travel bookmark:
+  `00001267-00000816-000050e9-93aeda65b7ddaeaab34dba24e10d24b0`.
+- Migration succeeded with two statements, 52,845 rows read, 26,048 rows
+  written, and final bookmark
+  `00001267-0000081f-000050e9-4a46daa1d23d2bd15fdbd98f3e03f40f`.
+- PASS: the ledger row and non-unique index each exist once. Production
+  `EXPLAIN QUERY PLAN` searches covering index
+  `idx_staff_notif_archive_candidates` for the approved event types, null
+  archive marker, and cutoff; SQLite uses a temporary B-tree for the final
+  ordering across the two event types, not a table scan. This is acceptable for
+  the bounded 500-row candidate workflow and should be rechecked before backfill.
+- PASS: notification count remained 26,043; archived and batch-tagged counts
+  remained zero. Worker API health, database health, and public site returned
+  HTTP 200. Focused local migration/archive/badge tests passed 9/9.
+- No Worker or Pages deployment, archive backfill, notification read-state
+  change, or deletion occurred. Stop for the rest of the UTC day; do not apply
+  migration 117 or 118 today.
+
 ### Phase 5C — Rollback index on a third UTC day
 
 1. Re-run the write-budget gate and capture a fresh Time Travel bookmark.
 2. Apply migration 117 and verify batch-key rollback uses the named index.
 3. Stop for the remainder of the UTC day and do not archive historical rows.
 
+#### Phase 5C deployment result — 2026-09-18
+
+- The business owner approved up to two small weekend enhancements per day.
+  This changed the one-index-per-day cadence for September 18 only; the
+  40,000-row write reserve, separate preflight, bookmark, and verification gates
+  remained mandatory for each index. No archive backfill was authorized for the
+  index-build day.
+- The rolling 24-hour D1 read figure was 3,252,097 (not an exact UTC-day quota
+  counter). An eight-hour Insights window spanning all of the new UTC day showed
+  56,849 reads and 949 writes before Phase 5C. The conservative one-index budget
+  was 66,992 writes including the 40,000 reserve. Production health and a real
+  public course read returned HTTP 200. Phase 5B ledger/index and its indexed
+  query plan remained intact; 26,071 notifications existed, with none archived.
+- Applied only `117_staff_notification_archive_rollback.sql` from a clean
+  detached worktree at commit `fe3cf24`; executed-file SHA-256
+  `0E36C4C7F5306AF5BAA338902F17FF5F0AFC94AEF911BC3E2A2ED2A65CC71C76`.
+  Pre-migration Time Travel bookmark:
+  `00001271-000001be-000050ea-60e8ee9e8048d51e035ab9f6e58154e4`.
+- D1 executed two statements, reading 52,344 rows and writing 26,076 rows;
+  final bookmark:
+  `00001271-000001c4-000050ea-2daa3e9e19bc885519a99b53a37ddc66`.
+  Its ledger row and index exist exactly once. Production `EXPLAIN QUERY PLAN`
+  searches covering index `idx_staff_notif_archive_batch` for bounded rollback
+  selection. Notification count stayed 26,071, with zero archived or batch-tagged.
+  API, database, and real public D1 reads returned HTTP 200.
+
 ### Phase 5D — Archive-history index on a fourth UTC day
 
 1. Re-run the write-budget gate and capture a fresh Time Travel bookmark.
 2. Apply migration 118 and verify paginated history uses the named index.
 3. Stop for the remainder of the UTC day and do not archive historical rows.
+
+#### Phase 5D deployment result — 2026-09-18
+
+- After Phase 5C verification, a fresh eight-hour Insights sample showed 951
+  writes. Conservatively adding Phase 5C's measured 26,076 writes, Phase 5D's
+  estimated 26,071 entries, and the 40,000-row reserve gave 93,098, below
+  100,000. The latest notification count was 26,071; migration 118 and its index
+  were absent. The fresh pre-migration Time Travel bookmark was
+  `00001271-000001c6-000050ea-d78f173d41b26acb359b82a663822c89`.
+- Applied only `118_staff_notification_archive_history.sql` from the same
+  clean detached worktree; executed-file SHA-256
+  `56866B799703B34668EDB518B8E3447A9F69DE5A52FB663AE5CBB50C78AE4150`.
+  D1 executed two statements, reading 52,368 rows and writing 26,076 rows;
+  final bookmark:
+  `00001271-000001cc-000050ea-783f4acc4a113e38e5496e7396a1ee6e`.
+- PASS: migrations 115–118 and all four archive/active indexes are present.
+  Production `EXPLAIN QUERY PLAN` searches covering index
+  `idx_staff_notif_archive_history` for paginated user history. The total
+  remained 26,071; archived and batch-tagged totals remained zero. Worker API,
+  D1 connectivity, a real public D1 read, and the public site returned HTTP 200.
+  Focused migration/archive/badge tests passed 9/9 before either index build.
+- No Worker or Pages deployment, notification delete, mark-read, or historical
+  archive backfill occurred. The day is closed to further production changes.
 
 ### Phase 5E — Reversible archive backfill on a fifth UTC day
 
@@ -257,6 +335,39 @@ columns and non-unique indexes may remain. If the backfill is wrong, run the
 batch-key rollback helper and reconcile totals before continuing.
 
 ## Phase 6 — Post-deployment verification
+
+### Current handoff — 2026-09-18
+
+- Phases 5A–5D are complete. Phase 5A released the application and active
+  index; Phases 5B–5D were index-only. Phase 5E historical backfill has **not**
+  been executed. No historical notification has been archived, deleted, or
+  marked read by this project. Each production phase's recovery bookmark and
+  verification evidence are recorded above.
+- A separate Pages-only idle-session correction shipped from commit `fe3cf24` as
+  Pages deployment `4fb0ae23-303c-4d20-91a7-722edfec4ce9`. It prevents initial
+  mount, reload, and visibility restoration from being counted as activity while
+  preserving a fresh window after explicit password/admin/OTP login and extension
+  from trusted user or cross-tab activity.
+- That correction added no polling, Worker work, D1 read/write path, notification,
+  or UI prompt; the existing two-minute idle warning remains the only warning.
+  Verification passed 20 focused tests, 194 critical-cycle tests, TypeScript, and
+  the full production build. No Worker or database deployment accompanied it.
+- The 2026-09-16 observation is encouraging but not a final quota measurement:
+  7,357 rows appeared in the latest-hour Insights sample and 373,898 in the
+  six-hour top-100 sample. The 5,261,645 `d1 info` figure was trailing 24 hours,
+  not current UTC-day usage.
+- A complete UTC-day measurement remains necessary before claiming D1 savings;
+  `d1 info` is a rolling 24-hour counter and Insights is experimental. The
+  index-only phases are not expected to lower active badge reads while zero rows
+  are archived.
+- The BO-approved low-traffic weekend exception allowed separate, gated Phase
+  5C and 5D index builds on September 18; both passed. On September 19, review a
+  complete September 18 UTC-day read/write window, production health, archive
+  query plans, and the active/archived reconciliation. Only then consider the
+  reversible Phase 5E backfill. Preview exact cutoff/event-type candidates,
+  repeat the write-budget and Time Travel gates, and stop if any count, read
+  state, support behavior, or health signal is ambiguous. Never backfill on an
+  index-build UTC day.
 
 Immediate checks (first 60 minutes):
 

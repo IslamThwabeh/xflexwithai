@@ -204,6 +204,8 @@ const ASSIGNABLE_STAFF_ROLES = [
   'finance_manager',
   'finance_clerk',
   'finance_viewer',
+  'live_recording_uploader',
+  'live_recording_publisher',
 ] as const;
 const staffPerformanceStatusSchema = z.enum(STAFF_PERFORMANCE_STATUSES);
 const performanceMonthSchema = z.string().refine(isValidPerformanceMonth, "Month must use YYYY-MM");
@@ -6820,6 +6822,8 @@ export const appRouter = router({
           finance_manager: 'Finance Manager / مدير المالية',
           finance_clerk: 'Finance Clerk / موظف المالية',
           finance_viewer: 'Finance Viewer / مشاهد المالية',
+          live_recording_uploader: 'Live Recording Uploader / رافع تسجيلات لايف',
+          live_recording_publisher: 'Live Recording Publisher / ناشر تسجيلات لايف',
         };
         try {
           await sendStaffWelcomeEmail(input.email, {

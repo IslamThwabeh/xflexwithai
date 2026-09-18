@@ -46,9 +46,11 @@ const ROLE_LABELS: Record<string, { labelKey: string; color: string; group: stri
   finance_manager: { labelKey: "admin.roles.financeManager", color: "bg-emerald-100 text-emerald-800", group: "Finance Roles" },
   finance_clerk: { labelKey: "admin.roles.financeClerk", color: "bg-cyan-100 text-cyan-800", group: "Finance Roles" },
   finance_viewer: { labelKey: "admin.roles.financeViewer", color: "bg-slate-100 text-slate-800", group: "Finance Roles" },
+  live_recording_uploader: { labelKey: "admin.roles.liveRecordingUploader", color: "bg-sky-100 text-sky-800", group: "Live Package Roles" },
+  live_recording_publisher: { labelKey: "admin.roles.liveRecordingPublisher", color: "bg-violet-100 text-violet-800", group: "Live Package Roles" },
 };
 
-type RoleKey = "analyst" | "support" | "lexai_support" | "key_manager" | "plan_manager" | "view_progress" | "view_recommendations" | "view_subscriptions" | "view_quizzes" | "client_lookup" | "manage_client_notifications" | "staff_performance_employee" | "staff_performance_manager" | "student_surveys_manager" | "loyalty_rewards_manager" | "student_community_moderator" | "student_job_eligibility_manager" | "email_logs_viewer" | "finance_manager" | "finance_clerk" | "finance_viewer";
+type RoleKey = "analyst" | "support" | "lexai_support" | "key_manager" | "plan_manager" | "view_progress" | "view_recommendations" | "view_subscriptions" | "view_quizzes" | "client_lookup" | "manage_client_notifications" | "staff_performance_employee" | "staff_performance_manager" | "student_surveys_manager" | "loyalty_rewards_manager" | "student_community_moderator" | "student_job_eligibility_manager" | "email_logs_viewer" | "finance_manager" | "finance_clerk" | "finance_viewer" | "live_recording_uploader" | "live_recording_publisher";
 
 const FINANCE_ROLE_KEYS = new Set<RoleKey>(['finance_manager', 'finance_clerk', 'finance_viewer']);
 
@@ -556,6 +558,7 @@ export default function AdminRoles() {
                     <label className="text-sm font-medium mb-1 block">
                       {isRtl ? 'الأدوار' : 'Roles'} <span className="text-red-500">*</span>
                     </label>
+                    <p className="mb-2 text-xs text-muted-foreground">{isRtl ? 'للمدرب: صلاحية رفع تسجيلات لايف تحفظها للمراجعة. أضيفي صلاحية النشر لاحقاً للسماح بالنشر المباشر.' : 'For a coach, Live Recording Uploader submits drafts for review. Add Live Recording Publisher later to publish new uploads directly.'}</p>
                     <div className="flex flex-wrap gap-2 mt-1">
                       {visibleRoles.map((role) => {
                         const info = ROLE_LABELS[role];

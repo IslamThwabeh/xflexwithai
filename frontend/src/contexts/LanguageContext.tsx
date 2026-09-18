@@ -654,6 +654,8 @@ const translations = {
     'admin.roles.financeManager': 'Finance Manager',
     'admin.roles.financeClerk': 'Finance Clerk',
     'admin.roles.financeViewer': 'Finance Viewer',
+    'admin.roles.liveRecordingUploader': 'Live Recording Uploader',
+    'admin.roles.liveRecordingPublisher': 'Live Recording Publisher',
 
     // Admin Quiz
     'admin.quiz.dashboard': 'Quiz Management Dashboard',
@@ -1782,6 +1784,8 @@ const translations = {
     'admin.roles.financeManager': 'مدير المالية',
     'admin.roles.financeClerk': 'موظف المالية',
     'admin.roles.financeViewer': 'مشاهد التقارير المالية',
+    'admin.roles.liveRecordingUploader': 'رافع تسجيلات لايف',
+    'admin.roles.liveRecordingPublisher': 'ناشر تسجيلات لايف',
 
     // Admin Quiz
     'admin.quiz.dashboard': 'لوحة إدارة الاختبارات',

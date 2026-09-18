@@ -1,6 +1,6 @@
 # XFLEX Project Memory
 
-Last updated: 2026-09-13
+Last updated: 2026-09-18
 
 ## Project Overview
 
@@ -15,6 +15,76 @@ Last updated: 2026-09-13
 - Database wrapper/helpers: `backend/db.ts`.
 - SQLite schema source: `database/schema-sqlite.ts`.
 - Key tables to remember: `admin_settings`, `supportMessages`, `userRoles`, `users`, `email_delivery_logs`, `email_suppressions`, `recommendationSubscriptions`, `lexaiSubscriptions`, `registrationKeys`, `packageSubscriptions`, `client_notification_controls`, `client_notification_control_audit`, `seo_owner_intake`, `seo_owner_intake_answers`.
+
+## Current D1 and notification handoff — 2026-09-18
+
+- Work is on `codex/live-package-phase-a`, pushed and synchronized with
+  `origin/codex/live-package-phase-a`. The latest deployed application commit is
+  `fe3cf24` (`fix: enforce genuine idle session expiry`). Do not assume
+  `origin/main` contains these changes.
+- The detailed notification policy and release state live in
+  `docs/staff-notification-lifecycle-plan-2026-09-15.md`. Treat that document as
+  the authoritative runbook for remaining Phase 5E and Phase 6.
+- Notification Phases 1–4 and production Phase 5A are complete. Migration
+  `115_staff_notification_archiving.sql`, Worker version
+  `f748d9ed-8ae7-42ae-adaa-be0ccc4b4c01`, and Pages deployment
+  `fbcc5700-1868-4653-b580-595a01302183` were verified on 2026-09-15. No rows
+  were archived or deleted; all notification archive metadata remained null.
+- Phase 5B migration 116 (archive-candidate index) was applied alone on
+  2026-09-17. It wrote 26,048 D1 rows. The ledger and covering candidate index
+  are present, and all 26,043 notifications remain unarchived and untagged.
+  Pre-migration bookmark:
+  `00001267-00000816-000050e9-93aeda65b7ddaeaab34dba24e10d24b0`; final
+  bookmark: `00001267-0000081f-000050e9-4a46daa1d23d2bd15fdbd98f3e03f40f`.
+  Worker/database/public HTTP health returned 200. See the lifecycle runbook for
+  the exact file hash, query-plan result, and safety-gate evidence.
+- BO approved up to two small enhancements per low-traffic Friday/Saturday.
+  On 2026-09-18, Phases 5C and 5D were applied sequentially with independent
+  recovery bookmarks, write-budget gates, and post-index verification. Migration
+  117 added the covering archive-batch rollback index and wrote 26,076 D1 rows;
+  migration 118 added the covering archive-history index and wrote 26,076 rows.
+  The conservative second-index budget including the 40,000-row reserve was
+  93,098, below the 100,000 daily write limit. Both query plans use the intended
+  indexes. All 26,071 notifications remained active, unarchived, and untagged;
+  Worker/database/public health remained HTTP 200. No Worker or Pages deploy.
+  Exact file hashes and both pre/final Time Travel bookmarks are in the runbook.
+- Still pending: Phase 5E reversible bounded historical archive backfill and
+  Phase 6 post-deployment measurement. Never perform backfill on an index-build
+  UTC day. Re-run the D1 write-budget gate, capture a fresh Time Travel bookmark,
+  preview/reconcile candidate counts, and verify the allowlist/cutoff before any
+  backfill. The BO's weekend cadence approval does not waive these safeguards.
+- Never combine a notification index migration and archive backfill on the same
+  UTC day. Never delete notification or support history. Backfill remains limited
+  to approved support event types older than 30 complete days, batches of at most
+  500, and a release-specific rollback key.
+- On 2026-09-16, the last-hour D1 Insights sample was 7,357 rows read; the
+  six-hour top-100 sample was 373,898. The `d1 info` value of 5,261,645 was a
+  trailing-24-hour total, not the current UTC-day quota counter. Insights is
+  experimental and top-query sampling is not a billing total, so use one complete
+  00:00–24:00 UTC measurement before claiming savings or approving the next phase.
+- Evidence from 2026-09-15 indicates forced logout/invalidation of unnecessary
+  staff/admin sessions removed the previously dominant Recommendations and badge
+  query families. This is useful incident containment, not a routine optimization
+  or proof that automatic expiry was correct.
+- The idle-session defect was fixed and deployed on 2026-09-16. Initial mount,
+  reload, and visibility restoration no longer fabricate activity or send an
+  activity heartbeat. Successful password, admin, and OTP login explicitly seed
+  a fresh activity window; trusted mouse/keyboard/touch/scroll activity and
+  genuine cross-tab activity still extend it. Existing 15-minute staff/support
+  policy and two-minute warning remain unchanged, with no new UI noise or polling.
+- Idle fix verification passed 20 focused tests, all 194 critical-cycle tests,
+  TypeScript, and the full production build. It was a Pages-only release:
+  deployment `4fb0ae23-303c-4d20-91a7-722edfec4ce9`, preview
+  `https://4fb0ae23.xflexwithai.pages.dev`, production asset
+  `assets/index-B0eq02Fv.js`. Production/private-route headers and Worker health
+  were verified. No Worker deploy, D1 migration, database write, or data cleanup
+  occurred for this fix.
+- Safe next action: no further production change on 2026-09-18. On September 19,
+  measure the complete September 18 UTC day, recheck health and migration/index
+  plans, and reconcile active + archived totals. All 26,071 notifications are
+  still active, so index-only releases are not expected to lower active badge
+  reads. Consider Phase 5E only after its separate safety gates pass; physical
+  deletion remains out of scope.
 
 ## Financial Management Phase 0 Baseline — 2026-09-10
 

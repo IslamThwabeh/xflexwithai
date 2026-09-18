@@ -767,6 +767,9 @@ export default {
           if ((body?.titleEn?.trim().length ?? 0) > 200 || (body?.titleAr?.trim().length ?? 0) > 200) {
             return jsonResponse(400, { status: "invalid_request", message: "Recording titles cannot exceed 200 characters" }, headers);
           }
+          if ((body?.descriptionEn?.trim().length ?? 0) > 2000 || (body?.descriptionAr?.trim().length ?? 0) > 2000) {
+            return jsonResponse(400, { status: "invalid_request", message: "Recording descriptions cannot exceed 2000 characters" }, headers);
+          }
           const defaultTitle = upload.originalFileName.replace(/\.[^.]+$/, "").trim().slice(0, 200) || "Live recording";
           const titleEn = body?.titleEn?.trim() || body?.titleAr?.trim() || defaultTitle;
           const titleAr = body?.titleAr?.trim() || body?.titleEn?.trim() || defaultTitle;
@@ -798,7 +801,11 @@ export default {
             adminId: actorAdminId,
           });
           await db.completeLivePackageRecordingUpload({ uploadToken: token, uploadedSizeBytes: upload.expectedSizeBytes, recordingId: recording.id });
-          return jsonResponse(200, { status: "success", recording: { id: recording.id, isPublished: false } }, headers);
+          const canPublishWithoutReview = !admin && await db.hasAnyRole(authContext.user.id, ["live_recording_publisher"]);
+          if (canPublishWithoutReview) {
+            await db.updateLivePackageRecording({ id: recording.id, isPublished: true, adminId: actorAdminId });
+          }
+          return jsonResponse(200, { status: "success", recording: { id: recording.id, isPublished: Boolean(canPublishWithoutReview) } }, headers);
         }
         if (action === "abort" && request.method === "POST") {
           const multipart = (env.VIDEOS_BUCKET as any).resumeMultipartUpload(upload.objectKey, upload.r2UploadId);

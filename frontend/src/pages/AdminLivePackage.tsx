@@ -35,13 +35,14 @@ export default function AdminLivePackage() {
   const isAr = language === 'ar';
   const utils = trpc.useUtils();
   const { data, isLoading } = trpc.livePackage.adminWorkspace.useQuery();
+  const { data: access } = trpc.auth.isAdmin.useQuery();
   const [config, setConfig] = useState<any>(null);
   const [session, setSession] = useState({ sessionType: 'educational' as 'educational' | 'trading_analysis', titleEn: '', titleAr: '', descriptionEn: '', descriptionAr: '', startsAt: '', endsAt: '', zoomJoinUrl: '' });
   const [notificationSessionId, setNotificationSessionId] = useState('');
   const [notificationTiming, setNotificationTiming] = useState({ mode: 'now' as 'now' | 'after_hours' | 'at', afterHours: '24', scheduledFor: '' });
   const [recurrence, setRecurrence] = useState({ weeks: '4', educationalDays: '1,3', analysisDays: '2,4' });
   const [grant, setGrant] = useState({ userId: '', reason: '' });
-  const [recording, setRecording] = useState({ titleEn: '', titleAr: '', file: null as File | null });
+  const [recording, setRecording] = useState({ titleEn: '', titleAr: '', descriptionEn: '', descriptionAr: '', file: null as File | null });
   const [recordingUploading, setRecordingUploading] = useState(false);
   const [recordingProgress, setRecordingProgress] = useState(0);
 
@@ -67,7 +68,7 @@ export default function AdminLivePackage() {
   const createSession = trpc.livePackage.createSession.useMutation({ onSuccess: () => { toast.success(isAr ? 'تمت جدولة اللقاء' : 'Session scheduled'); setSession({ sessionType: 'educational', titleEn: '', titleAr: '', descriptionEn: '', descriptionAr: '', startsAt: '', endsAt: '', zoomJoinUrl: '' }); refresh(); }, onError: (e) => toast.error(e.message) });
   const createSessions = trpc.livePackage.createSessions.useMutation({ onSuccess: (result) => { toast.success(isAr ? `تم إنشاء ${result.count} لقاء` : `${result.count} sessions created`); refresh(); }, onError: (e) => toast.error(e.message) });
   const updateSession = trpc.livePackage.updateSession.useMutation({ onSuccess: refresh });
-  const updateRecording = trpc.livePackage.updateRecording.useMutation({ onSuccess: refresh });
+  const updateRecording = trpc.livePackage.updateRecording.useMutation({ onSuccess: refresh, onError: (error) => toast.error(error.message) });
   const previewNotification = trpc.livePackage.previewNotification.useQuery(
     { sessionId: Number(notificationSessionId) },
     { enabled: Number(notificationSessionId) > 0 },
@@ -79,7 +80,7 @@ export default function AdminLivePackage() {
   // The query-backed form state is initialized by the effect after the first render.
   // Keep the loading return before every config dereference so a slow/uncached response
   // cannot trip the page error boundary while the admin workspace is still loading.
-  if (isLoading || !config || !data?.package) return <DashboardLayout><div className="p-8">{isAr ? 'جاري التحميل...' : 'Loading…'}</div></DashboardLayout>;
+  if (isLoading || !access || !config || !data?.package) return <DashboardLayout><div className="p-8">{isAr ? 'جاري التحميل...' : 'Loading…'}</div></DashboardLayout>;
 
   const configPayload = () => ({
     adminVisible: config.adminVisible,
@@ -189,12 +190,16 @@ export default function AdminLivePackage() {
         body: JSON.stringify({
           titleEn: recording.titleEn.trim() || undefined,
           titleAr: recording.titleAr.trim() || undefined,
+          descriptionEn: recording.descriptionEn.trim() || undefined,
+          descriptionAr: recording.descriptionAr.trim() || undefined,
         }),
       });
       const completed = await complete.json().catch(() => ({}));
       if (!complete.ok) throw new Error(completed.message || 'Recording completion failed');
-      toast.success(isAr ? 'تم رفع التسجيل كمسودة' : 'Recording uploaded as a draft');
-      setRecording({ titleEn: '', titleAr: '', file: null });
+      toast.success(completed.recording?.isPublished
+        ? (isAr ? 'تم رفع التسجيل ونشره' : 'Recording uploaded and published')
+        : (isAr ? 'تم رفع التسجيل كمسودة للمراجعة' : 'Recording uploaded for review'));
+      setRecording({ titleEn: '', titleAr: '', descriptionEn: '', descriptionAr: '', file: null });
       localStorage.removeItem('liveRecordingUploadDraft');
       await refresh();
     } catch (error) {
@@ -204,6 +209,39 @@ export default function AdminLivePackage() {
       setRecordingProgress(0);
     }
   };
+
+  const staffRoles: string[] = access.staffRoles;
+  const isAdmin = Boolean(access?.isAdmin);
+  const canUpload = isAdmin || staffRoles.includes('live_recording_uploader');
+  const canPublish = isAdmin || staffRoles.includes('live_recording_publisher');
+  const canAutoPublish = !isAdmin && canUpload && canPublish;
+
+  const recordingSection = canUpload ? (
+      <section className="rounded-2xl border bg-white p-5">
+        <h2 className="mb-4 flex items-center gap-2 text-lg font-bold"><Upload className="h-5 w-5" />{isAr ? 'التسجيلات المحمية' : 'Protected recordings'}</h2>
+        <p className="mb-4 text-sm text-slate-600">{canAutoPublish
+          ? (isAr ? 'سيتم نشر تسجيلاتك الجديدة مباشرة.' : 'Your new recordings will publish immediately.')
+          : (isAr ? 'ستبقى تسجيلاتك الجديدة مسودات حتى تعتمدها الإدارة.' : 'New recordings stay as drafts until an admin approves them.')}</p>
+        <div className="grid gap-3 md:grid-cols-2">
+          <Input maxLength={200} placeholder={isAr ? 'العنوان الإنجليزي (اختياري)' : 'English title (optional)'} value={recording.titleEn} onChange={(e) => setRecording({ ...recording, titleEn: e.target.value })} />
+          <Input maxLength={200} placeholder={isAr ? 'العنوان العربي (اختياري)' : 'Arabic title (optional)'} value={recording.titleAr} onChange={(e) => setRecording({ ...recording, titleAr: e.target.value })} />
+          <Textarea maxLength={2000} placeholder={isAr ? 'وصف مختصر بالإنجليزية (اختياري)' : 'Short English description (optional)'} value={recording.descriptionEn} onChange={(e) => setRecording({ ...recording, descriptionEn: e.target.value })} />
+          <Textarea maxLength={2000} placeholder={isAr ? 'وصف مختصر بالعربية (اختياري)' : 'Short Arabic description (optional)'} value={recording.descriptionAr} onChange={(e) => setRecording({ ...recording, descriptionAr: e.target.value })} />
+          <Input className="md:col-span-2" type="file" accept="video/mp4,video/webm" onChange={(e) => setRecording({ ...recording, file: e.target.files?.[0] ?? null })} />
+        </div>
+        <Button className="mt-3" disabled={!recording.file || recordingUploading} onClick={uploadRecordingFile}>{recordingUploading ? `${isAr ? 'جاري الرفع' : 'Uploading'} ${recordingProgress}%` : (isAr ? 'رفع التسجيل' : 'Upload recording')}</Button>
+        <p className="mt-2 text-xs text-slate-500">{isAr ? 'العناوين والأوصاف اختيارية؛ عند ترك العنوان فارغاً يُستخدم اسم الملف. يمكن استئناف الرفع من نفس المتصفح.' : 'Titles and descriptions are optional. The file name is used when titles are blank. Uploads can resume from the same browser.'}</p>
+        <div className="mt-5 space-y-2">{data.recordings.map((item) => <div key={item.id} className="space-y-3 rounded-lg border p-3">
+          <div className="flex items-center justify-between gap-3"><span>{isAr ? item.titleAr : item.titleEn}</span><div className="flex items-center gap-2"><Badge variant={item.isPublished ? 'default' : 'secondary'}>{item.isPublished ? (isAr ? 'منشور' : 'Published') : (isAr ? 'بانتظار المراجعة' : 'Pending review')}</Badge>{canPublish && <Button size="sm" variant="outline" disabled={updateRecording.isPending} onClick={() => updateRecording.mutate({ id: item.id, isPublished: !item.isPublished })}>{item.isPublished ? (isAr ? 'إلغاء النشر' : 'Unpublish') : (isAr ? 'اعتماد ونشر' : 'Approve and publish')}</Button>}</div></div>
+          {canPublish && <><div className="grid gap-2 md:grid-cols-2"><Input defaultValue={item.titleEn} onBlur={(e) => e.target.value.trim() && e.target.value.trim() !== item.titleEn && updateRecording.mutate({ id: item.id, titleEn: e.target.value.trim() })} /><Input defaultValue={item.titleAr} onBlur={(e) => e.target.value.trim() && e.target.value.trim() !== item.titleAr && updateRecording.mutate({ id: item.id, titleAr: e.target.value.trim() })} /></div><div className="grid gap-2 md:grid-cols-2"><Textarea maxLength={2000} defaultValue={item.descriptionEn ?? ''} placeholder={isAr ? 'الوصف الإنجليزي (اختياري)' : 'English description (optional)'} onBlur={(e) => e.target.value.trim() !== (item.descriptionEn ?? '') && updateRecording.mutate({ id: item.id, descriptionEn: e.target.value.trim() || null })} /><Textarea maxLength={2000} defaultValue={item.descriptionAr ?? ''} placeholder={isAr ? 'الوصف العربي (اختياري)' : 'Arabic description (optional)'} onBlur={(e) => e.target.value.trim() !== (item.descriptionAr ?? '') && updateRecording.mutate({ id: item.id, descriptionAr: e.target.value.trim() || null })} /></div></>}
+        </div>)}</div>
+      </section>
+  ) : null;
+
+  if (access && !isAdmin) return <DashboardLayout><main className="mx-auto max-w-5xl space-y-6 p-4 md:p-8" dir={isAr ? 'rtl' : 'ltr'}>
+    <h1 className="text-2xl font-bold">{isAr ? 'تسجيلات بكج لايف' : 'Live Package recordings'}</h1>
+    {recordingSection}
+  </main></DashboardLayout>;
 
   return <DashboardLayout>
     <main className="space-y-6 p-4 md:p-8" dir={isAr ? 'rtl' : 'ltr'}>
@@ -279,7 +317,7 @@ export default function AdminLivePackage() {
 
       <section className="rounded-2xl border bg-white p-5"><h2 className="mb-4 text-lg font-bold">{isAr ? 'إشعارات اللقاءات' : 'Live meeting notifications'}</h2><div className="grid gap-3 md:grid-cols-5"><select className="h-10 rounded-md border px-3 md:col-span-2" value={notificationSessionId} onChange={(e) => setNotificationSessionId(e.target.value)}><option value="">{isAr ? 'اختاري لقاء' : 'Choose a session'}</option>{data.sessions.filter((item) => item.status !== 'cancelled').map((item) => <option key={item.id} value={item.id}>{isAr ? item.titleAr : item.titleEn}</option>)}</select><select className="h-10 rounded-md border px-3" value={notificationTiming.mode} onChange={(e) => setNotificationTiming({ ...notificationTiming, mode: e.target.value as any })}><option value="now">{isAr ? 'الآن' : 'Now'}</option><option value="after_hours">{isAr ? 'بعد ساعات' : 'After hours'}</option><option value="at">{isAr ? 'وقت محدد' : 'Specific time'}</option></select>{notificationTiming.mode === 'after_hours' ? <Input type="number" min="1" max="168" value={notificationTiming.afterHours} onChange={(e) => setNotificationTiming({ ...notificationTiming, afterHours: e.target.value })} /> : <Input type="datetime-local" disabled={notificationTiming.mode !== 'at'} value={notificationTiming.scheduledFor} onChange={(e) => setNotificationTiming({ ...notificationTiming, scheduledFor: e.target.value })} />}<Button disabled={!notificationReady || scheduleNotification.isPending} onClick={queueNotification}>{isAr ? 'جدولة' : 'Queue'}</Button></div><Button className="mt-3" variant="outline" disabled={!notificationSessionId || previewNotification.isFetching} onClick={() => previewNotification.refetch()}>{isAr ? 'معاينة العدد والرسالة' : 'Preview count and message'}</Button>{previewNotification.data && <div className="mt-3 rounded-lg bg-slate-50 p-3 text-sm"><p>{isAr ? 'عدد المستلمين المؤهلين الآن' : 'Eligible recipients now'}: <b>{previewNotification.data.recipientCount}</b></p><pre className="mt-2 whitespace-pre-wrap text-slate-600">{previewNotification.data.bodyText}</pre></div>}<div className="mt-5 space-y-2">{(data.notificationJobs ?? []).map((job: any) => <div key={job.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3 text-sm"><span><Badge variant={job.status === 'failed' ? 'destructive' : job.status === 'cancelled' ? 'secondary' : 'default'}>{job.status}</Badge> · {toAmmanInput(job.scheduledFor).replace('T', ' ')} · {job.materializedCount}/{job.recipientCount} {isAr ? 'مستلم' : 'recipients'}</span>{job.status === 'queued' && <Button size="sm" variant="outline" onClick={() => cancelNotification.mutate({ id: job.id })}>{isAr ? 'إلغاء' : 'Cancel'}</Button>}</div>)}</div></section>
 
-      <section className="rounded-2xl border bg-white p-5"><h2 className="mb-4 flex items-center gap-2 text-lg font-bold"><Upload className="h-5 w-5" />{isAr ? 'التسجيلات المحمية' : 'Protected recordings'}</h2><div className="grid gap-3 md:grid-cols-2"><Input maxLength={200} placeholder={isAr ? 'العنوان الإنجليزي (اختياري)' : 'English title (optional)'} value={recording.titleEn} onChange={(e) => setRecording({ ...recording, titleEn: e.target.value })} /><Input maxLength={200} placeholder={isAr ? 'العنوان العربي (اختياري)' : 'Arabic title (optional)'} value={recording.titleAr} onChange={(e) => setRecording({ ...recording, titleAr: e.target.value })} /><Input className="md:col-span-2" type="file" accept="video/mp4,video/webm" onChange={(e) => setRecording({ ...recording, file: e.target.files?.[0] ?? null })} /></div><Button className="mt-3" disabled={!recording.file || recordingUploading} onClick={uploadRecordingFile}>{recordingUploading ? `${isAr ? 'جاري الرفع' : 'Uploading'} ${recordingProgress}%` : (isAr ? 'رفع كمسودة' : 'Upload draft')}</Button><p className="mt-2 text-xs text-slate-500">{isAr ? 'العناوين اختيارية؛ عند تركها فارغة يُستخدم اسم الملف. يُرفع الملف على أجزاء إلى التخزين المحمي ويمكن استئناف الأجزاء المكتملة من نفس المتصفح.' : 'Titles are optional; the file name is used when left blank. The file uploads in private R2 parts and completed parts can resume from the same browser.'}</p><div className="mt-5 space-y-2">{data.recordings.map((item) => <div key={item.id} className="space-y-3 rounded-lg border p-3"><div className="flex items-center justify-between"><span>{isAr ? item.titleAr : item.titleEn}</span><Button size="sm" variant="outline" onClick={() => updateRecording.mutate({ id: item.id, isPublished: !item.isPublished })}>{item.isPublished ? 'Unpublish' : 'Publish'}</Button></div><div className="grid gap-2 md:grid-cols-2"><Input defaultValue={item.titleEn} onBlur={(e) => e.target.value.trim() && updateRecording.mutate({ id: item.id, titleEn: e.target.value.trim() })} /><Input defaultValue={item.titleAr} onBlur={(e) => e.target.value.trim() && updateRecording.mutate({ id: item.id, titleAr: e.target.value.trim() })} /></div></div>)}</div></section>
+      {recordingSection}
 
       <section className="rounded-2xl border bg-white p-5"><h2 className="mb-2 text-lg font-bold">{isAr ? 'منح وصول مجاني مدقق' : 'Audited complimentary access'}</h2><p className="mb-4 text-sm text-slate-500">{isAr ? 'يلزم رقم المستخدم وسبب تدقيق قصير فقط. لا يحصل الموظفون أو الدعم على وصول تلقائي.' : 'Only the user ID and a short audit reason are required. Employees and support staff never receive automatic access.'}</p><div className="grid gap-3 md:grid-cols-2"><Input type="number" min="1" placeholder={isAr ? 'رقم المستخدم (مطلوب)' : 'User ID (required)'} value={grant.userId} onChange={(e) => setGrant({ ...grant, userId: e.target.value })} /><Textarea maxLength={1000} placeholder={isAr ? 'سبب المنح (مطلوب، 10 أحرف على الأقل)' : 'Grant reason (required, at least 10 characters)'} value={grant.reason} onChange={(e) => setGrant({ ...grant, reason: e.target.value })} /></div><Button className="mt-3" disabled={!Number.isInteger(Number(grant.userId)) || Number(grant.userId) < 1 || grant.reason.trim().length < 10 || grantAccess.isPending} onClick={() => grantAccess.mutate({ userId: Number(grant.userId), reason: grant.reason.trim() })}>{isAr ? 'منح الوصول' : 'Grant access'}</Button></section>
     </main>
