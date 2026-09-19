@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { CURATED_ARTICLES } from "../shared/curatedArticles";
-import { DEFAULT_GA_MEASUREMENT_ID, SEO_ROUTES, localizedPath, type SeoLanguage } from "../shared/seo";
+import { DEFAULT_GA_MEASUREMENT_ID, INDEXNOW_KEY, SEO_ROUTES, localizedPath, type SeoLanguage } from "../shared/seo";
 
 const outputRoot = path.resolve(process.cwd(), "dist/public");
 const languages: SeoLanguage[] = ["ar", "en"];
@@ -21,7 +21,9 @@ for (const route of SEO_ROUTES) {
     const publicPath = localizedPath(route.path, language);
     const html = await readPublicPath(publicPath);
     const title = html.match(/<title>(.*?)<\/title>/i)?.[1];
+    const description = html.match(/<meta name="description" content="(.*?)"/i)?.[1];
     assert(title, `${publicPath} must have a title`);
+    assert(description && description.length >= 100, `${publicPath} must have a substantive meta description`);
     assert(!titles.has(title), `${publicPath} title must be unique`);
     titles.add(title);
     assert.equal(countMatches(html, /<h1\b/gi), 1, `${publicPath} must contain exactly one prerendered h1`);
@@ -37,6 +39,13 @@ for (const route of SEO_ROUTES) {
   }
 }
 
+for (const language of languages) {
+  const home = await readPublicPath(`/${language}`);
+  for (const route of SEO_ROUTES) {
+    const href = localizedPath(route.path, language);
+    assert(home.includes(`href="${href}"`), `/${language} crawlable shell must link to ${href}`);
+  }
+}
 const arabicHome = await readPublicPath("/ar");
 assert(
   arabicHome.includes(`googletagmanager.com/gtag/js?id=${DEFAULT_GA_MEASUREMENT_ID}`),
@@ -81,6 +90,9 @@ assert(robots.includes("Disallow: /admin"));
 assert(robots.includes("Disallow: /community"));
 assert(robots.includes("OAI-SearchBot"));
 assert(robots.includes("Sitemap: https://xflexacademy.com/sitemap.xml"));
+
+const indexNowKey = await fs.readFile(path.join(outputRoot, `${INDEXNOW_KEY}.txt`), "utf8");
+assert.equal(indexNowKey, INDEXNOW_KEY, "IndexNow key file must match its public URL");
 
 const notFound = await fs.readFile(path.join(outputRoot, "404.html"), "utf8");
 assert(notFound.includes("noindex,nofollow"));

@@ -3,6 +3,7 @@ import path from "node:path";
 import {
   DEFAULT_GA_MEASUREMENT_ID,
   DEFAULT_SOCIAL_IMAGE,
+  INDEXNOW_KEY,
   SEO_ROUTES,
   SITE_NAME,
   SITE_ORIGIN,
@@ -132,7 +133,12 @@ function prerenderShell(language: SeoLanguage, heading: string, summary: string,
       <a href="/${language}">${isArabic ? "الرئيسية" : "Home"}</a>
       <a href="/${language}/articles">${isArabic ? "المقالات" : "Articles"}</a>
       <a href="/${language}/free-content">${isArabic ? "محتوى مجاني" : "Free content"}</a>
+      <a href="/${language}/events">${isArabic ? "الفعاليات" : "Events"}</a>
       <a href="/${language}/about">${isArabic ? "عن الأكاديمية" : "About"}</a>
+      <a href="/${language}/faq">${isArabic ? "الأسئلة الشائعة" : "FAQ"}</a>
+      <a href="/${language}/gifts">${isArabic ? "الهدايا التعليمية" : "Learning gifts"}</a>
+      <a href="/${language}/packages/basic">${isArabic ? "الباقة الأساسية" : "Basic package"}</a>
+      <a href="/${language}/packages/comprehensive">${isArabic ? "الباقة الشاملة" : "Comprehensive package"}</a>
       <a href="/${language}/contact">${isArabic ? "تواصل" : "Contact"}</a>
     </nav>
     <article>
@@ -141,9 +147,14 @@ function prerenderShell(language: SeoLanguage, heading: string, summary: string,
       ${body}
     </article>
     <footer>
+      <a href="/${language}/terms">${isArabic ? "الشروط" : "Terms"}</a>
+      <a href="/${language}/privacy">${isArabic ? "الخصوصية" : "Privacy"}</a>
+      <a href="/${language}/refund-policy">${isArabic ? "سياسة الاسترجاع" : "Refund policy"}</a>
       <a href="/${language}/editorial-policy">${isArabic ? "السياسة التحريرية" : "Editorial policy"}</a>
       <a href="/${language}/risk-disclosure">${isArabic ? "إفصاح المخاطر" : "Risk disclosure"}</a>
       <a href="/${language}/authors/xflex-editorial-team">${isArabic ? "فريق التحرير" : "Editorial team"}</a>
+      <a href="/${language}/project/vip-bot-plan">${isArabic ? "خطة بوت التداول" : "Trading bot plan"}</a>
+      <a href="/${language}/careers">${isArabic ? "الوظائف" : "Careers"}</a>
     </footer>
   </main>`;
 }
@@ -479,6 +490,7 @@ async function main() {
 
   const robots = `User-agent: *\nAllow: /ar/\nAllow: /en/\nDisallow: /admin\nDisallow: /auth\nDisallow: /login\nDisallow: /register\nDisallow: /signup\nDisallow: /checkout\nDisallow: /courses\nDisallow: /profile\nDisallow: /orders\nDisallow: /support\nDisallow: /community\nDisallow: /lexai\nDisallow: /recommendations\nDisallow: /api/\n\nUser-agent: OAI-SearchBot\nAllow: /ar/\nAllow: /en/\n\nUser-agent: ChatGPT-User\nAllow: /ar/\nAllow: /en/\n\nUser-agent: PerplexityBot\nAllow: /ar/\nAllow: /en/\n\nSitemap: ${SITE_ORIGIN}/sitemap.xml\n`;
   await fs.writeFile(path.join(outputRoot, "robots.txt"), robots);
+  await fs.writeFile(path.join(outputRoot, `${INDEXNOW_KEY}.txt`), INDEXNOW_KEY);
 
   for (const language of languages) {
     const isArabic = language === "ar";

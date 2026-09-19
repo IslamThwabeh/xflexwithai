@@ -1,6 +1,8 @@
 export const SITE_ORIGIN = "https://xflexacademy.com";
 export const SITE_NAME = "XFlex Trading Academy";
 export const DEFAULT_SOCIAL_IMAGE = `${SITE_ORIGIN}/xflex-logo-2026-transparent.png`;
+// IndexNow keys are public verification tokens, not secrets.
+export const INDEXNOW_KEY = "7f39a8d1c6e24b50a914d27863efbc41";
 // GA4 measurement IDs are public identifiers. Keep the production default here
 // so direct-upload builds cannot silently omit analytics; CI/build environments
 // may still override it with VITE_GA_MEASUREMENT_ID.
