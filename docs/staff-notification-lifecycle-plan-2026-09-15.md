@@ -334,6 +334,36 @@ Rollback: deploy the prior Worker if application behavior regresses. Nullable
 columns and non-unique indexes may remain. If the backfill is wrong, run the
 batch-key rollback helper and reconcile totals before continuing.
 
+### Phase 5E execution — 2026-09-19 (partial, quota-gated)
+
+- PASS: the pre-write preview found 20,334 eligible active rows before the
+  backfill: 18,607 `new_support_message` and 1,727 `human_escalation`. The
+  deterministic cutoff was `2026-08-20T00:00:00.000Z`.
+- Captured the fresh pre-write Time Travel bookmark
+  `00001283-00000c06-000050eb-e004131054040337a9e1cfcd81921689`.
+- Archived 8,000 rows in sixteen separately verified 500-row batches using
+  batch key `notif-archive-20260919-phase5e`. D1 measured 2,500 writes per
+  batch, or exactly 40,000 writes total (five writes per archived row).
+- PASS: 8,000 batch-tagged rows reconcile exactly: 7,400
+  `new_support_message` and 600 `human_escalation`; 6,423 unread states were
+  preserved. All rows match the approved event allowlist, cutoff, archive
+  reason, and non-null archive timestamp; invalid batch rows = 0.
+- PASS: the table reconciled as 26,130 total = 18,130 active + 8,000 archived;
+  D1 connectivity returned normally. No notification was deleted or marked
+  read, and no support conversation/message row was changed by the backfill.
+- STOP: 12,334 eligible rows remain. The rolling 24-hour D1 counter reached
+  51,333 writes after the batch, so further production mutation was stopped to
+  preserve the agreed 40,000-row safety reserve and organic write headroom.
+- Storage note: reversible archiving improves the active badge/list working set
+  but does not reclaim physical D1 space. Database size was 363,282,432 bytes
+  after the backfill; physical deletion/VACUUM remains a separate, explicitly
+  deferred retention decision.
+
+Next safe step: observe one complete UTC day, then continue the same batch key
+on a fresh write-budget day only if the gate passes. Do not combine the
+remaining backfill with index creation, payload normalization, deletion, or
+VACUUM.
+
 ## Phase 6 — Post-deployment verification
 
 ### Current handoff — 2026-09-18
