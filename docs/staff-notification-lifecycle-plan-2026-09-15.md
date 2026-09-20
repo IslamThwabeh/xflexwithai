@@ -364,6 +364,42 @@ on a fresh write-budget day only if the gate passes. Do not combine the
 remaining backfill with index creation, payload normalization, deletion, or
 VACUUM.
 
+### Phase 5E continuation — 2026-09-20 (partial, quota-gated)
+
+- PASS: authentication, D1 connectivity, prior-batch reconciliation, and the
+  archive allowlist/cutoff checks passed before mutation. The current UTC-day
+  Insights sample contained approximately 22,000 writes.
+- Captured the fresh pre-write Time Travel bookmark
+  `00001289-00000110-000050ec-edbb62a6e8dcee5f50b57058dc2dcb79`.
+- Archived 6,000 additional rows in twelve 500-row batches using the existing
+  batch key `notif-archive-20260919-phase5e`. Each batch again measured exactly
+  2,500 writes, for 30,000 writes total.
+- PASS: 26,172 total rows reconcile exactly as 12,172 active + 14,000 archived.
+  All 14,000 batch-tagged rows remain within the approved event allowlist and
+  cutoff; invalid batch rows = 0. Their original unread states remain preserved.
+- The active unread working set fell to 11,380. A total of 6,334 approved rows
+  remain eligible for a later quota-gated batch day.
+- STOP: post-change rolling counters were 3,849,763 reads and 37,788 writes;
+  no additional production mutation was attempted. Database size was
+  367,857,664 bytes. Archiving reduces the active query set but does not reclaim
+  physical storage.
+
+Next safe step: measure the complete September 20 UTC day, then finish the
+remaining 6,334 eligible rows on a fresh write-budget day. Retention/deletion
+and payload normalization remain separate changes.
+
+Later on September 20, the BO-authorized ceiling was tightened to 75,000 UTC-day
+writes while preserving at least one million reads for clients. Six additional
+500-row batches archived 3,000 rows for exactly 15,000 writes. The update
+subqueries and final compact reconciliation consumed approximately 97,000 reads
+in total. Final verification passed: 26,172 total = 9,172 active + 17,000
+archived; active unread = 8,410; batch invalid rows = 0; original unread state
+was preserved for 15,331 archived rows; and D1 connectivity remained healthy.
+Exactly 3,334 approved candidates remain. Estimated September 20 UTC-day writes
+after this continuation were approximately 67,000, leaving about 8,000 writes
+for organic and scheduled activity below the 75,000 operating ceiling. No more
+production D1 reads or writes should be initiated for this UTC day.
+
 ## Phase 6 — Post-deployment verification
 
 ### Current handoff — 2026-09-18
