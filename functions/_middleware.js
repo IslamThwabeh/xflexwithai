@@ -78,6 +78,19 @@ export async function onRequest(context) {
     return redirectTo(url, url.pathname);
   }
 
+  // Keep protected Live recording playback on the site origin. Media elements
+  // cannot reliably carry the API-subdomain session in every browser, while the
+  // same-origin request always includes the existing xflexacademy.com cookie.
+  if (/^\/api\/live-package-recordings\/\d+\/stream$/.test(url.pathname)) {
+    const upstream = new URL(`${url.pathname}${url.search}`, "https://api.xflexacademy.com");
+    const upstreamRequest = new Request(upstream, {
+      method: request.method,
+      headers: request.headers,
+      redirect: "manual",
+    });
+    return fetch(upstreamRequest);
+  }
+
   if (url.pathname.startsWith("/api") || url.pathname.includes(".")) {
     return context.next();
   }
