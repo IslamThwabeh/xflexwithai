@@ -27,6 +27,12 @@ Last updated: 2026-09-18
 - No schema migration, notification backfill, database repair, role assignment, coach account, or customer content was created by the release. The only new request-time lookup is one indexed `userRoles(userId, role)` check when a staff upload completes to decide whether to publish immediately. The staff page reuses the existing admin-workspace and auth queries; no polling or new SQL read path was added. Worker CPU impact is limited to that per-upload permission lookup.
 - The prior note below about no further September 18 production changes was superseded only for this explicitly requested application release. Notification Phase 5E remains deferred to a separate UTC day and its documented safety gates.
 
+### Protected admin recording preview — 2026-09-21
+
+- Commit `019d4f4` adds an inline protected player to each Live Package recording card so admins and staff with `live_recording_publisher` can inspect drafts before publication and review published videos as clients see them. Ordinary clients remain entitlement-gated and can stream published recordings only.
+- The preview uses `preload="none"`, so opening the control room does not read video bytes from R2; an R2 read begins only when the reviewer presses Play. The preview lookup is a bounded primary-key query and adds no polling or migration.
+- Verification passed 3 focused files / 33 tests, TypeScript, full production build, Worker build, and diff hygiene. Production Worker version is `003b9818-a2d3-43d7-906c-494971632ad4`; Pages preview is `https://f93511fa.xflexwithai.pages.dev`, serving `AdminLivePackage-D9zRbS3g.js`. Worker health, production/preview admin route headers, and the production asset returned 200.
+
 ## Current D1 and notification handoff — 2026-09-18
 
 - Work is on `codex/live-package-phase-a`, pushed and synchronized with
