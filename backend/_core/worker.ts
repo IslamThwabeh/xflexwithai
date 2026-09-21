@@ -4,6 +4,7 @@ import { appRouter } from "../routers";
 import { createWorkerContext } from "./context-worker";
 import * as db from "../db";
 import { verifyFreeVideoPlaybackToken } from "./freeLibraryPlayback";
+import { verifyLiveRecordingPlaybackToken } from "./livePackagePlayback";
 import { sendFreezeExpiredEmail, sendExpiryAlertEmail, sendDripEmail, sendMilestoneEmail, sendInactivityEmail, sendOnboardingStalledEmail } from "./orderEmails";
 import { logger } from "./logger";
 import { getFreeLibraryDocumentBySlug, getFreeLibraryVideoBySlug } from "../../shared/freeLibrary";
@@ -1141,25 +1142,30 @@ export default {
         if (request.method !== "GET" && request.method !== "HEAD") {
           return jsonResponse(405, { status: "method_not_allowed" });
         }
-        const authContext = await createWorkerContext({ req: request, env });
+        const recordingId = Number(liveRecordingMatch[1]);
+        const playbackToken = url.searchParams.get("token") ?? "";
+        const hasPlaybackToken = playbackToken
+          ? await verifyLiveRecordingPlaybackToken(playbackToken, recordingId)
+          : false;
+        const authContext = hasPlaybackToken ? null : await createWorkerContext({ req: request, env });
         const headers = new Headers();
         corsHeaders.forEach((value, key) => headers.set(key, value));
-        appendCookieHeaders(headers, (authContext as { cookieHeaders?: string[] }).cookieHeaders);
+        if (authContext) appendCookieHeaders(headers, (authContext as { cookieHeaders?: string[] }).cookieHeaders);
         headers.set("Cache-Control", "private, no-store, max-age=0");
         headers.set("X-Content-Type-Options", "nosniff");
         headers.set("X-Robots-Tag", "noindex, noarchive, nosnippet");
         headers.set("Accept-Ranges", "bytes");
-        if (!authContext.user || authContext.user.id <= 0) {
+        if (!hasPlaybackToken && (!authContext?.user || authContext.user.id <= 0)) {
           return jsonResponse(401, { status: "unauthorized", message: "Please login to access this recording" }, headers);
         }
-        const admin = authContext.user.email ? await db.getAdminByEmail(authContext.user.email) : null;
-        const canPreviewDraft = Boolean(admin)
-          || await db.hasAnyRole(authContext.user.id, ["live_recording_publisher"]);
+        const admin = authContext?.user?.email ? await db.getAdminByEmail(authContext.user.email) : null;
+        const canPreviewDraft = hasPlaybackToken || Boolean(admin)
+          || Boolean(authContext?.user && await db.hasAnyRole(authContext.user.id, ["live_recording_publisher"]));
         // Clients remain entitlement- and publication-gated. Admins and designated
         // publishers may inspect drafts before exposing them to clients.
         const recording = canPreviewDraft
-          ? await db.getLivePackageRecordingForAdmin(Number(liveRecordingMatch[1]))
-          : await db.getLivePackageRecordingForUser(Number(liveRecordingMatch[1]), authContext.user.id);
+          ? await db.getLivePackageRecordingForAdmin(recordingId)
+          : await db.getLivePackageRecordingForUser(recordingId, authContext!.user!.id);
         if (!recording) {
           return jsonResponse(404, { status: "not_found", message: "Recording not found" }, headers);
         }

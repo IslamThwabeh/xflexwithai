@@ -163,12 +163,14 @@ describe('Live Package Phase 2 contracts', () => {
     expect(adminPage).toContain('Upload recording');
     expect(adminPage).toContain('Protected preview as clients will see it');
     expect(adminPage).toContain('preload="none"');
-    expect(adminPage).toContain('src={`/api/live-package-recordings/${item.id}/stream`}');
+    expect(adminPage).toContain('<ProtectedLiveRecording recordingId={item.id}');
     expect(adminPage).toContain('Publish');
     expect(adminPage).toContain('Uploads can resume from the same browser.');
     expect(adminPage).toContain("import { apiFetch } from '@/lib/apiBase'");
     expect(adminPage).not.toMatch(/fetch\(`?\/api\/live-package-recordings\/multipart/);
-    expect(workspace).toContain('src={recording.streamPath}');
+    expect(workspace).toContain('<ProtectedLiveRecording recordingId={recording.id}');
+    expect(worker).toContain('verifyLiveRecordingPlaybackToken(playbackToken, recordingId)');
+    expect(router).toContain('recordingPlayback: protectedProcedure');
     expect(pagesMiddleware).toContain('/^\\/api\\/live-package-recordings\\/\\d+\\/stream$/');
     expect(pagesMiddleware).toContain('https://api.xflexacademy.com');
     expect(pagesMiddleware).toContain('"/live-package"');

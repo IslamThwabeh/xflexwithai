@@ -57,6 +57,7 @@ import { invokeOpenAiChatCompletion } from "./_core/openai";
 import { SUPPORT_AI_ACADEMY_KNOWLEDGE } from "./_core/supportAiKnowledge";
 import { hashPassword, verifyPassword, generateToken, isValidEmail, isValidPassword, normalizeEmailAddress } from "./_core/auth";
 import { generateFreeVideoPlaybackToken } from "./_core/freeLibraryPlayback";
+import { generateLiveRecordingPlaybackToken } from "./_core/livePackagePlayback";
 import {
   preflightAdminNotificationEmail,
   sendAdminNotificationEmail,
@@ -7290,6 +7291,22 @@ export const appRouter = router({
   // LIVE PACKAGE (separate cohort entitlement)
   // =============================================
   livePackage: router({
+    recordingPlayback: protectedProcedure
+      .input(z.object({ recordingId: z.number().int().positive() }))
+      .query(async ({ ctx, input }) => {
+        if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        const admin = ctx.user.email ? await db.getAdminByEmail(ctx.user.email) : null;
+        const canPreviewDraft = Boolean(admin)
+          || (ctx.user.id > 0 && await db.hasAnyRole(ctx.user.id, ['live_recording_publisher']));
+        const recording = canPreviewDraft
+          ? await db.getLivePackageRecordingForAdmin(input.recordingId)
+          : await db.getLivePackageRecordingForUser(input.recordingId, ctx.user.id);
+        if (!recording) throw new TRPCError({ code: 'NOT_FOUND', message: 'Recording not found.' });
+        const token = await generateLiveRecordingPlaybackToken(input.recordingId);
+        return {
+          streamPath: `/api/live-package-recordings/${input.recordingId}/stream?token=${encodeURIComponent(token)}`,
+        };
+      }),
     myPurchaseQuote: protectedProcedure.query(async ({ ctx }) => {
       if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
       const context = await getLivePackageContext();
