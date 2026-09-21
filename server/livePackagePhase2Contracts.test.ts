@@ -164,6 +164,9 @@ describe('Live Package Phase 2 contracts', () => {
     expect(adminPage).toContain('Protected preview as clients will see it');
     expect(adminPage).toContain('<ProtectedLiveRecording recordingId={item.id}');
     expect(adminPage).toContain('preload="metadata"');
+    expect(adminPage).toContain('Confirm deletion');
+    expect(adminPage).toContain("method: 'DELETE'");
+    expect(worker).toContain('Unpublish the recording before deleting it');
     expect(adminPage).toContain('Publish');
     expect(adminPage).toContain('Uploads can resume from the same browser.');
     expect(adminPage).toContain("import { apiFetch } from '@/lib/apiBase'");

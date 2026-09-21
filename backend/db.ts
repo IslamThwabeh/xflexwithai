@@ -279,7 +279,8 @@ const PORTAL_ONLY_STAFF_NOTIFICATION_EVENTS = new Set<StaffNotificationEventType
 const STAFF_NOTIFICATION_EMAIL_THROTTLE_MINUTES: Partial<
   Record<StaffNotificationEventType, number>
 > = {
-  new_support_message: 5,
+  new_support_message: 10,
+  human_escalation: 30,
   community_comment_created: 5,
   community_content_blocked: 5,
   community_repeat_violation: 60,
@@ -16018,6 +16019,16 @@ export async function updateLivePackageRecording(input: {
     updatedByAdminId: input.adminId,
     updatedAt: new Date().toISOString(),
   }).where(eq(livePackageRecordings.id, input.id)).returning();
+  return row ?? null;
+}
+
+export async function deleteUnpublishedLivePackageRecording(recordingId: number) {
+  const db = await getDb();
+  if (!db) throw new Error('Database not available');
+  const [row] = await db.delete(livePackageRecordings).where(and(
+    eq(livePackageRecordings.id, recordingId),
+    eq(livePackageRecordings.isPublished, false),
+  )).returning();
   return row ?? null;
 }
 

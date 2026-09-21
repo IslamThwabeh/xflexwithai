@@ -1139,10 +1139,38 @@ export default {
 
       const liveRecordingMatch = pathname.match(/^\/api\/live-package-recordings\/(\d+)\/stream$/);
       if (liveRecordingMatch) {
+        const recordingId = Number(liveRecordingMatch[1]);
+        if (request.method === "DELETE") {
+          const authContext = await createWorkerContext({ req: request, env });
+          const headers = new Headers();
+          corsHeaders.forEach((value, key) => headers.set(key, value));
+          appendCookieHeaders(headers, (authContext as { cookieHeaders?: string[] }).cookieHeaders);
+          const admin = authContext.user?.email ? await db.getAdminByEmail(authContext.user.email) : null;
+          if (!admin) return jsonResponse(403, { status: "forbidden", message: "Full admin access is required" }, headers);
+          const recording = await db.getLivePackageRecordingForAdmin(recordingId);
+          if (!recording) return jsonResponse(404, { status: "not_found", message: "Recording not found" }, headers);
+          if (recording.isPublished) {
+            return jsonResponse(409, { status: "published", message: "Unpublish the recording before deleting it" }, headers);
+          }
+          const deleted = await db.deleteUnpublishedLivePackageRecording(recordingId);
+          if (!deleted) return jsonResponse(409, { status: "changed", message: "Recording changed before deletion" }, headers);
+          await env.VIDEOS_BUCKET.delete(recording.objectKey).catch((error) => {
+            logger.error("[LIVE RECORDING] Failed to delete orphaned R2 object", {
+              recordingId,
+              objectKey: recording.objectKey,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+          await db.logAdminAction(admin.id, admin.id, "delete_live_package_recording", {
+            recordingId,
+            objectKey: recording.objectKey,
+            originalFileName: recording.originalFileName,
+          });
+          return jsonResponse(200, { success: true }, headers);
+        }
         if (request.method !== "GET" && request.method !== "HEAD") {
           return jsonResponse(405, { status: "method_not_allowed" });
         }
-        const recordingId = Number(liveRecordingMatch[1]);
         const playbackToken = url.searchParams.get("token") ?? "";
         const hasPlaybackToken = playbackToken
           ? await verifyLiveRecordingPlaybackToken(playbackToken, recordingId)

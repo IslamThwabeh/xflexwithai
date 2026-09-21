@@ -5707,6 +5707,7 @@ export const appRouter = router({
             titleAr: `طلب تحويل لموظف من ${ctx.user.name || ctx.user.email}`,
             contentEn: 'A student asked to speak with a human support agent in chat.',
             contentAr: 'طالب طلب التحدث مع موظف دعم داخل المحادثة.',
+            actionUrl: `/admin/support?conversationId=${conv.id}`,
             coalesceKey: `support_conversation:${conv.id}`,
             metadata: { userId: ctx.user.id, conversationId: conv.id },
           });
@@ -5845,6 +5846,7 @@ export const appRouter = router({
         titleAr: `طلب تحويل لموظف من ${ctx.user.name || ctx.user.email}`,
         contentEn: 'A student has requested to speak with a human support agent.',
         contentAr: 'طالب يطلب التحدث مع موظف دعم.',
+        actionUrl: `/admin/support?conversationId=${conv.id}`,
         coalesceKey: `support_conversation:${conv.id}`,
         metadata: { userId: ctx.user.id, conversationId: conv.id },
       });

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CalendarPlus, ClipboardList, Eye, Radio, Save, ShieldAlert, Upload } from 'lucide-react';
+import { CalendarPlus, ClipboardList, Eye, Radio, Save, ShieldAlert, Trash2, Upload } from 'lucide-react';
 import { Link } from 'wouter';
 import DashboardLayout from '@/components/DashboardLayout';
 import LivePackageJourneyPreview from '@/components/admin/LivePackageJourneyPreview';
@@ -46,6 +46,7 @@ export default function AdminLivePackage() {
   const [recording, setRecording] = useState({ titleEn: '', titleAr: '', descriptionEn: '', descriptionAr: '', file: null as File | null });
   const [recordingUploading, setRecordingUploading] = useState(false);
   const [recordingProgress, setRecordingProgress] = useState(0);
+  const [recordingDeletingId, setRecordingDeletingId] = useState<number | null>(null);
 
   useEffect(() => {
     if (!data) return;
@@ -70,6 +71,20 @@ export default function AdminLivePackage() {
   const createSessions = trpc.livePackage.createSessions.useMutation({ onSuccess: (result) => { toast.success(isAr ? `تم إنشاء ${result.count} لقاء` : `${result.count} sessions created`); refresh(); }, onError: (e) => toast.error(e.message) });
   const updateSession = trpc.livePackage.updateSession.useMutation({ onSuccess: refresh });
   const updateRecording = trpc.livePackage.updateRecording.useMutation({ onSuccess: refresh, onError: (error) => toast.error(error.message) });
+  const deleteRecording = async (id: number) => {
+    setRecordingDeletingId(id);
+    try {
+      const response = await apiFetch(`/api/live-package-recordings/${id}/stream`, { method: 'DELETE' });
+      const payload = await response.json().catch(() => ({})) as { message?: string };
+      if (!response.ok) throw new Error(payload.message || 'Unable to delete recording');
+      toast.success(isAr ? 'تم حذف التسجيل' : 'Recording deleted');
+      await refresh();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : (isAr ? 'تعذر حذف التسجيل' : 'Unable to delete recording'));
+    } finally {
+      setRecordingDeletingId(null);
+    }
+  };
   const previewNotification = trpc.livePackage.previewNotification.useQuery(
     { sessionId: Number(notificationSessionId) },
     { enabled: Number(notificationSessionId) > 0 },
@@ -233,7 +248,7 @@ export default function AdminLivePackage() {
         <Button className="mt-3" disabled={!recording.file || recordingUploading} onClick={uploadRecordingFile}>{recordingUploading ? `${isAr ? 'جاري الرفع' : 'Uploading'} ${recordingProgress}%` : (isAr ? 'رفع التسجيل' : 'Upload recording')}</Button>
         <p className="mt-2 text-xs text-slate-500">{isAr ? 'العناوين والأوصاف اختيارية؛ عند ترك العنوان فارغاً يُستخدم اسم الملف. يمكن استئناف الرفع من نفس المتصفح.' : 'Titles and descriptions are optional. The file name is used when titles are blank. Uploads can resume from the same browser.'}</p>
         <div className="mt-5 space-y-2">{data.recordings.map((item) => <div key={item.id} className="space-y-3 rounded-lg border p-3">
-          <div className="flex items-center justify-between gap-3"><span>{isAr ? item.titleAr : item.titleEn}</span><div className="flex items-center gap-2"><Badge variant={item.isPublished ? 'default' : 'secondary'}>{item.isPublished ? (isAr ? 'منشور' : 'Published') : (isAr ? 'بانتظار المراجعة' : 'Pending review')}</Badge>{canPublish && <Button size="sm" variant="outline" disabled={updateRecording.isPending} onClick={() => updateRecording.mutate({ id: item.id, isPublished: !item.isPublished })}>{item.isPublished ? (isAr ? 'إلغاء النشر' : 'Unpublish') : (isAr ? 'اعتماد ونشر' : 'Approve and publish')}</Button>}</div></div>
+          <div className="flex items-center justify-between gap-3"><span>{isAr ? item.titleAr : item.titleEn}</span><div className="flex items-center gap-2"><Badge variant={item.isPublished ? 'default' : 'secondary'}>{item.isPublished ? (isAr ? 'منشور' : 'Published') : (isAr ? 'بانتظار المراجعة' : 'Pending review')}</Badge>{canPublish && <Button size="sm" variant="outline" disabled={updateRecording.isPending} onClick={() => updateRecording.mutate({ id: item.id, isPublished: !item.isPublished })}>{item.isPublished ? (isAr ? 'إلغاء النشر' : 'Unpublish') : (isAr ? 'اعتماد ونشر' : 'Approve and publish')}</Button>}{isAdmin && !item.isPublished && <AlertDialog><AlertDialogTrigger asChild><Button size="sm" variant="destructive" disabled={recordingDeletingId === item.id}><Trash2 className="me-1 h-4 w-4" />{isAr ? 'حذف' : 'Delete'}</Button></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>{isAr ? 'حذف التسجيل؟' : 'Delete recording?'}</AlertDialogTitle><AlertDialogDescription>{isAr ? 'سيتم حذف ملف الفيديو نهائياً من التخزين. لا يمكن التراجع عن هذا الإجراء.' : 'The video file will be permanently removed from storage. This action cannot be undone.'}</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>{isAr ? 'إلغاء' : 'Cancel'}</AlertDialogCancel><AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => deleteRecording(item.id)}>{isAr ? 'تأكيد الحذف' : 'Confirm deletion'}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>}</div></div>
           {canPublish && <div className="rounded-xl bg-slate-950 p-2"><ProtectedLiveRecording recordingId={item.id} className="w-full rounded-lg bg-black" preload="metadata" /> <p className="px-2 pt-2 text-xs text-slate-300">{isAr ? 'معاينة محمية كما سيشاهدها العميل' : 'Protected preview as clients will see it'}</p></div>}
           {canPublish && <><div className="grid gap-2 md:grid-cols-2"><Input defaultValue={item.titleEn} onBlur={(e) => e.target.value.trim() && e.target.value.trim() !== item.titleEn && updateRecording.mutate({ id: item.id, titleEn: e.target.value.trim() })} /><Input defaultValue={item.titleAr} onBlur={(e) => e.target.value.trim() && e.target.value.trim() !== item.titleAr && updateRecording.mutate({ id: item.id, titleAr: e.target.value.trim() })} /></div><div className="grid gap-2 md:grid-cols-2"><Textarea maxLength={2000} defaultValue={item.descriptionEn ?? ''} placeholder={isAr ? 'الوصف الإنجليزي (اختياري)' : 'English description (optional)'} onBlur={(e) => e.target.value.trim() !== (item.descriptionEn ?? '') && updateRecording.mutate({ id: item.id, descriptionEn: e.target.value.trim() || null })} /><Textarea maxLength={2000} defaultValue={item.descriptionAr ?? ''} placeholder={isAr ? 'الوصف العربي (اختياري)' : 'Arabic description (optional)'} onBlur={(e) => e.target.value.trim() !== (item.descriptionAr ?? '') && updateRecording.mutate({ id: item.id, descriptionAr: e.target.value.trim() || null })} /></div></>}
         </div>)}</div>
