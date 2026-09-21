@@ -879,6 +879,12 @@ Last updated: 2026-09-18
   - Migration 095 read one row and wrote one business setting row. Post-release reconciliation confirmed sales/key cutoff September 30, session end December 31, permanent recordings, zero Live keys, and no foreign-key violations. Verification passed 130 test files / 660 tests, TypeScript, application build, Worker build, diff hygiene, direct Worker health, and exact production/preview asset checks.
   - The Feature Center 5/6 correction shipped from commit `32b1b36` to Pages preview `https://7dfacc1b.xflexwithai.pages.dev` after one Cloudflare API timeout and a successful retry. Production `/admin/features` returned 200 with `noindex, nofollow` and served `AdminFeatureCenter-7HTAoj2d.js`. Focused tests, TypeScript, production build, and diff hygiene passed. The change is frontend arithmetic only and adds no API request, Worker CPU work, SQL read, database write, or migration.
 
+- Live Package protected-playback remediation on 2026-09-21:
+  - Firefox rejected the protected admin preview even though the uploaded 375,886,351-byte recording was independently verified as a valid MP4 containing H.264 Main 1280x720 video and AAC LC audio. The failure was the cross-subdomain authenticated media request, not the recording encoding.
+  - Commit `8bd8f75` routes `/api/live-package-recordings/:id/stream` through the Pages origin and forwards the session cookie, Range header, and query string to `api.xflexacademy.com`; both the admin and client players now use that same-origin path.
+  - Verification passed TypeScript, the production build, 33 focused Live Package tests, and a middleware execution probe that returned `206` while preserving the cookie and byte range. Production and preview anonymous stream probes correctly returned `401` with `Accept-Ranges: bytes`, proving the Pages proxy reached the protected Worker rather than the app shell.
+  - Pages production preview is `https://50231ee9.xflexwithai.pages.dev`. Production serves `assets/index-DarzcqD8.js` and `assets/AdminLivePackage-C2kEn191.js`; the deployed admin bundle contains the relative protected stream path and no API-subdomain recording URL.
+
 ## Future Hardening
 
 - Installed local Codex skills for future implementation workflows on 2026-07-05: `cloudflare-deploy`, `playwright`, `security-best-practices`, `security-threat-model`, `gh-fix-ci`, and `gh-address-comments`. `openai-docs` is already available as a system skill, so do not duplicate-install it.
