@@ -400,6 +400,32 @@ after this continuation were approximately 67,000, leaving about 8,000 writes
 for organic and scheduled activity below the 75,000 operating ceiling. No more
 production D1 reads or writes should be initiated for this UTC day.
 
+### Phase 5E completion — 2026-09-21
+
+- The operating gate reserved at least 20% of both free-tier daily allowances:
+  1,000,000 reads and 20,000 writes. The pre-change 18-hour Insights sample was
+  approximately 2,682,678 reads and 30,838 writes.
+- Captured the fresh pre-write Time Travel bookmark
+  `0000128c-000001b8-000050ed-064cf517ec83f21a7bcb644b2268842c`.
+- Archived the final 3,334 eligible rows in six 500-row batches and one 334-row
+  batch. D1 measured exactly 16,670 writes. The update queries and final
+  reconciliation used approximately 76,535 reads.
+- PASS: no candidates remain. The table reconciled exactly as 26,215 total =
+  5,881 active + 20,334 archived. All archived rows share the approved event
+  allowlist, cutoff, reason, and batch key; invalid batch rows = 0. Original
+  unread state remains preserved for 18,618 archived rows.
+- PASS: D1 connectivity remained healthy. No notification was deleted or marked
+  read, and no underlying support conversation or message was changed.
+- Conservative post-change estimate, including the measured manual work, was
+  approximately 2.76 million reads and 47.51 thousand writes. This left about
+  2.24 million reads and 52.49 thousand writes—well above the requested 20%
+  client reserve. Insights had not yet ingested the manual batch at the final
+  check, so these post-change totals are arithmetic estimates rather than a
+  same-minute dashboard claim.
+- Database size was 373,506,048 bytes after completion. Phase 5E is complete;
+  further physical-size reduction requires a separately approved retention or
+  payload-normalization change.
+
 ## Phase 6 — Post-deployment verification
 
 ### Current handoff — 2026-09-18
