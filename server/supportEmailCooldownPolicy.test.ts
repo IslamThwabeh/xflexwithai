@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 const database = readFileSync(new URL('../backend/db.ts', import.meta.url), 'utf8');
 const router = readFileSync(new URL('../backend/routers.ts', import.meta.url), 'utf8');
+const email = readFileSync(new URL('../backend/_core/email.ts', import.meta.url), 'utf8');
 
 describe('support email cooldown policy', () => {
   it('limits routine and escalation staff emails per conversation', () => {
@@ -15,5 +16,10 @@ describe('support email cooldown policy', () => {
     expect(database).toContain('const SUPPORT_REPLY_DIGEST_DELAY_MS = 60 * 1000');
     expect(database).toContain('metadata?.conversationId === input.conversationId');
     expect(database).toContain('messages: nextMessages');
+  });
+
+  it('bounds provider calls so one stalled request cannot block the queue', () => {
+    expect(email).toContain('EMAIL_PROVIDER_TIMEOUT_MS = 10_000');
+    expect(email.match(/signal: emailProviderSignal\(\)/g)?.length).toBe(3);
   });
 });

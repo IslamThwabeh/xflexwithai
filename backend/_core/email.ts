@@ -85,6 +85,12 @@ type ProviderSendResult = {
   requestId: string | null;
 };
 
+export const EMAIL_PROVIDER_TIMEOUT_MS = 10_000;
+
+function emailProviderSignal() {
+  return AbortSignal.timeout(EMAIL_PROVIDER_TIMEOUT_MS);
+}
+
 async function sendViaZeptoMail(input: SendEmailInput): Promise<ProviderSendResult> {
   const token = ENV.zeptoMailToken;
   const apiUrl = ENV.zeptoMailApiUrl;
@@ -102,6 +108,7 @@ async function sendViaZeptoMail(input: SendEmailInput): Promise<ProviderSendResu
 
   const res = await fetch(apiUrl, {
     method: "POST",
+    signal: emailProviderSignal(),
     headers: {
       "Content-Type": "application/json",
       Accept: "application/json",
@@ -142,6 +149,7 @@ async function sendViaResend(input: SendEmailInput) {
 
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
+    signal: emailProviderSignal(),
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
@@ -168,6 +176,7 @@ async function sendViaMailChannels(input: SendEmailInput) {
 
   const res = await fetch("https://api.mailchannels.net/tx/v1/send", {
     method: "POST",
+    signal: emailProviderSignal(),
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       personalizations: [{
