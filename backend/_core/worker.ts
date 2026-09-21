@@ -1152,7 +1152,14 @@ export default {
         if (!authContext.user || authContext.user.id <= 0) {
           return jsonResponse(401, { status: "unauthorized", message: "Please login to access this recording" }, headers);
         }
-        const recording = await db.getLivePackageRecordingForUser(Number(liveRecordingMatch[1]), authContext.user.id);
+        const admin = authContext.user.email ? await db.getAdminByEmail(authContext.user.email) : null;
+        const canPreviewDraft = Boolean(admin)
+          || await db.hasAnyRole(authContext.user.id, ["live_recording_publisher"]);
+        // Clients remain entitlement- and publication-gated. Admins and designated
+        // publishers may inspect drafts before exposing them to clients.
+        const recording = canPreviewDraft
+          ? await db.getLivePackageRecordingForAdmin(Number(liveRecordingMatch[1]))
+          : await db.getLivePackageRecordingForUser(Number(liveRecordingMatch[1]), authContext.user.id);
         if (!recording) {
           return jsonResponse(404, { status: "not_found", message: "Recording not found" }, headers);
         }

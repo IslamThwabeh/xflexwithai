@@ -15982,6 +15982,16 @@ export async function listLivePackageRecordingsAdmin(packageId: number, cohortKe
   )).orderBy(livePackageRecordings.sortOrder);
 }
 
+/** Admin/publisher preview lookup. Authorization is enforced by the Worker route. */
+export async function getLivePackageRecordingForAdmin(recordingId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const [recording] = await db.select().from(livePackageRecordings)
+    .where(eq(livePackageRecordings.id, recordingId))
+    .limit(1);
+  return recording ?? null;
+}
+
 export async function updateLivePackageRecording(input: {
   id: number;
   isPublished?: boolean;
