@@ -884,6 +884,8 @@ Last updated: 2026-09-18
   - Commit `8bd8f75` routes `/api/live-package-recordings/:id/stream` through the Pages origin and forwards the session cookie, Range header, and query string to `api.xflexacademy.com`; both the admin and client players now use that same-origin path.
   - Verification passed TypeScript, the production build, 33 focused Live Package tests, and a middleware execution probe that returned `206` while preserving the cookie and byte range. Production and preview anonymous stream probes correctly returned `401` with `Accept-Ranges: bytes`, proving the Pages proxy reached the protected Worker rather than the app shell.
   - Pages production preview is `https://50231ee9.xflexwithai.pages.dev`. Production serves `assets/index-DarzcqD8.js` and `assets/AdminLivePackage-C2kEn191.js`; the deployed admin bundle contains the relative protected stream path and no API-subdomain recording URL.
+  - The same-origin cookie proxy still returned 401 for existing admin sessions whose cookie was scoped to `api.xflexacademy.com`. Commit `e244fe8` replaces cookie-dependent media loading with an authenticated tRPC authorization query that issues a recording-specific four-hour signed URL; the stream validates that token while preserving admin draft preview and client publication/entitlement checks at issuance.
+  - Worker version `0bb5d279-9c94-4c4e-a8a3-cfedb928a771` and Pages preview `https://f8c25f44.xflexwithai.pages.dev` deployed successfully. Signed-in Chrome production verification played both recording 2 (draft) and recording 1 (published): duration 3400.32 seconds, 1280x720, `readyState=4`, advancing playback time, and no media/401 console errors.
 
 ## Future Hardening
 
