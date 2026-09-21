@@ -163,11 +163,13 @@ describe('Live Package Phase 2 contracts', () => {
     expect(adminPage).toContain('Upload recording');
     expect(adminPage).toContain('Protected preview as clients will see it');
     expect(adminPage).toContain('preload="none"');
+    expect(adminPage).toContain('crossOrigin="use-credentials"');
     expect(adminPage).toContain('Publish');
     expect(adminPage).toContain('Uploads can resume from the same browser.');
     expect(adminPage).toContain("import { apiFetch, withApiBase } from '@/lib/apiBase'");
     expect(adminPage).not.toMatch(/fetch\(`?\/api\/live-package-recordings\/multipart/);
     expect(workspace).toContain('src={withApiBase(recording.streamPath)}');
+    expect(workspace).toContain('crossOrigin="use-credentials"');
     expect(pagesMiddleware).toContain('"/live-package"');
     expect(adminPage).toContain('Titles and descriptions are optional. The file name is used when titles are blank.');
     expect(worker).toContain('const defaultTitle = upload.originalFileName');

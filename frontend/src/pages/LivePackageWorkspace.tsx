@@ -74,7 +74,7 @@ export default function LivePackageWorkspace() {
               <article key={recording.id} className="rounded-2xl border bg-white p-5">
                 <h3 className="font-semibold">{isAr ? recording.titleAr : recording.titleEn}</h3>
                 {(isAr ? recording.descriptionAr || recording.descriptionEn : recording.descriptionEn || recording.descriptionAr) && <p className="mt-2 whitespace-pre-wrap text-sm text-slate-600">{isAr ? recording.descriptionAr || recording.descriptionEn : recording.descriptionEn || recording.descriptionAr}</p>}
-                <video className="mt-4 w-full rounded-xl bg-black" controls controlsList="nodownload" preload="metadata" src={withApiBase(recording.streamPath)} onContextMenu={(event) => event.preventDefault()} />
+                <video className="mt-4 w-full rounded-xl bg-black" controls controlsList="nodownload" crossOrigin="use-credentials" preload="metadata" src={withApiBase(recording.streamPath)} onContextMenu={(event) => event.preventDefault()} />
               </article>
             )) : <p className="rounded-2xl border border-dashed p-6 text-sm text-slate-500">{isAr ? 'ستظهر التسجيلات المنشورة هنا.' : 'Published recordings will appear here.'}</p>}
           </section>
