@@ -140,6 +140,8 @@ describe("scheduled email outbox health monitor", () => {
     expect(workerSource).toContain(
       "maxBatches: FREE_PLAN_RECOMMENDATION_PROVIDER_BATCH_LIMIT",
     );
+    expect(workerSource).toContain('deliveryClasses: ["critical", "urgent"]');
+    expect(workerSource).toContain('deliveryClasses: ["bulk"]');
     expect(workerSource).not.toContain("source: \"daily\"");
   });
 

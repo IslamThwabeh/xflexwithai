@@ -168,6 +168,10 @@ import { CURRENT_TERMS_VERSION, TERMS_ACCEPTANCE_POLICY } from '../shared/legal'
 import { isLikelyValidEmail, normalizeEmailAddress } from '../shared/emailValidation';
 import type { EmailDeliveryEventCategory } from "../shared/emailDeliveryCategories";
 import {
+  classifyEmailDelivery,
+  type EmailDeliveryClass,
+} from '../shared/emailDeliveryClasses';
+import {
   getPackageKeyPriceIls,
 } from '../shared/packageKeyPricing';
 import { hashUnsubscribeToken, type EmailCategory } from './_core/emailPreferences';
@@ -6992,6 +6996,7 @@ export async function enqueueEmailOutbox(input: {
   bodyText: string;
   bodyHtml?: string | null;
   metadata?: Record<string, unknown> | null;
+  deliveryClass?: EmailDeliveryClass;
 }): Promise<boolean> {
   const db = await getDb();
   if (!db) return false;
@@ -7002,6 +7007,7 @@ export async function enqueueEmailOutbox(input: {
     recipientUserId: input.recipientUserId ?? null,
     recipientEmail: normalizeEmailAddress(input.recipientEmail),
     eventType: input.eventType,
+    deliveryClass: input.deliveryClass ?? classifyEmailDelivery(input),
     templateId: input.templateId ?? null,
     emailCategory: input.emailCategory ?? null,
     subject: input.subject,
@@ -7114,6 +7120,7 @@ export async function enqueueSupportReplyDigestEmail(input: {
     recipientUserId: input.recipientUserId,
     recipientEmail: normalizedEmail,
     eventType: "support_client_reply",
+    deliveryClass: "urgent",
     templateId: "support_client_reply",
     emailCategory: "transactional",
     subject: supportEmail.subject || input.subject,
@@ -7148,6 +7155,7 @@ export async function createEmailOutboxCampaign(input: {
   bodyText: string;
   bodyHtml?: string | null;
   metadata?: Record<string, unknown> | null;
+  deliveryClass?: EmailDeliveryClass;
 }): Promise<number> {
   const db = await getDb();
   if (!db || !input.recipients.length) return 0;
@@ -7164,6 +7172,7 @@ export async function createEmailOutboxCampaign(input: {
     recipientsJson: JSON.stringify(recipients),
     cursor: 0,
     eventType: input.eventType,
+    deliveryClass: input.deliveryClass ?? classifyEmailDelivery(input),
     templateId: input.templateId ?? null,
     emailCategory: input.emailCategory ?? null,
     subject: input.subject,
@@ -7183,6 +7192,7 @@ export async function materializeEmailOutboxCampaigns(
   options?: {
     eventTypes?: string[];
     excludedEventTypes?: string[];
+    deliveryClasses?: EmailDeliveryClass[];
     maxBatchSize?: number;
   },
 ): Promise<number> {
@@ -7194,6 +7204,9 @@ export async function materializeEmailOutboxCampaigns(
   }
   if (options?.excludedEventTypes?.length) {
     conditions.push(notInArray(emailOutboxCampaigns.eventType, options.excludedEventTypes));
+  }
+  if (options?.deliveryClasses?.length) {
+    conditions.push(inArray(emailOutboxCampaigns.deliveryClass, options.deliveryClasses));
   }
   const [campaign] = await db.select().from(emailOutboxCampaigns)
     .where(and(...conditions))
@@ -7225,6 +7238,7 @@ export async function materializeEmailOutboxCampaigns(
       recipientUserId: recipient.userId,
       recipientEmail: recipient.email,
       eventType: campaign.eventType,
+      deliveryClass: campaign.deliveryClass as EmailDeliveryClass,
       templateId: campaign.templateId,
       emailCategory: campaign.emailCategory as EmailCategory | null,
       subject: campaign.subject,
@@ -7246,7 +7260,11 @@ export async function materializeEmailOutboxCampaigns(
 
 export async function claimEmailOutboxBatch(
   limit: number = 10,
-  options?: { eventTypes?: string[]; excludedEventTypes?: string[] },
+  options?: {
+    eventTypes?: string[];
+    excludedEventTypes?: string[];
+    deliveryClasses?: EmailDeliveryClass[];
+  },
 ): Promise<EmailOutbox[]> {
   const db = await getDb();
   if (!db) return [];
@@ -7276,6 +7294,9 @@ export async function claimEmailOutboxBatch(
   }
   if (options?.excludedEventTypes?.length) {
     conditions.push(notInArray(emailOutbox.eventType, options.excludedEventTypes));
+  }
+  if (options?.deliveryClasses?.length) {
+    conditions.push(inArray(emailOutbox.deliveryClass, options.deliveryClasses));
   }
 
   const candidates = await db.select().from(emailOutbox)

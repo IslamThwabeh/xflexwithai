@@ -24,9 +24,9 @@ import {
   GENERIC_EMAIL_OUTBOX_DRAIN_LIMIT,
   LIVE_SESSION_EMAIL_BCC_LIMIT,
   LIVE_SESSION_EMAIL_EVENT,
+  PRIORITY_EMAIL_OUTBOX_DRAIN_LIMIT,
   STUDENT_COMMUNITY_EMAIL_BCC_LIMIT,
   STUDENT_COMMUNITY_POST_EMAIL_EVENT,
-  SUPPORT_REPLY_EMAIL_DRAIN_LIMIT,
 } from "../services/email-outbox.service";
 import {
   drainRecommendationDeliveryQueue,
@@ -88,8 +88,8 @@ async function runFrequentEmailJobs(scheduledMinute: number) {
       source: "scheduled",
     }),
     drainSupportReplies: () => drainGenericEmailOutbox({
-      limit: SUPPORT_REPLY_EMAIL_DRAIN_LIMIT,
-      eventTypes: ["support_client_reply"],
+      limit: PRIORITY_EMAIL_OUTBOX_DRAIN_LIMIT,
+      deliveryClasses: ["critical", "urgent"],
     }),
     recommendationFailureProviderRequests: FREE_PLAN_RECOMMENDATION_PROVIDER_BATCH_LIMIT,
     onError: (lane, error) => logger.error(`[CRON] Priority ${lane} delivery failed`, {
@@ -166,8 +166,9 @@ async function runFrequentEmailJobs(scheduledMinute: number) {
     try {
       await db.materializeEmailOutboxCampaigns(genericLimit, {
         excludedEventTypes: [STUDENT_COMMUNITY_POST_EMAIL_EVENT],
+        deliveryClasses: ["bulk"],
       });
-      await drainGenericEmailOutbox({ limit: genericLimit });
+      await drainGenericEmailOutbox({ limit: genericLimit, deliveryClasses: ["bulk"] });
     } catch (error) {
       logger.error("[CRON] Generic email outbox jobs failed", {
         error: error instanceof Error ? error.message : String(error),

@@ -90,6 +90,23 @@ describe("email outbox service", () => {
     expect(result).toEqual({ claimed: 1, sent: 1, failed: 0, skipped: 0 });
   });
 
+  it("reserves the minute lane for critical and urgent outbox rows", async () => {
+    await drainGenericEmailOutbox({
+      limit: 5,
+      deliveryClasses: ["critical", "urgent"],
+    });
+
+    expect(db.claimEmailOutboxBatch).toHaveBeenCalledWith(5, {
+      excludedEventTypes: [
+        "student_survey_assigned",
+        "student_survey_reminder",
+        "student_community_post_published",
+        "live_session_reminder",
+      ],
+      deliveryClasses: ["critical", "urgent"],
+    });
+  });
+
   it("drains the reserved support reply lane before the generic lane", async () => {
     vi.mocked(db.claimEmailOutboxBatch)
       .mockResolvedValueOnce([outboxRow({ id: 2 })])
@@ -114,6 +131,7 @@ describe("email outbox service", () => {
         "student_community_post_published",
         "live_session_reminder",
       ],
+      deliveryClasses: ["critical", "urgent"],
     });
     expect(result.total).toEqual({ claimed: 2, sent: 2, failed: 0, skipped: 0 });
   });

@@ -604,6 +604,7 @@ export const emailOutbox = sqliteTable("email_outbox", {
   recipientUserId: integer("recipientUserId"),
   recipientEmail: text("recipientEmail").notNull(),
   eventType: text("eventType").notNull(),
+  deliveryClass: text("deliveryClass", { enum: ["critical", "urgent", "bulk"] }).default("urgent").notNull(),
   templateId: text("templateId"),
   emailCategory: text("emailCategory"),
   subject: text("subject").notNull(),
@@ -623,6 +624,7 @@ export const emailOutbox = sqliteTable("email_outbox", {
   updatedAt: text("updatedAt").default(sql`(datetime('now'))`).notNull(),
 }, (table) => ({
   statusNextAttemptIdx: index("idx_email_outbox_status_next_attempt").on(table.status, table.nextAttemptAt),
+  statusClassDueIdx: index("idx_email_outbox_status_class_due").on(table.status, table.deliveryClass, table.nextAttemptAt, table.createdAt, table.id),
   batchIdx: index("idx_email_outbox_batch").on(table.batchId),
 }));
 
@@ -635,6 +637,7 @@ export const emailOutboxCampaigns = sqliteTable("email_outbox_campaigns", {
   recipientsJson: text("recipientsJson").notNull(),
   cursor: integer("cursor").default(0).notNull(),
   eventType: text("eventType").notNull(),
+  deliveryClass: text("deliveryClass", { enum: ["critical", "urgent", "bulk"] }).default("bulk").notNull(),
   templateId: text("templateId"),
   emailCategory: text("emailCategory"),
   subject: text("subject").notNull(),
@@ -646,6 +649,7 @@ export const emailOutboxCampaigns = sqliteTable("email_outbox_campaigns", {
   updatedAt: text("updatedAt").default(sql`(datetime('now'))`).notNull(),
 }, (table) => ({
   statusCreatedIdx: index("idx_email_outbox_campaign_status").on(table.status, table.createdAt),
+  statusClassCreatedIdx: index("idx_email_outbox_campaign_status_class_created").on(table.status, table.deliveryClass, table.createdAt, table.id),
 }));
 
 export type EmailOutboxCampaign = typeof emailOutboxCampaigns.$inferSelect;

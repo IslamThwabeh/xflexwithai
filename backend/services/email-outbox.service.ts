@@ -1,7 +1,9 @@
 import { sendAdminNotificationEmail, sendEmail } from "../_core/email";
 import * as db from "../db";
+import type { EmailDeliveryClass } from "../../shared/emailDeliveryClasses";
 
 export const SUPPORT_REPLY_EMAIL_DRAIN_LIMIT = 5;
+export const PRIORITY_EMAIL_OUTBOX_DRAIN_LIMIT = 5;
 export const SUPPORT_REPLY_IMMEDIATE_DRAIN_LIMIT = 3;
 export const GENERIC_EMAIL_OUTBOX_DRAIN_LIMIT = 10;
 export const STUDENT_SURVEY_EMAIL_BCC_LIMIT = 50;
@@ -22,12 +24,19 @@ const PRIVACY_BCC_EMAIL_EVENTS = [
 export async function drainGenericEmailOutbox(input: {
   limit: number;
   eventTypes?: string[];
+  deliveryClasses?: EmailDeliveryClass[];
 }): Promise<{ claimed: number; sent: number; failed: number; skipped: number }> {
+  const claimOptions: {
+    eventTypes?: string[];
+    excludedEventTypes?: string[];
+    deliveryClasses?: EmailDeliveryClass[];
+  } = input.eventTypes
+    ? { eventTypes: input.eventTypes }
+    : { excludedEventTypes: PRIVACY_BCC_EMAIL_EVENTS };
+  if (input.deliveryClasses) claimOptions.deliveryClasses = input.deliveryClasses;
   const rows = await db.claimEmailOutboxBatch(
     input.limit,
-    input.eventTypes
-      ? { eventTypes: input.eventTypes }
-      : { excludedEventTypes: PRIVACY_BCC_EMAIL_EVENTS },
+    claimOptions,
   );
   const result = { claimed: rows.length, sent: 0, failed: 0, skipped: 0 };
 
@@ -256,6 +265,7 @@ export async function drainDueEmailOutbox(input?: {
   });
   const generic = await drainGenericEmailOutbox({
     limit: input?.genericLimit ?? GENERIC_EMAIL_OUTBOX_DRAIN_LIMIT,
+    deliveryClasses: ["critical", "urgent"],
   });
 
   return {
