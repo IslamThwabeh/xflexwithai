@@ -655,6 +655,39 @@ export const emailOutboxCampaigns = sqliteTable("email_outbox_campaigns", {
 export type EmailOutboxCampaign = typeof emailOutboxCampaigns.$inferSelect;
 export type InsertEmailOutboxCampaign = typeof emailOutboxCampaigns.$inferInsert;
 
+export const emailBulkDeliveryControl = sqliteTable("email_bulk_delivery_control", {
+  id: integer("id").primaryKey(),
+  mode: text("mode", { enum: ["automatic", "manual_paused"] }).default("automatic").notNull(),
+  isPaused: integer("isPaused", { mode: "boolean" }).default(false).notNull(),
+  reason: text("reason"),
+  pausedAt: text("pausedAt"),
+  healthySince: text("healthySince"),
+  lastEvaluatedAt: text("lastEvaluatedAt"),
+  updatedAt: text("updatedAt").default(sql`(datetime('now'))`).notNull(),
+  updatedByAdminId: integer("updatedByAdminId"),
+});
+
+export type EmailBulkDeliveryControl = typeof emailBulkDeliveryControl.$inferSelect;
+
+export const emailBulkDeliveryControlEvents = sqliteTable("email_bulk_delivery_control_events", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  action: text("action", { enum: [
+    "automatic_paused",
+    "automatic_recovery_started",
+    "automatic_recovery_cancelled",
+    "automatic_resumed",
+    "manual_paused",
+    "manual_resumed",
+  ] }).notNull(),
+  reason: text("reason"),
+  adminId: integer("adminId"),
+  createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
+}, (table) => ({
+  createdIdx: index("idx_email_bulk_control_events_created").on(table.createdAt, table.id),
+}));
+
+export type EmailBulkDeliveryControlEvent = typeof emailBulkDeliveryControlEvents.$inferSelect;
+
 /**
  * Recommendation message reactions
  */

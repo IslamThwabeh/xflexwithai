@@ -13587,8 +13587,27 @@ ${qaText}`;
         });
       }),
     outboxHealth: adminProcedure.query(async () => {
-      return db.getEmailOutboxHealth(5);
+      const [health, bulkDeliveryControl] = await Promise.all([
+        db.getEmailOutboxHealth(5),
+        db.getEmailBulkDeliveryControl(),
+      ]);
+      return { ...health, bulkDeliveryControl };
     }),
+    setBulkDeliveryPaused: adminProcedure
+      .input(z.object({ paused: z.boolean() }))
+      .mutation(async ({ ctx, input }) => {
+        const state = await db.setEmailBulkDeliveryManualPause({
+          paused: input.paused,
+          adminId: ctx.admin.id,
+        });
+        await db.logAdminAction(
+          ctx.admin.id,
+          ctx.admin.id,
+          input.paused ? "pause_bulk_email_delivery" : "resume_automatic_bulk_email_delivery",
+          { state },
+        );
+        return state;
+      }),
     drainDueOutbox: adminProcedure
       .mutation(async ({ ctx }) => {
         const result = await drainDueEmailOutbox();

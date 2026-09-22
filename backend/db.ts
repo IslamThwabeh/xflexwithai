@@ -99,6 +99,7 @@ import {
   emailProviderWebhookEvents,
   emailOutbox, EmailOutbox, InsertEmailOutbox,
   emailOutboxCampaigns, EmailOutboxCampaign, InsertEmailOutboxCampaign,
+  emailBulkDeliveryControl,
   emailUnsubscribes, EmailUnsubscribe, InsertEmailUnsubscribe,
   emailSuppressions, EmailSuppression, InsertEmailSuppression,
   planProgress, PlanProgress, InsertPlanProgress,
@@ -171,6 +172,12 @@ import {
   classifyEmailDelivery,
   type EmailDeliveryClass,
 } from '../shared/emailDeliveryClasses';
+import {
+  BULK_RECOVERY_HEALTHY_MINUTES,
+  decideAutomaticBulkDeliveryState,
+  PRIORITY_DELAY_THRESHOLD_MINUTES,
+  type BulkDeliveryControlState,
+} from './services/bulk-email-control.service';
 import {
   getPackageKeyPriceIls,
 } from '../shared/packageKeyPricing';
@@ -7664,6 +7671,137 @@ export async function hasEmailOutboxAnomaly(staleAfterMinutes: number = 5): Prom
   ]);
 
   return staleDueRows.length > 0 || deadLetterRows.length > 0;
+}
+
+function normalizeBulkDeliveryControlState(
+  row: typeof emailBulkDeliveryControl.$inferSelect | undefined,
+): BulkDeliveryControlState {
+  const nowIso = new Date().toISOString();
+  return {
+    mode: row?.mode === "manual_paused" ? "manual_paused" : "automatic",
+    isPaused: Boolean(row?.isPaused),
+    reason: row?.reason ?? null,
+    pausedAt: row?.pausedAt ?? null,
+    healthySince: row?.healthySince ?? null,
+    lastEvaluatedAt: row?.lastEvaluatedAt ?? null,
+    updatedAt: row?.updatedAt ?? nowIso,
+    updatedByAdminId: row?.updatedByAdminId ?? null,
+  };
+}
+
+export async function getEmailBulkDeliveryControl(): Promise<BulkDeliveryControlState> {
+  const db = await getDb();
+  if (!db) return normalizeBulkDeliveryControlState(undefined);
+  const [row] = await db.select().from(emailBulkDeliveryControl)
+    .where(eq(emailBulkDeliveryControl.id, 1))
+    .limit(1);
+  return normalizeBulkDeliveryControlState(row);
+}
+
+/** Indexed existence probe used by the minute scheduler's circuit breaker. */
+export async function hasStalePriorityEmailOutbox(
+  staleAfterMinutes: number = PRIORITY_DELAY_THRESHOLD_MINUTES,
+): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  const cutoffIso = new Date(Date.now() - Math.max(1, staleAfterMinutes) * 60_000).toISOString();
+  const rows = await db.select({ id: emailOutbox.id }).from(emailOutbox)
+    .where(and(
+      inArray(emailOutbox.status, ["pending", "failed"]),
+      inArray(emailOutbox.deliveryClass, ["critical", "urgent"]),
+      lte(emailOutbox.nextAttemptAt, cutoffIso),
+      lt(emailOutbox.attempts, MAX_EMAIL_OUTBOX_ATTEMPTS),
+    ))
+    .limit(1);
+  return rows.length > 0;
+}
+
+async function persistAutomaticBulkControlTransition(input: {
+  previous: BulkDeliveryControlState;
+  next: BulkDeliveryControlState;
+}): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  const changed = await db.update(emailBulkDeliveryControl).set({
+    mode: input.next.mode,
+    isPaused: input.next.isPaused,
+    reason: input.next.reason,
+    pausedAt: input.next.pausedAt,
+    healthySince: input.next.healthySince,
+    lastEvaluatedAt: input.next.lastEvaluatedAt,
+    updatedAt: input.next.updatedAt,
+    updatedByAdminId: null,
+  }).where(and(
+    eq(emailBulkDeliveryControl.id, 1),
+    eq(emailBulkDeliveryControl.mode, "automatic"),
+    eq(emailBulkDeliveryControl.updatedAt, input.previous.updatedAt),
+  )).returning({ id: emailBulkDeliveryControl.id });
+  if (!changed[0]) return false;
+  return true;
+}
+
+export async function evaluateEmailBulkDeliveryControl(input?: {
+  staleAfterMinutes?: number;
+  recoveryHealthyMinutes?: number;
+  now?: Date;
+}): Promise<BulkDeliveryControlState> {
+  const state = await getEmailBulkDeliveryControl();
+  if (state.mode === "manual_paused") return state;
+  const hasPriorityDelay = await hasStalePriorityEmailOutbox(
+    input?.staleAfterMinutes ?? PRIORITY_DELAY_THRESHOLD_MINUTES,
+  );
+  const decision = decideAutomaticBulkDeliveryState({
+    state,
+    hasPriorityDelay,
+    now: input?.now ?? new Date(),
+    recoveryHealthyMinutes: input?.recoveryHealthyMinutes ?? BULK_RECOVERY_HEALTHY_MINUTES,
+  });
+  if (decision.action === "none") return decision.next;
+  const changed = await persistAutomaticBulkControlTransition({
+    previous: state,
+    next: decision.next,
+  });
+  return changed ? decision.next : getEmailBulkDeliveryControl();
+}
+
+export async function setEmailBulkDeliveryManualPause(input: {
+  paused: boolean;
+  adminId: number;
+}): Promise<BulkDeliveryControlState> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const current = await getEmailBulkDeliveryControl();
+  if (input.paused && current.mode === "manual_paused") return current;
+  if (!input.paused && current.mode === "automatic") return current;
+
+  const nowIso = new Date().toISOString();
+  const hasPriorityDelay = input.paused
+    ? false
+    : await hasStalePriorityEmailOutbox(PRIORITY_DELAY_THRESHOLD_MINUTES);
+  const next: BulkDeliveryControlState = input.paused
+    ? {
+      mode: "manual_paused",
+      isPaused: true,
+      reason: "manual_admin_pause",
+      pausedAt: current.pausedAt ?? nowIso,
+      healthySince: null,
+      lastEvaluatedAt: nowIso,
+      updatedAt: nowIso,
+      updatedByAdminId: input.adminId,
+    }
+    : {
+      mode: "automatic",
+      isPaused: hasPriorityDelay,
+      reason: hasPriorityDelay ? "priority_delivery_delayed" : null,
+      pausedAt: hasPriorityDelay ? (current.pausedAt ?? nowIso) : null,
+      healthySince: null,
+      lastEvaluatedAt: nowIso,
+      updatedAt: nowIso,
+      updatedByAdminId: input.adminId,
+    };
+
+  await db.update(emailBulkDeliveryControl).set(next).where(eq(emailBulkDeliveryControl.id, 1));
+  return next;
 }
 
 export async function hasRecommendationResultChild(parentId: number) {

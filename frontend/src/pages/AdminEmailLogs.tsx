@@ -3,7 +3,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { trpc } from '@/lib/trpc';
-import { ChevronDown, ChevronUp, Loader2, Mail, MailCheck, MailX, RefreshCw, Send } from 'lucide-react';
+import { ChevronDown, ChevronUp, Loader2, Mail, MailCheck, MailX, Pause, Play, RefreshCw, Send } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   FEATURE_EMAIL_DELIVERY_CATEGORY,
@@ -245,6 +245,11 @@ export default function AdminEmailLogs() {
       ]);
     },
   });
+  const setBulkDeliveryPausedMutation = trpc.adminEmail.setBulkDeliveryPaused.useMutation({
+    onSuccess: async () => {
+      await utils.adminEmail.outboxHealth.invalidate();
+    },
+  });
 
   const deliveryTotal = deliverySummary?.total ?? 0;
   const hasOlderDeliveryLogs = deliveryOffset + (deliveryLogs?.length ?? 0) < deliveryTotal;
@@ -362,20 +367,81 @@ export default function AdminEmailLogs() {
                     : 'Monitor queued and due emails before clients feel the delay.'}
                 </p>
               </div>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => drainDueOutboxMutation.mutate()}
-                disabled={drainDueOutboxMutation.isPending}
-              >
-                {drainDueOutboxMutation.isPending ? (
-                  <Loader2 className="me-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <Send className="me-2 h-4 w-4" />
-                )}
-                {isRtl ? 'إرسال المستحق الآن' : 'Drain due now'}
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => drainDueOutboxMutation.mutate()}
+                  disabled={drainDueOutboxMutation.isPending}
+                >
+                  {drainDueOutboxMutation.isPending ? (
+                    <Loader2 className="me-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Send className="me-2 h-4 w-4" />
+                  )}
+                  {isRtl ? 'إرسال المستحق الآن' : 'Drain due now'}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={outboxHealth?.bulkDeliveryControl?.mode === 'manual_paused' ? 'default' : 'outline'}
+                  disabled={setBulkDeliveryPausedMutation.isPending}
+                  onClick={() => {
+                    const currentlyManualPaused = outboxHealth?.bulkDeliveryControl?.mode === 'manual_paused';
+                    const prompt = currentlyManualPaused
+                      ? (isRtl ? 'إعادة الإرسال الجماعي إلى الوضع التلقائي؟' : 'Return bulk email delivery to automatic control?')
+                      : (isRtl ? 'إيقاف جميع رسائل البريد الجماعية مؤقتاً؟' : 'Pause all bulk email delivery?');
+                    if (window.confirm(prompt)) {
+                      setBulkDeliveryPausedMutation.mutate({ paused: !currentlyManualPaused });
+                    }
+                  }}
+                >
+                  {setBulkDeliveryPausedMutation.isPending ? (
+                    <Loader2 className="me-2 h-4 w-4 animate-spin" />
+                  ) : outboxHealth?.bulkDeliveryControl?.mode === 'manual_paused' ? (
+                    <Play className="me-2 h-4 w-4" />
+                  ) : (
+                    <Pause className="me-2 h-4 w-4" />
+                  )}
+                  {outboxHealth?.bulkDeliveryControl?.mode === 'manual_paused'
+                    ? (isRtl ? 'العودة للوضع التلقائي' : 'Return to automatic')
+                    : (isRtl ? 'إيقاف الإرسال الجماعي' : 'Pause bulk delivery')}
+                </Button>
+              </div>
+            </div>
+
+            <div className={`rounded-lg border px-4 py-3 text-sm ${outboxHealth?.bulkDeliveryControl?.isPaused
+              ? 'border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-100'
+              : 'border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-900/50 dark:bg-emerald-950/20 dark:text-emerald-100'}`}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-medium">
+                  {outboxHealthLoading
+                    ? (isRtl ? 'جارٍ تحميل حالة الإرسال الجماعي...' : 'Loading bulk delivery status...')
+                    : outboxHealth?.bulkDeliveryControl?.isPaused
+                      ? (isRtl ? 'الإرسال الجماعي متوقف مؤقتاً' : 'Bulk delivery is paused')
+                      : (isRtl ? 'الإرسال الجماعي يعمل تلقائياً' : 'Bulk delivery is running automatically')}
+                </span>
+                <Badge variant="outline">
+                  {outboxHealth?.bulkDeliveryControl?.mode === 'manual_paused'
+                    ? (isRtl ? 'إيقاف يدوي' : 'Manual pause')
+                    : (isRtl ? 'تحكم تلقائي' : 'Automatic control')}
+                </Badge>
+              </div>
+              {outboxHealth?.bulkDeliveryControl?.reason && (
+                <p className="mt-1 text-xs opacity-80">
+                  {outboxHealth.bulkDeliveryControl.reason === 'priority_delivery_delayed'
+                    ? (isRtl ? 'تم الإيقاف لأن البريد العاجل متأخر أكثر من خمس دقائق.' : 'Paused because priority email is delayed by more than five minutes.')
+                    : (isRtl ? 'تم الإيقاف يدوياً بواسطة الإدارة.' : 'Paused manually by an administrator.')}
+                </p>
+              )}
+              {outboxHealth?.bulkDeliveryControl?.healthySince && (
+                <p className="mt-1 text-xs opacity-80">
+                  {isRtl
+                    ? 'تمت استعادة صحة البريد العاجل؛ سيستأنف الإرسال بعد عشر دقائق مستقرة.'
+                    : 'Priority email is healthy again; bulk delivery resumes after ten stable minutes.'}
+                </p>
+              )}
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">

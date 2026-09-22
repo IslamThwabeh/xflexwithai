@@ -97,6 +97,19 @@ async function runFrequentEmailJobs(scheduledMinute: number) {
     }),
   });
 
+  // Fail closed for bulk traffic: if the controller cannot prove the priority
+  // queue is healthy, preserve provider and CPU capacity for the next minute.
+  let bulkDeliveryPaused = true;
+  try {
+    const bulkControl = await db.evaluateEmailBulkDeliveryControl();
+    bulkDeliveryPaused = bulkControl.isPaused;
+  } catch (error) {
+    logger.error("[CRON] Bulk email delivery control failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+  if (bulkDeliveryPaused) return;
+
   const lowerPriorityBudget = Math.min(
     FREE_PLAN_LOWER_PRIORITY_PROVIDER_LIMIT,
     getRemainingGenericEmailBudget(priorityDrain.recommendationProviderRequests),
