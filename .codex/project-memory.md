@@ -1,6 +1,6 @@
 # XFLEX Project Memory
 
-Last updated: 2026-09-18
+Last updated: 2026-09-22
 
 ## Project Overview
 
@@ -15,6 +15,16 @@ Last updated: 2026-09-18
 - Database wrapper/helpers: `backend/db.ts`.
 - SQLite schema source: `database/schema-sqlite.ts`.
 - Key tables to remember: `admin_settings`, `supportMessages`, `userRoles`, `users`, `email_delivery_logs`, `email_suppressions`, `recommendationSubscriptions`, `lexaiSubscriptions`, `registrationKeys`, `packageSubscriptions`, `client_notification_controls`, `client_notification_control_audit`, `seo_owner_intake`, `seo_owner_intake_answers`.
+
+## Email reliability Phase 1 — delivery-lane isolation — 2026-09-22
+
+- Commit `3d64d71` (`Separate priority and bulk email lanes`) is pushed to `origin/codex/live-package-phase-a`. Production Worker version `cebf8c2f-4963-46e3-a173-a93967f647ad` is active. This was a Worker-only release; no Pages deployment or frontend change was required.
+- Migration `119_email_delivery_class_lanes.sql` additively gives `email_outbox` and `email_outbox_campaigns` a constrained durable `deliveryClass` (`critical`, `urgent`, or `bulk`) and adds indexed status/class/due claim paths. It is recorded exactly once in `schema_migrations`. Migration SHA-256: `0EA4981E145FDB3FD1E4223026ED88294B6DD1E7E027E23D0ECAA3EDBBF0BCC1`.
+- Priority scheduling now claims only critical/urgent outbox rows every minute, after the separately persisted recommendation delivery queue and before lower-priority work. Survey, community, Live reminder, marketing, and admin-bulk messages use the bulk lane and remain on bounded five-minute rotation. Unknown transactional events fail toward urgent so a new event cannot silently fall behind bulk traffic. Login/security/payment-style event names classify critical; login-code sends remain on their existing synchronous critical path and are not moved into the outbox.
+- Production migration safety: pre-change Time Travel bookmark `00001290-000005a8-000050ee-c7e26dd4ae40cab48609ba3fbb1d3522`; complete export `tmp/prod-backups/xflexwithai-before-email-lanes-119-20260922.sql`, 388,702,058 bytes, SHA-256 `880625B92D62D7CBD4CB6E6D23A3D88B9BF982B036CDA69C938E3B9B1BA934CB`. Two independent production-shaped restores applied migration 119 with identical results: 7,802 rows preserved, 85 critical, 3,651 urgent, 4,066 bulk, 75/75 campaigns bulk, integrity `ok`, zero foreign-key violations, one ledger row, and the priority due query using `idx_email_outbox_status_class_due` without a table scan.
+- Production apply completed at bookmark `00001290-00000990-000050ee-15502e332a5fab641d7472370ed83185`: 32,679 rows read and 15,687 rows written. Post-migration reconciliation matched both rehearsals, found zero invalid classes and zero active outbox rows, confirmed the new index and one migration-ledger row, and returned zero foreign-key violations. The database grew from about 373.63 MB to 374.23 MB due to the two indexes.
+- Verification passed 9 focused files / 50 tests, the critical-cycle gate (33 files / 195 tests), TypeScript, full application build, Worker build, `git diff --check`, API health 200, database health 200, bindings, and all three cron schedules. The complete suite ran 834 tests: 832 passed; two unrelated pre-existing source-text assertions failed in `adminSubscribersReportUi.test.ts` and `clientKeyActivationNavigation.test.ts`. Neither failing test nor its referenced UI source changed in this phase.
+- Expected steady-state cost: no new polling, provider request, or additional cron. Each outbox insert writes one small class value. Scheduled claims add an indexed class predicate and retain the existing maximum-five priority claim; bulk work remains one provider request at most in its selected lower-priority minute. The new indexes add storage and write amplification on outbox inserts but prevent bulk backlog scans from competing with priority claims.
 
 ## Live Package coach recording release — 2026-09-18
 
