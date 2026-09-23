@@ -24636,11 +24636,16 @@ function buildEmailDeliveryLogConditions(filters?: EmailDeliveryLogFilters) {
   const conditions = [] as any[];
 
   if (filters?.recipientQuery?.trim()) {
-    const query = `%${filters.recipientQuery.trim()}%`;
-    conditions.push(or(
-      like(emailDeliveryLogs.recipientEmail, query),
-      like(users.name, query),
-    ));
+    const normalizedQuery = normalizeEmailAddress(filters.recipientQuery);
+    if (isLikelyValidEmail(normalizedQuery)) {
+      conditions.push(eq(emailDeliveryLogs.recipientEmail, normalizedQuery));
+    } else {
+      const query = `%${filters.recipientQuery.trim()}%`;
+      conditions.push(or(
+        like(emailDeliveryLogs.recipientEmail, query),
+        like(users.name, query),
+      ));
+    }
   }
 
   if (filters?.recipientUserId) {
@@ -24976,11 +24981,10 @@ export async function getEmailDeliveryLogSummary(filters?: EmailDeliveryLogFilte
   oldestCreatedAt: string | null;
   newestCreatedAt: string | null;
   legacyTimestampCount: number;
-  topEventTypes: Array<{ eventType: string; templateId: string | null; count: number }>;
 }> {
   const db = await getDb();
   if (!db) {
-    return { total: 0, sent: 0, delivered: 0, bounced: 0, complained: 0, failed: 0, skipped: 0, oldestCreatedAt: null, newestCreatedAt: null, legacyTimestampCount: 0, topEventTypes: [] };
+    return { total: 0, sent: 0, delivered: 0, bounced: 0, complained: 0, failed: 0, skipped: 0, oldestCreatedAt: null, newestCreatedAt: null, legacyTimestampCount: 0 };
   }
 
   const conditions = buildEmailDeliveryLogConditions(filters);
@@ -25003,18 +25007,6 @@ export async function getEmailDeliveryLogSummary(filters?: EmailDeliveryLogFilte
     .leftJoin(users, eq(emailDeliveryLogs.recipientUserId, users.id));
   const [summary] = whereClause ? await summaryBase.where(whereClause) : await summaryBase;
 
-  const topEventsBase = db.select({
-    eventType: emailDeliveryLogs.eventType,
-    templateId: emailDeliveryLogs.templateId,
-    count: sql<number>`count(*)`,
-  })
-    .from(emailDeliveryLogs)
-    .leftJoin(users, eq(emailDeliveryLogs.recipientUserId, users.id))
-    .groupBy(emailDeliveryLogs.eventType, emailDeliveryLogs.templateId)
-    .orderBy(desc(sql<number>`count(*)`))
-    .limit(8);
-  const topEventTypes = whereClause ? await topEventsBase.where(whereClause) : await topEventsBase;
-
   return {
     total: Number(summary?.total ?? 0),
     sent: Number(summary?.sent ?? 0),
@@ -25026,11 +25018,6 @@ export async function getEmailDeliveryLogSummary(filters?: EmailDeliveryLogFilte
     oldestCreatedAt: summary?.oldestCreatedAt ?? null,
     newestCreatedAt: summary?.newestCreatedAt ?? null,
     legacyTimestampCount: Number(summary?.legacyTimestampCount ?? 0),
-    topEventTypes: topEventTypes.map((row) => ({
-      eventType: row.eventType,
-      templateId: row.templateId,
-      count: Number(row.count ?? 0),
-    })),
   };
 }
 

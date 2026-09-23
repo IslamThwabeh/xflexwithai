@@ -174,11 +174,13 @@ export default function AdminEmailLogs() {
   const { data: adminCheck } = trpc.auth.isAdmin.useQuery();
   const isAdmin = !!adminCheck?.isAdmin;
   const canViewEmailLogs = isAdmin || (adminCheck?.staffRoles ?? []).includes('email_logs_viewer');
+  const [recipientQueryDraft, setRecipientQueryDraft] = useState('');
   const [recipientQuery, setRecipientQuery] = useState('');
   const [deliveryStatus, setDeliveryStatus] = useState<DeliveryStatus>('all');
+  const [deliveryEventTypeDraft, setDeliveryEventTypeDraft] = useState('');
   const [deliveryEventType, setDeliveryEventType] = useState('');
-  const [deliveryFromDate, setDeliveryFromDate] = useState('');
-  const [deliveryToDate, setDeliveryToDate] = useState('');
+  const [deliveryFromDate, setDeliveryFromDate] = useState(() => getAmmanDateValue(-6));
+  const [deliveryToDate, setDeliveryToDate] = useState(() => getAmmanDateValue());
   const [deliveryOffset, setDeliveryOffset] = useState(0);
   const [deliveryView, setDeliveryView] = useState<DeliveryLogView>('detailed');
   const requestedFeature = new URLSearchParams(window.location.search).get('feature');
@@ -186,7 +188,7 @@ export default function AdminEmailLogs() {
     ? FEATURE_EMAIL_DELIVERY_CATEGORY[requestedFeature as keyof typeof FEATURE_EMAIL_DELIVERY_CATEGORY]
     : 'all';
   const [deliveryCategory, setDeliveryCategory] = useState<DeliveryCategory>(requestedFeatureCategory);
-  const [deliveryDatePreset, setDeliveryDatePreset] = useState<DeliveryDatePreset>('all');
+  const [deliveryDatePreset, setDeliveryDatePreset] = useState<DeliveryDatePreset>('last7');
   const [expandedDeliveryGroups, setExpandedDeliveryGroups] = useState<Record<string, boolean>>({});
   const [isPageVisible, setIsPageVisible] = useState(
     () => typeof document === 'undefined' || document.visibilityState === 'visible',
@@ -220,6 +222,20 @@ export default function AdminEmailLogs() {
     fromDate: deliveryFromDate || undefined,
     toDate: deliveryToDate ? `${deliveryToDate} 23:59:59` : undefined,
   }), [recipientQuery, deliveryStatus, deliveryEventType, deliveryCategory, deliveryFromDate, deliveryToDate]);
+
+  const applyTextFilters = () => {
+    setRecipientQuery(recipientQueryDraft.trim());
+    setDeliveryEventType(deliveryEventTypeDraft.trim());
+    setDeliveryOffset(0);
+  };
+
+  const clearTextFilters = () => {
+    setRecipientQueryDraft('');
+    setDeliveryEventTypeDraft('');
+    setRecipientQuery('');
+    setDeliveryEventType('');
+    setDeliveryOffset(0);
+  };
 
   const { data: deliveryLogs, isLoading: deliveryLogsLoading } = trpc.adminEmail.deliveryLogs.useQuery(
     deliveryFilters,
@@ -623,8 +639,9 @@ export default function AdminEmailLogs() {
               <div className="xl:col-span-2">
                 <label className="text-sm font-medium">{isRtl ? 'بحث المستلم' : 'Recipient Search'}</label>
                 <input
-                  value={recipientQuery}
-                  onChange={(e) => setRecipientQuery(e.target.value)}
+                  value={recipientQueryDraft}
+                  onChange={(e) => setRecipientQueryDraft(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') applyTextFilters(); }}
                   className="w-full mt-1 border rounded px-3 py-2 text-sm dark:bg-slate-900 dark:border-slate-700"
                   placeholder={isRtl ? 'اسم العميل أو البريد الإلكتروني' : 'Client name or email'}
                 />
@@ -654,8 +671,9 @@ export default function AdminEmailLogs() {
               <div>
                 <label className="text-sm font-medium">{isRtl ? 'نوع الحدث' : 'Event Type'}</label>
                 <input
-                  value={deliveryEventType}
-                  onChange={(e) => setDeliveryEventType(e.target.value)}
+                  value={deliveryEventTypeDraft}
+                  onChange={(e) => setDeliveryEventTypeDraft(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') applyTextFilters(); }}
                   className="w-full mt-1 border rounded px-3 py-2 text-sm dark:bg-slate-900 dark:border-slate-700"
                   placeholder={isRtl ? 'مثال: welcome' : 'Example: welcome'}
                 />
@@ -680,6 +698,20 @@ export default function AdminEmailLogs() {
                   />
                 </div>
               </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Button type="button" size="sm" onClick={applyTextFilters} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                {isRtl ? 'تطبيق البحث' : 'Apply search'}
+              </Button>
+              <Button type="button" size="sm" variant="outline" onClick={clearTextFilters}>
+                {isRtl ? 'مسح البحث' : 'Clear search'}
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                {isRtl
+                  ? 'لن تُرسل استعلامات أثناء الكتابة. البريد الكامل يستخدم بحثاً مطابقاً ومفهرساً.'
+                  : 'Typing does not query the database. A complete email uses an indexed exact match.'}
+              </p>
             </div>
 
             <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-100 space-y-1">
