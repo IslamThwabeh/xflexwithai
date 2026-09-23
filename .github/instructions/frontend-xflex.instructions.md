@@ -29,3 +29,4 @@ applyTo: "frontend/src/**"
 - Muted recommendation threads should suppress only future `update` / `result` follow-ups; the original recommendation stays visible, and email CTAs should return through authenticated `/recommendations?threadAction=unfollow&threadId=...` flows.
 - Recommendation cards must stay mobile-safe: badge rows should wrap or stack cleanly, child threads should use lighter indentation on phones, and trade details should not duplicate the message body.
 - Recommendations results are created only from `Add Result` on an existing recommendation; there is no standalone `Result` publish type.
+- Expensive admin audit searches must use draft inputs plus an explicit Apply action or Enter. Do not bind large-table queries directly to each keystroke, and default them to a bounded recent date range.

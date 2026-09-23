@@ -28,3 +28,5 @@ applyTo: "backend/**,database/**"
 - Use `storagePutR2()` from `backend/storage-r2.ts` for worker-side uploads; the old `storagePut()` path is not valid in Workers.
 - Video URLs should use `https://videos.xflexacademy.com`; `normalizeVideoUrl()` is the safety net.
 - AI onboarding thresholds: `saveOnboardingAiResult()` auto-approves at >=90%, auto-rejects at <50%, and queues 50-89% for admin review.
+- On large audit tables, normalize full email searches and use equality against the indexed stored email column. Keep wildcard name/partial-email searches explicit and date-bounded.
+- Do not retain aggregate queries whose results have no consumer; each extra aggregation can cause another full D1 scan.

@@ -927,6 +927,13 @@ Last updated: 2026-09-23
 
 ## Future Hardening
 
+- D1 email-log read-amplification remediation released on 2026-09-23:
+  - Workers Paid was enabled after the Free-plan daily row-read allowance was exhausted. The triggering admin recipient filter used an unindexed `%text%` search on roughly 72k delivery rows, queried both list and summary on every keystroke, and the summary performed a second unused grouped scan.
+  - Commit `fe51afd` separates draft and applied text filters, applies them only by Enter or the explicit bilingual button, defaults the audit to the last seven days, uses exact equality for normalized full email addresses against the existing `idx_email_delivery_logs_recipient_email` index, and removes the unused `topEventTypes` aggregation. No migration or production data rewrite was required.
+  - The same release replaces the unresolved `%VITE_APP_TITLE%` browser tab placeholder with `XFlex Trading Academy`.
+  - Verification passed 19 focused email tests, TypeScript, application/server build, Worker build, and isolated-release rebuilds. Worker version `0c8aaf69-1949-4932-99f7-01e390b061cd` and Pages preview `https://715dd327.xflexwithai.pages.dev` deployed successfully. Both health endpoints returned 200; `/admin/email-logs` returned 200 with `noindex, nofollow`, `no-store, private`, and the corrected title.
+  - Signed-in Chrome verification confirmed the September 17-23 seven-day default, zero delivery-log requests while typing, and exactly one batched GET for list plus summary after applying a complete dummy email; the second network entry was only the CORS preflight. The no-match result rendered correctly and the tab title was `XFlex Trading Academy`.
+
 - Installed local Codex skills for future implementation workflows on 2026-07-05: `cloudflare-deploy`, `playwright`, `security-best-practices`, `security-threat-model`, `gh-fix-ci`, and `gh-address-comments`. `openai-docs` is already available as a system skill, so do not duplicate-install it.
 - Use `cloudflare-deploy` before production Worker/Pages deploys or when diagnosing Wrangler/Cloudflare deployment failures.
 - Use `playwright` for browser smoke, regression checks, and UI verification on desktop/mobile, especially for auth, checkout, support chat, course watch, admin dashboards, and Arabic/English routes.
