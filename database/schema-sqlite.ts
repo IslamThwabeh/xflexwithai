@@ -645,6 +645,7 @@ export const emailOutbox = sqliteTable("email_outbox", {
   errorCategory: text("errorCategory"),
   errorMessage: text("errorMessage"),
   sentAt: text("sentAt"),
+  payloadId: integer("payloadId"),
   createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
   updatedAt: text("updatedAt").default(sql`(datetime('now'))`).notNull(),
 }, (table) => ({
@@ -655,6 +656,22 @@ export const emailOutbox = sqliteTable("email_outbox", {
 
 export type EmailOutbox = typeof emailOutbox.$inferSelect;
 export type InsertEmailOutbox = typeof emailOutbox.$inferInsert;
+
+/** Shared content for proven duplicate terminal outbox payloads. */
+export const emailOutboxPayloads = sqliteTable("email_outbox_payloads", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  sourceOutboxId: integer("sourceOutboxId").notNull().unique(),
+  eventType: text("eventType").notNull(),
+  templateId: text("templateId"),
+  emailCategory: text("emailCategory"),
+  subject: text("subject").notNull(),
+  bodyText: text("bodyText").notNull(),
+  bodyHtml: text("bodyHtml"),
+  metadataJson: text("metadataJson"),
+  createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
+});
+
+export type EmailOutboxPayload = typeof emailOutboxPayloads.$inferSelect;
 
 export const emailOutboxCampaigns = sqliteTable("email_outbox_campaigns", {
   id: int("id").primaryKey({ autoIncrement: true }),
