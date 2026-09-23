@@ -2,6 +2,16 @@
 
 Last updated: 2026-09-23
 
+## Recommendation live-read optimization — 2026-09-23
+
+- Production Insights after the email-log safeguard showed recommendation traffic as the next read hotspot: the monthly report historical-child scan, open-root discovery plus hydration, and active-alert polling were the largest measured recommendation families.
+- Commit `84aabd5` (`Reduce recommendation dashboard D1 reads`) was prepared and deployed from an isolated clean workspace based on the already deployed email-log safeguard, so unrelated Live Package/payment work in the main worktree was excluded. Production Worker version is `d047f7d1-4b4e-47f0-a317-9b951076f078`; Pages preview is `https://7fb6eb13.xflexwithai.pages.dev`.
+- Migration `124_recommendation_live_read_indexes.sql` additively created two non-unique, idempotent indexes: `idx_recommendation_messages_open_roots` and `idx_recommendation_alerts_status_expiry_notified`. It performed no row updates or deletions. Production preserved 1,410 recommendation messages and 278 alerts; `PRAGMA foreign_key_check` remained empty. Production `EXPLAIN QUERY PLAN` uses both indexes rather than scanning either table.
+- The backend now returns complete open root records in one indexed query instead of discovering IDs and re-reading the same roots. The monthly child cutoff uses a directly indexable timestamp comparison. The admin monthly report loads only when expanded. Client active-alert polling is limited to an eligible, visible page every 60 seconds, with background polling disabled.
+- Verification passed 16 focused tests, all 198 critical-cycle tests, TypeScript, Worker build, full production application/SEO build, and diff hygiene. The full suite ran 855 tests: 853 passed; only the same two unrelated stale UI source-text assertions failed in `adminSubscribersReportUi.test.ts` and `clientKeyActivationNavigation.test.ts`.
+- Worker health returned `status: ok`; production and preview redirected normally to `/ar`; the deployed Worker history confirms version `d047f7d1-4b4e-47f0-a317-9b951076f078`. No synthetic recommendation, alert, or email was created.
+- Remaining storage work is intentionally not authorized by this release. The largest opportunities require a retention/data-preservation decision: normalize repeated `recommendation_deliveries` bodies (about 162.9 MB logical payload), compact terminal email-outbox bodies (about 15.0 MB), and define retention for email logs, engagement events, user notifications, and the already archived staff notifications. Do not hard-delete or VACUUM these records until fields, retention windows, backup, reconciliation, and rollback expectations are approved.
+
 ## Email reliability Phase 3 — provider delivery lifecycle — 2026-09-23
 
 - Commit `038daf6` (`Track provider email delivery lifecycle`) is pushed to `origin/codex/live-package-phase-a`. Production Worker version `9376f3b5-9f10-49e8-9b91-2df5358ac69d` and Pages deployment `7d6fb8a5-e208-4c03-a2a9-98bdb5c52ef4` are active; preview URL `https://7d6fb8a5.xflexwithai.pages.dev` reports source `038daf6`.
