@@ -7,6 +7,7 @@ const readProjectFile = (path: string) => readFileSync(
   "utf8",
 );
 const migrationSql = readProjectFile("../database/migrations/125_recommendation_delivery_payload_normalization.sql");
+const linkMigrationSql = readProjectFile("../database/migrations/126_recommendation_delivery_payload_links.sql");
 const compactSql = readProjectFile("../database/maintenance/compact_recommendation_delivery_payloads_batch.sql");
 const rehydrateSql = readProjectFile("../database/maintenance/rehydrate_recommendation_delivery_payloads_batch.sql");
 const dbSource = readProjectFile("../backend/db.ts");
@@ -58,6 +59,7 @@ describe("recommendation delivery payload normalization", () => {
 
       database.exec(migrationSql);
       database.exec(migrationSql);
+      database.exec(linkMigrationSql);
       expect(database.prepare("SELECT COUNT(*) AS count FROM recommendation_delivery_payloads").get()).toEqual({ count: 2 });
       expect(database.prepare("SELECT COUNT(*) AS count FROM schema_migrations WHERE migration_name = '125_recommendation_delivery_payload_normalization.sql'").get()).toEqual({ count: 1 });
 
@@ -72,7 +74,7 @@ describe("recommendation delivery payload normalization", () => {
                payload.bodyHtml, payload.metadataJson
         FROM recommendation_deliveries delivery
         INNER JOIN recommendation_delivery_payloads payload
-          ON payload.eventKey = delivery.eventKey AND payload.language = delivery.language
+          ON payload.id = delivery.payloadId
         ORDER BY delivery.id
       `).all();
       expect(hydrated).toEqual(original);

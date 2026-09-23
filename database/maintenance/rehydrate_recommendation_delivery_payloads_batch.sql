@@ -2,31 +2,26 @@
 UPDATE recommendation_deliveries
 SET subject = (
       SELECT payload.subject FROM recommendation_delivery_payloads payload
-      WHERE payload.eventKey = recommendation_deliveries.eventKey
-        AND payload.language = recommendation_deliveries.language
+      WHERE payload.id = recommendation_deliveries.payloadId
     ),
     bodyText = (
       SELECT payload.bodyText FROM recommendation_delivery_payloads payload
-      WHERE payload.eventKey = recommendation_deliveries.eventKey
-        AND payload.language = recommendation_deliveries.language
+      WHERE payload.id = recommendation_deliveries.payloadId
     ),
     bodyHtml = (
       SELECT payload.bodyHtml FROM recommendation_delivery_payloads payload
-      WHERE payload.eventKey = recommendation_deliveries.eventKey
-        AND payload.language = recommendation_deliveries.language
+      WHERE payload.id = recommendation_deliveries.payloadId
     ),
     metadataJson = (
       SELECT payload.metadataJson FROM recommendation_delivery_payloads payload
-      WHERE payload.eventKey = recommendation_deliveries.eventKey
-        AND payload.language = recommendation_deliveries.language
+      WHERE payload.id = recommendation_deliveries.payloadId
     ),
     updatedAt = updatedAt
 WHERE id IN (
   SELECT delivery.id
   FROM recommendation_deliveries delivery
   INNER JOIN recommendation_delivery_payloads payload
-    ON payload.eventKey = delivery.eventKey
-   AND payload.language = delivery.language
+    ON payload.id = delivery.payloadId
   WHERE delivery.subject IS NULL
     AND delivery.bodyText IS NULL
     AND delivery.bodyHtml IS NULL

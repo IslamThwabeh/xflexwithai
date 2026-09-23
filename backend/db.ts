@@ -6429,23 +6429,15 @@ async function hydrateRecommendationDeliveryPayloads(
   rows: RecommendationDelivery[],
 ): Promise<RecommendationDelivery[]> {
   if (!rows.length) return rows;
-  const groupKeys = [...new Map(rows.map((row) => [
-    `${row.eventKey}\u0000${row.language}`,
-    { eventKey: row.eventKey, language: row.language },
-  ])).values()];
+  const payloadIds = [...new Set(rows.flatMap((row) => row.payloadId ? [row.payloadId] : []))];
+  if (!payloadIds.length) return rows;
   const payloads = await db
     .select()
     .from(recommendationDeliveryPayloads)
-    .where(or(...groupKeys.map((key) => and(
-      eq(recommendationDeliveryPayloads.eventKey, key.eventKey),
-      eq(recommendationDeliveryPayloads.language, key.language),
-    ))));
-  const payloadByGroup = new Map(payloads.map((payload) => [
-    `${payload.eventKey}\u0000${payload.language}`,
-    payload,
-  ]));
+    .where(inArray(recommendationDeliveryPayloads.id, payloadIds));
+  const payloadById = new Map(payloads.map((payload) => [payload.id, payload]));
   return rows.map((row) => {
-    const payload = payloadByGroup.get(`${row.eventKey}\u0000${row.language}`);
+    const payload = row.payloadId ? payloadById.get(row.payloadId) : undefined;
     if (!payload) return row;
     return {
       ...row,
@@ -6528,6 +6520,7 @@ export async function prepareRecommendationDeliveries(input: {
     recipientEmail: r.recipientEmail,
     language: r.language ?? 'ar',
     status: 'pending',
+    payloadId: storedByGroup.get(`${input.eventKey}\u0000${r.language ?? 'ar'}`)!.id,
     subject: null,
     bodyText: null,
     bodyHtml: null,

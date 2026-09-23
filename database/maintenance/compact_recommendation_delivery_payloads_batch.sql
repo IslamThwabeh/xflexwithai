@@ -10,8 +10,7 @@ WHERE id IN (
   SELECT delivery.id
   FROM recommendation_deliveries delivery
   INNER JOIN recommendation_delivery_payloads payload
-    ON payload.eventKey = delivery.eventKey
-   AND payload.language = delivery.language
+    ON payload.id = delivery.payloadId
   WHERE delivery.subject IS NOT NULL
      OR delivery.bodyText IS NOT NULL
      OR delivery.bodyHtml IS NOT NULL
