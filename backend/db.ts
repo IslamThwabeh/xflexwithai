@@ -8642,7 +8642,7 @@ export async function getRecommendationMonthlyTradeReport(month: string): Promis
       and(
         isNotNull(recommendationMessages.parentId),
         inArray(recommendationMessages.type, ['update', 'result']),
-        sql`datetime(${recommendationMessages.createdAt}) < datetime(${periodEnd})`,
+        lt(recommendationMessages.createdAt, periodEnd),
       )
     )
     .orderBy(asc(recommendationMessages.createdAt), asc(recommendationMessages.id));
@@ -9226,26 +9226,19 @@ export async function getOpenRecommendationMessagesFeed(userId: number) {
   const db = await getDb();
   if (!db) return [];
 
-  const openRoots = await db
-    .select({ id: recommendationMessages.id })
+  const rootMessages = await db
+    .select()
     .from(recommendationMessages)
     .where(and(
       isNull(recommendationMessages.parentId),
       eq(recommendationMessages.type, "recommendation"),
-      or(
-        isNull(recommendationMessages.threadStatus),
-        ne(recommendationMessages.threadStatus, "closed"),
-      ),
+      sql`COALESCE(${recommendationMessages.threadStatus}, 'open') = 'open'`,
     ))
-    .orderBy(desc(recommendationMessages.createdAt));
+    .orderBy(desc(recommendationMessages.createdAt), desc(recommendationMessages.id));
 
-  const rootIds = openRoots.map((root) => root.id);
+  const rootIds = rootMessages.map((root) => root.id);
   if (!rootIds.length) return [];
 
-  const rootMessages = await collectChunkedRows(rootIds, (chunk) => db
-    .select()
-    .from(recommendationMessages)
-    .where(inArray(recommendationMessages.id, chunk)));
   const childMessages = await collectChunkedRows(rootIds, (chunk) => db
     .select()
     .from(recommendationMessages)

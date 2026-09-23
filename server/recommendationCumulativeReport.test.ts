@@ -81,4 +81,15 @@ describe("cumulative recommendation reporting", () => {
     expect(source).toContain('placeholder={isRTL ? "قيمة أخرى" : "Custom pips"}');
     expect(source.match(/monthlyTradeReport\.invalidate\(\)/g)?.length).toBeGreaterThanOrEqual(4);
   });
+
+  it("loads the expensive monthly report only when its panel is expanded", () => {
+    const source = fs.readFileSync(
+      path.resolve(process.cwd(), "frontend/src/pages/AdminRecommendations.tsx"),
+      "utf8",
+    );
+
+    expect(source).toContain("enabled: canManageChannel && showMonthlyReport");
+    expect(source).toContain("disabled={!showMonthlyReport || monthlyReportLoading}");
+    expect(source).toContain("Expand the report to load this month's data on demand.");
+  });
 });

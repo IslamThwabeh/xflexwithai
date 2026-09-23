@@ -17,6 +17,7 @@ import { Link, useLocation } from "wouter";
 
 const ARCHIVED_THREADS_PER_PAGE = 8;
 const CLIENT_RECOMMENDATION_OPEN_THREADS_REFRESH_MS = 60_000;
+const CLIENT_RECOMMENDATION_ALERTS_REFRESH_MS = 60_000;
 
 const reactionIcons = {
   like: <ThumbsUp className="h-4 w-4" />,
@@ -236,7 +237,12 @@ export default function Recommendations() {
   );
   const { data: activeAlerts = [] } = trpc.recommendations.activeAlerts.useQuery(undefined, {
     enabled: !!me && (me.hasSubscription || me.canPublish),
-    refetchInterval: 15_000,
+    refetchInterval:
+      !!me && (me.hasSubscription || me.canPublish) && isPageVisible
+        ? CLIENT_RECOMMENDATION_ALERTS_REFRESH_MS
+        : false,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
   });
 
   const reactMutation = trpc.recommendations.react.useMutation({

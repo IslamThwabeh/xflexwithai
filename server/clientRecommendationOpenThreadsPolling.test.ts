@@ -28,8 +28,14 @@ describe("Client recommendation open-thread polling", () => {
     expect(source).toContain("void refetchOpenThreadFeed()");
   });
 
-  it("preserves reaction and mute invalidations plus active-alert cadence", () => {
+  it("preserves reaction and mute invalidations and bounds active-alert polling", () => {
     expect(source).toContain("utils.recommendations.openThreads.invalidate()");
-    expect(source).toContain("refetchInterval: 15_000");
+    expect(source).toContain(
+      "const CLIENT_RECOMMENDATION_ALERTS_REFRESH_MS = 60_000"
+    );
+    expect(source).toMatch(
+      /recommendations\.activeAlerts\.useQuery\([\s\S]*?isPageVisible[\s\S]*?CLIENT_RECOMMENDATION_ALERTS_REFRESH_MS[\s\S]*?:\s*false[\s\S]*?refetchIntervalInBackground:\s*false[\s\S]*?refetchOnWindowFocus:\s*true/
+    );
+    expect(source).not.toContain("refetchInterval: 15_000");
   });
 });

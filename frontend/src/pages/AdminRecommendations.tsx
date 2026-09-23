@@ -451,7 +451,10 @@ function AnalystView() {
     refetch: refetchMonthlyReport,
   } = trpc.recommendations.monthlyTradeReport.useQuery(
     { month: reportMonth },
-    { enabled: canManageChannel }
+    {
+      enabled: canManageChannel && showMonthlyReport,
+      retry: false,
+    }
   );
 
   const notifyClientsMutation = trpc.recommendations.notifyClients.useMutation({
@@ -1733,7 +1736,7 @@ function AnalystView() {
                 variant="outline"
                 size="sm"
                 onClick={() => refetchMonthlyReport()}
-                disabled={monthlyReportLoading}
+                disabled={!showMonthlyReport || monthlyReportLoading}
               >
                 {isRTL ? "تحديث" : "Refresh"}
               </Button>
@@ -1784,6 +1787,15 @@ function AnalystView() {
                 ? `مصدر التقرير: ${monthlyReport.coverage.scoringEvents} تحديثات نقاط جُمعت في ${monthlyReport.summary.totalTrades} صفقات؛ أزيل ${monthlyReport.coverage.cumulativeAdjustments} هدف متدرج من التكرار. توصيات افتتحت هذا الشهر: ${monthlyReport.coverage.rootRecommendationsOpened}.`
                 : `Report basis: ${monthlyReport.coverage.scoringEvents} pip events collapsed into ${monthlyReport.summary.totalTrades} trades; ${monthlyReport.coverage.cumulativeAdjustments} progressive milestones were de-duplicated. Root recommendations opened this month: ${monthlyReport.coverage.rootRecommendationsOpened}.`}
             </div>
+          </CardContent>
+        )}
+        {!monthlyReport && !showMonthlyReport && (
+          <CardContent>
+            <p className="text-sm text-muted-foreground">
+              {isRTL
+                ? "افتح التقرير لتحميل بيانات الشهر عند الحاجة."
+                : "Expand the report to load this month's data on demand."}
+            </p>
           </CardContent>
         )}
         {showMonthlyReport && (
