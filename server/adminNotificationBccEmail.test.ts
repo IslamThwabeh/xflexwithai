@@ -56,6 +56,7 @@ describe("admin notification BCC provider request", () => {
       { email_address: { address: "first@example.com" } },
       { email_address: { address: "second@example.com" } },
     ]);
+    expect(request.client_reference).toMatch(/^[0-9a-f-]{36}$/i);
     expect(JSON.stringify(request.to)).not.toContain("first@example.com");
     expect(result).toMatchObject({
       provider: "zeptomail",
@@ -65,9 +66,9 @@ describe("admin notification BCC provider request", () => {
       deliveryMode: "bcc_batch",
     });
     expect(db.logEmailDeliveryAttempts).toHaveBeenCalledWith(expect.arrayContaining([
-      expect.objectContaining({ recipientEmail: "support@xflexacademy.com", status: "sent" }),
-      expect.objectContaining({ recipientEmail: "first@example.com", status: "sent" }),
-      expect.objectContaining({ recipientEmail: "second@example.com", status: "sent" }),
+      expect.objectContaining({ recipientEmail: "support@xflexacademy.com", status: "sent", providerClientReference: request.client_reference }),
+      expect.objectContaining({ recipientEmail: "first@example.com", status: "sent", providerClientReference: request.client_reference }),
+      expect.objectContaining({ recipientEmail: "second@example.com", status: "sent", providerClientReference: request.client_reference }),
     ]));
   });
 

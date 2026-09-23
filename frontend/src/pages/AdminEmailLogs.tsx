@@ -14,7 +14,7 @@ import {
 type DeliveryLogView = 'grouped' | 'detailed';
 type DeliveryCategory = EmailDeliveryCategoryFilter;
 type DeliveryDatePreset = 'all' | 'today' | 'yesterday' | 'last7' | 'custom';
-type DeliveryStatus = 'all' | 'sent' | 'delivered' | 'bounced_soft' | 'bounced_hard' | 'complained' | 'failed' | 'skipped_unsubscribed' | 'skipped_suppressed' | 'skipped_deduped' | 'skipped_renewed';
+type DeliveryStatus = 'all' | 'sent' | 'deferred' | 'delivered' | 'bounced_soft' | 'bounced_hard' | 'rejected' | 'complained' | 'failed' | 'skipped_unsubscribed' | 'skipped_suppressed' | 'skipped_deduped' | 'skipped_renewed';
 
 const DELIVERY_CATEGORIES: Array<{ key: DeliveryCategory; labelEn: string; labelAr: string }> = [
   { key: 'all', labelEn: 'All', labelAr: 'الكل' },
@@ -145,9 +145,11 @@ function formatRelativeEmailAge(value: string | null | undefined, fallback: stri
 
 function getStatusLabel(status: string, isRtl: boolean) {
   if (status === 'sent') return isRtl ? 'قَبِلها المزود' : 'Provider accepted';
+  if (status === 'deferred') return isRtl ? 'مؤجل لدى المزود' : 'Provider deferred';
   if (status === 'delivered') return isRtl ? 'تم التسليم' : 'Delivered';
   if (status === 'bounced_soft') return isRtl ? 'ارتداد مؤقت' : 'Soft bounce';
   if (status === 'bounced_hard') return isRtl ? 'ارتداد نهائي' : 'Hard bounce';
+  if (status === 'rejected') return isRtl ? 'رفضها المزود' : 'Provider rejected';
   if (status === 'complained') return isRtl ? 'شكوى بريد مزعج' : 'Spam complaint';
   if (status === 'failed') return isRtl ? 'فشل' : 'Failed';
   if (status === 'skipped_unsubscribed') return isRtl ? 'تخطي: إلغاء الاشتراك' : 'Skipped: Unsubscribed';
@@ -160,8 +162,8 @@ function getStatusLabel(status: string, isRtl: boolean) {
 function getStatusBadgeClass(status: string) {
   if (status === 'delivered') return 'bg-emerald-100 text-emerald-800 hover:bg-emerald-100 dark:bg-emerald-900/40 dark:text-emerald-200';
   if (status === 'sent') return 'bg-blue-100 text-blue-800 hover:bg-blue-100 dark:bg-blue-900/40 dark:text-blue-200';
-  if (status === 'failed' || status === 'bounced_hard' || status === 'complained') return 'bg-red-100 text-red-800 hover:bg-red-100 dark:bg-red-900/40 dark:text-red-200';
-  if (status === 'bounced_soft') return 'bg-orange-100 text-orange-800 hover:bg-orange-100 dark:bg-orange-900/40 dark:text-orange-200';
+  if (status === 'failed' || status === 'rejected' || status === 'bounced_hard' || status === 'complained') return 'bg-red-100 text-red-800 hover:bg-red-100 dark:bg-red-900/40 dark:text-red-200';
+  if (status === 'deferred' || status === 'bounced_soft') return 'bg-orange-100 text-orange-800 hover:bg-orange-100 dark:bg-orange-900/40 dark:text-orange-200';
   return 'bg-amber-100 text-amber-800 hover:bg-amber-100 dark:bg-amber-900/40 dark:text-amber-200';
 }
 
@@ -268,9 +270,9 @@ export default function AdminEmailLogs() {
       total: deliverySummary?.total ?? logs.length,
       sent: deliverySummary?.sent ?? logs.filter((log: any) => log.status === 'sent').length,
       delivered: deliverySummary?.delivered ?? logs.filter((log: any) => log.status === 'delivered').length,
-      bounced: (deliverySummary?.bounced ?? logs.filter((log: any) => String(log.status).startsWith('bounced_')).length)
+      bounced: (deliverySummary?.bounced ?? logs.filter((log: any) => log.status === 'deferred' || String(log.status).startsWith('bounced_')).length)
         + (deliverySummary?.complained ?? logs.filter((log: any) => log.status === 'complained').length),
-      failed: deliverySummary?.failed ?? logs.filter((log: any) => log.status === 'failed').length,
+      failed: deliverySummary?.failed ?? logs.filter((log: any) => ['failed', 'rejected'].includes(log.status)).length,
       skipped: deliverySummary?.skipped ?? logs.filter((log: any) => String(log.status || '').startsWith('skipped_')).length,
       grouped: deliveryGroups.length,
     };
@@ -563,7 +565,7 @@ export default function AdminEmailLogs() {
                 <p className="text-lg font-semibold text-emerald-700 dark:text-emerald-300">{deliverySummaryLoading ? '...' : deliveryStats.delivered}</p>
               </div>
               <div className="rounded-lg border bg-orange-50 px-3 py-2 dark:bg-orange-900/10">
-                <p className="text-xs text-orange-700 dark:text-orange-300">{isRtl ? 'مرتد / شكوى' : 'Bounced / complaints'}</p>
+                <p className="text-xs text-orange-700 dark:text-orange-300">{isRtl ? 'مؤجل / مرتد / شكوى' : 'Deferred / bounced / complaints'}</p>
                 <p className="text-lg font-semibold text-orange-700 dark:text-orange-300">{deliverySummaryLoading ? '...' : deliveryStats.bounced}</p>
               </div>
               <div className="rounded-lg border bg-red-50 px-3 py-2 dark:bg-red-900/10">
@@ -636,9 +638,11 @@ export default function AdminEmailLogs() {
                 >
                   <option value="all">{isRtl ? 'الكل' : 'All'}</option>
                   <option value="sent">{isRtl ? 'قَبِلها المزود' : 'Provider accepted'}</option>
+                  <option value="deferred">{isRtl ? 'مؤجل لدى المزود' : 'Provider deferred'}</option>
                   <option value="delivered">{isRtl ? 'تم التسليم' : 'Delivered'}</option>
                   <option value="bounced_soft">{isRtl ? 'ارتداد مؤقت' : 'Soft bounce'}</option>
                   <option value="bounced_hard">{isRtl ? 'ارتداد نهائي' : 'Hard bounce'}</option>
+                  <option value="rejected">{isRtl ? 'رفضها المزود' : 'Provider rejected'}</option>
                   <option value="complained">{isRtl ? 'شكوى بريد مزعج' : 'Spam complaint'}</option>
                   <option value="failed">{isRtl ? 'فشل' : 'Failed'}</option>
                   <option value="skipped_unsubscribed">{isRtl ? 'تخطي: إلغاء الاشتراك' : 'Skipped: Unsubscribed'}</option>

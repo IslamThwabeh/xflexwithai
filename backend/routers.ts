@@ -13548,7 +13548,7 @@ ${qaText}`;
         recipientUserId: z.number().optional(),
         eventType: z.string().optional(),
         eventCategory: z.enum(EMAIL_DELIVERY_EVENT_CATEGORIES).optional(),
-        status: z.enum(['sent', 'delivered', 'bounced_soft', 'bounced_hard', 'complained', 'failed', 'skipped_unsubscribed', 'skipped_suppressed', 'skipped_deduped', 'skipped_renewed']).optional(),
+        status: z.enum(['sent', 'deferred', 'delivered', 'bounced_soft', 'bounced_hard', 'rejected', 'complained', 'failed', 'skipped_unsubscribed', 'skipped_suppressed', 'skipped_deduped', 'skipped_renewed']).optional(),
         fromDate: z.string().optional(),
         toDate: z.string().optional(),
       }).optional())
@@ -13571,7 +13571,7 @@ ${qaText}`;
         recipientUserId: z.number().optional(),
         eventType: z.string().optional(),
         eventCategory: z.enum(EMAIL_DELIVERY_EVENT_CATEGORIES).optional(),
-        status: z.enum(['sent', 'delivered', 'bounced_soft', 'bounced_hard', 'complained', 'failed', 'skipped_unsubscribed', 'skipped_suppressed', 'skipped_deduped', 'skipped_renewed']).optional(),
+        status: z.enum(['sent', 'deferred', 'delivered', 'bounced_soft', 'bounced_hard', 'rejected', 'complained', 'failed', 'skipped_unsubscribed', 'skipped_suppressed', 'skipped_deduped', 'skipped_renewed']).optional(),
         fromDate: z.string().optional(),
         toDate: z.string().optional(),
       }).optional())

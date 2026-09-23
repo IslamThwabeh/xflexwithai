@@ -2835,13 +2835,18 @@ export const emailDeliveryLogs = sqliteTable("email_delivery_logs", {
   status: text("status").notNull(),
   provider: text("provider"),
   providerRequestId: text("provider_request_id"),
+  providerClientReference: text("provider_client_reference"),
   providerEventName: text("provider_event_name"),
   providerEventAt: text("provider_event_at"),
   finalStatusAt: text("final_status_at"),
   errorMessage: text("error_message"),
   metadata: text("metadata"),
   createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
-});
+}, (table) => ({
+  providerClientReferenceIdx: index("idx_email_delivery_logs_provider_client_reference")
+    .on(table.provider, table.providerClientReference)
+    .where(sql`${table.providerClientReference} IS NOT NULL`),
+}));
 
 export type EmailDeliveryLog = typeof emailDeliveryLogs.$inferSelect;
 export type InsertEmailDeliveryLog = typeof emailDeliveryLogs.$inferInsert;
@@ -2852,15 +2857,21 @@ export const emailProviderWebhookEvents = sqliteTable("email_provider_webhook_ev
   provider: text("provider").notNull(),
   providerEventId: text("provider_event_id").notNull(),
   providerRequestId: text("provider_request_id").notNull(),
+  providerClientReference: text("provider_client_reference"),
   eventName: text("event_name").notNull(),
+  deliveryStatus: text("delivery_status"),
   recipientEmail: text("recipient_email"),
   diagnostic: text("diagnostic"),
   eventAt: text("event_at"),
   matchedLogCount: integer("matched_log_count").default(0).notNull(),
+  projectedLogCount: integer("projected_log_count").default(0).notNull(),
   receivedAt: text("received_at").default(sql`(datetime('now'))`).notNull(),
 }, (table) => ({
   providerEventUnique: unique("uq_email_provider_webhook_event").on(table.provider, table.providerEventId),
   providerRequestIdx: index("idx_email_provider_webhook_request").on(table.provider, table.providerRequestId),
+  providerClientReferenceIdx: index("idx_email_provider_webhook_client_reference")
+    .on(table.provider, table.providerClientReference)
+    .where(sql`${table.providerClientReference} IS NOT NULL`),
 }));
 
 export type EmailProviderWebhookEvent = typeof emailProviderWebhookEvents.$inferSelect;

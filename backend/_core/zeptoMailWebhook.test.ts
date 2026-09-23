@@ -61,6 +61,7 @@ describe("ZeptoMail delivery webhook", () => {
     expect(parseZeptoMailWebhookEvent(JSON.stringify(sampleEvent()))).toEqual({
       providerEventId: "webhook-1",
       providerRequestId: "request-1",
+      providerClientReference: null,
       eventName: "hard_bounce",
       deliveryStatus: "bounced_hard",
       recipientEmail: "amal@example.com",
@@ -140,6 +141,25 @@ describe("ZeptoMail delivery webhook", () => {
       deliveryStatus: "bounced_soft",
       recipientEmail: "actualbounce@example.com",
       diagnostic: "452 mailbox full",
+    }));
+  });
+
+  it.each([
+    ["deferred", "deferred"],
+    ["queued", "deferred"],
+    ["process failed", "rejected"],
+    ["rejected", "rejected"],
+    ["delivered", "delivered"],
+  ] as const)("maps %s to %s", (eventName, deliveryStatus) => {
+    const event = sampleEvent();
+    event.event_name = eventName;
+    event.event_message.email_info = {
+      ...event.event_message.email_info,
+      client_reference: "delivery-correlation-1",
+    } as typeof event.event_message.email_info;
+    expect(parseZeptoMailWebhookEvent(JSON.stringify(event))).toEqual(expect.objectContaining({
+      deliveryStatus,
+      providerClientReference: "delivery-correlation-1",
     }));
   });
 

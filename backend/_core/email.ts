@@ -56,6 +56,7 @@ async function writeEmailDeliveryAudit(input: SendEmailInput, outcome: {
   status: 'sent' | 'failed' | 'skipped_unsubscribed' | 'skipped_suppressed' | 'skipped_deduped' | 'skipped_renewed';
   provider?: string | null;
   providerRequestId?: string | null;
+  providerClientReference?: string | null;
   errorMessage?: string | null;
 }) {
   try {
@@ -69,6 +70,7 @@ async function writeEmailDeliveryAudit(input: SendEmailInput, outcome: {
       status: outcome.status,
       provider: outcome.provider || null,
       providerRequestId: outcome.providerRequestId || null,
+      providerClientReference: outcome.providerClientReference || null,
       errorMessage: outcome.errorMessage || null,
       metadata: input.audit?.metadata || null,
     });
@@ -83,6 +85,7 @@ async function writeEmailDeliveryAudit(input: SendEmailInput, outcome: {
 
 type ProviderSendResult = {
   requestId: string | null;
+  clientReference: string;
 };
 
 export const EMAIL_PROVIDER_TIMEOUT_MS = 10_000;
@@ -106,6 +109,7 @@ async function sendViaZeptoMail(input: SendEmailInput): Promise<ProviderSendResu
     ? rawToken
     : `Zoho-enczapikey ${rawToken}`;
 
+  const clientReference = crypto.randomUUID();
   const res = await fetch(apiUrl, {
     method: "POST",
     signal: emailProviderSignal(),
@@ -122,6 +126,7 @@ async function sendViaZeptoMail(input: SendEmailInput): Promise<ProviderSendResu
         ? { bcc: input.bcc.map((address) => ({ email_address: { address } })) }
         : {}),
       subject: input.subject,
+      client_reference: clientReference,
       textbody: input.text,
       htmlbody: input.html || input.text.replace(/\n/g, "<br/>"),
     }),
@@ -137,6 +142,7 @@ async function sendViaZeptoMail(input: SendEmailInput): Promise<ProviderSendResu
   const response = await res.json().catch(() => null) as { request_id?: unknown } | null;
   return {
     requestId: typeof response?.request_id === "string" ? response.request_id : null,
+    clientReference,
   };
 }
 
@@ -244,6 +250,7 @@ export async function sendEmail(input: SendEmailInput): Promise<{
   const attemptedProviders: string[] = [];
   let providerUsed: string | null = null;
   let providerRequestId: string | null = null;
+  let providerClientReference: string | null = null;
 
   const normalizedRecipient = normalizeEmailAddress(input.to);
   try {
@@ -308,24 +315,27 @@ export async function sendEmail(input: SendEmailInput): Promise<{
     if (result && typeof result === 'object' && typeof (result as { requestId?: unknown }).requestId === 'string') {
       providerRequestId = (result as { requestId: string }).requestId;
     }
+    if (result && typeof result === 'object' && typeof (result as { clientReference?: unknown }).clientReference === 'string') {
+      providerClientReference = (result as { clientReference: string }).clientReference;
+    }
   };
 
   try {
     if (provider === "resend") {
       await attemptWith("resend", sendViaResend);
-      await writeEmailDeliveryAudit(input, { status: 'sent', provider: providerUsed, providerRequestId });
+      await writeEmailDeliveryAudit(input, { status: 'sent', provider: providerUsed, providerRequestId, providerClientReference });
       return { provider: providerUsed, attemptedProviders: [...attemptedProviders], providerRequestId };
     }
 
     if (provider === "zeptomail") {
       await attemptWith("zeptomail", sendViaZeptoMail);
-      await writeEmailDeliveryAudit(input, { status: 'sent', provider: providerUsed, providerRequestId });
+      await writeEmailDeliveryAudit(input, { status: 'sent', provider: providerUsed, providerRequestId, providerClientReference });
       return { provider: providerUsed, attemptedProviders: [...attemptedProviders], providerRequestId };
     }
 
     if (provider === "mailchannels") {
       await attemptWith("mailchannels", sendViaMailChannels);
-      await writeEmailDeliveryAudit(input, { status: 'sent', provider: providerUsed, providerRequestId });
+      await writeEmailDeliveryAudit(input, { status: 'sent', provider: providerUsed, providerRequestId, providerClientReference });
       return { provider: providerUsed, attemptedProviders: [...attemptedProviders], providerRequestId };
     }
 
@@ -336,7 +346,7 @@ export async function sendEmail(input: SendEmailInput): Promise<{
     if (ENV.zeptoMailToken) {
       try {
         await attemptWith("zeptomail", sendViaZeptoMail);
-        await writeEmailDeliveryAudit(input, { status: 'sent', provider: providerUsed, providerRequestId });
+        await writeEmailDeliveryAudit(input, { status: 'sent', provider: providerUsed, providerRequestId, providerClientReference });
         return { provider: providerUsed, attemptedProviders: [...attemptedProviders], providerRequestId };
       } catch (e) {
         errors.push(e instanceof Error ? e.message : String(e));
@@ -346,7 +356,7 @@ export async function sendEmail(input: SendEmailInput): Promise<{
     if (ENV.resendApiKey) {
       try {
         await attemptWith("resend", sendViaResend);
-        await writeEmailDeliveryAudit(input, { status: 'sent', provider: providerUsed, providerRequestId });
+        await writeEmailDeliveryAudit(input, { status: 'sent', provider: providerUsed, providerRequestId, providerClientReference });
         return { provider: providerUsed, attemptedProviders: [...attemptedProviders], providerRequestId };
       } catch (e) {
         errors.push(e instanceof Error ? e.message : String(e));
@@ -355,7 +365,7 @@ export async function sendEmail(input: SendEmailInput): Promise<{
 
     try {
       await attemptWith("mailchannels", sendViaMailChannels);
-      await writeEmailDeliveryAudit(input, { status: 'sent', provider: providerUsed, providerRequestId });
+      await writeEmailDeliveryAudit(input, { status: 'sent', provider: providerUsed, providerRequestId, providerClientReference });
       return { provider: providerUsed, attemptedProviders: [...attemptedProviders], providerRequestId };
     } catch (e) {
       errors.push(e instanceof Error ? e.message : String(e));
@@ -671,6 +681,7 @@ export async function sendAdminNotificationEmail(input: {
       status: "sent",
       provider: "zeptomail",
       providerRequestId: providerResult.requestId,
+      providerClientReference: providerResult.clientReference,
       metadata: {
         ...(input.metadata || {}),
         deliveryMode: recipient.deliveryMode,
@@ -683,6 +694,7 @@ export async function sendAdminNotificationEmail(input: {
       eventType: input.eventType,
       providerBatchKey: input.providerBatchKey,
       providerRequestId: providerResult.requestId,
+      providerClientReference: providerResult.clientReference,
       error: error instanceof Error ? error.message : String(error),
     });
   }
@@ -823,6 +835,7 @@ export async function sendStaffBccBatch(input: {
       status: "sent",
       provider: "zeptomail",
       providerRequestId: providerResult.requestId,
+      providerClientReference: providerResult.clientReference,
       metadata: {
         ...(input.metadata || {}),
         deliveryMode: recipient.deliveryMode,
@@ -1012,6 +1025,7 @@ export async function sendRecommendationBccBatch(input: {
       status: "sent",
       provider: "zeptomail",
       providerRequestId: providerResult.requestId,
+      providerClientReference: providerResult.clientReference,
       metadata: {
         ...(input.metadata || {}),
         deliveryMode: "bcc_batch",

@@ -1,19 +1,17 @@
 import * as db from "../db";
 import { normalizeEmailAddress } from "../../shared/emailValidation";
+import type { ProviderDeliveryStatus } from "../../shared/emailDeliveryLifecycle";
 
 const MAX_WEBHOOK_AGE_MS = 5 * 60 * 1000;
 const MAX_WEBHOOK_BODY_BYTES = 256 * 1024;
 const STATIC_SECRET_HEADER = "x-xflex-zeptomail-secret";
 
-export type ZeptoMailDeliveryStatus =
-  | "delivered"
-  | "bounced_soft"
-  | "bounced_hard"
-  | "complained";
+export type ZeptoMailDeliveryStatus = ProviderDeliveryStatus;
 
 export type ParsedZeptoMailWebhookEvent = {
   providerEventId: string;
   providerRequestId: string;
+  providerClientReference: string | null;
   eventName: string;
   deliveryStatus: ZeptoMailDeliveryStatus | null;
   recipientEmail: string | null;
@@ -140,6 +138,8 @@ function getDeliveryStatus(eventName: string): ZeptoMailDeliveryStatus | null {
   if (eventName.includes("hard") && eventName.includes("bounce")) return "bounced_hard";
   if (eventName.includes("soft") && eventName.includes("bounce")) return "bounced_soft";
   if (eventName.includes("feedback") || eventName.includes("complaint") || eventName.includes("fbl")) return "complained";
+  if (eventName.includes("defer") || eventName.includes("queue")) return "deferred";
+  if (eventName.includes("reject") || eventName.includes("process_failed") || eventName.includes("processfailed")) return "rejected";
   if (eventName.includes("deliver") || eventName.includes("open") || eventName.includes("click")) return "delivered";
   return null;
 }
@@ -163,6 +163,7 @@ export function parseZeptoMailWebhookEvent(payloadText: string): ParsedZeptoMail
   return {
     providerEventId,
     providerRequestId,
+    providerClientReference: asString(emailInfo?.client_reference),
     eventName,
     deliveryStatus: getDeliveryStatus(eventName),
     recipientEmail: normalizeEmailAddress(asString(details?.bounced_recipient) ?? getRecipientEmail(emailInfo) ?? "") || null,
