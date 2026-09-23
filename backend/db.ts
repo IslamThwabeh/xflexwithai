@@ -19,6 +19,7 @@ import {
   recommendationAlerts, RecommendationAlert, InsertRecommendationAlert,
   recommendationMessages, RecommendationMessage, InsertRecommendationMessage,
   recommendationDeliveries, RecommendationDelivery, InsertRecommendationDelivery,
+  recommendationDeliveryPayloads, InsertRecommendationDeliveryPayload,
   clientNotificationControls, clientNotificationControlAudit,
   recommendationReactions, RecommendationReaction, InsertRecommendationReaction,
   recommendationThreadMutes,
@@ -6423,6 +6424,39 @@ export type PrepareRecommendationDeliveryItem = {
   metadata?: Record<string, unknown> | null;
 };
 
+async function hydrateRecommendationDeliveryPayloads(
+  db: NonNullable<Awaited<ReturnType<typeof getDb>>>,
+  rows: RecommendationDelivery[],
+): Promise<RecommendationDelivery[]> {
+  if (!rows.length) return rows;
+  const groupKeys = [...new Map(rows.map((row) => [
+    `${row.eventKey}\u0000${row.language}`,
+    { eventKey: row.eventKey, language: row.language },
+  ])).values()];
+  const payloads = await db
+    .select()
+    .from(recommendationDeliveryPayloads)
+    .where(or(...groupKeys.map((key) => and(
+      eq(recommendationDeliveryPayloads.eventKey, key.eventKey),
+      eq(recommendationDeliveryPayloads.language, key.language),
+    ))));
+  const payloadByGroup = new Map(payloads.map((payload) => [
+    `${payload.eventKey}\u0000${payload.language}`,
+    payload,
+  ]));
+  return rows.map((row) => {
+    const payload = payloadByGroup.get(`${row.eventKey}\u0000${row.language}`);
+    if (!payload) return row;
+    return {
+      ...row,
+      subject: payload.subject ?? row.subject,
+      bodyText: payload.bodyText ?? row.bodyText,
+      bodyHtml: payload.bodyHtml ?? row.bodyHtml,
+      metadataJson: payload.metadataJson ?? row.metadataJson,
+    };
+  });
+}
+
 export async function prepareRecommendationDeliveries(input: {
   eventKey: string;
   eventKind: RecommendationDeliveryEventKind;
@@ -6435,6 +6469,56 @@ export async function prepareRecommendationDeliveries(input: {
   if (!input.recipients.length) return { inserted: 0, skippedDuplicate: 0 };
 
   const nowIso = new Date().toISOString();
+  const payloadsByGroup = new Map<string, InsertRecommendationDeliveryPayload>();
+  for (const recipient of input.recipients) {
+    const language = recipient.language ?? 'ar';
+    const groupKey = `${input.eventKey}\u0000${language}`;
+    const payload: InsertRecommendationDeliveryPayload = {
+      eventKey: input.eventKey,
+      language,
+      subject: recipient.subject ?? null,
+      bodyText: recipient.bodyText ?? null,
+      bodyHtml: recipient.bodyHtml ?? null,
+      metadataJson: recipient.metadata ? JSON.stringify(recipient.metadata) : null,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    };
+    const existing = payloadsByGroup.get(groupKey);
+    if (existing && (
+      existing.subject !== payload.subject
+      || existing.bodyText !== payload.bodyText
+      || existing.bodyHtml !== payload.bodyHtml
+      || existing.metadataJson !== payload.metadataJson
+    )) {
+      throw new Error(`Recommendation payload differs within ${input.eventKey}/${language}`);
+    }
+    payloadsByGroup.set(groupKey, payload);
+  }
+  await db
+    .insert(recommendationDeliveryPayloads)
+    .values([...payloadsByGroup.values()])
+    .onConflictDoNothing({
+      target: [recommendationDeliveryPayloads.eventKey, recommendationDeliveryPayloads.language],
+    });
+  const storedPayloads = await db
+    .select()
+    .from(recommendationDeliveryPayloads)
+    .where(or(...[...payloadsByGroup.values()].map((payload) => and(
+      eq(recommendationDeliveryPayloads.eventKey, payload.eventKey),
+      eq(recommendationDeliveryPayloads.language, payload.language),
+    ))));
+  const storedByGroup = new Map(storedPayloads.map((payload) => [
+    `${payload.eventKey}\u0000${payload.language}`,
+    payload,
+  ]));
+  for (const [groupKey, expected] of payloadsByGroup) {
+    const stored = storedByGroup.get(groupKey);
+    if (!stored || stored.subject !== expected.subject || stored.bodyText !== expected.bodyText
+      || stored.bodyHtml !== expected.bodyHtml || stored.metadataJson !== expected.metadataJson) {
+      throw new Error(`Stored recommendation payload conflicts with ${expected.eventKey}/${expected.language}`);
+    }
+  }
+
   const rows: InsertRecommendationDelivery[] = input.recipients.map((r) => ({
     eventKey: input.eventKey,
     eventKind: input.eventKind,
@@ -6444,10 +6528,10 @@ export async function prepareRecommendationDeliveries(input: {
     recipientEmail: r.recipientEmail,
     language: r.language ?? 'ar',
     status: 'pending',
-    subject: r.subject ?? null,
-    bodyText: r.bodyText ?? null,
-    bodyHtml: r.bodyHtml ?? null,
-    metadataJson: r.metadata ? JSON.stringify(r.metadata) : null,
+    subject: null,
+    bodyText: null,
+    bodyHtml: null,
+    metadataJson: null,
     attempts: 0,
     createdAt: nowIso,
     updatedAt: nowIso,
@@ -6868,7 +6952,7 @@ export async function listPendingRecommendationDeliveriesForRetry(limit: number 
     )).returning();
     if (rows[0]) claimed.push(rows[0]);
   }
-  return claimed;
+  return hydrateRecommendationDeliveryPayloads(db, claimed);
 }
 
 /**
@@ -6939,7 +7023,7 @@ export async function claimNextRecommendationDeliveryBatch(
     .limit(boundedLimit);
   if (!candidates.length) return [];
 
-  return db.update(recommendationDeliveries).set({
+  const claimed = await db.update(recommendationDeliveries).set({
     status: "processing",
     lastAttemptAt: nowIso,
     updatedAt: nowIso,
@@ -6947,6 +7031,7 @@ export async function claimNextRecommendationDeliveryBatch(
     inArray(recommendationDeliveries.id, candidates.map((row) => row.id)),
     inArray(recommendationDeliveries.status, ["pending", "failed"]),
   )).returning();
+  return hydrateRecommendationDeliveryPayloads(db, claimed);
 }
 
 export async function getRecommendationDeliveryStats(sinceIso: string): Promise<{

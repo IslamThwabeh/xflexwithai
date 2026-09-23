@@ -548,6 +548,30 @@ export type RecommendationDelivery = typeof recommendationDeliveries.$inferSelec
 export type InsertRecommendationDelivery = typeof recommendationDeliveries.$inferInsert;
 
 /**
+ * Shared immutable email content for a recommendation event/language pair.
+ * Recipient delivery rows retain only recipient-specific audit and retry state.
+ */
+export const recommendationDeliveryPayloads = sqliteTable("recommendation_delivery_payloads", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  eventKey: text("eventKey").notNull(),
+  language: text("language", { length: 5 }).notNull(),
+  subject: text("subject"),
+  bodyText: text("bodyText"),
+  bodyHtml: text("bodyHtml"),
+  metadataJson: text("metadataJson"),
+  createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
+  updatedAt: text("updatedAt").default(sql`(datetime('now'))`).notNull(),
+}, (table) => ({
+  uniqueEventLanguage: unique("unique_rec_delivery_payload_event_language").on(
+    table.eventKey,
+    table.language,
+  ),
+}));
+
+export type RecommendationDeliveryPayload = typeof recommendationDeliveryPayloads.$inferSelect;
+export type InsertRecommendationDeliveryPayload = typeof recommendationDeliveryPayloads.$inferInsert;
+
+/**
  * Per-client controls for non-transactional notification categories.
  * This intentionally does not cover security, billing, or support messages.
  */
