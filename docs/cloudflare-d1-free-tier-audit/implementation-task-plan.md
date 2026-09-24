@@ -3,6 +3,18 @@
 Date: 2026-08-24
 Status: Recommendation 1, the survey-notification SQL hotfix, Tasks 2.2-2.4, sent-history Task 7.1, and recommendation Tasks 3.1-3.5 are deployed. The Task 3.6 D1 stop-rule checkpoint passed on 2026-08-28; a separately discovered Workers Free CPU-limit issue in the minute cron must be handled as its own small task before the overall Free-tier work is closed.
 
+## Search-field closeout — 2026-09-24
+
+The manual-search optimization wave is deployed. Its durable release record and non-regression rules are in [`docs/d1-search-field-audit-2026-09-24.md`](../d1-search-field-audit-2026-09-24.md).
+
+- Support client search is now bounded, prefix-based SQL with a 50-row limit and three additive non-unique indexes from migration 130; it no longer loads and filters the full user directory.
+- High-risk manual search fields use a 400 ms debounce, a two-character minimum enforced by both UI and API, and no focus/background/interval refetch.
+- Search mode pauses support-inbox polling; LexAI search also suppresses its passive interval.
+- Production release identifiers are Pages `53cae1f9-c39d-457b-abc2-df2c6de64a0a` and Worker `1d6a1feb-2600-4c66-8b87-4f1140a222fc`.
+- Do not return to the Free plan based on a rolling or partial-day sample. Prefer seven complete post-release UTC days below the 3.5M-read/70K-write internal targets, with no D1, Worker CPU, login, search, support, recommendation, or email regressions.
+
+This closeout supplements the historical task status below. It does not erase the separate Workers CPU-limit concern; that limit must also be clean during the observation window.
+
 Local implementation progress on 2026-08-24:
 
 - Task 0.2 completed locally: `pnpm run test:critical-cycle` now covers 23 files / 156 tests.
