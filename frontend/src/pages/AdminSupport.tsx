@@ -455,13 +455,18 @@ export default function AdminSupport() {
   const newChatMessageText = newChatMessage.trim();
 
   useEffect(() => {
-    const t = setTimeout(() => setNewChatDebounced(newChatSearch.trim()), 250);
+    const t = setTimeout(() => setNewChatDebounced(newChatSearch.trim()), 400);
     return () => clearTimeout(t);
   }, [newChatSearch]);
 
   const { data: newChatResults, isFetching: newChatSearching, error: newChatSearchError } = trpc.supportDashboard.searchClients.useQuery(
     { query: newChatDebounced },
-    { enabled: newChatOpen && newChatDebounced.length >= 2 },
+    {
+      enabled: newChatOpen && newChatDebounced.length >= 2,
+      refetchInterval: false,
+      refetchIntervalInBackground: false,
+      refetchOnWindowFocus: false,
+    },
   );
 
   const startConversationMutation = trpc.supportChat.startConversationForUser.useMutation({

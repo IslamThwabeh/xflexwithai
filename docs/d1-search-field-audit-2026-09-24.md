@@ -11,6 +11,13 @@ Scope: production React/tRPC paths that accept free-text search, plus browser-on
 - Email-log text filters run only when **Apply search** is pressed. Only the small outbox-health query refreshes automatically.
 - Several administrative fields still query once per keystroke. They are not background loops, but should receive debounce/minimum-length guards in a later low-risk change.
 
+## Phase 1 implementation status (2026-09-24)
+
+- `supportDashboard.searchClients` now executes a database-side lookup selecting only ID, email, name, phone, and creation time, with a hard maximum of 50 rows.
+- The route rejects trimmed searches shorter than two characters and no longer calls `getAllUsers()`.
+- The production Worker change is deployed as version `b1d1cf49-365c-47f1-adb7-9dcdbf207281`.
+- The frontend source now uses a 400 ms debounce and disables interval, background, and window-focus refetch. The production Pages build is pending because the local Vite process was terminated during transformation; no stale frontend artifact was deployed.
+
 ## Searches that reach D1
 
 | Screen / endpoint | Searchable fields | Trigger and current guard | Automatic repeat | Risk / follow-up |

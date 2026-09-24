@@ -1512,6 +1512,51 @@ export async function getAllUsers() {
 }
 
 /**
+ * Bounded client lookup for support operators. Keep this database-side: the
+ * previous route loaded every user and filtered the full result in the Worker.
+ */
+export async function searchSupportClients(
+  search: string,
+  limit = 50,
+  database?: ReturnType<typeof drizzle>,
+) {
+  const db = database ?? await getDb();
+  if (!db) return [];
+
+  const query = search.trim();
+  if (query.length < 2) return [];
+
+  const normalized = query.toLowerCase();
+  const pattern = `%${normalized}%`;
+  const boundedLimit = Math.min(Math.max(limit, 1), 50);
+
+  return db
+    .select({
+      id: users.id,
+      email: users.email,
+      name: users.name,
+      phone: users.phone,
+      createdAt: users.createdAt,
+    })
+    .from(users)
+    .where(or(
+      sql`lower(${users.email}) LIKE ${pattern}`,
+      sql`lower(COALESCE(${users.name}, '')) LIKE ${pattern}`,
+      sql`COALESCE(${users.phone}, '') LIKE ${`%${query}%`}`,
+    ))
+    .orderBy(
+      sql`CASE
+        WHEN lower(${users.email}) = ${normalized} THEN 0
+        WHEN COALESCE(${users.phone}, '') = ${query} THEN 1
+        WHEN lower(COALESCE(${users.name}, '')) = ${normalized} THEN 2
+        ELSE 3
+      END`,
+      desc(users.createdAt),
+    )
+    .limit(boundedLimit);
+}
+
+/**
  * Update user (name, phone, etc.)
  */
 export async function updateUser(userId: number, updates: { name?: string; phone?: string; loginSecurityMode?: "password_or_otp" | "password_only" | "password_plus_otp"; notificationPrefs?: string }): Promise<void> {

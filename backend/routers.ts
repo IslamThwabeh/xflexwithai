@@ -6884,7 +6884,7 @@ export const appRouter = router({
   supportDashboard: router({
     // Search clients by email or name (requires 'client_lookup' or 'support' role, or admin)
     searchClients: supportStaffProcedure
-      .input(z.object({ query: z.string().min(1).max(200) }))
+      .input(z.object({ query: z.string().trim().min(2).max(200) }))
       .query(async ({ ctx, input }) => {
         if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
         const isAdmin = !!(ctx.user.email && await db.getAdminByEmail(ctx.user.email));
@@ -6892,15 +6892,7 @@ export const appRouter = router({
           const canSearch = await db.hasAnyRole(ctx.user.id, ['client_lookup', 'support']);
           if (!canSearch) throw new TRPCError({ code: 'FORBIDDEN', message: 'Client lookup permission required' });
         }
-        const allUsers = await db.getAllUsers();
-        const q = input.query.toLowerCase();
-        return (allUsers ?? []).filter((u: any) =>
-          u.email?.toLowerCase().includes(q) ||
-          u.name?.toLowerCase().includes(q) ||
-          u.phone?.includes(q)
-        ).slice(0, 50).map((u: any) => ({
-          id: u.id, email: u.email, name: u.name, phone: u.phone, createdAt: u.createdAt,
-        }));
+        return db.searchSupportClients(input.query, 50);
       }),
 
     // Get client course progress & enrollments (requires 'view_progress' or admin)
