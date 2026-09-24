@@ -5,11 +5,10 @@ import fs from "node:fs";
 import path from "path";
 import { defineConfig } from "vite";
 
-
-const plugins = [react(), tailwindcss(), jsxLocPlugin()];
-
-export default defineConfig({
-  plugins,
+export default defineConfig(({ command }) => ({
+  // Source-location instrumentation is an editor/development aid. Keeping it
+  // out of production avoids unnecessary transform work and memory pressure.
+  plugins: [react(), tailwindcss(), ...(command === "serve" ? [jsxLocPlugin()] : [])],
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "frontend", "src"),
@@ -23,6 +22,13 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    reportCompressedSize: false,
+    rollupOptions: {
+      // This project is built on a 16 GB Windows workstation shared with the
+      // editor and browsers. Bound Rollup concurrency to avoid OS-level memory
+      // pressure without changing bundle semantics.
+      maxParallelFileOps: 2,
+    },
   },
   server: {
     host: true,
@@ -40,4 +46,4 @@ export default defineConfig({
       deny: ["**/.*"],
     },
   },
-});
+}));
