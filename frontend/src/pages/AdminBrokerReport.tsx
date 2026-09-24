@@ -48,7 +48,11 @@ export function AdminBrokerReportContent() {
     offset,
   }), [brokerStatus, debouncedSearch, fromDate, offset, pageSize, sort, sortDir, toDate]);
 
-  const { data, isLoading } = trpc.onboarding.report.useQuery(filters);
+  const { data, isLoading } = trpc.onboarding.report.useQuery(filters, {
+    refetchInterval: false,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: false,
+  });
 
   useEffect(() => {
     setOffset(0);

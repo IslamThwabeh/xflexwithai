@@ -25,7 +25,12 @@ export default function GlobalSearchDialog({ onClose }: { onClose: () => void })
 
   const { data, isLoading } = trpc.search.public.useQuery(
     { query: debouncedQuery },
-    { enabled: debouncedQuery.length >= 2 }
+    {
+      enabled: debouncedQuery.length >= 2,
+      refetchInterval: false,
+      refetchIntervalInBackground: false,
+      refetchOnWindowFocus: false,
+    }
   );
 
   const go = (path: string) => { navigate(path); onClose(); };

@@ -23,7 +23,12 @@ export default function AdminSearchDialog({ onClose }: { onClose: () => void }) 
 
   const { data, isLoading } = trpc.search.admin.useQuery(
     { query: debouncedQuery },
-    { enabled: debouncedQuery.length >= 2 }
+    {
+      enabled: debouncedQuery.length >= 2,
+      refetchInterval: false,
+      refetchIntervalInBackground: false,
+      refetchOnWindowFocus: false,
+    }
   );
 
   const go = (path: string) => { navigate(path); onClose(); };

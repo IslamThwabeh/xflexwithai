@@ -163,7 +163,8 @@ export default function AdminSupport() {
     },
     {
       refetchInterval: isPageVisible && !hasActiveInboxSearch ? 60_000 : false,
-      refetchOnWindowFocus: true,
+      refetchIntervalInBackground: false,
+      refetchOnWindowFocus: !hasActiveInboxSearch,
     },
   );
 

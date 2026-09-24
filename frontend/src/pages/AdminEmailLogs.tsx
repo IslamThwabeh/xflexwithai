@@ -239,11 +239,21 @@ export default function AdminEmailLogs() {
 
   const { data: deliveryLogs, isLoading: deliveryLogsLoading } = trpc.adminEmail.deliveryLogs.useQuery(
     deliveryFilters,
-    { enabled: canViewEmailLogs }
+    {
+      enabled: canViewEmailLogs,
+      refetchInterval: false,
+      refetchIntervalInBackground: false,
+      refetchOnWindowFocus: false,
+    }
   );
   const { data: deliverySummary, isLoading: deliverySummaryLoading } = trpc.adminEmail.deliveryLogSummary.useQuery(
     deliverySummaryFilters,
-    { enabled: canViewEmailLogs }
+    {
+      enabled: canViewEmailLogs,
+      refetchInterval: false,
+      refetchIntervalInBackground: false,
+      refetchOnWindowFocus: false,
+    }
   );
   const { data: outboxHealth, isLoading: outboxHealthLoading } = trpc.adminEmail.outboxHealth.useQuery(
     undefined,

@@ -4659,7 +4659,7 @@ export const appRouter = router({
         status: z.enum(['all', 'open', 'closed']).optional(),
         limit: z.number().min(1).max(500).optional(),
         offset: z.number().min(0).optional(),
-        search: z.string().max(200).optional(),
+        search: z.string().trim().min(2).max(200).optional(),
         month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).optional(),
       }).optional())
       .query(async ({ ctx, input }) => {
@@ -5406,7 +5406,7 @@ export const appRouter = router({
   lexaiSupport: router({
     listCases: lexaiSupportProcedure
       .input(z.object({
-        search: z.string().max(200).optional(),
+        search: z.string().trim().min(2).max(200).optional(),
         status: z.enum(LEXAI_SUPPORT_CASE_STATUSES).optional(),
         assignedToMe: z.boolean().optional(),
       }).optional())
@@ -5922,7 +5922,7 @@ export const appRouter = router({
       .input(z.object({
         limit: z.number().int().min(1).max(50).default(30),
         status: z.enum(["all", "open", "closed"]).default("all"),
-        search: z.string().max(200).optional(),
+        search: z.string().trim().min(2).max(200).optional(),
         cursor: z.object({
           updatedAt: z.string(),
           id: z.number().int().positive(),
@@ -10369,12 +10369,12 @@ ${qaText}`;
   // ============================================================================
   search: router({
     public: publicProcedure
-      .input(z.object({ query: z.string().min(1).max(200) }))
+      .input(z.object({ query: z.string().trim().min(2).max(200) }))
       .query(async ({ input }) => {
         return db.globalSearch(input.query);
       }),
     admin: adminProcedure
-      .input(z.object({ query: z.string().min(1).max(200) }))
+      .input(z.object({ query: z.string().trim().min(2).max(200) }))
       .query(async ({ input }) => {
         return db.adminGlobalSearch(input.query);
       }),
@@ -11273,7 +11273,7 @@ ${qaText}`;
 
     adminMembers: adminOrRoleProcedure(['student_community_moderator'])
       .input(z.object({
-        search: z.string().trim().max(200).nullish(),
+        search: z.string().trim().min(2).max(200).nullish(),
         status: communityAccessStatusSchema.default("all"),
         limit: z.number().int().min(1).max(100).default(25),
         offset: z.number().int().min(0).default(0),
@@ -11603,7 +11603,7 @@ ${qaText}`;
       .input(z.object({
         days: z.number().min(1).max(365).optional(),
         eventType: z.string().min(1).max(50).optional(),
-        search: z.string().max(120).optional(),
+        search: z.string().trim().min(2).max(120).optional(),
         limit: z.number().min(1).max(100).optional(),
         offset: z.number().min(0).max(100000).optional(),
       }).optional())
@@ -11826,7 +11826,7 @@ ${qaText}`;
         status: onboardingStatusSchema.optional(),
         step: onboardingStepSchema.optional(),
         brokerId: z.number().optional(),
-        search: z.string().max(200).optional(),
+        search: z.string().trim().min(2).max(200).optional(),
         fromDate: z.string().optional(),
         toDate: z.string().optional(),
         limit: z.number().min(1).max(100).optional(),
@@ -11838,7 +11838,7 @@ ${qaText}`;
 
     report: adminProcedure
       .input(z.object({
-        search: z.string().max(200).optional(),
+        search: z.string().trim().min(2).max(200).optional(),
         brokerStatus: z.enum(['all', 'active', 'inactive']).optional(),
         fromDate: z.string().optional(),
         toDate: z.string().optional(),

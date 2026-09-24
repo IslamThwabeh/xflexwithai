@@ -24,7 +24,14 @@ Scope: production React/tRPC paths that accept free-text search, plus browser-on
 - Production Worker version `d527b4ef-db3b-47e3-b03a-95a12dbd4db2` serves the indexed prefix query.
 - A shared 400 ms/two-character search hook is applied in source to onboarding records, broker reporting, recommendation history, community members, and the loyalty-points picker.
 - Recommendation history, community-member search, and the points picker also explicitly disable interval, background, and focus refetch in source.
-- The Phase 2 frontend source is tested but its Pages deployment remains pending because the local Vite build process was terminated during transformation. Backend validation remains backward-compatible until the matching frontend can be deployed.
+- The Phase 2 frontend source is tested but its Pages deployment remains pending because the local Vite build process was terminated during transformation. Production backend validation remains backward-compatible until the coordinated frontend/API deployment.
+
+## Phase 3 implementation status (2026-09-24)
+
+- All identified manual remote-search queries explicitly disable interval, background, and window-focus refetch. Support inbox keeps its normal visible-page refresh only when no search is active.
+- API boundaries enforce a trimmed two-character minimum for global search, LexAI cases, support inbox, recommendation history, community members, engagement students, onboarding records, broker reporting, support client lookup, and loyalty-points lookup.
+- Email delivery log text filters remain explicit **Apply search** actions and no longer refetch on focus; their operational health query remains intentionally separate.
+- All Phase 2 and Phase 3 frontend/API changes are being held for one coordinated Pages + Worker deployment so the stricter API validation cannot precede its matching UI.
 
 ## Searches that reach D1
 

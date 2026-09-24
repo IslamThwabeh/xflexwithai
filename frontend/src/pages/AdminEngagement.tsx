@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { formatLocalizedDateTime } from '@/lib/dateLocale';
 import { trpc } from '@/lib/trpc';
+import { useDebouncedSearch } from '@/hooks/useDebouncedSearch';
 import {
   Activity,
   BookOpen,
@@ -265,7 +266,7 @@ export default function AdminEngagement() {
   const [selectedAction, setSelectedAction] = useState<EventSelection | null>(null);
   const [recentEventsPage, setRecentEventsPage] = useState(0);
   const [studentSearchInput, setStudentSearchInput] = useState('');
-  const [studentSearch, setStudentSearch] = useState('');
+  const studentSearch = useDebouncedSearch(studentSearchInput);
 
   const { data: summary7, isLoading: l7 } = trpc.engagement.summary.useQuery({ days: 7 });
   const { data: summary30, isLoading: l30 } = trpc.engagement.summary.useQuery({ days: 30 });
@@ -296,7 +297,12 @@ export default function AdminEngagement() {
         offset: recentEventsPage * RECENT_EVENTS_PAGE_SIZE,
       }
       : undefined,
-    { enabled: !!activeSelection },
+    {
+      enabled: !!activeSelection,
+      refetchInterval: false,
+      refetchIntervalInBackground: false,
+      refetchOnWindowFocus: false,
+    },
   );
   const eventUserItems = eventUsers?.items ?? [];
   const eventUsersTotalStudents = eventUsers?.totalStudents ?? 0;
@@ -306,14 +312,6 @@ export default function AdminEngagement() {
   useEffect(() => {
     setRecentEventsPage(0);
   }, [activeSelectionKey, studentSearch]);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      setStudentSearch(studentSearchInput.trim());
-    }, 250);
-
-    return () => window.clearTimeout(timer);
-  }, [studentSearchInput]);
 
   useEffect(() => {
     if (recentEventsPage > recentTotalPages - 1) {
@@ -440,7 +438,6 @@ export default function AdminEngagement() {
                         className="absolute end-1 top-1/2 h-7 w-7 -translate-y-1/2"
                         onClick={() => {
                           setStudentSearchInput('');
-                          setStudentSearch('');
                         }}
                         aria-label={isRtl ? 'مسح البحث' : 'Clear search'}
                       >

@@ -43,7 +43,11 @@ export function AdminBrokerOnboardingContent() {
     limit: pageSize,
     offset,
   }), [debouncedSearch, filterStatus, filterStep, fromDate, offset, pageSize, tab, toDate]);
-  const { data: recordsPage, isLoading } = trpc.onboarding.recordsPage.useQuery(queryInput);
+  const { data: recordsPage, isLoading } = trpc.onboarding.recordsPage.useQuery(queryInput, {
+    refetchInterval: false,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: false,
+  });
   const { data: pendingCountPage } = trpc.onboarding.recordsPage.useQuery({ status: 'pending_review', limit: 1, offset: 0 });
 
   useEffect(() => {

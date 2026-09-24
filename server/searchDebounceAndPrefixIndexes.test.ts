@@ -30,4 +30,30 @@ describe("manual search D1 protections", () => {
     expect(migration).toContain("idx_users_support_phone");
     expect(migration).not.toMatch(/DROP|DELETE|UPDATE/i);
   });
+
+  it.each([
+    ["public global", "frontend/src/components/GlobalSearchDialog.tsx"],
+    ["admin global", "frontend/src/components/AdminSearchDialog.tsx"],
+    ["onboarding", "frontend/src/pages/AdminBrokerOnboarding.tsx"],
+    ["broker report", "frontend/src/pages/AdminBrokerReport.tsx"],
+    ["recommendation history", "frontend/src/pages/AdminRecommendations.tsx"],
+    ["community members", "frontend/src/pages/AdminCommunityModeration.tsx"],
+    ["loyalty points", "frontend/src/pages/AdminPoints.tsx"],
+    ["engagement students", "frontend/src/pages/AdminEngagement.tsx"],
+    ["email delivery logs", "frontend/src/pages/AdminEmailLogs.tsx"],
+  ])("disables window-focus refetch for %s", (_label, path) => {
+    const source = read(path);
+    expect(source).toContain("refetchIntervalInBackground: false");
+    expect(source).toContain("refetchOnWindowFocus: false");
+  });
+
+  it("disables support inbox focus refetch while search is active", () => {
+    const source = read("frontend/src/pages/AdminSupport.tsx");
+    expect(source).toContain("refetchOnWindowFocus: !hasActiveInboxSearch");
+  });
+
+  it("enforces two-character remote search inputs at the API boundary", () => {
+    const source = read("backend/routers.ts");
+    expect(source.match(/search: z\.string\(\)\.trim\(\)\.min\(2\)\.max\(200\)/g)?.length).toBeGreaterThanOrEqual(5);
+  });
 });
