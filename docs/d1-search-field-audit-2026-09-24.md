@@ -9,14 +9,14 @@ Scope: production React/tRPC paths that accept free-text search, plus browser-on
 - Support inbox already suspends its 60-second refresh during search.
 - LexAI case search previously repeated an active wildcard search every 15 seconds. The 2026-09-24 change disables interval and window-focus refetch while search text is active.
 - Email-log text filters run only when **Apply search** is pressed. Only the small outbox-health query refreshes automatically.
-- Several administrative fields still query once per keystroke. They are not background loops, but should receive debounce/minimum-length guards in a later low-risk change.
+- Administrative remote-search fields now use debounce/minimum-length guards and do not refetch automatically while a manual search is active.
 
 ## Phase 1 implementation status (2026-09-24)
 
 - `supportDashboard.searchClients` now executes a database-side lookup selecting only ID, email, name, phone, and creation time, with a hard maximum of 50 rows.
 - The route rejects trimmed searches shorter than two characters and no longer calls `getAllUsers()`.
 - The production Worker change is deployed as version `b1d1cf49-365c-47f1-adb7-9dcdbf207281`.
-- The frontend source now uses a 400 ms debounce and disables interval, background, and window-focus refetch. The production Pages build is pending because the local Vite process was terminated during transformation; no stale frontend artifact was deployed.
+- The frontend uses a 400 ms debounce and disables interval, background, and window-focus refetch. It is live in production Pages deployment `53cae1f9-c39d-457b-abc2-df2c6de64a0a`.
 
 ## Phase 2 implementation status (2026-09-24)
 
@@ -24,14 +24,14 @@ Scope: production React/tRPC paths that accept free-text search, plus browser-on
 - Production Worker version `d527b4ef-db3b-47e3-b03a-95a12dbd4db2` serves the indexed prefix query.
 - A shared 400 ms/two-character search hook is applied in source to onboarding records, broker reporting, recommendation history, community members, and the loyalty-points picker.
 - Recommendation history, community-member search, and the points picker also explicitly disable interval, background, and focus refetch in source.
-- The Phase 2 frontend source is tested but its Pages deployment remains pending because the local Vite build process was terminated during transformation. Production backend validation remains backward-compatible until the coordinated frontend/API deployment.
+- The Phase 2 frontend and matching API validation were deployed together on 2026-09-24.
 
 ## Phase 3 implementation status (2026-09-24)
 
 - All identified manual remote-search queries explicitly disable interval, background, and window-focus refetch. Support inbox keeps its normal visible-page refresh only when no search is active.
 - API boundaries enforce a trimmed two-character minimum for global search, LexAI cases, support inbox, recommendation history, community members, engagement students, onboarding records, broker reporting, support client lookup, and loyalty-points lookup.
 - Email delivery log text filters remain explicit **Apply search** actions and no longer refetch on focus; their operational health query remains intentionally separate.
-- All Phase 2 and Phase 3 frontend/API changes are being held for one coordinated Pages + Worker deployment so the stricter API validation cannot precede its matching UI.
+- Phase 2 and Phase 3 were deployed together: Pages `53cae1f9-c39d-457b-abc2-df2c6de64a0a` and Worker `1d6a1feb-2600-4c66-8b87-4f1140a222fc`. Both public endpoints returned HTTP 200 after their expected canonical redirects.
 
 ## Searches that reach D1
 
