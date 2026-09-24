@@ -2893,6 +2893,20 @@ export const emailDeliveryLogs = sqliteTable("email_delivery_logs", {
 export type EmailDeliveryLog = typeof emailDeliveryLogs.$inferSelect;
 export type InsertEmailDeliveryLog = typeof emailDeliveryLogs.$inferInsert;
 
+export const emailDeliveryDailyAggregates = sqliteTable("email_delivery_daily_aggregates", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  deliveryDate: text("delivery_date").notNull(),
+  eventType: text("event_type").notNull(),
+  status: text("status").notNull(),
+  provider: text("provider").notNull(),
+  total: integer("total").default(0).notNull(),
+  updatedAt: text("updated_at").default(sql`(datetime('now'))`).notNull(),
+}, (table) => ({
+  uniqueDimension: unique("uq_email_delivery_daily_aggregate").on(
+    table.deliveryDate, table.eventType, table.status, table.provider,
+  ),
+}));
+
 /** Idempotency and minimal audit data for inbound email-provider webhooks. */
 export const emailProviderWebhookEvents = sqliteTable("email_provider_webhook_events", {
   id: int("id").primaryKey({ autoIncrement: true }),

@@ -1451,6 +1451,13 @@ export default {
         error: error instanceof Error ? error.message : String(error),
       });
     }
+    try {
+      await db.runEmailDeliveryRetention();
+    } catch (error) {
+      logger.error("[CRON] Email delivery retention failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
     const unfrozen = await db.processExpiredFreezes();
     for (const user of unfrozen) {
       if (user.email) {
