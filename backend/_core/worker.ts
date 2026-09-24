@@ -59,7 +59,9 @@ import {
 
 const MINUTE_DELIVERY_CRON = "* * * * *";
 const TIMED_SERVICE_REPAIR_CRON = "*/5 * * * *";
-const DAILY_MAINTENANCE_CRON = "0 5 * * *";
+// 00:10 UTC = 03:10 Asia/Amman. This runs after D1's UTC quota reset and
+// outside normal client hours. Retention work remains bounded per invocation.
+const DAILY_MAINTENANCE_CRON = "10 0 * * *";
 const FREE_PLAN_RECOMMENDATION_PROVIDER_BATCH_LIMIT = 1;
 const FREE_PLAN_LOWER_PRIORITY_PROVIDER_LIMIT = 1;
 const FREE_PLAN_SURVEY_MATERIALIZATION_LIMIT = 10;

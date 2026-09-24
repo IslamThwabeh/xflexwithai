@@ -37,10 +37,11 @@ binding = "FINANCE_RECEIPTS_BUCKET"
 bucket_name = "xflexacademy-finance-receipts"
 
 [env.production.triggers]
-# Daily lifecycle/reminder jobs run at 08:00 Asia/Amman (05:00 UTC).
+# Daily lifecycle/reminder/retention jobs run at 03:10 Asia/Amman (00:10 UTC),
+# shortly after the UTC D1 quota reset and outside normal client hours.
 # Timed-service repair has a separate invocation/CPU budget so future pending
 # work cannot prevent minute recommendation and human-support delivery.
-crons = ["* * * * *", "*/5 * * * *", "0 5 * * *"]
+crons = ["* * * * *", "*/5 * * * *", "10 0 * * *"]
 
 [env.staging]
 name = "xflexacademy-api-staging"

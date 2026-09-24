@@ -289,6 +289,9 @@ export default function AdminLexai() {
     return () => clearTimeout(timer);
   }, [searchInput]);
 
+  const normalizedCaseSearch = debouncedSearch.trim();
+  const hasActiveCaseSearch = normalizedCaseSearch.length >= 2;
+
   const {
     data: supportCasesData,
     isLoading: loadingCases,
@@ -296,11 +299,17 @@ export default function AdminLexai() {
     refetch: refetchCases,
   } = trpc.lexaiSupport.listCases.useQuery(
     {
-      search: debouncedSearch.trim() || undefined,
+      search: hasActiveCaseSearch ? normalizedCaseSearch : undefined,
       status: statusFilter === "all" ? undefined : statusFilter,
       assignedToMe: !isAdmin && assignedToMe ? true : undefined,
     },
-    { refetchInterval: 15_000 },
+    {
+      // A typed search is an operator action, not a live feed. Do not repeat its
+      // wildcard D1 query every 15 seconds; mutations already invalidate cases.
+      refetchInterval: hasActiveCaseSearch ? false : 15_000,
+      refetchIntervalInBackground: false,
+      refetchOnWindowFocus: !hasActiveCaseSearch,
+    },
   );
 
   const supportCases = supportCasesData ?? [];

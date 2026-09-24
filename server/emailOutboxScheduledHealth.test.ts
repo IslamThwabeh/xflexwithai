@@ -174,7 +174,7 @@ describe("scheduled email outbox health monitor", () => {
     );
 
     expect(configSource).toContain(
-      'crons = ["* * * * *", "*/5 * * * *", "0 5 * * *"]',
+      'crons = ["* * * * *", "*/5 * * * *", "10 0 * * *"]',
     );
   });
 });
