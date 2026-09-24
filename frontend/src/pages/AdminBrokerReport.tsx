@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { DataTablePagination } from '@/components/DataTable';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { trpc } from '@/lib/trpc';
+import { useDebouncedSearch } from '@/hooks/useDebouncedSearch';
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50] as const;
 
@@ -27,6 +28,7 @@ export function AdminBrokerReportContent() {
   const { language } = useLanguage();
   const isRtl = language === 'ar';
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedSearch(search);
   const [brokerStatus, setBrokerStatus] = useState<'all' | 'active' | 'inactive'>('all');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
@@ -36,7 +38,7 @@ export function AdminBrokerReportContent() {
   const [offset, setOffset] = useState(0);
 
   const filters = useMemo(() => ({
-    search: search.trim() || undefined,
+    search: debouncedSearch || undefined,
     brokerStatus,
     fromDate: fromDate || undefined,
     toDate: toDate ? `${toDate} 23:59:59` : undefined,
@@ -44,13 +46,13 @@ export function AdminBrokerReportContent() {
     sortDir,
     limit: pageSize,
     offset,
-  }), [brokerStatus, fromDate, offset, pageSize, search, sort, sortDir, toDate]);
+  }), [brokerStatus, debouncedSearch, fromDate, offset, pageSize, sort, sortDir, toDate]);
 
   const { data, isLoading } = trpc.onboarding.report.useQuery(filters);
 
   useEffect(() => {
     setOffset(0);
-  }, [search, brokerStatus, fromDate, toDate, sort, sortDir, pageSize]);
+  }, [debouncedSearch, brokerStatus, fromDate, toDate, sort, sortDir, pageSize]);
 
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));

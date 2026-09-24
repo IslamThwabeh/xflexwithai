@@ -1527,7 +1527,8 @@ export async function searchSupportClients(
   if (query.length < 2) return [];
 
   const normalized = query.toLowerCase();
-  const pattern = `%${normalized}%`;
+  const normalizedUpperBound = `${normalized}\uffff`;
+  const phoneUpperBound = `${query}\uffff`;
   const boundedLimit = Math.min(Math.max(limit, 1), 50);
 
   return db
@@ -1540,9 +1541,18 @@ export async function searchSupportClients(
     })
     .from(users)
     .where(or(
-      sql`lower(${users.email}) LIKE ${pattern}`,
-      sql`lower(COALESCE(${users.name}, '')) LIKE ${pattern}`,
-      sql`COALESCE(${users.phone}, '') LIKE ${`%${query}%`}`,
+      and(
+        sql`lower(${users.email}) >= ${normalized}`,
+        sql`lower(${users.email}) < ${normalizedUpperBound}`,
+      ),
+      and(
+        sql`lower(COALESCE(${users.name}, '')) >= ${normalized}`,
+        sql`lower(COALESCE(${users.name}, '')) < ${normalizedUpperBound}`,
+      ),
+      and(
+        sql`COALESCE(${users.phone}, '') >= ${query}`,
+        sql`COALESCE(${users.phone}, '') < ${phoneUpperBound}`,
+      ),
     ))
     .orderBy(
       sql`CASE

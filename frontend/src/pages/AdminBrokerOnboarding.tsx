@@ -10,6 +10,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import { toast } from 'sonner';
 import { AdminOnboardingRecordCard } from './AdminOnboardingRecordCard';
 import { AdminOnboardingFilters } from './AdminOnboardingFilters';
+import { useDebouncedSearch } from '@/hooks/useDebouncedSearch';
 import { useEffect, useMemo } from 'react';
 
 export default function AdminBrokerOnboarding() {
@@ -24,6 +25,7 @@ export function AdminBrokerOnboardingContent() {
   const [filterStatus, setFilterStatus] = useState('');
   const [filterStep, setFilterStep] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearch = useDebouncedSearch(searchQuery);
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [pageSize, setPageSize] = useState(25);
@@ -35,19 +37,19 @@ export function AdminBrokerOnboardingContent() {
   const queryInput = useMemo(() => ({
     status: tab === 'pending' ? 'pending_review' as const : (filterStatus || undefined) as any,
     step: (filterStep || undefined) as any,
-    search: searchQuery.trim() || undefined,
+    search: debouncedSearch || undefined,
     fromDate: fromDate || undefined,
     toDate: toDate ? `${toDate} 23:59:59` : undefined,
     limit: pageSize,
     offset,
-  }), [filterStatus, filterStep, fromDate, offset, pageSize, searchQuery, tab, toDate]);
+  }), [debouncedSearch, filterStatus, filterStep, fromDate, offset, pageSize, tab, toDate]);
   const { data: recordsPage, isLoading } = trpc.onboarding.recordsPage.useQuery(queryInput);
   const { data: pendingCountPage } = trpc.onboarding.recordsPage.useQuery({ status: 'pending_review', limit: 1, offset: 0 });
 
   useEffect(() => {
     setOffset(0);
     setExpandedId(null);
-  }, [tab, filterStatus, filterStep, searchQuery, fromDate, toDate, pageSize]);
+  }, [tab, filterStatus, filterStep, debouncedSearch, fromDate, toDate, pageSize]);
 
   const invalidateAll = () => {
     utils.onboarding.pendingProofs.invalidate();

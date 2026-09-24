@@ -65,6 +65,22 @@ describe("bounded support client search", () => {
     }
   });
 
+  it("supports indexed prefixes but not unbounded contains matching", async () => {
+    const { database, orm } = await createSearchDatabase();
+    try {
+      await expect(searchSupportClients("new", 50, orm)).resolves.toEqual([{
+        id: 3,
+        email: "newest@example.com",
+        name: "Newest Match",
+        phone: "0790000003",
+        createdAt: "2026-03-01",
+      }]);
+      await expect(searchSupportClients("west", 50, orm)).resolves.toEqual([]);
+    } finally {
+      (database as any).close();
+    }
+  });
+
   it("caps callers at fifty results", async () => {
     const routerSource = readFileSync("backend/routers.ts", "utf8");
     expect(routerSource).toContain("return db.searchSupportClients(input.query, 50)");

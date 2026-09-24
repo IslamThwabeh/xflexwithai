@@ -46,6 +46,7 @@ import {
 import { useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
+import { useDebouncedSearch } from "@/hooks/useDebouncedSearch";
 
 type Tab = "leaderboard" | "rules" | "referrals" | "rewards" | "preview";
 
@@ -99,6 +100,7 @@ export default function AdminPoints() {
     student: LoyaltyStudent | null;
   } | null>(null);
   const [studentSearch, setStudentSearch] = useState("");
+  const debouncedStudentSearch = useDebouncedSearch(studentSearch);
   const [adjustmentForm, setAdjustmentForm] = useState({
     amount: "",
     reasonEn: "",
@@ -154,7 +156,7 @@ export default function AdminPoints() {
       retry: false,
     }
   );
-  const normalizedStudentSearch = studentSearch.trim();
+  const normalizedStudentSearch = debouncedStudentSearch;
   const studentSearchQuery = trpc.points.searchStudents.useQuery(
     { query: normalizedStudentSearch || "__", limit: 12 },
     {
@@ -162,6 +164,9 @@ export default function AdminPoints() {
         adjustment && !adjustment.student && normalizedStudentSearch.length >= 2
       ),
       retry: false,
+      refetchInterval: false,
+      refetchIntervalInBackground: false,
+      refetchOnWindowFocus: false,
     }
   );
 

@@ -18,6 +18,14 @@ Scope: production React/tRPC paths that accept free-text search, plus browser-on
 - The production Worker change is deployed as version `b1d1cf49-365c-47f1-adb7-9dcdbf207281`.
 - The frontend source now uses a 400 ms debounce and disables interval, background, and window-focus refetch. The production Pages build is pending because the local Vite process was terminated during transformation; no stale frontend artifact was deployed.
 
+## Phase 2 implementation status (2026-09-24)
+
+- Support lookup now uses prefix ranges instead of leading-wildcard matching, backed by expression indexes for normalized email, normalized name, and phone. Migration 130 completed with 919 rows read and 459 rows written; no application records were changed or deleted.
+- Production Worker version `d527b4ef-db3b-47e3-b03a-95a12dbd4db2` serves the indexed prefix query.
+- A shared 400 ms/two-character search hook is applied in source to onboarding records, broker reporting, recommendation history, community members, and the loyalty-points picker.
+- Recommendation history, community-member search, and the points picker also explicitly disable interval, background, and focus refetch in source.
+- The Phase 2 frontend source is tested but its Pages deployment remains pending because the local Vite build process was terminated during transformation. Backend validation remains backward-compatible until the matching frontend can be deployed.
+
 ## Searches that reach D1
 
 | Screen / endpoint | Searchable fields | Trigger and current guard | Automatic repeat | Risk / follow-up |

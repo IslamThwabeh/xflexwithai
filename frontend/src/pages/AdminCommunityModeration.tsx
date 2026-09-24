@@ -20,6 +20,7 @@ import { AlertCircle, BellRing, Bot, CheckCircle2, ExternalLink, Eye, EyeOff, He
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
+import { useDebouncedSearch } from "@/hooks/useDebouncedSearch";
 
 function getInitialCommunityPostId() {
   if (typeof window === "undefined") return null;
@@ -1339,6 +1340,7 @@ function CommunityAccessManager({ isRtl, featureEnabled }: { isRtl: boolean; fea
   const pageSize = 20;
   const [showLiveControls, setShowLiveControls] = useState(false);
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedSearch(search);
   const [status, setStatus] = useState<"all" | "allowed" | "banned">("all");
   const [page, setPage] = useState(0);
   const [dialog, setDialog] = useState<{
@@ -1434,11 +1436,17 @@ function CommunityAccessManager({ isRtl, featureEnabled }: { isRtl: boolean; fea
   };
 
   const membersQuery = trpc.community.adminMembers.useQuery({
-    search: search.trim() || null,
+    search: debouncedSearch || null,
     status,
     limit: pageSize,
     offset: page * pageSize,
-  }, { enabled: showLiveControls, retry: false });
+  }, {
+    enabled: showLiveControls,
+    retry: false,
+    refetchInterval: false,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: false,
+  });
 
   const closeDialog = () => {
     setDialog(null);

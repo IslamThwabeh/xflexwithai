@@ -16,6 +16,7 @@ import { PauseCircle, PlayCircle, UserCog, Bell, TrendingUp, Copy, Trash2, Arrow
 import { useDataTable, DataTablePagination, zebraRow } from "@/components/DataTable";
 import { formatLocalizedDate } from "@/lib/dateLocale";
 import { buildRecommendationThreads, groupRecommendationThreadsByDay } from "@/lib/recommendationThreads";
+import { useDebouncedSearch } from "@/hooks/useDebouncedSearch";
 
 type RecommendationType = "recommendation" | "update" | "result";
 type FollowUpPresetGroupKey = "pips" | "management" | "outcome";
@@ -363,6 +364,7 @@ function AnalystView() {
   const [showMonthlyReport, setShowMonthlyReport] = useState(false);
   const [threadFilter, setThreadFilter] = useState<ThreadFilter>("open");
   const [threadSearch, setThreadSearch] = useState("");
+  const debouncedThreadSearch = useDebouncedSearch(threadSearch);
   const [threadPage, setThreadPage] = useState(0);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const workspaceTopRef = useRef<HTMLDivElement | null>(null);
@@ -441,9 +443,14 @@ function AnalystView() {
       status: historyStatus ?? "closed",
       limit: THREAD_PAGE_SIZE,
       offset: threadPage * THREAD_PAGE_SIZE,
-      search: threadSearch.trim() || undefined,
+      search: debouncedThreadSearch || undefined,
     },
-    { enabled: canManageChannel && !!historyStatus }
+    {
+      enabled: canManageChannel && !!historyStatus,
+      refetchInterval: false,
+      refetchIntervalInBackground: false,
+      refetchOnWindowFocus: false,
+    }
   );
   const {
     data: monthlyReport,
@@ -885,7 +892,7 @@ function AnalystView() {
   useEffect(() => {
     setThreadPage(0);
     scrollWorkspaceToTop();
-  }, [threadFilter, threadSearch]);
+  }, [threadFilter, debouncedThreadSearch]);
 
   const historyMessages = historyThreadFeed?.messages ?? [];
   const loadedThreadMessages = useMemo(
