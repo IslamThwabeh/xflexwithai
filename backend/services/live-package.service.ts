@@ -146,6 +146,8 @@ export function getLivePackageConfigurationErrors(input: {
     errors.push("Live package price must be ILS 2,000.00 inclusive of VAT.");
   if ((packageRecord?.renewalPrice ?? 0) !== 0)
     errors.push("Live package cannot have a renewal price.");
+  if (input.assignedCourseCount < 1)
+    errors.push("Live package must include at least one course.");
   if (!config.cohortKey) errors.push("A cohort key is required.");
   const hasAnyScheduleDate = Boolean(config.sessionStartsAt || config.sessionEndsAt);
   if (hasAnyScheduleDate) {

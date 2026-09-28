@@ -142,8 +142,8 @@ export default function PackageDetails() {
               </ul>
             </div>
 
-            {/* Standard packages can include courses; Live is a standalone entitlement. */}
-            {!isLive && packageCourses && packageCourses.length > 0 && (
+            {/* Every paid package, including Live, can include permanent course access. */}
+            {packageCourses && packageCourses.length > 0 && (
               <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-[0_14px_36px_rgba(15,23,42,0.05)] md:p-8">
                 <h2 className="text-lg font-bold text-gray-900 mb-4">
                   {language === 'ar' ? 'الدورات المشمولة' : 'Included Courses'}

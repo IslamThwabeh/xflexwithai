@@ -169,7 +169,9 @@ export const episodes = sqliteTable("episodes", {
   isFree: integer("isFree", { mode: 'boolean' }).default(false).notNull(),
   createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
   updatedAt: text("updatedAt").default(sql`(datetime('now'))`).notNull(),
-});
+}, (table) => ({
+  courseOrderIdx: index("idx_episodes_course_order_id").on(table.courseId, table.order, table.id),
+}));
 
 export type Episode = typeof episodes.$inferSelect;
 export type InsertEpisode = typeof episodes.$inferInsert;
@@ -380,7 +382,9 @@ export const lexaiMessages = sqliteTable("lexaiMessages", {
   apiRequestId: text("apiRequestId", { length: 255 }),
   apiStatus: text("apiStatus", { length: 20 }).default("pending"), // 'pending' | 'success' | 'failed'
   createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
-});
+}, (table) => ({
+  userCreatedIdIdx: index("idx_lexai_messages_user_created_id").on(table.userId, table.createdAt, table.id),
+}));
 
 export type LexaiMessage = typeof lexaiMessages.$inferSelect;
 export type InsertLexaiMessage = typeof lexaiMessages.$inferInsert;
@@ -625,6 +629,7 @@ export const emailOutbox = sqliteTable("email_outbox", {
 }, (table) => ({
   statusNextAttemptIdx: index("idx_email_outbox_status_next_attempt").on(table.status, table.nextAttemptAt),
   statusClassDueIdx: index("idx_email_outbox_status_class_due").on(table.status, table.deliveryClass, table.nextAttemptAt, table.createdAt, table.id),
+  createdStatusIdx: index("idx_email_outbox_created_status").on(table.createdAt, table.status),
   batchIdx: index("idx_email_outbox_batch").on(table.batchId),
 }));
 
@@ -2843,6 +2848,12 @@ export const emailDeliveryLogs = sqliteTable("email_delivery_logs", {
   metadata: text("metadata"),
   createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
 }, (table) => ({
+  createdIdIdx: index("idx_email_delivery_logs_created_id")
+    .on(table.createdAt, table.id),
+  statusCreatedIdIdx: index("idx_email_delivery_logs_status_created_id")
+    .on(table.status, table.createdAt, table.id),
+  eventCreatedIdIdx: index("idx_email_delivery_logs_event_created_id")
+    .on(table.eventType, table.createdAt, table.id),
   providerClientReferenceIdx: index("idx_email_delivery_logs_provider_client_reference")
     .on(table.provider, table.providerClientReference)
     .where(sql`${table.providerClientReference} IS NOT NULL`),

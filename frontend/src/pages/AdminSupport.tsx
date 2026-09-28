@@ -83,6 +83,7 @@ export default function AdminSupport() {
   const shouldStickToBottomRef = useRef(true);
   const [searchInput, setSearchInput] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [searchMode, setSearchMode] = useState<"client" | "message">("client");
   const [statusFilter, setStatusFilter] = useState<"all" | "open" | "closed">("all");
   const [activeMenuMsgId, setActiveMenuMsgId] = useState<number | null>(null);
   const [editingMsgId, setEditingMsgId] = useState<number | null>(null);
@@ -115,7 +116,14 @@ export default function AdminSupport() {
   const [olderMessagePages, setOlderMessagePages] = useState<any[]>([]);
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
   const wasPageVisibleRef = useRef(isPageVisible);
-  const hasActiveInboxSearch = debouncedSearch.length >= 2;
+  const trimmedDebouncedSearch = debouncedSearch.trim();
+  const inboxSearchMinLength = searchMode === "message" ? 4 : 2;
+  const hasActiveInboxSearch = trimmedDebouncedSearch.length >= inboxSearchMinLength;
+  const inboxSearchQuery = hasActiveInboxSearch
+    ? searchMode === "message"
+      ? `msg:${trimmedDebouncedSearch}`
+      : trimmedDebouncedSearch
+    : undefined;
 
   const clearSelectedConversation = () => {
     shouldStickToBottomRef.current = true;
@@ -159,11 +167,11 @@ export default function AdminSupport() {
     {
       limit: 30,
       status: statusFilter,
-      search: hasActiveInboxSearch ? debouncedSearch : undefined,
+      search: inboxSearchQuery,
     },
     {
       refetchInterval: isPageVisible && !hasActiveInboxSearch ? 60_000 : false,
-      refetchOnWindowFocus: true,
+      refetchOnWindowFocus: !hasActiveInboxSearch,
     },
   );
 
@@ -189,7 +197,7 @@ export default function AdminSupport() {
 
   useEffect(() => {
     setOlderConversationPages([]);
-  }, [debouncedSearch, statusFilter]);
+  }, [debouncedSearch, searchMode, statusFilter]);
 
   const fetchNextConversations = async () => {
     if (!conversationNextCursor || loadingMoreConversations) return;
@@ -198,7 +206,7 @@ export default function AdminSupport() {
       const page = await trpcUtils.client.supportChat.inboxPage.query({
         limit: 30,
         status: statusFilter,
-        search: hasActiveInboxSearch ? debouncedSearch : undefined,
+        search: inboxSearchQuery,
         cursor: conversationNextCursor,
       });
       setOlderConversationPages((current) => [...current, page]);
@@ -300,13 +308,13 @@ export default function AdminSupport() {
     const wasVisible = wasPageVisibleRef.current;
     wasPageVisibleRef.current = isPageVisible;
     if (!wasVisible && isPageVisible) {
-      void refetchConvs();
+      if (!hasActiveInboxSearch) void refetchConvs();
       if (selectedConvId) {
         void refetchMessages();
         void changesQuery.refetch();
       }
     }
-  }, [isPageVisible, selectedConvId, refetchConvs, refetchMessages, changesQuery.refetch]);
+  }, [isPageVisible, selectedConvId, hasActiveInboxSearch, refetchConvs, refetchMessages, changesQuery.refetch]);
 
   useEffect(() => {
     setLiveMessages([]);
@@ -746,23 +754,42 @@ export default function AdminSupport() {
                   {isRtl ? 'محادثة جديدة' : 'New chat'}
                 </Button>
               </div>
-              {/* Search bar */}
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder={isRtl ? 'البحث بالاسم أو البريد أو الرسالة...' : 'Search by name, email, or message...'}
-                  value={searchInput}
-                  onChange={(e) => setSearchInput(e.target.value)}
-                  className="pl-9 h-9 text-sm"
-                />
-                {searchInput && (
-                  <button
-                    onClick={() => setSearchInput("")}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                )}
+              <div className="flex gap-2">
+                <Select
+                  value={searchMode}
+                  onValueChange={(value) => {
+                    setSearchMode(value as "client" | "message");
+                    setSearchInput("");
+                    setDebouncedSearch("");
+                  }}
+                >
+                  <SelectTrigger className="h-9 w-[112px] text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="client">{isRtl ? "عميل" : "Client"}</SelectItem>
+                    <SelectItem value="message">{isRtl ? "رسائل" : "Messages"}</SelectItem>
+                  </SelectContent>
+                </Select>
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder={searchMode === "message"
+                      ? (isRtl ? 'البحث في الرسائل' : 'Search messages')
+                      : (isRtl ? 'البحث بالاسم أو البريد' : 'Search name or email')}
+                    value={searchInput}
+                    onChange={(e) => setSearchInput(e.target.value)}
+                    className="h-9 pl-9 pr-9 text-sm"
+                  />
+                  {searchInput && (
+                    <button
+                      onClick={() => setSearchInput("")}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
               </div>
               {/* Status filter */}
               <div className="flex gap-1">
@@ -789,7 +816,7 @@ export default function AdminSupport() {
                 <p className="text-center text-muted-foreground py-8">{t('admin.loading')}</p>
               ) : filteredConversations.length === 0 ? (
                 <div className="text-center text-muted-foreground py-8">
-                  {debouncedSearch.length >= 2 ? (
+                  {hasActiveInboxSearch ? (
                     <div>
                       <Search className="h-8 w-8 mx-auto mb-2 opacity-40" />
                       <p className="text-sm">{isRtl ? `لا توجد محادثات تطابق "${debouncedSearch}"` : `No conversations match "${debouncedSearch}"`}</p>

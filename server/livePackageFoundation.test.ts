@@ -63,7 +63,7 @@ describe('Live package foundation contracts', () => {
     sqlite.close();
   });
 
-  it('models the standalone meeting and recording entitlement separately from courses', () => {
+  it('models Live access separately while granting its assigned permanent courses', () => {
     expect(migration).toContain('CREATE TABLE IF NOT EXISTS live_package_entitlements');
     expect(migration).toContain('sessionStartsAt TEXT NOT NULL');
     expect(migration).toContain('sessionEndsAt TEXT NOT NULL');
@@ -75,8 +75,9 @@ describe('Live package foundation contracts', () => {
     const fulfillment = database.slice(database.indexOf('export async function fulfillLivePackageEntitlement'), database.indexOf('export async function listLivePackageSessions('));
     expect(fulfillment).toContain('getLivePackageConfigurationErrors');
     expect(fulfillment).toContain('await entitlementStatement');
-    expect(fulfillment).not.toContain('getPackageCourses');
-    expect(fulfillment).not.toContain('db.insert(enrollments)');
+    expect(fulfillment).toContain('getPackageCourses');
+    expect(fulfillment).toContain('ensureLiveCourseEnrollments');
+    expect(fulfillment).toContain('createEnrollment');
   });
 
   it('blocks Live renewal, duplicate, unlinked add-on, and automatic staff activation paths', () => {
@@ -86,7 +87,7 @@ describe('Live package foundation contracts', () => {
     expect(database).toContain("reason: 'live_package_fulfillment_failed'");
     expect(database).toContain("set({ activatedAt: null })");
     expect(router).toContain('hasLivePackageCommitments');
-    expect(router).toContain('Live Package is standalone and cannot be linked to course entitlements.');
+    expect(router).toContain('Live Package must keep at least one course entitlement.');
     expect(router).toContain("'grant_live_package_complimentary_access'");
   });
 

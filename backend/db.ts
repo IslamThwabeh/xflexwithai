@@ -1992,7 +1992,7 @@ export async function getEpisodesByCourseId(courseId: number) {
   if (!db) return [];
   const rows = await db.select().from(episodes)
     .where(eq(episodes.courseId, courseId))
-    .orderBy(episodes.order);
+    .orderBy(episodes.order, episodes.id);
 
   return rows.map((row) => ({
     ...row,
@@ -12241,7 +12241,7 @@ export async function getUserLexaiMessages(userId: number, limit: number = 50) {
   if (!db) return [];
   return await db.select().from(lexaiMessages)
     .where(eq(lexaiMessages.userId, userId))
-    .orderBy(desc(lexaiMessages.createdAt))
+    .orderBy(desc(lexaiMessages.createdAt), desc(lexaiMessages.id))
     .limit(limit);
 }
 
@@ -15876,11 +15876,41 @@ export async function fulfillLivePackageEntitlement(input: {
   const configurationErrors = getLivePackageConfigurationErrors({
     config,
     packageRecord: pkg,
-    assignedCourseCount: 0,
+    assignedCourseCount: (await getPackageCourses(input.packageId)).length,
   });
   if (configurationErrors.length) throw new Error(`Live package configuration is invalid: ${configurationErrors.join(' ')}`);
   const existing = await getAnyLivePackageEntitlement(input.userId, config.cohortKey);
-  if (existing?.isActive) return existing;
+  const ensureLiveCourseEnrollments = async () => {
+    const assignedCourses = await getPackageCourses(input.packageId);
+    for (const assignedCourse of assignedCourses) {
+      const currentEnrollment = await getEnrollmentByUserAndCourse(input.userId, assignedCourse.courseId);
+      if (currentEnrollment) {
+        if (!currentEnrollment.isSubscriptionActive || currentEnrollment.paymentStatus === 'refunded') {
+          await db.update(enrollments).set({
+            isSubscriptionActive: true,
+            paymentStatus: 'completed',
+            registrationKeyId: input.registrationKeyId ?? currentEnrollment.registrationKeyId,
+            activatedViaKey: Boolean(input.registrationKeyId) || currentEnrollment.activatedViaKey,
+          }).where(eq(enrollments.id, currentEnrollment.id));
+        }
+        continue;
+      }
+      await createEnrollment({
+        userId: input.userId,
+        courseId: assignedCourse.courseId,
+        paymentStatus: 'completed',
+        paymentAmount: 0,
+        paymentCurrency: 'ILS',
+        isSubscriptionActive: true,
+        registrationKeyId: input.registrationKeyId ?? null,
+        activatedViaKey: Boolean(input.registrationKeyId),
+      });
+    }
+  };
+  if (existing?.isActive) {
+    await ensureLiveCourseEnrollments();
+    return existing;
+  }
   if (existing) throw new Error('Live Package access for this cohort was previously revoked and cannot be re-granted.');
 
   const now = new Date().toISOString();
@@ -15904,11 +15934,15 @@ export async function fulfillLivePackageEntitlement(input: {
   try {
     const [entitlement] = await entitlementStatement;
     if (!entitlement) throw new Error('Live package entitlement insert did not return a row');
+    await ensureLiveCourseEnrollments();
     return entitlement;
   } catch (error) {
     if (isSqliteUniqueConstraintError(error)) {
       const concurrent = await getAnyLivePackageEntitlement(input.userId, config.cohortKey);
-      if (concurrent?.isActive) return concurrent;
+      if (concurrent?.isActive) {
+        await ensureLiveCourseEnrollments();
+        return concurrent;
+      }
       if (concurrent) throw new Error('Live Package access for this cohort was previously revoked and cannot be re-granted.');
     }
     throw error;
@@ -22449,6 +22483,42 @@ export type SupportMessageCursor = {
   id: number;
 };
 
+export const SUPPORT_INBOX_IDENTITY_SEARCH_MIN_LENGTH = 2;
+export const SUPPORT_INBOX_MESSAGE_SEARCH_MIN_LENGTH = 4;
+export const SUPPORT_INBOX_MESSAGE_SEARCH_PREFIX_PATTERN = /^(?:msg|message)\s*:\s*(.*)$/i;
+const SUPPORT_INBOX_MESSAGE_SEARCH_DAYS = 30;
+
+export type SupportInboxSearchSpec =
+  | { kind: "none" }
+  | { kind: "no_match"; reason: "too_short" }
+  | { kind: "identity"; term: string; pattern: string }
+  | { kind: "message"; term: string; pattern: string };
+
+function escapeSqlLikeTerm(term: string): string {
+  return term.replace(/[\\%_]/g, (char) => `\\${char}`);
+}
+
+export function parseSupportInboxSearch(search?: string | null): SupportInboxSearchSpec {
+  const rawSearch = search?.trim();
+  if (!rawSearch) return { kind: "none" };
+
+  const messageMatch = rawSearch.match(SUPPORT_INBOX_MESSAGE_SEARCH_PREFIX_PATTERN);
+  if (messageMatch) {
+    const term = (messageMatch[1] ?? "").trim().toLowerCase();
+    if (term.length < SUPPORT_INBOX_MESSAGE_SEARCH_MIN_LENGTH) {
+      return { kind: "no_match", reason: "too_short" };
+    }
+    return { kind: "message", term, pattern: `%${escapeSqlLikeTerm(term)}%` };
+  }
+
+  const term = rawSearch.toLowerCase();
+  if (term.length < SUPPORT_INBOX_IDENTITY_SEARCH_MIN_LENGTH) {
+    return { kind: "no_match", reason: "too_short" };
+  }
+
+  return { kind: "identity", term, pattern: `%${escapeSqlLikeTerm(term)}%` };
+}
+
 export async function getSupportInboxPage(options: {
   limit?: number;
   status?: "all" | "open" | "closed";
@@ -22465,24 +22535,26 @@ export async function getSupportInboxPage(options: {
   }
 
   const limit = Math.min(Math.max(options.limit ?? 30, 1), 50);
-  const normalizedSearch = options.search?.trim().toLowerCase();
-  const searchCondition = normalizedSearch && normalizedSearch.length >= 2
-    ? (() => {
-        const pattern = `%${normalizedSearch}%`;
-        const messageCutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
-        return sql`(
-          lower(COALESCE(u.name, '')) LIKE ${pattern}
-          OR lower(u.email) LIKE ${pattern}
-          OR EXISTS (
-            SELECT 1
-            FROM supportMessages AS search_message
-            WHERE search_message.conversationId = sc.id
-              AND search_message.createdAt >= ${messageCutoff}
-              AND lower(search_message.content) LIKE ${pattern}
-          )
-        )`;
-      })()
-    : null;
+  const searchSpec = parseSupportInboxSearch(options.search);
+  const searchCondition = (() => {
+    if (searchSpec.kind === "none") return null;
+    if (searchSpec.kind === "no_match") return sql`0 = 1`;
+    if (searchSpec.kind === "identity") {
+      return sql`(
+        lower(COALESCE(u.name, '')) LIKE ${searchSpec.pattern} ESCAPE '\\'
+        OR lower(COALESCE(u.email, '')) LIKE ${searchSpec.pattern} ESCAPE '\\'
+      )`;
+    }
+
+    const messageCutoff = new Date(Date.now() - SUPPORT_INBOX_MESSAGE_SEARCH_DAYS * 24 * 60 * 60 * 1000).toISOString();
+    return sql`EXISTS (
+      SELECT 1
+      FROM supportMessages AS search_message
+      WHERE search_message.conversationId = sc.id
+        AND search_message.createdAt >= ${messageCutoff}
+        AND lower(search_message.content) LIKE ${searchSpec.pattern} ESCAPE '\\'
+    )`;
+  })();
   const pageFilters: SQL[] = [sql`EXISTS (
     SELECT 1 FROM supportMessages AS visible_message
     WHERE visible_message.conversationId = sc.id
@@ -24936,7 +25008,6 @@ export async function getEmailDeliveryLogs(filters?: EmailDeliveryLogFilters & {
   const limit = Math.min(Math.max(filters?.limit ?? 100, 1), 500);
   const offset = Math.max(filters?.offset ?? 0, 0);
   const conditions = buildEmailDeliveryLogConditions(filters);
-  const hasSortableTimestamp = sql<number>`case when ${emailDeliveryLogs.createdAt} like '____-__-__%' then 1 else 0 end`;
 
   const query = db.select({
     id: emailDeliveryLogs.id,
@@ -24959,7 +25030,7 @@ export async function getEmailDeliveryLogs(filters?: EmailDeliveryLogFilters & {
   })
     .from(emailDeliveryLogs)
     .leftJoin(users, eq(emailDeliveryLogs.recipientUserId, users.id))
-    .orderBy(desc(hasSortableTimestamp), desc(emailDeliveryLogs.createdAt), desc(emailDeliveryLogs.id))
+    .orderBy(desc(emailDeliveryLogs.createdAt), desc(emailDeliveryLogs.id))
     .limit(limit)
     .offset(offset);
 

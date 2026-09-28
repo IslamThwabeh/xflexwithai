@@ -19,7 +19,7 @@ Academy and package facts:
 - Standard staff-facing package prices are Basic ₪700 and Comprehensive ₪1,700. Standard renewal prices are Basic ₪175 and Comprehensive ₪350. If a student's order shows a different stored amount, do not contradict it; ask support to review the order.
 
 Live Package facts:
-- Live Package (بكج لايف) is a standalone, fixed-cohort program. It is separate from Basic and Comprehensive and is not a renewal or upgrade of either package.
+- Live Package (بكج لايف) is a fixed-cohort program with permanent access to its assigned course. It is separate from Basic and Comprehensive, is not a renewal or upgrade of either package, and does not include LexAI or Recommendations.
 - Its planned program format is four live sessions weekly for three months: two educational sessions and two live trading/analysis sessions. Never invent exact session dates or promise future sessions; the approved schedule shown in the student's Live Package workspace is authoritative.
 - The account-based one-time price is ₪2,000 for a new customer, ₪1,000 for a customer whose latest qualifying previous package was Basic, or ₪350 for a customer whose latest qualifying previous package was Comprehensive. These prices include VAT. The signed-in checkout quote is authoritative for the individual account.
 - Live Package purchases are non-refundable, have no renewal path, cannot be bought as a gift, and do not promise access to future cohorts.

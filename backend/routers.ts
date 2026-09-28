@@ -7274,8 +7274,8 @@ export const appRouter = router({
       }))
       .mutation(async ({ ctx, input }) => {
         const pkg = await db.getPackageById(input.packageId);
-        if (pkg?.packageType === 'live') {
-          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Live Package is standalone and cannot be linked to course entitlements.' });
+        if (pkg?.packageType === 'live' && input.courseIds.length < 1) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Live Package must keep at least one course entitlement.' });
         }
         if (new Set(input.courseIds).size !== input.courseIds.length) {
           throw new TRPCError({ code: 'BAD_REQUEST', message: 'Course assignments must be unique.' });

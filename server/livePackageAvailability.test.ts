@@ -57,7 +57,7 @@ describe("Live package availability", () => {
     expect(result.purchasable).toBe(false);
   });
 
-  it("does not require or grant an assigned base course", () => {
+  it("requires an assigned course before Live can be purchased", () => {
     const config = parseLivePackageConfig(settings, true);
     const result = getLivePackageAvailability({
       config,
@@ -65,8 +65,8 @@ describe("Live package availability", () => {
       assignedCourseCount: 0,
       now: new Date("2026-09-05T10:00:00.000Z"),
     });
-    expect(result.purchasable).toBe(true);
-    expect(result.errors).toEqual([]);
+    expect(result.purchasable).toBe(false);
+    expect(result.errors).toContain("Live package must include at least one course.");
   });
 
   it("supports purchasable registration before the owner approves schedule dates", () => {
@@ -76,7 +76,7 @@ describe("Live package availability", () => {
     expect(getLivePackageAvailability({
       config,
       packageRecord,
-      assignedCourseCount: 0,
+      assignedCourseCount: 1,
     })).toMatchObject({ visible: true, purchasable: true, errors: [] });
   });
 

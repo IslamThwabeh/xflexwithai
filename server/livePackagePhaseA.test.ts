@@ -167,15 +167,16 @@ describe("Live Package Phase A decisions", () => {
     expect(joinInfo).toContain("if (!config.sessionStartsAt || !config.sessionEndsAt) return null");
   });
 
-  it("keeps Live independent from courses and preserves existing package subscriptions", () => {
+  it("grants Live course access without creating a standard package subscription", () => {
     const fulfillment = database.slice(
       database.indexOf("export async function fulfillLivePackageEntitlement"),
       database.indexOf("export async function listLivePackageSessions("),
     );
     expect(fulfillment).not.toContain("packageSubscriptions");
-    expect(fulfillment).not.toContain("enrollments");
-    expect(fulfillment).not.toContain("getPackageCourses");
-    expect(router).toContain("Live Package is standalone and cannot be linked to course entitlements.");
+    expect(fulfillment).toContain("ensureLiveCourseEnrollments");
+    expect(fulfillment).toContain("getPackageCourses");
+    expect(fulfillment).toContain("createEnrollment");
+    expect(router).toContain("Live Package must keep at least one course entitlement.");
   });
 
   it("revokes Live access on a full refund and reports subscriber-safe admin metrics", () => {
