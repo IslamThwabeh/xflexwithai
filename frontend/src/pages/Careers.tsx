@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { PUBLIC_CATALOG_STALE_MS } from '@/lib/queryCaching';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -19,7 +20,9 @@ const ALLOWED_CV_TYPES = [
 ];
 
 export default function Careers() {
-  const { data: jobs, isLoading } = trpc.jobs.list.useQuery();
+  const { data: jobs, isLoading } = trpc.jobs.list.useQuery(undefined, {
+    staleTime: PUBLIC_CATALOG_STALE_MS,
+  });
   const { language } = useLanguage();
   const isRtl = language === 'ar';
   const [selectedJobId, setSelectedJobId] = useState<number | null>(null);

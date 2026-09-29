@@ -64,6 +64,25 @@ const FREE_PLAN_RECOMMENDATION_PROVIDER_BATCH_LIMIT = 1;
 const FREE_PLAN_LOWER_PRIORITY_PROVIDER_LIMIT = 1;
 const FREE_PLAN_SURVEY_MATERIALIZATION_LIMIT = 10;
 
+function parsePositiveIntegerEnv(value: string | undefined, fallback: number) {
+  if (!value) return fallback;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+async function runStaffNotificationArchiveAutomation(env: Env) {
+  if (env.STAFF_NOTIFICATION_ARCHIVE_ENABLED !== "true") {
+    return { skipped: true as const, reason: "disabled" as const };
+  }
+
+  const result = await db.runStaffNotificationArchiveMaintenance({
+    dryRun: env.STAFF_NOTIFICATION_ARCHIVE_DRY_RUN !== "false",
+    retentionDays: parsePositiveIntegerEnv(env.STAFF_NOTIFICATION_ARCHIVE_RETENTION_DAYS, db.STAFF_NOTIFICATION_ARCHIVE_DEFAULT_RETENTION_DAYS),
+    limit: parsePositiveIntegerEnv(env.STAFF_NOTIFICATION_ARCHIVE_BATCH_LIMIT, db.STAFF_NOTIFICATION_ARCHIVE_DEFAULT_BATCH_LIMIT),
+  });
+  return { skipped: false as const, result };
+}
+
 function appendCookieHeaders(headers: Headers, cookieHeaders: string[] | undefined) {
   if (!cookieHeaders?.length) return;
   for (const cookie of cookieHeaders) {
@@ -264,6 +283,10 @@ export interface Env {
   ZEPTOMAIL_API_URL?: string;
   ZEPTOMAIL_WEBHOOK_SECRET?: string;
   PACKAGE_LIVE_DEPLOYMENT_ENABLED?: string;
+  STAFF_NOTIFICATION_ARCHIVE_ENABLED?: string;
+  STAFF_NOTIFICATION_ARCHIVE_DRY_RUN?: string;
+  STAFF_NOTIFICATION_ARCHIVE_RETENTION_DAYS?: string;
+  STAFF_NOTIFICATION_ARCHIVE_BATCH_LIMIT?: string;
 }
 
 export default {
@@ -1448,6 +1471,17 @@ export default {
       await db.runStaffMonitoringRetention();
     } catch (error) {
       logger.error("[CRON] Staff monitoring retention failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    try {
+      const archiveRun = await runStaffNotificationArchiveAutomation(env);
+      if (!archiveRun.skipped) {
+        logger.info("[CRON] Staff notification archive maintenance completed", archiveRun.result);
+      }
+    } catch (error) {
+      logger.error("[CRON] Staff notification archive maintenance failed", {
         error: error instanceof Error ? error.message : String(error),
       });
     }

@@ -4,6 +4,7 @@ import { ArrowLeft, ArrowRight, Clock, FileText } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { trpc } from '@/lib/trpc';
 import CinematicPublicLayout from '@/components/public/CinematicPublicLayout';
+import { PUBLIC_CATALOG_STALE_MS } from '@/lib/queryCaching';
 import { useSeoMetadata } from '@/lib/seo';
 import { SITE_ORIGIN } from '@shared/seo';
 import {
@@ -38,6 +39,8 @@ export default function ArticleDetail() {
   const { data: article, isLoading } = trpc.articles.bySlug.useQuery({
     slug: params.slug || '',
     language: articleLanguage,
+  }, {
+    staleTime: PUBLIC_CATALOG_STALE_MS,
   });
   const localizedArticlePath = `/${isRtl ? 'ar' : 'en'}/articles/${params.slug || ''}`;
   const seoTitle = article

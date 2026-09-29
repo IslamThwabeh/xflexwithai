@@ -7,13 +7,20 @@ import { trpc } from '@/lib/trpc';
 import CinematicPublicLayout from '@/components/public/CinematicPublicLayout';
 import FreeLibrarySection from '@/components/FreeLibrarySection';
 import { isArticleAvailableInLanguage } from '@shared/curatedArticles';
+import { PUBLIC_CATALOG_STALE_MS } from '@/lib/queryCaching';
 
 export default function FreeContent() {
   const { language, t } = useLanguage();
   const isRtl = language === 'ar';
-  const { data: courses, isLoading } = trpc.courses.free.useQuery();
-  const { data: articles } = trpc.articles.list.useQuery();
-  const { data: freeLibrary, isLoading: freeLibraryLoading } = trpc.freeLibrary.list.useQuery();
+  const { data: courses, isLoading } = trpc.courses.free.useQuery(undefined, {
+    staleTime: PUBLIC_CATALOG_STALE_MS,
+  });
+  const { data: articles } = trpc.articles.list.useQuery(undefined, {
+    staleTime: PUBLIC_CATALOG_STALE_MS,
+  });
+  const { data: freeLibrary, isLoading: freeLibraryLoading } = trpc.freeLibrary.list.useQuery(undefined, {
+    staleTime: PUBLIC_CATALOG_STALE_MS,
+  });
   const [location] = useLocation();
   const selectedVideoSlug = new URLSearchParams(location.split('?')[1] ?? '').get('video');
   const featuredArticles = articles

@@ -5335,6 +5335,20 @@ export const appRouter = router({
           await db.resumeRecommendationSubscription(input.subscriptionId);
           return { success: true };
         }),
+      grantComplimentary: adminProcedure
+        .input(z.object({
+          userId: z.number(),
+          days: z.number().int().min(1).max(366).default(30),
+          reason: z.string().trim().min(3).max(255),
+        }))
+        .mutation(async ({ input }) => {
+          const user = await db.getUserById(input.userId);
+          if (!user) {
+            throw new TRPCError({ code: 'NOT_FOUND', message: 'User not found' });
+          }
+          const grant = await db.grantComplimentaryRecommendationAccess(input);
+          return { success: true, ...grant };
+        }),
     }),
 
     setAnalyst: adminProcedure

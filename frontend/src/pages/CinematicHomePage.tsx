@@ -14,6 +14,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { getLanguageSwitchLabel } from '@/lib/languageToggle';
 import { formatIlsAmount, getPackageDisplayPricing } from '@/lib/packagePricing';
 import { HOMEPAGE_FEEDBACK_PROOFS } from '@/lib/homepageFeedbackProofs';
+import { PUBLIC_CATALOG_STALE_MS, PUBLIC_OFFER_STATE_STALE_MS } from '@/lib/queryCaching';
 import { trpc } from '@/lib/trpc';
 import { isArticleAvailableInLanguage } from '@shared/curatedArticles';
 import { APP_TITLE } from '@/const';
@@ -522,7 +523,9 @@ function CinematicNav({ onScrollTo }: { onScrollTo: (id: string) => void }) {
   const isArabic = language === 'ar';
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const { data: liveState } = trpc.packages.livePublicState.useQuery();
+  const { data: liveState } = trpc.packages.livePublicState.useQuery(undefined, {
+    staleTime: PUBLIC_OFFER_STATE_STALE_MS,
+  });
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 24);
@@ -610,7 +613,9 @@ function CinematicNav({ onScrollTo }: { onScrollTo: (id: string) => void }) {
 function FeaturedLivePackageSection() {
   const { language, isRTL } = useLanguage();
   const isArabic = language === 'ar';
-  const { data: liveState } = trpc.packages.livePublicState.useQuery();
+  const { data: liveState } = trpc.packages.livePublicState.useQuery(undefined, {
+    staleTime: PUBLIC_OFFER_STATE_STALE_MS,
+  });
   const ref = useRef<HTMLElement | null>(null);
   useScrollReveal(ref);
 
@@ -1727,7 +1732,9 @@ function PackagesSection() {
   const isArabic = language === 'ar';
   const basicPricing         = getPackageDisplayPricing('basic',         20000, 5000);
   const comprehensivePricing = getPackageDisplayPricing('comprehensive', 50000, 10000);
-  const { data: liveState } = trpc.packages.livePublicState.useQuery();
+  const { data: liveState } = trpc.packages.livePublicState.useQuery(undefined, {
+    staleTime: PUBLIC_OFFER_STATE_STALE_MS,
+  });
   const ref = useRef<HTMLElement | null>(null);
   const [countersOn, setCountersOn] = useState(false);
   const reduced = usePrefersReducedMotion();
@@ -1947,7 +1954,9 @@ function ExploreMoreSection() {
   const isArabic = language === 'ar';
   const ref = useRef<HTMLElement | null>(null);
   useScrollReveal(ref);
-  const { data: articles, isLoading } = trpc.articles.list.useQuery();
+  const { data: articles, isLoading } = trpc.articles.list.useQuery(undefined, {
+    staleTime: PUBLIC_CATALOG_STALE_MS,
+  });
 
   const latestArticles = articles
     ?.filter((article) => isArticleAvailableInLanguage(article, isArabic ? 'ar' : 'en'))

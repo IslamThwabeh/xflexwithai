@@ -1,0 +1,2 @@
+export const PUBLIC_CATALOG_STALE_MS = 10 * 60_000;
+export const PUBLIC_OFFER_STATE_STALE_MS = 2 * 60_000;

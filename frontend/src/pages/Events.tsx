@@ -2,6 +2,7 @@ import { Link } from 'wouter';
 import { Calendar, ExternalLink, ArrowUpRight } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { PUBLIC_CATALOG_STALE_MS } from '@/lib/queryCaching';
 import { trpc } from '@/lib/trpc';
 import CinematicPublicLayout from '@/components/public/CinematicPublicLayout';
 
@@ -21,7 +22,9 @@ const typeLabels: Record<string, { en: string; ar: string }> = {
 export default function Events() {
   const { language, t } = useLanguage();
   const isRtl = language === 'ar';
-  const { data: events, isLoading } = trpc.events.list.useQuery();
+  const { data: events, isLoading } = trpc.events.list.useQuery(undefined, {
+    staleTime: PUBLIC_CATALOG_STALE_MS,
+  });
 
   return (
     <CinematicPublicLayout>

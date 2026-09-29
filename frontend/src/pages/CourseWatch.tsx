@@ -42,6 +42,7 @@ type EpisodeQuizAnswer = {
 // when a student navigates away from and back to the course. User-specific
 // enrollment and progress queries intentionally remain uncached here.
 const COURSE_METADATA_STALE_MS = 10 * 60_000;
+const EPISODE_PROGRESS_SYNC_INTERVAL_SECONDS = 15;
 
 export default function CourseWatch() {
   const [, params] = useRoute("/course/:courseId");
@@ -379,7 +380,7 @@ export default function CourseWatch() {
 
     setLiveWatchedSeconds((current) => Math.max(current, second));
 
-    if (!force && second - lastSyncedSecondRef.current < 5) {
+    if (!force && second - lastSyncedSecondRef.current < EPISODE_PROGRESS_SYNC_INTERVAL_SECONDS) {
       return;
     }
 

@@ -2001,11 +2001,15 @@ function AnalystView() {
 function AdminView() {
   const { t, language, isRTL } = useLanguage();
   const [subscriptionSearch, setSubscriptionSearch] = useState("");
+  const [grantUserQuery, setGrantUserQuery] = useState("");
+  const [grantDays, setGrantDays] = useState("30");
+  const [grantReason, setGrantReason] = useState(isRTL ? "تعويض عن عدم توفر خدمة الناسخ" : "Compensation for unavailable live copier service");
 
   const utils = trpc.useUtils();
 
   const { data: analysts = [] } = trpc.recommendationAdmin.listAnalysts.useQuery();
   const { data: subscriptions = [] } = trpc.recommendationAdmin.subscriptions.list.useQuery();
+  const { data: users = [] } = trpc.users.list.useQuery();
 
   const pauseSubscriptionMutation = trpc.recommendationAdmin.subscriptions.pause.useMutation({
     onSuccess: () => {
@@ -2022,6 +2026,59 @@ function AdminView() {
     },
     onError: (error) => toast.error(error.message),
   });
+
+  const grantComplimentaryMutation = trpc.recommendationAdmin.subscriptions.grantComplimentary.useMutation({
+    onSuccess: (result) => {
+      toast.success(isRTL ? "تم منح شهر التوصيات المجاني" : "Complimentary recommendation access granted");
+      utils.recommendationAdmin.subscriptions.list.invalidate();
+      setGrantUserQuery("");
+      setGrantDays("30");
+      setGrantReason(isRTL ? "تعويض عن عدم توفر خدمة الناسخ" : "Compensation for unavailable live copier service");
+      if (result.endDate) {
+        toast.info(`${isRTL ? "ينتهي في" : "Ends"} ${formatLocalizedDate(result.endDate, language)}`);
+      }
+    },
+    onError: (error) => toast.error(error.message),
+  });
+
+  const grantUserOptions = useMemo(() => {
+    const query = grantUserQuery.trim().toLowerCase();
+    if (!query) return [];
+    return (users as any[])
+      .filter((user) => [user.id, user.name, user.email, user.phone]
+        .filter((value) => value !== null && value !== undefined)
+        .join(" ")
+        .toLowerCase()
+        .includes(query))
+      .slice(0, 6);
+  }, [grantUserQuery, users]);
+
+  const selectedGrantUser = useMemo(() => {
+    const exactId = Number(grantUserQuery.trim());
+    if (Number.isFinite(exactId) && exactId > 0) {
+      return (users as any[]).find((user) => user.id === exactId) ?? null;
+    }
+    const query = grantUserQuery.trim().toLowerCase();
+    return (users as any[]).find((user) => user.email?.toLowerCase() === query) ?? null;
+  }, [grantUserQuery, users]);
+
+  const submitComplimentaryGrant = () => {
+    const userId = selectedGrantUser?.id ?? Number(grantUserQuery.trim());
+    const days = Number(grantDays);
+    if (!Number.isFinite(userId) || userId <= 0) {
+      toast.error(isRTL ? "اختر العميل من البحث أو أدخل رقم المستخدم" : "Select the client or enter a valid user ID");
+      return;
+    }
+    if (!Number.isInteger(days) || days < 1 || days > 366) {
+      toast.error(isRTL ? "مدة الاشتراك يجب أن تكون بين 1 و 366 يوم" : "Duration must be between 1 and 366 days");
+      return;
+    }
+    if (grantReason.trim().length < 3) {
+      toast.error(isRTL ? "أدخل سبب المنح المجاني" : "Enter a reason for the complimentary grant");
+      return;
+    }
+    grantComplimentaryMutation.mutate({ userId, days, reason: grantReason.trim() });
+  };
 
   const filteredSubscriptions = useMemo(() => {
     const query = subscriptionSearch.trim().toLowerCase();
@@ -2107,6 +2164,67 @@ function AdminView() {
             <CardDescription>{isRTL ? 'تجميد أو فك تجميد الاشتراكات النشطة مؤقتاً' : 'Temporarily freeze or unfreeze active recommendation access'}</CardDescription>
           </CardHeader>
           <CardContent>
+            <div className="mb-5 rounded-lg border border-emerald-200 bg-emerald-50/70 p-4">
+              <div className="mb-3 flex flex-col gap-1">
+                <h3 className="text-sm font-semibold text-emerald-950">{isRTL ? "منح توصيات مجانية" : "Grant Complimentary Recommendations"}</h3>
+                <p className="text-xs text-emerald-900/80">
+                  {isRTL
+                    ? "يبدأ فوراً بدون مهلة حماية ولا ينشئ طلباً أو مفتاحاً أو دخل مالي."
+                    : "Starts immediately with no protection window and creates no order, key, or financial income."}
+                </p>
+              </div>
+              <div className="grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_120px_minmax(0,1.6fr)_auto] lg:items-end">
+                <div className="relative">
+                  <Input
+                    value={grantUserQuery}
+                    onChange={(event) => setGrantUserQuery(event.target.value)}
+                    placeholder={isRTL ? "بحث باسم، بريد، هاتف، أو رقم المستخدم" : "Search name, email, phone, or user ID"}
+                  />
+                  {grantUserOptions.length > 0 && !selectedGrantUser && (
+                    <div className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-md border bg-white shadow-lg">
+                      {grantUserOptions.map((user: any) => (
+                        <button
+                          key={user.id}
+                          type="button"
+                          className="block w-full px-3 py-2 text-start text-sm hover:bg-emerald-50"
+                          onClick={() => setGrantUserQuery(String(user.id))}
+                        >
+                          <span className="font-medium">{user.name || "-"}</span>
+                          <span className="block text-xs text-muted-foreground">{user.email || "-"} · #{user.id}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {selectedGrantUser && (
+                    <p className="mt-1 text-xs text-emerald-900">
+                      {selectedGrantUser.name || "-"} · {selectedGrantUser.email || "-"} · #{selectedGrantUser.id}
+                    </p>
+                  )}
+                </div>
+                <Input
+                  value={grantDays}
+                  onChange={(event) => setGrantDays(event.target.value)}
+                  inputMode="numeric"
+                  placeholder={isRTL ? "الأيام" : "Days"}
+                />
+                <Input
+                  value={grantReason}
+                  onChange={(event) => setGrantReason(event.target.value)}
+                  placeholder={isRTL ? "سبب المنح" : "Grant reason"}
+                />
+                <Button
+                  type="button"
+                  onClick={submitComplimentaryGrant}
+                  disabled={grantComplimentaryMutation.isPending}
+                  className="bg-emerald-700 text-white hover:bg-emerald-800"
+                >
+                  <Plus className="me-1 h-4 w-4" />
+                  {grantComplimentaryMutation.isPending
+                    ? (isRTL ? "جار المنح..." : "Granting...")
+                    : (isRTL ? "منح" : "Grant")}
+                </Button>
+              </div>
+            </div>
             <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div className="relative w-full sm:max-w-md">
                 <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />

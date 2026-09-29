@@ -1536,16 +1536,34 @@ export async function updateUser(userId: number, updates: { name?: string; phone
   }
 }
 
+export const USER_ACTIVITY_TOUCH_THROTTLE_MS = 60_000;
+
+export function getUserActivityTouchStaleBefore(at = new Date()): string {
+  return new Date(at.getTime() - USER_ACTIVITY_TOUCH_THROTTLE_MS).toISOString();
+}
+
+export function buildUserActivityTouchWhere(userId: number, staleBeforeIso: string): SQL {
+  return and(
+    eq(users.id, userId),
+    or(
+      isNull(users.lastActiveAt),
+      lt(users.lastActiveAt, staleBeforeIso),
+    ),
+  )!;
+}
+
 /**
- * Touch user's lastActiveAt timestamp (called from auth middleware)
+ * Touch user's lastActiveAt timestamp (called from auth middleware).
+ * Auth polling can be frequent, so only refresh this marker once per short window.
  */
 export async function touchUserActivity(userId: number): Promise<void> {
   const db = await getDb();
   if (!db) return;
   try {
+    const now = new Date();
     await db.update(users)
-      .set({ lastActiveAt: new Date().toISOString() })
-      .where(eq(users.id, userId));
+      .set({ lastActiveAt: now.toISOString() })
+      .where(buildUserActivityTouchWhere(userId, getUserActivityTouchStaleBefore(now)));
   } catch {
     // Non-critical, don't throw
   }
@@ -4716,6 +4734,77 @@ export async function createRecommendationSubscription(subscription: InsertRecom
   if (!db) throw new Error("Database not available");
   const result = await db.insert(recommendationSubscriptions).values(subscription).returning({ id: recommendationSubscriptions.id });
   return result[0].id;
+}
+
+export async function grantComplimentaryRecommendationAccess(input: {
+  userId: number;
+  days: number;
+  reason: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const days = normalizePositiveInteger(input.days) ?? 30;
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const current = await getAnyRecommendationSubscription(input.userId);
+  const trimmedReason = input.reason.trim();
+  const paymentStatus = trimmedReason
+    ? `complimentary: ${trimmedReason}`.slice(0, 255)
+    : "complimentary";
+
+  if (current) {
+    const base = current.endDate && new Date(current.endDate) > now
+      ? new Date(current.endDate)
+      : now;
+    const endDate = buildEndDateFromDays(base, days).toISOString();
+
+    await updateRecommendationSubscription(current.id, {
+      isActive: true,
+      isPaused: false,
+      pausedAt: null,
+      pausedReason: null,
+      pausedRemainingDays: null,
+      frozenUntil: null,
+      isPendingActivation: false,
+      studentActivatedAt: current.studentActivatedAt || nowIso,
+      maxActivationDate: null,
+      activationReason: current.activationReason || "manual",
+      activationProcessedAt: current.activationProcessedAt || nowIso,
+      startDate: current.isPendingActivation ? nowIso : current.startDate,
+      endDate,
+      paymentStatus,
+      paymentAmount: 0,
+      paymentCurrency: "ILS",
+    });
+
+    return { id: current.id, endDate };
+  }
+
+  const endDate = buildEndDateFromDays(now, days).toISOString();
+  const id = await createRecommendationSubscription({
+    userId: input.userId,
+    registrationKeyId: null,
+    isActive: true,
+    isPaused: false,
+    isPendingActivation: false,
+    studentActivatedAt: nowIso,
+    maxActivationDate: null,
+    activationReason: "manual",
+    activationProcessedAt: nowIso,
+    courseWaivedByPolicy: false,
+    brokerWaivedByPolicy: false,
+    startDate: nowIso,
+    endDate,
+    paymentStatus,
+    paymentAmount: 0,
+    paymentCurrency: "ILS",
+    pausedAt: null,
+    pausedReason: null,
+    pausedRemainingDays: null,
+  });
+
+  return { id, endDate };
 }
 
 export async function updateRecommendationSubscription(id: number, updates: Partial<InsertRecommendationSubscription>) {
@@ -11316,6 +11405,26 @@ export async function getUpgradeStatistics(month?: string) {
 // Episode Progress Management
 // ============================================================================
 
+export const EPISODE_PROGRESS_WATCH_SYNC_MIN_ADVANCE_SECONDS = 15;
+
+type EpisodeProgressWriteState = Pick<EpisodeProgress, "watchedDuration" | "isCompleted">;
+type EpisodeProgressWriteInput = Pick<InsertEpisodeProgress, "watchedDuration" | "isCompleted">;
+
+export function shouldSkipEpisodeProgressWatchUpdate(
+  existing: EpisodeProgressWriteState,
+  progress: EpisodeProgressWriteInput,
+): boolean {
+  if (progress.isCompleted && !existing.isCompleted) return false;
+  if (existing.isCompleted && !progress.isCompleted) return true;
+
+  const existingWatchedDuration = Number(existing.watchedDuration || 0);
+  const nextWatchedDuration = Math.floor(Number(progress.watchedDuration || 0));
+  if (nextWatchedDuration <= existingWatchedDuration) return true;
+  if (existingWatchedDuration <= 0) return false;
+
+  return nextWatchedDuration - existingWatchedDuration < EPISODE_PROGRESS_WATCH_SYNC_MIN_ADVANCE_SECONDS;
+}
+
 export async function getUserEpisodeProgress(userId: number, episodeId: number) {
   const db = await getDb();
   if (!db) return undefined;
@@ -11346,6 +11455,10 @@ export async function createOrUpdateEpisodeProgress(progress: InsertEpisodeProgr
   const existing = await getUserEpisodeProgress(progress.userId, progress.episodeId);
 
   if (existing) {
+    if (shouldSkipEpisodeProgressWatchUpdate(existing, progress)) {
+      return existing.id;
+    }
+
     const nextWatchedDuration = Math.max(existing.watchedDuration || 0, progress.watchedDuration || 0);
     const nextCompleted = Boolean(existing.isCompleted) || Boolean(progress.isCompleted);
     await db.update(episodeProgress)
@@ -24874,6 +24987,88 @@ export async function logEmailDeliveryAttempts(inputs: Array<{
   }
 }
 
+type ZeptoMailDeliveryLogMatchInput = {
+  providerRequestId: string;
+  providerClientReference: string | null;
+  recipientEmail: string | null;
+};
+
+type ZeptoMailDeliveryLogMatchRow = {
+  id: number;
+  status: string;
+  providerEventAt: string | null;
+};
+
+type ZeptoMailDeliveryLogMatchDatabase = {
+  select: (fields: {
+    id: typeof emailDeliveryLogs.id;
+    status: typeof emailDeliveryLogs.status;
+    providerEventAt: typeof emailDeliveryLogs.providerEventAt;
+  }) => any;
+};
+
+function buildZeptoMailDeliveryLogMatchQuery(
+  database: ZeptoMailDeliveryLogMatchDatabase,
+  input: ZeptoMailDeliveryLogMatchInput,
+  correlationCondition: SQL,
+) {
+  const conditions = [
+    eq(emailDeliveryLogs.provider, 'zeptomail'),
+    correlationCondition,
+  ];
+  if (input.recipientEmail) {
+    conditions.push(eq(emailDeliveryLogs.recipientEmail, normalizeEmailAddress(input.recipientEmail)));
+  }
+
+  return database.select({
+    id: emailDeliveryLogs.id,
+    status: emailDeliveryLogs.status,
+    providerEventAt: emailDeliveryLogs.providerEventAt,
+  })
+    .from(emailDeliveryLogs)
+    .where(and(...conditions));
+}
+
+/**
+ * Build separate indexed probes for provider request ID and client reference.
+ * Keeping this as two statements avoids D1 reading through a broad OR plan on
+ * the email delivery audit table during provider webhook bursts.
+ */
+export function buildZeptoMailDeliveryLogMatchQueries(
+  database: ZeptoMailDeliveryLogMatchDatabase,
+  input: ZeptoMailDeliveryLogMatchInput,
+) {
+  const queries = [
+    buildZeptoMailDeliveryLogMatchQuery(
+      database,
+      input,
+      eq(emailDeliveryLogs.providerRequestId, input.providerRequestId),
+    ),
+  ];
+
+  if (input.providerClientReference) {
+    queries.push(buildZeptoMailDeliveryLogMatchQuery(
+      database,
+      input,
+      eq(emailDeliveryLogs.providerClientReference, input.providerClientReference),
+    ));
+  }
+
+  return queries;
+}
+
+export function mergeZeptoMailDeliveryLogMatchRows(
+  rowGroups: ZeptoMailDeliveryLogMatchRow[][],
+): ZeptoMailDeliveryLogMatchRow[] {
+  const rowsById = new Map<number, ZeptoMailDeliveryLogMatchRow>();
+  for (const rows of rowGroups) {
+    for (const row of rows) {
+      if (!rowsById.has(row.id)) rowsById.set(row.id, row);
+    }
+  }
+  return Array.from(rowsById.values());
+}
+
 export async function recordZeptoMailWebhookEvent(input: {
   providerEventId: string;
   providerRequestId: string;
@@ -24906,23 +25101,13 @@ export async function recordZeptoMailWebhookEvent(input: {
   }).returning({ id: emailProviderWebhookEvents.id });
   if (!inserted) return { duplicate: true, matchedLogCount: 0 };
 
-  const correlation = input.providerClientReference
-    ? or(
-        eq(emailDeliveryLogs.providerRequestId, input.providerRequestId),
-        eq(emailDeliveryLogs.providerClientReference, input.providerClientReference),
-      )
-    : eq(emailDeliveryLogs.providerRequestId, input.providerRequestId);
-  const conditions = [eq(emailDeliveryLogs.provider, 'zeptomail'), correlation];
-  if (input.recipientEmail) {
-    conditions.push(eq(emailDeliveryLogs.recipientEmail, normalizeEmailAddress(input.recipientEmail)));
-  }
-  const matchedLogs = await db.select({
-    id: emailDeliveryLogs.id,
-    status: emailDeliveryLogs.status,
-    providerEventAt: emailDeliveryLogs.providerEventAt,
-  })
-    .from(emailDeliveryLogs)
-    .where(and(...conditions));
+  const matchedLogs = mergeZeptoMailDeliveryLogMatchRows(await Promise.all(
+    buildZeptoMailDeliveryLogMatchQueries(db, {
+      providerRequestId: input.providerRequestId,
+      providerClientReference: input.providerClientReference,
+      recipientEmail: input.recipientEmail,
+    }),
+  ));
   const matchedLogIds = matchedLogs.map((row) => row.id);
 
   const effectiveEventAt = input.eventAt ?? receivedAt;
@@ -25725,6 +25910,9 @@ export const STAFF_NOTIFICATION_ARCHIVE_EVENT_TYPES = [
 ] as const;
 
 export const STAFF_NOTIFICATION_ARCHIVE_BATCH_LIMIT = 500;
+export const STAFF_NOTIFICATION_ARCHIVE_DEFAULT_BATCH_LIMIT = 50;
+export const STAFF_NOTIFICATION_ARCHIVE_DEFAULT_RETENTION_DAYS = 30;
+export const STAFF_NOTIFICATION_ARCHIVE_MIN_RETENTION_DAYS = 30;
 
 type StaffNotificationArchiveQueryDatabase = {
   select: (fields: { id: typeof staffNotifications.id }) => any;
@@ -25827,6 +26015,101 @@ export async function archiveStaffNotificationsBatch(
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   return archiveStaffNotificationsBatchWithDatabase(db, input);
+}
+
+export type StaffNotificationArchiveMaintenanceInput = {
+  nowIso?: string;
+  retentionDays?: number;
+  limit?: number;
+  batchKey?: string;
+  dryRun?: boolean;
+};
+
+export type StaffNotificationArchiveMaintenanceResult = {
+  dryRun: boolean;
+  cutoffIso: string;
+  batchKey: string;
+  retentionDays: number;
+  limit: number;
+  candidateCount: number;
+  archivedCount: number;
+};
+
+function normalizeStaffNotificationArchiveMaintenanceInput(
+  input: StaffNotificationArchiveMaintenanceInput,
+) {
+  const now = input.nowIso ? new Date(input.nowIso) : new Date();
+  if (!Number.isFinite(now.getTime()) || (input.nowIso && now.toISOString() !== input.nowIso)) {
+    throw new Error("Archive maintenance timestamp must be a canonical ISO timestamp");
+  }
+
+  const retentionDays = input.retentionDays ?? STAFF_NOTIFICATION_ARCHIVE_DEFAULT_RETENTION_DAYS;
+  if (
+    !Number.isInteger(retentionDays)
+    || retentionDays < STAFF_NOTIFICATION_ARCHIVE_MIN_RETENTION_DAYS
+    || retentionDays > 3650
+  ) {
+    throw new Error(`Archive retention must be between ${STAFF_NOTIFICATION_ARCHIVE_MIN_RETENTION_DAYS} and 3650 days`);
+  }
+
+  const limit = input.limit ?? STAFF_NOTIFICATION_ARCHIVE_DEFAULT_BATCH_LIMIT;
+  const batchKey = input.batchKey ?? `staff-support-archive:${now.toISOString().slice(0, 10)}`;
+  validateStaffNotificationArchiveBatchInput({ batchKey, limit });
+
+  return {
+    now,
+    retentionDays,
+    limit,
+    batchKey,
+    dryRun: input.dryRun !== false,
+    cutoffIso: new Date(now.getTime() - retentionDays * 86_400_000).toISOString(),
+  };
+}
+
+export async function runStaffNotificationArchiveMaintenanceWithDatabase(
+  database: any,
+  input: StaffNotificationArchiveMaintenanceInput = {},
+): Promise<StaffNotificationArchiveMaintenanceResult> {
+  const options = normalizeStaffNotificationArchiveMaintenanceInput(input);
+  if (options.dryRun) {
+    const candidates = await buildStaffNotificationArchiveCandidateQuery(database, {
+      cutoffIso: options.cutoffIso,
+      limit: options.limit,
+    });
+    return {
+      dryRun: true,
+      cutoffIso: options.cutoffIso,
+      batchKey: options.batchKey,
+      retentionDays: options.retentionDays,
+      limit: options.limit,
+      candidateCount: candidates.length,
+      archivedCount: 0,
+    };
+  }
+
+  const result = await archiveStaffNotificationsBatchWithDatabase(database, {
+    cutoffIso: options.cutoffIso,
+    archivedAt: options.now.toISOString(),
+    batchKey: options.batchKey,
+    limit: options.limit,
+  });
+  return {
+    dryRun: false,
+    cutoffIso: options.cutoffIso,
+    batchKey: options.batchKey,
+    retentionDays: options.retentionDays,
+    limit: options.limit,
+    candidateCount: result.candidateCount,
+    archivedCount: result.archivedCount,
+  };
+}
+
+export async function runStaffNotificationArchiveMaintenance(
+  input: StaffNotificationArchiveMaintenanceInput = {},
+): Promise<StaffNotificationArchiveMaintenanceResult> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return runStaffNotificationArchiveMaintenanceWithDatabase(db, input);
 }
 
 export type StaffNotificationArchiveRollbackInput = {

@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import CinematicPublicLayout from '@/components/public/CinematicPublicLayout';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { formatIlsAmount, getPackageDisplayPricing } from '@/lib/packagePricing';
+import { PUBLIC_CATALOG_STALE_MS, PUBLIC_OFFER_STATE_STALE_MS } from '@/lib/queryCaching';
 import { trpc } from '@/lib/trpc';
 import { trackPackageView } from '@/lib/analytics';
 
@@ -15,19 +16,22 @@ export default function PackageDetails() {
 
   const { data: pkg, isLoading, error } = trpc.packages.bySlug.useQuery(
     { slug: slug || '' },
-    { enabled: !!slug }
+    { enabled: !!slug, staleTime: PUBLIC_CATALOG_STALE_MS }
   );
 
   const { data: packageCourses } = trpc.packages.courses.useQuery(
     { packageId: pkg?.id || 0 },
-    { enabled: !!pkg?.id }
+    { enabled: !!pkg?.id, staleTime: PUBLIC_CATALOG_STALE_MS }
   );
 
   const { data: packageTestimonials } = trpc.testimonials.listWithContext.useQuery(
     { packageSlug: pkg?.slug, limit: 4 },
-    { enabled: !!pkg?.slug }
+    { enabled: !!pkg?.slug, staleTime: PUBLIC_CATALOG_STALE_MS }
   );
-  const { data: liveState } = trpc.packages.livePublicState.useQuery(undefined, { enabled: slug === 'live-package' });
+  const { data: liveState } = trpc.packages.livePublicState.useQuery(undefined, {
+    enabled: slug === 'live-package',
+    staleTime: PUBLIC_OFFER_STATE_STALE_MS,
+  });
   const trackedPackageView = useRef("");
 
   useEffect(() => {
