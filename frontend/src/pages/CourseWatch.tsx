@@ -243,8 +243,8 @@ export default function CourseWatch() {
   );
   const getRequiredWatchSeconds = (episode: any) => (
     episode?.duration && episode.duration > 0
-      ? Math.max(30, Math.floor(episode.duration * 0.1))
-      : 30
+      ? Math.min(120, Math.floor(episode.duration * 0.9))
+      : 120
   );
 
   const isEpisodeUnlocked = (episode: any) => {

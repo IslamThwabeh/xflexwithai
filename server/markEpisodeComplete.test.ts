@@ -93,13 +93,13 @@ describe("enrollments.markEpisodeComplete", () => {
     } as any);
   });
 
-  it("uses a supportive seconds-based watch threshold so episode one can complete at 10% watch time with a 30s minimum", async () => {
+  it("uses a two-minute watch threshold capped at 90% for shorter videos", async () => {
     const caller = createAuthedCaller();
     getUserEpisodeProgress.mockResolvedValue({
       id: 501,
       userId: 123,
       episodeId: 1,
-      watchedDuration: 30,
+      watchedDuration: 90,
       isCompleted: false,
     } as any);
 
@@ -114,7 +114,7 @@ describe("enrollments.markEpisodeComplete", () => {
         userId: 123,
         episodeId: 1,
         courseId: 1,
-        watchedDuration: 30,
+        watchedDuration: 90,
         isCompleted: true,
       })
     );
@@ -126,7 +126,7 @@ describe("enrollments.markEpisodeComplete", () => {
       id: 502,
       userId: 123,
       episodeId: 1,
-      watchedDuration: 29,
+      watchedDuration: 89,
       isCompleted: false,
     } as any);
 
@@ -155,13 +155,13 @@ describe("enrollments.markEpisodeComplete", () => {
     const result = await caller.enrollments.markEpisodeComplete({
       courseId: 1,
       episodeId: 1,
-      watchedDuration: 45,
+      watchedDuration: 95,
     });
 
     expect(result).toMatchObject({ success: true, progressPercentage: 50, reachedHalfway: true });
     expect(createOrUpdateEpisodeProgress).toHaveBeenCalledWith(
       expect.objectContaining({
-        watchedDuration: 45,
+        watchedDuration: 95,
         isCompleted: true,
       })
     );
@@ -188,7 +188,7 @@ describe("enrollments.markEpisodeComplete", () => {
     expect(createOrUpdateEpisodeProgress).toHaveBeenCalledWith(
       expect.objectContaining({
         episodeId: 1,
-        watchedDuration: 30,
+        watchedDuration: 90,
         isCompleted: true,
       })
     );
@@ -228,7 +228,7 @@ describe("enrollments.markEpisodeComplete", () => {
     expect(createOrUpdateEpisodeProgress).toHaveBeenCalledWith(
       expect.objectContaining({
         episodeId: 2,
-        watchedDuration: 30,
+        watchedDuration: 90,
         isCompleted: true,
       })
     );
@@ -245,7 +245,7 @@ describe("enrollments.markEpisodeComplete", () => {
       id: 504,
       userId: 123,
       episodeId: 2,
-      watchedDuration: 30,
+      watchedDuration: 90,
       isCompleted: false,
     } as any);
     getUserCourseProgress
@@ -274,9 +274,9 @@ describe("enrollments.markEpisodeComplete", () => {
   it("unlocks the next episode when the previous intro episode was watched enough but not marked complete", async () => {
     const caller = createAuthedCaller();
     getUserCourseProgress
-      .mockResolvedValueOnce([{ episodeId: 1, isCompleted: false, watchedDuration: 30 }] as any)
+      .mockResolvedValueOnce([{ episodeId: 1, isCompleted: false, watchedDuration: 90 }] as any)
       .mockResolvedValueOnce([
-        { episodeId: 1, isCompleted: false, watchedDuration: 30 },
+        { episodeId: 1, isCompleted: false, watchedDuration: 90 },
         { episodeId: 2, isCompleted: true },
       ] as any);
     getUserEpisodeProgress
@@ -284,14 +284,14 @@ describe("enrollments.markEpisodeComplete", () => {
         id: 501,
         userId: 123,
         episodeId: 1,
-        watchedDuration: 30,
+        watchedDuration: 90,
         isCompleted: false,
       } as any)
       .mockResolvedValueOnce({
         id: 505,
         userId: 123,
         episodeId: 2,
-        watchedDuration: 30,
+        watchedDuration: 90,
         isCompleted: false,
       } as any);
     getQuizForLevelWithQuestions.mockResolvedValue({
@@ -376,7 +376,7 @@ describe("enrollments.markEpisodeComplete", () => {
       id: 700,
       userId: 123,
       episodeId: 14,
-      watchedDuration: 30,
+      watchedDuration: 90,
       isCompleted: false,
     } as any);
     getQuizForLevelWithQuestions.mockResolvedValue({
@@ -431,7 +431,7 @@ describe("enrollments.markEpisodeComplete", () => {
       id: 702,
       userId: 123,
       episodeId: 14,
-      watchedDuration: 30,
+      watchedDuration: 90,
       isCompleted: false,
     } as any);
     getQuizForLevelWithQuestions.mockResolvedValue({
@@ -467,7 +467,7 @@ describe("enrollments.markEpisodeComplete", () => {
       id: 701,
       userId: 123,
       episodeId: 2,
-      watchedDuration: 30,
+      watchedDuration: 90,
       isCompleted: false,
     } as any);
     getQuizForLevelWithQuestions.mockResolvedValue({
