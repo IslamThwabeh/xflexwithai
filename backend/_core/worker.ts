@@ -60,6 +60,7 @@ import {
 const MINUTE_DELIVERY_CRON = "* * * * *";
 const TIMED_SERVICE_REPAIR_CRON = "*/5 * * * *";
 const DAILY_MAINTENANCE_CRON = "0 5 * * *";
+const RAW_DATA_RETENTION_CRON = "30 23 * * *";
 const FREE_PLAN_RECOMMENDATION_PROVIDER_BATCH_LIMIT = 1;
 const FREE_PLAN_LOWER_PRIORITY_PROVIDER_LIMIT = 1;
 const FREE_PLAN_SURVEY_MATERIALIZATION_LIMIT = 10;
@@ -92,6 +93,11 @@ async function runRawDataRetentionAutomation(env: Env) {
     dryRun: env.RAW_DATA_RETENTION_DRY_RUN !== "false",
     retentionDays: parsePositiveIntegerEnv(env.RAW_DATA_RETENTION_DAYS, db.RAW_DATA_RETENTION_DEFAULT_RETENTION_DAYS),
     limit: parsePositiveIntegerEnv(env.RAW_DATA_RETENTION_BATCH_LIMIT, db.RAW_DATA_RETENTION_DEFAULT_BATCH_LIMIT),
+    tableLimits: {
+      engagement_events: parsePositiveIntegerEnv(env.RAW_DATA_RETENTION_ENGAGEMENT_LIMIT, 100),
+      email_delivery_logs: parsePositiveIntegerEnv(env.RAW_DATA_RETENTION_EMAIL_LIMIT, 50),
+      user_notifications: parsePositiveIntegerEnv(env.RAW_DATA_RETENTION_NOTIFICATION_LIMIT, 50),
+    },
   });
   return { skipped: false as const, result };
 }
@@ -304,6 +310,9 @@ export interface Env {
   RAW_DATA_RETENTION_DRY_RUN?: string;
   RAW_DATA_RETENTION_DAYS?: string;
   RAW_DATA_RETENTION_BATCH_LIMIT?: string;
+  RAW_DATA_RETENTION_ENGAGEMENT_LIMIT?: string;
+  RAW_DATA_RETENTION_EMAIL_LIMIT?: string;
+  RAW_DATA_RETENTION_NOTIFICATION_LIMIT?: string;
 }
 
 export default {
@@ -1462,6 +1471,20 @@ export default {
       return;
     }
 
+    if (controller.cron === RAW_DATA_RETENTION_CRON) {
+      try {
+        const retentionRun = await runRawDataRetentionAutomation(env);
+        if (!retentionRun.skipped) {
+          logger.info("[CRON] Raw data retention maintenance completed", retentionRun.result);
+        }
+      } catch (error) {
+        logger.error("[CRON] Raw data retention maintenance failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      return;
+    }
+
     if (controller.cron !== DAILY_MAINTENANCE_CRON) {
       logger.warn("[CRON] Ignoring unknown schedule", {
         cron: controller.cron,
@@ -1503,16 +1526,6 @@ export default {
       });
     }
 
-    try {
-      const retentionRun = await runRawDataRetentionAutomation(env);
-      if (!retentionRun.skipped) {
-        logger.info("[CRON] Raw data retention maintenance completed", retentionRun.result);
-      }
-    } catch (error) {
-      logger.error("[CRON] Raw data retention maintenance failed", {
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
     const unfrozen = await db.processExpiredFreezes();
     for (const user of unfrozen) {
       if (user.email) {

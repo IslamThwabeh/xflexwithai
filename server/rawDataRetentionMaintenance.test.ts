@@ -234,6 +234,7 @@ describe("raw data retention maintenance", () => {
         tables: [
           {
             table: "engagement_events",
+            limit: 1,
             eligibleCount: 2,
             candidateCount: 1,
             rollupBucketCount: 2,
@@ -243,6 +244,7 @@ describe("raw data retention maintenance", () => {
           },
           {
             table: "email_delivery_logs",
+            limit: 1,
             eligibleCount: 1,
             candidateCount: 1,
             rollupBucketCount: 1,
@@ -252,6 +254,7 @@ describe("raw data retention maintenance", () => {
           },
           {
             table: "user_notifications",
+            limit: 1,
             eligibleCount: 2,
             candidateCount: 1,
             rollupBucketCount: 2,
@@ -375,15 +378,53 @@ describe("raw data retention maintenance", () => {
     }
   });
 
-  it("fails closed if deletion is requested before the approved delete phase", async () => {
+  it("rolls up first and deletes only bounded candidates when explicitly enabled", async () => {
     const sqlite = setupDatabase();
     try {
-      await expect(runRawDataRetentionMaintenanceWithDatabase(drizzle(sqlite), {
+      const result = await runRawDataRetentionMaintenanceWithDatabase(drizzle(sqlite), {
         nowIso: "2026-09-30T00:00:00.000Z",
         dryRun: false,
-      })).rejects.toThrow("deletion is not enabled");
+        tableLimits: {
+          engagement_events: 1,
+          email_delivery_logs: 1,
+          user_notifications: 1,
+        },
+      });
+
+      expect(result).toMatchObject({
+        dryRun: false,
+        totals: {
+          eligibleCount: 5,
+          candidateCount: 3,
+          rollupBucketCount: 5,
+          projectedDeleteCount: 3,
+          deletedCount: 3,
+        },
+      });
+      expect(result.tables.map((table) => ({
+        table: table.table,
+        limit: table.limit,
+        deletedCount: table.deletedCount,
+      }))).toEqual([
+        { table: "engagement_events", limit: 1, deletedCount: 1 },
+        { table: "email_delivery_logs", limit: 1, deletedCount: 1 },
+        { table: "user_notifications", limit: 1, deletedCount: 1 },
+      ]);
+      expect(sqlite.prepare("SELECT COUNT(*) AS count FROM engagement_events").get())
+        .toEqual({ count: 2 });
+      expect(sqlite.prepare("SELECT COUNT(*) AS count FROM email_delivery_logs").get())
+        .toEqual({ count: 1 });
       expect(sqlite.prepare("SELECT COUNT(*) AS count FROM user_notifications").get())
-        .toEqual({ count: 3 });
+        .toEqual({ count: 2 });
+      expect(sqlite.prepare(`
+        SELECT COALESCE(SUM(event_count), 0) AS preserved FROM raw_retention_engagement_daily_rollups
+      `).get()).toEqual({ preserved: 2 });
+      expect(sqlite.prepare(`
+        SELECT COALESCE(SUM(email_count), 0) AS preserved FROM raw_retention_email_daily_rollups
+      `).get()).toEqual({ preserved: 1 });
+      expect(sqlite.prepare(`
+        SELECT COALESCE(SUM(notification_count), 0) AS preserved FROM raw_retention_notification_daily_rollups
+      `).get()).toEqual({ preserved: 2 });
     } finally {
       sqlite.close();
     }
@@ -407,7 +448,10 @@ describe("raw data retention maintenance", () => {
     expect(RAW_DATA_RETENTION_DEFAULT_BATCH_LIMIT).toBe(50);
     expect(workerSource).toContain('env.RAW_DATA_RETENTION_ENABLED !== "true"');
     expect(workerSource).toContain('dryRun: env.RAW_DATA_RETENTION_DRY_RUN !== "false"');
+    expect(workerSource).toContain('const RAW_DATA_RETENTION_CRON = "30 23 * * *"');
     expect(workerSource).toContain("await runRawDataRetentionAutomation(env)");
+    expect(workerSource.indexOf("controller.cron === RAW_DATA_RETENTION_CRON"))
+      .toBeLessThan(workerSource.indexOf("controller.cron !== DAILY_MAINTENANCE_CRON"));
     expect(workerConfig.match(/RAW_DATA_RETENTION_ENABLED = "false"/g))
       .toHaveLength(3);
     expect(workerConfig.match(/RAW_DATA_RETENTION_DRY_RUN = "true"/g))
@@ -415,6 +459,13 @@ describe("raw data retention maintenance", () => {
     expect(workerConfig.match(/RAW_DATA_RETENTION_DAYS = "90"/g))
       .toHaveLength(3);
     expect(workerConfig.match(/RAW_DATA_RETENTION_BATCH_LIMIT = "50"/g))
+      .toHaveLength(3);
+    expect(workerConfig).toContain('"30 23 * * *"');
+    expect(workerConfig.match(/RAW_DATA_RETENTION_ENGAGEMENT_LIMIT = "100"/g))
+      .toHaveLength(3);
+    expect(workerConfig.match(/RAW_DATA_RETENTION_EMAIL_LIMIT = "50"/g))
+      .toHaveLength(3);
+    expect(workerConfig.match(/RAW_DATA_RETENTION_NOTIFICATION_LIMIT = "50"/g))
       .toHaveLength(3);
   });
 });

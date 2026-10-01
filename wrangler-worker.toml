@@ -26,6 +26,9 @@ RAW_DATA_RETENTION_ENABLED = "false"
 RAW_DATA_RETENTION_DRY_RUN = "true"
 RAW_DATA_RETENTION_DAYS = "90"
 RAW_DATA_RETENTION_BATCH_LIMIT = "50"
+RAW_DATA_RETENTION_ENGAGEMENT_LIMIT = "100"
+RAW_DATA_RETENTION_EMAIL_LIMIT = "50"
+RAW_DATA_RETENTION_NOTIFICATION_LIMIT = "50"
 
 # D1 Database binding (production)
 [[env.production.d1_databases]]
@@ -46,9 +49,11 @@ bucket_name = "xflexacademy-finance-receipts"
 
 [env.production.triggers]
 # Daily lifecycle/reminder jobs run at 08:00 Asia/Amman (05:00 UTC).
+# Raw data retention has a separate low-traffic slot at 02:30 Asia/Amman
+# (23:30 UTC), shortly before the 03:00 local D1 quota reset.
 # Timed-service repair has a separate invocation/CPU budget so future pending
 # work cannot prevent minute recommendation and human-support delivery.
-crons = ["* * * * *", "*/5 * * * *", "0 5 * * *"]
+crons = ["* * * * *", "*/5 * * * *", "30 23 * * *", "0 5 * * *"]
 
 [env.staging]
 name = "xflexacademy-api-staging"
@@ -69,6 +74,9 @@ RAW_DATA_RETENTION_ENABLED = "false"
 RAW_DATA_RETENTION_DRY_RUN = "true"
 RAW_DATA_RETENTION_DAYS = "90"
 RAW_DATA_RETENTION_BATCH_LIMIT = "50"
+RAW_DATA_RETENTION_ENGAGEMENT_LIMIT = "100"
+RAW_DATA_RETENTION_EMAIL_LIMIT = "50"
+RAW_DATA_RETENTION_NOTIFICATION_LIMIT = "50"
 
 [[env.staging.d1_databases]]
 binding = "DB"
@@ -100,3 +108,6 @@ RAW_DATA_RETENTION_ENABLED = "false"
 RAW_DATA_RETENTION_DRY_RUN = "true"
 RAW_DATA_RETENTION_DAYS = "90"
 RAW_DATA_RETENTION_BATCH_LIMIT = "50"
+RAW_DATA_RETENTION_ENGAGEMENT_LIMIT = "100"
+RAW_DATA_RETENTION_EMAIL_LIMIT = "50"
+RAW_DATA_RETENTION_NOTIFICATION_LIMIT = "50"

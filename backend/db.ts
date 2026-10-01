@@ -26128,6 +26128,7 @@ export const RAW_DATA_RETENTION_DEFAULT_RETENTION_DAYS = 90;
 export const RAW_DATA_RETENTION_MIN_RETENTION_DAYS = 30;
 export const RAW_DATA_RETENTION_MAX_BATCH_LIMIT = 500;
 export const RAW_DATA_RETENTION_DEFAULT_BATCH_LIMIT = 50;
+const RAW_DATA_RETENTION_DELETE_CHUNK_SIZE = 50;
 
 const RAW_DATA_RETENTION_TABLE_CONFIG: Record<RawDataRetentionTableName, {
   table: any;
@@ -26445,12 +26446,14 @@ export type RawDataRetentionMaintenanceInput = {
   nowIso?: string;
   retentionDays?: number;
   limit?: number;
+  tableLimits?: Partial<Record<RawDataRetentionTableName, number>>;
   tables?: RawDataRetentionTableName[];
   dryRun?: boolean;
 };
 
 export type RawDataRetentionTableDryRunResult = {
   table: RawDataRetentionTableName;
+  limit: number;
   eligibleCount: number;
   candidateCount: number;
   rollupBucketCount: number;
@@ -26494,15 +26497,53 @@ function normalizeRawDataRetentionMaintenanceInput(
   const limit = validateRawDataRetentionLimit(input.limit ?? RAW_DATA_RETENTION_DEFAULT_BATCH_LIMIT);
   const requestedTables = input.tables?.length ? input.tables : [...RAW_DATA_RETENTION_TABLES];
   const tables = Array.from(new Set(requestedTables.map(validateRawDataRetentionTableName)));
+  const tableLimits = Object.fromEntries(
+    tables.map((table) => [
+      table,
+      validateRawDataRetentionLimit(input.tableLimits?.[table] ?? limit),
+    ]),
+  ) as Record<RawDataRetentionTableName, number>;
 
   return {
     now,
     retentionDays,
     limit,
+    tableLimits,
     tables,
     dryRun: input.dryRun !== false,
     cutoffIso: new Date(now.getTime() - retentionDays * 86_400_000).toISOString(),
   };
+}
+
+async function deleteRawDataRetentionCandidates(
+  database: any,
+  input: {
+    table: RawDataRetentionTableName;
+    cutoffIso: string;
+    candidateIds: number[];
+  },
+) {
+  const table = validateRawDataRetentionTableName(input.table);
+  const cutoffIso = validateCanonicalIsoTimestamp(input.cutoffIso, "Raw retention cutoff");
+  const config = RAW_DATA_RETENTION_TABLE_CONFIG[table];
+  let deletedCount = 0;
+
+  for (const chunk of chunkValues(
+    input.candidateIds.filter((id) => Number.isInteger(id) && id > 0),
+    RAW_DATA_RETENTION_DELETE_CHUNK_SIZE,
+  )) {
+    if (!chunk.length) continue;
+    const deleted = await database
+      .delete(config.table)
+      .where(and(
+        inArray(config.id, chunk),
+        lt(config.createdAt, cutoffIso),
+      ))
+      .returning({ id: config.id });
+    deletedCount += deleted.length;
+  }
+
+  return deletedCount;
 }
 
 export async function runRawDataRetentionMaintenanceWithDatabase(
@@ -26510,12 +26551,9 @@ export async function runRawDataRetentionMaintenanceWithDatabase(
   input: RawDataRetentionMaintenanceInput = {},
 ): Promise<RawDataRetentionMaintenanceResult> {
   const options = normalizeRawDataRetentionMaintenanceInput(input);
-  if (!options.dryRun) {
-    throw new Error("Raw data retention deletion is not enabled; run dry-run only");
-  }
-
   const tables: RawDataRetentionTableDryRunResult[] = [];
   for (const table of options.tables) {
+    const tableLimit = options.tableLimits[table];
     const eligibleCount = await countRawDataRetentionEligibleRows(database, {
       table,
       cutoffIso: options.cutoffIso,
@@ -26527,22 +26565,36 @@ export async function runRawDataRetentionMaintenanceWithDatabase(
     const candidates = await buildRawDataRetentionCandidateQuery(database, {
       table,
       cutoffIso: options.cutoffIso,
-      limit: options.limit,
+      limit: tableLimit,
     });
     const candidateCount = candidates.length;
+    let deletedCount = 0;
+    if (!options.dryRun && candidateCount > 0) {
+      await prepareRawDataRetentionRollupsWithDatabase(database, {
+        cutoffIso: options.cutoffIso,
+        updatedAt: options.now.toISOString(),
+        tables: [table],
+      });
+      deletedCount = await deleteRawDataRetentionCandidates(database, {
+        table,
+        cutoffIso: options.cutoffIso,
+        candidateIds: candidates.map((row: { id: number }) => Number(row.id)),
+      });
+    }
     tables.push({
       table,
+      limit: tableLimit,
       eligibleCount,
       candidateCount,
       rollupBucketCount,
       projectedDeleteCount: candidateCount,
-      estimatedBatches: Math.ceil(eligibleCount / options.limit),
-      deletedCount: 0,
+      estimatedBatches: Math.ceil(eligibleCount / tableLimit),
+      deletedCount,
     });
   }
 
   return {
-    dryRun: true,
+    dryRun: options.dryRun,
     cutoffIso: options.cutoffIso,
     retentionDays: options.retentionDays,
     limit: options.limit,
