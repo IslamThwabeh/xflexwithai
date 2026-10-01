@@ -452,10 +452,14 @@ describe("raw data retention maintenance", () => {
     expect(workerSource).toContain("await runRawDataRetentionAutomation(env)");
     expect(workerSource.indexOf("controller.cron === RAW_DATA_RETENTION_CRON"))
       .toBeLessThan(workerSource.indexOf("controller.cron !== DAILY_MAINTENANCE_CRON"));
+    expect(workerConfig.match(/RAW_DATA_RETENTION_ENABLED = "true"/g))
+      .toHaveLength(1);
     expect(workerConfig.match(/RAW_DATA_RETENTION_ENABLED = "false"/g))
-      .toHaveLength(3);
+      .toHaveLength(2);
+    expect(workerConfig.match(/RAW_DATA_RETENTION_DRY_RUN = "false"/g))
+      .toHaveLength(1);
     expect(workerConfig.match(/RAW_DATA_RETENTION_DRY_RUN = "true"/g))
-      .toHaveLength(3);
+      .toHaveLength(2);
     expect(workerConfig.match(/RAW_DATA_RETENTION_DAYS = "90"/g))
       .toHaveLength(3);
     expect(workerConfig.match(/RAW_DATA_RETENTION_BATCH_LIMIT = "50"/g))
