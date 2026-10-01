@@ -83,6 +83,19 @@ async function runStaffNotificationArchiveAutomation(env: Env) {
   return { skipped: false as const, result };
 }
 
+async function runRawDataRetentionAutomation(env: Env) {
+  if (env.RAW_DATA_RETENTION_ENABLED !== "true") {
+    return { skipped: true as const, reason: "disabled" as const };
+  }
+
+  const result = await db.runRawDataRetentionMaintenance({
+    dryRun: env.RAW_DATA_RETENTION_DRY_RUN !== "false",
+    retentionDays: parsePositiveIntegerEnv(env.RAW_DATA_RETENTION_DAYS, db.RAW_DATA_RETENTION_DEFAULT_RETENTION_DAYS),
+    limit: parsePositiveIntegerEnv(env.RAW_DATA_RETENTION_BATCH_LIMIT, db.RAW_DATA_RETENTION_DEFAULT_BATCH_LIMIT),
+  });
+  return { skipped: false as const, result };
+}
+
 function appendCookieHeaders(headers: Headers, cookieHeaders: string[] | undefined) {
   if (!cookieHeaders?.length) return;
   for (const cookie of cookieHeaders) {
@@ -287,6 +300,10 @@ export interface Env {
   STAFF_NOTIFICATION_ARCHIVE_DRY_RUN?: string;
   STAFF_NOTIFICATION_ARCHIVE_RETENTION_DAYS?: string;
   STAFF_NOTIFICATION_ARCHIVE_BATCH_LIMIT?: string;
+  RAW_DATA_RETENTION_ENABLED?: string;
+  RAW_DATA_RETENTION_DRY_RUN?: string;
+  RAW_DATA_RETENTION_DAYS?: string;
+  RAW_DATA_RETENTION_BATCH_LIMIT?: string;
 }
 
 export default {
@@ -1482,6 +1499,17 @@ export default {
       }
     } catch (error) {
       logger.error("[CRON] Staff notification archive maintenance failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    try {
+      const retentionRun = await runRawDataRetentionAutomation(env);
+      if (!retentionRun.skipped) {
+        logger.info("[CRON] Raw data retention maintenance completed", retentionRun.result);
+      }
+    } catch (error) {
+      logger.error("[CRON] Raw data retention maintenance failed", {
         error: error instanceof Error ? error.message : String(error),
       });
     }

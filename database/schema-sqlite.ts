@@ -2401,10 +2401,29 @@ export const userNotifications = sqliteTable("user_notifications", {
   batchUserIdx: index("idx_user_notifications_batch_user")
     .on(table.batchId, table.userId)
     .where(sql`${table.batchId} IS NOT NULL`),
+  retentionCreatedIdIdx: index("idx_user_notifications_retention_created_id")
+    .on(table.createdAt, table.id),
 }));
 
 export type UserNotification = typeof userNotifications.$inferSelect;
 export type InsertUserNotification = typeof userNotifications.$inferInsert;
+
+export const rawRetentionNotificationDailyRollups = sqliteTable("raw_retention_notification_daily_rollups", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  localDate: text("local_date").notNull(),
+  type: text("type").notNull(),
+  isRead: integer("is_read").default(0).notNull(),
+  emailSent: integer("email_sent").default(0).notNull(),
+  notificationCount: integer("notification_count").default(0).notNull(),
+  firstCreatedAt: text("first_created_at"),
+  lastCreatedAt: text("last_created_at"),
+  updatedAt: text("updated_at").default(sql`(datetime('now'))`).notNull(),
+}, (table) => ({
+  uniqueBucket: unique("uq_raw_retention_notification_daily_bucket")
+    .on(table.localDate, table.type, table.isRead, table.emailSent),
+  dateIdx: index("idx_raw_retention_notification_daily_date")
+    .on(table.localDate, table.type, table.isRead),
+}));
 
 export const userNotificationsRelations = relations(userNotifications, ({ one }) => ({
   user: one(users, {
@@ -2673,7 +2692,10 @@ export const engagementEvents = sqliteTable("engagement_events", {
   entityId: integer("entity_id"),
   metadata: text("metadata"), // JSON
   createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
-});
+}, (table) => ({
+  createdIdIdx: index("idx_engagement_events_created_id")
+    .on(table.createdAt, table.id),
+}));
 
 export type EngagementEvent = typeof engagementEvents.$inferSelect;
 export type InsertEngagementEvent = typeof engagementEvents.$inferInsert;
@@ -2683,6 +2705,23 @@ export const engagementEventsRelations = relations(engagementEvents, ({ one }) =
     fields: [engagementEvents.userId],
     references: [users.id],
   }),
+}));
+
+export const rawRetentionEngagementDailyRollups = sqliteTable("raw_retention_engagement_daily_rollups", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  localDate: text("local_date").notNull(),
+  eventType: text("event_type").notNull(),
+  entityType: text("entity_type").default("").notNull(),
+  eventCount: integer("event_count").default(0).notNull(),
+  uniqueUserCount: integer("unique_user_count").default(0).notNull(),
+  firstEventAt: text("first_event_at"),
+  lastEventAt: text("last_event_at"),
+  updatedAt: text("updated_at").default(sql`(datetime('now'))`).notNull(),
+}, (table) => ({
+  uniqueBucket: unique("uq_raw_retention_engagement_daily_bucket")
+    .on(table.localDate, table.eventType, table.entityType),
+  dateIdx: index("idx_raw_retention_engagement_daily_date")
+    .on(table.localDate, table.eventType),
 }));
 
 export const openAiUsageEvents = sqliteTable("openai_usage_events", {
@@ -2861,6 +2900,23 @@ export const emailDeliveryLogs = sqliteTable("email_delivery_logs", {
 
 export type EmailDeliveryLog = typeof emailDeliveryLogs.$inferSelect;
 export type InsertEmailDeliveryLog = typeof emailDeliveryLogs.$inferInsert;
+
+export const rawRetentionEmailDailyRollups = sqliteTable("raw_retention_email_daily_rollups", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  localDate: text("local_date").notNull(),
+  eventType: text("event_type").notNull(),
+  status: text("status").notNull(),
+  provider: text("provider").default("").notNull(),
+  emailCount: integer("email_count").default(0).notNull(),
+  firstCreatedAt: text("first_created_at"),
+  lastCreatedAt: text("last_created_at"),
+  updatedAt: text("updated_at").default(sql`(datetime('now'))`).notNull(),
+}, (table) => ({
+  uniqueBucket: unique("uq_raw_retention_email_daily_bucket")
+    .on(table.localDate, table.eventType, table.status, table.provider),
+  dateIdx: index("idx_raw_retention_email_daily_date")
+    .on(table.localDate, table.eventType, table.status),
+}));
 
 /** Idempotency and minimal audit data for inbound email-provider webhooks. */
 export const emailProviderWebhookEvents = sqliteTable("email_provider_webhook_events", {

@@ -26112,6 +26112,465 @@ export async function runStaffNotificationArchiveMaintenance(
   return runStaffNotificationArchiveMaintenanceWithDatabase(db, input);
 }
 
+// ============================================================================
+// Raw data retention dry-run maintenance
+// ============================================================================
+
+export const RAW_DATA_RETENTION_TABLES = [
+  "engagement_events",
+  "email_delivery_logs",
+  "user_notifications",
+] as const;
+
+export type RawDataRetentionTableName = typeof RAW_DATA_RETENTION_TABLES[number];
+
+export const RAW_DATA_RETENTION_DEFAULT_RETENTION_DAYS = 90;
+export const RAW_DATA_RETENTION_MIN_RETENTION_DAYS = 30;
+export const RAW_DATA_RETENTION_MAX_BATCH_LIMIT = 500;
+export const RAW_DATA_RETENTION_DEFAULT_BATCH_LIMIT = 50;
+
+const RAW_DATA_RETENTION_TABLE_CONFIG: Record<RawDataRetentionTableName, {
+  table: any;
+  id: any;
+  createdAt: any;
+}> = {
+  engagement_events: {
+    table: engagementEvents,
+    id: engagementEvents.id,
+    createdAt: engagementEvents.createdAt,
+  },
+  email_delivery_logs: {
+    table: emailDeliveryLogs,
+    id: emailDeliveryLogs.id,
+    createdAt: emailDeliveryLogs.createdAt,
+  },
+  user_notifications: {
+    table: userNotifications,
+    id: userNotifications.id,
+    createdAt: userNotifications.createdAt,
+  },
+};
+
+function isRawDataRetentionTableName(value: string): value is RawDataRetentionTableName {
+  return (RAW_DATA_RETENTION_TABLES as readonly string[]).includes(value);
+}
+
+function validateRawDataRetentionTableName(table: string): RawDataRetentionTableName {
+  if (!isRawDataRetentionTableName(table)) {
+    throw new Error(`Unsupported raw retention table: ${table}`);
+  }
+  return table;
+}
+
+function validateCanonicalIsoTimestamp(value: string, label: string) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime()) || date.toISOString() !== value) {
+    throw new Error(`${label} must be a canonical ISO timestamp`);
+  }
+  return value;
+}
+
+function validateRawDataRetentionLimit(limit: number) {
+  if (
+    !Number.isInteger(limit)
+    || limit < 1
+    || limit > RAW_DATA_RETENTION_MAX_BATCH_LIMIT
+  ) {
+    throw new Error(`Raw retention batch limit must be between 1 and ${RAW_DATA_RETENTION_MAX_BATCH_LIMIT}`);
+  }
+  return limit;
+}
+
+export type RawDataRetentionCandidateQueryInput = {
+  table: RawDataRetentionTableName;
+  cutoffIso: string;
+  limit?: number;
+};
+
+export function buildRawDataRetentionCandidateQuery(
+  database: any,
+  input: RawDataRetentionCandidateQueryInput,
+) {
+  const table = validateRawDataRetentionTableName(input.table);
+  const cutoffIso = validateCanonicalIsoTimestamp(input.cutoffIso, "Raw retention cutoff");
+  const limit = validateRawDataRetentionLimit(input.limit ?? RAW_DATA_RETENTION_DEFAULT_BATCH_LIMIT);
+  const config = RAW_DATA_RETENTION_TABLE_CONFIG[table];
+
+  return database
+    .select({ id: config.id })
+    .from(config.table)
+    .where(lt(config.createdAt, cutoffIso))
+    .orderBy(asc(config.createdAt), asc(config.id))
+    .limit(limit);
+}
+
+async function countRawDataRetentionEligibleRows(
+  database: any,
+  input: Omit<RawDataRetentionCandidateQueryInput, "limit">,
+) {
+  const table = validateRawDataRetentionTableName(input.table);
+  const cutoffIso = validateCanonicalIsoTimestamp(input.cutoffIso, "Raw retention cutoff");
+  const config = RAW_DATA_RETENTION_TABLE_CONFIG[table];
+  const [row] = await database
+    .select({ count: sql<number>`COUNT(*)` })
+    .from(config.table)
+    .where(lt(config.createdAt, cutoffIso));
+  return Number(row?.count ?? 0);
+}
+
+async function countRawDataRetentionRollupBuckets(
+  database: any,
+  input: Omit<RawDataRetentionCandidateQueryInput, "limit">,
+) {
+  const table = validateRawDataRetentionTableName(input.table);
+  const cutoffIso = validateCanonicalIsoTimestamp(input.cutoffIso, "Raw retention cutoff");
+
+  if (table === "engagement_events") {
+    const rows = await database.all(sql`
+      SELECT COUNT(*) AS count
+      FROM (
+        SELECT 1
+        FROM engagement_events
+        WHERE created_at < ${cutoffIso}
+        GROUP BY date(created_at), event_type, COALESCE(entity_type, '')
+      )
+    `) as Array<{ count?: number }>;
+    return Number(rows[0]?.count ?? 0);
+  }
+
+  if (table === "email_delivery_logs") {
+    const rows = await database.all(sql`
+      SELECT COUNT(*) AS count
+      FROM (
+        SELECT 1
+        FROM email_delivery_logs
+        WHERE created_at < ${cutoffIso}
+        GROUP BY date(created_at), event_type, status, COALESCE(provider, '')
+      )
+    `) as Array<{ count?: number }>;
+    return Number(rows[0]?.count ?? 0);
+  }
+
+  const rows = await database.all(sql`
+    SELECT COUNT(*) AS count
+    FROM (
+      SELECT 1
+      FROM user_notifications
+      WHERE created_at < ${cutoffIso}
+      GROUP BY date(created_at), type, is_read, email_sent
+    )
+  `) as Array<{ count?: number }>;
+  return Number(rows[0]?.count ?? 0);
+}
+
+export type RawDataRetentionRollupPrepareInput = {
+  cutoffIso: string;
+  tables?: RawDataRetentionTableName[];
+  updatedAt?: string;
+};
+
+export type RawDataRetentionRollupPrepareTableResult = {
+  table: RawDataRetentionTableName;
+  rollupBucketCount: number;
+};
+
+export type RawDataRetentionRollupPrepareResult = {
+  cutoffIso: string;
+  updatedAt: string;
+  tables: RawDataRetentionRollupPrepareTableResult[];
+  totalRollupBucketCount: number;
+};
+
+function normalizeRawDataRetentionRollupPrepareInput(
+  input: RawDataRetentionRollupPrepareInput,
+) {
+  const cutoffIso = validateCanonicalIsoTimestamp(input.cutoffIso, "Raw retention cutoff");
+  const updatedAt = input.updatedAt ?? new Date().toISOString();
+  validateCanonicalIsoTimestamp(updatedAt, "Raw retention rollup timestamp");
+  const requestedTables = input.tables?.length ? input.tables : [...RAW_DATA_RETENTION_TABLES];
+  const tables = Array.from(new Set(requestedTables.map(validateRawDataRetentionTableName)));
+  return { cutoffIso, updatedAt, tables };
+}
+
+async function prepareEngagementRetentionRollups(
+  database: any,
+  cutoffIso: string,
+  updatedAt: string,
+) {
+  await database.run(sql`
+    INSERT INTO raw_retention_engagement_daily_rollups (
+      local_date,
+      event_type,
+      entity_type,
+      event_count,
+      unique_user_count,
+      first_event_at,
+      last_event_at,
+      updated_at
+    )
+    SELECT
+      date(created_at) AS local_date,
+      event_type,
+      COALESCE(entity_type, '') AS entity_type,
+      COUNT(*) AS event_count,
+      COUNT(DISTINCT user_id) AS unique_user_count,
+      MIN(created_at) AS first_event_at,
+      MAX(created_at) AS last_event_at,
+      ${updatedAt} AS updated_at
+    FROM engagement_events
+    WHERE created_at < ${cutoffIso}
+    GROUP BY date(created_at), event_type, COALESCE(entity_type, '')
+    ON CONFLICT(local_date, event_type, entity_type) DO UPDATE SET
+      event_count = max(raw_retention_engagement_daily_rollups.event_count, excluded.event_count),
+      unique_user_count = max(raw_retention_engagement_daily_rollups.unique_user_count, excluded.unique_user_count),
+      first_event_at = min(raw_retention_engagement_daily_rollups.first_event_at, excluded.first_event_at),
+      last_event_at = max(raw_retention_engagement_daily_rollups.last_event_at, excluded.last_event_at),
+      updated_at = excluded.updated_at
+  `);
+}
+
+async function prepareEmailRetentionRollups(
+  database: any,
+  cutoffIso: string,
+  updatedAt: string,
+) {
+  await database.run(sql`
+    INSERT INTO raw_retention_email_daily_rollups (
+      local_date,
+      event_type,
+      status,
+      provider,
+      email_count,
+      first_created_at,
+      last_created_at,
+      updated_at
+    )
+    SELECT
+      date(created_at) AS local_date,
+      event_type,
+      status,
+      COALESCE(provider, '') AS provider,
+      COUNT(*) AS email_count,
+      MIN(created_at) AS first_created_at,
+      MAX(created_at) AS last_created_at,
+      ${updatedAt} AS updated_at
+    FROM email_delivery_logs
+    WHERE created_at < ${cutoffIso}
+    GROUP BY date(created_at), event_type, status, COALESCE(provider, '')
+    ON CONFLICT(local_date, event_type, status, provider) DO UPDATE SET
+      email_count = max(raw_retention_email_daily_rollups.email_count, excluded.email_count),
+      first_created_at = min(raw_retention_email_daily_rollups.first_created_at, excluded.first_created_at),
+      last_created_at = max(raw_retention_email_daily_rollups.last_created_at, excluded.last_created_at),
+      updated_at = excluded.updated_at
+  `);
+}
+
+async function prepareNotificationRetentionRollups(
+  database: any,
+  cutoffIso: string,
+  updatedAt: string,
+) {
+  await database.run(sql`
+    INSERT INTO raw_retention_notification_daily_rollups (
+      local_date,
+      type,
+      is_read,
+      email_sent,
+      notification_count,
+      first_created_at,
+      last_created_at,
+      updated_at
+    )
+    SELECT
+      date(created_at) AS local_date,
+      type,
+      is_read,
+      email_sent,
+      COUNT(*) AS notification_count,
+      MIN(created_at) AS first_created_at,
+      MAX(created_at) AS last_created_at,
+      ${updatedAt} AS updated_at
+    FROM user_notifications
+    WHERE created_at < ${cutoffIso}
+    GROUP BY date(created_at), type, is_read, email_sent
+    ON CONFLICT(local_date, type, is_read, email_sent) DO UPDATE SET
+      notification_count = max(raw_retention_notification_daily_rollups.notification_count, excluded.notification_count),
+      first_created_at = min(raw_retention_notification_daily_rollups.first_created_at, excluded.first_created_at),
+      last_created_at = max(raw_retention_notification_daily_rollups.last_created_at, excluded.last_created_at),
+      updated_at = excluded.updated_at
+  `);
+}
+
+export async function prepareRawDataRetentionRollupsWithDatabase(
+  database: any,
+  input: RawDataRetentionRollupPrepareInput,
+): Promise<RawDataRetentionRollupPrepareResult> {
+  const options = normalizeRawDataRetentionRollupPrepareInput(input);
+  const tables: RawDataRetentionRollupPrepareTableResult[] = [];
+
+  for (const table of options.tables) {
+    if (table === "engagement_events") {
+      await prepareEngagementRetentionRollups(database, options.cutoffIso, options.updatedAt);
+    } else if (table === "email_delivery_logs") {
+      await prepareEmailRetentionRollups(database, options.cutoffIso, options.updatedAt);
+    } else {
+      await prepareNotificationRetentionRollups(database, options.cutoffIso, options.updatedAt);
+    }
+    tables.push({
+      table,
+      rollupBucketCount: await countRawDataRetentionRollupBuckets(database, {
+        table,
+        cutoffIso: options.cutoffIso,
+      }),
+    });
+  }
+
+  return {
+    cutoffIso: options.cutoffIso,
+    updatedAt: options.updatedAt,
+    tables,
+    totalRollupBucketCount: tables.reduce((total, table) => total + table.rollupBucketCount, 0),
+  };
+}
+
+export async function prepareRawDataRetentionRollups(
+  input: RawDataRetentionRollupPrepareInput,
+): Promise<RawDataRetentionRollupPrepareResult> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return prepareRawDataRetentionRollupsWithDatabase(db, input);
+}
+
+export type RawDataRetentionMaintenanceInput = {
+  nowIso?: string;
+  retentionDays?: number;
+  limit?: number;
+  tables?: RawDataRetentionTableName[];
+  dryRun?: boolean;
+};
+
+export type RawDataRetentionTableDryRunResult = {
+  table: RawDataRetentionTableName;
+  eligibleCount: number;
+  candidateCount: number;
+  rollupBucketCount: number;
+  projectedDeleteCount: number;
+  estimatedBatches: number;
+  deletedCount: number;
+};
+
+export type RawDataRetentionMaintenanceResult = {
+  dryRun: boolean;
+  cutoffIso: string;
+  retentionDays: number;
+  limit: number;
+  tables: RawDataRetentionTableDryRunResult[];
+  totals: {
+    eligibleCount: number;
+    candidateCount: number;
+    rollupBucketCount: number;
+    projectedDeleteCount: number;
+    deletedCount: number;
+  };
+};
+
+function normalizeRawDataRetentionMaintenanceInput(
+  input: RawDataRetentionMaintenanceInput,
+) {
+  const now = input.nowIso ? new Date(input.nowIso) : new Date();
+  if (!Number.isFinite(now.getTime()) || (input.nowIso && now.toISOString() !== input.nowIso)) {
+    throw new Error("Raw retention timestamp must be a canonical ISO timestamp");
+  }
+
+  const retentionDays = input.retentionDays ?? RAW_DATA_RETENTION_DEFAULT_RETENTION_DAYS;
+  if (
+    !Number.isInteger(retentionDays)
+    || retentionDays < RAW_DATA_RETENTION_MIN_RETENTION_DAYS
+    || retentionDays > 3650
+  ) {
+    throw new Error(`Raw retention window must be between ${RAW_DATA_RETENTION_MIN_RETENTION_DAYS} and 3650 days`);
+  }
+
+  const limit = validateRawDataRetentionLimit(input.limit ?? RAW_DATA_RETENTION_DEFAULT_BATCH_LIMIT);
+  const requestedTables = input.tables?.length ? input.tables : [...RAW_DATA_RETENTION_TABLES];
+  const tables = Array.from(new Set(requestedTables.map(validateRawDataRetentionTableName)));
+
+  return {
+    now,
+    retentionDays,
+    limit,
+    tables,
+    dryRun: input.dryRun !== false,
+    cutoffIso: new Date(now.getTime() - retentionDays * 86_400_000).toISOString(),
+  };
+}
+
+export async function runRawDataRetentionMaintenanceWithDatabase(
+  database: any,
+  input: RawDataRetentionMaintenanceInput = {},
+): Promise<RawDataRetentionMaintenanceResult> {
+  const options = normalizeRawDataRetentionMaintenanceInput(input);
+  if (!options.dryRun) {
+    throw new Error("Raw data retention deletion is not enabled; run dry-run only");
+  }
+
+  const tables: RawDataRetentionTableDryRunResult[] = [];
+  for (const table of options.tables) {
+    const eligibleCount = await countRawDataRetentionEligibleRows(database, {
+      table,
+      cutoffIso: options.cutoffIso,
+    });
+    const rollupBucketCount = await countRawDataRetentionRollupBuckets(database, {
+      table,
+      cutoffIso: options.cutoffIso,
+    });
+    const candidates = await buildRawDataRetentionCandidateQuery(database, {
+      table,
+      cutoffIso: options.cutoffIso,
+      limit: options.limit,
+    });
+    const candidateCount = candidates.length;
+    tables.push({
+      table,
+      eligibleCount,
+      candidateCount,
+      rollupBucketCount,
+      projectedDeleteCount: candidateCount,
+      estimatedBatches: Math.ceil(eligibleCount / options.limit),
+      deletedCount: 0,
+    });
+  }
+
+  return {
+    dryRun: true,
+    cutoffIso: options.cutoffIso,
+    retentionDays: options.retentionDays,
+    limit: options.limit,
+    tables,
+    totals: tables.reduce((totals, table) => ({
+      eligibleCount: totals.eligibleCount + table.eligibleCount,
+      candidateCount: totals.candidateCount + table.candidateCount,
+      rollupBucketCount: totals.rollupBucketCount + table.rollupBucketCount,
+      projectedDeleteCount: totals.projectedDeleteCount + table.projectedDeleteCount,
+      deletedCount: totals.deletedCount + table.deletedCount,
+    }), {
+      eligibleCount: 0,
+      candidateCount: 0,
+      rollupBucketCount: 0,
+      projectedDeleteCount: 0,
+      deletedCount: 0,
+    }),
+  };
+}
+
+export async function runRawDataRetentionMaintenance(
+  input: RawDataRetentionMaintenanceInput = {},
+): Promise<RawDataRetentionMaintenanceResult> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return runRawDataRetentionMaintenanceWithDatabase(db, input);
+}
+
 export type StaffNotificationArchiveRollbackInput = {
   batchKey: string;
   limit?: number;
