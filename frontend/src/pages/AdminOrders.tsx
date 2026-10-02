@@ -131,6 +131,14 @@ export default function AdminOrders() {
   };
 
   const openIssueDialog = (order: any) => {
+    if (order.transactionPurpose === 'copier_subscription') {
+      toast.info(language === 'ar'
+        ? 'طلبات الناسخ تُعتمد من صفحة الناسخ لأنها لا تصدر مفتاح باقة.'
+        : 'Trade copier orders are approved from the copier page because they do not issue package keys.');
+      window.location.href = '/admin/copier';
+      return;
+    }
+
     const initial: typeof keyConfigurations = {};
     for (const item of order.packageItems ?? []) {
       initial[item.packageId] = {
@@ -275,6 +283,7 @@ export default function AdminOrders() {
           <div className="space-y-3">
             {paged.map((order: any) => {
               const legalLinks = getLegalVersionLinks(order.termsAcceptedVersion);
+              const isCopierOrder = order.transactionPurpose === 'copier_subscription';
               return (
               <div key={order.id} className="bg-white border rounded-xl shadow-sm">
                 <div className="p-5 flex items-center justify-between cursor-pointer" onClick={() => setExpandedId(expandedId === order.id ? null : order.id)}>
@@ -395,6 +404,21 @@ export default function AdminOrders() {
                     </div>
 
                     {/* Status Actions */}
+                    {isCopierOrder && ['pending', 'awaiting_confirmation', 'paid'].includes(order.status) && (
+                      <div className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
+                        <p className="font-semibold">
+                          {language === 'ar' ? 'هذا طلب ناسخ، وليس طلب باقة.' : 'This is a trade copier order, not a package order.'}
+                        </p>
+                        <p className="mt-1 text-emerald-800">
+                          {language === 'ar'
+                            ? 'لا يتم إصدار مفتاح لهذا الطلب. أكّد الدفع وتابع الربط الخارجي من صفحة الناسخ.'
+                            : 'No package key is issued for this order. Confirm payment and manage external linking from the copier page.'}
+                        </p>
+                        <Button size="sm" className="mt-3" onClick={() => { window.location.href = '/admin/copier'; }}>
+                          {language === 'ar' ? 'فتح صفحة الناسخ' : 'Open copier page'}
+                        </Button>
+                      </div>
+                    )}
                     <div className="flex flex-wrap gap-2">
                       {canManageOperationalOrders && ['pending', 'awaiting_confirmation', 'paid'].includes(order.status) && (
                         <Button size="sm" variant="outline" onClick={() => openRecipientCorrection(order)}>
@@ -404,7 +428,7 @@ export default function AdminOrders() {
                       )}
                       {order.status === 'pending' && (
                         <>
-                          {canConfirmPayment && order.transactionPurpose && (
+                          {canConfirmPayment && order.transactionPurpose && !isCopierOrder && (
                             <Button size="sm" disabled={updateMutation.isPending} onClick={() => openIssueDialog(order)}>
                               <CheckCircle className="w-3.5 h-3.5 me-1" />{language === 'ar' ? 'تأكيد الدفع وإصدار المفتاح' : 'Approve & issue key'}
                             </Button>
@@ -418,7 +442,7 @@ export default function AdminOrders() {
                       )}
                       {order.status === 'awaiting_confirmation' && (
                         <>
-                          {canConfirmPayment && order.transactionPurpose && (
+                          {canConfirmPayment && order.transactionPurpose && !isCopierOrder && (
                             <Button size="sm" disabled={updateMutation.isPending} onClick={() => openIssueDialog(order)}>
                               <CheckCircle className="w-3.5 h-3.5 me-1" />{language === 'ar' ? 'تأكيد الدفع وإصدار المفتاح' : 'Approve & issue key'}
                             </Button>
@@ -430,7 +454,7 @@ export default function AdminOrders() {
                           )}
                         </>
                       )}
-                      {canConfirmPayment && order.transactionPurpose && order.status === 'paid' && (
+                      {canConfirmPayment && order.transactionPurpose && !isCopierOrder && order.status === 'paid' && (
                         <Button size="sm" disabled={updateMutation.isPending} onClick={() => openIssueDialog(order)}>
                           <CheckCircle className="w-3.5 h-3.5 me-1" />{language === 'ar' ? 'إصدار المفتاح' : 'Issue key'}
                         </Button>
