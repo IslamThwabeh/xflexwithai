@@ -35,6 +35,7 @@ const AdminMyPerformance = lazy(() => import("./pages/AdminMyPerformance"));
 const AdminStudentSurveys = lazy(() => import("./pages/AdminStudentSurveys"));
 const AdminPackages = lazy(() => import("./pages/AdminPackages"));
 const AdminLivePackage = lazy(() => import("./pages/AdminLivePackage"));
+const AdminTradeCopier = lazy(() => import("./pages/AdminTradeCopier"));
 const AdminEvents = lazy(() => import("./pages/AdminEvents"));
 const AdminArticles = lazy(() => import("./pages/AdminArticles"));
 const AdminSeoOwnerIntake = lazy(() => import("./pages/AdminSeoOwnerIntake"));
@@ -83,6 +84,7 @@ const Events = lazy(() => import("./pages/Events"));
 const Articles = lazy(() => import("./pages/Articles"));
 const ArticleDetail = lazy(() => import("./pages/ArticleDetail"));
 const Checkout = lazy(() => import("./pages/Checkout"));
+const TradeCopierCheckout = lazy(() => import("./pages/TradeCopierCheckout"));
 const FreeContent = lazy(() => import("./pages/FreeContent"));
 const Gifts = lazy(() => import("./pages/Gifts"));
 const Contact = lazy(() => import("./pages/Contact"));
@@ -195,6 +197,26 @@ function LocalizedCheckout({ language }: { language: SeoLanguage }) {
   }, [language, setLanguage]);
 
   return <Checkout />;
+}
+
+function LocalizedTradeCopierCheckout({ language }: { language: SeoLanguage }) {
+  const { setLanguage } = useLanguage();
+
+  useEffect(() => {
+    setLanguage(language);
+    document.title = language === "ar" ? "اشتراك الناسخ | XFlex" : "Trade Copier Checkout | XFlex";
+    document.documentElement.lang = language;
+    document.documentElement.dir = language === "ar" ? "rtl" : "ltr";
+    let robots = document.head.querySelector<HTMLMetaElement>('meta[name="robots"]');
+    if (!robots) {
+      robots = document.createElement("meta");
+      robots.name = "robots";
+      document.head.appendChild(robots);
+    }
+    robots.content = "noindex,nofollow,noarchive";
+  }, [language, setLanguage]);
+
+  return <TradeCopierCheckout />;
 }
 
 function Router() {
@@ -354,6 +376,11 @@ function Router() {
           <AdminLivePackage />
         </AdminRoute>
       </Route>
+      <Route path={"/admin/copier"}>
+        <AdminRoute>
+          <AdminTradeCopier />
+        </AdminRoute>
+      </Route>
       <Route path={"/admin/seo-owner-intake"}>
         <AdminRoute>
           <AdminSeoOwnerIntake />
@@ -490,6 +517,9 @@ function Router() {
       <Route path="/ar/checkout/:slug"><LocalizedCheckout language="ar" /></Route>
       <Route path="/en/checkout/:slug"><LocalizedCheckout language="en" /></Route>
       <Route path="/checkout/:slug" component={Checkout} />
+      <Route path="/ar/copier/checkout"><LocalizedTradeCopierCheckout language="ar" /></Route>
+      <Route path="/en/copier/checkout"><LocalizedTradeCopierCheckout language="en" /></Route>
+      <Route path="/copier/checkout"><Redirect to="/ar/copier/checkout" /></Route>
       <Route path="/ar/about"><Localized language="ar" seoKey="about"><About /></Localized></Route>
       <Route path="/en/about"><Localized language="en" seoKey="about"><About /></Localized></Route>
       <Route path="/ar/events"><Localized language="ar" seoKey="events"><Events /></Localized></Route>

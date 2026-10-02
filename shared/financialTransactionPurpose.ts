@@ -2,6 +2,7 @@ export const FINANCIAL_TRANSACTION_PURPOSES = [
   'new_sale',
   'renewal',
   'upgrade',
+  'copier_subscription',
   'legacy_migration',
 ] as const;
 
@@ -11,6 +12,7 @@ export const FINANCIAL_TRANSACTION_PURPOSE_LABELS: Record<FinancialTransactionPu
   new_sale: { en: 'New Sale', ar: 'شراء جديد' },
   renewal: { en: 'Paid Renewal', ar: 'تجديد مدفوع' },
   upgrade: { en: 'Upgrade', ar: 'ترقية' },
+  copier_subscription: { en: 'Trade Copier Subscription', ar: 'اشتراك الناسخ' },
   legacy_migration: { en: 'Legacy Customer Migration — no revenue impact', ar: 'ترحيل عميل قديم — لا يؤثر على الإيرادات' },
 };
 
@@ -22,6 +24,7 @@ export function purposeFromPaymentSourceType(value: unknown): Exclude<FinancialT
   if (value === 'order_payment_new_sale') return 'new_sale';
   if (value === 'order_payment_renewal') return 'renewal';
   if (value === 'order_payment_upgrade') return 'upgrade';
+  if (value === 'order_payment_copier_subscription') return 'copier_subscription';
   return null;
 }
 

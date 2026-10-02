@@ -54,6 +54,7 @@ import {
   financialReconciliationItems, financialReconciliationEvents,
   orderRenewalDetails, orderTransactionPurposeEvents,
   legacyCustomerMigrations, legacyCustomerMigrationEvents,
+  tradeCopierSubscriptions, TradeCopierSubscription, InsertTradeCopierSubscription,
   orderItems, OrderItem, InsertOrderItem,
   packageSubscriptions, PackageSubscription, InsertPackageSubscription,
   studentDocuments, StudentDocument, InsertStudentDocument,
@@ -16794,6 +16795,226 @@ export async function createPaidRenewalOrder(input: {
     }),
   ]);
   return { order, detail: await getOrderRenewalDetail(order.id, db), idempotent: false };
+}
+
+export const TRADE_COPIER_SERVICE_KEY = 'trade_copier' as const;
+export const TRADE_COPIER_AMOUNT_ILS_MINOR = 100_000;
+export const TRADE_COPIER_DEFAULT_ACCESS_DAYS = 365;
+
+export type TradeCopierSubscriptionStatus =
+  | 'pending_payment'
+  | 'awaiting_external_link'
+  | 'active'
+  | 'suspended'
+  | 'expired'
+  | 'cancelled';
+
+function addUtcDays(date: Date, days: number) {
+  const next = new Date(date);
+  next.setUTCDate(next.getUTCDate() + days);
+  return next;
+}
+
+export async function getTradeCopierSubscriptionByOrderId(orderId: number, database?: any) {
+  const db = database ?? await getDb();
+  if (!db) return null;
+  const [row] = await db.select().from(tradeCopierSubscriptions)
+    .where(eq(tradeCopierSubscriptions.orderId, orderId))
+    .limit(1);
+  return row ?? null;
+}
+
+export async function getUserOpenTradeCopierSubscription(userId: number, database?: any) {
+  const db = database ?? await getDb();
+  if (!db) return null;
+  const [row] = await db.select().from(tradeCopierSubscriptions)
+    .where(and(
+      eq(tradeCopierSubscriptions.userId, userId),
+      inArray(tradeCopierSubscriptions.status, ['pending_payment', 'awaiting_external_link', 'active', 'suspended']),
+    ))
+    .orderBy(desc(tradeCopierSubscriptions.id))
+    .limit(1);
+  return row ?? null;
+}
+
+export async function createTradeCopierOrder(input: {
+  userId: number;
+  paymentMethod: 'bank_transfer';
+  termsAcceptedAt: string;
+  termsAcceptedVersion: string;
+  termsAcceptedIpAddress?: string | null;
+  termsAcceptedUserAgent?: string | null;
+  notes?: string | null;
+  accessDays?: number | null;
+}, database?: any) {
+  const db = database ?? await getDb();
+  if (!db) throw new Error('Database not available');
+
+  const existingSubscription = await getUserOpenTradeCopierSubscription(input.userId, db);
+  if (existingSubscription) {
+    const existingOrder = await getOrderById(existingSubscription.orderId);
+    if (existingOrder) return { order: existingOrder, subscription: existingSubscription, idempotent: true };
+  }
+
+  const accessDays = Math.max(1, Math.min(3650, Math.round(input.accessDays ?? TRADE_COPIER_DEFAULT_ACCESS_DAYS)));
+  const amountIlsMinor = TRADE_COPIER_AMOUNT_ILS_MINOR;
+  const vatRate = 16;
+  const vatAmount = Math.round(amountIlsMinor * vatRate / (100 + vatRate));
+  const now = new Date().toISOString();
+
+  const [order] = await db.insert(orders).values({
+    userId: input.userId,
+    status: 'pending',
+    subtotal: amountIlsMinor - vatAmount,
+    discountAmount: 0,
+    vatRate,
+    vatAmount,
+    totalAmount: amountIlsMinor,
+    currency: 'ILS',
+    paymentMethod: input.paymentMethod,
+    isGift: false,
+    isUpgrade: false,
+    transactionPurpose: 'copier_subscription',
+    notes: input.notes?.trim() || `Private trade copier subscription (${accessDays} days)`,
+    termsAcceptedAt: input.termsAcceptedAt,
+    termsAcceptedVersion: input.termsAcceptedVersion,
+    termsAcceptedIpAddress: input.termsAcceptedIpAddress ?? null,
+    termsAcceptedUserAgent: input.termsAcceptedUserAgent ?? null,
+    createdAt: now,
+    updatedAt: now,
+  }).returning();
+  if (!order) throw new Error('Failed to create the trade copier order.');
+
+  await db.batch([
+    db.insert(orderItems).values({
+      orderId: order.id,
+      itemType: 'service',
+      packageId: null,
+      courseId: null,
+      priceAtPurchase: amountIlsMinor,
+      currency: 'ILS',
+      transactionPurpose: 'copier_subscription',
+    }),
+    db.insert(tradeCopierSubscriptions).values({
+      userId: input.userId,
+      orderId: order.id,
+      status: 'pending_payment',
+      serviceKey: TRADE_COPIER_SERVICE_KEY,
+      amountIlsMinor,
+      accessDays,
+      createdByType: 'user',
+      createdById: input.userId,
+      createdAt: now,
+      updatedAt: now,
+    } as InsertTradeCopierSubscription),
+  ]);
+
+  const subscription = await getTradeCopierSubscriptionByOrderId(order.id, db);
+  if (!subscription) throw new Error('Failed to create the trade copier subscription.');
+  return { order, subscription, idempotent: false };
+}
+
+export async function listTradeCopierSubscriptions(input?: {
+  status?: TradeCopierSubscriptionStatus;
+  limit?: number;
+}, database?: any) {
+  const db = database ?? await getDb();
+  if (!db) return [];
+  const limit = Math.min(Math.max(input?.limit ?? 100, 1), 500);
+  const statusFilter = input?.status ? [eq(tradeCopierSubscriptions.status, input.status)] : [];
+  return db.select({
+    id: tradeCopierSubscriptions.id,
+    userId: tradeCopierSubscriptions.userId,
+    userName: users.name,
+    userEmail: users.email,
+    userPhone: users.phone,
+    orderId: tradeCopierSubscriptions.orderId,
+    orderStatus: orders.status,
+    paymentProofUrl: orders.paymentProofUrl,
+    paymentReference: orders.paymentReference,
+    status: tradeCopierSubscriptions.status,
+    serviceKey: tradeCopierSubscriptions.serviceKey,
+    amountIlsMinor: tradeCopierSubscriptions.amountIlsMinor,
+    accessDays: tradeCopierSubscriptions.accessDays,
+    startsAt: tradeCopierSubscriptions.startsAt,
+    endsAt: tradeCopierSubscriptions.endsAt,
+    externalProvider: tradeCopierSubscriptions.externalProvider,
+    tradingAccountRef: tradeCopierSubscriptions.tradingAccountRef,
+    externalLinkedAt: tradeCopierSubscriptions.externalLinkedAt,
+    supportNotes: tradeCopierSubscriptions.supportNotes,
+    activatedAt: tradeCopierSubscriptions.activatedAt,
+    cancelledAt: tradeCopierSubscriptions.cancelledAt,
+    createdAt: tradeCopierSubscriptions.createdAt,
+    updatedAt: tradeCopierSubscriptions.updatedAt,
+  })
+    .from(tradeCopierSubscriptions)
+    .innerJoin(orders, eq(orders.id, tradeCopierSubscriptions.orderId))
+    .innerJoin(users, eq(users.id, tradeCopierSubscriptions.userId))
+    .where(statusFilter.length ? and(...statusFilter) : undefined)
+    .orderBy(desc(tradeCopierSubscriptions.updatedAt), desc(tradeCopierSubscriptions.id))
+    .limit(limit);
+}
+
+export async function confirmTradeCopierPayment(input: ConfirmOrderPaymentInput, database?: any) {
+  const db = database ?? await getDb();
+  if (!db) throw new Error('Database not available');
+  if (input.order.transactionPurpose !== 'copier_subscription') {
+    throw new Error('This order is not a trade copier subscription.');
+  }
+  const subscription = await getTradeCopierSubscriptionByOrderId(input.order.id, db);
+  if (!subscription) throw new Error('Trade copier subscription not found for this order.');
+  await confirmOrderPayment(input, db);
+  const now = new Date().toISOString();
+  const [updated] = await db.update(tradeCopierSubscriptions).set({
+    status: subscription.status === 'pending_payment' ? 'awaiting_external_link' : subscription.status,
+    updatedAt: now,
+  }).where(eq(tradeCopierSubscriptions.id, subscription.id)).returning();
+  return { subscription: updated ?? subscription, confirmation: await getOrderPaymentConfirmation(input.order.id, db) };
+}
+
+export async function updateTradeCopierSubscription(input: {
+  id: number;
+  status?: TradeCopierSubscriptionStatus;
+  externalProvider?: string | null;
+  tradingAccountRef?: string | null;
+  supportNotes?: string | null;
+  actorType: 'admin' | 'staff';
+  actorId: number;
+}, database?: any): Promise<TradeCopierSubscription | null> {
+  const db = database ?? await getDb();
+  if (!db) return null;
+  const [current] = await db.select().from(tradeCopierSubscriptions)
+    .where(eq(tradeCopierSubscriptions.id, input.id))
+    .limit(1);
+  if (!current) return null;
+
+  const nowDate = new Date();
+  const now = nowDate.toISOString();
+  const status = input.status ?? current.status;
+  const updates: Partial<InsertTradeCopierSubscription> = {
+    status,
+    externalProvider: input.externalProvider === undefined ? current.externalProvider : input.externalProvider?.trim() || null,
+    tradingAccountRef: input.tradingAccountRef === undefined ? current.tradingAccountRef : input.tradingAccountRef?.trim() || null,
+    supportNotes: input.supportNotes === undefined ? current.supportNotes : input.supportNotes?.trim() || null,
+    updatedAt: now,
+  };
+
+  if (status === 'active' && current.status !== 'active') {
+    updates.startsAt = current.startsAt || now;
+    updates.endsAt = current.endsAt || addUtcDays(nowDate, Number(current.accessDays || TRADE_COPIER_DEFAULT_ACCESS_DAYS)).toISOString();
+    updates.externalLinkedAt = current.externalLinkedAt || now;
+    updates.activatedAt = current.activatedAt || now;
+    updates.activatedByType = input.actorType;
+    updates.activatedById = input.actorId;
+  }
+  if (status === 'cancelled' && current.status !== 'cancelled') {
+    updates.cancelledAt = now;
+  }
+
+  const [updated] = await db.update(tradeCopierSubscriptions).set(updates)
+    .where(eq(tradeCopierSubscriptions.id, current.id))
+    .returning();
+  return updated ?? null;
 }
 
 /** One-time classification for pre-release open orders. Never changes a classified source. */

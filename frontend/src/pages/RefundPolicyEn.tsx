@@ -10,6 +10,7 @@ export function RefundPolicyEn() {
         <li>Educational packages</li>
         <li>Recommendation channels</li>
         <li>Analysis or AI tools (such as Lex AI)</li>
+        <li>The trade copier or any trade-copying or external trading-linking service</li>
       </ul>
       <p>This policy is an integral part of the Academy's general Terms and Conditions.</p>
 
@@ -46,6 +47,7 @@ export function RefundPolicyEn() {
       <p className="font-semibold mt-3">No refunds are issued in the following cases:</p>
       <ul className="list-disc ps-6 space-y-1">
         <li>Activation of the subscription or package key, or granting access to any content, channel, or tool.</li>
+        <li>Payment approval, beginning external linking steps for the trade copier, or delivering any activation details for it.</li>
         <li>Viewing any part of the content, opening the learning account, or accessing recommendation channels or Lex AI.</li>
         <li>Partial or full use of the service, even for a short period.</li>
         <li>Failure to achieve profits or incurring losses.</li>
@@ -57,6 +59,7 @@ export function RefundPolicyEn() {
       </ul>
 
       <h2 className="text-xl font-bold text-gray-900">4. Exceptional Cases</h2>
+      <p>For the trade copier, trading losses, differences between the user's account and the source account, or delays, refusals, or restrictions by an external broker are not automatic grounds for a refund.</p>
       <p>The Academy may, at its sole discretion only and without creating any obligation or acquired right for the user, consider limited exceptional cases such as:</p>
       <ul className="list-disc ps-6 space-y-1">
         <li>A severe technical malfunction caused by the Academy only that completely prevents access to the service and was not resolved within a reasonable timeframe.</li>

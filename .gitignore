@@ -116,6 +116,7 @@ artifacts-courses-1920.png
 *.db-wal
 *.sqlite
 *.sqlite3
+backups/*.sql
 
 # Generated student document artifacts
 scripts/generated/student-documents/pdf/

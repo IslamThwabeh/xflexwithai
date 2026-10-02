@@ -8462,6 +8462,129 @@ export const appRouter = router({
   }),
 
   // =============================================
+  // TRADE COPIER — private sale, external account linking
+  // =============================================
+  tradeCopier: router({
+    offer: publicProcedure.query(() => ({
+      serviceKey: db.TRADE_COPIER_SERVICE_KEY,
+      nameEn: 'Trade Copier',
+      nameAr: 'الناسخ',
+      amountIlsMinor: db.TRADE_COPIER_AMOUNT_ILS_MINOR,
+      currency: 'ILS' as const,
+      accessDays: db.TRADE_COPIER_DEFAULT_ACCESS_DAYS,
+      transactionPurpose: 'copier_subscription' as const,
+      externalLinkingRequired: true as const,
+    })),
+
+    myOpenSubscription: protectedProcedure.query(async ({ ctx }) => {
+      if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+      return db.getUserOpenTradeCopierSubscription(ctx.user.id);
+    }),
+
+    createOrder: protectedProcedure
+      .input(z.object({
+        paymentMethod: z.literal('bank_transfer'),
+        termsAcceptedAt: z.string().min(1),
+        termsAcceptedVersion: z.string().min(1),
+        notes: z.string().max(1000).nullable().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        if (input.termsAcceptedVersion !== CURRENT_TERMS_VERSION) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Current Terms acceptance is required.' });
+        }
+        try {
+          return await db.createTradeCopierOrder({
+            userId: ctx.user.id,
+            paymentMethod: input.paymentMethod,
+            termsAcceptedAt: new Date().toISOString(),
+            termsAcceptedVersion: CURRENT_TERMS_VERSION,
+            termsAcceptedIpAddress: getRequestIp(ctx.req) || null,
+            termsAcceptedUserAgent: getRequestUserAgent(ctx.req) || null,
+            notes: input.notes,
+          });
+        } catch (error) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: error instanceof Error ? error.message : 'Trade copier order could not be created.',
+          });
+        }
+      }),
+
+    adminList: adminOrRoleProcedure(['support', 'key_manager', 'finance_manager'])
+      .input(z.object({
+        status: z.enum(['pending_payment', 'awaiting_external_link', 'active', 'suspended', 'expired', 'cancelled']).optional(),
+        limit: z.number().int().min(1).max(500).default(100),
+      }).optional())
+      .query(({ input }) => db.listTradeCopierSubscriptions(input)),
+
+    adminConfirmPayment: adminOrRoleProcedure(['finance_manager'])
+      .input(z.object({
+        orderId: z.number().int().positive(),
+        paidAt: z.string().datetime(),
+        baseAmountIlsMinor: z.number().int().positive().max(1_000_000_000),
+        paymentReference: z.string().max(300).nullable().optional(),
+        rationale: z.string().trim().min(5).max(500),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const order = await db.getOrderById(input.orderId);
+        if (!order) throw new TRPCError({ code: 'NOT_FOUND', message: 'Order not found.' });
+        if (order.transactionPurpose !== 'copier_subscription') {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'This order is not a trade copier order.' });
+        }
+        const canConfirmPayment = ctx.admin
+          ? await db.isFinanceOwnerAdmin(ctx.admin.id)
+          : await db.hasAnyRole(ctx.user.id, ['finance_manager']);
+        if (!canConfirmPayment) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Finance approval access is required to confirm this payment.' });
+        }
+        if (!order.termsAcceptedAt || !order.termsAcceptedVersion) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'The client must accept the Terms before this order can be approved.' });
+        }
+        if (order.paymentMethod === 'bank_transfer' && !String(order.paymentProofUrl ?? '').trim()) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Bank-transfer payment evidence must be uploaded before this order can be approved.' });
+        }
+        if (input.baseAmountIlsMinor !== db.TRADE_COPIER_AMOUNT_ILS_MINOR) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'The confirmed ILS amount must match the private trade copier price.' });
+        }
+        try {
+          return await db.confirmTradeCopierPayment({
+            order,
+            actorType: ctx.admin ? 'admin' : 'staff',
+            actorId: ctx.admin?.id ?? ctx.user.id,
+            paidAt: input.paidAt,
+            paymentReference: input.paymentReference,
+            rationale: input.rationale,
+            baseAmountIlsMinor: input.baseAmountIlsMinor,
+          });
+        } catch (error) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: error instanceof Error ? error.message : 'Failed to confirm trade copier payment.',
+          });
+        }
+      }),
+
+    adminUpdateSubscription: adminOrRoleProcedure(['support', 'key_manager'])
+      .input(z.object({
+        id: z.number().int().positive(),
+        status: z.enum(['pending_payment', 'awaiting_external_link', 'active', 'suspended', 'expired', 'cancelled']).optional(),
+        externalProvider: z.string().max(200).nullable().optional(),
+        tradingAccountRef: z.string().max(200).nullable().optional(),
+        supportNotes: z.string().max(1000).nullable().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const updated = await db.updateTradeCopierSubscription({
+          ...input,
+          actorType: ctx.admin ? 'admin' : 'staff',
+          actorId: ctx.admin?.id ?? ctx.user.id,
+        });
+        if (!updated) throw new TRPCError({ code: 'NOT_FOUND', message: 'Trade copier subscription not found.' });
+        return updated;
+      }),
+  }),
+
+  // =============================================
   // LEGACY CUSTOMER MIGRATION — entitlement only, never current revenue
   // =============================================
   legacyMigrations: router({

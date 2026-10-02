@@ -50,6 +50,7 @@ const purposeLabels: Record<string, { en: string; ar: string }> = {
   new_sale: { en: 'New sale', ar: 'شراء جديد' },
   renewal: { en: 'Paid renewal', ar: 'تجديد مدفوع' },
   upgrade: { en: 'Upgrade', ar: 'ترقية' },
+  copier_subscription: { en: 'Trade copier', ar: 'اشتراك الناسخ' },
 };
 
 export default function AdminOrders() {

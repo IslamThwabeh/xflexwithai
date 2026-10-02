@@ -1640,6 +1640,33 @@ export const orderRenewalDetails = sqliteTable("order_renewal_details", {
   createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
 });
 
+export const tradeCopierSubscriptions = sqliteTable("trade_copier_subscriptions", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull(),
+  orderId: integer("order_id").notNull().unique(),
+  status: text("status").default("pending_payment").notNull(),
+  serviceKey: text("service_key").default("trade_copier").notNull(),
+  amountIlsMinor: integer("amount_ils_minor").default(100000).notNull(),
+  accessDays: integer("access_days").default(365).notNull(),
+  startsAt: text("starts_at"),
+  endsAt: text("ends_at"),
+  externalProvider: text("external_provider"),
+  tradingAccountRef: text("trading_account_ref"),
+  externalLinkedAt: text("external_linked_at"),
+  supportNotes: text("support_notes"),
+  createdByType: text("created_by_type").default("user").notNull(),
+  createdById: integer("created_by_id").notNull(),
+  activatedByType: text("activated_by_type"),
+  activatedById: integer("activated_by_id"),
+  activatedAt: text("activated_at"),
+  cancelledAt: text("cancelled_at"),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
+  updatedAt: text("updated_at").default(sql`(datetime('now'))`).notNull(),
+}, (table) => ({
+  userStatusIndex: index("idx_trade_copier_subscriptions_user_status").on(table.userId, table.status, table.id),
+  statusUpdatedIndex: index("idx_trade_copier_subscriptions_status_updated").on(table.status, table.updatedAt, table.id),
+}));
+
 export const orderTransactionPurposeEvents = sqliteTable("order_transaction_purpose_events", {
   id: int("id").primaryKey({ autoIncrement: true }),
   orderId: integer("order_id").notNull(),
@@ -1704,6 +1731,8 @@ export const legacyCustomerMigrationEvents = sqliteTable("legacy_customer_migrat
 
 export type OrderItem = typeof orderItems.$inferSelect;
 export type InsertOrderItem = typeof orderItems.$inferInsert;
+export type TradeCopierSubscription = typeof tradeCopierSubscriptions.$inferSelect;
+export type InsertTradeCopierSubscription = typeof tradeCopierSubscriptions.$inferInsert;
 
 // ============================================================================
 // Package Subscriptions – user owns a package

@@ -207,6 +207,12 @@ const menuSectionsDef: MenuSection[] = [
         path: "/admin/live-package",
       },
       {
+        icon: TrendingUp,
+        labelKey: "admin.sidebar.tradeCopier",
+        label: { en: "Trade Copier", ar: "الناسخ" },
+        path: "/admin/copier",
+      },
+      {
         icon: ClipboardList,
         labelKey: "admin.sidebar.livePackageReview",
         path: "/admin/live-package-review",

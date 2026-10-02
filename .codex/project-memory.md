@@ -1,6 +1,26 @@
 # XFLEX Project Memory
 
-Last updated: 2026-09-23
+Last updated: 2026-10-02
+
+## Trade Copier private checkout and local PRD-data QA - 2026-10-02
+
+- Business term is `الناسخ` / Trade Copier: the site sells and tracks eligibility/payment/subscriber state only; external trading-account linking remains an operational step outside the website.
+- Implemented private checkout routes `/ar/copier/checkout` and `/en/copier/checkout` at ₪1,000 ILS including VAT for 365 days. Unauthenticated customers are sent through account creation/login before order creation; the price is not listed in public packages.
+- Added admin/support/finance workspace `/admin/copier` with a copyable private checkout link, subscriber list, status filters, receipt/payment confirmation visibility, confirmed-revenue total, and external-linking fields/status updates.
+- Added transaction purpose `copier_subscription`, D1 table `trade_copier_subscriptions`, and migration `129_trade_copier_service.sql`. Payment confirmation requires an uploaded bank-transfer proof and records `order_payment_copier_subscription` ledger rows with `transaction_purpose='copier_subscription'`.
+- Local PRD snapshot QA used read-only D1 export `backups/xflexwithai-db-prd-20261001-233910.sql` imported into ignored local DB `xflexwithai.prd-local.db`; a local-only admin password was set for testing. Do not commit or share the backup/DB because it contains production data.
+- Local QA on the PRD snapshot passed: account registration, copier order creation, admin copier list/revenue, rejection of payment confirmation without receipt, successful confirmation after receipt, financial ledger entry creation, and external-link update to `active` with a one-year end date.
+- Verification before production rollout passed `pnpm check` and `pnpm build`. The initial sandbox build failure was only Vite filesystem sandboxing and passed when rerun outside the sandbox.
+
+## D1 free-plan retention and cleanup - 2026-10-01
+
+- Work is on `codex/live-package-phase-a`. The D1 free-plan preparation sequence added raw-data rollups/retention and deployed production Worker version `a4155079-d205-44fb-b6ee-7c87d42356da` from commit `266a9d7` (`Enable production raw data retention`). Earlier supporting commits were `28986b1` (`Add dry-run raw data retention rollups`) and `0b81826` (`Schedule free-safe raw data retention`).
+- Production raw-data retention is enabled for `engagement_events`, `email_delivery_logs`, and `user_notifications` with a 90-day window. The cron is `30 23 * * *` UTC, which is 02:30 Asia/Amman at the time of rollout, before the local low-traffic/reset window. Production env uses `RAW_DATA_RETENTION_ENABLED="true"` and `RAW_DATA_RETENTION_DRY_RUN="false"`; staging/dev remain disabled/dry-run.
+- Retention preserves aggregate history before deleting raw rows through `raw_retention_engagement_daily_rollups`, `raw_retention_email_daily_rollups`, and `raw_retention_notification_daily_rollups`. Do not bypass the rollup-first/delete-second order for manual cleanup.
+- Manual production cleanup completed on 2026-10-01 while still on paid headroom. Cutoffs were 90-day ISO cutoffs on 2026-07-03. Raw rows deleted after rollup preservation: `engagement_events` 69,130 rows total, `email_delivery_logs` 21,350 rows, and `user_notifications` 16,736 rows. A final verification at cutoff `2026-07-03T18:25:58.369Z` found zero eligible rows remaining in all three tables.
+- Final verified table totals after cleanup: `engagement_events` 29,460 rows, `email_delivery_logs` 53,482 rows, and `user_notifications` 31,463 rows. D1 metadata reported database size `288,346,112` bytes, about 55.0% of the 500 MB Free database limit.
+- Production smoke checks after cleanup passed: `https://xflexacademy.com/ar` 200, Worker `/health` 200, and Worker `/api/test/db` 200.
+- The D1 guardrail intentionally remains UNSAFE on 2026-10-01 because the trailing 24-hour write window includes migration/retention cleanup work: latest post-cleanup sample showed rows read 3,189,833 / 5,000,000 (pass), rows written 271,021 / 100,000 (unsafe), database size 288,346,112 / 524,288,000 (pass). Do not downgrade Cloudflare/D1 to Free until this write spike ages out and a fresh guardrail/observation window is clean.
 
 ## Email reliability Phase 3 — provider delivery lifecycle — 2026-09-23
 

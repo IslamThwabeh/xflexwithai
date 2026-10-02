@@ -48,6 +48,15 @@ export function TermsOfServiceEn() {
         <li>Past performance does not necessarily reflect future performance.</li>
       </ul>
 
+      <h2 className="text-xl font-bold text-gray-900">5.1 Trade Copier Service</h2>
+      <ul className="list-disc ps-6 space-y-1">
+        <li>The trade copier is a service that copies trades from a source trading account to linked trading accounts through an external provider or setup.</li>
+        <li>Activating a website subscription alone does not prove that the trading account is linked or operating; activation is complete only after payment approval and external linking by support or the approved provider.</li>
+        <li>Profit and loss results may differ between the source account and the user's account because of account size, copier settings, execution speed, spread, slippage, or broker/platform rules.</li>
+        <li>The Academy does not guarantee profits, matching source-account results, or avoidance of losses.</li>
+        <li>Access duration for the trade copier is based on the offer, invoice, or subscription page. A one-time payment does not automatically mean lifetime access unless explicitly agreed in writing.</li>
+      </ul>
+
       <h2 className="text-xl font-bold text-gray-900">6. User's Personal Commitment</h2>
       <p className="font-semibold">The user is responsible for:</p>
       <ul className="list-disc ps-6 space-y-1">

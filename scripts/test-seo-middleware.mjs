@@ -53,7 +53,12 @@ const localizedAuth = await onRequest(contextFor("https://xflexacademy.com/ar/au
 assert.equal(localizedAuth.status, 200);
 assert.equal(localizedAuth.headers.get("x-robots-tag"), "noindex, nofollow");
 
-for (const pathname of ["/ar/checkout/live-package", "/en/checkout/live-package"]) {
+for (const pathname of [
+  "/ar/checkout/live-package",
+  "/en/checkout/live-package",
+  "/ar/copier/checkout",
+  "/en/copier/checkout",
+]) {
   const localizedCheckout = await onRequest(contextFor(`https://xflexacademy.com${pathname}`, async (request) => {
     assert.equal(new URL(request.url).pathname, "/app-shell/");
     return new Response("<html>checkout app</html>", { status: 200, headers: { "content-type": "text/html" } });
