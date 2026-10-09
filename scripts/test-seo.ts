@@ -86,8 +86,9 @@ const articleSitemap = await fs.readFile(path.join(outputRoot, "sitemap-articles
 for (const article of CURATED_ARTICLES) assert(articleSitemap.includes(article.slug));
 
 const robots = await fs.readFile(path.join(outputRoot, "robots.txt"), "utf8");
-assert(robots.includes("Disallow: /admin"));
-assert(robots.includes("Disallow: /community"));
+assert(!robots.includes("Disallow: /admin"));
+assert(!robots.includes("Disallow: /community"));
+assert(robots.includes("Disallow: /api/"));
 assert(robots.includes("OAI-SearchBot"));
 assert(robots.includes("Sitemap: https://xflexacademy.com/sitemap.xml"));
 

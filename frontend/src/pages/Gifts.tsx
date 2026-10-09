@@ -1,4 +1,4 @@
-import { Gift, FileText, Download, ExternalLink, CalendarClock } from "lucide-react";
+import { Gift, FileText, Download, ExternalLink, CalendarClock, ShieldCheck } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -38,6 +38,27 @@ const gifts = [
     actionHref: "/events",
     actionLabelEn: "View Events",
     actionLabelAr: "عرض الفعاليات",
+  },
+];
+
+const resourceNotes = [
+  {
+    titleEn: "Start with the free library",
+    titleAr: "ابدأ من المكتبة المجانية",
+    descriptionEn: "Review beginner-friendly videos before choosing a paid learning path.",
+    descriptionAr: "راجع فيديوهات مناسبة للبداية قبل اختيار أي مسار مدفوع.",
+  },
+  {
+    titleEn: "Use articles for context",
+    titleAr: "استخدم المقالات للفهم",
+    descriptionEn: "Learn how risk, signal channels, and unrealistic promises work in the trading space.",
+    descriptionAr: "افهم المخاطر وقنوات التوصيات والوعود غير الواقعية في عالم التداول.",
+  },
+  {
+    titleEn: "Keep risk visible",
+    titleAr: "اجعل المخاطر واضحة",
+    descriptionEn: "Educational resources are not guarantees or personalized financial advice.",
+    descriptionAr: "الموارد التعليمية ليست ضمانات أو نصيحة مالية شخصية.",
   },
 ];
 
@@ -101,6 +122,18 @@ export default function Gifts() {
                   </Card>
                 );
               })}
+            </div>
+
+            <div className="mt-8 grid gap-4 md:grid-cols-3">
+              {resourceNotes.map((item) => (
+                <div key={item.titleEn} className="rounded-[1.4rem] border border-white/10 bg-black/30 p-5 text-white">
+                  <ShieldCheck className="mb-4 h-5 w-5 text-[#C8A96B]" />
+                  <h2 className="text-base font-semibold">{isRtl ? item.titleAr : item.titleEn}</h2>
+                  <p className="mt-3 text-sm leading-7 text-white/58">
+                    {isRtl ? item.descriptionAr : item.descriptionEn}
+                  </p>
+                </div>
+              ))}
             </div>
           </div>
         </section>

@@ -35,6 +35,7 @@ import {
   Headphones,
   ShoppingBag,
   Package,
+  FileText,
   ClipboardCheck,
   User,
   Bell,
@@ -188,6 +189,12 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
       label: t("dashboard.nav.rec"),
       icon: <MessageSquare className="h-4 w-4" />,
       match: "/recommendations",
+    },
+    {
+      href: "/documents",
+      label: language === "ar" ? "ملفات الدورة" : "Course Documents",
+      icon: <FileText className="h-4 w-4" />,
+      match: "/documents",
     },
     {
       href: "/support",
