@@ -44,3 +44,11 @@ pnpm run d1:guardrail -- xflexwithai-db --skip-insights
 - If the command fails due missing Cloudflare credentials, run `pnpm exec wrangler whoami` and authenticate before retrying.
 - Do not downgrade while the report is `UNSAFE`.
 - Treat `CAUTION` as a prompt to investigate the top fingerprints before deciding.
+
+## 2026-10-01 Retention Cleanup Note
+
+- Production raw-data retention is enabled and scheduled at `30 23 * * *` UTC, which was 02:30 Asia/Amman at rollout time.
+- Manual paid-headroom cleanup on 2026-10-01 removed all rows older than the 90-day cutoff from `engagement_events`, `email_delivery_logs`, and `user_notifications` after preserving daily rollups.
+- Final post-cleanup verification found zero eligible rows older than cutoff `2026-07-03T18:25:58.369Z`.
+- Final D1 metadata size was `288,346,112` bytes, about 55.0% of the Free 500 MB database limit.
+- Same-day guardrail output is expected to be `UNSAFE` because the trailing 24-hour write window includes the cleanup. Wait for that spike to age out before using the guardrail to approve a billing downgrade.

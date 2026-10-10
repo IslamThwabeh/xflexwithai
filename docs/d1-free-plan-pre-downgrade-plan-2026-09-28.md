@@ -1,13 +1,59 @@
 # D1 Free-Plan Pre-Downgrade Plan
 
 Date: 2026-09-28
-Status: Draft plan. No code, schema, data, deployment, or Cloudflare billing change has been made by this document.
+Status: Active pre-downgrade record. Local optimization, production deployment, and production raw-data cleanup were performed after owner approval. No Cloudflare billing downgrade has been made by this document.
 
 ## Purpose
 
 Use the remaining paid-plan headroom to complete the D1 work that would be more constrained after returning to Cloudflare's Free plan. Each phase must be completed separately and then stop for owner approval before the next phase starts.
 
 This plan is intentionally conservative. It treats index creation, archive backfills, production query-plan diagnostics, and broad verification reads as scarce operations once the account is back on Free.
+
+## Production retention cleanup record - 2026-10-01
+
+Status: Complete. Production raw-data retention was enabled, then a manual full cleanup was performed while the account still had paid-plan headroom. Do not interpret the same-day guardrail as downgrade-safe because the trailing 24-hour write window includes the cleanup work.
+
+Production retention deployment:
+
+- Commit `28986b1` (`Add dry-run raw data retention rollups`) added raw retention rollup tables, indexes, and dry-run coverage.
+- Commit `0b81826` (`Schedule free-safe raw data retention`) added the dedicated raw retention cron.
+- Commit `266a9d7` (`Enable production raw data retention`) enabled production retention and deployed Worker version `a4155079-d205-44fb-b6ee-7c87d42356da`.
+- Production cron: `30 23 * * *` UTC, which is 02:30 Asia/Amman at rollout time.
+- Production settings: `RAW_DATA_RETENTION_ENABLED="true"`, `RAW_DATA_RETENTION_DRY_RUN="false"`, `RAW_DATA_RETENTION_DAYS="90"`, `RAW_DATA_RETENTION_ENGAGEMENT_LIMIT="100"`, `RAW_DATA_RETENTION_EMAIL_LIMIT="50"`, and `RAW_DATA_RETENTION_NOTIFICATION_LIMIT="50"`.
+
+Manual cleanup outcome:
+
+- Rollup-first/delete-second cleanup was used for `engagement_events`, `email_delivery_logs`, and `user_notifications`.
+- Aggregate history was preserved in `raw_retention_engagement_daily_rollups`, `raw_retention_email_daily_rollups`, and `raw_retention_notification_daily_rollups`.
+- Total raw rows deleted during 2026-10-01 cleanup:
+  - `engagement_events`: 69,130
+  - `email_delivery_logs`: 21,350
+  - `user_notifications`: 16,736
+- Final 90-day cutoff verification at `2026-07-03T18:25:58.369Z` found:
+  - `engagement_events`: 0 eligible rows
+  - `email_delivery_logs`: 0 eligible rows
+  - `user_notifications`: 0 eligible rows
+- Final table totals:
+  - `engagement_events`: 29,460
+  - `email_delivery_logs`: 53,482
+  - `user_notifications`: 31,463
+- Final D1 metadata size after cleanup: `288,346,112` bytes, about 55.0% of the 500 MB Free-plan database limit.
+
+Post-cleanup verification:
+
+- Production site `/ar`: HTTP 200.
+- Worker `/health`: HTTP 200.
+- Worker `/api/test/db`: HTTP 200.
+- Guardrail after cleanup remained `UNSAFE` only because the rolling 24-hour write window included the cleanup work:
+  - Rows read: 3,189,833 / 5,000,000, pass.
+  - Rows written: 271,021 / 100,000, unsafe.
+  - Database size: 288,346,112 / 524,288,000, pass.
+
+Downgrade note:
+
+- Do not downgrade on 2026-10-01.
+- Re-run `pnpm run d1:guardrail -- xflexwithai-db --time-period 1d` after the cleanup spike leaves the 24-hour window.
+- Proceed with billing downgrade only after rows written return below the internal target and no D1/Worker errors or functional regressions are observed.
 
 ## Current production baseline
 

@@ -31,6 +31,7 @@ vi.mock("../backend/db", async () => {
     ...actual,
     getAdminByEmail: vi.fn().mockResolvedValue(null),
     getUserRecommendationsAccess: vi.fn(),
+    hasAnyRole: vi.fn(),
     createRecommendationAlert: vi.fn(),
     getRecommendationSubscriberDetails: vi.fn(),
     getRecommendationDeliveryFunnel: vi.fn(),
@@ -45,6 +46,7 @@ vi.mock("../backend/db", async () => {
     getConfiguredAdminNotificationEmails: vi.fn().mockResolvedValue([]),
     getMutedRecommendationUserIdsForThread: vi.fn().mockResolvedValue([]),
     getRecommendationPublishState: vi.fn(),
+    findSimilarOpenRecommendationForAnalyst: vi.fn(),
     createRecommendationMessage: vi.fn(),
     extendRecommendationAlertActivity: vi.fn().mockResolvedValue(undefined),
     getRecommendationMessageById: vi.fn(),
@@ -52,7 +54,12 @@ vi.mock("../backend/db", async () => {
     closeRecommendationThread: vi.fn().mockResolvedValue(undefined),
     cancelRecommendationAlert: vi.fn().mockResolvedValue(undefined),
     clearUserInteraction: vi.fn().mockResolvedValue(undefined),
+    listActiveRecommendationAlerts: vi.fn(),
+    getOpenRecommendationMessagesFeed: vi.fn(),
+    getRecommendationThreadMessagesFeed: vi.fn(),
     getRecommendationMonthlyTradeReport: vi.fn(),
+    getRecommendationAnalystComparisonReport: vi.fn(),
+    getUnreadStaffNotificationBadges: vi.fn(),
     saveRecommendationTradeResultOverride: vi.fn(),
   };
 });
@@ -88,6 +95,7 @@ function createAuthedCaller(contextOverrides: Record<string, unknown> = {}) {
 
 describe("recommendations workflow", () => {
   const getUserRecommendationsAccess = vi.mocked(db.getUserRecommendationsAccess);
+  const hasAnyRole = vi.mocked(db.hasAnyRole);
   const createRecommendationAlert = vi.mocked(db.createRecommendationAlert);
   const getRecommendationSubscriberDetails = vi.mocked(db.getRecommendationSubscriberDetails);
   const getRecommendationDeliveryFunnel = vi.mocked(db.getRecommendationDeliveryFunnel);
@@ -96,13 +104,19 @@ describe("recommendations workflow", () => {
   const prepareRecommendationDeliveries = vi.mocked(db.prepareRecommendationDeliveries);
   const getMutedRecommendationUserIdsForThread = vi.mocked(db.getMutedRecommendationUserIdsForThread);
   const getRecommendationPublishState = vi.mocked(db.getRecommendationPublishState);
+  const findSimilarOpenRecommendationForAnalyst = vi.mocked(db.findSimilarOpenRecommendationForAnalyst);
   const createRecommendationMessage = vi.mocked(db.createRecommendationMessage);
   const extendRecommendationAlertActivity = vi.mocked(db.extendRecommendationAlertActivity);
   const getRecommendationMessageById = vi.mocked(db.getRecommendationMessageById);
   const hasRecommendationResultChild = vi.mocked(db.hasRecommendationResultChild);
   const closeRecommendationThread = vi.mocked(db.closeRecommendationThread);
   const clearUserInteraction = vi.mocked(db.clearUserInteraction);
+  const listActiveRecommendationAlerts = vi.mocked(db.listActiveRecommendationAlerts);
+  const getOpenRecommendationMessagesFeed = vi.mocked(db.getOpenRecommendationMessagesFeed);
+  const getRecommendationThreadMessagesFeed = vi.mocked(db.getRecommendationThreadMessagesFeed);
   const getRecommendationMonthlyTradeReport = vi.mocked(db.getRecommendationMonthlyTradeReport);
+  const getRecommendationAnalystComparisonReport = vi.mocked(db.getRecommendationAnalystComparisonReport);
+  const getUnreadStaffNotificationBadges = vi.mocked(db.getUnreadStaffNotificationBadges);
   const saveRecommendationTradeResultOverride = vi.mocked(db.saveRecommendationTradeResultOverride);
   const mockedSendEmail = vi.mocked(sendEmail);
   const mockedDrainRecommendationDeliveryQueue = vi.mocked(drainRecommendationDeliveryQueue);
@@ -115,6 +129,7 @@ describe("recommendations workflow", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    hasAnyRole.mockResolvedValue(false);
 
     getUserRecommendationsAccess.mockResolvedValue({
       hasSubscription: true,
@@ -123,6 +138,7 @@ describe("recommendations workflow", () => {
       isFrozen: false,
       frozenUntil: null,
       frozenReason: null,
+      hasDuplicateGuard: false,
     } as any);
 
     createRecommendationAlert.mockResolvedValue({
@@ -144,9 +160,14 @@ describe("recommendations workflow", () => {
       secondsUntilUnlock: 0,
       secondsUntilExpiry: 0,
     } as any);
+    listActiveRecommendationAlerts.mockResolvedValue([] as any);
+    getOpenRecommendationMessagesFeed.mockResolvedValue([] as any);
+    getRecommendationThreadMessagesFeed.mockResolvedValue({ messages: [], total: 0, limit: 50, offset: 0 } as any);
     createRecommendationMessage.mockResolvedValue(901);
+    findSimilarOpenRecommendationForAnalyst.mockResolvedValue(null);
     getRecommendationMessageById.mockResolvedValue({
       id: 901,
+      userId: 123,
       type: "recommendation",
       content: "Buy XAUUSD on the pullback.",
       symbol: "XAUUSD",
@@ -184,6 +205,11 @@ describe("recommendations workflow", () => {
         unresolved: 0,
       },
     });
+    getRecommendationAnalystComparisonReport.mockResolvedValue({
+      month: "2026-05",
+      analysts: [],
+    } as any);
+    getUnreadStaffNotificationBadges.mockResolvedValue({ total: 0, byRoute: {} } as any);
     saveRecommendationTradeResultOverride.mockResolvedValue({
       id: 902,
       parentId: 901,
@@ -198,8 +224,113 @@ describe("recommendations workflow", () => {
 
     const result = await caller.recommendations.monthlyTradeReport({ month: "2026-05" });
 
-    expect(getRecommendationMonthlyTradeReport).toHaveBeenCalledWith("2026-05");
+    expect(getRecommendationMonthlyTradeReport).toHaveBeenCalledWith("2026-05", 123);
     expect(result).toMatchObject({ month: "2026-05" });
+  });
+
+  it("scopes analyst management feeds to the signed-in analyst", async () => {
+    const caller = createAuthedCaller();
+
+    await caller.recommendations.activeAlerts();
+    await caller.recommendations.openThreads();
+    await caller.recommendations.threadMessages({ status: "closed", limit: 20, offset: 0 });
+
+    expect(listActiveRecommendationAlerts).toHaveBeenCalledWith(123);
+    expect(getOpenRecommendationMessagesFeed).toHaveBeenCalledWith(123, 123);
+    expect(getRecommendationThreadMessagesFeed).toHaveBeenCalledWith(123, expect.objectContaining({
+      status: "closed",
+      analystUserId: 123,
+    }));
+  });
+
+  it("allows analyst staff to read staff notification badge counts", async () => {
+    const caller = createAuthedCaller();
+    hasAnyRole.mockImplementation(async (_userId, roles) => roles.includes("analyst"));
+
+    const result = await caller.staffNotifications.badgeCounts();
+
+    expect(hasAnyRole).toHaveBeenCalledWith(
+      123,
+      expect.arrayContaining(["analyst", "analyst_duplicate_guard"])
+    );
+    expect(getUnreadStaffNotificationBadges).toHaveBeenCalledWith(123);
+    expect(result).toMatchObject({ total: 0, byRoute: {} });
+  });
+
+  it("keeps full-admin recommendation management feeds global", async () => {
+    vi.mocked(db.getAdminByEmail)
+      .mockResolvedValueOnce({
+        id: 1,
+        email: "owner@example.com",
+        name: "Owner",
+      } as any)
+      .mockResolvedValueOnce({
+        id: 1,
+        email: "owner@example.com",
+        name: "Owner",
+      } as any)
+      .mockResolvedValueOnce({
+        id: 1,
+        email: "owner@example.com",
+        name: "Owner",
+      } as any)
+      .mockResolvedValueOnce({
+      id: 1,
+      email: "owner@example.com",
+      name: "Owner",
+    } as any);
+    const caller = createAuthedCaller({
+      user: {
+        id: 999,
+        email: "owner@example.com",
+        passwordHash: "",
+        name: "Owner",
+        phone: null,
+        emailVerified: true,
+        createdAt: "",
+        updatedAt: "",
+        lastSignedIn: "",
+      },
+    });
+
+    await caller.recommendations.activeAlerts();
+    await caller.recommendations.openThreads();
+    await caller.recommendations.threadMessages({ status: "all", limit: 20, offset: 0 });
+    await caller.recommendations.monthlyTradeReport({ month: "2026-05" });
+
+    expect(listActiveRecommendationAlerts).toHaveBeenCalledWith(undefined);
+    expect(getOpenRecommendationMessagesFeed).toHaveBeenCalledWith(999, undefined);
+    expect(getRecommendationThreadMessagesFeed).toHaveBeenCalledWith(999, expect.objectContaining({
+      status: "all",
+      analystUserId: undefined,
+    }));
+    expect(getRecommendationMonthlyTradeReport).toHaveBeenCalledWith("2026-05", undefined);
+  });
+
+  it("returns admin-only analyst comparison report", async () => {
+    vi.mocked(db.getAdminByEmail).mockResolvedValueOnce({
+      id: 1,
+      email: "owner@example.com",
+      name: "Owner",
+    } as any);
+    const caller = createAuthedCaller({
+      user: {
+        id: 999,
+        email: "owner@example.com",
+        passwordHash: "",
+        name: "Owner",
+        phone: null,
+        emailVerified: true,
+        createdAt: "",
+        updatedAt: "",
+        lastSignedIn: "",
+      },
+    });
+
+    const result = await caller.recommendationAdmin.analystComparisonReport({ month: "2026-05" });
+
+    expect(getRecommendationAnalystComparisonReport).toHaveBeenCalledWith("2026-05");
+    expect(result).toMatchObject({ month: "2026-05", analysts: [] });
   });
 
   it("saves manual trade result overrides", async () => {
@@ -215,6 +346,8 @@ describe("recommendations workflow", () => {
       messageId: 902,
       outcome: "win",
       pips: 25,
+      analystUserId: 123,
+      isAdmin: false,
     });
     expect(result).toMatchObject({ success: true });
   });
@@ -396,6 +529,7 @@ describe("recommendations workflow", () => {
         parentId: null,
       })
     );
+    expect(findSimilarOpenRecommendationForAnalyst).not.toHaveBeenCalled();
     expect(extendRecommendationAlertActivity).toHaveBeenCalledWith(55, 123);
     expect(sendBulkNotification).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -603,7 +737,57 @@ describe("recommendations workflow", () => {
 
     expect(result).toMatchObject({ success: true });
     expect(hasRecommendationResultChild).toHaveBeenCalledWith(901);
-    expect(closeRecommendationThread).toHaveBeenCalledWith(901, 123);
+    expect(closeRecommendationThread).toHaveBeenCalledWith(901, 123, false);
+  });
+
+  it("blocks guarded analysts from publishing a similar open recommendation", async () => {
+    const caller = createAuthedCaller();
+
+    getUserRecommendationsAccess.mockResolvedValue({
+      hasSubscription: true,
+      canPublish: true,
+      subscription: null,
+      isFrozen: false,
+      frozenUntil: null,
+      frozenReason: null,
+      hasDuplicateGuard: true,
+    } as any);
+    getRecommendationPublishState.mockResolvedValue({
+      activeAlert: {
+        id: 55,
+        analystUserId: 123,
+        status: "pending",
+        notifiedAt: new Date().toISOString(),
+        unlockAt: new Date(Date.now() - 5_000).toISOString(),
+        expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+      },
+      canNotify: false,
+      canPostMessages: true,
+      secondsUntilUnlock: 0,
+      secondsUntilExpiry: 600,
+    } as any);
+    getRecommendationDeliveryFunnel.mockResolvedValue({
+      eligible: [{ userId: 1, email: "subscriber@example.com", notificationPrefs: null }] as any,
+      diagnostics: { ...emptyDiagnostics, totalSubs: 1, activeSubs: 1, eligibleCount: 1 },
+    } as any);
+    findSimilarOpenRecommendationForAnalyst.mockResolvedValue({
+      id: 777,
+      userId: 456,
+      content: "Buy XAUUSD on the pullback.",
+    } as any);
+
+    await expect(
+      caller.recommendations.postMessage({
+        type: "recommendation",
+        content: "Buy XAUUSD on the pullback.",
+        symbol: "XAUUSD",
+      })
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      message: "A similar recommendation already exists for this client.",
+    } satisfies Partial<TRPCError>);
+
+    expect(createRecommendationMessage).not.toHaveBeenCalled();
   });
 
   it("clears the recommendation interaction marker on logout", async () => {

@@ -2004,10 +2004,16 @@ function AdminView() {
   const [grantUserQuery, setGrantUserQuery] = useState("");
   const [grantDays, setGrantDays] = useState("30");
   const [grantReason, setGrantReason] = useState(isRTL ? "تعويض عن عدم توفر خدمة الناسخ" : "Compensation for unavailable live copier service");
+  const [comparisonMonth, setComparisonMonth] = useState(getCurrentMonthValue());
 
   const utils = trpc.useUtils();
 
   const { data: analysts = [] } = trpc.recommendationAdmin.listAnalysts.useQuery();
+  const {
+    data: comparisonReport,
+    isLoading: comparisonReportLoading,
+    refetch: refetchComparisonReport,
+  } = trpc.recommendationAdmin.analystComparisonReport.useQuery({ month: comparisonMonth });
   const { data: subscriptions = [] } = trpc.recommendationAdmin.subscriptions.list.useQuery();
   const { data: users = [] } = trpc.users.list.useQuery();
 
@@ -2154,6 +2160,84 @@ function AdminView() {
                   </div>
                 ))}
               </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <TrendingUp className="h-5 w-5" />
+                  {isRTL ? "مقارنة أداء المحللين" : "Analyst Performance Comparison"}
+                </CardTitle>
+                <CardDescription>
+                  {isRTL
+                    ? "تقرير إداري فقط حسب المحلل لمساعدة صاحب العمل على مقارنة نسبة النجاح وصافي النقاط."
+                    : "Admin-only report by analyst so the business owner can compare win rate and net pips."}
+                </CardDescription>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Input
+                  type="month"
+                  value={comparisonMonth}
+                  onChange={(event) => setComparisonMonth(event.target.value || getCurrentMonthValue())}
+                  className="w-[170px]"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => refetchComparisonReport()}
+                  disabled={comparisonReportLoading}
+                >
+                  {isRTL ? "تحديث" : "Refresh"}
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {comparisonReportLoading ? (
+              <p className="text-sm text-muted-foreground">{isRTL ? "جاري تحميل المقارنة..." : "Loading comparison..."}</p>
+            ) : !comparisonReport?.analysts?.length ? (
+              <p className="text-sm text-muted-foreground">{isRTL ? "لا توجد بيانات محللين." : "No analyst data found."}</p>
+            ) : (
+              <ResponsiveTable>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>{isRTL ? "المحلل" : "Analyst"}</TableHead>
+                      <TableHead>{isRTL ? "توصيات افتتحت" : "Opened"}</TableHead>
+                      <TableHead>{isRTL ? "نتائج محسوبة" : "Finalized"}</TableHead>
+                      <TableHead>{isRTL ? "نسبة النجاح" : "Win Rate"}</TableHead>
+                      <TableHead>{isRTL ? "صافي النقاط" : "Net Pips"}</TableHead>
+                      <TableHead>{isRTL ? "تحتاج مراجعة" : "Needs Review"}</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {comparisonReport.analysts.map((row: any, index: number) => (
+                      <TableRow key={row.analyst.id} className={zebraRow(index)}>
+                        <TableCell>
+                          <div>
+                            <p className="font-medium">{row.analyst.name || "-"}</p>
+                            <p className="text-xs text-muted-foreground">{row.analyst.email}</p>
+                          </div>
+                        </TableCell>
+                        <TableCell>{row.report.coverage.rootRecommendationsOpened}</TableCell>
+                        <TableCell>{row.report.summary.totalTrades}</TableCell>
+                        <TableCell>
+                          <Badge className="bg-teal-600 text-white">{row.report.summary.winRate}%</Badge>
+                        </TableCell>
+                        <TableCell className={row.report.summary.netPips >= 0 ? "text-emerald-700" : "text-red-700"}>
+                          {row.report.summary.netPips}
+                        </TableCell>
+                        <TableCell>{row.report.unresolved.length}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </ResponsiveTable>
             )}
           </CardContent>
         </Card>

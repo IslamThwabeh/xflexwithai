@@ -578,8 +578,8 @@ function CinematicNav({ onScrollTo }: { onScrollTo: (id: string) => void }) {
       </div>
       {liveState?.purchasable && (
         <Link href={`/${language}/packages/live-package`}>
-          <a className="flex min-h-10 items-center justify-center gap-2 border-y border-[#C8A96B]/25 bg-gradient-to-r from-[#7A5A1D] via-[#C8A96B] to-[#7A5A1D] px-4 py-2 text-center text-xs font-bold text-[#080808] shadow-[0_10px_35px_rgba(200,169,107,0.2)] md:text-sm">
-            <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-[#080808]" />
+          <a className="flex min-h-9 items-center justify-center gap-2 border-y border-[#C8A96B]/22 bg-[#C8A96B]/12 px-4 py-1.5 text-center text-xs font-bold text-[#F1D99B] shadow-[0_10px_35px_rgba(200,169,107,0.12)] backdrop-blur-xl transition-colors hover:bg-[#C8A96B]/18 md:text-sm">
+            <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-[#F1D99B] shadow-[0_0_14px_rgba(241,217,155,0.75)]" />
             <span>{isArabic ? 'بكج لايف متاح الآن — التسجيل لفترة محدودة' : 'Live Package is open — registration is available for a limited time'}</span>
             <ArrowUpRight className="h-4 w-4 shrink-0" />
           </a>

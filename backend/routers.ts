@@ -185,6 +185,7 @@ const onboardingStatusSchema = z.enum(['not_started', 'pending_review', 'approve
 const brokerReportSortSchema = z.enum(['brokerName', 'openedAccounts', 'deposits', 'conversionRate', 'pendingProofs', 'rejectedProofs']);
 const ASSIGNABLE_STAFF_ROLES = [
   'analyst',
+  'analyst_duplicate_guard',
   'support',
   'lexai_support',
   'key_manager',
@@ -1021,7 +1022,7 @@ const supportStaffProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   const admin = await db.getAdminByEmail(ctx.user.email);
   if (admin) return next({ ctx: { ...ctx, admin, staffRole: 'admin' as const } });
   const isStaff = await db.hasAnyRole(ctx.user.id, [
-    'support', 'key_manager', 'plan_manager',
+    'support', 'analyst', 'analyst_duplicate_guard', 'key_manager', 'plan_manager',
     'client_lookup', 'view_progress', 'view_recommendations', 'view_subscriptions', 'view_quizzes',
     'staff_performance_employee', 'staff_performance_manager',
     'student_surveys_manager', 'loyalty_rewards_manager',
@@ -4638,8 +4639,8 @@ export const appRouter = router({
     }),
 
     activeAlerts: protectedProcedure.query(async ({ ctx }) => {
-      await ensureRecommendationReadAccess(ctx);
-      return db.listActiveRecommendationAlerts();
+      const access = await ensureRecommendationReadAccess(ctx);
+      return db.listActiveRecommendationAlerts(access.isAdmin ? undefined : ctx.user.id);
     }),
 
     feed: protectedProcedure
@@ -4663,13 +4664,15 @@ export const appRouter = router({
         month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).optional(),
       }).optional())
       .query(async ({ ctx, input }) => {
-        await ensureRecommendationReadAccess(ctx);
-        return await db.getRecommendationThreadMessagesFeed(ctx.user.id, input);
+        const access = await ensureRecommendationReadAccess(ctx);
+        const analystUserId = access.canPublish && !access.isAdmin ? ctx.user.id : undefined;
+        return await db.getRecommendationThreadMessagesFeed(ctx.user.id, { ...input, analystUserId });
       }),
 
     openThreads: protectedProcedure.query(async ({ ctx }) => {
-      await ensureRecommendationReadAccess(ctx);
-      return await db.getOpenRecommendationMessagesFeed(ctx.user.id);
+      const access = await ensureRecommendationReadAccess(ctx);
+      const analystUserId = access.canPublish && !access.isAdmin ? ctx.user.id : undefined;
+      return await db.getOpenRecommendationMessagesFeed(ctx.user.id, analystUserId);
     }),
 
     muteThread: protectedProcedure
@@ -4691,7 +4694,7 @@ export const appRouter = router({
         note: z.string().max(200).optional(),
       }).optional())
       .mutation(async ({ ctx, input }) => {
-        await ensureRecommendationPublishAccess(ctx);
+        const access = await ensureRecommendationPublishAccess(ctx);
 
         // Validate the audience BEFORE persisting the alert so failed sends
         // don't leave orphan recommendationAlerts rows. Diagnostics are stored
@@ -4822,7 +4825,7 @@ export const appRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        await ensureRecommendationPublishAccess(ctx);
+        const access = await ensureRecommendationPublishAccess(ctx);
 
         const trimmedContent = input.content.trim();
         if (trimmedContent.length < 3) {
@@ -4897,6 +4900,20 @@ export const appRouter = router({
             });
           }
 
+          if (access.hasDuplicateGuard) {
+            const similar = await db.findSimilarOpenRecommendationForAnalyst({
+              analystUserId: ctx.user.id,
+              symbol: normalizedSymbol,
+              content: trimmedContent,
+            });
+            if (similar) {
+              throw new TRPCError({
+                code: 'CONFLICT',
+                message: 'A similar recommendation already exists for this client.',
+              });
+            }
+          }
+
           rootMessageForDelivery = {
             content: trimmedContent,
             symbol: normalizedSymbol,
@@ -4943,6 +4960,9 @@ export const appRouter = router({
           }
           if (parentMessage.threadStatus === 'closed') {
             throw new TRPCError({ code: 'BAD_REQUEST', message: 'This recommendation thread is already closed.' });
+          }
+          if (!isAdmin && parentMessage.userId !== ctx.user.id) {
+            throw new TRPCError({ code: 'FORBIDDEN', message: 'You can only update your own recommendation threads.' });
           }
 
           const normalizedSymbol = input.symbol?.trim().toUpperCase();
@@ -5188,10 +5208,13 @@ export const appRouter = router({
     monthlyTradeReport: protectedProcedure
       .input(z.object({ month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).optional() }).optional())
       .query(async ({ ctx, input }) => {
-        await ensureRecommendationPublishAccess(ctx);
+        const access = await ensureRecommendationPublishAccess(ctx);
 
         const month = input?.month || new Date().toISOString().slice(0, 7);
-        const report = await db.getRecommendationMonthlyTradeReport(month);
+        const report = await db.getRecommendationMonthlyTradeReport(
+          month,
+          access.isAdmin ? undefined : ctx.user.id,
+        );
 
         const isAdmin = !!(ctx.user?.email && await db.getAdminByEmail(ctx.user.email));
         if (ctx.user?.isStaff && !isAdmin) {
@@ -5218,19 +5241,26 @@ export const appRouter = router({
       }))
       .mutation(async ({ ctx, input }) => {
         await ensureRecommendationPublishAccess(ctx);
+        const isAdmin = !!(ctx.user?.email && await db.getAdminByEmail(ctx.user.email));
 
         let updated: Awaited<ReturnType<typeof db.saveRecommendationTradeResultOverride>>;
         try {
-          updated = await db.saveRecommendationTradeResultOverride(input);
+          updated = await db.saveRecommendationTradeResultOverride({
+            ...input,
+            analystUserId: ctx.user.id,
+            isAdmin,
+          });
         } catch (error) {
           const message = error instanceof Error ? error.message : 'Unable to save trade result';
           if (message === 'Recommendation result message not found') {
             throw new TRPCError({ code: 'NOT_FOUND', message });
           }
+          if (message === 'You can only adjust your own recommendation results') {
+            throw new TRPCError({ code: 'FORBIDDEN', message });
+          }
           throw new TRPCError({ code: 'BAD_REQUEST', message });
         }
 
-        const isAdmin = !!(ctx.user?.email && await db.getAdminByEmail(ctx.user.email));
         if (ctx.user?.isStaff && !isAdmin) {
           await writeStaffActivityLog({
             ctx: { ...ctx, admin: null },
@@ -5258,14 +5288,17 @@ export const appRouter = router({
         if (rootMessage.threadStatus === 'closed') {
           throw new TRPCError({ code: 'BAD_REQUEST', message: 'This recommendation thread is already closed.' });
         }
+        const isAdmin = !!(ctx.user?.email && await db.getAdminByEmail(ctx.user.email));
+        if (!isAdmin && rootMessage.userId !== ctx.user.id) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'You can only close your own recommendation threads.' });
+        }
 
         const hasResultChild = await db.hasRecommendationResultChild(rootMessage.id);
         if (!hasResultChild) {
           throw new TRPCError({ code: 'BAD_REQUEST', message: 'Add a result before closing this recommendation thread.' });
         }
 
-        const isAdmin = !!(ctx.user?.email && await db.getAdminByEmail(ctx.user.email));
-        await db.closeRecommendationThread(rootMessage.id, ctx.user.id);
+        await db.closeRecommendationThread(rootMessage.id, ctx.user.id, isAdmin);
 
         if (ctx.user?.isStaff && !isAdmin) {
           await writeStaffActivityLog({
@@ -5318,6 +5351,13 @@ export const appRouter = router({
     listAnalysts: adminProcedure.query(async () => {
       return await db.getRecommendationPublishers();
     }),
+
+    analystComparisonReport: adminProcedure
+      .input(z.object({ month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).optional() }).optional())
+      .query(async ({ input }) => {
+        const month = input?.month || new Date().toISOString().slice(0, 7);
+        return await db.getRecommendationAnalystComparisonReport(month);
+      }),
 
     subscriptions: router({
       list: adminProcedure.query(async () => {
@@ -6820,6 +6860,7 @@ export const appRouter = router({
         // Send welcome email to the new staff member
         const roleLabels: Record<string, string> = {
           analyst: 'Analyst / محلل',
+          analyst_duplicate_guard: 'Analyst Duplicate Guard / فحص تكرار توصيات المحلل',
           support: 'Support / دعم فني',
           lexai_support: 'LexAI Support / دعم LexAI',
           key_manager: 'Key Manager / مدير المفاتيح',
@@ -6991,7 +7032,7 @@ export const appRouter = router({
         return {
           isAdmin: true,
           isAnalyst: true,
-          permissions: ['support', 'lexai_support', 'analyst', 'client_lookup', 'view_progress', 'view_recommendations', 'view_subscriptions', 'view_quizzes', 'key_manager', 'manage_client_notifications'],
+          permissions: ['support', 'lexai_support', 'analyst', 'analyst_duplicate_guard', 'client_lookup', 'view_progress', 'view_recommendations', 'view_subscriptions', 'view_quizzes', 'key_manager', 'manage_client_notifications'],
         };
       }
       const roles = await db.getUserRoles(ctx.user.id);

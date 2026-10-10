@@ -32,6 +32,7 @@ const ACTION_LABELS: Record<string, { en: string; ar: string }> = {
 
 const ROLE_TRANSLATION_KEYS: Record<string, string> = {
   analyst: 'admin.roles.analyst',
+  analyst_duplicate_guard: 'admin.roles.analystDuplicateGuard',
   support: 'admin.roles.support',
   lexai_support: 'admin.roles.lexaiSupport',
   key_manager: 'admin.roles.keyManager',

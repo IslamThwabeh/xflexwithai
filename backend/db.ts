@@ -407,6 +407,15 @@ export type RecommendationMonthlyTradeReport = {
   basis: 'cumulative_state_delta_month';
 };
 
+export type RecommendationAnalystComparisonRow = {
+  analyst: {
+    id: number;
+    name: string | null;
+    email: string;
+  };
+  report: RecommendationMonthlyTradeReport;
+};
+
 export type RecommendationThreadStatusFilter = 'all' | 'open' | 'closed';
 
 export type RecommendationThreadSummary = {
@@ -5348,9 +5357,10 @@ export async function getRecommendationPublishers() {
 
 export async function getUserRecommendationsAccess(userId: number) {
   const db = await getDb();
-  if (!db) return { canPublish: false, hasSubscription: false, subscription: null as RecommendationSubscription | null, isFrozen: false, frozenUntil: null as string | null, frozenReason: null as string | null };
+  if (!db) return { canPublish: false, hasSubscription: false, subscription: null as RecommendationSubscription | null, isFrozen: false, frozenUntil: null as string | null, frozenReason: null as string | null, hasDuplicateGuard: false };
 
   const canPublish = await hasRole(userId, 'analyst');
+  const hasDuplicateGuard = canPublish ? await hasRole(userId, 'analyst_duplicate_guard') : false;
   const subscription = await getActiveRecommendationSubscription(userId);
 
   let isFrozen = false;
@@ -5372,6 +5382,7 @@ export async function getUserRecommendationsAccess(userId: number) {
     isFrozen,
     frozenUntil,
     frozenReason,
+    hasDuplicateGuard,
   };
 }
 
@@ -6167,6 +6178,13 @@ export async function getRecommendationDeliveryFunnel(): Promise<RecommendationD
   const diagnostics: RecommendationDeliveryDiagnostics = { ...empty, totalSubs: rows.length };
   const eligible: RecommendationSubscriberDetail[] = [];
   const seenUserIds = new Set<number>();
+  const rowUserIds = Array.from(new Set(rows.map((row) => row.userId).filter((id): id is number => typeof id === "number")));
+  const recommendationManagerRoleRows = rowUserIds.length
+    ? await collectChunkedRows(rowUserIds, (chunk) => db.select({ userId: userRoles.userId })
+        .from(userRoles)
+        .where(and(inArray(userRoles.userId, chunk), eq(userRoles.role, 'analyst'))))
+    : [];
+  const recommendationManagerUserIds = new Set(recommendationManagerRoleRows.map((row) => row.userId));
 
   for (const row of rows) {
     if (row.isPaused) { diagnostics.paused += 1; continue; }
@@ -6176,7 +6194,7 @@ export async function getRecommendationDeliveryFunnel(): Promise<RecommendationD
 
     if (!row.accountUserId) { diagnostics.accountUnavailable += 1; continue; }
     if (row.loginBlockedAt) { diagnostics.accountDisabled += 1; continue; }
-    if (row.isStaff) { diagnostics.staffExcluded += 1; continue; }
+    if (row.isStaff || recommendationManagerUserIds.has(row.userId)) { diagnostics.staffExcluded += 1; continue; }
     if (!row.email) { diagnostics.missingEmail += 1; continue; }
     if (row.notificationsDisabled) { diagnostics.notificationsDisabled += 1; continue; }
 
@@ -6267,6 +6285,10 @@ export async function partitionRecommendationDeliveriesByEligibility(
   ]);
 
   const accounts = new Map(accountRows.map((account) => [account.id, account]));
+  const recommendationManagerRoleRows = await collectChunkedRows(userIds, (chunk) => db.select({ userId: userRoles.userId })
+    .from(userRoles)
+    .where(and(inArray(userRoles.userId, chunk), eq(userRoles.role, 'analyst'))));
+  const recommendationManagerUserIds = new Set(recommendationManagerRoleRows.map((row) => row.userId));
   const eligibleSubscriptionUserIds = new Set(
     subscriptionRows
       .filter((subscription) => (
@@ -6289,7 +6311,7 @@ export async function partitionRecommendationDeliveriesByEligibility(
     let reason: RecommendationDeliveryIneligibilityReason | null = null;
     if (!account) reason = 'account_missing';
     else if (account.loginBlockedAt) reason = 'account_disabled';
-    else if (account.isStaff) reason = 'staff_account';
+    else if (account.isStaff || recommendationManagerUserIds.has(delivery.userId)) reason = 'staff_account';
     else if (account.email.trim().toLowerCase() !== delivery.recipientEmail.trim().toLowerCase()) reason = 'recipient_changed';
     else if (disabledUserIds.has(delivery.userId)) reason = 'client_notifications_disabled';
     else {
@@ -6436,19 +6458,24 @@ export async function extendRecommendationAlertActivity(alertId: number, analyst
   return row;
 }
 
-export async function listActiveRecommendationAlerts(): Promise<RecommendationAlert[]> {
+export async function listActiveRecommendationAlerts(analystUserId?: number): Promise<RecommendationAlert[]> {
   const db = await getDb();
   if (!db) return [];
 
   await expireRecommendationAlertsForAnalyst();
 
   const nowIso = new Date().toISOString();
+  const conditions: SQL[] = [
+    eq(recommendationAlerts.status, 'pending'),
+    sql`${recommendationAlerts.expiresAt} > ${nowIso}`,
+  ];
+  if (analystUserId !== undefined) {
+    conditions.push(eq(recommendationAlerts.analystUserId, analystUserId));
+  }
+
   return db.select()
     .from(recommendationAlerts)
-    .where(and(
-      eq(recommendationAlerts.status, 'pending'),
-      sql`${recommendationAlerts.expiresAt} > ${nowIso}`,
-    ))
+    .where(and(...conditions))
     .orderBy(desc(recommendationAlerts.notifiedAt));
 }
 
@@ -6490,6 +6517,69 @@ export async function createRecommendationMessage(message: InsertRecommendationM
   if (!db) throw new Error("Database not available");
   const result = await db.insert(recommendationMessages).values(message).returning({ id: recommendationMessages.id });
   return result[0].id;
+}
+
+function normalizeRecommendationDuplicateText(value: string | null | undefined): string {
+  return (value ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\u0600-\u06ff]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function recommendationTextSimilarity(left: string, right: string): number {
+  const leftTokens = new Set(normalizeRecommendationDuplicateText(left).split(" ").filter((token) => token.length > 2));
+  const rightTokens = new Set(normalizeRecommendationDuplicateText(right).split(" ").filter((token) => token.length > 2));
+  if (!leftTokens.size || !rightTokens.size) return 0;
+  let overlap = 0;
+  for (const token of leftTokens) {
+    if (rightTokens.has(token)) overlap += 1;
+  }
+  return overlap / Math.min(leftTokens.size, rightTokens.size);
+}
+
+export async function findSimilarOpenRecommendationForAnalyst(input: {
+  analystUserId: number;
+  symbol: string;
+  content: string;
+}) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const normalizedSymbol = input.symbol.trim().toUpperCase();
+  if (!normalizedSymbol) return null;
+
+  const candidates = await db
+    .select({
+      id: recommendationMessages.id,
+      content: recommendationMessages.content,
+      userId: recommendationMessages.userId,
+    })
+    .from(recommendationMessages)
+    .where(and(
+      isNull(recommendationMessages.parentId),
+      eq(recommendationMessages.type, "recommendation"),
+      eq(recommendationMessages.symbol, normalizedSymbol),
+      ne(recommendationMessages.userId, input.analystUserId),
+      or(
+        isNull(recommendationMessages.threadStatus),
+        ne(recommendationMessages.threadStatus, "closed"),
+      ) as SQL,
+    ))
+    .orderBy(desc(recommendationMessages.createdAt))
+    .limit(25);
+
+  const exactContent = normalizeRecommendationDuplicateText(input.content);
+  for (const candidate of candidates) {
+    const candidateContent = normalizeRecommendationDuplicateText(candidate.content);
+    const isExact = exactContent.length > 0 && exactContent === candidateContent;
+    const isSimilar = recommendationTextSimilarity(input.content, candidate.content) >= 0.82;
+    if (isExact || isSimilar) {
+      return candidate;
+    }
+  }
+
+  return null;
 }
 
 /* === Recommendation delivery outbox ============================================
@@ -7918,24 +8008,30 @@ export async function hasRecommendationResultChild(parentId: number) {
   return rows.length > 0;
 }
 
-export async function closeRecommendationThread(messageId: number, closedByUserId: number) {
+export async function closeRecommendationThread(messageId: number, closedByUserId: number, isAdmin: boolean = false) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
-  await db
+  const filters: SQL[] = [
+    eq(recommendationMessages.id, messageId),
+    isNull(recommendationMessages.parentId),
+    eq(recommendationMessages.type, "recommendation"),
+  ];
+  if (!isAdmin) filters.push(eq(recommendationMessages.userId, closedByUserId));
+
+  const result = await db
     .update(recommendationMessages)
     .set({
       threadStatus: "closed",
       closedAt: new Date().toISOString(),
       closedByUserId,
     })
-    .where(
-      and(
-        eq(recommendationMessages.id, messageId),
-        isNull(recommendationMessages.parentId),
-        eq(recommendationMessages.type, "recommendation"),
-      )
-    );
+    .where(and(...filters))
+    .returning({ id: recommendationMessages.id });
+
+  if (!result.length) {
+    throw new Error("You can only close your own recommendation threads");
+  }
 }
 
 export async function getRecommendationMessageById(messageId: number) {
@@ -8698,7 +8794,7 @@ export async function runStaffMonitoringRetention(now = new Date()) {
   return { compacted: true, detailCutoff, aggregateCutoffDate };
 }
 
-export async function getRecommendationMonthlyTradeReport(month: string): Promise<RecommendationMonthlyTradeReport> {
+export async function getRecommendationMonthlyTradeReport(month: string, analystUserId?: number): Promise<RecommendationMonthlyTradeReport> {
   const db = await getDb();
   if (!db) throw new Error('Database not available');
 
@@ -8706,6 +8802,11 @@ export async function getRecommendationMonthlyTradeReport(month: string): Promis
   const [year, monthNumber] = normalizedMonth.split('-').map(Number);
   const periodStart = new Date(Date.UTC(year, monthNumber - 1, 1)).toISOString();
   const periodEnd = new Date(Date.UTC(year, monthNumber, 1)).toISOString();
+
+  const monthConditions: SQL[] = [sql`${recommendationMessages.createdAt} LIKE ${`${normalizedMonth}%`}`];
+  if (analystUserId !== undefined) {
+    monthConditions.push(eq(recommendationMessages.userId, analystUserId));
+  }
 
   const [monthStats] = await db
     .select({
@@ -8716,7 +8817,7 @@ export async function getRecommendationMonthlyTradeReport(month: string): Promis
       updateMessages: sql<number>`SUM(CASE WHEN ${recommendationMessages.parentId} IS NOT NULL AND ${recommendationMessages.type} = 'update' THEN 1 ELSE 0 END)`,
     })
     .from(recommendationMessages)
-    .where(sql`${recommendationMessages.createdAt} LIKE ${`${normalizedMonth}%`}`);
+    .where(and(...monthConditions));
 
   const rootCoverage = {
     resultMessages: Number(monthStats?.resultMessages ?? 0),
@@ -8725,16 +8826,19 @@ export async function getRecommendationMonthlyTradeReport(month: string): Promis
     openRootRecommendations: Number(monthStats?.openRootRecommendations ?? 0),
   };
 
+  const childConditions: SQL[] = [
+    isNotNull(recommendationMessages.parentId),
+    inArray(recommendationMessages.type, ['update', 'result']),
+    sql`datetime(${recommendationMessages.createdAt}) < datetime(${periodEnd})`,
+  ];
+  if (analystUserId !== undefined) {
+    childConditions.push(eq(recommendationMessages.userId, analystUserId));
+  }
+
   const messages = await db
     .select()
     .from(recommendationMessages)
-    .where(
-      and(
-        isNotNull(recommendationMessages.parentId),
-        inArray(recommendationMessages.type, ['update', 'result']),
-        sql`datetime(${recommendationMessages.createdAt}) < datetime(${periodEnd})`,
-      )
-    )
+    .where(and(...childConditions))
     .orderBy(asc(recommendationMessages.createdAt), asc(recommendationMessages.id));
 
   if (!messages.length) {
@@ -8913,10 +9017,31 @@ export async function getRecommendationMonthlyTradeReport(month: string): Promis
   };
 }
 
+export async function getRecommendationAnalystComparisonReport(month: string): Promise<{
+  month: string;
+  analysts: RecommendationAnalystComparisonRow[];
+}> {
+  const normalizedMonth = normalizeReportMonth(month);
+  const analysts = await getRecommendationPublishers();
+  const reports = await Promise.all(
+    analysts.map(async (analyst) => ({
+      analyst,
+      report: await getRecommendationMonthlyTradeReport(normalizedMonth, analyst.id),
+    })),
+  );
+
+  return {
+    month: normalizedMonth,
+    analysts: reports,
+  };
+}
+
 export async function saveRecommendationTradeResultOverride(input: {
   messageId: number;
   outcome: RecommendationReportOutcome;
   pips: number;
+  analystUserId?: number;
+  isAdmin?: boolean;
 }) {
   const db = await getDb();
   if (!db) throw new Error('Database not available');
@@ -8933,6 +9058,9 @@ export async function saveRecommendationTradeResultOverride(input: {
   }
   if (!existing.parentId || !['result', 'update'].includes(existing.type)) {
     throw new Error('Only recommendation result/update replies can be adjusted for monthly reports');
+  }
+  if (!input.isAdmin && input.analystUserId !== undefined && existing.userId !== input.analystUserId) {
+    throw new Error('You can only adjust your own recommendation results');
   }
 
   const normalizedPips = input.outcome === 'loss'
@@ -9210,6 +9338,7 @@ function buildRecommendationThreadRootConditions(input?: {
   status?: RecommendationThreadStatusFilter;
   search?: string;
   month?: string;
+  analystUserId?: number;
 }) {
   const conditions: SQL[] = [
     isNull(recommendationMessages.parentId),
@@ -9246,6 +9375,10 @@ function buildRecommendationThreadRootConditions(input?: {
     conditions.push(sql`${recommendationMessages.createdAt} LIKE ${`${input.month}%`}`);
   }
 
+  if (input?.analystUserId !== undefined) {
+    conditions.push(eq(recommendationMessages.userId, input.analystUserId));
+  }
+
   return conditions;
 }
 
@@ -9257,6 +9390,7 @@ export async function getRecommendationThreadMessagesFeed(
     offset?: number;
     search?: string;
     month?: string;
+    analystUserId?: number;
   },
 ) {
   const db = await getDb();
@@ -9312,21 +9446,26 @@ export async function getRecommendationThreadMessagesFeed(
   };
 }
 
-export async function getOpenRecommendationMessagesFeed(userId: number) {
+export async function getOpenRecommendationMessagesFeed(userId: number, analystUserId?: number) {
   const db = await getDb();
   if (!db) return [];
+
+  const conditions: SQL[] = [
+    isNull(recommendationMessages.parentId),
+    eq(recommendationMessages.type, "recommendation"),
+    or(
+      isNull(recommendationMessages.threadStatus),
+      ne(recommendationMessages.threadStatus, "closed"),
+    ) as SQL,
+  ];
+  if (analystUserId !== undefined) {
+    conditions.push(eq(recommendationMessages.userId, analystUserId));
+  }
 
   const openRoots = await db
     .select({ id: recommendationMessages.id })
     .from(recommendationMessages)
-    .where(and(
-      isNull(recommendationMessages.parentId),
-      eq(recommendationMessages.type, "recommendation"),
-      or(
-        isNull(recommendationMessages.threadStatus),
-        ne(recommendationMessages.threadStatus, "closed"),
-      ),
-    ))
+    .where(and(...conditions))
     .orderBy(desc(recommendationMessages.createdAt));
 
   const rootIds = openRoots.map((root) => root.id);
