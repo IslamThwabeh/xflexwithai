@@ -447,12 +447,24 @@ describe("recommendations workflow", () => {
     await expect(
       caller.recommendations.postMessage({
         type: "recommendation",
-        content: "Gold looks ready for a breakout.",
+        content: "Buy XAUUSD on the pullback.",
+        symbol: "XAUUSD",
+        side: "BUY",
+        entryPrice: "2320",
+        stopLoss: "2310",
+        takeProfit1: "2330",
+        takeProfit2: "2340",
+        takeProfit3: "2350",
+        riskPercent: "1%",
       })
     ).rejects.toMatchObject({
       code: "FORBIDDEN",
       message: "Wait 25 more seconds before sending the next channel message.",
     } satisfies Partial<TRPCError>);
+    expect(createRecommendationMessage).not.toHaveBeenCalled();
+    expect(prepareRecommendationDeliveries).not.toHaveBeenCalled();
+    expect(sendBulkNotification).not.toHaveBeenCalled();
+    expect(mockedSendEmail).not.toHaveBeenCalled();
   });
 
   it("allows silent follow-ups on older open recommendations without alerting clients", async () => {

@@ -330,7 +330,7 @@ function formatRecommendationUiError(message: string, isRTL: boolean) {
 
   switch (message) {
     case "Notify clients first, then wait one minute before sending in the recommendations channel.":
-      return "After 15 minutes of silence, click Notify Clients first. Typing unlocks one minute later.";
+      return "After 15 minutes of silence, click Notify Clients first. You can draft immediately and send one minute later.";
     case "The chat paused after 15 minutes of analyst silence. Notify clients again before sending a new message.":
       return "The chat paused after 15 minutes of analyst silence. Click Notify Clients again before sending a new message.";
     default:
@@ -458,8 +458,8 @@ function AnalystView() {
     onSuccess: (result) => {
       toast.success(
         isRTL
-          ? `تم إخطار ${result.recipientCount} عميل. الكتابة ستفتح بعد دقيقة واحدة، وبعدها تبقى الدردشة مفتوحة ما دمت تستمر في الإرسال.`
-          : `Notified ${result.recipientCount} clients. Typing unlocks in one minute, and the chat stays live while you keep sending.`
+          ? `تم إخطار ${result.recipientCount} عميل. يمكنك تجهيز الصفقة الآن، ويتاح الإرسال بعد دقيقة واحدة.`
+          : `Notified ${result.recipientCount} clients. You can prepare the trade now. Sending unlocks in one minute.`
       );
       utils.recommendations.publishState.invalidate();
       utils.recommendations.activeAlerts.invalidate();
@@ -610,8 +610,8 @@ function AnalystView() {
         : "After 15 minutes of silence, click Notify Clients before typing a new message.")
     : isWaitingForUnlock
       ? (isRTL
-          ? `تم إرسال الإخطار. يمكنك الكتابة بعد ${formatCountdown(publishState?.secondsUntilUnlock ?? 0)}.`
-          : `Alert sent. You can type in ${formatCountdown(publishState?.secondsUntilUnlock ?? 0)}.`)
+          ? `تم إرسال الإخطار. يمكنك تجهيز الصفقة الآن. يتاح الإرسال بعد ${formatCountdown(publishState?.secondsUntilUnlock ?? 0)}.`
+          : `Alert sent. You can prepare the trade now. Sending unlocks in ${formatCountdown(publishState?.secondsUntilUnlock ?? 0)}.`)
       : "";
   const publishDisabledReason = editingMessageId
     ? (type === "recommendation" && !normalizedSymbol
@@ -647,8 +647,8 @@ function AnalystView() {
           : "After 15 minutes of silence, alert clients to reopen the channel.")
       : isWaitingForUnlock
         ? (isRTL
-            ? `تم إخطار العملاء. تفتح القناة خلال ${formatCountdown(publishState?.secondsUntilUnlock ?? 0)}.`
-            : `Clients were notified. The channel unlocks in ${formatCountdown(publishState?.secondsUntilUnlock ?? 0)}.`)
+            ? `تم إخطار العملاء. يمكنك تجهيز الصفقة الآن. يتاح الإرسال بعد ${formatCountdown(publishState?.secondsUntilUnlock ?? 0)}.`
+            : `Clients were notified. You can prepare the trade now. Sending unlocks in ${formatCountdown(publishState?.secondsUntilUnlock ?? 0)}.`)
         : (isRTL
             ? `القناة تعمل الآن. كل رسالة جديدة تمدد الجلسة، ويتبقى ${formatCountdown(publishState?.secondsUntilExpiry ?? 0)} قبل قفل الصمت.`
             : `The channel is live now. Each new message extends the session, and ${formatCountdown(publishState?.secondsUntilExpiry ?? 0)} remains before the silence lock.`);
@@ -700,6 +700,10 @@ function AnalystView() {
   };
 
   const onPublish = () => {
+    if (publishDisabledReason) {
+      toast.error(publishDisabledReason);
+      return;
+    }
     if (!content.trim()) { toast.error(t('rec.toastWriteMessage')); return; }
     if (type !== "recommendation" && !parentMessage?.id) {
       toast.error(isRTL ? "اختر التوصية الأم أولاً" : "Choose the parent recommendation first");
@@ -1245,7 +1249,6 @@ function AnalystView() {
                   <button
                     key={s}
                     onClick={() => setSymbol(s)}
-                    disabled={isWaitingForUnlock}
                     className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${
                       symbol === s
                         ? "bg-emerald-50 dark:bg-emerald-900/20 border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300"
@@ -1259,7 +1262,6 @@ function AnalystView() {
               <Input
                 value={symbol}
                 onChange={(e) => setSymbol(e.target.value)}
-                disabled={isWaitingForUnlock}
                 placeholder={t('rec.symbolPlaceholder')}
                 className="max-w-xs"
               />
@@ -1274,7 +1276,6 @@ function AnalystView() {
               <div className="flex gap-2">
                 <button
                   onClick={() => setSide("BUY")}
-                  disabled={isWaitingForUnlock}
                   className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-all border ${
                     side === "BUY"
                       ? "bg-emerald-500 text-white border-emerald-500 shadow-md shadow-emerald-500/20"
@@ -1285,7 +1286,6 @@ function AnalystView() {
                 </button>
                 <button
                   onClick={() => setSide("SELL")}
-                  disabled={isWaitingForUnlock}
                   className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-all border ${
                     side === "SELL"
                       ? "bg-red-500 text-white border-red-500 shadow-md shadow-red-500/20"
@@ -1327,27 +1327,27 @@ function AnalystView() {
                 <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
                   <div>
                     <span className="text-xs text-muted-foreground">{isRTL ? "سعر الدخول" : "Entry"}</span>
-                    <Input value={entryPrice} onChange={(e) => setEntryPrice(e.target.value)} placeholder="0.00" disabled={isWaitingForUnlock} />
+                    <Input value={entryPrice} onChange={(e) => setEntryPrice(e.target.value)} placeholder="0.00" />
                   </div>
                   <div>
                     <span className="text-xs text-muted-foreground">{isRTL ? "وقف الخسارة" : "Stop Loss"}</span>
-                    <Input value={stopLoss} onChange={(e) => setStopLoss(e.target.value)} placeholder="0.00" disabled={isWaitingForUnlock} />
+                    <Input value={stopLoss} onChange={(e) => setStopLoss(e.target.value)} placeholder="0.00" />
                   </div>
                   <div>
                     <span className="text-xs text-muted-foreground">{isRTL ? "هدف 1" : "Target 1"}</span>
-                    <Input value={takeProfit1} onChange={(e) => setTakeProfit1(e.target.value)} placeholder="0.00" disabled={isWaitingForUnlock} />
+                    <Input value={takeProfit1} onChange={(e) => setTakeProfit1(e.target.value)} placeholder="0.00" />
                   </div>
                   <div>
                     <span className="text-xs text-muted-foreground">{isRTL ? "هدف 2" : "Target 2"}</span>
-                    <Input value={takeProfit2} onChange={(e) => setTakeProfit2(e.target.value)} placeholder="0.00" disabled={isWaitingForUnlock} />
+                    <Input value={takeProfit2} onChange={(e) => setTakeProfit2(e.target.value)} placeholder="0.00" />
                   </div>
                   <div>
                     <span className="text-xs text-muted-foreground">{isRTL ? "هدف 3" : "Target 3"}</span>
-                    <Input value={takeProfit3} onChange={(e) => setTakeProfit3(e.target.value)} placeholder="0.00" disabled={isWaitingForUnlock} />
+                    <Input value={takeProfit3} onChange={(e) => setTakeProfit3(e.target.value)} placeholder="0.00" />
                   </div>
                   <div className="sm:max-w-[220px]">
                     <span className="text-xs text-muted-foreground">{isRTL ? "نسبة المخاطرة" : "Risk %"}</span>
-                    <Input value={riskPercent} onChange={(e) => setRiskPercent(e.target.value)} placeholder="1%" disabled={isWaitingForUnlock} />
+                    <Input value={riskPercent} onChange={(e) => setRiskPercent(e.target.value)} placeholder="1%" />
                   </div>
                 </div>
               )}
@@ -1505,10 +1505,7 @@ function AnalystView() {
               ref={composerRef}
               value={content}
               onChange={(e) => setContent(e.target.value)}
-              disabled={isWaitingForUnlock}
-              placeholder={isWaitingForUnlock
-                ? (isRTL ? "انتظر انتهاء الدقيقة أولاً" : "Wait for the 1-minute unlock first")
-                : type === "recommendation"
+              placeholder={type === "recommendation"
                   ? (isRTL ? "اكتب التوصية الرئيسية هنا" : "Write the main recommendation here")
                   : type === "result"
                     ? (isRTL ? "اكتب النتيجة هنا" : "Write the result here")
@@ -1560,7 +1557,9 @@ function AnalystView() {
                       {postMessageMutation.isPending
                         ? (isRTL ? "جاري النشر..." : "Publishing...")
                         : type === "recommendation"
-                          ? (isRTL ? "إرسال التوصية" : "Send Recommendation")
+                          ? (isWaitingForUnlock
+                              ? (isRTL ? `الإرسال بعد ${formatCountdown(publishState?.secondsUntilUnlock ?? 0)}` : `Send in ${formatCountdown(publishState?.secondsUntilUnlock ?? 0)}`)
+                              : (isRTL ? "إرسال التوصية" : "Send Recommendation"))
                           : type === "result"
                             ? (isRTL ? "إرسال النتيجة" : "Send Result")
                             : (isRTL ? "إرسال التحديث" : "Send Update")}
