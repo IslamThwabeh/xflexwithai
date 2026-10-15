@@ -101,12 +101,14 @@ export default function BrokerOnboarding() {
   const isArabic = language === 'ar';
   const isRtl = language === 'ar';
   const utils = trpc.useUtils();
+  const [choosingBroker, setChoosingBroker] = useState(false);
 
   const { data: status, isLoading } = trpc.onboarding.getStatus.useQuery();
   const { data: brokers, isLoading: brokersLoading } = trpc.brokers.listActive.useQuery();
   const { data: activationStatus } = trpc.subscriptions.activationStatus.useQuery();
   const selectBroker = trpc.onboarding.selectBroker.useMutation({
     onSuccess: () => {
+      setChoosingBroker(false);
       toast.success(isArabic ? 'تم اختيار الوسيط بنجاح' : 'Broker selected successfully');
       utils.onboarding.getStatus.invalidate();
     },
@@ -133,6 +135,9 @@ export default function BrokerOnboarding() {
   const currentStepIndex = STEPS.indexOf(currentStepKey);
   const isComplete = status?.isComplete ?? false;
   const selectedBrokerId = status?.brokerId ?? null;
+  const canChangeBroker = !isComplete && currentStepKey === 'open_account'
+    && (status?.steps ?? []).filter((step: any) => step.step !== 'select_broker')
+      .every((step: any) => step.status === 'not_started' && !step.proofUrl && !step.submittedAt);
   const { studyPeriodDays, entitlementDays } = getPendingActivationWindow(activationStatus);
   const activationDeadline = formatPendingActivationDate(activationStatus?.maxActivationDate, isArabic);
   const activationDaysLeft = getPendingActivationDaysLeft(activationStatus?.maxActivationDate);
@@ -330,8 +335,15 @@ export default function BrokerOnboarding() {
 
         {/* Step Content */}
         <div className="space-y-4">
+          {canChangeBroker && selectedBrokerId && (
+            <Button variant="outline" disabled={selectBroker.isPending} onClick={() => setChoosingBroker(!choosingBroker)}>
+              {choosingBroker
+                ? (isArabic ? 'إلغاء تغيير الوسيط' : 'Cancel broker change')
+                : (isArabic ? 'تغيير الوسيط' : 'Change broker')}
+            </Button>
+          )}
           {/* Step 1: Select Broker */}
-          {currentStepKey === 'select_broker' && (
+          {(currentStepKey === 'select_broker' || (canChangeBroker && choosingBroker)) && (
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg">{stepLabel('select_broker', isArabic)}</CardTitle>
@@ -343,7 +355,7 @@ export default function BrokerOnboarding() {
                     <button
                       key={broker.id}
                       onClick={() => handleSelectBroker(broker.id)}
-                      disabled={selectBroker.isPending}
+                      disabled={selectBroker.isPending || broker.id === selectedBrokerId}
                       className="flex items-center gap-3 p-4 rounded-lg border-2 border-gray-200 hover:border-emerald-400 hover:bg-emerald-50/50 transition-all text-start disabled:opacity-50"
                     >
                       {broker.logoUrl ? (

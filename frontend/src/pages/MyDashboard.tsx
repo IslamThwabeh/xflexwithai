@@ -618,7 +618,7 @@ export default function MyDashboard() {
               </div>
               <div className="flex flex-wrap gap-2">
                 {totalCourses > 0 && (
-                  <Link href="/courses">
+                  <Link href={`/course/${enrollments![0].courseId}`}>
                     <Button variant="outline">{t('dashboard.openCourses')}</Button>
                   </Link>
                 )}
