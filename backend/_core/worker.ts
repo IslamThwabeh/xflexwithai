@@ -1202,11 +1202,16 @@ export default {
 
       const liveRecordingMatch = pathname.match(/^\/api\/live-package-recordings\/(\d+)\/stream$/);
       if (liveRecordingMatch) {
+        const headers = new Headers(corsHeaders);
+        headers.set("Allow", "GET, HEAD, DELETE, OPTIONS");
+        if (request.method === "OPTIONS") {
+          headers.set("Access-Control-Allow-Methods", "GET, HEAD, DELETE, OPTIONS");
+          headers.set("Access-Control-Allow-Headers", "content-type, range");
+          return new Response(null, { status: 204, headers });
+        }
         const recordingId = Number(liveRecordingMatch[1]);
         if (request.method === "DELETE") {
           const authContext = await createWorkerContext({ req: request, env });
-          const headers = new Headers();
-          corsHeaders.forEach((value, key) => headers.set(key, value));
           appendCookieHeaders(headers, (authContext as { cookieHeaders?: string[] }).cookieHeaders);
           const admin = authContext.user?.email ? await db.getAdminByEmail(authContext.user.email) : null;
           if (!admin) return jsonResponse(403, { status: "forbidden", message: "Full admin access is required" }, headers);
@@ -1232,15 +1237,13 @@ export default {
           return jsonResponse(200, { success: true }, headers);
         }
         if (request.method !== "GET" && request.method !== "HEAD") {
-          return jsonResponse(405, { status: "method_not_allowed" });
+          return jsonResponse(405, { status: "method_not_allowed" }, headers);
         }
         const playbackToken = url.searchParams.get("token") ?? "";
         const hasPlaybackToken = playbackToken
           ? await verifyLiveRecordingPlaybackToken(playbackToken, recordingId)
           : false;
         const authContext = hasPlaybackToken ? null : await createWorkerContext({ req: request, env });
-        const headers = new Headers();
-        corsHeaders.forEach((value, key) => headers.set(key, value));
         if (authContext) appendCookieHeaders(headers, (authContext as { cookieHeaders?: string[] }).cookieHeaders);
         headers.set("Cache-Control", "private, no-store, max-age=0");
         headers.set("X-Content-Type-Options", "nosniff");
