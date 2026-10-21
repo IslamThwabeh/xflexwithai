@@ -6128,6 +6128,17 @@ function parseRecommendationPrefs(raw: string | null | undefined): { optedOut: b
  * consume deadline-anchored service time while being excluded from delivery.
  */
 export async function getRecommendationDeliveryFunnel(): Promise<RecommendationDeliveryFunnel> {
+  const database = await getDb();
+  if (database) await repairDueTimedServiceStates();
+  return readRecommendationDeliveryFunnel(database);
+}
+
+// Shared audience rules; reports must never run activation repair or queue mail.
+// Accepting the connection also lets SQL contract tests execute the real query.
+export async function readRecommendationDeliveryFunnel(
+  db: Awaited<ReturnType<typeof getDb>>,
+  nowIso = new Date().toISOString(),
+): Promise<RecommendationDeliveryFunnel> {
   const empty: RecommendationDeliveryDiagnostics = {
     totalSubs: 0,
     activeSubs: 0,
@@ -6144,11 +6155,7 @@ export async function getRecommendationDeliveryFunnel(): Promise<RecommendationD
     eligibleCount: 0,
   };
 
-  const db = await getDb();
   if (!db) return { eligible: [], diagnostics: empty };
-
-  await repairDueTimedServiceStates();
-  const nowIso = new Date().toISOString();
 
   // Pull every is_active=true subscription joined to the user once; categorize
   // in memory so we can return a complete funnel without N+1 queries.
@@ -6220,6 +6227,19 @@ export async function getRecommendationDeliveryFunnel(): Promise<RecommendationD
 
   diagnostics.eligibleCount = eligible.length;
   return { eligible, diagnostics };
+}
+
+export async function getRecommendationAudienceSummary() {
+  const database = await getDb();
+  if (!database) throw new Error("Database not available");
+  const checkedAt = new Date().toISOString();
+  const { diagnostics } = await readRecommendationDeliveryFunnel(database, checkedAt);
+  // All exclusion buckets count records; the final audience deduplicates clients.
+  const duplicateRecords = diagnostics.activeSubs - diagnostics.eligibleCount
+    - diagnostics.accountUnavailable - diagnostics.accountDisabled
+    - diagnostics.staffExcluded - diagnostics.missingEmail
+    - diagnostics.notificationsDisabled - diagnostics.malformedPrefs - diagnostics.optedOut;
+  return { ...diagnostics, duplicateRecords, checkedAt };
 }
 
 export type RecommendationDeliveryIneligibilityReason =

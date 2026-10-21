@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import AdminClientProfileSheet from "@/components/admin/AdminClientProfileSheet";
+import StudentActivityBreakdown, { ActivityHelp } from "@/components/admin/StudentActivityBreakdown";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { trpc } from "@/lib/trpc";
@@ -66,6 +67,7 @@ import {
   Undo2,
   Building2,
   Info,
+  ChevronDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatAdminCurrencyFromIls } from "@/lib/adminCurrency";
@@ -103,6 +105,7 @@ export default function AdminStudents() {
   const [search, setSearch] = useState("");
   const [countryFilter, setCountryFilter] = useState("all");
   const [packageFilter, setPackageFilter] = useState("all");
+  const [showActivityBreakdown, setShowActivityBreakdown] = useState(false);
   const [skipConfirm, setSkipConfirm] = useState<{ id: number; name: string } | null>(null);
   const [rollbackConfirm, setRollbackConfirm] = useState<{ id: number; name: string } | null>(null);
   const [skipBrokerConfirm, setSkipBrokerConfirm] = useState<{ id: number; name: string } | null>(null);
@@ -357,13 +360,28 @@ export default function AdminStudents() {
             <p className="text-lg font-bold text-emerald-600">{totalStudents}</p>
             <p className="text-[11px] text-gray-500 leading-tight">{isRtl ? "الإجمالي" : "Total"}</p>
           </button>
-          <button
-            onClick={() => setPackageFilter("active")}
-            className={`rounded-lg border px-3 py-2 text-center transition hover:shadow-sm ${packageFilter === "active" ? "ring-2 ring-emerald-400 bg-emerald-50" : "bg-white"}`}
-          >
-            <p className="text-lg font-bold text-green-600">{activeStudents}</p>
-            <p className="text-[11px] text-gray-500 leading-tight">{isRtl ? "نشط" : "Active"}</p>
-          </button>
+          <div className={`relative rounded-lg border transition hover:shadow-sm ${packageFilter === "active" ? "ring-2 ring-emerald-400 bg-emerald-50" : "bg-white"}`}>
+            <button
+              type="button"
+              onClick={() => { setPackageFilter("active"); setShowActivityBreakdown((shown) => !shown); }}
+              aria-expanded={showActivityBreakdown}
+              aria-controls="student-activity-breakdown"
+              title={isRtl ? "عملاء لديهم باقة مسجلة كنشطة؛ لا يعني ذلك أن التوصيات سارية. اضغط لعرض التفاصيل." : "Clients with a package marked active; recommendation access may have expired. Select to see the breakdown."}
+              className="h-full w-full rounded-lg px-3 py-2 pe-11 text-center focus-visible:outline-2 focus-visible:outline-ring"
+            >
+              <p className="text-lg font-bold text-green-600">{isLoading ? "—" : activeStudents}</p>
+              <p className="text-[11px] text-gray-500 leading-tight">{isRtl ? "عملاء لديهم باقة نشطة" : "Clients with active packages"}</p>
+              <span className="mt-1 flex items-center justify-center gap-1 text-[11px] text-emerald-700">
+                {isRtl ? "تفاصيل التوصيات" : "Recommendation breakdown"}
+                <ChevronDown className={`h-3 w-3 transition-transform ${showActivityBreakdown ? "rotate-180" : ""}`} aria-hidden="true" />
+              </span>
+            </button>
+            <div className="absolute end-0 top-0">
+              <ActivityHelp label={isRtl ? "شرح عدد العملاء النشطين" : "About active clients"}>
+                {isRtl ? "عملاء لديهم باقة مسجلة كنشطة. لا يعني هذا أنهم متصلون أو أن اشتراك التوصيات ما زال سارياً. اضغط البطاقة لعرض شجرة جمهور التوصيات وتصفية العملاء ذوي الباقات." : "Clients with a package marked active. This does not mean they are online or their recommendation access is unexpired. Select this card to see the recommendation audience tree and filter clients with packages."}
+              </ActivityHelp>
+            </div>
+          </div>
           <button
             onClick={() => setPackageFilter("none")}
             className={`rounded-lg border px-3 py-2 text-center transition hover:shadow-sm ${packageFilter === "none" ? "ring-2 ring-emerald-400 bg-emerald-50" : "bg-white"}`}
@@ -376,6 +394,8 @@ export default function AdminStudents() {
             <p className="text-[11px] text-gray-500 leading-tight">{isRtl ? "إجمالي الإيرادات" : "Total Revenue"}</p>
           </div>}
         </div>
+
+        {showActivityBreakdown && <StudentActivityBreakdown activeClients={activeStudents} isRtl={isRtl} />}
 
         {/* Filters */}
         <Card>

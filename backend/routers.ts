@@ -9914,6 +9914,10 @@ export const appRouter = router({
     subscribers: supportStaffProcedure.query(async () => {
       return db.getSubscribersReport();
     }),
+
+    recommendationAudience: supportStaffProcedure.query(async () => {
+      return db.getRecommendationAudienceSummary();
+    }),
     revenue: adminProcedure.query(async () => {
       throw new TRPCError({
         code: 'PRECONDITION_FAILED',
