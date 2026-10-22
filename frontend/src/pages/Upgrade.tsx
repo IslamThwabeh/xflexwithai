@@ -9,6 +9,7 @@ import { CURRENT_TERMS_VERSION } from '@/lib/legalVersions';
 import { formatIlsAmount, getUpgradeDisplayPricing } from '@/lib/packagePricing';
 import { trpc } from '@/lib/trpc';
 import ClientLayout from '@/components/ClientLayout';
+import UpgradeCallout from '@/components/UpgradeCallout';
 import { toast } from 'sonner';
 
 export default function Upgrade() {
@@ -87,6 +88,10 @@ export default function Upgrade() {
         </div>
       </ClientLayout>
     );
+  }
+
+  if (eligibility.isUpgrade === false) {
+    return <ClientLayout><div className="mx-auto max-w-2xl px-4 py-12"><UpgradeCallout /></div></ClientLayout>;
   }
 
   if (eligibility.pendingOrderId) {

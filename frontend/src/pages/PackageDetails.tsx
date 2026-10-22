@@ -253,7 +253,7 @@ export default function PackageDetails() {
               {isComprehensive && <UpgradeCallout />}
               {isLive && !liveState?.purchasable ? <Button size="lg" disabled className="w-full font-bold">
                 {language === 'ar' ? 'التسجيل مغلق حالياً' : 'Registration is closed'}
-              </Button> : <Link href={upgradeEligibility ? '/upgrade' : `/checkout/${pkg.slug}`}>
+              </Button> : <Link href={upgradeEligibility?.isUpgrade ? '/upgrade' : `/checkout/${pkg.slug}`}>
                 <Button
                   size="lg"
                   className={`w-full font-bold ${
@@ -263,7 +263,7 @@ export default function PackageDetails() {
                   }`}
                 >
                   <ShoppingCart className="w-4 h-4" />
-                  {upgradeEligibility ? (language === 'ar' ? 'ترقية إلى الباقة الشاملة' : 'Upgrade to Comprehensive') : t('home.packages.choosePlan')}
+                  {upgradeEligibility?.isUpgrade ? (language === 'ar' ? 'ترقية إلى الباقة الشاملة' : 'Upgrade to Comprehensive') : t('home.packages.choosePlan')}
                 </Button>
               </Link>}
             </div>

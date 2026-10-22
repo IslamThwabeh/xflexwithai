@@ -407,15 +407,15 @@ export default function LexAI() {
               </CardTitle>
               <CardDescription className="text-base mt-2">
                 {isArabic
-                  ? 'لإضافة LexAI والتوصيات، أنشئ طلب ترقية إلى الباقة الشاملة. إذا دفعت بالفعل، ارفع إيصالك في صفحة الطلب لمراجعة الدعم وإصدار مفتاح التفعيل.'
-                  : 'Create a Comprehensive upgrade order to add LexAI and recommendations. Already paid? Upload your receipt on the order page so support can review it and issue your activation key.'}
+                  ? 'للحصول على LexAI والتوصيات، أنشئ طلب الباقة الشاملة. إذا دفعت بالفعل، ارفع إيصالك في صفحة الطلب لمراجعة الدعم وإصدار مفتاح التفعيل.'
+                  : 'Create your Comprehensive order to access LexAI and recommendations. Already paid? Upload your receipt on the order page so support can review it and issue your activation key.'}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              <Link href="/upgrade">
+              <Link href={upgradeEligibility.pendingOrderId ? `/orders/${upgradeEligibility.pendingOrderId}` : upgradeEligibility.isUpgrade ? '/upgrade' : '/checkout/comprehensive'}>
                 <Button className="w-full btn-primary-xf" size="lg">
                   <ArrowUpCircle className="h-4 w-4 mr-2" />
-                  {isArabic ? 'ترقية إلى الباقة الشاملة' : 'Upgrade to Comprehensive'}
+                  {upgradeEligibility.pendingOrderId ? (isArabic ? 'عرض الطلب' : 'View Order') : upgradeEligibility.isUpgrade ? (isArabic ? 'ترقية إلى الباقة الشاملة' : 'Upgrade to Comprehensive') : (isArabic ? 'شراء الباقة الشاملة' : 'Buy Comprehensive')}
                 </Button>
               </Link>
               <Link href="/support">

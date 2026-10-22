@@ -11458,7 +11458,6 @@ export async function checkUpgradeEligibility(userId: number, targetPackageId?: 
     ? await getPackageById(targetPackageId, db)
     : await getPackageBySlug('comprehensive', db);
   if (!targetPkg) return null;
-  if (!targetPkg.upgradePrice || targetPkg.upgradePrice <= 0) return null; // no upgrade path configured
 
   // This checkout upgrades only to Comprehensive; source ownership is checked below.
   if (targetPkg.slug !== 'comprehensive') return null;
@@ -11469,19 +11468,35 @@ export async function checkUpgradeEligibility(userId: number, targetPackageId?: 
     .innerJoin(packages, eq(packages.id, packageSubscriptions.packageId))
     .where(and(eq(packageSubscriptions.userId, userId), eq(packageSubscriptions.isActive, true)));
   if (owned.some((row: { pkg: Package }) => row.pkg.slug === 'comprehensive')) return null;
-  const currentPkg = owned.find((row: { pkg: Package }) => row.pkg.slug === 'basic')?.pkg;
+  let currentPkg = owned.find((row: { pkg: Package }) => row.pkg.slug === 'basic')?.pkg;
+  const isUpgrade = !!currentPkg;
+  if (isUpgrade && (!targetPkg.upgradePrice || targetPkg.upgradePrice <= 0)) return null;
+  // Live is a separate entitlement. Its owners may purchase Comprehensive in
+  // full alongside it; they do not receive the Basic upgrade discount.
+  if (!currentPkg) {
+    const [live] = await db.select({ pkg: packages }).from(livePackageEntitlements)
+      .innerJoin(packages, eq(packages.id, livePackageEntitlements.packageId))
+      .where(and(
+        eq(livePackageEntitlements.userId, userId), eq(livePackageEntitlements.isActive, true),
+        eq(packages.packageType, 'live'),
+      )).limit(1);
+    currentPkg = live?.pkg;
+  }
   if (!currentPkg) return null;
 
   const [pendingOrder] = await db.select({ id: orders.id }).from(orders)
     .innerJoin(orderItems, eq(orderItems.orderId, orders.id))
     .where(and(
-      eq(orders.userId, userId), eq(orders.isUpgrade, true),
+      eq(orders.userId, userId), eq(orders.isUpgrade, isUpgrade), eq(orders.isGift, false),
       eq(orderItems.itemType, 'package'), eq(orderItems.packageId, targetPkg.id),
       inArray(orders.status, ['pending', 'awaiting_confirmation', 'paid', 'completed']),
     )).orderBy(desc(orders.id)).limit(1);
 
   return {
     eligible: true,
+    isUpgrade,
+    purchasePrice: targetPkg.price,
+    currency: targetPkg.currency,
     pendingOrderId: pendingOrder?.id ?? null,
     currentPackageId: currentPkg.id,
     currentPackageSlug: currentPkg.slug,
@@ -11490,7 +11505,7 @@ export async function checkUpgradeEligibility(userId: number, targetPackageId?: 
     targetPackageId: targetPkg.id,
     targetPackageName: targetPkg.nameEn,
     targetPackageNameAr: targetPkg.nameAr,
-    upgradePrice: targetPkg.upgradePrice, // in cents
+    upgradePrice: targetPkg.upgradePrice ?? 0, // in cents
     renewalPrice: targetPkg.renewalPrice || 0, // in cents — renewal after upgrade
     renewalPeriodDays: targetPkg.renewalPeriodDays || 30,
   };

@@ -7820,6 +7820,13 @@ export const appRouter = router({
             } else if (!isPublicStandardPackage(pkg)) {
               throw new TRPCError({ code: 'NOT_FOUND', message: `Package ${item.packageId} not found` });
             }
+            if (pkg.slug === 'comprehensive' && !input.isGift) {
+              const offer = await db.checkUpgradeEligibility(ctx.user.id, pkg.id);
+              if (offer?.isUpgrade === false && offer.pendingOrderId) {
+                const existingOrder = await db.getOrderById(offer.pendingOrderId);
+                if (existingOrder) return existingOrder;
+              }
+            }
             if (pkg.currency !== 'USD' && pkg.currency !== 'ILS') {
               throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Unsupported package currency.' });
             }
@@ -9030,7 +9037,7 @@ export const appRouter = router({
         const termsAcceptedUserAgent = getRequestUserAgent(ctx.req) || null;
 
         const eligibility = await db.checkUpgradeEligibility(ctx.user.id, input.targetPackageId);
-        if (!eligibility) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Not eligible for upgrade' });
+        if (!eligibility || eligibility.isUpgrade === false) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Not eligible for upgrade. Live Package customers can purchase Comprehensive from its checkout.' });
         if (eligibility.pendingOrderId) {
           const existingOrder = await db.getOrderById(eligibility.pendingOrderId);
           if (existingOrder) return existingOrder;

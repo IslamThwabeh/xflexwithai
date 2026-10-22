@@ -4,6 +4,7 @@ vi.mock('../backend/db', async () => ({
   ...await vi.importActual<typeof import('../backend/db')>('../backend/db'),
   checkUpgradeEligibility: vi.fn(), createUpgradeOrderWithItem: vi.fn(),
   getOrderById: vi.fn(), notifyStaffByEvent: vi.fn(),
+  getPackageById: vi.fn(), createOrder: vi.fn(),
   getUserTermsAcceptanceStatus: vi.fn(),
 }));
 vi.mock('../backend/_core/orderEmails', async () => ({
@@ -51,6 +52,23 @@ describe('customer upgrade routes', () => {
     vi.mocked(db.checkUpgradeEligibility).mockResolvedValue(null);
     await expect(caller().upgrade.createOrder(input())).rejects.toMatchObject({ code: 'BAD_REQUEST' });
     expect(db.createUpgradeOrderWithItem).not.toHaveBeenCalled();
+  });
+
+  it('keeps Live customers on the full-purchase checkout', async () => {
+    vi.mocked(db.checkUpgradeEligibility).mockResolvedValue({ eligible: true, isUpgrade: false } as any);
+    await expect(caller().upgrade.createOrder(input())).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+    expect(db.createUpgradeOrderWithItem).not.toHaveBeenCalled();
+  });
+
+  it('resumes a Live customer full-purchase order with its recorded amount', async () => {
+    vi.mocked(db.getPackageById).mockResolvedValue({ id: 2, slug: 'comprehensive', packageType: 'standard', isPublished: true, price: 50000, currency: 'USD' } as any);
+    vi.mocked(db.checkUpgradeEligibility).mockResolvedValue({ eligible: true, isUpgrade: false, pendingOrderId: 88 } as any);
+    vi.mocked(db.getOrderById).mockResolvedValue({ id: 88, userId: 42, totalAmount: 200000, currency: 'ILS', isUpgrade: false } as any);
+    await expect(caller().orders.create({
+      items: [{ itemType: 'package', packageId: 2 }], paymentMethod: 'bank_transfer',
+      termsAcceptedAt: input().termsAcceptedAt, termsAcceptedVersion: CURRENT_TERMS_VERSION,
+    })).resolves.toMatchObject({ id: 88, totalAmount: 200000, currency: 'ILS', isUpgrade: false });
+    expect(db.createOrder).not.toHaveBeenCalled();
   });
 
   it('uses the authenticated owner and server acceptance time', async () => {

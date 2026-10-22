@@ -23,9 +23,12 @@ beforeEach(async () => {
     ALTER TABLE packages ADD COLUMN packageType TEXT NOT NULL DEFAULT 'standard';
     ALTER TABLE orders ADD COLUMN transactionPurpose TEXT;
     ALTER TABLE orderItems ADD COLUMN transactionPurpose TEXT;
+    CREATE TABLE live_package_entitlements (id INTEGER PRIMARY KEY, userId INTEGER, packageId INTEGER, isActive INTEGER DEFAULT 1);
     INSERT INTO packages (id,slug,nameEn,nameAr,upgradePrice) VALUES
       (1,'basic','Basic','Basic',0), (2,'comprehensive','Comprehensive','Comprehensive',30000),
       (3,'live-package','Live','Live',0);
+    UPDATE packages SET packageType='live' WHERE id=3;
+    UPDATE packages SET price=50000 WHERE id=2;
     CREATE TRIGGER item_purpose BEFORE INSERT ON orderItems
     WHEN NOT EXISTS (SELECT 1 FROM orders WHERE id=NEW.orderId AND transactionPurpose=NEW.transactionPurpose)
     BEGIN SELECT RAISE(ABORT,'purpose mismatch'); END;
@@ -101,5 +104,28 @@ describe('package upgrade eligibility and persistence', () => {
     const order = await createUpgradeOrderWithItem(orderInput(), 2, db);
     sqlite.prepare("UPDATE orders SET status='failed' WHERE id=?").run(order.id);
     await expect(checkUpgradeEligibility(42, 2, db)).resolves.toMatchObject({ pendingOrderId: null });
+  });
+
+  it('offers Live owners a full Comprehensive purchase instead of a discounted upgrade', async () => {
+    sqlite.exec('INSERT INTO live_package_entitlements (userId,packageId) VALUES (42,3)');
+    await expect(checkUpgradeEligibility(42, 2, db)).resolves.toMatchObject({
+      eligible: true, isUpgrade: false, currentPackageId: 3, purchasePrice: 50000, currency: 'USD',
+    });
+    expect(sqlite.prepare('SELECT isActive FROM live_package_entitlements').get()).toEqual({ isActive: 1 });
+  });
+
+  it('resumes a full Comprehensive order for a Live customer without converting it into an upgrade', async () => {
+    sqlite.exec(`
+      INSERT INTO live_package_entitlements (userId,packageId) VALUES (42,3);
+      INSERT INTO orders (id,userId,status,totalAmount,currency,isUpgrade,transactionPurpose) VALUES (99,42,'awaiting_confirmation',200000,'ILS',0,'new_sale');
+      INSERT INTO orderItems (orderId,packageId,transactionPurpose) VALUES (99,2,'new_sale');
+    `);
+    await expect(checkUpgradeEligibility(42, 2, db)).resolves.toMatchObject({ isUpgrade: false, pendingOrderId: 99 });
+  });
+
+  it('does not offer another full purchase to Live owners who already have Comprehensive', async () => {
+    sqlite.exec('INSERT INTO live_package_entitlements (userId,packageId) VALUES (42,3)');
+    own(2);
+    await expect(checkUpgradeEligibility(42, 2, db)).resolves.toBeNull();
   });
 });
