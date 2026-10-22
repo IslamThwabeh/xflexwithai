@@ -19,13 +19,7 @@ export default function Upgrade() {
   const [notes, setNotes] = useState('');
   const [termsAccepted, setTermsAccepted] = useState(false);
 
-  // Get the comprehensive package to check eligibility
-  const { data: comprehensivePkg } = trpc.packages.bySlug.useQuery({ slug: 'comprehensive' });
-
-  const { data: eligibility, isLoading } = trpc.upgrade.checkEligibility.useQuery(
-    { targetPackageId: comprehensivePkg?.id || 0 },
-    { enabled: !!comprehensivePkg?.id }
-  );
+  const { data: eligibility, isLoading, isError, refetch } = trpc.upgrade.checkEligibility.useQuery(undefined);
 
   const createUpgradeOrder = trpc.upgrade.createOrder.useMutation({
     onSuccess: (data) => {
@@ -36,9 +30,9 @@ export default function Upgrade() {
   });
 
   const handleSubmit = () => {
-    if (!comprehensivePkg) return;
+    if (!eligibility || !termsAccepted || createUpgradeOrder.isPending) return;
     createUpgradeOrder.mutate({
-      targetPackageId: comprehensivePkg.id,
+      targetPackageId: eligibility.targetPackageId,
       paymentMethod,
       notes: notes || undefined,
       termsAcceptedAt: new Date().toISOString(),
@@ -46,11 +40,24 @@ export default function Upgrade() {
     });
   };
 
-  if (isLoading || !comprehensivePkg) {
+  if (isLoading) {
     return (
       <ClientLayout>
         <div className="min-h-[60vh] flex items-center justify-center bg-[var(--color-xf-cream)]">
           <div className="w-8 h-8 border-4 border-emerald-400 border-t-transparent rounded-full animate-spin" />
+        </div>
+      </ClientLayout>
+    );
+  }
+
+  if (isError) {
+    return (
+      <ClientLayout>
+        <div className="mx-auto max-w-2xl px-4 py-12 text-center" dir={isRtl ? 'rtl' : 'ltr'}>
+          <h1 className="text-2xl font-bold">{isRtl ? 'تعذر تحميل الترقية' : 'Unable to load your upgrade'}</h1>
+          <p className="my-4">{isRtl ? 'حاول مجدداً أو تواصل مع الدعم لمساعدتك في إنشاء الطلب.' : 'Try again or contact support for help creating your order.'}</p>
+          <Button onClick={() => void refetch()}>{isRtl ? 'إعادة المحاولة' : 'Try Again'}</Button>
+          <Link href="/support"><Button variant="outline" className="ms-3">{isRtl ? 'الدعم' : 'Support'}</Button></Link>
         </div>
       </ClientLayout>
     );
@@ -68,12 +75,13 @@ export default function Upgrade() {
               </h1>
               <p className="text-gray-500 mb-6 leading-7">
                 {isRtl
-                  ? 'يجب أن يكون لديك اشتراك أساسي نشط للترقية إلى الباقة الشاملة.'
-                  : 'You need an active Basic subscription to upgrade to the Comprehensive package.'}
+                  ? 'لا توجد ترقية متاحة لحسابك حالياً. إذا دفعت للترقية أو كانت باقتك غير ظاهرة، تواصل مع الدعم.'
+                  : 'No upgrade is currently available for your account. If you already paid or your package is missing, contact support.'}
               </p>
               <Link href="/my-packages">
                 <Button variant="outline" className="border-slate-200 bg-white">{isRtl ? 'عرض باقتي' : 'View My Package'}</Button>
               </Link>
+              <Link href="/support"><Button variant="outline" className="ms-3">{isRtl ? 'الدعم' : 'Support'}</Button></Link>
             </div>
           </div>
         </div>
@@ -81,7 +89,19 @@ export default function Upgrade() {
     );
   }
 
-  const upgradePricing = getUpgradeDisplayPricing('basic', 'comprehensive', eligibility.upgradePrice, eligibility.renewalPrice);
+  if (eligibility.pendingOrderId) {
+    return (
+      <ClientLayout>
+        <div className="mx-auto max-w-2xl px-4 py-12 text-center" dir={isRtl ? 'rtl' : 'ltr'}>
+          <h1 className="text-2xl font-bold">{isRtl ? 'طلب الترقية موجود بالفعل' : 'Your upgrade order already exists'}</h1>
+          <p className="my-4 leading-7">{isRtl ? 'افتح الطلب لرفع إيصال الدفع أو متابعة مراجعة الدعم واستلام مفتاح التفعيل.' : 'Open your order to upload payment proof, follow the support review, or collect your activation key.'}</p>
+          <Link href={`/orders/${eligibility.pendingOrderId}`}><Button>{isRtl ? 'عرض طلب الترقية' : 'View Upgrade Order'} #{eligibility.pendingOrderId}</Button></Link>
+        </div>
+      </ClientLayout>
+    );
+  }
+
+  const upgradePricing = getUpgradeDisplayPricing(eligibility.currentPackageSlug, 'comprehensive', eligibility.upgradePrice, eligibility.renewalPrice);
   // Display in ILS. Backend still records the order in USD; final amount is confirmed at payment.
   const totalIls = upgradePricing.ilsPrice;
   const vatRate = 16;
@@ -104,8 +124,8 @@ export default function Upgrade() {
                 <h1 className="text-3xl font-bold text-gray-900 md:text-4xl">{isRtl ? 'ترقية الباقة' : 'Upgrade Package'}</h1>
                 <p className="mt-3 max-w-2xl text-base leading-7 text-gray-600">
                   {isRtl
-                    ? 'أكمل الترقية من نفس الواجهة المنسقة مع الحفاظ على مسار الحوالة البنكية وربط الطلب بحسابك مباشرة.'
-                    : 'Complete the upgrade inside the same branded flow while keeping the bank-transfer process and linking the order directly to your account.'}
+                    ? 'أنشئ طلب الترقية، وارفع إيصال الدفع، وتابع مراجعة الدعم واستلام مفتاح التفعيل من حسابك.'
+                    : 'Create your upgrade order, upload payment proof, and track support review and your activation key from your account.'}
                 </p>
               </div>
               <div className="rounded-[22px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
@@ -153,8 +173,8 @@ export default function Upgrade() {
                 <p className="font-medium mb-1">{isRtl ? 'تعليمات التحويل البنكي:' : 'Bank Transfer Instructions:'}</p>
                 <p className="text-gray-600">
                   {isRtl
-                    ? 'بعد إنشاء الطلب، قم بتحويل المبلغ المطلوب ثم ارفع صورة الإيصال في صفحة الطلب.'
-                    : 'After placing your order, transfer the required amount and upload the receipt on the order page.'}
+                    ? 'إذا دفعت بالفعل، أنشئ الطلب ثم ارفع إيصالك الموجود في صفحة الطلب. بخلاف ذلك، حوّل المبلغ ثم ارفع الإيصال. يراجع الدعم الدفع ويصدر مفتاح التفعيل.'
+                    : 'Already paid? Create the order, then upload your existing receipt on the order page. Otherwise, transfer the amount and upload the receipt. Support reviews payment and issues your activation key.'}
                 </p>
               </div>
             </div>

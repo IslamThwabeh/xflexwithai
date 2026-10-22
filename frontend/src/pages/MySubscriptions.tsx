@@ -1,6 +1,7 @@
+import UpgradeCallout from '@/components/UpgradeCallout';
 import { useState } from 'react';
 import { Link, useLocation } from 'wouter';
-import { Package, CheckCircle, AlertCircle, ArrowUpCircle, RefreshCw } from 'lucide-react';
+import { Package, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -64,32 +65,7 @@ export default function MySubscriptions() {
           </div>
         )}
 
-        {/* Upgrade CTA for Basic subscribers */}
-        {pkg && pkg.slug === 'basic' && (
-          <div className="bg-gradient-to-r from-amber-50 to-emerald-50 border-2 border-amber-200 rounded-2xl p-6 mb-8">
-            <div className="flex items-center justify-between flex-wrap gap-4">
-              <div className="flex items-center gap-3">
-                <ArrowUpCircle className="w-8 h-8 text-amber-600" />
-                <div>
-                  <h3 className="font-bold text-lg text-amber-900">
-                    {isRtl ? 'ترقية إلى الباقة الشاملة' : 'Upgrade to Comprehensive'}
-                  </h3>
-                  <p className="text-sm text-amber-600">
-                    {isRtl
-                      ? 'احصل على جميع المميزات بما فيها LexAI مع استمرار التوصيات والدعم المباشر'
-                      : 'Get all features including LexAI, while keeping recommendations and live support'}
-                  </p>
-                </div>
-              </div>
-              <Link href="/upgrade">
-                <Button className="bg-amber-600 hover:bg-amber-700">
-                  <ArrowUpCircle className="w-4 h-4 me-2" />
-                  {isRtl ? 'ترقية الآن' : 'Upgrade Now'}
-                </Button>
-              </Link>
-            </div>
-          </div>
-        )}
+        <UpgradeCallout />
 
         {renewal.data && (
           <section className="mb-8 rounded-2xl border-2 border-emerald-200 bg-emerald-50 p-6" dir={isRtl ? 'rtl' : 'ltr'}>

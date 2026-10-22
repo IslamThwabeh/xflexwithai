@@ -9,10 +9,16 @@ import { formatIlsAmount, getPackageDisplayPricing } from '@/lib/packagePricing'
 import { PUBLIC_CATALOG_STALE_MS, PUBLIC_OFFER_STATE_STALE_MS } from '@/lib/queryCaching';
 import { trpc } from '@/lib/trpc';
 import { trackPackageView } from '@/lib/analytics';
+import UpgradeCallout from '@/components/UpgradeCallout';
+import { useAuth } from '@/_core/hooks/useAuth';
 
 export default function PackageDetails() {
   const { slug } = useParams<{ slug: string }>();
   const { t, language, isRTL } = useLanguage();
+  const { user } = useAuth();
+  const { data: upgradeEligibility } = trpc.upgrade.checkEligibility.useQuery(undefined, {
+    enabled: !!user && slug === 'comprehensive', retry: false,
+  });
 
   const { data: pkg, isLoading, error } = trpc.packages.bySlug.useQuery(
     { slug: slug || '' },
@@ -244,9 +250,10 @@ export default function PackageDetails() {
                 </p>
               </div>
 
+              {isComprehensive && <UpgradeCallout />}
               {isLive && !liveState?.purchasable ? <Button size="lg" disabled className="w-full font-bold">
                 {language === 'ar' ? 'التسجيل مغلق حالياً' : 'Registration is closed'}
-              </Button> : <Link href={`/checkout/${pkg.slug}`}>
+              </Button> : <Link href={upgradeEligibility ? '/upgrade' : `/checkout/${pkg.slug}`}>
                 <Button
                   size="lg"
                   className={`w-full font-bold ${
@@ -256,7 +263,7 @@ export default function PackageDetails() {
                   }`}
                 >
                   <ShoppingCart className="w-4 h-4" />
-                  {t('home.packages.choosePlan')}
+                  {upgradeEligibility ? (language === 'ar' ? 'ترقية إلى الباقة الشاملة' : 'Upgrade to Comprehensive') : t('home.packages.choosePlan')}
                 </Button>
               </Link>}
             </div>

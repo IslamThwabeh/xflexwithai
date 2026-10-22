@@ -142,7 +142,7 @@ export default function LexAI() {
   const { data: onboardingStatus, isLoading: onboardingLoading } = trpc.onboarding.isComplete.useQuery(undefined, {
     enabled: !!user,
   });
-  const { data: myPackageData, isLoading: myPackageLoading } = trpc.subscriptions.myActivePackage.useQuery(undefined, {
+  const { data: upgradeEligibility, isLoading: upgradeLoading } = trpc.upgrade.checkEligibility.useQuery(undefined, {
     enabled: !!user,
   });
   const { studyPeriodDays, entitlementDays } = getPendingActivationWindow(activationStatus);
@@ -211,7 +211,6 @@ export default function LexAI() {
   const lexaiAccess = serviceAccessSummary?.lexai;
   const hasTimedLexaiAccess = lexaiAccess?.status === 'active' || lexaiAccess?.status === 'expiring';
   const hasActiveSubscription = hasTimedLexaiAccess && !!activeSubscription?.isActive;
-  const isBasicPackage = (myPackageData as any)?.package?.slug === 'basic';
 
   const isBusy =
     uploadImage.isPending ||
@@ -366,7 +365,7 @@ export default function LexAI() {
     }
   };
 
-  if (authLoading || subLoading || adminLoading || serviceAccessLoading || activationStatusLoading || onboardingLoading || myPackageLoading) {
+  if (authLoading || subLoading || adminLoading || serviceAccessLoading || activationStatusLoading || onboardingLoading || upgradeLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <p>{copy.loading}</p>
@@ -393,6 +392,45 @@ export default function LexAI() {
   }
 
   if (!hasActiveSubscription) {
+    // Show the eligible upgrade before service-expiry or broker-setup gates.
+    if (upgradeEligibility?.eligible) {
+      return (
+        <ClientLayout>
+        <div className="min-h-[calc(100vh-64px)] flex items-center justify-center bg-[var(--color-xf-cream)]">
+          <Card className="max-w-lg mx-4">
+            <CardHeader className="text-center">
+              <div className="mx-auto w-16 h-16 bg-gradient-to-br from-emerald-500 to-teal-500 rounded-full flex items-center justify-center mb-4">
+                <Crown className="h-8 w-8 text-white" />
+              </div>
+              <CardTitle className="text-2xl">
+                {isArabic ? 'LexAI متاح في الباقة الشاملة فقط' : 'LexAI Is Included in the Comprehensive Plan'}
+              </CardTitle>
+              <CardDescription className="text-base mt-2">
+                {isArabic
+                  ? 'لإضافة LexAI والتوصيات، أنشئ طلب ترقية إلى الباقة الشاملة. إذا دفعت بالفعل، ارفع إيصالك في صفحة الطلب لمراجعة الدعم وإصدار مفتاح التفعيل.'
+                  : 'Create a Comprehensive upgrade order to add LexAI and recommendations. Already paid? Upload your receipt on the order page so support can review it and issue your activation key.'}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Link href="/upgrade">
+                <Button className="w-full btn-primary-xf" size="lg">
+                  <ArrowUpCircle className="h-4 w-4 mr-2" />
+                  {isArabic ? 'ترقية إلى الباقة الشاملة' : 'Upgrade to Comprehensive'}
+                </Button>
+              </Link>
+              <Link href="/support">
+                <Button variant="outline" className="w-full" size="sm">
+                  <MessageSquare className="h-4 w-4 mr-2" />
+                  {isArabic ? 'تواصل مع الدعم' : 'Contact Support'}
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        </div>
+        </ClientLayout>
+      );
+    }
+
     // Frozen subscription — show specific frozen message
     if (isFrozenSub) {
       const frozenUntil = frozenSubscription?.frozenUntil;
@@ -516,45 +554,6 @@ export default function LexAI() {
                   ? `أكمل إعداد الوسيط مبكرًا لتحصل على أقصى استفادة من فترة الـ${entitlementDays} يومًا.`
                   : `Complete your broker setup early to maximize your ${entitlementDays}-day access window.`}
               </p>
-              <Link href="/support">
-                <Button variant="outline" className="w-full" size="sm">
-                  <MessageSquare className="h-4 w-4 mr-2" />
-                  {isArabic ? 'تواصل مع الدعم' : 'Contact Support'}
-                </Button>
-              </Link>
-            </CardContent>
-          </Card>
-        </div>
-        </ClientLayout>
-      );
-    }
-
-    // Basic package user — LexAI not included; show upgrade CTA instead of misleading broker gate or generic paywall
-    if (isBasicPackage && lexaiAccess?.status === 'none') {
-      return (
-        <ClientLayout>
-        <div className="min-h-[calc(100vh-64px)] flex items-center justify-center bg-[var(--color-xf-cream)]">
-          <Card className="max-w-lg mx-4">
-            <CardHeader className="text-center">
-              <div className="mx-auto w-16 h-16 bg-gradient-to-br from-emerald-500 to-teal-500 rounded-full flex items-center justify-center mb-4">
-                <Crown className="h-8 w-8 text-white" />
-              </div>
-              <CardTitle className="text-2xl">
-                {isArabic ? 'LexAI متاح في الباقة الشاملة فقط' : 'LexAI Is Included in the Comprehensive Plan'}
-              </CardTitle>
-              <CardDescription className="text-base mt-2">
-                {isArabic
-                  ? 'باقتك الأساسية تشمل الدورة التعليمية والتوصيات. للحصول على تحليل LexAI بالذكاء الاصطناعي، قم بالترقية إلى الباقة الشاملة.'
-                  : 'Your Basic plan includes the course and live recommendations. Upgrade to Comprehensive to unlock AI-powered LexAI chart analysis.'}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <Link href="/upgrade">
-                <Button className="w-full btn-primary-xf" size="lg">
-                  <ArrowUpCircle className="h-4 w-4 mr-2" />
-                  {isArabic ? 'ترقية إلى الباقة الشاملة' : 'Upgrade to Comprehensive'}
-                </Button>
-              </Link>
               <Link href="/support">
                 <Button variant="outline" className="w-full" size="sm">
                   <MessageSquare className="h-4 w-4 mr-2" />

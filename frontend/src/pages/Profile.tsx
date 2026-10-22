@@ -1,3 +1,4 @@
+import UpgradeCallout from '@/components/UpgradeCallout';
 import { useState } from "react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import ClientLayout from "@/components/ClientLayout";
@@ -225,6 +226,8 @@ export default function Profile() {
               {t("profile.description")}
             </p>
           </div>
+
+          <UpgradeCallout />
 
           {/* Profile Information */}
           <Card className="mb-6">

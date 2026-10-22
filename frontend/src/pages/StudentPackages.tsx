@@ -1,6 +1,7 @@
+import UpgradeCallout from '@/components/UpgradeCallout';
 import type { ReactNode } from 'react';
 import { Link } from 'wouter';
-import { Package, CheckCircle2, X, ArrowUpCircle, Clock, Sparkles, MessageSquare, BookOpen, Shield, Snowflake, CheckCircle, AlertCircle, UserPlus, Key, GraduationCap, Landmark, Bot, TrendingUp, FileText, Download } from 'lucide-react';
+import { Package, CheckCircle2, X, Clock, Sparkles, MessageSquare, BookOpen, Shield, Snowflake, CheckCircle, AlertCircle, UserPlus, Key, GraduationCap, Landmark, Bot, TrendingUp, FileText, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -272,32 +273,7 @@ export default function StudentPackages() {
           </div>
         )}
 
-        {/* Upgrade CTA for Basic */}
-        {isBasic && (
-          <div className="bg-gradient-to-r from-emerald-50 to-teal-50 border-2 border-emerald-200 rounded-2xl p-6 mb-8">
-            <div className="flex items-center justify-between flex-wrap gap-4">
-              <div className="flex items-center gap-3">
-                <ArrowUpCircle className="w-8 h-8 text-emerald-600" />
-                <div>
-                  <h3 className="font-bold text-lg text-emerald-900">
-                    {isRtl ? 'ترقية إلى الباقة الشاملة' : 'Upgrade to Comprehensive'}
-                  </h3>
-                  <p className="text-sm text-emerald-600">
-                    {isRtl
-                      ? 'احصل على جميع المميزات بما فيها LexAI مع استمرار التوصيات والدعم المباشر'
-                      : 'Get all features including LexAI, while keeping recommendations and live support'}
-                  </p>
-                </div>
-              </div>
-              <Link href="/upgrade">
-                <Button className="bg-emerald-600 hover:bg-emerald-700">
-                  <ArrowUpCircle className="w-4 h-4 me-2" />
-                  {isRtl ? 'ترقية الآن' : 'Upgrade Now'}
-                </Button>
-              </Link>
-            </div>
-          </div>
-        )}
+        <UpgradeCallout />
 
         {/* Deferred Activation Status */}
         {activationStatus?.hasPending && (
@@ -569,16 +545,7 @@ export default function StudentPackages() {
                   <span className="text-gray-700">{f.icon} {isRtl ? f.ar : f.en}</span>
                 </div>
               ))}
-              {isBasic && (
-                <div className="pt-3 border-t mt-3">
-                  <Link href="/upgrade">
-                    <Button className="w-full bg-emerald-600 hover:bg-emerald-700">
-                      <ArrowUpCircle className="w-4 h-4 me-2" />
-                      {isRtl ? 'ترقية الآن' : 'Upgrade Now'}
-                    </Button>
-                  </Link>
-                </div>
-              )}
+              <UpgradeCallout compact />
             </CardContent>
           </Card>
         </div>

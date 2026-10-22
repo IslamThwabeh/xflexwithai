@@ -9005,16 +9005,16 @@ export const appRouter = router({
   upgrade: router({
     // Student: check if eligible to upgrade
     checkEligibility: protectedProcedure
-      .input(z.object({ targetPackageId: z.number() }))
+      .input(z.object({ targetPackageId: z.number().int().positive() }).optional())
       .query(async ({ ctx, input }) => {
         if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
-        return db.checkUpgradeEligibility(ctx.user.id, input.targetPackageId);
+        return db.checkUpgradeEligibility(ctx.user.id, input?.targetPackageId);
       }),
 
     // Student: create an upgrade order
     createOrder: protectedProcedure
       .input(z.object({
-        targetPackageId: z.number(),
+        targetPackageId: z.number().int().positive(),
         paymentMethod: z.literal('bank_transfer'),
         notes: z.string().optional(),
         termsAcceptedAt: z.string().optional(),
@@ -9031,6 +9031,10 @@ export const appRouter = router({
 
         const eligibility = await db.checkUpgradeEligibility(ctx.user.id, input.targetPackageId);
         if (!eligibility) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Not eligible for upgrade' });
+        if (eligibility.pendingOrderId) {
+          const existingOrder = await db.getOrderById(eligibility.pendingOrderId);
+          if (existingOrder) return existingOrder;
+        }
 
         const vatRate = 16;
         // Prices are VAT-inclusive: extract VAT from the upgrade price
@@ -9038,7 +9042,7 @@ export const appRouter = router({
         const vatAmount = Math.round(totalAmount * vatRate / (100 + vatRate));
         const subtotal = totalAmount - vatAmount;
 
-        const order = await db.createOrder({
+        const order = await db.createUpgradeOrderWithItem({
           userId: ctx.user.id,
           status: 'pending',
           subtotal,
@@ -9061,19 +9065,7 @@ export const appRouter = router({
           termsAcceptedUserAgent,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
-        });
-
-        if (!order) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create order' });
-
-        await db.addOrderItem({
-          orderId: order.id,
-          itemType: 'package',
-          packageId: input.targetPackageId,
-          courseId: null,
-          priceAtPurchase: totalAmount,
-          currency: 'USD',
-          transactionPurpose: 'upgrade',
-        });
+        }, input.targetPackageId);
 
         // In Workers, detached promises can be dropped before the provider call completes.
         const totalUsd = totalAmount / 100;
@@ -9117,7 +9109,9 @@ export const appRouter = router({
           contentEn: `${ctx.user.email} requested an upgrade (${totalIlsEn}).`,
           contentAr: `${ctx.user.email} طلب ترقية (${totalIlsAr}).`,
           metadata: { orderId: order.id, userId: ctx.user.id, totalUsd, totalIls },
-        });
+        }).catch((error) => logger.warn('[ORDER_NOTIFICATION] Upgrade order saved; staff notification failed', {
+          orderId: order.id, error: error instanceof Error ? error.message : String(error),
+        }));
 
         return order;
       }),

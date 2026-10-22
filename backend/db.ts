@@ -11450,32 +11450,41 @@ export async function fulfillPackageEntitlements(
  * Check if a user is eligible to upgrade to a given package.
  * Returns the current subscription + upgrade pricing info.
  */
-export async function checkUpgradeEligibility(userId: number, targetPackageId: number) {
-  const db = await getDb();
+export async function checkUpgradeEligibility(userId: number, targetPackageId?: number, database?: any) {
+  const db = database ?? await getDb();
   if (!db) return null;
 
-  const targetPkg = await getPackageById(targetPackageId);
+  const targetPkg = targetPackageId
+    ? await getPackageById(targetPackageId, db)
+    : await getPackageBySlug('comprehensive', db);
   if (!targetPkg) return null;
   if (!targetPkg.upgradePrice || targetPkg.upgradePrice <= 0) return null; // no upgrade path configured
 
-  // Hardening: only allow Basic → Comprehensive. With only two packages today this
-  // is functionally the only valid upgrade path; making it explicit prevents any future
-  // 3rd package from being silently treated as upgradeable.
+  // This checkout upgrades only to Comprehensive; source ownership is checked below.
   if (targetPkg.slug !== 'comprehensive') return null;
 
-  // Check user has an active Basic subscription
-  const subs = await getUserPackageSubscriptions(userId);
-  const activeSubs = subs.filter(s => s.isActive && s.packageId !== targetPackageId);
-  if (activeSubs.length === 0) return null; // no active subscription to upgrade from
+  // Package ownership is permanent; expired monthly services do not remove it.
+  // Resolve by slug instead of whichever subscription happens to be returned first.
+  const owned = await db.select({ pkg: packages }).from(packageSubscriptions)
+    .innerJoin(packages, eq(packages.id, packageSubscriptions.packageId))
+    .where(and(eq(packageSubscriptions.userId, userId), eq(packageSubscriptions.isActive, true)));
+  if (owned.some((row: { pkg: Package }) => row.pkg.slug === 'comprehensive')) return null;
+  const currentPkg = owned.find((row: { pkg: Package }) => row.pkg.slug === 'basic')?.pkg;
+  if (!currentPkg) return null;
 
-  // Resolve current package; only Basic is a valid source
-  const currentSub = activeSubs[0];
-  const currentPkg = await getPackageById(currentSub.packageId);
-  if (!currentPkg || currentPkg.slug !== 'basic') return null;
+  const [pendingOrder] = await db.select({ id: orders.id }).from(orders)
+    .innerJoin(orderItems, eq(orderItems.orderId, orders.id))
+    .where(and(
+      eq(orders.userId, userId), eq(orders.isUpgrade, true),
+      eq(orderItems.itemType, 'package'), eq(orderItems.packageId, targetPkg.id),
+      inArray(orders.status, ['pending', 'awaiting_confirmation', 'paid', 'completed']),
+    )).orderBy(desc(orders.id)).limit(1);
 
   return {
     eligible: true,
-    currentPackageId: currentSub.packageId,
+    pendingOrderId: pendingOrder?.id ?? null,
+    currentPackageId: currentPkg.id,
+    currentPackageSlug: currentPkg.slug,
     currentPackageName: currentPkg?.nameEn || 'Current Package',
     currentPackageNameAr: currentPkg?.nameAr || 'الباقة الحالية',
     targetPackageId: targetPkg.id,
@@ -11485,6 +11494,24 @@ export async function checkUpgradeEligibility(userId: number, targetPackageId: n
     renewalPrice: targetPkg.renewalPrice || 0, // in cents — renewal after upgrade
     renewalPeriodDays: targetPkg.renewalPeriodDays || 30,
   };
+}
+
+/** Persist the order and its package together, so a failed item insert cannot
+ * leave a customer with an order support cannot fulfil. D1 batches are atomic. */
+export async function createUpgradeOrderWithItem(input: InsertOrder, targetPackageId: number, database?: any): Promise<Order> {
+  const db = database ?? await getDb();
+  if (!db) throw new Error('Database not available');
+  const [created] = await db.batch([
+    db.insert(orders).values(input).returning(),
+    db.insert(orderItems).values({
+      orderId: sql`last_insert_rowid()`,
+      itemType: 'package', packageId: targetPackageId, courseId: null,
+      priceAtPurchase: input.totalAmount ?? 0, currency: input.currency ?? 'USD',
+      transactionPurpose: 'upgrade',
+    }),
+  ]);
+  if (!created[0]) throw new Error('Failed to create upgrade order');
+  return created[0];
 }
 
 /**
@@ -15886,8 +15913,8 @@ export async function getPackageById(id: number, database?: any): Promise<Packag
   return pkg ?? null;
 }
 
-export async function getPackageBySlug(slug: string): Promise<Package | null> {
-  const db = await getDb();
+export async function getPackageBySlug(slug: string, database?: any): Promise<Package | null> {
+  const db = database ?? await getDb();
   if (!db) return null;
   const [pkg] = await db.select().from(packages).where(eq(packages.slug, slug)).limit(1);
   return pkg ?? null;
