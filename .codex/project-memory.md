@@ -1,6 +1,6 @@
 # XFLEX Project Memory
 
-Last updated: 2026-10-02
+Last updated: 2026-10-22
 
 ## Trade Copier private checkout and local PRD-data QA - 2026-10-02
 
@@ -974,3 +974,33 @@ Last updated: 2026-10-02
 - Then provide a short prompt they can paste into VS Code AI/Copilot/Cursor.
 - Keep those prompts focused on file paths, line numbers, and exact code changes; avoid long explanations.
 - Preferred verification/deploy loop after fixes: build, deploy Worker, deploy Pages, then smoke test.
+
+## Support navigation release — 2026-10-15
+
+- User explicitly approved push and production deployment. Reviewed fixes imported from 623be42 and committed/pushed as 323570d on codex/live-package-phase-a, with SUPPORT-FIX-REVIEW.md. Pages production deployment 41c44bfa-e6ff-42cc-85bb-5707fa7dc80a (main) reports source 323570d. No backend Worker release or DB changes.
+- MyDashboard Open Courses opens the first enrolled course. BrokerOnboarding allows choosing another broker before downstream proof activity and disables the current broker. Restriction is UI-only; existing backend reset guard remains a separate follow-up.
+- Verification: TypeScript, production build, 13 focused tests and diff hygiene passed before release. Production /ar, /courses, both exact updated JS assets, and API /health returned 200; broker-change text and course-link path were present. Customer-authenticated playback was not tested.
+- Tala #154: order #105/payment confirmation #8/ledger #8 substantiate ILS 2,000 Live, with separate active Live entitlement #5. No LexAI subscription/separate customer order found. Staff messages 20669,20682,20683 quote ILS 700 standalone LexAI with no renewal/permanent availability. Separate payment via intermediary remains unverified. Finance must reconcile receipt and owner confirm provisioning terms; no entitlement or financial changes made. USD 525 was described as copier capital, not subscription revenue.
+
+## Students activity breakdown production release — 2026-10-21
+
+- User explicitly authorized push and production deployment. Commit `dff8f19` (`Explain Students activity with recommendation audience tree`) is pushed to `origin/codex/live-package-phase-a`. Earlier already-deployed recording CORS behavior was verified on production and preserved separately in `2462fbe` with its 8 tests.
+- Students now labels the package count explicitly and expands a live recommendation audience tree. It separates package clients from subscription records, explains expiry/pause/pending/staff exclusions, deduplicates eligible clients, and supports hover, focus, and phone-tap descriptions in English and Arabic.
+- Production Worker version `343c50cf-012e-412f-aab1-1df78a52fe49` deployed first, with D1, both R2 bindings, and all four cron schedules preserved. Previous Worker version was `9739e9ec-3cc5-4afb-b168-730aa14aa2d1`.
+- Production Pages deployment `e5061a9c-f1e0-4476-84d1-f42571074654` reports source `dff8f19`; preview is `https://e5061a9c.xflexwithai.pages.dev`. Production serves `assets/index-D4JQ_3zV.js`, referencing `AdminStudents-Bq4gA6T5.js` containing the tree and audience query. Previous Pages deployment was `41c44bfa-e6ff-42cc-85bb-5707fa7dc80a`.
+- Verification: 40 focused tests, earlier TypeScript and desktop/mobile/Arabic browser checks, fresh production application and Worker builds, production/preview Students route 200, API/database health 200, and new audience endpoint anonymous access 401. Private route remains `noindex, nofollow` and `no-store, private`; assets remain immutable.
+- Production query plans confirm account primary-key joins, the notification-control unique index, and the `(userId, role)` covering index. The documented small subscription-table scan runs only when the tree loads or the user refreshes. No interval polling, activation repair, notification send, migration, or manual production data change was added/performed.
+- Authenticated production tree interaction is still unverified: the connected Chrome profile reached the admin login page. A Chrome tab named `Students PRD` was left available and the user was asked to sign in. Do not claim the logged-in PRD tree or counts were verified until that happens.
+
+
+## Customer Comprehensive ordering recovery — 2026-10-22
+
+- Implementation commits `9c80bb5` and `a6539be` repair customer ordering entry points across My Package, subscriptions, Profile, LexAI, and Comprehensive details. Basic owners use the discounted upgrade; Live owners use a full Comprehensive purchase alongside their independent Live entitlement. Existing orders reopen instead of being recreated.
+- Upgrade order/item persistence is atomic in D1. Notification failure does not turn a saved order into a failed submission. Eligibility no longer depends on subscription row order and blocks another upgrade after Comprehensive ownership.
+- Production Worker `7966e3db-c835-4304-bcda-aa21f156dd8b`; Pages preview `https://8bd47a79.xflexwithai.pages.dev` (source `a6539be`). The actual Pages project name is `xflexacademy`; its longstanding preview domain remains `xflexwithai.pages.dev`. All four existing schedules and bindings are retained.
+- Verification passed 72 focused tests, TypeScript, production frontend/Worker builds, local Arabic/English mobile UI checks with a mocked account, and production routes/assets/API/database health. Wider critical cycle passed 202/203; unchanged `emailOutboxScheduledHealth.test.ts` expects three schedules while the pre-existing configuration has four.
+- Requested historical full-purchase order `135` was submitted for review at ILS 2,000 with effective creation `2026-10-15T07:00:00.000Z` (10:00 Asia/Amman); actual insertion/audit timestamps remain current. Existing account terms evidence was preserved without inventing a new acceptance. Four normal admin/key-manager notifications were created. No receipt, payment confirmation, ledger revenue, key, or activation was fabricated. Existing Live access remains active. Detailed scoped evidence and recovery bookmark are private under `tmp/private-handoffs/`.
+- The owner explicitly clarified that this is a full Comprehensive purchase for ILS 2,000 alongside Live. This supersedes the earlier Basic-upgrade assumption and historical ILS 700 standalone-LexAI discussion; do not provision it as either of those products.
+- Latest verification found order `135` awaiting confirmation, no attached receipt, and no issued Comprehensive key. Support must verify the matching receipt, approve payment, choose the service duration, and issue the fresh Comprehensive key. Preserve the separate active Live entitlement.
+- The requested October 15 timestamp is only the order date. It must not backdate key redemption, the learning period, or timed-service usage. At the activation follow-up, this account's `firstPackageActivatedAt` was null. Redeeming its first standard-package key sets the activation anchor; Live redemption itself does not set it.
+- After redemption, LexAI/Recommendations start when the required course is complete (or explicitly waived) and broker setup is complete, or automatically when the study/protection period ends. No production `study_period_days` override existed at verification, so the default is 14 days. Timed-service duration comes from the issued key and runs from the timed-service start. Do not describe access as active before redemption and readiness/deadline processing are verified.
