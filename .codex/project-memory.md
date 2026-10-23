@@ -1,6 +1,6 @@
 # XFLEX Project Memory
 
-Last updated: 2026-10-22
+Last updated: 2026-10-23
 
 ## Trade Copier private checkout and local PRD-data QA - 2026-10-02
 
@@ -1004,3 +1004,13 @@ Last updated: 2026-10-22
 - Latest verification found order `135` awaiting confirmation, no attached receipt, and no issued Comprehensive key. Support must verify the matching receipt, approve payment, choose the service duration, and issue the fresh Comprehensive key. Preserve the separate active Live entitlement.
 - The requested October 15 timestamp is only the order date. It must not backdate key redemption, the learning period, or timed-service usage. At the activation follow-up, this account's `firstPackageActivatedAt` was null. Redeeming its first standard-package key sets the activation anchor; Live redemption itself does not set it.
 - After redemption, LexAI/Recommendations start when the required course is complete (or explicitly waived) and broker setup is complete, or automatically when the study/protection period ends. No production `study_period_days` override existed at verification, so the default is 14 days. Timed-service duration comes from the issued key and runs from the timed-service start. Do not describe access as active before redemption and readiness/deadline processing are verified.
+
+
+## Historical order visibility and owner-payment note — 2026-10-23
+
+- Production recheck confirmed historical order `135` exists at ILS 2,000, dated `2026-10-15T07:00:00.000Z`, awaiting confirmation. Its backdated creation puts it behind 15 newer orders; the old 10-row list had no customer/order search. Support-only accounts also lacked Order Management access. No duplicate order was created.
+- Commit `d60bc21` adds client-side order-number/name/email search, refresh/error states, and `/admin/orders?orderId=135` focus/expansion. It also displays order notes, which were previously omitted. Search adds no per-keystroke API calls or polling.
+- The `support` role now has read-only Order Management navigation/API access. Support-only results redact terms-request IP/device metadata. Existing key-manager and finance permissions remain required for operational changes, cash approval, and key issuance. Focused route tests verify support cannot approve or cancel orders.
+- At the owner's request, uploaded a PNG explicitly labeled PLACEHOLDER / NOT A PAYMENT RECEIPT, recording the owner's reported ILS 2,000 payment and stating actual receipt/independent verification are pending. It is attached via order notes under the separate `order-notes/135/` R2 prefix, not the payment-proof field. Uploaded bytes were SHA-256 verified and the attachment was audited. `paymentProofUrl` remains null; no payment confirmation, revenue, or key was created. Scoped recovery/audit details are private under `tmp/private-handoffs/tala-owner-note-*`. Existing order notifications now link directly to order 135.
+- Production Worker version `059c1e23-9e9d-4383-94e0-fb62f881c25e`; Pages preview `https://2e41fadb.xflexwithai.pages.dev` (source `d60bc21`). Existing four schedules/bindings are preserved.
+- Verification passed 46 focused tests, TypeScript, frontend/Worker builds, Arabic/English desktop/mobile browser checks using a mocked support-only account, production/preview deep-link and exact asset checks, API/database health, and anonymous order-list denial (401). No actual staff credentials/session were used for browser verification.
