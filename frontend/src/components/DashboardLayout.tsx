@@ -69,6 +69,7 @@ import {
   Mail,
   Boxes,
   Sparkles,
+  User,
 } from "lucide-react";
 import {
   CSSProperties,
@@ -80,7 +81,7 @@ import {
   Suspense,
 } from "react";
 import { useTheme } from "@/contexts/ThemeContext";
-import { useLocation } from "wouter";
+import { Link, useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
 import { Button } from "./ui/button";
 import { trpc } from "@/lib/trpc";
@@ -521,6 +522,7 @@ function DashboardLayoutContent({
   const utils = trpc.useUtils();
   const [location, setLocation] = useLocation();
   const { t, language, setLanguage, isRTL } = useLanguage();
+  const profileLabel = language === "ar" ? "الملف الشخصي والإعدادات" : "Profile & settings";
   const [isPageVisible, setIsPageVisible] = useState(
     () => typeof document === "undefined" || document.visibilityState === "visible",
   );
@@ -1044,7 +1046,18 @@ function DashboardLayoutContent({
           })}
         </SidebarContent>
 
-        <SidebarFooter className="p-3 border-t border-white/[0.06]" />
+        <SidebarFooter className="p-3 border-t border-white/[0.06]">
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={location === "/profile"} tooltip={profileLabel}>
+                <Link href="/profile" onClick={() => setOpenMobile(false)}>
+                  <User className="h-4 w-4" />
+                  <span>{profileLabel}</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarFooter>
       </Sidebar>
 
       <div
@@ -1065,7 +1078,7 @@ function DashboardLayoutContent({
               <SidebarTrigger className="flex h-11 w-11 items-center justify-center rounded-xl text-gray-500 hover:bg-gray-100 sm:h-9 sm:w-9 dark:text-gray-400 dark:hover:bg-white/[0.06]" />
               <div className="hidden sm:block">
                 <h1 className="text-[17px] font-bold text-slate-900 dark:text-white leading-tight">
-                  {activeMenuItem ? menuLabel(activeMenuItem) : APP_TITLE}
+                  {location === "/profile" ? profileLabel : activeMenuItem ? menuLabel(activeMenuItem) : APP_TITLE}
                 </h1>
                 <p className="text-[11px] text-gray-400 mt-0.5">
                   {activeMenuItem?.descKey
@@ -1136,7 +1149,7 @@ function DashboardLayoutContent({
               {/* ── Group 3: Identity (Avatar + dropdown) ── */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button className="ms-0.5 flex min-h-11 min-w-11 items-center justify-center gap-2 transition hover:opacity-80 focus:outline-none sm:min-h-9 sm:min-w-9">
+                  <button aria-label={language === "ar" ? "قائمة الحساب" : "Account menu"} className="ms-0.5 flex min-h-11 min-w-11 items-center justify-center gap-2 transition hover:opacity-80 focus:outline-none sm:min-h-9 sm:min-w-9">
                     <Avatar className="h-9 w-9 border border-emerald-500/30 shadow-lg shadow-emerald-500/10">
                       <AvatarFallback className="text-xs font-bold bg-gradient-to-br from-emerald-500 to-teal-600 text-white">
                         {user?.name?.charAt(0).toUpperCase()}
@@ -1155,7 +1168,13 @@ function DashboardLayoutContent({
                     <ChevronDown className="w-4 h-4 text-gray-400 hidden md:block" />
                   </button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuItem asChild>
+                    <Link href="/profile" className="cursor-pointer">
+                      <User className="me-2 h-4 w-4" />
+                      <span>{profileLabel}</span>
+                    </Link>
+                  </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={logout}
                     className="cursor-pointer text-destructive focus:text-destructive"

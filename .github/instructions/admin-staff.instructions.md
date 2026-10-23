@@ -7,9 +7,10 @@ applyTo: "frontend/src/pages/Admin*.tsx,frontend/src/components/DashboardLayout.
 # XFlex Admin Staff Rules
 
 - `users.isStaff` separates staff from students. Staff are excluded from student reports and stats.
-- Staff accounts log in through `/auth` with OTP, not `/admin/login`.
+- Staff accounts log in through `/auth` using their configured password/OTP method, not `/admin/login`.
 - `auth.isAdmin` returns `{ isAdmin, isStaff, staffRoles }`; frontend role routing should rely on that shape.
 - `DashboardLayout.tsx` filters pages through `ROLE_PAGE_ACCESS`; sidebar visibility and backend route guards must stay aligned.
+- Personal `/profile` settings are available to every authenticated account without an operational staff role. Keep the Profile & settings link outside role-filtered menu sections and available in the avatar menu and mobile sidebar. Staff use the existing own-account settings/reset APIs; full admins have separate credentials and must use `/admin/settings` for password changes rather than customer password APIs.
 - Role assignment is the single source of truth for permissions. Do not reintroduce `canPublishRecommendations` or other legacy permission columns.
 - `lexai_support` is a dedicated staff role for `/admin/lexai`. Do not add it to `supportStaffProcedure` unless the business explicitly wants LexAI staff to inherit support chat access.
 - `lexai_expiry_soon` is emitted by the daily worker for active, non-paused LexAI subscriptions at 7, 3, and 0 days remaining. It should keep `/admin/lexai` badge counts flowing and should ensure a LexAI support case exists before notifying staff.

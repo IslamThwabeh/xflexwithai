@@ -2,6 +2,7 @@ import UpgradeCallout from '@/components/UpgradeCallout';
 import { useState } from "react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import ClientLayout from "@/components/ClientLayout";
+import DashboardLayout from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,8 +12,89 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { trpc } from "@/lib/trpc";
 import { Loader2, Check, AlertCircle, Eye, EyeOff, Mail, Bell } from "lucide-react";
 import { Link } from "wouter";
+import { getStaffLandingPage } from "@shared/const";
 
 export default function Profile() {
+  const { user } = useAuth();
+  const { language } = useLanguage();
+  const { data: account, isLoading, isError, refetch } = trpc.auth.isAdmin.useQuery();
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    );
+  }
+  if (isError) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Button onClick={() => void refetch()}>
+          {language === "ar" ? "إعادة المحاولة" : "Try again"}
+        </Button>
+      </div>
+    );
+  }
+  // Administrators have separate credentials and must use admin settings.
+  if (account?.isAdmin) return <AdminProfile />;
+  return (
+    <UserProfile
+      key={user?.id}
+      isStaff={account?.isStaff === true}
+      dashboardPath={account?.isStaff ? getStaffLandingPage(account.staffRoles ?? []) : "/courses"}
+    />
+  );
+}
+
+function AdminProfile() {
+  const { user } = useAuth();
+  const { t, language } = useLanguage();
+
+  return (
+    <DashboardLayout>
+      <div className="mx-auto max-w-4xl space-y-6">
+        <h1 className="text-3xl font-bold">{t("profile.title")}</h1>
+        <p className="text-muted-foreground">{t("profile.description")}</p>
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("profile.profileInfo.title")}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <dl className="space-y-4">
+              <div>
+                <dt className="text-sm text-muted-foreground">{language === "ar" ? "الاسم" : "Name"}</dt>
+                <dd>{user?.name}</dd>
+              </div>
+              <div>
+                <dt className="text-sm text-muted-foreground">{language === "ar" ? "البريد الإلكتروني" : "Email"}</dt>
+                <dd dir="ltr">{user?.email}</dd>
+              </div>
+            </dl>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("profile.security.title")}</CardTitle>
+            <CardDescription>
+              {language === "ar"
+                ? "يمكنك تغيير كلمة مرور الإدارة وإدارة إعداداتك من صفحة الإعدادات."
+                : "Change your admin password and manage your settings from Settings."}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button asChild>
+              <Link href="/admin/settings">
+                {language === "ar" ? "كلمة المرور والإعدادات" : "Password & settings"}
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    </DashboardLayout>
+  );
+}
+
+function UserProfile({ isStaff, dashboardPath }: { isStaff: boolean; dashboardPath: string }) {
   const { t, language } = useLanguage();
   const { user } = useAuth();
   const utils = trpc.useUtils();
@@ -126,13 +208,14 @@ export default function Profile() {
 
   const resetPasswordWithOtpMutation = trpc.auth.resetPasswordWithOtp.useMutation({
     onSuccess: () => {
-      setOtpMessage(language === "ar" ? "تم تغيير كلمة المرور بنجاح!" : "Password changed successfully!");
+      setPasswordMessage(t("profile.password.changed"));
+      setOtpMessage("");
       setShowOtpReset(false);
       setOtpStep("request");
       setOtpCode("");
       setOtpNewPassword("");
       setOtpConfirmPassword("");
-      setTimeout(() => setOtpMessage(""), 3000);
+      setTimeout(() => setPasswordMessage(""), 5000);
     },
     onError: (error) => {
       setOtpMessage(error.message);
@@ -208,13 +291,15 @@ export default function Profile() {
     updateLoginSecurityMutation.mutate({ loginSecurityMode });
   };
 
+  const Layout = isStaff ? DashboardLayout : ClientLayout;
+
   return (
-    <ClientLayout>
+    <Layout>
       <div className="min-h-screen bg-[var(--color-xf-cream)]">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {/* Header */}
           <div className="mb-8">
-            <Link href="/courses">
+            <Link href={dashboardPath}>
               <Button variant="ghost" className="mb-4">
                 ← {t("profile.backToDashboard")}
               </Button>
@@ -227,7 +312,7 @@ export default function Profile() {
             </p>
           </div>
 
-          <UpgradeCallout />
+          {!isStaff && <UpgradeCallout />}
 
           {/* Profile Information */}
           <Card className="mb-6">
@@ -606,8 +691,10 @@ export default function Profile() {
                     {otpStep === "verify" && (
                       <form onSubmit={handleResetWithOtp} className="space-y-4">
                         <div>
-                          <Label>{language === "ar" ? "رمز التحقق" : "Verification Code"}</Label>
+                          <Label htmlFor="reset-code">{language === "ar" ? "رمز التحقق" : "Verification Code"}</Label>
                           <Input
+                            id="reset-code"
+                            autoComplete="one-time-code"
                             type="text"
                             inputMode="numeric"
                             maxLength={6}
@@ -618,9 +705,11 @@ export default function Profile() {
                           />
                         </div>
                         <div>
-                          <Label>{language === "ar" ? "كلمة المرور الجديدة" : "New Password"}</Label>
+                          <Label htmlFor="reset-new-password">{language === "ar" ? "كلمة المرور الجديدة" : "New Password"}</Label>
                           <div className="relative mt-1">
                             <Input
+                              id="reset-new-password"
+                              autoComplete="new-password"
                               type={showOtpPasswords.new ? "text" : "password"}
                               value={otpNewPassword}
                               onChange={(e) => setOtpNewPassword(e.target.value)}
@@ -631,11 +720,14 @@ export default function Profile() {
                               {showOtpPasswords.new ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                             </button>
                           </div>
+                          <p className="mt-2 text-xs text-muted-foreground">{t("profile.password.requirements")}</p>
                         </div>
                         <div>
-                          <Label>{language === "ar" ? "تأكيد كلمة المرور" : "Confirm Password"}</Label>
+                          <Label htmlFor="reset-confirm-password">{language === "ar" ? "تأكيد كلمة المرور" : "Confirm Password"}</Label>
                           <div className="relative mt-1">
                             <Input
+                              id="reset-confirm-password"
+                              autoComplete="new-password"
                               type={showOtpPasswords.confirm ? "text" : "password"}
                               value={otpConfirmPassword}
                               onChange={(e) => setOtpConfirmPassword(e.target.value)}
@@ -671,6 +763,6 @@ export default function Profile() {
           </Card>
         </div>
       </div>
-    </ClientLayout>
+    </Layout>
   );
 }

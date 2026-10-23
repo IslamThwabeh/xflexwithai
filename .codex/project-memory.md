@@ -2,6 +2,15 @@
 
 Last updated: 2026-10-23
 
+## Shared profile access and staff password recovery — 2026-10-23
+
+- Fixed the support dashboard's missing personal-settings entry: `DashboardLayout` now exposes bilingual Profile & settings links in its avatar menu and persistent sidebar footer, outside operational role filtering. Customer navigation has a labeled profile link and an explicit mobile settings action.
+- `/profile` uses the explicit `ProtectedRoute accountSettings` exception: authentication remains required, full admins are allowed, and an overdue student survey does not prevent personal password recovery. Staff retain their dashboard layout and role-specific return path; customer-only upgrade prompts stay off staff profiles.
+- Customers and staff use the existing own-account profile, notification, login-method, and OTP reset endpoints. The OTP reset does not require the forgotten current password; reset-code/new-password fields have labels/autocomplete, password requirements are displayed, and success feedback remains visible after the reset form closes.
+- Full admins have separate credentials and namespaced negative context IDs. Their profile shows account identity and links to `/admin/settings` for admin password/settings management; do not route admin password changes through customer APIs.
+- Validation passed TypeScript, full production build, 14 focused tests across three files, and Playwright browser checks with simulated support/student/admin/guest accounts. Browser QA covered support-dashboard-to-profile navigation, OTP reset confirmation, mobile avatar/sidebar links, survey-blocked student profile access, admin credential routing, and signed-out redirection. No real account password or production data was changed during QA.
+- User authorized push and production deployment. This is a Pages-only release with no Worker change or database migration. Release identifiers and production smoke results will be recorded after deployment.
+
 ## Trade Copier private checkout and local PRD-data QA - 2026-10-02
 
 - Business term is `الناسخ` / Trade Copier: the site sells and tracks eligibility/payment/subscriber state only; external trading-account linking remains an operational step outside the website.

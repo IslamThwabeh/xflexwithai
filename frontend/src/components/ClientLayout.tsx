@@ -67,6 +67,7 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
   const { user, logout } = useAuth();
   const { track } = useEngagementTracker();
   const { t, language, setLanguage, isRTL } = useLanguage();
+  const profileLabel = language === "ar" ? "الملف الشخصي والإعدادات" : "Profile & settings";
   const [location] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
@@ -352,7 +353,7 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
               </button>
 
               {/* User Avatar — links to profile */}
-              <Link href="/profile">
+              <Link href="/profile" aria-label={profileLabel} title={profileLabel} className="flex items-center gap-2">
                 <div className="cursor-pointer hover:opacity-80 transition-opacity">
                   <div className="w-8 h-8 rounded-full bg-gradient-to-r from-emerald-500 to-teal-600 flex items-center justify-center text-white text-xs font-semibold ring-2 ring-emerald-300/50 hover:ring-emerald-400 transition-all" title={user?.name || ''}>
                     {(() => {
@@ -363,6 +364,7 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
                     })()}
                   </div>
                 </div>
+                <span className="hidden xl:inline text-xs font-medium">{profileLabel}</span>
               </Link>
 
               {/* Logout */}
@@ -447,6 +449,10 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
 
           {/* Footer actions */}
           <div className="border-t p-3 space-y-2">
+            <Link href="/profile" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm hover:bg-gray-100">
+              <User className="h-4 w-4" />
+              {profileLabel}
+            </Link>
             {staffWorkspacePath && (
               <Link href={staffWorkspacePath}>
                 <button

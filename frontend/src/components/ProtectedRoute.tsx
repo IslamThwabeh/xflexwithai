@@ -7,13 +7,15 @@ import { useLocation } from "wouter";
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
+  /** Personal settings are shared by customers, staff, and administrators. */
+  accountSettings?: boolean;
 }
 
 /**
  * Wrapper component that protects user routes
  * Redirects to /auth if not authenticated
  */
-export default function ProtectedRoute({ children }: ProtectedRouteProps) {
+export default function ProtectedRoute({ children, accountSettings = false }: ProtectedRouteProps) {
   const { t } = useLanguage();
   const { isAuthenticated, loading } = useAuth();
   const [, setLocation] = useLocation();
@@ -34,10 +36,10 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
       return;
     }
 
-    if (adminCheck?.isAdmin) {
+    if (adminCheck?.isAdmin && !accountSettings) {
       setLocation("/admin/dashboard");
     }
-  }, [adminCheck?.isAdmin, checkingAdmin, isAuthenticated, loading, setLocation]);
+  }, [accountSettings, adminCheck?.isAdmin, checkingAdmin, isAuthenticated, loading, setLocation]);
 
   if (loading || (isAuthenticated && checkingAdmin)) {
     return (
@@ -54,9 +56,12 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
     return null;
   }
 
-  if (adminCheck?.isAdmin) {
+  if (adminCheck?.isAdmin && !accountSettings) {
     return null;
   }
+
+  // Keep password recovery reachable even when student services are survey-gated.
+  if (accountSettings) return <>{children}</>;
 
   return (
     <StudentSurveyAccessGate>

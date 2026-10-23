@@ -11,6 +11,7 @@ applyTo: "frontend/src/**"
 - Use the March 2026 visual system: emerald/teal/amber/cream. Do not introduce blue, purple, or indigo accents.
 - Primary gradients: `from-emerald-500 to-teal-600`. Accent gradients: `from-amber-400 to-orange-500`. Focus rings should stay emerald.
 - `ClientLayout` header stays `dir="ltr"`; content containers switch with `dir={isRTL ? "rtl" : "ltr"}`.
+- `/profile` is shared personal settings for customers, staff, and admins. Its `ProtectedRoute accountSettings` exception retains authentication while allowing admins and bypassing the student survey gate. Staff stay in `DashboardLayout`; customers use `ClientLayout`; admin profile links to the separate admin credential settings. Keep clear bilingual Profile & settings navigation on desktop/mobile and visible success feedback after OTP password recovery.
 - In Arabic, do not end a sentence with the word `XFlex`; rephrase so the sentence ends with Arabic text.
 - Student navigation order: Dashboard, LexAI, Recommendations, Support, Quizzes, My Package, Brokers, Notifications, Points, Calculators.
 - Admin sidebar sections: Overview -> Sales -> Recommendations -> LexAI -> Learning -> Content -> Students -> Team -> Reports -> Moderation -> Careers.

@@ -252,7 +252,7 @@ function Router() {
         </ProtectedRoute>
       </Route>
       <Route path={"/profile"}>
-        <ProtectedRoute>
+        <ProtectedRoute accountSettings>
           <Profile />
         </ProtectedRoute>
       </Route>
