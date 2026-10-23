@@ -8007,13 +8007,14 @@ export const appRouter = router({
         });
       }),
 
-    // Admin/Key Manager: list all orders
-    adminList: adminOrRoleProcedure(['key_manager', 'finance_manager'])
+    // Support may read orders; operational changes and finance approval use separate guards.
+    adminList: adminOrRoleProcedure(['key_manager', 'finance_manager', 'support'])
       .input(z.object({
         status: z.string().optional(),
       }).optional())
-      .query(async ({ input }) => {
+      .query(async ({ input, ctx }) => {
         const orders = await db.getAllOrders(input?.status);
+        const canReadRequestEvidence = !!ctx.admin || await db.hasAnyRole(ctx.user.id, ['key_manager', 'finance_manager']);
         const packageItems = await db.getOrderPackageConfigurationSummaries(orders.map((order) => order.id));
         const itemsByOrder = new Map<number, typeof packageItems>();
         for (const item of packageItems) {
@@ -8022,7 +8023,7 @@ export const appRouter = router({
           itemsByOrder.set(item.orderId, existing);
         }
         return orders.map((order) => attachOrderDisplayPricing(
-          order,
+          canReadRequestEvidence ? order : { ...order, termsAcceptedIpAddress: null, termsAcceptedUserAgent: null },
           itemsByOrder.get(order.id) ?? [],
         ));
       }),

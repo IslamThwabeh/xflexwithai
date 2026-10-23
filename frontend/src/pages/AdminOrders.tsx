@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { ShoppingCart, CheckCircle, XCircle, Eye, ChevronDown, ChevronUp, FileCheck, Pencil } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { useSearch } from 'wouter';
+import { ShoppingCart, CheckCircle, XCircle, Eye, ChevronDown, ChevronUp, FileCheck, Pencil, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -23,6 +24,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import { useDataTable, DataTablePagination } from '@/components/DataTable';
 import { toast } from 'sonner';
 import { isLikelyValidEmail, normalizeEmailAddress } from '@shared/emailValidation';
+import { filterOrdersForSearch, getFocusedOrderId, getOrderNoteAttachments } from '@/lib/orderManagement';
 
 const orderSortFns: Record<string, (a: any, b: any) => number> = {
   created: (a, b) => new Date(String(a.createdAt).replace(' ', 'T')).getTime() - new Date(String(b.createdAt).replace(' ', 'T')).getTime(),
@@ -56,6 +58,8 @@ const purposeLabels: Record<string, { en: string; ar: string }> = {
 export default function AdminOrders() {
   const { language } = useLanguage();
   const utils = trpc.useUtils();
+  const routeSearch = useSearch();
+  const [search, setSearch] = useState(() => String(getFocusedOrderId(routeSearch) ?? ''));
   const [filter, setFilter] = useState<string | undefined>(undefined);
   const [issueOrder, setIssueOrder] = useState<any | null>(null);
   const [recipientOrder, setRecipientOrder] = useState<any | null>(null);
@@ -81,7 +85,7 @@ export default function AdminOrders() {
   const staffRoles = adminCheck?.staffRoles ?? [];
   const canManageOperationalOrders = adminCheck?.isAdmin === true || staffRoles.includes('key_manager');
   const canConfirmPayment = financeAuthority?.isFinanceOwner === true || staffRoles.includes('finance_manager');
-  const { data: orders, isLoading } = trpc.orders.adminList.useQuery(filter ? { status: filter } : undefined);
+  const { data: orders, isLoading, isError, isFetching, refetch } = trpc.orders.adminList.useQuery(filter ? { status: filter } : undefined);
   const updateMutation = trpc.orders.adminUpdateStatus.useMutation({
     onSuccess: (data) => {
       utils.orders.adminList.invalidate();
@@ -110,9 +114,10 @@ export default function AdminOrders() {
     onSuccess: async () => { toast.success(language === 'ar' ? 'تم تثبيت غرض المعاملة.' : 'Transaction purpose locked.'); await utils.orders.adminList.invalidate(); },
     onError: error => toast.error(error.message),
   });
-  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [expandedId, setExpandedId] = useState<number | null>(() => getFocusedOrderId(routeSearch));
 
   const allOrders = orders ?? [];
+  const filteredOrders = filterOrdersForSearch(allOrders, search);
   const {
     paged,
     page,
@@ -121,7 +126,17 @@ export default function AdminOrders() {
     totalItems,
     setPage,
     changePageSize,
-  } = useDataTable(allOrders, orderSortFns);
+  } = useDataTable(filteredOrders, orderSortFns);
+
+  useEffect(() => {
+    const id = getFocusedOrderId(routeSearch);
+    if (id) {
+      setSearch(String(id));
+      setFilter(undefined);
+      setExpandedId(id);
+      setPage(0);
+    }
+  }, [routeSearch, setPage]);
 
   const handleStatusChange = async (orderId: number, newStatus: string) => {
     await updateMutation.mutateAsync({
@@ -252,6 +267,15 @@ export default function AdminOrders() {
           </div>
         </div>
 
+        <div className="mb-4 flex flex-wrap items-end gap-3">
+          <div className="min-w-0 flex-1">
+            <Label htmlFor="order-search">{language === 'ar' ? 'بحث برقم الطلب أو اسم العميل أو البريد' : 'Search by order number, customer name, or email'}</Label>
+            <Input id="order-search" value={search} onChange={event => { setSearch(event.target.value); setPage(0); }} placeholder={language === 'ar' ? 'مثال: #135 أو اسم العميل' : 'Example: #135 or customer name'} className="mt-2" />
+          </div>
+          <Button variant="outline" disabled={isFetching} onClick={() => void refetch()}><RefreshCw className="me-2 h-4 w-4" />{language === 'ar' ? 'تحديث' : 'Refresh'}</Button>
+        </div>
+        {!canManageOperationalOrders && !canConfirmPayment && <p className="mb-4 text-sm text-slate-600">{language === 'ar' ? 'عرض الطلبات للدعم فقط. تأكيد الدفع وإصدار المفاتيح يتطلب الصلاحيات المختصة.' : 'Support has read-only order access. Payment approval and key issuance require the appropriate permissions.'}</p>}
+
         {/* Filters */}
         <div className="flex flex-wrap gap-2 mb-6">
           {[
@@ -265,7 +289,7 @@ export default function AdminOrders() {
               key={f.value || 'all'}
               size="sm"
               variant={filter === f.value ? 'default' : 'outline'}
-              onClick={() => setFilter(f.value)}
+              onClick={() => { setFilter(f.value); setPage(0); }}
             >
               {f.label}
             </Button>
@@ -273,11 +297,13 @@ export default function AdminOrders() {
         </div>
 
         {/* Orders */}
-        {isLoading ? (
+        {isError ? (
+          <div className="rounded-xl border border-red-200 bg-red-50 p-5 text-red-800" role="alert">{language === 'ar' ? 'تعذر تحميل الطلبات. تحقق من صلاحياتك واضغط تحديث.' : 'Orders could not be loaded. Check your permissions and click Refresh.'}</div>
+        ) : isLoading ? (
           <div className="text-gray-400 text-center py-8">{language === 'ar' ? 'جاري التحميل...' : 'Loading...'}</div>
-        ) : orders?.length === 0 ? (
+        ) : filteredOrders.length === 0 ? (
           <div className="text-gray-400 text-center py-12">
-            {language === 'ar' ? 'لا توجد طلبات' : 'No orders'}
+            {language === 'ar' ? 'لا توجد طلبات مطابقة' : 'No matching orders'}
           </div>
         ) : (
           <div className="space-y-3">
@@ -286,7 +312,7 @@ export default function AdminOrders() {
               const isCopierOrder = order.transactionPurpose === 'copier_subscription';
               return (
               <div key={order.id} className="bg-white border rounded-xl shadow-sm">
-                <div className="p-5 flex items-center justify-between cursor-pointer" onClick={() => setExpandedId(expandedId === order.id ? null : order.id)}>
+                <div id={`order-${order.id}`} className="p-5 flex items-center justify-between cursor-pointer" onClick={() => setExpandedId(expandedId === order.id ? null : order.id)}>
                   <div>
                     <div className="flex items-center gap-2 mb-1">
                       <h3 className="font-bold text-gray-900">#{order.id}</h3>
@@ -325,6 +351,11 @@ export default function AdminOrders() {
                           <span className="text-gray-600 ms-2">📞 {(order as any).userPhone}</span>
                         )}
                       </div>
+                      {order.notes && <div className="md:col-span-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                        <p className="mb-2 font-semibold">{language === 'ar' ? 'ملاحظات الطلب' : 'Order notes'}</p>
+                        <p className="whitespace-pre-wrap break-words">{order.notes}</p>
+                        {getOrderNoteAttachments(order.notes).map(url => <a key={url} href={url} target="_blank" rel="noopener noreferrer" className="mt-3 block font-semibold text-amber-900 underline">{language === 'ar' ? 'إفادة دفع من صاحب العمل — الإيصال الفعلي قيد الانتظار' : 'Owner-reported payment note — actual receipt pending'}</a>)}
+                      </div>}
                       <div>
                         <span className="text-gray-500">{language === 'ar' ? 'المبلغ الفرعي' : 'Subtotal'}:</span>{' '}
                         {formatAdminCurrencyFromIls(order.displaySubtotalIls, language)}
@@ -469,7 +500,7 @@ export default function AdminOrders() {
         )}
 
         {/* Pagination */}
-        {!isLoading && allOrders.length > 0 && (
+        {!isLoading && !isError && filteredOrders.length > 0 && (
           <DataTablePagination
             page={page}
             pageSize={pageSize}

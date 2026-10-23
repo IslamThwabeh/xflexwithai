@@ -26,7 +26,7 @@ export const SESSION_HEARTBEAT_RETRY_MS = 10 * 1000;
 // Used by the "Staff Review" feature to preview what each employee sees.
 export const ROLE_PAGE_ACCESS: Record<string, string[]> = {
   // Core roles
-  support: ["/admin/support", "/admin/bug-reports", "/admin/students", "/admin/copier", "/admin/notifications"],
+  support: ["/admin/support", "/admin/bug-reports", "/admin/students", "/admin/orders", "/admin/copier", "/admin/notifications"],
   lexai_support: ["/admin/lexai", "/admin/notifications"],
   key_manager: ["/admin/package-keys", "/admin/students", "/admin/orders", "/admin/copier", "/admin/notifications"],
   finance_manager: ["/admin/orders", "/admin/copier", "/admin/finance", "/admin/finance/expenses", "/admin/finance/controls", "/admin/finance/reconciliation"],
